@@ -2,13 +2,13 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-04
+마지막 갱신: 2026-09-05
 
 ## 목표
 
 Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물에서 만들고, 그 위에서 미사용 코드 · 순환 · 레이어 규칙 · 지표를 근거와 함께 답하는 CLI. [cartograph](../cartograph)(Swift)의 자매. 자세한 것은 `docs/PRD.md`.
 
-## 현재 상태 — 0.1.0 release candidate 검증 완료, publish 대기
+## 현재 상태 — 0.1.0 공개, 0.1.1 max-review patch 준비 중
 
 - 커밋 `3886900 docs: Phase 0 원천 결정 완료`
 - 주 원천은 **ASM JVM bytecode + 공식 `kotlin-metadata-jvm`**이다
@@ -31,9 +31,9 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
   source path는 출력하지 않는다
 - local sample E debug class root dogfood: exit 0, 408 nodes, 996 edges, 0.16초. DOT에 절대경로 없음.
   로컬에 Graphviz 실행 파일이 없어 외부 parser 검증은 건너뜀
-- Kover 0.9.9 root 집계 line coverage는 90.6157%이고 `:koverVerify`가 90%를 강제한다.
+- Kover 0.9.9 root 집계 line coverage는 91.2456%이고 `:koverVerify`가 90%를 강제한다.
   GitHub Actions는 clean test, coverage, CLI distribution 계약을 실행한다
-- `fixtures/false-positive-corpus`는 실제 Android app으로 37개 retained case와 실제 미사용 2건을 담는다.
+- `fixtures/false-positive-corpus`는 실제 Android app으로 39개 retained case와 실제 미사용 2건을 담는다.
   verifier는 전체 finding exact 비교와 각 근거 파일·줄을 양방향으로 확인한다
 - manifest `activity-alias` target과 `FragmentContainerView android:name`, nested binary class 이름을
   보존하며 element-level member type wildcard keep rule은 조용히 오해석하지 않고 거부한다
@@ -95,8 +95,8 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - `rules`는 외부 object 생성을 허용하지 않는 fail-closed YAML subset을 읽는다. 빈/중복/unknown 설정을
   거부하고 violation과 unassigned를 strict finding으로 처리하며 실제 edge kind·weight·source 위치를 싣는다
 - `metrics`는 같은 `EdgeKind.impliesUsage` 위에서 module/package별 Martin Ca/Ce/I/A/D를 계산한다
-- plugin을 포함한 6개 production root(2,246 nodes, 8,942 edges) self-analysis는 dead/cycles/rules 0 findings,
-  rules unassigned 0, metrics 6행이며 네 명령 모두 0.29초 이하다. `docs/PHASE5-VALIDATION.md`에 근거가 있다
+- plugin을 포함한 6개 production root(2,271 nodes, 9,728 edges) self-analysis는 dead/cycles/rules 0 findings,
+  rules unassigned 0, metrics 6행이며 네 명령 모두 0.32초 이하다. `docs/PHASE5-VALIDATION.md`에 근거가 있다
 - `graph`와 `dead`는 반복 `--classes`를 입력 순서로 합치고 중복 JVM class는 첫 root를 사용한다. invalid
   path는 graph/dead 모두 절대경로를 노출하지 않는 usage error로 변환한다
 - Gradle plugin `io.github.ictechgy.kartograph`가 AGP public `onVariants`와 scoped `CLASSES`를 사용해
@@ -107,30 +107,33 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - GLM의 단독 `*` package 의미와 positive modifier OR 지적은 공식 ProGuard의 하위 호환 예외와
   non-conflicting AND/conflicting OR 규칙에 반대라 반영하지 않았다. `-keepnames` root 지적도
   `allowshrinking` 동치라 반영하지 않았다
-- 최근 검증의 Kover line coverage는 90.8317%다
-- `VERSION`이 CLI와 Gradle plugin artifact의 단일 0.1.0 version 원천이고 모든 archive는 timestamp와
+- 최근 검증의 Kover line coverage는 91.2456%다
+- `VERSION`이 CLI와 Gradle plugin artifact의 단일 0.1.1 version 원천이고 모든 archive는 timestamp와
   entry order를 고정한다. CLI distribution에는 README, changelog, security/privacy, license가 들어간다
 - Gradle plugin publication metadata는 website/VCS/tags를 포함한다. plugin jar는 runtime dependency를
   모두 내장하고 POM에서는 제거해 Portal 설치가 별도 kartograph artifact나 중복 dependency에 의존하지 않는다
 - `Scripts/verify-release-readiness.sh`가 clean build 두 번의 SHA-256, plugin descriptor/내장 class/POM,
   Gradle plugin validation과 압축 해제 CLI 계약을 검사한다. 외부 publish는 하지 않는다
-- `v*` tag release workflow는 tag와 `VERSION` 일치, 전체 test/coverage/fixture/release 검증 뒤 GitHub
-  Release를 재실행 가능하게 만들고 마지막에 Plugin Portal을 publish한다. 이 workflow는 아직 실행하지 않았다
-- `CHANGELOG.md`, `SECURITY.md`, `docs/LIMITATIONS.md`와 README 설치/호환성/안전 해석을 0.1.0 기준으로 작성했다
+- `v0.1.0` workflow는 전체 test/coverage/fixture/release 검증, GitHub Release와 Plugin Portal 제출까지
+  성공했다. Plugin Portal의 첫 plugin 검수는 외부 승인 대기 상태다
+- `CHANGELOG.md`, `SECURITY.md`, `docs/LIMITATIONS.md`와 README 설치/호환성/안전 해석을 0.1.x 기준으로 작성했다
 - CI action은 commit SHA로 고정하고 Android API 36을 명시적으로 설치한다. CLI와 plugin 배포본에는
   ASM·Kotlin·JetBrains runtime dependency의 제3자 고지와 Apache/BSD 라이선스 원문을 포함한다
 - GLM 전체 repository 리뷰에서 확인된 4 major를 수정했고 high-effort diff 리뷰와 후속 리뷰는 최종적으로
   blocker/major 0건을 보고했다
+- 배포 tree GLM max 리뷰에서 real ProGuard directive/inline conditional block과 manifest metadata 누락을
+  확인했다. 현재 branch는 두 major와 12 minor의 검증 가능한 항목을 수정했고 max diff review와 후속
+  review 모두 blocker/major 0건을 보고했다
 - JDK 17 clean test/coverage와 JDK 21 clean test, CLI/agent/corpus/plugin fixture가 통과했다. release verifier는
   두 clean build의 ZIP/TAR/plugin JAR/POM 해시 일치와 압축 해제 CLI 계약을 확인했다
-- 작업 브랜치: `feature/phase2-retention-corpus`
+- 작업 브랜치: `fix/v0.1.1-max-review`
 
 ## 다음 할 일 (순서대로)
 
-1. release candidate 커밋과 전체 diff를 검토해 PR로 올린다
-2. GitHub의 `release` environment에 승인 규칙과 Plugin Portal secrets를 설정한다
-3. main 병합 뒤 `VERSION`과 같은 `v0.1.0` tag를 만들어 release workflow를 실행한다
-4. GitHub Release와 Plugin Portal 설치를 별도 빈 프로젝트에서 확인한다
+1. 0.1.1 전체 JDK/fixture/release 검증과 self-analysis 수치를 갱신한다
+2. `packet-ask` GLM max diff review와 blocker/major 후속 리뷰를 통과한다
+3. conventional commit 후 공개 저장소에 PR을 만들고 GitHub Actions를 확인한다
+4. Plugin Portal의 0.1.0 승인 후 빈 프로젝트 설치를 확인하고, 별도 승인으로 0.1.1을 tag한다
 
 ## 효과가 있었던 방식
 

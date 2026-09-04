@@ -55,3 +55,5 @@ class ClassInitializerDependency
 object InlinedConstantOwner {
     const val VALUE = 2
 }
+
+class ManifestMetadataInitializer

@@ -89,6 +89,29 @@ class ClassFileIndexerTest {
     }
 
     @Test
+    fun `members reference their owning class for reverse reachability`() {
+        val graph = ClassFileIndexer().index(listOf(testClassesRoot))
+        val owner = JvmNodeId.classId("dev/kartograph/index/fixture/Caller")
+        val method = JvmNodeId.methodId(
+            "dev/kartograph/index/fixture/Caller",
+            "callTwice",
+            "()Ljava/lang/String;",
+        )
+        val field = JvmNodeId.fieldId(
+            "dev/kartograph/index/fixture/Caller",
+            "dependency",
+            "Ldev/kartograph/index/fixture/Dependency;",
+        )
+
+        assertTrue(graph.edges.any { edge ->
+            edge.source == method && edge.target == owner && edge.kind == EdgeKind.REFERENCE
+        })
+        assertTrue(graph.edges.any { edge ->
+            edge.source == field && edge.target == owner && edge.kind == EdgeKind.REFERENCE
+        })
+    }
+
+    @Test
     fun `treats compiler line zero as an unknown source line`(@TempDir directory: Path) {
         directory.resolve("SyntheticCoroutine.class").writeBytes(classWithLineZero())
 
@@ -258,6 +281,22 @@ class ClassFileIndexerTest {
     }
 
     @Test
+    fun `marks Android generated class names as synthesized outside R jars`(@TempDir directory: Path) {
+        val generatedNames = listOf("BuildConfig", "BR", "R", "R${'$'}string", "Manifest", "Manifest${'$'}permission")
+        generatedNames.forEach { name ->
+            directory.resolve("$name.class").writeBytes(
+                duplicateClass("$name.java", Opcodes.ACC_FINAL, "dev/fixture/$name"),
+            )
+        }
+
+        val graph = ClassFileIndexer().index(listOf(directory))
+
+        assertTrue(generatedNames.all { name ->
+            graph.node(JvmNodeId.classId("dev/fixture/$name"))?.synthesized == true
+        })
+    }
+
+    @Test
     fun `does not classify user classes as generated from name suffix alone`(@TempDir directory: Path) {
         directory.resolve("Repository_Impl.class").writeBytes(
             duplicateClass("Repository_Impl.kt", Opcodes.ACC_FINAL, "dev/fixture/Repository_Impl"),
@@ -355,15 +394,16 @@ class ClassFileIndexerTest {
         val graph = ClassFileIndexer().index(listOf(directory))
         val source = JvmNodeId.methodId("dev/fixture/InstructionReferences", "inspect", "()V")
 
-        assertEquals(
-            setOf(
-                JvmNodeId.classId("dev/fixture/DeclaredException"),
-                JvmNodeId.classId("dev/fixture/CaughtOnly"),
-                JvmNodeId.classId("dev/fixture/ArrayOnly"),
-            ),
-            graph.edges.filter { edge -> edge.source == source && edge.kind == EdgeKind.REFERENCE }
-                .mapTo(mutableSetOf()) { edge -> edge.target },
+        val expectedTargets = setOf(
+            JvmNodeId.classId("dev/fixture/DeclaredException"),
+            JvmNodeId.classId("dev/fixture/CaughtOnly"),
+            JvmNodeId.classId("dev/fixture/ArrayOnly"),
+            JvmNodeId.classId("dev/fixture/InstructionReferences"),
         )
+        val actualTargets = graph.edges.filter { edge -> edge.source == source && edge.kind == EdgeKind.REFERENCE }
+            .mapTo(mutableSetOf()) { edge -> edge.target }
+
+        assertEquals(expectedTargets, actualTargets)
     }
 
     private val testClassesRoot: Path

@@ -18,6 +18,7 @@ import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
 class KartographCliTest {
@@ -26,7 +27,7 @@ class KartographCliTest {
         val execution = execute("--version")
 
         assertEquals(ExitStatus.SUCCESS.code, execution.status)
-        assertEquals("kartograph 0.1.0\n", execution.output)
+        assertEquals("kartograph 0.1.1\n", execution.output)
     }
 
     @Test
@@ -126,6 +127,25 @@ class KartographCliTest {
         assertContains(rules.output, "evidence:")
         assertEquals(ExitStatus.FINDINGS.code, unassigned.status)
         assertContains(unassigned.output, "declarations are not assigned")
+    }
+
+    @Test
+    fun `rules explain accepts the same qualified symbol name as query`(@TempDir root: Path) {
+        val config = root.resolve("layers.yml")
+        config.writeText("layers:\n  - name: CLI\n    match: [dev.kartograph.cli]\n")
+
+        val execution = execute(
+            "rules",
+            "--classes",
+            classRoot.toString(),
+            "--config",
+            config.toString(),
+            "--explain",
+            "dev.kartograph.cli.KartographCli.run",
+        )
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        assertContains(execution.output, "layer: CLI")
     }
 
     @Test
@@ -354,16 +374,20 @@ class KartographCliTest {
     }
 
     @Test
-    fun `baseline write is deterministic and dead suppresses captured findings`(@TempDir projectRoot: Path) {
-        val baseline = projectRoot.resolve("baseline.json")
+    fun `baseline write is project relative and deterministic while dead suppresses captured findings`(
+        @TempDir projectRoot: Path,
+    ) {
+        val relativeBaseline = "nested/baseline.json"
+        val baseline = projectRoot.resolve(relativeBaseline)
         val arguments = deadArguments(projectRoot, "<manifest />")
 
-        val written = execute("baseline", "--write", "baseline.json", *arguments.drop(1).toTypedArray())
+        val written = execute("baseline", "--write", relativeBaseline, *arguments.drop(1).toTypedArray())
         val first = baseline.readText()
-        val rewritten = execute("baseline", "--write", "baseline.json", *arguments.drop(1).toTypedArray())
+        val rewritten = execute("baseline", "--write", relativeBaseline, *arguments.drop(1).toTypedArray())
         val filtered = execute(*arguments, "--baseline", baseline.toString(), "--strict", "--report-format", "json")
 
         assertEquals(ExitStatus.SUCCESS.code, written.status)
+        assertTrue(Files.isRegularFile(baseline))
         assertEquals(ExitStatus.SUCCESS.code, rewritten.status)
         assertEquals(first, baseline.readText())
         assertEquals(ExitStatus.SUCCESS.code, filtered.status)

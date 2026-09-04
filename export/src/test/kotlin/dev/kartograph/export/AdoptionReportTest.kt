@@ -64,10 +64,10 @@ class AdoptionReportTest {
         assertContains(github, "::notice title=kartograph limitation REFLECTION_STRINGS::")
         assertContains(json, "\"suppressedCount\": 1")
         assertContains(json, "\"nodeId\": \"class:a/Unused\"")
-        assertContains(json, "\"version\": \"0.1.0\"")
+        assertContains(json, "\"version\": \"0.1.1\"")
         kotlin.test.assertFalse(json.contains("SNAPSHOT"))
         assertContains(sarif, "\"version\": \"2.1.0\"")
-        assertContains(sarif, "\"version\": \"0.1.0\"")
+        assertContains(sarif, "\"version\": \"0.1.1\"")
         kotlin.test.assertFalse(sarif.contains("SNAPSHOT"))
         assertContains(sarif, "src/Z%20file.kt")
         assertContains(sarif, "\"toolExecutionNotifications\"")
@@ -85,5 +85,17 @@ class AdoptionReportTest {
             AdoptionReporter.render(ReportFormat.SARIF, emptyList(), emptyList(), 0),
             "\"results\": []",
         )
+    }
+
+    @Test
+    fun `sarif percent encodes URI punctuation in source paths`() {
+        val finding = Finding(
+            NodeId("class:fixture/Generated"),
+            SourceLocation("src/[generated]# file.kt", 4),
+        )
+
+        val sarif = AdoptionReporter.render(ReportFormat.SARIF, listOf(finding), emptyList(), 0)
+
+        assertContains(sarif, "src/%5Bgenerated%5D%23%20file.kt")
     }
 }

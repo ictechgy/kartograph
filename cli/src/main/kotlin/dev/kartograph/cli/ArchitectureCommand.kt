@@ -7,6 +7,7 @@ import dev.kartograph.analysis.LayerRuleEvaluator
 import dev.kartograph.analysis.LayerRuleYaml
 import dev.kartograph.analysis.MartinMetrics
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.qualifiedName
 import dev.kartograph.index.ClassFileIndexer
 import dev.kartograph.index.ClassIndexingException
 import java.io.PrintStream
@@ -59,7 +60,9 @@ internal object ArchitectureCommand {
         }
         if (unassigned.isNotEmpty()) output.println("info: ${unassigned.size} declarations are not assigned to a layer")
         options.explain?.let { query ->
-            val matches = graph.nodes.values.filter { it.id.value == query || it.name == query }.sortedBy { it.id }
+            val matches = graph.nodes.values.filter { node ->
+                node.id.value == query || node.name == query || node.qualifiedName == query
+            }.sortedBy { it.id }
             if (matches.size != 1) {
                 error.println("error: explanation symbol must match exactly one declaration")
                 return@withGraph ExitStatus.USAGE.code

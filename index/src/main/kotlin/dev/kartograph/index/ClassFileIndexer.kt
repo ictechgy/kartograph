@@ -169,6 +169,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         val fieldId = JvmNodeId.fieldId(internalName, name, descriptor)
         val annotations = mutableSetOf<String>()
         edges += GraphEdge(JvmNodeId.classId(internalName), fieldId, EdgeKind.MEMBER)
+        edges += GraphEdge(fieldId, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
         descriptorClassNames(descriptor).forEach { target ->
             edges += GraphEdge(fieldId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
         }
@@ -207,6 +208,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         val methodId = JvmNodeId.methodId(internalName, name, descriptor)
         val annotations = mutableSetOf<String>()
         edges += GraphEdge(JvmNodeId.classId(internalName), methodId, EdgeKind.MEMBER)
+        edges += GraphEdge(methodId, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
         if (name == "<clinit>") {
             edges += GraphEdge(JvmNodeId.classId(internalName), methodId, EdgeKind.REFERENCE)
         }

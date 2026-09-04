@@ -6,6 +6,7 @@ import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.RetentionReason
 import dev.kartograph.core.SourceLocation
+import dev.kartograph.core.qualifiedName
 
 /** cartograph의 SymbolQueryDocument와 같은 필드 계약을 쓰는 심볼 질의 응답이다. */
 public data class SymbolQueryDocument(
@@ -145,14 +146,6 @@ public object SymbolQuery {
         }
         return NeighborPage(found.take(limit), found.size > limit)
     }
-
-    private val GraphNode.qualifiedName: String
-        get() {
-            val owner = id.value.substringAfter(':').substringBefore('#').replace('/', '.')
-            val qualifiedOwner = moduleName?.takeUnless { owner == it || owner.startsWith("$it.") }
-                ?.let { "$it.$owner" } ?: owner
-            return qualifiedOwner + if ('#' in id.value) ".${name}" else ""
-        }
 
     private fun GraphNode.toSubject() = SymbolQuerySubject(
         name, qualifiedName, kind.name.lowerCamel(), moduleName, id.value, visibility.name.lowerCamel(), location,

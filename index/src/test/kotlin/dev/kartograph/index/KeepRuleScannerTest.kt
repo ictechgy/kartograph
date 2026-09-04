@@ -279,6 +279,18 @@ class KeepRuleScannerTest {
     }
 
     @Test
+    fun `rejects global dontshrink instead of reporting dead code`(@TempDir projectRoot: Path) {
+        val rules = projectRoot.resolve("proguard-rules.pro")
+        rules.writeText("-dontshrink")
+
+        val error = assertFailsWith<KeepRuleScanningException> {
+            KeepRuleScanner(projectRoot).scan(listOf(rules))
+        }
+
+        assertEquals("unsupported directive at proguard-rules.pro:1", error.message)
+    }
+
+    @Test
     fun `ignores class member and optimization directives that do not retain classes`(@TempDir projectRoot: Path) {
         val rules = projectRoot.resolve("proguard-rules.pro")
         rules.writeText(
@@ -292,6 +304,25 @@ class KeepRuleScannerTest {
         )
 
         assertEquals(emptyList(), KeepRuleScanner(projectRoot).scan(listOf(rules)))
+    }
+
+    @Test
+    fun `ignores non retention input and package directives without dropping keep rules`(@TempDir projectRoot: Path) {
+        val rules = projectRoot.resolve("proguard-rules.pro")
+        rules.writeText(
+            """
+                -libraryjars libs/dependency.jar
+                -adaptclassstrings dev.fixture.**
+                -flattenpackagehierarchy dev.internal
+                -repackageclasses ''
+                -keep class dev.fixture.Entry
+            """.trimIndent(),
+        )
+
+        assertEquals(
+            listOf(KeepRule(KeepDeclarationKind.CLASS, "dev.fixture.Entry", location = locationAtRoot(5))),
+            KeepRuleScanner(projectRoot).scan(listOf(rules)),
+        )
     }
 
     @Test
@@ -318,6 +349,42 @@ class KeepRuleScannerTest {
             ),
             parsedRule,
         )
+    }
+
+    @Test
+    fun `parses multiple conditional members from a single line block`(@TempDir projectRoot: Path) {
+        val rules = projectRoot.resolve("proguard-rules.pro")
+        rules.writeText(
+            "-keepclasseswithmembers class dev.fixture.Callback { " +
+                "@dev.fixture.EntryPoint <methods>; public long value; }",
+        )
+
+        val parsedRule = KeepRuleScanner(projectRoot).scan(listOf(rules)).single()
+
+        assertEquals(
+            listOf(
+                KeepMemberCondition(KeepMemberKind.METHODS, "dev.fixture.EntryPoint"),
+                KeepMemberCondition(
+                    kind = KeepMemberKind.FIELDS,
+                    requiredJvmVisibilities = setOf(Visibility.PUBLIC),
+                    namePattern = "value",
+                    jvmDescriptor = "J",
+                ),
+            ),
+            parsedRule.memberConditions,
+        )
+    }
+
+    @Test
+    fun `rejects unsupported inline conditional members without dropping them`(@TempDir projectRoot: Path) {
+        val rules = projectRoot.resolve("proguard-rules.pro")
+        rules.writeText("-keepclasseswithmembers class dev.fixture.Callback { unsupported-member; }")
+
+        val error = assertFailsWith<KeepRuleScanningException> {
+            KeepRuleScanner(projectRoot).scan(listOf(rules))
+        }
+
+        assertEquals("unsupported conditional member specification at proguard-rules.pro:1", error.message)
     }
 
     @Test
@@ -462,6 +529,33 @@ class KeepRuleScannerTest {
     }
 
     @Test
+    fun `parses multiple plain members from a single line block`(@TempDir projectRoot: Path) {
+        val rules = projectRoot.resolve("proguard-rules.pro")
+        rules.writeText(
+            "-keep class dev.fixture.Controller { public long value; public void run(...); }",
+        )
+
+        val parsedRule = KeepRuleScanner(projectRoot).scan(listOf(rules)).single()
+
+        assertEquals(
+            listOf(
+                KeepMemberCondition(
+                    kind = KeepMemberKind.FIELDS,
+                    requiredJvmVisibilities = setOf(Visibility.PUBLIC),
+                    namePattern = "value",
+                    jvmDescriptor = "J",
+                ),
+                KeepMemberCondition(
+                    kind = KeepMemberKind.METHODS,
+                    requiredJvmVisibilities = setOf(Visibility.PUBLIC),
+                    namePattern = "run",
+                ),
+            ),
+            parsedRule.keptMembers,
+        )
+    }
+
+    @Test
     fun `ignores assume no side effects blocks because they do not retain code`(@TempDir projectRoot: Path) {
         val rules = projectRoot.resolve("proguard-rules.pro")
         rules.writeText(
@@ -528,6 +622,17 @@ class KeepRuleScannerTest {
                     @dev.fixture.EntryPoint <methods>;
                 }
             """.trimIndent(),
+        )
+
+        assertEquals(emptyList(), KeepRuleScanner(projectRoot).scan(listOf(rules)))
+    }
+
+    @Test
+    fun `ignores inline conditional rules that explicitly allow shrinking`(@TempDir projectRoot: Path) {
+        val rules = projectRoot.resolve("proguard-rules.pro")
+        rules.writeText(
+            "-keepclasseswithmembers,allowshrinking class dev.fixture.Conditional { " +
+                "@dev.fixture.EntryPoint <methods>; }",
         )
 
         assertEquals(emptyList(), KeepRuleScanner(projectRoot).scan(listOf(rules)))

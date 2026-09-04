@@ -33,6 +33,28 @@ class ClassHierarchyIndexerTest {
     }
 
     @Test
+    fun `expands javax classes provided by the running JDK`() {
+        val hierarchy = ClassHierarchyIndexer().index(
+            emptyList(),
+            listOf("javax/net/ssl/SSLSocketFactory"),
+        )
+
+        assertEquals(
+            setOf("javax/net/SocketFactory"),
+            hierarchy.directSupertypesOf("javax/net/ssl/SSLSocketFactory"),
+        )
+    }
+
+    @Test
+    fun `fails when a required java hierarchy class is unavailable`() {
+        val error = assertFailsWith<ClassHierarchyIndexingException> {
+            ClassHierarchyIndexer().index(emptyList(), listOf("java/not/ARealClass"))
+        }
+
+        assertEquals("JDK class hierarchy is unavailable; run kartograph with a compatible JDK", error.message)
+    }
+
+    @Test
     fun `uses the highest applicable multi release class including version only entries`(@TempDir directory: Path) {
         val jar = directory.resolve("dependency.jar")
         writeJar(

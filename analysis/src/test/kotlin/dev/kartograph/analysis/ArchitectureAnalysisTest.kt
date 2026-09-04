@@ -92,6 +92,24 @@ class ArchitectureAnalysisTest {
     }
 
     @Test
+    fun `architecture aggregation removes member owner cycles inside one unit`() {
+        val owner = node("owner", "feature")
+        val member = node("member", "feature", NodeKind.METHOD)
+        val graph = CodeGraph(
+            listOf(owner, member),
+            listOf(
+                GraphEdge(owner.id, member.id, EdgeKind.MEMBER),
+                GraphEdge(member.id, owner.id, EdgeKind.REFERENCE),
+            ),
+        )
+
+        val architectureGraph = ArchitectureGraph.aggregate(graph)
+
+        assertEquals(emptyList(), architectureGraph.edges)
+        assertEquals(emptyList(), CycleAnalyzer.analyze(architectureGraph))
+    }
+
+    @Test
     fun `martin metrics aggregate modules using only shared usage semantics`() {
         val graph = CodeGraph(
             listOf(

@@ -1,6 +1,7 @@
 # outcome	node_id	reason	evidence_path	evidence_line	evidence_pattern	family
 retain	class:dev/kartograph/fixture/ManifestActivity	MANIFEST_COMPONENT	app/src/main/AndroidManifest.xml	5	ManifestActivity	manifest-component
 retain	class:dev/kartograph/fixture/AliasTargetActivity	MANIFEST_COMPONENT	app/src/main/AndroidManifest.xml	14	AliasTargetActivity	manifest-activity-alias
+retain	class:dev/kartograph/fixture/ManifestMetadataInitializer	MANIFEST_COMPONENT	app/src/main/AndroidManifest.xml	17	ManifestMetadataInitializer	manifest-metadata
 reachable	class:dev/kartograph/fixture/ManifestActivity$Companion	COMPANION_OWNER	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	26	companion object	companion-owner
 reachable	class:dev/kartograph/fixture/RuntimeImplementation$Companion	CLASS_INITIALIZER	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	42	companion object	class-initializer-companion
 reachable	class:dev/kartograph/fixture/ClassInitializerDependency	CLASS_INITIALIZER	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	53	class ClassInitializerDependency	class-initializer-dependency
@@ -27,6 +28,7 @@ retain	class:dev/kartograph/fixture/CorpusEntity	SERIALIZATION	app/src/main/kotl
 retain	class:dev/kartograph/fixture/CorpusDao	SERIALIZATION	app/src/main/kotlin/dev/kartograph/fixture/RoomFixtures.kt	13	@Dao	room-dao
 retain	class:dev/kartograph/fixture/CorpusDatabase	SERIALIZATION	app/src/main/kotlin/dev/kartograph/fixture/RoomFixtures.kt	19	@Database	room-database
 retain	class:dev/kartograph/fixture/CorpusDatabase_Impl	GENERATED_CODE	app/src/main/kotlin/dev/kartograph/fixture/RoomFixtures.kt	19	@Database	room-generated-sibling
+retain	class:dev/kartograph/fixture/MoshiEnvelope_ItemJsonAdapter	GENERATED_CODE	app/src/main/kotlin/dev/kartograph/fixture/MoshiFixtures.kt	8	data class Item	moshi-generated-sibling
 retain	class:dev/kartograph/fixture/JavascriptBridge	RUNTIME_ENTRY_POINT	app/src/main/kotlin/dev/kartograph/fixture/RuntimeEntryFixtures.kt	16	fun receive	javascript-interface
 retain	class:dev/kartograph/fixture/NativeBridge	RUNTIME_ENTRY_POINT	app/src/main/kotlin/dev/kartograph/fixture/RuntimeEntryFixtures.kt	20	external fun	jni-native
 retain	class:dev/kartograph/fixture/CorpusWorker	RUNTIME_ENTRY_POINT	app/src/main/kotlin/dev/kartograph/fixture/RuntimeEntryFixtures.kt	23	class CorpusWorker	work-manager

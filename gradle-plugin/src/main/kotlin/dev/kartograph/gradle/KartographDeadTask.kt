@@ -117,6 +117,9 @@ public abstract class KartographDeadTask : DefaultTask() {
             val path = baselineWriteFile.get().asFile.toPath()
             path.parent?.let { parent -> Files.createDirectories(parent) }
             Files.writeString(path, BaselineCodec.render(allFindings))
+            writeReport(allFindings, 0)
+            logger.lifecycle("kartograph ${variantName.get()}: captured ${allFindings.size} unreachable declarations")
+            return
         }
         val baseline = baselineFile.orNull?.asFile?.toPath()?.let { path -> BaselineCodec.parse(Files.readString(path)) }.orEmpty()
         val findings = allFindings.filterNot { finding -> finding.fingerprint in baseline }

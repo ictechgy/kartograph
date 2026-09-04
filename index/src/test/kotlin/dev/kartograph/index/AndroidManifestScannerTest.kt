@@ -22,7 +22,6 @@ class AndroidManifestScannerTest {
                     <activity android:name=".RelativeActivity" />
                     <service android:name="BareService" />
                     <receiver android:name="other.QualifiedReceiver" />
-                    <provider android:name="${'$'}{applicationId}.DynamicProvider" />
                   </application>
                 </manifest>
             """.trimIndent(),
@@ -43,6 +42,96 @@ class AndroidManifestScannerTest {
             setOf("app/src/main/AndroidManifest.xml"),
             references.map { assertNotNull(it.location).path }.toSet(),
         )
+    }
+
+    @Test
+    fun `retains class like manifest metadata names and values`(@TempDir projectRoot: Path) {
+        val manifest = projectRoot.resolve("AndroidManifest.xml")
+        manifest.writeText(
+            """
+                <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                  <application>
+                    <meta-data android:name="dev.fixture.NameInitializer" android:value="androidx.startup" />
+                    <meta-data android:name="dev.fixture.marker" android:value="dev.fixture.ValueInitializer" />
+                  </application>
+                </manifest>
+            """.trimIndent(),
+        )
+
+        val references = AndroidManifestScanner(projectRoot).scan(manifest, "dev.fixture")
+
+        assertEquals(
+            listOf(
+                "class:dev/fixture/NameInitializer",
+                "class:androidx/startup",
+                "class:dev/fixture/marker",
+                "class:dev/fixture/ValueInitializer",
+            ),
+            references.map { it.nodeId.value },
+        )
+    }
+
+    @Test
+    fun `rejects unresolved component class placeholders`(@TempDir projectRoot: Path) {
+        val manifest = projectRoot.resolve("AndroidManifest.xml")
+        manifest.writeText(
+            """
+                <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                  <application>
+                    <provider android:name="${'$'}{applicationId}.DynamicProvider" />
+                  </application>
+                </manifest>
+            """.trimIndent(),
+        )
+
+        val error = kotlin.test.assertFailsWith<AndroidResourceScanningException> {
+            AndroidManifestScanner(projectRoot).scan(manifest, "dev.fixture")
+        }
+
+        assertEquals(
+            "manifest contains an unresolved class placeholder at AndroidManifest.xml:3",
+            error.message,
+        )
+        kotlin.test.assertFalse(error.message.orEmpty().contains(projectRoot.toString()))
+    }
+
+    @Test
+    fun `rejects a blank component class with relative evidence`(@TempDir projectRoot: Path) {
+        val manifest = projectRoot.resolve("AndroidManifest.xml")
+        manifest.writeText(
+            """
+                <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                  <application>
+                    <activity android:name="" />
+                  </application>
+                </manifest>
+            """.trimIndent(),
+        )
+
+        val error = kotlin.test.assertFailsWith<AndroidResourceScanningException> {
+            AndroidManifestScanner(projectRoot).scan(manifest, "dev.fixture")
+        }
+
+        assertEquals("manifest component class name is blank at AndroidManifest.xml:3", error.message)
+        kotlin.test.assertFalse(error.message.orEmpty().contains(projectRoot.toString()))
+    }
+
+    @Test
+    fun `does not guess whether a pure metadata placeholder is a class`(@TempDir projectRoot: Path) {
+        val manifest = projectRoot.resolve("AndroidManifest.xml")
+        manifest.writeText(
+            """
+                <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                  <application>
+                    <meta-data android:name="initializer" android:value="${'$'}{initializerClass}" />
+                  </application>
+                </manifest>
+            """.trimIndent(),
+        )
+
+        val references = AndroidManifestScanner(projectRoot).scan(manifest, "dev.fixture")
+
+        assertEquals(emptyList(), references)
     }
 
     @Test
@@ -116,7 +205,10 @@ class AndroidManifestScannerTest {
             AndroidManifestScanner(projectRoot).scan(manifest, "dev.fixture")
         }
 
-        assertEquals("activity-alias is missing android:targetActivity", error.message)
+        assertEquals(
+            "activity-alias is missing android:targetActivity at AndroidManifest.xml:3",
+            error.message,
+        )
         kotlin.test.assertFalse(error.message.orEmpty().contains(projectRoot.toString()))
     }
 

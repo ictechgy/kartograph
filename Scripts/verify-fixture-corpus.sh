@@ -181,8 +181,8 @@ if [[ "$RETENTION_FAMILY_COUNT" -lt 10 ]]; then
     echo "fixture must contain at least 10 independent retention families" >&2
     FAILURES=$((FAILURES + 1))
 fi
-if [[ "$RETAIN_COUNT" -ne 37 || "$REPORT_COUNT" -ne 2 ]]; then
-    echo "fixture must contain exactly 37 retained cases and 2 report cases" >&2
+if [[ "$RETAIN_COUNT" -ne 39 || "$REPORT_COUNT" -ne 2 ]]; then
+    echo "fixture must contain exactly 39 retained cases and 2 report cases" >&2
     FAILURES=$((FAILURES + 1))
 fi
 

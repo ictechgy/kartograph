@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-05
+
+### Fixed
+
+- 일반적인 비보존 ProGuard/R8 directive와 한 줄 `-keepclasseswithmembers` 규칙을 처리한다.
+- manifest `meta-data`의 class 참조를 보존하고 unresolved placeholder 입력은 명시적으로 실패한다.
+- reachable member에서 owner class로 이어지는 보수적 참조와 `javax` 등 JDK hierarchy를 복원한다.
+- Gradle baseline capture, qualified-name architecture 설명과 Android generated-class 회귀 검증을 정렬한다.
+- 실제 Moshi KSP nested adapter를 코퍼스에 추가하고 CI에서 Gradle wrapper와 Node 24 action을 검증한다.
+
 ## [0.1.0] - 2026-09-04
 
 ### Added
@@ -26,5 +36,6 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/ictechgy/kartograph/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.1.0

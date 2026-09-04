@@ -107,11 +107,22 @@ public class KeepRuleScanner(private val projectRoot: Path) {
                             }
                         }
                         !insideMemberBlock && isConditionalKeepHeader(ruleLine) -> {
-                            if (openingBraces != 1 || closingBraces != 0) {
-                                throw unsupported("inline conditional keep rules are not supported", location)
+                            if (openingBraces != 1 || closingBraces !in 0..1) {
+                                throw unsupported("unsupported conditional keep rule block", location)
                             }
-                            conditionalRule = parseConditionalKeepHeader(ruleLine, location)
-                            skippingConditionalRule = conditionalRule == null
+                            if (closingBraces == 1) {
+                                val header = ruleLine.substringBefore('{') + " {"
+                                parseConditionalKeepHeader(header, location)?.let { rule ->
+                                    val members = parseInlineConditionalMembers(ruleLine, location)
+                                    if (members.isEmpty()) {
+                                        throw unsupported("conditional keep rule has no supported members", location)
+                                    }
+                                    add(rule.copy(memberConditions = members))
+                                }
+                            } else {
+                                conditionalRule = parseConditionalKeepHeader(ruleLine, location)
+                                skippingConditionalRule = conditionalRule == null
+                            }
                         }
                         !insideMemberBlock && isPlainKeepHeader(ruleLine) &&
                             openingBraces == 1 && closingBraces == 0 -> {
@@ -167,6 +178,18 @@ public class KeepRuleScanner(private val projectRoot: Path) {
         parseWildcardMember(tokens, location)?.let { condition -> return condition }
         return parseSignatureMember(line.removeSuffix(";"), location)
     }
+
+    private fun parseInlineConditionalMembers(
+        rawLine: String,
+        location: SourceLocation,
+    ): List<KeepMemberCondition> = rawLine.substringAfter('{').substringBeforeLast('}')
+        .split(';')
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .map { specification ->
+            parseMemberCondition("$specification;", location)
+                ?: throw unsupported("unsupported inline member specification", location)
+        }
 
     private fun parseWildcardMember(
         tokens: List<String>,
@@ -392,12 +415,12 @@ public class KeepRuleScanner(private val projectRoot: Path) {
             requiredJvmModifiers = requiredAccess.mapNotNullTo(mutableSetOf(), JVM_MODIFIERS::get),
             forbiddenJvmModifiers = forbiddenAccess.mapNotNullTo(mutableSetOf(), JVM_MODIFIERS::get),
             requiredAnnotationPattern = annotationPattern,
-            keptMembers = inlineMembers?.condition?.let(::listOf).orEmpty(),
+            keptMembers = inlineMembers?.conditions.orEmpty(),
             keepAllMembers = inlineMembers?.keepAll == true,
         )
     }
 
-    private fun parseInlineMemberBlock(tokens: List<String>, location: SourceLocation): PlainMember? {
+    private fun parseInlineMemberBlock(tokens: List<String>, location: SourceLocation): InlineMemberBlock? {
         val blockTokens = when {
             tokens.firstOrNull()?.startsWith('{') == true -> tokens
             tokens.firstOrNull() in INHERITANCE_KEYWORDS -> tokens.drop(2)
@@ -406,9 +429,18 @@ public class KeepRuleScanner(private val projectRoot: Path) {
         if (blockTokens.isEmpty() || blockTokens == listOf("{")) return null
         val block = blockTokens.joinToString(" ")
         if (!block.startsWith('{') || !block.endsWith('}')) return null
-        val memberSpecification = block.removePrefix("{").removeSuffix("}").trim()
-        if (memberSpecification == "*;") return PlainMember(keepAll = true)
-        return PlainMember(condition = parseMemberCondition(memberSpecification, location))
+        val memberSpecifications = block.removePrefix("{").removeSuffix("}")
+            .split(';')
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+        return InlineMemberBlock(
+            keepAll = "*" in memberSpecifications,
+            conditions = memberSpecifications.filterNot { specification -> specification == "*" }
+                .map { specification ->
+                    parseMemberCondition("$specification;", location)
+                        ?: throw unsupported("unsupported inline member specification", location)
+                },
+        )
     }
 
     private fun parseExtendsPattern(tokens: List<String>, location: SourceLocation): String? = when {
@@ -493,6 +525,11 @@ public class KeepRuleScanner(private val projectRoot: Path) {
         val condition: KeepMemberCondition? = null,
     )
 
+    private data class InlineMemberBlock(
+        val keepAll: Boolean,
+        val conditions: List<KeepMemberCondition>,
+    )
+
     private fun unsupported(message: String, location: SourceLocation): KeepRuleScanningException =
         KeepRuleScanningException("$message at ${location.path}:${location.line}")
 
@@ -525,6 +562,7 @@ public class KeepRuleScanner(private val projectRoot: Path) {
             "-keeppackagenames",
         )
         val IGNORED_DIRECTIVES = setOf(
+            "-adaptclassstrings",
             "-allowaccessmodification",
             "-assumenosideeffects",
             "-dontnote",
@@ -532,13 +570,16 @@ public class KeepRuleScanner(private val projectRoot: Path) {
             "-dontoptimize",
             "-dontpreverify",
             "-dontwarn",
+            "-flattenpackagehierarchy",
             "-ignorewarnings",
+            "-libraryjars",
             "-optimizationpasses",
             "-optimizations",
             "-printconfiguration",
             "-printmapping",
             "-printseeds",
             "-printusage",
+            "-repackageclasses",
             "-renamesourcefileattribute",
             "-verbose",
             "-whyareyoukeeping",

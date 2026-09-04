@@ -13,5 +13,8 @@
             android:name=".LauncherAlias"
             android:targetActivity=".AliasTargetActivity"
             android:exported="false" />
+        <meta-data
+            android:name=".ManifestMetadataInitializer"
+            android:value="androidx.startup" />
     </application>
 </manifest>
