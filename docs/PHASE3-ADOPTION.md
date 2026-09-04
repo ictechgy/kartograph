@@ -4,7 +4,8 @@
 
 `kartograph baseline --write <file>`은 현재 `dead` finding 전체를 version 1 JSON으로 기록한다. 지문은
 `dead|<node-id>|<source-path>`이며 줄·열은 포함하지 않는다. 출력은 지문을 정렬하고 중복 제거하므로 같은
-입력은 byte-for-byte 같은 파일을 만든다.
+입력은 byte-for-byte 같은 파일을 만든다. 상대 `<file>` 경로는 shell working directory가 아니라
+`--project`를 기준으로 해석한다. Gradle task의 baseline capture도 기존 baseline filter를 적용하지 않는다.
 
 `dead --baseline <file>`은 지문이 같은 기존 finding을 report와 strict 판정에서 제외하고, 제외한 수를
 machine report의 `suppressedCount`에 기록한다. 알 수 없는 버전·필드·타입·escape는 부분 적용하지 않고

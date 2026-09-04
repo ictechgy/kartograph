@@ -66,6 +66,24 @@ class KartographDeadTaskTest {
     }
 
     @Test
+    fun `baseline capture ignores an existing baseline`(@TempDir projectRoot: Path) {
+        val initialCapture = configuredTask(projectRoot, strict = false, retainTestClass = false)
+        initialCapture.baselineWriteFile.set(projectRoot.resolve("existing.json").toFile())
+        initialCapture.analyze()
+        val capture = configuredTask(projectRoot, strict = true, retainTestClass = false)
+        capture.baselineFile.set(projectRoot.resolve("existing.json").toFile())
+        capture.baselineWriteFile.set(projectRoot.resolve("captured.json").toFile())
+
+        capture.analyze()
+
+        assertContains(
+            projectRoot.resolve("build/reports/kartograph/debug.txt").readText(),
+            "unreachable\tclass:dev/kartograph/gradle/PluginUnreachableFixture\t",
+        )
+        assertEquals(projectRoot.resolve("existing.json").readText(), projectRoot.resolve("captured.json").readText())
+    }
+
+    @Test
     fun `plugin creates an extension with non strict default`(@TempDir projectRoot: Path) {
         val project = ProjectBuilder.builder().withProjectDir(projectRoot.toFile()).build()
 

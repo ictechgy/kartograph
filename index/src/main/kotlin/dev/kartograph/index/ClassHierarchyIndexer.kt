@@ -40,25 +40,31 @@ public class ClassHierarchyIndexer {
     ) {
         val queue = ArrayDeque(
             (supertypesByClass.values.flatten() + referencedSupertypes)
-                .filter { internalName -> internalName.startsWith("java/") }
+                .filter { internalName -> internalName.isJdkClass() }
                 .sorted(),
         )
         while (queue.isNotEmpty()) {
             val internalName = queue.removeFirst()
             if (internalName in supertypesByClass) continue
             val resource = ClassLoader.getSystemResourceAsStream("$internalName.class")
-                ?: throw ClassHierarchyIndexingException(
-                    "JDK class hierarchy is unavailable; run kartograph with a compatible JDK",
-                )
+                ?: if (internalName.startsWith("java/") || internalName.startsWith("jdk/")) {
+                    throw ClassHierarchyIndexingException(
+                        "JDK class hierarchy is unavailable; run kartograph with a compatible JDK",
+                    )
+                } else {
+                    continue
+                }
             val fact = try {
                 resource.use(::readJdkClass)
             } catch (error: IOException) {
                 throw ClassHierarchyIndexingException("JDK class hierarchy cannot be read", error)
             }
             supertypesByClass[fact.internalName] = fact.supertypes
-            fact.supertypes.filter { name -> name.startsWith("java/") }.sorted().forEach(queue::addLast)
+            fact.supertypes.filter { name -> name.isJdkClass() }.sorted().forEach(queue::addLast)
         }
     }
+
+    private fun String.isJdkClass(): Boolean = JDK_PACKAGE_PREFIXES.any(::startsWith)
 
     private fun readDirectory(root: Path): List<HierarchyFact> = try {
         Files.walk(root).use { paths ->
@@ -124,6 +130,7 @@ public class ClassHierarchyIndexer {
 
     private companion object {
         const val MULTI_RELEASE_PREFIX = "META-INF/versions/"
+        val JDK_PACKAGE_PREFIXES = listOf("java/", "javax/", "jdk/", "com/sun/", "sun/")
     }
 }
 

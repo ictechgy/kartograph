@@ -31,6 +31,8 @@ Swift 에서 Periphery 가 했던 일을 Kotlin 에서 하는 도구가 **없다
 - 심볼 그래프: 클래스 · 함수 · 프로퍼티 · 생성자, 참조 종류(call · reference · inheritance · override · member 등)
 - `dead` — 보존 루트에서 도달 불가한 선언, `--explain` 으로 근거
 - `cycles` — Tarjan SCC + 끊을 후보 간선
+- `rules` — layer YAML 위반과 미할당 선언
+- `metrics` — module/package Martin 지표
 - `graph` — 결정적인 DOT
 - `query <symbol>` — usedBy · dependsOn · members · reachability · limitations, JSON. cartograph 의 `SymbolQueryDocument` 와 **같은 스키마**. 자매 도구 사이에서 소비자가 같은 파서를 쓸 수 있어야 한다
 - 보존 규칙 — keep 규칙 파싱 + 매니페스트 + XML 레이아웃 + DI/직렬화 어노테이션. 근거에 출처를 남긴다
@@ -40,7 +42,6 @@ Swift 에서 Periphery 가 했던 일을 Kotlin 에서 하는 도구가 **없다
 
 ### 나중에 (v0.2+)
 
-- `rules`(레이어 규칙 YAML), `metrics`(Martin 지표) — cartograph 에서 검증된 대로 옮기되 v0.1 에 넣지 않는다. 원천 결정과 보존 규칙이 먼저다
 - 멀티 모듈 Gradle 프로젝트의 모듈 레벨 그래프
 - Compose 전용 규칙(`@Preview`, `@Composable` 람다 도달성)
 - KMP(Kotlin Multiplatform) 공통 코드

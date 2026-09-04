@@ -39,6 +39,8 @@ dependencies {
     ksp("androidx.room:room-compiler:2.8.3")
     implementation("androidx.work:work-runtime:2.10.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel:2.10.0")
+    implementation("com.squareup.moshi:moshi:1.15.2")
+    ksp("com.squareup.moshi:moshi-kotlin-codegen:1.15.2")
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation(project(":fixture-library"))
 }

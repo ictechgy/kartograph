@@ -17,12 +17,12 @@ Android 만의 이점이 하나 있다. "안 쓰는 것처럼 보이지만 지�
 
 ## 상태
 
-**0.1.0 release candidate. 아직 tag를 만들거나 외부에 publish하지 않았다.** 원천 실험에서 JVM 바이트코드 + 공식 Kotlin metadata를 주 그래프로 결정했고,
+**0.1.0 GitHub Release를 공개했고 0.1.1 patch를 준비 중이다.** 원천 실험에서 JVM 바이트코드 + 공식 Kotlin metadata를 주 그래프로 결정했고,
 컴파일된 class root의 DOT 출력과 manifest/XML/`@Keep` member·class annotation/wildcard·상속 keep 규칙 기반
 `dead --explain`이 동작한다. 재귀 include와 consumer rules 입력도 지원한다. `final` 등 추가
 positive/negative JVM access flag도 지원한다. 일반 member signature 조건과 DI·직렬화·runtime callback
 보존 정책도 연결됐다. baseline·변경 범위·CI report와 query·bridge·agent skill까지 구현됐지만 architecture
-분석과 release packaging은 로컬 검증을 마쳤지만 tag/publish 전이므로 공개 릴리스로 취급하면 안 된다. 결정 근거는
+분석과 release packaging을 CI와 공개 산출물로 검증했다. 결정 근거는
 [`docs/DECISION-truth-source.md`](docs/DECISION-truth-source.md)에 있다.
 `graph`와 `dead`는 `--classes`를 반복해 여러 module/variant output root를 합칠 수 있고, 같은 JVM class는
 첫 root의 사실을 결정적으로 사용한다.
@@ -37,21 +37,24 @@ plain `-keep class X { *; }`는 class와 모든 직접 member를 root로 만들�
 owner class까지 도달성에 포함한다.
 `@Inject`/Dagger/Hilt annotation은 DI 근거로, kotlinx.serialization/Gson/Moshi/Parcelize/Room annotation은
 직렬화·생성 코드 근거로 annotated declaration과 소유 class를 보존한다. Moshi `*JsonAdapter`와 Room
-`*_Impl` sibling은 annotated source와 정확한 생성 이름이 함께 있을 때 보존하며, Room KSP 실제 생성물로
-검증한다. JNI, `@JavascriptInterface`, WorkManager, Retrofit, ViewModel, WebViewClient, Camera2 callback과
+`*_Impl` sibling은 annotated source와 정확한 생성 이름이 함께 있을 때 보존하며, Room과 Moshi KSP 실제 생성물로
+검증한다. manifest `meta-data`의 class-like name/value도 보존하고 unresolved class placeholder는 실패한다.
+JNI, `@JavascriptInterface`, WorkManager, Retrofit, ViewModel, WebViewClient, Camera2 callback과
 compile-time constant의 bytecode 손실도 보수적으로 처리한다. CLI와 Gradle report는 문자열 reflection과
 동적 component 등록 한계를 함께 출력한다. compile-time constant 사용처는 bytecode에 남지 않으므로
 constant owner는 보수적으로 보존하며 이 과보존 가능성도 limitation으로 출력한다.
 
 지원하는 member specification은 annotation wildcard, method/field/constructor의 JVM visibility·이름·정확한
 descriptor, `native <methods>`, plain `-keep` member다. 해석하지 못하는 보존 문법은 조용히 버리지 않고
-파일·줄과 함께 실패한다. Phase 2 실측은 [`docs/PHASE2-VALIDATION.md`](docs/PHASE2-VALIDATION.md)에 있다.
+파일·줄과 함께 실패한다. `-libraryjars`, `-adaptclassstrings`, package relocation처럼 도달성 보존과 무관한
+directive는 무시하며 dependency hierarchy는 명시적 `--classpath`로 받는다. Phase 2 실측은
+[`docs/PHASE2-VALIDATION.md`](docs/PHASE2-VALIDATION.md)에 있다.
 
 ## 설치와 호환성
 
-CLI release archive는 GitHub Releases에, Gradle plugin은 Plugin Portal의
-`io.github.ictechgy.kartograph`에 게시하도록 구성돼 있다. 아직 0.1.0을 publish하지 않았으므로 아래 versioned
-설치는 `v0.1.0` tag release 뒤부터 유효하다. 소스 빌드와 Gradle plugin 실행에는 JDK 17 또는 21, Gradle
+CLI 0.1.0 archive는 GitHub Releases에 공개돼 있다. Gradle plugin `io.github.ictechgy.kartograph` 0.1.0은
+Plugin Portal 첫 등록 승인을 요청한 상태이며, 아래 plugin 설치는 Portal에 version이 표시된 뒤 유효하다.
+소스 빌드와 Gradle plugin 실행에는 JDK 17 또는 21, Gradle
 9.6.1을 검증 대상으로 삼는다. Android 연결은 AGP 9.3.2 public Variant API 기준이다.
 
 ```kotlin
@@ -94,6 +97,7 @@ cli/build/install/kartograph/bin/kartograph dead \
   --strict
 
 # 현재 전체 finding을 고정한 뒤 새 finding만 strict 대상으로 삼는다.
+# 상대 --write 경로는 현재 shell이 아니라 --project를 기준으로 해석한다.
 cli/build/install/kartograph/bin/kartograph baseline --write .kartograph-baseline.json \
   --classes path/to/compiled/classes --project path/to/project \
   --manifest app/src/main/AndroidManifest.xml --resources app/src/main/res \

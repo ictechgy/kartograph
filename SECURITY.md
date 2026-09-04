@@ -2,8 +2,7 @@
 
 ## Supported versions
 
-0.1.x의 최신 patch release에 보안 수정을 제공한다. 아직 외부에 공개된 release가 없으므로 0.1.0 tag가
-생성되기 전에는 저장소의 `main`이 유일한 지원 대상이다.
+0.1.x의 최신 공개 patch release와 다음 patch를 준비하는 `main`에 보안 수정을 제공한다.
 
 ## Reporting a vulnerability
 

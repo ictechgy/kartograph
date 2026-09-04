@@ -12,20 +12,19 @@ public class AndroidManifestScanner(private val projectRoot: Path) {
         require(namespace.isNotBlank()) { "Android namespace must not be blank" }
         val sourcePath = projectRelativePath(projectRoot, manifest)
         return readXml(manifest) { reader ->
-            val attribute = when (reader.localName) {
-                "activity-alias" -> "targetActivity"
-                in COMPONENT_ELEMENTS -> "name"
-                else -> return@readXml null
+            when (reader.localName) {
+                "activity-alias" -> listOf(reader.requiredClassReference("targetActivity", namespace, sourcePath))
+                in COMPONENT_ELEMENTS -> reader.getAttributeValue(ANDROID_NAMESPACE, "name")
+                    ?.let { declaredName ->
+                        listOf(declaredName.toReference(namespace, sourcePath, reader.location.lineNumber))
+                    }
+                "meta-data" -> METADATA_CLASS_ATTRIBUTES.mapNotNull { attribute ->
+                    reader.getAttributeValue(ANDROID_NAMESPACE, attribute)
+                        ?.toMetadataReference(namespace, sourcePath, reader.location.lineNumber)
+                }.distinctBy(ManifestReference::qualifiedName)
+                else -> null
             }
-            val declaredName = reader.getAttributeValue(ANDROID_NAMESPACE, attribute)
-                ?: if (reader.localName == "activity-alias") {
-                    throw AndroidResourceScanningException("activity-alias is missing android:targetActivity")
-                } else {
-                    return@readXml null
-                }
-            val qualifiedName = declaredName.qualify(namespace) ?: return@readXml null
-            ManifestReference(qualifiedName, declaredName, reader.location.lineNumber)
-        }.map { reference ->
+        }.flatten().map { reference ->
             RetentionEvidence(
                 nodeId = JvmNodeId.classId(reference.qualifiedName.replace('.', '/')),
                 reason = RetentionReason.MANIFEST_COMPONENT,
@@ -34,8 +33,42 @@ public class AndroidManifestScanner(private val projectRoot: Path) {
         }
     }
 
-    private fun String.qualify(namespace: String): String? {
-        if (isBlank() || contains("\${")) return null
+    private fun XMLStreamReader.requiredClassReference(
+        attribute: String,
+        namespace: String,
+        sourcePath: String,
+    ): ManifestReference {
+        val declaredName = getAttributeValue(ANDROID_NAMESPACE, attribute)
+            ?: throw AndroidResourceScanningException(
+                "activity-alias is missing android:targetActivity at $sourcePath:${location.lineNumber}",
+            )
+        return declaredName.toReference(namespace, sourcePath, location.lineNumber)
+    }
+
+    private fun String.toReference(namespace: String, sourcePath: String, lineNumber: Int): ManifestReference =
+        ManifestReference(qualify(namespace, sourcePath, lineNumber), this, lineNumber)
+
+    private fun String.toMetadataReference(
+        namespace: String,
+        sourcePath: String,
+        lineNumber: Int,
+    ): ManifestReference? {
+        val candidate = substringAfterLast(':')
+        if (!candidate.startsWith('.') && '.' !in candidate) return null
+        return candidate.toReference(namespace, sourcePath, lineNumber)
+    }
+
+    private fun String.qualify(namespace: String, sourcePath: String, lineNumber: Int): String {
+        if (contains("\${")) {
+            throw AndroidResourceScanningException(
+                "manifest contains an unresolved class placeholder at $sourcePath:$lineNumber",
+            )
+        }
+        if (isBlank()) {
+            throw AndroidResourceScanningException(
+                "manifest component class name is blank at $sourcePath:$lineNumber",
+            )
+        }
         return when {
             startsWith('.') -> namespace + this
             contains('.') -> this
@@ -51,6 +84,7 @@ public class AndroidManifestScanner(private val projectRoot: Path) {
 
     private companion object {
         const val ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android"
+        val METADATA_CLASS_ATTRIBUTES = listOf("name", "value")
         val COMPONENT_ELEMENTS = setOf("activity", "application", "instrumentation", "provider", "receiver", "service")
     }
 }
