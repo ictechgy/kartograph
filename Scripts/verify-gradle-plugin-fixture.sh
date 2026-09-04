@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# 실제 AGP Variant API로 등록된 task가 class와 dependency 입력을 분석하는지 확인한다.
+
+set -uo pipefail
+
+cd "$(dirname "$0")/.."
+FIXTURE_ROOT="fixtures/false-positive-corpus"
+REPORT="$FIXTURE_ROOT/app/build/reports/kartograph/debug.txt"
+EXPECTED_REPORTS="$(mktemp "${TMPDIR:-/tmp}/kartograph-plugin-expected.XXXXXX")"
+ACTUAL_REPORTS="$(mktemp "${TMPDIR:-/tmp}/kartograph-plugin-actual.XXXXXX")"
+STRICT_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/kartograph-plugin-strict.XXXXXX")"
+CACHE_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/kartograph-plugin-cache.XXXXXX")"
+FORMAT_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/kartograph-plugin-format.XXXXXX")"
+trap 'rm -f "$EXPECTED_REPORTS" "$ACTUAL_REPORTS" "$STRICT_OUTPUT" "$CACHE_OUTPUT" "$FORMAT_OUTPUT"' EXIT
+
+./gradlew --no-daemon --console=plain -p "$FIXTURE_ROOT" :app:kartographDeadDebug >/dev/null || exit 1
+
+if [[ ! -f "$REPORT" ]]; then
+    echo "kartograph Gradle report was not produced" >&2
+    exit 1
+fi
+printf '%s\n' \
+    'class:dev/kartograph/fixture/ActuallyUnused' \
+    'class:dev/kartograph/fixture/OpenFinalRule' | LC_ALL=C sort >"$EXPECTED_REPORTS"
+awk -F '\t' '$1 == "unreachable" { print $2 }' "$REPORT" | LC_ALL=C sort -u >"$ACTUAL_REPORTS"
+if ! diff -u "$EXPECTED_REPORTS" "$ACTUAL_REPORTS"; then
+    echo "Gradle report does not exactly match expected findings" >&2
+    exit 1
+fi
+
+for FORMAT in gradle github-actions sarif json; do
+    ./gradlew --no-daemon --console=plain -p "$FIXTURE_ROOT" \
+        :app:kartographDeadDebug "-Pkartograph.reportFormat=$FORMAT" >/dev/null || exit 1
+    cp "$REPORT" "$FORMAT_OUTPUT"
+    case "$FORMAT" in
+        gradle) grep -Fq -- 'warning: class:dev/kartograph/fixture/ActuallyUnused is unreachable [kartograph.dead]' "$FORMAT_OUTPUT" ;;
+        github-actions) grep -Fq -- '::warning ' "$FORMAT_OUTPUT" ;;
+        sarif) grep -Fq -- '"version": "2.1.0"' "$FORMAT_OUTPUT" ;;
+        json) grep -Fq -- '"state": "unreachable"' "$FORMAT_OUTPUT" ;;
+    esac || { echo "Gradle $FORMAT report fixture failed" >&2; exit 1; }
+done
+
+./gradlew --no-daemon --console=plain -p "$FIXTURE_ROOT" \
+    :app:kartographDeadDebug -Pkartograph.strict=true >"$STRICT_OUTPUT" 2>&1
+STRICT_COMMAND_STATUS=$?
+if [[ "$STRICT_COMMAND_STATUS" -eq 0 ]] || ! grep -Fq -- 'kartograph found 2 unreachable declarations' "$STRICT_OUTPUT"; then
+    echo "Gradle strict mode did not fail with the expected findings" >&2
+    exit 1
+fi
+
+./gradlew --no-daemon --console=plain --configuration-cache -p "$FIXTURE_ROOT" \
+    :app:kartographDeadDebug >/dev/null || exit 1
+./gradlew --no-daemon --console=plain --configuration-cache -p "$FIXTURE_ROOT" \
+    :app:kartographDeadDebug >"$CACHE_OUTPUT" || exit 1
+if ! grep -Fq -- 'Reusing configuration cache.' "$CACHE_OUTPUT"; then
+    echo "Gradle configuration cache was not reused" >&2
+    exit 1
+fi
+
+echo "Gradle plugin fixture verified"

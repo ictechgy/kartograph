@@ -1,0 +1,32 @@
+# Gradle / JVM
+.gradle/
+build/
+out/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# macOS
+.DS_Store
+
+# 로컬 상태
+.omc/
+.claude/settings.local.json
+.serena/
+
+# Phase 0 실험 산출물
+experiments/**/*.class
+experiments/**/out/
+local.properties
+
+# 비밀
+.env
+.env.*
+*.pem
+*-service-account*.json

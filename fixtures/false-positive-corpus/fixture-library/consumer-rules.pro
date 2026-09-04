@@ -1,0 +1,1 @@
+-keep class dev.kartograph.fixture.KeptByConsumerRule

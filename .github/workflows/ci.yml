@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Test and verify coverage
+        run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
+      - name: Verify CLI contract
+        run: Scripts/verify-cli-contract.sh
+      - name: Verify agent query and bridge contracts
+        run: Scripts/verify-agent-surface.sh
+      - name: Verify Android fixture corpus
+        run: Scripts/verify-fixture-corpus.sh
+      - name: Verify Gradle plugin against Android fixture
+        run: Scripts/verify-gradle-plugin-fixture.sh
+      - name: Validate release metadata without publishing
+        run: |
+          ./gradlew --no-daemon :gradle-plugin:validatePlugins :gradle-plugin:generatePomFileForPluginMavenPublication
+
+  compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [17, 21]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: gradle
+      - name: Verify supported JDK
+        run: ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} test :gradle-plugin:validatePlugins

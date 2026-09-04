@@ -1,0 +1,38 @@
+# outcome	node_id	reason	evidence_path	evidence_line	evidence_pattern	family
+retain	class:dev/kartograph/fixture/ManifestActivity	MANIFEST_COMPONENT	app/src/main/AndroidManifest.xml	5	ManifestActivity	manifest-component
+reachable	class:dev/kartograph/fixture/ManifestActivity$Companion	COMPANION_OWNER	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	26	companion object	companion-owner
+reachable	class:dev/kartograph/fixture/RuntimeImplementation$Companion	CLASS_INITIALIZER	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	40	companion object	class-initializer-companion
+reachable	class:dev/kartograph/fixture/ClassInitializerDependency	CLASS_INITIALIZER	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	51	class ClassInitializerDependency	class-initializer-dependency
+retain	class:dev/kartograph/fixture/InlinedConstantOwner	INLINE_CONSTANT	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	54	const val VALUE	inline-constant-owner
+reachable	class:dev/kartograph/fixture/OverrideOnlyDependency	OVERRIDE	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	47	class OverrideOnlyDependency	override-dispatch
+reachable	class:dev/kartograph/fixture/SyntheticCallbackDependency	SYNTHETIC_CALLBACK	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	49	class SyntheticCallbackDependency	synthetic-callback
+retain	class:dev/kartograph/fixture/XmlOnlyView	XML_LAYOUT	app/src/main/res/layout/activity_main.xml	2	XmlOnlyView	xml-layout
+retain	class:dev/kartograph/fixture/KeptByAnnotation	KEEP_ANNOTATION	app/src/main/kotlin/dev/kartograph/fixture/RetentionFixtures.kt	6	@Keep	keep-annotation
+retain	class:dev/kartograph/fixture/KeptByRule	KEEP_RULE	app/proguard-rules.pro	2	KeptByRule	keep-exact
+retain	class:dev/kartograph/fixture/KeptByWildcardRule	KEEP_RULE	app/proguard-rules.pro	3	KeptByWildcard	keep-wildcard
+retain	class:dev/kartograph/fixture/KeptByExtendsRule	KEEP_RULE	app/proguard-rules.pro	4	RuleBase	keep-inheritance
+retain	class:dev/kartograph/fixture/KeptByClasspathRule	KEEP_RULE	app/rules/included.pro	1	ExternalRuleTarget	keep-classpath
+retain	class:dev/kartograph/fixture/KeptByConsumerRule	KEEP_RULE	fixture-library/consumer-rules.pro	1	KeptByConsumerRule	consumer-rule
+retain	class:dev/kartograph/fixture/KeptByRuleAnnotation	KEEP_RULE	app/rules/included.pro	2	RuleMarker	keep-class-annotation
+retain	class:dev/kartograph/fixture/KeptByMemberAnnotation	KEEP_ANNOTATED_MEMBER	app/src/main/kotlin/dev/kartograph/fixture/RetentionFixtures.kt	32	fun retainedEntryPoint	keep-member-annotation
+retain	class:dev/kartograph/fixture/ConditionalKept	KEEP_RULE	app/rules/included.pro	3	keepclasseswithmembers	keep-conditional-member
+retain	class:dev/kartograph/fixture/KeptByFinalRule	KEEP_RULE	app/rules/included.pro	6	final class	keep-jvm-modifier
+retain	class:dev/kartograph/fixture/KeptWithAllMembers	KEEP_RULE	app/rules/included.pro	7	KeptWithAllMembers	keep-all-members
+retain	class:dev/kartograph/fixture/KeptByInject	DEPENDENCY_INJECTION	app/src/main/kotlin/dev/kartograph/fixture/RetentionFixtures.kt	54	Inject	dependency-injection
+retain	class:dev/kartograph/fixture/KeptBySerializable	SERIALIZATION	app/src/main/kotlin/dev/kartograph/fixture/RetentionFixtures.kt	56	Serializable	serialization
+retain	class:dev/kartograph/fixture/KeptClassWithMembers	KEEP_ANNOTATION	app/src/main/kotlin/dev/kartograph/fixture/RetentionFixtures.kt	59	@Keep	keep-class-members
+retain	class:dev/kartograph/fixture/CorpusEntity	SERIALIZATION	app/src/main/kotlin/dev/kartograph/fixture/RoomFixtures.kt	10	@Entity	room-entity
+retain	class:dev/kartograph/fixture/CorpusDao	SERIALIZATION	app/src/main/kotlin/dev/kartograph/fixture/RoomFixtures.kt	13	@Dao	room-dao
+retain	class:dev/kartograph/fixture/CorpusDatabase	SERIALIZATION	app/src/main/kotlin/dev/kartograph/fixture/RoomFixtures.kt	19	@Database	room-database
+retain	class:dev/kartograph/fixture/CorpusDatabase_Impl	GENERATED_CODE	app/src/main/kotlin/dev/kartograph/fixture/RoomFixtures.kt	19	@Database	room-generated-sibling
+retain	class:dev/kartograph/fixture/JavascriptBridge	RUNTIME_ENTRY_POINT	app/src/main/kotlin/dev/kartograph/fixture/RuntimeEntryFixtures.kt	16	fun receive	javascript-interface
+retain	class:dev/kartograph/fixture/NativeBridge	RUNTIME_ENTRY_POINT	app/src/main/kotlin/dev/kartograph/fixture/RuntimeEntryFixtures.kt	20	external fun	jni-native
+retain	class:dev/kartograph/fixture/CorpusWorker	RUNTIME_ENTRY_POINT	app/src/main/kotlin/dev/kartograph/fixture/RuntimeEntryFixtures.kt	23	class CorpusWorker	work-manager
+retain	class:dev/kartograph/fixture/CorpusService	RUNTIME_ENTRY_POINT	app/src/main/kotlin/dev/kartograph/fixture/RuntimeEntryFixtures.kt	28	@GET	retrofit
+reachable	class:dev/kartograph/fixture/WebViewCallbackDependency	RUNTIME_CALLBACK	app/src/main/kotlin/dev/kartograph/fixture/RuntimeEntryFixtures.kt	39	class WebViewCallbackDependency	runtime-callback-webview
+reachable	class:dev/kartograph/fixture/ViewModelCallbackDependency	RUNTIME_CALLBACK	app/src/main/kotlin/dev/kartograph/fixture/RuntimeEntryFixtures.kt	47	class ViewModelCallbackDependency	runtime-callback-viewmodel
+reachable	class:dev/kartograph/fixture/CameraCallbackDependency	RUNTIME_CALLBACK	app/src/main/kotlin/dev/kartograph/fixture/RuntimeEntryFixtures.kt	59	class CameraCallbackDependency	runtime-callback-camera
+retain	class:dev/kartograph/fixture/SignatureKept	KEEP_RULE	app/rules/included.pro	8	keepclasseswithmembers	keep-member-signature
+retain	class:dev/kartograph/fixture/PlainSignatureKept	KEEP_RULE	app/rules/included.pro	11	PlainSignatureKept	keep-plain-member-signature
+report	class:dev/kartograph/fixture/ActuallyUnused	UNREACHABLE	app/src/main/kotlin/dev/kartograph/fixture/RetentionFixtures.kt	9	class ActuallyUnused	negative-unannotated
+report	class:dev/kartograph/fixture/OpenFinalRule	UNREACHABLE	app/src/main/kotlin/dev/kartograph/fixture/RetentionFixtures.kt	46	open class OpenFinalRule	negative-modifier

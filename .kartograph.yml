@@ -1,0 +1,32 @@
+layers:
+  - name: Core
+    match: [dev.kartograph.core]
+  - name: Analysis
+    match: [dev.kartograph.analysis]
+  - name: Index
+    match: [dev.kartograph.index]
+  - name: Export
+    match: [dev.kartograph.export]
+  - name: CLI
+    match: [dev.kartograph.cli]
+  - name: Plugin
+    match: [dev.kartograph.gradle]
+rules:
+  - name: core has no outgoing layer dependencies
+    from: Core
+    allow: []
+  - name: analysis only uses core
+    from: Analysis
+    allow: [Core]
+  - name: index only uses core
+    from: Index
+    allow: [Core]
+  - name: export only uses analysis and core
+    from: Export
+    allow: [Analysis, Core]
+  - name: cli is the composition root
+    from: CLI
+    allow: [Analysis, Core, Export, Index]
+  - name: plugin is an Android composition root
+    from: Plugin
+    allow: [Analysis, Core, Export, Index]

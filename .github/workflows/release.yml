@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Require the tag to match VERSION
+        run: test "$GITHUB_REF_NAME" = "v$(tr -d '[:space:]' < VERSION)"
+      - name: Test and verify coverage
+        run: ./gradlew --no-daemon clean test :koverVerify
+      - name: Verify fixtures
+        run: |
+          ./gradlew --no-daemon :cli:installDist
+          Scripts/verify-agent-surface.sh
+          Scripts/verify-fixture-corpus.sh
+          Scripts/verify-gradle-plugin-fixture.sh
+      - name: Verify release artifacts without publishing
+        run: Scripts/verify-release-readiness.sh
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" \
+              --verify-tag --generate-notes --title "kartograph $GITHUB_REF_NAME"
+          gh release upload "$GITHUB_REF_NAME" \
+            "cli/build/distributions/kartograph-$(< VERSION).zip" \
+            "cli/build/distributions/kartograph-$(< VERSION).tar" \
+            --clobber
+      - name: Publish Gradle plugin
+        env:
+          GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
+          GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
+        run: ./gradlew --no-daemon :gradle-plugin:publishPlugins
