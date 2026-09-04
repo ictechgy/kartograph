@@ -46,7 +46,6 @@ dependencies {
     kover(project(":export"))
     kover(project(":gradle-plugin"))
     kover(project(":index"))
-    kover(project(":test-support"))
 }
 
 kover {

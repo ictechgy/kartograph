@@ -21,6 +21,10 @@
 
 - 결과는 graph에서 관찰한 도달성 상태이며 코드 삭제 승인이나 런타임 안전성 보장이 아니다.
 - 동적 reflection, JNI, 런타임 등록과 불완전한 classpath 등 측정 가능한 한계를 결과에 포함한다.
+- 잘린 class 입력은 정제된 도구 실패로 처리하고, activity alias와 FragmentContainerView 참조를 보존한다.
+- JVM descriptor로 정확히 표현할 수 없는 member type wildcard keep rule은 파일·줄 오류로 거부한다.
+- `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
+- 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
 [Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.1.0

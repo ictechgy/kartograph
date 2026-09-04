@@ -4,6 +4,7 @@ import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
+import dev.kartograph.core.GeneratedSiblingNaming
 import dev.kartograph.core.JvmModifier
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeAttribute
@@ -78,7 +79,7 @@ public class ClassFileIndexer {
         visitor.facts()
     } catch (error: IOException) {
         throw ClassIndexingException("class file cannot be read", error)
-    } catch (error: IllegalArgumentException) {
+    } catch (error: RuntimeException) {
         throw ClassIndexingException("invalid class file", error)
     }
 
@@ -102,7 +103,7 @@ public class ClassFileIndexer {
         }
     } catch (error: IOException) {
         throw ClassIndexingException("class JAR cannot be read", error)
-    } catch (error: IllegalArgumentException) {
+    } catch (error: RuntimeException) {
         throw ClassIndexingException("invalid class file in class JAR", error)
     }
 
@@ -212,6 +213,9 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         descriptorClassNames(descriptor).forEach { target ->
             edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
         }
+        exceptions.orEmpty().forEach { target ->
+            edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
+        }
         return object : MethodVisitor(Opcodes.ASM9) {
             private var firstLine: Int? = null
 
@@ -289,6 +293,18 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 }
             }
 
+            override fun visitTryCatchBlock(start: Label, end: Label, handler: Label, type: String?) {
+                type?.let { target ->
+                    edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
+                }
+            }
+
+            override fun visitMultiANewArrayInsn(descriptor: String, numDimensions: Int) {
+                descriptorClassNames(descriptor).forEach { target ->
+                    edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
+                }
+            }
+
             override fun visitLdcInsn(value: Any?) {
                 if (value is Type && value.sort in setOf(Type.OBJECT, Type.ARRAY)) {
                     descriptorClassNames(value.descriptor).forEach { target ->
@@ -362,14 +378,7 @@ private fun ClassFacts.asSynthesized(): ClassFacts = copy(
 
 private fun ClassFacts.generatedSiblingNames(): Set<String> {
     val annotations = nodes.firstOrNull { node -> node.id == JvmNodeId.classId(internalName) }?.annotations.orEmpty()
-    return buildSet {
-        if ("com/squareup/moshi/JsonClass" in annotations) {
-            val packagePrefix = internalName.substringBeforeLast('/', missingDelimiterValue = "")
-            val simpleName = internalName.substringAfterLast('/').replace('$', '_') + "JsonAdapter"
-            add(if (packagePrefix.isEmpty()) simpleName else "$packagePrefix/$simpleName")
-        }
-        if ("androidx/room/Database" in annotations) add("${internalName}_Impl")
-    }
+    return GeneratedSiblingNaming.candidatesFor(internalName, annotations)
 }
 
 private fun projectOverrideEdges(classFacts: List<ClassFacts>): List<GraphEdge> {

@@ -51,7 +51,11 @@ jar tf "$PLUGIN_JAR" | grep -Fq 'dev/kartograph/index/ClassFileIndexer.class'
 jar tf "$PLUGIN_JAR" | grep -Fq 'org/objectweb/asm/ClassReader.class'
 jar tf "$PLUGIN_JAR" | grep -Fq 'kotlin/metadata/jvm/KotlinClassMetadata.class'
 jar tf "$PLUGIN_JAR" | grep -Fq 'kotlin/jvm/internal/Intrinsics.class'
+jar tf "$PLUGIN_JAR" | grep -Fq 'org/jetbrains/annotations/NotNull.class'
 jar tf "$PLUGIN_JAR" | grep -Fxq 'META-INF/kartograph/LICENSE'
+jar tf "$PLUGIN_JAR" | grep -Fxq 'META-INF/kartograph/THIRD_PARTY_NOTICES.md'
+jar tf "$PLUGIN_JAR" | grep -Fxq 'META-INF/licenses/Apache-2.0.txt'
+jar tf "$PLUGIN_JAR" | grep -Fxq 'META-INF/licenses/BSD-3-Clause.txt'
 if grep -q '<dependencies>' gradle-plugin/build/publications/pluginMaven/pom-default.xml; then
     echo "plugin jar에 내장된 runtime dependency가 POM에도 남았습니다" >&2
     exit 1
@@ -67,6 +71,9 @@ TAR_BINARY="$TEMPORARY_DIRECTORY/kartograph-$VERSION/bin/kartograph"
 [[ "$("$TAR_BINARY" --version)" == "kartograph $VERSION" ]]
 [[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/docs/LIMITATIONS.md" ]]
 [[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/Skills/kartograph/SKILL.md" ]]
+[[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/THIRD_PARTY_NOTICES.md" ]]
+[[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/LICENSES/Apache-2.0.txt" ]]
+[[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/LICENSES/BSD-3-Clause.txt" ]]
 if grep -R -E -n '(/Users/|~/Desktop|[A-Za-z]:\\Users\\)' \
     "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION" --include='*.md'; then
     echo "release 문서에 로컬 사용자 경로가 남았습니다" >&2

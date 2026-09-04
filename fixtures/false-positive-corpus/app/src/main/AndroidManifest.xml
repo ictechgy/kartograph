@@ -9,5 +9,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity-alias
+            android:name=".LauncherAlias"
+            android:targetActivity=".AliasTargetActivity"
+            android:exported="false" />
     </application>
 </manifest>

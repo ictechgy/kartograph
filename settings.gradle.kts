@@ -23,5 +23,4 @@ include(
     ":export",
     ":gradle-plugin",
     ":index",
-    ":test-support",
 )

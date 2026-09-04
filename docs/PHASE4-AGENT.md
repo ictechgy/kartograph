@@ -17,7 +17,8 @@ build 이후 수정된 source를 센다. 관측된 항목이 없으면 배열은
 
 `kartograph bridges --project <root>`은 isthmus `bridge-facts` version 1을 출력한다. Kotlin 수신 측에서
 Flutter `MethodChannel` 등록·method handler와 React Native `@ReactModule`·`@ReactMethod`를 수집한다.
-위치는 project-relative이며 build, test source set, `node_modules`, worktree 복제본은 제외한다.
+문서의 `project`는 현재 입력 root를 뜻하는 `.`이고 모든 위치는 project-relative다. build, test source set,
+`node_modules`, worktree 복제본은 제외한다.
 
 동적 channel, 귀속하지 못한 handler, inline lambda가 아닌 handler, source scan으로 JVM USR을 만들 수 없는
 handler는 fact를 버리거나 성공으로 가장하지 않고 각각 limitation으로 센다. 현재 source scanner는

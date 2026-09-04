@@ -31,6 +31,8 @@ if set(query) != {"level", "limitations", "requested", "status"} or query["statu
 bridges = json.loads(pathlib.Path(sys.argv[2]).read_text())
 if bridges["format"] != "bridge-facts" or bridges["version"] != 1 or bridges["platform"] != "kotlin":
     raise SystemExit("bridge document metadata does not match v1")
+if bridges["project"] != ".":
+    raise SystemExit("bridge document project must not expose an absolute path")
 facts = {(fact["kind"], fact["channel"], fact.get("method")) for fact in bridges["facts"]}
 expected = {
     ("channel-register", "dev.kartograph/camera", None),

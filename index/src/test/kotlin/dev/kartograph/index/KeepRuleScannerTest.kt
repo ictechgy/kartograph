@@ -340,6 +340,59 @@ class KeepRuleScannerTest {
     }
 
     @Test
+    fun `rejects member signature type wildcards instead of creating an exact descriptor`(@TempDir projectRoot: Path) {
+        val rules = projectRoot.resolve("proguard-rules.pro")
+        listOf(
+            "public void onEvent(java.lang.*);",
+            "public dev.fixture.? value();",
+        ).forEach { signature ->
+            rules.writeText("-keepclasseswithmembers class dev.fixture.Callback {\n  $signature\n}")
+
+            val error = assertFailsWith<KeepRuleScanningException> {
+                KeepRuleScanner(projectRoot).scan(listOf(rules))
+            }
+
+            assertEquals("unsupported conditional member type wildcard at proguard-rules.pro:2", error.message)
+        }
+    }
+
+    @Test
+    fun `keeps conservative full-token method and constructor wildcards`(@TempDir projectRoot: Path) {
+        val rules = projectRoot.resolve("proguard-rules.pro")
+        rules.writeText(
+            """
+                -keepclasseswithmembers class dev.fixture.Callback {
+                    public void onEvent(...);
+                    public *** getName();
+                    public <init>(...);
+                }
+            """.trimIndent(),
+        )
+
+        val conditions = KeepRuleScanner(projectRoot).scan(listOf(rules)).single().memberConditions
+
+        assertEquals(
+            listOf(
+                KeepMemberCondition(
+                    kind = KeepMemberKind.METHODS,
+                    requiredJvmVisibilities = setOf(Visibility.PUBLIC),
+                    namePattern = "onEvent",
+                ),
+                KeepMemberCondition(
+                    kind = KeepMemberKind.METHODS,
+                    requiredJvmVisibilities = setOf(Visibility.PUBLIC),
+                    namePattern = "getName",
+                ),
+                KeepMemberCondition(
+                    kind = KeepMemberKind.CONSTRUCTORS,
+                    requiredJvmVisibilities = setOf(Visibility.PUBLIC),
+                ),
+            ),
+            conditions,
+        )
+    }
+
+    @Test
     fun `parses constructor field array and forbidden member visibility`(@TempDir projectRoot: Path) {
         val rules = projectRoot.resolve("proguard-rules.pro")
         rules.writeText(

@@ -8,3 +8,5 @@ class XmlOnlyView @JvmOverloads constructor(
     context: Context,
     attributes: AttributeSet? = null,
 ) : View(context, attributes)
+
+class FragmentContainerTarget

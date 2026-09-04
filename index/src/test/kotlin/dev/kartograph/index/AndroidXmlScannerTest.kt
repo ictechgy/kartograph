@@ -85,4 +85,47 @@ class AndroidXmlScannerTest {
 
         assertEquals(1, assertNotNull(reference.location).line)
     }
+
+    @Test
+    fun `reads the fragment hosted by FragmentContainerView`(@TempDir projectRoot: Path) {
+        val resourceRoot = projectRoot.resolve("res")
+        val layout = resourceRoot.resolve("layout/fragment.xml")
+        layout.parent.createDirectories()
+        layout.writeText(
+            """
+                <androidx.fragment.app.FragmentContainerView
+                    xmlns:android="http://schemas.android.com/apk/res/android"
+                    android:name="dev.fixture.HostedFragment" />
+            """.trimIndent(),
+        )
+
+        val reference = AndroidXmlScanner(projectRoot).scan(resourceRoot).single()
+
+        assertEquals("class:dev/fixture/HostedFragment", reference.nodeId.value)
+        assertEquals(3, assertNotNull(reference.location).line)
+    }
+
+    @Test
+    fun `treats a user class named FragmentContainerView as a custom view`(@TempDir projectRoot: Path) {
+        val resourceRoot = projectRoot.resolve("res")
+        val layout = resourceRoot.resolve("layout/custom.xml")
+        layout.parent.createDirectories()
+        layout.writeText("<dev.fixture.FragmentContainerView />")
+
+        val reference = AndroidXmlScanner(projectRoot).scan(resourceRoot).single()
+
+        assertEquals("class:dev/fixture/FragmentContainerView", reference.nodeId.value)
+    }
+
+    @Test
+    fun `retains nested custom view binary names`(@TempDir projectRoot: Path) {
+        val resourceRoot = projectRoot.resolve("res")
+        val layout = resourceRoot.resolve("layout/nested.xml")
+        layout.parent.createDirectories()
+        layout.writeText("<view class=\"dev.fixture.Outer${'$'}InnerView\" />")
+
+        val reference = AndroidXmlScanner(projectRoot).scan(resourceRoot).single()
+
+        assertEquals("class:dev/fixture/Outer${'$'}InnerView", reference.nodeId.value)
+    }
 }

@@ -265,6 +265,9 @@ public class KeepRuleScanner(private val projectRoot: Path) {
             dimensions++
             type = type.removeSuffix("[]")
         }
+        if ('*' in type || '?' in type) {
+            throw unsupported("unsupported conditional member type wildcard", location)
+        }
         val element = when (type) {
             "void" -> "V"
             "boolean" -> "Z"

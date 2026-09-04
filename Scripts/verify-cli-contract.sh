@@ -54,6 +54,7 @@ expect_status 0 "--help" --help
 expect_status 0 "--version" --version
 expect_status 0 "graph --help" graph --help
 expect_status 0 "dead --help" dead --help
+expect_status 0 "baseline --help" baseline --help
 expect_status 0 "빈 class root graph" graph --classes "$TEMPORARY_DIRECTORY"
 expect_status 0 "빈 class root metrics" metrics --classes "$TEMPORARY_DIRECTORY"
 

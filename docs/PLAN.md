@@ -50,7 +50,7 @@ Phase 0 의 산출물은 코드가 아니라 **이 문서 하나**다.
 
 ## Phase 1 — 골격 (2~3 세션)
 
-- Gradle 멀티 모듈: `core`(모델 · 그래프 · 설정), `index`(원천 어댑터), `analysis`(도달성 · SCC), `export`(리포트 · DOT/Mermaid/JSON), `cli`, `gradle-plugin`, `test-support`. cartograph 의 `Sources/AGENTS.md` 가 이 분리를 왜 했는지 설명한다 — 그 이유가 여기서도 성립하는지 확인하고 `AGENTS.md` 를 쓴다
+- Gradle 멀티 모듈: `core`(모델 · 그래프 · 설정), `index`(원천 어댑터), `analysis`(도달성 · SCC), `export`(리포트 · DOT와 machine JSON), `cli`, `gradle-plugin`. cartograph 의 `Sources/AGENTS.md` 가 이 분리를 왜 했는지 설명한다 — 그 이유가 여기서도 성립하는지 확인하고 `AGENTS.md` 를 쓴다
 - `CodeGraph`, `GraphNode`, `GraphEdge`, `EdgeKind.impliesUsage` — cartograph 의 모델을 Kotlin 으로. `impliesUsage` 를 도달성 분석과 `query` 가 **같은 술어**로 쓰는 구조를 처음부터 잡는다
 - 종료 코드 계약과 `verify-cli-contract.sh` 를 첫 커밋에
 - 커버리지 게이트(Kover 또는 JaCoCo, 라인 90%)를 CI 에 첫 주에
@@ -96,7 +96,7 @@ Phase 0 의 산출물은 코드가 아니라 **이 문서 하나**다.
 |---|---|---|
 | 0 원천 결정 | 완료 | A(바이트코드 + metadata)를 주 원천으로 결정 |
 | 1 골격 | 완료 | 실제 프로젝트 DOT, line 90% gate, CI 완료 |
-| 2 보존 규칙 · dead | 완료 | 35 retained/2 report 코퍼스, Room KSP sibling, runtime callback, 다섯 로컬 프로젝트 상위 finding 오탐 0 |
+| 2 보존 규칙 · dead | 완료 | 37 retained/2 report 코퍼스, Room KSP sibling, runtime callback, 다섯 로컬 프로젝트 상위 finding 오탐 0 |
 | 3 도입 경로 | 완료 | deterministic baseline, NUL-safe `--since`, Gradle/GitHub/SARIF/JSON, Gradle strict 도입 계약 완료 |
 | 4 에이전트 표면 | 완료 | cartograph 호환 query, 계량 limitations, bridge-facts v1, 설치형 agent skill |
 | 5 순환 · 규칙 · 지표 · 릴리스 | 완료 | architecture 분석, 0.1.0 재현 가능 packaging, JDK 17/21과 압축 해제 산출물 검증 완료; tag/publish 미실행 |

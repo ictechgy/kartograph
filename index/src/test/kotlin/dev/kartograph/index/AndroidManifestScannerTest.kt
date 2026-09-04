@@ -77,4 +77,62 @@ class AndroidManifestScannerTest {
 
         assertEquals(4, assertNotNull(reference.location).line)
     }
+
+    @Test
+    fun `retains the target activity without treating an activity alias as a class`(@TempDir projectRoot: Path) {
+        val manifest = projectRoot.resolve("AndroidManifest.xml")
+        manifest.writeText(
+            """
+                <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                  <application>
+                    <activity-alias
+                      android:name=".LauncherAlias"
+                      android:targetActivity=".AliasTargetActivity" />
+                  </application>
+                </manifest>
+            """.trimIndent(),
+        )
+
+        val reference = AndroidManifestScanner(projectRoot).scan(manifest, "dev.fixture").single()
+
+        assertEquals("class:dev/fixture/AliasTargetActivity", reference.nodeId.value)
+        assertEquals(5, assertNotNull(reference.location).line)
+    }
+
+    @Test
+    fun `rejects an activity alias without a target activity`(@TempDir projectRoot: Path) {
+        val manifest = projectRoot.resolve("AndroidManifest.xml")
+        manifest.writeText(
+            """
+                <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                  <application>
+                    <activity-alias android:name=".LauncherAlias" />
+                  </application>
+                </manifest>
+            """.trimIndent(),
+        )
+
+        val error = kotlin.test.assertFailsWith<AndroidResourceScanningException> {
+            AndroidManifestScanner(projectRoot).scan(manifest, "dev.fixture")
+        }
+
+        assertEquals("activity-alias is missing android:targetActivity", error.message)
+        kotlin.test.assertFalse(error.message.orEmpty().contains(projectRoot.toString()))
+    }
+
+    @Test
+    fun `retains nested component binary names`(@TempDir projectRoot: Path) {
+        val manifest = projectRoot.resolve("AndroidManifest.xml")
+        manifest.writeText(
+            """
+                <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                  <application android:name=".Outer${'$'}NestedApplication" />
+                </manifest>
+            """.trimIndent(),
+        )
+
+        val reference = AndroidManifestScanner(projectRoot).scan(manifest, "dev.fixture").single()
+
+        assertEquals("class:dev/fixture/Outer${'$'}NestedApplication", reference.nodeId.value)
+    }
 }

@@ -1,6 +1,7 @@
 package dev.kartograph.analysis
 
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GeneratedSiblingNaming
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.RetentionReason
@@ -24,14 +25,7 @@ public object GeneratedSiblingRetention {
 
     private fun GraphNode.generatedSiblingNames(): List<String> {
         val internalName = internalName ?: return emptyList()
-        return buildList {
-            if ("com/squareup/moshi/JsonClass" in annotations) {
-                val packagePrefix = internalName.substringBeforeLast('/', missingDelimiterValue = "")
-                val simpleName = internalName.substringAfterLast('/').replace('$', '_') + "JsonAdapter"
-                add(if (packagePrefix.isEmpty()) simpleName else "$packagePrefix/$simpleName")
-            }
-            if ("androidx/room/Database" in annotations) add("${internalName}_Impl")
-        }
+        return GeneratedSiblingNaming.candidatesFor(internalName, annotations).toList()
     }
 
     private val GraphNode.internalName: String?

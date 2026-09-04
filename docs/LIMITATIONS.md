@@ -17,5 +17,6 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 - package/module architecture는 JVM 이름과 입력 root를 기준으로 하며 Gradle dependency resolution model 자체는 아니다.
 - Java와 Kotlin bytecode를 함께 읽지만 reflection configuration, runtime class loading과 외부 서비스 설정은 별도 입력이다.
 
-측정 가능한 항목은 `dead`, `query`와 machine report의 `limitations`에 함께 싣는다. 알릴 측정값이 없을 때는
-빈 경고를 만들지 않는다.
+`query`는 class root와 source에서 실제로 측정된 항목만 `limitations`에 싣고, 알릴 측정값이 없으면 빈
+배열을 반환한다. `dead`와 그 machine report는 삭제 판단에 쓰이는 경로이므로 reflection·동적 등록·인라인
+상수처럼 입력만으로 부재를 증명할 수 없는 보수적 한계를 항상 함께 싣는다.

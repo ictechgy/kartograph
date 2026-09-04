@@ -1,6 +1,7 @@
 package dev.kartograph.cli
 
 import dev.kartograph.analysis.DefaultRetention
+import dev.kartograph.analysis.IncompleteKeepRuleHierarchyException
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.analysis.SymbolQuery
 import dev.kartograph.core.Finding
@@ -132,6 +133,9 @@ internal object AgentCommand {
             if (document.status == "found") ExitStatus.SUCCESS.code else ExitStatus.USAGE.code
         } catch (_: InvalidPathException) {
             usage(error, "invalid path")
+        } catch (hierarchyError: IncompleteKeepRuleHierarchyException) {
+            error.println("error: ${hierarchyError.message ?: "dependency hierarchy is incomplete"}")
+            ExitStatus.FAILURE.code
         } catch (_: Exception) {
             error.println("error: unable to query compiled declarations; check the inputs")
             ExitStatus.FAILURE.code

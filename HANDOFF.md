@@ -16,15 +16,15 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - 다섯 익명 로컬 표본과 공개 nowinandroid를 빌드·측정했다. 상세 숫자와 못 보는 것은
   `docs/DECISION-truth-source.md`
 - Phase 0 일회성 probe 코드는 결과를 문서로 옮긴 뒤 제거했다
-- Gradle 9.6.1 wrapper와 7개 모듈(`core`, `index`, `analysis`, `export`, `cli`, `gradle-plugin`,
-  `test-support`) 골격이 있다
+- Gradle 9.6.1 wrapper와 6개 모듈(`core`, `index`, `analysis`, `export`, `cli`, `gradle-plugin`) 골격이 있다
 - CLI 종료 코드 `0/1/2/64`와 `Scripts/verify-cli-contract.sh`가 있다. `graph --classes <root>
   --format dot`는 indexer와 renderer를 실제 실행한다
 - `core`에 `NodeId`, `GraphNode`, `GraphEdge`, `EdgeKind`, `CodeGraph`가 있다. dangling edge 제거,
   중복 weight 병합, 결정적 정렬, 방향별 인접 목록, 공통 `impliesUsage` 술어를 테스트한다
 - `index`의 `ClassFileIndexer`가 실제 Kotlin class에서 class·method·field와 call·field access·
   inheritance·annotation·member 관계, source file/line을 읽는다. class name이 같은 중복 root는 첫 번째
-  산출물만 사용하고 깨진 class에서는 부분 그래프를 반환하지 않는다
+  산출물만 사용하고 깨진 class에서는 부분 그래프를 반환하지 않는다. 잘린 class/JAR도 stack trace 대신
+  정제된 도구 실패로 처리하며 declared/catch/multidimensional-array type 참조를 인덱싱한다
 - 공식 `kotlin-metadata-jvm`이 Kotlin internal visibility, data class, object, extension receiver,
   backing property를 JVM 정점에 보강한다. metadata가 없는 Java class는 access flag를 visibility로 쓴다
 - `export`의 `DotGraphRenderer`가 정렬·escape·shape·합성 style·edge weight를 보존한 DOT를 만든다.
@@ -33,8 +33,10 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
   로컬에 Graphviz 실행 파일이 없어 외부 parser 검증은 건너뜀
 - Kover 0.9.9 root 집계 line coverage는 90.6157%이고 `:koverVerify`가 90%를 강제한다.
   GitHub Actions는 clean test, coverage, CLI distribution 계약을 실행한다
-- `fixtures/false-positive-corpus`는 실제 Android app으로 35개 retained case와 실제 미사용 2건을 담는다.
+- `fixtures/false-positive-corpus`는 실제 Android app으로 37개 retained case와 실제 미사용 2건을 담는다.
   verifier는 전체 finding exact 비교와 각 근거 파일·줄을 양방향으로 확인한다
+- manifest `activity-alias` target과 `FragmentContainerView android:name`, nested binary class 이름을
+  보존하며 element-level member type wildcard keep rule은 조용히 오해석하지 않고 거부한다
 - `AndroidManifestScanner`와 `AndroidXmlScanner`가 class ID + `RetentionReason` + project 상대 파일/줄을
   반환한다. XML parser는 DTD/external entity를 끄고 project root 밖 실제 경로를 거부하며, 멀티라인
   시작 태그에서도 실제 class 값의 줄을 가리킨다
@@ -93,8 +95,8 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - `rules`는 외부 object 생성을 허용하지 않는 fail-closed YAML subset을 읽는다. 빈/중복/unknown 설정을
   거부하고 violation과 unassigned를 strict finding으로 처리하며 실제 edge kind·weight·source 위치를 싣는다
 - `metrics`는 같은 `EdgeKind.impliesUsage` 위에서 module/package별 Martin Ca/Ce/I/A/D를 계산한다
-- plugin을 포함한 6개 production root(2,238 nodes, 8,888 edges) self-analysis는 dead/cycles/rules 0 findings,
-  rules unassigned 0, metrics 6행이며 네 명령 모두 0.27초 이하다. `docs/PHASE5-VALIDATION.md`에 근거가 있다
+- plugin을 포함한 6개 production root(2,246 nodes, 8,942 edges) self-analysis는 dead/cycles/rules 0 findings,
+  rules unassigned 0, metrics 6행이며 네 명령 모두 0.29초 이하다. `docs/PHASE5-VALIDATION.md`에 근거가 있다
 - `graph`와 `dead`는 반복 `--classes`를 입력 순서로 합치고 중복 JVM class는 첫 root를 사용한다. invalid
   path는 graph/dead 모두 절대경로를 노출하지 않는 usage error로 변환한다
 - Gradle plugin `io.github.ictechgy.kartograph`가 AGP public `onVariants`와 scoped `CLASSES`를 사용해
@@ -105,7 +107,7 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - GLM의 단독 `*` package 의미와 positive modifier OR 지적은 공식 ProGuard의 하위 호환 예외와
   non-conflicting AND/conflicting OR 규칙에 반대라 반영하지 않았다. `-keepnames` root 지적도
   `allowshrinking` 동치라 반영하지 않았다
-- 최근 검증의 Kover line coverage는 90.6157%다
+- 최근 검증의 Kover line coverage는 90.8317%다
 - `VERSION`이 CLI와 Gradle plugin artifact의 단일 0.1.0 version 원천이고 모든 archive는 timestamp와
   entry order를 고정한다. CLI distribution에는 README, changelog, security/privacy, license가 들어간다
 - Gradle plugin publication metadata는 website/VCS/tags를 포함한다. plugin jar는 runtime dependency를
@@ -115,6 +117,10 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - `v*` tag release workflow는 tag와 `VERSION` 일치, 전체 test/coverage/fixture/release 검증 뒤 GitHub
   Release를 재실행 가능하게 만들고 마지막에 Plugin Portal을 publish한다. 이 workflow는 아직 실행하지 않았다
 - `CHANGELOG.md`, `SECURITY.md`, `docs/LIMITATIONS.md`와 README 설치/호환성/안전 해석을 0.1.0 기준으로 작성했다
+- CI action은 commit SHA로 고정하고 Android API 36을 명시적으로 설치한다. CLI와 plugin 배포본에는
+  ASM·Kotlin·JetBrains runtime dependency의 제3자 고지와 Apache/BSD 라이선스 원문을 포함한다
+- GLM 전체 repository 리뷰에서 확인된 4 major를 수정했고 high-effort diff 리뷰와 후속 리뷰는 최종적으로
+  blocker/major 0건을 보고했다
 - JDK 17 clean test/coverage와 JDK 21 clean test, CLI/agent/corpus/plugin fixture가 통과했다. release verifier는
   두 clean build의 ZIP/TAR/plugin JAR/POM 해시 일치와 압축 해제 CLI 계약을 확인했다
 - 작업 브랜치: `feature/phase2-retention-corpus`

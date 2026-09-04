@@ -31,7 +31,7 @@ Swift 에서 Periphery 가 했던 일을 Kotlin 에서 하는 도구가 **없다
 - 심볼 그래프: 클래스 · 함수 · 프로퍼티 · 생성자, 참조 종류(call · reference · inheritance · override · member 등)
 - `dead` — 보존 루트에서 도달 불가한 선언, `--explain` 으로 근거
 - `cycles` — Tarjan SCC + 끊을 후보 간선
-- `graph` — DOT · Mermaid · JSON
+- `graph` — 결정적인 DOT
 - `query <symbol>` — usedBy · dependsOn · members · reachability · limitations, JSON. cartograph 의 `SymbolQueryDocument` 와 **같은 스키마**. 자매 도구 사이에서 소비자가 같은 파서를 쓸 수 있어야 한다
 - 보존 규칙 — keep 규칙 파싱 + 매니페스트 + XML 레이아웃 + DI/직렬화 어노테이션. 근거에 출처를 남긴다
 - 베이스라인, `--since`, 종료 코드 계약, `xcode`-대응 리포트 형식은 `gradle`/`github-actions`/`sarif`/`json`

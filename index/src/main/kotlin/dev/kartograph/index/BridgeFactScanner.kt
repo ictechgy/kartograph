@@ -46,7 +46,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         return BridgeFactsDocument(
             generatedAt = generatedAt,
             target = target,
-            project = projectRoot.toRealPath().toString(),
+            project = ".",
             facts = ordered,
             limitations = limitations,
         )

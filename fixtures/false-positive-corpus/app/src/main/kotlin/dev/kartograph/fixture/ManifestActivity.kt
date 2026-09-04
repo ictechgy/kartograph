@@ -28,6 +28,8 @@ class ManifestActivity : Activity() {
     }
 }
 
+class AliasTargetActivity : Activity()
+
 class ManifestOwnedDependency
 
 interface RuntimeContract {
