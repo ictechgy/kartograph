@@ -28,6 +28,10 @@ distributions {
             from(rootProject.file("CHANGELOG.md"))
             from(rootProject.file("SECURITY.md"))
             from(rootProject.file("LICENSE"))
+            from(rootProject.file("THIRD_PARTY_NOTICES.md"))
+            from(rootProject.file("LICENSES")) {
+                into("LICENSES")
+            }
             val releaseDocumentation = listOf(
                 "DECISION-truth-source.md",
                 "LIMITATIONS.md",

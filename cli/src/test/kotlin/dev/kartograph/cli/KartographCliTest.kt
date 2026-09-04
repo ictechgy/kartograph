@@ -13,6 +13,7 @@ import java.util.jar.JarOutputStream
 import javax.tools.ToolProvider
 import kotlin.io.path.createDirectories
 import kotlin.io.path.readText
+import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -35,6 +36,14 @@ class KartographCliTest {
         assertEquals(ExitStatus.SUCCESS.code, execution.status)
         assertContains(execution.output, "kartograph")
         assertContains(execution.output, "Exit codes:")
+    }
+
+    @Test
+    fun `baseline help prints help and succeeds`() {
+        val execution = execute("baseline", "--help")
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        assertContains(execution.output, "Find class declarations")
     }
 
     @Test
@@ -227,6 +236,8 @@ class KartographCliTest {
         assertEquals(ExitStatus.SUCCESS.code, execution.status)
         assertContains(execution.output, "\"format\": \"bridge-facts\"")
         assertContains(execution.output, "\"kind\": \"channel-register\"")
+        assertContains(execution.output, "\"project\": \".\"")
+        kotlin.test.assertFalse(execution.output.contains(projectRoot.toString()))
         kotlin.test.assertFalse(execution.output.contains(projectRoot.resolve("Plugin.kt").toString()))
     }
 
@@ -305,6 +316,22 @@ class KartographCliTest {
     @Test
     fun `invalid class root is a sanitized tool failure`(@TempDir temporaryDirectory: Path) {
         temporaryDirectory.resolve("Broken.class").writeText("not bytecode")
+
+        val execution = execute("graph", "--classes", temporaryDirectory.toString())
+
+        assertEquals(ExitStatus.FAILURE.code, execution.status)
+        assertContains(execution.error, "invalid class file")
+        kotlin.test.assertFalse(execution.error.contains(temporaryDirectory.toString()))
+    }
+
+    @Test
+    fun `truncated class root is a sanitized tool failure`(@TempDir temporaryDirectory: Path) {
+        temporaryDirectory.resolve("Truncated.class").writeBytes(
+            byteArrayOf(
+                0xCA.toByte(), 0xFE.toByte(), 0xBA.toByte(), 0xBE.toByte(),
+                0x00, 0x00, 0x00, 0x3D, 0x00,
+            ),
+        )
 
         val execution = execute("graph", "--classes", temporaryDirectory.toString())
 
@@ -458,6 +485,28 @@ class KartographCliTest {
 
         assertEquals(ExitStatus.FAILURE.code, execution.status)
         assertContains(execution.error, "dependency hierarchy is incomplete")
+        kotlin.test.assertFalse(execution.error.contains(projectRoot.toString()))
+    }
+
+    @Test
+    fun `query preserves the remediation for an unavailable external hierarchy`(@TempDir projectRoot: Path) {
+        projectRoot.resolve("rules.pro").writeText(hierarchyKeepRule)
+        val isolatedClassRoot = copyClassToRoot(ExternalHierarchyLeaf::class.java, projectRoot.resolve("classes"))
+
+        val execution = execute(
+            "query",
+            externalLeafNodeId,
+            "--classes",
+            isolatedClassRoot.toString(),
+            "--project",
+            projectRoot.toString(),
+            "--keep-rules",
+            "rules.pro",
+        )
+
+        assertEquals(ExitStatus.FAILURE.code, execution.status)
+        assertContains(execution.error, "dependency hierarchy is incomplete")
+        assertContains(execution.error, "--classpath")
         kotlin.test.assertFalse(execution.error.contains(projectRoot.toString()))
     }
 

@@ -38,6 +38,7 @@ class BridgeFactScannerTest {
         assertEquals(1, document.version)
         assertEquals("kotlin", document.platform)
         assertEquals("flutter", document.target)
+        assertEquals(".", document.project)
         assertEquals(
             listOf("channel-register", "method-handle", "module-export", "method-handle"),
             document.facts.map { it.kind },

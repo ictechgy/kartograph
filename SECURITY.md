@@ -23,5 +23,8 @@ baseline, DOT 및 CI log는 소스 자체를 포함하지 않더라도 저장소
 올리기 전에 검토한다. 오류 메시지는 의도적으로 절대경로를 피하지만 모든 third-party Gradle/JVM 오류의
 출력까지 정제한다고 보장하지 않는다.
 
+`bridge-facts`의 `project` 값은 `.`이고 fact 위치도 프로젝트 상대경로만 사용한다. 소비 도구가 report를
+저장하거나 결합하면서 절대경로를 덧붙일 수 있으므로 최종 공개 artifact는 별도로 확인한다.
+
 분석 대상은 신뢰된 build output이어야 한다. 조작된 class/JAR/resource를 처리하는 것은 보안 격리가 아니며,
 CLI를 sandbox로 취급해서는 안 된다.

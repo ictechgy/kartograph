@@ -12,8 +12,17 @@ public class AndroidManifestScanner(private val projectRoot: Path) {
         require(namespace.isNotBlank()) { "Android namespace must not be blank" }
         val sourcePath = projectRelativePath(projectRoot, manifest)
         return readXml(manifest) { reader ->
-            if (reader.localName !in COMPONENT_ELEMENTS) return@readXml null
-            val declaredName = reader.getAttributeValue(ANDROID_NAMESPACE, "name") ?: return@readXml null
+            val attribute = when (reader.localName) {
+                "activity-alias" -> "targetActivity"
+                in COMPONENT_ELEMENTS -> "name"
+                else -> return@readXml null
+            }
+            val declaredName = reader.getAttributeValue(ANDROID_NAMESPACE, attribute)
+                ?: if (reader.localName == "activity-alias") {
+                    throw AndroidResourceScanningException("activity-alias is missing android:targetActivity")
+                } else {
+                    return@readXml null
+                }
             val qualifiedName = declaredName.qualify(namespace) ?: return@readXml null
             ManifestReference(qualifiedName, declaredName, reader.location.lineNumber)
         }.map { reference ->
@@ -26,7 +35,7 @@ public class AndroidManifestScanner(private val projectRoot: Path) {
     }
 
     private fun String.qualify(namespace: String): String? {
-        if (isBlank() || contains('$')) return null
+        if (isBlank() || contains("\${")) return null
         return when {
             startsWith('.') -> namespace + this
             contains('.') -> this

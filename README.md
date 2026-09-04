@@ -166,4 +166,5 @@ kartograph의 finding과 `unreachable`은 주어진 입력 graph의 사실이다
 
 ## 라이선스
 
-MIT. 상업적 사용을 포함해 영구 무료다.
+kartograph는 MIT 라이선스다. 배포본에 내장된 의존성의 저작권과 라이선스는
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)와 [`LICENSES/`](LICENSES/)에 함께 제공한다.

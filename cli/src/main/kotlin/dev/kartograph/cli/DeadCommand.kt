@@ -31,6 +31,7 @@ import java.nio.file.Path
 
 internal object DeadCommand {
     fun runBaseline(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
+        if (arguments == listOf("--help") || arguments == listOf("-h")) return run(arguments, output, error)
         val writeIndex = arguments.indexOf("--write")
         if (writeIndex < 0 || arguments.getOrNull(writeIndex + 1)?.startsWith('-') != false) {
             error.println("error: baseline requires --write <file>")

@@ -1,12 +1,14 @@
 # outcome	node_id	reason	evidence_path	evidence_line	evidence_pattern	family
 retain	class:dev/kartograph/fixture/ManifestActivity	MANIFEST_COMPONENT	app/src/main/AndroidManifest.xml	5	ManifestActivity	manifest-component
+retain	class:dev/kartograph/fixture/AliasTargetActivity	MANIFEST_COMPONENT	app/src/main/AndroidManifest.xml	14	AliasTargetActivity	manifest-activity-alias
 reachable	class:dev/kartograph/fixture/ManifestActivity$Companion	COMPANION_OWNER	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	26	companion object	companion-owner
-reachable	class:dev/kartograph/fixture/RuntimeImplementation$Companion	CLASS_INITIALIZER	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	40	companion object	class-initializer-companion
-reachable	class:dev/kartograph/fixture/ClassInitializerDependency	CLASS_INITIALIZER	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	51	class ClassInitializerDependency	class-initializer-dependency
-retain	class:dev/kartograph/fixture/InlinedConstantOwner	INLINE_CONSTANT	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	54	const val VALUE	inline-constant-owner
-reachable	class:dev/kartograph/fixture/OverrideOnlyDependency	OVERRIDE	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	47	class OverrideOnlyDependency	override-dispatch
-reachable	class:dev/kartograph/fixture/SyntheticCallbackDependency	SYNTHETIC_CALLBACK	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	49	class SyntheticCallbackDependency	synthetic-callback
-retain	class:dev/kartograph/fixture/XmlOnlyView	XML_LAYOUT	app/src/main/res/layout/activity_main.xml	2	XmlOnlyView	xml-layout
+reachable	class:dev/kartograph/fixture/RuntimeImplementation$Companion	CLASS_INITIALIZER	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	42	companion object	class-initializer-companion
+reachable	class:dev/kartograph/fixture/ClassInitializerDependency	CLASS_INITIALIZER	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	53	class ClassInitializerDependency	class-initializer-dependency
+retain	class:dev/kartograph/fixture/InlinedConstantOwner	INLINE_CONSTANT	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	56	const val VALUE	inline-constant-owner
+reachable	class:dev/kartograph/fixture/OverrideOnlyDependency	OVERRIDE	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	49	class OverrideOnlyDependency	override-dispatch
+reachable	class:dev/kartograph/fixture/SyntheticCallbackDependency	SYNTHETIC_CALLBACK	app/src/main/kotlin/dev/kartograph/fixture/ManifestActivity.kt	51	class SyntheticCallbackDependency	synthetic-callback
+retain	class:dev/kartograph/fixture/XmlOnlyView	XML_LAYOUT	app/src/main/res/layout/activity_main.xml	6	XmlOnlyView	xml-layout
+retain	class:dev/kartograph/fixture/FragmentContainerTarget	XML_LAYOUT	app/src/main/res/layout/activity_main.xml	10	FragmentContainerTarget	xml-fragment-container
 retain	class:dev/kartograph/fixture/KeptByAnnotation	KEEP_ANNOTATION	app/src/main/kotlin/dev/kartograph/fixture/RetentionFixtures.kt	6	@Keep	keep-annotation
 retain	class:dev/kartograph/fixture/KeptByRule	KEEP_RULE	app/proguard-rules.pro	2	KeptByRule	keep-exact
 retain	class:dev/kartograph/fixture/KeptByWildcardRule	KEEP_RULE	app/proguard-rules.pro	3	KeptByWildcard	keep-wildcard

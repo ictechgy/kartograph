@@ -46,17 +46,20 @@ public class AndroidXmlScanner(private val projectRoot: Path) {
     private fun XMLStreamReader.referencedClassName(): String? {
         val candidate = when {
             localName == "view" -> getAttributeValue(null, "class")
+            localName == FRAGMENT_CONTAINER_VIEW ->
+                getAttributeValue(ANDROID_NAMESPACE, "name")
             localName in NAMED_COMPONENT_ELEMENTS -> getAttributeValue(ANDROID_NAMESPACE, "name")
             localName.contains('.') -> localName
             else -> null
         }
-        return candidate?.takeIf { name -> name.contains('.') && !name.contains('$') }
+        return candidate?.takeIf { name -> name.contains('.') }
     }
 
     private data class XmlReference(val className: String, val endLine: Int)
 
     private companion object {
         const val ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android"
+        const val FRAGMENT_CONTAINER_VIEW = "androidx.fragment.app.FragmentContainerView"
         val NAMED_COMPONENT_ELEMENTS = setOf("activity", "dialog", "fragment")
     }
 }

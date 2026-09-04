@@ -24,7 +24,6 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 core <- index
 core <- analysis <- export
 index + analysis + export <- cli, gradle-plugin
-core <- test-support
 ```
 
 | 모듈 | 책임 | 금지 |
@@ -32,10 +31,9 @@ core <- test-support
 | `core` | 그래프 모델, 설정 값 타입, 진단, 파일 시스템 추상화 | 외부 라이브러리와 파일·프로세스 접근 |
 | `index` | class root 입력, ASM와 Kotlin metadata adapter | 도달성 판정과 출력 형식 |
 | `analysis` | 도달성, SCC, 보존, 지표, 레이어 규칙 | 파일 접근과 렌더링 |
-| `export` | DOT, Mermaid, JSON, 진단 reporter | 분석 알고리즘 |
+| `export` | DOT와 machine-readable 진단 reporter | 분석 알고리즘 |
 | `cli` | 인자 파싱, 파이프라인 조립, 종료 코드, stdout/stderr | 그래프 알고리즘 |
 | `gradle-plugin` | variant의 class root를 찾아 파이프라인에 전달 | 별도 분석 구현 |
-| `test-support` | 테스트 builder와 memory filesystem | production module의 참조 |
 
 `core`를 순수하게 두어 compiler 산출물 없이 분석을 테스트하고, 흔들리는 ASM/metadata/Gradle API는
 adapter 모듈 밖으로 새지 않게 합니다. 여러 분석을 함께 실행할 때는 index를 한 번만 읽습니다.
@@ -53,7 +51,8 @@ adapter 모듈 밖으로 새지 않게 합니다. 여러 분석을 함께 실행
 
 - **삭제 판정을 내지 않습니다.** 출력의 어떤 필드도 "지워도 된다"고 말하지 않습니다. `state`는 그래프 사실이고 `reason`은 값입니다. 에이전트는 산문보다 데이터를 믿으므로 데이터 구조의 권위로 하는 거짓말이 더 위험합니다.
 - **모든 판정에 근거를 붙입니다.** `dead --explain`, `cycles --explain`, `rules --explain`.
-- **분석 한계를 문서가 아니라 응답에 싣습니다.** 프로젝트에서 실제로 세어서(`limitations`), 알릴 것이 없으면 조용히. `notFound`에도 싣습니다.
+- **분석 한계를 문서가 아니라 응답에 싣습니다.** `query`는 프로젝트에서 실제로 센 항목만 `limitations`에
+  싣고 `notFound`에도 유지합니다. `dead`는 삭제 판단에 쓰이는 명령이라 계량할 수 없는 보수적 한계도 항상 알립니다.
 - **종료 코드 계약**: `0` 정상 · `1` 문제 발견(`--strict`/임계값) · `2` 도구 실패 · `64` 사용 오류. 빌드된 산출물로 직접 검증하는 스크립트를 둡니다.
 - **오탐 코퍼스를 첫날부터.** 실제로 빌드되는 픽스처와, 오탐 추가 · 검출 상실 양방향으로 실패하는 검증 스크립트. 단위 테스트는 손으로 만든 스냅샷을 보므로 컴파일러가 실제로 무엇을 기록하는지 검증하지 못합니다. **수정을 끄고 돌려 실패하는지 한 번은 확인합니다.**
 - **베이스라인과 `--since`.** 기존 코드베이스에 도입할 수 있어야 합니다.

@@ -76,6 +76,12 @@ tasks.jar {
     from(rootProject.file("LICENSE")) {
         into("META-INF/kartograph")
     }
+    from(rootProject.file("THIRD_PARTY_NOTICES.md")) {
+        into("META-INF/kartograph")
+    }
+    from(rootProject.file("LICENSES")) {
+        into("META-INF/licenses")
+    }
     manifest {
         attributes(
             "Implementation-Title" to "kartograph Gradle plugin",

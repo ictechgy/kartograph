@@ -314,6 +314,58 @@ class ClassFileIndexerTest {
         assertFalse(error.message.orEmpty().contains(directory.toString()))
     }
 
+    @Test
+    fun `truncated class file fails through the sanitized indexing exception`(@TempDir directory: Path) {
+        directory.resolve("Truncated.class").writeBytes(truncatedClass())
+
+        val error = assertFailsWith<ClassIndexingException> {
+            ClassFileIndexer().index(listOf(directory))
+        }
+
+        assertEquals("invalid class file", error.message)
+        assertFalse(error.message.orEmpty().contains(directory.toString()))
+    }
+
+    @Test
+    fun `truncated class inside a jar fails through the sanitized indexing exception`(@TempDir directory: Path) {
+        val jar = directory.resolve("broken.jar")
+        JarOutputStream(Files.newOutputStream(jar)).use { output ->
+            output.putNextEntry(JarEntry("dev/fixture/Truncated.class"))
+            output.write(truncatedClass())
+            output.closeEntry()
+        }
+
+        val error = assertFailsWith<ClassIndexingException> {
+            ClassFileIndexer().index(listOf(jar))
+        }
+
+        assertEquals("invalid class file in class JAR", error.message)
+        assertFalse(error.message.orEmpty().contains(directory.toString()))
+    }
+
+    @Test
+    fun `indexes declared caught and multidimensional array reference types`(@TempDir directory: Path) {
+        directory.resolve("InstructionReferences.class").writeBytes(classWithInstructionReferences())
+        listOf("DeclaredException", "CaughtOnly", "ArrayOnly").forEach { name ->
+            directory.resolve("$name.class").writeBytes(
+                duplicateClass("$name.java", Opcodes.ACC_FINAL, "dev/fixture/$name"),
+            )
+        }
+
+        val graph = ClassFileIndexer().index(listOf(directory))
+        val source = JvmNodeId.methodId("dev/fixture/InstructionReferences", "inspect", "()V")
+
+        assertEquals(
+            setOf(
+                JvmNodeId.classId("dev/fixture/DeclaredException"),
+                JvmNodeId.classId("dev/fixture/CaughtOnly"),
+                JvmNodeId.classId("dev/fixture/ArrayOnly"),
+            ),
+            graph.edges.filter { edge -> edge.source == source && edge.kind == EdgeKind.REFERENCE }
+                .mapTo(mutableSetOf()) { edge -> edge.target },
+        )
+    }
+
     private val testClassesRoot: Path
         get() = Path.of(requireNotNull(Caller::class.java.protectionDomain.codeSource).location.toURI())
 
@@ -334,6 +386,45 @@ class ClassFileIndexerTest {
             visitAnnotation(annotationDescriptor, false).visitEnd()
             visitEnd()
         }.toByteArray()
+
+    private fun truncatedClass(): ByteArray = byteArrayOf(
+        0xCA.toByte(), 0xFE.toByte(), 0xBA.toByte(), 0xBE.toByte(),
+        0x00, 0x00, 0x00, 0x3D, 0x00,
+    )
+
+    private fun classWithInstructionReferences(): ByteArray = ClassWriter(0).apply {
+        visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "dev/fixture/InstructionReferences", null, "java/lang/Object", null)
+        visitSource("InstructionReferences.java", null)
+        visitMethod(
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
+            "inspect",
+            "()V",
+            null,
+            arrayOf("dev/fixture/DeclaredException"),
+        ).apply {
+            val start = Label()
+            val end = Label()
+            val handler = Label()
+            val done = Label()
+            visitCode()
+            visitTryCatchBlock(start, end, handler, "dev/fixture/CaughtOnly")
+            visitLabel(start)
+            visitInsn(Opcodes.NOP)
+            visitLabel(end)
+            visitJumpInsn(Opcodes.GOTO, done)
+            visitLabel(handler)
+            visitInsn(Opcodes.POP)
+            visitLabel(done)
+            visitInsn(Opcodes.ICONST_1)
+            visitInsn(Opcodes.ICONST_1)
+            visitMultiANewArrayInsn("[[Ldev/fixture/ArrayOnly;", 2)
+            visitInsn(Opcodes.POP)
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(2, 0)
+            visitEnd()
+        }
+        visitEnd()
+    }.toByteArray()
 
     private fun classWithLineZero(): ByteArray = ClassWriter(0).apply {
         visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "dev/fixture/SyntheticCoroutine", null, "java/lang/Object", null)

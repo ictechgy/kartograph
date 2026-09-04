@@ -30,5 +30,5 @@
 - Kotlin/Java compile-time constant owner의 사라진 bytecode reference
 - compiler synthetic method가 기록한 line number `0`
 
-최종 코퍼스는 35개 retained case와 2개 report case를 exact 비교한다. Room 표본은 KSP가 실제로
+최종 코퍼스는 37개 retained case와 2개 report case를 exact 비교한다. Room 표본은 KSP가 실제로
 `*_Impl.class`를 생성하고 Kotlin compiler가 compile한 산출물을 사용한다.
