@@ -13,7 +13,7 @@
 
 ## 배포와 검증
 
-- plugin ID는 `io.github.ictechgy.kartograph`, 버전은 루트 `VERSION`이 원천이다.
+- plugin ID는 [build.gradle.kts](build.gradle.kts)의 선언이 원천이며 현재 `io.github.ictechgy.kartograph`다. 버전은 루트 `VERSION`에서 읽는다.
 - standalone plugin JAR의 분석/runtime 의존성 내장, POM 중복 의존성 제거, plugin descriptor, 라이선스/제3자 고지를 보존한다.
 - 루트에서 `./gradlew --no-daemon :gradle-plugin:test :gradle-plugin:validatePlugins`와 `Scripts/verify-gradle-plugin-fixture.sh`를 실행한다. 실제 variant·report 형식·strict·baseline·private member·configuration cache를 확인한다.
 - JDK 17/21은 CI matrix처럼 `-Pkartograph.javaVersion=17` 또는 `21`로 확인한다.
