@@ -310,20 +310,22 @@ class KartographCliTest {
 
     @Test
     fun `skill installs reviewed guidance without overwriting by default`(@TempDir projectRoot: Path) {
+        val bundled = Path.of("../Skills/kartograph/SKILL.md").readText()
         val execution = execute("skill", "--project", projectRoot.toString())
         val installed = projectRoot.resolve(".claude/skills/kartograph/SKILL.md")
+        val initialContent = installed.readText()
+        installed.writeText("User-maintained guidance")
         val repeated = execute("skill", "--project", projectRoot.toString())
-        installed.writeText("changed")
+        val preservedContent = installed.readText()
         val forced = execute("skill", "--project", projectRoot.toString(), "--force")
 
         assertEquals(ExitStatus.SUCCESS.code, execution.status)
-        assertContains(installed.readText(), "never deletion approval")
-        assertContains(installed.readText(), "public API is not a retention root")
-        assertContains(installed.readText(), "isthmus")
+        assertEquals(bundled, initialContent)
         assertEquals(ExitStatus.USAGE.code, repeated.status)
         assertContains(repeated.error, "pass --force to overwrite")
+        assertEquals("User-maintained guidance", preservedContent)
         assertEquals(ExitStatus.SUCCESS.code, forced.status)
-        kotlin.test.assertFalse(installed.readText().contains("changed"))
+        assertEquals(bundled, installed.readText())
     }
 
     @Test
