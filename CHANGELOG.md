@@ -6,10 +6,20 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-05
+
 ### Added
 
 - CLI/Gradle opt-in private member findings, 공통 보고 정책, 같은 모드의 baseline/query와 member keep-rule 보존.
 - Gradle hierarchy에 Android SDK boot classpath를 포함해 framework 상속 keep 규칙을 해석한다.
+- 기준 Git commit의 baseline만 적용하는 `Scripts/check-pr.py`와 실제 Git/javac 기반 PR 회귀 검증.
+  전체 그래프를 검사해 수정하지 않은 파일의 새 미사용도 보고하고 PR의 baseline 추가로 숨기지 않는다.
+- 고정 공개 nowinandroid 빌드의 Hilt 생성 코드 회귀 verifier와 재현 절차.
+
+### Fixed
+
+- Dagger/Hilt 생성 annotation과 실제 enclosing 관계를 반영해 생성 Java와 중첩 class를 일반 미사용 코드로 보고하지 않는다.
+- Hilt application에서 정확한 generated component sibling을 보존하고 버전 테스트는 단일 VERSION과 대조한다.
 
 ## [0.1.1] - 2026-09-05
 
@@ -41,6 +51,7 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ictechgy/kartograph/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/ictechgy/kartograph/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.1.0

@@ -32,6 +32,7 @@ jobs:
           Scripts/verify-agent-surface.sh
           Scripts/verify-fixture-corpus.sh
           Scripts/verify-gradle-plugin-fixture.sh
+          python3 -m unittest discover -s Scripts/tests -v
       - name: Verify release artifacts without publishing
         run: Scripts/verify-release-readiness.sh
       - name: Create GitHub release

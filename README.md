@@ -17,11 +17,11 @@ Android 만의 이점이 하나 있다. "안 쓰는 것처럼 보이지만 지�
 
 ## 상태
 
-**0.1.0 GitHub Release를 공개했고 0.1.1 patch를 준비 중이다.** 원천 실험에서 JVM 바이트코드 + 공식 Kotlin metadata를 주 그래프로 결정했고,
+**현재 소스 버전은 0.2.0이다.** 배포된 버전과 산출물은 [GitHub Releases](https://github.com/ictechgy/kartograph/releases)에서 확인한다. 원천 실험에서 JVM 바이트코드 + 공식 Kotlin metadata를 주 그래프로 결정했고,
 컴파일된 class root의 DOT 출력과 manifest/XML/`@Keep` member·class annotation/wildcard·상속 keep 규칙 기반
 `dead --explain`이 동작한다. 재귀 include와 consumer rules 입력도 지원한다. `final` 등 추가
 positive/negative JVM access flag도 지원한다. 일반 member signature 조건과 DI·직렬화·runtime callback
-보존 정책도 연결됐다. baseline·변경 범위·CI report와 query·bridge·agent skill까지 구현됐지만 architecture
+보존 정책도 연결됐다. baseline·변경 범위·CI report와 query·bridge·agent skill까지 구현했고 architecture
 분석과 release packaging을 CI와 공개 산출물로 검증했다. 결정 근거는
 [`docs/DECISION-truth-source.md`](docs/DECISION-truth-source.md)에 있다.
 `graph`와 `dead`는 `--classes`를 반복해 여러 module/variant output root를 합칠 수 있고, 같은 JVM class는
@@ -52,7 +52,7 @@ directive는 무시하며 dependency hierarchy는 명시적 `--classpath`로 받
 
 ## 설치와 호환성
 
-개발 중인 다음 버전의 private member 진단은 `dead --include-private-members`로 선택한다(0.1.1에는 없음).
+0.2.0의 private member 진단은 `dead --include-private-members`로 선택한다(0.1.x에는 없음).
 기본 class 보고에 더해 reachable인
 비생성 class의 private method와 field/property만 추가한다. baseline 생성과 `query`에도 같은 옵션을 사용한다.
 Gradle에서는 `kartograph { includePrivateMembers.set(true) }`로 켠다.
@@ -66,21 +66,27 @@ reachable owner의 비private member·inline 함수·직렬화 callback은 외�
 그 아래 private helper도 보존한다. 이 근거는 `EXTERNAL_MEMBER_ENTRY`로 설명되며 미사용을 덜 보고할 수 있다.
 private reflection/serialization 관례까지 완전하게 증명하지 않으므로 keep/consumer rules와 runtime 테스트를 함께 검토한다.
 
-CLI 0.1.0 archive는 GitHub Releases에 공개돼 있다. Gradle plugin `io.github.ictechgy.kartograph` 0.1.0은
-Plugin Portal 첫 등록 승인을 요청한 상태이며, 아래 plugin 설치는 Portal에 version이 표시된 뒤 유효하다.
+CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechgy.kartograph`는
+[Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph)에 version이 표시된 뒤 설치할 수 있다.
+GitHub Release 공개와 Portal 승인·설치 가능 여부는 별개다.
 소스 빌드와 Gradle plugin 실행에는 JDK 17 또는 21, Gradle
 9.6.1을 검증 대상으로 삼는다. Android 연결은 AGP 9.3.2 public Variant API 기준이다.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.1.0"
+    id("io.github.ictechgy.kartograph") version "0.2.0"
 }
 ```
 
-GitHub release의 `kartograph-0.1.0.zip` 또는 `.tar`를 내려받아 압축을 풀고 `bin/kartograph`를 실행한다.
-checksum과 signature 배포는 0.1.0 범위에 포함되지 않는다.
+GitHub release의 `kartograph-0.2.0.zip` 또는 `.tar`를 내려받아 압축을 풀고 `bin/kartograph`를 실행한다.
+별도 checksum과 signature는 아직 배포하지 않는다.
 
 ## 개발과 검증
+
+PR에서 **새로 생긴 진단 전체**를 막으려면 [PR gate 안내](docs/PR-CHECK.md)를 따른다.
+배포본의 `Scripts/check-pr.py`는 기준 commit의 baseline을 읽고 수정하지 않은 파일까지 검사한다.
+`--since`는 변경 파일 필터이므로 호출자 삭제의 파급 효과를 모두 검사하는 PR gate와는 다르다.
+실제 Hilt/Compose/KSP 공개 표본의 측정과 남은 한계는 [공개 검증 기록](docs/PUBLIC-VALIDATION.md)에 있다.
 
 개발에는 JDK 17 이상이 필요하다.
 
@@ -92,6 +98,7 @@ Scripts/verify-cli-contract.sh
 Scripts/verify-fixture-corpus.sh
 Scripts/verify-gradle-plugin-fixture.sh
 Scripts/verify-agent-surface.sh
+python3 -m unittest discover -s Scripts/tests -v
 Scripts/verify-release-readiness.sh # clean build 두 번, publish하지 않음
 
 # 현재는 컴파일된 class root를 명시한다.

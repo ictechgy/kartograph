@@ -5,4 +5,7 @@ public enum class AnalysisLimitation(public val description: String) {
     REFLECTION_STRINGS("Class.forName and other string-based runtime references are not resolved"),
     DYNAMIC_REGISTRATION("manifest-absent runtime component registration is not resolved"),
     INLINE_CONSTANT_REFERENCES("compile-time constant owners are retained because inlined use sites are unavailable"),
+    GENERATED_CODE_COVERAGE("only supported generation markers and sibling relationships identify generated code"),
+    ANNOTATION_VALUE_REFERENCES("class references in annotation values and parameter annotations are not fully resolved"),
+    ENCLOSING_DECLARATIONS("an unreachable enclosing declaration may contain used nested types; inspect members before editing"),
 }

@@ -10,5 +10,13 @@ public object GeneratedSiblingNaming {
             add(if (packagePrefix.isEmpty()) simpleName else "$packagePrefix/$simpleName")
         }
         if ("androidx/room/Database" in annotations) add("${sourceInternalName}_Impl")
+        if ("dagger/hilt/android/HiltAndroidApp" in annotations && '$' !in sourceInternalName) {
+            val packagePrefix = sourceInternalName.substringBeforeLast('/', missingDelimiterValue = "")
+                .let { prefix -> if (prefix.isEmpty()) "" else "$prefix/" }
+            val simpleName = sourceInternalName.substringAfterLast('/')
+            add("${packagePrefix}Hilt_$simpleName")
+            add("${sourceInternalName}_HiltComponents")
+            add("${packagePrefix}Dagger${simpleName}_HiltComponents_SingletonC")
+        }
     }
 }
