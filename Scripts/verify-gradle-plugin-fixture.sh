@@ -58,3 +58,17 @@ if ! grep -Fq -- 'Reusing configuration cache.' "$CACHE_OUTPUT"; then
 fi
 
 echo "Gradle plugin fixture verified"
+
+# Kotlin compiler 산출물로 private member opt-in과 configuration cache를 함께 검증한다.
+./gradlew --no-daemon --console=plain --configuration-cache -p "$FIXTURE_ROOT" \
+    :app:kartographDeadDebug -Pkartograph.includePrivateMembers=true >/dev/null || exit 1
+./gradlew --no-daemon --console=plain --configuration-cache -p "$FIXTURE_ROOT" \
+    :app:kartographDeadDebug -Pkartograph.includePrivateMembers=true >"$CACHE_OUTPUT" || exit 1
+grep -Fq 'Reusing configuration cache.' "$CACHE_OUTPUT" || exit 1
+printf '%s\n' \
+    'field:dev/kartograph/fixture/PrivateMemberFixture#unusedValue:I' \
+    'method:dev/kartograph/fixture/PrivateMemberFixture#unused()I' >"$EXPECTED_REPORTS"
+awk -F '\t' '$1 == "unreachable" && $2 ~ /:dev\/kartograph\/fixture\/PrivateMemberFixture#/ { print $2 }' \
+    "$REPORT" | LC_ALL=C sort >"$ACTUAL_REPORTS"
+diff -u "$EXPECTED_REPORTS" "$ACTUAL_REPORTS" || exit 1
+echo "Private Kotlin members and configuration cache verified"

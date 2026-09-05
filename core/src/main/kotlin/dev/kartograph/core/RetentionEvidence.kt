@@ -13,6 +13,7 @@ public enum class RetentionReason(public val description: String) {
     GENERATED_CODE("generated companion of a retained framework declaration"),
     RUNTIME_ENTRY_POINT("invoked by an Android framework, test runner, or reflection-based library"),
     INLINE_CONSTANT("owns a compile-time constant whose bytecode references may be inlined"),
+    EXTERNAL_MEMBER_ENTRY("conservatively treated as a possible entry point in private-member analysis"),
 }
 
 /** 보존되는 정점과 복원 가능한 경우 판정을 재현할 파일·줄 근거를 함께 운반한다. */

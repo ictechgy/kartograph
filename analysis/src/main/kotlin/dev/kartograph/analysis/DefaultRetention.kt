@@ -13,6 +13,7 @@ public object DefaultRetention {
         inputEvidence: Iterable<RetentionEvidence>,
         keepRules: Iterable<KeepRule>,
         classHierarchy: ClassHierarchy = ClassHierarchy.EMPTY,
+        includePrivateMembers: Boolean = false,
     ): List<RetentionEvidence> {
         val evidence = buildList {
             addAll(inputEvidence)
@@ -23,6 +24,7 @@ public object DefaultRetention {
             addAll(AndroidEntryPointRetention.find(graph, classHierarchy))
             addAll(InlineConstantRetention.find(graph))
         }
-        return RuntimeRetentionExpansion.expand(graph, evidence)
+        val runtimeEvidence = RuntimeRetentionExpansion.expand(graph, evidence)
+        return if (includePrivateMembers) PrivateMemberRetention.expand(graph, runtimeEvidence) else runtimeEvidence
     }
 }

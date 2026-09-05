@@ -23,6 +23,52 @@ import org.junit.jupiter.api.io.TempDir
 
 class KartographCliTest {
     @Test
+    fun `private member mode reports only unreferenced private members of reachable owners`(@TempDir root: Path) {
+        val source = root.resolve("MemberSample.java")
+        source.writeText("""
+            public class MemberSample {
+                private int usedField;
+                private int unusedField;
+                private void used() { usedField++; }
+                private void unused() {}
+                private void reflected() {}
+                public void entry() { used(); }
+                public void publicApi() {}
+                public int externalCallback() { return callbackHelper(); }
+                private int callbackHelper() { return 3; }
+            }
+        """.trimIndent())
+        val classes = root.resolve("classes").createDirectories()
+        check(requireNotNull(ToolProvider.getSystemJavaCompiler()).run(
+            null, null, null, "-d", classes.toString(), source.toString(),
+        ) == 0)
+        root.resolve("rules.pro").writeText("""
+            -keep class MemberSample { public void entry(); }
+            -keepclassmembers class MemberSample { private void reflected(); }
+        """.trimIndent())
+        val args = deadArguments(root, "<manifest />", "--keep-rules", "rules.pro")
+        args[2] = classes.toString()
+        val default = execute(*args)
+        val members = execute(*args, "--include-private-members", "--strict")
+        assertEquals(0, default.status)
+        assertEquals(emptyList(), default.output.lines().filter { it.startsWith("unreachable\t") })
+        assertEquals(1, members.status)
+        assertEquals(
+            listOf("field:MemberSample#unusedField:I", "method:MemberSample#unused()V"),
+            members.output.lines().filter { it.startsWith("unreachable\t") }.map { it.split('\t')[1] },
+        )
+        val capture = execute("baseline", "--write", "members.json", *args.drop(1).toTypedArray(), "--include-private-members")
+        assertEquals(0, capture.status)
+        val filtered = execute(*args, "--include-private-members", "--baseline", "members.json", "--strict")
+        assertEquals(0, filtered.status)
+        assertEquals(emptyList(), filtered.output.lines().filter { it.startsWith("unreachable\t") })
+        val query = execute("query", "method:MemberSample#reflected()V", "--classes", classes.toString(),
+            "--project", root.toString(), "--keep-rules", "rules.pro", "--include-private-members")
+        assertEquals(0, query.status)
+        assertContains(query.output, "\"state\": \"retained\"")
+    }
+
+    @Test
     fun `version reports the release artifact version`() {
         val execution = execute("--version")
 

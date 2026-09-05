@@ -1,11 +1,11 @@
 package dev.kartograph.gradle
 
 import dev.kartograph.analysis.DefaultRetention
+import dev.kartograph.analysis.DeadFindings
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.core.AnalysisLimitation
 import dev.kartograph.core.Finding
 import dev.kartograph.core.GraphNode
-import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.export.AdoptionReporter
 import dev.kartograph.export.BaselineCodec
@@ -41,6 +41,17 @@ import org.gradle.work.DisableCachingByDefault
 /** Android variant artifact를 직접 받아 CLI와 독립적으로 dead report를 생성한다. */
 @DisableCachingByDefault(because = "Keep-rule include files are discovered while the task executes")
 public abstract class KartographDeadTask : DefaultTask() {
+    /** Member 진단 opt-in도 task 입력으로 기록해 보고 범위를 명확히 한다. */
+    @get:Input
+    public abstract val includePrivateMembers: Property<Boolean>
+
+    /** Android framework 상속 규칙도 dependency hierarchy에 포함한다. */
+    @get:Classpath
+    public abstract val platformClasspath: ConfigurableFileCollection
+
+    init {
+        includePrivateMembers.convention(false)
+    }
     @get:Classpath
     public abstract val projectJars: ListProperty<RegularFile>
 
@@ -104,6 +115,7 @@ public abstract class KartographDeadTask : DefaultTask() {
         val classpath = buildList {
             addAll(classpathDirectories.get().map { directory -> directory.asFile.toPath() })
             addAll(classpathJars.get().map { jar -> jar.asFile.toPath() })
+            addAll(platformClasspath.files.sorted().map { it.toPath() })
         }
         val hierarchy = ClassHierarchyIndexer().index(
             classpath,
@@ -111,8 +123,7 @@ public abstract class KartographDeadTask : DefaultTask() {
         )
         val evidence = retentionEvidence(projectRoot, graph, hierarchy)
         val result = ReachabilityAnalyzer.analyze(graph, evidence)
-        val allFindings = result.unreachableNodeIds.mapNotNull(graph::node).filter { node -> node.isReportableType }
-            .map { node -> Finding(node.id, node.location) }
+        val allFindings = DeadFindings.collect(graph, result, includePrivateMembers.get())
         if (baselineWriteFile.isPresent) {
             val path = baselineWriteFile.get().asFile.toPath()
             path.parent?.let { parent -> Files.createDirectories(parent) }
@@ -141,8 +152,10 @@ public abstract class KartographDeadTask : DefaultTask() {
                 addAll(AndroidXmlScanner(projectRoot).scan(resourceRoot.toPath()))
             }
         }
-        val keepRules = KeepRuleScanner(projectRoot).scan(keepRuleFiles.files.sorted().map(java.io.File::toPath))
-        return DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy)
+        val keepRules = KeepRuleScanner(projectRoot, includePrivateMembers.get())
+            .scan(keepRuleFiles.files.sorted().map(java.io.File::toPath))
+        return DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,
+            includePrivateMembers = includePrivateMembers.get())
     }
 
     private fun writeReport(findings: List<Finding>, suppressedCount: Int) {
@@ -154,16 +167,4 @@ public abstract class KartographDeadTask : DefaultTask() {
         Files.writeString(report, content)
     }
 
-    private val GraphNode.isReportableType: Boolean
-        get() = !synthesized && kind in REPORTABLE_TYPE_KINDS
-
-    private companion object {
-        val REPORTABLE_TYPE_KINDS = setOf(
-            NodeKind.CLASS,
-            NodeKind.INTERFACE,
-            NodeKind.OBJECT,
-            NodeKind.ENUM,
-            NodeKind.ANNOTATION_CLASS,
-        )
-    }
 }

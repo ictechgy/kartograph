@@ -11,6 +11,7 @@ kartograph {
         "../fixture-library/consumer-rules.pro",
     )
     strict.set(providers.gradleProperty("kartograph.strict").map(String::toBoolean).orElse(false))
+    includePrivateMembers.set(providers.gradleProperty("kartograph.includePrivateMembers").map(String::toBoolean).orElse(false))
     reportFormat.set(providers.gradleProperty("kartograph.reportFormat").orElse("text"))
 }
 

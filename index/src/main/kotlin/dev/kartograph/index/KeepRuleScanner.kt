@@ -13,7 +13,10 @@ import java.nio.file.InvalidPathException
 import java.nio.file.Path
 
 /** ProGuard/R8 파일에서 class keep specification과 파일·줄 근거를 읽는다. */
-public class KeepRuleScanner(private val projectRoot: Path) {
+public class KeepRuleScanner @JvmOverloads constructor(
+    private val projectRoot: Path,
+    private val retainClassMembers: Boolean = false,
+) {
     /** 모든 파일을 입력 순서로 읽되 불완전하게 해석할 keep 문법에서는 실패한다. */
     public fun scan(ruleFiles: Iterable<Path>): List<KeepRule> {
         val realProjectRoot = resolveProjectRoot()
@@ -54,13 +57,32 @@ public class KeepRuleScanner(private val projectRoot: Path) {
         var skippingPlainRule = false
         var plainKeepAllMembers = false
         val plainKeptMembers = mutableListOf<KeepMemberCondition>()
+        var conservativeMemberBlock = false
         return try {
             val parsedRules = buildList {
                 lines.forEachIndexed { index, rawLine ->
-                    val ruleLine = rawLine.substringBefore('#')
+                    val uncommented = rawLine.substringBefore('#')
+                    // Member 모드에서는 조건부 owner 생존을 보수적으로 가정해 reflection member를 보존한다.
+                    val memberHeader = retainClassMembers &&
+                        Regex("^\\s*-keepclassmembers(?=[,\\s])").containsMatchIn(uncommented)
+                    val ruleLine = when {
+                        memberHeader -> {
+                            val header = uncommented.replace(Regex("^(\\s*)-keepclassmembers(?=[,\\s])"), "$1-keep")
+                            conservativeMemberBlock = '{' in header && '}' !in header
+                            header
+                        }
+                        conservativeMemberBlock && uncommented.trim().startsWith('}') -> {
+                            conservativeMemberBlock = false
+                            uncommented
+                        }
+                        else -> uncommented
+                    }
                     val location = SourceLocation(sourcePath, index + 1)
                     rejectContentAfterBlock(ruleLine, location)
                     val insideMemberBlock = memberBlockDepth > 0
+                    if (retainClassMembers && insideMemberBlock && '}' in ruleLine && !ruleLine.trim().startsWith('}')) {
+                        throw unsupported("member block closing must be on its own line", location)
+                    }
                     if (!insideMemberBlock && ruleLine.trim() == "{") {
                         throw unsupported("member block opening must be on the keep rule line", location)
                     }
@@ -100,7 +122,13 @@ public class KeepRuleScanner(private val projectRoot: Path) {
                                 plainKeepAllMembers = false
                                 plainKeptMembers.clear()
                             } else if (!skippingPlainRule) {
-                                parsePlainMember(ruleLine, location)?.let { member ->
+                                val parsedMember = try {
+                                    parsePlainMember(ruleLine, location)
+                                } catch (problem: KeepRuleScanningException) {
+                                    if (!conservativeMemberBlock) throw problem
+                                    PlainMember(keepAll = true)
+                                }
+                                parsedMember?.let { member ->
                                     plainKeepAllMembers = plainKeepAllMembers || member.keepAll
                                     member.condition?.let(plainKeptMembers::add)
                                 }
@@ -136,7 +164,13 @@ public class KeepRuleScanner(private val projectRoot: Path) {
                                 if (includedFile in active) throw unsupported("cyclic keep rule include", location)
                                 addAll(scanFile(includedFile, scope, visited, active))
                             } else {
-                                parseLine(ruleLine, location, insideMemberBlock)?.let(::add)
+                                val parsed = try {
+                                    parseLine(ruleLine, location, insideMemberBlock)
+                                } catch (problem: KeepRuleScanningException) {
+                                    if (!memberHeader || '{' !in ruleLine || '}' !in ruleLine) throw problem
+                                    parseLine(ruleLine.substringBefore('{') + "{ *; }", location, insideMemberBlock)
+                                }
+                                parsed?.let(::add)
                             }
                         }
                     }

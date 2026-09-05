@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- CLI/Gradle opt-in private member findings, 공통 보고 정책, 같은 모드의 baseline/query와 member keep-rule 보존.
+- Gradle hierarchy에 Android SDK boot classpath를 포함해 framework 상속 keep 규칙을 해석한다.
+
 ## [0.1.1] - 2026-09-05
 
 ### Fixed

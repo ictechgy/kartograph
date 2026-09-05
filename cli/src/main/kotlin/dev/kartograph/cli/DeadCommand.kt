@@ -1,6 +1,7 @@
 package dev.kartograph.cli
 
 import dev.kartograph.analysis.DefaultRetention
+import dev.kartograph.analysis.DeadFindings
 import dev.kartograph.analysis.IncompleteKeepRuleHierarchyException
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.analysis.ReachabilityResult
@@ -9,7 +10,6 @@ import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.Finding
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
-import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.export.AdoptionReporter
 import dev.kartograph.export.BaselineCodec
@@ -96,8 +96,9 @@ internal object DeadCommand {
         val evidence = DefaultRetention.find(
             graph,
             inputEvidence,
-            KeepRuleScanner(options.projectRoot).scan(options.keepRules),
+            KeepRuleScanner(options.projectRoot, options.includePrivateMembers).scan(options.keepRules),
             dependencyHierarchy,
+            includePrivateMembers = options.includePrivateMembers,
         )
         val result = ReachabilityAnalyzer.analyze(graph, evidence)
         if (options.explainNodeId != null) {
@@ -106,10 +107,7 @@ internal object DeadCommand {
             return status
         }
 
-        val allFindings = result.unreachableNodeIds
-            .mapNotNull(graph::node)
-            .filter { node -> node.isReportableType }
-            .map { node -> Finding(node.id, node.location) }
+        val allFindings = DeadFindings.collect(graph, result, options.includePrivateMembers)
         if (options.writeBaseline != null) {
             val target = options.writeBaseline
             target.parent?.let { parent -> Files.createDirectories(parent) }
@@ -162,6 +160,7 @@ internal object DeadCommand {
         val keepRulePaths = mutableListOf<String>()
         val classpathPaths = mutableListOf<String>()
         var strict = false
+        var includePrivateMembers = false
         var baselineValue: String? = null
         var writeBaselineValue: String? = null
         var since: String? = null
@@ -169,6 +168,11 @@ internal object DeadCommand {
         var index = 0
         while (index < arguments.size) {
             val option = arguments[index]
+            if (option == "--include-private-members") {
+                includePrivateMembers = true
+                index++
+                continue
+            }
             if (option == "--strict") {
                 strict = true
                 index++
@@ -209,6 +213,7 @@ internal object DeadCommand {
             keepRules = keepRulePaths.map { value -> resolveProjectPath(project, value) },
             classpath = classpathPaths.map { value -> resolveProjectPath(project, value) },
             strict = strict,
+            includePrivateMembers = includePrivateMembers,
             explainNodeId = explainNodeId,
             baseline = baselineValue?.let { value -> resolveProjectPath(project, value) },
             writeBaseline = writeBaselineValue?.let { value -> resolveProjectPath(project, value) },
@@ -250,9 +255,6 @@ internal object DeadCommand {
     private fun RetentionEvidence.explanation(): String =
         "retained\t$nodeId\t${reason.name}\t${location.toPlainTextLocation()}\t${reason.description}"
 
-    private val GraphNode.isReportableType: Boolean
-        get() = !synthesized && kind in REPORTABLE_TYPE_KINDS
-
     private data class DeadOptions(
         val classRoots: List<Path>,
         val projectRoot: Path,
@@ -262,19 +264,12 @@ internal object DeadCommand {
         val keepRules: List<Path>,
         val classpath: List<Path>,
         val strict: Boolean,
+        val includePrivateMembers: Boolean,
         val explainNodeId: NodeId?,
         val baseline: Path?,
         val writeBaseline: Path?,
         val since: String?,
         val reportFormat: ReportFormat,
-    )
-
-    private val REPORTABLE_TYPE_KINDS = setOf(
-        NodeKind.CLASS,
-        NodeKind.INTERFACE,
-        NodeKind.OBJECT,
-        NodeKind.ENUM,
-        NodeKind.ANNOTATION_CLASS,
     )
 
     private val HELP = """
@@ -285,6 +280,7 @@ internal object DeadCommand {
             --manifest <file> --resources <directory> --namespace <name> \
             [--keep-rules <file>]... [--classpath <directory-or-jar>]... \
             [--strict] [--explain <node-id>]
+            [--include-private-members]
             [--baseline <file>] [--since <git-ref>]
             [--report-format text|gradle|github-actions|sarif|json]
 
