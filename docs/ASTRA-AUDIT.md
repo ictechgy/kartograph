@@ -40,7 +40,7 @@ SKILL에는 저장소 밖의 필수 참조를 추가하지 않았다. 공개 배
 ## 검증과 측정 방법
 
 - 변경 전 루트: 77줄 / 8,747 bytes. 변경 후 루트: 50줄 / 6,776 bytes, **기본 프로젝트 지침 약 22.5% 감소**. 상세 workflow는 조건부 참조다. 전체 문서 총량 감소나 모델 token/latency 개선 수치로 해석하지 않는다.
-- bundled `agents_audit.py`: 범위·상대 링크·marker·크기 검증. `quick_validate.py`: 스킬 frontmatter/name 검증. symlink의 실제 대상과 canonical 내용도 대조한다.
+- 로컬 Codex 스킬 패키지의 `agents_audit.py`로 범위·상대 링크·marker·크기를, `quick_validate.py`로 스킬 frontmatter/name을 검증했다. 이 도구들은 이 저장소나 제품 배포본에 포함되지 않는다. symlink의 실제 대상과 canonical 내용도 대조했다.
 - `./gradlew --offline --no-daemon :cli:test :cli:installDist`: 처음에는 `changed` 단어 검사에서 1개 실패; 원인을 확인한 뒤 실제 설치/보존 계약으로 바꿔 통과했다.
 - 두 workflow의 YAML, 16개 `run` shell의 `bash -n`, trigger/check 이름/JDK matrix/권한/concurrency/고정 SHA를 로컬 검증한다.
 - 로컬에 actionlint/shellcheck는 없어 새 도구를 설치하지 않았다. YAML/내장 shell 검사는 GitHub expression engine·runner·외부 publish 성공까지 증명하지 않는다. 새 workflow의 원격 CI/배포는 실행하지 않는다.
