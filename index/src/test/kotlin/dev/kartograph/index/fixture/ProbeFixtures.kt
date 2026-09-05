@@ -39,3 +39,10 @@ internal class SignatureOnly
 internal interface SignatureConsumer {
     fun consume(value: SignatureOnly): SignatureOnly
 }
+
+internal class MetadataMemberProbe {
+    private var customValue: Int = 0
+        get() = field + 1
+    fun entry(): Int = inlined { customValue }
+    private inline fun inlined(block: () -> Int): Int = block()
+}

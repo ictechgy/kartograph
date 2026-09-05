@@ -13,6 +13,7 @@ public class KartographPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val extension = project.extensions.create("kartograph", KartographExtension::class.java)
         extension.strict.convention(false)
+        extension.includePrivateMembers.convention(false)
         extension.reportFormat.convention("gradle")
         project.pluginManager.withPlugin("com.android.application") { configureAndroid(project, extension) }
         project.pluginManager.withPlugin("com.android.library") { configureAndroid(project, extension) }
@@ -31,6 +32,10 @@ public class KartographPlugin : Plugin<Project> {
             deadTask.variantName.set(variant.name)
             deadTask.namespace.set(variant.namespace)
             deadTask.strict.set(extension.strict)
+            deadTask.includePrivateMembers.set(extension.includePrivateMembers)
+            deadTask.platformClasspath.from(
+                project.extensions.getByType(AndroidComponentsExtension::class.java).sdkComponents.bootClasspath,
+            )
             deadTask.reportFormat.set(extension.reportFormat)
             deadTask.baselineFile.set(extension.baseline)
             deadTask.projectDirectory.set(project.layout.projectDirectory)

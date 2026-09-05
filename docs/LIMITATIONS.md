@@ -6,6 +6,19 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 
 ## 0.1.x의 경계
 
+- `--include-private-members`는 JVM/source 모두 private인 method·field/property만 선택적으로 추가한다.
+  reachable 비생성 owner가 하나로 확정되는 경우에 한하며 constructor/native/constant/file-facade는 제외한다.
+  field 쓰기는 사용으로 취급한다. `-keepclassmembers`는 member와 owner를 무조건 보존하는 보수적 근사이며
+  두 모드 간 class finding도 달라질 수 있다. private reflection에는 명시 keep rule이 여전히 필요하다.
+  Kotlin inline 함수와 Java serialization callback은 제외하며, 해석할 수 없는 `-keepclassmembers` member
+  signature는 matching class의 모든 직접 member 보존으로 확장한다.
+  `allowshrinking` 규칙은 이 모드에서도 root가 아니다. Java serialization callback 제외는 이름 기반이므로
+  같은 이름의 일반 private member도 보고하지 않을 수 있다. owner가 없거나 여러 개이면 보고를 보류한다.
+  Gradle은 SDK boot classpath를 자동 제공하지만 CLI는 framework 상속 규칙을 위해 `android.jar`를
+  `--classpath`로 전달해야 할 수 있다.
+  reachable owner의 비private member·inline 함수·직렬화 callback도 잠재적 진입점으로 취급하므로
+  외부에서 실제 사용되지 않는 public API의 private helper까지 보존할 수 있다.
+
 - 문자열 reflection과 동적 component 등록은 호출 후보를 계수할 수 있지만 대상 symbol을 항상 복원할 수 없다.
 - JNI, native lookup, framework callback과 serialization/DI codegen은 bytecode만으로 완전하게 증명할 수 없다.
 - manifest/resource/keep rule 또는 dependency classpath를 전달하지 않으면 그 입력이 만드는 도달성을 볼 수 없다.

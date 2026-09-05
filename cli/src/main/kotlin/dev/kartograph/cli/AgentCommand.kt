@@ -72,7 +72,7 @@ internal object AgentCommand {
             arguments.drop(1),
             setOf(
                 "--classes", "--project", "--depth", "--limit", "--manifest", "--resources", "--namespace",
-                "--keep-rules", "--classpath", "--baseline",
+                "--keep-rules", "--classpath", "--baseline", "--include-private-members",
             ),
             error,
         )
@@ -109,10 +109,11 @@ internal object AgentCommand {
                     addAll(AndroidXmlScanner(project).scan(resolveProjectPath(project, resources)))
                 }
             }
-            val keepRules = KeepRuleScanner(project).scan(
+            val keepRules = KeepRuleScanner(project, options.values("--include-private-members").isNotEmpty()).scan(
                 options.values("--keep-rules").map { resolveProjectPath(project, it) },
             )
-            val evidence = DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy)
+            val evidence = DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,
+                includePrivateMembers = options.values("--include-private-members").isNotEmpty())
             val reachability = ReachabilityAnalyzer.analyze(graph, evidence)
             val baseline = options.single("--baseline")?.let { path ->
                 BaselineCodec.parse(Files.readString(resolveProjectPath(project, path)))
@@ -173,6 +174,11 @@ internal object AgentCommand {
             if (option !in allowed) {
                 error.println("error: unknown option: $option")
                 return null
+            }
+            if (option == "--include-private-members") {
+                values.getOrPut(option) { mutableListOf() } += "true"
+                index++
+                continue
             }
             val value = arguments.getOrNull(index + 1)?.takeUnless { it.startsWith('-') }
             if (value == null) {

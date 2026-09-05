@@ -11,6 +11,18 @@ import kotlin.test.assertTrue
 
 class KotlinMetadataEnrichmentTest {
     @Test
+    fun `facades inline functions and custom properties keep unambiguous JVM identities`() {
+        val graph = ClassFileIndexer().index(listOf(testClassesRoot))
+        assertEquals(true, graph.node(JvmNodeId.classId("dev/kartograph/index/fixture/ProbeFixturesKt"))?.synthesized)
+        val prefix = "dev/kartograph/index/fixture/MetadataMemberProbe"
+        val inline = graph.nodes.values.single { it.id.value.startsWith("method:$prefix#inlined(") }
+        assertTrue(NodeAttribute.INLINE_FUNCTION in inline.attributes)
+        val property = graph.nodes.values.filter { it.id.value == "field:$prefix#customValue:I" }
+        assertEquals(1, property.size)
+        assertEquals(NodeKind.PROPERTY, property.single().kind)
+        assertTrue(graph.nodes.keys.none { it.value.startsWith("property:$prefix#") })
+    }
+    @Test
     fun `restores Kotlin class visibility and declaration kind`() {
         val graph = ClassFileIndexer().index(listOf(testClassesRoot))
         val caller = graph.node(JvmNodeId.classId("dev/kartograph/index/fixture/Caller"))

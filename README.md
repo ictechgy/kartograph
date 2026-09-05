@@ -52,6 +52,20 @@ directive는 무시하며 dependency hierarchy는 명시적 `--classpath`로 받
 
 ## 설치와 호환성
 
+개발 중인 다음 버전의 private member 진단은 `dead --include-private-members`로 선택한다(0.1.1에는 없음).
+기본 class 보고에 더해 reachable인
+비생성 class의 private method와 field/property만 추가한다. baseline 생성과 `query`에도 같은 옵션을 사용한다.
+Gradle에서는 `kartograph { includePrivateMembers.set(true) }`로 켠다.
+
+이 모드는 `-keepclassmembers` 대상 member와 owner를 보수적으로 보존하므로 class-only 결과보다 적은
+class finding을 낼 수 있다. constructor, native, 합성 member, compile-time constant, file facade와
+unreachable owner 하위 member는 보고하지 않는다. field 쓰기도 사용으로 취급하므로 unread-field 검사는 아니다.
+Kotlin inline 함수와 Java 직렬화 callback 이름도 제외한다. 지원하지 않는 `-keepclassmembers` member
+signature는 matching class의 모든 직접 member 보존으로 넓힌다. 일반 `-keep` 해석은 기존처럼 실패한다.
+reachable owner의 비private member·inline 함수·직렬화 callback은 외부에서 호출될 수 있다고 가정해
+그 아래 private helper도 보존한다. 이 근거는 `EXTERNAL_MEMBER_ENTRY`로 설명되며 미사용을 덜 보고할 수 있다.
+private reflection/serialization 관례까지 완전하게 증명하지 않으므로 keep/consumer rules와 runtime 테스트를 함께 검토한다.
+
 CLI 0.1.0 archive는 GitHub Releases에 공개돼 있다. Gradle plugin `io.github.ictechgy.kartograph` 0.1.0은
 Plugin Portal 첫 등록 승인을 요청한 상태이며, 아래 plugin 설치는 Portal에 version이 표시된 뒤 유효하다.
 소스 빌드와 Gradle plugin 실행에는 JDK 17 또는 21, Gradle

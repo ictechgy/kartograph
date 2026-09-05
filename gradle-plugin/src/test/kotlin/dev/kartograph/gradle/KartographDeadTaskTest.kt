@@ -91,6 +91,7 @@ class KartographDeadTaskTest {
 
         val extension = project.extensions.getByType(KartographExtension::class.java)
         assertEquals(false, extension.strict.get())
+        assertEquals(false, extension.includePrivateMembers.get())
         assertEquals("gradle", extension.reportFormat.get())
     }
 

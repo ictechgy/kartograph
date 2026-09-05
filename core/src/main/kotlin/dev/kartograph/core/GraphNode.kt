@@ -31,6 +31,7 @@ public enum class NodeAttribute {
     DATA_CLASS,
     EXTENSION_FUNCTION,
     COMPILE_TIME_CONSTANT,
+    INLINE_FUNCTION,
 }
 
 /** ProGuard/R8 class specification과 직접 비교하는 JVM access flag다. */

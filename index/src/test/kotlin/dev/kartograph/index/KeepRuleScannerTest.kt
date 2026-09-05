@@ -18,6 +18,46 @@ import org.junit.jupiter.api.io.TempDir
 
 class KeepRuleScannerTest {
     @Test
+    fun `member mode does not swallow unsupported class headers`(@TempDir root: Path) {
+        val rules = root.resolve("rules.pro")
+        for (body in listOf("{ private ** value; }", "{\n private ** value;\n}")) {
+            rules.writeText("-keepclassmembers strictfp class Model $body")
+            assertFailsWith<KeepRuleScanningException> { KeepRuleScanner(root, true).scan(listOf(rules)) }
+        }
+    }
+
+    @Test
+    fun `unparseable member specifications broaden conservatively only for member rules`(@TempDir root: Path) {
+        val rules = root.resolve("rules.pro")
+        rules.writeText("-keepclassmembers class Model { nonsense; }")
+        assertEquals(true, KeepRuleScanner(root, true).scan(listOf(rules)).single().keepAllMembers)
+        rules.writeText("-keep class Model { nonsense; }")
+        assertFailsWith<KeepRuleScanningException> { KeepRuleScanner(root, true).scan(listOf(rules)) }
+    }
+    @Test
+    fun `member mode rejects closing braces after member text rather than dropping the rule`(@TempDir root: Path) {
+        val rules = root.resolve("rules.pro")
+        rules.writeText("-keepclassmembers class Model {\n private void reflected(); }")
+        assertFailsWith<KeepRuleScanningException> { KeepRuleScanner(root, true).scan(listOf(rules)) }
+    }
+    @Test
+    fun `member mode preserves rules from includes and broadens unsupported member signatures`(@TempDir root: Path) {
+        val rules = root.resolve("rules.pro")
+        rules.writeText("-include members.pro")
+        root.resolve("members.pro").writeText("""
+            -keepclassmembers class View { void set*(***); }
+            -keepclassmembers class Model {
+                private ** value;
+            }
+            -keepclassmembers,allowshrinking class Shrinkable { private void reflected(); }
+        """.trimIndent())
+        assertEquals(emptyList(), KeepRuleScanner(root).scan(listOf(rules)))
+        val parsed = KeepRuleScanner(root, true).scan(listOf(rules))
+        assertEquals(listOf("View", "Model"), parsed.map { it.classNamePattern })
+        assertEquals(listOf(true, true), parsed.map { it.keepAllMembers })
+    }
+
+    @Test
     fun `reads class specifications and ignores rules that allow shrinking`(@TempDir projectRoot: Path) {
         val rules = projectRoot.resolve("app/proguard-rules.pro")
         rules.parent.createDirectories()

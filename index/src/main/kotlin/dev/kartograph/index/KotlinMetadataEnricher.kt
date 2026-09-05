@@ -17,6 +17,7 @@ import kotlin.metadata.KmProperty
 import kotlin.metadata.KmType
 import kotlin.metadata.Visibility as KotlinVisibility
 import kotlin.metadata.isData
+import kotlin.metadata.isInline
 import kotlin.metadata.kind
 import kotlin.metadata.visibility
 import kotlin.metadata.jvm.KotlinClassMetadata
@@ -79,7 +80,9 @@ internal object KotlinMetadataEnricher {
         nodes.patch(JvmNodeId.methodId(owner, signature.name, signature.descriptor)) { node ->
             node.copy(
                 visibility = function.visibility.toCoreVisibility(),
-                attributes = node.attributes.withExtensionFunction(receiverType != null),
+                attributes = node.attributes.withExtensionFunction(receiverType != null).let { attributes ->
+                    if (function.isInline) attributes + NodeAttribute.INLINE_FUNCTION else attributes
+                },
                 extensionReceiverType = receiverType,
             )
         }
