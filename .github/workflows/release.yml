@@ -5,14 +5,23 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
     environment: release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
@@ -44,8 +53,7 @@ jobs:
               --verify-tag --generate-notes --title "kartograph $GITHUB_REF_NAME"
           gh release upload "$GITHUB_REF_NAME" \
             "cli/build/distributions/kartograph-$(< VERSION).zip" \
-            "cli/build/distributions/kartograph-$(< VERSION).tar" \
-            --clobber
+            "cli/build/distributions/kartograph-$(< VERSION).tar"
       - name: Publish Gradle plugin
         env:
           GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
