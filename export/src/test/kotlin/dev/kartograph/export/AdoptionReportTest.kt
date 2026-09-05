@@ -4,6 +4,8 @@ import dev.kartograph.core.AnalysisLimitation
 import dev.kartograph.core.Finding
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.SourceLocation
+import java.nio.file.Path
+import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -64,10 +66,11 @@ class AdoptionReportTest {
         assertContains(github, "::notice title=kartograph limitation REFLECTION_STRINGS::")
         assertContains(json, "\"suppressedCount\": 1")
         assertContains(json, "\"nodeId\": \"class:a/Unused\"")
-        assertContains(json, "\"version\": \"0.1.1\"")
+        val releaseVersion = Path.of("../VERSION").readText().trim()
+        assertContains(json, "\"version\": \"$releaseVersion\"")
         kotlin.test.assertFalse(json.contains("SNAPSHOT"))
         assertContains(sarif, "\"version\": \"2.1.0\"")
-        assertContains(sarif, "\"version\": \"0.1.1\"")
+        assertContains(sarif, "\"version\": \"$releaseVersion\"")
         kotlin.test.assertFalse(sarif.contains("SNAPSHOT"))
         assertContains(sarif, "src/Z%20file.kt")
         assertContains(sarif, "\"toolExecutionNotifications\"")

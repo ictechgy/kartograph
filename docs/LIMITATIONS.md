@@ -4,7 +4,13 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 안전하게 삭제할 수 있다는 판정이 아니다.** 실제 변경 전에는 출력 근거, runtime 경로, build variant와
 테스트를 사람이 확인해야 한다.
 
-## 0.1.x의 경계
+## 0.2.0의 경계
+
+- Hilt/Dagger의 확인된 생성 marker와 Hilt application sibling은 구분하지만 모든 generator를 인식하지는 않는다.
+  protobuf wrapper/Kotlin DSL, annotation 값·parameter만으로 참조되는 선언, 사용되는 중첩 class의 바깥
+  container에는 알려진 보고 한계가 있다. 공개 표본의 범위와 남은 진단은
+  [공개 검증 기록](PUBLIC-VALIDATION.md)에 명시한다. 보고는 삭제 승인이 아니다.
+  `dead`의 모든 보고 형식에도 generation marker·annotation value·enclosing declaration 한계를 포함한다.
 
 - `--include-private-members`는 JVM/source 모두 private인 method·field/property만 선택적으로 추가한다.
   reachable 비생성 owner가 하나로 확정되는 경우에 한하며 constructor/native/constant/file-facade는 제외한다.

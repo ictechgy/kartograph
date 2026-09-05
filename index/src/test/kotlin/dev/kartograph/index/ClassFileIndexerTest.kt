@@ -26,6 +26,49 @@ import org.objectweb.asm.Opcodes
 
 class ClassFileIndexerTest {
     @Test
+    fun `marks Dagger generated markers and enclosed classes but not name lookalikes`(@TempDir directory: Path) {
+        directory.resolve("Factory.class").writeBytes(annotatedClass(
+            "Factory.java", "dev/fixture/Factory", "Ldagger/internal/DaggerGenerated;",
+        ))
+        directory.resolve("Nested.class").writeBytes(ClassWriter(0).apply {
+            visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "dev/fixture/Factory${'$'}Nested", null, "java/lang/Object", null)
+            visitInnerClass("dev/fixture/Factory${'$'}Nested", "dev/fixture/Factory", "Nested", Opcodes.ACC_PUBLIC)
+            visitEnd()
+        }.toByteArray())
+        directory.resolve("Lookalike.class").writeBytes(duplicateClass(
+            "Lookalike.java", Opcodes.ACC_PUBLIC, "dev/fixture/Factory${'$'}Lookalike",
+        ))
+        val graph = ClassFileIndexer().index(listOf(directory))
+        assertTrue(graph.nodes.getValue(JvmNodeId.classId("dev/fixture/Factory")).synthesized)
+        assertTrue(graph.nodes.getValue(JvmNodeId.classId("dev/fixture/Factory${'$'}Nested")).synthesized)
+        assertFalse(graph.nodes.getValue(JvmNodeId.classId("dev/fixture/Factory${'$'}Lookalike")).synthesized)
+    }
+
+    @Test
+    fun `marks Hilt generation metadata without hiding an unannotated factory`(@TempDir directory: Path) {
+        val markers = listOf(
+            "dagger/hilt/codegen/OriginatingElement",
+            "dagger/hilt/processor/internal/aggregateddeps/AggregatedDeps",
+            "dagger/hilt/internal/componenttreedeps/ComponentTreeDeps",
+            "dagger/hilt/internal/aggregatedroot/AggregatedRoot",
+            "dagger/hilt/internal/processedrootsentinel/ProcessedRootSentinel",
+        )
+        markers.forEachIndexed { index, annotation ->
+            directory.resolve("Generated$index.class").writeBytes(annotatedClass(
+                "Generated$index.java", "dev/fixture/Generated$index", "L$annotation;",
+            ))
+        }
+        directory.resolve("User_Factory.class").writeBytes(duplicateClass(
+            "User_Factory.java", Opcodes.ACC_PUBLIC, "dev/fixture/User_Factory",
+        ))
+        val graph = ClassFileIndexer().index(listOf(directory))
+        markers.indices.forEach { index ->
+            assertTrue(graph.nodes.getValue(JvmNodeId.classId("dev/fixture/Generated$index")).synthesized)
+        }
+        assertFalse(graph.nodes.getValue(JvmNodeId.classId("dev/fixture/User_Factory")).synthesized)
+    }
+
+    @Test
     fun `indexes structural facts from real Kotlin class files`() {
         val graph = ClassFileIndexer().index(listOf(testClassesRoot))
         val callerClass = JvmNodeId.classId("dev/kartograph/index/fixture/Caller")

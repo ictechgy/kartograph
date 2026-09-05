@@ -6,6 +6,7 @@ out/
 *.jar
 !gradle/wrapper/gradle-wrapper.jar
 .kotlin/
+__pycache__/
 
 # IDE
 .idea/

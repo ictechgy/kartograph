@@ -42,6 +42,19 @@ public class ClassFileIndexer {
             }
         }
         val generatedSiblingNames = factsByClass.values.flatMapTo(mutableSetOf(), ClassFacts::generatedSiblingNames)
+        factsByClass.values.filter { facts ->
+            facts.nodes.any { node ->
+                node.id == JvmNodeId.classId(facts.internalName) && node.annotations.any(GENERATED_MARKERS::contains)
+            }
+        }.forEach { facts -> generatedSiblingNames.add(facts.internalName) }
+        // 이름의 '$'가 아니라 classfile의 실제 enclosing 관계만 전파한다.
+        val enclosedClasses = factsByClass.values.groupBy(ClassFacts::enclosingClass)
+        val pendingGenerated = ArrayDeque(generatedSiblingNames)
+        while (pendingGenerated.isNotEmpty()) {
+            enclosedClasses[pendingGenerated.removeFirst()].orEmpty().forEach { enclosed ->
+                if (generatedSiblingNames.add(enclosed.internalName)) pendingGenerated.addLast(enclosed.internalName)
+            }
+        }
         val classFacts = factsByClass.values.map { facts ->
             if (facts.internalName in generatedSiblingNames) facts.asSynthesized() else facts
         }
@@ -113,6 +126,7 @@ public class ClassFileIndexer {
 
 private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private lateinit var internalName: String
+    private var enclosingClass: String? = null
     private var classAccess: Int = 0
     private var innerClassAccess: Int? = null
     private var sourceFile: String? = null
@@ -147,7 +161,14 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     }
 
     override fun visitInnerClass(name: String, outerName: String?, innerName: String?, access: Int) {
-        if (name == internalName) innerClassAccess = access
+        if (name == internalName) {
+            innerClassAccess = access
+            if (outerName != null) enclosingClass = outerName
+        }
+    }
+
+    override fun visitOuterClass(owner: String, name: String?, descriptor: String?) {
+        enclosingClass = owner
     }
 
     override fun visitAnnotation(descriptor: String, visible: Boolean): AnnotationVisitor? {
@@ -351,7 +372,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     }
 
     fun facts(): ClassFacts {
-        val facts = ClassFacts(internalName, nodes, edges)
+        val facts = ClassFacts(internalName, nodes, edges, enclosingClass)
         val metadata = metadataValues?.toMetadata() ?: return facts
         return KotlinMetadataEnricher.enrich(facts, metadata)
     }
@@ -372,6 +393,17 @@ internal data class ClassFacts(
     val internalName: String,
     val nodes: List<GraphNode>,
     val edges: List<GraphEdge>,
+    val enclosingClass: String? = null,
+)
+
+// CLASS-retention 생성 marker는 이름만 닮은 사용자 선언을 숨기지 않는다.
+private val GENERATED_MARKERS = setOf(
+    "dagger/internal/DaggerGenerated",
+    "dagger/hilt/codegen/OriginatingElement",
+    "dagger/hilt/processor/internal/aggregateddeps/AggregatedDeps",
+    "dagger/hilt/internal/componenttreedeps/ComponentTreeDeps",
+    "dagger/hilt/internal/aggregatedroot/AggregatedRoot",
+    "dagger/hilt/internal/processedrootsentinel/ProcessedRootSentinel",
 )
 
 private fun ClassFacts.asSynthesized(): ClassFacts = copy(

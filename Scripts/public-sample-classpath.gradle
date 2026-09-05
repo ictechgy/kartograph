@@ -1,0 +1,19 @@
+// 공개 nowinandroid 표본 전용이다. source tree를 수정하지 않고 해석된 의존성을 build 아래 기록한다.
+allprojects {
+    afterEvaluate {
+        if (path == ':app') {
+            tasks.register('kartographValidationClasspath') {
+                doLast {
+                    def artifacts = configurations.getByName('demoDebugRuntimeClasspath').incoming.artifactView {
+                        attributes {
+                            attribute(Attribute.of('artifactType', String), 'android-classes-jar')
+                        }
+                    }.files
+                    def output = layout.buildDirectory.file('kartograph-validation-classpath.txt').get().asFile
+                    output.parentFile.mkdirs()
+                    output.text = artifacts.files.collect { it.absolutePath }.sort().join('\n')
+                }
+            }
+        }
+    }
+}

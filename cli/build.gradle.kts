@@ -42,12 +42,17 @@ distributions {
                 "PLAN.md",
                 "PRD.md",
                 "RESEARCH.md",
+                "PR-CHECK.md",
+                "PUBLIC-VALIDATION.md",
             )
             from(releaseDocumentation.map { document -> rootProject.file("docs/$document") }) {
                 into("docs")
             }
             from(rootProject.file("Skills")) {
                 into("Skills")
+            }
+            from(rootProject.file("Scripts/check-pr.py")) {
+                into("Scripts")
             }
         }
     }

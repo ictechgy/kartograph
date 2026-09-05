@@ -73,7 +73,8 @@ class KartographCliTest {
         val execution = execute("--version")
 
         assertEquals(ExitStatus.SUCCESS.code, execution.status)
-        assertEquals("kartograph 0.1.1\n", execution.output)
+        val releaseVersion = Path.of("../VERSION").readText().trim()
+        assertEquals("kartograph $releaseVersion\n", execution.output)
     }
 
     @Test

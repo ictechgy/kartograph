@@ -65,10 +65,15 @@ unzip -q "cli/build/distributions/kartograph-$VERSION.zip" -d "$TEMPORARY_DIRECT
 BINARY="$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/bin/kartograph"
 [[ "$("$BINARY" --version)" == "kartograph $VERSION" ]]
 Scripts/verify-cli-contract.sh "$BINARY"
+KARTOGRAPH_BINARY="$BINARY" KARTOGRAPH_PR_SCRIPT="$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/Scripts/check-pr.py" \
+    python3 -m unittest discover -s Scripts/tests -v
 
 tar -xf "cli/build/distributions/kartograph-$VERSION.tar" -C "$TEMPORARY_DIRECTORY"
 TAR_BINARY="$TEMPORARY_DIRECTORY/kartograph-$VERSION/bin/kartograph"
 [[ "$("$TAR_BINARY" --version)" == "kartograph $VERSION" ]]
+Scripts/verify-cli-contract.sh "$TAR_BINARY"
+KARTOGRAPH_BINARY="$TAR_BINARY" KARTOGRAPH_PR_SCRIPT="$TEMPORARY_DIRECTORY/kartograph-$VERSION/Scripts/check-pr.py" \
+    python3 -m unittest discover -s Scripts/tests -v
 [[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/docs/LIMITATIONS.md" ]]
 [[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/Skills/kartograph/SKILL.md" ]]
 [[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/THIRD_PARTY_NOTICES.md" ]]

@@ -8,7 +8,17 @@
 
 Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물에서 만들고, 그 위에서 미사용 코드 · 순환 · 레이어 규칙 · 지표를 근거와 함께 답하는 CLI. [cartograph](../cartograph)(Swift)의 자매. 자세한 것은 `docs/PRD.md`.
 
-## 현재 상태 — 0.1.0 공개, 0.1.1 max-review patch 준비 중
+## 현재 상태 — 0.2.0 릴리스 작업
+
+- 0.1.1은 공개됐다. private member opt-in PR #3은 main에 merge됐다.
+- 작업 branch: `feat/pr-adoption-v0.2.0`. VERSION은 0.2.0이며 태그/배포 결과는 GitHub Releases에서 확인한다.
+- `Scripts/check-pr.py`는 기준 commit baseline과 전체 그래프로 새 진단을 검사한다. PR baseline 확장을
+  무시하고 untouched 파일의 새 미사용도 보고한다. Python/Git/javac/실제 배포 CLI 회귀 검증이 CI에 있다.
+- nowinandroid에서 확인한 Hilt/Dagger 생성 marker·nested class와 Hilt component 보존을 추가했다.
+- 공개 검증과 **아직 남은** protobuf/annotation-value/container 보고 한계는 `docs/PUBLIC-VALIDATION.md`에 있다.
+- 아래는 0.1.x 구현 이력이다. 과거 커버리지·PR 상태를 현재 배포 상태로 해석하지 않는다.
+
+## 0.1.x 구현 이력
 
 - 커밋 `3886900 docs: Phase 0 원천 결정 완료`
 - 주 원천은 **ASM JVM bytecode + 공식 `kotlin-metadata-jvm`**이다
@@ -130,10 +140,9 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 
 ## 다음 할 일 (순서대로)
 
-1. 0.1.1 전체 JDK/fixture/release 검증과 self-analysis 수치를 갱신한다
-2. `packet-ask` GLM max diff review와 blocker/major 후속 리뷰를 통과한다
-3. conventional commit 후 공개 저장소에 PR을 만들고 GitHub Actions를 확인한다
-4. Plugin Portal의 0.1.0 승인 후 빈 프로젝트 설치를 확인하고, 별도 승인으로 0.1.1을 tag한다
+1. 0.2.0의 최종 GLM 후속 리뷰, JDK/fixture/release/self-analysis 검증 결과와 PR CI를 확인한다
+2. 승인된 공개 PR merge와 v0.2.0 tag/Release/Plugin Portal 제출을 완료하고 공개 설치 가능 여부를 별도로 확인한다
+3. 다음 정확도 증분: protobuf 생성 출처, annotation 값·parameter 참조, nested type의 source container를 코퍼스부터 확장한다
 
 ## 효과가 있었던 방식
 
