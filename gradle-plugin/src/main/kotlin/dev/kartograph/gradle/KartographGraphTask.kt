@@ -25,7 +25,7 @@ import org.gradle.work.DisableCachingByDefault
  *
  * 다른 도구가 심볼과 파일을 함께 소비할 수 있게 하는 보고 task이며, 삭제 판정이나 도달성 정책을 담지 않는다.
  */
-@DisableCachingByDefault(because = "Source path resolution reads project sources that are not declared inputs")
+@DisableCachingByDefault(because = "Opting into source path resolution reads project sources that cannot be declared as inputs")
 public abstract class KartographGraphTask : DefaultTask() {
     @get:Classpath
     public abstract val projectJars: ListProperty<RegularFile>

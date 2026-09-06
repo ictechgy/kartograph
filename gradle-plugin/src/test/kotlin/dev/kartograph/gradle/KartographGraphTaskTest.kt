@@ -8,7 +8,6 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 import org.gradle.testfixtures.ProjectBuilder
 import org.junit.jupiter.api.io.TempDir
 
@@ -47,8 +46,8 @@ class KartographGraphTaskTest {
             document,
             """"path": "src/test/kotlin/KartographGraphTaskTest.kt", "pathKind": "projectRelative"""",
         )
-        // 확정하지 못한 정점 수는 계량된 한계로 함께 보고한다.
-        assertTrue(document.contains("unresolved-source-paths: ") || document.contains("missing-source-paths: "))
+        // project 안에 source가 없는 나머지 test class는 확정하지 못하므로 계량된 한계로 보고한다.
+        assertContains(document, "unresolved-source-paths: ")
         assertFalse(document.contains(projectRoot.toString()))
     }
 

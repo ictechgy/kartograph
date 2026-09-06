@@ -14,7 +14,12 @@ import java.nio.file.attribute.BasicFileAttributes
  * class debug 정보가 파일 이름만 남겼을 때 `--since` 매칭과 그래프 경로 해석의 모호성을 줄이는 데 쓴다.
  */
 public object SourcePathIndex {
-    /** 빌드·의존성 디렉터리는 순회 자체를 건너뛰고 파일명별 source 경로를 모은다. */
+    /**
+     * 빌드·의존성 디렉터리는 순회 자체를 건너뛰고 파일명별 source 경로를 모은다.
+     *
+     * 돌려주는 값은 대조에 쓰는 **절대 정규화 경로**다. 보고서나 교환 문서에 그대로 실으면 로컬 경로가
+     * 노출되므로, 노출 표면으로 나가는 값은 [resolve]처럼 project 기준으로 상대화한 뒤에 쓴다.
+     */
     public fun byFileName(projectRoot: Path): Map<String, Set<Path>> {
         if (!Files.isDirectory(projectRoot)) return emptyMap()
         val pathsByFileName = mutableMapOf<String, MutableSet<Path>>()
