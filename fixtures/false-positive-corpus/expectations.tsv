@@ -40,3 +40,10 @@ retain	class:dev/kartograph/fixture/SignatureKept	KEEP_RULE	app/rules/included.p
 retain	class:dev/kartograph/fixture/PlainSignatureKept	KEEP_RULE	app/rules/included.pro	11	PlainSignatureKept	keep-plain-member-signature
 report	class:dev/kartograph/fixture/ActuallyUnused	UNREACHABLE	app/src/main/kotlin/dev/kartograph/fixture/RetentionFixtures.kt	9	class ActuallyUnused	negative-unannotated
 report	class:dev/kartograph/fixture/OpenFinalRule	UNREACHABLE	app/src/main/kotlin/dev/kartograph/fixture/RetentionFixtures.kt	46	open class OpenFinalRule	negative-modifier
+retain	class:dev/kartograph/fixture/TopLevelAnchor	KEEP_ANNOTATION	app/src/main/kotlin/dev/kartograph/fixture/TopLevelFixtures.kt	26	@Keep	top-level-anchor
+reachable	method:dev/kartograph/fixture/TopLevelFixturesKt#usedTopLevelHelper()Ljava/lang/String;	TOP_LEVEL_CALL	app/src/main/kotlin/dev/kartograph/fixture/TopLevelFixtures.kt	18	fun usedTopLevelHelper	top-level-used
+reachable	class:dev/kartograph/fixture/AnnotationValueTarget	ANNOTATION_VALUE	app/src/main/kotlin/dev/kartograph/fixture/TopLevelFixtures.kt	10	class AnnotationValueTarget	annotation-value-reference
+reachable	class:dev/kartograph/fixture/EnclosingContainer	ENCLOSING_CONTAINER	app/src/main/kotlin/dev/kartograph/fixture/TopLevelFixtures.kt	12	class EnclosingContainer	enclosing-container-reference
+reachable	class:dev/kartograph/fixture/ForNameTarget	REFLECTION_CONSTANT	app/src/main/kotlin/dev/kartograph/fixture/TopLevelFixtures.kt	16	class ForNameTarget	reflection-constant-target
+report	method:dev/kartograph/fixture/TopLevelFixturesKt#unusedTopLevelFunction()Ljava/lang/String;	UNREACHABLE	app/src/main/kotlin/dev/kartograph/fixture/TopLevelFixtures.kt	20	fun unusedTopLevelFunction	negative-top-level-function
+report	method:dev/kartograph/fixture/CompilerGeneratedFixturesKt#compilerGeneratedSequence()Lkotlin/sequences/Sequence;	UNREACHABLE	app/src/main/kotlin/dev/kartograph/fixture/CompilerGeneratedFixtures.kt	3	fun compilerGeneratedSequence	negative-top-level-sequence
