@@ -2,6 +2,7 @@ package dev.kartograph.index
 
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.JvmModifier
+import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.Visibility
 import dev.kartograph.index.fixture.Caller
@@ -15,6 +16,7 @@ import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -566,6 +568,25 @@ class ClassFileIndexerTest {
             edge.source == indirect && edge.kind == EdgeKind.REFERENCE &&
                 edge.target == JvmNodeId.classId("dev/fixture/LiteralTarget")
         })
+    }
+
+    @Test
+    fun `reduces a source file attribute that carries a path to its file name`(@TempDir directory: Path) {
+        // SourceFile attribute는 임의 문자열이라 후처리 도구가 절대경로를 남길 수 있다.
+        directory.resolve("Absolute.class").writeBytes(
+            duplicateClass("/Users/someone/private/Absolute.java", 0, "dev/fixture/Absolute"),
+        )
+        directory.resolve("Windows.class").writeBytes(
+            duplicateClass("""C:\\agent\\work\\Windows.java""", 0, "dev/fixture/Windows"),
+        )
+        directory.resolve("Nameless.class").writeBytes(duplicateClass("/", 0, "dev/fixture/Nameless"))
+
+        val graph = ClassFileIndexer().index(listOf(directory))
+
+        assertEquals("Absolute.java", graph.node(NodeId("class:dev/fixture/Absolute"))?.location?.path)
+        assertEquals("Windows.java", graph.node(NodeId("class:dev/fixture/Windows"))?.location?.path)
+        // 남는 파일 이름이 없으면 위치를 만들지 않는다.
+        assertNull(graph.node(NodeId("class:dev/fixture/Nameless"))?.location)
     }
 
     private val testClassesRoot: Path

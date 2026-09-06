@@ -462,8 +462,15 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             GraphEdge(source, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
     }
 
+    /**
+     * JVM `SourceFile` attribute는 임의 문자열이라 컴파일러나 후처리 도구가 절대경로를 남길 수 있다.
+     * 그래프에 들어가기 전에 파일 이름 성분만 남겨, 보고서·교환 문서·baseline 지문 어디로도 빌드 기계의
+     * 로컬 경로가 흘러가지 않게 한다. 남는 이름이 없으면 위치를 만들지 않는다.
+     */
     private fun sourceLocation(line: Int? = null): SourceLocation? =
-        sourceFile?.takeIf(String::isNotBlank)?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
+        sourceFile?.substringAfterLast('/')?.substringAfterLast('\\')
+            ?.takeIf(String::isNotBlank)
+            ?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
 }
 
 internal data class ClassFacts(

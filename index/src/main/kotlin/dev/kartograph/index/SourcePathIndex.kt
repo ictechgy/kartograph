@@ -57,29 +57,58 @@ public object SourcePathIndex {
         var located = 0
         var unresolved = 0
         graph.nodeIds.forEach { nodeId ->
-            val sourceFileName = graph.nodes.getValue(nodeId).location?.path ?: return@forEach
+            val node = graph.nodes.getValue(nodeId)
+            val sourceFileName = node.location?.path ?: return@forEach
             located++
             // 이름이 여러 파일과 맞거나(모호) project 밖에서 컴파일된 class(무일치)는 확정하지 않는다.
             val match = pathsByFileName[sourceFileName]?.singleOrNull()
-            if (match == null) {
+            // 이름이 같기만 한 무관한 파일을 사실로 단언하지 않도록 선언의 package와 후보의 위치도 대조한다.
+            if (match == null || !matchesPackage(node.id, root.relativize(match))) {
                 unresolved++
                 return@forEach
             }
             // 교환 문서가 플랫폼과 무관하게 같아지도록 항상 '/'로 잇는다.
             byNodeId[nodeId] = root.relativize(match).joinToString("/")
         }
-        val missing = graph.nodeCount - located
         return SourcePathResolution(
             byNodeId = byNodeId,
             limitations = buildList {
                 if (unresolved > 0) add(
                     "unresolved-source-paths: $unresolved of $located located node(s) did not match exactly one project source file",
                 )
-                if (missing > 0) add(
-                    "missing-source-paths: $missing of ${graph.nodeCount} node(s) have no source file in the class debug attributes",
-                )
+                addAll(missingSourcePaths(graph))
             },
         )
+    }
+
+    /**
+     * 위치를 복원하지 못한 정점 수를 계량된 한계로 만든다.
+     *
+     * 경로 문자열이 아니라 개수만 내므로 project를 몰라도 계산할 수 있다. 경로 해석을 요청하지 않았다고
+     * 해서 "알릴 한계가 없다"고 보고하지 않도록, 경로 해석과 분리해 항상 쓸 수 있게 둔다.
+     */
+    public fun missingSourcePaths(graph: CodeGraph): List<String> {
+        val missing = graph.nodeIds.count { nodeId -> graph.nodes.getValue(nodeId).location == null }
+        if (missing == 0) return emptyList()
+        return listOf(
+            "missing-source-paths: $missing of ${graph.nodeCount} node(s) have no source file in the class debug attributes",
+        )
+    }
+
+    /**
+     * 선언의 JVM package가 후보 source 파일이 놓인 디렉터리의 suffix인지 확인한다.
+     *
+     * basename만 같은 다른 모듈·project 밖 class가 무관한 파일로 확정되는 것을 막는다.
+     * package와 디렉터리가 다른 것은 Kotlin에서 합법이므로, 일치하지 않으면 틀렸다고 단정하지 않고
+     * 확정만 포기해 보수적으로 미확정으로 센다. default package는 대조할 것이 없어 통과시킨다.
+     */
+    private fun matchesPackage(nodeId: NodeId, relativePath: Path): Boolean {
+        val owner = nodeId.value.substringAfter(':').substringBefore('#')
+        val packageSegments = owner.split('/').dropLast(1)
+        if (packageSegments.isEmpty()) return true
+        val directorySegments = relativePath.map(Path::toString).dropLast(1)
+        if (directorySegments.size < packageSegments.size) return false
+        return directorySegments.takeLast(packageSegments.size) == packageSegments
     }
 
     /**
