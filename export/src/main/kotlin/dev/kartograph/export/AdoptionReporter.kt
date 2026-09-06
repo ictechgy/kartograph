@@ -33,7 +33,9 @@ public object AdoptionReporter {
 
     private fun text(findings: Collection<Finding>, limitations: Collection<AnalysisLimitation>): String = buildString {
         findings.sorted().forEach { finding ->
-            append("unreachable\t${finding.nodeId}\t${finding.location.toPlainTextLocation()}\n")
+            append("unreachable\t${finding.nodeId}\t${finding.location.toPlainTextLocation()}")
+            if (finding.testOnly) append("\ttest-only")
+            append('\n')
         }
         limitations.sortedBy(AnalysisLimitation::name)
             .forEach { append("limitation\t${it.name}\t${it.description}\n") }
@@ -45,7 +47,7 @@ public object AdoptionReporter {
     ): String = buildString {
         findings.sorted().forEach { finding ->
             val location = finding.location.toPlainTextLocation().takeUnless { it == "-" }?.plus(": ").orEmpty()
-            append("${location}warning: ${finding.nodeId} is unreachable [kartograph.dead]\n")
+            append("${location}warning: ${finding.unreachableMessage()} [kartograph.dead]\n")
         }
         limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
             append("kartograph limitation ${limitation.name}: ${limitation.description}\n")
@@ -66,7 +68,7 @@ public object AdoptionReporter {
                 add("title=kartograph dead")
             }
             append("::warning ${properties.joinToString(",")}::")
-            append(githubMessage("${finding.nodeId} is unreachable")).append('\n')
+            append(githubMessage(finding.unreachableMessage())).append('\n')
         }
         limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
             append("::notice title=kartograph limitation ${limitation.name}::")
@@ -88,9 +90,11 @@ public object AdoptionReporter {
             sorted.forEachIndexed { index, finding ->
                 append("    {\n      \"location\": ")
                 appendLocation(finding)
-                append(",\n      \"message\": \"").append(jsonEscape("${finding.nodeId} is unreachable"))
+                append(",\n      \"message\": \"").append(jsonEscape(finding.unreachableMessage()))
                 append("\",\n      \"nodeId\": \"").append(jsonEscape(finding.nodeId.toString()))
-                append("\",\n      \"ruleId\": \"dead\",\n      \"state\": \"unreachable\"\n    }")
+                append("\",\n      \"ruleId\": \"dead\",\n      \"state\": \"unreachable\"")
+                if (finding.testOnly) append(",\n      \"testOnly\": true")
+                append("\n    }")
                 if (index != sorted.lastIndex) append(',')
                 append('\n')
             }
@@ -148,8 +152,10 @@ public object AdoptionReporter {
                     append(jsonEscape(uriReference(location.path))).append("\"}, \"region\": {\"startColumn\": ")
                     append(location.column ?: 1).append(", \"startLine\": ").append(location.line ?: 1).append("}}}")
                 }
-                append("], \"message\": {\"text\": \"").append(jsonEscape("${finding.nodeId} is unreachable"))
-                append("\"}, \"ruleId\": \"dead\"}")
+                append("], \"message\": {\"text\": \"").append(jsonEscape(finding.unreachableMessage()))
+                append("\"}, \"ruleId\": \"dead\"")
+                if (finding.testOnly) append(", \"properties\": {\"testOnly\": true}")
+                append("}")
                 if (index != sorted.lastIndex) append(',')
                 append('\n')
             }
@@ -163,4 +169,8 @@ public object AdoptionReporter {
     private fun uriReference(path: String): String = URI(null, null, path, null).rawPath
     private fun githubMessage(value: String): String = value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A").replace(":", "%3A")
     private fun githubProperty(value: String): String = githubMessage(value).replace(",", "%2C")
+
+    // test-only finding은 production graph에서는 도달 불가하나 test가 참조한다는 사실을 메시지에 덧붙인다.
+    private fun Finding.unreachableMessage(): String =
+        "$nodeId is unreachable" + if (testOnly) " (used only by tests)" else ""
 }

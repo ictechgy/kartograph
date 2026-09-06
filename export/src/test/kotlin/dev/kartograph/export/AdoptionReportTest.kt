@@ -9,6 +9,7 @@ import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class AdoptionReportTest {
     private val findings = listOf(
@@ -75,6 +76,34 @@ class AdoptionReportTest {
         assertContains(sarif, "src/Z%20file.kt")
         assertContains(sarif, "\"toolExecutionNotifications\"")
         assertEquals(json.indexOf("class:a/Unused") < json.indexOf("class:z/Unused"), true)
+    }
+
+    @Test
+    fun `test-only findings are annotated across report formats without changing plain findings`() {
+        val testOnly = Finding(NodeId("class:t/OnlyTestUsed"), SourceLocation("src/T.kt", 5), testOnly = true)
+        val plain = Finding(NodeId("class:p/Unused"), SourceLocation("src/P.kt", 2))
+        val both = listOf(testOnly, plain)
+        val noLimitations = emptyList<AnalysisLimitation>()
+
+        val text = AdoptionReporter.render(ReportFormat.TEXT, both, noLimitations, 0)
+        assertContains(text, "unreachable\tclass:t/OnlyTestUsed\tsrc/T.kt:5\ttest-only\n")
+        assertContains(text, "unreachable\tclass:p/Unused\tsrc/P.kt:2\n")
+
+        val gradle = AdoptionReporter.render(ReportFormat.GRADLE, both, noLimitations, 0)
+        assertContains(gradle, "class:t/OnlyTestUsed is unreachable (used only by tests) [kartograph.dead]")
+        assertContains(gradle, "class:p/Unused is unreachable [kartograph.dead]")
+
+        val github = AdoptionReporter.render(ReportFormat.GITHUB_ACTIONS, both, noLimitations, 0)
+        assertContains(github, "class%3At/OnlyTestUsed is unreachable (used only by tests)")
+
+        val json = AdoptionReporter.render(ReportFormat.JSON, both, noLimitations, 0)
+        assertContains(json, "\"testOnly\": true")
+        assertContains(json, "class:t/OnlyTestUsed is unreachable (used only by tests)")
+        assertFalse(json.contains("\"testOnly\": false"))
+
+        val sarif = AdoptionReporter.render(ReportFormat.SARIF, both, noLimitations, 0)
+        assertContains(sarif, "\"properties\": {\"testOnly\": true}")
+        assertEquals(1, Regex("\"testOnly\": true").findAll(sarif).count())
     }
 
     @Test
