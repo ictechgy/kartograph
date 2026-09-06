@@ -70,10 +70,16 @@ class DeadFindingsTest {
         val privateUnused = topLevel("privateUnused", visibility = Visibility.PRIVATE)
         val syntheticBridge = topLevel("bridge", synthesized = true)
         val launcherMain = topLevel("main")
+        val suspendMain = GraphNode(NodeId("method:FacadeKt#main(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;"),
+            "main", NodeKind.METHOD, visibility = Visibility.PUBLIC, jvmVisibility = Visibility.PUBLIC,
+            jvmModifiers = setOf(JvmModifier.STATIC))
+        val facadeInit = GraphNode(NodeId("method:FacadeKt#<init>()V"), "<init>", NodeKind.CONSTRUCTOR,
+            visibility = Visibility.PRIVATE, jvmVisibility = Visibility.PRIVATE)
         val regularPublicMethod = GraphNode(NodeId("method:Root#orphan()V"), "orphan", NodeKind.METHOD,
             visibility = Visibility.PUBLIC, jvmVisibility = Visibility.PUBLIC)
         val facadeMembers = listOf(
             used, unused, inlined, accessor, native, privateUnused, syntheticBridge, launcherMain,
+            suspendMain, facadeInit,
         )
         val graph = CodeGraph(
             listOf(root, facade, regularPublicMethod) + facadeMembers,
