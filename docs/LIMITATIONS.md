@@ -4,7 +4,7 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 안전하게 삭제할 수 있다는 판정이 아니다.** 실제 변경 전에는 출력 근거, runtime 경로, build variant와
 테스트를 사람이 확인해야 한다.
 
-## 0.2.0의 경계
+## 현재 릴리스의 경계
 
 - Hilt/Dagger의 확인된 생성 marker와 Hilt application sibling은 구분하지만 모든 generator를 인식하지는 않는다.
   protobuf generated wrapper/Kotlin DSL처럼 확인된 marker가 없는 생성물은 출처를 명시적으로 전달하는 설계가
@@ -59,9 +59,12 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   그 source file 이름을 `--project` 안에서 유일하게 일치하는 파일에만
   상대경로로 확정한다. 같은 이름이 여러 모듈에 있거나 project 밖에서 컴파일된 class는 확정하지 않고 파일 이름을
   그대로 두며, 각 위치의 출처를 `pathKind`(`projectRelative`/`sourceFileName`)로, 확정하지 못한 수를
-  `unresolved-source-paths`·`missing-source-paths` 한계로 함께 싣는다. `SourceFile` attribute는 임의 문자열이라
-  절대경로가 담길 수 있으므로, 해석되지 않은 값은 파일 이름 성분만 남겨 싣고 남는 이름이 없으면 위치를 생략한다.
-  절대경로는 어떤 형식에서도 내보내지 않는다.
+  `unresolved-source-paths`·`missing-source-paths` 한계로 함께 싣는다. 이름이 유일해도 선언의 package가 후보
+  파일이 놓인 디렉터리의 suffix가 아니면 확정하지 않는다(다른 모듈이나 project 밖 class가 이름만 같은 파일로
+  단언되지 않게 한다). package와 디렉터리가 다른 합법적인 Kotlin 배치도 이 때문에 미확정으로 남을 수 있다.
+  `SourceFile` attribute는 임의 문자열이라 절대경로가 담길 수 있으므로 그래프에 들어가기 전에 파일 이름 성분만
+  남기며, 남는 이름이 없으면 위치를 만들지 않는다. 따라서 graph·dead·query·baseline 어느 표면에서도 빌드 기계의
+  절대경로를 내보내지 않는다. `missing-source-paths`는 개수만으로 계산되므로 경로 해석을 요청하지 않아도 보고한다.
   Gradle task의 project root는 Gradle project 디렉터리이므로 경로도 그 기준이다.
   경로 인덱스는 `build` 등 산출물 디렉터리를 순회에서 제외하므로, KSP/kapt가 그 안에 만든 생성 source와 이름이
   같은 project source가 있으면 생성 선언이 사람이 쓴 파일로 확정될 수 있다. 확정된 경로도 그래프가 아니라 파일

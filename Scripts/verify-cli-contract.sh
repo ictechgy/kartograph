@@ -77,6 +77,18 @@ echo "종료 코드 2 — 도구 실패"
 expect_status 2 "없는 class root" graph --classes "$TEMPORARY_DIRECTORY/missing"
 expect_status 2 "없는 project root" graph --classes "$TEMPORARY_DIRECTORY" --format json --include-paths --project "$TEMPORARY_DIRECTORY/missing"
 
+# 예기치 못한 실패가 strict finding 코드(1)로 새지 않는지 확인한다. root는 권한 검사를 우회하므로 건너뛴다.
+if [[ "$(id -u)" != "0" ]]; then
+    UNREADABLE="$TEMPORARY_DIRECTORY/unreadable"
+    mkdir -p "$UNREADABLE/locked"
+    chmod 000 "$UNREADABLE/locked"
+    expect_status 2 "읽을 수 없는 class root" graph --classes "$UNREADABLE"
+    chmod 755 "$UNREADABLE/locked"
+    rm -rf "$UNREADABLE"
+else
+    echo "  skip      읽을 수 없는 class root (root 권한)"
+fi
+
 echo "출력 내용"
 expect_output "kartograph" "도움말에 도구 이름" --help
 expect_output "Exit codes:" "도움말에 종료 코드 표" --help

@@ -93,6 +93,29 @@ tasks.jar {
 publishing {
     publications.withType<MavenPublication>().configureEach {
         if (name == "pluginMaven") {
+            // 게시되는 POM이 소비자에게 출처와 라이선스를 알리도록 최소 메타데이터를 채운다.
+            pom {
+                name.set("kartograph Gradle plugin")
+                description.set("Dependency graphs and unreachable-declaration reports for Kotlin and Android builds.")
+                url.set("https://github.com/ictechgy/kartograph")
+                licenses {
+                    license {
+                        name.set("MIT License")
+                        url.set("https://github.com/ictechgy/kartograph/blob/main/LICENSE")
+                    }
+                }
+                developers {
+                    developer {
+                        id.set("ictechgy")
+                        url.set("https://github.com/ictechgy")
+                    }
+                }
+                scm {
+                    url.set("https://github.com/ictechgy/kartograph")
+                    connection.set("scm:git:https://github.com/ictechgy/kartograph.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/ictechgy/kartograph.git")
+                }
+            }
             pom.withXml {
                 val dependencyContainers = asNode().get("dependencies") as NodeList
                 dependencyContainers.filterIsInstance<Node>().forEach { dependencies ->

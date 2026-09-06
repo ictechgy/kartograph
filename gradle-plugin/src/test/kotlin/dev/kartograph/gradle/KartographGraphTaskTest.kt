@@ -33,8 +33,8 @@ class KartographGraphTaskTest {
 
     @Test
     fun `resolves project relative paths only when the build opts in`(@TempDir projectRoot: Path) {
-        // task가 읽는 class는 이 test 산출물이므로, 같은 이름의 source를 project 안에 두면 확정 대상이 된다.
-        val source = projectRoot.resolve("src/test/kotlin/KartographGraphTaskTest.kt")
+        // task가 읽는 class는 이 test 산출물이므로, 같은 이름의 source를 선언 package 경로에 두면 확정 대상이 된다.
+        val source = projectRoot.resolve("src/test/kotlin/dev/kartograph/gradle/KartographGraphTaskTest.kt")
         source.parent.createDirectories()
         source.writeText("class KartographGraphTaskTest")
         val task = configuredTask(projectRoot, includeSourcePaths = true)
@@ -44,7 +44,7 @@ class KartographGraphTaskTest {
         val document = graphDocument(projectRoot)
         assertContains(
             document,
-            """"path": "src/test/kotlin/KartographGraphTaskTest.kt", "pathKind": "projectRelative"""",
+            """"path": "src/test/kotlin/dev/kartograph/gradle/KartographGraphTaskTest.kt", "pathKind": "projectRelative"""",
         )
         // project 안에 source가 없는 나머지 test class는 확정하지 못하므로 계량된 한계로 보고한다.
         assertContains(document, "unresolved-source-paths: ")
