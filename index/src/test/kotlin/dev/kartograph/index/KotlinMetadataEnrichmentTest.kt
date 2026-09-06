@@ -1,5 +1,6 @@
 package dev.kartograph.index
 
+import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.Visibility
@@ -85,6 +86,41 @@ class KotlinMetadataEnrichmentTest {
         assertTrue("dev/kartograph/index/fixture/Marker" in caller?.annotations.orEmpty())
         assertTrue("kotlin/Metadata" in caller?.annotations.orEmpty())
         assertTrue("dev/kartograph/index/fixture/Marker" in property?.annotations.orEmpty())
+    }
+
+    @Test
+    fun `file facade classes carry the facade attribute and property accessors are marked`() {
+        val graph = ClassFileIndexer().index(listOf(testClassesRoot))
+        val facade = graph.node(JvmNodeId.classId("dev/kartograph/index/fixture/FacadeFixturesKt"))
+
+        assertEquals(true, facade?.synthesized)
+        assertTrue(NodeAttribute.FILE_FACADE in facade?.attributes.orEmpty())
+        val getter = graph.node(
+            JvmNodeId.methodId("dev/kartograph/index/fixture/FacadeFixturesKt", "getTopLevelProperty", "()I"),
+        )
+        val setter = graph.node(
+            JvmNodeId.methodId("dev/kartograph/index/fixture/FacadeFixturesKt", "setTopLevelProperty", "(I)V"),
+        )
+        assertTrue(NodeAttribute.PROPERTY_ACCESSOR in getter?.attributes.orEmpty())
+        assertTrue(NodeAttribute.PROPERTY_ACCESSOR in setter?.attributes.orEmpty())
+        assertTrue(NodeAttribute.INLINE_FUNCTION in graph.node(
+            JvmNodeId.methodId(
+                "dev/kartograph/index/fixture/FacadeFixturesKt",
+                "inlinedTopLevelFunction",
+                "(Lkotlin/jvm/functions/Function0;)I",
+            ),
+        )?.attributes.orEmpty())
+    }
+
+    @Test
+    fun `real Kotlin KClass annotation values connect holder and referenced class`() {
+        val graph = ClassFileIndexer().index(listOf(testClassesRoot))
+
+        assertTrue(graph.edges.any { edge ->
+            edge.source == JvmNodeId.classId("dev/kartograph/index/fixture/AnnotationValueHolder") &&
+                edge.target == JvmNodeId.classId("dev/kartograph/index/fixture/AnnotationValueReferenced") &&
+                edge.kind == EdgeKind.REFERENCE
+        })
     }
 
     private val testClassesRoot: Path

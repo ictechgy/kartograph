@@ -22,6 +22,8 @@ import kotlin.metadata.kind
 import kotlin.metadata.visibility
 import kotlin.metadata.jvm.KotlinClassMetadata
 import kotlin.metadata.jvm.fieldSignature
+import kotlin.metadata.jvm.getterSignature
+import kotlin.metadata.jvm.setterSignature
 import kotlin.metadata.jvm.signature
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.Opcodes
@@ -35,6 +37,9 @@ internal object KotlinMetadataEnricher {
             is KotlinClassMetadata.Class -> enrichClass(facts.internalName, metadata.kmClass, nodes)
             is KotlinClassMetadata.FileFacade -> enrichPackage(facts.internalName, metadata.kmPackage, nodes)
             is KotlinClassMetadata.MultiFileClassPart -> enrichPackage(facts.internalName, metadata.kmPackage, nodes)
+            // Multi-file facade는 part 선언으로 위임하는 합성 인프라다. part만 보고 대상으로 남긴다.
+            is KotlinClassMetadata.MultiFileClassFacade ->
+                nodes.patch(JvmNodeId.classId(facts.internalName)) { node -> node.copy(synthesized = true) }
             is KotlinClassMetadata.SyntheticClass -> {
                 nodes.replaceAll { _, node -> node.copy(synthesized = true) }
                 val classId = JvmNodeId.classId(facts.internalName)
@@ -69,9 +74,23 @@ internal object KotlinMetadataEnricher {
     }
 
     private fun enrichPackage(owner: String, kmPackage: KmPackage, nodes: MutableMap<NodeId, GraphNode>) {
-        nodes.patch(JvmNodeId.classId(owner)) { node -> node.copy(synthesized = true) }
+        nodes.patch(JvmNodeId.classId(owner)) { node ->
+            node.copy(synthesized = true, attributes = node.attributes + NodeAttribute.FILE_FACADE)
+        }
         kmPackage.functions.forEach { function -> enrichFunction(owner, function, nodes) }
-        kmPackage.properties.forEach { property -> enrichProperty(owner, property, nodes) }
+        kmPackage.properties.forEach { property ->
+            enrichProperty(owner, property, nodes)
+            markPropertyAccessors(owner, property, nodes)
+        }
+    }
+
+    // top-level property 접근자는 property를 대신하는 인프라이므로 따로 보고하지 않게 표시한다.
+    private fun markPropertyAccessors(owner: String, property: KmProperty, nodes: MutableMap<NodeId, GraphNode>) {
+        listOfNotNull(property.getterSignature, property.setterSignature).forEach { signature ->
+            nodes.patch(JvmNodeId.methodId(owner, signature.name, signature.descriptor)) { node ->
+                node.copy(attributes = node.attributes + NodeAttribute.PROPERTY_ACCESSOR)
+            }
+        }
     }
 
     private fun enrichFunction(owner: String, function: KmFunction, nodes: MutableMap<NodeId, GraphNode>) {
