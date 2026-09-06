@@ -40,6 +40,10 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   추측하지 않는다.
 - 분석은 전달된 build variant의 class root만 나타낸다. 다른 flavor, build type, test, dynamic feature의 사실을
   자동으로 합치지 않는다.
+- `dead --test-classes`는 production root에서 도달 불가이나 test root에서만 도달되는 finding을 `(used only by
+  tests)`로 **표시**만 한다. 표시는 억제·삭제 승인이 아니며 strict/baseline에서 여전히 finding으로 계산한다.
+  test root를 전달하지 않으면 이 구분을 볼 수 없고, Gradle plugin은 아직 test variant를 연결하지 않는다(CLI 전용).
+  test-only 여부는 전달된 test class root와 production root가 같은 variant/컴파일 기준일 때만 신뢰할 수 있다.
 - Kotlin compiler/Compose/KSP/kapt가 만든 선언은 `synthesized`로 구분하지만 모든 code generator를 식별하지는 않는다.
 - Kotlin file facade 자체는 synthesized infrastructure로 제외하지만, 단일 file facade와 multi-file part의 도달
   불가한 top-level 함수는 finding으로 보고한다. `@JvmMultifileClass` facade의 위임 method는 synthesized로
