@@ -23,4 +23,10 @@ public abstract class KartographExtension {
 
     /** 기존 finding을 억제해 점진적으로 도입할 때 쓰는 baseline이다. */
     public abstract val baseline: RegularFileProperty
+
+    /**
+     * 그래프 JSON에 project 기준 source 경로를 해석해 실을지 선택한다.
+     * 요청하지 않은 경로 노출을 만들지 않도록 CLI의 `--include-paths`와 같이 opt-in이다.
+     */
+    public abstract val includeSourcePaths: Property<Boolean>
 }

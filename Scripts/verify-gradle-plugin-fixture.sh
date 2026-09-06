@@ -74,3 +74,33 @@ awk -F '\t' '$1 == "unreachable" && $2 ~ /:dev\/kartograph\/fixture\/PrivateMemb
     "$REPORT" | LC_ALL=C sort >"$ACTUAL_REPORTS"
 diff -u "$EXPECTED_REPORTS" "$ACTUAL_REPORTS" || exit 1
 echo "Private Kotlin members and configuration cache verified"
+
+# 그래프 교환 문서 task가 실제 variant artifact에서 결정적 JSON과 경로 해석 opt-in을 지키는지 확인한다.
+GRAPH_REPORT="$FIXTURE_ROOT/app/build/reports/kartograph/debug-graph.json"
+./gradlew --no-daemon --console=plain --configuration-cache -p "$FIXTURE_ROOT" \
+    :app:kartographGraphDebug >/dev/null || exit 1
+if [[ ! -f "$GRAPH_REPORT" ]]; then
+    echo "kartograph graph document was not produced" >&2
+    exit 1
+fi
+grep -Fq -- '"format": "code-graph"' "$GRAPH_REPORT" || { echo "graph document is not a code-graph exchange document" >&2; exit 1; }
+grep -Fq -- '"usr": "class:dev/kartograph/fixture/ActuallyUnused"' "$GRAPH_REPORT" || { echo "graph document is missing fixture declarations" >&2; exit 1; }
+# 기본값은 opt-in이 아니므로 확정 경로가 없어야 한다.
+if grep -Fq -- '"pathKind": "projectRelative"' "$GRAPH_REPORT"; then
+    echo "graph document resolved source paths without the opt-in" >&2
+    exit 1
+fi
+
+./gradlew --no-daemon --console=plain --configuration-cache -p "$FIXTURE_ROOT" \
+    :app:kartographGraphDebug -Pkartograph.includeSourcePaths=true >"$CACHE_OUTPUT" 2>&1 || exit 1
+grep -Fq 'Reusing configuration cache.' "$CACHE_OUTPUT" || { echo "graph task did not reuse the configuration cache" >&2; exit 1; }
+grep -Fq -- '"pathKind": "projectRelative"' "$GRAPH_REPORT" || { echo "graph document did not resolve any project source path" >&2; exit 1; }
+# task의 project root는 Gradle project(app)이므로 경로도 그 기준 상대경로다.
+grep -Fq -- '"path": "src/main/kotlin/dev/kartograph/fixture/RetentionFixtures.kt"' "$GRAPH_REPORT" || { echo "graph document did not resolve the expected fixture source path" >&2; exit 1; }
+# 절대경로는 어떤 경우에도 문서에 실리지 않는다.
+if grep -Fq -- "$(pwd)" "$GRAPH_REPORT"; then
+    echo "graph document leaked an absolute local path" >&2
+    exit 1
+fi
+
+echo "Graph exchange document and source path opt-in verified"

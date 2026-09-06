@@ -13,6 +13,7 @@ kartograph {
     strict.set(providers.gradleProperty("kartograph.strict").map(String::toBoolean).orElse(false))
     includePrivateMembers.set(providers.gradleProperty("kartograph.includePrivateMembers").map(String::toBoolean).orElse(false))
     reportFormat.set(providers.gradleProperty("kartograph.reportFormat").orElse("text"))
+    includeSourcePaths.set(providers.gradleProperty("kartograph.includeSourcePaths").map(String::toBoolean).orElse(false))
 }
 
 android {
