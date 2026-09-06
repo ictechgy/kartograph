@@ -45,4 +45,49 @@ class DeadFindingsTest {
         assertEquals(listOf(dead.id, property.id, wanted.id, privateThis.id).sorted(),
             DeadFindings.collect(graph, result, true).map { it.nodeId })
     }
+
+    @Test
+    fun `file facade top-level declarations are reported conservatively`() {
+        val facade = GraphNode(NodeId("class:FacadeKt"), "FacadeKt", NodeKind.CLASS,
+            synthesized = true, attributes = setOf(NodeAttribute.FILE_FACADE))
+        fun topLevel(
+            name: String,
+            visibility: Visibility = Visibility.PUBLIC,
+            attributes: Set<NodeAttribute> = emptySet(),
+            modifiers: Set<JvmModifier> = setOf(JvmModifier.STATIC),
+            synthesized: Boolean = false,
+        ) = GraphNode(
+            NodeId("method:FacadeKt#$name()V"), name, NodeKind.METHOD, visibility = visibility,
+            jvmVisibility = if (visibility == Visibility.PRIVATE) Visibility.PRIVATE else Visibility.PUBLIC,
+            jvmModifiers = modifiers, attributes = attributes, synthesized = synthesized,
+        )
+        val root = GraphNode(NodeId("class:Root"), "Root", NodeKind.CLASS)
+        val used = topLevel("used")
+        val unused = topLevel("unused")
+        val inlined = topLevel("inlined", attributes = setOf(NodeAttribute.INLINE_FUNCTION))
+        val accessor = topLevel("getProperty", attributes = setOf(NodeAttribute.PROPERTY_ACCESSOR))
+        val native = topLevel("nativeCall", modifiers = setOf(JvmModifier.STATIC, JvmModifier.NATIVE))
+        val privateUnused = topLevel("privateUnused", visibility = Visibility.PRIVATE)
+        val syntheticBridge = topLevel("bridge", synthesized = true)
+        val launcherMain = topLevel("main")
+        val regularPublicMethod = GraphNode(NodeId("method:Root#orphan()V"), "orphan", NodeKind.METHOD,
+            visibility = Visibility.PUBLIC, jvmVisibility = Visibility.PUBLIC)
+        val facadeMembers = listOf(
+            used, unused, inlined, accessor, native, privateUnused, syntheticBridge, launcherMain,
+        )
+        val graph = CodeGraph(
+            listOf(root, facade, regularPublicMethod) + facadeMembers,
+            facadeMembers.map { GraphEdge(facade.id, it.id, EdgeKind.MEMBER) } + listOf(
+                GraphEdge(root.id, used.id, EdgeKind.CALL),
+                GraphEdge(root.id, regularPublicMethod.id, EdgeKind.MEMBER),
+            ),
+        )
+        val result = ReachabilityAnalyzer.analyze(
+            graph, listOf(RetentionEvidence(root.id, RetentionReason.KEEP_RULE, null)),
+        )
+
+        assertEquals(listOf(unused.id), DeadFindings.collect(graph, result).map { it.nodeId })
+        assertEquals(listOf(privateUnused.id, unused.id),
+            DeadFindings.collect(graph, result, true).map { it.nodeId })
+    }
 }
