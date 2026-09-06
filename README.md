@@ -44,10 +44,10 @@ compile-time constant의 bytecode 손실도 보수적으로 처리한다. CLI와
 동적 component 등록 한계를 함께 출력한다. compile-time constant 사용처는 bytecode에 남지 않으므로
 constant owner는 보수적으로 보존하며 이 과보존 가능성도 limitation으로 출력한다.
 
-어노테이션 값·parameter annotation의 class 참조와 사용되는 중첩 class의 바깥 container는 도달성에 포함하고,
-바로 앞 constant 문자열을 쓰는 `Class.forName` 대상도 참조로 복원한다. file facade의 도달 불가 top-level 함수는
-finding으로 보고하며 inline 함수·property 접근자·native·launcher `main`과 class-only 모드의 private top-level은
-보수적으로 제외한다.
+BINARY/RUNTIME 어노테이션의 명시적 값·parameter annotation의 class 참조와 사용되는 중첩 class의 바깥
+container는 도달성에 포함하고, 바로 앞 constant 문자열을 쓰는 `Class.forName` 대상도 참조로 복원한다.
+file facade의 도달 불가 top-level 함수는 finding으로 보고하며 inline 함수·property 접근자·native·launcher
+`main`과 class-only 모드의 private top-level은 보수적으로 제외한다.
 
 지원하는 member specification은 annotation wildcard, method/field/constructor의 JVM visibility·이름·정확한
 descriptor, `native <methods>`, plain `-keep` member다. 해석하지 못하는 보존 문법은 조용히 버리지 않고

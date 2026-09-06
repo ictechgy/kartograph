@@ -10,11 +10,14 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   protobuf generated wrapper/Kotlin DSL처럼 확인된 marker가 없는 생성물은 출처를 명시적으로 전달하는 설계가
   아직 없어 일부가 계속 보고될 수 있다. 공개 표본의 범위와 남은 진단은
   [공개 검증 기록](PUBLIC-VALIDATION.md)에 명시한다. 보고는 삭제 승인이 아니다.
-  어노테이션 값·parameter annotation의 class 참조와 사용되는 중첩 class의 바깥 container는 이제 도달성에
-  포함하므로 더 이상 별도 한계로 싣지 않는다. `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
+  BINARY/RUNTIME 보존 어노테이션의 명시적 값·parameter annotation의 class 참조와 사용되는 중첩 class의 바깥
+  container는 이제 도달성에 포함한다. bytecode에 남지 않는 SOURCE 보존 어노테이션과 어노테이션 기본값의 class
+  참조는 계속 복원하지 못해 한계로 싣는다. `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
 
 - `--include-private-members`는 JVM/source 모두 private인 method·field/property만 선택적으로 추가한다.
-  reachable 비생성 owner가 하나로 확정되는 경우에 한하며 constructor/native/constant/file-facade는 제외한다.
+  class member는 reachable 비생성 owner가 하나로 확정되는 경우에 한하며 constructor/native/constant는 제외한다.
+  file facade의 private top-level 함수는 아래 top-level 보고 규칙을 따르며 이 reachable-owner 요건을 추가로
+  요구하지 않는다(facade owner는 synthesized다).
   field 쓰기는 사용으로 취급한다. `-keepclassmembers`는 member와 owner를 무조건 보존하는 보수적 근사이며
   두 모드 간 class finding도 달라질 수 있다. private reflection에는 명시 keep rule이 여전히 필요하다.
   Kotlin inline 함수와 Java serialization callback은 제외하며, 해석할 수 없는 `-keepclassmembers` member
@@ -38,9 +41,11 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 - 분석은 전달된 build variant의 class root만 나타낸다. 다른 flavor, build type, test, dynamic feature의 사실을
   자동으로 합치지 않는다.
 - Kotlin compiler/Compose/KSP/kapt가 만든 선언은 `synthesized`로 구분하지만 모든 code generator를 식별하지는 않는다.
-- Kotlin file facade 자체는 synthesized infrastructure로 제외하지만, 도달 불가한 top-level 함수는 finding으로
-  보고한다. inline 함수·property 접근자·backing field·native 함수·launcher `main`과 private 모드 아닌 private
-  top-level은 보수적으로 보고하지 않는다. top-level property는 여전히 미사용이어도 보고되지 않는다.
+- Kotlin file facade 자체는 synthesized infrastructure로 제외하지만, 단일 file facade와 multi-file part의 도달
+  불가한 top-level 함수는 finding으로 보고한다. `@JvmMultifileClass` facade의 위임 method는 synthesized로
+  취급해 보고하지 않으므로(보수적 방향) multi-file top-level은 part 기준으로만 보고된다. inline 함수·property
+  접근자·backing field·native 함수·launcher `main`과 private 모드 아닌 private top-level은 보수적으로 보고하지
+  않는다. top-level property는 여전히 미사용이어도 보고되지 않는다.
 - source file과 line은 JVM debug attribute에 의존하므로 누락되거나 같은 basename 때문에 모호할 수 있다.
 - stale build output은 stale graph를 만든다. kartograph는 source를 컴파일하지 않는다.
 - package/module architecture는 JVM 이름과 입력 root를 기준으로 하며 Gradle dependency resolution model 자체는 아니다.
