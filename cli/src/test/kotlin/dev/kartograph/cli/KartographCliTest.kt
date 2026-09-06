@@ -701,6 +701,78 @@ class KartographCliTest {
         assertEquals(64, ExitStatus.USAGE.code)
     }
 
+    @Test
+    fun `dead marks findings reachable only from test classes as test-only`(@TempDir root: Path) {
+        val mainClasses = root.resolve("main-classes").createDirectories()
+        val mainSource = root.resolve("Main.java")
+        mainSource.writeText(
+            "public class Main { public static void entry() { new Used(); } }\n" +
+                "class Used {}\n" +
+                "class OnlyTestUsed {}\n",
+        )
+        check(requireNotNull(ToolProvider.getSystemJavaCompiler()).run(
+            null, null, null, "-d", mainClasses.toString(), mainSource.toString(),
+        ) == 0)
+        val testClasses = root.resolve("test-classes").createDirectories()
+        val testSource = root.resolve("MainTest.java")
+        testSource.writeText("public class MainTest { public void test() { new OnlyTestUsed(); } }\n")
+        check(requireNotNull(ToolProvider.getSystemJavaCompiler()).run(
+            null, null, null, "-cp", mainClasses.toString(), "-d", testClasses.toString(), testSource.toString(),
+        ) == 0)
+        root.resolve("rules.pro").writeText("-keep class Main { *; }")
+
+        val arguments = deadArguments(root, "<manifest />", "--keep-rules", "rules.pro", "--report-format", "json")
+        arguments[2] = mainClasses.toString()
+
+        val withoutTests = execute(*arguments)
+        assertEquals(ExitStatus.SUCCESS.code, withoutTests.status)
+        assertContains(withoutTests.output, "\"nodeId\": \"class:OnlyTestUsed\"")
+        kotlin.test.assertFalse(withoutTests.output.contains("\"testOnly\": true"))
+
+        val withTests = execute(*arguments, "--test-classes", testClasses.toString())
+        assertEquals(ExitStatus.SUCCESS.code, withTests.status)
+        assertContains(withTests.output, "\"nodeId\": \"class:OnlyTestUsed\"")
+        assertContains(withTests.output, "\"testOnly\": true")
+        assertContains(withTests.output, "used only by tests")
+        // Used는 Main.entry에서 도달 가능하고 Main은 keep 규칙으로 보존되어 보고되지 않는다.
+        kotlin.test.assertFalse(withTests.output.contains("\"nodeId\": \"class:Used\""))
+        kotlin.test.assertFalse(withTests.output.contains("\"nodeId\": \"class:Main\""))
+    }
+
+    @Test
+    fun `test-only marking is selective and does not mark production-only dead code`(@TempDir root: Path) {
+        val mainClasses = root.resolve("main-classes").createDirectories()
+        val mainSource = root.resolve("Main.java")
+        mainSource.writeText(
+            "public class Main { public static void entry() { new Used(); } }\n" +
+                "class Used {}\n" +
+                "class OnlyTestUsed {}\n" +
+                "class PureDead {}\n",
+        )
+        check(requireNotNull(ToolProvider.getSystemJavaCompiler()).run(
+            null, null, null, "-g", "-d", mainClasses.toString(), mainSource.toString(),
+        ) == 0)
+        val testClasses = root.resolve("test-classes").createDirectories()
+        val testSource = root.resolve("MainTest.java")
+        testSource.writeText("public class MainTest { public void test() { new OnlyTestUsed(); } }\n")
+        check(requireNotNull(ToolProvider.getSystemJavaCompiler()).run(
+            null, null, null, "-cp", mainClasses.toString(), "-d", testClasses.toString(), testSource.toString(),
+        ) == 0)
+        root.resolve("rules.pro").writeText("-keep class Main { *; }")
+
+        val arguments = deadArguments(root, "<manifest />", "--keep-rules", "rules.pro")
+        arguments[2] = mainClasses.toString()
+        val result = execute(*arguments, "--test-classes", testClasses.toString())
+
+        assertEquals(ExitStatus.SUCCESS.code, result.status)
+        // test가 참조하는 미사용 선언만 test-only로 표시된다.
+        assertTrue(result.output.lines().first { it.contains("class:OnlyTestUsed") }.contains("\ttest-only"))
+        // test가 참조하지 않는 미사용 선언은 표시 없이 보고된다(seed가 test 전용 노드임을 고정).
+        kotlin.test.assertFalse(result.output.lines().first { it.contains("class:PureDead") }.contains("test-only"))
+        // production에서 도달 가능한 선언은 보고되지 않는다.
+        kotlin.test.assertFalse(result.output.contains("class:Used\t"))
+    }
+
     private fun execute(vararg arguments: String): Execution {
         val output = ByteArrayOutputStream()
         val error = ByteArrayOutputStream()

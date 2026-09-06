@@ -120,6 +120,7 @@ cli/build/install/kartograph/bin/kartograph dead \
   --namespace dev.example.app \
   --keep-rules app/proguard-rules.pro \
   --classpath path/to/dependency/classes.jar \
+  --test-classes path/to/test/classes \
   --strict
 
 # 현재 전체 finding을 고정한 뒤 새 finding만 strict 대상으로 삼는다.

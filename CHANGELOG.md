@@ -15,6 +15,9 @@
 - 바로 앞 constant 문자열 인자를 사용하는 `Class.forName`의 대상을 class 참조로 해석한다.
 - 단일 file facade와 multi-file part의 도달 불가 top-level 함수를 finding으로 보고한다. inline 함수·property
   접근자·native·컴파일 상수·launcher `main`과 class-only 모드의 private top-level은 보수적으로 제외한다.
+- `dead --test-classes <root>`는 production root에서는 도달 불가하나 test 코드에서만 도달되는 finding을
+  `(used only by tests)`로 표시한다. 표시는 억제·삭제 승인이 아니며 strict/baseline에서 여전히 finding으로 계산한다.
+  현재 CLI만 지원하고 Gradle plugin의 test variant 연결은 후속 작업이다.
 
 ### Changed
 
