@@ -118,7 +118,8 @@ internal object DeadCommand {
         val scoped = options.since?.let { reference ->
             val changed = ChangedFiles.since(reference, options.projectRoot)
             val sourceRoot = options.projectRoot.toRealPath()
-            allFindings.filter { finding -> finding.matchesChangedFiles(changed, sourceRoot) }
+            val sourcePaths = SourcePaths.byFileName(sourceRoot)
+            allFindings.filter { finding -> finding.matchesChangedFiles(changed, sourceRoot, sourcePaths) }
         } ?: allFindings
         val fingerprints = options.baseline?.let { path -> BaselineCodec.parse(Files.readString(path)) }.orEmpty()
         val findings = scoped.filterNot { it.fingerprint in fingerprints }
@@ -289,7 +290,11 @@ internal object DeadCommand {
 
 }
 
-internal fun Finding.matchesChangedFiles(changed: Set<Path>, projectRoot: Path): Boolean {
+internal fun Finding.matchesChangedFiles(
+    changed: Set<Path>,
+    projectRoot: Path,
+    sourcePaths: Map<String, Set<Path>> = emptyMap(),
+): Boolean {
     val sourcePath = location?.path ?: return true
     val relativePath = try {
         Path.of(sourcePath)
@@ -298,5 +303,9 @@ internal fun Finding.matchesChangedFiles(changed: Set<Path>, projectRoot: Path):
     }
     if (projectRoot.resolve(relativePath).normalize() in changed) return true
     if (relativePath.nameCount != 1) return false
+    // debug 정보가 basename만 남긴 경우, 프로젝트에 유일한 source면 그 경로로 정확히 판정한다.
+    val candidates = sourcePaths[relativePath.fileName.toString()]
+    if (candidates != null && candidates.size == 1) return candidates.single() in changed
+    // 여러 개거나 인덱스가 없으면 기존 보수적 basename 매칭으로 폴백한다.
     return changed.any { path -> path.fileName == relativePath.fileName }
 }

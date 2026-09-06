@@ -21,7 +21,9 @@ if [[ ! -f "$REPORT" ]]; then
 fi
 printf '%s\n' \
     'class:dev/kartograph/fixture/ActuallyUnused' \
-    'class:dev/kartograph/fixture/OpenFinalRule' | LC_ALL=C sort >"$EXPECTED_REPORTS"
+    'class:dev/kartograph/fixture/OpenFinalRule' \
+    'method:dev/kartograph/fixture/CompilerGeneratedFixturesKt#compilerGeneratedSequence()Lkotlin/sequences/Sequence;' \
+    'method:dev/kartograph/fixture/TopLevelFixturesKt#unusedTopLevelFunction()Ljava/lang/String;' | LC_ALL=C sort >"$EXPECTED_REPORTS"
 awk -F '\t' '$1 == "unreachable" { print $2 }' "$REPORT" | LC_ALL=C sort -u >"$ACTUAL_REPORTS"
 if ! diff -u "$EXPECTED_REPORTS" "$ACTUAL_REPORTS"; then
     echo "Gradle report does not exactly match expected findings" >&2
@@ -43,7 +45,7 @@ done
 ./gradlew --no-daemon --console=plain -p "$FIXTURE_ROOT" \
     :app:kartographDeadDebug -Pkartograph.strict=true >"$STRICT_OUTPUT" 2>&1
 STRICT_COMMAND_STATUS=$?
-if [[ "$STRICT_COMMAND_STATUS" -eq 0 ]] || ! grep -Fq -- 'kartograph found 2 unreachable declarations' "$STRICT_OUTPUT"; then
+if [[ "$STRICT_COMMAND_STATUS" -eq 0 ]] || ! grep -Fq -- 'kartograph found 4 unreachable declarations' "$STRICT_OUTPUT"; then
     echo "Gradle strict mode did not fail with the expected findings" >&2
     exit 1
 fi

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.Label
 import org.objectweb.asm.Opcodes
+import org.objectweb.asm.Type
 
 class ClassFileIndexerTest {
     @Test
@@ -449,6 +450,124 @@ class ClassFileIndexerTest {
         assertEquals(expectedTargets, actualTargets)
     }
 
+    @Test
+    fun `class references in annotation values become reference edges`(@TempDir directory: Path) {
+        directory.resolve("Annotated.class").writeBytes(classWithAnnotationValues())
+        directory.resolve("Target.class").writeBytes(
+            duplicateClass("Target.java", Opcodes.ACC_PUBLIC, "dev/fixture/Target"),
+        )
+        directory.resolve("ArrayTarget.class").writeBytes(
+            duplicateClass("ArrayTarget.java", Opcodes.ACC_PUBLIC, "dev/fixture/ArrayTarget"),
+        )
+        directory.resolve("Nested.class").writeBytes(
+            duplicateClass("Nested.java", Opcodes.ACC_PUBLIC, "dev/fixture/Nested"),
+        )
+
+        val graph = ClassFileIndexer().index(listOf(directory))
+        val annotated = JvmNodeId.classId("dev/fixture/Annotated")
+        val referencedTargets = graph.outgoingEdgesFrom(annotated)
+            .filter { edge -> edge.kind == EdgeKind.REFERENCE }
+            .map { edge -> edge.target }
+            .toSet()
+
+        assertTrue(JvmNodeId.classId("dev/fixture/Target") in referencedTargets)
+        assertTrue(JvmNodeId.classId("dev/fixture/ArrayTarget") in referencedTargets)
+        assertTrue(JvmNodeId.classId("dev/fixture/Nested") in referencedTargets)
+    }
+
+    @Test
+    fun `class references in method and parameter annotations become reference edges`(@TempDir directory: Path) {
+        directory.resolve("Holder.class").writeBytes(classWithMethodAnnotationValues())
+        directory.resolve("MethodTarget.class").writeBytes(
+            duplicateClass("MethodTarget.java", Opcodes.ACC_PUBLIC, "dev/fixture/MethodTarget"),
+        )
+        directory.resolve("ParameterTarget.class").writeBytes(
+            duplicateClass("ParameterTarget.java", Opcodes.ACC_PUBLIC, "dev/fixture/ParameterTarget"),
+        )
+
+        val graph = ClassFileIndexer().index(listOf(directory))
+        val method = JvmNodeId.methodId("dev/fixture/Holder", "annotated", "(Ljava/lang/Object;)V")
+        val referencedTargets = graph.outgoingEdgesFrom(method)
+            .filter { edge -> edge.kind == EdgeKind.REFERENCE }
+            .map { edge -> edge.target }
+            .toSet()
+
+        assertTrue(JvmNodeId.classId("dev/fixture/MethodTarget") in referencedTargets)
+        assertTrue(JvmNodeId.classId("dev/fixture/ParameterTarget") in referencedTargets)
+    }
+
+    @Test
+    fun `enum constants in annotation values reference the enum class`(@TempDir directory: Path) {
+        directory.resolve("EnumAnnotated.class").writeBytes(classWithEnumAnnotationValue())
+        directory.resolve("Mode.class").writeBytes(
+            duplicateClass("Mode.java", Opcodes.ACC_PUBLIC, "dev/fixture/Mode"),
+        )
+
+        val graph = ClassFileIndexer().index(listOf(directory))
+        val annotated = JvmNodeId.classId("dev/fixture/EnumAnnotated")
+
+        assertTrue(graph.outgoingEdgesFrom(annotated).any { edge ->
+            edge.kind == EdgeKind.REFERENCE && edge.target == JvmNodeId.classId("dev/fixture/Mode")
+        })
+    }
+
+    @Test
+    fun `nested classes reference their enclosing container from real compiler output`() {
+        val graph = ClassFileIndexer().index(listOf(testClassesRoot))
+
+        assertTrue(graph.edges.any { edge ->
+            edge.source == JvmNodeId.classId("dev/kartograph/index/fixture/NestedOwner\$PrivateNested") &&
+                edge.target == JvmNodeId.classId("dev/kartograph/index/fixture/NestedOwner") &&
+                edge.kind == EdgeKind.REFERENCE
+        })
+    }
+
+    @Test
+    fun `dollar names without enclosing facts get no container edge`(@TempDir directory: Path) {
+        directory.resolve("Outer.class").writeBytes(
+            duplicateClass("Outer.java", Opcodes.ACC_PUBLIC, "dev/fixture/Outer"),
+        )
+        directory.resolve("Lookalike.class").writeBytes(
+            duplicateClass("Lookalike.java", Opcodes.ACC_PUBLIC, "dev/fixture/Outer\$Lookalike"),
+        )
+
+        val graph = ClassFileIndexer().index(listOf(directory))
+
+        assertFalse(graph.edges.any { edge ->
+            edge.source == JvmNodeId.classId("dev/fixture/Outer\$Lookalike") &&
+                edge.target == JvmNodeId.classId("dev/fixture/Outer")
+        })
+    }
+
+    @Test
+    fun `constant Class forName literals become reference edges`(@TempDir directory: Path) {
+        directory.resolve("Lookup.class").writeBytes(classWithReflectionLookups())
+        directory.resolve("LiteralTarget.class").writeBytes(
+            duplicateClass("LiteralTarget.java", Opcodes.ACC_PUBLIC, "dev/fixture/LiteralTarget"),
+        )
+        directory.resolve("ArrayLiteralTarget.class").writeBytes(
+            duplicateClass("ArrayLiteralTarget.java", Opcodes.ACC_PUBLIC, "dev/fixture/ArrayLiteralTarget"),
+        )
+
+        val graph = ClassFileIndexer().index(listOf(directory))
+        val constant = JvmNodeId.methodId("dev/fixture/Lookup", "constant", "()V")
+        val arrayConstant = JvmNodeId.methodId("dev/fixture/Lookup", "arrayConstant", "()V")
+        val indirect = JvmNodeId.methodId("dev/fixture/Lookup", "indirect", "(Ljava/lang/String;)V")
+
+        assertTrue(graph.edges.any { edge ->
+            edge.source == constant && edge.kind == EdgeKind.REFERENCE &&
+                edge.target == JvmNodeId.classId("dev/fixture/LiteralTarget")
+        })
+        assertTrue(graph.edges.any { edge ->
+            edge.source == arrayConstant && edge.kind == EdgeKind.REFERENCE &&
+                edge.target == JvmNodeId.classId("dev/fixture/ArrayLiteralTarget")
+        })
+        assertFalse(graph.edges.any { edge ->
+            edge.source == indirect && edge.kind == EdgeKind.REFERENCE &&
+                edge.target == JvmNodeId.classId("dev/fixture/LiteralTarget")
+        })
+    }
+
     private val testClassesRoot: Path
         get() = Path.of(requireNotNull(Caller::class.java.protectionDomain.codeSource).location.toURI())
 
@@ -534,6 +653,94 @@ class ClassFileIndexerTest {
         visitMethod(Opcodes.ACC_PUBLIC, callbackName, "()V", null, null).visitEnd()
         visitMethod(Opcodes.ACC_PRIVATE, "helper", "()V", null, null).visitEnd()
         visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "utility", "()V", null, null).visitEnd()
+        visitEnd()
+    }.toByteArray()
+
+    private fun classWithAnnotationValues(): ByteArray = ClassWriter(0).apply {
+        visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "dev/fixture/Annotated", null, "java/lang/Object", null)
+        visitSource("Annotated.java", null)
+        visitAnnotation("Ldev/fixture/Marker;", true).apply {
+            visit("single", Type.getObjectType("dev/fixture/Target"))
+            visitArray("many").apply {
+                visit(null, Type.getObjectType("dev/fixture/ArrayTarget"))
+                visitEnd()
+            }
+            visitAnnotation("nested", "Ldev/fixture/Marker;").apply {
+                visit("value", Type.getObjectType("dev/fixture/Nested"))
+                visitEnd()
+            }
+            visitEnd()
+        }
+        visitEnd()
+    }.toByteArray()
+
+    private fun classWithMethodAnnotationValues(): ByteArray = ClassWriter(0).apply {
+        visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "dev/fixture/Holder", null, "java/lang/Object", null)
+        visitSource("Holder.java", null)
+        visitMethod(Opcodes.ACC_PUBLIC, "annotated", "(Ljava/lang/Object;)V", null, null).apply {
+            visitAnnotation("Ldev/fixture/Marker;", true).apply {
+                visit("value", Type.getObjectType("dev/fixture/MethodTarget"))
+                visitEnd()
+            }
+            visitParameterAnnotation(0, "Ldev/fixture/Marker;", true).apply {
+                visit("value", Type.getObjectType("dev/fixture/ParameterTarget"))
+                visitEnd()
+            }
+            visitEnd()
+        }
+        visitEnd()
+    }.toByteArray()
+    private fun classWithEnumAnnotationValue(): ByteArray = ClassWriter(0).apply {
+        visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "dev/fixture/EnumAnnotated", null, "java/lang/Object", null)
+        visitSource("EnumAnnotated.java", null)
+        visitAnnotation("Ldev/fixture/Marker;", true).apply {
+            visitEnum("mode", "Ldev/fixture/Mode;", "FAST")
+            visitEnd()
+        }
+        visitEnd()
+    }.toByteArray()
+
+    private fun classWithReflectionLookups(): ByteArray = ClassWriter(0).apply {
+        visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "dev/fixture/Lookup", null, "java/lang/Object", null)
+        visitSource("Lookup.java", null)
+        visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "constant", "()V", null, null).apply {
+            visitCode()
+            visitLdcInsn("dev.fixture.LiteralTarget")
+            visitMethodInsn(
+                Opcodes.INVOKESTATIC, "java/lang/Class", "forName",
+                "(Ljava/lang/String;)Ljava/lang/Class;", false,
+            )
+            visitInsn(Opcodes.POP)
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(1, 0)
+            visitEnd()
+        }
+        visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "arrayConstant", "()V", null, null).apply {
+            visitCode()
+            visitLdcInsn("[Ldev.fixture.ArrayLiteralTarget;")
+            visitMethodInsn(
+                Opcodes.INVOKESTATIC, "java/lang/Class", "forName",
+                "(Ljava/lang/String;)Ljava/lang/Class;", false,
+            )
+            visitInsn(Opcodes.POP)
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(1, 0)
+            visitEnd()
+        }
+        visitMethod(
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "indirect", "(Ljava/lang/String;)V", null, null,
+        ).apply {
+            visitCode()
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitMethodInsn(
+                Opcodes.INVOKESTATIC, "java/lang/Class", "forName",
+                "(Ljava/lang/String;)Ljava/lang/Class;", false,
+            )
+            visitInsn(Opcodes.POP)
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(1, 1)
+            visitEnd()
+        }
         visitEnd()
     }.toByteArray()
 }

@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
 class ChangedFilesTest {
@@ -68,6 +69,65 @@ class ChangedFilesTest {
         assertEquals(
             false,
             Finding(NodeId("class:other/Foo"), SourceLocation("missing/src/Foo.kt")).matchesChangedFiles(changed, root),
+        )
+    }
+
+    @Test
+    fun `unique source basename resolves exactly and ambiguous basenames stay conservative`(@TempDir root: Path) {
+        val changedModuleFile = root.resolve("moduleA/src/Helper.kt")
+        val unchangedModuleFile = root.resolve("moduleB/src/Helper.kt")
+        val finding = Finding(NodeId("class:m/Helper"), SourceLocation("Helper.kt"))
+
+        val uniqueUnchanged = mapOf("Helper.kt" to setOf(unchangedModuleFile))
+        assertFalse(finding.matchesChangedFiles(setOf(changedModuleFile), root, uniqueUnchanged))
+
+        val uniqueChanged = mapOf("Helper.kt" to setOf(changedModuleFile))
+        assertTrue(finding.matchesChangedFiles(setOf(changedModuleFile), root, uniqueChanged))
+
+        val ambiguous = mapOf("Helper.kt" to setOf(changedModuleFile, unchangedModuleFile))
+        assertTrue(finding.matchesChangedFiles(setOf(changedModuleFile), root, ambiguous))
+    }
+
+    @Test
+    fun `source path index groups tracked source names and prunes build outputs`(@TempDir root: Path) {
+        root.resolve("src/main").createDirectories().resolve("Sample.kt").writeText("class Sample")
+        root.resolve("src/test").createDirectories().resolve("SampleTest.java").writeText("class SampleTest {}")
+        root.resolve("build/generated").createDirectories().resolve("Sample.kt").writeText("generated")
+        root.resolve("node_modules/pkg").createDirectories().resolve("Sample.kt").writeText("dependency")
+
+        val index = SourcePaths.byFileName(root.toRealPath())
+
+        assertEquals(setOf(root.toRealPath().resolve("src/main/Sample.kt")), index["Sample.kt"])
+        assertEquals(setOf(root.toRealPath().resolve("src/test/SampleTest.java")), index["SampleTest.java"])
+        assertFalse(index.containsKey("not-a-source.txt"))
+    }
+
+    @Test
+    fun `since uniquely resolves basename against the real git changed set without under-reporting`(@TempDir root: Path) {
+        git(root, "init")
+        git(root, "config", "user.email", "test@example.invalid")
+        git(root, "config", "user.name", "Test")
+        val source = root.resolve("src").createDirectories()
+        source.resolve("Changed.kt").writeText("base")
+        source.resolve("Stable.kt").writeText("base")
+        git(root, "add", ".")
+        git(root, "commit", "-m", "base")
+        val base = git(root, "rev-parse", "HEAD").trim()
+        source.resolve("Changed.kt").writeText("modified")
+
+        val projectReal = root.toRealPath()
+        val changed = ChangedFiles.since(base, root)
+        val sourcePaths = SourcePaths.byFileName(projectReal)
+
+        // realpath 기준이 git changed 집합과 일치해 변경된 유일 source는 포함된다(under-reporting 없음).
+        assertTrue(
+            Finding(NodeId("class:c"), SourceLocation("Changed.kt"))
+                .matchesChangedFiles(changed, projectReal, sourcePaths),
+        )
+        // 변경되지 않은 유일 source는 basename이 우연히 같아도 정확히 제외된다.
+        assertFalse(
+            Finding(NodeId("class:s"), SourceLocation("Stable.kt"))
+                .matchesChangedFiles(changed, projectReal, sourcePaths),
         )
     }
 

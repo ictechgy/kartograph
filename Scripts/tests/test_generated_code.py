@@ -28,7 +28,6 @@ class GeneratedCodeTest(unittest.TestCase):
             self.assertEqual([item["nodeId"] for item in document["diagnostics"]],
                              ["class:User_Factory"])
             self.assertTrue(any("generation markers" in item for item in document["limitations"]))
-            self.assertTrue(any("annotation values" in item for item in document["limitations"]))
 
 
 if __name__ == "__main__":

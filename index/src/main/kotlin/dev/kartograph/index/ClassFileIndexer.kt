@@ -62,7 +62,8 @@ public class ClassFileIndexer {
             nodes = classFacts.flatMap(ClassFacts::nodes),
             edges = classFacts.flatMap(ClassFacts::edges) +
                 projectOverrideEdges(classFacts) +
-                frameworkCallbackEdges(classFacts),
+                frameworkCallbackEdges(classFacts) +
+                enclosingContainerEdges(classFacts),
         )
     }
 
@@ -177,7 +178,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         if (descriptor == "Lkotlin/Metadata;") {
             return MetadataAnnotationValues().also { metadataValues = it }
         }
-        return null
+        return AnnotationValueVisitor(JvmNodeId.classId(internalName))
     }
 
     override fun visitField(
@@ -198,7 +199,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor? {
                 annotations += annotationInternalName(annotationDescriptor)
                 edges += annotationEdge(fieldId, annotationDescriptor)
-                return null
+                return AnnotationValueVisitor(fieldId)
             }
 
             override fun visitEnd() {
@@ -241,15 +242,46 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         }
         return object : MethodVisitor(Opcodes.ASM9) {
             private var firstLine: Int? = null
+            private var pendingStringConstant: String? = null
 
             override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor? {
                 annotations += annotationInternalName(annotationDescriptor)
                 edges += annotationEdge(methodId, annotationDescriptor)
-                return null
+                return AnnotationValueVisitor(methodId)
+            }
+
+            override fun visitParameterAnnotation(
+                parameter: Int,
+                annotationDescriptor: String,
+                visible: Boolean,
+            ): AnnotationVisitor {
+                // parameter annotation 타입 자체도 연결해 값 없는 어노테이션이 referenced class를 잃지 않게 한다.
+                edges += annotationEdge(methodId, annotationDescriptor)
+                return AnnotationValueVisitor(methodId)
             }
 
             override fun visitLineNumber(line: Int, start: Label) {
                 if (firstLine == null) firstLine = line
+            }
+
+            override fun visitVarInsn(opcode: Int, variable: Int) {
+                pendingStringConstant = null
+            }
+
+            override fun visitInsn(opcode: Int) {
+                pendingStringConstant = null
+            }
+
+            override fun visitIntInsn(opcode: Int, operand: Int) {
+                pendingStringConstant = null
+            }
+
+            override fun visitJumpInsn(opcode: Int, label: Label) {
+                pendingStringConstant = null
+            }
+
+            override fun visitIincInsn(variable: Int, increment: Int) {
+                pendingStringConstant = null
             }
 
             override fun visitMethodInsn(
@@ -259,6 +291,13 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 targetDescriptor: String,
                 isInterface: Boolean,
             ) {
+                val reflectionTarget = pendingStringConstant
+                pendingStringConstant = null
+                if (owner == "java/lang/Class" && targetName == "forName" && reflectionTarget != null) {
+                    classNameToInternalNames(reflectionTarget).forEach { resolved ->
+                        edges += GraphEdge(methodId, JvmNodeId.classId(resolved), EdgeKind.REFERENCE)
+                    }
+                }
                 edges += GraphEdge(
                     methodId,
                     JvmNodeId.methodId(owner, targetName, targetDescriptor),
@@ -268,6 +307,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             }
 
             override fun visitFieldInsn(opcode: Int, owner: String, targetName: String, targetDescriptor: String) {
+                pendingStringConstant = null
                 edges += GraphEdge(
                     methodId,
                     JvmNodeId.fieldId(owner, targetName, targetDescriptor),
@@ -282,6 +322,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 bootstrapMethodHandle: Handle,
                 vararg bootstrapMethodArguments: Any,
             ) {
+                pendingStringConstant = null
                 bootstrapMethodArguments.filterIsInstance<Handle>().forEach { handle ->
                     when (handle.tag) {
                         Opcodes.H_GETFIELD, Opcodes.H_GETSTATIC, Opcodes.H_PUTFIELD, Opcodes.H_PUTSTATIC -> {
@@ -310,6 +351,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             }
 
             override fun visitTypeInsn(opcode: Int, type: String) {
+                pendingStringConstant = null
                 val targetTypes = if (type.startsWith('[')) descriptorClassNames(type) else setOf(type)
                 targetTypes.forEach { target ->
                     edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
@@ -323,12 +365,18 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             }
 
             override fun visitMultiANewArrayInsn(descriptor: String, numDimensions: Int) {
+                pendingStringConstant = null
                 descriptorClassNames(descriptor).forEach { target ->
                     edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
                 }
             }
 
             override fun visitLdcInsn(value: Any?) {
+                if (value is String) {
+                    pendingStringConstant = value
+                    return
+                }
+                pendingStringConstant = null
                 if (value is Type && value.sort in setOf(Type.OBJECT, Type.ARRAY)) {
                     descriptorClassNames(value.descriptor).forEach { target ->
                         edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
@@ -384,6 +432,35 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     )
 
     private fun annotationInternalName(descriptor: String): String = Type.getType(descriptor).internalName
+
+    /**
+     * 어노테이션 member 값으로 참조되는 class를 선언과 REFERENCE 간선으로 연결한다.
+     * 중첩 어노테이션과 배열 값을 재귀적으로 따라가지만 값이 없는 primitive·문자열은 무시한다.
+     */
+    private inner class AnnotationValueVisitor(private val source: NodeId) : AnnotationVisitor(Opcodes.ASM9) {
+        override fun visit(name: String?, value: Any?) {
+            if (value is Type) addTypeReference(value)
+        }
+
+        override fun visitEnum(name: String?, descriptor: String?, value: String?) {
+            descriptor?.let { edges += referenceEdge(Type.getType(it).internalName) }
+        }
+
+        override fun visitAnnotation(name: String?, descriptor: String?): AnnotationVisitor {
+            descriptor?.let { edges += referenceEdge(Type.getType(it).internalName) }
+            return this
+        }
+
+        override fun visitArray(name: String?): AnnotationVisitor = this
+
+        private fun addTypeReference(type: Type) {
+            val elementType = if (type.sort == Type.ARRAY) type.elementType else type
+            if (elementType.sort == Type.OBJECT) edges += referenceEdge(elementType.internalName)
+        }
+
+        private fun referenceEdge(internalName: String): GraphEdge =
+            GraphEdge(source, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
+    }
 
     private fun sourceLocation(line: Int? = null): SourceLocation? =
         sourceFile?.takeIf(String::isNotBlank)?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
@@ -444,6 +521,13 @@ private fun frameworkCallbackEdges(classFacts: List<ClassFacts>): List<GraphEdge
         facts.nodes.filter(GraphNode::isRuntimeCallbackMember)
             .map { member -> GraphEdge(classId, member.id, EdgeKind.REFERENCE) }
     }
+}
+
+// 중첩 class의 사용 사실만으로는 바깥 container가 죽어 보이지 않게 실제 enclosing 관계를 참조로 연결한다.
+private fun enclosingContainerEdges(classFacts: List<ClassFacts>): List<GraphEdge> = classFacts.mapNotNull { facts ->
+    val enclosingClass = facts.enclosingClass
+    if (enclosingClass == null || enclosingClass == facts.internalName) return@mapNotNull null
+    GraphEdge(JvmNodeId.classId(facts.internalName), JvmNodeId.classId(enclosingClass), EdgeKind.REFERENCE)
 }
 
 private fun ClassFacts.projectSupertypes(factsByName: Map<String, ClassFacts>): Set<String> {
@@ -507,6 +591,19 @@ private fun MutableSet<String>.addDescriptorType(type: Type) {
     val elementType = if (type.sort == Type.ARRAY) type.elementType else type
     if (elementType.sort == Type.OBJECT) add(elementType.internalName)
 }
+
+// Class.forName 인자 binary name이나 배열 descriptor를 internal name으로 바꾼다. class 이름이 아니면 무시한다.
+private fun classNameToInternalNames(className: String): Set<String> {
+    val trimmed = className.trim()
+    if (trimmed.startsWith('[')) {
+        // 잘못된 배열 descriptor 문자열 상수는 class file 자체를 무효화하지 않고 해석 불가로 무시한다.
+        return runCatching { descriptorClassNames(trimmed.replace('.', '/')) }.getOrDefault(emptySet())
+    }
+    if (!trimmed.matches(BINARY_CLASS_NAME)) return emptySet()
+    return setOf(trimmed.replace('.', '/'))
+}
+
+private val BINARY_CLASS_NAME = Regex("[A-Za-z_\$][A-Za-z0-9_\$]*(\\.[A-Za-z_\$][A-Za-z0-9_\$]*)*")
 
 private fun String.isAndroidGeneratedClass(): Boolean {
     val simpleName = substringAfterLast('/')
