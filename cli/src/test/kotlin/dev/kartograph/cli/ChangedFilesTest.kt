@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
 class ChangedFilesTest {
@@ -69,6 +70,36 @@ class ChangedFilesTest {
             false,
             Finding(NodeId("class:other/Foo"), SourceLocation("missing/src/Foo.kt")).matchesChangedFiles(changed, root),
         )
+    }
+
+    @Test
+    fun `unique source basename resolves exactly and ambiguous basenames stay conservative`(@TempDir root: Path) {
+        val changedModuleFile = root.resolve("moduleA/src/Helper.kt")
+        val unchangedModuleFile = root.resolve("moduleB/src/Helper.kt")
+        val finding = Finding(NodeId("class:m/Helper"), SourceLocation("Helper.kt"))
+
+        val uniqueUnchanged = mapOf("Helper.kt" to setOf(unchangedModuleFile))
+        assertFalse(finding.matchesChangedFiles(setOf(changedModuleFile), root, uniqueUnchanged))
+
+        val uniqueChanged = mapOf("Helper.kt" to setOf(changedModuleFile))
+        assertTrue(finding.matchesChangedFiles(setOf(changedModuleFile), root, uniqueChanged))
+
+        val ambiguous = mapOf("Helper.kt" to setOf(changedModuleFile, unchangedModuleFile))
+        assertTrue(finding.matchesChangedFiles(setOf(changedModuleFile), root, ambiguous))
+    }
+
+    @Test
+    fun `source path index groups tracked source names and prunes build outputs`(@TempDir root: Path) {
+        root.resolve("src/main").createDirectories().resolve("Sample.kt").writeText("class Sample")
+        root.resolve("src/test").createDirectories().resolve("SampleTest.java").writeText("class SampleTest {}")
+        root.resolve("build/generated").createDirectories().resolve("Sample.kt").writeText("generated")
+        root.resolve("node_modules/pkg").createDirectories().resolve("Sample.kt").writeText("dependency")
+
+        val index = SourcePaths.byFileName(root.toRealPath())
+
+        assertEquals(setOf(root.toRealPath().resolve("src/main/Sample.kt")), index["Sample.kt"])
+        assertEquals(setOf(root.toRealPath().resolve("src/test/SampleTest.java")), index["SampleTest.java"])
+        assertFalse(index.containsKey("not-a-source.txt"))
     }
 
     @Test
