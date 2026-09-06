@@ -103,6 +103,35 @@ class ChangedFilesTest {
     }
 
     @Test
+    fun `since uniquely resolves basename against the real git changed set without under-reporting`(@TempDir root: Path) {
+        git(root, "init")
+        git(root, "config", "user.email", "test@example.invalid")
+        git(root, "config", "user.name", "Test")
+        val source = root.resolve("src").createDirectories()
+        source.resolve("Changed.kt").writeText("base")
+        source.resolve("Stable.kt").writeText("base")
+        git(root, "add", ".")
+        git(root, "commit", "-m", "base")
+        val base = git(root, "rev-parse", "HEAD").trim()
+        source.resolve("Changed.kt").writeText("modified")
+
+        val projectReal = root.toRealPath()
+        val changed = ChangedFiles.since(base, root)
+        val sourcePaths = SourcePaths.byFileName(projectReal)
+
+        // realpath 기준이 git changed 집합과 일치해 변경된 유일 source는 포함된다(under-reporting 없음).
+        assertTrue(
+            Finding(NodeId("class:c"), SourceLocation("Changed.kt"))
+                .matchesChangedFiles(changed, projectReal, sourcePaths),
+        )
+        // 변경되지 않은 유일 source는 basename이 우연히 같아도 정확히 제외된다.
+        assertFalse(
+            Finding(NodeId("class:s"), SourceLocation("Stable.kt"))
+                .matchesChangedFiles(changed, projectReal, sourcePaths),
+        )
+    }
+
+    @Test
     fun `nested project source paths match repository root git output`(@TempDir root: Path) {
         git(root, "init")
         git(root, "config", "user.email", "test@example.invalid")
