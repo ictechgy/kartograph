@@ -15,7 +15,13 @@ internal fun jsonValue(value: Any?): String = when (value) {
     else -> error("unsupported JSON value: ${value::class.simpleName}")
 }
 
-/** 제어문자까지 escape해 어떤 식별자나 경로도 JSON 문자열을 깨뜨리지 않게 한다. */
+/**
+ * 제어문자와 비ASCII를 모두 escape해 어떤 식별자나 경로도 JSON 문자열을 깨뜨리지 않게 한다.
+ *
+ * 비ASCII까지 `\uXXXX`로 쓰는 이유는 stdout charset과 무관하게 같은 바이트가 나오게 하기 위해서다.
+ * 비UTF-8 로케일에서 한글 같은 식별자가 `?`로 뭉개지면 서로 다른 선언이 같은 `usr`로 붕괴해
+ * 교환 문서의 join key가 조용히 충돌한다.
+ */
 internal fun escapeJson(value: String): String = buildString {
     value.forEach { character ->
         when (character) {
@@ -26,7 +32,7 @@ internal fun escapeJson(value: String): String = buildString {
             '\n' -> append("\\n")
             '\r' -> append("\\r")
             '\t' -> append("\\t")
-            else -> if (character.code < 0x20) append("\\u%04x".format(character.code)) else append(character)
+            else -> if (character.code in 0x20..0x7E) append(character) else append("\\u%04x".format(character.code))
         }
     }
 }
