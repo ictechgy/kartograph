@@ -6,6 +6,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- 어노테이션 값·parameter annotation의 class 참조를 도달성 간선으로 복원한다. 어노테이션 인자로만 참조되는
+  선언(예: `@PreviewParameter(X::class)`)이 미사용 오탐이 되지 않는다.
+- 중첩 class를 바깥 container와 참조 간선으로 연결해, 사용되는 중첩 class를 둔 바깥 선언이 미사용으로 보고되지 않는다.
+- 바로 앞 constant 문자열 인자를 사용하는 `Class.forName`의 대상을 class 참조로 해석한다.
+- file facade의 도달 불가 top-level 함수를 finding으로 보고한다. inline 함수·property 접근자·native·
+  launcher `main`과 class-only 모드의 private top-level은 보수적으로 제외한다.
+
+### Changed
+
+- `--since`는 debug 정보가 basename만 남긴 경우 프로젝트의 유일 source 경로로 대조해 모호한 매칭을 줄인다.
+- 해결된 한계(annotation 값·enclosing declaration)를 `dead` limitations에서 제거하고, top-level property
+  미보고 한계를 추가한다.
+
 ## [0.2.0] - 2026-09-05
 
 ### Added

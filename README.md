@@ -44,6 +44,11 @@ compile-time constant의 bytecode 손실도 보수적으로 처리한다. CLI와
 동적 component 등록 한계를 함께 출력한다. compile-time constant 사용처는 bytecode에 남지 않으므로
 constant owner는 보수적으로 보존하며 이 과보존 가능성도 limitation으로 출력한다.
 
+어노테이션 값·parameter annotation의 class 참조와 사용되는 중첩 class의 바깥 container는 도달성에 포함하고,
+바로 앞 constant 문자열을 쓰는 `Class.forName` 대상도 참조로 복원한다. file facade의 도달 불가 top-level 함수는
+finding으로 보고하며 inline 함수·property 접근자·native·launcher `main`과 class-only 모드의 private top-level은
+보수적으로 제외한다.
+
 지원하는 member specification은 annotation wildcard, method/field/constructor의 JVM visibility·이름·정확한
 descriptor, `native <methods>`, plain `-keep` member다. 해석하지 못하는 보존 문법은 조용히 버리지 않고
 파일·줄과 함께 실패한다. `-libraryjars`, `-adaptclassstrings`, package relocation처럼 도달성 보존과 무관한
@@ -186,7 +191,7 @@ kartograph의 finding과 `unreachable`은 주어진 입력 graph의 사실이다
 | [`docs/PHASE3-ADOPTION.md`](docs/PHASE3-ADOPTION.md) | baseline, `--since`, machine report와 Gradle 도입 계약 |
 | [`docs/PHASE4-AGENT.md`](docs/PHASE4-AGENT.md) | query, 계량 limitations, bridge-facts와 agent skill 계약 |
 | [`docs/PHASE5-VALIDATION.md`](docs/PHASE5-VALIDATION.md) | cycles, layer rules, Martin metrics self-analysis와 성능 근거 |
-| [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) | 0.1.0 분석 경계와 finding의 안전한 해석 |
+| [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) | 분석 경계와 finding의 안전한 해석 |
 | [`docs/RESEARCH.md`](docs/RESEARCH.md) | 확인된 사실 · 확인되지 않은 주장 · 출처 |
 
 ## 라이선스
