@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-06
+
 ### Added
 
 - BINARY/RUNTIME 보존 어노테이션의 명시적 값·배열·enum·중첩 어노테이션과 parameter annotation의 class 참조를
@@ -82,7 +84,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ictechgy/kartograph/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ictechgy/kartograph/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/ictechgy/kartograph/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.1.0
