@@ -52,7 +52,7 @@ public object GraphJsonRenderer {
         put("accessibility", visibility.name.lowerCamel())
         if (attributes.isNotEmpty()) put("attributes", attributes.map { it.name.lowerCamel() }.sorted())
         put("kind", kind.name.lowerCamel())
-        location?.let { put("location", it.toJsonValue(projectRelativePath)) }
+        location?.toJsonValue(projectRelativePath)?.let { put("location", it) }
         moduleName?.let { put("module", it) }
         put("name", name)
         put("qualifiedName", qualifiedName)
@@ -60,13 +60,23 @@ public object GraphJsonRenderer {
         put("usr", id.value)
     }.toSortedMap()
 
-    // 소비자가 파일 이름과 실제 경로를 혼동하지 않도록 path의 출처를 항상 함께 싣는다.
-    private fun SourceLocation.toJsonValue(projectRelativePath: String?): Map<String, Any?> = buildMap<String, Any?> {
-        column?.let { put("column", it) }
-        line?.let { put("line", it) }
-        put("path", projectRelativePath ?: path)
-        put("pathKind", if (projectRelativePath != null) "projectRelative" else "sourceFileName")
-    }.toSortedMap()
+    /**
+     * 소비자가 파일 이름과 실제 경로를 혼동하지 않도록 path의 출처를 항상 함께 싣는다.
+     *
+     * JVM `SourceFile` attribute는 임의 문자열이라 컴파일러나 후처리 도구에 따라 절대경로가 담길 수 있다.
+     * 해석되지 않은 값은 `pathKind`가 약속한 대로 파일 이름 성분만 남겨, 빌드 기계의 로컬 경로가 교환 문서로
+     * 새지 않게 한다. 남는 이름이 없으면 위치 자체를 싣지 않는다.
+     */
+    private fun SourceLocation.toJsonValue(projectRelativePath: String?): Map<String, Any?>? {
+        val reported = projectRelativePath ?: path.substringAfterLast('/').substringAfterLast('\\')
+        if (reported.isBlank()) return null
+        return buildMap<String, Any?> {
+            column?.let { put("column", it) }
+            line?.let { put("line", it) }
+            put("path", reported)
+            put("pathKind", if (projectRelativePath != null) "projectRelative" else "sourceFileName")
+        }.toSortedMap()
+    }
 
     private fun GraphEdge.toJsonValue(): Map<String, Any?> = sortedMapOf(
         "kind" to kind.name.lowerCamel(),

@@ -11,6 +11,7 @@ import dev.kartograph.core.SourceLocation
 import dev.kartograph.core.Visibility
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GraphJsonRendererTest {
@@ -85,6 +86,42 @@ class GraphJsonRendererTest {
         assertTrue(output.contains("""name": "A\\B\nquoted \"name\"""" + "\""))
         assertTrue(output.contains("""usr": "class:a\"b"""))
         assertEquals(1, output.count { character -> character == '\n' })
+    }
+
+    @Test
+    fun `reduces an unresolved source attribute to its file name so local paths never leak`() {
+        val leaking = CodeGraph(
+            nodes = listOf(
+                GraphNode(
+                    id = NodeId("class:a/Absolute"),
+                    name = "Absolute",
+                    kind = NodeKind.CLASS,
+                    location = SourceLocation("/Users/someone/work/secret/Absolute.kt", line = 7),
+                ),
+                GraphNode(
+                    id = NodeId("class:a/Windows"),
+                    name = "Windows",
+                    kind = NodeKind.CLASS,
+                    location = SourceLocation("""C:\\build\\agent\\Windows.kt"""),
+                ),
+                GraphNode(
+                    id = NodeId("class:a/Empty"),
+                    name = "Empty",
+                    kind = NodeKind.CLASS,
+                    location = SourceLocation("/", line = 2),
+                ),
+            ),
+            edges = emptyList(),
+        )
+
+        val output = GraphJsonRenderer.render(leaking, "9.9.9-test")
+
+        assertTrue(output.contains("""location": {"line": 7, "path": "Absolute.kt", "pathKind": "sourceFileName"}"""))
+        assertTrue(output.contains("""location": {"path": "Windows.kt", "pathKind": "sourceFileName"}"""))
+        // 남는 파일 이름이 없으면 위치를 아예 싣지 않는다.
+        assertTrue(output.contains("""kind": "class", "name": "Empty"""))
+        assertFalse(output.contains("/Users/"))
+        assertFalse(output.contains("build"))
     }
 
     @Test

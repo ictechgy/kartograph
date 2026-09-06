@@ -177,12 +177,18 @@ class KartographCliTest {
     @Test
     fun `graph path options are rejected when they cannot be honoured`(@TempDir root: Path) {
         val classes = root.resolve("classes").createDirectories()
+        val projectFile = root.resolve("not-a-directory")
+        projectFile.writeText("")
         val withoutJson = execute("graph", "--classes", classes.toString(), "--include-paths", "--project", root.toString())
         val withoutProject = execute("graph", "--classes", classes.toString(), "--format", "json", "--include-paths")
         val withoutIncludePaths = execute("graph", "--classes", classes.toString(), "--format", "json", "--project", root.toString())
         val missingProject = execute(
             "graph", "--classes", classes.toString(), "--format", "json",
             "--include-paths", "--project", root.resolve("missing").toString(),
+        )
+        val fileProject = execute(
+            "graph", "--classes", classes.toString(), "--format", "json",
+            "--include-paths", "--project", projectFile.toString(),
         )
 
         assertEquals(ExitStatus.USAGE.code, withoutJson.status)
@@ -193,6 +199,33 @@ class KartographCliTest {
         assertContains(withoutIncludePaths.error, "--project requires --include-paths")
         assertEquals(ExitStatus.FAILURE.code, missingProject.status)
         assertContains(missingProject.error, "project root does not exist")
+        // 존재하지만 디렉터리가 아닌 project root도 같은 도구 실패로 수렴한다.
+        assertEquals(ExitStatus.FAILURE.code, fileProject.status)
+        assertContains(fileProject.error, "project root does not exist")
+    }
+
+    @Test
+    fun `graph json reports missing source attributes and stays byte identical across runs`(@TempDir root: Path) {
+        val source = root.resolve("app/src/main/java/StrippedSample.java")
+        source.parent.createDirectories()
+        source.writeText("public class StrippedSample { public void run() {} }")
+        val classes = root.resolve("classes").createDirectories()
+        // -g:none은 SourceFile attribute를 남기지 않으므로 위치를 복원할 수 없는 정점이 된다.
+        check(requireNotNull(ToolProvider.getSystemJavaCompiler()).run(
+            null, null, null, "-g:none", "-d", classes.toString(), source.toString(),
+        ) == 0)
+        val arguments = arrayOf(
+            "graph", "--classes", classes.toString(), "--format", "json",
+            "--include-paths", "--project", root.toString(),
+        )
+
+        val first = execute(*arguments)
+        val second = execute(*arguments)
+
+        assertEquals(ExitStatus.SUCCESS.code, first.status)
+        assertContains(first.output, "missing-source-paths: ")
+        kotlin.test.assertFalse(first.output.contains("\"location\""))
+        assertEquals(first.output, second.output)
     }
 
     @Test

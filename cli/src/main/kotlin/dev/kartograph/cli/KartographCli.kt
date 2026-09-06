@@ -234,6 +234,8 @@ internal data class SourcePathResolution(
                 projectRoot.toRealPath()
             } catch (error: IOException) {
                 projectRoot
+            } catch (error: SecurityException) {
+                projectRoot
             }
             val pathsByFileName = SourcePaths.byFileName(root)
             val byNodeId = mutableMapOf<NodeId, String>()
