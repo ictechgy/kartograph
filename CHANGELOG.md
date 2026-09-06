@@ -23,9 +23,15 @@
   project 안에서 유일하게 일치하는 파일의 상대경로로 해석하고, 각 위치의 출처를 `pathKind`로, 확정하지 못한 수를
   `unresolved-source-paths`·`missing-source-paths` 한계로 함께 싣는다. 절대경로는 내보내지 않으며 `dot` 출력은
   기존대로 위치를 담지 않는다.
+- Gradle plugin이 Android variant마다 `kartographGraph<Variant>` task를 등록해 같은 `code-graph` v1 문서를
+  `build/reports/kartograph/<variant>-graph.json`에 쓴다. `kartograph { includeSourcePaths.set(true) }`는
+  CLI의 `--include-paths`와 같이 opt-in이며, 켰을 때만 선언되지 않은 project source를 읽으므로 그때만
+  task output을 재사용하지 않는다.
 
 ### Changed
 
+- source 경로 인덱스와 그래프 경로 해석을 `index` 모듈의 공개 `SourcePathIndex`로 옮겨 CLI와 Gradle plugin이
+  같은 해석 규칙을 쓴다. 동작과 출력은 그대로다.
 - `--since`는 debug 정보가 basename만 남긴 경우 프로젝트의 유일 source 경로로 대조해 모호한 매칭을 줄인다.
   인덱스 실패나 모호한 basename은 기존 보수적 매칭으로 폴백한다.
 - `dead` limitations에서 해결된 enclosing declaration 한계를 제거하고, annotation 값 한계는 SOURCE 보존

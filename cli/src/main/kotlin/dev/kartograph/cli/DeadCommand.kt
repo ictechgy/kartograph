@@ -25,6 +25,7 @@ import dev.kartograph.index.ClassHierarchyIndexingException
 import dev.kartograph.index.ClassIndexingException
 import dev.kartograph.index.KeepRuleScanner
 import dev.kartograph.index.KeepRuleScanningException
+import dev.kartograph.index.SourcePathIndex
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
@@ -124,7 +125,7 @@ internal object DeadCommand {
         val scoped = options.since?.let { reference ->
             val changed = ChangedFiles.since(reference, options.projectRoot)
             val sourceRoot = options.projectRoot.toRealPath()
-            val sourcePaths = SourcePaths.byFileName(sourceRoot)
+            val sourcePaths = SourcePathIndex.byFileName(sourceRoot)
             allFindings.filter { finding -> finding.matchesChangedFiles(changed, sourceRoot, sourcePaths) }
         } ?: allFindings
         val fingerprints = options.baseline?.let { path -> BaselineCodec.parse(Files.readString(path)) }.orEmpty()

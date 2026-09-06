@@ -1,12 +1,12 @@
 package dev.kartograph.cli
 
 import dev.kartograph.core.CodeGraph
-import dev.kartograph.core.NodeId
 import dev.kartograph.export.DotGraphRenderer
 import dev.kartograph.export.GraphJsonRenderer
 import dev.kartograph.index.ClassFileIndexer
 import dev.kartograph.index.ClassIndexingException
-import java.io.IOException
+import dev.kartograph.index.SourcePathIndex
+import dev.kartograph.index.SourcePathResolution
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
@@ -77,7 +77,7 @@ internal object KartographCli {
 
     private fun renderGraph(graph: CodeGraph, options: GraphOptions): String =
         if (options.format == GraphFormat.JSON) {
-            val paths = options.projectRoot?.let { root -> SourcePathResolution.resolve(graph, root) }
+            val paths = options.projectRoot?.let { root -> SourcePathIndex.resolve(graph, root) }
                 ?: SourcePathResolution()
             GraphJsonRenderer.render(graph, KartographVersion.current, paths.byNodeId, paths.limitations)
         } else {
@@ -217,54 +217,4 @@ internal object KartographCli {
         stayed unresolved are reported as unresolved-source-paths and missing-source-paths limitations.
         Absolute local paths are never emitted.
     """.trimIndent() + "\n"
-}
-
-/**
- * bytecode가 남긴 source file 이름을 project 기준 상대경로로 해석한 결과다.
- * 유일하게 확정된 경로만 담고, 확정하지 못한 정점 수는 측정된 한계로 알린다.
- */
-internal data class SourcePathResolution(
-    val byNodeId: Map<NodeId, String> = emptyMap(),
-    val limitations: List<String> = emptyList(),
-) {
-    companion object {
-        fun resolve(graph: CodeGraph, projectRoot: Path): SourcePathResolution {
-            // SourcePaths는 절대 정규화 경로를 모으므로 symlink를 지나는 project root도 같은 기준으로 맞춘다.
-            val root = try {
-                projectRoot.toRealPath()
-            } catch (error: IOException) {
-                projectRoot
-            } catch (error: SecurityException) {
-                projectRoot
-            }
-            val pathsByFileName = SourcePaths.byFileName(root)
-            val byNodeId = mutableMapOf<NodeId, String>()
-            var located = 0
-            var unresolved = 0
-            graph.nodeIds.forEach { nodeId ->
-                val sourceFileName = graph.nodes.getValue(nodeId).location?.path ?: return@forEach
-                located++
-                // 이름이 여러 파일과 맞거나(모호) project 밖에서 컴파일된 class(무일치)는 확정하지 않는다.
-                val match = pathsByFileName[sourceFileName]?.singleOrNull()
-                if (match == null) {
-                    unresolved++
-                    return@forEach
-                }
-                // 교환 문서가 플랫폼과 무관하게 같아지도록 항상 '/'로 잇는다.
-                byNodeId[nodeId] = root.relativize(match).joinToString("/")
-            }
-            val missing = graph.nodeCount - located
-            return SourcePathResolution(
-                byNodeId = byNodeId,
-                limitations = buildList {
-                    if (unresolved > 0) add(
-                        "unresolved-source-paths: $unresolved of $located located node(s) did not match exactly one project source file",
-                    )
-                    if (missing > 0) add(
-                        "missing-source-paths: $missing of ${graph.nodeCount} node(s) have no source file in the class debug attributes",
-                    )
-                },
-            )
-        }
-    }
 }

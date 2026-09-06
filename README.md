@@ -113,6 +113,7 @@ cli/build/install/kartograph/bin/kartograph graph \
 
 # 다른 도구가 소비할 교환 JSON. --include-paths는 class debug 정보의 source file 이름을
 # --project 안에서 유일하게 일치하는 파일의 상대경로로 해석하고, 각 위치의 출처를 pathKind로 알린다.
+# Gradle plugin의 kartographGraph<Variant> task도 같은 문서를 만든다.
 cli/build/install/kartograph/bin/kartograph graph \
   --classes path/to/build/tmp/kotlin-classes/debug \
   --format json \
@@ -144,8 +145,9 @@ cli/build/install/kartograph/bin/kartograph dead \
   --since origin/main --report-format sarif --strict
 ```
 
-개발 중인 Gradle plugin은 Android variant마다 `kartographDead<Variant>` task를 등록한다. AGP public
-Variant API가 dependency consumer rules를 merged file로 노출하지 않으므로 현재는 해당 파일을 명시한다.
+개발 중인 Gradle plugin은 Android variant마다 `kartographDead<Variant>`와 `kartographGraph<Variant>` task를
+등록한다. AGP public Variant API가 dependency consumer rules를 merged file로 노출하지 않으므로 현재는 해당
+파일을 명시한다.
 
 ```kotlin
 plugins {
@@ -157,15 +159,19 @@ kartograph {
     strict.set(true)
     baseline.set(layout.projectDirectory.file(".kartograph-baseline.json"))
     reportFormat.set("github-actions") // gradle, github-actions, sarif, json, text
+    includeSourcePaths.set(true) // 그래프 문서에 project 기준 source 경로를 해석해 싣는다(기본 false)
 }
 ```
 
 ```bash
 ./gradlew kartographDeadDebug
+./gradlew kartographGraphDebug
 ```
 
-report는 `build/reports/kartograph/<variant>.txt`에 생성된다. include 대상이 task 실행 중 발견되는 현재
-구조에서는 stale report를 피하기 위해 task output을 up-to-date/cache 결과로 재사용하지 않는다.
+report는 `build/reports/kartograph/<variant>.txt`에, 그래프 교환 문서는
+`build/reports/kartograph/<variant>-graph.json`에 생성된다. include 대상이 task 실행 중 발견되는 현재
+구조에서는 stale report를 피하기 위해 dead task output을 up-to-date/cache 결과로 재사용하지 않는다.
+그래프 task는 경로 해석을 켰을 때만 선언되지 않은 project source를 읽으므로 그때만 재사용하지 않는다.
 
 에이전트는 전체 graph dump 대신 한 symbol의 사용·의존·도달성을 query한다. Flutter/React Native 경계는
 isthmus `bridge-facts` v1으로 내보내고, 프로젝트용 skill은 기존 파일을 보호하며 설치한다.

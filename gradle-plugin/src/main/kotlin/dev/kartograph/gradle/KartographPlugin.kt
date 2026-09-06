@@ -15,6 +15,7 @@ public class KartographPlugin : Plugin<Project> {
         extension.strict.convention(false)
         extension.includePrivateMembers.convention(false)
         extension.reportFormat.convention("gradle")
+        extension.includeSourcePaths.convention(false)
         project.pluginManager.withPlugin("com.android.application") { configureAndroid(project, extension) }
         project.pluginManager.withPlugin("com.android.library") { configureAndroid(project, extension) }
     }
@@ -25,6 +26,11 @@ public class KartographPlugin : Plugin<Project> {
     }
 
     private fun registerVariantTask(project: Project, extension: KartographExtension, variant: Variant) {
+        registerDeadTask(project, extension, variant)
+        registerGraphTask(project, extension, variant)
+    }
+
+    private fun registerDeadTask(project: Project, extension: KartographExtension, variant: Variant) {
         val taskName = "kartographDead${variant.name.replaceFirstChar(Char::titlecase)}"
         val task = project.tasks.register(taskName, KartographDeadTask::class.java) { deadTask ->
             deadTask.group = "verification"
@@ -59,5 +65,29 @@ public class KartographPlugin : Plugin<Project> {
         variant.artifacts.forScope(ScopedArtifacts.Scope.ALL)
             .use(task)
             .toGet(ScopedArtifact.CLASSES, KartographDeadTask::classpathJars, KartographDeadTask::classpathDirectories)
+    }
+
+    /** 그래프 문서는 dependency가 아니라 이 project가 컴파일한 선언만 담으므로 PROJECT scope만 받는다. */
+    private fun registerGraphTask(project: Project, extension: KartographExtension, variant: Variant) {
+        val taskName = "kartographGraph${variant.name.replaceFirstChar(Char::titlecase)}"
+        val task = project.tasks.register(taskName, KartographGraphTask::class.java) { graphTask ->
+            graphTask.group = "reporting"
+            graphTask.description = "Writes the ${variant.name} dependency graph as a code-graph JSON document."
+            graphTask.variantName.set(variant.name)
+            graphTask.includeSourcePaths.set(extension.includeSourcePaths)
+            graphTask.projectDirectory.set(project.layout.projectDirectory)
+            graphTask.graphFile.set(
+                project.layout.buildDirectory.file("reports/kartograph/${variant.name}-graph.json"),
+            )
+            // 경로 해석은 선언되지 않은 project source를 읽으므로 그때만 stale 문서를 재사용하지 않는다.
+            graphTask.outputs.upToDateWhen { !graphTask.includeSourcePaths.get() }
+        }
+        variant.artifacts.forScope(ScopedArtifacts.Scope.PROJECT)
+            .use(task)
+            .toGet(
+                ScopedArtifact.CLASSES,
+                KartographGraphTask::projectJars,
+                KartographGraphTask::projectDirectories,
+            )
     }
 }
