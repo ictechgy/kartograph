@@ -141,6 +141,61 @@ class KartographCliTest {
     }
 
     @Test
+    fun `graph json resolves a project relative path only when one source file matches`(@TempDir root: Path) {
+        val classes = compileGraphPathSample(root)
+
+        val execution = execute(
+            "graph", "--classes", classes.toString(), "--format", "json",
+            "--include-paths", "--project", root.toString(),
+        )
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        assertContains(execution.output, """"format": "code-graph"""")
+        assertContains(execution.output, """"version": "${Path.of("../VERSION").readText().trim()}"""")
+        assertContains(
+            execution.output,
+            """"path": "app/src/main/java/UniqueSample.java", "pathKind": "projectRelative"""",
+        )
+        // 같은 basename이 두 모듈에 있으면 유일 확정이 불가능하므로 source file 이름으로 남고 한계로 보고한다.
+        assertContains(execution.output, """"path": "Shared.java", "pathKind": "sourceFileName"""")
+        assertContains(execution.output, "unresolved-source-paths: ")
+        kotlin.test.assertFalse(execution.output.contains(root.toString()))
+    }
+
+    @Test
+    fun `graph json without include paths reports source file names and no limitations`(@TempDir root: Path) {
+        val classes = compileGraphPathSample(root)
+
+        val execution = execute("graph", "--classes", classes.toString(), "--format", "json")
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        assertContains(execution.output, """"limitations": []""")
+        assertContains(execution.output, """"path": "UniqueSample.java", "pathKind": "sourceFileName"""")
+        assertContains(execution.output, """"usr": "class:UniqueSample"""")
+    }
+
+    @Test
+    fun `graph path options are rejected when they cannot be honoured`(@TempDir root: Path) {
+        val classes = root.resolve("classes").createDirectories()
+        val withoutJson = execute("graph", "--classes", classes.toString(), "--include-paths", "--project", root.toString())
+        val withoutProject = execute("graph", "--classes", classes.toString(), "--format", "json", "--include-paths")
+        val withoutIncludePaths = execute("graph", "--classes", classes.toString(), "--format", "json", "--project", root.toString())
+        val missingProject = execute(
+            "graph", "--classes", classes.toString(), "--format", "json",
+            "--include-paths", "--project", root.resolve("missing").toString(),
+        )
+
+        assertEquals(ExitStatus.USAGE.code, withoutJson.status)
+        assertContains(withoutJson.error, "--include-paths requires --format json")
+        assertEquals(ExitStatus.USAGE.code, withoutProject.status)
+        assertContains(withoutProject.error, "--include-paths requires --project")
+        assertEquals(ExitStatus.USAGE.code, withoutIncludePaths.status)
+        assertContains(withoutIncludePaths.error, "--project requires --include-paths")
+        assertEquals(ExitStatus.FAILURE.code, missingProject.status)
+        assertContains(missingProject.error, "project root does not exist")
+    }
+
+    @Test
     fun `architecture strict commands return findings for cycles violations and unassigned nodes`(@TempDir root: Path) {
         val cycleClasses = compileJavaCycle(root)
         val cycles = execute("cycles", "--classes", cycleClasses.toString(), "--strict")
@@ -842,6 +897,26 @@ class KartographCliTest {
         second.writeText("package second; public class Second { public void call() { new first.First().call(); } }")
         val compiler = requireNotNull(ToolProvider.getSystemJavaCompiler())
         check(compiler.run(null, null, null, "-d", classes.toString(), first.toString(), second.toString()) == 0)
+        return classes
+    }
+
+    // 유일한 basename 하나와 두 모듈에 중복된 basename 하나를 만들어 경로 해석의 양쪽 결과를 함께 검증한다.
+    private fun compileGraphPathSample(root: Path): Path {
+        val classes = root.resolve("classes").createDirectories()
+        val unique = root.resolve("app/src/main/java/UniqueSample.java")
+        val first = root.resolve("moduleA/src/main/java/a/Shared.java")
+        val second = root.resolve("moduleB/src/main/java/b/Shared.java")
+        listOf(unique, first, second).forEach { source -> source.parent.createDirectories() }
+        unique.writeText("public class UniqueSample { public void run() {} }")
+        first.writeText("package a; public class Shared { public void run() {} }")
+        second.writeText("package b; public class Shared { public void run() {} }")
+        val compiler = requireNotNull(ToolProvider.getSystemJavaCompiler())
+        check(
+            compiler.run(
+                null, null, null, "-d", classes.toString(),
+                unique.toString(), first.toString(), second.toString(),
+            ) == 0,
+        )
         return classes
     }
 

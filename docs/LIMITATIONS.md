@@ -55,6 +55,10 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   접근자·backing field·native 함수·launcher `main`과 private 모드 아닌 private top-level은 보수적으로 보고하지
   않는다. top-level property는 여전히 미사용이어도 보고되지 않는다.
 - source file과 line은 JVM debug attribute에 의존하므로 누락되거나 같은 basename 때문에 모호할 수 있다.
+- `graph --format json --include-paths`는 그 source file 이름을 `--project` 안에서 유일하게 일치하는 파일에만
+  상대경로로 확정한다. 같은 이름이 여러 모듈에 있거나 project 밖에서 컴파일된 class는 확정하지 않고 파일 이름을
+  그대로 두며, 각 위치의 출처를 `pathKind`(`projectRelative`/`sourceFileName`)로, 확정하지 못한 수를
+  `unresolved-source-paths`·`missing-source-paths` 한계로 함께 싣는다. 절대경로는 어떤 형식에서도 내보내지 않는다.
 - stale build output은 stale graph를 만든다. kartograph는 source를 컴파일하지 않는다.
 - package/module architecture는 JVM 이름과 입력 root를 기준으로 하며 Gradle dependency resolution model 자체는 아니다.
 - Java와 Kotlin bytecode를 함께 읽지만 reflection configuration, runtime class loading과 외부 서비스 설정은 별도 입력이다.

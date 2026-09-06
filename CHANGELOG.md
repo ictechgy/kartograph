@@ -18,6 +18,11 @@
 - `dead --test-classes <root>`는 production root에서는 도달 불가하나 test 코드에서만 도달되는 finding을
   `(used only by tests)`로 표시한다. 표시는 억제·삭제 승인이 아니며 strict/baseline에서 여전히 finding으로 계산한다.
   현재 CLI만 지원하고 Gradle plugin의 test variant 연결은 후속 작업이다.
+- `graph --format json`은 정점의 `usr`·`qualifiedName`·`kind`·`accessibility`·`location`과 간선을 담은 결정적
+  교환 문서(`code-graph` v1)를 만든다. `--include-paths --project <dir>`는 class debug 정보의 source file 이름을
+  project 안에서 유일하게 일치하는 파일의 상대경로로 해석하고, 각 위치의 출처를 `pathKind`로, 확정하지 못한 수를
+  `unresolved-source-paths`·`missing-source-paths` 한계로 함께 싣는다. 절대경로는 내보내지 않으며 `dot` 출력은
+  기존대로 위치를 담지 않는다.
 
 ### Changed
 

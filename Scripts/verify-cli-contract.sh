@@ -56,12 +56,16 @@ expect_status 0 "graph --help" graph --help
 expect_status 0 "dead --help" dead --help
 expect_status 0 "baseline --help" baseline --help
 expect_status 0 "빈 class root graph" graph --classes "$TEMPORARY_DIRECTORY"
+expect_status 0 "빈 class root graph JSON" graph --classes "$TEMPORARY_DIRECTORY" --format json --include-paths --project .
 expect_status 0 "빈 class root metrics" metrics --classes "$TEMPORARY_DIRECTORY"
 
 echo "종료 코드 64 — 사용 오류"
 expect_status 64 "알 수 없는 옵션" --no-such-option
 expect_status 64 "알 수 없는 하위 명령" no-such-command
 expect_status 64 "잘못된 그래프 형식" graph --format yaml
+expect_status 64 "--include-paths에 --format json 없음" graph --classes "$TEMPORARY_DIRECTORY" --include-paths --project .
+expect_status 64 "--include-paths에 --project 없음" graph --classes "$TEMPORARY_DIRECTORY" --format json --include-paths
+expect_status 64 "--project에 --include-paths 없음" graph --classes "$TEMPORARY_DIRECTORY" --format json --project .
 expect_status 64 "class root 누락" graph
 expect_status 64 "dead 필수 옵션 누락" dead
 expect_status 64 "baseline write 경로 누락" baseline
@@ -71,6 +75,7 @@ expect_status 64 "rules config 누락" rules --classes "$TEMPORARY_DIRECTORY"
 
 echo "종료 코드 2 — 도구 실패"
 expect_status 2 "없는 class root" graph --classes "$TEMPORARY_DIRECTORY/missing"
+expect_status 2 "없는 project root" graph --classes "$TEMPORARY_DIRECTORY" --format json --include-paths --project "$TEMPORARY_DIRECTORY/missing"
 
 echo "출력 내용"
 expect_output "kartograph" "도움말에 도구 이름" --help
@@ -78,6 +83,8 @@ expect_output "Exit codes:" "도움말에 종료 코드 표" --help
 expect_output "kartograph baseline" "도움말에 baseline 명령" --help
 expect_output "kartograph cycles" "도움말에 architecture 명령" --help
 expect_output "digraph kartograph" "graph의 DOT 문서" graph --classes "$TEMPORARY_DIRECTORY"
+expect_output '"format": "code-graph"' "graph의 교환 JSON 문서" graph --classes "$TEMPORARY_DIRECTORY" --format json
+expect_output '"limitations"' "graph JSON의 한계 필드" graph --classes "$TEMPORARY_DIRECTORY" --format json
 
 echo
 if [[ "$FAILURES" -eq 0 ]]; then
