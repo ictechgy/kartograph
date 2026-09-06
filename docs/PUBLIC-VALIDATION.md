@@ -42,7 +42,8 @@ test·benchmark·catalog·build-logic은 제외한다. resource 입력은 app의
   인자 참조는 후속 작업으로 해결했다. 중첩 class의 바깥 container 참조와 어노테이션 값·parameter annotation의
   class 참조를 도달성에 포함한다(아래 CHANGELOG와 `LIMITATIONS.md`). 남은 계열은 protobuf generated-source 출처다.
 - `ListToMapMigration`은 조사한 main source에서 등록을 찾지 못했고 test에서만 호출됐다. 이는 main 그래프의
-  진단과 일치하지만 삭제 승인이 아니며 test 포함 여부를 사용자가 정해야 한다. test-only 사용 분류는 아직 미구현이다.
+  진단과 일치하지만 삭제 승인이 아니며 test 포함 여부를 사용자가 정해야 한다. test-only 사용 분류는
+  `dead --test-classes <root>`로 제공한다(표시일 뿐 억제나 삭제 승인이 아니며 CLI 전용이다).
 - 따라서 이 공개 프로젝트에서 **오탐 0을 달성했다고 주장하지 않는다**. 나머지 계열도 최소 코퍼스부터
   추가하는 다음 단계다. 현재 출시에 대한 안전 해석은 `LIMITATIONS.md`와 같다.
 

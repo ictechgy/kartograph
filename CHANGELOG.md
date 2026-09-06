@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 표준 출력을 UTF-8로 고정하고 machine 문서의 비ASCII를 `\uXXXX`로 escape한다. 이전에는 `LC_ALL=C` 같은
+  비UTF-8 로케일에서 비ASCII 식별자가 `?`로 뭉개져 서로 다른 선언이 같은 `usr`로 붕괴하고, 교환 문서의
+  join key가 조용히 충돌했다. 이제 로케일과 무관하게 같은 바이트를 낸다.
+- 출력 쓰기가 실패하면(디스크 부족 등) 잘린 문서를 성공으로 보고하지 않고 도구 실패(`2`)로 끝낸다.
+- `SourceFile` attribute에 담긴 경로를 그래프에 넣기 전에 파일 이름 성분으로 줄인다. 이전에는 후처리 도구가
+  남긴 절대경로가 `dead` report·`query`·저장소에 커밋되는 baseline 지문으로 그대로 흘러갈 수 있었다.
+- `--include-paths`(Gradle `includeSourcePaths`)가 이름만 같은 무관한 파일을 사실로 확정하지 않는다. 선언의
+  package가 후보 파일 디렉터리의 suffix일 때만 확정하고, 아니면 `unresolved-source-paths`로 센다.
+- 그래프 교환 문서가 경로 해석을 요청하지 않아도 `missing-source-paths`를 보고한다. 개수만으로 계산되는
+  한계를 opt-in 뒤에 숨기지 않는다.
+
+### Changed
+
+- 게시되는 Gradle plugin POM에 name·description·url·licenses·developers·scm을 채우고, release 준비 검증이
+  이 메타데이터와 배포본 문서의 버전 일관성을 함께 확인한다.
+- README·`docs/PR-CHECK.md`·`docs/LIMITATIONS.md`·`docs/PUBLIC-VALIDATION.md`의 버전 하드코딩과 옛 서술을
+  현행화한다.
+
 ## [0.3.0] - 2026-09-06
 
 ### Added

@@ -1,4 +1,4 @@
-# PR gate (0.2.0)
+# PR gate
 
 `Scripts/check-pr.py`는 macOS/Linux의 Python 3.9+, Git 2.24+와 빌드된 CLI를 사용하는 얇은 도우미다. 분석 알고리즘은
 CLI와 동일하다. 기준 commit의 baseline을 임시 디렉터리에 읽어 전체 현재 그래프를 `dead --strict`로
@@ -13,8 +13,8 @@ baseline v1은 분석 설정을 기록하지 않으므로 모드·variant·입�
 
 ```bash
 # PR checkout에서 먼저 프로젝트의 해당 variant를 빌드한다.
-python3 /path/to/kartograph-0.2.0/Scripts/check-pr.py \
-  --binary /path/to/kartograph-0.2.0/bin/kartograph \
+python3 /path/to/kartograph-<version>/Scripts/check-pr.py \
+  --binary /path/to/kartograph-<version>/bin/kartograph \
   --project . --base origin/main -- \
   --classes app/build/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes \
   --manifest app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml \
@@ -39,7 +39,7 @@ python3 /path/to/kartograph-0.2.0/Scripts/check-pr.py \
 baseline이 기준 commit에 없거나 손상되면 빈 baseline으로 대체하지 않는다. 보고서 stdout과 CLI의
 limitations는 보존한다. baseline은 런타임 안전성 증명이 아니며 삭제 승인도 아니다.
 CLI 실행은 기본 300초로 제한하고 `--timeout <양의 초>`로 조절한다. Git 조회는 각각 30초 제한이다.
-전달 옵션은 class/manifest/resource/namespace/keep/classpath/report-format 및 private/strict만 허용한다.
+전달 옵션은 class/test-class/manifest/resource/namespace/keep/classpath/report-format 및 private/strict만 허용한다.
 기존 CLI와 동일하게 `-`로 시작하는 옵션 값은 거부한다. 해당 상대경로는 `./-name`처럼 전달한다.
 
 ## GitHub Actions 연결

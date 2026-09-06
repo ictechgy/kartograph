@@ -1,6 +1,6 @@
 # kartograph
 
-Kotlin/Android 코드베이스를 위한 질의 가능한 의존성 그래프. [cartograph](../cartograph)(Swift)의 자매 프로젝트다.
+Kotlin/Android 코드베이스를 위한 질의 가능한 의존성 그래프. cartograph(Swift)의 자매 프로젝트로 설계와 교환 계약을 공유한다.
 
 이름은 **K**otlin + cartograph. cartograph 가 iOS 지도를 그리듯 kartograph 는 Android 지도를 그린다.
 
@@ -17,7 +17,7 @@ Android 만의 이점이 하나 있다. "안 쓰는 것처럼 보이지만 지�
 
 ## 상태
 
-**현재 소스 버전은 0.2.0이다.** 배포된 버전과 산출물은 [GitHub Releases](https://github.com/ictechgy/kartograph/releases)에서 확인한다. 원천 실험에서 JVM 바이트코드 + 공식 Kotlin metadata를 주 그래프로 결정했고,
+**현재 소스 버전은 [VERSION](VERSION)이 정본이다.** 배포된 버전과 산출물은 [GitHub Releases](https://github.com/ictechgy/kartograph/releases)에서 확인한다. 원천 실험에서 JVM 바이트코드 + 공식 Kotlin metadata를 주 그래프로 결정했고,
 컴파일된 class root의 DOT 출력과 manifest/XML/`@Keep` member·class annotation/wildcard·상속 keep 규칙 기반
 `dead --explain`이 동작한다. 재귀 include와 consumer rules 입력도 지원한다. `final` 등 추가
 positive/negative JVM access flag도 지원한다. 일반 member signature 조건과 DI·직렬화·runtime callback
@@ -57,7 +57,7 @@ directive는 무시하며 dependency hierarchy는 명시적 `--classpath`로 받
 
 ## 설치와 호환성
 
-0.2.0의 private member 진단은 `dead --include-private-members`로 선택한다(0.1.x에는 없음).
+private member 진단은 `dead --include-private-members`로 선택한다(0.2.0에서 추가, 0.1.x에는 없음).
 기본 class 보고에 더해 reachable인
 비생성 class의 private method와 field/property만 추가한다. baseline 생성과 `query`에도 같은 옵션을 사용한다.
 Gradle에서는 `kartograph { includePrivateMembers.set(true) }`로 켠다.
@@ -79,11 +79,11 @@ GitHub Release 공개와 Portal 승인·설치 가능 여부는 별개다.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.2.0"
+    id("io.github.ictechgy.kartograph") version "0.3.0"
 }
 ```
 
-GitHub release의 `kartograph-0.2.0.zip` 또는 `.tar`를 내려받아 압축을 풀고 `bin/kartograph`를 실행한다.
+GitHub release의 `kartograph-<version>.zip` 또는 `.tar`를 내려받아 압축을 풀고 `bin/kartograph`를 실행한다.
 별도 checksum과 signature는 아직 배포하지 않는다.
 
 ## 개발과 검증

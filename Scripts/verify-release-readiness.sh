@@ -44,6 +44,15 @@ build_artifacts
 hash_artifacts > "$TEMPORARY_DIRECTORY/second.sha256"
 diff -u "$TEMPORARY_DIRECTORY/first.sha256" "$TEMPORARY_DIRECTORY/second.sha256"
 
+# 게시되는 POM이 출처와 라이선스를 알리는지 확인한다.
+POM="gradle-plugin/build/publications/pluginMaven/pom-default.xml"
+for ELEMENT in name description url licenses scm; do
+    grep -Fq "<$ELEMENT>" "$POM" || {
+        echo "게시 POM에 <$ELEMENT>가 없습니다: $POM" >&2
+        exit 2
+    }
+done
+
 PLUGIN_JAR="gradle-plugin/build/libs/kartograph-gradle-plugin-$VERSION.jar"
 jar tf "$PLUGIN_JAR" | grep -Fxq 'META-INF/gradle-plugins/io.github.ictechgy.kartograph.properties'
 jar tf "$PLUGIN_JAR" | grep -Fq 'dev/kartograph/analysis/ReachabilityAnalyzer.class'
@@ -82,6 +91,14 @@ KARTOGRAPH_BINARY="$TAR_BINARY" KARTOGRAPH_PR_SCRIPT="$TEMPORARY_DIRECTORY/karto
 if grep -R -E -n '(/Users/|~/Desktop|[A-Za-z]:\\Users\\)' \
     "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION" --include='*.md'; then
     echo "release 문서에 로컬 사용자 경로가 남았습니다" >&2
+    exit 1
+fi
+
+# 배포본 문서가 이전 release를 설치하라고 지시하면(버전 하드코딩) 사용자는 이 릴리스에 없는 구버전을 받게 된다.
+if grep -R -E -n "version \"[0-9]+\.[0-9]+\.[0-9]+\"|kartograph-[0-9]+\.[0-9]+\.[0-9]+\.(zip|tar)" \
+    "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION" --include='*.md' \
+    | grep -v -F "$VERSION"; then
+    echo "release 문서가 이 릴리스가 아닌 버전의 설치를 지시합니다" >&2
     exit 1
 fi
 
