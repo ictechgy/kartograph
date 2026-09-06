@@ -113,34 +113,4 @@ public object AgentDocumentRenderer {
             )
         }
     }.toSortedMap()
-
-    private fun jsonValue(value: Any?): String = when (value) {
-        null -> "null"
-        is String -> "\"${escape(value)}\""
-        is Boolean, is Number -> value.toString()
-        is Map<*, *> -> value.entries.joinToString(prefix = "{", postfix = "}", separator = ", ") { (key, item) ->
-            "\"${escape(key.toString())}\": ${jsonValue(item)}"
-        }
-        is Iterable<*> -> value.joinToString(prefix = "[", postfix = "]", separator = ", ") { jsonValue(it) }
-        else -> error("unsupported JSON value: ${value::class.simpleName}")
-    }
-
-    private fun escape(value: String): String = buildString {
-        value.forEach { character ->
-            when (character) {
-                '\\' -> append("\\\\")
-                '"' -> append("\\\"")
-                '\b' -> append("\\b")
-                '\u000C' -> append("\\f")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
-                else -> if (character.code < 0x20) append("\\u%04x".format(character.code)) else append(character)
-            }
-        }
-    }
-
-    private fun String.lowerCamel(): String = lowercase().split('_').let { words ->
-        words.first() + words.drop(1).joinToString("") { it.replaceFirstChar { character -> character.titlecase() } }
-    }
 }

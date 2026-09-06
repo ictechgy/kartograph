@@ -111,6 +111,14 @@ cli/build/install/kartograph/bin/kartograph graph \
   --classes path/to/build/tmp/kotlin-classes/debug \
   --format dot
 
+# 다른 도구가 소비할 교환 JSON. --include-paths는 class debug 정보의 source file 이름을
+# --project 안에서 유일하게 일치하는 파일의 상대경로로 해석하고, 각 위치의 출처를 pathKind로 알린다.
+cli/build/install/kartograph/bin/kartograph graph \
+  --classes path/to/build/tmp/kotlin-classes/debug \
+  --format json \
+  --include-paths \
+  --project path/to/project
+
 # 초기 dead 수직 슬라이스. 출력은 삭제 가능 판정이 아니라 도달 불가 사실이다.
 cli/build/install/kartograph/bin/kartograph dead \
   --classes path/to/compiled/classes \
