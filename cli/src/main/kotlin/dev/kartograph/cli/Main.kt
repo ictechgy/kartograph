@@ -16,7 +16,14 @@ import kotlin.system.exitProcess
 fun main(arguments: Array<String>) {
     val output = utf8Stream(FileDescriptor.out)
     val error = utf8Stream(FileDescriptor.err)
-    val status = KartographCli.run(arguments, output, error)
+    val status = try {
+        KartographCli.run(arguments, output, error)
+    } catch (failure: Throwable) {
+        // 예기치 못한 실패가 그대로 새면 JVM 기본 종료 코드 1이 되어 strict finding과 구분되지 않고,
+        // 기본 핸들러가 원본 stderr에 절대경로가 담긴 stack trace를 찍는다. 도구 실패(2)로 수렴시킨다.
+        error.println("error: kartograph failed with ${failure::class.simpleName ?: "an unexpected error"}; check the inputs")
+        ExitStatus.FAILURE.code
+    }
     output.flush()
     // 잘린 문서를 성공으로 보고하지 않도록, 쓰기 실패는 도구 실패로 올린다.
     if (output.checkError()) {

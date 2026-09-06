@@ -64,8 +64,8 @@ public object GraphJsonRenderer {
      * 소비자가 파일 이름과 실제 경로를 혼동하지 않도록 path의 출처를 항상 함께 싣는다.
      *
      * JVM `SourceFile` attribute는 임의 문자열이라 컴파일러나 후처리 도구에 따라 절대경로가 담길 수 있다.
-     * 해석되지 않은 값은 `pathKind`가 약속한 대로 파일 이름 성분만 남겨, 빌드 기계의 로컬 경로가 교환 문서로
-     * 새지 않게 한다. 남는 이름이 없으면 위치 자체를 싣지 않는다.
+     * `ClassFileIndexer`가 그래프에 넣기 전에 이미 파일 이름 성분만 남기므로 여기서의 축약은 이중 방어이고,
+     * 다른 그래프 생산자가 들어와도 `pathKind`가 약속한 의미를 지키게 한다. 남는 이름이 없으면 위치를 생략한다.
      */
     private fun SourceLocation.toJsonValue(projectRelativePath: String?): Map<String, Any?>? {
         val reported = projectRelativePath ?: path.substringAfterLast('/').substringAfterLast('\\')

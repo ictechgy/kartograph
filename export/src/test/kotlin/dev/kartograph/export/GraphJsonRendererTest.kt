@@ -125,6 +125,22 @@ class GraphJsonRendererTest {
     }
 
     @Test
+    fun `escapes non ascii and surrogate pairs so the document is charset independent`() {
+        // U+10400은 UTF-16에서 surrogate pair로 표현되는 유효 식별자 문자다.
+        val supplementary = "\uD801\uDC00Cls"
+        val graph = CodeGraph(
+            nodes = listOf(GraphNode(NodeId("class:$supplementary"), supplementary, NodeKind.CLASS)),
+            edges = emptyList(),
+        )
+
+        val output = GraphJsonRenderer.render(graph, "9.9.9-test")
+
+        // JSON 규격대로 surrogate pair는 두 개의 \uXXXX로 나가고, 문서 전체가 순수 ASCII가 된다.
+        assertTrue(output.contains("""usr": "class:\ud801\udc00Cls"""))
+        assertTrue(output.all { character -> character.code in 0x20..0x7E || character == '\n' })
+    }
+
+    @Test
     fun `exposes the exchange format identity used by consumers`() {
         assertEquals("code-graph", GraphJsonRenderer.FORMAT)
         assertEquals(1, GraphJsonRenderer.VERSION)
