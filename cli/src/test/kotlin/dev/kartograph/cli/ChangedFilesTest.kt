@@ -3,6 +3,7 @@ package dev.kartograph.cli
 import dev.kartograph.core.Finding
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.SourceLocation
+import dev.kartograph.index.SourcePathIndex
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
@@ -95,7 +96,7 @@ class ChangedFilesTest {
         root.resolve("build/generated").createDirectories().resolve("Sample.kt").writeText("generated")
         root.resolve("node_modules/pkg").createDirectories().resolve("Sample.kt").writeText("dependency")
 
-        val index = SourcePaths.byFileName(root.toRealPath())
+        val index = SourcePathIndex.byFileName(root.toRealPath())
 
         assertEquals(setOf(root.toRealPath().resolve("src/main/Sample.kt")), index["Sample.kt"])
         assertEquals(setOf(root.toRealPath().resolve("src/test/SampleTest.java")), index["SampleTest.java"])
@@ -117,7 +118,7 @@ class ChangedFilesTest {
 
         val projectReal = root.toRealPath()
         val changed = ChangedFiles.since(base, root)
-        val sourcePaths = SourcePaths.byFileName(projectReal)
+        val sourcePaths = SourcePathIndex.byFileName(projectReal)
 
         // realpath 기준이 git changed 집합과 일치해 변경된 유일 source는 포함된다(under-reporting 없음).
         assertTrue(
