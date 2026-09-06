@@ -169,9 +169,44 @@ class KartographCliTest {
         val execution = execute("graph", "--classes", classes.toString(), "--format", "json")
 
         assertEquals(ExitStatus.SUCCESS.code, execution.status)
-        assertContains(execution.output, """"limitations": []""")
         assertContains(execution.output, """"path": "UniqueSample.java", "pathKind": "sourceFileName"""")
         assertContains(execution.output, """"usr": "class:UniqueSample"""")
+        // 경로 해석을 요청하지 않아도 계량 가능한 한계는 숨기지 않는다. 여기서는 숨길 것이 없다.
+        assertContains(execution.output, """"limitations": []""")
+    }
+
+    @Test
+    fun `graph json escapes non ascii identifiers so the exchange bytes do not depend on charset`(@TempDir root: Path) {
+        val source = root.resolve("한글.java")
+        source.writeText("public class 한글 { public void 실행() {} }")
+        val classes = root.resolve("classes").createDirectories()
+        check(requireNotNull(ToolProvider.getSystemJavaCompiler()).run(
+            null, null, null, "-encoding", "UTF-8", "-d", classes.toString(), source.toString(),
+        ) == 0)
+
+        val execution = execute("graph", "--classes", classes.toString(), "--format", "json")
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        // 비ASCII는 \uXXXX로 나가므로 stdout charset이 무엇이든 같은 바이트가 되고 usr가 충돌하지 않는다.
+        assertContains(execution.output, """"usr": "class:\ud55c\uae00"""")
+        kotlin.test.assertFalse(execution.output.contains("한글"))
+        kotlin.test.assertFalse(execution.output.contains("?"))
+    }
+
+    @Test
+    fun `graph json reports nodes without a source file even without path resolution`(@TempDir root: Path) {
+        val source = root.resolve("StrippedOnly.java")
+        source.writeText("public class StrippedOnly { public void run() {} }")
+        val classes = root.resolve("classes").createDirectories()
+        check(requireNotNull(ToolProvider.getSystemJavaCompiler()).run(
+            null, null, null, "-g:none", "-d", classes.toString(), source.toString(),
+        ) == 0)
+
+        val execution = execute("graph", "--classes", classes.toString(), "--format", "json")
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        // --include-paths 없이도 개수만으로 계산되는 한계는 보고한다.
+        assertContains(execution.output, "missing-source-paths: ")
     }
 
     @Test

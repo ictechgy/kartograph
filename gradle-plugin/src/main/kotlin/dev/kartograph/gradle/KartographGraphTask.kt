@@ -61,7 +61,8 @@ public abstract class KartographGraphTask : DefaultTask() {
         val paths = if (includeSourcePaths.get()) {
             SourcePathIndex.resolve(graph, projectDirectory.get().asFile.toPath())
         } else {
-            SourcePathResolution()
+            // 경로 해석을 요청하지 않아도 계량 가능한 한계는 숨기지 않는다.
+            SourcePathResolution(limitations = SourcePathIndex.missingSourcePaths(graph))
         }
         val target = graphFile.get().asFile.toPath()
         Files.createDirectories(requireNotNull(target.parent))

@@ -77,8 +77,9 @@ internal object KartographCli {
 
     private fun renderGraph(graph: CodeGraph, options: GraphOptions): String =
         if (options.format == GraphFormat.JSON) {
+            // 경로 해석을 요청하지 않아도 계량 가능한 한계는 숨기지 않는다.
             val paths = options.projectRoot?.let { root -> SourcePathIndex.resolve(graph, root) }
-                ?: SourcePathResolution()
+                ?: SourcePathResolution(limitations = SourcePathIndex.missingSourcePaths(graph))
             GraphJsonRenderer.render(graph, KartographVersion.current, paths.byNodeId, paths.limitations)
         } else {
             DotGraphRenderer.render(graph)
