@@ -142,7 +142,12 @@ internal object DeadCommand {
     ): List<Finding> {
         if (findings.isEmpty() || testClassRoots.isEmpty()) return findings
         // test→production cross edge를 보존하려면 production과 test root를 함께 index해야 한다.
+        // 따로 index하면 combined 조립 시 dangling 제거로 test→production 간선이 유실된다.
         val combined = ClassFileIndexer().index(classRoots + testClassRoots)
+        // seed는 combined에만 있고 production graph에는 없는 노드, 즉 test 전용 노드다.
+        // classRoots가 먼저 index되므로 production 노드는 항상 graph.nodes에 있어 seed에서 빠진다.
+        // 같은 FQN이 production·test 양쪽에 있으면 첫 root(production) 사실이 우선해 test 사본 간선이 가려질 수 있고,
+        // 같은 root를 --classes와 --test-classes 양쪽에 넘기면 seed가 비어 표시 없이 성공한다(문서화된 경계).
         val testSideRoots = combined.nodeIds.filter { it !in graph.nodes }
             .map { RetentionEvidence(it, RetentionReason.RUNTIME_ENTRY_POINT, null) }
         val testReachable = ReachabilityAnalyzer.analyze(combined, testSideRoots).reachableNodeIds

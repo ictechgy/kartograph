@@ -44,6 +44,10 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   tests)`로 **표시**만 한다. 표시는 억제·삭제 승인이 아니며 strict/baseline에서 여전히 finding으로 계산한다.
   test root를 전달하지 않으면 이 구분을 볼 수 없고, Gradle plugin은 아직 test variant를 연결하지 않는다(CLI 전용).
   test-only 여부는 전달된 test class root와 production root가 같은 variant/컴파일 기준일 때만 신뢰할 수 있다.
+  test 도달성은 production 도달성과 같은 정적 간선 모델(classpath 상위 타입 dispatch 미해결 포함)을 쓰므로, test가
+  라이브러리 상위 타입 virtual dispatch로만 도달하는 finding은 표시되지 않을 수 있다(표시 누락은 보수 방향이며
+  finding 자체는 계속 보고된다). 같은 FQN이 production·test 양쪽에 있으면 첫 root 사실이 우선해 표시가 누락될 수
+  있고, 같은 root를 `--classes`와 `--test-classes` 양쪽에 넘기면 test 전용 seed가 비어 표시 없이 성공한다.
 - Kotlin compiler/Compose/KSP/kapt가 만든 선언은 `synthesized`로 구분하지만 모든 code generator를 식별하지는 않는다.
 - Kotlin file facade 자체는 synthesized infrastructure로 제외하지만, 단일 file facade와 multi-file part의 도달
   불가한 top-level 함수는 finding으로 보고한다. `@JvmMultifileClass` facade의 위임 method는 synthesized로
