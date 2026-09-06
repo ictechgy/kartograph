@@ -254,7 +254,11 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 parameter: Int,
                 annotationDescriptor: String,
                 visible: Boolean,
-            ): AnnotationVisitor = AnnotationValueVisitor(methodId)
+            ): AnnotationVisitor {
+                // parameter annotation 타입 자체도 연결해 값 없는 어노테이션이 referenced class를 잃지 않게 한다.
+                edges += annotationEdge(methodId, annotationDescriptor)
+                return AnnotationValueVisitor(methodId)
+            }
 
             override fun visitLineNumber(line: Int, start: Label) {
                 if (firstLine == null) firstLine = line

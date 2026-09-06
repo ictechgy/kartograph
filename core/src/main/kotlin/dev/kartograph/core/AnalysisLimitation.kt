@@ -6,5 +6,6 @@ public enum class AnalysisLimitation(public val description: String) {
     DYNAMIC_REGISTRATION("manifest-absent runtime component registration is not resolved"),
     INLINE_CONSTANT_REFERENCES("compile-time constant owners are retained because inlined use sites are unavailable"),
     GENERATED_CODE_COVERAGE("only supported generation markers and sibling relationships identify generated code"),
+    ANNOTATION_VALUE_REFERENCES("class references in SOURCE-retention annotations and annotation member default values are not recovered from bytecode"),
     TOP_LEVEL_DECLARATIONS("file-facade top-level properties and their accessors are conservatively not reported"),
 }
