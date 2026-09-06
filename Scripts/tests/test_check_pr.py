@@ -119,6 +119,11 @@ class CheckPrTest(unittest.TestCase):
         self.assertEqual(result.returncode, 64)
         self.assertIn("invalid report format", result.stderr)
 
+    def test_test_classes_option_is_forwarded_without_rejection(self):
+        result = self.gate("--test-classes", "classes")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["suppressedCount"], 1)
+
     def test_inherited_git_override_is_not_forwarded_to_cli(self):
         binary = self.project / "environment-cli"
         binary.write_text("#!/usr/bin/env python3\nimport os, sys\nsys.exit(7 if 'GIT_DIR' in os.environ else 0)\n")
