@@ -26,7 +26,7 @@ configurations.named("testRuntimeClasspath") {
 }
 
 dependencies {
-    compileOnly("com.android.tools.build:gradle-api:9.3.2")
+    compileOnly("com.android.tools.build:gradle-api:8.7.3")
 
     embedded(project(":analysis"))
     embedded(project(":core"))
@@ -35,7 +35,8 @@ dependencies {
 
     testImplementation(gradleTestKit())
     testImplementation(kotlin("test"))
-    testRuntimeOnly("com.android.tools.build:gradle-api:9.3.2")
+    testImplementation(project(":index"))
+    testRuntimeOnly("com.android.tools.build:gradle-api:8.7.3")
 }
 
 gradlePlugin {

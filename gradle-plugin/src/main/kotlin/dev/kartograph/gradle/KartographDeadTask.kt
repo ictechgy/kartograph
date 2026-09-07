@@ -101,6 +101,10 @@ public abstract class KartographDeadTask : DefaultTask() {
     @get:Internal
     public abstract val projectDirectory: DirectoryProperty
 
+    /** 빌드 출력 기준은 실행 시점에 project를 만질 수 없으므로 입력으로 받는다. */
+    @get:Internal
+    public abstract val buildDirectory: DirectoryProperty
+
     @get:OutputFile
     public abstract val reportFile: RegularFileProperty
 
@@ -153,9 +157,32 @@ public abstract class KartographDeadTask : DefaultTask() {
             }
         }
         val keepRules = KeepRuleScanner(projectRoot, includePrivateMembers.get())
-            .scan(keepRuleFiles.files.sorted().map(java.io.File::toPath))
+            .scan(existingRuleFiles(keepRuleFiles.files.sorted().map(java.io.File::toPath)))
         return DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,
             includePrivateMembers = includePrivateMembers.get())
+    }
+
+    /**
+     * AGP가 variant.proguardFiles로 넘긴 중간 산출물은 minify를 켜기 전까지 없을 수 있다
+     * (AGP 8의 default_proguard_files). 빌드 출력 디렉터리 아래의 누락만 건너뛰고,
+     * 소스 트리 경로의 누락은 스캐너가 기존대로 실패로 둔다.
+     */
+    private fun existingRuleFiles(files: List<Path>): List<Path> {
+        val buildRoot = canonical(buildDirectory.get().asFile.toPath())
+        val existing = files.filter { file -> Files.exists(file) || !canonical(file).startsWith(buildRoot) }
+        val skipped = files.size - existing.size
+        if (skipped > 0) logger.lifecycle("kartograph ${variantName.get()}: skipped $skipped missing generated keep rule file(s) under the build directory")
+        return existing
+    }
+
+    /**
+     * 존재하지 않는 경로도 존재하는 조상 기준으로 심볼릭 링크를 풀어 같은 기준으로 대조한다.
+     * (`/var`와 `/private/var`처럼 같은 곳을 가리키는 표기가 섞여도 일치한다.)
+     */
+    private fun canonical(path: Path): Path = try {
+        Path.of(path.toFile().canonicalPath)
+    } catch (_: java.io.IOException) {
+        path.toAbsolutePath().normalize()
     }
 
     private fun writeReport(findings: List<Finding>, suppressedCount: Int) {
