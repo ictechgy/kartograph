@@ -79,7 +79,7 @@ GitHub Release 공개와 Portal 승인·설치 가능 여부는 별개다.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.3.0"
+    id("io.github.ictechgy.kartograph") version "0.3.1"
 }
 ```
 

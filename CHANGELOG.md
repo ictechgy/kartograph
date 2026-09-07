@@ -4,7 +4,7 @@
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)를 따르고 버전은
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)을 따른다.
 
-## [Unreleased]
+## [0.3.1] - 2026-09-07
 
 ### Fixed
 
@@ -113,7 +113,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/ictechgy/kartograph/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/ictechgy/kartograph/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ictechgy/kartograph/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/ictechgy/kartograph/compare/v0.1.0...v0.1.1
