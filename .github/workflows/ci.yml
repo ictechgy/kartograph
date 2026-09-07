@@ -64,3 +64,25 @@ jobs:
           cache: gradle
       - name: Verify supported JDK
         run: ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} test :gradle-plugin:validatePlugins
+
+  agp-minimum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+      - run: sdkmanager "platforms;android-35"
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
+        with:
+          gradle-version: '8.10.2'
+      - name: Verify minimum supported AGP and Gradle
+        shell: bash
+        run: |
+          export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
+          bash Scripts/verify-agp-8-fixture.sh

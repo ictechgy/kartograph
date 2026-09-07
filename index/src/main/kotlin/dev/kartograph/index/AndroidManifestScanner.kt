@@ -11,6 +11,7 @@ public class AndroidManifestScanner(private val projectRoot: Path) {
     public fun scan(manifest: Path, namespace: String): List<RetentionEvidence> {
         require(namespace.isNotBlank()) { "Android namespace must not be blank" }
         val sourcePath = projectRelativePath(projectRoot, manifest)
+        val sourceLines = xmlSourceLines(manifest)
         return readXml(manifest) { reader ->
             when (reader.localName) {
                 "activity-alias" -> listOf(reader.requiredClassReference("targetActivity", namespace, sourcePath))
@@ -28,7 +29,7 @@ public class AndroidManifestScanner(private val projectRoot: Path) {
             RetentionEvidence(
                 nodeId = JvmNodeId.classId(reference.qualifiedName.replace('.', '/')),
                 reason = RetentionReason.MANIFEST_COMPONENT,
-                location = xmlValueLocation(sourcePath, manifest, reference.declaredName, reference.endLine),
+                location = xmlValueLocation(sourcePath, sourceLines, reference.declaredName, reference.endLine),
             )
         }
     }

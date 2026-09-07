@@ -5,21 +5,20 @@ import dev.kartograph.core.BridgeFactsDocument
 import dev.kartograph.core.BridgeLocation
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.extension
-import kotlin.io.path.isRegularFile
-import kotlin.io.path.readLines
+import java.time.Instant
 
 /** Kotlin/Java 소스의 정적 리터럴만 추출하고 동적 이름은 버리지 않는 브리지 스캐너다. */
 public class BridgeFactScanner(private val projectRoot: Path) {
-    /** 프로젝트 상대 근거와 조인 불가능한 사실의 한계를 bridge-facts v1 문서로 만든다. */
-    public fun scan(generatedAt: String): BridgeFactsDocument {
+    /**
+     * 프로젝트 상대 근거와 조인 불가능한 사실의 한계를 bridge-facts v1 문서로 만든다.
+     * generatedAt을 생략하면 최신 source 수정 시각을 snapshot 시각으로 사용한다(빈 입력은 Unix epoch).
+     */
+    public fun scan(generatedAt: String? = null): BridgeFactsDocument {
         val facts = mutableListOf<BridgeFact>()
         val stats = ScanStats()
-        Files.walk(projectRoot).use { paths ->
-            paths.filter { it.isRegularFile() && it.extension in SOURCE_EXTENSIONS }
-                .filter { path -> !isPruned(path) }
-                .sorted().forEach { scanFile(it, facts, stats) }
-        }
+        val sources = mutableListOf<Path>()
+        ProjectTraversal.walkSources(projectRoot) { sources.add(it) }
+        sources.sorted().forEach { scanFile(it, facts, stats) }
         val ordered = facts.sortedWith(compareBy({ it.location.path }, { it.location.line }, { it.kind }, { it.method.orEmpty() }))
         val counts = ordered.groupingBy(BridgeFact::target).eachCount()
         val target = counts.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
@@ -44,7 +43,8 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             )
         }
         return BridgeFactsDocument(
-            generatedAt = generatedAt,
+            generatedAt = generatedAt ?: (sources.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() }
+                ?: Instant.EPOCH).toString(),
             target = target,
             project = ".",
             facts = ordered,
@@ -53,7 +53,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
     }
 
     private fun scanFile(path: Path, facts: MutableList<BridgeFact>, stats: ScanStats) {
-        val relative = projectRoot.toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize())
+        val relative = projectRoot.toRealPath().relativize(path.toAbsolutePath().normalize())
             .joinToString("/")
         val flutterChannels = mutableMapOf<String, Channel>()
         var pendingChannel: PendingChannel? = null
@@ -90,7 +90,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                 stats.unscannedHandlers++
             }
         }
-        path.readLines().forEachIndexed { zeroBased, line ->
+        ProjectTraversal.readSourceLines(projectRoot, path).forEachIndexed { zeroBased, line ->
             val lineNumber = zeroBased + 1
             val stripped = stripComments(line, inBlockComment)
             inBlockComment = stripped.inBlockComment
@@ -196,8 +196,6 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             reactScope?.let { scope -> if (braceDepth < scope.depth) reactScope = null }
         }
     }
-
-    private fun isPruned(path: Path): Boolean = ProjectTraversal.isPrunedSource(projectRoot, path)
 
     private fun fact(
         kind: String,

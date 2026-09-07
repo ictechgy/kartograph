@@ -30,7 +30,7 @@ jobs:
           cache: gradle
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       - name: Install fixture Android platform
-        run: sdkmanager "platforms;android-36"
+        run: sdkmanager "platforms;android-36" "platforms;android-35"
       - name: Require the tag to match VERSION
         run: test "$GITHUB_REF_NAME" = "v$(tr -d '[:space:]' < VERSION)"
       - name: Test and verify coverage
@@ -42,18 +42,31 @@ jobs:
           Scripts/verify-fixture-corpus.sh
           Scripts/verify-gradle-plugin-fixture.sh
           python3 -m unittest discover -s Scripts/tests -v
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
+        with:
+          gradle-version: '8.10.2'
+      - name: Verify minimum supported AGP and Gradle
+        shell: bash
+        run: |
+          export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
+          bash Scripts/verify-agp-8-fixture.sh
       - name: Verify release artifacts without publishing
         run: Scripts/verify-release-readiness.sh
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          RELEASE_VERSION="$(tr -d '[:space:]' < VERSION)"
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
             gh release create "$GITHUB_REF_NAME" \
               --verify-tag --generate-notes --title "kartograph $GITHUB_REF_NAME"
           gh release upload "$GITHUB_REF_NAME" \
-            "cli/build/distributions/kartograph-$(< VERSION).zip" \
-            "cli/build/distributions/kartograph-$(< VERSION).tar"
+            "cli/build/distributions/kartograph-$RELEASE_VERSION.zip" \
+            "cli/build/distributions/kartograph-$RELEASE_VERSION.tar" \
+            "gradle-plugin/build/libs/kartograph-gradle-plugin-$RELEASE_VERSION.jar" \
+            "build/release/kartograph-$RELEASE_VERSION.cdx.json" \
+            "build/release/kartograph-gradle-plugin-$RELEASE_VERSION.cdx.json" \
+            "build/release/SHA256SUMS"
       - name: Publish Gradle plugin
         env:
           GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}

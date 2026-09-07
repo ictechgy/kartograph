@@ -18,7 +18,10 @@ import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
-import java.time.Instant
+import java.nio.file.LinkOption
+import java.nio.file.StandardOpenOption
+import java.nio.file.StandardCopyOption
+import java.io.IOException
 
 internal object AgentCommand {
     fun skill(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
@@ -53,20 +56,50 @@ internal object AgentCommand {
             error.println("error: project root does not exist")
             return ExitStatus.FAILURE.code
         }
-        val target = project.resolve(".claude/skills/kartograph/SKILL.md")
-        if (Files.exists(target) && !force) return usage(error, "skill already exists; pass --force to overwrite")
         return try {
+            val target = skillTarget(project)
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS) && !force) {
+                return usage(error, "skill already exists; pass --force to overwrite")
+            }
             val text = AgentCommand::class.java.getResourceAsStream("/kartograph/SKILL.md")
                 ?.bufferedReader()?.use { it.readText() }
                 ?: throw IllegalStateException("bundled skill is missing")
-            Files.createDirectories(requireNotNull(target.parent))
-            Files.writeString(target, text + if (text.endsWith('\n')) "" else "\n")
+            val content = text + if (text.endsWith('\n')) "" else "\n"
+            if (force) {
+                // 기존 파일을 truncate하면 프로젝트 밖 hard link도 함께 바뀌므로 디렉터리 항목만 교체한다.
+                val temporary = Files.createTempFile(target.parent, ".kartograph-skill-", ".tmp")
+                try {
+                    Files.writeString(temporary, content, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)
+                    Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                } finally {
+                    Files.deleteIfExists(temporary)
+                }
+            } else {
+                Files.writeString(target, content, StandardOpenOption.WRITE,
+                    StandardOpenOption.CREATE_NEW, LinkOption.NOFOLLOW_LINKS)
+            }
             output.println("Wrote .claude/skills/kartograph/SKILL.md")
             ExitStatus.SUCCESS.code
         } catch (_: Exception) {
             error.println("error: unable to install the bundled skill; check project permissions")
             ExitStatus.FAILURE.code
         }
+    }
+
+    // 프로젝트 루트 alias는 허용하지만 설치 경로 안의 링크는 따라가지 않는다.
+    private fun skillTarget(project: Path): Path {
+        val root = project.toRealPath()
+        var parent = root
+        for (name in listOf(".claude", "skills", "kartograph")) {
+            val directory = parent.resolve(name)
+            if (Files.isSymbolicLink(directory)) throw IOException("skill directory must not be a symbolic link")
+            if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) Files.createDirectory(directory)
+            parent = directory.toRealPath()
+            if (!parent.startsWith(root) || !Files.isDirectory(parent)) throw IOException("invalid skill directory")
+        }
+        val target = parent.resolve("SKILL.md")
+        if (Files.isSymbolicLink(target)) throw IOException("skill file must not be a symbolic link")
+        return target
     }
 
     fun query(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
@@ -104,7 +137,8 @@ internal object AgentCommand {
         val depth = options.positiveInt("--depth", 1, error) ?: return ExitStatus.USAGE.code
         val limit = options.positiveInt("--limit", 50, error) ?: return ExitStatus.USAGE.code
         return try {
-            val graph = ClassFileIndexer().index(classRoots)
+            val indexed = ClassFileIndexer().indexWithObservations(classRoots)
+            val graph = indexed.graph
             val classpath = options.values("--classpath").map { resolveProjectPath(project, it) }
             val hierarchy = ClassHierarchyIndexer().index(classpath, graph.nodes.values.flatMap { it.supertypes })
             val inputEvidence = buildList {
@@ -133,7 +167,7 @@ internal object AgentCommand {
                 graph,
                 reachability,
                 requested,
-                RuntimeLimitationScanner.scan(classRoots, project),
+                RuntimeLimitationScanner.scan(indexed, project),
                 depth,
                 limit,
                 suppressed,
@@ -144,6 +178,12 @@ internal object AgentCommand {
             usage(error, "invalid path")
         } catch (hierarchyError: IncompleteKeepRuleHierarchyException) {
             error.println("error: ${hierarchyError.message ?: "dependency hierarchy is incomplete"}")
+            ExitStatus.FAILURE.code
+        } catch (indexError: dev.kartograph.index.ClassIndexingException) {
+            error.println("error: ${indexError.message}")
+            ExitStatus.FAILURE.code
+        } catch (hierarchyError: dev.kartograph.index.ClassHierarchyIndexingException) {
+            error.println("error: ${hierarchyError.message}")
             ExitStatus.FAILURE.code
         } catch (_: Exception) {
             error.println("error: unable to query compiled declarations; check the inputs")
@@ -169,7 +209,7 @@ internal object AgentCommand {
             return ExitStatus.FAILURE.code
         }
         return try {
-            val document = BridgeFactScanner(project).scan(Instant.now().toString())
+            val document = BridgeFactScanner(project).scan()
             output.print(AgentDocumentRenderer.bridges(document))
             ExitStatus.SUCCESS.code
         } catch (_: Exception) {
@@ -233,6 +273,7 @@ internal object AgentCommand {
           kartograph bridges --project <directory> [--format json]
 
         Static literals only; dynamic channel names and unattributed handlers are reported as limitations.
+        generatedAt is the newest scanned source modification time (Unix epoch for an empty source tree).
     """.trimIndent() + "\n"
 
     private val SKILL_HELP = """

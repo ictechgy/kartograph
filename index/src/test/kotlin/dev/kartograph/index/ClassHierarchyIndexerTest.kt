@@ -51,7 +51,7 @@ class ClassHierarchyIndexerTest {
             ClassHierarchyIndexer().index(emptyList(), listOf("java/not/ARealClass"))
         }
 
-        assertEquals("JDK class hierarchy is unavailable; run kartograph with a compatible JDK", error.message)
+        assertEquals("JDK class hierarchy is unavailable for java.not.ARealClass; run kartograph with a compatible JDK or supply its classpath", error.message)
     }
 
     @Test

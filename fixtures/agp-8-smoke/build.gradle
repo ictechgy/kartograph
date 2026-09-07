@@ -1,0 +1,25 @@
+buildscript {
+    repositories { google(); mavenCentral() }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.3'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21'
+        classpath files("../../gradle-plugin/build/libs/kartograph-gradle-plugin-${file('../../VERSION').text.trim()}.jar")
+    }
+}
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'io.github.ictechgy.kartograph'
+
+android {
+    namespace 'dev.kartograph.compat'
+    compileSdk 35
+    defaultConfig { applicationId 'dev.kartograph.compat'; minSdk 23; targetSdk 35; versionCode 1; versionName '1' }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = '17' }
+    buildTypes { release { minifyEnabled true; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt') } }
+}
+kartograph {
+    reportFormat.set('text')
+    strict.set(providers.gradleProperty('kartograph.strict').map { it.toBoolean() }.orElse(false))
+    includeSourcePaths.set(true)
+}

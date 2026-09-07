@@ -20,6 +20,7 @@ public class AndroidXmlScanner(private val projectRoot: Path) {
 
     private fun scanFile(xmlFile: Path): List<RetentionEvidence> {
         val sourcePath = projectRelativePath(projectRoot, xmlFile)
+        val sourceLines = xmlSourceLines(xmlFile)
         return readXml(xmlFile) { reader ->
             val className = reader.referencedClassName() ?: return@readXml null
             XmlReference(className, reader.location.lineNumber)
@@ -27,7 +28,7 @@ public class AndroidXmlScanner(private val projectRoot: Path) {
             RetentionEvidence(
                 nodeId = JvmNodeId.classId(reference.className.replace('.', '/')),
                 reason = RetentionReason.XML_LAYOUT,
-                location = xmlValueLocation(sourcePath, xmlFile, reference.className, reference.endLine),
+                location = xmlValueLocation(sourcePath, sourceLines, reference.className, reference.endLine),
             )
         }
     }

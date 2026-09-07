@@ -14,6 +14,7 @@ import dev.kartograph.core.Visibility
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.FileTime
 import java.util.jar.JarFile
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
@@ -34,13 +35,17 @@ public class ClassFileIndexer {
      * 각 root를 재귀 탐색하고 JVM class name이 같은 중복 산출물은 첫 번째 것만 사용한다.
      * class 하나라도 깨졌으면 불완전한 그래프를 반환하지 않는다.
      */
-    public fun index(classRoots: Iterable<Path>): CodeGraph {
+    public fun index(classRoots: Iterable<Path>): CodeGraph = indexWithObservations(classRoots).graph
+
+    /** 그래프와 runtime 관측값을 같은 class 방문에서 모아 후속 질의의 재파싱을 없앤다. */
+    public fun indexWithObservations(classRoots: Iterable<Path>): IndexedClasses {
         val factsByClass = linkedMapOf<String, ClassFacts>()
         classRoots.forEach { root ->
             readRoot(root).forEach { facts ->
                 factsByClass.putIfAbsent(facts.internalName, facts)
             }
         }
+        if (factsByClass.isEmpty()) throw ClassIndexingException("no compiled declarations found; check class roots and build the project")
         val generatedSiblingNames = factsByClass.values.flatMapTo(mutableSetOf(), ClassFacts::generatedSiblingNames)
         factsByClass.values.filter { facts ->
             facts.nodes.any { node ->
@@ -58,13 +63,14 @@ public class ClassFileIndexer {
         val classFacts = factsByClass.values.map { facts ->
             if (facts.internalName in generatedSiblingNames) facts.asSynthesized() else facts
         }
-        return CodeGraph(
+        val graph = CodeGraph(
             nodes = classFacts.flatMap(ClassFacts::nodes),
             edges = classFacts.flatMap(ClassFacts::edges) +
                 projectOverrideEdges(classFacts) +
                 frameworkCallbackEdges(classFacts) +
                 enclosingContainerEdges(classFacts),
         )
+        return IndexedClasses(graph, classFacts.map(ClassFacts::runtime))
     }
 
     private fun readRoot(root: Path): List<ClassFacts> = when {
@@ -90,7 +96,7 @@ public class ClassFileIndexer {
     private fun readClass(classFile: Path): ClassFacts = try {
         val visitor = FactsVisitor()
         ClassReader(Files.readAllBytes(classFile)).accept(visitor, 0)
-        visitor.facts()
+        visitor.facts().let { it.copy(runtime = it.runtime.copy(modified = Files.getLastModifiedTime(classFile))) }
     } catch (error: IOException) {
         throw ClassIndexingException("class file cannot be read", error)
     } catch (error: RuntimeException) {
@@ -109,7 +115,10 @@ public class ClassFileIndexer {
                     archive.getInputStream(entry).use { input ->
                         val visitor = FactsVisitor()
                         ClassReader(input).accept(visitor, 0)
-                        val facts = visitor.facts()
+                        val observed = visitor.facts()
+                        val modified = entry.time.takeIf { it >= 0 }?.let(FileTime::fromMillis)
+                            ?: Files.getLastModifiedTime(jar)
+                        val facts = observed.copy(runtime = observed.runtime.copy(modified = modified))
                         if (jar.fileName.toString() == "R.jar") facts.asSynthesized() else facts
                     }
                 }
@@ -136,6 +145,9 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private val edges = mutableListOf<GraphEdge>()
     private val classAnnotations = mutableSetOf<String>()
     private val supertypes = mutableSetOf<String>()
+    private var nativeMethods = 0
+    private var reflectionCalls = 0
+    private var dynamicRegistrations = 0
 
     override fun visit(
         version: Int,
@@ -227,6 +239,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         signature: String?,
         exceptions: Array<out String>?,
     ): MethodVisitor {
+        if (access and Opcodes.ACC_NATIVE != 0) nativeMethods++
         val methodId = JvmNodeId.methodId(internalName, name, descriptor)
         val annotations = mutableSetOf<String>()
         edges += GraphEdge(JvmNodeId.classId(internalName), methodId, EdgeKind.MEMBER)
@@ -291,6 +304,8 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 targetDescriptor: String,
                 isInterface: Boolean,
             ) {
+                if (owner == "java/lang/Class" && targetName == "forName") reflectionCalls++
+                if (RuntimeLimitationScanner.isDynamicRegistration(owner, targetName)) dynamicRegistrations++
                 val reflectionTarget = pendingStringConstant
                 pendingStringConstant = null
                 if (owner == "java/lang/Class" && targetName == "forName" && reflectionTarget != null) {
@@ -420,7 +435,9 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     }
 
     fun facts(): ClassFacts {
-        val facts = ClassFacts(internalName, nodes, edges, enclosingClass)
+        val facts = ClassFacts(internalName, nodes, edges, enclosingClass,
+            ClassRuntimeObservation(sourceLocation()?.path, FileTime.fromMillis(0),
+                nativeMethods, reflectionCalls, dynamicRegistrations))
         val metadata = metadataValues?.toMetadata() ?: return facts
         return KotlinMetadataEnricher.enrich(facts, metadata)
     }
@@ -478,6 +495,7 @@ internal data class ClassFacts(
     val nodes: List<GraphNode>,
     val edges: List<GraphEdge>,
     val enclosingClass: String? = null,
+    val runtime: ClassRuntimeObservation = ClassRuntimeObservation(),
 )
 
 // CLASS-retention 생성 marker는 이름만 닮은 사용자 선언을 숨기지 않는다.

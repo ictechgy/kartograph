@@ -3,11 +3,8 @@ package dev.kartograph.index
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.NodeId
 import java.io.IOException
-import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.SimpleFileVisitor
-import java.nio.file.attribute.BasicFileAttributes
 
 /**
  * 프로젝트 source 파일명을 실제 경로 집합으로 인덱싱한다.
@@ -23,17 +20,15 @@ public object SourcePathIndex {
     public fun byFileName(projectRoot: Path): Map<String, Set<Path>> {
         if (!Files.isDirectory(projectRoot)) return emptyMap()
         val pathsByFileName = mutableMapOf<String, MutableSet<Path>>()
-        val visitor = SourceVisitor(projectRoot, pathsByFileName)
         try {
-            Files.walkFileTree(projectRoot, visitor)
+            ProjectTraversal.walkSources(projectRoot, includeTests = true) { file ->
+                pathsByFileName.getOrPut(file.fileName.toString()) { mutableSetOf() }.add(file)
+            }
         } catch (error: IOException) {
             return emptyMap()
         } catch (error: SecurityException) {
             return emptyMap()
         }
-        // 일부 항목을 읽지 못한 부분 인덱스는 유일 후보를 잘못 확정해 under-reporting을 만들 수 있으므로
-        // 신뢰하지 않고 전체를 보수적 basename fallback으로 돌린다.
-        if (visitor.encounteredFailure) return emptyMap()
         return pathsByFileName.mapValues { entry -> entry.value.toSet() }
     }
 
@@ -111,43 +106,6 @@ public object SourcePathIndex {
         return directorySegments.takeLast(packageSegments.size) == packageSegments
     }
 
-    /**
-     * prune 대상 디렉터리는 하위로 내려가지 않고(SKIP_SUBTREE), 개별 항목 순회 실패를 기록한다.
-     * Files.walk와 달리 순회 중 I/O 오류가 UncheckedIOException으로 전체 실행을 중단시키지 않는다.
-     */
-    private class SourceVisitor(
-        private val projectRoot: Path,
-        private val pathsByFileName: MutableMap<String, MutableSet<Path>>,
-    ) : SimpleFileVisitor<Path>() {
-        /** 순회 중 하나라도 읽지 못하면 true가 되어 호출부가 부분 인덱스를 거부하게 한다. */
-        var encounteredFailure: Boolean = false
-            private set
-
-        override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-            // 가지치기 규칙은 세 source 스캐너가 공유하는 ProjectTraversal 한 벌만 쓴다.
-            return if (ProjectTraversal.isPruned(projectRoot, dir)) {
-                FileVisitResult.SKIP_SUBTREE
-            } else {
-                FileVisitResult.CONTINUE
-            }
-        }
-
-        override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-            val name = file.fileName.toString()
-            if (name.substringAfterLast('.', "") in SOURCE_EXTENSIONS) {
-                pathsByFileName.getOrPut(name) { mutableSetOf() }.add(file.toAbsolutePath().normalize())
-            }
-            return FileVisitResult.CONTINUE
-        }
-
-        // 읽을 수 없는 항목은 전체 실행을 중단시키지 않지만, 부분 인덱스를 신뢰하지 않게 실패를 기록한다.
-        override fun visitFileFailed(file: Path, error: IOException): FileVisitResult {
-            encounteredFailure = true
-            return FileVisitResult.CONTINUE
-        }
-    }
-
-    private val SOURCE_EXTENSIONS = setOf("kt", "java")
 }
 
 /**

@@ -49,7 +49,7 @@ public class ClassHierarchyIndexer {
             val resource = ClassLoader.getSystemResourceAsStream("$internalName.class")
                 ?: if (internalName.startsWith("java/") || internalName.startsWith("jdk/")) {
                     throw ClassHierarchyIndexingException(
-                        "JDK class hierarchy is unavailable; run kartograph with a compatible JDK",
+                        "JDK class hierarchy is unavailable for ${internalName.takeIf { it.matches(Regex("[A-Za-z0-9_$/]+")) }?.replace('/', '.') ?: "an invalid type name"}; run kartograph with a compatible JDK or supply its classpath",
                     )
                 } else {
                     continue

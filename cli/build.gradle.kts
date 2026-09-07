@@ -59,3 +59,5 @@ distributions {
         }
     }
 }
+
+apply(from = rootProject.file("gradle/runtime-sbom.gradle"))

@@ -30,3 +30,17 @@ handler는 fact를 버리거나 성공으로 가장하지 않고 각각 limitati
 `.claude/skills/kartograph/SKILL.md`에 설치한다. 기존 파일은 `--force` 없이는 덮어쓰지 않는다. 이 skill은
 unreachable을 삭제 승인으로 해석하지 않고 limitations, truncation, baseline, 다른 언어의 bridge를 먼저
 확인하도록 가르친다.
+
+## 재현성과 파일 경계
+
+`bridges.generatedAt`은 검사한 source들의 최신 수정 시각을 UTC로 기록한 snapshot 시각이다.
+source가 없으면 Unix epoch이며 wall clock을 사용하지 않아 같은 파일·시각 입력은 같은 JSON을 낸다.
+프로젝트 내부의 source 파일 링크는 실제 대상도 허용 경계 안일 때만 읽고, 디렉터리 링크는 순회하지 않는다.
+프로젝트 밖 또는 실제 대상을 해석할 수 없는 source 링크는 부분 보고 없이 실패한다.
+경로 인덱스는 이런 실패에서 전체를 미확정으로 돌려 유일 후보를 잘못 단언하지 않는다. `skill`은 프로젝트 루트 alias를 허용하지만
+`.claude/skills/kartograph/SKILL.md` 설치 경로 안의 링크는 `--force`여도 거부한다.
+
+탐색·설치는 부모 디렉터리가 실행 중 교체되지 않는 로컬 트리를 전제로 한다. 파일을 열 때 최종 링크를
+따라가지 않고 읽기 직전 실제 경계를 재검사하지만, 다른 프로세스의 동시 부모 디렉터리 교체를 격리하는
+파일시스템 sandbox는 아니다. `skill --force`는 기존 파일 내용을 직접 덮지 않고 새 파일로 교체해
+프로젝트 밖 hard link의 내용도 보존한다.
