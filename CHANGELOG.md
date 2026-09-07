@@ -6,11 +6,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- Gradle plugin이 AGP 8.7 이상을 지원한다. 사용하는 Variant API가 AGP 7대부터 stable이라
+  컴파일 기준을 `gradle-api:8.7.3`으로 낮췄고, AGP 8.7 + Gradle 8.10 조합에서 dead·graph task와
+  configuration cache 재사용을 검증했다. AGP 9.x는 기존 Android fixture 게이트로 계속 검증한다.
+
 ### Fixed
 
 - `query`·`bridges`·`skill`·`cycles`·`rules`·`metrics`가 `--help`/`-h`를 사용 오류(`64`)로
   거부하지 않고 각 명령의 사용법을 출력한 뒤 성공(`0`)으로 끝낸다. `baseline --help`는 `dead`
   도움말 대신 baseline 전용 사용법을 출력한다.
+- variant keep 입력에 포함된 빌드 중간 산출물이 아직 생성되지 않았으면 건너뛴다(AGP 8의
+  `default_proguard_files`). 빌드 출력 디렉터리 아래의 누락만 건너뛰고, 소스 트리 경로의
+  누락은 기존대로 실패로 둔다.
 
 ## [0.3.1] - 2026-09-07
 

@@ -1,5 +1,6 @@
 package dev.kartograph.gradle
 
+import dev.kartograph.index.KeepRuleScanningException
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.readText
@@ -9,6 +10,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.gradle.api.GradleException
 import org.gradle.testfixtures.ProjectBuilder
 import org.junit.jupiter.api.io.TempDir
@@ -38,8 +40,7 @@ class KartographDeadTaskTest {
     }
 
     @Test
-    fun `strict mode writes the report before failing on findings`(@TempDir projectRoot: Path) {
-        val task = configuredTask(projectRoot, strict = true, retainTestClass = false)
+    fun `strict mode writes the report before failing on findings`(@TempDir projectRoot: Path) {        val task = configuredTask(projectRoot, strict = true, retainTestClass = false)
 
         val error = assertFailsWith<GradleException> { task.analyze() }
 
@@ -95,10 +96,31 @@ class KartographDeadTaskTest {
         assertEquals("gradle", extension.reportFormat.get())
     }
 
+    @Test
+    fun `skips missing generated rule files under the build directory`(@TempDir projectRoot: Path) {
+        // AGP 8의 variant.proguardFiles는 minify 전까지 생성되지 않는 default_proguard_files
+        // 경로를 넘긴다. 없는 생성물은 건너뛰고 분석을 계속한다.
+        val phantom = projectRoot.resolve("build/intermediates/default_proguard_files/global/proguard-android.txt-8.7.3")
+        val task = configuredTask(projectRoot, strict = false, extraKeepRules = listOf(phantom))
+
+        task.analyze()
+
+        assertTrue(projectRoot.resolve("build/reports/kartograph/debug.txt").toFile().exists())
+    }
+
+    @Test
+    fun `still fails on a missing keep rule outside the build directory`(@TempDir projectRoot: Path) {
+        // 소스 트리의 누락은 생성물 스킵과 무관하게 기존대로 실패한다.
+        val task = configuredTask(projectRoot, strict = false, extraKeepRules = listOf(projectRoot.resolve("missing.pro")))
+
+        assertFailsWith<KeepRuleScanningException> { task.analyze() }
+    }
+
     private fun configuredTask(
         projectRoot: Path,
         strict: Boolean,
         retainTestClass: Boolean = true,
+        extraKeepRules: List<Path> = emptyList(),
     ): KartographDeadTask {
         val project = ProjectBuilder.builder().withProjectDir(projectRoot.toFile()).build()
         val manifest = projectRoot.resolve("AndroidManifest.xml")
@@ -124,6 +146,7 @@ class KartographDeadTaskTest {
             this.manifest.set(project.layout.file(project.provider { manifest.toFile() }))
             resourceDirectories.from(resources)
             keepRuleFiles.from(emptyList<Any>())
+            keepRuleFiles.from(extraKeepRules.map(Path::toFile))
             namespace.set("dev.kartograph.gradle")
             variantName.set("debug")
             this.strict.set(strict)

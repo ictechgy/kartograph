@@ -74,8 +74,9 @@ private reflection/serialization 관례까지 완전하게 증명하지 않으�
 CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechgy.kartograph`는
 [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph)에 version이 표시된 뒤 설치할 수 있다.
 GitHub Release 공개와 Portal 승인·설치 가능 여부는 별개다.
-소스 빌드와 Gradle plugin 실행에는 JDK 17 또는 21, Gradle
-9.6.1을 검증 대상으로 삼는다. Android 연결은 AGP 9.3.2 public Variant API 기준이다.
+소스 빌드에는 JDK 17 또는 21, Gradle 9.6.1을 검증 대상으로 삼는다. Gradle plugin 적용에는
+AGP 8.7 이상, Gradle 8.10 이상, JDK 17 이상을 지원한다(AGP 8.7 + Gradle 8.10 조합 검증,
+AGP 9.x는 Android fixture 게이트로 검증).
 
 ```kotlin
 plugins {
