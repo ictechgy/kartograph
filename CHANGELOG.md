@@ -4,7 +4,17 @@
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)를 따르고 버전은
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)을 따른다.
 
-## [Unreleased]
+## [0.5.0] - 2026-09-08
+
+### Added
+
+- AGP 8.7.3 / Gradle 8.10.2 / KGP 2.0.21의 영구 소비 프로젝트와 CI 게이트.
+- 빌드 의존성 SHA256 검증, Dependabot, 배포 runtime CycloneDX SBOM과 SHA256SUMS.
+
+### Changed
+
+- 세 source 스캐너가 실제 하위 디렉터리 가지치기를 공유한다. XML 위치 계산은 파일당 줄 목록을 한 번 읽는다.
+- query는 class 인덱싱에서 수집한 runtime 관측값을 재사용한다.
 
 ### Fixed
 
@@ -12,16 +22,6 @@
 - 컴파일 선언이 없는 입력을 실패로 처리하고 명령에 맞지 않거나 다른 모드에서 무시되는 CLI 옵션을 거부한다.
 - source 신선도를 대응 class별로 비교하고 대응 불가능한 source는 계량 한계로 알린다.
 - 누락된 JDK 상위 타입을 오류에 안내하고 bridges 시각은 반복 가능한 source snapshot 시각으로 기록한다.
-
-### Changed
-
-- 세 source 스캐너가 실제 하위 디렉터리 가지치기를 공유한다. XML 위치 계산은 파일당 줄 목록을 한 번 읽는다.
-- query는 class 인덱싱에서 수집한 runtime 관측값을 재사용한다.
-
-### Added
-
-- AGP 8.7.3 / Gradle 8.10.2 / KGP 2.0.21의 영구 소비 프로젝트와 CI 게이트.
-- 빌드 의존성 SHA256 검증, Dependabot, 배포 runtime CycloneDX SBOM과 SHA256SUMS.
 
 ## [0.4.1] - 2026-09-07
 
@@ -157,7 +157,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ictechgy/kartograph/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/ictechgy/kartograph/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ictechgy/kartograph/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/ictechgy/kartograph/compare/v0.3.0...v0.3.1
