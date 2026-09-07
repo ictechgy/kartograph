@@ -80,7 +80,7 @@ AGP 9.x는 Android fixture 게이트로 검증).
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.3.1"
+    id("io.github.ictechgy.kartograph") version "0.4.0"
 }
 ```
 
