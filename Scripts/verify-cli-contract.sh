@@ -55,6 +55,12 @@ expect_status 0 "--version" --version
 expect_status 0 "graph --help" graph --help
 expect_status 0 "dead --help" dead --help
 expect_status 0 "baseline --help" baseline --help
+expect_status 0 "query --help" query --help
+expect_status 0 "bridges --help" bridges --help
+expect_status 0 "skill --help" skill --help
+expect_status 0 "cycles --help" cycles --help
+expect_status 0 "rules --help" rules --help
+expect_status 0 "metrics --help" metrics --help
 expect_status 0 "빈 class root graph" graph --classes "$TEMPORARY_DIRECTORY"
 expect_status 0 "빈 class root graph JSON" graph --classes "$TEMPORARY_DIRECTORY" --format json --include-paths --project .
 expect_status 0 "빈 class root metrics" metrics --classes "$TEMPORARY_DIRECTORY"

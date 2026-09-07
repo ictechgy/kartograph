@@ -4,6 +4,14 @@
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)를 따르고 버전은
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)을 따른다.
 
+## [Unreleased]
+
+### Fixed
+
+- `query`·`bridges`·`skill`·`cycles`·`rules`·`metrics`가 `--help`/`-h`를 사용 오류(`64`)로
+  거부하지 않고 각 명령의 사용법을 출력한 뒤 성공(`0`)으로 끝낸다. `baseline --help`는 `dead`
+  도움말 대신 baseline 전용 사용법을 출력한다.
+
 ## [0.3.1] - 2026-09-07
 
 ### Fixed

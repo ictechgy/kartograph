@@ -95,6 +95,26 @@ class KartographCliTest {
     }
 
     @Test
+    fun `every command help flag prints usage and succeeds`() {
+        val cases = mapOf(
+            "query" to "kartograph query",
+            "bridges" to "kartograph bridges",
+            "skill" to "kartograph skill",
+            "cycles" to "kartograph cycles",
+            "rules" to "kartograph rules",
+            "metrics" to "kartograph metrics",
+        )
+        cases.forEach { (command, usage) ->
+            listOf("--help", "-h").forEach { flag ->
+                val execution = execute(command, flag)
+
+                assertEquals(ExitStatus.SUCCESS.code, execution.status)
+                assertContains(execution.output, usage)
+            }
+        }
+    }
+
+    @Test
     fun `unknown command is a usage error`() {
         val execution = execute("no-such-command")
 

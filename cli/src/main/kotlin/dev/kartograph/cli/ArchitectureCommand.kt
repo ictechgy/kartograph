@@ -17,7 +17,8 @@ import java.nio.file.Path
 import java.util.Locale
 
 internal object ArchitectureCommand {
-    fun cycles(arguments: List<String>, output: PrintStream, error: PrintStream): Int = withGraph(arguments, error) { graph, options ->
+    fun cycles(arguments: List<String>, output: PrintStream, error: PrintStream): Int =
+        commandHelp(arguments, output, CYCLES_HELP) ?: withGraph(arguments, error) { graph, options ->
         val architectureGraph = ArchitectureGraph.aggregate(graph)
         val cycles = CycleAnalyzer.analyze(architectureGraph)
         cycles.forEach { cycle ->
@@ -32,7 +33,8 @@ internal object ArchitectureCommand {
         if (options.strict && cycles.isNotEmpty()) ExitStatus.FINDINGS.code else ExitStatus.SUCCESS.code
     }
 
-    fun metrics(arguments: List<String>, output: PrintStream, error: PrintStream): Int = withGraph(arguments, error) { graph, _ ->
+    fun metrics(arguments: List<String>, output: PrintStream, error: PrintStream): Int =
+        commandHelp(arguments, output, METRICS_HELP) ?: withGraph(arguments, error) { graph, _ ->
         output.println("module\tCa\tCe\tI\tA\tD")
         MartinMetrics.calculate(graph).forEach { metric ->
             output.println("${metric.module}\t${metric.afferentCoupling}\t${metric.efferentCoupling}\t${format(metric.instability)}\t${format(metric.abstractness)}\t${format(metric.distance)}")
@@ -40,7 +42,8 @@ internal object ArchitectureCommand {
         ExitStatus.SUCCESS.code
     }
 
-    fun rules(arguments: List<String>, output: PrintStream, error: PrintStream): Int = withGraph(arguments, error, requireConfig = true) { graph, options ->
+    fun rules(arguments: List<String>, output: PrintStream, error: PrintStream): Int =
+        commandHelp(arguments, output, RULES_HELP) ?: withGraph(arguments, error, requireConfig = true) { graph, options ->
         val configuration = try {
             LayerRuleYaml.parse(Files.readString(options.config!!))
         } catch (problem: LayerConfigurationException) {
@@ -79,8 +82,42 @@ internal object ArchitectureCommand {
         }
     }
 
-    private inline fun withGraph(
-        arguments: List<String>,
+    // --help/-h 단독 호출이면 도움말을 내고 성공 코드를 돌려준다. 다른 인자와 섞이면 일반 파서가 처리한다.
+    private fun commandHelp(arguments: List<String>, output: PrintStream, help: String): Int? =
+        if (arguments == listOf("--help") || arguments == listOf("-h")) {
+            output.print(help)
+            ExitStatus.SUCCESS.code
+        } else {
+            null
+        }
+
+    private val CYCLES_HELP = """
+        Report package dependency cycles in the compiled graph.
+
+        Usage:
+          kartograph cycles --classes <directory-or-jar> [--classes <directory-or-jar>]... [--strict]
+
+        Prints each cycle with its weakest edge. --strict exits 1 when a cycle exists.
+    """.trimIndent() + "\n"
+
+    private val RULES_HELP = """
+        Check layer rules against the compiled graph.
+
+        Usage:
+          kartograph rules --classes <directory-or-jar> [--classes <directory-or-jar>]... --config <file> [--strict] [--explain <symbol>]
+
+        --explain prints the layer assignment of exactly one declaration.
+        --strict exits 1 on violations or unassigned declarations.
+    """.trimIndent() + "\n"
+
+    private val METRICS_HELP = """
+        Print Martin package metrics for the compiled graph.
+
+        Usage:
+          kartograph metrics --classes <directory-or-jar> [--classes <directory-or-jar>]...
+    """.trimIndent() + "\n"
+
+    private inline fun withGraph(        arguments: List<String>,
         error: PrintStream,
         requireConfig: Boolean = false,
         action: (CodeGraph, Options) -> Int,
