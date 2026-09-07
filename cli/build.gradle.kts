@@ -25,6 +25,8 @@ distributions {
     main {
         contents {
             from(rootProject.file("README.md"))
+            from(rootProject.file("README.ko.md"))
+            from(rootProject.file("VERSION"))
             from(rootProject.file("CHANGELOG.md"))
             from(rootProject.file("SECURITY.md"))
             from(rootProject.file("LICENSE"))
