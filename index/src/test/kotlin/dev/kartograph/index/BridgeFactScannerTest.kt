@@ -177,4 +177,38 @@ class BridgeFactScannerTest {
             document.facts.map { it.channel to it.method },
         )
     }
+
+    @Test
+    fun `ignores assistant and cache directories outside project sources`(@TempDir project: Path) {
+        project.resolve("src/main/kotlin/app/Plugin.kt").also { source ->
+            source.parent.createDirectories()
+            source.writeText(
+                """
+                val channel = MethodChannel(messenger, "camera")
+                channel.setMethodCallHandler(handler)
+                """.trimIndent(),
+            )
+        }
+        // 어시스턴트·캐시 디렉터리의 예제 코드는 project source가 아니므로 교환 문서에 수확하지 않는다.
+        listOf(
+            ".claude/skills/Fake.kt",
+            ".omx/notes/Fake.kt",
+            ".gradle/checks/Fake.kt",
+            ".worktrees/copy/Fake.kt",
+        ).forEach { relative ->
+            project.resolve(relative).also { source ->
+                source.parent.createDirectories()
+                source.writeText(
+                    """
+                    val channel = MethodChannel(messenger, "harvested")
+                    channel.setMethodCallHandler(handler)
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        val document = BridgeFactScanner(project).scan(generatedAt = "2026-09-04T00:00:00Z")
+
+        assertEquals(listOf("camera"), document.facts.map { it.channel })
+    }
 }

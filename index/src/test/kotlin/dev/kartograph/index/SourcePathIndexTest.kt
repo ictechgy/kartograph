@@ -70,6 +70,11 @@ class SourcePathIndexTest {
         write(root, "src/main/kotlin/Sample.kt")
         write(root, "build/generated/Sample.kt")
         write(root, "node_modules/pkg/Sample.kt")
+        write(root, ".claude/skills/Sample.kt")
+        write(root, ".omx/notes/Sample.kt")
+        write(root, ".idea/scratch/Sample.kt")
+        write(root, ".gradle/cache/Sample.kt")
+        write(root, ".worktrees/copy/Sample.kt")
 
         val index = SourcePathIndex.byFileName(root.toRealPath())
 

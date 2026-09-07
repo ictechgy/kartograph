@@ -197,14 +197,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         }
     }
 
-    private fun isPruned(path: Path): Boolean {
-        val relative = projectRoot.toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize())
-        val segments = relative.map(Path::toString)
-        if (segments.any(PRUNED_DIRECTORIES::contains)) return true
-        return segments.windowed(2).any { (first, second) ->
-            first == "src" && second in PRUNED_SOURCE_SETS
-        }
-    }
+    private fun isPruned(path: Path): Boolean = ProjectTraversal.isPrunedSource(projectRoot, path)
 
     private fun fact(
         kind: String,
@@ -370,8 +363,6 @@ public class BridgeFactScanner(private val projectRoot: Path) {
 
     private companion object {
         val SOURCE_EXTENSIONS = setOf("kt", "java")
-        val PRUNED_DIRECTORIES = setOf("build", ".gradle", ".git", ".idea", ".worktrees", "node_modules")
-        val PRUNED_SOURCE_SETS = setOf("test", "androidTest", "testFixtures")
         val METHOD_CHANNEL = Regex("(?:\\b(?:val|var)\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*MethodChannel\\s*\\(")
         val METHOD_CHANNEL_CALL = Regex("\\bMethodChannel\\s*\\(")
         val SET_HANDLER = Regex("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*setMethodCallHandler\\s*(?:\\(|\\{)")
