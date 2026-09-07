@@ -4,6 +4,12 @@
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)를 따르고 버전은
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)을 따른다.
 
+## [Unreleased]
+
+### Changed
+
+- README를 영어로 쓰고 한국어 문서를 `README.ko.md`로 분리했다. 배포본에도 두 문서를 함께 싣는다.
+
 ## [0.4.0] - 2026-09-07
 
 ### Added
