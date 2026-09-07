@@ -49,7 +49,8 @@ GitHub 공개, Portal 제출, Portal 승인, 독립 프로젝트 설치는 별�
 새 의존성이나 버전 변경 시 [Gradle 검증 절차](https://docs.gradle.org/current/userguide/dependency_verification.html)에 따라
 `./gradlew --write-verification-metadata sha256 test :cli:runtimeSbom :gradle-plugin:runtimeSbom :gradle-plugin:validatePlugins`
 으로 후보를 생성하고 좌표·출처·체크섬 diff를 검토한다. 자동 생성한 체크섬은 원본의 안전성을 증명하지 않으며
-검증 실패를 없애려고 기존 체크섬을 무조건 다시 생성하지 않는다. Dependabot의 버전 변경 PR도
+검증 실패를 없애려고 기존 체크섬을 무조건 다시 생성하지 않는다. 최초 목록은 비어 있는 별도
+`--gradle-user-home <temporary-directory>`에서도 검사해 로컬 해석 캐시에 가려진 BOM/POM 누락을 잡는다. Dependabot의 버전 변경 PR도
 새 체크섬을 검토해 추가하기 전에는 이 검증에서 실패할 수 있다. 별도 Android 소비 fixture의 build 의존성은
 이 제품 루트 검증 범위와 구분한다.
 
