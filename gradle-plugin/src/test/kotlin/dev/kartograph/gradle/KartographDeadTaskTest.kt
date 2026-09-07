@@ -152,6 +152,7 @@ class KartographDeadTaskTest {
             this.strict.set(strict)
             reportFormat.set("text")
             projectDirectory.set(project.layout.projectDirectory)
+            buildDirectory.set(project.layout.buildDirectory)
             reportFile.set(project.layout.buildDirectory.file("reports/kartograph/debug.txt"))
         }
     }

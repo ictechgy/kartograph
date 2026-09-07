@@ -101,6 +101,10 @@ public abstract class KartographDeadTask : DefaultTask() {
     @get:Internal
     public abstract val projectDirectory: DirectoryProperty
 
+    /** 빌드 출력 기준은 실행 시점에 project를 만질 수 없으므로 입력으로 받는다. */
+    @get:Internal
+    public abstract val buildDirectory: DirectoryProperty
+
     @get:OutputFile
     public abstract val reportFile: RegularFileProperty
 
@@ -164,7 +168,7 @@ public abstract class KartographDeadTask : DefaultTask() {
      * 소스 트리 경로의 누락은 스캐너가 기존대로 실패로 둔다.
      */
     private fun existingRuleFiles(files: List<Path>): List<Path> {
-        val buildRoot = canonical(project.layout.buildDirectory.get().asFile.toPath())
+        val buildRoot = canonical(buildDirectory.get().asFile.toPath())
         val existing = files.filter { file -> Files.exists(file) || !canonical(file).startsWith(buildRoot) }
         val skipped = files.size - existing.size
         if (skipped > 0) logger.lifecycle("kartograph ${variantName.get()}: skipped $skipped missing generated keep rule file(s) under the build directory")

@@ -45,6 +45,7 @@ public class KartographPlugin : Plugin<Project> {
             deadTask.reportFormat.set(extension.reportFormat)
             deadTask.baselineFile.set(extension.baseline)
             deadTask.projectDirectory.set(project.layout.projectDirectory)
+            deadTask.buildDirectory.set(project.layout.buildDirectory)
             deadTask.manifest.set(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST))
             variant.sources.res?.all?.let { resources ->
                 deadTask.resourceDirectories.from(resources.map { layers -> layers.flatten() })
