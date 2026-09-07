@@ -22,6 +22,10 @@ import java.time.Instant
 
 internal object AgentCommand {
     fun skill(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
+        if (arguments == listOf("--help") || arguments == listOf("-h")) {
+            output.print(SKILL_HELP)
+            return ExitStatus.SUCCESS.code
+        }
         var projectValue = "."
         var force = false
         var index = 0
@@ -66,6 +70,10 @@ internal object AgentCommand {
     }
 
     fun query(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
+        if (arguments == listOf("--help") || arguments == listOf("-h")) {
+            output.print(QUERY_HELP)
+            return ExitStatus.SUCCESS.code
+        }
         val requested = arguments.firstOrNull()?.takeUnless { it.startsWith('-') }
             ?: return usage(error, "query requires a symbol")
         val options = parsePaths(
@@ -144,6 +152,10 @@ internal object AgentCommand {
     }
 
     fun bridges(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
+        if (arguments == listOf("--help") || arguments == listOf("-h")) {
+            output.print(BRIDGES_HELP)
+            return ExitStatus.SUCCESS.code
+        }
         val options = parsePaths(arguments, setOf("--project", "--format"), error) ?: return ExitStatus.USAGE.code
         val project = try {
             options.single("--project")?.let(Path::of)?.toAbsolutePath()?.normalize()
@@ -196,13 +208,48 @@ internal object AgentCommand {
         return ExitStatus.USAGE.code
     }
 
+    private val QUERY_HELP = """
+        Query one symbol against the compiled graph.
+
+        Usage:
+          kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
+
+        Options:
+          --depth <n>               neighbor depth, a positive integer (default 1)
+          --limit <n>               neighbor cap per section, a positive integer (default 50)
+          --manifest <file>         read entry points from the manifest (requires --namespace)
+          --resources <directory>   read entry points from resources
+          --namespace <name>        manifest package name
+          --keep-rules <file>       retention rule file, repeatable
+          --classpath <path>        dependency hierarchy entry, repeatable
+          --baseline <file>         suppress fingerprinted findings
+          --include-private-members include private members in the graph
+    """.trimIndent() + "\n"
+
+    private val BRIDGES_HELP = """
+        Scan project sources for Flutter MethodChannel and React Native module registrations.
+
+        Usage:
+          kartograph bridges --project <directory> [--format json]
+
+        Static literals only; dynamic channel names and unattributed handlers are reported as limitations.
+    """.trimIndent() + "\n"
+
+    private val SKILL_HELP = """
+        Install the bundled kartograph skill file.
+
+        Usage:
+          kartograph skill [--project <directory>] [--force]
+
+        Writes .claude/skills/kartograph/SKILL.md under the project. Refuses to overwrite without --force.
+    """.trimIndent() + "\n"
+
     private fun resolveProjectPath(projectRoot: Path, value: String): Path {
         val path = Path.of(value)
         return if (path.isAbsolute) path.normalize() else projectRoot.resolve(path).normalize()
     }
 
-    private data class ParsedOptions(val options: Map<String, List<String>>) {
-        fun values(name: String): List<String> = options[name].orEmpty()
+    private data class ParsedOptions(val options: Map<String, List<String>>) {        fun values(name: String): List<String> = options[name].orEmpty()
         fun single(name: String): String? = values(name).lastOrNull()
         fun positiveInt(name: String, default: Int, error: PrintStream): Int? {
             val raw = single(name) ?: return default

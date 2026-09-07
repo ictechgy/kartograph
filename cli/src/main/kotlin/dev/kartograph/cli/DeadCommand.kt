@@ -33,7 +33,10 @@ import java.nio.file.Path
 
 internal object DeadCommand {
     fun runBaseline(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
-        if (arguments == listOf("--help") || arguments == listOf("-h")) return run(arguments, output, error)
+        if (arguments == listOf("--help") || arguments == listOf("-h")) {
+            output.print(BASELINE_HELP)
+            return ExitStatus.SUCCESS.code
+        }
         val writeIndex = arguments.indexOf("--write")
         if (writeIndex < 0 || arguments.getOrNull(writeIndex + 1)?.startsWith('-') != false) {
             error.println("error: baseline requires --write <file>")
@@ -305,8 +308,18 @@ internal object DeadCommand {
         val reportFormat: ReportFormat,
     )
 
-    private val HELP = """
-        Find class declarations that are unreachable from Android retention roots.
+    private val BASELINE_HELP = """
+        Find class declarations that are unreachable from Android retention roots and write the baseline file.
+
+        Usage:
+          kartograph baseline --write <file> --classes <directory> --project <directory> \
+            --manifest <file> --resources <directory> --namespace <name> [options]
+
+        Takes the same options as kartograph dead. Writes fingerprints of the current findings
+        to <file> instead of reporting them.
+    """.trimIndent() + "\n"
+
+    private val HELP = """        Find class declarations that are unreachable from Android retention roots.
 
         Usage:
           kartograph dead --classes <directory> [--classes <directory>]... --project <directory> \
