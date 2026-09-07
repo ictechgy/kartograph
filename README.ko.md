@@ -41,11 +41,11 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.4.1"
+    id("io.github.ictechgy.kartograph") version "0.5.0"
 }
 ```
 
-GitHub release의 `kartograph-<version>.zip` 또는 `.tar`를 내려받아 압축을 풀고 `bin/kartograph`를 실행한다. 별도 checksum과 signature는 아직 배포하지 않는다.
+GitHub release의 `kartograph-<version>.zip` 또는 `.tar`를 내려받는다. 0.5.0 이상은 압축을 풀기 전에 파일의 SHA256을 `SHA256SUMS`의 해당 항목과 대조한 뒤 `bin/kartograph`를 실행한다. release에는 CycloneDX runtime SBOM도 포함한다. 별도 서명은 배포하지 않는다.
 
 ## 사용법
 

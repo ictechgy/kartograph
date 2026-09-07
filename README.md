@@ -41,11 +41,11 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.4.1"
+    id("io.github.ictechgy.kartograph") version "0.5.0"
 }
 ```
 
-Download `kartograph-<version>.zip` or `.tar` from a GitHub release, unpack it, and run `bin/kartograph`. No separate checksums or signatures are published yet.
+Download `kartograph-<version>.zip` or `.tar` from a GitHub release. For 0.5.0 and later, check its SHA256 against the matching entry in `SHA256SUMS` before unpacking, then run `bin/kartograph`. Releases also include CycloneDX runtime SBOMs. Detached signatures are not published.
 
 ## Usage
 
