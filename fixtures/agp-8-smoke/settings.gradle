@@ -1,0 +1,3 @@
+pluginManagement { repositories { google(); gradlePluginPortal(); mavenCentral() } }
+dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+rootProject.name = 'kartograph-agp-8-smoke'

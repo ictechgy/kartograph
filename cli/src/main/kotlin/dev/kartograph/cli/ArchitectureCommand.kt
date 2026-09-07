@@ -34,7 +34,7 @@ internal object ArchitectureCommand {
     }
 
     fun metrics(arguments: List<String>, output: PrintStream, error: PrintStream): Int =
-        commandHelp(arguments, output, METRICS_HELP) ?: withGraph(arguments, error) { graph, _ ->
+        commandHelp(arguments, output, METRICS_HELP) ?: withGraph(arguments, error, allowStrict = false) { graph, _ ->
         output.println("module\tCa\tCe\tI\tA\tD")
         MartinMetrics.calculate(graph).forEach { metric ->
             output.println("${metric.module}\t${metric.afferentCoupling}\t${metric.efferentCoupling}\t${format(metric.instability)}\t${format(metric.abstractness)}\t${format(metric.distance)}")
@@ -120,9 +120,10 @@ internal object ArchitectureCommand {
     private inline fun withGraph(        arguments: List<String>,
         error: PrintStream,
         requireConfig: Boolean = false,
+        allowStrict: Boolean = true,
         action: (CodeGraph, Options) -> Int,
     ): Int {
-        val options = try { parse(arguments, requireConfig) } catch (_: InvalidPathException) {
+        val options = try { parse(arguments, requireConfig, allowStrict) } catch (_: InvalidPathException) {
             error.println("error: invalid path")
             return ExitStatus.USAGE.code
         } catch (problem: IllegalArgumentException) {
@@ -137,13 +138,13 @@ internal object ArchitectureCommand {
             error.println("error: layer configuration does not exist")
             return ExitStatus.FAILURE.code
         }
-        return try { action(ClassFileIndexer().index(options.roots), options) } catch (_: ClassIndexingException) {
-            error.println("error: unable to index compiled declarations")
+        return try { action(ClassFileIndexer().index(options.roots), options) } catch (problem: ClassIndexingException) {
+            error.println("error: ${problem.message ?: "unable to index compiled declarations"}")
             ExitStatus.FAILURE.code
         }
     }
 
-    private fun parse(arguments: List<String>, requireConfig: Boolean): Options {
+    private fun parse(arguments: List<String>, requireConfig: Boolean, allowStrict: Boolean): Options {
         val roots = mutableListOf<Path>()
         var config: Path? = null
         var strict = false
@@ -151,9 +152,9 @@ internal object ArchitectureCommand {
         var index = 0
         while (index < arguments.size) when (val option = arguments[index]) {
             "--classes" -> { roots.add(Path.of(value(arguments, ++index, option))); index++ }
-            "--config" -> { config = Path.of(value(arguments, ++index, option)); index++ }
-            "--strict" -> { strict = true; index++ }
-            "--explain" -> { explain = value(arguments, ++index, option); index++ }
+            "--config" -> { require(requireConfig) { "--config is only supported by rules" }; config = Path.of(value(arguments, ++index, option)); index++ }
+            "--strict" -> { require(allowStrict) { "--strict is not supported by metrics" }; strict = true; index++ }
+            "--explain" -> { require(requireConfig) { "--explain is only supported by rules" }; explain = value(arguments, ++index, option); index++ }
             else -> throw IllegalArgumentException("unknown architecture option: $option")
         }
         require(roots.isNotEmpty()) { "missing required --classes path" }

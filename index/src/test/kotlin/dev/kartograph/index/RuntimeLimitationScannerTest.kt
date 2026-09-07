@@ -15,10 +15,72 @@ import org.objectweb.asm.Opcodes
 
 class RuntimeLimitationScannerTest {
     @Test
+    fun `real Kotlin metadata preserves runtime observations`(@TempDir root: Path) {
+        val type = dev.kartograph.index.fixture.RuntimeObservationFixture::class.java
+        val bytes = requireNotNull(type.getResourceAsStream("RuntimeObservationFixture.class")).use { it.readBytes() }
+        val classes = root.resolve("classes").createDirectories()
+        classes.resolve("RuntimeObservationFixture.class").writeBytes(bytes)
+        val indexed = ClassFileIndexer().indexWithObservations(listOf(classes))
+        val observation = indexed.observations.single()
+        assertEquals("RuntimeObservationFixture.kt", observation.sourceFile)
+        assertEquals(1, observation.nativeMethods)
+        assertEquals(1, observation.reflectionCalls)
+        assertEquals(2, RuntimeLimitationScanner.scan(indexed, root).size)
+    }
+
+    @Test
+    fun `reuses observations after class input is no longer available`(@TempDir root: Path) {
+        val classes = root.resolve("classes").createDirectories()
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "A", null, "java/lang/Object", null)
+        writer.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_NATIVE, "call", "()V", null, null).visitEnd()
+        writer.visitEnd()
+        val file = classes.resolve("A.class")
+        file.writeBytes(writer.toByteArray())
+        val indexed = ClassFileIndexer().indexWithObservations(listOf(classes))
+        Files.delete(file)
+        assertEquals(listOf("jni-methods: 1 native method(s) may be called outside the JVM graph"),
+            RuntimeLimitationScanner.scan(indexed, root))
+    }
+
+    @Test
+    fun `reports unmatched and ambiguous source freshness as unknown`(@TempDir root: Path) {
+        val classes = root.resolve("classes").createDirectories()
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "A", null, "java/lang/Object", null)
+        writer.visitSource("A.kt", null)
+        writer.visitEnd()
+        classes.resolve("A.class").writeBytes(writer.toByteArray())
+        root.resolve("A.kt").writeText("class A")
+        root.resolve("other").createDirectories().resolve("A.kt").writeText("class A")
+        root.resolve("New.kt").writeText("class New")
+        assertEquals(listOf("index-freshness-unknown: 3 of 3 source file(s) could not be matched unambiguously to compiled source metadata"),
+            RuntimeLimitationScanner.scan(listOf(classes), root))
+    }
+
+    @Test
+    fun `unrelated fresh class cannot hide stale source`(@TempDir root: Path) {
+        val classes = root.resolve("classes").createDirectories()
+        for ((name, modified) in listOf("A" to 1_000L, "B" to 3_000L)) {
+            val writer = ClassWriter(0)
+            writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null)
+            writer.visitSource("$name.java", null)
+            writer.visitEnd()
+            classes.resolve("$name.class").writeBytes(writer.toByteArray())
+            classes.resolve("$name.class").toFile().setLastModified(modified)
+        }
+        root.resolve("A.java").writeText("class A {}")
+        root.resolve("A.java").toFile().setLastModified(2_000L)
+        val limitations = RuntimeLimitationScanner.scan(listOf(classes), root)
+        kotlin.test.assertTrue(limitations.any { it.startsWith("index-staleness: 1 of 1") })
+    }
+
+    @Test
     fun `counts reflection JNI dynamic registration and stale sources`(@TempDir root: Path) {
         val classes = root.resolve("classes").createDirectories()
         val writer = ClassWriter(0)
         writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "app/RuntimeUse", null, "java/lang/Object", null)
+        writer.visitSource("RuntimeUse.kt", null)
         writer.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_NATIVE, "nativeCall", "()V", null, null).visitEnd()
         writer.visitMethod(Opcodes.ACC_PUBLIC, "run", "()V", null, null).also { method ->
             method.visitCode()
@@ -55,7 +117,7 @@ class RuntimeLimitationScannerTest {
         assertEquals(
             listOf(
                 "dynamic-registration: 1 runtime component registration call(s) are absent from the manifest graph",
-                "index-staleness: 1 of 1 source file(s) changed after the newest class file",
+                "index-staleness: 1 of 1 source file(s) changed after a matching class file",
                 "jni-methods: 1 native method(s) may be called outside the JVM graph",
                 "reflection-strings: 1 Class.forName call(s) use runtime names",
             ),

@@ -1,0 +1,44 @@
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+
+// 배포 runtime의 실제 해석 결과와 JAR 해시만 싣고 빌드 기계의 경로·시각은 제외한다.
+def runtime = configurations.named('runtimeClasspath')
+def componentName = project.name == 'cli' ? 'kartograph' : 'kartograph-gradle-plugin'
+def componentVersion = project.version.toString()
+def target = layout.buildDirectory.file("reports/sbom/${componentName}-${componentVersion}.cdx.json")
+tasks.register('runtimeSbom') {
+    group = 'distribution'
+    description = 'Writes a deterministic CycloneDX inventory of the packaged runtime dependencies.'
+    inputs.files(runtime).withPathSensitivity(PathSensitivity.NONE)
+    inputs.property('coordinates', providers.provider {
+        runtime.get().incoming.artifacts.artifacts.findAll {
+            it.id.componentIdentifier instanceof ModuleComponentIdentifier
+        }.collect { it.id.componentIdentifier.displayName }.sort()
+    })
+    inputs.property('componentName', componentName)
+    inputs.property('componentVersion', componentVersion)
+    outputs.file(target)
+    doLast {
+        def components = runtime.get().incoming.artifacts.artifacts.findAll {
+            it.id.componentIdentifier instanceof ModuleComponentIdentifier
+        }.collect { artifact ->
+            def id = artifact.id.componentIdentifier
+            def digest = MessageDigest.getInstance('SHA-256')
+            artifact.file.withInputStream { input ->
+                byte[] buffer = new byte[8192]
+                int count
+                while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count)
+            }
+            [type: 'library', group: id.group, name: id.module, version: id.version,
+             'bom-ref': "${id.group}:${id.module}:${id.version}",
+             hashes: [[alg: 'SHA-256', content: digest.digest().encodeHex().toString()]]]
+        }.sort { a, b -> a['bom-ref'] <=> b['bom-ref'] }
+        def document = [bomFormat: 'CycloneDX', specVersion: '1.6', version: 1,
+            metadata: [component: [type: 'application', name: componentName, version: componentVersion]],
+            components: components]
+        def output = target.get().asFile
+        output.parentFile.mkdirs()
+        output.setText(JsonOutput.prettyPrint(JsonOutput.toJson(document)) + '\n', 'UTF-8')
+    }
+}

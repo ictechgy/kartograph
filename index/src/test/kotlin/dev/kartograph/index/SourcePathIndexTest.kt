@@ -15,6 +15,26 @@ import org.junit.jupiter.api.io.TempDir
 
 class SourcePathIndexTest {
     @Test
+    fun `external file link cannot become a confirmed project source`(@TempDir root: Path) {
+        val project = root.resolve("project").createDirectories()
+        val outside = root.resolve("Outside.kt")
+        outside.writeText("class Outside")
+        java.nio.file.Files.createSymbolicLink(project.resolve("Outside.kt"), outside)
+        assertEquals(emptyMap(), SourcePathIndex.byFileName(project))
+    }
+
+    @Test
+    fun `project root alias and internal file links stay inside the root`(@TempDir root: Path) {
+        val project = root.resolve("project").createDirectories()
+        write(project, "src/Local.kt")
+        val alias = root.resolve("alias")
+        java.nio.file.Files.createSymbolicLink(alias, project)
+        java.nio.file.Files.createSymbolicLink(project.resolve("Linked.kt"), project.resolve("src/Local.kt"))
+        assertEquals(setOf(project.toRealPath().resolve("src/Local.kt")), SourcePathIndex.byFileName(alias)["Local.kt"])
+        assertEquals(setOf(project.toRealPath().resolve("Linked.kt")), SourcePathIndex.byFileName(alias)["Linked.kt"])
+    }
+
+    @Test
     fun `confirms a path only when the declaration package matches the source directory`(@TempDir root: Path) {
         write(root, "src/main/kotlin/app/feature/Screen.kt")
         write(root, "src/main/kotlin/unrelated/Shared.kt")

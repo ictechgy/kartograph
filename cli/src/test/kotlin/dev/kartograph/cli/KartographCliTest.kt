@@ -23,6 +23,86 @@ import org.junit.jupiter.api.io.TempDir
 
 class KartographCliTest {
     @Test
+    fun `forced skill replacement preserves external hard link contents`(@TempDir root: Path) {
+        val project = root.resolve("project").createDirectories()
+        val target = project.resolve(".claude/skills/kartograph/SKILL.md")
+        target.parent.createDirectories()
+        val outside = root.resolve("outside.md")
+        outside.writeText("external sentinel")
+        Files.createLink(target, outside)
+        assertEquals(ExitStatus.SUCCESS.code, execute("skill", "--project", project.toString(), "--force").status)
+        assertEquals("external sentinel", outside.readText())
+        assertContains(target.readText(), "# kartograph")
+    }
+
+    @Test
+    fun `skill rejects dangling file and parent directory links`(@TempDir root: Path) {
+        val project = root.resolve("project").createDirectories()
+        val target = project.resolve(".claude/skills/kartograph/SKILL.md")
+        target.parent.createDirectories()
+        val outside = root.resolve("outside.md")
+        Files.createSymbolicLink(target, outside)
+        assertEquals(ExitStatus.FAILURE.code, execute("skill", "--project", project.toString()).status)
+        assertTrue(!Files.exists(outside))
+        outside.writeText("unchanged")
+        assertEquals(ExitStatus.FAILURE.code, execute("skill", "--project", project.toString(), "--force").status)
+        assertEquals("unchanged", outside.readText())
+        Files.delete(target)
+        Files.delete(target.parent)
+        val externalDirectory = root.resolve("external").createDirectories()
+        Files.createSymbolicLink(target.parent, externalDirectory)
+        assertEquals(ExitStatus.FAILURE.code, execute("skill", "--project", project.toString(), "--force").status)
+        assertTrue(!Files.exists(externalDirectory.resolve("SKILL.md")))
+    }
+
+    @Test
+    fun `bridges rejects external source links and repeats deterministically`(@TempDir root: Path) {
+        val project = root.resolve("project").createDirectories()
+        val outside = root.resolve("Outside.kt")
+        outside.writeText("val channel = MethodChannel(messenger, \"example\")\nchannel.setMethodCallHandler(handler)\n")
+        Files.createSymbolicLink(project.resolve("Linked.kt"), outside)
+        assertEquals(ExitStatus.FAILURE.code, execute("bridges", "--project", project.toString()).status)
+        Files.delete(project.resolve("Linked.kt"))
+        project.resolve("Local.kt").writeText(outside.readText())
+        val first = execute("bridges", "--project", project.toString())
+        val second = execute("bridges", "--project", project.toString())
+        assertEquals(ExitStatus.SUCCESS.code, first.status)
+        assertEquals(first.output, second.output)
+        val alias = root.resolve("alias")
+        Files.createSymbolicLink(alias, project)
+        assertEquals(first.output, execute("bridges", "--project", alias.toString()).output)
+    }
+
+    @Test
+    fun `architecture rejects options belonging to another command`(@TempDir root: Path) {
+        for (args in listOf(
+            arrayOf("cycles", "--config", "missing.yml"),
+            arrayOf("cycles", "--explain", "missing"),
+            arrayOf("metrics", "--strict"),
+        )) {
+            assertEquals(ExitStatus.USAGE.code, execute(*args, "--classes", root.toString()).status)
+        }
+    }
+
+    @Test
+    fun `baseline and explain reject ignored report options`(@TempDir root: Path) {
+        val args = deadArguments(root, "<manifest />")
+        for (extra in listOf(arrayOf("--since", "missing"), arrayOf("--baseline", "missing.json"), arrayOf("--strict"))) {
+            assertEquals(ExitStatus.USAGE.code,
+                execute("baseline", "--write", "out.json", *args.drop(1).toTypedArray(), *extra).status)
+            assertEquals(ExitStatus.USAGE.code,
+                execute(*args, "--explain", "class:Example", *extra).status)
+        }
+        assertTrue(!Files.exists(root.resolve("out.json")))
+    }
+
+    @Test
+    fun `empty compiled input fails instead of passing a strict check`(@TempDir root: Path) {
+        val execution = execute("cycles", "--classes", root.toString(), "--strict")
+        assertEquals(ExitStatus.FAILURE.code, execution.status)
+    }
+
+    @Test
     fun `private member mode reports only unreferenced private members of reachable owners`(@TempDir root: Path) {
         val source = root.resolve("MemberSample.java")
         source.writeText("""

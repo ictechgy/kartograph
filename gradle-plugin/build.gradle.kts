@@ -137,3 +137,5 @@ publishing {
 tasks.withType<GenerateModuleMetadata>().configureEach {
     enabled = false
 }
+
+apply(from = rootProject.file("gradle/runtime-sbom.gradle"))

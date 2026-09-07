@@ -46,12 +46,13 @@ internal fun projectRelativePath(projectRoot: Path, sourceFile: Path): String {
     return realRoot.relativize(realSource).toString().replace('\\', '/')
 }
 
-internal fun xmlValueLocation(sourcePath: String, xmlFile: Path, value: String, endLine: Int): SourceLocation {
-    val sourceLines = try {
-        Files.readAllLines(xmlFile)
-    } catch (error: IOException) {
-        throw AndroidResourceScanningException("Android XML cannot be read", error)
-    }
+internal fun xmlSourceLines(xmlFile: Path): List<String> = try {
+    Files.readAllLines(xmlFile)
+} catch (error: IOException) {
+    throw AndroidResourceScanningException("Android XML cannot be read", error)
+}
+
+internal fun xmlValueLocation(sourcePath: String, sourceLines: List<String>, value: String, endLine: Int): SourceLocation {
     val endIndex = (endLine - 1).coerceAtMost(sourceLines.lastIndex)
     val valueLine = (endIndex downTo 0).firstOrNull { index ->
         val sourceLine = sourceLines[index]

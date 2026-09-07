@@ -17,7 +17,8 @@ build_artifacts() {
     ./gradlew --no-daemon clean \
         :cli:distZip :cli:distTar \
         :gradle-plugin:jar :gradle-plugin:generatePomFileForPluginMavenPublication \
-        :gradle-plugin:validatePlugins
+        :gradle-plugin:validatePlugins :cli:runtimeSbom :gradle-plugin:runtimeSbom
+    python3 Scripts/prepare-release-metadata.py
 }
 
 artifact_paths() {
@@ -25,7 +26,10 @@ artifact_paths() {
         "cli/build/distributions/kartograph-$VERSION.zip" \
         "cli/build/distributions/kartograph-$VERSION.tar" \
         "gradle-plugin/build/libs/kartograph-gradle-plugin-$VERSION.jar" \
-        "gradle-plugin/build/publications/pluginMaven/pom-default.xml"
+        "gradle-plugin/build/publications/pluginMaven/pom-default.xml" \
+        "build/release/kartograph-$VERSION.cdx.json" \
+        "build/release/kartograph-gradle-plugin-$VERSION.cdx.json" \
+        "build/release/SHA256SUMS"
 }
 
 hash_artifacts() {

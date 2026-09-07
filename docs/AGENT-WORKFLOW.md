@@ -42,3 +42,25 @@ CLI 계약은 `Scripts/verify-cli-contract.sh`, agent 계약은 `Scripts/verify-
 release workflow는 tag별 실행을 직렬화하고 실행 중 자동 취소하지 않는다. 별도 tag 사이의 실행 순서는 보장하지 않으므로 여러 버전을 동시에 게시하지 않는다.
 GitHub asset이 이미 있으면 upload가 실패하도록 해 원본을 보존한다. GitHub만 성공하고 Portal이 실패한 부분 배포는 상태를 확인한 후 승인된 복구를 한다. 재실행을 위해 기존 asset/tag를 자동 제거하지 않는다.
 GitHub 공개, Portal 제출, Portal 승인, 독립 프로젝트 설치는 별도 결과다. 확인하지 않은 단계는 완료라고 쓰지 않는다.
+
+## 의존성·배포 검증 유지
+
+제품 루트 빌드는 `gradle/verification-metadata.xml`의 SHA256으로 의존성을 검증한다.
+새 의존성이나 버전 변경 시 [Gradle 검증 절차](https://docs.gradle.org/current/userguide/dependency_verification.html)에 따라
+`./gradlew --write-verification-metadata sha256 test :cli:runtimeSbom :gradle-plugin:runtimeSbom :gradle-plugin:validatePlugins`
+으로 후보를 생성하고 좌표·출처·체크섬 diff를 검토한다. 자동 생성한 체크섬은 원본의 안전성을 증명하지 않으며
+검증 실패를 없애려고 기존 체크섬을 무조건 다시 생성하지 않는다. 최초 목록은 비어 있는 별도
+`--gradle-user-home <temporary-directory>`에서도 검사해 로컬 해석 캐시에 가려진 BOM/POM 누락을 잡는다. Dependabot의 버전 변경 PR도
+새 체크섬을 검토해 추가하기 전에는 이 검증에서 실패할 수 있다. 별도 Android 소비 fixture의 build 의존성은
+이 제품 루트 검증 범위와 구분한다.
+
+`GRADLE_8_HOME=/path/to/gradle-8.10.2 bash Scripts/verify-agp-8-fixture.sh`는 최소 지원 조합의
+정확한 finding·graph·strict 실패·configuration cache 재사용을 검사한다. 제품 JAR은 저장소 wrapper로
+만들고 소비 프로젝트를 별도 Gradle 8.10.2로 실행해 실제 배포물의 하위 호환성을 검사한다.
+PR CI와 tag workflow 모두 같은 fixture를 실행한다. JDK 17과 Android SDK 35가 필요하다.
+
+`runtimeSbom`은 각 배포 runtime에 실제 해석된 외부 라이브러리 좌표와 JAR SHA256을
+[CycloneDX 1.6](https://cyclonedx.org/docs/1.6/json/) inventory로 기록한다. 컴파일 전용 AGP·테스트 의존성이나
+시스템 JDK는 배포 runtime inventory에 포함하지 않는다. `verify-release-readiness.sh`는 이 SBOM 두 개와
+배포물 SHA256SUMS까지 두 번 빌드해 재현성을 확인한다. 사용자는 release 파일들을 같은 디렉터리에 받은 후
+`shasum -a 256 -c SHA256SUMS`로 무결성을 확인할 수 있다.

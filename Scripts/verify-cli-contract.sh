@@ -44,7 +44,11 @@ expect_output() {
 }
 
 TEMPORARY_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/kartograph-cli-contract.XXXXXX")"
-trap 'rmdir "$TEMPORARY_DIRECTORY"' EXIT
+trap 'rm -f "$TEMPORARY_DIRECTORY/Probe.java" "$TEMPORARY_DIRECTORY/classes/Probe.class" "$TEMPORARY_DIRECTORY/AndroidManifest.xml"; rmdir "$TEMPORARY_DIRECTORY/classes" "$TEMPORARY_DIRECTORY/empty" "$TEMPORARY_DIRECTORY/res" "$TEMPORARY_DIRECTORY"' EXIT
+mkdir "$TEMPORARY_DIRECTORY/classes" "$TEMPORARY_DIRECTORY/empty" "$TEMPORARY_DIRECTORY/res"
+printf 'public class Probe {}\n' > "$TEMPORARY_DIRECTORY/Probe.java"
+printf '<manifest />\n' > "$TEMPORARY_DIRECTORY/AndroidManifest.xml"
+javac -d "$TEMPORARY_DIRECTORY/classes" "$TEMPORARY_DIRECTORY/Probe.java" || exit 2
 
 echo "CLI 계약 검증: $BINARY"
 
@@ -61,9 +65,9 @@ expect_status 0 "skill --help" skill --help
 expect_status 0 "cycles --help" cycles --help
 expect_status 0 "rules --help" rules --help
 expect_status 0 "metrics --help" metrics --help
-expect_status 0 "빈 class root graph" graph --classes "$TEMPORARY_DIRECTORY"
-expect_status 0 "빈 class root graph JSON" graph --classes "$TEMPORARY_DIRECTORY" --format json --include-paths --project .
-expect_status 0 "빈 class root metrics" metrics --classes "$TEMPORARY_DIRECTORY"
+expect_status 0 "정상 class root graph" graph --classes "$TEMPORARY_DIRECTORY/classes"
+expect_status 0 "정상 class root graph JSON" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json --include-paths --project .
+expect_status 0 "정상 class root metrics" metrics --classes "$TEMPORARY_DIRECTORY/classes"
 
 echo "종료 코드 64 — 사용 오류"
 expect_status 64 "알 수 없는 옵션" --no-such-option
@@ -80,6 +84,11 @@ expect_status 64 "cycles class root 누락" cycles
 expect_status 64 "rules config 누락" rules --classes "$TEMPORARY_DIRECTORY"
 
 echo "종료 코드 2 — 도구 실패"
+expect_status 2 "빈 class root graph" graph --classes "$TEMPORARY_DIRECTORY/empty"
+expect_status 2 "빈 class root metrics" metrics --classes "$TEMPORARY_DIRECTORY/empty"
+expect_status 2 "빈 class root strict" cycles --classes "$TEMPORARY_DIRECTORY/empty" --strict
+expect_status 2 "빈 class root dead strict" dead --classes "$TEMPORARY_DIRECTORY/empty" \
+    --project "$TEMPORARY_DIRECTORY" --manifest AndroidManifest.xml --resources res --namespace app --strict
 expect_status 2 "없는 class root" graph --classes "$TEMPORARY_DIRECTORY/missing"
 expect_status 2 "없는 project root" graph --classes "$TEMPORARY_DIRECTORY" --format json --include-paths --project "$TEMPORARY_DIRECTORY/missing"
 
@@ -90,7 +99,7 @@ if [[ "$(id -u)" != "0" ]]; then
     chmod 000 "$UNREADABLE/locked"
     expect_status 2 "읽을 수 없는 class root" graph --classes "$UNREADABLE"
     chmod 755 "$UNREADABLE/locked"
-    rm -rf "$UNREADABLE"
+    rmdir "$UNREADABLE/locked" "$UNREADABLE"
 else
     echo "  skip      읽을 수 없는 class root (root 권한)"
 fi
@@ -100,9 +109,9 @@ expect_output "kartograph" "도움말에 도구 이름" --help
 expect_output "Exit codes:" "도움말에 종료 코드 표" --help
 expect_output "kartograph baseline" "도움말에 baseline 명령" --help
 expect_output "kartograph cycles" "도움말에 architecture 명령" --help
-expect_output "digraph kartograph" "graph의 DOT 문서" graph --classes "$TEMPORARY_DIRECTORY"
-expect_output '"format": "code-graph"' "graph의 교환 JSON 문서" graph --classes "$TEMPORARY_DIRECTORY" --format json
-expect_output '"limitations"' "graph JSON의 한계 필드" graph --classes "$TEMPORARY_DIRECTORY" --format json
+expect_output "digraph kartograph" "graph의 DOT 문서" graph --classes "$TEMPORARY_DIRECTORY/classes"
+expect_output '"format": "code-graph"' "graph의 교환 JSON 문서" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json
+expect_output '"limitations"' "graph JSON의 한계 필드" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json
 
 echo
 if [[ "$FAILURES" -eq 0 ]]; then

@@ -70,6 +70,10 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   같은 project source가 있으면 생성 선언이 사람이 쓴 파일로 확정될 수 있다. 확정된 경로도 그래프가 아니라 파일
   이름 대조의 결과이며 삭제 판단의 근거가 아니다.
 - stale build output은 stale graph를 만든다. kartograph는 source를 컴파일하지 않는다.
+  `query`는 유일한 source 파일 이름에 대응하는 class들의 시각과 source 시각을 비교한다. 서로 다른 source의
+  최신 class가 오래된 산출물을 가리지 않는다. SourceFile 누락·동명 source·미컴파일 source는
+  `index-freshness-unknown`으로 계수한다. 이름 대조와 파일 시각은 내용 지문이나 완전한 freshness 증명이 아니며,
+  시각을 보존한 파일 복사·source 삭제·프로젝트 밖의 동명 산출물을 항상 구분하지 못한다.
 - package/module architecture는 JVM 이름과 입력 root를 기준으로 하며 Gradle dependency resolution model 자체는 아니다.
 - Java와 Kotlin bytecode를 함께 읽지만 reflection configuration, runtime class loading과 외부 서비스 설정은 별도 입력이다.
 

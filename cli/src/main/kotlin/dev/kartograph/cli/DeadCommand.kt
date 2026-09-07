@@ -237,6 +237,20 @@ internal object DeadCommand {
             index += 2
         }
 
+        val exclusiveMode = when {
+            explainNodeId != null -> "--explain"
+            writeBaselineValue != null -> "--write-baseline"
+            else -> null
+        }
+        if (exclusiveMode != null) {
+            val ignored = setOf("--baseline", "--since", "--strict", "--report-format") +
+                if (explainNodeId != null) setOf("--write-baseline", "--test-classes") else emptySet()
+            val conflict = arguments.firstOrNull { it in ignored }
+            if (conflict != null) {
+                error.println("error: $conflict cannot be combined with $exclusiveMode")
+                return null
+            }
+        }
         val project = projectRoot ?: return missingOption(error, "--project")
         return DeadOptions(
             classRoots = classRoots.takeIf(List<Path>::isNotEmpty) ?: return missingOption(error, "--classes"),
