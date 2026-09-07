@@ -36,6 +36,17 @@ class RuntimeLimitationScannerTest {
         val classFile = classes.resolve("RuntimeUse.class")
         classFile.writeBytes(writer.toByteArray())
         root.resolve("RuntimeUse.kt").writeText("class RuntimeUse")
+        // 어시스턴트 디렉터리의 파일은 project source 집계에서 제외한다.
+        root.resolve(".claude/Later.kt").also { source ->
+            source.parent.createDirectories()
+            source.writeText("class Later")
+            source.toFile().setLastModified(3_000)
+        }
+        root.resolve(".worktrees/copy/Later.kt").also { source ->
+            source.parent.createDirectories()
+            source.writeText("class LaterCopy")
+            source.toFile().setLastModified(4_000)
+        }
         classFile.toFile().setLastModified(1_000)
         root.resolve("RuntimeUse.kt").toFile().setLastModified(2_000)
 

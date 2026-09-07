@@ -114,14 +114,8 @@ public object RuntimeLimitationScanner {
         }, ClassReader.SKIP_DEBUG or ClassReader.SKIP_FRAMES)
     }
 
-    private fun isPrunedSource(projectRoot: Path, path: Path): Boolean {
-        val relative = projectRoot.toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize())
-        val segments = relative.map(Path::toString)
-        if (segments.any(PRUNED_DIRECTORIES::contains)) return true
-        return segments.windowed(2).any { (first, second) ->
-            first == "src" && second in PRUNED_SOURCE_SETS
-        }
-    }
+    private fun isPrunedSource(projectRoot: Path, path: Path): Boolean =
+        ProjectTraversal.isPrunedSource(projectRoot, path)
 
     private data class RuntimeCounters(
         var reflectionCalls: Int = 0,
@@ -131,8 +125,6 @@ public object RuntimeLimitationScanner {
     )
 
     private val SOURCE_EXTENSIONS = setOf("kt", "java")
-    private val PRUNED_DIRECTORIES = setOf("build", ".gradle", ".git", ".worktrees", "node_modules")
-    private val PRUNED_SOURCE_SETS = setOf("test", "androidTest", "testFixtures")
     private val DYNAMIC_REGISTRATION_METHODS = setOf(
         "registerReceiver", "registerComponentCallbacks", "registerActivityLifecycleCallbacks",
     )

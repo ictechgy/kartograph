@@ -124,8 +124,8 @@ public object SourcePathIndex {
             private set
 
         override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-            val name = dir.fileName?.toString()
-            return if (dir != projectRoot && name != null && name in PRUNED_DIRECTORIES) {
+            // 가지치기 규칙은 세 source 스캐너가 공유하는 ProjectTraversal 한 벌만 쓴다.
+            return if (ProjectTraversal.isPruned(projectRoot, dir)) {
                 FileVisitResult.SKIP_SUBTREE
             } else {
                 FileVisitResult.CONTINUE
@@ -148,9 +148,6 @@ public object SourcePathIndex {
     }
 
     private val SOURCE_EXTENSIONS = setOf("kt", "java")
-    private val PRUNED_DIRECTORIES = setOf(
-        "build", ".git", ".gradle", ".kotlin", ".worktrees", "node_modules", ".omx", ".claude", "out",
-    )
 }
 
 /**

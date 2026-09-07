@@ -20,6 +20,11 @@
   있었다) 해당 baseline은 다시 생성해야 한다.
 - `--include-paths`(Gradle `includeSourcePaths`)가 이름만 같은 무관한 파일을 사실로 확정하지 않는다. 선언의
   package가 후보 파일 디렉터리의 suffix일 때만 확정하고, 아니면 `unresolved-source-paths`로 센다.
+- 프로젝트 source 탐색의 가지치기 규칙을 세 스캐너가 공유하는 한 벌로 통일한다. 이전에는
+  `SourcePathIndex`·`BridgeFactScanner`·`RuntimeLimitationScanner`가 각자 다른 제외 집합을 써서
+  `.claude/`·`.omx/`의 예제 코드가 `bridges` 교환 문서로 수확되거나 staleness 집계에 섞일 수 있었다.
+  정본(`docs/DECISION-truth-source.md`) 6종에 빌드 산출물·도구 캐시를 더한 집합만 제외하며, 기존에
+  제외하던 디렉터리를 다시 순회하지는 않으므로 종전 출력은 그대로다.
 - 그래프 교환 문서가 경로 해석을 요청하지 않아도 `missing-source-paths`를 보고한다. 개수만으로 계산되는
   한계를 opt-in 뒤에 숨기지 않는다.
 
