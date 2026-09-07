@@ -2,12 +2,13 @@ import groovy.util.Node
 import groovy.util.NodeList
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.tasks.GenerateModuleMetadata
+import org.gradle.plugin.compatibility.compatibility
 
 plugins {
     `java-gradle-plugin`
     kotlin("jvm")
     `maven-publish`
-    id("com.gradle.plugin-publish") version "2.0.0"
+    id("com.gradle.plugin-publish") version "2.1.1"
 }
 
 val embedded = configurations.create("embedded") {
@@ -49,6 +50,12 @@ gradlePlugin {
             displayName = "kartograph"
             description = "Kotlin and Android dependency graph analysis"
             tags = listOf("android", "kotlin", "architecture", "dependency-analysis")
+            // configuration cache 재사용은 Android fixture 게이트로 검증한다.
+            compatibility {
+                features {
+                    configurationCache = true
+                }
+            }
         }
     }
 }
