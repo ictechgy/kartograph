@@ -19,6 +19,8 @@ def run(args, cwd=ROOT, expected=0, details=False):
     except (OSError, subprocess.TimeoutExpired):
         raise RuntimeError("Dagger experiment tool unavailable or timed out") from None
     if result.returncode != expected:
+        if "Dependency verification failed" in result.stdout + result.stderr:
+            raise RuntimeError("Dagger dependency verification failed; check experiment verification metadata")
         raise RuntimeError(f"Dagger experiment stage {Path(str(args[0])).name} failed: expected {expected}, actual {result.returncode}")
     return result if details else result.stdout
 

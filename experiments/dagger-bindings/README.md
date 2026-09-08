@@ -10,7 +10,7 @@ python3 experiments/dagger-bindings/run.py
 ```
 
 최초 실행은 Maven Central에서 고정 의존성을 받는다. 실험의 `gradle/verification-metadata.xml`은 JAR/POM/module
-SHA256을 검사한다. 59개 artifact를 공식 Maven Central의 원본과 대조했다. 제품 runtime에 이 의존성을 넣지 않는다.
+SHA256을 검사한다. 60개 artifact를 공식 Maven Central의 원본과 대조했다. 제품 runtime에 이 의존성을 넣지 않는다.
 
 `selected` component는 service entry → abstract @Binds method → Selected 생성자 → Dependency 생성자의
 3개 의미적 참조를, qualifier를 바꾼 `unused` component는 @Provides method와 Unused 생성자의 2개 참조를 수집한다.
@@ -34,3 +34,5 @@ sidecar는 저장 후 다시 읽어 보강하며, 같은 구조의 source/class/
   외부 인증·서명을 뜻하지 않는다. variant는 fixture의 qualifier 선택 label이다.
 
 참고: [Dagger SPI](https://dagger.dev/dev-guide/spi.html), [Javac/KSP SPI 구분](https://dagger.dev/dev-guide/ksp.html).
+
+CI의 cold-cache 검증에서 Guava 부모 POM 누락을 재현해 보완했으며, 별도의 빈 Gradle user home에서 전체 실험 의존성과 exporter 빌드를 검증했다.
