@@ -31,7 +31,7 @@
   },
   "reflective_method": {
     "runtimeUsed": true,
-    "kartographState": "unreachable",
+    "kartographState": "reachable",
     "r8KeepsUsed": true,
     "r8Exit": 0
   }

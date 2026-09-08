@@ -151,7 +151,7 @@ public class ClassFileIndexer {
         val visitor = FactsVisitor()
         reader.accept(visitor, 0)
         val facts = visitor.facts()
-        val methods = facts.calls.filter { RuntimeValueAnalyzer.sensitive(it.owner, it.name) }.map { it.caller }.toSet()
+        val methods = facts.calls.filter { RuntimeValueAnalyzer.requiresValueAnalysis(it) }.map { it.caller }.toSet()
         if (methods.isEmpty()) return facts
         val tree = ClassNode(Opcodes.ASM9)
         reader.accept(tree, ClassReader.SKIP_FRAMES)

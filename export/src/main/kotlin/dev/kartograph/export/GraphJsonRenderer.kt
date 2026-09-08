@@ -57,7 +57,10 @@ public object GraphJsonRenderer {
                     "ordinal" to call.ordinal,
                     "resolvedTargets" to call.resolvedTargets.map { it.value }.sorted(),
                     "resolution" to call.resolution.name.lowerCamel(),
-                ).apply { call.location?.toJsonValue(projectRelativePaths[call.caller])?.let { put("location", it) } }
+                ).apply {
+                    call.location?.toJsonValue(projectRelativePaths[call.caller])?.let { put("location", it) }
+                    call.model?.let { put("model", it) }
+                }
             })
         },
     ) + "\n"
