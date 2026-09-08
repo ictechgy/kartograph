@@ -28,7 +28,7 @@ jobs:
           cache: gradle
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       - name: Install fixture Android platform
-        run: sdkmanager "platforms;android-36"
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Test and verify coverage
         run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
       - name: Verify CLI contract
@@ -39,6 +39,8 @@ jobs:
         run: Scripts/verify-agent-surface.sh
       - name: Verify runtime blind-spot corpus
         run: python3 Scripts/verify-runtime-corpus.py
+      - name: Verify runtime and R8 differential contracts
+        run: python3 Scripts/verify-runtime-contracts.py
       - name: Compare compiler references before constant inlining
         run: python3 experiments/compiler-references/run.py
       - name: Verify Android fixture corpus

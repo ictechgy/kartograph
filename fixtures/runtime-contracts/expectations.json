@@ -1,0 +1,38 @@
+{
+  "callback_registered": {
+    "runtimeUsed": true,
+    "kartographState": "reachable",
+    "r8KeepsUsed": true,
+    "r8Exit": 0
+  },
+  "callback_unregistered": {
+    "runtimeUsed": false,
+    "kartographState": "reachable",
+    "r8KeepsUsed": true,
+    "r8Exit": 0
+  },
+  "direct_call": {
+    "runtimeUsed": true,
+    "kartographState": "reachable",
+    "r8KeepsUsed": true,
+    "r8Exit": 0
+  },
+  "factory_name": {
+    "runtimeUsed": true,
+    "kartographState": "unreachable",
+    "r8KeepsUsed": false,
+    "r8Exit": 1
+  },
+  "reflective_field": {
+    "runtimeUsed": true,
+    "kartographState": "unreachable",
+    "r8KeepsUsed": false,
+    "r8Exit": 1
+  },
+  "reflective_method": {
+    "runtimeUsed": true,
+    "kartographState": "unreachable",
+    "r8KeepsUsed": true,
+    "r8Exit": 0
+  }
+}
