@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- DroidBench 패턴의 Java 실행·kartograph 후보·R8 보존/실행을 분리하는 6개 차등 회귀 계약과 CI 검증.
+
 ## [0.6.0] - 2026-09-08
 
 ### Added
