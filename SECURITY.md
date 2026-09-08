@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-0.5.x의 최신 공개 patch release와 다음 patch를 준비하는 `main`에 보안 수정을 제공한다.
+0.6.x의 최신 공개 patch release와 다음 patch를 준비하는 `main`에 보안 수정을 제공한다.
 
 ## Reporting a vulnerability
 

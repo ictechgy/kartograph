@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-08
+
 ### Added
 
 - 인라인 전 javac/FIR 상수 참조를 같은 입력의 그래프에 연결하는 독립 비교 실험과 CI 검증을 추가한다(제품 자동 보강은 아님).
@@ -172,7 +174,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/ictechgy/kartograph/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ictechgy/kartograph/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/ictechgy/kartograph/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ictechgy/kartograph/compare/v0.3.1...v0.4.0

@@ -8,7 +8,7 @@ Kotlin/Android 코드베이스를 위한 질의 가능한 의존성 그래프. c
 
 ## 무엇을 하는가
 
-Kotlin에는 Periphery에 해당하는 도구가 없다. 있는 것은 R8에 기대는 Gradle 플러그인 하나와 구문만 파싱하는 CLI 하나뿐이고, 둘 다 "왜 미사용인가 / 왜 살아남았는가"를 말하지 않는다. 이 빈자리를 cartograph가 이미 증명한 방식으로 채운다.
+kartograph는 Kotlin/Android의 컴파일된 의존성 그래프를 만들고 선언이 도달 가능·보존·도달 불가인 이유를 설명한다:
 
 - 컴파일러가 기록한 사실을 원천으로 쓴다 — 텍스트 검색이 아니다.
 - 미사용 코드·순환 의존·레이어 규칙·아키텍처 지표를 한 그래프 위에서 낸다.
@@ -23,12 +23,15 @@ Android만의 이점이 하나 있다. "안 쓰는 것처럼 보이지만 지우
 
 현재 동작하는 것:
 
-- `graph`는 컴파일된 class root를 DOT 또는 `code-graph` JSON 교환 문서로 렌더링하며, 요청하면 project 기준 source 경로를 해석한다(`--include-paths --project`). `--classes`를 반복해 여러 module/variant output root를 합칠 수 있고, 같은 JVM class는 첫 root의 사실을 결정적으로 사용한다.
+- `graph`는 컴파일된 class root를 DOT 또는 `code-graph` JSON 교환 문서로 렌더링하며, 요청하면 project 기준 source 경로를 해석한다(`--include-paths --project`). JSON에는 간선 출처와 외부 호출의 해석 상태도 기록한다. `--classes`를 반복해 여러 module/variant output root를 합칠 수 있고, 같은 JVM class는 첫 root의 사실을 결정적으로 사용한다.
 - `dead`는 Android 보존 근거(manifest, XML, `@Keep`, keep 규칙, 상속 hierarchy, DI/직렬화 어노테이션, JNI·프레임워크 콜백)에서 도달 불가한 class 선언을 보고하며, `--explain`·baseline·`--since`·machine report를 지원한다. 재귀 include와 consumer rules 입력도 지원한다.
-- `query`/`bridges`/`skill`은 전체 graph 덤프 대신 한 symbol의 사용·의존·도달성과 Flutter/React Native 브리지 사실을 에이전트에게 제공한다.
+- `query`/`bridges`/`skill`은 전체 graph 덤프 대신 한 symbol의 사용·의존·도달성과 Flutter/React Native 브리지 사실을 에이전트에게 제공한다. `query`는 미해결 runtime 경로와 보수적 dispatch 후보도 계량한다.
 - `cycles`/`rules`/`metrics`는 module/package 순환과 weakest edge, fail-closed layer YAML, Martin Ca/Ce/I/A/D 지표를 분석한다.
 - Gradle plugin은 AGP public Variant API 위에서 Android variant마다 `kartographDead<Variant>`와 `kartographGraph<Variant>` task를 등록한다.
 - keep 규칙 파싱은 지원하지 않는 문법을 조용히 버리지 않고 파일·줄과 함께 실패한다(fail-closed). 근거와 오류에는 절대경로를 출력하지 않는다.
+
+class 로딩과 reflection 생성자는 제한된 메서드 내 값 추적으로, 외부 dispatch는 보수적 상속 후보로 연결한다.
+class root 및 CLI `--service-resources`의 `META-INF/services` 등록은 provider를 보존한다. Gradle plugin은 선택한 variant의 Java resource 원천 디렉터리를 전달한다.
 
 그래프가 보지 못하는 것은 [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md)에, 측정된 보존 동작은 [`docs/PHASE2-VALIDATION.md`](docs/PHASE2-VALIDATION.md)에 있다.
 
@@ -41,7 +44,7 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.5.0"
+    id("io.github.ictechgy.kartograph") version "0.6.0"
 }
 ```
 
@@ -146,6 +149,8 @@ Scripts/verify-fixture-corpus.sh
 Scripts/verify-gradle-plugin-fixture.sh
 Scripts/verify-agent-surface.sh
 python3 -m unittest discover -s Scripts/tests -v
+python3 Scripts/verify-runtime-corpus.py # Java/Kotlin 13건, JDK 17
+python3 experiments/compiler-references/run.py # source checkout 전용, JDK 17
 Scripts/verify-release-readiness.sh # clean build 두 번, publish하지 않음
 ```
 

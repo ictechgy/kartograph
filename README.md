@@ -8,7 +8,7 @@ The name is **K**otlin + cartograph. Where cartograph maps iOS, kartograph maps 
 
 ## What it does
 
-Kotlin has no Periphery equivalent. What exists is one Gradle plugin leaning on R8 and one syntax-only CLI, and neither says *why* something is unused or *why* it survived. kartograph fills that gap the way cartograph already proved:
+kartograph builds a compiled dependency graph for Kotlin/Android and explains why declarations are reachable, retained, or unreachable:
 
 - Facts recorded by the compiler are the source of truth — not text search.
 - Unused code, dependency cycles, layer rules, and architecture metrics come from one graph.
@@ -23,12 +23,14 @@ The current source version is declared in [VERSION](VERSION). Released versions 
 
 Working today:
 
-- `graph` renders compiled class roots as DOT or as a `code-graph` JSON exchange document, with optional project-relative source paths (`--include-paths --project`). Repeated `--classes` merge several module/variant outputs; the first root wins deterministically for a repeated JVM class.
+- `graph` renders compiled class roots as DOT or as a `code-graph` JSON exchange document, with optional project-relative source paths (`--include-paths --project`). JSON also records edge origins and external calls with their resolution status. Repeated `--classes` merge several module/variant outputs; the first root wins deterministically for a repeated JVM class.
 - `dead` reports unreachable class declarations from Android retention roots (manifest, XML, `@Keep`, keep rules, inheritance hierarchies, DI/serialization annotations, JNI and framework callbacks), with `--explain`, baselines, `--since`, and machine-readable reports. Recursive includes and consumer rules are supported.
-- `query`/`bridges`/`skill` expose one symbol's users, dependencies, and reachability, plus Flutter/React Native bridge facts, for agent consumers.
+- `query`/`bridges`/`skill` expose one symbol's users, dependencies, and reachability, plus Flutter/React Native bridge facts, for agent consumers. `query` includes measured unresolved runtime paths and conservative dispatch candidates.
 - `cycles`/`rules`/`metrics` analyze module/package cycles with weakest edges, fail-closed layer YAML, and Martin Ca/Ce/I/A/D metrics.
 - The Gradle plugin registers `kartographDead<Variant>` and `kartographGraph<Variant>` per Android variant over the AGP public Variant API.
 - Keep-rule parsing fails closed with file and line instead of silently dropping unsupported syntax. Errors and evidence never print absolute paths.
+
+Class loading and reflective construction use bounded intra-method value tracking; external dispatch uses conservative hierarchy candidates. `META-INF/services` registrations retain providers from class roots and explicit CLI `--service-resources` inputs. The Gradle plugin supplies the selected variant’s Java resource source directories.
 
 See [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) for what the graph cannot see, and [`docs/PHASE2-VALIDATION.md`](docs/PHASE2-VALIDATION.md) for measured retention behavior.
 
@@ -41,7 +43,7 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.5.0"
+    id("io.github.ictechgy.kartograph") version "0.6.0"
 }
 ```
 
@@ -146,6 +148,8 @@ Scripts/verify-fixture-corpus.sh
 Scripts/verify-gradle-plugin-fixture.sh
 Scripts/verify-agent-surface.sh
 python3 -m unittest discover -s Scripts/tests -v
+python3 Scripts/verify-runtime-corpus.py # 13 Java/Kotlin cases; JDK 17
+python3 experiments/compiler-references/run.py # source checkout only; JDK 17
 Scripts/verify-release-readiness.sh # two clean builds, never publishes
 ```
 
