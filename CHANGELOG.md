@@ -8,11 +8,14 @@
 
 ### Added
 
+- 제한된 메서드 내 값 추적에 기반한 class 로딩·reflection 생성자, 외부 상위 타입 dispatch와 서비스 provider 입력을 그래프에 연결한다.
+- 간선 출처와 외부 호출 해석 상태를 JSON에 기록하고 Java/Kotlin 실행 코퍼스 13건을 CI에서 검증한다.
 - 외부 호출 사실을 앱 선언과 분리해 그래프에 보존하고 런타임 사각지대와 상수 참조 손실을 query에 계량한다.
 - Java/Kotlin 런타임·상수·DI 반례를 고정한 compiler 코퍼스를 추가한다.
 
 ### Fixed
 
+- 인코딩된 어노테이션 기본값의 class 참조를 도달성에 반영한다.
 - 상수 field query가 보존된 owner와 달리 unreachable로 보이지 않도록 INLINE_CONSTANT 근거를 공유한다.
 
 ## [0.5.0] - 2026-09-08

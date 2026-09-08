@@ -1,5 +1,6 @@
 package dev.kartograph.analysis
 
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
@@ -14,13 +15,17 @@ public object ArchitectureGraph {
         val names = units.values.toSortedSet()
         return CodeGraph(
             names.map { name -> GraphNode(NodeId("unit:$name"), name, NodeKind.CLASS, moduleName = name) },
-            graph.edges.asSequence().filter { it.kind.impliesUsage }.mapNotNull { edge ->
+            graph.edges.asSequence().filter(::isDependency).mapNotNull { edge ->
                 val source = units[edge.source] ?: return@mapNotNull null
                 val target = units[edge.target] ?: return@mapNotNull null
-                if (source == target) null else GraphEdge(NodeId("unit:$source"), NodeId("unit:$target"), edge.kind, edge.weight)
+                if (source == target) null else GraphEdge(NodeId("unit:$source"), NodeId("unit:$target"), edge.kind, edge.weight, edge.origin)
             }.asIterable(),
         )
     }
+
+    // receiver 후보는 도달성을 보수적으로 넓히지만 호출자가 구현 모듈을 선언 의존한다는 뜻은 아니다.
+    internal fun isDependency(edge: GraphEdge): Boolean =
+        edge.kind.impliesUsage && edge.origin != EdgeOrigin.DISPATCH_MODEL
 
     /** 명시 moduleName이 없을 때도 모든 JVM 선언을 같은 package 단위에 배정한다. */
     public fun unitOf(node: GraphNode): String = node.moduleName ?: packageName(node.id.value)

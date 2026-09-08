@@ -64,3 +64,11 @@ distributions {
 apply(from = rootProject.file("gradle/runtime-sbom.gradle"))
 
 sourceSets.test { resources.srcDir(rootProject.file("fixtures/runtime-corpus")) }
+
+// compiler 코퍼스가 플랫폼별 캐시 경로를 추측하지 않고 실제 검증된 test 의존성을 사용한다.
+tasks.register<Copy>("runtimeCorpusDependencies") {
+    from(configurations.testRuntimeClasspath.map { configuration ->
+        configuration.files.filter { it.name == "javax.inject-1.jar" }
+    })
+    into(layout.buildDirectory.dir("runtime-corpus"))
+}

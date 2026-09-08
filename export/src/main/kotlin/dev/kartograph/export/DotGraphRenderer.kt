@@ -1,5 +1,6 @@
 package dev.kartograph.export
 
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
@@ -27,6 +28,7 @@ public object DotGraphRenderer {
 
     private fun renderEdge(edge: GraphEdge): String {
         val attributes = mutableListOf("label=\"${edge.kind.name.lowercase()}\"")
+        if (edge.origin != EdgeOrigin.BYTECODE) attributes += "tooltip=\"${edge.origin.name.lowercase()}\""
         if (edge.weight > 1) attributes += "weight=${edge.weight}"
         return "\"${escape(edge.source.value)}\" -> \"${escape(edge.target.value)}\" " +
             "[${attributes.joinToString()}];"

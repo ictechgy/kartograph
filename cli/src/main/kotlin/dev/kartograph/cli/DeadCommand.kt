@@ -89,11 +89,9 @@ internal object DeadCommand {
     }
 
     private fun execute(options: DeadOptions, output: PrintStream, error: PrintStream): Int {
-        val graph = ClassFileIndexer().index(options.classRoots)
-        val dependencyHierarchy = ClassHierarchyIndexer().index(
-            options.classpath,
-            graph.nodes.values.flatMap(GraphNode::supertypes),
-        )
+        val indexed = ClassFileIndexer().indexWithObservations(options.classRoots, options.classpath, options.serviceResources)
+        val graph = indexed.graph
+        val dependencyHierarchy = indexed.hierarchy
         val inputEvidence = buildList {
             addAll(AndroidManifestScanner(options.projectRoot).scan(options.manifest, options.namespace))
             addAll(AndroidXmlScanner(options.projectRoot).scan(options.resources))
@@ -192,6 +190,7 @@ internal object DeadCommand {
         var explainNodeId: NodeId? = null
         val keepRulePaths = mutableListOf<String>()
         val classpathPaths = mutableListOf<String>()
+        val servicePaths = mutableListOf<String>()
         var strict = false
         var includePrivateMembers = false
         var baselineValue: String? = null
@@ -222,6 +221,7 @@ internal object DeadCommand {
                 "--explain" -> explainNodeId = NodeId(value)
                 "--keep-rules" -> keepRulePaths += value
                 "--classpath" -> classpathPaths += value
+                "--service-resources" -> servicePaths += value
                 "--baseline" -> baselineValue = value
                 "--write-baseline" -> writeBaselineValue = value
                 "--since" -> since = value
@@ -261,6 +261,7 @@ internal object DeadCommand {
             namespace = namespace?.takeIf(String::isNotBlank) ?: return missingOption(error, "--namespace"),
             keepRules = keepRulePaths.map { value -> resolveProjectPath(project, value) },
             classpath = classpathPaths.map { value -> resolveProjectPath(project, value) },
+            serviceResources = servicePaths.map { value -> resolveProjectPath(project, value) },
             strict = strict,
             includePrivateMembers = includePrivateMembers,
             explainNodeId = explainNodeId,
@@ -313,6 +314,7 @@ internal object DeadCommand {
         val namespace: String,
         val keepRules: List<Path>,
         val classpath: List<Path>,
+        val serviceResources: List<Path>,
         val strict: Boolean,
         val includePrivateMembers: Boolean,
         val explainNodeId: NodeId?,
@@ -338,7 +340,7 @@ internal object DeadCommand {
         Usage:
           kartograph dead --classes <directory> [--classes <directory>]... --project <directory> \
             --manifest <file> --resources <directory> --namespace <name> \
-            [--keep-rules <file>]... [--classpath <directory-or-jar>]... \
+            [--keep-rules <file>]... [--classpath <directory-or-jar>] [--service-resources <directory-or-jar>]... \
             [--test-classes <directory-or-jar>]... \
             [--strict] [--explain <node-id>]
             [--include-private-members]

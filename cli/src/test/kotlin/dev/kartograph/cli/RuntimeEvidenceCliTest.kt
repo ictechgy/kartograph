@@ -23,13 +23,12 @@ class RuntimeEvidenceCliTest {
     @Test
     fun `runtime channels are measured even when the requested symbol is absent`(@TempDir root: Path) {
         for ((case, limitation) in listOf(
-            "load_class" to "class-loading:",
-            "service_loader" to "service-loading:",
-            "reflective_constructor" to "reflective-construction:",
-            "external_dispatch" to "external-dispatch:",
-            "annotation_default" to "annotation-default-values:",
+            "runtime_unknown" to "class-loading:",
+            "runtime_unknown" to "service-loading:",
+            "runtime_unknown" to "reflective-construction:",
+            "runtime_unknown" to "external-dispatch:",
         )) {
-            val fixture = compile(root.resolve(case), case)
+            val fixture = compile(root.resolve(limitation.removeSuffix(":")), case)
             val result = query(fixture, "MissingSymbol", 64)
             assertContains(result, limitation)
             assertContains(result, "\"status\": \"notFound\"")
@@ -64,7 +63,9 @@ class RuntimeEvidenceCliTest {
     @Test
     fun `annotation default counters traverse arrays enums and nested values`(@TempDir root: Path) {
         val fixture = compile(root, "annotation_defaults_nested")
-        assertContains(query(fixture, "MissingSymbol", 64), "annotation-default-values: 4 ")
+        val graph = dev.kartograph.index.ClassFileIndexer().index(listOf(fixture.classes))
+        kotlin.test.assertTrue(graph.edges.any { it.source.value == "class:probe/Entry${'$'}Defaults" && it.target.value == "class:probe/Entry${'$'}A" })
+        kotlin.test.assertFalse(query(fixture, "MissingSymbol", 64).contains("annotation-default-values:"))
     }
 
     private fun query(fixture: Fixture, symbol: String, expected: Int = 0): String {

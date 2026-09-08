@@ -24,6 +24,7 @@ public object RuntimeRetentionExpansion {
         )
 
     private val OWNER_REASONS = setOf(
+        RetentionReason.SERVICE_PROVIDER,
         RetentionReason.MANIFEST_COMPONENT,
         RetentionReason.XML_LAYOUT,
         RetentionReason.DEPENDENCY_INJECTION,

@@ -15,6 +15,20 @@ import org.objectweb.asm.Opcodes
 
 class RuntimeLimitationScannerTest {
     @Test
+    fun `unresolved indirect external supertypes remain measured`(@TempDir root: Path) {
+        val owner = dev.kartograph.core.GraphNode(JvmNodeId.classId("app/Abstract"), "Abstract",
+            dev.kartograph.core.NodeKind.CLASS, jvmSignature = "app/Abstract", supertypes = setOf("lib/Child"))
+        val caller = dev.kartograph.core.GraphNode(JvmNodeId.methodId("app/Entry", "run", "()V"), "run",
+            dev.kartograph.core.NodeKind.METHOD)
+        val call = dev.kartograph.core.ExternalCall(caller.id, "lib/Parent", "run", "()V", dev.kartograph.core.InvocationKind.INTERFACE)
+        val graph = dev.kartograph.core.CodeGraph(listOf(owner, caller), emptyList(), listOf(call))
+        val indexed = IndexedClasses(graph, emptyList()).withHierarchy(
+            dev.kartograph.core.ClassHierarchy(mapOf("lib/Child" to setOf("lib/Parent"))))
+        assertEquals(listOf("external-dispatch: 1 external virtual call(s) have no project implementation target"),
+            RuntimeLimitationScanner.scan(indexed, root))
+    }
+
+    @Test
     fun `real Kotlin metadata preserves runtime observations`(@TempDir root: Path) {
         val type = dev.kartograph.index.fixture.RuntimeObservationFixture::class.java
         val bytes = requireNotNull(type.getResourceAsStream("RuntimeObservationFixture.class")).use { it.readBytes() }
@@ -119,7 +133,7 @@ class RuntimeLimitationScannerTest {
                 "dynamic-registration: 1 runtime component registration call(s) are absent from the manifest graph",
                 "index-staleness: 1 of 1 source file(s) changed after a matching class file",
                 "jni-methods: 1 native method(s) may be called outside the JVM graph",
-                "reflection-strings: 1 Class.forName call(s) use runtime names",
+                "runtime-targets-outside-graph: 1 resolved runtime target site(s) have no matching project declaration",
             ),
             limitations,
         )

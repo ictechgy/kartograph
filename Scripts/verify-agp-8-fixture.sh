@@ -26,6 +26,9 @@ assert findings == ['class:dev/kartograph/compat/Unused'], findings
 doc = json.loads((root / 'debug-graph.json').read_text())
 text = json.dumps(doc)
 assert 'class:dev/kartograph/compat/MainActivity' in text
+assert 'class:dev/kartograph/compat/RegisteredTask' in text
+assert 'serviceProviders' in doc
+assert any(p['provider'] == 'class:dev/kartograph/compat/RegisteredTask' for p in doc['serviceProviders'])
 assert 'src/main/kotlin/dev/kartograph/compat/Unused.kt' in text
 CHECK
 if "$GRADLE_8" --no-daemon --console=plain -p "$FIXTURE" kartographDeadDebug \

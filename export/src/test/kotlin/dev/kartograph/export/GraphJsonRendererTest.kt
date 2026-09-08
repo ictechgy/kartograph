@@ -1,6 +1,7 @@
 package dev.kartograph.export
 
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
@@ -42,6 +43,22 @@ class GraphJsonRendererTest {
             GraphEdge(classId, methodId, EdgeKind.MEMBER),
         ),
     )
+
+    @Test
+    fun `distinct evidence origins retain independent weights and deterministic output`() {
+        val edges = listOf(
+            GraphEdge(methodId, classId, EdgeKind.REFERENCE, 2),
+            GraphEdge(methodId, classId, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL),
+            GraphEdge(methodId, classId, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL),
+        )
+        val mixed = CodeGraph(graph.nodes.values, edges)
+        assertEquals(2, mixed.edges.size)
+        assertEquals(listOf(2, 2), mixed.edges.map { it.weight })
+        val json = GraphJsonRenderer.render(mixed, "test")
+        assertTrue(json.contains("\"origin\": \"runtimeModel\""))
+        assertEquals(json, GraphJsonRenderer.render(CodeGraph(graph.nodes.values.reversed(), edges.reversed()), "test"))
+        assertTrue(DotGraphRenderer.render(mixed).contains("tooltip=\"runtime_model\""))
+    }
 
     @Test
     fun `renders resolved project relative paths in deterministic key order`() {

@@ -68,7 +68,8 @@ internal object KartographCli {
             return toolFailure(error, "project root does not exist; pass the directory that holds the source files")
         }
         return try {
-            output.print(renderGraph(ClassFileIndexer().index(options.classRoots), options))
+            output.print(renderGraph(ClassFileIndexer().indexWithObservations(options.classRoots,
+                options.classpath.takeIf { it.isNotEmpty() }, options.serviceResources).graph, options))
             ExitStatus.SUCCESS.code
         } catch (indexingError: ClassIndexingException) {
             toolFailure(error, indexingError.message ?: "class indexing failed")
@@ -87,6 +88,8 @@ internal object KartographCli {
 
     private fun parseGraphOptions(arguments: List<String>, error: PrintStream): GraphOptions? {
         val classRoots = mutableListOf<Path>()
+        val classpath = mutableListOf<Path>()
+        val serviceResources = mutableListOf<Path>()
         var format = "dot"
         var includePaths = false
         var projectRoot: Path? = null
@@ -95,6 +98,11 @@ internal object KartographCli {
             when (val argument = arguments[index]) {
                 "--classes" -> {
                     classRoots.add(Path.of(valueAfter(arguments, index, argument, error) ?: return null))
+                    index += 2
+                }
+                "--classpath", "--service-resources" -> {
+                    val value = Path.of(valueAfter(arguments, index, argument, error) ?: return null)
+                    if (argument == "--classpath") classpath.add(value) else serviceResources.add(value)
                     index += 2
                 }
                 "--format" -> {
@@ -139,7 +147,7 @@ internal object KartographCli {
             usageError(error, "missing required --classes path")
             return null
         }
-        return GraphOptions(classRoots, resolved, projectRoot)
+        return GraphOptions(classRoots, resolved, projectRoot, classpath, serviceResources)
     }
 
     private fun valueAfter(
@@ -179,6 +187,8 @@ internal object KartographCli {
         val classRoots: List<Path>,
         val format: GraphFormat,
         val projectRoot: Path?,
+        val classpath: List<Path>,
+        val serviceResources: List<Path>,
     )
 
     private val HELP = """
@@ -186,7 +196,7 @@ internal object KartographCli {
 
         Usage:
           kartograph graph --classes <directory-or-jar> [--classes <directory-or-jar>]... [--format dot|json] \
-            [--include-paths --project <directory>]
+            [--include-paths --project <directory>] [--classpath <path>] [--service-resources <path>]
           kartograph dead --classes <directory> --project <directory> [options]
           kartograph baseline --write <file> --classes <directory> --project <directory> [options]
           kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
@@ -208,7 +218,7 @@ internal object KartographCli {
 
         Usage:
           kartograph graph --classes <directory-or-jar> [--classes <directory-or-jar>]... [--format dot|json] \
-            [--include-paths --project <directory>]
+            [--include-paths --project <directory>] [--classpath <path>] [--service-resources <path>]
 
         dot omits source locations. json carries one node per declaration with its usr, qualifiedName, kind,
         accessibility and, when the class debug attributes recorded it, the source file name.
