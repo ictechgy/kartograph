@@ -7,6 +7,10 @@ import dev.kartograph.index.SourcePathIndex
 import dev.kartograph.index.SourcePathResolution
 import java.nio.file.Files
 import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.file.Directory
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFile
@@ -43,6 +47,11 @@ public abstract class KartographGraphTask : DefaultTask() {
     @get:Internal
     public abstract val projectDirectory: DirectoryProperty
 
+    /** 선택한 variant의 Java resource에서 service 등록 사실을 읽는다. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val serviceResourceDirectories: ConfigurableFileCollection
+
     @get:OutputFile
     public abstract val graphFile: RegularFileProperty
 
@@ -56,7 +65,8 @@ public abstract class KartographGraphTask : DefaultTask() {
             addAll(projectDirectories.get().map { directory -> directory.asFile.toPath() })
             addAll(projectJars.get().map { jar -> jar.asFile.toPath() })
         }
-        val graph = ClassFileIndexer().index(classRoots)
+        val graph = ClassFileIndexer().indexWithObservations(classRoots, null,
+            serviceResourceDirectories.files.filter(java.io.File::isDirectory).sorted().map(java.io.File::toPath)).graph
         // 경로 해석은 opt-in이다. CLI와 같은 기본값을 유지해 요청하지 않은 경로 노출을 만들지 않는다.
         val paths = if (includeSourcePaths.get()) {
             SourcePathIndex.resolve(graph, projectDirectory.get().asFile.toPath())

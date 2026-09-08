@@ -17,6 +17,9 @@ public object DefaultRetention {
     ): List<RetentionEvidence> {
         val evidence = buildList {
             addAll(inputEvidence)
+            addAll(graph.serviceProviders.map { provider ->
+                RetentionEvidence(provider.provider, dev.kartograph.core.RetentionReason.SERVICE_PROVIDER, provider.location)
+            })
             addAll(KeepRuleRetention.find(graph, keepRules, classHierarchy))
             addAll(KeepAnnotationRetention.find(graph))
             addAll(FrameworkAnnotationRetention.find(graph))

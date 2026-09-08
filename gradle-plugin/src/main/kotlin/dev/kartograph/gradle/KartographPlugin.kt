@@ -50,6 +50,7 @@ public class KartographPlugin : Plugin<Project> {
             variant.sources.res?.all?.let { resources ->
                 deadTask.resourceDirectories.from(resources.map { layers -> layers.flatten() })
             }
+            variant.sources.resources?.all?.let { deadTask.serviceResourceDirectories.from(it) }
             deadTask.keepRuleFiles.from(extension.keepRules)
             deadTask.keepRuleFiles.from(variant.proguardFiles)
             deadTask.reportFile.set(project.layout.buildDirectory.file("reports/kartograph/${variant.name}.txt"))
@@ -76,6 +77,7 @@ public class KartographPlugin : Plugin<Project> {
             graphTask.description = "Writes the ${variant.name} dependency graph as a code-graph JSON document."
             graphTask.variantName.set(variant.name)
             graphTask.includeSourcePaths.set(extension.includeSourcePaths)
+            variant.sources.resources?.all?.let { graphTask.serviceResourceDirectories.from(it) }
             graphTask.projectDirectory.set(project.layout.projectDirectory)
             graphTask.graphFile.set(
                 project.layout.buildDirectory.file("reports/kartograph/${variant.name}-graph.json"),

@@ -39,6 +39,7 @@ jobs:
         run: |
           ./gradlew --no-daemon :cli:installDist
           Scripts/verify-agent-surface.sh
+          python3 Scripts/verify-runtime-corpus.py
           Scripts/verify-fixture-corpus.sh
           Scripts/verify-gradle-plugin-fixture.sh
           python3 -m unittest discover -s Scripts/tests -v

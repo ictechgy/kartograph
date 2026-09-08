@@ -11,8 +11,8 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   아직 없어 일부가 계속 보고될 수 있다. 공개 표본의 범위와 남은 진단은
   [공개 검증 기록](PUBLIC-VALIDATION.md)에 명시한다. 보고는 삭제 승인이 아니다.
   BINARY/RUNTIME 보존 어노테이션의 명시적 값·parameter annotation의 class 참조와 사용되는 중첩 class의 바깥
-  container는 이제 도달성에 포함한다. bytecode에 남지 않는 SOURCE 보존 어노테이션과 어노테이션 기본값의 class
-  참조는 계속 복원하지 못해 한계로 싣는다. `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
+  container와 인코딩된 어노테이션 기본값의 class 참조는 도달성에 포함한다. bytecode에 남지 않는 SOURCE 보존
+  어노테이션은 복원하지 못한다. `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
 
 - `--include-private-members`는 JVM/source 모두 private인 method·field/property만 선택적으로 추가한다.
   class member는 reachable 비생성 owner가 하나로 확정되는 경우에 한하며 constructor/native/constant는 제외한다.
@@ -29,8 +29,10 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   reachable owner의 비private member·inline 함수·직렬화 callback도 잠재적 진입점으로 취급하므로
   외부에서 실제 사용되지 않는 public API의 private helper까지 보존할 수 있다.
 
-- 바로 앞 constant 문자열을 사용하는 `Class.forName` 호출은 대상 class 참조로 복원한다. 그 밖의 문자열
-  reflection과 동적 component 등록은 호출 후보를 계수할 수 있지만 대상 symbol을 항상 복원할 수 없다.
+- `Class.forName`의 overload와 `ClassLoader.loadClass`는 같은 메서드 안의 지역 변수·분기·일부 문자열 결합을
+  추적해 프로젝트 class로 연결한다. 알려진 class의 reflection 생성자는 인자 개수에 맞는 후보를 연결한다.
+  값 집합·명령·frame 크기를 제한하며, 알 수 없는 값과 한도 초과는 query 한계로 남긴다. 메서드 사이의 값 전달,
+  임의 계산, `Method.invoke`·reflection field 접근과 동적 component 등록은 완전하게 해석하지 않는다.
 - JNI, native lookup, framework callback과 serialization/DI codegen은 bytecode만으로 완전하게 증명할 수 없다.
 - manifest/resource/keep rule 또는 dependency classpath를 전달하지 않으면 그 입력이 만드는 도달성을 볼 수 없다.
 - manifest `meta-data`의 class-like `android:name`/`android:value`는 보수적으로 보존한다. class 위치에
@@ -88,6 +90,32 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 `resolvedTargets`는 제공된 사실으로 연결한 프로젝트 대상이며 빈 배열은 대상 부재의 증명이 아니다.
 
 `query`는 ClassLoader 로딩, reflection 생성자, ServiceLoader, 프로젝트 상위 타입에 대한 미해결 외부
-virtual 호출, 인코딩된 annotation default의 class 참조, 인라인 상수 사용처 손실을 실제 입력 개수로 알린다.
+virtual 호출, 해석된 프로젝트 밖 runtime 대상, 값 분석 한도, 인라인 상수 사용처 손실을 실제 입력 개수로 알린다.
 notFound 응답에도 동일하게 포함한다. 이 관측은 아직 연결하지 못한 관계를 드러내는 것이며 실제 실행 횟수가 아니다.
 상수 field도 `INLINE_CONSTANT`로 보존하지만 원래 호출자 간선을 복원했다는 뜻은 아니다.
+
+외부 virtual/interface 호출은 전달된 classpath header와 프로젝트 상속 관계로 가능한 구현을 연결한다.
+이는 실제 receiver를 증명하는 points-to 분석이 아니므로 여러 구현과 상속 메서드를 보수적으로 연결할 수 있다.
+`externalCalls.resolution`과 간선 `origin`은 미해결 호출, 후보 dispatch, runtime 모델을 구분한다.
+
+`META-INF/services`는 class root의 디렉터리/JAR 및 CLI `--service-resources`에서 읽는다. 등록된 프로젝트
+provider는 `SERVICE_PROVIDER` 근거로 보존하고 알려진 `ServiceLoader` 요청에 연결한다. 파일·줄은 입력별
+상대 위치로 기록하며 provider 코드를 실행하지 않는다. Gradle plugin은 해당 variant의 Java resource 원천
+디렉터리를 전달한다. 병합된 최종 resource가 아니므로 overlay·패키징 제외에 따라 과보존할 수 있다.
+JPMS `module-info`의 `provides`와 동적 provider 등록은 지원하지 않는다.
+
+DI 어노테이션 보존은 지원되는 어노테이션을 진입점으로 삼는 보수적 모델이다. Dagger/Hilt binding 선택이나
+실제 객체 수명·주입 경로를 증명하지 않는다.
+
+외부 dispatch 후보 간선은 도달성에 사용하지만 호출자의 선언 의존성을 뜻하지 않으므로 패키지 순환·레이어 규칙·
+결합도에서는 제외한다. bytecode·metadata·확정된 runtime 참조는 해당 구조 질의에 유지한다.
+
+서비스 registry의 유효한 이름 파일은 잘못된 provider·인코딩·크기 초과 시 부분 결과 대신 실패한다.
+서비스 이름이 될 수 없는 백업·편집기 파일은 건너뛴다. 입력 ordinal은 같은 입력 순서에서 결정적이며 순서를
+바꾸면 위치가 달라질 수 있다. baseline 지문은 이 위치에 의존하지 않는다. dependency classpath는 header 전용이며
+그 안의 registry를 읽으려면 CLI `--service-resources`에도 해당 JAR을 전달해야 한다. 외부 provider의 구현 본문은
+프로젝트 class root에 포함되지 않는 한 분석하지 않는다.
+
+간선 identity는 `(source, target, kind, origin)`이다. 같은 쌍에 bytecode와 모델 근거가 함께 있으면 별도 간선으로
+보존하고 weight는 각 출처 안에서만 합친다. 출처 없는 기존 JSON 간선은 `bytecode`를 뜻한다. `resolvedTargets`와
+`projectCandidates`는 실행 대상의 확정이 아니며 query의 `dispatch-candidates`가 이런 호출 개수도 함께 알린다.

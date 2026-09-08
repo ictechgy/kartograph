@@ -113,7 +113,7 @@ internal object AgentCommand {
             arguments.drop(1),
             setOf(
                 "--classes", "--project", "--depth", "--limit", "--manifest", "--resources", "--namespace",
-                "--keep-rules", "--classpath", "--baseline", "--include-private-members",
+                "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members",
             ),
             error,
         )
@@ -137,10 +137,11 @@ internal object AgentCommand {
         val depth = options.positiveInt("--depth", 1, error) ?: return ExitStatus.USAGE.code
         val limit = options.positiveInt("--limit", 50, error) ?: return ExitStatus.USAGE.code
         return try {
-            val indexed = ClassFileIndexer().indexWithObservations(classRoots)
-            val graph = indexed.graph
             val classpath = options.values("--classpath").map { resolveProjectPath(project, it) }
-            val hierarchy = ClassHierarchyIndexer().index(classpath, graph.nodes.values.flatMap { it.supertypes })
+            val indexed = ClassFileIndexer().indexWithObservations(classRoots, classpath,
+                options.values("--service-resources").map { resolveProjectPath(project, it) })
+            val graph = indexed.graph
+            val hierarchy = indexed.hierarchy
             val inputEvidence = buildList {
                 options.single("--manifest")?.let { manifest ->
                     val namespace = options.single("--namespace")
@@ -262,6 +263,7 @@ internal object AgentCommand {
           --namespace <name>        manifest package name
           --keep-rules <file>       retention rule file, repeatable
           --classpath <path>        dependency hierarchy entry, repeatable
+          --service-resources <path> Java resource directory or JAR, repeatable
           --baseline <file>         suppress fingerprinted findings
           --include-private-members include private members in the graph
     """.trimIndent() + "\n"

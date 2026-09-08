@@ -76,6 +76,11 @@ public abstract class KartographDeadTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val keepRuleFiles: ConfigurableFileCollection
 
+    /** variant의 Java resource root다. 기본 source set 중 미생성 디렉터리는 실행 시 제외한다. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val serviceResourceDirectories: ConfigurableFileCollection
+
     @get:Input
     public abstract val namespace: Property<String>
 
@@ -115,16 +120,15 @@ public abstract class KartographDeadTask : DefaultTask() {
             addAll(projectDirectories.get().map { directory -> directory.asFile.toPath() })
             addAll(projectJars.get().map { jar -> jar.asFile.toPath() })
         }
-        val graph = ClassFileIndexer().index(classRoots)
         val classpath = buildList {
             addAll(classpathDirectories.get().map { directory -> directory.asFile.toPath() })
             addAll(classpathJars.get().map { jar -> jar.asFile.toPath() })
             addAll(platformClasspath.files.sorted().map { it.toPath() })
         }
-        val hierarchy = ClassHierarchyIndexer().index(
-            classpath,
-            graph.nodes.values.flatMap(GraphNode::supertypes),
-        )
+        val indexed = ClassFileIndexer().indexWithObservations(classRoots, classpath,
+            serviceResourceDirectories.files.filter(java.io.File::isDirectory).sorted().map(java.io.File::toPath))
+        val graph = indexed.graph
+        val hierarchy = indexed.hierarchy
         val evidence = retentionEvidence(projectRoot, graph, hierarchy)
         val result = ReachabilityAnalyzer.analyze(graph, evidence)
         val allFindings = DeadFindings.collect(graph, result, includePrivateMembers.get())

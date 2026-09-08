@@ -119,7 +119,7 @@ class RuntimeLimitationScannerTest {
                 "dynamic-registration: 1 runtime component registration call(s) are absent from the manifest graph",
                 "index-staleness: 1 of 1 source file(s) changed after a matching class file",
                 "jni-methods: 1 native method(s) may be called outside the JVM graph",
-                "reflection-strings: 1 Class.forName call(s) use runtime names",
+                "runtime-targets-outside-graph: 1 resolved runtime target site(s) have no matching project declaration",
             ),
             limitations,
         )

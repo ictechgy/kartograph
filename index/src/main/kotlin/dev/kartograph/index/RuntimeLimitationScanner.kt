@@ -1,6 +1,8 @@
 package dev.kartograph.index
 
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.ClassHierarchy
+import dev.kartograph.core.CallResolution
 import dev.kartograph.core.InvocationKind
 import dev.kartograph.core.NodeAttribute
 import java.nio.file.Files
@@ -11,7 +13,12 @@ import java.nio.file.attribute.FileTime
 public class IndexedClasses internal constructor(
     public val graph: CodeGraph,
     internal val observations: List<ClassRuntimeObservation>,
-)
+    public val hierarchy: ClassHierarchy = ClassHierarchy.EMPTY,
+) {
+    /** 1회 파싱한 그래프에 dependency header를 보강하며 관측값과 호출 위치는 재사용한다. */
+    public fun withHierarchy(hierarchy: ClassHierarchy): IndexedClasses =
+        IndexedClasses(ExternalDispatchIndexer.enrich(graph, hierarchy), observations, hierarchy)
+}
 
 /** 파일 이름과 시각은 신선도 비교에만 사용하며 절대경로를 내보내지 않는다. */
 internal data class ClassRuntimeObservation(
@@ -20,7 +27,11 @@ internal data class ClassRuntimeObservation(
     val nativeMethods: Int = 0,
     val reflectionCalls: Int = 0,
     val dynamicRegistrations: Int = 0,
-    val annotationDefaults: Int = 0,
+    val classLoadingCalls: Int = 0,
+    val reflectiveConstructions: Int = 0,
+    val outsideRuntimeTargets: Int = 0,
+    val valueAnalysisLimits: Int = 0,
+    val serviceLoadingCalls: Int = 0,
 )
 
 /** 현재 산출물에서 정적 그래프가 놓칠 runtime 채널을 실제 개수로 보고한다. */
@@ -53,20 +64,24 @@ public object RuntimeLimitationScanner {
         val nativeMethods = observations.sumOf { it.nativeMethods }
         val reflectionCalls = observations.sumOf { it.reflectionCalls }
         val calls = indexed.graph.externalCalls
-        val loading = calls.count { it.owner == "java/lang/ClassLoader" && it.name == "loadClass" }
-        val constructions = calls.count { (it.owner == "java/lang/reflect/Constructor" || it.owner == "java/lang/Class") && it.name == "newInstance" }
-        val serviceLoading = calls.count { it.owner == "java/util/ServiceLoader" && it.name.startsWith("load") }
+        val loading = observations.sumOf { it.classLoadingCalls }
+        val constructions = observations.sumOf { it.reflectiveConstructions }
+        val serviceLoading = observations.sumOf { it.serviceLoadingCalls }
         val projectSupertypes = indexed.graph.nodes.values.flatMap { it.supertypes }.toSet()
-        val externalDispatch = calls.count { it.kind in setOf(InvocationKind.VIRTUAL, InvocationKind.INTERFACE) && it.owner in projectSupertypes && it.resolvedTargets.isEmpty() }
+        val externalDispatch = calls.count { it.kind in setOf(InvocationKind.VIRTUAL, InvocationKind.INTERFACE) && it.owner in projectSupertypes && it.resolution == CallResolution.UNRESOLVED }
+        val modeledDispatch = calls.count { it.resolution == CallResolution.PROJECT_CANDIDATES }
         val constants = indexed.graph.nodes.values.count { NodeAttribute.COMPILE_TIME_CONSTANT in it.attributes }
-        val defaults = observations.sumOf { it.annotationDefaults }
         return buildList {
+            val outside = observations.sumOf { it.outsideRuntimeTargets }
+            val bounded = observations.sumOf { it.valueAnalysisLimits }
+            if (outside > 0) add("runtime-targets-outside-graph: $outside resolved runtime target site(s) have no matching project declaration")
+            if (bounded > 0) add("runtime-analysis-limits: $bounded method(s) exceeded or could not complete bounded value analysis")
             if (loading > 0) add("class-loading: $loading ClassLoader.loadClass call(s) have no resolved runtime target")
             if (constructions > 0) add("reflective-construction: $constructions reflective constructor call(s) require runtime target modeling")
             if (serviceLoading > 0) add("service-loading: $serviceLoading ServiceLoader call(s) require provider registration inputs")
             if (externalDispatch > 0) add("external-dispatch: $externalDispatch external virtual call(s) have no project implementation target")
+            if (modeledDispatch > 0) add("dispatch-candidates: $modeledDispatch external virtual call(s) use conservative hierarchy candidates rather than proven receivers")
             if (constants > 0) add("inlined-constant-references: $constants compile-time constant declaration(s) may have erased use sites")
-            if (defaults > 0) add("annotation-default-values: $defaults class reference(s) in annotation defaults require modeling")
             if (dynamicRegistrations > 0) add(
                 "dynamic-registration: $dynamicRegistrations runtime component registration call(s) are absent from the manifest graph",
             )
@@ -77,7 +92,7 @@ public object RuntimeLimitationScanner {
                 "index-freshness-unknown: $unknownCount of ${sources.size} source file(s) could not be matched unambiguously to compiled source metadata",
             )
             if (nativeMethods > 0) add("jni-methods: $nativeMethods native method(s) may be called outside the JVM graph")
-            if (reflectionCalls > 0) add("reflection-strings: $reflectionCalls Class.forName call(s) use runtime names")
+            if (reflectionCalls > 0) add("reflection-strings: $reflectionCalls Class.forName call(s) have unresolved names")
         }.sorted()
     }
 

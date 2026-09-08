@@ -1,6 +1,8 @@
 package dev.kartograph.index
 
 import dev.kartograph.core.ClassHierarchy
+import dev.kartograph.core.HierarchyMethod
+import dev.kartograph.core.Visibility
 import java.io.IOException
 import java.io.InputStream
 import java.io.UncheckedIOException
@@ -22,20 +24,24 @@ public class ClassHierarchyIndexer {
         referencedSupertypes: Iterable<String> = emptyList(),
     ): ClassHierarchy {
         val supertypesByClass = linkedMapOf<String, Set<String>>()
+        val methodsByClass = linkedMapOf<String, List<HierarchyMethod>>()
         classpathEntries.forEach { entry ->
             val facts = when {
                 entry.isDirectory() -> readDirectory(entry)
                 entry.isRegularFile() && entry.fileName.toString().endsWith(".jar", ignoreCase = true) -> readJar(entry)
                 else -> throw ClassHierarchyIndexingException("classpath entry must be a class directory or JAR")
             }
-            facts.forEach { fact -> supertypesByClass.putIfAbsent(fact.internalName, fact.supertypes) }
+            facts.forEach { fact ->
+                if (supertypesByClass.putIfAbsent(fact.internalName, fact.supertypes) == null) methodsByClass[fact.internalName] = fact.methods
+            }
         }
-        expandJdkHierarchy(supertypesByClass, referencedSupertypes)
-        return ClassHierarchy(supertypesByClass)
+        expandJdkHierarchy(supertypesByClass, methodsByClass, referencedSupertypes)
+        return ClassHierarchy(supertypesByClass, methodsByClass)
     }
 
     private fun expandJdkHierarchy(
         supertypesByClass: MutableMap<String, Set<String>>,
+        methodsByClass: MutableMap<String, List<HierarchyMethod>>,
         referencedSupertypes: Iterable<String>,
     ) {
         val queue = ArrayDeque(
@@ -60,6 +66,7 @@ public class ClassHierarchyIndexer {
                 throw ClassHierarchyIndexingException("JDK class hierarchy cannot be read", error)
             }
             supertypesByClass[fact.internalName] = fact.supertypes
+            methodsByClass[fact.internalName] = fact.methods
             fact.supertypes.filter { name -> name.isJdkClass() }.sorted().forEach(queue::addLast)
         }
     }
@@ -139,6 +146,7 @@ private data class ClassCandidate(val logicalName: String, val version: Int, val
 private class HierarchyVisitor : ClassVisitor(Opcodes.ASM9) {
     private lateinit var internalName: String
     private var supertypes: Set<String> = emptySet()
+    private val methods = mutableListOf<HierarchyMethod>()
 
     override fun visit(
         version: Int,
@@ -155,10 +163,21 @@ private class HierarchyVisitor : ClassVisitor(Opcodes.ASM9) {
         }
     }
 
-    fun fact(): HierarchyFact = HierarchyFact(internalName, supertypes)
+    override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<out String>?): org.objectweb.asm.MethodVisitor? {
+        val visibility = when {
+            access and Opcodes.ACC_PUBLIC != 0 -> Visibility.PUBLIC
+            access and Opcodes.ACC_PROTECTED != 0 -> Visibility.PROTECTED
+            access and Opcodes.ACC_PRIVATE != 0 -> Visibility.PRIVATE
+            else -> Visibility.PACKAGE_PRIVATE
+        }
+        methods += HierarchyMethod(name, descriptor, visibility, access and Opcodes.ACC_STATIC != 0, access and Opcodes.ACC_FINAL != 0)
+        return null
+    }
+
+    fun fact(): HierarchyFact = HierarchyFact(internalName, supertypes, methods)
 }
 
-private data class HierarchyFact(val internalName: String, val supertypes: Set<String>)
+private data class HierarchyFact(val internalName: String, val supertypes: Set<String>, val methods: List<HierarchyMethod>)
 
 /** dependency classpath를 완전하게 읽지 못해 부분 hierarchy를 버릴 때 사용한다. */
 public class ClassHierarchyIndexingException(message: String, cause: Throwable? = null) :

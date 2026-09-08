@@ -8,6 +8,7 @@ public class CodeGraph(
     nodes: Iterable<GraphNode>,
     edges: Iterable<GraphEdge>,
     externalCalls: Iterable<ExternalCall> = emptyList(),
+    serviceProviders: Iterable<ServiceProviderRegistration> = emptyList(),
 ) {
     public val nodes: Map<NodeId, GraphNode> = buildMap {
         nodes.forEach { node -> putIfAbsent(node.id, node) }
@@ -19,12 +20,15 @@ public class CodeGraph(
         .map { it.copy(resolvedTargets = it.resolvedTargets.filter(this.nodes::containsKey).distinct().sorted()) }
         .distinct().sorted()
 
+    /** 프로젝트 밖 provider도 누락된 입력을 설명할 수 있도록 선언 사실은 보존한다. */
+    public val serviceProviders: List<ServiceProviderRegistration> = serviceProviders.distinct().sorted()
+
     public val edges: List<GraphEdge> = edges
         .filter { edge -> edge.source in this.nodes && edge.target in this.nodes }
-        .groupingBy { edge -> EdgeSignature(edge.source, edge.target, edge.kind) }
+        .groupingBy { edge -> EdgeSignature(edge.source, edge.target, edge.kind, edge.origin) }
         .fold(0) { weight, edge -> weight + edge.weight }
         .map { (signature, weight) ->
-            GraphEdge(signature.source, signature.target, signature.kind, weight)
+            GraphEdge(signature.source, signature.target, signature.kind, weight, signature.origin)
         }
         .sorted()
 
@@ -63,5 +67,6 @@ public class CodeGraph(
         val source: NodeId,
         val target: NodeId,
         val kind: EdgeKind,
+        val origin: EdgeOrigin,
     )
 }
