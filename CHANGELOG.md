@@ -8,6 +8,7 @@
 
 ### Added
 
+- Java/Kotlin 4개 표본에서 실제 실행과 SootUp CHA/RTA·WALA 0-1-CFA·kartograph를 대조하는 정밀도 실험과 CI 검증.
 - 호출 signature로 선택하는 JDK runtime 모델 목록과 외부 호출의 모델 ID.
 - 알려진 reflection method/field 접근을 연결하고 미해결 호출을 각각 계량한다.
 - 실제 Dagger SPI의 qualifier별 선택 binding을 JVM 선언에 연결하고 stale 입력·누락 binding을 거부하는 독립 실험.

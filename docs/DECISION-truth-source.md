@@ -234,3 +234,11 @@ bytecode의 해당 사용 간선은 0개였고 Kotlin IR extension에서도 원�
 fixture 매핑으로 한정했다. 일반 JVM identity·증분 빌드·Android variant 자동 연결이 아직 검증되지 않았으므로
 제품 CLI/plugin의 참조 입력으로 채택하지 않는다. bytecode를 유지하면서 FIR 시점의 선택적 보강을 검증할
 기술적 근거와 실패 계약을 확보한 실험으로 남긴다.
+
+## 객체 흐름 정밀도 비교 (2026-09-08)
+
+[callgraph precision 실험](../experiments/callgraph-precision/README.md)은 같은 Java/Kotlin 입력과 main root에서
+kartograph, SootUp 3.0.1 CHA/RTA, WALA 1.8.0 0-1-CFA(FULL reflection)의 후보를 실제 실행과 대조한다.
+명시적 객체 흐름에서 RTA/CFA가 후보를 좁히지만 runtime 인자값을 정적 분석에 전달하지 않은 argument 기반 reflection 표본에서는 이 구현·설정의 실제 대상이 누락됐다.
+따라서 주 원천과 보수적 도달성을 유지한다. 정밀 엔진은 입력·모델이 확인된 경로의 선택적 보강 후보이며
+전체 그래프의 대체재로 채택하지 않는다. 4개 작은 표본의 시간·후보 결과를 일반 Android 정확도로 확장하지 않는다.
