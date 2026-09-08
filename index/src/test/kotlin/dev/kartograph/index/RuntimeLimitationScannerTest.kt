@@ -15,6 +15,20 @@ import org.objectweb.asm.Opcodes
 
 class RuntimeLimitationScannerTest {
     @Test
+    fun `unresolved indirect external supertypes remain measured`(@TempDir root: Path) {
+        val owner = dev.kartograph.core.GraphNode(JvmNodeId.classId("app/Abstract"), "Abstract",
+            dev.kartograph.core.NodeKind.CLASS, jvmSignature = "app/Abstract", supertypes = setOf("lib/Child"))
+        val caller = dev.kartograph.core.GraphNode(JvmNodeId.methodId("app/Entry", "run", "()V"), "run",
+            dev.kartograph.core.NodeKind.METHOD)
+        val call = dev.kartograph.core.ExternalCall(caller.id, "lib/Parent", "run", "()V", dev.kartograph.core.InvocationKind.INTERFACE)
+        val graph = dev.kartograph.core.CodeGraph(listOf(owner, caller), emptyList(), listOf(call))
+        val indexed = IndexedClasses(graph, emptyList()).withHierarchy(
+            dev.kartograph.core.ClassHierarchy(mapOf("lib/Child" to setOf("lib/Parent"))))
+        assertEquals(listOf("external-dispatch: 1 external virtual call(s) have no project implementation target"),
+            RuntimeLimitationScanner.scan(indexed, root))
+    }
+
+    @Test
     fun `real Kotlin metadata preserves runtime observations`(@TempDir root: Path) {
         val type = dev.kartograph.index.fixture.RuntimeObservationFixture::class.java
         val bytes = requireNotNull(type.getResourceAsStream("RuntimeObservationFixture.class")).use { it.readBytes() }
