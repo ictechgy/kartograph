@@ -125,7 +125,7 @@ internal object RuntimeValueAnalyzer {
                                 val prefix = if (methodInvocation) "method:" else "field:"
                                 val owner = node.id.value.removePrefix(prefix).substringBefore('#')
                                 node.id.value.startsWith(prefix) && owner in owners &&
-                                    (!methodInvocation || node.kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION)) &&
+                                    (!methodInvocation || (node.kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) && !member.name.startsWith("<"))) &&
                                     node.id.value.substringAfter('#').substringBefore('(').substringBefore(':') == member.name &&
                                     (member.declaredOnly || node.jvmVisibility == Visibility.PUBLIC) &&
                                     (!methodInvocation || member.arity == null || Type.getArgumentTypes(node.id.value.substring(node.id.value.indexOf('('))).size == member.arity)

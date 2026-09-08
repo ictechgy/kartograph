@@ -121,13 +121,20 @@ class RuntimeLibraryModelsCliTest {
     }
 
     @Test
-    fun `method lookup cannot select constructors`(@TempDir root: Path) {
+    fun `method lookup cannot select JVM initialization methods`(@TempDir root: Path) {
         compile(root, """
-            public static class Target { public Target(){new Used();} }
+            public static class Target { static { System.getProperty("unused"); } public Target(){new Used();} }
             public static class Used {}
-            public static void main(String[] args) throws Exception { Target.class.getDeclaredMethod("<init>").invoke(null); }
+            public static void main(String[] args) throws Exception {
+              Target.class.getDeclaredMethod("<init>").invoke(null);
+              Target.class.getDeclaredMethod("<clinit>").invoke(null);
+            }
         """)
         assertContains(query(root, "class:probe/Entry${'$'}Used"), "\"state\": \"unreachable\"")
+        val calls = dev.kartograph.index.ClassFileIndexer().index(listOf(root.resolve("classes"))).externalCalls
+            .filter { it.owner == "java/lang/reflect/Method" && it.name == "invoke" }
+        assertEquals(2, calls.size)
+        assertEquals(listOf(emptyList(), emptyList()), calls.map { it.resolvedTargets })
     }
 
     private fun compile(root: Path, body: String) {
