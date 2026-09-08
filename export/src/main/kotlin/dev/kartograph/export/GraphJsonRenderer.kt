@@ -44,7 +44,17 @@ public object GraphJsonRenderer {
             },
             "tool" to sortedMapOf("name" to "kartograph", "version" to toolVersion),
             "version" to VERSION,
-        ),
+        ).apply {
+            if (graph.externalCalls.isNotEmpty()) put("externalCalls", graph.externalCalls.map { call ->
+                sortedMapOf<String, Any?>(
+                    "caller" to call.caller.value,
+                    "target" to call.target.value,
+                    "kind" to call.kind.name.lowerCamel(),
+                    "ordinal" to call.ordinal,
+                    "resolvedTargets" to call.resolvedTargets.map { it.value }.sorted(),
+                ).apply { call.location?.toJsonValue(projectRelativePaths[call.caller])?.let { put("location", it) } }
+            })
+        },
     ) + "\n"
 
     // query 문서와 같은 필드 이름(usr·qualifiedName·accessibility·location)을 써서 두 표면을 join할 수 있게 한다.

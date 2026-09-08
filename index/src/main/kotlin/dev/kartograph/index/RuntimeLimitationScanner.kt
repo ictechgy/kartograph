@@ -1,6 +1,8 @@
 package dev.kartograph.index
 
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.InvocationKind
+import dev.kartograph.core.NodeAttribute
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.FileTime
@@ -18,6 +20,7 @@ internal data class ClassRuntimeObservation(
     val nativeMethods: Int = 0,
     val reflectionCalls: Int = 0,
     val dynamicRegistrations: Int = 0,
+    val annotationDefaults: Int = 0,
 )
 
 /** 현재 산출물에서 정적 그래프가 놓칠 runtime 채널을 실제 개수로 보고한다. */
@@ -49,7 +52,21 @@ public object RuntimeLimitationScanner {
         val dynamicRegistrations = observations.sumOf { it.dynamicRegistrations }
         val nativeMethods = observations.sumOf { it.nativeMethods }
         val reflectionCalls = observations.sumOf { it.reflectionCalls }
+        val calls = indexed.graph.externalCalls
+        val loading = calls.count { it.owner == "java/lang/ClassLoader" && it.name == "loadClass" }
+        val constructions = calls.count { (it.owner == "java/lang/reflect/Constructor" || it.owner == "java/lang/Class") && it.name == "newInstance" }
+        val serviceLoading = calls.count { it.owner == "java/util/ServiceLoader" && it.name.startsWith("load") }
+        val projectSupertypes = indexed.graph.nodes.values.flatMap { it.supertypes }.toSet()
+        val externalDispatch = calls.count { it.kind in setOf(InvocationKind.VIRTUAL, InvocationKind.INTERFACE) && it.owner in projectSupertypes && it.resolvedTargets.isEmpty() }
+        val constants = indexed.graph.nodes.values.count { NodeAttribute.COMPILE_TIME_CONSTANT in it.attributes }
+        val defaults = observations.sumOf { it.annotationDefaults }
         return buildList {
+            if (loading > 0) add("class-loading: $loading ClassLoader.loadClass call(s) have no resolved runtime target")
+            if (constructions > 0) add("reflective-construction: $constructions reflective constructor call(s) require runtime target modeling")
+            if (serviceLoading > 0) add("service-loading: $serviceLoading ServiceLoader call(s) require provider registration inputs")
+            if (externalDispatch > 0) add("external-dispatch: $externalDispatch external virtual call(s) have no project implementation target")
+            if (constants > 0) add("inlined-constant-references: $constants compile-time constant declaration(s) may have erased use sites")
+            if (defaults > 0) add("annotation-default-values: $defaults class reference(s) in annotation defaults require modeling")
             if (dynamicRegistrations > 0) add(
                 "dynamic-registration: $dynamicRegistrations runtime component registration call(s) are absent from the manifest graph",
             )

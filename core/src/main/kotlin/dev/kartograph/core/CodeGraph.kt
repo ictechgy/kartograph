@@ -7,10 +7,17 @@ package dev.kartograph.core
 public class CodeGraph(
     nodes: Iterable<GraphNode>,
     edges: Iterable<GraphEdge>,
+    externalCalls: Iterable<ExternalCall> = emptyList(),
 ) {
     public val nodes: Map<NodeId, GraphNode> = buildMap {
         nodes.forEach { node -> putIfAbsent(node.id, node) }
     }
+
+    /** 일반 간선과 분리해 보존한 외부 호출 목록이다. 앱 정점 수와 진단 대상에는 포함하지 않는다. */
+    public val externalCalls: List<ExternalCall> = externalCalls
+        .filter { it.caller in this.nodes && it.target !in this.nodes }
+        .map { it.copy(resolvedTargets = it.resolvedTargets.filter(this.nodes::containsKey).distinct().sorted()) }
+        .distinct().sorted()
 
     public val edges: List<GraphEdge> = edges
         .filter { edge -> edge.source in this.nodes && edge.target in this.nodes }

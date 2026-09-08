@@ -4,6 +4,17 @@
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)를 따르고 버전은
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)을 따른다.
 
+## [Unreleased]
+
+### Added
+
+- 외부 호출 사실을 앱 선언과 분리해 그래프에 보존하고 런타임 사각지대와 상수 참조 손실을 query에 계량한다.
+- Java/Kotlin 런타임·상수·DI 반례를 고정한 compiler 코퍼스를 추가한다.
+
+### Fixed
+
+- 상수 field query가 보존된 owner와 달리 unreachable로 보이지 않도록 INLINE_CONSTANT 근거를 공유한다.
+
 ## [0.5.0] - 2026-09-08
 
 ### Added

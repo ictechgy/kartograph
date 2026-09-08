@@ -8,11 +8,11 @@ import dev.kartograph.core.RetentionReason
 
 /** Compiler가 사용처를 값으로 치환해 reference를 남기지 않는 상수의 source owner를 보존한다. */
 public object InlineConstantRetention {
-    /** compile-time constant field를 가진 직접 owner에 bytecode 손실을 설명하는 근거를 반환한다. */
+    /** 상수 선언과 직접 owner에 bytecode의 사용처 손실을 설명하는 보존 근거를 반환한다. */
     public fun find(graph: CodeGraph): List<RetentionEvidence> = graph.nodes.values
         .filter { node -> NodeAttribute.COMPILE_TIME_CONSTANT in node.attributes }
         .flatMap { constant ->
-            graph.incomingEdgesTo(constant.id)
+            listOf(RetentionEvidence(constant.id, RetentionReason.INLINE_CONSTANT, constant.location)) + graph.incomingEdgesTo(constant.id)
                 .filter { edge -> edge.kind == EdgeKind.MEMBER }
                 .map { edge -> RetentionEvidence(edge.source, RetentionReason.INLINE_CONSTANT, constant.location) }
         }

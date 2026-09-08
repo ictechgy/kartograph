@@ -10,6 +10,7 @@ dependencies {
     implementation(project(":index"))
 
     testImplementation(kotlin("test"))
+    testImplementation("javax.inject:javax.inject:1")
 }
 
 application {
@@ -61,3 +62,5 @@ distributions {
 }
 
 apply(from = rootProject.file("gradle/runtime-sbom.gradle"))
+
+sourceSets.test { resources.srcDir(rootProject.file("fixtures/runtime-corpus")) }
