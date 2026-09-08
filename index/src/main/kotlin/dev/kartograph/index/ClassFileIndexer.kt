@@ -2,6 +2,8 @@ package dev.kartograph.index
 
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.EdgeKind
+import dev.kartograph.core.ExternalCall
+import dev.kartograph.core.InvocationKind
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.GeneratedSiblingNaming
@@ -69,6 +71,7 @@ public class ClassFileIndexer {
                 projectOverrideEdges(classFacts) +
                 frameworkCallbackEdges(classFacts) +
                 enclosingContainerEdges(classFacts),
+            externalCalls = classFacts.flatMap(ClassFacts::calls),
         )
         return IndexedClasses(graph, classFacts.map(ClassFacts::runtime))
     }
@@ -143,11 +146,13 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private var metadataValues: MetadataAnnotationValues? = null
     private val nodes = mutableListOf<GraphNode>()
     private val edges = mutableListOf<GraphEdge>()
+    private val calls = mutableListOf<ExternalCall>()
     private val classAnnotations = mutableSetOf<String>()
     private val supertypes = mutableSetOf<String>()
     private var nativeMethods = 0
     private var reflectionCalls = 0
     private var dynamicRegistrations = 0
+    private var annotationDefaults = 0
 
     override fun visit(
         version: Int,
@@ -255,7 +260,18 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         }
         return object : MethodVisitor(Opcodes.ASM9) {
             private var firstLine: Int? = null
+            private var currentLine: Int? = null
+            private var callOrdinal = 0
             private var pendingStringConstant: String? = null
+
+            override fun visitAnnotationDefault(): AnnotationVisitor {
+                return object : AnnotationVisitor(Opcodes.ASM9) {
+                    override fun visit(name: String?, value: Any?) { if (value is Type) annotationDefaults++ }
+                    override fun visitEnum(name: String?, descriptor: String, value: String?) { annotationDefaults++ }
+                    override fun visitArray(name: String?): AnnotationVisitor = this
+                    override fun visitAnnotation(name: String?, descriptor: String): AnnotationVisitor = this
+                }
+            }
 
             override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor? {
                 annotations += annotationInternalName(annotationDescriptor)
@@ -275,6 +291,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
 
             override fun visitLineNumber(line: Int, start: Label) {
                 if (firstLine == null) firstLine = line
+                currentLine = line
             }
 
             override fun visitVarInsn(opcode: Int, variable: Int) {
@@ -304,6 +321,13 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 targetDescriptor: String,
                 isInterface: Boolean,
             ) {
+                val invocationKind = when (opcode) {
+                    Opcodes.INVOKESTATIC -> InvocationKind.STATIC
+                    Opcodes.INVOKESPECIAL -> InvocationKind.SPECIAL
+                    Opcodes.INVOKEINTERFACE -> InvocationKind.INTERFACE
+                    else -> InvocationKind.VIRTUAL
+                }
+                calls += ExternalCall(methodId, owner, targetName, targetDescriptor, invocationKind, sourceLocation(currentLine), callOrdinal++)
                 if (owner == "java/lang/Class" && targetName == "forName") reflectionCalls++
                 if (RuntimeLimitationScanner.isDynamicRegistration(owner, targetName)) dynamicRegistrations++
                 val reflectionTarget = pendingStringConstant
@@ -338,6 +362,9 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 vararg bootstrapMethodArguments: Any,
             ) {
                 pendingStringConstant = null
+                val ordinal = callOrdinal++
+                calls += ExternalCall(methodId, bootstrapMethodHandle.owner, bootstrapMethodHandle.name,
+                    bootstrapMethodHandle.desc, InvocationKind.BOOTSTRAP, sourceLocation(currentLine), ordinal)
                 bootstrapMethodArguments.filterIsInstance<Handle>().forEach { handle ->
                     when (handle.tag) {
                         Opcodes.H_GETFIELD, Opcodes.H_GETSTATIC, Opcodes.H_PUTFIELD, Opcodes.H_PUTSTATIC -> {
@@ -354,6 +381,13 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                         Opcodes.H_NEWINVOKESPECIAL,
                         Opcodes.H_INVOKEINTERFACE,
                         -> {
+                            val kind = when (handle.tag) {
+                                Opcodes.H_INVOKESTATIC -> InvocationKind.STATIC
+                                Opcodes.H_INVOKEINTERFACE -> InvocationKind.INTERFACE
+                                Opcodes.H_INVOKEVIRTUAL -> InvocationKind.VIRTUAL
+                                else -> InvocationKind.SPECIAL
+                            }
+                            calls += ExternalCall(methodId, handle.owner, handle.name, handle.desc, kind, sourceLocation(currentLine), ordinal)
                             edges += GraphEdge(
                                 methodId,
                                 JvmNodeId.methodId(handle.owner, handle.name, handle.desc),
@@ -437,7 +471,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     fun facts(): ClassFacts {
         val facts = ClassFacts(internalName, nodes, edges, enclosingClass,
             ClassRuntimeObservation(sourceLocation()?.path, FileTime.fromMillis(0),
-                nativeMethods, reflectionCalls, dynamicRegistrations))
+                nativeMethods, reflectionCalls, dynamicRegistrations, annotationDefaults), calls)
         val metadata = metadataValues?.toMetadata() ?: return facts
         return KotlinMetadataEnricher.enrich(facts, metadata)
     }
@@ -496,6 +530,7 @@ internal data class ClassFacts(
     val edges: List<GraphEdge>,
     val enclosingClass: String? = null,
     val runtime: ClassRuntimeObservation = ClassRuntimeObservation(),
+    val calls: List<ExternalCall> = emptyList(),
 )
 
 // CLASS-retention 생성 marker는 이름만 닮은 사용자 선언을 숨기지 않는다.

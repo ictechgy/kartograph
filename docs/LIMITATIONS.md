@@ -80,3 +80,14 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 `query`는 class root와 source에서 실제로 측정된 항목만 `limitations`에 싣고, 알릴 측정값이 없으면 빈
 배열을 반환한다. `dead`와 그 machine report는 삭제 판단에 쓰이는 경로이므로 reflection·동적 등록·인라인
 상수처럼 입력만으로 부재를 증명할 수 없는 보수적 한계를 항상 함께 싣는다.
+
+## 런타임 관측 범위
+
+그래프 JSON의 `externalCalls`는 앱 정점 밖 메서드 호출을 별도로 보존한다. 외부 선언을 앱의 dead 후보로
+추가하지 않으며 호출자·대상 JVM identity·호출 종류·같은 메서드 내 invoke 명령 ordinal·위치를 기록한다. invokedynamic의 bootstrap과 method handle 대상도 구분해 기록한다.
+`resolvedTargets`는 제공된 사실으로 연결한 프로젝트 대상이며 빈 배열은 대상 부재의 증명이 아니다.
+
+`query`는 ClassLoader 로딩, reflection 생성자, ServiceLoader, 프로젝트 상위 타입에 대한 미해결 외부
+virtual 호출, 인코딩된 annotation default의 class 참조, 인라인 상수 사용처 손실을 실제 입력 개수로 알린다.
+notFound 응답에도 동일하게 포함한다. 이 관측은 아직 연결하지 못한 관계를 드러내는 것이며 실제 실행 횟수가 아니다.
+상수 field도 `INLINE_CONSTANT`로 보존하지만 원래 호출자 간선을 복원했다는 뜻은 아니다.

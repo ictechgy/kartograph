@@ -16,6 +16,7 @@
 
 - `false-positive-corpus/`: 실제 Android app/library와 [기대값](false-positive-corpus/expectations.tsv). `Scripts/verify-fixture-corpus.sh`, `Scripts/verify-gradle-plugin-fixture.sh`로 검사한다.
 - `generated-code-corpus/`: CLASS-retention marker와 nested/anonymous class를 javac로 검증한다. `python3 -m unittest discover -s Scripts/tests -v`에 포함된다.
+- `runtime-corpus/`: 상수·reflection·외부 dispatch·ServiceLoader·DI의 실제 compiler 입력이다. CLI의 RuntimeEvidenceCliTest와 후속 복원 검증에서 사용한다.
 - `bridge-corpus/`: `Scripts/verify-agent-surface.sh`로 query/bridge JSON의 실제 parser 계약을 확인한다.
 - 실제 Room/Moshi KSP 입력은 [RoomFixtures.kt](false-positive-corpus/app/src/main/kotlin/dev/kartograph/fixture/RoomFixtures.kt)와 [MoshiFixtures.kt](false-positive-corpus/app/src/main/kotlin/dev/kartograph/fixture/MoshiFixtures.kt)다. Android verifier가 빌드하며 생성물을 직접 편집하지 않는다. 실제 Hilt 표본은 [공개 검증 재현 절차](../docs/PUBLIC-VALIDATION.md)를 따른다.
 
