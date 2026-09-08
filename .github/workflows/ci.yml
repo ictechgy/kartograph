@@ -39,6 +39,8 @@ jobs:
         run: Scripts/verify-agent-surface.sh
       - name: Verify runtime blind-spot corpus
         run: python3 Scripts/verify-runtime-corpus.py
+      - name: Compare compiler references before constant inlining
+        run: python3 experiments/compiler-references/run.py
       - name: Verify Android fixture corpus
         run: Scripts/verify-fixture-corpus.sh
       - name: Verify Gradle plugin against Android fixture

@@ -222,3 +222,15 @@ FIR compiler plugin은 body를 볼 수 있지만 compiler 내부 API와 사용�
 5. ASM과 metadata가 만든 동일 member를 JVM signature로 결합한다.
 6. R8 결과와 keep 규칙은 그래프 사실을 덮어쓰지 않고 보존·검증 근거로 추가한다.
 7. Analysis API나 compiler plugin을 core·analysis 모듈에 의존성으로 넣지 않는다.
+
+## 인라인 전 참조 보강 비교 (2026-09-08)
+
+[재현 가능한 compiler-reference 실험](../experiments/compiler-references/README.md)은 Java javac Trees와
+Kotlin 2.4.10 FIR에서 상수 사용처 4개를 수집해 동일 source/class 지문·variant의 그래프에 연결했다.
+bytecode의 해당 사용 간선은 0개였고 Kotlin IR extension에서도 원래 사용 함수의 3개 참조는 이미 소실됐다.
+같은 값의 미사용 상수와 지역 변수 shadow는 연결하지 않았으며 입력 불일치 5종을 거부했다.
+
+이 결과는 주 원천 교체 근거가 아니다. Java collector는 JVM identity를 만들지만 Kotlin 연결은 명시적인
+fixture 매핑으로 한정했다. 일반 JVM identity·증분 빌드·Android variant 자동 연결이 아직 검증되지 않았으므로
+제품 CLI/plugin의 참조 입력으로 채택하지 않는다. bytecode를 유지하면서 FIR 시점의 선택적 보강을 검증할
+기술적 근거와 실패 계약을 확보한 실험으로 남긴다.
