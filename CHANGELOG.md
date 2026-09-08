@@ -8,6 +8,7 @@
 
 ### Added
 
+- 실제 Dagger SPI의 qualifier별 선택 binding을 JVM 선언에 연결하고 stale 입력·누락 binding을 거부하는 독립 실험.
 - DroidBench 패턴의 Java 실행·kartograph 후보·R8 보존/실행을 분리하는 6개 차등 회귀 계약과 CI 검증.
 
 ## [0.6.0] - 2026-09-08

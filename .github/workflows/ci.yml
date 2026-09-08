@@ -43,6 +43,8 @@ jobs:
         run: python3 Scripts/verify-runtime-contracts.py
       - name: Compare compiler references before constant inlining
         run: python3 experiments/compiler-references/run.py
+      - name: Verify Dagger selected binding evidence
+        run: python3 experiments/dagger-bindings/run.py
       - name: Verify Android fixture corpus
         run: Scripts/verify-fixture-corpus.sh
       - name: Verify Gradle plugin against Android fixture
