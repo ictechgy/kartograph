@@ -30,7 +30,7 @@ Working today:
 - The Gradle plugin registers `kartographDead<Variant>` and `kartographGraph<Variant>` per Android variant over the AGP public Variant API.
 - Keep-rule parsing fails closed with file and line instead of silently dropping unsupported syntax. Errors and evidence never print absolute paths.
 
-Class loading and reflective construction use bounded intra-method value tracking; external dispatch uses conservative hierarchy candidates. `META-INF/services` registrations retain providers from class roots and explicit CLI `--service-resources` inputs. The Gradle plugin supplies the selected variant’s Java resource source directories.
+Class loading, reflective construction, and known method/field access use bounded intra-method value tracking; external dispatch uses conservative hierarchy candidates. `META-INF/services` registrations retain providers from class roots and explicit CLI `--service-resources` inputs. The Gradle plugin supplies the selected variant’s Java resource source directories. External-call JSON identifies matching API models separately from resolution results. Dagger binding and callgraph-precision integrations remain standalone experiments; they do not replace the primary graph or retention policy.
 
 See [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) for what the graph cannot see, and [`docs/PHASE2-VALIDATION.md`](docs/PHASE2-VALIDATION.md) for measured retention behavior.
 
@@ -43,7 +43,7 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.6.0"
+    id("io.github.ictechgy.kartograph") version "0.7.0"
 }
 ```
 
@@ -149,7 +149,10 @@ Scripts/verify-gradle-plugin-fixture.sh
 Scripts/verify-agent-surface.sh
 python3 -m unittest discover -s Scripts/tests -v
 python3 Scripts/verify-runtime-corpus.py # 13 Java/Kotlin cases; JDK 17
+python3 Scripts/verify-runtime-contracts.py # 6 differential cases; SDK Build Tools 35.0.0
 python3 experiments/compiler-references/run.py # source checkout only; JDK 17
+python3 experiments/dagger-bindings/run.py # source checkout only; JDK 17
+python3 experiments/callgraph-precision/run.py # source checkout only; JDK 17
 Scripts/verify-release-readiness.sh # two clean builds, never publishes
 ```
 

@@ -30,8 +30,8 @@ Android만의 이점이 하나 있다. "안 쓰는 것처럼 보이지만 지우
 - Gradle plugin은 AGP public Variant API 위에서 Android variant마다 `kartographDead<Variant>`와 `kartographGraph<Variant>` task를 등록한다.
 - keep 규칙 파싱은 지원하지 않는 문법을 조용히 버리지 않고 파일·줄과 함께 실패한다(fail-closed). 근거와 오류에는 절대경로를 출력하지 않는다.
 
-class 로딩과 reflection 생성자는 제한된 메서드 내 값 추적으로, 외부 dispatch는 보수적 상속 후보로 연결한다.
-class root 및 CLI `--service-resources`의 `META-INF/services` 등록은 provider를 보존한다. Gradle plugin은 선택한 variant의 Java resource 원천 디렉터리를 전달한다.
+class 로딩·reflection 생성자·알려진 method/field 접근은 제한된 메서드 내 값 추적으로, 외부 dispatch는 보수적 상속 후보로 연결한다.
+class root 및 CLI `--service-resources`의 `META-INF/services` 등록은 provider를 보존한다. Gradle plugin은 선택한 variant의 Java resource 원천 디렉터리를 전달한다. 외부 호출 JSON의 API 모델 ID와 해석 결과는 별개다. Dagger binding·callgraph 정밀도 보강은 독립 실험이며 주 그래프나 보존 정책을 대체하지 않는다.
 
 그래프가 보지 못하는 것은 [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md)에, 측정된 보존 동작은 [`docs/PHASE2-VALIDATION.md`](docs/PHASE2-VALIDATION.md)에 있다.
 
@@ -44,7 +44,7 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.6.0"
+    id("io.github.ictechgy.kartograph") version "0.7.0"
 }
 ```
 
@@ -150,7 +150,10 @@ Scripts/verify-gradle-plugin-fixture.sh
 Scripts/verify-agent-surface.sh
 python3 -m unittest discover -s Scripts/tests -v
 python3 Scripts/verify-runtime-corpus.py # Java/Kotlin 13건, JDK 17
+python3 Scripts/verify-runtime-contracts.py # 차등 검사 6건, SDK Build Tools 35.0.0
 python3 experiments/compiler-references/run.py # source checkout 전용, JDK 17
+python3 experiments/dagger-bindings/run.py # source checkout 전용, JDK 17
+python3 experiments/callgraph-precision/run.py # source checkout 전용, JDK 17
 Scripts/verify-release-readiness.sh # clean build 두 번, publish하지 않음
 ```
 

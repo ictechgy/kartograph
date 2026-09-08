@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-09
+
 ### Added
 
 - Java/Kotlin 4개 표본에서 실제 실행과 SootUp CHA/RTA·WALA 0-1-CFA·kartograph를 대조하는 정밀도 실험과 CI 검증.
@@ -182,7 +184,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ictechgy/kartograph/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ictechgy/kartograph/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ictechgy/kartograph/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/ictechgy/kartograph/compare/v0.4.0...v0.4.1
