@@ -27,11 +27,10 @@ import org.objectweb.asm.tree.analysis.Value
 
 /** 필요한 메서드의 stack/local 값만 제한적으로 전파한다. 문자열 원문은 결과나 오류에 싣지 않는다. */
 internal object RuntimeValueAnalyzer {
-    fun sensitive(owner: String, name: String): Boolean =
-        (owner == "java/lang/Class" && name in CLASS_METHODS) ||
-            (name == "loadClass") ||
-            (owner == "java/lang/reflect/Constructor" && name == "newInstance") ||
-            (owner == "java/util/ServiceLoader" && name in setOf("load", "loadInstalled"))
+    // hierarchy 완성 전 후보를 넓게 고르고, 실제 모델 적용은 아래의 loader 관계로 다시 확인한다.
+    fun requiresValueAnalysis(call: dev.kartograph.core.ExternalCall): Boolean =
+        RuntimeLibraryModels.find(call.owner, call.name, call.descriptor,
+            call.kind == dev.kartograph.core.InvocationKind.STATIC) { true }?.sensitive == true
 
     fun enrich(graph: CodeGraph, facts: List<ClassFacts>, hierarchy: ClassHierarchy): Pair<CodeGraph, List<ClassRuntimeObservation>> {
         val typeSupers = graph.nodes.values.filter { it.jvmSignature != null && it.kind in TYPE_KINDS }
@@ -47,6 +46,8 @@ internal object RuntimeValueAnalyzer {
             }
             return false
         }
+        val membersByOwner = graph.nodes.values.filter { '#' in it.id.value }
+            .groupBy { it.id.value.substringAfter(':').substringBefore('#') }
         val interpreter = FlowInterpreter(::loader)
         val derived = mutableListOf<GraphEdge>()
         val models = mutableMapOf<Pair<NodeId, Int>, List<NodeId>>()
@@ -55,6 +56,9 @@ internal object RuntimeValueAnalyzer {
             var unknownLoaders = 0
             var unknownConstructors = 0
             var unknownServices = 0
+            var unknownMethods = 0
+            var unknownFields = 0
+            var missingMembers = 0
             var outsideTargets = 0
             var boundedMethods = 0
             for (method in fact.runtimeMethods) {
@@ -77,11 +81,15 @@ internal object RuntimeValueAnalyzer {
                     if (instruction is InvokeDynamicInsnNode) { ordinal++; continue }
                     if (instruction !is MethodInsnNode) continue
                     val currentOrdinal = ordinal++
-                    val classLoading = instruction.owner == "java/lang/Class" && instruction.name == "forName"
-                    val loaderCall = instruction.name == "loadClass" && loader(instruction.owner)
-                    val construction = instruction.name == "newInstance" && instruction.owner in CONSTRUCTION_OWNERS
-                    val serviceLoading = instruction.owner == "java/util/ServiceLoader" && instruction.name in setOf("load", "loadInstalled")
-                    if (!classLoading && !loaderCall && !construction && !serviceLoading) continue
+                    val model = RuntimeLibraryModels.find(instruction.owner, instruction.name, instruction.desc,
+                        instruction.opcode == Opcodes.INVOKESTATIC, ::loader) ?: continue
+                    val classLoading = model.operation == RuntimeOperation.CLASS_LOADING
+                    val loaderCall = model.operation == RuntimeOperation.CLASS_LOADER
+                    val construction = model.operation in setOf(RuntimeOperation.CLASS_CONSTRUCTION, RuntimeOperation.CONSTRUCTOR_INVOCATION)
+                    val serviceLoading = model.operation == RuntimeOperation.SERVICE_LOADING
+                    val methodInvocation = model.operation == RuntimeOperation.METHOD_INVOCATION
+                    val fieldAccess = model.operation == RuntimeOperation.FIELD_ACCESS
+                    if (!classLoading && !loaderCall && !construction && !serviceLoading && !methodInvocation && !fieldAccess) continue
                     val frame = frames?.get(index)
                     val count = Type.getArgumentTypes(instruction.desc).size + if (instruction.opcode == Opcodes.INVOKESTATIC) 0 else 1
                     val arguments = if (frame != null && frame.stackSize >= count) {
@@ -102,13 +110,37 @@ internal object RuntimeValueAnalyzer {
                         if (classes == null) {
                             if (loaderCall) unknownLoaders++ else unknownNames++
                         } else if (targets.isNullOrEmpty()) outsideTargets++
+                    } else if (methodInvocation || fieldAccess) {
+                        val members = if (methodInvocation) arguments.firstOrNull()?.methods else arguments.firstOrNull()?.fields
+                        targets = members?.flatMap { member ->
+                            val start = objectClass(member.descriptor) ?: return@flatMap emptyList()
+                            val owners = linkedSetOf<String>()
+                            val pending = ArrayDeque(listOf(start))
+                            while (pending.isNotEmpty()) {
+                                val owner = pending.removeFirst()
+                                if (!owners.add(owner)) continue
+                                if (!member.declaredOnly) pending.addAll(typeSupers[owner] ?: hierarchy.directSupertypesOf(owner).orEmpty())
+                            }
+                            owners.flatMap { membersByOwner[it].orEmpty() }.filter { node ->
+                                val prefix = if (methodInvocation) "method:" else "field:"
+                                val owner = node.id.value.removePrefix(prefix).substringBefore('#')
+                                node.id.value.startsWith(prefix) && owner in owners &&
+                                    (!methodInvocation || node.kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION)) &&
+                                    node.id.value.substringAfter('#').substringBefore('(').substringBefore(':') == member.name &&
+                                    (member.declaredOnly || node.jvmVisibility == Visibility.PUBLIC) &&
+                                    (!methodInvocation || member.arity == null || Type.getArgumentTypes(node.id.value.substring(node.id.value.indexOf('('))).size == member.arity)
+                            }.map { it.id }
+                        }?.distinct()?.sorted()
+                        if (members == null) {
+                            if (methodInvocation) unknownMethods++ else unknownFields++
+                        } else if (targets.isNullOrEmpty()) missingMembers++
                     } else {
                         val members = if (instruction.owner == "java/lang/Class") {
                             arguments.firstOrNull()?.classes?.mapTo(linkedSetOf()) { ConstructorValue(it, 0, false) }
                         } else arguments.firstOrNull()?.constructors
                         targets = members?.flatMap { member ->
                             val owner = objectClass(member.descriptor) ?: return@flatMap emptyList()
-                            graph.nodes.values.filter { node ->
+                            membersByOwner[owner].orEmpty().filter { node ->
                                 node.kind == NodeKind.CONSTRUCTOR && node.id.value.startsWith("method:$owner#<init>(") &&
                                     (!member.publicOnly || node.jvmVisibility == Visibility.PUBLIC) &&
                                     (member.arity == null || Type.getArgumentTypes(node.id.value.substringAfter("#<init>")).size == member.arity)
@@ -124,23 +156,25 @@ internal object RuntimeValueAnalyzer {
             }
             fact.runtime.copy(reflectionCalls = unknownNames, classLoadingCalls = unknownLoaders,
                 reflectiveConstructions = unknownConstructors, outsideRuntimeTargets = outsideTargets,
-                valueAnalysisLimits = boundedMethods, serviceLoadingCalls = unknownServices)
+                valueAnalysisLimits = boundedMethods, serviceLoadingCalls = unknownServices, reflectiveMethods = unknownMethods, reflectiveFields = unknownFields, reflectiveMemberMisses = missingMembers)
         }
         val calls = graph.externalCalls.map { call ->
+            val model = RuntimeLibraryModels.find(call.owner, call.name, call.descriptor,
+                call.kind == dev.kartograph.core.InvocationKind.STATIC, ::loader)
             models[call.caller to call.ordinal]?.let { targets ->
-                call.copy(resolvedTargets = targets, resolution = CallResolution.RUNTIME_MODEL)
-            } ?: call
+                call.copy(resolvedTargets = targets, resolution = CallResolution.RUNTIME_MODEL, model = model?.id)
+            } ?: call.copy(model = model?.id)
         }
         return CodeGraph(graph.nodes.values, graph.edges + derived, calls, graph.serviceProviders) to observations
     }
 
     private const val MAX_FRAME_SLOTS = 250_000L
     private const val MAX_INSTRUCTIONS = 20_000
-    private val CLASS_METHODS = setOf("forName", "getConstructor", "getDeclaredConstructor", "newInstance")
     private val CLASS_LOADERS = setOf("java/lang/ClassLoader", "java/net/URLClassLoader", "java/security/SecureClassLoader")
-    private val CONSTRUCTION_OWNERS = setOf("java/lang/Class", "java/lang/reflect/Constructor")
     private val TYPE_KINDS = setOf(NodeKind.CLASS, NodeKind.INTERFACE, NodeKind.OBJECT, NodeKind.ENUM, NodeKind.ANNOTATION_CLASS)
 }
+
+private data class MemberValue(val descriptor: String, val name: String, val arity: Int?, val declaredOnly: Boolean)
 
 private data class ConstructorValue(val descriptor: String, val arity: Int?, val publicOnly: Boolean)
 
@@ -152,6 +186,8 @@ private data class FlowValue(
     val instances: Set<String>? = null,
     val integer: Int? = null,
     val arrayLength: Int? = null,
+    val methods: Set<MemberValue>? = null,
+    val fields: Set<MemberValue>? = null,
 ) : Value {
     override fun getSize(): Int = basic.size
     // Analyzer 오류가 값 원문을 출력하지 않도록 한다.
@@ -223,7 +259,19 @@ private class FlowInterpreter(private val isClassLoader: (String) -> Boolean) : 
             return unknown.copy(strings = concatRecipe(recipe, values.mapIndexed { index, value -> value.asStrings(types[index]) }, insn.bsmArgs.drop(1), ::limited))
         }
         if (insn !is MethodInsnNode) return unknown
+        val model = RuntimeLibraryModels.find(insn.owner, insn.name, insn.desc,
+            insn.opcode == Opcodes.INVOKESTATIC, isClassLoader) ?: return unknown
         fun value(index: Int): FlowValue? = values.getOrNull(index)
+        if (model.operation in setOf(RuntimeOperation.METHOD_LOOKUP, RuntimeOperation.FIELD_LOOKUP)) {
+            val classes = value(0)?.classes ?: return unknown
+            val names = value(1)?.strings ?: return unknown
+            if (classes.size * names.size > 16) { limited(); return unknown }
+            val members = classes.flatMap { descriptor -> names.map { name ->
+                MemberValue(descriptor, name, if (model.operation == RuntimeOperation.METHOD_LOOKUP) value(2)?.arrayLength else null,
+                    insn.name.startsWith("getDeclared"))
+            } }.toSet()
+            return if (model.operation == RuntimeOperation.METHOD_LOOKUP) unknown.copy(methods = members) else unknown.copy(fields = members)
+        }
         if (insn.owner == "java/lang/Class" && insn.name == "forName") {
             val position = if (insn.desc.startsWith("(Ljava/lang/Module;")) 1 else 0
             return unknown.copy(classes = value(position)?.strings?.mapNotNull(::binaryClass)?.toSet()?.takeIf { it.isNotEmpty() })
@@ -259,6 +307,7 @@ private class FlowInterpreter(private val isClassLoader: (String) -> Boolean) : 
         base.merge(a.basic, b.basic), mergeSet(a.strings, b.strings, ::limited), mergeSet(a.classes, b.classes, ::limited),
         mergeSet(a.constructors, b.constructors, ::limited), mergeSet(a.instances, b.instances, ::limited),
         a.integer?.takeIf { it == b.integer }, a.arrayLength?.takeIf { it == b.arrayLength },
+        mergeSet(a.methods, b.methods, ::limited), mergeSet(a.fields, b.fields, ::limited),
     )
 }
 

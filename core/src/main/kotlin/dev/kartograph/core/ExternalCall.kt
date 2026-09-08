@@ -17,6 +17,8 @@ public data class ExternalCall(
     val ordinal: Int = 0,
     val resolvedTargets: List<NodeId> = emptyList(),
     val resolution: CallResolution = CallResolution.UNRESOLVED,
+    /** 해당 API 호출의 값·대상 해석에 대응하는 라이브러리 모델 식별자다. 해석 완료 여부는 resolution으로 구분한다. */
+    val model: String? = null,
 ) : Comparable<ExternalCall> {
     /** 기존 JVM identity 규칙과 동일한 외부 메서드 식별자다. */
     public val target: NodeId get() = NodeId("method:$owner#$name$descriptor")

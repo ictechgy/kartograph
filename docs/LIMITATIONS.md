@@ -32,7 +32,8 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 - `Class.forName`의 overload와 `ClassLoader.loadClass`는 같은 메서드 안의 지역 변수·분기·일부 문자열 결합을
   추적해 프로젝트 class로 연결한다. 알려진 class의 reflection 생성자는 인자 개수에 맞는 후보를 연결한다.
   값 집합·명령·frame 크기를 제한하며, 알 수 없는 값과 한도 초과는 query 한계로 남긴다. 메서드 사이의 값 전달,
-  임의 계산, `Method.invoke`·reflection field 접근과 동적 component 등록은 완전하게 해석하지 않는다.
+  임의 계산과 동적 component 등록은 완전하게 해석하지 않는다. 알려진 method 이름·인자 개수와 field 이름의
+  reflection 접근은 연결하되, field에서 읽은 값이나 호출 반환값을 일반적으로 추적하지 않는다.
 - JNI, native lookup, framework callback과 serialization/DI codegen은 bytecode만으로 완전하게 증명할 수 없다.
 - manifest/resource/keep rule 또는 dependency classpath를 전달하지 않으면 그 입력이 만드는 도달성을 볼 수 없다.
 - manifest `meta-data`의 class-like `android:name`/`android:value`는 보수적으로 보존한다. class 위치에
@@ -119,3 +120,22 @@ DI 어노테이션 보존은 지원되는 어노테이션을 진입점으로 삼
 간선 identity는 `(source, target, kind, origin)`이다. 같은 쌍에 bytecode와 모델 근거가 함께 있으면 별도 간선으로
 보존하고 weight는 각 출처 안에서만 합친다. 출처 없는 기존 JSON 간선은 `bytecode`를 뜻한다. `resolvedTargets`와
 `projectCandidates`는 실행 대상의 확정이 아니며 query의 `dispatch-candidates`가 이런 호출 개수도 함께 알린다.
+
+## 라이브러리 runtime 모델
+
+JDK API 모델은 owner·이름·descriptor·static 여부를 확인하고 해당 호출이 있을 때만 적용한다. 호출이 없는
+모델은 보존 root를 만들지 않는다. 지원 모델은 `RuntimeLibraryModels`에 모으며 외부 호출 JSON의 `model`은
+대응하는 모델 ID, `resolution`과 `resolvedTargets`는 실제 대상 해석 결과다. 모델 ID만으로 해석 완료를 뜻하지 않는다.
+
+`Class.getMethod/getDeclaredMethod`와 `Method.invoke`는 알려진 이름·인자 개수의 프로젝트 method 후보를 연결한다.
+같은 개수의 overload는 보수적으로 포함하며 선언 밖의 override·실제 receiver까지 완전하게 구분하지 않는다.
+`Class.getField/getDeclaredField`의 이름을 `Field.get/set` 및 primitive 변형까지 전달한다. public lookup은 상속된
+선언도 포함하고 declared lookup은 해당 owner만 검색한다. 알려지지 않은 이름은 method/field별 호출 개수로 알린다.
+외부 선언의 구현·reflection 반환값·field 값의 일반적 흐름은 여전히 미해결일 수 있다.
+
+이는 NullAway의 라이브러리 모델 분리와 GraalVM의 조건부 metadata 설계를 참고한 호출별 모델이다. GraalVM
+`typeReached` JSON을 Android에 그대로 import하거나 JVM agent의 관측 부재를 미사용 증거로 취급하지 않는다.
+지원되지 않은 호출의 반환값은 unknown으로 유지하며 임의의 callee가 값을 변경하지 않는다고 가정하지 않는다.
+
+이름은 알려졌지만 public/declared 검색 조건 등에 맞는 프로젝트 member가 없으면 `runtime-member-lookup`으로
+별도 계량한다. 외부 class 대상과 조회 조건 불일치를 같은 범주로 단정하지 않는다.

@@ -19,3 +19,6 @@ Reflection·Callbacks/Unregister 패턴을 참고해 새로 작성한 Java 표�
 
 keep 규칙은 `Entry`만 진입점으로 보존한다. 중첩 `Used`는 호출·reflection 등 각 엔진의 추론으로 살아남는지
 검사하며 이름이 다른 `Unused`는 모든 사례에서 query `unreachable`이고 R8 결과에서 제거되어야 한다.
+
+후속 API 모델 보강으로 `reflective_method`의 kartograph 기대값은 `reachable`로 갱신했다.
+field가 반환하는 값과 factory의 반환 문자열을 따라가는 사례는 여전히 별도 미해결 경계로 유지한다.

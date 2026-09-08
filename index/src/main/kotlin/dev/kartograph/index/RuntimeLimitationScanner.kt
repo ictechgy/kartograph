@@ -32,6 +32,9 @@ internal data class ClassRuntimeObservation(
     val outsideRuntimeTargets: Int = 0,
     val valueAnalysisLimits: Int = 0,
     val serviceLoadingCalls: Int = 0,
+    val reflectiveMethods: Int = 0,
+    val reflectiveFields: Int = 0,
+    val reflectiveMemberMisses: Int = 0,
 )
 
 /** 현재 산출물에서 정적 그래프가 놓칠 runtime 채널을 실제 개수로 보고한다. */
@@ -71,6 +74,12 @@ public object RuntimeLimitationScanner {
         val modeledDispatch = calls.count { it.resolution == CallResolution.PROJECT_CANDIDATES }
         val constants = indexed.graph.nodes.values.count { NodeAttribute.COMPILE_TIME_CONSTANT in it.attributes }
         return buildList {
+            val missingMembers = observations.sumOf { it.reflectiveMemberMisses }
+            if (missingMembers > 0) add("runtime-member-lookup: $missingMembers known reflective lookup(s) have no project member matching lookup semantics")
+            val methods = observations.sumOf { it.reflectiveMethods }
+            val fields = observations.sumOf { it.reflectiveFields }
+            if (methods > 0) add("reflective-method-invocation: $methods Method.invoke call(s) have no resolved member")
+            if (fields > 0) add("reflective-field-access: $fields reflective field access call(s) have no resolved member")
             val outside = observations.sumOf { it.outsideRuntimeTargets }
             val bounded = observations.sumOf { it.valueAnalysisLimits }
             if (outside > 0) add("runtime-targets-outside-graph: $outside resolved runtime target site(s) have no matching project declaration")
