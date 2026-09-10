@@ -23,18 +23,60 @@ class Parser(argparse.ArgumentParser):
         raise UsageError(f"invalid argument: {message}")
 
 
+def is_working_java(java_bin: Path) -> bool:
+    if not java_bin.is_file() or not os.access(java_bin, os.X_OK):
+        return False
+    try:
+        res = subprocess.run(
+            [str(java_bin), "-version"],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        return res.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
 def check_java_environment():
     env = dict(os.environ)
-    if "JAVA_HOME" not in env:
-        try:
-            java_path = subprocess.run(
-                ["which", "java"], capture_output=True, text=True, check=True
-            ).stdout.strip()
-            java_real = Path(java_path).resolve()
-            if java_real.parent.name == "bin":
-                env["JAVA_HOME"] = str(java_real.parent.parent)
-        except (subprocess.CalledProcessError, OSError):
-            pass
+    if "JAVA_HOME" in env:
+        candidate = Path(env["JAVA_HOME"]) / "bin/java"
+        if is_working_java(candidate):
+            return env
+
+    candidates = [
+        Path("/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"),
+        Path("/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"),
+        Path("/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"),
+        Path("/usr/lib/jvm/default-java"),
+        Path("/usr/lib/jvm/java-17-openjdk"),
+        Path("/usr/lib/jvm/java-21-openjdk"),
+    ]
+    jvm_dir = Path("/Library/Java/JavaVirtualMachines")
+    if jvm_dir.is_dir():
+        for item in sorted(jvm_dir.glob("*/Contents/Home")):
+            candidates.append(item)
+
+    for c in candidates:
+        if is_working_java(c / "bin/java"):
+            env["JAVA_HOME"] = str(c)
+            env["PATH"] = f"{c}/bin:{env.get('PATH', '')}"
+            return env
+
+    try:
+        which_java = subprocess.run(
+            ["which", "java"], capture_output=True, text=True, timeout=5
+        ).stdout.strip()
+        if which_java:
+            candidate_bin = Path(which_java).resolve()
+            if is_working_java(candidate_bin):
+                if candidate_bin.parent.name == "bin":
+                    env["JAVA_HOME"] = str(candidate_bin.parent.parent)
+                return env
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
     return env
 
 
@@ -70,6 +112,14 @@ def verify_self_analysis(
         return 2
 
     env = check_java_environment()
+    java_cmd = Path(env.get("JAVA_HOME", "")) / "bin/java"
+    if not is_working_java(java_cmd):
+        print(
+            "error: no working Java runtime found; set JAVA_HOME to a valid JDK installation",
+            file=sys.stderr,
+        )
+        return 2
+
     class_args = []
     for r in roots:
         class_args.extend(["--classes", str(r)])

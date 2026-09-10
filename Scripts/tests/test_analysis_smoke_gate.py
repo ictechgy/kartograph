@@ -27,17 +27,16 @@ class AnalysisSmokeGateTest(unittest.TestCase):
 
     def run_gate(self, *args):
         env = dict(os.environ)
-        if "JAVA_HOME" not in env:
-            # Detect JAVA_HOME if available
-            try:
-                java_path = subprocess.run(
-                    ["which", "java"], capture_output=True, text=True, check=True
-                ).stdout.strip()
-                java_real = Path(java_path).resolve()
-                if java_real.parent.name == "bin":
-                    env["JAVA_HOME"] = str(java_real.parent.parent)
-            except (subprocess.CalledProcessError, OSError):
-                pass
+        if "JAVA_HOME" not in env or not (Path(env["JAVA_HOME"]) / "bin/java").is_file():
+            for c in [
+                Path("/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"),
+                Path("/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"),
+                Path("/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"),
+            ]:
+                if (c / "bin/java").is_file():
+                    env["JAVA_HOME"] = str(c)
+                    env["PATH"] = f"{c}/bin:{env.get('PATH', '')}"
+                    break
 
         cmd = [sys.executable, str(SCRIPT), *args]
         return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=120)
