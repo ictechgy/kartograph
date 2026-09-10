@@ -35,6 +35,8 @@ jobs:
         run: Scripts/verify-cli-contract.sh
       - name: Verify PR gate against real Git and compiler outputs
         run: python3 -m unittest discover -s Scripts/tests -v
+      - name: Verify analysis smoke gate and self-analysis contracts
+        run: python3 Scripts/verify-analysis-smoke-gate.py
       - name: Verify agent query and bridge contracts
         run: Scripts/verify-agent-surface.sh
       - name: Verify runtime blind-spot corpus

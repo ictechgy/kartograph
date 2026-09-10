@@ -19,14 +19,14 @@
 | Kotlin 모듈 | 해당 `:<module>:test`, 버그를 재현한 focused test | `./gradlew --no-daemon test :koverVerify :cli:installDist` |
 | index/retention | 단위 테스트 + 실제 compiler 코퍼스의 수정 전 실패 | `Scripts/verify-fixture-corpus.sh`, 자기 분석 |
 | Gradle plugin | `:gradle-plugin:test :gradle-plugin:validatePlugins` | `Scripts/verify-gradle-plugin-fixture.sh`, JDK 17/21 |
-| Python/CLI gate | `python3 -m unittest discover -s Scripts/tests -v` | CLI/실제 Git/javac 계약; Kotlin CLI는 먼저 installDist |
+| Python/CLI gate | `python3 -m unittest discover -s Scripts/tests -v`, `python3 Scripts/verify-analysis-smoke-gate.py` | CLI/실제 Git/javac/자체분석 계약; Kotlin CLI는 먼저 installDist |
 | shell/workflow | YAML·표현식·`bash -n`/가능한 lint, 영향 경로 smoke | 관련 fixture; 원격 실행 없이 GitHub 성공을 주장하지 않음 |
 | version/packaging/release | 위 제품 게이트 | `Scripts/verify-release-readiness.sh` 및 배포본 재검증 |
 
 제품 PR에서는 CI의 전체 테스트·line coverage 90%·JDK 17/21·CLI/agent/Android/plugin 계약을 유지한다.
 CLI 계약은 `Scripts/verify-cli-contract.sh`, agent 계약은 `Scripts/verify-agent-surface.sh`다. 먼저 `:cli:installDist`로 실행 파일을 준비한다.
 생성 코드/새 오탐에는 양방향 exact fixture를 추가한다. 외부 도그푸딩은 [PUBLIC-VALIDATION](PUBLIC-VALIDATION.md)의 실제 입력으로 재현한다.
-자기 분석은 6개 production root, `.kartograph-self.pro`, `.kartograph.yml`로 class-only/private dead·strict cycles/rules 0을 확인한다. 분석 root 누락으로 0을 만들지 않는다.
+자기 분석은 6개 production root, `.kartograph-self.pro`, `.kartograph.yml`로 class-only/private dead·strict cycles/rules 0과 실행 시간 예산(명령당 5.0초, 총합 15.0초)을 확인한다. `Scripts/verify-analysis-smoke-gate.py`로 자동 검증하며 분석 root 누락으로 0을 만들지 않는다.
 
 ## PR과 외부 리뷰
 
