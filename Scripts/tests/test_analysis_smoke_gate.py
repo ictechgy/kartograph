@@ -98,9 +98,39 @@ class AnalysisSmokeGateTest(unittest.TestCase):
             custom_env = dict(os.environ)
             custom_env.pop("JAVA_HOME", None)
             custom_env["PATH"] = f"{shim.parent}:/usr/bin:/bin"
+
+            # Verify shim is selected without inferring JAVA_HOME
+            import importlib.util
+            from unittest.mock import patch
+
+            spec = importlib.util.spec_from_file_location("smoke_gate", SCRIPT)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            with patch.dict(os.environ, custom_env, clear=True):
+                selected = mod.check_java_environment()
+                self.assertNotIn("JAVA_HOME", selected)
+                self.assertTrue(mod.has_working_java(selected))
+
             cmd = [sys.executable, str(SCRIPT), "--json"]
             res = subprocess.run(cmd, capture_output=True, text=True, env=custom_env, timeout=120)
             self.assertEqual(res.returncode, 0)
+
+    def test_smoke_gate_fails_cleanly_when_no_java_available(self):
+        import importlib.util
+        from unittest.mock import patch
+
+        spec = importlib.util.spec_from_file_location("smoke_gate", SCRIPT)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with patch.object(mod, "is_working_java", return_value=False), patch("subprocess.run", return_value=subprocess.CompletedProcess([], 1, "")):
+            res_code = mod.verify_self_analysis(
+                binary=BINARY,
+                repo_root=ROOT,
+                per_command_budget=5.0,
+                total_budget=15.0,
+                warmup=False,
+            )
+            self.assertEqual(res_code, 2)
 
     def test_smoke_gate_fails_on_invalid_arguments(self):
         res = self.run_gate("--unsupported-flag")

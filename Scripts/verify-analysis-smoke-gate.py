@@ -45,6 +45,20 @@ def check_java_environment():
         if is_working_java(candidate):
             return env
 
+    # Check PATH java first before falling back to fixed installation paths
+    try:
+        which_java = subprocess.run(
+            ["which", "java"], capture_output=True, text=True, env=env, timeout=5
+        ).stdout.strip()
+        if which_java:
+            candidate_bin = Path(which_java).resolve()
+            if is_working_java(candidate_bin):
+                if candidate_bin.parent.name == "bin":
+                    env["JAVA_HOME"] = str(candidate_bin.parent.parent)
+                return env
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
     candidates = [
         Path("/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"),
         Path("/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"),
@@ -64,18 +78,8 @@ def check_java_environment():
             env["PATH"] = f"{c}/bin:{env.get('PATH', '')}"
             return env
 
-    try:
-        which_java = subprocess.run(
-            ["which", "java"], capture_output=True, text=True, timeout=5
-        ).stdout.strip()
-        if which_java:
-            candidate_bin = Path(which_java).resolve()
-            if is_working_java(candidate_bin):
-                if candidate_bin.parent.name == "bin":
-                    env["JAVA_HOME"] = str(candidate_bin.parent.parent)
-                return env
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+    return env
+
 
 def has_working_java(env: dict) -> bool:
     if "JAVA_HOME" in env:
