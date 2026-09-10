@@ -77,7 +77,20 @@ def check_java_environment():
     except (subprocess.TimeoutExpired, OSError):
         pass
 
-    return env
+def has_working_java(env: dict) -> bool:
+    if "JAVA_HOME" in env:
+        candidate = Path(env["JAVA_HOME"]) / "bin/java"
+        if is_working_java(candidate):
+            return True
+    try:
+        which_java = subprocess.run(
+            ["which", "java"], capture_output=True, text=True, env=env, timeout=5
+        ).stdout.strip()
+        if which_java and is_working_java(Path(which_java)):
+            return True
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    return False
 
 
 def verify_self_analysis(
@@ -112,8 +125,7 @@ def verify_self_analysis(
         return 2
 
     env = check_java_environment()
-    java_cmd = Path(env.get("JAVA_HOME", "")) / "bin/java"
-    if not is_working_java(java_cmd):
+    if not has_working_java(env):
         print(
             "error: no working Java runtime found; set JAVA_HOME to a valid JDK installation",
             file=sys.stderr,

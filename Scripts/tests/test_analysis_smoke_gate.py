@@ -86,6 +86,22 @@ class AnalysisSmokeGateTest(unittest.TestCase):
             self.assertIn("failed with tool failure (exit 2)", res.stderr)
             self.assertNotIn("/private/secret", res.stderr)
 
+    def test_smoke_gate_accepts_valid_shim_java_on_path(self):
+        real_java = "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home/bin/java"
+        if not Path(real_java).is_file():
+            self.skipTest("openjdk@17 not installed at Homebrew path")
+        with tempfile.TemporaryDirectory(prefix="kartograph-shim-") as tmpdir:
+            shim = Path(tmpdir) / "shims/java"
+            shim.parent.mkdir()
+            shim.write_text(f'#!/bin/sh\nexec "{real_java}" "$@"\n')
+            shim.chmod(0o755)
+            custom_env = dict(os.environ)
+            custom_env.pop("JAVA_HOME", None)
+            custom_env["PATH"] = f"{shim.parent}:/usr/bin:/bin"
+            cmd = [sys.executable, str(SCRIPT), "--json"]
+            res = subprocess.run(cmd, capture_output=True, text=True, env=custom_env, timeout=120)
+            self.assertEqual(res.returncode, 0)
+
     def test_smoke_gate_fails_on_invalid_arguments(self):
         res = self.run_gate("--unsupported-flag")
         self.assertEqual(res.returncode, 64)
