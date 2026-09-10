@@ -44,6 +44,7 @@ def check_java_environment():
         candidate = Path(env["JAVA_HOME"]) / "bin/java"
         if is_working_java(candidate):
             return env
+        env.pop("JAVA_HOME", None)
 
     # Check PATH java first before falling back to fixed installation paths
     try:
