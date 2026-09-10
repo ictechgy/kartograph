@@ -181,12 +181,24 @@ def verify_self_analysis(
             total_time += dt
             measurements[name] = {"seconds": round(dt, 3), "returncode": res.returncode}
 
-            if res.returncode != 0:
+            if res.returncode == 2:
+                print(
+                    f"error: command '{name}' failed with tool failure (exit 2): {res.stderr.strip()}",
+                    file=sys.stderr,
+                )
+                return 2
+            elif res.returncode == 64:
+                print(
+                    f"error: command '{name}' failed with usage error (exit 64): {res.stderr.strip()}",
+                    file=sys.stderr,
+                )
+                return 64
+            elif res.returncode != 0:
                 contract_failures.append(
                     f"'{name}' exited with code {res.returncode}, expected 0"
                 )
             elif contract_kind == "node_count":
-                node_lines = [l for l in res.stdout.splitlines() if '"class:' in l]
+                node_lines = [l for l in res.stdout.splitlines() if 'shape=' in l and ' -> ' not in l]
                 measurements[name]["nodes"] = len(node_lines)
                 if len(node_lines) < 2000:
                     contract_failures.append(

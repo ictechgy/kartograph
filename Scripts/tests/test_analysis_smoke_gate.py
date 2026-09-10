@@ -57,7 +57,9 @@ class AnalysisSmokeGateTest(unittest.TestCase):
         self.assertEqual(res.returncode, 0)
         data = json.loads(res.stdout)
         self.assertEqual(data["status"], "PASS")
+        # Ensure graph counts actual vertices (around 2,900), not DOT lines including edges (7,600+)
         self.assertGreaterEqual(data["measurements"]["graph"]["nodes"], 2000)
+        self.assertLessEqual(data["measurements"]["graph"]["nodes"], 5000)
         self.assertEqual(data["measurements"]["dead"]["findings"], 0)
         self.assertEqual(data["measurements"]["dead_private"]["findings"], 0)
         self.assertGreaterEqual(data["measurements"]["metrics"]["rows"], 6)
@@ -74,6 +76,15 @@ class AnalysisSmokeGateTest(unittest.TestCase):
             res = self.run_gate("--repo-root", tmpdir, "--binary", str(BINARY))
             self.assertEqual(res.returncode, 2)
             self.assertIn("missing compiled class root", res.stderr)
+
+    def test_smoke_gate_preserves_cli_tool_failure_exit_code(self):
+        with tempfile.TemporaryDirectory(prefix="kartograph-mock-bin-") as tmpdir:
+            mock_bin = Path(tmpdir) / "kartograph"
+            mock_bin.write_text("#!/bin/sh\necho 'error: class format error' >&2\nexit 2\n")
+            mock_bin.chmod(0o755)
+            res = self.run_gate("--binary", str(mock_bin), "--no-warmup")
+            self.assertEqual(res.returncode, 2)
+            self.assertIn("failed with tool failure (exit 2)", res.stderr)
 
     def test_smoke_gate_fails_on_invalid_arguments(self):
         res = self.run_gate("--unsupported-flag")
