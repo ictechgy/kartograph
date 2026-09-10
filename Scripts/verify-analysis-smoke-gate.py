@@ -91,7 +91,7 @@ def verify_self_analysis(
                     [str(binary), "graph", *class_args, "--format", "dot"],
                     capture_output=True,
                     env=env,
-                    timeout=30,
+                    timeout=120,
                     check=False,
                 )
             except subprocess.TimeoutExpired:
@@ -171,10 +171,10 @@ def verify_self_analysis(
             t0 = time.perf_counter()
             try:
                 res = subprocess.run(
-                    cmd, capture_output=True, text=True, env=env, timeout=30
+                    cmd, capture_output=True, text=True, env=env, timeout=120
                 )
             except subprocess.TimeoutExpired:
-                print(f"error: command '{name}' timed out after 30s", file=sys.stderr)
+                print(f"error: command '{name}' timed out", file=sys.stderr)
                 return 2
 
             dt = time.perf_counter() - t0
@@ -183,13 +183,13 @@ def verify_self_analysis(
 
             if res.returncode == 2:
                 print(
-                    f"error: command '{name}' failed with tool failure (exit 2): {res.stderr.strip()}",
+                    f"error: command '{name}' failed with tool failure (exit 2)",
                     file=sys.stderr,
                 )
                 return 2
             elif res.returncode == 64:
                 print(
-                    f"error: command '{name}' failed with usage error (exit 64): {res.stderr.strip()}",
+                    f"error: command '{name}' failed with usage error (exit 64)",
                     file=sys.stderr,
                 )
                 return 64

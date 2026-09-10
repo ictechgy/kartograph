@@ -80,11 +80,12 @@ class AnalysisSmokeGateTest(unittest.TestCase):
     def test_smoke_gate_preserves_cli_tool_failure_exit_code(self):
         with tempfile.TemporaryDirectory(prefix="kartograph-mock-bin-") as tmpdir:
             mock_bin = Path(tmpdir) / "kartograph"
-            mock_bin.write_text("#!/bin/sh\necho 'error: class format error' >&2\nexit 2\n")
+            mock_bin.write_text("#!/bin/sh\necho 'error: sensitive path /private/secret' >&2\nexit 2\n")
             mock_bin.chmod(0o755)
             res = self.run_gate("--binary", str(mock_bin), "--no-warmup")
             self.assertEqual(res.returncode, 2)
             self.assertIn("failed with tool failure (exit 2)", res.stderr)
+            self.assertNotIn("/private/secret", res.stderr)
 
     def test_smoke_gate_fails_on_invalid_arguments(self):
         res = self.run_gate("--unsupported-flag")
