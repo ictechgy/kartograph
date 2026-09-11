@@ -23,7 +23,7 @@ def digest(path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Compare executed Java/Kotlin return flows across prebuilt analysis tools.")
     parser.add_argument("--baseline", required=True)
     parser.add_argument("--binary", required=True)
     parser.add_argument("--searchdeadcode", required=True)
@@ -33,7 +33,10 @@ def main():
     binaries = {key: Path(getattr(args, key)).resolve() for key in ["baseline", "binary", "searchdeadcode", "r8"]}
     if not all(path.is_file() for path in binaries.values()):
         raise RuntimeError("provide all four prebuilt comparison tools")
-    jdk = Path(os.environ["JAVA_HOME"])
+    java_home = os.environ.get("JAVA_HOME")
+    if not java_home:
+        raise RuntimeError("set JAVA_HOME to a complete JDK 17 before running the comparison")
+    jdk = Path(java_home)
     records = []
     replacements = {str(path): "$" + key.upper() for key, path in binaries.items()}
     replacements.update({str(jdk): "$JDK", str(ROOT): "$REPO", str(Path.home()): "$HOME"})
@@ -77,7 +80,10 @@ def main():
             kotlin = original.suffix == ".kt"
             libraries = []
             if kotlin:
-                version = re.search(r'kotlin\("jvm"\) version "([^"]+)"', (ROOT / "build.gradle.kts").read_text()).group(1)
+                compiler = re.search(r'kotlin\("jvm"\) version "([^"]+)"', (ROOT / "build.gradle.kts").read_text())
+                if compiler is None:
+                    raise RuntimeError("cannot determine the fixture Kotlin compiler version from build.gradle.kts")
+                version = compiler.group(1)
                 (project / "settings.gradle.kts").write_text('pluginManagement { repositories { gradlePluginPortal(); mavenCentral() } }\n')
                 (project / "build.gradle.kts").write_text('plugins { kotlin("jvm") version "' + version + '" }\n'
                     'repositories { mavenCentral() }\nkotlin { jvmToolchain(17) }\nsourceSets.main { kotlin.srcDir("src") }\n')
@@ -153,14 +159,16 @@ def main():
                 with zipfile.ZipFile(output) as archive:
                     names = archive.namelist()
                 prefix = "probe/" + ("" if kotlin else "Entry$")
+                failure = re.search(r'^Exception in thread "[^"]+" ([A-Za-z_$][\w.$]+)(?::|$)', transformed.stderr, re.MULTILINE)
                 row["tools"]["r8-" + mode] = {"keepsUsed": prefix + "Used.class" in names,
                     "keepsUnused": prefix + "Unused.class" in names,
+                    "failureType": failure.group(1) if failure else None,
                     "preservesExecution": transformed.returncode == 0 and transformed.stdout.strip() == "USED"}
             expected = "unreachable" if case == "unknown_argument" else "reachable"
             if not row["tools"]["r8-unshrunkControl"]["preservesExecution"]:
                 raise RuntimeError("R8 unshrunk control did not preserve execution")
             if row["tools"]["binary"]["Used"]["state"] != expected or row["tools"]["binary"]["Unused"]["state"] != "unreachable":
-                raise RuntimeError("candidate violated the runtime target or unused control contract")
+                raise RuntimeError("runtime target, unused control or known-limitation expectation changed; inspect the new evidence")
             if case == "unknown_argument" and not any(item.startswith("reflection-strings:") for item in row["tools"]["binary"]["Used"]["limitations"]):
                 raise RuntimeError("unknown argument lost its measured limitation")
             rows.append(row)

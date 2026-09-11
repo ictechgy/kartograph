@@ -52,6 +52,8 @@ local slot, overload, 호출 문맥 분리, virtual 호출 보류, mutable field
 
 기계 판독 요약은 [results/2026-09-11.json](results/2026-09-11.json)이다. 원시 명령·stdout/stderr·시간은 재현 시 생성하는
 보고서에 남기고, 컴파일된 class와 제품/비교 도구의 SHA256을 기록한다.
+공개 요약은 원시 보고서에서 `commands`만 제외하고 `baselineCommit`, 측정일·플랫폼, 두 공개 표본 보고서를
+추가한 것이다. R8의 `failureType`은 예외 메시지 원문 대신 최상위 예외 타입만 저장해 표의 실패 이유를 대조할 수 있다.
 
 ## 재현
 
@@ -70,3 +72,19 @@ python3 Scripts/compare-runtime-returns.py \
 
 Kotlin 비교 표본은 임시 Gradle 프로젝트에서 저장소의 compiler 버전과 dependency verification metadata로 컴파일한다.
 `--offline` 빌드가 가능한 캐시를 먼저 준비해야 한다. runtime 테스트는 새 임시 디렉터리 안에서만 실행한다.
+공개 표본 보고서는 [기존 verifier](../../Scripts/verify-public-sample.py)를 기준·현재 CLI로 각각 실행해 얻는다.
+원시 보고서를 보존하면서 다음과 같이 공개 요약을 만들 수 있다(경로와 측정 메타데이터는 해당 실행에 맞춘다).
+
+```python
+import json
+from pathlib import Path
+
+report = json.loads(Path("build/reports/runtime-return-comparison.json").read_text())
+report.pop("commands")
+report.update(baselineCommit="73dcad15c9ecc0b5e67f6c625e5210a3b61312f5", date="2026-09-11", platform="macOS arm64")
+report["publicSample"] = {
+    name: json.loads(Path(f"build/reports/public-{name}.json").read_text())
+    for name in ("baseline", "candidate")
+}
+Path("build/reports/return-summary.json").write_text(json.dumps(report, indent=2) + "\n")
+```

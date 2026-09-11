@@ -54,7 +54,7 @@
               "reflection-strings: 1 Class.forName call(s) have unresolved names",
               "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
             ],
-            "medianSeconds": 0.11330441699828953
+            "medianSeconds": 0.11751329101389274
           },
           "Unused": {
             "state": "unreachable",
@@ -62,19 +62,19 @@
               "reflection-strings: 1 Class.forName call(s) have unresolved names",
               "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
             ],
-            "medianSeconds": 0.10514987498754635
+            "medianSeconds": 0.11500745796365663
           }
         },
         "binary": {
           "Used": {
             "state": "reachable",
             "limitations": [],
-            "medianSeconds": 0.09973462502239272
+            "medianSeconds": 0.10946962499292567
           },
           "Unused": {
             "state": "unreachable",
             "limitations": [],
-            "medianSeconds": 0.11328691599192098
+            "medianSeconds": 0.1057194999884814
           }
         },
         "searchdeadcode": {
@@ -88,21 +88,25 @@
         "r8-shrinkOnly": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-optimized": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-optimizedRoots": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-unshrunkControl": {
           "keepsUsed": true,
           "keepsUnused": true,
+          "failureType": null,
           "preservesExecution": true
         }
       }
@@ -125,7 +129,7 @@
               "reflection-strings: 1 Class.forName call(s) have unresolved names",
               "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
             ],
-            "medianSeconds": 0.18082062498433515
+            "medianSeconds": 0.18146995903225616
           },
           "Unused": {
             "state": "unreachable",
@@ -133,19 +137,19 @@
               "reflection-strings: 1 Class.forName call(s) have unresolved names",
               "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
             ],
-            "medianSeconds": 0.17707350000273436
+            "medianSeconds": 0.17931275005685166
           }
         },
         "binary": {
           "Used": {
             "state": "reachable",
             "limitations": [],
-            "medianSeconds": 0.17868425004417077
+            "medianSeconds": 0.18003887502709404
           },
           "Unused": {
             "state": "unreachable",
             "limitations": [],
-            "medianSeconds": 0.17657237499952316
+            "medianSeconds": 0.17938612500438467
           }
         },
         "searchdeadcode": {
@@ -159,21 +163,25 @@
         "r8-shrinkOnly": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-optimized": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-optimizedRoots": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-unshrunkControl": {
           "keepsUsed": true,
           "keepsUnused": true,
+          "failureType": null,
           "preservesExecution": true
         }
       }
@@ -196,7 +204,7 @@
               "reflection-strings: 1 Class.forName call(s) have unresolved names",
               "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
             ],
-            "medianSeconds": 0.11487412499263883
+            "medianSeconds": 0.11779054201906547
           },
           "Unused": {
             "state": "unreachable",
@@ -204,19 +212,19 @@
               "reflection-strings: 1 Class.forName call(s) have unresolved names",
               "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
             ],
-            "medianSeconds": 0.11554866703227162
+            "medianSeconds": 0.11826516600558534
           }
         },
         "binary": {
           "Used": {
             "state": "reachable",
             "limitations": [],
-            "medianSeconds": 0.10161745798541233
+            "medianSeconds": 0.10748466697987169
           },
           "Unused": {
             "state": "unreachable",
             "limitations": [],
-            "medianSeconds": 0.11464624997461215
+            "medianSeconds": 0.11480125004891306
           }
         },
         "searchdeadcode": {
@@ -230,21 +238,25 @@
         "r8-shrinkOnly": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-optimized": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-optimizedRoots": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-unshrunkControl": {
           "keepsUsed": true,
           "keepsUnused": true,
+          "failureType": null,
           "preservesExecution": true
         }
       }
@@ -264,24 +276,24 @@
           "Used": {
             "state": "reachable",
             "limitations": [],
-            "medianSeconds": 0.10907979100011289
+            "medianSeconds": 0.1134483750211075
           },
           "Unused": {
             "state": "unreachable",
             "limitations": [],
-            "medianSeconds": 0.11347387498244643
+            "medianSeconds": 0.11213154200231656
           }
         },
         "binary": {
           "Used": {
             "state": "reachable",
             "limitations": [],
-            "medianSeconds": 0.1140991669963114
+            "medianSeconds": 0.11194512498332188
           },
           "Unused": {
             "state": "unreachable",
             "limitations": [],
-            "medianSeconds": 0.11189458298031241
+            "medianSeconds": 0.11195395898539573
           }
         },
         "searchdeadcode": {
@@ -295,21 +307,25 @@
         "r8-shrinkOnly": {
           "keepsUsed": true,
           "keepsUnused": false,
+          "failureType": null,
           "preservesExecution": true
         },
         "r8-optimized": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": null,
           "preservesExecution": true
         },
         "r8-optimizedRoots": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": null,
           "preservesExecution": true
         },
         "r8-unshrunkControl": {
           "keepsUsed": true,
           "keepsUnused": true,
+          "failureType": null,
           "preservesExecution": true
         }
       }
@@ -332,7 +348,7 @@
               "reflection-strings: 1 Class.forName call(s) have unresolved names",
               "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
             ],
-            "medianSeconds": 0.11640612501651049
+            "medianSeconds": 0.12075658398680389
           },
           "Unused": {
             "state": "unreachable",
@@ -340,7 +356,7 @@
               "reflection-strings: 1 Class.forName call(s) have unresolved names",
               "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
             ],
-            "medianSeconds": 0.11607095797080547
+            "medianSeconds": 0.12108512502163649
           }
         },
         "binary": {
@@ -350,7 +366,7 @@
               "reflection-strings: 1 Class.forName call(s) have unresolved names",
               "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
             ],
-            "medianSeconds": 0.11632266698870808
+            "medianSeconds": 0.12211837503127754
           },
           "Unused": {
             "state": "unreachable",
@@ -358,7 +374,7 @@
               "reflection-strings: 1 Class.forName call(s) have unresolved names",
               "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
             ],
-            "medianSeconds": 0.11288537498330697
+            "medianSeconds": 0.11614229204133153
           }
         },
         "searchdeadcode": {
@@ -372,21 +388,25 @@
         "r8-shrinkOnly": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-optimized": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-optimizedRoots": {
           "keepsUsed": false,
           "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
           "preservesExecution": false
         },
         "r8-unshrunkControl": {
           "keepsUsed": true,
           "keepsUnused": true,
+          "failureType": null,
           "preservesExecution": true
         }
       }
