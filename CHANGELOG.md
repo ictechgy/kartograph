@@ -8,6 +8,8 @@
 
 ### Added
 
+- 프로젝트 static helper의 String/Class 반환값과 불변 인자를 제한적으로 전파해 reflection 대상을 연결한다.
+  Java/Kotlin 실행·overload·unknown·재귀·분석량 제한 회귀와 SearchDeadCode/R8 비교 실험을 추가한다.
 - `snapshot`과 `query --graph-file`: 그래프·보존 근거·baseline 상태·계량 한계를 저장하고 원본 입력 없이 질의한다.
 - `--generated-classes`와 Gradle `generatedClassRoots`: 생성 전용 컴파일 입력의 출처로 선언을 구분하며 정점·간선은 유지한다.
 

@@ -1,0 +1,552 @@
+{
+  "versions": {
+    "javac": "javac 17.0.20",
+    "r8": "R8 9.4.17 (build c98358724c7e1cb666ffdf35d0808d9d79545e89 from go/r8bot (luci-r8-custom-ci-archive-us-east1-b-0-ngbi))",
+    "searchdeadcode": "searchdeadcode 0.21.0",
+    "kotlin": "2.4.10"
+  },
+  "kartographJars": {
+    "baseline": {
+      "analysis-0.7.0.jar": "2c66c136c8c006ddf32f42b625022a966154b324af0dc22250edb5669d01a66a",
+      "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+      "asm-9.9.jar": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4",
+      "asm-analysis-9.9.jar": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b",
+      "asm-tree-9.9.jar": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6",
+      "cli-0.7.0.jar": "a2c9ccac0ba670c4ce33d26f4044fb18374cc7a28a5f0df8778d5fda0fce950c",
+      "core-0.7.0.jar": "54ee52924aacf78072d210dd4d471295162b7bc98b4d3280822bda3c3d8094ec",
+      "export-0.7.0.jar": "f7997f93902ddf83c930167e536ef8ea775abbfa5bd3a679e9279200bc6b2c8b",
+      "index-0.7.0.jar": "7ebdf6ddaa98e2c47c6f7697fae83b8cd71195edd41b0a207ef494d9d0c18a85",
+      "kotlin-metadata-jvm-2.4.10.jar": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4",
+      "kotlin-stdlib-2.4.10.jar": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+    },
+    "binary": {
+      "analysis-0.7.0.jar": "2c66c136c8c006ddf32f42b625022a966154b324af0dc22250edb5669d01a66a",
+      "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+      "asm-9.9.jar": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4",
+      "asm-analysis-9.9.jar": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b",
+      "asm-tree-9.9.jar": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6",
+      "cli-0.7.0.jar": "a2c9ccac0ba670c4ce33d26f4044fb18374cc7a28a5f0df8778d5fda0fce950c",
+      "core-0.7.0.jar": "54ee52924aacf78072d210dd4d471295162b7bc98b4d3280822bda3c3d8094ec",
+      "export-0.7.0.jar": "f7997f93902ddf83c930167e536ef8ea775abbfa5bd3a679e9279200bc6b2c8b",
+      "index-0.7.0.jar": "830ee0adaf7990c688955c40c8d624b3261b2f543d09ff14d7badcf4a80563bb",
+      "kotlin-metadata-jvm-2.4.10.jar": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4",
+      "kotlin-stdlib-2.4.10.jar": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+    }
+  },
+  "r8Sha256": "2100511344497f041644a4d63fb7be8a516ce9bace30b7d17ab27cc93a0e58d4",
+  "searchdeadcodeSha256": "f0f820479ce597a6bea0ee1b25b2c52b5b194ebf18de146e9d398c7de093d57d",
+  "cases": [
+    {
+      "case": "argument_chain",
+      "sourceSha256": "01c9651b498123fcc613dcbb5c9590d2794dee21f360a9e6260eaaf636ff40d4",
+      "classSha256": {
+        "probe/Entry$Unused.class": "64af556d906c681ab260f16dbc04d1f250087f933373e960612e38a59680976d",
+        "probe/Entry$Used.class": "b0046380189570f61e334e380f95f914917472b8b7b3ffd29d2f25a45314867e",
+        "probe/Entry.class": "6676b6e02da1d798c57a702112c7b47714e19050ca2a2771351efb8ea7bf13b6",
+        "probe/Names.class": "f369902e03054b7f8e0277d23b7748b2a7c2a75f1e902e06676b75769dfb88f3"
+      },
+      "runtimeUsed": true,
+      "tools": {
+        "baseline": {
+          "Used": {
+            "state": "unreachable",
+            "limitations": [
+              "reflection-strings: 1 Class.forName call(s) have unresolved names",
+              "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
+            ],
+            "medianSeconds": 0.11751329101389274
+          },
+          "Unused": {
+            "state": "unreachable",
+            "limitations": [
+              "reflection-strings: 1 Class.forName call(s) have unresolved names",
+              "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
+            ],
+            "medianSeconds": 0.11500745796365663
+          }
+        },
+        "binary": {
+          "Used": {
+            "state": "reachable",
+            "limitations": [],
+            "medianSeconds": 0.10946962499292567
+          },
+          "Unused": {
+            "state": "unreachable",
+            "limitations": [],
+            "medianSeconds": 0.1057194999884814
+          }
+        },
+        "searchdeadcode": {
+          "Used": {
+            "verdict": "ALIVE"
+          },
+          "Unused": {
+            "verdict": "ALIVE"
+          }
+        },
+        "r8-shrinkOnly": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-optimized": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-optimizedRoots": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-unshrunkControl": {
+          "keepsUsed": true,
+          "keepsUnused": true,
+          "failureType": null,
+          "preservesExecution": true
+        }
+      }
+    },
+    {
+      "case": "kotlin_chain",
+      "sourceSha256": "7e34b70d8b59bae62f3f9434ef0eb6319166a07bc6d4a685802a28fce49f1246",
+      "classSha256": {
+        "probe/Entry.class": "b851f4f6644e57c4f6cf4354fd9ce9525ffc3fa089a76d99bc12afec45f8f74d",
+        "probe/EntryKt.class": "c9833a206050b41338a5b95a810f83ec6ca319c6b45b570a3feff9c55eaabb9d",
+        "probe/Unused.class": "0e6b036fe1a14cadda2f83d527c53305433f0a557fe8c764579879439974eae8",
+        "probe/Used.class": "4922e12b91fc018474e72b408336c76836770294f806486ac076edad6dc12868"
+      },
+      "runtimeUsed": true,
+      "tools": {
+        "baseline": {
+          "Used": {
+            "state": "unreachable",
+            "limitations": [
+              "reflection-strings: 1 Class.forName call(s) have unresolved names",
+              "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
+            ],
+            "medianSeconds": 0.18146995903225616
+          },
+          "Unused": {
+            "state": "unreachable",
+            "limitations": [
+              "reflection-strings: 1 Class.forName call(s) have unresolved names",
+              "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
+            ],
+            "medianSeconds": 0.17931275005685166
+          }
+        },
+        "binary": {
+          "Used": {
+            "state": "reachable",
+            "limitations": [],
+            "medianSeconds": 0.18003887502709404
+          },
+          "Unused": {
+            "state": "unreachable",
+            "limitations": [],
+            "medianSeconds": 0.17938612500438467
+          }
+        },
+        "searchdeadcode": {
+          "Used": {
+            "verdict": "DEAD"
+          },
+          "Unused": {
+            "verdict": "DEAD"
+          }
+        },
+        "r8-shrinkOnly": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-optimized": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-optimizedRoots": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-unshrunkControl": {
+          "keepsUsed": true,
+          "keepsUnused": true,
+          "failureType": null,
+          "preservesExecution": true
+        }
+      }
+    },
+    {
+      "case": "literal",
+      "sourceSha256": "403434ce85440166a89c3e9f43a6a3bdcbf42d2b47e73026c79c4dc05418f234",
+      "classSha256": {
+        "probe/Entry$Unused.class": "64af556d906c681ab260f16dbc04d1f250087f933373e960612e38a59680976d",
+        "probe/Entry$Used.class": "b0046380189570f61e334e380f95f914917472b8b7b3ffd29d2f25a45314867e",
+        "probe/Entry.class": "d2c0a0dbcd3bdf1784c1f0b21f9d08c7ea071a4b0b8dcf2c05527d136d0c69ce",
+        "probe/Names.class": "bb15f6f9fd360c51406ea7aba9b21abead4377c4de3946dae21f548438f27d0d"
+      },
+      "runtimeUsed": true,
+      "tools": {
+        "baseline": {
+          "Used": {
+            "state": "unreachable",
+            "limitations": [
+              "reflection-strings: 1 Class.forName call(s) have unresolved names",
+              "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
+            ],
+            "medianSeconds": 0.11779054201906547
+          },
+          "Unused": {
+            "state": "unreachable",
+            "limitations": [
+              "reflection-strings: 1 Class.forName call(s) have unresolved names",
+              "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
+            ],
+            "medianSeconds": 0.11826516600558534
+          }
+        },
+        "binary": {
+          "Used": {
+            "state": "reachable",
+            "limitations": [],
+            "medianSeconds": 0.10748466697987169
+          },
+          "Unused": {
+            "state": "unreachable",
+            "limitations": [],
+            "medianSeconds": 0.11480125004891306
+          }
+        },
+        "searchdeadcode": {
+          "Used": {
+            "verdict": "ALIVE"
+          },
+          "Unused": {
+            "verdict": "ALIVE"
+          }
+        },
+        "r8-shrinkOnly": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-optimized": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-optimizedRoots": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-unshrunkControl": {
+          "keepsUsed": true,
+          "keepsUnused": true,
+          "failureType": null,
+          "preservesExecution": true
+        }
+      }
+    },
+    {
+      "case": "overloaded_identity",
+      "sourceSha256": "e91d814e101ea0a771242a1d5ffe363386ec037927b345a9a6ff3ee784ddfb67",
+      "classSha256": {
+        "probe/Entry$Unused.class": "64af556d906c681ab260f16dbc04d1f250087f933373e960612e38a59680976d",
+        "probe/Entry$Used.class": "b0046380189570f61e334e380f95f914917472b8b7b3ffd29d2f25a45314867e",
+        "probe/Entry.class": "31a2eca7998acb020f51cce71aa4d781f878c4dbf5e89558f1a4657b939bc6c0",
+        "probe/Names.class": "2f20baf2550cb3c31ced83dccb45c63644850d374884473d72a59435f1aa68ae"
+      },
+      "runtimeUsed": true,
+      "tools": {
+        "baseline": {
+          "Used": {
+            "state": "reachable",
+            "limitations": [],
+            "medianSeconds": 0.1134483750211075
+          },
+          "Unused": {
+            "state": "unreachable",
+            "limitations": [],
+            "medianSeconds": 0.11213154200231656
+          }
+        },
+        "binary": {
+          "Used": {
+            "state": "reachable",
+            "limitations": [],
+            "medianSeconds": 0.11194512498332188
+          },
+          "Unused": {
+            "state": "unreachable",
+            "limitations": [],
+            "medianSeconds": 0.11195395898539573
+          }
+        },
+        "searchdeadcode": {
+          "Used": {
+            "verdict": "ALIVE"
+          },
+          "Unused": {
+            "verdict": "ALIVE"
+          }
+        },
+        "r8-shrinkOnly": {
+          "keepsUsed": true,
+          "keepsUnused": false,
+          "failureType": null,
+          "preservesExecution": true
+        },
+        "r8-optimized": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": null,
+          "preservesExecution": true
+        },
+        "r8-optimizedRoots": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": null,
+          "preservesExecution": true
+        },
+        "r8-unshrunkControl": {
+          "keepsUsed": true,
+          "keepsUnused": true,
+          "failureType": null,
+          "preservesExecution": true
+        }
+      }
+    },
+    {
+      "case": "unknown_argument",
+      "sourceSha256": "ddb58abd63990ff46b3bb61cd98b0b147728cf5d308e6e6b5993273bd830ac35",
+      "classSha256": {
+        "probe/Entry$Unused.class": "64af556d906c681ab260f16dbc04d1f250087f933373e960612e38a59680976d",
+        "probe/Entry$Used.class": "b0046380189570f61e334e380f95f914917472b8b7b3ffd29d2f25a45314867e",
+        "probe/Entry.class": "85274b6a48c2eafe38be1b4ab6c09b880dd8098b4485a8556a7612970f06452d",
+        "probe/Names.class": "5ce70f5cd8841d323d3afa1f9a957f998dbd033925579f41f44f82d4928e152f"
+      },
+      "runtimeUsed": true,
+      "tools": {
+        "baseline": {
+          "Used": {
+            "state": "unreachable",
+            "limitations": [
+              "reflection-strings: 1 Class.forName call(s) have unresolved names",
+              "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
+            ],
+            "medianSeconds": 0.12075658398680389
+          },
+          "Unused": {
+            "state": "unreachable",
+            "limitations": [
+              "reflection-strings: 1 Class.forName call(s) have unresolved names",
+              "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
+            ],
+            "medianSeconds": 0.12108512502163649
+          }
+        },
+        "binary": {
+          "Used": {
+            "state": "unreachable",
+            "limitations": [
+              "reflection-strings: 1 Class.forName call(s) have unresolved names",
+              "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
+            ],
+            "medianSeconds": 0.12211837503127754
+          },
+          "Unused": {
+            "state": "unreachable",
+            "limitations": [
+              "reflection-strings: 1 Class.forName call(s) have unresolved names",
+              "reflective-construction: 1 reflective constructor call(s) require runtime target modeling"
+            ],
+            "medianSeconds": 0.11614229204133153
+          }
+        },
+        "searchdeadcode": {
+          "Used": {
+            "verdict": "ALIVE"
+          },
+          "Unused": {
+            "verdict": "ALIVE"
+          }
+        },
+        "r8-shrinkOnly": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-optimized": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-optimizedRoots": {
+          "keepsUsed": false,
+          "keepsUnused": false,
+          "failureType": "java.lang.ClassNotFoundException",
+          "preservesExecution": false
+        },
+        "r8-unshrunkControl": {
+          "keepsUsed": true,
+          "keepsUnused": true,
+          "failureType": null,
+          "preservesExecution": true
+        }
+      }
+    }
+  ],
+  "baselineCommit": "73dcad15c9ecc0b5e67f6c625e5210a3b61312f5",
+  "date": "2026-09-11",
+  "platform": "macOS arm64",
+  "publicSample": {
+    "baseline": {
+      "classRoots": 22,
+      "measurements": {
+        "class": {
+          "diagnostics": 4,
+          "seconds": 1.162
+        },
+        "member": {
+          "diagnostics": 2,
+          "seconds": 1.027
+        }
+      },
+      "multipreviewDeclarations": 8,
+      "revision": "12f80da6518e161ed16a06a68e71fb8a873576d6",
+      "snapshot": {
+        "bytes": 26581826,
+        "captureSeconds": 1.265,
+        "queries": [
+          {
+            "seconds": {
+              "live": [
+                1.072,
+                1.077,
+                1.041
+              ],
+              "saved": [
+                0.485,
+                0.49,
+                0.496
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/MainActivity"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.043,
+                1.017,
+                1.021
+              ],
+              "saved": [
+                0.457,
+                0.483,
+                0.455
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/core/datastore/ListToMapMigration"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.042,
+                1.042,
+                1.052
+              ],
+              "saved": [
+                0.488,
+                0.479,
+                0.466
+              ]
+            },
+            "symbol": "method:com/google/samples/apps/nowinandroid/feature/foryou/impl/ForYouScreenKt#ForYouScreenLoading(Landroidx/compose/runtime/Composer;I)V"
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "classRoots": 22,
+      "measurements": {
+        "class": {
+          "diagnostics": 4,
+          "seconds": 1.034
+        },
+        "member": {
+          "diagnostics": 2,
+          "seconds": 1.04
+        }
+      },
+      "multipreviewDeclarations": 8,
+      "revision": "12f80da6518e161ed16a06a68e71fb8a873576d6",
+      "snapshot": {
+        "bytes": 26581826,
+        "captureSeconds": 1.283,
+        "queries": [
+          {
+            "seconds": {
+              "live": [
+                1.061,
+                1.057,
+                1.04
+              ],
+              "saved": [
+                0.443,
+                0.465,
+                0.473
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/MainActivity"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.054,
+                1.08,
+                1.089
+              ],
+              "saved": [
+                0.478,
+                0.479,
+                0.462
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/core/datastore/ListToMapMigration"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.063,
+                1.045,
+                1.051
+              ],
+              "saved": [
+                0.472,
+                0.454,
+                0.453
+              ]
+            },
+            "symbol": "method:com/google/samples/apps/nowinandroid/feature/foryou/impl/ForYouScreenKt#ForYouScreenLoading(Landroidx/compose/runtime/Composer;I)V"
+          }
+        ]
+      }
+    }
+  }
+}
