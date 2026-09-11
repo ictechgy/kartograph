@@ -47,6 +47,8 @@ distributions {
                 "RESEARCH.md",
                 "PR-CHECK.md",
                 "PUBLIC-VALIDATION.md",
+                "IMPACT-PLAN.md",
+                "IMPACT.md",
             )
             from(releaseDocumentation.map { document -> rootProject.file("docs/$document") }) {
                 into("docs")
@@ -57,6 +59,7 @@ distributions {
             from(rootProject.file("Scripts/check-pr.py")) {
                 into("Scripts")
             }
+            from(rootProject.file("Scripts/check-impact.py")) { into("Scripts") }
         }
     }
 }

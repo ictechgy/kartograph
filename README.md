@@ -23,6 +23,7 @@ The current source version is declared in [VERSION](VERSION). Released versions 
 
 Working today:
 
+- The unreleased `impact` command checks potential effects of planned symbol edits or committed file changes using captured graphs. It preserves base/current paths, deletions, runtime evidence and uncertainty for people, agents and CI. See [change impact](docs/IMPACT.md) and the [scored public replays](experiments/change-impact/README.md).
 - `graph` renders compiled class roots as DOT or as a `code-graph` JSON exchange document, with optional project-relative source paths (`--include-paths --project`). JSON also records edge origins and external calls with their resolution status. Repeated `--classes` merge several module/variant outputs; the first root wins deterministically for a repeated JVM class.
 - `dead` reports unreachable class declarations from Android retention roots (manifest, XML, `@Keep`, keep rules, inheritance hierarchies, DI/serialization annotations, JNI and framework callbacks), with `--explain`, baselines, `--since`, and machine-readable reports. Recursive includes and consumer rules are supported.
 - `query`/`bridges`/`skill` expose one symbol's users, dependencies, and reachability, plus Flutter/React Native bridge facts, for agent consumers. `query` includes measured unresolved runtime paths and conservative dispatch candidates.

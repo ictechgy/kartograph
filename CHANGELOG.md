@@ -8,6 +8,10 @@
 
 ### Added
 
+- `impact`: 수정 예정 심볼/파일의 직접·간접 영향 후보를 시점별 경로·간선 출처와 함께 보고한다.
+  base/current snapshot, 삭제·rename 경로, interface override 계약, CI helper와 에이전트 스킬을 연결한다.
+- `snapshot --include-paths --revision --scope`와 lossless `--compact` v2. 기존 v1/query 필드 호환성을 유지한다.
+- 공개 OkHttp/AnkiDroid 실제 회귀, runtime 영향 경로, 읽기 전용 AI 질의 비교와 재현·채점 스크립트.
 - 프로젝트 static helper의 String/Class 반환값과 불변 인자를 제한적으로 전파해 reflection 대상을 연결한다.
   Java/Kotlin 실행·overload·unknown·재귀·분석량 제한 회귀와 SearchDeadCode/R8 비교 실험을 추가한다.
 - `snapshot`과 `query --graph-file`: 그래프·보존 근거·baseline 상태·계량 한계를 저장하고 원본 입력 없이 질의한다.

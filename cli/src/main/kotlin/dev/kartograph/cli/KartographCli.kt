@@ -33,6 +33,7 @@ internal object KartographCli {
         "baseline" -> DeadCommand.runBaseline(arguments.drop(1), output, error)
         "query" -> AgentCommand.query(arguments.drop(1), output, error)
         "snapshot" -> AgentCommand.snapshot(arguments.drop(1), output, error)
+        "impact" -> ImpactCommand.run(arguments.drop(1), output, error)
         "bridges" -> AgentCommand.bridges(arguments.drop(1), output, error)
         "skill" -> AgentCommand.skill(arguments.drop(1), output, error)
         "cycles" -> ArchitectureCommand.cycles(arguments.drop(1), output, error)
@@ -208,6 +209,7 @@ internal object KartographCli {
           kartograph baseline --write <file> --classes <directory> --project <directory> [options]
           kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
           kartograph snapshot --classes <directory-or-jar> --project <directory> [options]
+          kartograph impact <symbol> --graph-file <snapshot.json> [--base-graph <snapshot.json>] [options]
           kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>]
           kartograph bridges --project <directory> [--format json]
           kartograph skill

@@ -27,7 +27,14 @@ public data class QuerySnapshot(
     val suppressed: Set<NodeId> = emptySet(),
     val includePrivateMembers: Boolean = false,
     val toolVersion: String = KartographVersion.current,
-)
+    val revision: String? = null,
+    val scope: String? = null,
+) {
+    init {
+        require(revision == null || Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) { "snapshot revision must be a full commit hash" }
+        require(scope == null || (scope.length <= 200 && Regex("[A-Za-z0-9_.:-]+").matches(scope))) { "snapshot scope must be a portable project and variant label" }
+    }
+}
 
 /** 원본 파일을 다시 읽지 않아도 같은 도달성 의미로 질의할 수 있는 버전 문서 codec이다. */
 public object QuerySnapshotCodec {
@@ -37,10 +44,17 @@ public object QuerySnapshotCodec {
     public const val MAX_BYTES: Int = 64 * 1024 * 1024
 
     /** 정렬된 그래프 사실과 보존 근거를 출력하며 로컬 절대경로는 내보내지 않는다. */
-    public fun render(snapshot: QuerySnapshot): String = jsonValue(sortedMapOf(
+    public fun render(snapshot: QuerySnapshot): String = render(snapshot, false)
+
+    /** v2는 간선의 반복 USR을 node 배열 위치로 저장하며 모든 사실과 보존 문맥을 유지한다. */
+    public fun render(snapshot: QuerySnapshot, compact: Boolean): String {
+        val positions = if (compact) snapshot.graph.nodeIds.withIndex().associate { it.value to it.index } else emptyMap()
+        val encoding = if (compact) CompactSnapshotGraph(positions.mapKeys { it.key.value }) else null
+        return jsonValue(sortedMapOf(
         "format" to FORMAT,
-        "version" to 1,
+        "version" to if (compact) 2 else 1,
         "toolVersion" to snapshot.toolVersion,
+        "revision" to snapshot.revision, "scope" to snapshot.scope,
         "includePrivateMembers" to snapshot.includePrivateMembers,
         "limitations" to snapshot.limitations.distinct().sorted(),
         "suppressed" to snapshot.suppressed.map { it.value }.sorted(),
@@ -49,31 +63,36 @@ public object QuerySnapshotCodec {
             sortedMapOf("nodeId" to item.nodeId.value, "reason" to item.reason.name.lowerCamel(), "location" to locationValue(item.location))
         },
         "graph" to sortedMapOf(
-            "nodes" to snapshot.graph.nodeIds.map { snapshot.graph.nodes.getValue(it).toValue() },
-            "edges" to snapshot.graph.edges.map { edge -> sortedMapOf(
-                "source" to edge.source.value, "target" to edge.target.value, "kind" to edge.kind.name.lowerCamel(),
-                "origin" to edge.origin.name.lowerCamel(), "weight" to edge.weight,
-            ) },
+            "nodes" to snapshot.graph.nodeIds.map { snapshot.graph.nodes.getValue(it).toValue().let { value -> encoding?.node(value) ?: value } },
+            "edges" to snapshot.graph.edges.map { edge ->
+                if (encoding != null) listOf(positions.getValue(edge.source), positions.getValue(edge.target),
+                    encoding.text(edge.kind.name.lowerCamel()), encoding.text(edge.origin.name.lowerCamel()), edge.weight)
+                else sortedMapOf("source" to edge.source.value, "target" to edge.target.value, "kind" to edge.kind.name.lowerCamel(),
+                    "origin" to edge.origin.name.lowerCamel(), "weight" to edge.weight)
+            },
             "externalCalls" to snapshot.graph.externalCalls.map { call -> sortedMapOf(
                 "caller" to call.caller.value, "owner" to call.owner, "name" to call.name,
                 "descriptor" to call.descriptor, "kind" to call.kind.name.lowerCamel(), "ordinal" to call.ordinal,
                 "resolution" to call.resolution.name.lowerCamel(), "model" to call.model,
                 "resolvedTargets" to call.resolvedTargets.map { it.value }.sorted(), "location" to locationValue(call.location),
-            ) },
+            ).let { value -> encoding?.call(value) ?: value } },
             "serviceProviders" to snapshot.graph.serviceProviders.map { item -> sortedMapOf(
                 "service" to item.service, "provider" to item.provider.value, "location" to locationValue(item.location),
             ) },
-        ),
-    )) + "\n"
+        ).let { graph -> if (encoding == null) graph else graph + ("stringTable" to encoding.table) },
+        ).filterValues { it != null }) + "\n"
+    }
 
     /** 불완전한 그래프를 정상 결과로 처리하지 않도록 타입·중복·참조 대상을 조립 전에 검증한다. */
     public fun parse(content: String): QuerySnapshot {
         require(content.length <= MAX_BYTES) { "query snapshot is too large" }
         val document = objectValue(SnapshotJsonParser(content).parse())
-        require(document["format"] == FORMAT && integer(document["version"]) == 1) {
+        val version = integer(document["version"])
+        require(document["format"] == FORMAT && version in 1..2) {
             "unsupported query snapshot; capture it with `kartograph snapshot`"
         }
-        val graph = objectValue(document["graph"])
+        val rawGraph = objectValue(document["graph"])
+        val graph = if (version == 2) CompactSnapshotGraph.expand(rawGraph) else rawGraph
         val nodes = list(graph["nodes"]).map { raw ->
             val node = objectValue(raw)
             GraphNode(
@@ -119,7 +138,8 @@ public object QuerySnapshotCodec {
         val suppressed = strings(document["suppressed"]).map(::NodeId).toSet()
         require(suppressed.all(ids::contains)) { "query snapshot contains invalid baseline references" }
         return QuerySnapshot(CodeGraph(nodes, edges, calls, providers), retention, strings(document["limitations"]), suppressed,
-            boolean(document["includePrivateMembers"]), string(document["toolVersion"]))
+            boolean(document["includePrivateMembers"]), string(document["toolVersion"]),
+            optionalString(document["revision"]), optionalString(document["scope"]))
     }
 
     private fun GraphNode.toValue(): Map<String, Any?> = sortedMapOf(
@@ -164,7 +184,7 @@ public object QuerySnapshotCodec {
 }
 
 /** 문서 밖의 입력을 오류 문구에 넣지 않는, 깊이와 크기가 제한된 JSON reader다. */
-private class SnapshotJsonParser(private val text: String) {
+internal class SnapshotJsonParser(private val text: String) {
     private var offset = 0
 
     fun parse(): Any? {

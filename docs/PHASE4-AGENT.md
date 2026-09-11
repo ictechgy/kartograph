@@ -1,5 +1,11 @@
 # Phase 4 agent contract
 
+## Change impact
+
+수정 전 영향 점검은 `impact`와 [공통 계약](IMPACT.md)을 사용한다. `query`의 기존 JSON은 바꾸지 않는다.
+snapshot의 선택적 revision/scope 라벨은 CI 입력 연결용이며 빌드 신선도 증명이 아니다.
+v1과 compact v2는 같은 그래프 사실로 복원되고, 스킬은 경로 시점·origin·unknown·truncation을 함께 검토한다.
+
 ## Query
 
 `kartograph query <symbol>`은 자매 도구 cartograph의 `SymbolQueryDocument`와 같은 필드 이름과 optional
