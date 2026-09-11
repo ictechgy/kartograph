@@ -46,7 +46,7 @@ def main(arguments=None):
             raise UsageError("timeout must be a positive number of seconds")
         # 새 CLI 옵션이 생겨도 검증되지 않은 우회 경로를 자동으로 허용하지 않는다.
         value_options = {"--classes", "--manifest", "--resources", "--namespace", "--keep-rules",
-                         "--classpath", "--service-resources", "--report-format", "--test-classes"}
+                         "--classpath", "--service-resources", "--report-format", "--test-classes", "--generated-classes"}
         flag_options = {"--strict", "--include-private-members"}
         index = 0
         while index < len(forwarded):

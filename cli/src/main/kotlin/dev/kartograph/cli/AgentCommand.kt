@@ -7,12 +7,15 @@ import dev.kartograph.analysis.SymbolQuery
 import dev.kartograph.core.Finding
 import dev.kartograph.export.AgentDocumentRenderer
 import dev.kartograph.export.BaselineCodec
+import dev.kartograph.export.QuerySnapshot
+import dev.kartograph.export.QuerySnapshotCodec
 import dev.kartograph.index.AndroidManifestScanner
 import dev.kartograph.index.AndroidXmlScanner
 import dev.kartograph.index.BridgeFactScanner
 import dev.kartograph.index.ClassFileIndexer
 import dev.kartograph.index.ClassHierarchyIndexer
 import dev.kartograph.index.KeepRuleScanner
+import dev.kartograph.index.KeepRuleScanningException
 import dev.kartograph.index.RuntimeLimitationScanner
 import java.io.PrintStream
 import java.nio.file.Files
@@ -22,6 +25,8 @@ import java.nio.file.LinkOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.StandardCopyOption
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 
 internal object AgentCommand {
     fun skill(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
@@ -109,12 +114,26 @@ internal object AgentCommand {
         }
         val requested = arguments.firstOrNull()?.takeUnless { it.startsWith('-') }
             ?: return usage(error, "query requires a symbol")
+        val options = arguments.drop(1)
+        return if ("--graph-file" in options) savedQuery(requested, options, output, error)
+        else compiledQuery(options, requested, output, error)
+    }
+
+    fun snapshot(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
+        if (arguments == listOf("--help") || arguments == listOf("-h")) {
+            output.print(SNAPSHOT_HELP)
+            return ExitStatus.SUCCESS.code
+        }
+        return compiledQuery(arguments, null, output, error)
+    }
+
+    private fun compiledQuery(arguments: List<String>, requested: String?, output: PrintStream, error: PrintStream): Int {
         val options = parsePaths(
-            arguments.drop(1),
+            arguments,
             setOf(
-                "--classes", "--project", "--depth", "--limit", "--manifest", "--resources", "--namespace",
-                "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members",
-            ),
+                "--classes", "--project", "--manifest", "--resources", "--namespace",
+                "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes",
+            ) + if (requested != null) setOf("--depth", "--limit") else emptySet(),
             error,
         )
             ?: return ExitStatus.USAGE.code
@@ -139,7 +158,8 @@ internal object AgentCommand {
         return try {
             val classpath = options.values("--classpath").map { resolveProjectPath(project, it) }
             val indexed = ClassFileIndexer().indexWithObservations(classRoots, classpath,
-                options.values("--service-resources").map { resolveProjectPath(project, it) })
+                options.values("--service-resources").map { resolveProjectPath(project, it) },
+                options.values("--generated-classes").map(Path::of))
             val graph = indexed.graph
             val hierarchy = indexed.hierarchy
             val inputEvidence = buildList {
@@ -157,24 +177,30 @@ internal object AgentCommand {
             )
             val evidence = DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,
                 includePrivateMembers = options.values("--include-private-members").isNotEmpty())
-            val reachability = ReachabilityAnalyzer.analyze(graph, evidence)
             val baseline = options.single("--baseline")?.let { path ->
                 BaselineCodec.parse(Files.readString(resolveProjectPath(project, path)))
             }.orEmpty()
             val suppressed = graph.nodes.values
                 .filter { node -> Finding(node.id, node.location).fingerprint in baseline }
                 .mapTo(mutableSetOf()) { node -> node.id }
-            val document = SymbolQuery.query(
-                graph,
-                reachability,
-                requested,
-                RuntimeLimitationScanner.scan(indexed, project),
-                depth,
-                limit,
-                suppressed,
-            )
-            output.print(AgentDocumentRenderer.query(document))
-            if (document.status == "found") ExitStatus.SUCCESS.code else ExitStatus.USAGE.code
+            val limitations = RuntimeLimitationScanner.scan(indexed, project)
+            if (requested == null) {
+                val captured = QuerySnapshotCodec.render(QuerySnapshot(graph, evidence, limitations, suppressed,
+                    options.values("--include-private-members").isNotEmpty()))
+                // JSON writer는 ASCII escape를 사용하므로 문자 수가 UTF-8 바이트 수와 같다.
+                if (captured.length > QuerySnapshotCodec.MAX_BYTES) {
+                    error.println("error: query snapshot exceeds 64 MiB; capture a narrower input scope")
+                    ExitStatus.FAILURE.code
+                } else {
+                    output.print(captured)
+                    ExitStatus.SUCCESS.code
+                }
+            } else {
+                val document = SymbolQuery.query(graph, ReachabilityAnalyzer.analyze(graph, evidence), requested,
+                    limitations, depth, limit, suppressed)
+                output.print(AgentDocumentRenderer.query(document))
+                if (document.status == "found") ExitStatus.SUCCESS.code else ExitStatus.USAGE.code
+            }
         } catch (_: InvalidPathException) {
             usage(error, "invalid path")
         } catch (hierarchyError: IncompleteKeepRuleHierarchyException) {
@@ -186,11 +212,44 @@ internal object AgentCommand {
         } catch (hierarchyError: dev.kartograph.index.ClassHierarchyIndexingException) {
             error.println("error: ${hierarchyError.message}")
             ExitStatus.FAILURE.code
+        } catch (ruleError: KeepRuleScanningException) {
+            error.println("error: ${ruleError.message}")
+            ExitStatus.FAILURE.code
         } catch (_: Exception) {
             error.println("error: unable to query compiled declarations; check the inputs")
             ExitStatus.FAILURE.code
         }
     }
+
+    private fun savedQuery(requested: String, arguments: List<String>, output: PrintStream, error: PrintStream): Int {
+        val options = parsePaths(arguments, setOf("--graph-file", "--depth", "--limit"), error)
+            ?: return ExitStatus.USAGE.code
+        if (options.values("--graph-file").size != 1) return usage(error, "provide exactly one --graph-file")
+        val depth = options.positiveInt("--depth", 1, error) ?: return ExitStatus.USAGE.code
+        val limit = options.positiveInt("--limit", 50, error) ?: return ExitStatus.USAGE.code
+        return try {
+            val path = Path.of(options.single("--graph-file")!!)
+            require(Files.isRegularFile(path))
+            val bytes = Files.newInputStream(path).use {
+                it.readNBytes(QuerySnapshotCodec.MAX_BYTES + 1)
+            }
+            require(bytes.size <= QuerySnapshotCodec.MAX_BYTES)
+            val content = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
+            val snapshot = QuerySnapshotCodec.parse(content)
+            val document = SymbolQuery.query(snapshot.graph, ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention),
+                requested, (snapshot.limitations + SAVED_GRAPH_LIMITATION).distinct().sorted(), depth, limit, snapshot.suppressed)
+            output.print(AgentDocumentRenderer.query(document))
+            if (document.status == "found") ExitStatus.SUCCESS.code else ExitStatus.USAGE.code
+        } catch (_: InvalidPathException) {
+            usage(error, "invalid graph file path")
+        } catch (_: Exception) {
+            error.println("error: unable to read query snapshot (maximum 64 MiB); capture a valid file with `kartograph snapshot`")
+            ExitStatus.FAILURE.code
+        }
+    }
+
+    private const val SAVED_GRAPH_LIMITATION = "saved-graph: using captured graph and retention evidence; live inputs and freshness are not rechecked"
 
     fun bridges(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
         if (arguments == listOf("--help") || arguments == listOf("-h")) {
@@ -254,6 +313,7 @@ internal object AgentCommand {
 
         Usage:
           kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
+          kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>]
 
         Options:
           --depth <n>               neighbor depth, a positive integer (default 1)
@@ -266,6 +326,23 @@ internal object AgentCommand {
           --service-resources <path> Java resource directory or JAR, repeatable
           --baseline <file>         suppress fingerprinted findings
           --include-private-members include private members in the graph
+          --generated-classes <path> mark a supplied class root as generated, repeatable
+          --graph-file <file>       query a saved snapshot without reading live inputs
+
+        --classes and --generated-classes resolve from the working directory. Other live-input paths resolve
+        from --project. Saved queries accept no live-input overrides.
+    """.trimIndent() + "\n"
+
+    private val SNAPSHOT_HELP = """
+        Capture a compiled graph with its retention evidence, baseline state and measured limitations.
+
+        Usage:
+          kartograph snapshot --classes <directory-or-jar> [--classes <path>]... --project <directory> [options]
+
+        Accepts the live-input options of query except --depth and --limit. Writes a deterministic JSON
+        snapshot to stdout. Query it with `kartograph query <symbol> --graph-file <snapshot.json>`.
+        A snapshot records its input state; it does not prove that current sources or runtime behavior match.
+        Ordinary `graph --format json` output does not contain the required retention context.
     """.trimIndent() + "\n"
 
     private val BRIDGES_HELP = """

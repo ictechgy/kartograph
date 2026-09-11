@@ -127,6 +127,37 @@ kartograph {
 
 AGP does not expose dependency consumer rules as a merged file through the public Variant API, so pass those files explicitly. The dead task never reuses up-to-date/cache results, because keep-rule includes are discovered while it runs; the graph task skips reuse only when source-path resolution reads undeclared project sources.
 
+### Saved graph queries and generated inputs (next release)
+
+These features are available in the source tree and are not included in the published 0.7.0 binaries.
+Use `snapshot` to capture the graph, retention evidence, baseline state, and measured limitations once.
+Pass the same manifest/resource/namespace/keep/consumer/classpath and private-member inputs as the live query.
+
+```bash
+kartograph snapshot --classes path/to/classes --project . \
+  --keep-rules proguard-rules.pro > graph.snapshot.json
+kartograph query UserService --graph-file graph.snapshot.json --depth 2 --limit 100
+```
+
+Saved queries do not reread current sources or rules and report a `saved-graph` limitation. Recapture after changes.
+Ordinary `graph --format json` output lacks retention context and cannot be used as a query snapshot.
+
+Mark generated-only compiled outputs with `--generated-classes`, also including them in `--classes`.
+The marker is shared by `dead`, `baseline`, `graph`, `query`, and `snapshot`.
+
+```bash
+kartograph graph --classes path/to/normal/classes --classes path/to/generated/classes \
+  --generated-classes path/to/generated/classes --format json
+```
+
+Nodes and edges remain, with `synthesized` and `generatedInput` marking their origin. Do not mark roots mixing
+generated and handwritten code. In Gradle, configure `kartograph.generatedClassRoots` or the variant task's
+`generatedClassRoots`; each marked root must also be a project class input of that task. Class names are not used
+to infer this origin.
+
+The extension applies to every variant. For variant-specific outputs, configure `generatedClassRoots` on the
+named variant tasks instead; a debug-only root at extension level cannot match the release task's inputs.
+
 ### Private members
 
 Private-member diagnostics are opt-in via `dead --include-private-members` (added in 0.2.0, not in 0.1.x). On top of the default class report it adds private methods and fields/properties of reachable, non-synthesized classes; use the same option for baselines and `query`. In Gradle: `kartograph { includePrivateMembers.set(true) }`.

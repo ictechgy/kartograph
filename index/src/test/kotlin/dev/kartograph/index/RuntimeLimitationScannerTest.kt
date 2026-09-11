@@ -2,6 +2,7 @@ package dev.kartograph.index
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.FileTime
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 import kotlin.io.path.createDirectories
@@ -14,6 +15,33 @@ import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.Opcodes
 
 class RuntimeLimitationScannerTest {
+    @Test
+    fun `DOS timestamp rounding is unknown rather than stale and later changes remain stale`(@TempDir root: Path) {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "A", null, "java/lang/Object", null)
+        writer.visitSource("A.java", null)
+        writer.visitEnd()
+        val source = root.resolve("A.java").apply { writeText("class A {}") }
+        val jar = root.resolve("classes.jar")
+        // DOS 시각은 2초 단위이며 extra timestamp가 없는 일반 ZIP의 손실을 재현한다.
+        val timestamp = 1_700_000_000_000L
+        JarOutputStream(Files.newOutputStream(jar)).use { output ->
+            output.putNextEntry(JarEntry("A.class").apply { time = timestamp })
+            output.write(writer.toByteArray())
+            output.closeEntry()
+        }
+        Files.setLastModifiedTime(source, FileTime.fromMillis(timestamp + 900))
+        assertEquals(
+            listOf("index-freshness-unknown: 1 of 1 source file(s) have uncertain compiled-source matching or timestamp precision"),
+            RuntimeLimitationScanner.scan(listOf(jar), root),
+        )
+        Files.setLastModifiedTime(source, FileTime.fromMillis(timestamp + 2_000))
+        assertEquals(listOf("index-staleness: 1 of 1 source file(s) changed after a matching class file"),
+            RuntimeLimitationScanner.scan(listOf(jar), root))
+        Files.setLastModifiedTime(source, FileTime.fromMillis(timestamp - 1))
+        assertEquals(emptyList(), RuntimeLimitationScanner.scan(listOf(jar), root))
+    }
+
     @Test
     fun `unresolved indirect external supertypes remain measured`(@TempDir root: Path) {
         val owner = dev.kartograph.core.GraphNode(JvmNodeId.classId("app/Abstract"), "Abstract",
@@ -68,7 +96,7 @@ class RuntimeLimitationScannerTest {
         root.resolve("A.kt").writeText("class A")
         root.resolve("other").createDirectories().resolve("A.kt").writeText("class A")
         root.resolve("New.kt").writeText("class New")
-        assertEquals(listOf("index-freshness-unknown: 3 of 3 source file(s) could not be matched unambiguously to compiled source metadata"),
+        assertEquals(listOf("index-freshness-unknown: 3 of 3 source file(s) have uncertain compiled-source matching or timestamp precision"),
             RuntimeLimitationScanner.scan(listOf(classes), root))
     }
 

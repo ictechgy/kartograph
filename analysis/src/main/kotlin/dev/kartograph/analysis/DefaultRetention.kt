@@ -22,7 +22,7 @@ public object DefaultRetention {
             })
             addAll(KeepRuleRetention.find(graph, keepRules, classHierarchy))
             addAll(KeepAnnotationRetention.find(graph))
-            addAll(FrameworkAnnotationRetention.find(graph))
+            addAll(FrameworkAnnotationRetention.find(graph, classHierarchy))
             addAll(GeneratedSiblingRetention.find(graph))
             addAll(AndroidEntryPointRetention.find(graph, classHierarchy))
             addAll(InlineConstantRetention.find(graph))

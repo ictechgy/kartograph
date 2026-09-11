@@ -17,6 +17,14 @@ import org.junit.jupiter.api.io.TempDir
 
 class KartographDeadTaskTest {
     @Test
+    fun `generated input provenance is shared with dead reporting`(@TempDir projectRoot: Path) {
+        val task = configuredTask(projectRoot, strict = true)
+        task.generatedClassRoots.from(task.projectDirectories.get().map { it.asFile })
+        task.analyze()
+        assertFalse(projectRoot.resolve("build/reports/kartograph/debug.txt").readText().contains("unreachable\t"))
+    }
+
+    @Test
     fun `writes a report from configured variant inputs`(@TempDir projectRoot: Path) {
         val task = configuredTask(projectRoot, strict = false)
 

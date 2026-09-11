@@ -89,7 +89,8 @@ internal object DeadCommand {
     }
 
     private fun execute(options: DeadOptions, output: PrintStream, error: PrintStream): Int {
-        val indexed = ClassFileIndexer().indexWithObservations(options.classRoots, options.classpath, options.serviceResources)
+        val indexed = ClassFileIndexer().indexWithObservations(options.classRoots, options.classpath, options.serviceResources,
+            options.generatedClassRoots)
         val graph = indexed.graph
         val dependencyHierarchy = indexed.hierarchy
         val inputEvidence = buildList {
@@ -182,6 +183,7 @@ internal object DeadCommand {
 
     private fun parseOptions(arguments: List<String>, error: PrintStream): DeadOptions? {
         val classRoots = mutableListOf<Path>()
+        val generatedClassRoots = mutableListOf<Path>()
         val testClassRoots = mutableListOf<Path>()
         var projectRoot: Path? = null
         var manifestPath: String? = null
@@ -213,6 +215,7 @@ internal object DeadCommand {
             val value = valueAfter(arguments, index, option, error) ?: return null
             when (option) {
                 "--classes" -> classRoots.add(Path.of(value))
+                "--generated-classes" -> generatedClassRoots.add(Path.of(value))
                 "--test-classes" -> testClassRoots.add(Path.of(value))
                 "--project" -> projectRoot = Path.of(value).toAbsolutePath().normalize()
                 "--manifest" -> manifestPath = value
@@ -254,6 +257,7 @@ internal object DeadCommand {
         val project = projectRoot ?: return missingOption(error, "--project")
         return DeadOptions(
             classRoots = classRoots.takeIf(List<Path>::isNotEmpty) ?: return missingOption(error, "--classes"),
+            generatedClassRoots = generatedClassRoots,
             testClassRoots = testClassRoots,
             projectRoot = project,
             manifest = resolveProjectPath(project, manifestPath ?: return missingOption(error, "--manifest")),
@@ -307,6 +311,7 @@ internal object DeadCommand {
 
     private data class DeadOptions(
         val classRoots: List<Path>,
+        val generatedClassRoots: List<Path>,
         val testClassRoots: List<Path>,
         val projectRoot: Path,
         val manifest: Path,
@@ -344,11 +349,13 @@ internal object DeadCommand {
             [--test-classes <directory-or-jar>]... \
             [--strict] [--explain <node-id>]
             [--include-private-members]
+            [--generated-classes <directory-or-jar>]...
             [--baseline <file>] [--since <git-ref>]
             [--report-format text|gradle|github-actions|sarif|json]
 
         This command reports graph reachability. It does not say that a declaration is safe to delete.
         --test-classes marks findings that only test code reaches as "(used only by tests)"; they remain reported.
+        --generated-classes marks a supplied class root as generated-only; its declarations remain in the graph.
     """.trimIndent() + "\n"
 
 }

@@ -128,6 +128,36 @@ kartograph {
 
 AGP public Variant API가 dependency consumer rules를 merged file로 노출하지 않으므로 해당 파일은 직접 지정한다. keep-rule include가 task 실행 중 발견되는 현재 구조에서는 stale report를 피하기 위해 dead task output을 up-to-date/cache 결과로 재사용하지 않는다. 그래프 task는 경로 해석을 켰을 때만 선언되지 않은 project source를 읽으므로 그때만 재사용하지 않는다.
 
+### 저장 그래프 질의와 생성 입력 (다음 릴리스)
+
+아래 기능은 현재 소스에서 제공하며 공개 0.7.0 배포본에는 포함되지 않는다.
+반복 조사에는 `snapshot`으로 그래프·보존 근거·baseline 상태·계량 한계를 한 번 저장한다.
+기존 live query와 같은 manifest/resource/namespace/keep/consumer/classpath 및 private 모드 입력을 전달한다.
+
+```bash
+kartograph snapshot --classes path/to/classes --project . \
+  --keep-rules proguard-rules.pro > graph.snapshot.json
+kartograph query UserService --graph-file graph.snapshot.json --depth 2 --limit 100
+```
+
+저장 질의는 현재 소스나 규칙을 다시 읽지 않고 `saved-graph` 한계를 표시한다. 변경 후에는 다시 캡처한다.
+일반 `graph --format json`은 보존 문맥을 담지 않으므로 snapshot 대신 사용할 수 없다.
+
+생성 전용 컴파일 출력은 기존 `--classes`에 포함한 뒤 `--generated-classes`로 표시한다.
+`dead`, `baseline`, `graph`, `query`, `snapshot`이 같은 출처를 사용한다.
+
+```bash
+kartograph graph --classes path/to/normal/classes --classes path/to/generated/classes \
+  --generated-classes path/to/generated/classes --format json
+```
+
+정점·간선은 유지하고 `synthesized`·`generatedInput`으로 구분한다. 생성/수동 코드가 섞인 root는 지정하지 않는다.
+Gradle에서는 `kartograph.generatedClassRoots` 또는 해당 variant task의 `generatedClassRoots`에 생성 전용 root를
+넣는다. 현재 task의 project class 입력에 없는 root는 오류다. 클래스 이름으로 생성 여부를 추측하지 않는다.
+
+extension 설정은 모든 variant에 적용된다. variant마다 출력 경로가 다르면 해당 이름의 task에
+`generatedClassRoots`를 지정한다. extension에 debug 전용 root를 넣으면 release task의 입력과 맞지 않는다.
+
 ### Private members
 
 private member 진단은 `dead --include-private-members`로 선택한다(0.2.0에서 추가, 0.1.x에는 없음). 기본 class 보고에 더해 reachable이면서 합성되지 않은 class의 private method와 field/property만 추가하며, baseline 생성과 `query`에도 같은 옵션을 사용한다. Gradle에서는 `kartograph { includePrivateMembers.set(true) }`로 켠다.

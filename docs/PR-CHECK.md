@@ -42,6 +42,9 @@ CLI 실행은 기본 300초로 제한하고 `--timeout <양의 초>`로 조절�
 전달 옵션은 class/test-class/manifest/resource/namespace/keep/classpath/report-format 및 private/strict만 허용한다.
 기존 CLI와 동일하게 `-`로 시작하는 옵션 값은 거부한다. 해당 상대경로는 `./-name`처럼 전달한다.
 
+생성 전용 class root를 지정한 baseline은 검사에도 같은 `--generated-classes` 입력을 전달한다.
+표시한 root는 반복 `--classes`에도 포함돼야 하며, 생성/수동 코드가 섞인 출력 전체를 표시하지 않는다.
+
 ## GitHub Actions 연결
 
 기존 `pull_request` build job에 아래를 적용한다. JDK/SDK 설치와 variant build, 검토한 CLI archive의

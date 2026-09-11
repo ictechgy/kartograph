@@ -7,8 +7,11 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 ## 현재 릴리스의 경계
 
 - Hilt/Dagger의 확인된 생성 marker와 Hilt application sibling은 구분하지만 모든 generator를 인식하지는 않는다.
-  protobuf generated wrapper/Kotlin DSL처럼 확인된 marker가 없는 생성물은 출처를 명시적으로 전달하는 설계가
-  아직 없어 일부가 계속 보고될 수 있다. 공개 표본의 범위와 남은 진단은
+  protobuf generated wrapper/Kotlin DSL처럼 marker가 없는 생성물은 `--generated-classes`로 생성 전용 컴파일 root를
+  명시할 수 있다. 해당 root는 `--classes`에도 포함돼야 한다. Gradle의 같은 입력은 `generatedClassRoots`다.
+  선언은 `synthesized`와 `generatedInput`으로 표시하며 정점·간선은 유지한다. 표시는 보존 root를 추가하지 않는다.
+  생성/수동 코드가 섞인 root는 통째로 지정하지 않는다. 잘못된 출처 지정은 수동 코드의 finding도 숨길 수 있다.
+  출처를 주지 않으면 기존 marker 정책을 따르므로 일부 생성물이 보고될 수 있다. 공개 표본의 범위와 남은 진단은
   [공개 검증 기록](PUBLIC-VALIDATION.md)에 명시한다. 보고는 삭제 승인이 아니다.
   BINARY/RUNTIME 보존 어노테이션의 명시적 값·parameter annotation의 class 참조와 사용되는 중첩 class의 바깥
   container와 인코딩된 어노테이션 기본값의 class 참조는 도달성에 포함한다. bytecode에 남지 않는 SOURCE 보존
@@ -35,6 +38,11 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   임의 계산과 동적 component 등록은 완전하게 해석하지 않는다. 알려진 method 이름·인자 개수와 field 이름의
   reflection 접근은 연결하되, field에서 읽은 값이나 호출 반환값을 일반적으로 추적하지 않는다.
 - JNI, native lookup, framework callback과 serialization/DI codegen은 bytecode만으로 완전하게 증명할 수 없다.
+- Compose multipreview는 프로젝트 또는 전달된 dependency classpath의 어노테이션 선언에서 `@Preview`와 반복
+  컨테이너로 이어지는 경로를 따라간다. 어노테이션 이름만으로 보존하지 않는다. 새 multipreview 경로는 해당
+  method를 보존하며, 같은 owner의 무관한 method를 새 root로 만들지 않는다. dependency header가 없거나
+  SOURCE-retention으로 정보가 사라졌으면 경로를 복원하지 못한다. 직접 `@Preview`와 그 반복 컨테이너는 같은
+  보수적 owner 정책을 사용한다.
 - manifest/resource/keep rule 또는 dependency classpath를 전달하지 않으면 그 입력이 만드는 도달성을 볼 수 없다.
 - manifest `meta-data`의 class-like `android:name`/`android:value`는 보수적으로 보존한다. class 위치에
   unresolved placeholder가 남은 source manifest는 추측하지 않고 실패하므로 가능하면 merged manifest를 쓴다.
@@ -77,6 +85,14 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   최신 class가 오래된 산출물을 가리지 않는다. SourceFile 누락·동명 source·미컴파일 source는
   `index-freshness-unknown`으로 계수한다. 이름 대조와 파일 시각은 내용 지문이나 완전한 freshness 증명이 아니며,
   시각을 보존한 파일 복사·source 삭제·프로젝트 밖의 동명 산출물을 항상 구분하지 못한다.
+  JAR entry 시각은 일반 ZIP의 정밀도를 고려해 2초 구간으로 보수적으로 취급한다. source 시각이 그 구간 안에
+  있으면 stale이 아니라 `index-freshness-unknown`이며, 구간 이후의 변경은 계속 stale로 잡는다.
+  디렉터리 class 파일은 이 허용 구간을 적용하지 않는다.
+- `snapshot`은 생성 시점의 그래프·보존 근거·baseline 상태·측정 한계를 고정한다. `query --graph-file`은
+  원본 class/source/규칙 파일을 읽지 않으며 `saved-graph` 한계를 추가한다. 현재 source와 일치하는지는 확인하지
+  않으므로 변경 후에는 새 snapshot을 만든다. live 입력이나 baseline을 섞어 저장된 의미를 바꿀 수 없다.
+  일반 `graph --format json` 문서에는 보존 문맥이 없으므로 질의 snapshot으로 읽지 않는다. 입력은 UTF-8 JSON,
+  최대 64 MiB이며 지원하지 않는 버전·손상·중복 정점·dangling edge를 오류로 거부한다.
 - package/module architecture는 JVM 이름과 입력 root를 기준으로 하며 Gradle dependency resolution model 자체는 아니다.
 - Java와 Kotlin bytecode를 함께 읽지만 reflection configuration, runtime class loading과 외부 서비스 설정은 별도 입력이다.
 

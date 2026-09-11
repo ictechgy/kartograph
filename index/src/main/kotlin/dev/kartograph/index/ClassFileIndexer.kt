@@ -51,12 +51,34 @@ public class ClassFileIndexer {
         indexWithObservations(classRoots, classpath, emptyList())
 
     /** Java resource 입력의 ServiceLoader 등록도 같은 variant의 사실에 포함한다. */
-    public fun indexWithObservations(classRoots: Iterable<Path>, classpath: Iterable<Path>?, serviceResources: Iterable<Path>): IndexedClasses {
+    public fun indexWithObservations(classRoots: Iterable<Path>, classpath: Iterable<Path>?, serviceResources: Iterable<Path>): IndexedClasses =
+        indexWithObservations(classRoots, classpath, serviceResources, emptyList())
+
+    /** 생성 전용 컴파일 root의 명시적 출처를 사용하며, 중복 class는 선택된 첫 입력의 출처를 유지한다. */
+    public fun indexWithObservations(
+        classRoots: Iterable<Path>,
+        classpath: Iterable<Path>?,
+        serviceResources: Iterable<Path>,
+        generatedClassRoots: Iterable<Path>,
+    ): IndexedClasses {
         val roots = classRoots.toList()
+        val generated = generatedClassRoots.toList()
+        val markedRoots = if (generated.isEmpty()) emptySet() else try {
+            val selected = roots.associateWith { it.toRealPath() }
+            val marked = generated.mapTo(mutableSetOf()) { it.toRealPath() }
+            if (!selected.values.containsAll(marked)) throw ClassIndexingException("generated class roots must also be supplied as class roots")
+            selected.filterValues(marked::contains).keys
+        } catch (error: IOException) {
+            throw ClassIndexingException("class roots cannot be resolved; check the compiled inputs", error)
+        }
         val factsByClass = linkedMapOf<String, ClassFacts>()
         roots.forEach { root ->
+            val generatedInput = root in markedRoots
             readRoot(root).forEach { facts ->
-                factsByClass.putIfAbsent(facts.internalName, facts)
+                val selected = if (generatedInput) facts.copy(nodes = facts.nodes.map { node ->
+                    node.copy(synthesized = true, attributes = node.attributes + NodeAttribute.GENERATED_INPUT)
+                }) else facts
+                factsByClass.putIfAbsent(facts.internalName, selected)
             }
         }
         if (factsByClass.isEmpty()) throw ClassIndexingException("no compiled declarations found; check class roots and build the project")
@@ -134,7 +156,8 @@ public class ClassFileIndexer {
                         val observed = readFacts(ClassReader(input))
                         val modified = entry.time.takeIf { it >= 0 }?.let(FileTime::fromMillis)
                             ?: Files.getLastModifiedTime(jar)
-                        val facts = observed.copy(runtime = observed.runtime.copy(modified = modified))
+                        // 일반 ZIP의 DOS timestamp는 2초 단위다. 더 정밀한 extra가 있어도 이 상한을 보수적으로 쓴다.
+                        val facts = observed.copy(runtime = observed.runtime.copy(modified = modified, modifiedPrecisionMillis = 2_000))
                         if (jar.fileName.toString() == "R.jar") facts.asSynthesized() else facts
                     }
                 }

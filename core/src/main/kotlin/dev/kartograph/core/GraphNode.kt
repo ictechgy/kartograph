@@ -26,7 +26,7 @@ public enum class Visibility {
     UNKNOWN,
 }
 
-/** JVM access flag만으로 복원할 수 없는 Kotlin 선언 사실이다. */
+/** JVM access flag만으로 복원할 수 없는 선언 특징과 명시적 입력 출처다. */
 public enum class NodeAttribute {
     DATA_CLASS,
     EXTENSION_FUNCTION,
@@ -34,6 +34,7 @@ public enum class NodeAttribute {
     INLINE_FUNCTION,
     FILE_FACADE,
     PROPERTY_ACCESSOR,
+    GENERATED_INPUT,
 }
 
 /** ProGuard/R8 class specification과 직접 비교하는 JVM access flag다. */

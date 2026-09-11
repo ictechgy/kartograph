@@ -35,6 +35,7 @@ internal data class ClassRuntimeObservation(
     val reflectiveMethods: Int = 0,
     val reflectiveFields: Int = 0,
     val reflectiveMemberMisses: Int = 0,
+    val modifiedPrecisionMillis: Long = 0,
 )
 
 /** 현재 산출물에서 정적 그래프가 놓칠 runtime 채널을 실제 개수로 보고한다. */
@@ -60,8 +61,16 @@ public object RuntimeLimitationScanner {
                 continue
             }
             // 같은 source에서 나온 nested/facade 중 하나라도 오래됐으면 새 class가 이를 가리지 않는다.
-            val oldestOutput = outputs.minOf { it.modified }
-            if (Files.getLastModifiedTime(source) > oldestOutput) staleCount++
+            val sourceTime = Files.getLastModifiedTime(source)
+            if (outputs.any { output ->
+                    if (output.modifiedPrecisionMillis == 0L) sourceTime > output.modified
+                    else sourceTime.toInstant() >= output.modified.toInstant().plusMillis(output.modifiedPrecisionMillis)
+                }) {
+                staleCount++
+            } else if (outputs.any { sourceTime > it.modified }) {
+                // ZIP 시각의 손실 구간 안에서는 새 컴파일과 이후 source 변경을 구분할 수 없다.
+                unknownCount++
+            }
         }
         val dynamicRegistrations = observations.sumOf { it.dynamicRegistrations }
         val nativeMethods = observations.sumOf { it.nativeMethods }
@@ -97,7 +106,7 @@ public object RuntimeLimitationScanner {
                 "index-staleness: $staleCount of ${sources.size} source file(s) changed after a matching class file",
             )
             if (unknownCount > 0) add(
-                "index-freshness-unknown: $unknownCount of ${sources.size} source file(s) could not be matched unambiguously to compiled source metadata",
+                "index-freshness-unknown: $unknownCount of ${sources.size} source file(s) have uncertain compiled-source matching or timestamp precision",
             )
             if (nativeMethods > 0) add("jni-methods: $nativeMethods native method(s) may be called outside the JVM graph")
             if (reflectionCalls > 0) add("reflection-strings: $reflectionCalls Class.forName call(s) have unresolved names")

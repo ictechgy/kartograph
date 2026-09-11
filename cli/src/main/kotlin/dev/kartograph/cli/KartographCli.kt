@@ -32,6 +32,7 @@ internal object KartographCli {
         "dead" -> DeadCommand.run(arguments.drop(1), output, error)
         "baseline" -> DeadCommand.runBaseline(arguments.drop(1), output, error)
         "query" -> AgentCommand.query(arguments.drop(1), output, error)
+        "snapshot" -> AgentCommand.snapshot(arguments.drop(1), output, error)
         "bridges" -> AgentCommand.bridges(arguments.drop(1), output, error)
         "skill" -> AgentCommand.skill(arguments.drop(1), output, error)
         "cycles" -> ArchitectureCommand.cycles(arguments.drop(1), output, error)
@@ -69,7 +70,7 @@ internal object KartographCli {
         }
         return try {
             output.print(renderGraph(ClassFileIndexer().indexWithObservations(options.classRoots,
-                options.classpath.takeIf { it.isNotEmpty() }, options.serviceResources).graph, options))
+                options.classpath.takeIf { it.isNotEmpty() }, options.serviceResources, options.generatedClassRoots).graph, options))
             ExitStatus.SUCCESS.code
         } catch (indexingError: ClassIndexingException) {
             toolFailure(error, indexingError.message ?: "class indexing failed")
@@ -90,6 +91,7 @@ internal object KartographCli {
         val classRoots = mutableListOf<Path>()
         val classpath = mutableListOf<Path>()
         val serviceResources = mutableListOf<Path>()
+        val generatedClassRoots = mutableListOf<Path>()
         var format = "dot"
         var includePaths = false
         var projectRoot: Path? = null
@@ -98,6 +100,10 @@ internal object KartographCli {
             when (val argument = arguments[index]) {
                 "--classes" -> {
                     classRoots.add(Path.of(valueAfter(arguments, index, argument, error) ?: return null))
+                    index += 2
+                }
+                "--generated-classes" -> {
+                    generatedClassRoots.add(Path.of(valueAfter(arguments, index, argument, error) ?: return null))
                     index += 2
                 }
                 "--classpath", "--service-resources" -> {
@@ -147,7 +153,7 @@ internal object KartographCli {
             usageError(error, "missing required --classes path")
             return null
         }
-        return GraphOptions(classRoots, resolved, projectRoot, classpath, serviceResources)
+        return GraphOptions(classRoots, resolved, projectRoot, classpath, serviceResources, generatedClassRoots)
     }
 
     private fun valueAfter(
@@ -189,6 +195,7 @@ internal object KartographCli {
         val projectRoot: Path?,
         val classpath: List<Path>,
         val serviceResources: List<Path>,
+        val generatedClassRoots: List<Path>,
     )
 
     private val HELP = """
@@ -200,6 +207,8 @@ internal object KartographCli {
           kartograph dead --classes <directory> --project <directory> [options]
           kartograph baseline --write <file> --classes <directory> --project <directory> [options]
           kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
+          kartograph snapshot --classes <directory-or-jar> --project <directory> [options]
+          kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>]
           kartograph bridges --project <directory> [--format json]
           kartograph skill
           kartograph cycles --classes <directory-or-jar> [--classes <directory-or-jar>]... [--strict]
@@ -227,5 +236,8 @@ internal object KartographCli {
         when exactly one source file matches. Every location states its origin in pathKind, and the counts that
         stayed unresolved are reported as unresolved-source-paths and missing-source-paths limitations.
         Absolute local paths are never emitted.
+
+        --generated-classes <path> marks an existing --classes root as generated-only (repeatable).
+        Nodes remain in the graph with synthesized=true and the generatedInput attribute.
     """.trimIndent() + "\n"
 }
