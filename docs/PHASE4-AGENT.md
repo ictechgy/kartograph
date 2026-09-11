@@ -4,7 +4,7 @@
 
 `kartograph query <symbol>`은 자매 도구 cartograph의 `SymbolQueryDocument`와 같은 필드 이름과 optional
 필드 생략 규칙을 사용한다. `members`·`declaredIn`은 containment이고 `usedBy`·`dependsOn`의 usage 관계와
-섞지 않는다. `--depth`와 `--limit`으로 응답을 제한하며 잘렸으면 `truncated`가 true다.
+섞지 않는다. `--depth`와 `--limit`으로 응답을 제한하며 잘렸으면 해당 `truncated.usedBy`·`dependsOn`·`members`가 true다.
 
 query에는 `dead`와 같은 `--manifest`, `--resources`, `--namespace`, `--keep-rules`, `--classpath`,
 `--baseline` 입력을 줄 수 있다. `notFound`와 `ambiguous`도 JSON과 계량된 limitations를 stdout에 쓰고 exit
@@ -12,6 +12,19 @@ query에는 `dead`와 같은 `--manifest`, `--resources`, `--namespace`, `--keep
 
 계량 limitations는 현재 class root와 project source에서 문자열 reflection, JNI, 동적 Android 등록,
 build 이후 수정된 source를 센다. 관측된 항목이 없으면 배열은 비어 있다.
+
+## 저장 질의
+
+`snapshot`은 live query와 같은 입력으로 `kartograph-query-snapshot` version 1 JSON을 stdout에 쓴다.
+전체 그래프 사실과 보존 근거, baseline 억제 정점, private 모드, 계량 한계를 함께 담는다.
+`query <symbol> --graph-file <snapshot.json>`은 이 파일만 읽고 동일한 `SymbolQueryDocument` 계약을 반환한다.
+원본 class/source/규칙이 없어도 질의할 수 있으며, `--depth`·`--limit` 외 live 입력은 함께 받지 않는다.
+`saved-graph` 한계는 현재 파일이나 신선도를 재검사하지 않았다는 의미이며 `notFound`에도 포함한다.
+
+일반 `graph --format json` 문서는 보존 문맥이 없으므로 입력으로 거부한다. snapshot reader는 UTF-8·버전·타입·
+중복 정점·dangling edge·상대 source 경로를 검사하고, 최대 64 MiB와 JSON 중첩 깊이 제한을 적용한다.
+불완전한 문서를 빈 그래프나 성공으로 바꾸지 않는다. 보존 판정은 저장된 근거에서 공통 도달성 알고리즘으로 계산한다.
+변경 후의 상태를 조사하려면 해당 입력으로 새 snapshot을 만들어야 한다.
 
 ## Bridge facts
 

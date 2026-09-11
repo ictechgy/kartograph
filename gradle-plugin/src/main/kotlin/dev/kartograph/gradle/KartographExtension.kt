@@ -15,6 +15,9 @@ public abstract class KartographExtension {
      */
     public abstract val keepRules: ConfigurableFileCollection
 
+    /** 생성 전용 class directory/JAR를 지정한다. 해당 경로는 variant의 project class 입력에도 포함돼야 한다. */
+    public abstract val generatedClassRoots: ConfigurableFileCollection
+
     /** finding이 있으면 task를 실패시킬지 선택한다. */
     public abstract val strict: Property<Boolean>
 

@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- `snapshot`과 `query --graph-file`: 그래프·보존 근거·baseline 상태·계량 한계를 저장하고 원본 입력 없이 질의한다.
+- `--generated-classes`와 Gradle `generatedClassRoots`: 생성 전용 컴파일 입력의 출처로 선언을 구분하며 정점·간선은 유지한다.
+
+### Fixed
+
+- 프로젝트와 dependency에 정의된 반복·중첩 Compose multipreview 어노테이션을 보존 근거로 연결한다.
+- JAR의 2초 시각 정밀도 안에서 발생한 차이는 stale로 단정하지 않고 freshness unknown으로 표시한다.
+
 ## [0.7.0] - 2026-09-09
 
 ### Added

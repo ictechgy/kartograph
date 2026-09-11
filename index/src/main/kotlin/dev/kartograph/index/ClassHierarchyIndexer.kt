@@ -14,6 +14,8 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.AnnotationVisitor
+import org.objectweb.asm.Type
 import org.objectweb.asm.Opcodes
 
 /** directory와 JAR dependency에서 method body 없이 class 상속 header만 읽는다. */
@@ -25,6 +27,7 @@ public class ClassHierarchyIndexer {
     ): ClassHierarchy {
         val supertypesByClass = linkedMapOf<String, Set<String>>()
         val methodsByClass = linkedMapOf<String, List<HierarchyMethod>>()
+        val annotationTypes = linkedMapOf<String, Set<String>>()
         classpathEntries.forEach { entry ->
             val facts = when {
                 entry.isDirectory() -> readDirectory(entry)
@@ -32,11 +35,14 @@ public class ClassHierarchyIndexer {
                 else -> throw ClassHierarchyIndexingException("classpath entry must be a class directory or JAR")
             }
             facts.forEach { fact ->
-                if (supertypesByClass.putIfAbsent(fact.internalName, fact.supertypes) == null) methodsByClass[fact.internalName] = fact.methods
+                if (supertypesByClass.putIfAbsent(fact.internalName, fact.supertypes) == null) {
+                    methodsByClass[fact.internalName] = fact.methods
+                    if (fact.isAnnotation) annotationTypes[fact.internalName] = fact.annotations
+                }
             }
         }
         expandJdkHierarchy(supertypesByClass, methodsByClass, referencedSupertypes)
-        return ClassHierarchy(supertypesByClass, methodsByClass)
+        return ClassHierarchy(supertypesByClass, methodsByClass, annotationTypes)
     }
 
     private fun expandJdkHierarchy(
@@ -147,6 +153,8 @@ private class HierarchyVisitor : ClassVisitor(Opcodes.ASM9) {
     private lateinit var internalName: String
     private var supertypes: Set<String> = emptySet()
     private val methods = mutableListOf<HierarchyMethod>()
+    private var isAnnotation = false
+    private val annotations = mutableSetOf<String>()
 
     override fun visit(
         version: Int,
@@ -157,6 +165,7 @@ private class HierarchyVisitor : ClassVisitor(Opcodes.ASM9) {
         interfaces: Array<out String>,
     ) {
         internalName = name
+        isAnnotation = access and Opcodes.ACC_ANNOTATION != 0
         supertypes = buildSet {
             if (superName != null && superName != "java/lang/Object") add(superName)
             addAll(interfaces)
@@ -174,10 +183,21 @@ private class HierarchyVisitor : ClassVisitor(Opcodes.ASM9) {
         return null
     }
 
-    fun fact(): HierarchyFact = HierarchyFact(internalName, supertypes, methods)
+    override fun visitAnnotation(descriptor: String, visible: Boolean): AnnotationVisitor? {
+        if (isAnnotation) annotations += Type.getType(descriptor).internalName
+        return null
+    }
+
+    fun fact(): HierarchyFact = HierarchyFact(internalName, supertypes, methods, isAnnotation, annotations)
 }
 
-private data class HierarchyFact(val internalName: String, val supertypes: Set<String>, val methods: List<HierarchyMethod>)
+private data class HierarchyFact(
+    val internalName: String,
+    val supertypes: Set<String>,
+    val methods: List<HierarchyMethod>,
+    val isAnnotation: Boolean,
+    val annotations: Set<String>,
+)
 
 /** dependency classpath를 완전하게 읽지 못해 부분 hierarchy를 버릴 때 사용한다. */
 public class ClassHierarchyIndexingException(message: String, cause: Throwable? = null) :

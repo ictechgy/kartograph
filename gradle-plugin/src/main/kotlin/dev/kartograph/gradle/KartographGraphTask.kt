@@ -37,6 +37,19 @@ public abstract class KartographGraphTask : DefaultTask() {
     @get:Classpath
     public abstract val projectDirectories: ListProperty<Directory>
 
+    /** 선택된 project class root 중 생성 전용 산출물의 출처다. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val generatedClassRoots: ConfigurableFileCollection
+
+    /** 같은 바이트의 root 사이에서 생성 표시를 옮겨도 task 입력의 의미가 달라짐을 기록한다. */
+    @get:Input
+    public val generatedClassRootPositions: List<Int>
+        get() {
+            val generated = generatedClassRoots.files.mapTo(mutableSetOf()) { it.canonicalFile }
+            return inputRoots().mapIndexedNotNull { index, root -> index.takeIf { root.canonicalFile in generated } }
+        }
+
     /** 보고 범위를 명확히 하도록 경로 해석 여부도 task 입력으로 기록한다. */
     @get:Input
     public abstract val includeSourcePaths: Property<Boolean>
@@ -61,12 +74,10 @@ public abstract class KartographGraphTask : DefaultTask() {
 
     @TaskAction
     public fun renderGraph() {
-        val classRoots = buildList {
-            addAll(projectDirectories.get().map { directory -> directory.asFile.toPath() })
-            addAll(projectJars.get().map { jar -> jar.asFile.toPath() })
-        }
+        val classRoots = inputRoots().map(java.io.File::toPath)
         val graph = ClassFileIndexer().indexWithObservations(classRoots, null,
-            serviceResourceDirectories.files.filter(java.io.File::isDirectory).sorted().map(java.io.File::toPath)).graph
+            serviceResourceDirectories.files.filter(java.io.File::isDirectory).sorted().map(java.io.File::toPath),
+            generatedClassRoots.files.sorted().map(java.io.File::toPath)).graph
         // 경로 해석은 opt-in이다. CLI와 같은 기본값을 유지해 요청하지 않은 경로 노출을 만들지 않는다.
         val paths = if (includeSourcePaths.get()) {
             SourcePathIndex.resolve(graph, projectDirectory.get().asFile.toPath())
@@ -84,4 +95,6 @@ public abstract class KartographGraphTask : DefaultTask() {
             "kartograph ${variantName.get()}: ${graph.nodeCount} nodes and ${graph.edgeCount} edges",
         )
     }
+
+    private fun inputRoots(): List<java.io.File> = projectDirectories.get().map { it.asFile } + projectJars.get().map { it.asFile }
 }

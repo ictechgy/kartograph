@@ -4,6 +4,7 @@ import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
+import kotlin.io.path.writeBytes
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -12,6 +13,31 @@ import org.gradle.testfixtures.ProjectBuilder
 import org.junit.jupiter.api.io.TempDir
 
 class KartographGraphTaskTest {
+    @Test
+    fun `generated marker identity distinguishes byte identical roots in task inputs`(@TempDir projectRoot: Path) {
+        val project = ProjectBuilder.builder().withProjectDir(projectRoot.toFile()).build()
+        val first = projectRoot.resolve("first").createDirectories()
+        val second = projectRoot.resolve("second").createDirectories()
+        for (path in listOf(first, second)) path.resolve("Same.class").writeBytes(byteArrayOf(1, 2, 3))
+        val task = project.tasks.register("graph", KartographGraphTask::class.java).get()
+        task.projectDirectories.set(listOf(first, second).map { path -> project.layout.dir(project.provider { path.toFile() }).get() })
+        task.projectJars.set(emptyList())
+        task.variantName.set("debug")
+        task.generatedClassRoots.setFrom(first)
+        assertEquals(listOf(0), task.inputs.properties["generatedClassRootPositions"])
+        task.generatedClassRoots.setFrom(second)
+        assertEquals(listOf(1), task.inputs.properties["generatedClassRootPositions"])
+    }
+
+    @Test
+    fun `passes explicit generated input provenance into the graph`(@TempDir projectRoot: Path) {
+        val task = configuredTask(projectRoot, includeSourcePaths = false)
+        task.generatedClassRoots.from(task.projectDirectories.get().map { it.asFile })
+        task.renderGraph()
+        assertContains(graphDocument(projectRoot), "generatedInput")
+        assertContains(graphDocument(projectRoot), "\"synthesized\": true")
+    }
+
     @Test
     fun `writes a deterministic exchange document without source paths by default`(@TempDir projectRoot: Path) {
         val task = configuredTask(projectRoot, includeSourcePaths = false)

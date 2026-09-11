@@ -39,6 +39,7 @@ public class KartographPlugin : Plugin<Project> {
             deadTask.namespace.set(variant.namespace)
             deadTask.strict.set(extension.strict)
             deadTask.includePrivateMembers.set(extension.includePrivateMembers)
+            deadTask.generatedClassRoots.from(extension.generatedClassRoots)
             deadTask.platformClasspath.from(
                 project.extensions.getByType(AndroidComponentsExtension::class.java).sdkComponents.bootClasspath,
             )
@@ -77,6 +78,7 @@ public class KartographPlugin : Plugin<Project> {
             graphTask.description = "Writes the ${variant.name} dependency graph as a code-graph JSON document."
             graphTask.variantName.set(variant.name)
             graphTask.includeSourcePaths.set(extension.includeSourcePaths)
+            graphTask.generatedClassRoots.from(extension.generatedClassRoots)
             variant.sources.resources?.all?.let { graphTask.serviceResourceDirectories.from(it) }
             graphTask.projectDirectory.set(project.layout.projectDirectory)
             graphTask.graphFile.set(

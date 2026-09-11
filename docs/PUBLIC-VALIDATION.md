@@ -1,5 +1,30 @@
 # v0.2 public validation
 
+## 2026-09-11 현재 소스의 후속 검증
+
+아래 과거 기록과 같은 nowinandroid revision·`demoDebug`·22개 class root에서 보완 내용을 검증했다.
+`core/datastore-proto`의 Java/Kotlin 컴파일 root 두 개를 생성 전용 입력으로 명시하고,
+dependency 어노테이션 header를 통해 multipreview 경로를 연결했다. 공개 0.7.0의 기본 진단 30건에서
+protobuf 생성 선언 18건과 `@DevicePreviews` 함수 8건이 구분되어 현재 기본 진단은 4건이다.
+이것은 진단 분류 개선이며 삭제 가능 건수나 전체 정확도 수치가 아니다. private 모드에서는 2건을 보고했다.
+
+`Scripts/verify-public-sample.py`는 생성 정점과 preview 선언이 실제 그래프에 존재하는지, 보고에서 제외되는지,
+main에서 도달 불가한 `ListToMapMigration` 대조군이 유지되는지를 확인한다. 전체 진단 수를 정답으로 고정하지 않는다.
+현재 소스에 추가된 `snapshot`의 원본/저장 질의 결과도 대표 심볼 3개에서 각 3회 대조한다.
+
+| 대표 심볼 | 원본 질의 중앙값 | 저장 질의 중앙값 |
+|---|---:|---:|
+| MainActivity | 1.078초 | 0.462초 |
+| ListToMapMigration | 1.071초 | 0.462초 |
+| ForYouScreenLoading | 1.078초 | 0.462초 |
+
+macOS arm64/JDK 17의 로컬 측정이다. 프로세스 시작·출력을 포함하고 앱 빌드는 제외한다.
+snapshot 캡처는 별도 1.475초, 파일은 26,581,826 bytes였다. 저장 질의는 그 비용 이후의 반복 조회이며
+현재 입력의 신선도를 재검사하지 않는다. 원본/저장 질의의 `result`는 일치했고 snapshot 한계 표시는 유지됐다.
+입력은 전체 resource overlay나 모든 variant를 합친 것이 아니며, Android 앱 실행으로 전체 사용 여부를 증명하지 않았다.
+
+## 과거 검증 기록
+
 2026-09-05에 공개 `android/nowinandroid`의 commit
 `12f80da6518e161ed16a06a68e71fb8a873576d6`를 다시 빌드했다. JDK 17, AGP 9.3.2,
 Kotlin 2.3.0, protobuf 4.29.2, `:app:assembleDemoDebug` 기준이며 빌드는 1분 48초에 성공했다.

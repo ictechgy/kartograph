@@ -58,6 +58,11 @@ public abstract class KartographDeadTask : DefaultTask() {
     @get:Classpath
     public abstract val projectDirectories: ListProperty<Directory>
 
+    /** 생성 전용 입력을 이름 추측 없이 구분한다. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val generatedClassRoots: ConfigurableFileCollection
+
     @get:Classpath
     public abstract val classpathJars: ListProperty<RegularFile>
 
@@ -126,7 +131,8 @@ public abstract class KartographDeadTask : DefaultTask() {
             addAll(platformClasspath.files.sorted().map { it.toPath() })
         }
         val indexed = ClassFileIndexer().indexWithObservations(classRoots, classpath,
-            serviceResourceDirectories.files.filter(java.io.File::isDirectory).sorted().map(java.io.File::toPath))
+            serviceResourceDirectories.files.filter(java.io.File::isDirectory).sorted().map(java.io.File::toPath),
+            generatedClassRoots.files.sorted().map(java.io.File::toPath))
         val graph = indexed.graph
         val hierarchy = indexed.hierarchy
         val evidence = retentionEvidence(projectRoot, graph, hierarchy)
