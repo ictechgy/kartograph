@@ -32,7 +32,7 @@ class RuntimeLimitationScannerTest {
         }
         Files.setLastModifiedTime(source, FileTime.fromMillis(timestamp + 900))
         assertEquals(
-            listOf("index-freshness-unknown: 1 of 1 source file(s) could not be matched unambiguously to compiled source metadata"),
+            listOf("index-freshness-unknown: 1 of 1 source file(s) have uncertain compiled-source matching or timestamp precision"),
             RuntimeLimitationScanner.scan(listOf(jar), root),
         )
         Files.setLastModifiedTime(source, FileTime.fromMillis(timestamp + 2_000))
@@ -96,7 +96,7 @@ class RuntimeLimitationScannerTest {
         root.resolve("A.kt").writeText("class A")
         root.resolve("other").createDirectories().resolve("A.kt").writeText("class A")
         root.resolve("New.kt").writeText("class New")
-        assertEquals(listOf("index-freshness-unknown: 3 of 3 source file(s) could not be matched unambiguously to compiled source metadata"),
+        assertEquals(listOf("index-freshness-unknown: 3 of 3 source file(s) have uncertain compiled-source matching or timestamp precision"),
             RuntimeLimitationScanner.scan(listOf(classes), root))
     }
 

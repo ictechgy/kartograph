@@ -27,6 +27,19 @@ import kotlin.test.assertFalse
 
 class QuerySnapshotCodecTest {
     @Test
+    fun `refuses unrepresentable source locations instead of silently dropping them`() {
+        val node = GraphNode(NodeId("class:A"), "A", NodeKind.CLASS)
+        for (path in listOf("Bad\nName.kt", "/private/source/", "META-INF/services/")) {
+            val location = SourceLocation(path)
+            val nodeSnapshot = QuerySnapshot(CodeGraph(listOf(node.copy(location = location)), emptyList()), emptyList(), emptyList())
+            assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.render(nodeSnapshot) }
+            val serviceSnapshot = QuerySnapshot(CodeGraph(listOf(node), emptyList(),
+                serviceProviders = listOf(ServiceProviderRegistration("service.A", node.id, location))), emptyList(), emptyList())
+            assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.render(serviceSnapshot) }
+        }
+    }
+
+    @Test
     fun `round trips all graph facts retention and baseline state with deterministic output`() {
         val original = fixture()
         val encoded = QuerySnapshotCodec.render(original)

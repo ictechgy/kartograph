@@ -41,7 +41,8 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 - Compose multipreview는 프로젝트 또는 전달된 dependency classpath의 어노테이션 선언에서 `@Preview`와 반복
   컨테이너로 이어지는 경로를 따라간다. 어노테이션 이름만으로 보존하지 않는다. 새 multipreview 경로는 해당
   method를 보존하며, 같은 owner의 무관한 method를 새 root로 만들지 않는다. dependency header가 없거나
-  SOURCE-retention으로 정보가 사라졌으면 경로를 복원하지 못한다. 기존 직접 `@Preview`의 보수적 owner 정책은 유지한다.
+  SOURCE-retention으로 정보가 사라졌으면 경로를 복원하지 못한다. 직접 `@Preview`와 그 반복 컨테이너는 같은
+  보수적 owner 정책을 사용한다.
 - manifest/resource/keep rule 또는 dependency classpath를 전달하지 않으면 그 입력이 만드는 도달성을 볼 수 없다.
 - manifest `meta-data`의 class-like `android:name`/`android:value`는 보수적으로 보존한다. class 위치에
   unresolved placeholder가 남은 source manifest는 추측하지 않고 실패하므로 가능하면 merged manifest를 쓴다.

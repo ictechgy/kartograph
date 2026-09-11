@@ -69,7 +69,7 @@ public class ClassFileIndexer {
             if (!selected.values.containsAll(marked)) throw ClassIndexingException("generated class roots must also be supplied as class roots")
             selected.filterValues(marked::contains).keys
         } catch (error: IOException) {
-            throw ClassIndexingException("generated class roots cannot be resolved; check the compiled inputs", error)
+            throw ClassIndexingException("class roots cannot be resolved; check the compiled inputs", error)
         }
         val factsByClass = linkedMapOf<String, ClassFacts>()
         roots.forEach { root ->

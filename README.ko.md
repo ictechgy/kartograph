@@ -155,6 +155,9 @@ kartograph graph --classes path/to/normal/classes --classes path/to/generated/cl
 Gradle에서는 `kartograph.generatedClassRoots` 또는 해당 variant task의 `generatedClassRoots`에 생성 전용 root를
 넣는다. 현재 task의 project class 입력에 없는 root는 오류다. 클래스 이름으로 생성 여부를 추측하지 않는다.
 
+extension 설정은 모든 variant에 적용된다. variant마다 출력 경로가 다르면 해당 이름의 task에
+`generatedClassRoots`를 지정한다. extension에 debug 전용 root를 넣으면 release task의 입력과 맞지 않는다.
+
 ### Private members
 
 private member 진단은 `dead --include-private-members`로 선택한다(0.2.0에서 추가, 0.1.x에는 없음). 기본 class 보고에 더해 reachable이면서 합성되지 않은 class의 private method와 field/property만 추가하며, baseline 생성과 `query`에도 같은 옵션을 사용한다. Gradle에서는 `kartograph { includePrivateMembers.set(true) }`로 켠다.

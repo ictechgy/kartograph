@@ -16,7 +16,7 @@ public object FrameworkAnnotationRetention {
     public fun find(graph: CodeGraph, hierarchy: ClassHierarchy): List<RetentionEvidence> {
         // 반복 @Preview의 JVM container와 프로젝트의 중첩 multipreview만 확장한다.
         // 다른 framework annotation 전체를 전이 보존으로 넓히지 않는다.
-        val previewNames = mutableSetOf(PREVIEW, PREVIEW + '$' + "Container")
+        val previewNames = DIRECT_PREVIEWS.toMutableSet()
         val types = hierarchy.annotationTypes.filterKeys { !graph.contains(NodeId("class:$it")) } +
             graph.nodes.values.filter { it.kind == NodeKind.ANNOTATION_CLASS }
                 .associate { it.id.value.removePrefix("class:") to it.annotations }
@@ -28,14 +28,15 @@ public object FrameworkAnnotationRetention {
                 if (previewNames.add(annotation)) pending.addLast(annotation)
             }
         }
-        // 새 multipreview 경로는 method만 root로 만든다. 기존 직접 @Preview의 owner 정책은 유지한다.
+        // 사용자 정의 multipreview는 method만 root로 만든다. 직접 Preview는 개수와 무관하게 owner 정책을 유지한다.
         // owner를 새 runtime root로 만들면 무관한 sibling method까지 확장된다.
         val previews = annotationRetentionEvidence(graph,
-            (previewNames - PREVIEW).associateWith { RetentionReason.RUNTIME_ENTRY_POINT }, includeOwners = false)
+            (previewNames - DIRECT_PREVIEWS).associateWith { RetentionReason.RUNTIME_ENTRY_POINT }, includeOwners = false)
         return (annotationRetentionEvidence(graph, REASONS) + previews).distinct().sortedWith(RETENTION_ORDER)
     }
 
     private const val PREVIEW = "androidx/compose/ui/tooling/preview/Preview"
+    private val DIRECT_PREVIEWS = setOf(PREVIEW, PREVIEW + '$' + "Container")
 
     private val REASONS = buildMap {
         listOf(
@@ -77,5 +78,6 @@ public object FrameworkAnnotationRetention {
             "retrofit2/http/POST",
             "retrofit2/http/PUT",
         ).forEach { annotation -> put(annotation, RetentionReason.RUNTIME_ENTRY_POINT) }
+        DIRECT_PREVIEWS.forEach { put(it, RetentionReason.RUNTIME_ENTRY_POINT) }
     }
 }

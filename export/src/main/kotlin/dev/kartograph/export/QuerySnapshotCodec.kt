@@ -133,7 +133,8 @@ public object QuerySnapshotCodec {
     private fun locationValue(location: SourceLocation?): Map<String, Any?>? = location?.let {
         val normalized = it.path.replace('\\', '/')
         val path = if (portable(normalized)) normalized else normalized.substringAfterLast('/').takeIf(::portable)
-        path?.let { safe -> sortedMapOf("path" to safe, "line" to it.line, "column" to it.column) }
+        require(path != null) { "query snapshot source location cannot be represented as a portable file path" }
+        sortedMapOf("path" to path, "line" to it.line, "column" to it.column)
     }
 
     private fun location(value: Any?): SourceLocation? = value?.let {
@@ -143,7 +144,7 @@ public object QuerySnapshotCodec {
         SourceLocation(path, fields["line"]?.let(::integer), fields["column"]?.let(::integer))
     }
 
-    private fun portable(path: String): Boolean = path.isNotBlank() && !path.startsWith('/') && '\\' !in path &&
+    private fun portable(path: String): Boolean = path.isNotBlank() && !path.startsWith('/') && !path.endsWith('/') && '\\' !in path &&
         !WINDOWS_DRIVE.containsMatchIn(path) && path.split('/').none { it == ".." } && path.none { it.code < 0x20 }
 
     private fun objectValue(value: Any?): Map<*, *> = value as? Map<*, *> ?: invalid()

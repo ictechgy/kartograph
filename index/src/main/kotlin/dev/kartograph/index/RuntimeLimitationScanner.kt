@@ -106,7 +106,7 @@ public object RuntimeLimitationScanner {
                 "index-staleness: $staleCount of ${sources.size} source file(s) changed after a matching class file",
             )
             if (unknownCount > 0) add(
-                "index-freshness-unknown: $unknownCount of ${sources.size} source file(s) could not be matched unambiguously to compiled source metadata",
+                "index-freshness-unknown: $unknownCount of ${sources.size} source file(s) have uncertain compiled-source matching or timestamp precision",
             )
             if (nativeMethods > 0) add("jni-methods: $nativeMethods native method(s) may be called outside the JVM graph")
             if (reflectionCalls > 0) add("reflection-strings: $reflectionCalls Class.forName call(s) have unresolved names")

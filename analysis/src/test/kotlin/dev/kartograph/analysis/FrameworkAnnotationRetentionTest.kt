@@ -13,6 +13,21 @@ import kotlin.test.assertEquals
 
 class FrameworkAnnotationRetentionTest {
     @Test
+    fun `direct single and repeated preview annotations preserve the same owner policy`() {
+        val preview = "androidx/compose/ui/tooling/preview/Preview"
+        val owner = node("class:app/ScreenKt", NodeKind.CLASS)
+        val sibling = node("method:app/ScreenKt#other()V", NodeKind.FUNCTION)
+        for (annotation in listOf(preview, preview + '$' + "Container")) {
+            val method = node("method:app/ScreenKt#preview()V", NodeKind.FUNCTION, setOf(annotation))
+            val graph = CodeGraph(listOf(owner, method, sibling), listOf(
+                GraphEdge(owner.id, method.id, EdgeKind.MEMBER), GraphEdge(owner.id, sibling.id, EdgeKind.MEMBER),
+                GraphEdge(method.id, owner.id, EdgeKind.REFERENCE)))
+            val evidence = DefaultRetention.find(graph, emptyList(), emptyList())
+            assertEquals(true, sibling.id in ReachabilityAnalyzer.analyze(graph, evidence).reachableNodeIds)
+        }
+    }
+
+    @Test
     fun `project declaration shadows dependency annotation metadata`() {
         val target = node("method:app/Screen#preview()V", NodeKind.FUNCTION, setOf("lib/Devices"))
         val hierarchy = dev.kartograph.core.ClassHierarchy(emptyMap(), emptyMap(),

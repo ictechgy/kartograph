@@ -155,6 +155,9 @@ generated and handwritten code. In Gradle, configure `kartograph.generatedClassR
 `generatedClassRoots`; each marked root must also be a project class input of that task. Class names are not used
 to infer this origin.
 
+The extension applies to every variant. For variant-specific outputs, configure `generatedClassRoots` on the
+named variant tasks instead; a debug-only root at extension level cannot match the release task's inputs.
+
 ### Private members
 
 Private-member diagnostics are opt-in via `dead --include-private-members` (added in 0.2.0, not in 0.1.x). On top of the default class report it adds private methods and fields/properties of reachable, non-synthesized classes; use the same option for baselines and `query`. In Gradle: `kartograph { includePrivateMembers.set(true) }`.

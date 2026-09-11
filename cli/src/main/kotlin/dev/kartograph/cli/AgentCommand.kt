@@ -328,6 +328,9 @@ internal object AgentCommand {
           --include-private-members include private members in the graph
           --generated-classes <path> mark a supplied class root as generated, repeatable
           --graph-file <file>       query a saved snapshot without reading live inputs
+
+        --classes and --generated-classes resolve from the working directory. Other live-input paths resolve
+        from --project. Saved queries accept no live-input overrides.
     """.trimIndent() + "\n"
 
     private val SNAPSHOT_HELP = """
