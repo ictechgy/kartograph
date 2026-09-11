@@ -80,7 +80,7 @@ public object QuerySnapshotCodec {
                 "service" to item.service, "provider" to item.provider.value, "location" to locationValue(item.location),
             ) },
         ).let { graph -> if (encoding == null) graph else graph + ("stringTable" to encoding.table) },
-        )) + "\n"
+        ).filterValues { it != null }) + "\n"
     }
 
     /** 불완전한 그래프를 정상 결과로 처리하지 않도록 타입·중복·참조 대상을 조립 전에 검증한다. */

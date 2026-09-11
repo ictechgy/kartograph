@@ -4,6 +4,13 @@ import dev.kartograph.core.*
 import kotlin.test.*
 
 class CompactSnapshotTest {
+    @Test fun `default v1 omits optional context labels for old readers`() {
+        val plain = QuerySnapshotCodec.render(QuerySnapshot(CodeGraph(emptyList(), emptyList()), emptyList(), emptyList()))
+        assertContains(plain, "\"version\": 1")
+        assertFalse(plain.contains("\"revision\":"))
+        assertFalse(plain.contains("\"scope\":"))
+    }
+
     @Test fun `compact snapshots keep all facts and materially reduce repeated edge identities`() {
         val nodes=(0..25).map { GraphNode(NodeId("class:long/package/with/repeated/names/Type$it"),"Type$it",NodeKind.CLASS) }
         val graph=CodeGraph(nodes,nodes.zipWithNext { a,b -> GraphEdge(a.id,b.id,EdgeKind.CALL,3,EdgeOrigin.RUNTIME_MODEL) })

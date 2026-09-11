@@ -71,7 +71,8 @@ def main():
     sys.stdout.write(result.stdout)
     if args.strict and report["status"] in ("partial", "notFound"):
         return 1
-    return result.returncode
+    # 유효한 보고서의 불완전성은 JSON에 남긴다. 기본 CI는 보고용이며 strict만 진단 실패로 만든다.
+    return 0
 
 
 if __name__ == "__main__":

@@ -55,7 +55,7 @@ def main():
             env=env, capture_output=True, text=True, timeout=120)
         if result.returncode:
             raise RuntimeError("replay Git stage failed")
-        return result.stdout.strip()
+        return result.stdout if "-z" in command else result.stdout.strip()
 
     run(["git", "init", repo], "init")
     git("remote", "add", "origin", "https://github.com/" + owner + ".git")
@@ -123,7 +123,8 @@ def main():
         records[phase] = {"revision": sha, "testExit": code, "tests": len(tests), "classRoots": len(roots),
             "captureSeconds": time.perf_counter() - start, "snapshotBytes": (work / (phase + ".json")).stat().st_size}
         print("Replayed:", args.task, phase, flush=True)
-    files = git("diff", "--name-only", "--no-renames", before_sha, "HEAD").splitlines()
+    files = git("diff", "--name-only", "-z", "--no-renames", before_sha, "HEAD").split("\0")
+    files = sorted(set(files) - {""})
     (work / "files.json").write_text(json.dumps(files))
     run([sys.executable, ROOT / "Scripts/score-impact.py", "--binary", binary, "--base-graph", work / "before.json",
         "--graph-file", work / "after.json", "--before-tests", work / "before-tests.json", "--after-tests", work / "after-tests.json",

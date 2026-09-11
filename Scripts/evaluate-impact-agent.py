@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """공개 SSE 코드에서 같은 Claude의 텍스트 도구/impact 도구 사용을 제한된 읽기 전용 프로토콜로 대조한다."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,32 @@ def main():
     files = {str(p.relative_to(repo)): p.read_text() for p in sorted((repo / "okhttp-sse/src/main/kotlin").rglob("*.kt"))}
     if len(files) != 5:
         raise RuntimeError("expected the pinned five-file public SSE module")
+    graph_bytes = snapshot.read_bytes()
+    captured = json.loads(graph_bytes)
+    graph = captured["graph"]
+    node_ids = ([graph["stringTable"][row[0]] for row in graph["nodes"]] if captured["version"] == 2 else
+                [row["usr"] for row in graph["nodes"]])
+    owners = {value.split(":", 1)[1].split("#", 1)[0] for value in node_ids}
+    production_owners = set()
+    roots = []
+    for module in ["okhttp", "okhttp-sse"]:
+        for root in sorted((repo / module).glob("build/classes/*/main")):
+            digest = hashlib.sha256()
+            count = 0
+            for file in sorted(root.rglob("*.class")):
+                relative = file.relative_to(root).as_posix()
+                digest.update(relative.encode() + b"\0" + hashlib.sha256(file.read_bytes()).digest())
+                if not relative.endswith(("module-info.class", "package-info.class")):
+                    production_owners.add(relative[:-6])
+                count += 1
+            if count:
+                roots.append({"path": root.relative_to(repo).as_posix(), "classFiles": count, "sha256": digest.hexdigest()})
+    if not roots or owners != production_owners or any("EventSourcesHttpTest" in value for value in node_ids):
+        raise RuntimeError("AI graph does not match the production-only class owner set")
+    inputs = {"snapshotSha256": hashlib.sha256(graph_bytes).hexdigest(), "snapshotScope": captured.get("scope"),
+        "classRoots": roots, "sourceSha256": {name: hashlib.sha256(text.encode()).hexdigest() for name, text in files.items()},
+        "hiddenTestDeclarationsExcluded": True,
+        "scope": "Production class owners are checked against the graph. This independent preflight exercise uses fixed public source, not a benchmark repair prompt."}
     env = dict(os.environ)
     for key in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"):
         env.pop(key, None)
@@ -114,9 +141,10 @@ def main():
             row = {"task": task, "arm": arm, "answer": answer, "entryPointsFound": int(direct) + int(factory),
                 "expectedEntryPoints": 2, "uncertaintyRespected": bool(answer and answer.get("needs_review") is True),
                 "unexpectedEntries": [value for value in normalized if not any(name in value for name in ("EventSources.processResponse", "EventSources.createFactory"))],
-                "toolCalls": calls, "seconds": time.monotonic() - start, "modelUsage": usages}
+                "toolCalls": calls, "seconds": time.monotonic() - start,
+                "models": sorted({key for usage in usages for key in (usage.get("modelUsage") or {})})}
             results.append(row)
-            (output / "results.json").write_text(json.dumps({"trials": results,
+            (output / "results.json").write_text(json.dumps({"trials": results, "inputs": inputs,
                 "scope": "Two read-only public SSE preflight questions, not SWE-bench repair scores. Hidden regression tests and gold patches are excluded."}, indent=2) + "\n")
             print("Agent trial:", task, arm, row["entryPointsFound"], "/ 2; calls", len(calls), flush=True)
 

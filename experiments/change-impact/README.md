@@ -68,8 +68,12 @@ static helper의 reflection 이름, reflection method 호출, reflection field�
 
 | 질문 | source arm | skill + impact arm |
 |---|---|---|
-| response | 2/2 진입점, read 2회, 14.6초 | 2/2 진입점, impact 1회, 12.8초 |
-| reader | 2/2 진입점, read 2회, 17.1초 | 2/2 진입점, impact 1회, 13.1초 |
+| response | 2/2 진입점, read 2회, 14.4초 | 2/2 진입점, impact 1회, 13.1초 |
+| reader | 2/2 진입점, read 2회, 13.3초 | 2/2 진입점, impact 1회, 14.6초 |
+
+AI 입력은 별도의 production-only snapshot이다. 결과의 `inputs`는 snapshot SHA256, 실제 production class root의 파일 수/지문,
+소스 파일별 SHA256을 기록한다. graph의 class owner 집합을 두 production root의 class 파일 집합과 대조하고 숨겨진
+`EventSourcesHttpTest` 선언의 부재도 확인했다. 따라서 native 채점용 snapshot과 freshness 수치가 다를 수 있다.
 
 정확도는 동률이고 양쪽 모두 추가 검토 필요성을 유지했다. 이번 두 질문에서 도구 호출 수는 줄었지만 일반적인 AI 성능
 향상을 증명하지 않는다. 공식 SWE-bench 문제 해결 점수나 사용자 생산성 실험도 아니다. 모델 요청에는 provider 내부의
@@ -82,7 +86,9 @@ Haiku 보조 사용량도 기록됐으며 비교 주 모델은 동일했다. 시
 - [score-impact.py](../../Scripts/score-impact.py): 실제 before/after 테스트 JSON과 snapshot을 받아 공통 CLI로 채점한다.
 - [verify-impact-runtime.py](../../Scripts/verify-impact-runtime.py): 실행/미사용 대조군과 모델 origin을 확인한다.
 - [evaluate-impact-agent.py](../../Scripts/evaluate-impact-agent.py): 위 제한된 AI A/B 비교를 수행한다. 외부 Claude 전송을 포함한다.
-- [기계 판독 결과](results-2026-09-11.json): 관측값, 입력 SHA256, 경로, 코호트 제외/미실행 범위.
+- [verify-snapshot-roundtrip.py](../../Scripts/verify-snapshot-roundtrip.py): 실제 snapshot 전체의 바이트 왕복과 canonical v1/v2 크기를 검증한다.
+- [summarize-impact-scores.py](../../Scripts/summarize-impact-scores.py): 원시 score·runtime·AI·roundtrip 문서를 추가 가공 없이 합친다.
+- [기계 판독 결과](results-2026-09-11.json): 이 조합 script가 생성한 관측값, 입력 SHA256, 경로, 코호트 제외/미실행 범위.
 
 ```sh
 python3 Scripts/replay-impact-task.py --task square_okhttp-6887 \

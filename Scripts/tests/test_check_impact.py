@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,9 @@ BINARY = Path(os.environ.get("KARTOGRAPH_BINARY", ROOT / "cli/build/install/kart
 
 class ImpactGateTest(unittest.TestCase):
     def test_deleted_source_keeps_old_callers_and_noop_is_explicit(self):
+        javac = str(Path(os.environ["JAVA_HOME"]) / "bin/javac") if "JAVA_HOME" in os.environ else shutil.which("javac")
+        if not javac:
+            self.skipTest("javac is required for the compiler/Git fixture")
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             def run(*args, expected=0):
@@ -31,7 +35,7 @@ class ImpactGateTest(unittest.TestCase):
             base = run("git", "rev-parse", "HEAD").strip()
             classes = project / "classes"
             classes.mkdir()
-            run(Path(os.environ["JAVA_HOME"]) / "bin/javac", "-g", "-d", classes, *source.glob("*.java"))
+            run(javac, "-g", "-d", classes, *source.glob("*.java"))
             before = project / "base.json"
             before.write_text(run(BINARY, "snapshot", "--classes", classes, "--project", project,
                 "--include-paths", "--revision", base, "--scope", "fixture:main"))
@@ -41,7 +45,7 @@ class ImpactGateTest(unittest.TestCase):
             current = run("git", "rev-parse", "HEAD").strip()
             fresh = project / "fresh"
             fresh.mkdir()
-            run(Path(os.environ["JAVA_HOME"]) / "bin/javac", "-g", "-d", fresh, source / "Caller.java")
+            run(javac, "-g", "-d", fresh, source / "Caller.java")
             after = project / "current.json"
             after.write_text(run(BINARY, "snapshot", "--classes", fresh, "--project", project,
                 "--include-paths", "--revision", current, "--scope", "fixture:main"))
@@ -64,7 +68,7 @@ class ImpactGateTest(unittest.TestCase):
             run("git", "mv", "source space/Caller.java", "renamed folder/Caller.java")
             run("git", "commit", "-qm", "rename")
             renamed = run("git", "rev-parse", "HEAD").strip()
-            run(Path(os.environ["JAVA_HOME"]) / "bin/javac", "-g", "-d", fresh, moved / "Caller.java")
+            run(javac, "-g", "-d", fresh, moved / "Caller.java")
             renamed_graph = project / "renamed.json"
             renamed_graph.write_text(run(BINARY, "snapshot", "--classes", fresh, "--project", project,
                 "--include-paths", "--revision", renamed, "--scope", "fixture:main"))
@@ -84,6 +88,10 @@ class ImpactGateTest(unittest.TestCase):
                 "--project", project, "--base", renamed, "--base-graph", renamed_graph, "--graph-file", config_graph,
                 "--strict", expected=1))
             self.assertEqual("unmappedFile", unresolved["unresolved"][0]["reason"])
+            report_only = json.loads(run(sys.executable, ROOT / "Scripts/check-impact.py", "--binary", BINARY,
+                "--project", project, "--base", renamed, "--base-graph", renamed_graph, "--graph-file", config_graph))
+            self.assertEqual("notFound", report_only["status"])
+            self.assertEqual("unmappedFile", report_only["unresolved"][0]["reason"])
 
     def test_usage_errors_keep_the_usage_exit_code(self):
         result = subprocess.run([sys.executable, str(ROOT / "Scripts/check-impact.py"), "--unknown"],

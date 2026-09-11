@@ -358,7 +358,21 @@
     "externalCalls": 74127,
     "plainBytes": 210092733,
     "compactBytes": 42271956,
-    "roundTripEqual": true
+    "roundTripEqual": true,
+    "snapshotSha256": "b93dcb007fa90c076b72af2b0cc94bbcdd8fbb78eb88a9abb6489e2cdb819c07",
+    "codecJars": {
+      "analysis-0.7.0.jar": "116981527d5d2a8681e87380b9955bf56634d77f5747bcf48a60549638ae2ed5",
+      "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+      "asm-9.9.jar": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4",
+      "asm-analysis-9.9.jar": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b",
+      "asm-tree-9.9.jar": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6",
+      "cli-0.7.0.jar": "af976ffa88281e3d0b235aaa781c295f4020a2f49e886ee332da7f82f5a35656",
+      "core-0.7.0.jar": "54ee52924aacf78072d210dd4d471295162b7bc98b4d3280822bda3c3d8094ec",
+      "export-0.7.0.jar": "1af16b64ae38db60a055c39a4dccd6a214c40b59798d0368b40c6f3a6a7f92e3",
+      "index-0.7.0.jar": "830ee0adaf7990c688955c40c8d624b3261b2f543d09ff14d7badcf4a80563bb",
+      "kotlin-metadata-jvm-2.4.10.jar": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4",
+      "kotlin-stdlib-2.4.10.jar": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+    }
   },
   "runtime": {
     "cases": [
@@ -370,7 +384,7 @@
           "bytecode"
         ],
         "unusedControlConnected": false,
-        "captureSeconds": 0.09077804203843698,
+        "captureSeconds": 0.09381954203126952,
         "unmodeledPathDisclosed": true
       },
       {
@@ -382,7 +396,7 @@
           "dispatchModel"
         ],
         "unusedControlConnected": false,
-        "captureSeconds": 0.09782249998534098,
+        "captureSeconds": 0.101793208043091,
         "unmodeledPathDisclosed": true
       },
       {
@@ -394,7 +408,7 @@
           "dispatchModel"
         ],
         "unusedControlConnected": false,
-        "captureSeconds": 0.09793662501033396,
+        "captureSeconds": 0.10399591701570898,
         "unmodeledPathDisclosed": true
       },
       {
@@ -406,7 +420,7 @@
           "runtimeModel"
         ],
         "unusedControlConnected": false,
-        "captureSeconds": 0.11351875000400469,
+        "captureSeconds": 0.1153305409825407,
         "unmodeledPathDisclosed": true
       },
       {
@@ -418,7 +432,7 @@
           "runtimeModel"
         ],
         "unusedControlConnected": false,
-        "captureSeconds": 0.11358854203717783,
+        "captureSeconds": 0.11069291603052989,
         "unmodeledPathDisclosed": true
       },
       {
@@ -427,7 +441,7 @@
         "mainInImpact": false,
         "origins": [],
         "unusedControlConnected": false,
-        "captureSeconds": 0.11831408401485533,
+        "captureSeconds": 0.11618541600182652,
         "unmodeledPathDisclosed": true
       }
     ],
@@ -445,7 +459,7 @@
             "okhttp3.sse.EventSources.createFactory"
           ],
           "needs_review": true,
-          "notes": "EventSources.processResponse directly delegates to RealEventSource.processResponse (synchronous path). EventSources.createFactory returns a Factory whose newEventSource calls RealEventSource.connect, which enqueues the call; the async Callback.onResponse then invokes processResponse, so listener callbacks (onOpen/onEvent/onClosed/onFailure) on that asynchronous path are also affected. Potential impact only, not a safety proof."
+          "notes": "EventSources.processResponse calls RealEventSource.processResponse directly (synchronous path). EventSources.createFactory returns a Factory that constructs RealEventSource and calls connect(client), which enqueues the call; the async Callback.onResponse then delegates to processResponse, so the factory-created EventSource path is also affected. Potential impact only, not a safety proof."
         },
         "entryPointsFound": 2,
         "expectedEntryPoints": 2,
@@ -455,7 +469,7 @@
           "read",
           "read"
         ],
-        "seconds": 14.573210791975725,
+        "seconds": 14.44243945798371,
         "models": [
           "claude-haiku-4-5-20251001",
           "claude-opus-5[1m]"
@@ -471,7 +485,7 @@
             "okhttp3.sse.EventSources.processResponse"
           ],
           "needs_review": true,
-          "notes": "Impact report (status found, not truncated, 23 observed affected) shows two public EventSources entry points reaching the changed method: EventSources.processResponse calls RealEventSource.processResponse directly (synchronous path); EventSources.createFactory reaches it asynchronously via createFactory$lambda-1 -> RealEventSource.connect -> RealCall.enqueue -> Dispatcher -> AsyncCall.run -> Callback.onResponse -> RealEventSource.onResponse -> processResponse. Limitations to keep in mind: saved-graph freshness not proven, 144/270 files with uncertain index freshness, conservative dispatch candidates (some paths such as WebSocket/Dispatcher entries are over-approximations), external consumers implementing EventSource.Factory or Callback are not modeled. Potential impact only, not a safety proof; no test selection or edits authorized."
+          "notes": "Impact report (status found, no truncation, 23 observed affected) shows two public okhttp3.sse.EventSources entries reaching RealEventSource#processResponse: EventSources.processResponse via a direct bytecode call, and EventSources.createFactory via the private createFactory$lambda-1 -> RealEventSource.connect -> RealCall.enqueue -> Dispatcher/AsyncCall.run -> Callback.onResponse -> RealEventSource.onResponse -> processResponse (asynchronous path; includes a dispatchModel override edge). Potential impact only: limitations include saved-graph freshness, 144/270 files with uncertain index freshness, conservative dispatch candidates and reflection gaps, so external consumers and runtime paths need additional validation. No safety or test-selection conclusions drawn."
         },
         "entryPointsFound": 2,
         "expectedEntryPoints": 2,
@@ -480,7 +494,7 @@
         "toolCalls": [
           "impact"
         ],
-        "seconds": 12.823563166020904,
+        "seconds": 13.065245791047346,
         "models": [
           "claude-haiku-4-5-20251001",
           "claude-opus-5[1m]"
@@ -492,11 +506,11 @@
         "answer": {
           "action": "answer",
           "entries": [
-            "okhttp3.sse.EventSources.processResponse(okhttp3.Response,okhttp3.sse.EventSourceListener)",
-            "okhttp3.sse.EventSources.createFactory(okhttp3.OkHttpClient)"
+            "okhttp3.sse.EventSources.processResponse",
+            "okhttp3.sse.EventSources.createFactory"
           ],
           "needs_review": true,
-          "notes": "ServerSentEventReader.processNextEvent() is called in a loop by RealEventSource.processResponse(). EventSources.processResponse invokes it synchronously. EventSources.createFactory returns a factory whose RealEventSource.connect() enqueues the call asynchronously; RealCall.enqueue -> RealEventSource.onResponse -> processResponse -> processNextEvent loop, so listener callbacks (onOpen/onEvent/onClosed/onFailure) on both paths may be affected. Potential impact only, not a safety proof."
+          "notes": "processNextEvent() is invoked in the loop inside RealEventSource.processResponse(). EventSources.processResponse calls it synchronously. EventSources.createFactory returns a Factory whose newEventSource path calls RealEventSource.connect(), which enqueues the call asynchronously; the resulting Callback.onResponse delegates to processResponse and thus to processNextEvent on the OkHttp dispatcher thread. Both entry points affect onEvent/onClosed/onFailure listener behavior. This is potential impact only, not a safety proof; based solely on the two files read in the recorded interaction."
         },
         "entryPointsFound": 2,
         "expectedEntryPoints": 2,
@@ -506,7 +520,7 @@
           "read",
           "read"
         ],
-        "seconds": 17.09721612499561,
+        "seconds": 13.260516708018258,
         "models": [
           "claude-haiku-4-5-20251001",
           "claude-opus-5[1m]"
@@ -522,7 +536,7 @@
             "okhttp3.sse.EventSources.processResponse"
           ],
           "needs_review": true,
-          "notes": "Impact report (status found, not truncated) shows two public EventSources entry points reaching ServerSentEventReader.processNextEvent: processResponse(Response, EventSourceListener) calls RealEventSource.processResponse directly (synchronous path); createFactory(OkHttpClient) reaches it asynchronously via its lambda -> RealEventSource.connect -> RealCall.enqueue -> Dispatcher/AsyncCall.run -> Callback.onResponse -> RealEventSource.onResponse -> processResponse. Other affected declarations (Call.enqueue/execute, Dispatcher, WebSocket paths) are outside EventSources and mostly conservative dispatch-model candidates. Limitations: saved-graph freshness unknown, 144/270 files with uncertain index freshness, conservative virtual dispatch candidates; this is potential impact, not a safety proof, and does not authorize test selection or deletion."
+          "notes": "Impact report (status found, not truncated, observedAffected 24) shows two public EventSources entry points reaching ServerSentEventReader.processNextEvent: processResponse calls RealEventSource.processResponse directly (synchronous), and createFactory reaches it asynchronously via createFactory$lambda-1 -> RealEventSource.connect -> RealCall.enqueue -> Dispatcher -> AsyncCall.run -> Callback.onResponse -> RealEventSource.onResponse -> processResponse. The private lambda is not a public entry and is folded into createFactory. Report is potential impact only: saved-graph freshness is unproven, 144/270 sources have uncertain freshness, external-dispatch and conservative dispatch-candidate limitations apply, and external consumers of EventSource.Factory built from createFactory are outside the graph. Not a safety proof; no tests were selected or deselected."
         },
         "entryPointsFound": 2,
         "expectedEntryPoints": 2,
@@ -531,13 +545,38 @@
         "toolCalls": [
           "impact"
         ],
-        "seconds": 13.124305291974451,
+        "seconds": 14.5728121669963,
         "models": [
           "claude-haiku-4-5-20251001",
           "claude-opus-5[1m]"
         ]
       }
     ],
+    "inputs": {
+      "snapshotSha256": "e7562497a0e49b2d3d3f1dbb58ddc21c885408a2f66d0a9e7b0d9b0369778d28",
+      "snapshotScope": "okhttp:sse-production",
+      "classRoots": [
+        {
+          "path": "okhttp/build/classes/kotlin/main",
+          "classFiles": 322,
+          "sha256": "a2ba84bbf59fda60f01af9a0179d6b11a2fc5c02ee945ee0968d570309fa62e0"
+        },
+        {
+          "path": "okhttp-sse/build/classes/kotlin/main",
+          "classFiles": 8,
+          "sha256": "df9a1972f7e0ed55b4d0ee869080e555ad5fe1a2f0413ebf2614e0fad9cffa46"
+        }
+      ],
+      "sourceSha256": {
+        "okhttp-sse/src/main/kotlin/okhttp3/sse/EventSource.kt": "3b3e77d124257dfac1d005228076daba4e17da84247b8d0b050a79f98afe74b1",
+        "okhttp-sse/src/main/kotlin/okhttp3/sse/EventSourceListener.kt": "0cfaac01dafa7e79732987b788dcb9a53defe9d413223b345f2458836e2a4543",
+        "okhttp-sse/src/main/kotlin/okhttp3/sse/EventSources.kt": "9abbaf777a1cbc62e660b4adaa55f780d6b62679feb123d75fb046d7d32643c0",
+        "okhttp-sse/src/main/kotlin/okhttp3/sse/internal/RealEventSource.kt": "d2d47732624fe1bb86359b36a10372ed26cba92a83eb29a28250e0a2c18f6c2e",
+        "okhttp-sse/src/main/kotlin/okhttp3/sse/internal/ServerSentEventReader.kt": "25f503ff58c35591401e6e08043b890f1126c7372acf3964f9d093ba8203f462"
+      },
+      "hiddenTestDeclarationsExcluded": true,
+      "scope": "Production class owners are checked against the graph. This independent preflight exercise uses fixed public source, not a benchmark repair prompt."
+    },
     "scope": "Two read-only public SSE preflight questions, not SWE-bench repair scores. Hidden regression tests and gold patches are excluded."
   },
   "selection": {
