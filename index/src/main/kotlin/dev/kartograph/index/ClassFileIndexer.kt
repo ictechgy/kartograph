@@ -32,7 +32,6 @@ import org.objectweb.asm.Label
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
-import org.objectweb.asm.tree.ClassNode
 import org.objectweb.asm.tree.MethodNode
 
 /** class root의 JVM 산출물을 읽어 구조와 instruction 관계로 된 코드 그래프를 만든다. */
@@ -169,16 +168,27 @@ public class ClassFileIndexer {
         throw ClassIndexingException("invalid class file in class JAR", error)
     }
 
-    // reflection 후보가 없는 class는 tree로 만들지 않는다. 같은 reader를 재사용해 파일을 다시 읽지 않는다.
+    // runtime 호출과 반환값 후보의 본문만 보관한다. 같은 reader를 재사용해 파일을 다시 읽지 않는다.
     private fun readFacts(reader: ClassReader): ClassFacts {
         val visitor = FactsVisitor()
         reader.accept(visitor, 0)
         val facts = visitor.facts()
         val methods = facts.calls.filter { RuntimeValueAnalyzer.requiresValueAnalysis(it) }.map { it.caller }.toSet()
-        if (methods.isEmpty()) return facts
-        val tree = ClassNode(Opcodes.ASM9)
-        reader.accept(tree, ClassReader.SKIP_FRAMES)
-        return facts.copy(runtimeMethods = tree.methods.filter { JvmNodeId.methodId(facts.internalName, it.name, it.desc) in methods })
+        val returns = facts.nodes.filter { node ->
+            JvmModifier.STATIC in node.jvmModifiers &&
+                (node.id.value.endsWith(")Ljava/lang/String;") || node.id.value.endsWith(")Ljava/lang/Class;"))
+        }.mapTo(mutableSetOf(), GraphNode::id)
+        if (methods.isEmpty() && returns.isEmpty()) return facts
+        val bodies = mutableMapOf<NodeId, MethodNode>()
+        reader.accept(object : ClassVisitor(Opcodes.ASM9) {
+            override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<out String>?): MethodVisitor? {
+                val id = JvmNodeId.methodId(facts.internalName, name, descriptor)
+                return if (id in methods || id in returns) MethodNode(Opcodes.ASM9, access, name, descriptor, signature, exceptions)
+                    .also { bodies[id] = it } else null
+            }
+        }, ClassReader.SKIP_FRAMES)
+        return facts.copy(runtimeMethods = bodies.filterKeys(methods::contains).values.toList(),
+            returnMethods = bodies.filterKeys(returns::contains).values.toList())
     }
 
     private fun isClassFile(path: Path): Boolean =
@@ -539,6 +549,7 @@ internal data class ClassFacts(
     val runtime: ClassRuntimeObservation = ClassRuntimeObservation(),
     val calls: List<ExternalCall> = emptyList(),
     val runtimeMethods: List<MethodNode> = emptyList(),
+    val returnMethods: List<MethodNode> = emptyList(),
 )
 
 // CLASS-retention 생성 marker는 이름만 닮은 사용자 선언을 숨기지 않는다.

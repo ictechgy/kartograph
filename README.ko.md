@@ -35,6 +35,11 @@ class root 및 CLI `--service-resources`의 `META-INF/services` 등록은 provid
 
 그래프가 보지 못하는 것은 [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md)에, 측정된 보존 동작은 [`docs/PHASE2-VALIDATION.md`](docs/PHASE2-VALIDATION.md)에 있다.
 
+미배포 소스는 프로젝트 static helper 사이의 불변 인자와 String/Class 반환값도 제한적으로 추적한다.
+[실행 표본 5개 비교](experiments/runtime-returns/README.md)에서 기존에 놓친 reflection 경로 3개를 복원하면서
+미사용 대조군을 모두 구분했다. SearchDeadCode와 현재 R8의 실제 결과, 최적화 대조군, 여전히 놓치는 runtime 입력을
+함께 기록했다. 도구 전체의 정확도·속도 우위를 증명한 결과는 아니다.
+
 ## 설치와 호환성
 
 CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechgy.kartograph`는 [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph)에 version이 표시된 뒤 설치할 수 있다. GitHub Release 공개와 Portal 승인·설치 가능 여부는 별개다.

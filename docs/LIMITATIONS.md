@@ -34,8 +34,12 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 
 - `Class.forName`의 overload와 `ClassLoader.loadClass`는 같은 메서드 안의 지역 변수·분기·일부 문자열 결합을
   추적해 프로젝트 class로 연결한다. 알려진 class의 reflection 생성자는 인자 개수에 맞는 후보를 연결한다.
-  값 집합·명령·frame 크기를 제한하며, 알 수 없는 값과 한도 초과는 query 한계로 남긴다. 메서드 사이의 값 전달,
-  임의 계산과 동적 component 등록은 완전하게 해석하지 않는다. 알려진 method 이름·인자 개수와 field 이름의
+  프로젝트의 정확한 JVM static 호출에서는 불변 인자와 String/Class 반환값을 helper 사이에서도 전파한다.
+  반환 경로가 unknown을 포함하면 일부 상수만으로 해석 완료를 주장하지 않는다. virtual/interface 호출의 반환값,
+  dependency 본문, mutable field 값, 임의 계산과 동적 component 등록은 완전하게 해석하지 않는다.
+  값 집합은 16개·문자열은 4096자, 메서드는 명령 20,000개·frame slot 250,000개로 제한한다. 반환값 분석은
+  runtime 메서드별 호출 깊이 8·문맥 128개·누적 frame slot 1,000,000개로 추가 제한하며 재귀·한도 초과는
+  `runtime-analysis-limits`와 미해결 호출 개수로 남긴다. 알려진 method 이름·인자 개수와 field 이름의
   reflection 접근은 연결하되, field에서 읽은 값이나 호출 반환값을 일반적으로 추적하지 않는다.
 - JNI, native lookup, framework callback과 serialization/DI codegen은 bytecode만으로 완전하게 증명할 수 없다.
 - Compose multipreview는 프로젝트 또는 전달된 dependency classpath의 어노테이션 선언에서 `@Preview`와 반복
@@ -147,11 +151,13 @@ JDK API 모델은 owner·이름·descriptor·static 여부를 확인하고 해�
 같은 개수의 overload는 보수적으로 포함하며 선언 밖의 override·실제 receiver까지 완전하게 구분하지 않는다.
 `Class.getField/getDeclaredField`의 이름을 `Field.get/set` 및 primitive 변형까지 전달한다. public lookup은 상속된
 선언도 포함하고 declared lookup은 해당 owner만 검색한다. 알려지지 않은 이름은 method/field별 호출 개수로 알린다.
-외부 선언의 구현·reflection 반환값·field 값의 일반적 흐름은 여전히 미해결일 수 있다.
+프로젝트 static helper의 String/Class 반환값은 제한적으로 추적하지만 외부 선언의 구현·reflection 메서드 반환값·
+field 값의 일반적 흐름은 여전히 미해결일 수 있다.
 
 이는 NullAway의 라이브러리 모델 분리와 GraalVM의 조건부 metadata 설계를 참고한 호출별 모델이다. GraalVM
 `typeReached` JSON을 Android에 그대로 import하거나 JVM agent의 관측 부재를 미사용 증거로 취급하지 않는다.
-지원되지 않은 호출의 반환값은 unknown으로 유지하며 임의의 callee가 값을 변경하지 않는다고 가정하지 않는다.
+지원되지 않은 호출의 반환값은 unknown으로 유지한다. helper 인자에는 변경 가능한 객체 상태를 전달하지 않으며
+문자열·Class·정수와 불변인 배열 길이만 사용한다. callee가 객체나 field를 변경하지 않는다고 가정하지 않는다.
 
 이름은 알려졌지만 public/declared 검색 조건 등에 맞는 프로젝트 member가 없으면 `runtime-member-lookup`으로
 별도 계량한다. 외부 class 대상과 조회 조건 불일치를 같은 범주로 단정하지 않는다.

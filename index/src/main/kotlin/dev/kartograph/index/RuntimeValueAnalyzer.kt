@@ -25,7 +25,7 @@ import org.objectweb.asm.tree.analysis.BasicValue
 import org.objectweb.asm.tree.analysis.Interpreter
 import org.objectweb.asm.tree.analysis.Value
 
-/** 필요한 메서드의 stack/local 값만 제한적으로 전파한다. 문자열 원문은 결과나 오류에 싣지 않는다. */
+/** 필요한 stack/local 값과 프로젝트 static 반환값을 제한적으로 전파한다. 문자열 원문은 결과나 오류에 싣지 않는다. */
 internal object RuntimeValueAnalyzer {
     // hierarchy 완성 전 후보를 넓게 고르고, 실제 모델 적용은 아래의 loader 관계로 다시 확인한다.
     fun requiresValueAnalysis(call: dev.kartograph.core.ExternalCall): Boolean =
@@ -48,7 +48,9 @@ internal object RuntimeValueAnalyzer {
         }
         val membersByOwner = graph.nodes.values.filter { '#' in it.id.value }
             .groupBy { it.id.value.substringAfter(':').substringBefore('#') }
-        val interpreter = FlowInterpreter(::loader)
+        val returns = facts.flatMap { fact -> fact.returnMethods.map { method ->
+            JvmNodeId.methodId(fact.internalName, method.name, method.desc) to (fact.internalName to method)
+        } }.toMap()
         val derived = mutableListOf<GraphEdge>()
         val models = mutableMapOf<Pair<NodeId, Int>, List<NodeId>>()
         val observations = facts.map { fact ->
@@ -63,9 +65,9 @@ internal object RuntimeValueAnalyzer {
             var boundedMethods = 0
             for (method in fact.runtimeMethods) {
                 val caller = JvmNodeId.methodId(fact.internalName, method.name, method.desc)
-                interpreter.limitReached = false
-                val frames = if (method.instructions.size().toLong() * (method.maxLocals + method.maxStack + 1) > MAX_FRAME_SLOTS ||
-                    method.instructions.size() > MAX_INSTRUCTIONS) {
+                val summaries = ReturnValues(returns, ::loader)
+                val interpreter = FlowInterpreter(::loader, returnedValue = summaries::evaluate)
+                val frames = if (exceedsFrameBudget(method)) {
                     boundedMethods++
                     null
                 } else try {
@@ -168,10 +170,70 @@ internal object RuntimeValueAnalyzer {
         return CodeGraph(graph.nodes.values, graph.edges + derived, calls, graph.serviceProviders) to observations
     }
 
-    private const val MAX_FRAME_SLOTS = 250_000L
-    private const val MAX_INSTRUCTIONS = 20_000
     private val CLASS_LOADERS = setOf("java/lang/ClassLoader", "java/net/URLClassLoader", "java/security/SecureClassLoader")
     private val TYPE_KINDS = setOf(NodeKind.CLASS, NodeKind.INTERFACE, NodeKind.OBJECT, NodeKind.ENUM, NodeKind.ANNOTATION_CLASS)
+}
+
+private fun frameSlots(method: MethodNode): Long =
+    method.instructions.size().toLong() * (method.maxLocals.toLong() + method.maxStack + 1)
+
+private fun exceedsFrameBudget(method: MethodNode): Boolean =
+    frameSlots(method) > 250_000L || method.instructions.size() > 20_000
+
+// 호출 사이에 변경 가능한 객체 상태를 전달하지 않는다. 불변 값과 배열 길이만 반환값 분석에 사용한다.
+private class ReturnValues(
+    private val methods: Map<NodeId, Pair<String, MethodNode>>,
+    private val loader: (String) -> Boolean,
+) {
+    private data class Key(val method: NodeId, val arguments: List<FlowValue>)
+    private data class Summary(val value: FlowValue?, val limited: Boolean)
+    private val cache = mutableMapOf<Key, Summary>()
+    private val active = mutableSetOf<NodeId>()
+    private var analyses = 0
+    private var slots = 0L
+
+    fun evaluate(call: MethodInsnNode, values: List<FlowValue>, limited: () -> Unit): FlowValue? {
+        if (call.opcode != Opcodes.INVOKESTATIC) return null
+        val id = JvmNodeId.methodId(call.owner, call.name, call.desc)
+        val (owner, method) = methods[id] ?: return null
+        if (method.instructions.size() == 0) return null
+        val arguments = values.map { value -> FlowValue(value.basic, strings = value.strings, classes = value.classes,
+            integer = value.integer, arrayLength = value.arrayLength) }
+        val key = Key(id, arguments)
+        cache[key]?.let { if (it.limited) limited(); return it.value }
+        if (id in active || active.size >= 8 || analyses >= 128 || exceedsFrameBudget(method) ||
+            slots + frameSlots(method) > 1_000_000L) {
+            limited()
+            return null
+        }
+        analyses++
+        slots += frameSlots(method)
+        active += id
+        val summary = try { analyze(owner, method, arguments) } finally { active -= id }
+        cache[key] = summary
+        if (summary.limited) limited()
+        return summary.value
+    }
+
+    private fun analyze(owner: String, method: MethodNode, arguments: List<FlowValue>): Summary {
+        val parameters = mutableMapOf<Int, FlowValue>()
+        var local = 0
+        for ((index, type) in Type.getArgumentTypes(method.desc).withIndex()) {
+            arguments.getOrNull(index)?.let { parameters[local] = it }
+            local += type.size
+        }
+        val interpreter = FlowInterpreter(loader, parameters, ::evaluate)
+        val frames = try { Analyzer(interpreter).analyze(owner, method) } catch (_: AnalyzerException) { return Summary(null, true) }
+        var result: FlowValue? = null
+        for ((index, instruction) in method.instructions.toArray().withIndex()) {
+            if (instruction.opcode != Opcodes.ARETURN) continue
+            val frame = frames[index] ?: continue
+            if (frame.stackSize == 0) continue
+            val value = frame.getStack(frame.stackSize - 1)
+            result = result?.let { interpreter.merge(it, value) } ?: value
+        }
+        return Summary(if (interpreter.limitReached) null else result, interpreter.limitReached)
+    }
 }
 
 private data class MemberValue(val descriptor: String, val name: String, val arity: Int?, val declaredOnly: Boolean)
@@ -194,11 +256,17 @@ private data class FlowValue(
     override fun toString(): String = "flow-value"
 }
 
-private class FlowInterpreter(private val isClassLoader: (String) -> Boolean) : Interpreter<FlowValue>(Opcodes.ASM9) {
+private class FlowInterpreter(
+    private val isClassLoader: (String) -> Boolean,
+    private val parameters: Map<Int, FlowValue> = emptyMap(),
+    private val returnedValue: (MethodInsnNode, List<FlowValue>, () -> Unit) -> FlowValue? = { _, _, _ -> null },
+) : Interpreter<FlowValue>(Opcodes.ASM9) {
     private val base = BasicInterpreter()
     var limitReached = false
     private fun limited() { limitReached = true }
     override fun newValue(type: Type?): FlowValue? = base.newValue(type)?.let(::FlowValue)
+    override fun newParameterValue(isInstanceMethod: Boolean, local: Int, type: Type): FlowValue =
+        parameters[local] ?: requireNotNull(newValue(type))
 
     override fun newOperation(insn: AbstractInsnNode): FlowValue {
         val value = FlowValue(base.newOperation(insn))
@@ -259,6 +327,7 @@ private class FlowInterpreter(private val isClassLoader: (String) -> Boolean) : 
             return unknown.copy(strings = concatRecipe(recipe, values.mapIndexed { index, value -> value.asStrings(types[index]) }, insn.bsmArgs.drop(1), ::limited))
         }
         if (insn !is MethodInsnNode) return unknown
+        returnedValue(insn, values, ::limited)?.let { return it.copy(basic = result) }
         val model = RuntimeLibraryModels.find(insn.owner, insn.name, insn.desc,
             insn.opcode == Opcodes.INVOKESTATIC, isClassLoader) ?: return unknown
         fun value(index: Int): FlowValue? = values.getOrNull(index)

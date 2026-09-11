@@ -19,7 +19,7 @@
   },
   "factory_name": {
     "runtimeUsed": true,
-    "kartographState": "unreachable",
+    "kartographState": "reachable",
     "r8KeepsUsed": false,
     "r8Exit": 1
   },

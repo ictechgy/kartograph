@@ -34,6 +34,11 @@ Class loading, reflective construction, and known method/field access use bounde
 
 See [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) for what the graph cannot see, and [`docs/PHASE2-VALIDATION.md`](docs/PHASE2-VALIDATION.md) for measured retention behavior.
 
+The unreleased source also follows immutable arguments and String/Class returns through bounded project static helpers.
+In [five executed comparison fixtures](experiments/runtime-returns/README.md), this recovers three previously missed
+reflection paths while keeping all unused controls distinct. The report compares SearchDeadCode and current R8, including
+optimization controls and a remaining unknown-input failure. It does not establish overall accuracy or speed superiority.
+
 ## Installation and compatibility
 
 Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.ictechgy.kartograph` becomes installable once its version appears on the [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph); a GitHub Release and Portal approval are separate events.
