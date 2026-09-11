@@ -54,6 +54,13 @@ class QuerySnapshotCodecTest {
         assertEquals(true, restored.includePrivateMembers)
         assertEquals(original.toolVersion, restored.toolVersion)
         assertEquals(encoded, QuerySnapshotCodec.render(restored))
+        val compact = QuerySnapshotCodec.parse(QuerySnapshotCodec.render(original, compact = true))
+        assertEquals(original.graph.nodes, compact.graph.nodes)
+        assertEquals(original.graph.edges, compact.graph.edges)
+        assertEquals(original.graph.externalCalls, compact.graph.externalCalls)
+        assertEquals(original.graph.serviceProviders, compact.graph.serviceProviders)
+        assertEquals(original.suppressed, compact.suppressed)
+        assertEquals(original.retention.toSet(), compact.retention.toSet())
         for (name in listOf("class:app/Entry", "class:app/Unused", "Missing")) {
             fun query(snapshot: QuerySnapshot) = SymbolQuery.query(snapshot.graph,
                 ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention), name,
@@ -97,6 +104,7 @@ class QuerySnapshotCodecTest {
         val valid = QuerySnapshotCodec.render(fixture())
         val invalid = listOf(
             "", "[]", "{}", "{", valid + " false", valid.replace("\"version\": 1", "\"version\": 2"),
+            valid.replace("\"version\": 1", "\"version\": 3"),
             valid.replace("\"version\": 1", "\"version\": 1, \"version\": 1"),
             valid.replace("\"version\": 1", "\"version\": 01"),
             valid.replace("\"version\": 1", "\"version\": -"),

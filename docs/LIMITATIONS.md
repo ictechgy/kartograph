@@ -97,6 +97,12 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   않으므로 변경 후에는 새 snapshot을 만든다. live 입력이나 baseline을 섞어 저장된 의미를 바꿀 수 없다.
   일반 `graph --format json` 문서에는 보존 문맥이 없으므로 질의 snapshot으로 읽지 않는다. 입력은 UTF-8 JSON,
   최대 64 MiB이며 지원하지 않는 버전·손상·중복 정점·dangling edge를 오류로 거부한다.
+- `snapshot --compact` v2는 반복 문자열과 graph 행을 인덱스로 저장한다. 사실을 생략하지 않으며 v1도 계속 읽는다.
+  `--revision`/`--scope`는 호출자의 입력 라벨이고 내용 지문이나 빌드 신선도 증명이 아니다.
+- `impact`는 잠재적 사용/계약 의존을 역방향으로 조사하며 실제 동작 변화나 테스트 생략을 승인하지 않는다.
+  삭제/rename을 조사할 때는 같은 analyzer·입력 범위로 만든 base/current snapshot이 필요하다.
+  보존만 됐다는 사실은 호출자 근거가 아니다. 범위가 큰 클래스/파일 변경은 많은 후보를 만들 수 있으며, 출력·깊이·방문·경로
+  예산에 따른 잘림과 불명확한 파일 매핑을 보고한다. [영향 점검 계약](IMPACT.md)을 따른다.
 - package/module architecture는 JVM 이름과 입력 root를 기준으로 하며 Gradle dependency resolution model 자체는 아니다.
 - Java와 Kotlin bytecode를 함께 읽지만 reflection configuration, runtime class loading과 외부 서비스 설정은 별도 입력이다.
 

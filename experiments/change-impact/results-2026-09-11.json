@@ -1,0 +1,559 @@
+{
+  "date": "2026-09-11",
+  "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+  "platform": "macOS arm64",
+  "scope": "Two native scoped test replays, not the full Harbor benchmark; test patch injected in both source versions.",
+  "replays": {
+    "okhttp-6887": {
+      "format": "kartograph-impact-score",
+      "version": 1,
+      "modes": {
+        "preflight": {
+          "reproducedFailureTargets": 1,
+          "targetsFound": 1,
+          "missedTargets": [],
+          "affectedSymbols": 55,
+          "selectedKnownTests": 24,
+          "knownTests": 24,
+          "seconds": [
+            0.3081749170087278,
+            0.3092412910191342,
+            0.30833224998787045,
+            0.3117806249647401,
+            0.30754183302633464
+          ],
+          "medianSeconds": 0.30833224998787045,
+          "p95Seconds": 0.3117806249647401,
+          "limitations": [
+            "current: dispatch-candidates: 582 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+            "current: external-dispatch: 94 external virtual call(s) have no project implementation target",
+            "current: index-freshness-unknown: 115 of 270 source file(s) have uncertain compiled-source matching or timestamp precision",
+            "current: inlined-constant-references: 211 compile-time constant declaration(s) may have erased use sites",
+            "current: reflection-strings: 6 Class.forName call(s) have unresolved names",
+            "current: reflective-field-access: 1 reflective field access call(s) have no resolved member",
+            "current: reflective-method-invocation: 9 Method.invoke call(s) have no resolved member",
+            "current: runtime-targets-outside-graph: 7 resolved runtime target site(s) have no matching project declaration",
+            "current: unresolved-source-paths: 386 of 6026 located node(s) did not match exactly one project source file",
+            "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+            "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+          ],
+          "failurePaths": {
+            "method:okhttp3/sse/internal/EventSourcesHttpTest#processResponse()V": [
+              {
+                "changed": "class:okhttp3/sse/internal/RealEventSource",
+                "edges": [
+                  {
+                    "kind": "call",
+                    "origin": "bytecode",
+                    "source": "method:okhttp3/sse/internal/EventSourcesHttpTest#processResponse()V",
+                    "target": "method:okhttp3/sse/EventSources#processResponse(Lokhttp3/Response;Lokhttp3/sse/EventSourceListener;)V",
+                    "traversal": "dependency"
+                  },
+                  {
+                    "kind": "reference",
+                    "origin": "bytecode",
+                    "source": "method:okhttp3/sse/EventSources#processResponse(Lokhttp3/Response;Lokhttp3/sse/EventSourceListener;)V",
+                    "target": "class:okhttp3/sse/internal/RealEventSource",
+                    "traversal": "dependency"
+                  }
+                ],
+                "nodes": [
+                  "method:okhttp3/sse/internal/EventSourcesHttpTest#processResponse()V",
+                  "method:okhttp3/sse/EventSources#processResponse(Lokhttp3/Response;Lokhttp3/sse/EventSourceListener;)V",
+                  "class:okhttp3/sse/internal/RealEventSource"
+                ],
+                "revision": "current"
+              }
+            ]
+          }
+        },
+        "comparison": {
+          "reproducedFailureTargets": 1,
+          "targetsFound": 1,
+          "missedTargets": [],
+          "affectedSymbols": 55,
+          "selectedKnownTests": 24,
+          "knownTests": 24,
+          "seconds": [
+            0.4311933749704622,
+            0.4022555410047062,
+            0.4191484170150943,
+            0.4914272080059163,
+            0.47436145797837526
+          ],
+          "medianSeconds": 0.4311933749704622,
+          "p95Seconds": 0.4914272080059163,
+          "limitations": [
+            "base: dispatch-candidates: 582 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+            "base: external-dispatch: 94 external virtual call(s) have no project implementation target",
+            "base: index-freshness-unknown: 115 of 270 source file(s) have uncertain compiled-source matching or timestamp precision",
+            "base: inlined-constant-references: 211 compile-time constant declaration(s) may have erased use sites",
+            "base: reflection-strings: 6 Class.forName call(s) have unresolved names",
+            "base: reflective-field-access: 1 reflective field access call(s) have no resolved member",
+            "base: reflective-method-invocation: 9 Method.invoke call(s) have no resolved member",
+            "base: runtime-targets-outside-graph: 7 resolved runtime target site(s) have no matching project declaration",
+            "base: unresolved-source-paths: 386 of 6026 located node(s) did not match exactly one project source file",
+            "current: dispatch-candidates: 582 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+            "current: external-dispatch: 94 external virtual call(s) have no project implementation target",
+            "current: index-freshness-unknown: 115 of 270 source file(s) have uncertain compiled-source matching or timestamp precision",
+            "current: inlined-constant-references: 211 compile-time constant declaration(s) may have erased use sites",
+            "current: reflection-strings: 6 Class.forName call(s) have unresolved names",
+            "current: reflective-field-access: 1 reflective field access call(s) have no resolved member",
+            "current: reflective-method-invocation: 9 Method.invoke call(s) have no resolved member",
+            "current: runtime-targets-outside-graph: 7 resolved runtime target site(s) have no matching project declaration",
+            "current: unresolved-source-paths: 386 of 6026 located node(s) did not match exactly one project source file",
+            "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+            "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+          ],
+          "failurePaths": {
+            "method:okhttp3/sse/internal/EventSourcesHttpTest#processResponse()V": [
+              {
+                "changed": "class:okhttp3/sse/internal/RealEventSource",
+                "edges": [
+                  {
+                    "kind": "call",
+                    "origin": "bytecode",
+                    "source": "method:okhttp3/sse/internal/EventSourcesHttpTest#processResponse()V",
+                    "target": "method:okhttp3/sse/EventSources#processResponse(Lokhttp3/Response;Lokhttp3/sse/EventSourceListener;)V",
+                    "traversal": "dependency"
+                  },
+                  {
+                    "kind": "reference",
+                    "origin": "bytecode",
+                    "source": "method:okhttp3/sse/EventSources#processResponse(Lokhttp3/Response;Lokhttp3/sse/EventSourceListener;)V",
+                    "target": "class:okhttp3/sse/internal/RealEventSource",
+                    "traversal": "dependency"
+                  }
+                ],
+                "nodes": [
+                  "method:okhttp3/sse/internal/EventSourcesHttpTest#processResponse()V",
+                  "method:okhttp3/sse/EventSources#processResponse(Lokhttp3/Response;Lokhttp3/sse/EventSourceListener;)V",
+                  "class:okhttp3/sse/internal/RealEventSource"
+                ],
+                "revision": "base"
+              },
+              {
+                "changed": "class:okhttp3/sse/internal/RealEventSource",
+                "edges": [
+                  {
+                    "kind": "call",
+                    "origin": "bytecode",
+                    "source": "method:okhttp3/sse/internal/EventSourcesHttpTest#processResponse()V",
+                    "target": "method:okhttp3/sse/EventSources#processResponse(Lokhttp3/Response;Lokhttp3/sse/EventSourceListener;)V",
+                    "traversal": "dependency"
+                  },
+                  {
+                    "kind": "reference",
+                    "origin": "bytecode",
+                    "source": "method:okhttp3/sse/EventSources#processResponse(Lokhttp3/Response;Lokhttp3/sse/EventSourceListener;)V",
+                    "target": "class:okhttp3/sse/internal/RealEventSource",
+                    "traversal": "dependency"
+                  }
+                ],
+                "nodes": [
+                  "method:okhttp3/sse/internal/EventSourcesHttpTest#processResponse()V",
+                  "method:okhttp3/sse/EventSources#processResponse(Lokhttp3/Response;Lokhttp3/sse/EventSourceListener;)V",
+                  "class:okhttp3/sse/internal/RealEventSource"
+                ],
+                "revision": "current"
+              }
+            ]
+          }
+        }
+      },
+      "newFailures": [],
+      "unmappedTestDisplayNames": 0,
+      "inputs": {
+        "baseSnapshot": "5de05fe59d6ba65409d413937e9dfce0d0e8e5fe46d513f25ec1f2734b648cba",
+        "currentSnapshot": "e1feeff098f70c14806810bf5d518fad37528ed73002cb47cee9a72b0dc0bc1a",
+        "beforeTests": "21cb63d66217276468d29e16c046e0c3b224137b4d3c76ed6efbe8cf69fdf269",
+        "afterTests": "b26b42d7d6d8e325e7542b1b3800d162fd6f87bcb8f43f00f522948d83fe3f0d",
+        "changedFiles": "ac87ecbc0a067018357e68942110908471e7324cc9d621946ff3f38b64b27682"
+      },
+      "interpretation": "Failure-target recall is relative to the supplied executed tests; other selected tests may still be affected. This is not permission to skip tests."
+    },
+    "anki-19661": {
+      "format": "kartograph-impact-score",
+      "version": 1,
+      "modes": {
+        "preflight": {
+          "reproducedFailureTargets": 1,
+          "targetsFound": 1,
+          "missedTargets": [],
+          "affectedSymbols": 20699,
+          "selectedKnownTests": 3,
+          "knownTests": 3,
+          "seconds": [
+            3.1451032090117224,
+            3.1454923750134185,
+            3.1929601250449196,
+            3.2039429169963114,
+            3.1581124590011314
+          ],
+          "medianSeconds": 3.1581124590011314,
+          "p95Seconds": 3.2039429169963114,
+          "limitations": [
+            "current: dispatch-candidates: 6500 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+            "current: dynamic-registration: 5 runtime component registration call(s) are absent from the manifest graph",
+            "current: external-dispatch: 7213 external virtual call(s) have no project implementation target",
+            "current: index-freshness-unknown: 64 of 699 source file(s) have uncertain compiled-source matching or timestamp precision",
+            "current: inlined-constant-references: 683 compile-time constant declaration(s) may have erased use sites",
+            "current: missing-source-paths: 85 of 42453 node(s) have no source file in the class debug attributes",
+            "current: reflection-strings: 3 Class.forName call(s) have unresolved names",
+            "current: reflective-construction: 5 reflective constructor call(s) require runtime target modeling",
+            "current: reflective-field-access: 8 reflective field access call(s) have no resolved member",
+            "current: reflective-method-invocation: 15 Method.invoke call(s) have no resolved member",
+            "current: runtime-targets-outside-graph: 1 resolved runtime target site(s) have no matching project declaration",
+            "current: unresolved-source-paths: 7481 of 42368 located node(s) did not match exactly one project source file",
+            "missing-source-locations: some compiled declarations cannot be matched to changed source files",
+            "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+            "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+          ],
+          "failurePaths": {
+            "method:com/ichi2/anki/DeckPickerNoExternalFilesDirTest#Fatal error is shown when getExternalFilesDir is null and collection is set but unwritable()V": [
+              {
+                "changed": "class:com/ichi2/anki/AnkiDroidApp",
+                "edges": [
+                  {
+                    "kind": "reference",
+                    "origin": "bytecode",
+                    "source": "method:com/ichi2/anki/DeckPickerNoExternalFilesDirTest#Fatal error is shown when getExternalFilesDir is null and collection is set but unwritable()V",
+                    "target": "class:com/ichi2/anki/AnkiDroidAppWithCollectionButUnwritableStorage",
+                    "traversal": "dependency"
+                  },
+                  {
+                    "kind": "inheritance",
+                    "origin": "bytecode",
+                    "source": "class:com/ichi2/anki/AnkiDroidAppWithCollectionButUnwritableStorage",
+                    "target": "class:com/ichi2/anki/AnkiDroidApp",
+                    "traversal": "dependency"
+                  }
+                ],
+                "nodes": [
+                  "method:com/ichi2/anki/DeckPickerNoExternalFilesDirTest#Fatal error is shown when getExternalFilesDir is null and collection is set but unwritable()V",
+                  "class:com/ichi2/anki/AnkiDroidAppWithCollectionButUnwritableStorage",
+                  "class:com/ichi2/anki/AnkiDroidApp"
+                ],
+                "revision": "current"
+              }
+            ]
+          }
+        },
+        "comparison": {
+          "reproducedFailureTargets": 1,
+          "targetsFound": 1,
+          "missedTargets": [],
+          "affectedSymbols": 20699,
+          "selectedKnownTests": 3,
+          "knownTests": 3,
+          "seconds": [
+            5.847834832966328,
+            5.9617200829670765,
+            5.5730103340465575,
+            6.319211916998029,
+            5.831740333000198
+          ],
+          "medianSeconds": 5.847834832966328,
+          "p95Seconds": 6.319211916998029,
+          "limitations": [
+            "base: dispatch-candidates: 6500 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+            "base: dynamic-registration: 5 runtime component registration call(s) are absent from the manifest graph",
+            "base: external-dispatch: 7213 external virtual call(s) have no project implementation target",
+            "base: index-freshness-unknown: 64 of 699 source file(s) have uncertain compiled-source matching or timestamp precision",
+            "base: inlined-constant-references: 683 compile-time constant declaration(s) may have erased use sites",
+            "base: missing-source-paths: 85 of 42453 node(s) have no source file in the class debug attributes",
+            "base: reflection-strings: 3 Class.forName call(s) have unresolved names",
+            "base: reflective-construction: 5 reflective constructor call(s) require runtime target modeling",
+            "base: reflective-field-access: 8 reflective field access call(s) have no resolved member",
+            "base: reflective-method-invocation: 15 Method.invoke call(s) have no resolved member",
+            "base: runtime-targets-outside-graph: 1 resolved runtime target site(s) have no matching project declaration",
+            "base: unresolved-source-paths: 7481 of 42368 located node(s) did not match exactly one project source file",
+            "current: dispatch-candidates: 6500 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+            "current: dynamic-registration: 5 runtime component registration call(s) are absent from the manifest graph",
+            "current: external-dispatch: 7213 external virtual call(s) have no project implementation target",
+            "current: index-freshness-unknown: 64 of 699 source file(s) have uncertain compiled-source matching or timestamp precision",
+            "current: inlined-constant-references: 683 compile-time constant declaration(s) may have erased use sites",
+            "current: missing-source-paths: 85 of 42454 node(s) have no source file in the class debug attributes",
+            "current: reflection-strings: 3 Class.forName call(s) have unresolved names",
+            "current: reflective-construction: 5 reflective constructor call(s) require runtime target modeling",
+            "current: reflective-field-access: 8 reflective field access call(s) have no resolved member",
+            "current: reflective-method-invocation: 15 Method.invoke call(s) have no resolved member",
+            "current: runtime-targets-outside-graph: 1 resolved runtime target site(s) have no matching project declaration",
+            "current: unresolved-source-paths: 7481 of 42369 located node(s) did not match exactly one project source file",
+            "missing-source-locations: some compiled declarations cannot be matched to changed source files",
+            "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+            "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+          ],
+          "failurePaths": {
+            "method:com/ichi2/anki/DeckPickerNoExternalFilesDirTest#Fatal error is shown when getExternalFilesDir is null and collection is set but unwritable()V": [
+              {
+                "changed": "class:com/ichi2/anki/AnkiDroidApp",
+                "edges": [
+                  {
+                    "kind": "reference",
+                    "origin": "bytecode",
+                    "source": "method:com/ichi2/anki/DeckPickerNoExternalFilesDirTest#Fatal error is shown when getExternalFilesDir is null and collection is set but unwritable()V",
+                    "target": "class:com/ichi2/anki/AnkiDroidAppWithCollectionButUnwritableStorage",
+                    "traversal": "dependency"
+                  },
+                  {
+                    "kind": "inheritance",
+                    "origin": "bytecode",
+                    "source": "class:com/ichi2/anki/AnkiDroidAppWithCollectionButUnwritableStorage",
+                    "target": "class:com/ichi2/anki/AnkiDroidApp",
+                    "traversal": "dependency"
+                  }
+                ],
+                "nodes": [
+                  "method:com/ichi2/anki/DeckPickerNoExternalFilesDirTest#Fatal error is shown when getExternalFilesDir is null and collection is set but unwritable()V",
+                  "class:com/ichi2/anki/AnkiDroidAppWithCollectionButUnwritableStorage",
+                  "class:com/ichi2/anki/AnkiDroidApp"
+                ],
+                "revision": "base"
+              },
+              {
+                "changed": "class:com/ichi2/anki/AnkiDroidApp",
+                "edges": [
+                  {
+                    "kind": "reference",
+                    "origin": "bytecode",
+                    "source": "method:com/ichi2/anki/DeckPickerNoExternalFilesDirTest#Fatal error is shown when getExternalFilesDir is null and collection is set but unwritable()V",
+                    "target": "class:com/ichi2/anki/AnkiDroidAppWithCollectionButUnwritableStorage",
+                    "traversal": "dependency"
+                  },
+                  {
+                    "kind": "inheritance",
+                    "origin": "bytecode",
+                    "source": "class:com/ichi2/anki/AnkiDroidAppWithCollectionButUnwritableStorage",
+                    "target": "class:com/ichi2/anki/AnkiDroidApp",
+                    "traversal": "dependency"
+                  }
+                ],
+                "nodes": [
+                  "method:com/ichi2/anki/DeckPickerNoExternalFilesDirTest#Fatal error is shown when getExternalFilesDir is null and collection is set but unwritable()V",
+                  "class:com/ichi2/anki/AnkiDroidAppWithCollectionButUnwritableStorage",
+                  "class:com/ichi2/anki/AnkiDroidApp"
+                ],
+                "revision": "current"
+              }
+            ]
+          }
+        }
+      },
+      "newFailures": [],
+      "unmappedTestDisplayNames": 0,
+      "inputs": {
+        "baseSnapshot": "b93dcb007fa90c076b72af2b0cc94bbcdd8fbb78eb88a9abb6489e2cdb819c07",
+        "currentSnapshot": "f0a63359f1a8d61cbad9ed1060c14732fb653aeee35edfdf5dbbae8f6ef99610",
+        "beforeTests": "b2127edcbe472822ad96f6daa88316248c5fdc62ae4c8e653ea8f9b6ee509754",
+        "afterTests": "8acbc0c6cf1ebb760ec64dacdd2492167bedd7f9d1a3319c160ad9e23b083f2e",
+        "changedFiles": "70999b5b222bf76636704406fe164b133139a786eee94cf59c331a5658bc43ba"
+      },
+      "interpretation": "Failure-target recall is relative to the supplied executed tests; other selected tests may still be affected. This is not permission to skip tests."
+    }
+  },
+  "compactSnapshot": {
+    "nodes": 42453,
+    "edges": 371600,
+    "externalCalls": 74127,
+    "plainBytes": 210092733,
+    "compactBytes": 42271956,
+    "roundTripEqual": true
+  },
+  "runtime": {
+    "cases": [
+      {
+        "case": "direct_call",
+        "runtimeUsed": true,
+        "mainInImpact": true,
+        "origins": [
+          "bytecode"
+        ],
+        "unusedControlConnected": false,
+        "captureSeconds": 0.09077804203843698,
+        "unmodeledPathDisclosed": true
+      },
+      {
+        "case": "callback_registered",
+        "runtimeUsed": true,
+        "mainInImpact": true,
+        "origins": [
+          "bytecode",
+          "dispatchModel"
+        ],
+        "unusedControlConnected": false,
+        "captureSeconds": 0.09782249998534098,
+        "unmodeledPathDisclosed": true
+      },
+      {
+        "case": "callback_unregistered",
+        "runtimeUsed": false,
+        "mainInImpact": true,
+        "origins": [
+          "bytecode",
+          "dispatchModel"
+        ],
+        "unusedControlConnected": false,
+        "captureSeconds": 0.09793662501033396,
+        "unmodeledPathDisclosed": true
+      },
+      {
+        "case": "factory_name",
+        "runtimeUsed": true,
+        "mainInImpact": true,
+        "origins": [
+          "bytecode",
+          "runtimeModel"
+        ],
+        "unusedControlConnected": false,
+        "captureSeconds": 0.11351875000400469,
+        "unmodeledPathDisclosed": true
+      },
+      {
+        "case": "reflective_method",
+        "runtimeUsed": true,
+        "mainInImpact": true,
+        "origins": [
+          "bytecode",
+          "runtimeModel"
+        ],
+        "unusedControlConnected": false,
+        "captureSeconds": 0.11358854203717783,
+        "unmodeledPathDisclosed": true
+      },
+      {
+        "case": "reflective_field",
+        "runtimeUsed": true,
+        "mainInImpact": false,
+        "origins": [],
+        "unusedControlConnected": false,
+        "captureSeconds": 0.11831408401485533,
+        "unmodeledPathDisclosed": true
+      }
+    ],
+    "interpretation": "Observed use is a lower bound. Unregistered callbacks remain potential dependencies; unknown reflective field values remain disclosed limitations."
+  },
+  "agent": {
+    "trials": [
+      {
+        "task": "response",
+        "arm": "source",
+        "answer": {
+          "action": "answer",
+          "entries": [
+            "okhttp3.sse.EventSources.processResponse",
+            "okhttp3.sse.EventSources.createFactory"
+          ],
+          "needs_review": true,
+          "notes": "EventSources.processResponse directly delegates to RealEventSource.processResponse (synchronous path). EventSources.createFactory returns a Factory whose newEventSource calls RealEventSource.connect, which enqueues the call; the async Callback.onResponse then invokes processResponse, so listener callbacks (onOpen/onEvent/onClosed/onFailure) on that asynchronous path are also affected. Potential impact only, not a safety proof."
+        },
+        "entryPointsFound": 2,
+        "expectedEntryPoints": 2,
+        "uncertaintyRespected": true,
+        "unexpectedEntries": [],
+        "toolCalls": [
+          "read",
+          "read"
+        ],
+        "seconds": 14.573210791975725,
+        "models": [
+          "claude-haiku-4-5-20251001",
+          "claude-opus-5[1m]"
+        ]
+      },
+      {
+        "task": "response",
+        "arm": "impact",
+        "answer": {
+          "action": "answer",
+          "entries": [
+            "okhttp3.sse.EventSources.createFactory",
+            "okhttp3.sse.EventSources.processResponse"
+          ],
+          "needs_review": true,
+          "notes": "Impact report (status found, not truncated, 23 observed affected) shows two public EventSources entry points reaching the changed method: EventSources.processResponse calls RealEventSource.processResponse directly (synchronous path); EventSources.createFactory reaches it asynchronously via createFactory$lambda-1 -> RealEventSource.connect -> RealCall.enqueue -> Dispatcher -> AsyncCall.run -> Callback.onResponse -> RealEventSource.onResponse -> processResponse. Limitations to keep in mind: saved-graph freshness not proven, 144/270 files with uncertain index freshness, conservative dispatch candidates (some paths such as WebSocket/Dispatcher entries are over-approximations), external consumers implementing EventSource.Factory or Callback are not modeled. Potential impact only, not a safety proof; no test selection or edits authorized."
+        },
+        "entryPointsFound": 2,
+        "expectedEntryPoints": 2,
+        "uncertaintyRespected": true,
+        "unexpectedEntries": [],
+        "toolCalls": [
+          "impact"
+        ],
+        "seconds": 12.823563166020904,
+        "models": [
+          "claude-haiku-4-5-20251001",
+          "claude-opus-5[1m]"
+        ]
+      },
+      {
+        "task": "reader",
+        "arm": "source",
+        "answer": {
+          "action": "answer",
+          "entries": [
+            "okhttp3.sse.EventSources.processResponse(okhttp3.Response,okhttp3.sse.EventSourceListener)",
+            "okhttp3.sse.EventSources.createFactory(okhttp3.OkHttpClient)"
+          ],
+          "needs_review": true,
+          "notes": "ServerSentEventReader.processNextEvent() is called in a loop by RealEventSource.processResponse(). EventSources.processResponse invokes it synchronously. EventSources.createFactory returns a factory whose RealEventSource.connect() enqueues the call asynchronously; RealCall.enqueue -> RealEventSource.onResponse -> processResponse -> processNextEvent loop, so listener callbacks (onOpen/onEvent/onClosed/onFailure) on both paths may be affected. Potential impact only, not a safety proof."
+        },
+        "entryPointsFound": 2,
+        "expectedEntryPoints": 2,
+        "uncertaintyRespected": true,
+        "unexpectedEntries": [],
+        "toolCalls": [
+          "read",
+          "read"
+        ],
+        "seconds": 17.09721612499561,
+        "models": [
+          "claude-haiku-4-5-20251001",
+          "claude-opus-5[1m]"
+        ]
+      },
+      {
+        "task": "reader",
+        "arm": "impact",
+        "answer": {
+          "action": "answer",
+          "entries": [
+            "okhttp3.sse.EventSources.createFactory",
+            "okhttp3.sse.EventSources.processResponse"
+          ],
+          "needs_review": true,
+          "notes": "Impact report (status found, not truncated) shows two public EventSources entry points reaching ServerSentEventReader.processNextEvent: processResponse(Response, EventSourceListener) calls RealEventSource.processResponse directly (synchronous path); createFactory(OkHttpClient) reaches it asynchronously via its lambda -> RealEventSource.connect -> RealCall.enqueue -> Dispatcher/AsyncCall.run -> Callback.onResponse -> RealEventSource.onResponse -> processResponse. Other affected declarations (Call.enqueue/execute, Dispatcher, WebSocket paths) are outside EventSources and mostly conservative dispatch-model candidates. Limitations: saved-graph freshness unknown, 144/270 files with uncertain index freshness, conservative virtual dispatch candidates; this is potential impact, not a safety proof, and does not authorize test selection or deletion."
+        },
+        "entryPointsFound": 2,
+        "expectedEntryPoints": 2,
+        "uncertaintyRespected": true,
+        "unexpectedEntries": [],
+        "toolCalls": [
+          "impact"
+        ],
+        "seconds": 13.124305291974451,
+        "models": [
+          "claude-haiku-4-5-20251001",
+          "claude-opus-5[1m]"
+        ]
+      }
+    ],
+    "scope": "Two read-only public SSE preflight questions, not SWE-bench repair scores. Hidden regression tests and gold patches are excluded."
+  },
+  "selection": {
+    "executed": [
+      "square_okhttp-6887",
+      "ankidroid_Anki-Android-19661"
+    ],
+    "noFailureTarget": [
+      "square_okhttp-8968",
+      "ankidroid_Anki-Android-18903"
+    ],
+    "notRun": [
+      "ankidroid_Anki-Android-19384",
+      "ankidroid_Anki-Android-19509",
+      "ankidroid_Anki-Android-19982",
+      "ankidroid_Anki-Android-20250"
+    ]
+  }
+}

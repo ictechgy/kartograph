@@ -9,7 +9,8 @@ QUERY_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/kartograph-query.XXXXXX")"
 BRIDGE_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/kartograph-bridges.XXXXXX")"
 SNAPSHOT_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/kartograph-snapshot.XXXXXX")"
 SAVED_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/kartograph-saved-query.XXXXXX")"
-trap 'rm -f "$QUERY_OUTPUT" "$BRIDGE_OUTPUT" "$SNAPSHOT_OUTPUT" "$SAVED_OUTPUT"' EXIT
+IMPACT_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/kartograph-impact.XXXXXX")"
+trap 'rm -f "$QUERY_OUTPUT" "$BRIDGE_OUTPUT" "$SNAPSHOT_OUTPUT" "$SAVED_OUTPUT" "$IMPACT_OUTPUT"' EXIT
 
 "$BINARY" query MissingAgentSurfaceSymbol \
     --classes cli/build/classes/kotlin/main --project . >"$QUERY_OUTPUT"
@@ -27,7 +28,13 @@ if [[ "$?" -ne 64 ]]; then
     exit 1
 fi
 
-python3 - "$QUERY_OUTPUT" "$BRIDGE_OUTPUT" "$SAVED_OUTPUT" <<'PY'
+"$BINARY" impact MissingAgentSurfaceSymbol --graph-file "$SNAPSHOT_OUTPUT" >"$IMPACT_OUTPUT"
+if [[ "$?" -ne 64 ]]; then
+    echo "impact unresolved input did not return 64" >&2
+    exit 1
+fi
+
+python3 - "$QUERY_OUTPUT" "$BRIDGE_OUTPUT" "$SAVED_OUTPUT" "$IMPACT_OUTPUT" <<'PY'
 import json
 import pathlib
 import sys
@@ -39,6 +46,11 @@ saved = json.loads(pathlib.Path(sys.argv[3]).read_text())
 if set(saved) != set(query) or saved["status"] != "notFound" or not any(
         item.startswith("saved-graph:") for item in saved["limitations"]):
     raise SystemExit("saved query lost its document or snapshot contract")
+impact = json.loads(pathlib.Path(sys.argv[4]).read_text())
+if impact["format"] != "kartograph-impact" or impact["version"] != 1 or impact["status"] != "notFound":
+    raise SystemExit("impact document does not match its unresolved contract")
+if not impact["unresolved"] or not any(x.startswith("potential-impact:") for x in impact["limitations"]):
+    raise SystemExit("impact omitted uncertainty")
 
 bridges = json.loads(pathlib.Path(sys.argv[2]).read_text())
 if bridges["format"] != "bridge-facts" or bridges["version"] != 1 or bridges["platform"] != "kotlin":

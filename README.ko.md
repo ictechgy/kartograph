@@ -23,6 +23,7 @@ Android만의 이점이 하나 있다. "안 쓰는 것처럼 보이지만 지우
 
 현재 동작하는 것:
 
+- 미배포 소스의 `impact`는 변경 예정 심볼 또는 commit 간 변경 파일의 잠재적 영향을 저장 그래프에서 조사한다. base/current 경로·삭제·runtime 근거·불확실성을 사람·에이전트·CI에 같은 의미로 전달한다. [사용법](docs/IMPACT.md)과 [실제 변경 채점](experiments/change-impact/README.md)을 참고한다.
 - `graph`는 컴파일된 class root를 DOT 또는 `code-graph` JSON 교환 문서로 렌더링하며, 요청하면 project 기준 source 경로를 해석한다(`--include-paths --project`). JSON에는 간선 출처와 외부 호출의 해석 상태도 기록한다. `--classes`를 반복해 여러 module/variant output root를 합칠 수 있고, 같은 JVM class는 첫 root의 사실을 결정적으로 사용한다.
 - `dead`는 Android 보존 근거(manifest, XML, `@Keep`, keep 규칙, 상속 hierarchy, DI/직렬화 어노테이션, JNI·프레임워크 콜백)에서 도달 불가한 class 선언을 보고하며, `--explain`·baseline·`--since`·machine report를 지원한다. 재귀 include와 consumer rules 입력도 지원한다.
 - `query`/`bridges`/`skill`은 전체 graph 덤프 대신 한 symbol의 사용·의존·도달성과 Flutter/React Native 브리지 사실을 에이전트에게 제공한다. `query`는 미해결 runtime 경로와 보수적 dispatch 후보도 계량한다.

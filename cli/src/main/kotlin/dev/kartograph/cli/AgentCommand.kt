@@ -25,8 +25,6 @@ import java.nio.file.LinkOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.StandardCopyOption
 import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.charset.CodingErrorAction
 
 internal object AgentCommand {
     fun skill(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
@@ -133,10 +131,15 @@ internal object AgentCommand {
             setOf(
                 "--classes", "--project", "--manifest", "--resources", "--namespace",
                 "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes",
-            ) + if (requested != null) setOf("--depth", "--limit") else emptySet(),
+            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact"),
             error,
         )
             ?: return ExitStatus.USAGE.code
+        if (requested == null) {
+            if (options.values("--revision").size > 1 || options.values("--scope").size > 1) return usage(error, "duplicate snapshot context option")
+            if (options.single("--revision")?.let { !Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(it) } == true) return usage(error, "snapshot revision must be a full commit hash")
+            if (options.single("--scope")?.let { it.length > 200 || !Regex("[A-Za-z0-9_.:-]+").matches(it) } == true) return usage(error, "scope must be a portable project:variant label")
+        }
         val classRoots: List<Path>
         val project: Path
         try {
@@ -185,11 +188,16 @@ internal object AgentCommand {
                 .mapTo(mutableSetOf()) { node -> node.id }
             val limitations = RuntimeLimitationScanner.scan(indexed, project)
             if (requested == null) {
-                val captured = QuerySnapshotCodec.render(QuerySnapshot(graph, evidence, limitations, suppressed,
-                    options.values("--include-private-members").isNotEmpty()))
+                val paths = if (options.values("--include-paths").isNotEmpty()) dev.kartograph.index.SourcePathIndex.resolve(graph, project) else null
+                val capturedGraph = if (paths == null) graph else dev.kartograph.core.CodeGraph(graph.nodes.values.map { node ->
+                    paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
+                }, graph.edges, graph.externalCalls, graph.serviceProviders)
+                val captured = QuerySnapshotCodec.render(QuerySnapshot(capturedGraph, evidence, limitations + paths?.limitations.orEmpty(), suppressed,
+                    options.values("--include-private-members").isNotEmpty(),
+                    revision = options.single("--revision"), scope = options.single("--scope")), compact = options.values("--compact").isNotEmpty())
                 // JSON writer는 ASCII escape를 사용하므로 문자 수가 UTF-8 바이트 수와 같다.
                 if (captured.length > QuerySnapshotCodec.MAX_BYTES) {
-                    error.println("error: query snapshot exceeds 64 MiB; capture a narrower input scope")
+                    error.println("error: query snapshot (${captured.length} bytes) exceeds 64 MiB; use --compact or capture a narrower input scope")
                     ExitStatus.FAILURE.code
                 } else {
                     output.print(captured)
@@ -228,15 +236,7 @@ internal object AgentCommand {
         val depth = options.positiveInt("--depth", 1, error) ?: return ExitStatus.USAGE.code
         val limit = options.positiveInt("--limit", 50, error) ?: return ExitStatus.USAGE.code
         return try {
-            val path = Path.of(options.single("--graph-file")!!)
-            require(Files.isRegularFile(path))
-            val bytes = Files.newInputStream(path).use {
-                it.readNBytes(QuerySnapshotCodec.MAX_BYTES + 1)
-            }
-            require(bytes.size <= QuerySnapshotCodec.MAX_BYTES)
-            val content = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
-            val snapshot = QuerySnapshotCodec.parse(content)
+            val snapshot = SnapshotFiles.read(options.single("--graph-file")!!)
             val document = SymbolQuery.query(snapshot.graph, ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention),
                 requested, (snapshot.limitations + SAVED_GRAPH_LIMITATION).distinct().sorted(), depth, limit, snapshot.suppressed)
             output.print(AgentDocumentRenderer.query(document))
@@ -287,7 +287,7 @@ internal object AgentCommand {
                 error.println("error: unknown option: $option")
                 return null
             }
-            if (option == "--include-private-members") {
+            if (option in setOf("--include-private-members", "--include-paths", "--compact")) {
                 values.getOrPut(option) { mutableListOf() } += "true"
                 index++
                 continue
@@ -341,6 +341,10 @@ internal object AgentCommand {
 
         Accepts the live-input options of query except --depth and --limit. Writes a deterministic JSON
         snapshot to stdout. Query it with `kartograph query <symbol> --graph-file <snapshot.json>`.
+        --include-paths resolves source locations for `impact --file` and records unresolved path counts.
+        --compact writes lossless v2 indexed graph rows and a string table; v1 remains the default.
+        --revision <full-commit-hash> and --scope <project:variant> label CI artifacts for input matching.
+        These labels are caller assertions; the source freshness checks still apply.
         A snapshot records its input state; it does not prove that current sources or runtime behavior match.
         Ordinary `graph --format json` output does not contain the required retention context.
     """.trimIndent() + "\n"
