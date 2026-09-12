@@ -12,6 +12,11 @@ and 64 for invalid options. Legacy snapshots remain readable and are explicitly
 unverified. Capturing hashes after `true`, a shell build command, or an arbitrary
 caller revision cannot produce compilation evidence.
 
+[Compiler-produced references](COMPILER-EVIDENCE.md) describe the optional
+collector path. Enabling `compilerEvidence` on a supported producer records
+version 2 receipts; raw reference files are imported only through explicit
+`snapshot --compiler-evidence` inputs with matching compiler evidence.
+
 ## Explicit Gradle producer
 
 Apply the kartograph plugin and register the selected **compiler task**. Registration

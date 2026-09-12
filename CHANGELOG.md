@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+- Add optional javac, Kotlin JVM backend and Dagger collectors with compiler-bound receipts, explicit snapshot enrichment and measured incomplete-reference diagnostics.
+
 ### Added
 
 - compiler task의 source/class/config/classpath 지문을 snapshot에 연결하고 `verify-snapshot`과 CI helper에서

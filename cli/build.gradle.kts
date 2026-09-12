@@ -50,6 +50,7 @@ distributions {
                 "IMPACT-PLAN.md",
                 "IMPACT.md",
                 "BUILD-PROVENANCE.md",
+                "COMPILER-EVIDENCE.md",
             )
             from(releaseDocumentation.map { document -> rootProject.file("docs/$document") }) {
                 into("docs")

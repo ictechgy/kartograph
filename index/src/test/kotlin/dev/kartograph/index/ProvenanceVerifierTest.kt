@@ -51,6 +51,17 @@ class ProvenanceVerifierTest {
         val provenance = SnapshotProvenance(witness.outputs + fp("witness", "witness.json"), listOf(witness))
         fun status(value: SnapshotProvenance? = provenance, scope: String = "sample:main") = ProvenanceVerifier.verify(value, root, scope).status
         assertEquals("matched", status())
+        // 수집기 실행 증명이 아닌 문서/지문 경계 검증용 fixture다.
+        val receiptFile = root.resolve("evidence.tsv")
+        Files.writeString(receiptFile, "unit collector document")
+        val receipt = fp("compilerEvidence", "evidence.tsv")
+        val token = CompilerEvidenceToken.create(witness.scope, witness.compiler, witness.artifact, witness.inputs)
+        val collected = witness.copy(compilerEvidence = listOf(receipt), evidenceToken = token)
+        val enriched = provenance.copy(witnesses = listOf(collected))
+        assertEquals("matched", status(enriched))
+        assertEquals("unverified", status(enriched.copy(witnesses = listOf(collected.copy(evidenceToken = "f".repeat(64))))))
+        Files.writeString(receiptFile, "changed collector document")
+        assertEquals("stale", status(enriched))
         assertEquals("unverified", status(null))
         assertEquals("unverified", status(scope = "sample:test"))
         assertEquals("unverified", status(provenance.copy(witnesses = emptyList())))

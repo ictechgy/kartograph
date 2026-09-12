@@ -12,11 +12,13 @@ public object ProvenanceVerifier {
     /** 외부 입력은 문서의 external 슬롯에 명시적으로 다시 연결해야 한다. */
     public fun verify(provenance: SnapshotProvenance?, project: Path, scope: String?, external: Map<String, Path> = emptyMap()): Result {
         if (provenance == null) return Result("unverified", listOf("legacy-snapshot"))
+        if (provenance.witnesses.any { it.compilerEvidence.isNotEmpty() && !CompilerEvidenceToken.matches(it) })
+            return Result("unverified", listOf("invalid-compiler-evidence-token"))
         val reasons = mutableListOf<String>()
         val root = project.toAbsolutePath().normalize()
         fun locate(input: InputFingerprint): Path? =
             (if (input.path.startsWith("external/")) external[input.path] else root.resolve(input.path))?.toAbsolutePath()?.normalize()
-        val inputs = provenance.inputs + provenance.witnesses.flatMap { it.inputs + it.outputs }
+        val inputs = provenance.inputs + provenance.witnesses.flatMap { it.inputs + it.outputs + it.compilerEvidence }
         inputs.filter { it.role != "options" }.distinct().forEach { input ->
             val path = locate(input)
             if (path == null) reasons += "missing-external-input"

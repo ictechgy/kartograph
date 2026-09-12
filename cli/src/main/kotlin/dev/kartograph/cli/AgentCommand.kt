@@ -13,6 +13,8 @@ import dev.kartograph.index.AndroidManifestScanner
 import dev.kartograph.index.AndroidXmlScanner
 import dev.kartograph.index.BridgeFactScanner
 import dev.kartograph.index.ClassFileIndexer
+import dev.kartograph.index.CompilerEvidenceContext
+import dev.kartograph.index.CompilerEvidenceIndexer
 import dev.kartograph.index.ClassHierarchyIndexer
 import dev.kartograph.index.KeepRuleScanner
 import dev.kartograph.index.KeepRuleScanningException
@@ -131,7 +133,7 @@ internal object AgentCommand {
             setOf(
                 "--classes", "--project", "--manifest", "--resources", "--namespace",
                 "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes",
-            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings"),
+            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings", "--compiler-evidence", "--input"),
             error,
         )
             ?: return ExitStatus.USAGE.code
@@ -158,12 +160,20 @@ internal object AgentCommand {
         }
         val depth = options.positiveInt("--depth", 1, error) ?: return ExitStatus.USAGE.code
         val limit = options.positiveInt("--limit", 50, error) ?: return ExitStatus.USAGE.code
+        if (options.values("--compiler-evidence").isNotEmpty() && options.single("--scope") == null)
+            return usage(error, "--compiler-evidence requires --scope and completed --build-witness inputs")
+        if (options.values("--input").isNotEmpty() && options.values("--compiler-evidence").isEmpty())
+            return usage(error, "--input requires --compiler-evidence on snapshot")
+        val externalInputs = try { FreshnessCommand.inputBindings(options.values("--input")) }
+            catch (_: IllegalArgumentException) { return usage(error, "invalid --input binding") }
         return try {
             val classpath = options.values("--classpath").map { resolveProjectPath(project, it) }
             val keepScanner = KeepRuleScanner(project, options.values("--include-private-members").isNotEmpty())
             val keepRules = keepScanner.scan(options.values("--keep-rules").map { resolveProjectPath(project, it) })
             val generatedRoots = options.values("--generated-classes").map(Path::of)
+            val compilerEvidence = options.values("--compiler-evidence").map { resolveProjectPath(project, it) }
             val fingerprintFiles = classRoots.map { "classes" to it } + classpath.map { "classpath" to it } +
+                compilerEvidence.map { "compilerEvidence" to it } +
                 generatedRoots.map { "generated-classes" to it } +
                 listOf("--manifest", "--resources", "--service-resources", "--baseline", "--source-root", "--build-input").flatMap { option ->
                     val role = when (option) { "--source-root" -> "sources"; "--build-input" -> "buildConfig"; else -> option.removePrefix("--") }
@@ -177,7 +187,15 @@ internal object AgentCommand {
             val indexed = ClassFileIndexer().indexWithObservations(classRoots, classpath,
                 options.values("--service-resources").map { resolveProjectPath(project, it) },
                 generatedRoots)
-            val graph = indexed.graph
+            val compilerFacts = try {
+                CompilerEvidenceIndexer.enrich(indexed, classRoots, compilerEvidence,
+                    if (compilerEvidence.isEmpty()) null else CompilerEvidenceContext(project, requireNotNull(options.single("--scope")),
+                        requireNotNull(provenance), externalInputs))
+            } catch (evidenceError: IllegalArgumentException) {
+                error.println("error: ${evidenceError.message ?: "invalid compiler evidence"}")
+                return ExitStatus.FAILURE.code
+            }
+            val graph = compilerFacts.graph
             val hierarchy = indexed.hierarchy
             val inputEvidence = buildList {
                 options.single("--manifest")?.let { manifest ->
@@ -197,7 +215,11 @@ internal object AgentCommand {
             val suppressed = graph.nodes.values
                 .filter { node -> Finding(node.id, node.location).fingerprint in baseline }
                 .mapTo(mutableSetOf()) { node -> node.id }
-            val limitations = RuntimeLimitationScanner.scan(indexed, project)
+            val limitations = RuntimeLimitationScanner.scan(indexed, project) + buildList {
+                if (compilerFacts.unmappedReferences > 0) add("compiler-evidence-unmapped-references: ${compilerFacts.unmappedReferences}")
+                if (compilerFacts.outsideGraphReferences > 0) add("compiler-evidence-outside-graph: ${compilerFacts.outsideGraphReferences}")
+                if (compilerFacts.shadowedReferences > 0) add("compiler-evidence-shadowed-references: ${compilerFacts.shadowedReferences}")
+            }
             if (requested == null) {
                 val paths = if (options.values("--include-paths").isNotEmpty()) dev.kartograph.index.SourcePathIndex.resolve(graph, project) else null
                 val capturedGraph = if (paths == null) graph else dev.kartograph.core.CodeGraph(graph.nodes.values.map { node ->
@@ -365,6 +387,8 @@ internal object AgentCommand {
         --build-witness <file> attaches a successful supported Gradle compiler-task record (repeatable).
         --source-root <directory> and --build-input <file> capture additional explicit source/config inputs.
         --timings reports capture-only fingerprint time to stderr. verify-snapshot reports comparison time.
+        --compiler-evidence <file> attaches explicitly selected compiler facts with completed build receipts.
+        It requires --scope, --build-witness and --input bindings for every external witness input.
         These labels are caller assertions; the source freshness checks still apply.
         A snapshot records its input state; it does not prove that current sources or runtime behavior match.
         Ordinary `graph --format json` output does not contain the required retention context.

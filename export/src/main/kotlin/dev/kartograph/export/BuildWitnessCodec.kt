@@ -27,15 +27,25 @@ public object BuildWitnessCodec {
 
     private fun inputValue(input: InputFingerprint): Any = sortedMapOf("role" to input.role, "path" to input.path, "sha256" to input.sha256)
     private fun witnessValue(witness: BuildWitness): Any = sortedMapOf(
-        "format" to "kartograph-build-witness", "version" to 1, "scope" to witness.scope,
+        "format" to "kartograph-build-witness", "version" to if (witness.compilerEvidence.isEmpty()) 1 else 2, "scope" to witness.scope,
         "compiler" to witness.compiler, "artifact" to witness.artifact,
         "inputs" to witness.inputs.map(::inputValue), "outputs" to witness.outputs.map(::inputValue),
-    )
+    ).also { value ->
+        if (witness.compilerEvidence.isNotEmpty()) {
+            value["compilerEvidence"] = witness.compilerEvidence.map(::inputValue)
+            value["evidenceToken"] = requireNotNull(witness.evidenceToken)
+        }
+    }
     private fun witness(value: Any?): BuildWitness {
         val map = obj(value)
-        require(map["format"] == "kartograph-build-witness" && map["version"] == 1L) { "unsupported build witness" }
+        require(map["format"] == "kartograph-build-witness" && map["version"] in listOf(1L, 2L)) { "unsupported build witness" }
+        val enriched = map["version"] == 2L
+        require(enriched || !map.containsKey("compilerEvidence") && !map.containsKey("evidenceToken")) { "compiler evidence requires witness version 2" }
+        val receipts = if (enriched) list(map["compilerEvidence"]).map(::input) else emptyList()
+        require(!enriched || receipts.isNotEmpty()) { "compiler evidence receipts are missing" }
         return BuildWitness(str(map["scope"]), str(map["compiler"]), str(map["artifact"]),
-            list(map["inputs"]).map(::input), list(map["outputs"]).map(::input))
+            list(map["inputs"]).map(::input), list(map["outputs"]).map(::input), receipts,
+            if (enriched) str(map["evidenceToken"]) else null)
     }
     private fun input(value: Any?): InputFingerprint = obj(value).let { InputFingerprint(str(it["role"]), str(it["path"]), str(it["sha256"])) }
     private fun obj(value: Any?): Map<*, *> = value as? Map<*, *> ?: invalid()

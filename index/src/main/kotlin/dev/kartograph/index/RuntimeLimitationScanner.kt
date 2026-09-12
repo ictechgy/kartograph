@@ -5,6 +5,7 @@ import dev.kartograph.core.ClassHierarchy
 import dev.kartograph.core.CallResolution
 import dev.kartograph.core.InvocationKind
 import dev.kartograph.core.NodeAttribute
+import dev.kartograph.core.NodeId
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.FileTime
@@ -14,10 +15,12 @@ public class IndexedClasses internal constructor(
     public val graph: CodeGraph,
     internal val observations: List<ClassRuntimeObservation>,
     public val hierarchy: ClassHierarchy = ClassHierarchy.EMPTY,
+    public val declarationsByRoot: List<Set<NodeId>> = emptyList(),
+    public val selectedRootByNode: Map<NodeId, Int> = emptyMap(),
 ) {
     /** 1회 파싱한 그래프에 dependency header를 보강하며 관측값과 호출 위치는 재사용한다. */
     public fun withHierarchy(hierarchy: ClassHierarchy): IndexedClasses =
-        IndexedClasses(ExternalDispatchIndexer.enrich(graph, hierarchy), observations, hierarchy)
+        IndexedClasses(ExternalDispatchIndexer.enrich(graph, hierarchy), observations, hierarchy, declarationsByRoot, selectedRootByNode)
 }
 
 /** 파일 이름과 시각은 신선도 비교에만 사용하며 절대경로를 내보내지 않는다. */
