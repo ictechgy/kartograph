@@ -96,6 +96,16 @@ class RepairLauncherTest(unittest.TestCase):
                         "unresolved": [], "limitations": [],
                         "truncated": {"results": False},
                     }))
+                elif sys.argv[1] == "query":
+                    print(json.dumps({
+                        "level": "symbol", "limitations": [], "requested": sys.argv[2], "status": "found",
+                        "result": {"dependsOn": [], "members": [],
+                                   "reachability": {"state": "reachable", "suppressedByBaseline": False},
+                                   "subject": {"kind": "class", "name": "Thing", "qualifiedName": "p.Thing",
+                                               "usr": "class:p/Thing", "accessibility": "public"},
+                                   "truncated": {"dependsOn": False, "members": False, "usedBy": False},
+                                   "usedBy": []},
+                    }))
                 else:
                     raise SystemExit(3)
                 """
@@ -152,6 +162,97 @@ class RepairLauncherTest(unittest.TestCase):
         self.assertFalse(any(str(self.repo) in packet_text for packet_text in packet.packets))
         self.assertFalse(any(str(self.repo) in call[0] for call in model.calls))
 
+    def test_public_read_history_preserves_literals_and_redacts_only_known_paths(self):
+        output = self.root / "fidelity-trial"
+        repository_path = self.repo.resolve()
+        workspace_path = (output / "workspace").resolve()
+        home_path = Path.home().resolve()
+        public_comments = "  // comment\n  /* */\n"
+        public_line = (
+            "  String value = \"escaped https://example.test/x\\\"</tag> '/dev/null' UTC; value = 1\";\n"
+        )
+
+        def java_string(value):
+            return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+        fidelity_source = (
+            "class Fidelity {\n"
+            + public_comments
+            + public_line
+            + f'  String privatePaths = "repo={java_string(repository_path)} workspace={java_string(workspace_path)} home={java_string(home_path)}";\n'
+            + "}\n"
+        )
+        (self.repo / "src/main/Fidelity.java").write_text(fidelity_source, encoding="utf-8")
+        self._git("add", "src/main/Fidelity.java")
+        self._git("commit", "-qm", "fidelity fixture")
+        revision = self._git("rev-parse", "HEAD").strip()
+
+        class CopyReadModel:
+            def __init__(self):
+                self.calls = []
+                self.read_content = None
+
+            def request(self, packet, *, model, effort, timeout):
+                self.calls.append((packet, model, effort, timeout))
+                if len(self.calls) == 1:
+                    action = {"action": "read", "path": "src/main/Fidelity.java"}
+                elif len(self.calls) == 2:
+                    history_json = packet.rsplit("\n\nRecorded interaction history:\n", 1)[1]
+                    history = json.loads(history_json)
+                    self.read_content = history[-1]["result"]["content"]
+                    old = next(line for line in self.read_content.splitlines(keepends=True) if "value = 1" in line)
+                    action = {
+                        "action": "replace", "path": "src/main/Fidelity.java",
+                        "old": old, "new": old.replace("value = 1", "value = 2", 1),
+                    }
+                else:
+                    action = {"action": "finish", "summary": "updated fidelity fixture"}
+                return MODULE.ModelReply(ok=True, text=json.dumps(action), metadata={"model": "fake-model"})
+
+        packet = FakePacket()
+        model = CopyReadModel()
+        result = MODULE.run_trial(
+            self.spec(
+                revision=revision, readPaths=["src/main/Fidelity.java"], editPaths=["src/main/Fidelity.java"],
+                buildEnv={"TZ": "UTC", "FLAG": "true"}, analysisEnv={"COUNT": "1"},
+            ),
+            arm="source", output=output, wall_seconds=30,
+            packet_transport=packet, model_transport=model,
+        )
+
+        self.assertEqual("finished", result["modelOutcome"])
+        self.assertEqual(["src/main/Fidelity.java"], result["final"]["modifiedPaths"])
+        self.assertIn(public_comments + public_line, model.read_content)
+        self.assertNotIn(str(repository_path), model.read_content)
+        self.assertNotIn(str(workspace_path), model.read_content)
+        self.assertNotIn(str(home_path), model.read_content)
+        self.assertIn("https://example.test/x", model.read_content)
+        self.assertIn("</tag>", model.read_content)
+        encoded_public_line = json.dumps(public_line, ensure_ascii=False)[1:-1]
+        encoded_public_comments = json.dumps(public_comments, ensure_ascii=False)[1:-1]
+        histories = []
+        for packet_text in packet.packets:
+            history_marker = "\n\nRecorded interaction history:\n"
+            if history_marker in packet_text:
+                histories.append(json.loads(packet_text.rsplit(history_marker, 1)[1]))
+        self.assertTrue(histories)
+        self.assertTrue(any(encoded_public_comments + encoded_public_line in packet_text for packet_text in packet.packets))
+        for packet_text in packet.packets:
+            self.assertNotIn(str(repository_path), packet_text)
+            self.assertNotIn(str(workspace_path), packet_text)
+            self.assertNotIn(str(home_path), packet_text)
+        source_packet = next(packet_text for packet_text in packet.packets if encoded_public_line in packet_text)
+        self.assertIn("// comment", source_packet)
+        self.assertIn("/* */", source_packet)
+        self.assertIn("UTC", source_packet)
+        self.assertIn("true", source_packet)
+        self.assertIn("1", source_packet)
+        patch = (output / "patch.diff").read_text(encoding="utf-8")
+        self.assertIn("value = 2", patch)
+        self.assertIn("https://example.test/x", patch)
+        self.assertIn("</tag>", patch)
+        self.assertIn("'/dev/null'", patch)
+
     def test_impact_arm_exposes_impact_only_after_fresh_owned_snapshot(self):
         packet = FakePacket()
         model = FakeModel([
@@ -170,6 +271,25 @@ class RepairLauncherTest(unittest.TestCase):
         self.assertTrue(tool["ok"], tool)
         self.assertEqual("impact", tool["action"])
         self.assertIn("Impact analysis skill contract", packet.packets[0])
+
+    def test_impact_prompt_examples_dispatch_as_controller_actions(self):
+        packet = FakePacket()
+        model = FakeModel([
+            {"action": "impact", "file": "src/main/Thing.java"},
+            {"action": "query", "symbol": "Thing"},
+            {"action": "finish", "summary": "reviewed"},
+        ])
+        result = MODULE.run_trial(
+            self.spec(), arm="impact", output=self.root / "prompt-dispatch", wall_seconds=30,
+            packet_transport=packet, model_transport=model,
+        )
+
+        self.assertEqual("finished", result["modelOutcome"])
+        self.assertIn("Available actions: list, read, search, replace, test, refresh, impact, query", packet.packets[0])
+        self.assertEqual("impact", result["trace"][0]["tool"]["action"])
+        self.assertTrue(result["trace"][0]["tool"]["ok"])
+        self.assertEqual("query", result["trace"][1]["tool"]["action"])
+        self.assertTrue(result["trace"][1]["tool"]["ok"])
 
     def test_source_arm_rejects_impact_action_through_controller(self):
         packet = FakePacket()
@@ -248,6 +368,29 @@ class RepairLauncherTest(unittest.TestCase):
         self.assertIn('"editableCount": 4000', prompt)
         self.assertIn('"directory": "module"', prompt)
         self.assertIn("list", prompt)
+
+    def test_impact_prompt_has_minimal_query_and_impact_examples_with_optional_filters(self):
+        prepared = MODULE.prepare_trial(self.spec(), "impact", self.root / "query-prompt")
+        prompt = MODULE._base_prompt(prepared)
+
+        self.assertIn('"action": "query", "symbol": "exact USR"', prompt)
+        self.assertIn('"action": "impact", "symbol": "exact USR"', prompt)
+        self.assertIn('`{"action":"impact","file":"src/...', prompt)
+        self.assertIn('Changed.kt"}`', prompt)
+        self.assertIn('`{"action":"query","symbol":"Changed"}`', prompt)
+        self.assertIn("Impact requires at least one selector, symbol or file", prompt)
+        self.assertIn("The controller defaults query to --limit 5 when omitted", prompt)
+        self.assertIn("query --limit is the native per-section neighbor cap (native default 50), not a symbol count", prompt)
+        self.assertIn("--graph-file", prompt)
+        self.assertIn("does not reimplement graph analysis", prompt)
+        self.assertIn("list or search", prompt)
+
+    def test_source_prompt_does_not_advertise_query_controller_action(self):
+        prepared = MODULE.prepare_trial(self.spec(), "source", self.root / "source-prompt")
+
+        prompt = MODULE._base_prompt(prepared)
+
+        self.assertNotIn('"action": "query"', prompt)
 
     def test_missing_request_cost_cannot_be_reported_as_a_complete_total(self):
         self.assertIsNone(MODULE._aggregate_cost([{"cost": 1.25}, {"cost": None}]))

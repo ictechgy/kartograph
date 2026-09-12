@@ -27,6 +27,8 @@
 ``compileCommand``와 ``timeoutSeconds``는 설정된 test command가 먼저 컴파일하지
 않는 프로젝트를 위한 선택 편의 항목이다. native와 hidden 패치는 이 독립
 채점기가 신뢰하는 입력이며 실행기가 모델 workspace로 복사하지 않는다.
+``testIdentityPolicy``는 기본 ``exact``이며 detekt JUnit object identity 비교가
+필요한 경우에만 ``detekt-junit-object-identities-v1``을 선택한다.
 """
 
 import argparse
@@ -53,7 +55,6 @@ MAX_TIMEOUT_SECONDS = 900.0
 MAX_LOG_BYTES = 16 * 1024 * 1024
 _SHA = re.compile(r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$")
 _DRIVE = re.compile(r"^[A-Za-z]:")
-_ABS = re.compile(r"(?<![A-Za-z0-9_])/(?:[^\s\"']+/)*[^\s\"']+")
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _TEST_PARTS = {
     "test", "tests", "androidtest", "testfixtures", "test-fixtures",
@@ -72,6 +73,22 @@ _BUILD_FILES = {
     "mvnw", "mvnw.cmd", "ant.xml", "build.xml", "libs.versions.toml",
 }
 _DIFF_HEADER = re.compile(r"^diff --git a/(.*?) b/(.*)$")
+_IDENTITY_POLICIES = {"exact", "detekt-junit-object-identities-v1"}
+_DETEKT_IDENTITY_CONTEXTS = (
+    (
+        "detekt-core/build/test-results/test/TEST-io.gitlab.arturbosch.detekt.core.suppressors.AnnotationSuppressorSpec$Full#20Qualified#20names$general#20cases.xml",
+        "io.gitlab.arturbosch.detekt.core.suppressors.AnnotationSuppressorSpec$Full Qualified names$general cases",
+        (
+            re.compile(r"^\[1\] org\.jetbrains\.kotlin\.resolve\.BindingTraceContext\$1@[0-9a-f]+$"),
+            re.compile(r"^\[2\] org\.jetbrains\.kotlin\.resolve\.BindingContext\$1@[0-9a-f]+$"),
+        ),
+    ),
+    (
+        "detekt-formatting/build/test-results/test/TEST-io.gitlab.arturbosch.detekt.formatting.WrapperSmokeTestSpec.xml",
+        "io.gitlab.arturbosch.detekt.formatting.WrapperSmokeTestSpec",
+        (re.compile(r"^for rule: (io\.gitlab\.arturbosch\.detekt\.formatting\.wrappers\.[A-Za-z_$][A-Za-z0-9_$]*)@[0-9a-f]+$"),),
+    ),
+)
 
 
 class GradeError(RuntimeError):
@@ -84,6 +101,22 @@ class GradeSpecError(GradeError):
 
 class PatchError(GradeError):
     """제안했거나 신뢰한 패치를 안전하게 적용할 수 없다."""
+
+
+class TrustedInputError(GradeError):
+    """신뢰한 채점 입력을 준비하거나 적용할 수 없다."""
+
+
+class OracleApplicationError(GradeError):
+    """신뢰한 hidden test 입력을 workspace에 적용할 수 없다."""
+
+
+def _identity_policy(value: Any) -> str:
+    if value is None:
+        return "exact"
+    if not isinstance(value, str) or value not in _IDENTITY_POLICIES:
+        raise GradeSpecError("testIdentityPolicy must be exact or detekt-junit-object-identities-v1")
+    return value
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -140,12 +173,13 @@ def _is_build_path(value: str) -> bool:
 
 
 def _scrub(value: Any, paths: Iterable[Any]) -> Any:
-    path_strings = sorted({str(item) for item in paths if item}, key=len, reverse=True)
+    paths = tuple(paths)
+    trusted_paths = _trusted_path_strings(paths)
     if isinstance(value, str):
         text = value
-        for path in path_strings:
-            text = text.replace(path, "<local>")
-        return _ABS.sub("<path>", text)
+        for path in trusted_paths:
+            text = _known_path_pattern(path).sub("<local>", text)
+        return text
     if isinstance(value, list):
         return [_scrub(item, paths) for item in value]
     if isinstance(value, tuple):
@@ -153,6 +187,25 @@ def _scrub(value: Any, paths: Iterable[Any]) -> Any:
     if isinstance(value, dict):
         return {str(key): _scrub(item, paths) for key, item in value.items()}
     return value
+
+
+def _trusted_path_strings(paths: Iterable[Any]) -> list[str]:
+    candidates: set[str] = set()
+    for item in paths:
+        if not item:
+            continue
+        raw = str(item)
+        try:
+            absolute = Path(raw).is_absolute()
+        except (OSError, ValueError):
+            continue
+        if raw and absolute and raw != os.sep:
+            candidates.add(raw)
+    return sorted(candidates, key=len, reverse=True)
+
+
+def _known_path_pattern(path: str) -> re.Pattern[str]:
+    return re.compile(rf"(?<![A-Za-z0-9_.-]){re.escape(path)}(?![A-Za-z0-9_.-])")
 
 
 def _argv(value: Any, name: str) -> tuple[str, ...]:
@@ -200,6 +253,7 @@ class GradeSpec:
     report_globs: tuple[str, ...]
     expected_gold_tests: Any
     known_baseline_failures: Any
+    test_identity_policy: str = "exact"
     compile_command: tuple[str, ...] | None = None
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     spec_directory: Path = Path.cwd()
@@ -248,6 +302,7 @@ class GradeSpec:
         edit_paths = _relative_paths(value.get("editPaths"), "editPaths")
         if any(_is_test_path(path) or _is_build_path(path) for path in edit_paths):
             raise GradeSpecError("editPaths must contain production paths only")
+        test_identity_policy = _identity_policy(value.get("testIdentityPolicy"))
         return cls(
             identifier=identifier,
             repository=repository,
@@ -261,6 +316,7 @@ class GradeSpec:
             report_globs=tuple(report_globs),
             expected_gold_tests=value.get("expectedGoldTests"),
             known_baseline_failures=value.get("knownBaselineFailures") or [],
+            test_identity_policy=test_identity_policy,
             compile_command=_argv(compile_value, "compileCommand") if compile_value is not None else None,
             timeout_seconds=float(timeout_value),
             spec_directory=base,
@@ -521,7 +577,7 @@ def _record_text(item: Mapping[str, Any], key: str, aliases: tuple[str, ...] = (
             if item.get(alias) is not None:
                 value = item[alias]
                 break
-    if not isinstance(value, str) or not value or any(ord(c) < 32 for c in value):
+    if not isinstance(value, str) or not value or any(ord(c) < 32 and c not in "\t\n\r" for c in value):
         raise GradeSpecError("test record contains invalid identity text")
     return value
 
@@ -539,17 +595,20 @@ def _record_status(value: Any) -> str:
     raise GradeSpecError("test record contains unknown status")
 
 
-def _normalise_expected(records: list[dict[str, Any]]) -> tuple[
+def _normalise_expected(records: list[dict[str, Any]], policy: str = "exact") -> tuple[
     list[dict[str, str | None]],
-    Counter[tuple[str | None, str, str]],
+    Counter[tuple[str | None, str, str | tuple[str, str]]],
     list[dict[str, str | None]],
 ]:
+    policy = _identity_policy(policy)
     result: list[dict[str, str | None]] = []
-    counts: Counter[tuple[str | None, str, str]] = Counter()
+    counts: Counter[tuple[str | None, str, str | tuple[str, str]]] = Counter()
     skipped: list[dict[str, str | None]] = []
     for item in records:
         report_value = item.get("report", item.get("reportPath", item.get("reportRelativePath")))
         if report_value is None:
+            if policy != "exact":
+                raise GradeSpecError("expected test report path is required for testIdentityPolicy")
             report = None
         else:
             report = _safe_relative(report_value)
@@ -558,16 +617,47 @@ def _normalise_expected(records: list[dict[str, Any]]) -> tuple[
         klass = _record_text(item, "class", ("classname", "className"))
         name = _record_text(item, "name")
         status = _record_status(item.get("status"))
-        identity = (report, klass, name)
         row = {"report": report, "class": klass, "name": name, "status": status}
         if status == "passed":
             result.append(row)
-            counts[identity] += 1
+            counts[_comparison_key(row, policy)] += 1
         elif status == "skipped":
             skipped.append(row)
     if not result:
         raise GradeSpecError("expectedGoldTests has no passing tests")
     return result, counts, skipped
+
+
+def _comparison_name(report: str | None, klass: str, name: str, policy: str) -> str | tuple[str, str]:
+    if policy == "exact":
+        return name
+    for context_report, context_class, patterns in _DETEKT_IDENTITY_CONTEXTS:
+        if report != context_report or klass != context_class:
+            continue
+        for pattern in patterns:
+            match = pattern.fullmatch(name)
+            if match:
+                value = match.group(1) if match.lastindex else name.rsplit("@", 1)[0]
+                return ("detekt-junit-object-identities-v1", value)
+    return name
+
+
+def _comparison_key(row: Mapping[str, Any], policy: str) -> tuple[str | None, str, str | tuple[str, str]]:
+    return (row["report"], row["class"], _comparison_name(row["report"], row["class"], row["name"], policy))
+
+
+def _raw_identity(row: Mapping[str, Any]) -> list[Any]:
+    return [row["report"], row["class"], row["name"]]
+
+
+def _comparison_sort_key(identity: tuple[str | None, str, str | tuple[str, str]]) -> tuple[Any, ...]:
+    def component(value: Any) -> tuple[Any, ...]:
+        if value is None:
+            return (0, "")
+        if isinstance(value, tuple):
+            return (2, *value)
+        return (1, value)
+    return tuple(component(value) for value in identity)
 
 
 def _bind_expected_reports(expected: list[dict[str, str | None]], rows: Iterable[Mapping[str, Any]]) -> list[dict[str, str | None]]:
@@ -584,7 +674,8 @@ def _bind_expected_reports(expected: list[dict[str, str | None]], rows: Iterable
     return bound
 
 
-def _normalise_baseline(records: list[dict[str, Any]]) -> list[dict[str, str | None]]:
+def _normalise_baseline(records: list[dict[str, Any]], policy: str = "exact") -> list[dict[str, str | None]]:
+    policy = _identity_policy(policy)
     result: list[dict[str, str | None]] = []
     for item in records:
         report_value = item.get("report", item.get("reportPath", item.get("reportRelativePath")))
@@ -593,6 +684,8 @@ def _normalise_baseline(records: list[dict[str, Any]]) -> list[dict[str, str | N
             if report is None or _denied(report):
                 raise GradeSpecError("known baseline report path is invalid")
         else:
+            if policy != "exact":
+                raise GradeSpecError("known baseline report path is required for testIdentityPolicy")
             report = None
         klass = _record_text(item, "class", ("classname", "className"))
         name = _record_text(item, "name")
@@ -626,9 +719,10 @@ def _junit_rows(workspace: Path, reports: Iterable[Path]) -> list[dict[str, Any]
     return rows
 
 
-def _baseline_match(row: Mapping[str, Any], baseline: Iterable[Mapping[str, Any]]) -> bool:
+def _baseline_match(row: Mapping[str, Any], baseline: Iterable[Mapping[str, Any]], policy: str = "exact") -> bool:
     for item in baseline:
-        if row["class"] == item["class"] and row["name"] == item["name"] and (item.get("report") is None or row["report"] == item["report"]):
+        if ((item.get("report") is None or row["report"] == item["report"])
+                and _comparison_key(row, policy)[1:] == _comparison_key(item, policy)[1:]):
             return row["status"] == item["status"] or row["status"] in {"failed", "skipped"}
     return False
 
@@ -637,36 +731,42 @@ def compare_tests(
     rows: list[dict[str, Any]], expected: list[dict[str, str | None]],
     baseline: list[dict[str, str | None]],
     gold_skipped: list[dict[str, str | None]] | None = None,
+    policy: str = "exact",
 ) -> dict[str, Any]:
+    policy = _identity_policy(policy)
+    if policy != "exact" and any(row.get("report") is None for row in expected):
+        raise GradeSpecError("expected test report path is required for testIdentityPolicy")
     expected = _bind_expected_reports(expected, rows)
     gold_skipped = _bind_expected_reports(gold_skipped or [], rows)
-    expected_counts: Counter[tuple[str, str, str]] = Counter((row["report"], row["class"], row["name"]) for row in expected)
-    actual_counts: Counter[tuple[str, str, str]] = Counter((row["report"], row["class"], row["name"]) for row in rows)
-    passing_counts: Counter[tuple[str, str, str]] = Counter((row["report"], row["class"], row["name"]) for row in rows if row["status"] == "passed")
-    skipped_identities = {(row["report"], row["class"], row["name"]) for row in gold_skipped}
+    expected_counts = Counter(_comparison_key(row, policy) for row in expected)
+    actual_counts = Counter(_comparison_key(row, policy) for row in rows)
+    passing_counts = Counter(_comparison_key(row, policy) for row in rows if row["status"] == "passed")
+    skipped_identities = {_comparison_key(row, policy) for row in gold_skipped}
     expected_identities = set(expected_counts)
+    expected_rows = {key: row for row in expected for key in [_comparison_key(row, policy)]}
+    actual_rows = {key: row for row in rows for key in [_comparison_key(row, policy)]}
     missing: list[dict[str, Any]] = []
     non_passing: list[dict[str, Any]] = []
     count_mismatch: list[dict[str, Any]] = []
-    for identity, count in sorted(expected_counts.items(), key=lambda item: repr(item[0])):
+    for identity, count in sorted(expected_counts.items(), key=lambda item: _comparison_sort_key(item[0])):
         if actual_counts[identity] < count:
-            missing.append({"identity": list(identity), "expected": count, "observed": actual_counts[identity]})
+            missing.append({"identity": _raw_identity(expected_rows[identity]), "expected": count, "observed": actual_counts[identity]})
         if passing_counts[identity] < count:
-            non_passing.append({"identity": list(identity), "expected": count, "passing": passing_counts[identity]})
+            non_passing.append({"identity": _raw_identity(expected_rows[identity]), "expected": count, "passing": passing_counts[identity]})
         if actual_counts[identity] > count:
-            count_mismatch.append({"identity": list(identity), "expected": count, "observed": actual_counts[identity]})
+            count_mismatch.append({"identity": _raw_identity(expected_rows[identity]), "expected": count, "observed": actual_counts[identity]})
     duplicates = [
-        {"identity": list(identity), "count": count}
-        for identity, count in sorted(actual_counts.items()) if count > 1
+        {"identity": _raw_identity(actual_rows[identity]), "count": count}
+        for identity, count in sorted(actual_counts.items(), key=lambda item: _comparison_sort_key(item[0])) if count > 1
     ]
-    baseline_failures = [row for row in rows if row["status"] != "passed" and _baseline_match(row, baseline)]
-    new_failures = [row for row in rows if row["status"] == "failed" and not _baseline_match(row, baseline)]
+    baseline_failures = [row for row in rows if row["status"] != "passed" and _baseline_match(row, baseline, policy)]
+    new_failures = [row for row in rows if row["status"] == "failed" and not _baseline_match(row, baseline, policy)]
     unexpected_skipped = [
         row for row in rows
         if row["status"] == "skipped"
-        and (row["report"], row["class"], row["name"]) not in skipped_identities
-        and (row["report"], row["class"], row["name"]) not in expected_identities
-        and not _baseline_match(row, baseline)
+        and _comparison_key(row, policy) not in skipped_identities
+        and _comparison_key(row, policy) not in expected_identities
+        and not _baseline_match(row, baseline, policy)
     ]
     return {
         "expectedPassing": len(expected),
@@ -680,6 +780,7 @@ def compare_tests(
         "newFailures": new_failures,
         "goldSkipped": gold_skipped,
         "unexpectedSkipped": unexpected_skipped,
+        "testIdentityPolicy": policy,
         "ok": bool(rows) and not missing and not non_passing and not count_mismatch and not new_failures and not unexpected_skipped,
     }
 
@@ -811,7 +912,7 @@ def grade(
     expected_records: list[dict[str, str]] = []
     gold_skipped_records: list[dict[str, str | None]] = []
     rows: list[dict[str, Any]] = []
-    comparison: dict[str, Any] = {"ok": False}
+    comparison: dict[str, Any] = {"ok": False, "testIdentityPolicy": spec.test_identity_policy}
     native_paths: set[str] = set()
     proposed_paths: set[str] = set()
     try:
@@ -821,24 +922,27 @@ def grade(
         baseline_hashes = _workspace_hashes(workspace)
         native_value = spec.native_build_patch
         if native_value is not None:
-            native_path, native_content, native_hash = _resolve_input(native_value, spec, "nativeBuildPatch")
-            native_declared_paths: set[str] = set()
-            if native_content is not None:
-                native_declared_paths = _declared_patch_paths(native_content)
-                _validate_native_paths(native_declared_paths)
-            temporary: Path | None = None
-            if native_content is not None:
-                if native_path is None:
-                    temporary, _ = _stage_inline_patch(native_content)
-                    native_path = temporary
-                try:
-                    _apply_patch(workspace, native_path, label="nativeBuildPatch")
-                finally:
-                    if temporary is not None:
-                        try:
-                            temporary.unlink()
-                        except OSError:
-                            pass
+            try:
+                native_path, native_content, native_hash = _resolve_input(native_value, spec, "nativeBuildPatch")
+                native_declared_paths: set[str] = set()
+                if native_content is not None:
+                    native_declared_paths = _declared_patch_paths(native_content)
+                    _validate_native_paths(native_declared_paths)
+                temporary: Path | None = None
+                if native_content is not None:
+                    if native_path is None:
+                        temporary, _ = _stage_inline_patch(native_content)
+                        native_path = temporary
+                    try:
+                        _apply_patch(workspace, native_path, label="nativeBuildPatch")
+                    finally:
+                        if temporary is not None:
+                            try:
+                                temporary.unlink()
+                            except OSError:
+                                pass
+            except (GradeSpecError, PatchError) as error:
+                raise TrustedInputError("native build patch is invalid") from error
             native_after_hashes = _workspace_hashes(workspace)
             native_paths = set(_modified_paths(workspace, spec.revision))
             native_paths.update(native_declared_paths)
@@ -846,7 +950,10 @@ def grade(
                 path for path in set(baseline_hashes) | set(native_after_hashes)
                 if baseline_hashes.get(path) != native_after_hashes.get(path)
             )
-            _validate_native_paths(native_paths)
+            try:
+                _validate_native_paths(native_paths)
+            except PatchError as error:
+                raise TrustedInputError("native build patch is invalid") from error
         native_hashes = _workspace_hashes(workspace)
         proposed_path, proposed_content, proposed_hash = _resolve_input(spec.proposed_patch, spec, "proposedPatch")
         proposed_declared_paths: set[str] = set()
@@ -875,31 +982,34 @@ def grade(
         if proposed_paths & native_paths:
             raise PatchError("proposed patch changes a native build path")
 
-        test_path, test_content, test_hash = _resolve_input(spec.test_patch, spec, "testPatch")
-        if test_path is not None:
-            try:
-                test_path.relative_to(workspace.resolve(strict=True))
-            except ValueError:
-                pass
-            else:
-                raise PatchError("test patch must remain outside the trial workspace")
-        temporary = None
-        if test_content is not None:
-            if test_path is None:
-                temporary, _ = _stage_inline_patch(test_content)
-                test_path = temporary
-            try:
-                _apply_patch(workspace, test_path, label="testPatch")
-            finally:
-                if temporary is not None:
-                    try:
-                        temporary.unlink()
-                    except OSError:
-                        pass
+        try:
+            test_path, test_content, test_hash = _resolve_input(spec.test_patch, spec, "testPatch")
+            if test_path is not None:
+                try:
+                    test_path.relative_to(workspace.resolve(strict=True))
+                except ValueError:
+                    pass
+                else:
+                    raise PatchError("test patch must remain outside the trial workspace")
+            temporary = None
+            if test_content is not None:
+                if test_path is None:
+                    temporary, _ = _stage_inline_patch(test_content)
+                    test_path = temporary
+                try:
+                    _apply_patch(workspace, test_path, label="testPatch")
+                finally:
+                    if temporary is not None:
+                        try:
+                            temporary.unlink()
+                        except OSError:
+                            pass
+        except (GradeSpecError, PatchError) as error:
+            raise OracleApplicationError("test patch is invalid") from error
         expected_raw, expected_hash = _load_records(spec.expected_gold_tests, spec, "expectedGoldTests")
-        expected_records, _expected_counts, gold_skipped_records = _normalise_expected(expected_raw)
+        expected_records, _expected_counts, gold_skipped_records = _normalise_expected(expected_raw, policy=spec.test_identity_policy)
         baseline_raw, baseline_hash = _load_records(spec.known_baseline_failures, spec, "knownBaselineFailures")
-        baseline_records = _normalise_baseline(baseline_raw)
+        baseline_records = _normalise_baseline(baseline_raw, policy=spec.test_identity_policy)
         deadline = time.monotonic() + timeout
         if spec.compile_command is not None:
             remaining = deadline - time.monotonic()
@@ -948,7 +1058,7 @@ def grade(
             outcome = "empty_test_results"
             error_code = "empty_test_results"
             raise GradeError("JUnit reports contain no tests")
-        comparison = compare_tests(rows, expected_records, baseline_records, gold_skipped_records)
+        comparison = compare_tests(rows, expected_records, baseline_records, gold_skipped_records, policy=spec.test_identity_policy)
         command_failed = bool(logs["test"].get("error")) or logs["test"].get("returnCode") not in {0, None}
         if not comparison["ok"]:
             outcome = "tests_rejected"
@@ -963,7 +1073,13 @@ def grade(
         if error_code is not None:
             raise GradeError(error_code)
     except (GradeError, OSError, ValueError, ET.ParseError) as error:
-        if isinstance(error, PatchError):
+        if isinstance(error, TrustedInputError):
+            error_code = "grader_input_failure"
+            outcome = "grader_input_failure"
+        elif isinstance(error, OracleApplicationError):
+            error_code = "oracle_application_failure"
+            outcome = "oracle_application_failure"
+        elif isinstance(error, PatchError):
             error_code = "patch_violation"
             outcome = "patch_rejected"
         if error_code is None:
@@ -973,8 +1089,8 @@ def grade(
     finally:
         total_seconds = round(time.monotonic() - total_started, 6)
         paths_for_output = [spec.repository, output_path, workspace] if workspace is not None else [spec.repository, output_path]
-        paths_for_output.extend(value for value in spec.test_env.values() if value)
-        paths_for_output.extend(value for value in spec.test_env.values() if value)
+        paths_for_output.append(Path.home())
+        paths_for_output.extend(value for value in spec.test_env.values() if value and (value.startswith("/") or _DRIVE.match(value)))
         result = {
             "schemaVersion": 1,
             "id": spec.identifier,
@@ -988,6 +1104,7 @@ def grade(
                 "testPatchSha256": test_hash,
                 "expectedGoldTestsSha256": expected_hash,
                 "knownBaselineFailuresSha256": baseline_hash,
+                "testIdentityPolicy": spec.test_identity_policy,
             },
             "patch": {
                 "allowedPaths": sorted(proposed_paths & set(spec.edit_paths)),
@@ -1030,6 +1147,7 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Spec fields: repository, revision, nativeBuildPatch, proposedPatch, editPaths, testPatch, "
             "testCommand, testEnv, reportsGlobs, expectedGoldTests and knownBaselineFailures. "
+            "Optional testIdentityPolicy is exact (default) or detekt-junit-object-identities-v1. "
             "Optional compileCommand and timeoutSeconds are local grader controls. Artifacts are result.json, "
             "metrics.json, workspace and raw command logs."
         ),

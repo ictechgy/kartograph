@@ -38,6 +38,34 @@ class RepairSessionTest(unittest.TestCase):
                 print(json.dumps({"format": "kartograph-impact", "affected": affected,
                                   "observedAffected": observed, "unresolved": [{"reason": "unknown"}],
                                   "truncated": {"results": True, "budget": True}, "limitations": ["potential"]}))
+            elif sys.argv[1:] and sys.argv[1] == "query":
+                if os.environ.get("QUERY_AMBIGUOUS"):
+                    print(json.dumps({"level": "symbol", "limitations": ["query limitation"],
+                                      "requested": "Caller", "status": "ambiguous",
+                                      "candidates": [{"qualifiedName": "p.Caller", "usr": "class:p/Caller"},
+                                                     {"qualifiedName": "q.Caller", "usr": "class:q/Caller"}]}))
+                    sys.exit(64)
+                if os.environ.get("QUERY_INVALID"):
+                    print("not json")
+                    sys.exit(0)
+                used_by = [{"depth": 1, "edges": ["calls"], "kind": "method",
+                            "name": "Caller", "qualifiedName": "Caller", "usr": "method:Caller#call()V"}]
+                if os.environ.get("BIG_QUERY"):
+                    used_by = [{"depth": 1, "edges": ["calls"], "kind": "method",
+                                "name": "Caller" + str(index), "qualifiedName": "Caller" + str(index),
+                                "usr": "method:Caller#call" + str(index) + "()V"} for index in range(200)]
+                print(json.dumps({"level": "symbol", "limitations": ["runtime limitation"],
+                                  "requested": "class:Caller", "status": "found", "result": {
+                                      "declaredIn": {"depth": 1, "edges": ["member"], "kind": "class",
+                                                     "name": "Owner", "qualifiedName": "Owner", "usr": "class:Owner"},
+                                      "dependsOn": [], "members": [],
+                                      "reachability": {"reason": "runtimeEntryPoint", "state": "reachable",
+                                                        "suppressedByBaseline": False},
+                                      "subject": {"accessibility": "public", "kind": "class", "location": {"path": "Caller.java"},
+                                                  "module": "main", "name": "Caller", "qualifiedName": "Caller", "usr": "class:Caller"},
+                                      "truncated": {"dependsOn": False, "members": False, "usedBy": False},
+                                      "usedBy": used_by,
+                                  }}))
             elif sys.argv[1:] and sys.argv[1] == "sleep":
                 time.sleep(10)
         """).lstrip())
@@ -106,6 +134,22 @@ class RepairSessionTest(unittest.TestCase):
             self.assertFalse(session.execute({"action": "replace", "path": "src/CallerTest.java",
                                               "old": "CallerTest", "new": "Changed"})["ok"])
 
+    def test_source_arm_denies_query_without_invoking_the_binary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "src").mkdir()
+            (root / "src/Caller.java").write_text("class Caller {}\n")
+            log = root / "calls.log"
+            binary = self.make_fixture(root)
+            session = self.session(root, arm="source", binary=binary,
+                                   analysis_env={"FIXTURE_LOG": str(log)})
+
+            response = session.execute({"action": "query", "symbol": "class:Caller"})
+
+            self.assertFalse(response["ok"])
+            self.assertEqual("query_unavailable_in_source_arm", response["error"])
+            self.assertFalse(log.exists())
+
     def test_refresh_uses_configured_commands_then_impact_uses_cli_and_hashes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -132,6 +176,105 @@ class RepairSessionTest(unittest.TestCase):
             self.assertEqual(1, result["result"]["observedAffected"])
             self.assertEqual(len(session.source_hashes()), refreshed["sourceHashCount"])
             self.assertNotIn("sourceHashes", refreshed)
+
+    def test_query_uses_saved_snapshot_argv_and_preserves_document_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "src").mkdir()
+            (root / "src/Caller.java").write_text("class Caller {}\n")
+            (root / "classes").mkdir()
+            binary = self.make_fixture(root)
+            log = root / "calls.log"
+            session = self.session(root, binary=binary, build_env={"FIXTURE_LOG": str(log)},
+                                   analysis_env={"FIXTURE_LOG": str(log)},
+                                   compile_command=[sys.executable, "-c", "print('compiled')"])
+
+            refreshed = session.execute({"action": "refresh"})
+            result = session.execute({"action": "query", "symbol": "class:Caller", "depth": 2, "limit": 3})
+            default_result = session.execute({"action": "query", "symbol": "class:Caller"})
+
+            self.assertTrue(refreshed["ok"], refreshed)
+            self.assertTrue(result["ok"], result)
+            self.assertTrue(default_result["ok"], default_result)
+            self.assertEqual("query", result["action"])
+            self.assertEqual(0, result["returnCode"])
+            self.assertEqual("found", result["result"]["status"])
+            self.assertEqual("runtime limitation", result["result"]["limitations"][0])
+            self.assertEqual("reachable", result["result"]["result"]["reachability"]["state"])
+            self.assertEqual("Caller.java", result["result"]["result"]["subject"]["location"]["path"])
+            calls = [json.loads(line) for line in log.read_text().splitlines()]
+            self.assertEqual("snapshot", calls[0][0])
+            self.assertEqual(
+                ["query", "class:Caller", "--graph-file", str((root / "trial.json").resolve()), "--depth", "2", "--limit", "3"],
+                calls[1],
+            )
+            self.assertEqual(
+                ["query", "class:Caller", "--graph-file", str((root / "trial.json").resolve()), "--limit", "5"],
+                calls[2],
+            )
+            impact = session.execute({"action": "impact", "symbol": "class:Caller"})
+            self.assertTrue(impact["ok"], impact)
+            metrics = session.metrics()
+            self.assertEqual(3, metrics["queries"])
+            self.assertEqual(2, metrics["symbolQueries"])
+            self.assertEqual(1, metrics["impactQueries"])
+
+    def test_query_reuses_stale_and_failed_refresh_guards(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "src").mkdir()
+            source = root / "src/Caller.java"
+            source.write_text("class Caller {}\n")
+            binary = self.make_fixture(root)
+            session = self.session(root, binary=binary,
+                                   compile_command=[sys.executable, "-c", "pass"])
+            self.assertTrue(session.execute({"action": "refresh"})["ok"])
+
+            source.write_text("class Caller { int changed; }\n")
+            stale = session.execute({"action": "query", "symbol": "class:Caller"})
+            self.assertFalse(stale["ok"])
+            self.assertEqual("stale_source", stale["error"])
+
+            source.write_text("class Caller {}\n")
+            (root / "fail").write_text("x")
+            session._compile_command = (sys.executable, "-c", "import sys; sys.exit(3)")
+            failed = session.execute({"action": "refresh"})
+            self.assertFalse(failed["ok"])
+            unavailable = session.execute({"action": "query", "symbol": "class:Caller"})
+            self.assertFalse(unavailable["ok"])
+            self.assertEqual("snapshot_unavailable", unavailable["error"])
+
+    def test_query_preserves_ambiguity_and_rejects_unsafe_output_or_invalid_json(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "src").mkdir()
+            (root / "src/Caller.java").write_text("class Caller {}\n")
+            binary = self.make_fixture(root)
+            ambiguous = self.session(root, binary=binary, analysis_env={"QUERY_AMBIGUOUS": "1"},
+                                     compile_command=[sys.executable, "-c", "pass"])
+            self.assertTrue(ambiguous.execute({"action": "refresh"})["ok"])
+            ambiguous_result = ambiguous.execute({"action": "query", "symbol": "Caller"})
+            self.assertFalse(ambiguous_result["ok"])
+            self.assertEqual(64, ambiguous_result["returnCode"])
+            self.assertEqual("ambiguous", ambiguous_result["result"]["status"])
+            self.assertEqual(2, len(ambiguous_result["result"]["candidates"]))
+
+            large = self.session(root, binary=binary, analysis_env={"BIG_QUERY": "1"},
+                                 compile_command=[sys.executable, "-c", "pass"], max_output_chars=1024)
+            self.assertTrue(large.execute({"action": "refresh"})["ok"])
+            large_result = large.execute({"action": "query", "symbol": "class:Caller"})
+            self.assertFalse(large_result["ok"])
+            self.assertEqual("output_limit_exceeded", large_result["error"])
+            self.assertTrue(large_result["truncated"])
+            self.assertIn("smaller limit", large_result["hint"])
+            self.assertNotIn("result", large_result)
+
+            invalid = self.session(root, binary=binary, analysis_env={"QUERY_INVALID": "1"},
+                                   compile_command=[sys.executable, "-c", "pass"])
+            self.assertTrue(invalid.execute({"action": "refresh"})["ok"])
+            invalid_result = invalid.execute({"action": "query", "symbol": "class:Caller"})
+            self.assertFalse(invalid_result["ok"])
+            self.assertEqual("invalid_cli_json", invalid_result["error"])
 
     def test_failed_refresh_invalidates_snapshot_and_source_changes_make_query_stale(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -218,6 +361,20 @@ if pathlib.Path('mutate').exists(): pathlib.Path('src/Caller.java').write_text('
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ValueError, "at least 256"):
                 self.session(Path(directory), max_output_chars=24)
+
+    def test_other_test_source_roots_remain_read_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for source_set in ("integrationTest", "functionalTest", "commonTest", "sharedTest"):
+                relative = f"src/{source_set}/Helper.kt"
+                path = root / relative
+                path.parent.mkdir(parents=True)
+                path.write_text("val number = 1\n")
+                session = self.session(root, arm="source", read_paths=["src"], edit_paths=["src"])
+                result = session.execute({"action": "replace", "path": relative, "old": "1", "new": "2"})
+                self.assertFalse(result["ok"], source_set)
+                self.assertEqual("path_not_editable", result["error"])
+                self.assertEqual("val number = 1\n", path.read_text())
 
 
 if __name__ == "__main__":

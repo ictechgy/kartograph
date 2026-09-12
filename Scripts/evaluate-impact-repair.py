@@ -68,7 +68,6 @@ MAX_SOURCE_PATHS = 100_000
 
 _SHA = re.compile(r"^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$")
 _DRIVE_PATH = re.compile(r"^[A-Za-z]:")
-_ABSOLUTE_PATH = re.compile(r"(?<![A-Za-z0-9_])/(?:[^\s\"']+/)*[^\s\"']+")
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SOURCE_SUFFIXES = (".java", ".kt")
 _TEST_PARTS = {
@@ -238,11 +237,33 @@ def _safe_child(root: Path, relative: str, *, require_exists: bool = True) -> Pa
     return resolved
 
 
+def _trusted_path_strings(paths: Iterable[Path]) -> list[str]:
+    candidates: set[str] = set()
+    for item in paths:
+        if not item:
+            continue
+        raw = str(item)
+        if not raw or not Path(raw).is_absolute() or raw == os.sep:
+            continue
+        candidates.add(raw)
+    return sorted(candidates, key=len, reverse=True)
+
+
+def _known_path_pattern(path: str) -> re.Pattern[str]:
+    return re.compile(rf"(?<![A-Za-z0-9_.-]){re.escape(path)}(?![A-Za-z0-9_.-])")
+
+
 def _scrub_text(value: str, paths: Iterable[Path] = ()) -> str:
+    """공개 텍스트에서 신뢰한 실제 로컬 경로만 경계에 맞춰 가린다."""
+
     text = value
-    for path in sorted({str(item) for item in paths if item}, key=len, reverse=True):
-        text = text.replace(path, "<local>")
-    return _ABSOLUTE_PATH.sub("<path>", text)
+    for path in _trusted_path_strings(paths):
+        text = _known_path_pattern(path).sub("<local>", text)
+    return text
+
+
+def _contains_known_path(value: str, paths: Iterable[Path] = ()) -> bool:
+    return any(_known_path_pattern(path).search(value) for path in _trusted_path_strings(paths))
 
 
 def _scrub_value(value: Any, paths: Iterable[Path] = ()) -> Any:
@@ -1066,9 +1087,10 @@ def _base_prompt(
     prepared: PreparedTrial, *, max_tools: int = DEFAULT_MAX_TOOLS,
     wall_seconds: float = DEFAULT_WALL_SECONDS,
 ) -> str:
+    scrub_paths = prepared_paths(prepared)
     available = ["list", "read", "search", "replace", "test", "refresh"]
     if prepared.arm == "impact":
-        available.append("impact")
+        available.extend(("impact", "query"))
     protocol = {
         "list": {"action": "list", "prefix": "relative/path", "offset": 0, "limit": 100},
         "read": {"action": "read", "path": "relative/path", "start": 1, "column": 0, "count": 200},
@@ -1078,13 +1100,8 @@ def _base_prompt(
         "refresh": {"action": "refresh"},
     }
     if prepared.arm == "impact":
-        protocol["impact"] = {
-            "action": "impact", "symbol": "exact USR", "file": "changed/file.kt",
-            "module": "module", "affected_file": "dependent/file.kt", "kind": "method",
-            "test_status": "production", "relation": "direct", "path_status": "complete",
-            "sort": "usr", "depth": 100, "limit": 10, "offset": 0, "all": False,
-            "visit_limit": 100000, "path_limit": 100000,
-        }
+        protocol["impact"] = {"action": "impact", "symbol": "exact USR"}
+        protocol["query"] = {"action": "query", "symbol": "exact USR"}
     # 전체 파일 목록의 반복 전송을 피하고, 양쪽 조건에 같은 탐색 시작점을 준다.
     directories: dict[str, dict[str, Any]] = {}
     for path in sorted(prepared.baseline_source_hashes):
@@ -1108,7 +1125,7 @@ def _base_prompt(
         "tool, compile and test time. Invalid actions consume the action budget. "
         f"A native tool command has at most {DEFAULT_COMMAND_TIMEOUT:g} seconds. "
         "Reserve actions for the repair and verification.\n\n"
-        "Public issue:\n" + _scrub_text(prepared.problem_text, [prepared.problem_path, prepared.spec.repository, prepared.workspace]) + "\n\n"
+        "Public issue:\n" + _scrub_text(prepared.problem_text, scrub_paths) + "\n\n"
         "Source inventory summary (relative directories):\n" + json.dumps(inventory, ensure_ascii=False) + "\n\n"
         "Use list or search to discover files; all allowed production files are editable and tests are read-only. "
         "A list page continues at offset + returned.\n\n"
@@ -1116,13 +1133,34 @@ def _base_prompt(
         "Action protocol:\n" + json.dumps(protocol, ensure_ascii=False, sort_keys=True) + "\n"
         "Read truncation continues with nextStart and nextColumn. Tool failures are evidence; account for them."
     )
+    if prepared.arm == "impact":
+        prompt += (
+            "\n\nMinimal requests (choose either when appropriate): "
+            '`{"action":"impact","file":"src/.../Changed.kt"}` or '
+            '`{"action":"query","symbol":"Changed"}`. '
+            "Impact requires at least one selector, symbol or file; all other selectors, filters, and pagination "
+            "controls are optional: module, affected_file, kind, test_status, relation, path_status, sort, "
+            "depth, limit, offset, all, visit_limit, and path_limit. The controller defaults impact to --limit 10 "
+            "when neither limit nor all is supplied. "
+            "The impact controller maps these names to the product's documented impact flags, including "
+            "--affected-file for candidate filtering; file selects the changed declaration. "
+            "The query controller accepts a declaration name, qualified name, or USR, maps symbol to the "
+            "positional product argument, and maps optional depth and limit to --depth and --limit. "
+            "The controller defaults query to --limit 5 when omitted. A query --limit is the native per-section "
+            "neighbor cap (native default 50), not a symbol count; "
+            "ambiguous names retain candidates so a returned USR can be used. It invokes the existing saved-snapshot commands "
+            "`kartograph impact ... --graph-file <snapshot>` and "
+            "`kartograph query <symbol> --graph-file <snapshot>`; the controller does not reimplement graph analysis. "
+            "Both actions use the controller's fresh snapshot checks and bounded process/output limits. "
+            "Use list or search, then read, to discover practical file and exact symbol context; query is optional."
+        )
     if prepared.spec.known_baseline_failures:
         prompt += "\n\nKnown baseline visible-test observations (from the pristine run):\n" + json.dumps(
             list(prepared.spec.known_baseline_failures), ensure_ascii=False, sort_keys=True,
         ) + "\nThese observations are context only; do not infer unprovided tests or expected changes from them."
     if prepared.arm == "impact" and prepared.skill_text is not None:
-        prompt += "\n\nImpact analysis skill contract:\n" + _scrub_text(prepared.skill_text, [prepared.spec.repository, prepared.workspace])
-    return _scrub_text(prompt, [prepared.spec.repository, prepared.workspace, prepared.output])
+        prompt += "\n\nImpact analysis skill contract:\n" + _scrub_text(prepared.skill_text, scrub_paths)
+    return _scrub_text(prompt, scrub_paths)
 
 
 class PacketReply:
@@ -1527,7 +1565,7 @@ prepare_trial = _prepare
 
 
 def _trace_safe(value: Any, prepared: PreparedTrial) -> Any:
-    return _scrub_value(value, [prepared.spec.repository, prepared.workspace, prepared.output, prepared.problem_path])
+    return _scrub_value(value, prepared_paths(prepared))
 
 
 def _result_skeleton(prepared: PreparedTrial, *, model: str, effort: str, input_hash: str) -> dict[str, Any]:
@@ -1682,8 +1720,9 @@ def run_trial(
                 trace.append(trace_item)
                 outcome = "wall_timeout"
                 break
-            packet_text = _scrub_text(packet.text, prepared_paths(prepared))
-            if any(str(path) in packet_text for path in prepared_paths(prepared)):
+            packet_paths = prepared_paths(prepared)
+            packet_text = _scrub_text(packet.text, packet_paths)
+            if _contains_known_path(packet_text, packet_paths):
                 trace_item["event"] = "packet_path_leak"
                 trace.append(trace_item)
                 outcome = "packet_path_leak"
@@ -1850,10 +1889,9 @@ def prepared_paths(prepared: PreparedTrial) -> list[Any]:
     for value in (prepared.spec.binary, prepared.spec.build_java_home, prepared.spec.analysis_java_home):
         if value is not None:
             paths.append(value)
-    # build/analysis 진단이 설정 값을 echo할 수 있으므로 환경 자체를 직렬화하지 않고
-    # 로컬 trace에서 해당 값을 정제한다.
-    for environment in (prepared.spec.build_env, prepared.spec.analysis_env):
-        paths.extend(value for value in environment.values() if value)
+    home = Path.home()
+    if home != Path(os.sep):
+        paths.append(home)
     return paths
 
 

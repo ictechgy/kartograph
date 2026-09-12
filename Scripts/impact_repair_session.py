@@ -22,6 +22,10 @@
   snapshot을 무효화하고 설정한 compiler argv를 실행한 다음
   ``binary snapshot <snapshot_arguments>``를 실행한다. 두 command가 모두
   성공하고 source hash가 변하지 않을 때만 결과를 설치한다.
+* ``query`` (impact arm에서만 사용): ``{"action": "query", "symbol": str,
+  "depth"?: int, "limit"?: int}``. limit을 생략하면 controller가
+  ``--limit 5``를 사용하며, 저장된 snapshot에 제품 CLI의
+  ``query <symbol> --graph-file <snapshot>``를 적용한다.
 * ``impact`` (impact arm에서만 사용): ``{"action": "impact", "symbol"?: str |
   list[str], "file"?: str | list[str], "module"?: str | list[str],
   "affected_file"?: str | list[str], "kind"?: str | list[str],
@@ -149,7 +153,7 @@ class RepairSession:
         self._calls = 0
         self._metrics: dict[str, Any] = {
             "calls": 0, "sourceFilesExposed": 0, "sourceCharsExposed": 0, "sourceFilesScanned": 0,
-            "edits": 0, "queries": 0, "compiles": 0, "tests": 0,
+            "edits": 0, "queries": 0, "symbolQueries": 0, "impactQueries": 0, "compiles": 0, "tests": 0,
             "captures": 0, "truncations": 0, "changedSourceHashes": [],
             "compileSeconds": 0.0, "testSeconds": 0.0, "captureSeconds": 0.0,
             "querySeconds": 0.0,
@@ -226,7 +230,10 @@ class RepairSession:
     @staticmethod
     def _is_test_path(path: str) -> bool:
         parts = path.lower().split("/")
-        if any(part in {"test", "tests", "androidtest", "testfixtures", "test-fixtures"} for part in parts):
+        if any(part in {
+            "test", "tests", "androidtest", "testfixtures", "test-fixtures",
+            "integrationtest", "functionaltest", "commontest", "sharedtest",
+        } for part in parts):
             return True
         stem = Path(parts[-1]).stem
         return stem.startswith("test") or stem.endswith("test") or stem.endswith("tests")
@@ -364,12 +371,17 @@ class RepairSession:
     def _json_size(value: Any) -> int:
         return len(json.dumps(value, ensure_ascii=False))
 
-    def _bounded_failure(self, action: str | None, *, return_code: int | None = None) -> dict[str, Any]:
+    def _bounded_failure(self, action: str | None, *, return_code: int | None = None,
+                         hint: str | None = None) -> dict[str, Any]:
         response: dict[str, Any] = {
             "ok": False, "action": action, "error": "output_limit_exceeded", "truncated": True,
         }
         if return_code is not None:
             response["returnCode"] = return_code
+        if hint is None and action == "query":
+            hint = "Use a smaller limit or a more focused symbol."
+        if hint is not None:
+            response["hint"] = hint
         if self._json_size(response) <= self._max_output_chars:
             return response
         minimal: dict[str, Any] = {"ok": False, "error": "output_limit_exceeded"}
@@ -422,9 +434,9 @@ class RepairSession:
     def _bound_response(self, response: dict[str, Any]) -> dict[str, Any]:
         if self._json_size(response) <= self._max_output_chars:
             return response
-        if response.get("action") == "impact" and "result" in response:
+        if response.get("action") in {"impact", "query"} and "result" in response:
             return self._bounded_failure(
-                "impact", return_code=self._first_return_code(response),
+                response.get("action"), return_code=self._first_return_code(response),
             )
         bounded = copy.deepcopy(response)
         self._drop_empty_outputs(bounded)
@@ -480,13 +492,13 @@ class RepairSession:
         handlers = {
             "list": self._list, "read": self._read, "search": self._search,
             "replace": self._replace, "test": self._test, "refresh": self._refresh,
-            "impact": self._impact,
+            "query": self._query, "impact": self._impact,
         }
         handler = handlers.get(action)
         if handler is None:
             return self._bound_response(self._error(action, "unknown_action"))
-        if action == "impact" and self.arm != "impact":
-            return self._bound_response(self._error(action, "impact_unavailable_in_source_arm"))
+        if action in {"query", "impact"} and self.arm != "impact":
+            return self._bound_response(self._error(action, f"{action}_unavailable_in_source_arm"))
         try:
             return self._bound_response(handler(request))
         except (OSError, ValueError, TypeError):
@@ -951,6 +963,67 @@ class RepairSession:
             return None
         return values
 
+    def _fresh_snapshot_error(self, action: str) -> dict[str, Any] | None:
+        """저장 snapshot과 현재 노출 소스가 같은지 공통으로 확인한다."""
+
+        if self._snapshot is None or self._binary is None or not self._snapshot_ready or not self._snapshot.is_file():
+            return self._error(action, "snapshot_unavailable")
+        current, changed = self._changed_hashes()
+        if self._snapshot_source_hashes is None:
+            return self._error(action, "snapshot_unverified", sourceHashCount=len(current))
+        if changed:
+            return self._error(action, "stale_source", changedSourceHashes=changed, sourceHashCount=len(current))
+        return None
+
+    def _query(self, request: dict[str, Any]) -> dict[str, Any]:
+        stale = self._fresh_snapshot_error("query")
+        if stale is not None:
+            return stale
+        if any(key not in {"action", "symbol", "depth", "limit"} for key in request):
+            return self._error("query", "invalid_query_argument")
+        symbol = request.get("symbol")
+        if not isinstance(symbol, str) or not symbol or symbol.startswith("-") or any(ord(character) < 32 for character in symbol):
+            return self._error("query", "symbol_required")
+        argv: list[str] = [str(self._binary), "query", symbol, "--graph-file", str(self._snapshot)]
+        for key, option in (("depth", "--depth"), ("limit", "--limit")):
+            if key not in request:
+                if key == "limit":
+                    argv.extend((option, "5"))
+                continue
+            value = self._integer(request.get(key), None, minimum=1)
+            if value is None:
+                return self._error("query", "invalid_query_argument")
+            argv.extend((option, str(value)))
+        started = time.monotonic()
+        run = self._run_process(tuple(argv), self._analysis_env,
+                                capture_limit=max(self._max_output_chars * 128, 1_048_576))
+        self._metrics["queries"] += 1
+        self._metrics["symbolQueries"] += 1
+        self._metrics["querySeconds"] += time.monotonic() - started
+        if run["error"] or run["timedOut"] or run["returncode"] not in {0, 64}:
+            return self._command_result("query", run)
+        if run["truncated"]:
+            return self._error("query", "native_output_limit", returnCode=run["returncode"], truncated=True,
+                               hint="Use a smaller result limit or a more focused symbol.")
+        try:
+            payload = json.loads(run["stdout"])
+        except (TypeError, ValueError):
+            output, diagnostic_truncated = self._diagnostic(run["stdout"] + run["stderr"])
+            if diagnostic_truncated:
+                self._metrics["truncations"] += 1
+            return self._error("query", "invalid_cli_json", returnCode=run["returncode"], output=output,
+                               truncated=diagnostic_truncated)
+        if not isinstance(payload, dict):
+            return self._error("query", "invalid_query_document", returnCode=run["returncode"])
+        response = {"ok": run["returncode"] == 0, "action": "query",
+                    "returnCode": run["returncode"], "result": payload,
+                    "seconds": round(run["seconds"], 6), "truncated": False}
+        if self._json_size(response) > self._max_output_chars:
+            self._metrics["truncations"] += 1
+            return self._bounded_failure("query", return_code=run["returncode"],
+                                         hint="Use a smaller limit or a more focused symbol.")
+        return response
+
     def _project_impact(self, payload: Any, *, response_builder: Any | None = None) -> tuple[Any, bool]:
         # 경로 안의 간선을 잘라 거짓 witness를 만들지 않고, 배열의 완전한 항목만 줄인다.
         def size(value: Any) -> int:
@@ -1046,13 +1119,9 @@ class RepairSession:
         return projected, True
 
     def _impact(self, request: dict[str, Any]) -> dict[str, Any]:
-        if self._snapshot is None or self._binary is None or not self._snapshot_ready or not self._snapshot.is_file():
-            return self._error("impact", "snapshot_unavailable")
-        current, changed = self._changed_hashes()
-        if self._snapshot_source_hashes is None:
-            return self._error("impact", "snapshot_unverified", sourceHashCount=len(current))
-        if changed:
-            return self._error("impact", "stale_source", changedSourceHashes=changed, sourceHashCount=len(current))
+        stale = self._fresh_snapshot_error("impact")
+        if stale is not None:
+            return stale
         argv: list[str] = [str(self._binary), "impact"]
         for key in ("symbol", "file", "module", "affected_file", "kind"):
             aliases = {"symbol": ("symbol", "symbols"), "file": ("file", "files"),
@@ -1109,6 +1178,7 @@ class RepairSession:
         started = time.monotonic()
         run = self._run_process(tuple(argv), self._analysis_env, capture_limit=max(self._max_output_chars * 128, 1_048_576))
         self._metrics["queries"] += 1
+        self._metrics["impactQueries"] += 1
         self._metrics["querySeconds"] += time.monotonic() - started
         if run["error"] or run["timedOut"] or run["returncode"] not in {0, 64}:
             return self._command_result("impact", run)

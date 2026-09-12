@@ -37,5 +37,8 @@ CI에서 갱신할 수 있는 속도. 주 원천과 query v1 계약을 유지한
 
 ## 상태
 
-- 순수 분석·snapshot 기반 CLI·CI helper·compact v2 구현과 회귀 검증 완료. 공개 OkHttp/AnkiDroid 2개 과제와 AI 질의 A/B 채점 완료.
-- 현재 `main` 기준 `9c66cc6`; 기존 HANDOFF.md 변경은 별도 보존한다. [상세 채점](../experiments/change-impact/README.md)을 기록했다. 제품 검증 명령은 AGENT-WORKFLOW.md, 최종 통합 상태는 PR 검사를 따른다.
+- 초기 순수 분석·snapshot 기반 CLI·CI helper·compact v2 구현과 회귀 검증을 완료했다.
+  `9c66cc6` 당시 공개 OkHttp/AnkiDroid 2개 과제와 AI **질의** A/B 결과는 [초기 채점](../experiments/change-impact/README.md)에 남긴다.
+- PR #40까지 후속 구현을 머지했고, 현재는 별도의 Java·Kotlin·Android 6개 사례에서 실제 AI 읽기·수정·테스트를 비교한다.
+  [확대 평가](../experiments/impact-evaluation/README.md)는 고정한 표본·숨긴 회귀·성공률·시간·비용과 실패를 함께 기록한다.
+  기존 HANDOFF.md 변경은 보존한다. 전체 CI 갱신 자동화와 최종 배포의 완료는 후속 검증으로 판단한다.

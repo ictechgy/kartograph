@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 
 MODULE_SPEC = importlib.util.spec_from_file_location(
@@ -44,6 +45,7 @@ class GradeImpactRepairTest(unittest.TestCase):
             "visible_status = 'skipped' if mode == 'skip-pass' else 'passed'\n"
             "hidden_status = 'passed' if fixed else 'failed'\n"
             "rows = [('VisiblePass', 'works', visible_status), ('VisibleBaseline', 'legacy', 'failed'), ('GoldSkipped', 'unchanged', 'skipped')]\n"
+            "if mode == 'public-identities': rows[0] = ('VisiblePass', 'UTC https://example.invalid/a?x=1 &lt;!-- XML comment --&gt; /tmp/public/path', visible_status)\n"
             "if mode != 'missing': rows.append(('HiddenPass', 'regression', hidden_status))\n"
             "items = []\n"
             "for klass, name, status in rows:\n"
@@ -71,6 +73,27 @@ class GradeImpactRepairTest(unittest.TestCase):
             "diff --git a/build.gradle.kts b/build.gradle.kts\n"
             "--- a/build.gradle.kts\n+++ b/build.gradle.kts\n"
             "@@ -1 +1 @@\n-plugins {}\n+plugins { id(\"fixture\") }\n",
+            encoding="utf-8",
+        )
+        self.native_scope_patch = self.root / "native-scope.patch"
+        self.native_scope_patch.write_text(
+            "diff --git a/src/main/value.txt b/src/main/value.txt\n"
+            "--- a/src/main/value.txt\n+++ b/src/main/value.txt\n"
+            "@@ -1 +1 @@\n-bad\n+native\n",
+            encoding="utf-8",
+        )
+        self.native_conflict_patch = self.root / "native-conflict.patch"
+        self.native_conflict_patch.write_text(
+            "diff --git a/build.gradle.kts b/build.gradle.kts\n"
+            "--- a/build.gradle.kts\n+++ b/build.gradle.kts\n"
+            "@@ -1 +1 @@\n-plugins { wrong }\n+plugins { id(\"fixture\") }\n",
+            encoding="utf-8",
+        )
+        self.test_conflict_patch = self.root / "test-conflict.patch"
+        self.test_conflict_patch.write_text(
+            "diff --git a/src/main/value.txt b/src/main/value.txt\n"
+            "--- a/src/main/value.txt\n+++ b/src/main/value.txt\n"
+            "@@ -1 +1 @@\n-missing\n+hidden\n",
             encoding="utf-8",
         )
         self.expected = self.root / "gold.json"
@@ -123,6 +146,8 @@ class GradeImpactRepairTest(unittest.TestCase):
         self.assertEqual("passed_known_baseline_failures", result["outcome"])
         self.assertEqual(2, result["tests"]["comparison"]["expectedPassing"])
         self.assertEqual(1, len(result["tests"]["comparison"]["knownBaselineFailures"]))
+        self.assertEqual("exact", result["inputs"]["testIdentityPolicy"])
+        self.assertEqual("exact", result["tests"]["comparison"]["testIdentityPolicy"])
         self.assertTrue((self.root / "valid/test.stdout").is_file())
         self.assertEqual(["build.gradle.kts"], result["patch"]["nativeBuildPaths"])
 
@@ -176,6 +201,26 @@ class GradeImpactRepairTest(unittest.TestCase):
         self.assertEqual("compile_failed", result["outcome"])
         self.assertFalse((self.root / "compile-failure/test.stdout").exists())
 
+    def test_trusted_native_scope_failure_is_grader_input_failure(self):
+        result = MODULE.grade(self.spec(nativeBuildPatch=str(self.native_scope_patch)), output=self.root / "native-scope")
+        self.assertFalse(result["verdict"])
+        self.assertEqual("grader_input_failure", result["outcome"])
+        self.assertEqual("grader_input_failure", result["error"])
+        self.assertFalse((self.root / "native-scope/test.stdout").exists())
+
+    def test_trusted_native_apply_failure_is_grader_input_failure(self):
+        result = MODULE.grade(self.spec(nativeBuildPatch=str(self.native_conflict_patch)), output=self.root / "native-conflict")
+        self.assertFalse(result["verdict"])
+        self.assertEqual("grader_input_failure", result["outcome"])
+        self.assertFalse((self.root / "native-conflict/test.stdout").exists())
+
+    def test_trusted_test_patch_conflict_is_oracle_application_failure(self):
+        result = MODULE.grade(self.spec(testPatch=str(self.test_conflict_patch)), output=self.root / "test-conflict")
+        self.assertFalse(result["verdict"])
+        self.assertEqual("oracle_application_failure", result["outcome"])
+        self.assertEqual("oracle_application_failure", result["error"])
+        self.assertFalse((self.root / "test-conflict/test.stdout").exists())
+
     def test_duplicate_identity_is_reported_and_counted(self):
         rows = [
             {"report": "reports/a.xml", "class": "C", "name": "n", "status": "passed"},
@@ -191,6 +236,133 @@ class GradeImpactRepairTest(unittest.TestCase):
         comparison = MODULE.compare_tests(rows, [{"class": "C", "name": "n", "status": "passed"}], [])
         self.assertTrue(comparison["ok"])
 
+    def test_xml_whitespace_remains_part_of_the_test_identity(self):
+        name = "Given a declaration\nwith a line break\tand a tab\r"
+        suite = ET.Element("testsuite")
+        ET.SubElement(suite, "testcase", {"classname": "ExampleSpec", "name": name})
+        report = self.root / "TEST-example.xml"
+        ET.ElementTree(suite).write(report, encoding="utf-8")
+        rows = MODULE._junit_rows(self.root, [report])
+        expected, _, skipped = MODULE._normalise_expected([
+            {"report": report.name, "class": "ExampleSpec", "name": name, "status": "passed"},
+        ])
+        self.assertEqual(name, rows[0]["name"])
+        self.assertTrue(MODULE.compare_tests(rows, expected, [], skipped)["ok"])
+
+    def test_display_name_whitespace_is_not_normalized_into_a_different_test(self):
+        expected, _, skipped = MODULE._normalise_expected([
+            {"report": "TEST-example.xml", "class": "ExampleSpec", "name": "a\nb", "status": "passed"},
+        ])
+        rows = [{"report": "TEST-example.xml", "class": "ExampleSpec", "name": "a b", "status": "passed"}]
+        self.assertFalse(MODULE.compare_tests(rows, expected, [], skipped)["ok"])
+
+    def test_nul_is_still_invalid_in_a_test_identity(self):
+        with self.assertRaises(MODULE.GradeSpecError):
+            MODULE._normalise_expected([{"class": "ExampleSpec", "name": "a\0b", "status": "passed"}])
+
+    def test_junit_identity_policy_is_exact_by_default(self):
+        expected = [{
+            "report": "detekt-core/build/test-results/test/TEST-io.gitlab.arturbosch.detekt.core.suppressors.AnnotationSuppressorSpec$Full#20Qualified#20names$general#20cases.xml",
+            "class": "ExampleSpec",
+            "name": "[1] org.jetbrains.kotlin.resolve.BindingContext$1@abc",
+            "status": "passed",
+        }]
+        rows = [dict(expected[0], name=expected[0]["name"].replace("abc", "def"))]
+        comparison = MODULE.compare_tests(rows, expected, [])
+        self.assertFalse(comparison["ok"])
+
+    def test_detekt_policy_matches_all_six_a_occurrences_and_keeps_multiplicity(self):
+        report = "detekt-core/build/test-results/test/TEST-io.gitlab.arturbosch.detekt.core.suppressors.AnnotationSuppressorSpec$Full#20Qualified#20names$general#20cases.xml"
+        klass = "io.gitlab.arturbosch.detekt.core.suppressors.AnnotationSuppressorSpec$Full Qualified names$general cases"
+        names = [
+            "[1] org.jetbrains.kotlin.resolve.BindingTraceContext$1@abc",
+            "[2] org.jetbrains.kotlin.resolve.BindingContext$1@abc",
+        ] * 3
+        expected = [{"report": report, "class": klass, "name": name, "status": "passed"} for name in names]
+        rows = [{**row, "name": row["name"].replace("abc", f"{index + 1:03x}")}
+                for index, row in enumerate(expected)]
+        comparison = MODULE.compare_tests(rows, expected, [], policy="detekt-junit-object-identities-v1")
+        self.assertTrue(comparison["ok"], comparison)
+        self.assertEqual(6, comparison["expectedPassing"])
+        self.assertEqual([], comparison["missingExpected"])
+        self.assertEqual([], comparison["expectedCountMismatch"])
+
+        comparison = MODULE.compare_tests(rows[:-1], expected, [], policy="detekt-junit-object-identities-v1")
+        self.assertFalse(comparison["ok"])
+        self.assertEqual(1, len(comparison["missingExpected"]))
+
+    def test_detekt_policy_scopes_context_and_retains_wrapper_type(self):
+        report = "detekt-formatting/build/test-results/test/TEST-io.gitlab.arturbosch.detekt.formatting.WrapperSmokeTestSpec.xml"
+        klass = "io.gitlab.arturbosch.detekt.formatting.WrapperSmokeTestSpec"
+        expected = [{
+            "report": report,
+            "class": klass,
+            "name": "for rule: io.gitlab.arturbosch.detekt.formatting.wrappers.IndentationRule@abc",
+            "status": "passed",
+        }]
+        rows = [dict(expected[0], name=expected[0]["name"].replace("abc", "def"))]
+        comparison = MODULE.compare_tests(rows, expected, [], policy="detekt-junit-object-identities-v1")
+        self.assertTrue(comparison["ok"], comparison)
+
+        wrong_type = [dict(rows[0], name=rows[0]["name"].replace("IndentationRule", "SpacingRule"))]
+        self.assertFalse(MODULE.compare_tests(wrong_type, expected, [], policy="detekt-junit-object-identities-v1")["ok"])
+        other_context = [dict(rows[0], report="other/TEST-wrapper.xml")]
+        self.assertFalse(MODULE.compare_tests(other_context, expected, [], policy="detekt-junit-object-identities-v1")["ok"])
+
+    def test_detekt_policy_keeps_literal_hex_and_tagged_names_distinct(self):
+        report = "detekt-core/build/test-results/test/TEST-io.gitlab.arturbosch.detekt.core.suppressors.AnnotationSuppressorSpec$Full#20Qualified#20names$general#20cases.xml"
+        klass = "io.gitlab.arturbosch.detekt.core.suppressors.AnnotationSuppressorSpec$Full Qualified names$general cases"
+        volatile = "[2] org.jetbrains.kotlin.resolve.BindingContext$1@abc"
+        literal = "detekt-junit-object-identities-v1:[2] org.jetbrains.kotlin.resolve.BindingContext$1"
+        expected = [
+            {"report": report, "class": klass, "name": volatile, "status": "passed"},
+            {"report": report, "class": klass, "name": literal, "status": "passed"},
+        ]
+        rows = [
+            {**expected[0], "name": volatile.replace("abc", "def")},
+            expected[1],
+        ]
+        comparison = MODULE.compare_tests(rows, expected, [], policy="detekt-junit-object-identities-v1")
+        self.assertTrue(comparison["ok"], comparison)
+        self.assertEqual("[2] org.jetbrains.kotlin.resolve.BindingContext$1@def", rows[0]["name"])
+
+        annotation = [{
+            "report": "other/TEST.xml", "class": "Other", "name": "annotation @deadbeef", "status": "passed",
+        }]
+        self.assertFalse(MODULE.compare_tests(annotation, [dict(annotation[0], name="annotation @cafebabe")], [], policy="detekt-junit-object-identities-v1")["ok"])
+
+    def test_detekt_policy_requires_explicit_expected_reports(self):
+        with self.assertRaises(MODULE.GradeSpecError):
+            MODULE._normalise_expected([
+                {"class": "ExampleSpec", "name": "[1] org.jetbrains.kotlin.resolve.BindingContext$1@abc", "status": "passed"},
+            ], policy="detekt-junit-object-identities-v1")
+        with self.assertRaises(MODULE.GradeSpecError):
+            MODULE.compare_tests(
+                [{"report": "reports/a.xml", "class": "ExampleSpec", "name": "Stable", "status": "passed"}],
+                [{"class": "ExampleSpec", "name": "Stable", "status": "passed"}],
+                [], policy="detekt-junit-object-identities-v1",
+            )
+        with self.assertRaises(MODULE.GradeSpecError):
+            MODULE._normalise_baseline([
+                {"class": "ExampleSpec", "name": "Stable", "status": "failed"},
+            ], policy="detekt-junit-object-identities-v1")
+
+    def test_unknown_test_identity_policy_is_rejected(self):
+        with self.assertRaises(MODULE.GradeSpecError):
+            self.spec(testIdentityPolicy="unknown")
+
+    def test_detekt_policy_preserves_new_failure_name(self):
+        report = "detekt-formatting/build/test-results/test/TEST-io.gitlab.arturbosch.detekt.formatting.WrapperSmokeTestSpec.xml"
+        klass = "io.gitlab.arturbosch.detekt.formatting.WrapperSmokeTestSpec"
+        expected = [{"report": report, "class": klass, "name": "Stable", "status": "passed"}]
+        failure_name = "for rule: io.gitlab.arturbosch.detekt.formatting.wrappers.BadRule@abc"
+        comparison = MODULE.compare_tests([
+            {"report": report, "class": klass, "name": "Stable", "status": "passed"},
+            {"report": report, "class": klass, "name": failure_name, "status": "failed"},
+        ], expected, [], policy="detekt-junit-object-identities-v1")
+        self.assertEqual(failure_name, comparison["newFailures"][0]["name"])
+        self.assertFalse(comparison["ok"])
+
     def test_existing_output_is_not_overwritten(self):
         output = self.root / "existing"
         output.mkdir()
@@ -199,6 +371,31 @@ class GradeImpactRepairTest(unittest.TestCase):
         result = MODULE.grade(self.spec(), output=output)
         self.assertFalse(result["verdict"])
         self.assertEqual("keep", marker.read_text(encoding="utf-8"))
+
+    def test_artifact_scrubbing_preserves_public_identity_text_and_redacts_known_paths(self):
+        public_name = "UTC https://example.invalid/a?x=1 <!-- XML comment --> /tmp/public/path"
+        expected = json.dumps({
+            "tests": [
+                {"report": "reports/TEST-suite.xml", "class": "VisiblePass", "name": public_name, "status": "passed"},
+                {"report": "reports/TEST-suite.xml", "class": "VisibleBaseline", "name": "legacy", "status": "failed"},
+                {"report": "reports/TEST-suite.xml", "class": "GoldSkipped", "name": "unchanged", "status": "skipped"},
+            ],
+        })
+        output = self.root / "public-identities"
+        result = MODULE.grade(self.spec(testEnv={"TEST_MODE": "public-identities"}, expectedGoldTests=expected), output=output)
+        self.assertTrue(result["verdict"], result)
+        visible = next(row for row in result["tests"]["rows"] if row["class"] == "VisiblePass")
+        self.assertEqual(public_name, visible["name"])
+        artifact = json.loads((output / "result.json").read_text(encoding="utf-8"))
+        artifact_visible = next(row for row in artifact["tests"]["rows"] if row["class"] == "VisiblePass")
+        self.assertEqual(public_name, artifact_visible["name"])
+
+        private = self.root / "private" / "repo"
+        scrubbed = MODULE._scrub(
+            f"{private}/file UTC https://example.invalid /tmp/public/path",
+            [private, self.root / "output", Path.home(), "/tmp/jdk", "UTC"],
+        )
+        self.assertEqual("<local>/file UTC https://example.invalid /tmp/public/path", scrubbed)
 
 
 if __name__ == "__main__":
