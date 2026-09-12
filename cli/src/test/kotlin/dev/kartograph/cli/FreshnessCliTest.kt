@@ -44,8 +44,10 @@ class FreshnessCliTest {
         Files.writeString(source, "public class Example {}")
         val classes = Files.createDirectories(root.resolve("compiled"))
         assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", classes.toString(), source.toString()))
-        val project = Files.createDirectories(root.resolve("project/nested"))
-        val relative = Path.of("").toAbsolutePath().normalize().relativize(classes.toAbsolutePath().normalize()).toString()
+        val workingDirectory = Path.of("").toAbsolutePath().normalize()
+        // Linux의 짧은 /tmp 경로에서도 '..'가 양쪽을 파일 시스템 루트까지 올려 같아지지 않게 한다.
+        val project = Files.createDirectories((0..workingDirectory.nameCount).fold(root.resolve("project")) { path, _ -> path.resolve("nested") })
+        val relative = workingDirectory.relativize(classes.toAbsolutePath().normalize()).toString()
         assertFalse(project.resolve(relative).normalize() == classes.toAbsolutePath().normalize())
         val captured = run("snapshot", "--project", project.toString(), "--classes", relative, "--generated-classes", relative)
         assertEquals(0, captured.first, captured.second)
