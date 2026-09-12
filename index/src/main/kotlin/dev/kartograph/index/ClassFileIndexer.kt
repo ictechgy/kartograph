@@ -178,17 +178,19 @@ public class ClassFileIndexer {
             JvmModifier.STATIC in node.jvmModifiers &&
                 (node.id.value.endsWith(")Ljava/lang/String;") || node.id.value.endsWith(")Ljava/lang/Class;"))
         }.mapTo(mutableSetOf(), GraphNode::id)
-        if (methods.isEmpty() && returns.isEmpty()) return facts
+        val writes = facts.fieldWriteMethods
+        if (methods.isEmpty() && returns.isEmpty() && writes.isEmpty()) return facts
         val bodies = mutableMapOf<NodeId, MethodNode>()
         reader.accept(object : ClassVisitor(Opcodes.ASM9) {
             override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<out String>?): MethodVisitor? {
                 val id = JvmNodeId.methodId(facts.internalName, name, descriptor)
-                return if (id in methods || id in returns) MethodNode(Opcodes.ASM9, access, name, descriptor, signature, exceptions)
+                return if (id in methods || id in returns || id in writes) MethodNode(Opcodes.ASM9, access, name, descriptor, signature, exceptions)
                     .also { bodies[id] = it } else null
             }
         }, ClassReader.SKIP_FRAMES)
         return facts.copy(runtimeMethods = bodies.filterKeys(methods::contains).values.toList(),
-            returnMethods = bodies.filterKeys(returns::contains).values.toList())
+            returnMethods = bodies.filterKeys(returns::contains).values.toList(),
+            fieldMethods = bodies.filterKeys { it in writes || it in methods }.values.toList())
     }
 
     private fun isClassFile(path: Path): Boolean =
@@ -205,6 +207,8 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private val nodes = mutableListOf<GraphNode>()
     private val edges = mutableListOf<GraphEdge>()
     private val calls = mutableListOf<ExternalCall>()
+    private val fieldWriteMethods = mutableSetOf<NodeId>()
+    private val constantStringFields = mutableMapOf<NodeId, String>()
     private val classAnnotations = mutableSetOf<String>()
     private val supertypes = mutableSetOf<String>()
     private var nativeMethods = 0
@@ -263,6 +267,9 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         value: Any?,
     ): FieldVisitor {
         val fieldId = JvmNodeId.fieldId(internalName, name, descriptor)
+        if (value is String && descriptor == "Ljava/lang/String;" && access and Opcodes.ACC_STATIC != 0) {
+            constantStringFields[fieldId] = value
+        }
         val annotations = mutableSetOf<String>()
         edges += GraphEdge(JvmNodeId.classId(internalName), fieldId, EdgeKind.MEMBER)
         edges += GraphEdge(fieldId, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
@@ -368,6 +375,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             }
 
             override fun visitFieldInsn(opcode: Int, owner: String, targetName: String, targetDescriptor: String) {
+                if (opcode == Opcodes.PUTSTATIC && targetDescriptor.startsWith("L")) fieldWriteMethods += methodId
                 edges += GraphEdge(
                     methodId,
                     JvmNodeId.fieldId(owner, targetName, targetDescriptor),
@@ -486,7 +494,8 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     fun facts(): ClassFacts {
         val facts = ClassFacts(internalName, nodes, edges, enclosingClass,
             ClassRuntimeObservation(sourceLocation()?.path, FileTime.fromMillis(0),
-                nativeMethods, reflectionCalls, dynamicRegistrations), calls)
+                nativeMethods, reflectionCalls, dynamicRegistrations), calls, fieldWriteMethods = fieldWriteMethods,
+            constantStringFields = constantStringFields)
         val metadata = metadataValues?.toMetadata() ?: return facts
         return KotlinMetadataEnricher.enrich(facts, metadata)
     }
@@ -550,6 +559,9 @@ internal data class ClassFacts(
     val calls: List<ExternalCall> = emptyList(),
     val runtimeMethods: List<MethodNode> = emptyList(),
     val returnMethods: List<MethodNode> = emptyList(),
+    val fieldWriteMethods: Set<NodeId> = emptySet(),
+    val fieldMethods: List<MethodNode> = emptyList(),
+    val constantStringFields: Map<NodeId, String> = emptyMap(),
 )
 
 // CLASS-retention 생성 marker는 이름만 닮은 사용자 선언을 숨기지 않는다.

@@ -5,6 +5,8 @@ import dev.kartograph.core.ClassHierarchy
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
+import dev.kartograph.core.JvmModifier
+import dev.kartograph.core.GraphNode
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
@@ -12,6 +14,7 @@ import dev.kartograph.core.Visibility
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 import org.objectweb.asm.tree.AbstractInsnNode
+import org.objectweb.asm.tree.FieldInsnNode
 import org.objectweb.asm.tree.IntInsnNode
 import org.objectweb.asm.tree.InvokeDynamicInsnNode
 import org.objectweb.asm.tree.LdcInsnNode
@@ -51,6 +54,7 @@ internal object RuntimeValueAnalyzer {
         val returns = facts.flatMap { fact -> fact.returnMethods.map { method ->
             JvmNodeId.methodId(fact.internalName, method.name, method.desc) to (fact.internalName to method)
         } }.toMap()
+        val fieldLookup = FieldLookup(facts)
         val derived = mutableListOf<GraphEdge>()
         val models = mutableMapOf<Pair<NodeId, Int>, List<NodeId>>()
         val observations = facts.map { fact ->
@@ -65,8 +69,9 @@ internal object RuntimeValueAnalyzer {
             var boundedMethods = 0
             for (method in fact.runtimeMethods) {
                 val caller = JvmNodeId.methodId(fact.internalName, method.name, method.desc)
-                val summaries = ReturnValues(returns, ::loader)
-                val interpreter = FlowInterpreter(::loader, returnedValue = summaries::evaluate)
+                val fields = FieldValues(facts, fieldLookup, ::loader, returns)
+                val summaries = ReturnValues(returns, ::loader, fields::read)
+                val interpreter = FlowInterpreter(::loader, returnedValue = summaries::evaluate, fieldValue = fields::read)
                 val frames = if (exceedsFrameBudget(method)) {
                     boundedMethods++
                     null
@@ -104,17 +109,18 @@ internal object RuntimeValueAnalyzer {
                         val services = arguments.getOrNull(position)?.classes?.mapNotNull(::objectClass)?.toSet()
                         targets = services?.flatMap { service -> graph.serviceProviders.filter { it.service == service }.map { it.provider } }
                             ?.filter(graph::contains)?.distinct()?.sorted()
-                        if (services == null || targets.isNullOrEmpty()) unknownServices++
+                        if (services == null || targets.isNullOrEmpty() || arguments.any { it.uncertain }) unknownServices++
                     } else if (classLoading || loaderCall) {
                         val classes = value?.classes
                         targets = classes?.mapNotNull { descriptor -> referencedClass(descriptor)?.let(JvmNodeId::classId) }
                             ?.filter(graph::contains)?.distinct()?.sorted()
-                        if (classes == null) {
+                        if (classes == null || value.uncertain) {
                             if (loaderCall) unknownLoaders++ else unknownNames++
                         } else if (targets.isNullOrEmpty()) outsideTargets++
                     } else if (methodInvocation || fieldAccess) {
                         val members = if (methodInvocation) arguments.firstOrNull()?.methods else arguments.firstOrNull()?.fields
                         targets = members?.flatMap { member ->
+                            if (fieldAccess) return@flatMap fieldLookup.reflective(member).map { it.id }
                             val start = objectClass(member.descriptor) ?: return@flatMap emptyList()
                             val owners = linkedSetOf<String>()
                             val pending = ArrayDeque(listOf(start))
@@ -133,7 +139,7 @@ internal object RuntimeValueAnalyzer {
                                     (!methodInvocation || member.arity == null || Type.getArgumentTypes(node.id.value.substring(node.id.value.indexOf('('))).size == member.arity)
                             }.map { it.id }
                         }?.distinct()?.sorted()
-                        if (members == null) {
+                        if (members == null || arguments.any { it.uncertain }) {
                             if (methodInvocation) unknownMethods++ else unknownFields++
                         } else if (targets.isNullOrEmpty()) missingMembers++
                     } else {
@@ -148,7 +154,7 @@ internal object RuntimeValueAnalyzer {
                                     (member.arity == null || Type.getArgumentTypes(node.id.value.substringAfter("#<init>")).size == member.arity)
                             }.map { it.id }
                         }?.distinct()?.sorted()
-                        if (members == null) unknownConstructors++ else if (targets.isNullOrEmpty()) outsideTargets++
+                        if (members == null || arguments.any { it.uncertain }) unknownConstructors++ else if (targets.isNullOrEmpty()) outsideTargets++
                     }
                     if (targets != null) {
                         models[caller to currentOrdinal] = targets
@@ -184,6 +190,7 @@ private fun exceedsFrameBudget(method: MethodNode): Boolean =
 private class ReturnValues(
     private val methods: Map<NodeId, Pair<String, MethodNode>>,
     private val loader: (String) -> Boolean,
+    private val fieldValue: (FieldInsnNode?, Set<MemberValue>?, () -> Unit) -> FlowValue? = { _, _, _ -> null },
 ) {
     private data class Key(val method: NodeId, val arguments: List<FlowValue>)
     private data class Summary(val value: FlowValue?, val limited: Boolean)
@@ -198,7 +205,7 @@ private class ReturnValues(
         val (owner, method) = methods[id] ?: return null
         if (method.instructions.size() == 0) return null
         val arguments = values.map { value -> FlowValue(value.basic, strings = value.strings, classes = value.classes,
-            integer = value.integer, arrayLength = value.arrayLength) }
+            integer = value.integer, arrayLength = value.arrayLength, uncertain = value.uncertain, incompleteByLimit = value.incompleteByLimit) }
         val key = Key(id, arguments)
         cache[key]?.let { if (it.limited) limited(); return it.value }
         if (id in active || active.size >= 8 || analyses >= 128 || exceedsFrameBudget(method) ||
@@ -222,7 +229,7 @@ private class ReturnValues(
             arguments.getOrNull(index)?.let { parameters[local] = it }
             local += type.size
         }
-        val interpreter = FlowInterpreter(loader, parameters, ::evaluate)
+        val interpreter = FlowInterpreter(loader, parameters, ::evaluate, fieldValue)
         val frames = try { Analyzer(interpreter).analyze(owner, method) } catch (_: AnalyzerException) { return Summary(null, true) }
         var result: FlowValue? = null
         for ((index, instruction) in method.instructions.toArray().withIndex()) {
@@ -233,6 +240,126 @@ private class ReturnValues(
             result = result?.let { interpreter.merge(it, value) } ?: value
         }
         return Summary(if (interpreter.limitReached) null else result, interpreter.limitReached)
+    }
+}
+
+// JVM field 및 public reflection lookup은 일치하는 선언에서 멈춰 숨겨진 부모 field를 섞지 않는다.
+private class FieldLookup(facts: List<ClassFacts>) {
+    private val types = facts.associateBy { it.internalName }
+    private val declarations = facts.associate { fact -> fact.internalName to fact.nodes.filter { it.id.value.startsWith("field:") } }
+    private val constants = facts.flatMap { it.constantStringFields.entries }.associate { it.key to it.value }
+
+    fun constantString(field: NodeId): String? = constants[field]
+
+    fun direct(owner: String, name: String, descriptor: String): List<GraphNode> =
+        lookup(owner, name, descriptor, false, false, mutableSetOf())
+
+    fun reflective(member: MemberValue): List<GraphNode> = objectClass(member.descriptor)?.let {
+        lookup(it, member.name, null, !member.declaredOnly, member.declaredOnly, mutableSetOf())
+    }.orEmpty()
+
+    private fun lookup(owner: String, name: String, descriptor: String?, publicOnly: Boolean,
+        declaredOnly: Boolean, seen: MutableSet<String>): List<GraphNode> {
+        if (!seen.add(owner)) return emptyList()
+        val own = declarations[owner].orEmpty().filter {
+            it.id.value.substringAfter('#').substringBefore(':') == name &&
+                (descriptor == null || it.id.value.substringAfter('#').substringAfter(':') == descriptor) &&
+                (!publicOnly || it.jvmVisibility == Visibility.PUBLIC)
+        }
+        if (own.isNotEmpty() || declaredOnly) return own
+        val supers = types[owner]?.nodes?.firstOrNull { it.id == JvmNodeId.classId(owner) }?.supertypes.orEmpty()
+        val (interfaces, parents) = supers.partition { parent ->
+            types[parent]?.nodes?.any { it.id == JvmNodeId.classId(parent) && it.kind == NodeKind.INTERFACE } == true
+        }
+        val inherited = interfaces.flatMap { lookup(it, name, descriptor, publicOnly, false, seen) }
+        return inherited.ifEmpty { parents.flatMap { lookup(it, name, descriptor, publicOnly, false, seen) } }
+    }
+}
+
+// 실행 순서를 가정하지 않는 may-write 요약이다. 초기화 전 null·재진입·외부 변경은 항상 unknown 가능성으로 남긴다.
+// 불변 String/Class 값의 후보만 복원하며 객체 heap 및 실행 코드를 평가하지 않는다.
+private class FieldValues(
+    facts: List<ClassFacts>,
+    private val lookup: FieldLookup,
+    private val loader: (String) -> Boolean,
+    private val returns: Map<NodeId, Pair<String, MethodNode>>,
+) {
+    private val methods = facts.flatMap { fact -> fact.fieldMethods.map { fact.internalName to it } }
+    private val cache = mutableMapOf<NodeId, FlowValue?>()
+    private val active = mutableSetOf<NodeId>()
+    private var slots = 0L
+    private var analyses = 0
+    private var scannedInstructions = 0L
+    private val summaries = ReturnValues(returns, loader, ::read)
+
+    fun read(instruction: FieldInsnNode?, members: Set<MemberValue>?, limited: () -> Unit): FlowValue? {
+        val fields = if (instruction != null) lookup.direct(instruction.owner, instruction.name, instruction.desc)
+            else members?.flatMap(lookup::reflective) ?: return null
+        var classes = emptySet<String>()
+        var strings = emptySet<String>()
+        var exhausted = false
+        for (field in fields.distinctBy { it.id }) {
+            val value = summarize(field) { exhausted = true; limited() }
+            classes = mergeSet(classes, value?.classes.orEmpty(), limited) ?: return null
+            strings = mergeSet(strings, value?.strings.orEmpty(), limited) ?: return null
+        }
+        return if (exhausted || (classes.isEmpty() && strings.isEmpty())) null else FlowValue(BasicValue.REFERENCE_VALUE,
+            strings = strings.takeIf { it.isNotEmpty() }, classes = classes.takeIf { it.isNotEmpty() }, uncertain = true)
+    }
+
+    private fun summarize(field: GraphNode, limited: () -> Unit): FlowValue? {
+        if (JvmModifier.STATIC !in field.jvmModifiers) return null
+        if (cache.containsKey(field.id)) return cache[field.id]
+        if (field.id in active) return null
+        if (active.size >= 8) { limited(); return null }
+        active += field.id
+        var classes = emptySet<String>()
+        var strings = emptySet<String>()
+        var exhausted = false
+        fun limit() { exhausted = true; limited() }
+        try {
+            lookup.constantString(field.id)?.let { value -> strings = bounded(setOf(value), ::limit).orEmpty() }
+            for ((owner, method) in methods) {
+                // 값에 의존하지 않는 직접 write 선택은 분석 비용을 제한한다. reflective set은 lookup 결과로 다시 고른다.
+                scannedInstructions += method.instructions.size()
+                if (scannedInstructions > 1_000_000L) { limit(); break }
+                val instructions = method.instructions.toArray()
+                if (instructions.none { insn ->
+                    (insn is FieldInsnNode && insn.opcode == Opcodes.PUTSTATIC &&
+                        lookup.direct(insn.owner, insn.name, insn.desc).any { it.id == field.id }) ||
+                        (insn is MethodInsnNode && insn.owner == "java/lang/reflect/Field" && insn.name == "set")
+                }) continue
+                if (analyses >= 128 || exceedsFrameBudget(method) || slots + frameSlots(method) > 1_000_000L) {
+                    limit(); break
+                }
+                analyses++
+                slots += frameSlots(method)
+                val interpreter = FlowInterpreter(loader, returnedValue = summaries::evaluate, fieldValue = ::read, retainFieldCandidates = true)
+                val frames = try { Analyzer(interpreter).analyze(owner, method) } catch (_: AnalyzerException) { limit(); continue }
+                for ((index, insn) in instructions.withIndex()) {
+                    val frame = frames[index] ?: continue
+                    val value = when {
+                        insn is FieldInsnNode && insn.opcode == Opcodes.PUTSTATIC &&
+                            lookup.direct(insn.owner, insn.name, insn.desc).any { it.id == field.id } -> frame.getStack(frame.stackSize - 1)
+                        insn is MethodInsnNode && insn.owner == "java/lang/reflect/Field" && insn.name == "set" &&
+                            insn.desc == "(Ljava/lang/Object;Ljava/lang/Object;)V" && frame.stackSize >= 3 -> {
+                            val members = frame.getStack(frame.stackSize - 3).fields
+                            if (members?.flatMap(lookup::reflective)?.any { it.id == field.id } != true) null
+                            else frame.getStack(frame.stackSize - 1)
+                        }
+                        else -> null
+                    }
+                    if (value?.incompleteByLimit == true) limit()
+                    classes = mergeSet(classes, value?.classes.orEmpty(), ::limit) ?: emptySet()
+                    strings = mergeSet(strings, value?.strings.orEmpty(), ::limit) ?: emptySet()
+                }
+            }
+            val result = if (exhausted || (classes.isEmpty() && strings.isEmpty())) null else FlowValue(BasicValue.REFERENCE_VALUE,
+                strings = strings.takeIf { it.isNotEmpty() }, classes = classes.takeIf { it.isNotEmpty() }, uncertain = true)
+            // 한도에 걸린 결과는 캐시로 한계 신호를 숨기지 않는다.
+            if (!exhausted) cache[field.id] = result
+            return result
+        } finally { active -= field.id }
     }
 }
 
@@ -250,6 +377,8 @@ private data class FlowValue(
     val arrayLength: Int? = null,
     val methods: Set<MemberValue>? = null,
     val fields: Set<MemberValue>? = null,
+    val uncertain: Boolean = false,
+    val incompleteByLimit: Boolean = false,
 ) : Value {
     override fun getSize(): Int = basic.size
     // Analyzer 오류가 값 원문을 출력하지 않도록 한다.
@@ -260,10 +389,13 @@ private class FlowInterpreter(
     private val isClassLoader: (String) -> Boolean,
     private val parameters: Map<Int, FlowValue> = emptyMap(),
     private val returnedValue: (MethodInsnNode, List<FlowValue>, () -> Unit) -> FlowValue? = { _, _, _ -> null },
+    private val fieldValue: (FieldInsnNode?, Set<MemberValue>?, () -> Unit) -> FlowValue? = { _, _, _ -> null },
+    private val retainFieldCandidates: Boolean = false,
 ) : Interpreter<FlowValue>(Opcodes.ASM9) {
     private val base = BasicInterpreter()
     var limitReached = false
-    private fun limited() { limitReached = true }
+    private var limitEvents = 0
+    private fun limited() { limitReached = true; limitEvents++ }
     override fun newValue(type: Type?): FlowValue? = base.newValue(type)?.let(::FlowValue)
     override fun newParameterValue(isInstanceMethod: Boolean, local: Int, type: Type): FlowValue =
         parameters[local] ?: requireNotNull(newValue(type))
@@ -271,6 +403,11 @@ private class FlowInterpreter(
     override fun newOperation(insn: AbstractInsnNode): FlowValue {
         val value = FlowValue(base.newOperation(insn))
         return when {
+            insn is FieldInsnNode && insn.opcode == Opcodes.GETSTATIC -> {
+                var exhausted = false
+                val found = fieldValue(insn, null) { exhausted = true; limited() }
+                (found ?: value).copy(basic = value.basic, incompleteByLimit = exhausted || found?.incompleteByLimit == true)
+            }
             insn is LdcInsnNode && insn.cst is String -> value.copy(strings = bounded(setOf(insn.cst as String), ::limited))
             insn is LdcInsnNode && insn.cst is Type && (insn.cst as Type).sort != Type.METHOD -> value.copy(classes = setOf((insn.cst as Type).descriptor))
             insn is LdcInsnNode && insn.cst is Int -> value.copy(integer = insn.cst as Int)
@@ -314,8 +451,14 @@ private class FlowInterpreter(
         evaluate(insn, values)
 
     fun evaluate(insn: AbstractInsnNode, values: List<FlowValue>): FlowValue? {
+        val before = limitEvents
+        val value = evaluateOperation(insn, values)
+        return if (limitEvents != before) value?.copy(incompleteByLimit = true) else value
+    }
+
+    private fun evaluateOperation(insn: AbstractInsnNode, values: List<FlowValue>): FlowValue? {
         val result = base.naryOperation(insn, values.map { it.basic }) ?: return null
-        val unknown = FlowValue(result)
+        val unknown = FlowValue(result, uncertain = values.any { it.uncertain }, incompleteByLimit = values.any { it.incompleteByLimit })
         if (insn is InvokeDynamicInsnNode) {
             if (insn.bsm.owner != "java/lang/invoke/StringConcatFactory") return unknown
             val recipe = when (insn.bsm.name) {
@@ -327,10 +470,18 @@ private class FlowInterpreter(
             return unknown.copy(strings = concatRecipe(recipe, values.mapIndexed { index, value -> value.asStrings(types[index]) }, insn.bsmArgs.drop(1), ::limited))
         }
         if (insn !is MethodInsnNode) return unknown
-        returnedValue(insn, values, ::limited)?.let { return it.copy(basic = result) }
+        var returnLimited = false
+        returnedValue(insn, values) { returnLimited = true; limited() }?.let { return it.copy(basic = result) }
+        if (returnLimited) return unknown.copy(incompleteByLimit = true)
         val model = RuntimeLibraryModels.find(insn.owner, insn.name, insn.desc,
             insn.opcode == Opcodes.INVOKESTATIC, isClassLoader) ?: return unknown
         fun value(index: Int): FlowValue? = values.getOrNull(index)
+        if (model.operation == RuntimeOperation.FIELD_ACCESS && insn.name == "get") {
+            var exhausted = false
+            val found = fieldValue(null, value(0)?.fields) { exhausted = true; limited() }
+            return (found ?: unknown).copy(basic = result, uncertain = found?.uncertain == true || unknown.uncertain,
+                incompleteByLimit = exhausted || found?.incompleteByLimit == true || unknown.incompleteByLimit)
+        }
         if (model.operation in setOf(RuntimeOperation.METHOD_LOOKUP, RuntimeOperation.FIELD_LOOKUP)) {
             val classes = value(0)?.classes ?: return unknown
             val names = value(1)?.strings ?: return unknown
@@ -372,12 +523,23 @@ private class FlowInterpreter(
 
     override fun returnOperation(insn: AbstractInsnNode, value: FlowValue, expected: FlowValue) = base.returnOperation(insn, value.basic, expected.basic)
 
-    override fun merge(a: FlowValue, b: FlowValue): FlowValue = if (a == b) a else FlowValue(
-        base.merge(a.basic, b.basic), mergeSet(a.strings, b.strings, ::limited), mergeSet(a.classes, b.classes, ::limited),
-        mergeSet(a.constructors, b.constructors, ::limited), mergeSet(a.instances, b.instances, ::limited),
-        a.integer?.takeIf { it == b.integer }, a.arrayLength?.takeIf { it == b.arrayLength },
-        mergeSet(a.methods, b.methods, ::limited), mergeSet(a.fields, b.fields, ::limited),
-    )
+    override fun merge(a: FlowValue, b: FlowValue): FlowValue {
+        if (a == b) return a
+        var exhausted = a.incompleteByLimit || b.incompleteByLimit
+        fun limit() { exhausted = true; limited() }
+        return FlowValue(
+            base.merge(a.basic, b.basic),
+            if (retainFieldCandidates) mergeSet(a.strings.orEmpty(), b.strings.orEmpty(), ::limit)?.takeIf { it.isNotEmpty() }
+            else mergeSet(a.strings, b.strings, ::limit),
+            if (retainFieldCandidates) mergeSet(a.classes.orEmpty(), b.classes.orEmpty(), ::limit)?.takeIf { it.isNotEmpty() }
+            else mergeSet(a.classes, b.classes, ::limit),
+            mergeSet(a.constructors, b.constructors, ::limit), mergeSet(a.instances, b.instances, ::limit),
+            a.integer?.takeIf { it == b.integer }, a.arrayLength?.takeIf { it == b.arrayLength },
+            mergeSet(a.methods, b.methods, ::limit), mergeSet(a.fields, b.fields, ::limit),
+            a.uncertain || b.uncertain || (retainFieldCandidates &&
+                (a.classes == null || b.classes == null || a.strings == null || b.strings == null)), exhausted,
+        )
+    }
 }
 
 private fun FlowValue.asStrings(type: Type? = null): Set<String>? = strings ?: integer?.let {
