@@ -355,5 +355,207 @@
       "kotlin-stdlib-2.4.10.jar": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
     },
     "pluginSha256": "bb61641a10f8284e54b1225fffcc132a4a99843aa824f5b04ed36ddd07da214a"
-  }
+  },
+  "reviewFollowup": {
+    "javaWorkflow": {
+      "sourceBefore": "3e30048674adac01c8a07a94c6e9f42475446feb",
+      "sourceAfter": "c0b6903ad3078dd7501c68bf700514459a190e95",
+      "initial": {
+        "format": "kartograph-freshness",
+        "version": 1,
+        "status": "matched",
+        "hashNanos": 383181959,
+        "reasons": []
+      },
+      "changedWithoutRebuild": {
+        "format": "kartograph-freshness",
+        "version": 1,
+        "status": "stale",
+        "hashNanos": 375318541,
+        "reasons": [
+          "changed-sources"
+        ]
+      },
+      "latestLabelWithOldClasses": {
+        "format": "kartograph-freshness",
+        "version": 1,
+        "status": "stale",
+        "hashNanos": 374018625,
+        "reasons": [
+          "changed-sources"
+        ]
+      },
+      "afterRecompile": {
+        "format": "kartograph-freshness",
+        "version": 1,
+        "status": "matched",
+        "hashNanos": 379919875,
+        "reasons": []
+      },
+      "sameMtimeAndSizeMutation": true,
+      "oldClassesUnchangedUntilRecompile": true,
+      "commands": [
+        {
+          "name": "java-git-init",
+          "exit": 0,
+          "seconds": 0.021643375046551228
+        },
+        {
+          "name": "java-git-add",
+          "exit": 0,
+          "seconds": 0.015121250005904585
+        },
+        {
+          "name": "source-before",
+          "exit": 0,
+          "seconds": 0.02212670899461955
+        },
+        {
+          "name": "source-before-id",
+          "exit": 0,
+          "seconds": 0.011205292015802115
+        },
+        {
+          "name": "java-compile-before",
+          "exit": 0,
+          "seconds": 3.4034284590161406
+        },
+        {
+          "name": "java-snapshot-before",
+          "exit": 0,
+          "seconds": 0.17820683302124962
+        },
+        {
+          "name": "java-verify-before",
+          "exit": 0,
+          "seconds": 0.4727727919816971
+        },
+        {
+          "name": "java-git-add-after",
+          "exit": 0,
+          "seconds": 0.014204917009919882
+        },
+        {
+          "name": "source-after",
+          "exit": 0,
+          "seconds": 0.022891415981575847
+        },
+        {
+          "name": "source-after-id",
+          "exit": 0,
+          "seconds": 0.011255833960603923
+        },
+        {
+          "name": "java-verify-stale",
+          "exit": 1,
+          "seconds": 0.4630952919833362
+        },
+        {
+          "name": "java-snapshot-relabeled",
+          "exit": 0,
+          "seconds": 0.13280575000680983
+        },
+        {
+          "name": "java-verify-relabeled",
+          "exit": 1,
+          "seconds": 0.4490462919929996
+        },
+        {
+          "name": "java-compile-after",
+          "exit": 0,
+          "seconds": 2.9062011670321226
+        },
+        {
+          "name": "java-snapshot-current",
+          "exit": 0,
+          "seconds": 0.13145004102261737
+        },
+        {
+          "name": "java-verify-current",
+          "exit": 0,
+          "seconds": 0.45485154195921496
+        }
+      ]
+    },
+    "androidWorkflow": {
+      "scope": "fixture-library:debug",
+      "compiler": "kotlin",
+      "artifact": ":fixture-library:compileDebugKotlin",
+      "status": "matched",
+      "inputs": 9,
+      "externalBindings": 17,
+      "captureSeconds": 0.45218087499961257,
+      "output": [
+        {
+          "path": "build/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes",
+          "role": "classes",
+          "sha256": "6a9a87818091027fdc5f26b33df2af9f30495d6a3fe3b32111aa8154ea053fbc"
+        }
+      ]
+    },
+    "compilerIntegrationTests": 7,
+    "producerValidationTests": 1,
+    "jdk17LineCoveragePercent": 90.71754,
+    "jdk17And21Gates": "passed",
+    "regressions": [
+      "ABI-neutral dependency change plus clean under configuration cache",
+      "generated source providers before byte-key calculation",
+      "continued build failure removes witness",
+      "omitted Java or Kotlin compiler byte inputs reject evidence",
+      "public certificate resources and credentials-named parents",
+      "relative generated roots share indexing paths",
+      "unbound external evidence is unverified"
+    ],
+    "artifacts": [
+      {
+        "name": "kartograph-gradle-plugin-0.7.0.jar",
+        "sha256": "1a3d21072c0733e8b3db1c23045b244346e35490c1f4bd867e4df29ab5d14e04"
+      },
+      {
+        "name": "analysis-0.7.0.jar",
+        "sha256": "116981527d5d2a8681e87380b9955bf56634d77f5747bcf48a60549638ae2ed5"
+      },
+      {
+        "name": "annotations-13.0.jar",
+        "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+      },
+      {
+        "name": "asm-9.9.jar",
+        "sha256": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4"
+      },
+      {
+        "name": "asm-analysis-9.9.jar",
+        "sha256": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b"
+      },
+      {
+        "name": "asm-tree-9.9.jar",
+        "sha256": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6"
+      },
+      {
+        "name": "cli-0.7.0.jar",
+        "sha256": "88fb143d37f021f1c3d0ca69a0a76ae2a2081b2e7247e25dd3006b87fcad879f"
+      },
+      {
+        "name": "core-0.7.0.jar",
+        "sha256": "01474d989961753b193788b21181a2db3eb45fb98eaca95ac8653d797ad392cb"
+      },
+      {
+        "name": "export-0.7.0.jar",
+        "sha256": "a196c6f595c3e40cd47b61cdcb13f67a3920ed89841ab12f174bad342154cf45"
+      },
+      {
+        "name": "index-0.7.0.jar",
+        "sha256": "099a31fc48f56af76f53db4734684636f4ba4467072dfdc11a341f28910b53fd"
+      },
+      {
+        "name": "kotlin-metadata-jvm-2.4.10.jar",
+        "sha256": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4"
+      },
+      {
+        "name": "kotlin-stdlib-2.4.10.jar",
+        "sha256": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+      }
+    ]
+  },
+  "captureTimingMeasurementCommit": "ea99f62bab5e00fba0192f4a5efd796a31c4db41"
 }

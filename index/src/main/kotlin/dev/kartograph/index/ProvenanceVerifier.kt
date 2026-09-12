@@ -25,7 +25,10 @@ public object ProvenanceVerifier {
             } catch (_: java.io.IOException) { reasons += "unavailable-${input.role}" }
             catch (_: IllegalArgumentException) { reasons += "unavailable-${input.role}" }
         }
-        if (reasons.isNotEmpty()) return Result("stale", reasons.distinct().sorted())
+        if (reasons.isNotEmpty()) return Result(
+            if (reasons.any { it != "missing-external-input" }) "stale" else "unverified",
+            reasons.distinct().sorted(),
+        )
         if (provenance.witnesses.isEmpty()) reasons += "missing-build-witness"
         if (scope == null || provenance.witnesses.any { it.scope != scope }) reasons += "build-scope-mismatch"
         val classes = provenance.inputs.filter { it.role == "classes" }

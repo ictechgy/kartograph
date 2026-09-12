@@ -10,6 +10,15 @@ import org.junit.jupiter.api.io.TempDir
 
 class ContentFingerprintTest {
     @Test
+    fun `a project directory named credentials is not a credential file`(@TempDir root: Path) {
+        val directory = Files.createDirectories(root.resolve("credentials/classes"))
+        Files.write(directory.resolve("A.class"), byteArrayOf(1, 2, 3))
+        val other = Files.createDirectories(root.resolve("ordinary/classes"))
+        Files.write(other.resolve("A.class"), byteArrayOf(1, 2, 3))
+        assertEquals(ContentFingerprint.hash(other), ContentFingerprint.hash(directory))
+    }
+
+    @Test
     fun `bytes membership order and relocation are observable without timestamps`(@TempDir root: Path) {
         val a = Files.createDirectories(root.resolve("a"))
         val b = Files.createDirectories(root.resolve("b"))
@@ -28,10 +37,14 @@ class ContentFingerprintTest {
     }
 
     @Test
-    fun `secret and symbolic link inputs are rejected before reading`(@TempDir root: Path) {
-        Files.writeString(root.resolve(".env"), "DO_NOT_READ")
-        assertFailsWith<IllegalArgumentException> { ContentFingerprint.hash(root) }
-        Files.createSymbolicLink(root.resolve("link"), root.resolve(".env"))
+    fun `file names do not change explicit input policy and symbolic links are rejected`(@TempDir root: Path) {
+        val input = root.resolve("pin.pem")
+        Files.writeString(input, "PUBLIC_CERTIFICATE_FIXTURE")
+        val digest = ContentFingerprint.hash(root)
+        Files.writeString(input, "CHANGED_PUBLIC_CERTIFICATE_FIXTURE")
+        assertNotEquals(digest, ContentFingerprint.hash(root))
+        Files.createSymbolicLink(root.resolve("link"), input)
         assertFailsWith<IllegalArgumentException> { ContentFingerprint.hash(root.resolve("link")) }
+        assertFailsWith<IllegalArgumentException> { ContentFingerprint.hash(root) }
     }
 }

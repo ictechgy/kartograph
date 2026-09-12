@@ -12,28 +12,41 @@ import java.io.File
 /** 공개 Kotlin JVM compiler task API를 통해 명시적으로 선택한 Kotlin/Android compilation을 기록한다. */
 public object KotlinCompilerWitnesses {
     /** Java 소스도 Kotlin compiler 입력이므로 mixed source root를 함께 지정해야 한다. */
+    @JvmOverloads
     public fun kotlinCompile(project: Project, compiler: TaskProvider<out Task>, scope: String,
-        sourceRoots: FileCollection, buildInputs: FileCollection, jdk: Provider<JavaLauncher>): Provider<RegularFile> {
+        sourceRoots: FileCollection, buildInputs: FileCollection, jdk: Provider<JavaLauncher>,
+        additionalInputs: FileCollection = project.files()): Provider<RegularFile> {
         compiler.configure { KotlinApi(it).useToolchain(jdk) }
-        return CompilerWitnesses.register(project, compiler, scope, sourceRoots, buildInputs, "kotlin", jdk)
+        return CompilerWitnesses.register(project, compiler, scope, sourceRoots, buildInputs, "kotlin", additionalInputs, jdk)
     }
 
     internal fun destination(task: Task): File = KotlinApi(task).destination()
 
-    internal fun observe(task: Task, jdk: JavaLauncher): CompilerObservation {
+    internal fun byteInputs(task: Task): List<Any> = KotlinApi(task).let { api -> listOf(
+        api.collection("org.jetbrains.kotlin.gradle.tasks.KotlinCompileTool", "getSources"),
+        api.collection("org.jetbrains.kotlin.gradle.tasks.KotlinCompile", "getJavaSources"),
+        api.collection("org.jetbrains.kotlin.gradle.tasks.KotlinCompileTool", "getLibraries"),
+        api.collection("org.jetbrains.kotlin.gradle.tasks.BaseKotlinCompile", "getPluginClasspath"),
+        api.collection("org.jetbrains.kotlin.gradle.tasks.BaseKotlinCompile", "getFriendPaths"),
+        api.implementationArtifact(),
+    ) }
+
+    internal fun observe(task: Task, jdk: JavaLauncher, additionalInputs: FileCollection): CompilerObservation {
         val api = KotlinApi(task)
         val sources = api.files("org.jetbrains.kotlin.gradle.tasks.KotlinCompileTool", "getSources")
         val javaSources = api.files("org.jetbrains.kotlin.gradle.tasks.KotlinCompile", "getJavaSources")
         val libraries = api.files("org.jetbrains.kotlin.gradle.tasks.KotlinCompileTool", "getLibraries")
         val plugins = api.files("org.jetbrains.kotlin.gradle.tasks.BaseKotlinCompile", "getPluginClasspath")
         val friends = api.files("org.jetbrains.kotlin.gradle.tasks.BaseKotlinCompile", "getFriendPaths")
-        // Gradle의 선언된 file inputs에서 compiler/plugin artifact도 얻는다. 임의 project 탐색은 하지 않는다.
-        val declared = task.inputs.files.files.filter { it !in sources && it !in javaSources }
-        val artifacts = declared.filter { it.isFile && it.extension == "jar" }
-        require(artifacts.isNotEmpty()) { "Kotlin compiler artifact inputs are unavailable" }
-        val known = (libraries + plugins + friends).toSet()
-        val compilerArtifacts = artifacts.filter { it !in known }
-        require(compilerArtifacts.isNotEmpty()) { "Kotlin compiler artifact inputs are unavailable" }
+        val implementation = api.implementationArtifact()
+        val known = (libraries + plugins + friends + implementation).map { it.canonicalFile }.toSet()
+        // 실행 시 선언된 JAR와 명시 입력의 대응을 검증한다. task 입력 union을 provider에 저장하지 않는다.
+        val compilerArtifacts = task.inputs.files.files.filter { it.isFile && it.extension == "jar" && it.canonicalFile !in known }
+        val additional = additionalInputs.files
+        val supplied = additional.map { it.canonicalFile }.toSet()
+        require(compilerArtifacts.isNotEmpty() && compilerArtifacts.all { it.canonicalFile in supplied }) {
+            "Kotlin compiler witness requires the selected compiler runtime artifacts in additionalInputs"
+        }
         require(!api.multiplatform() && api.freeArguments().none {
             it.startsWith('@') || it.startsWith("-jdk-home") || it.startsWith("-classpath") ||
                 it in setOf("-d", "-version", "-help", "-X", "-script") ||
@@ -44,8 +57,8 @@ public object KotlinCompilerWitnesses {
         val jdkHome = jdk.metadata.installationPath.asFile
         val files = libraries.map { "classpath" to it } + plugins.map { "processor" to it } +
             friends.map { "friend" to it } + compilerArtifacts.map { "compiler" to it } +
-            declared.filter { it !in known && it !in compilerArtifacts }.map { "compilerInput" to it } +
-            ("compiler" to api.implementationArtifact()) +
+            additional.filter { it.canonicalFile !in known && it !in compilerArtifacts }.map { "compilerInput" to it } +
+            ("compiler" to implementation) +
             ("compiler" to File(jdkHome, "lib/modules").canonicalFile)
         return CompilerObservation(sources + javaSources, api.destination(), files.distinct(), api.effectiveArguments())
     }
@@ -61,7 +74,9 @@ private class KotlinApi(private val task: Task) {
         }
     }
 
-    fun files(api: String, getter: String): Set<File> = (get(task, api, getter) as FileCollection).files
+    fun collection(api: String, getter: String): FileCollection = get(task, api, getter) as FileCollection
+
+    fun files(api: String, getter: String): Set<File> = collection(api, getter).files
 
     fun destination(): File = (get(task, "org.jetbrains.kotlin.gradle.tasks.KotlinCompileTool", "getDestinationDirectory")
         as org.gradle.api.file.DirectoryProperty).get().asFile

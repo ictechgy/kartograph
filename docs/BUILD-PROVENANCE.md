@@ -40,6 +40,7 @@ val witness = KotlinCompilerWitnesses.kotlinCompile(
     files("src/main/kotlin", "src/main/java"),
     files("build.gradle.kts", "settings.gradle.kts"),
     javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(17)) },
+    additionalInputs = files(configurations.named("kotlinBuildToolsApiClasspath")),
 )
 ```
 
@@ -50,11 +51,20 @@ exactly (Kotlin also consumes Java sources). Supply all relevant build scripts,
 version catalogs and additional safe generator/config files explicitly. Do not
 supply environment files, authentication files, credential stores or a whole home
 or Gradle cache directory. No raw option values or absolute paths are serialized.
+The tool hashes all files in explicitly selected non-source roots locally, including
+public certificate resources; it does not infer confidentiality from a filename.
+Choose those roots accordingly. Symbolic file inputs are rejected.
 The Kotlin adapter configures the supplied JDK through the public toolchain API.
 Keep the Java and Kotlin bytecode targets aligned explicitly when that toolchain differs
 from an Android variant's default; the JDK used to compile and the bytecode target are separate settings.
 Public KGP APIs are resolved through the selected task's classloader, including effective
 compiler arguments, so an isolated Kotlin plugin classloader is supported.
+The adapter is tested against KGP 2.4.10; it also uses that version's compiler argument
+serialization API. Availability on other KGP versions is not a compatibility guarantee.
+The example selects KGP 2.4.10's default Build Tools API runtime configuration. If
+the build explicitly disables `kotlin.compiler.runViaBuildToolsApi`, select
+`kotlinCompilerClasspath` instead. These configuration names are version-specific
+caller choices; supplying an unrelated runtime does not pass artifact validation.
 
 The compiler's public destination provider is the artifact root. Android users must
 select the compiler task through their supported variant/build API and pass its
@@ -68,7 +78,9 @@ an attempted compile, and records matching post-action inputs and class outputs 
 on success. A public Gradle completion listener also removes evidence if a later task
 action or dependency fails; registered witnesses are invalidated at build completion
 when any task failed, including `--continue` builds. The witness is a declared compiler output, so a matching up-to-date
-execution or build-cache restoration can reuse it. A separate byte comparison is
+execution or build-cache restoration can reuse it. Separate native Gradle file
+inputs include the witnessed bytes in the task's cache key, so ABI-identical dependency changes cannot restore
+an earlier witness after `clean`. A separate byte comparison is
 still required before accepting a snapshot. Javac custom launchers and unsupported
 options are rejected. File arguments from providers (such as `--system`) must also
 be declared Gradle file inputs; use declared compiler APIs.
@@ -76,6 +88,14 @@ Kotlin records declared compiler artifact inputs and effective compiler argument
 unavailable artifact/property is an error, not a fabricated success record.
 Each compiler owns a dedicated witness output directory. The pending marker lives outside
 that directory, and only the completed JSON is a reusable build result.
+Additional declared compiler files outside the adapter's public input collections
+must be supplied through `additionalInputs`. Compilation fails before recording
+evidence if any observed file is missing from the byte-sensitive input roots.
+Do not derive this collection from the compiler task's aggregate `inputs.files`:
+that creates a reference back to the same task during configuration-cache restore.
+Kotlin evidence uses public source/library/plugin/friend collections and the explicit
+compiler runtime/configuration inputs. Private incremental-cache snapshot files are
+derived build state and are not claimed as supported compiler evidence inputs.
 
 ## Capture and compare
 
@@ -100,7 +120,8 @@ on `verify-snapshot` to compare a newly supplied ordered input selection.
 External inputs (including the compiler/JDK artifact) appear as `external/...`
 slots. Bind each slot to a local file/directory with repeated
 `--input external/slot=/local/path`. Bindings are supplied at comparison time and are
-not serialized. Missing bindings fail comparison. Moving an equivalent checkout
+not serialized. Missing bindings are `unverified`; proven byte changes are `stale`.
+Moving an equivalent checkout
 preserves project-relative identities and content digests. The document includes
 compiler kind, compiler task artifact identity and project/variant scope; changed
 witness files or a different requested scope fail comparison.

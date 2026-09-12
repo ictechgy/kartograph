@@ -28,9 +28,16 @@ configuration cache 재사용, 경로 이동, 구문 오류, 컴파일 중 소�
 검사했다. 실패한 build가 성공 증거를 남기지 않는지 확인했다. 테스트별 cache를 분리해 다른 테스트의 cache hit를
 첫 실행 성공으로 오인하지 않았다. JDK 17·21의 정식 전체 테스트와 90% coverage 게이트가 통과했다.
 
+Claude 리뷰 후에는 ABI가 같은 의존성 구현을 바꾸고 `clean`했을 때 옛 증거가 복원되는 반례를 추가했다.
+독립적인 바이트 입력을 Gradle에 선언해 이를 고쳤으며, 생성 소스 provider·configuration cache 재사용과
+`--continue`의 실패 무효화를 함께 검사했다. 인증서 리소스의 확장자나 `credentials`라는 상위 폴더 이름 때문에
+snapshot이 실패하던 문제와 상대 `--generated-classes`의 경로 기준도 회귀 테스트로 고정했다.
+
 Kotlin producer는 KGP의 공개 API를 실제 compiler task의 classloader에서 사용한다. Gradle의 내부
 `ImplementationValue` 객체 대신 실제 구성된 compiler 인자를 지문에 넣으며, KGP 구현 artifact와 선언된 파일 입력도
-기록한다. 증거는 전용 output 디렉터리에 둬 Kotlin compiler의 output 준비·cache 복원과 함께 동작하게 했다.
+기록한다. 컴파일러 runtime configuration은 호출자가 명시하며, 공개 source/library/plugin/friend 입력과
+함께 바이트 키에 연결한다. KGP 내부 증분 캐시 파일을 공개 입력 API로 취급하지 않는다.
+증거는 전용 output 디렉터리에 둬 Kotlin compiler의 output 준비·cache 복원과 함께 동작하게 했다.
 
 Android는 기존 [fixture-library](../../fixtures/false-positive-corpus/fixture-library)의 AGP 9.3.2 / SDK 36 / debug
 Kotlin compiler를 명시적으로 등록했다. JDK 17과 원래 Java/Kotlin bytecode target 11을 맞춰 실행했고, public

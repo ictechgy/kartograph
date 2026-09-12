@@ -49,19 +49,6 @@ public object ContentFingerprint {
 
     private fun checkPath(path: Path) {
         require(!Files.isSymbolicLink(path)) { "symbolic fingerprint inputs are not supported" }
-        // /tmp, /var 같은 OS 경로 별칭은 허용하되 실제 대상의 민감 이름도 검사한다.
-        for (candidate in listOf(path.toAbsolutePath().normalize(), path.toRealPath())) {
-            var part: Path? = candidate
-            while (part != null) {
-                val name = part.fileName?.toString()?.lowercase().orEmpty()
-                require(name != ".env" && !name.startsWith(".env.") && name !in setOf("auth.json", "credentials", "credentials.json", ".netrc", ".npmrc", ".pypirc", ".git-credentials") &&
-                    !name.endsWith(".keystore") && !name.endsWith(".jks") && !name.endsWith(".pem") && !name.endsWith(".key") &&
-                    !name.endsWith(".p12") && !name.endsWith(".pfx")) {
-                    "sensitive fingerprint inputs are not supported"
-                }
-                part = part.parent
-            }
-        }
     }
 
     private fun fileDigest(path: Path): String {

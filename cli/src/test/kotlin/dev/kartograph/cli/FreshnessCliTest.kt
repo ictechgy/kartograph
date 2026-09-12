@@ -14,6 +14,48 @@ import org.junit.jupiter.api.io.TempDir
 
 class FreshnessCliTest {
     @Test
+    fun `public certificate resources are fingerprinted without exposing content`(@TempDir root: Path) {
+        val source = root.resolve("Example.java")
+        Files.writeString(source, "public class Example {}")
+        val classes = Files.createDirectories(root.resolve("classes"))
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", classes.toString(), source.toString()))
+        val resources = Files.createDirectories(root.resolve("res/raw"))
+        Files.writeString(resources.resolve("pin.pem"), "PUBLIC_CERTIFICATE_FIXTURE")
+        Files.writeString(root.resolve("AndroidManifest.xml"), "<manifest package=\"sample\"><application/></manifest>")
+        val captured = run("snapshot", "--project", root.toString(), "--classes", classes.toString(), "--resources", "res",
+            "--manifest", "AndroidManifest.xml", "--namespace", "sample")
+        assertEquals(0, captured.first, captured.second)
+        assertFalse(captured.second.contains("PUBLIC_CERTIFICATE_FIXTURE"))
+        val snapshot = root.resolve("snapshot.json")
+        Files.writeString(snapshot, captured.second)
+        val checked = run("verify-snapshot", "--project", root.toString(), "--graph-file", snapshot.toString())
+        assertEquals(1, checked.first)
+        assertContains(checked.second, "\"status\":\"unverified\"")
+        Files.writeString(resources.resolve("pin.pem"), "CHANGED_PUBLIC_CERTIFICATE_FIXTURE")
+        val changed = run("verify-snapshot", "--project", root.toString(), "--graph-file", snapshot.toString())
+        assertEquals(1, changed.first)
+        assertContains(changed.second, "changed-resources")
+        assertEquals(0, run("query", "Example", "--graph-file", snapshot.toString()).first)
+    }
+
+    @Test
+    fun `relative generated roots are fingerprinted from the same working directory as indexing`(@TempDir root: Path) {
+        val source = root.resolve("Example.java")
+        Files.writeString(source, "public class Example {}")
+        val classes = Files.createDirectories(root.resolve("compiled"))
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", classes.toString(), source.toString()))
+        val project = Files.createDirectories(root.resolve("project/nested"))
+        val relative = Path.of("").toAbsolutePath().normalize().relativize(classes.toAbsolutePath().normalize()).toString()
+        assertFalse(project.resolve(relative).normalize() == classes.toAbsolutePath().normalize())
+        val captured = run("snapshot", "--project", project.toString(), "--classes", relative, "--generated-classes", relative)
+        assertEquals(0, captured.first, captured.second)
+        val parsed = QuerySnapshotCodec.parse(captured.second)
+        assertContains(captured.second, "generatedInput")
+        assertEquals(parsed.provenance!!.inputs.single { it.role == "classes" }.sha256,
+            parsed.provenance!!.inputs.single { it.role == "generated-classes" }.sha256)
+    }
+
+    @Test
     fun `relabeling real old javac output is unverified and byte changes are stale`(@TempDir root: Path) {
         val sources = Files.createDirectories(root.resolve("src"))
         val source = sources.resolve("Example.java")

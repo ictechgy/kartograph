@@ -28,6 +28,11 @@ class ProvenanceVerifierTest {
         val provenance = SnapshotProvenance(listOf(selected, fp("witness", "witness.json")), listOf(witness))
         val bindings = mapOf(selected.path to classes, output.path to classes)
         assertEquals("matched", ProvenanceVerifier.verify(provenance, root, "sample:main", bindings).status)
+        val missing = ProvenanceVerifier.verify(provenance, root, "sample:main", bindings - selected.path)
+        assertEquals("unverified", missing.status)
+        assertEquals(listOf("missing-external-input"), missing.reasons)
+        Files.write(classes.resolve("A.class"), byteArrayOf(4, 5, 6))
+        assertEquals("stale", ProvenanceVerifier.verify(provenance, root, "sample:main", bindings - selected.path).status)
     }
 
     @Test

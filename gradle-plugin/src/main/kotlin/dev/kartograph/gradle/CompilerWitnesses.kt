@@ -21,21 +21,35 @@ import org.gradle.api.specs.Spec
 /** 명시적으로 선택한 Java compiler task와 source/build 입력을 성공한 산출물에 연결한다. */
 public object CompilerWitnesses {
     /** main/test/generated root를 호출자가 선택한다. 실제 destination provider만 사용한다. */
+    @JvmOverloads
     public fun javaCompile(project: Project, compiler: TaskProvider<JavaCompile>, scope: String,
-        sourceRoots: FileCollection, buildInputs: FileCollection): Provider<RegularFile> =
-        register(project, compiler, scope, sourceRoots, buildInputs, "javac")
+        sourceRoots: FileCollection, buildInputs: FileCollection, additionalInputs: FileCollection = project.files()): Provider<RegularFile> =
+        register(project, compiler, scope, sourceRoots, buildInputs, "javac", additionalInputs)
 
     internal fun register(project: Project, compiler: TaskProvider<out Task>, scope: String,
         sourceRoots: FileCollection, buildInputs: FileCollection, kind: String,
+        additionalInputs: FileCollection,
         kotlinJdk: Provider<org.gradle.jvm.toolchain.JavaLauncher>? = null): Provider<RegularFile> {
         val witnessDirectory = project.layout.buildDirectory.dir("kartograph/witnesses/${compiler.name}")
         val witness = witnessDirectory.map { it.file("witness.json") }
         val taskIdentity = if (project.path == ":") ":${compiler.name}" else "${project.path}:${compiler.name}"
-        val spec = WitnessSpec(project.layout.projectDirectory.asFile, scope, compiler.name, taskIdentity, kind, sourceRoots, buildInputs, witness, kotlinJdk)
+        val byteInputs = project.objects.fileCollection().from(sourceRoots, buildInputs, additionalInputs)
+        val spec = WitnessSpec(project.layout.projectDirectory.asFile, scope, compiler.name, taskIdentity, kind, sourceRoots, buildInputs, byteInputs, additionalInputs, witness, kotlinJdk)
         compiler.configure { task ->
             task.inputs.files(sourceRoots).withPropertyName("kartographSourceRoots").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             task.inputs.files(buildInputs).withPropertyName("kartographBuildInputs").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             task.inputs.property("kartographScope", scope)
+            // ABI 정규화와 별개로 바이트를 키에 넣는다. task.inputs.files를 재사용하면 설정 캐시가 자기 참조한다.
+            if (task is JavaCompile) {
+                byteInputs.from(project.providers.provider {
+                    listOfNotNull(task.classpath, task.options.annotationProcessorPath, task.options.bootstrapClasspath, task.options.sourcepath)
+                }, task.javaCompiler.map { it.metadata.installationPath.file("lib/modules") })
+            } else {
+                byteInputs.from(KotlinCompilerWitnesses.byteInputs(task), requireNotNull(kotlinJdk).map {
+                    it.metadata.installationPath.file("lib/modules")
+                })
+            }
+            task.inputs.files(byteInputs).withPropertyName("kartographByteInputs").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             // KGP는 compiler output을 디렉터리로 준비하므로 증거 전용 디렉터리를 선언한다.
             task.outputs.dir(witnessDirectory).withPropertyName("kartographBuildWitness")
             task.outputs.upToDateWhen(MatchingWitness(spec))
@@ -87,10 +101,12 @@ internal class MatchingWitness(private val spec: WitnessSpec) : Spec<Task>, Seri
 internal data class CompilerObservation(val sources: Set<File>, val destination: File, val files: List<Pair<String, File>>, val options: List<String>)
 
 internal data class WitnessSpec(val project: File, val scope: String, val artifact: String, val taskIdentity: String, val kind: String,
-    val sourceRoots: FileCollection, val buildInputs: FileCollection, val witness: Provider<RegularFile>,
+    val sourceRoots: FileCollection, val buildInputs: FileCollection, val byteInputs: FileCollection,
+    val additionalInputs: FileCollection, val witness: Provider<RegularFile>,
     val kotlinJdk: Provider<org.gradle.jvm.toolchain.JavaLauncher>?) : Serializable {
     fun observe(task: Task): List<InputFingerprint> {
-        val observed = if (kind == "javac") javaObservation(task as JavaCompile) else KotlinCompilerWitnesses.observe(task, requireNotNull(kotlinJdk).get())
+        val observed = if (kind == "javac") javaObservation(task as JavaCompile)
+            else KotlinCompilerWitnesses.observe(task, requireNotNull(kotlinJdk).get(), additionalInputs)
         val roots = sourceRoots.files.toList()
         require(roots.isNotEmpty() && buildInputs.files.isNotEmpty()) { "compiler witness requires explicit source roots and build configuration inputs" }
         val eligible = roots.flatMap { root ->
@@ -100,6 +116,11 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
         }.toSet()
         require(eligible == observed.sources.map { it.canonicalFile }.toSet()) { "declared source roots do not match compiler sources; include generated and test inputs explicitly" }
         val files = roots.map { "sources" to it } + buildInputs.files.map { "buildConfig" to it } + observed.files
+        val covered = byteInputs.files.map { it.canonicalFile }
+        require(files.all { (_, file) -> covered.any { root ->
+            val current = file.canonicalFile
+            current == root || root.isDirectory && current.toPath().startsWith(root.toPath())
+        } }) { "compiler witness byte inputs omit declared compiler files; supply additionalInputs explicitly" }
         val projectPath = project.toPath()
         val fingerprints = files.mapIndexed { index, (role, file) ->
             ContentFingerprint.capture(projectPath, file.toPath(), role, "$artifact-$role-$index")

@@ -162,8 +162,10 @@ internal object AgentCommand {
             val classpath = options.values("--classpath").map { resolveProjectPath(project, it) }
             val keepScanner = KeepRuleScanner(project, options.values("--include-private-members").isNotEmpty())
             val keepRules = keepScanner.scan(options.values("--keep-rules").map { resolveProjectPath(project, it) })
+            val generatedRoots = options.values("--generated-classes").map(Path::of)
             val fingerprintFiles = classRoots.map { "classes" to it } + classpath.map { "classpath" to it } +
-                listOf("--manifest", "--resources", "--service-resources", "--baseline", "--generated-classes", "--source-root", "--build-input").flatMap { option ->
+                generatedRoots.map { "generated-classes" to it } +
+                listOf("--manifest", "--resources", "--service-resources", "--baseline", "--source-root", "--build-input").flatMap { option ->
                     val role = when (option) { "--source-root" -> "sources"; "--build-input" -> "buildConfig"; else -> option.removePrefix("--") }
                     options.values(option).map { role to resolveProjectPath(project, it) }
                 } + keepScanner.inputFiles.map { "keepRules" to it }
@@ -174,7 +176,7 @@ internal object AgentCommand {
             var captureHashNanos = System.nanoTime() - hashStarted
             val indexed = ClassFileIndexer().indexWithObservations(classRoots, classpath,
                 options.values("--service-resources").map { resolveProjectPath(project, it) },
-                options.values("--generated-classes").map(Path::of))
+                generatedRoots)
             val graph = indexed.graph
             val hierarchy = indexed.hierarchy
             val inputEvidence = buildList {
