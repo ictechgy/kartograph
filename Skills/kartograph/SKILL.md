@@ -80,6 +80,9 @@ Each metadata filter axis can match either revision independently; inspect `fact
 Test status describes a recognized source-root convention, not proof that a declaration is a runnable test.
 Keep inputs, filters, sort, and budgets fixed between pages. Set `--path-limit` explicitly when changing page limits,
 because the default path budget depends on the result limit.
+`--kind` selects the representative declaration's kind (current if present). Sorting by test status uses the common
+revision status, or `unknown` when statuses differ; test filters and summary buckets use individual revision facts.
+An offset page remains `partial` relative to the full candidate set even when `hasNext` is false.
 
 Read each candidate's `facts`, `observedIn`, `relation`, `pathStatus`, and `pathOmissions` with its existing `paths`.
 Facts are revision-specific; null module/location and `unknown` test status are missing evidence, not inferred values.

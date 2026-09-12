@@ -22,6 +22,8 @@ manifest/XML/keep 파일은 snapshot의 보존 근거 위치와 일치하는 선
 
 큰 결과는 관찰 후보 전체를 먼저 만든 다음 navigation 필터와 페이지를 적용한다. `--file`은 변경 선언을 고르는
 입력이고 `--affected-file`은 그 결과의 후보 source path를 좁히는 필터이므로 서로 대체하지 않는다.
+파일로 찾은 JVM 선언은 해당 ID가 존재하는 모든 입력 시점에서 조사한다. 파일을 이동한 경우 이전 경로만
+선택하더라도 현재의 새 호출자를 포함하며, 두 시점의 탐색과 경로는 별도로 유지한다.
 
 ```sh
 kartograph impact --symbol 'class:sample/Repository' --graph-file graph.json \
@@ -41,6 +43,8 @@ kartograph impact 'class:sample/Repository' --graph-file graph.json --all
 module·file·test 필터는 각 축이 base 또는 current 사실에 맞으면 포함하며, 축별 일치 시점이 다를 수 있다.
 같은 페이지 탐색에서는 입력·필터·정렬·예산을 고정한다. 결과 한도가 기본 경로 예산에도 영향을 주므로 한도를
 바꿔 비교하려면 `--path-limit`을 명시한다.
+`--kind`는 대표 선언(current에 있으면 current)의 종류를 선택한다. `--sort test`는 시점별 분류가 같으면
+그 상태로, 다르면 `unknown`으로 정렬한다. 필터·bucket은 개별 시점의 source 사실을 사용한다.
 
 대형 입력에는 `snapshot --compact`를 사용한다. v2는 문자열 사전과 node/call/edge 배열의 참조 인덱스로 반복 정보를 줄인다.
 정점·간선·외부 호출·보존 근거를 버리지 않으며 기존 v1과 같은 검증을 거친다. 기본 출력은 v1이고 query/impact는 두 형식을 읽는다.
@@ -104,6 +108,8 @@ helper 기본 모드는 보고용이다. 문서·설정 등 매핑되지 않은 
 사람이 다음 질의를 고를 수 있는 설명용 그룹이다. `navigation.filtered`와 `navigation.returned`는
 각각 필터 후 전체와 현재 페이지의 수이고, `hasNext`/`hasPrevious`와 `offset`/`limit`으로 페이지를 이어 간다.
 따라서 첫 페이지의 `affected`만 세어 전체 후보 수나 영향 없음으로 해석하지 않는다.
+offset이 0보다 큰 페이지는 앞의 후보를 포함하지 않으므로 마지막 페이지라도 `truncated.results=true`와
+`status=partial`이다. 페이지의 다음 결과 유무는 `hasNext`로 판단한다.
 base/current 사실이 서로 다른 module·file·test 상태를 가지면 한 후보가 여러 bucket에 포함될 수 있으므로 bucket 합계를
 후보 수와 비교해 partition으로 해석하지 않는다.
 

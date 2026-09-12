@@ -49,6 +49,7 @@ public data class ImpactFilter(
 /** 경로 전체를 출력하지 못한 경우에도 누락 원인과 필요한 간선 수를 보존한다. */
 public enum class ImpactPathOmissionReason { PATH_BUDGET }
 
+/** 출력 예산 때문에 생략한 경로의 시점·거리·관계 종류를 보존한다. */
 public data class ImpactPathOmission(
     val revision: ImpactRevision,
     val reason: ImpactPathOmissionReason,
@@ -205,6 +206,10 @@ public object ChangeImpact {
         if (fallbackMatches > 0) limitations += "source-file-candidates: $fallbackMatches node match(es) used a source filename instead of an exact project-relative path"
 
         val changedIds = selected.values.flatten().toSortedSet()
+        // 파일 경로가 이동해도 같은 JVM 선언을 가진 모든 시점의 호출자를 조사한다.
+        for ((revision, input) in inputs) {
+            selected.getValue(revision).addAll(changedIds.filter { input.graph.contains(it) })
+        }
         val paths = sortedMapOf<NodeId, MutableList<ImpactPath>>()
         val pathOmissions = sortedMapOf<NodeId, MutableList<ImpactPathOmission>>()
         val observedIn = sortedMapOf<NodeId, MutableSet<ImpactRevision>>()

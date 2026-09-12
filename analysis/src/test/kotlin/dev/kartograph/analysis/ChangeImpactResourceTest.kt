@@ -12,6 +12,38 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ChangeImpactResourceTest {
+    @Test fun `moved changed file includes callers from both revisions`() {
+        val beforeTarget = GraphNode(NodeId("class:p/Target"), "Target", NodeKind.CLASS,
+            location = SourceLocation("old/src/main/kotlin/p/Target.kt"))
+        val afterTarget = beforeTarget.copy(location = SourceLocation("new/src/main/kotlin/p/Target.kt"))
+        val beforeCaller = GraphNode(NodeId("class:p/Before"), "Before", NodeKind.CLASS)
+        val afterCaller = GraphNode(NodeId("class:p/After"), "After", NodeKind.CLASS)
+        val base = ImpactInput(CodeGraph(listOf(beforeTarget, beforeCaller),
+            listOf(GraphEdge(beforeCaller.id, beforeTarget.id, EdgeKind.CALL))))
+        val current = ImpactInput(CodeGraph(listOf(afterTarget, afterCaller),
+            listOf(GraphEdge(afterCaller.id, afterTarget.id, EdgeKind.CALL))))
+        val expected = ChangeImpact.analyze(current, listOf(beforeTarget.id.value), base = base)
+
+        assertEquals(setOf(beforeCaller.id, afterCaller.id), expected.affected.map { it.node.id }.toSet())
+        for (path in listOf(beforeTarget.location!!.path, afterTarget.location!!.path)) {
+            val selected = ChangeImpact.analyze(current, files = listOf(path), base = base)
+            assertEquals(expected, selected, path)
+        }
+    }
+
+    @Test fun `last page remains partial relative to the full candidate set`() {
+        val target = GraphNode(NodeId("class:p/Target"), "Target", NodeKind.CLASS)
+        val callers = listOf("A", "B", "C").map { GraphNode(NodeId("class:p/$it"), it, NodeKind.CLASS) }
+        val input = ImpactInput(CodeGraph(listOf(target) + callers, callers.map { GraphEdge(it.id, target.id, EdgeKind.CALL) }))
+        val report = ChangeImpact.analyze(input, listOf(target.id.value), offset = 1, limit = 10)
+
+        assertEquals(2, report.affected.size)
+        assertEquals(3, report.navigation.filtered.candidates)
+        assertTrue(report.navigation.hasPrevious)
+        assertEquals(false, report.navigation.hasNext)
+        assertTrue(report.truncated.results)
+    }
+
     @Test fun `moved source facts do not create a dependency in the other revision`() {
         val target = GraphNode(NodeId("class:p/Target"), "Target", NodeKind.CLASS)
         val before = GraphNode(NodeId("class:p/Caller"), "Caller", NodeKind.CLASS, moduleName = "feature",

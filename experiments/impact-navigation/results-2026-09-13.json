@@ -54,7 +54,7 @@
     "candidate": [
       {
         "name": "analysis-0.7.0.jar",
-        "sha256": "617174ca0443d57f3f4838ec2fe76375fef4270def0a48950692e7c3c29a0b1d"
+        "sha256": "05d616850df1b00368d084d4498c39bd52f49a622f148c8019489fe7fd8009ff"
       },
       {
         "name": "annotations-13.0.jar",
@@ -74,7 +74,7 @@
       },
       {
         "name": "cli-0.7.0.jar",
-        "sha256": "0bc095beb85318ca8faf6c8004d44d4b51d442f643b404a91e1a746fa9125ff0"
+        "sha256": "56b8f772f117251c87a577f08fc6d3c4e71d3b2fc0b8aa6ea26d945f44174bd3"
       },
       {
         "name": "core-0.7.0.jar",
@@ -108,20 +108,20 @@
   "baselineTargetOrdinal": 9304,
   "focusedTargetOrdinal": 9,
   "processSecondsMedian": {
-    "baseline-full": 6.406075166014489,
-    "candidate-focused": 2.697110332956072,
-    "candidate-full": 3.8094815410440788,
-    "candidate-page-0": 2.6985808750032447,
-    "candidate-page-10": 2.625470792001579,
-    "candidate-page-20": 2.807268208998721,
-    "candidate-page-30": 2.6479120000149123,
-    "candidate-summary": 2.6772099590161815
+    "baseline-full": 6.7054731249809265,
+    "candidate-focused": 2.7507371670217253,
+    "candidate-full": 3.6391763749998063,
+    "candidate-page-0": 2.6168781250016764,
+    "candidate-page-10": 2.7389883330324665,
+    "candidate-page-20": 2.8867765410104766,
+    "candidate-page-30": 2.8691166669595987,
+    "candidate-summary": 2.897354417014867
   },
   "measurements": [
     {
       "name": "baseline-full",
-      "processSeconds": 6.766940417001024,
-      "decodeSeconds": 0.2970543749979697,
+      "processSeconds": 7.420788332994562,
+      "decodeSeconds": 0.288494291016832,
       "bytes": 111352103,
       "observed": 20699,
       "returned": 20699,
@@ -129,8 +129,8 @@
     },
     {
       "name": "candidate-full",
-      "processSeconds": 3.8094815410440788,
-      "decodeSeconds": 0.5847897499916144,
+      "processSeconds": 3.6391763749998063,
+      "decodeSeconds": 0.5776363330078311,
       "bytes": 122165135,
       "observed": 20699,
       "returned": 20699,
@@ -138,8 +138,8 @@
     },
     {
       "name": "candidate-focused",
-      "processSeconds": 2.6882509580464102,
-      "decodeSeconds": 0.0011247909860685468,
+      "processSeconds": 2.7507371670217253,
+      "decodeSeconds": 0.0012801659759134054,
       "bytes": 347948,
       "observed": 20699,
       "returned": 34,
@@ -147,8 +147,8 @@
     },
     {
       "name": "candidate-full",
-      "processSeconds": 3.6406562499469146,
-      "decodeSeconds": 0.346532916999422,
+      "processSeconds": 4.1689798749866895,
+      "decodeSeconds": 0.37827262497739866,
       "bytes": 122165135,
       "observed": 20699,
       "returned": 20699,
@@ -156,8 +156,8 @@
     },
     {
       "name": "baseline-full",
-      "processSeconds": 6.009988958016038,
-      "decodeSeconds": 0.30190212500747293,
+      "processSeconds": 6.7054731249809265,
+      "decodeSeconds": 0.2946964169968851,
       "bytes": 111352103,
       "observed": 20699,
       "returned": 20699,
@@ -165,8 +165,8 @@
     },
     {
       "name": "candidate-focused",
-      "processSeconds": 2.697110332956072,
-      "decodeSeconds": 0.0013092909939587116,
+      "processSeconds": 2.7839049589820206,
+      "decodeSeconds": 0.0012438330450095236,
       "bytes": 347948,
       "observed": 20699,
       "returned": 34,
@@ -174,8 +174,8 @@
     },
     {
       "name": "baseline-full",
-      "processSeconds": 6.406075166014489,
-      "decodeSeconds": 0.3006370000075549,
+      "processSeconds": 5.940059958025813,
+      "decodeSeconds": 0.3097292080055922,
       "bytes": 111352103,
       "observed": 20699,
       "returned": 20699,
@@ -183,8 +183,8 @@
     },
     {
       "name": "candidate-full",
-      "processSeconds": 3.899151624995284,
-      "decodeSeconds": 0.3541609170497395,
+      "processSeconds": 3.5696918329922482,
+      "decodeSeconds": 0.3678485419950448,
       "bytes": 122165135,
       "observed": 20699,
       "returned": 20699,
@@ -192,8 +192,8 @@
     },
     {
       "name": "candidate-focused",
-      "processSeconds": 2.9191316249780357,
-      "decodeSeconds": 0.001300833944696933,
+      "processSeconds": 2.614253790990915,
+      "decodeSeconds": 0.001389250042848289,
       "bytes": 347948,
       "observed": 20699,
       "returned": 34,
@@ -201,8 +201,8 @@
     },
     {
       "name": "candidate-summary",
-      "processSeconds": 2.6772099590161815,
-      "decodeSeconds": 0.0015396249946206808,
+      "processSeconds": 2.897354417014867,
+      "decodeSeconds": 0.0018810000037774444,
       "bytes": 246400,
       "observed": 20699,
       "returned": 1,
@@ -210,8 +210,8 @@
     },
     {
       "name": "candidate-page-0",
-      "processSeconds": 2.6985808750032447,
-      "decodeSeconds": 0.0009554159478284419,
+      "processSeconds": 2.6168781250016764,
+      "decodeSeconds": 0.0009449160424992442,
       "bytes": 211815,
       "observed": 20699,
       "returned": 10,
@@ -219,8 +219,8 @@
     },
     {
       "name": "candidate-page-10",
-      "processSeconds": 2.625470792001579,
-      "decodeSeconds": 0.00091833301121369,
+      "processSeconds": 2.7389883330324665,
+      "decodeSeconds": 0.0009285420528613031,
       "bytes": 229583,
       "observed": 20699,
       "returned": 10,
@@ -228,8 +228,8 @@
     },
     {
       "name": "candidate-page-20",
-      "processSeconds": 2.807268208998721,
-      "decodeSeconds": 0.0009693329920992255,
+      "processSeconds": 2.8867765410104766,
+      "decodeSeconds": 0.0010852920240722597,
       "bytes": 244658,
       "observed": 20699,
       "returned": 10,
@@ -237,8 +237,8 @@
     },
     {
       "name": "candidate-page-30",
-      "processSeconds": 2.6479120000149123,
-      "decodeSeconds": 0.38902125001186505,
+      "processSeconds": 2.8691166669595987,
+      "decodeSeconds": 0.3796807079925202,
       "bytes": 208854,
       "observed": 20699,
       "returned": 4,
@@ -248,6 +248,7 @@
   "checks": {
     "candidateSet": true,
     "revisionPathDirections": true,
+    "baselineRevisionPaths": true,
     "summaries": true,
     "failureTarget": true,
     "pagination": true,
@@ -268,9 +269,9 @@
     "oracle": "same injected regression test patch in before/after, executed in change-impact evaluation"
   },
   "implementationSha256": {
-    "analysis/src/main/kotlin/dev/kartograph/analysis/ChangeImpact.kt": "7f20fad07053943565859567f0f598054a04313845b92daef9b660b068956703",
+    "analysis/src/main/kotlin/dev/kartograph/analysis/ChangeImpact.kt": "6644e6e607bd4c8716e840a4dc4e00d1affd64df28108aea70a066f25acfc5ca",
     "export/src/main/kotlin/dev/kartograph/export/ImpactReportCodec.kt": "b101648d3e78ce93c6f8487fc0cfe21c8ad98782b88dc87f74e20e1aa0e23c93",
     "cli/src/main/kotlin/dev/kartograph/cli/ImpactCommand.kt": "0ecea860915e58e35f77f3af8bcfa5482bb3343e3d355264ff0f8c7eda4f929d",
-    "Scripts/verify-impact-navigation.py": "90882d1248a5f440fb046cbc77b18fc3e3b6b82812c3f39db996158759af023b"
+    "Scripts/verify-impact-navigation.py": "63b5ea38857d14d912ef21c7e2c137f381d7bdf29c254cd606efc3b4a68f6715"
   }
 }

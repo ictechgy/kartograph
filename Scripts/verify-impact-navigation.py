@@ -101,6 +101,9 @@ def main():
     check(candidate["observedAffected"] == len(expected_ids), "observed count differs from complete baseline")
     check(not any(candidate["truncated"].values()), "complete candidate export is truncated")
     check_paths(candidate)
+    baseline_paths = {item["usr"]: item["paths"] for item in baseline["affected"]}
+    for item in candidate["affected"]:
+        check(item["paths"] == baseline_paths[item["usr"]], "revision path evidence differs from fixed baseline")
     expected_focused = {item["usr"] for item in baseline["affected"]
                         if item.get("location") and item["location"]["path"] == args.failure_file}
     check({item["usr"] for item in focused["affected"]} == expected_focused, "focused candidate set differs from baseline file")
@@ -147,7 +150,7 @@ def main():
               "focusedTargetOrdinal": next(index + 1 for index, item in enumerate(focused["affected"])
                                            if item["usr"] == args.failure_target),
               "processSecondsMedian": medians, "measurements": measurements,
-              "checks": {"candidateSet": True, "revisionPathDirections": True, "summaries": True,
+              "checks": {"candidateSet": True, "revisionPathDirections": True, "baselineRevisionPaths": True, "summaries": True,
                          "failureTarget": True, "pagination": True, "determinism": True},
               "limitations": ["An executed failure target is a lower-bound oracle, not a precision denominator.",
                               "The source file is known in this navigation task; blind AI repair is a separate evaluation.",
