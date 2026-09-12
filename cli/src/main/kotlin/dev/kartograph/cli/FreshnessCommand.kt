@@ -21,12 +21,7 @@ internal object FreshnessCommand {
         val options = arguments.chunked(2).groupBy({ it[0] }, { it[1] })
         if (listOf("--graph-file", "--project").any { options[it]?.size != 1 } || (options["--scope"]?.size ?: 0) > 1) return 64
         return try {
-            val external = linkedMapOf<String, Path>()
-            for (value in options["--input"].orEmpty()) {
-                val key = value.substringBefore('=')
-                if ('=' !in value || !key.startsWith("external/") || key in external || value.substringAfter('=').isBlank()) return 64
-                external[key] = Path.of(value.substringAfter('='))
-            }
+            val external = try { inputBindings(options["--input"].orEmpty()) } catch (_: IllegalArgumentException) { return 64 }
             val snapshot = SnapshotFiles.read(options.getValue("--graph-file").single())
             val started = System.nanoTime()
             val project = Path.of(options.getValue("--project").single()).toAbsolutePath().normalize()
@@ -56,6 +51,18 @@ internal object FreshnessCommand {
             error.println("error: unable to verify snapshot inputs; supply a valid snapshot, project and external input bindings")
             2
         }
+    }
+
+    internal fun inputBindings(values: List<String>): Map<String, Path> {
+        val bindings = linkedMapOf<String, Path>()
+        for (value in values) {
+            val key = value.substringBefore('=')
+            require('=' in value && key.startsWith("external/") && key !in bindings && value.substringAfter('=').isNotBlank()) {
+                "invalid external input binding"
+            }
+            bindings[key] = Path.of(value.substringAfter('='))
+        }
+        return bindings
     }
 
     fun capture(project: Path, files: List<Pair<String, Path>>, context: List<String>, witnessPaths: List<Path>): SnapshotProvenance {

@@ -15,12 +15,14 @@ public object KotlinCompilerWitnesses {
     @JvmOverloads
     public fun kotlinCompile(project: Project, compiler: TaskProvider<out Task>, scope: String,
         sourceRoots: FileCollection, buildInputs: FileCollection, jdk: Provider<JavaLauncher>,
-        additionalInputs: FileCollection = project.files()): Provider<RegularFile> {
+        additionalInputs: FileCollection = project.files(), compilerEvidence: Boolean = false): Provider<RegularFile> {
         compiler.configure { KotlinApi(it).useToolchain(jdk) }
-        return CompilerWitnesses.register(project, compiler, scope, sourceRoots, buildInputs, "kotlin", additionalInputs, jdk)
+        return CompilerWitnesses.register(project, compiler, scope, sourceRoots, buildInputs, "kotlin", additionalInputs, jdk, compilerEvidence)
     }
 
     internal fun destination(task: Task): File = KotlinApi(task).destination()
+
+    internal fun fullCompilation(task: Task) = KotlinApi(task).fullCompilation()
 
     internal fun byteInputs(task: Task): List<Any> = KotlinApi(task).let { api -> listOf(
         api.collection("org.jetbrains.kotlin.gradle.tasks.KotlinCompileTool", "getSources"),
@@ -95,6 +97,15 @@ private class KotlinApi(private val task: Task) {
 
     fun implementationArtifact(): File = File(contract("org.jetbrains.kotlin.gradle.tasks.KotlinCompile")
         .protectionDomain.codeSource.location.toURI()).canonicalFile
+
+    fun fullCompilation() {
+        try {
+            contract("org.jetbrains.kotlin.gradle.tasks.AbstractKotlinCompile").getMethod("setIncremental", Boolean::class.javaPrimitiveType)
+                .invoke(task, false)
+        } catch (error: ReflectiveOperationException) {
+            throw IllegalArgumentException("supported Kotlin full compilation API is unavailable", error)
+        }
+    }
 
     // Gradle 내부 snapshot 객체를 직렬화하지 않고 KGP가 실제 구성한 compiler 인자를 기록한다.
     fun effectiveArguments(): List<String> = try {

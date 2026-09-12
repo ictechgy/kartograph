@@ -47,6 +47,18 @@ jobs:
         run: python3 experiments/compiler-references/run.py
       - name: Verify Dagger selected binding evidence
         run: python3 experiments/dagger-bindings/run.py
+      - name: Verify compiler collectors and product evidence lifecycle
+        run: |
+          ./gradlew --no-daemon -p compiler-collectors integrationTest
+          python3 Scripts/verify-compiler-evidence.py
+      - name: Preserve compiler evidence validation
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: compiler-evidence-validation
+          path: build/reports/compiler-evidence-integration/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Compare callgraph precision
         run: python3 experiments/callgraph-precision/run.py
       - name: Preserve precision comparison evidence

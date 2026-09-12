@@ -17,6 +17,8 @@ public data class BuildWitness(
     val artifact: String,
     val inputs: List<InputFingerprint>,
     val outputs: List<InputFingerprint>,
+    val compilerEvidence: List<InputFingerprint> = emptyList(),
+    val evidenceToken: String? = null,
 ) {
     init {
         require(listOf(scope, compiler, artifact).all { it.isNotEmpty() && it.length <= 200 && Regex("[A-Za-z0-9_.:-]+").matches(it) }) {
@@ -26,6 +28,10 @@ public data class BuildWitness(
         require(inputs.any { it.role == "sources" } && inputs.any { it.role == "buildConfig" } &&
             inputs.any { it.role == "compiler" } && inputs.any { it.role == "options" }) { "incomplete compiler evidence" }
         require(outputs.all { it.role == "classes" }) { "invalid compiler outputs" }
+        require(compilerEvidence.all { it.role in setOf("compilerEvidence", "compilerGeneratedSource") } &&
+            compilerEvidence.map { it.path }.distinct().size == compilerEvidence.size) { "invalid compiler evidence receipts" }
+        require(if (compilerEvidence.isEmpty()) evidenceToken == null else
+            evidenceToken != null && Regex("[0-9a-f]{64}").matches(evidenceToken)) { "compiler evidence receipts require an input token" }
     }
 }
 

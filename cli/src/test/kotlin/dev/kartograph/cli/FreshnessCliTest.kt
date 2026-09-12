@@ -14,6 +14,20 @@ import org.junit.jupiter.api.io.TempDir
 
 class FreshnessCliTest {
     @Test
+    fun `raw compiler files need a scope and completed build evidence`(@TempDir root: Path) {
+        val source = Files.writeString(root.resolve("Entry.java"), "public class Entry {}")
+        val classes = Files.createDirectories(root.resolve("classes"))
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", classes.toString(), source.toString()))
+        Files.writeString(root.resolve("facts.tsv"), "not a compiler receipt")
+        val base = arrayOf("snapshot", "--project", root.toString(), "--classes", classes.toString())
+        assertEquals(64, run(*base, "--compiler-evidence", "facts.tsv").first)
+        assertEquals(64, run(*base, "--input", "external/classes=classes").first)
+        val unverified = run(*base, "--scope", "sample:main", "--compiler-evidence", "facts.tsv")
+        assertEquals(2, unverified.first)
+        assertContains(unverified.second, "compiler evidence requires matched build inputs")
+    }
+
+    @Test
     fun `public certificate resources are fingerprinted without exposing content`(@TempDir root: Path) {
         val source = root.resolve("Example.java")
         Files.writeString(source, "public class Example {}")

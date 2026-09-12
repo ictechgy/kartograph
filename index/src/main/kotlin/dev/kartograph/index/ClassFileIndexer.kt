@@ -71,13 +71,17 @@ public class ClassFileIndexer {
             throw ClassIndexingException("class roots cannot be resolved; check the compiled inputs", error)
         }
         val factsByClass = linkedMapOf<String, ClassFacts>()
-        roots.forEach { root ->
+        val rootByClass = linkedMapOf<String, Int>()
+        val declarationsByRoot = mutableListOf<Set<NodeId>>()
+        roots.forEachIndexed { rootIndex, root ->
             val generatedInput = root in markedRoots
-            readRoot(root).forEach { facts ->
+            val rootFacts = readRoot(root)
+            declarationsByRoot += rootFacts.flatMap { facts -> facts.nodes.map { it.id } }.toSet()
+            rootFacts.forEach { facts ->
                 val selected = if (generatedInput) facts.copy(nodes = facts.nodes.map { node ->
                     node.copy(synthesized = true, attributes = node.attributes + NodeAttribute.GENERATED_INPUT)
                 }) else facts
-                factsByClass.putIfAbsent(facts.internalName, selected)
+                if (factsByClass.putIfAbsent(facts.internalName, selected) == null) rootByClass[facts.internalName] = rootIndex
             }
         }
         if (factsByClass.isEmpty()) throw ClassIndexingException("no compiled declarations found; check class roots and build the project")
@@ -109,7 +113,8 @@ public class ClassFileIndexer {
         )
         val hierarchy = classpath?.let { ClassHierarchyIndexer().index(it, graph.nodes.values.flatMap(GraphNode::supertypes)) } ?: ClassHierarchy.EMPTY
         val (modeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
-        return IndexedClasses(modeled, observations, hierarchy).withHierarchy(hierarchy)
+        val selectedRootByNode = classFacts.flatMap { facts -> facts.nodes.map { it.id to rootByClass.getValue(facts.internalName) } }.toMap()
+        return IndexedClasses(modeled, observations, hierarchy, declarationsByRoot.toList(), selectedRootByNode).withHierarchy(hierarchy)
     }
 
     private fun readRoot(root: Path): List<ClassFacts> = when {

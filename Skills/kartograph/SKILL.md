@@ -28,6 +28,14 @@ bindings. `matched` confirms recorded file contents and compiler lifecycle evide
 a current-build claim. Preserve the reason list, and rebuild/recapture only within the authorized task. A commit label alone
 is not compiler evidence, and matching evidence is not runtime completeness or authentication of a malicious producer.
 
+For inlined constant uses or selected Dagger relations, use a snapshot captured
+with explicit `--compiler-evidence` inputs and completed version 2 build receipts.
+Raw TSV resources are not discovered or trusted automatically. The producer and
+all external inputs must match. Keep `compiler-evidence-unmapped-references`,
+`compiler-evidence-outside-graph`, and `compiler-evidence-shadowed-references`
+counts in the assessment; default retention still applies. See
+`docs/COMPILER-EVIDENCE.md` for the supported collector/build workflow.
+
 ## Read the actual document
 
 - Check top-level `status` and `limitations` first. For `ambiguous`, use an explicit candidate `usr`; never choose by display name. `notFound` is missing evidence, not an unused result; retain its limitations.
