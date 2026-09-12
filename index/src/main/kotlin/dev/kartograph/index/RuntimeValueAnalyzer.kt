@@ -56,6 +56,7 @@ internal object RuntimeValueAnalyzer {
         } }.toMap()
         val fieldLookup = FieldLookup(facts, hierarchy)
         val fieldWriters = FieldWriteIndex(facts, fieldLookup, ::loader)
+        val fieldDemand = RuntimeFieldDemand()
         val derived = mutableListOf<GraphEdge>()
         val models = mutableMapOf<Pair<NodeId, Int>, List<NodeId>>()
         val observations = facts.map { fact ->
@@ -70,9 +71,14 @@ internal object RuntimeValueAnalyzer {
             var boundedMethods = 0
             for (method in fact.runtimeMethods) {
                 val caller = JvmNodeId.methodId(fact.internalName, method.name, method.desc)
-                val fields = FieldValues(fieldWriters, fieldLookup, ::loader, returns)
-                val summaries = ReturnValues(returns, ::loader, fields::read) { fields.cycleEpoch }
-                val interpreter = FlowInterpreter(::loader, returnedValue = summaries::evaluate, fieldValue = fields::read)
+                val fields = FieldValues(fieldWriters, fieldLookup, ::loader, returns, fieldDemand)
+                val summaries = ReturnValues(returns, ::loader, fieldDemand, fields::read) { fields.cycleEpoch }
+                val consumers = method.instructions.toArray().filterIsInstance<MethodInsnNode>().filter {
+                    RuntimeLibraryModels.find(it.owner, it.name, it.desc, it.opcode == Opcodes.INVOKESTATIC, ::loader)?.sensitive == true
+                }
+                val demanded = if (exceedsFrameBudget(method)) null else fieldDemand.fieldsFeeding(fact.internalName, method, consumers)
+                val interpreter = FlowInterpreter(::loader, returnedValue = summaries::evaluate, fieldValue = fields::read,
+                    demandedFields = demanded)
                 val frames = if (exceedsFrameBudget(method)) {
                     boundedMethods++
                     null
@@ -191,6 +197,7 @@ private fun exceedsFrameBudget(method: MethodNode): Boolean =
 private class ReturnValues(
     private val methods: Map<NodeId, Pair<String, MethodNode>>,
     private val loader: (String) -> Boolean,
+    private val fieldDemand: RuntimeFieldDemand,
     private val fieldValue: (FieldInsnNode?, Set<MemberValue>?, () -> Unit) -> FlowValue? = { _, _, _ -> null },
     private val fieldEpoch: () -> Long = { 0L },
 ) {
@@ -232,7 +239,9 @@ private class ReturnValues(
             arguments.getOrNull(index)?.let { parameters[local] = it }
             local += type.size
         }
-        val interpreter = FlowInterpreter(loader, parameters, ::evaluate, fieldValue)
+        val consumers = method.instructions.toArray().filter { it.opcode == Opcodes.ARETURN }
+        val interpreter = FlowInterpreter(loader, parameters, ::evaluate, fieldValue,
+            demandedFields = fieldDemand.fieldsFeeding(owner, method, consumers))
         val frames = try { Analyzer(interpreter).analyze(owner, method) } catch (_: AnalyzerException) { return Summary(null, true) }
         var result: FlowValue? = null
         for ((index, instruction) in method.instructions.toArray().withIndex()) {
@@ -283,7 +292,7 @@ private class FieldLookup(facts: List<ClassFacts>, private val hierarchy: ClassH
 /** 각 field에 쓰는 method를 한 번만 연결해 무관한 writer를 매 read마다 다시 순회하지 않는다. */
 private class FieldWriteIndex(facts: List<ClassFacts>, lookup: FieldLookup, loader: (String) -> Boolean) {
     class Writer(val owner: String, val method: MethodNode, val instructions: Array<AbstractInsnNode>,
-        val directTargets: Map<Int, Set<NodeId>>, val reflectiveSites: Set<Int>)
+        val directTargets: Map<Int, Set<NodeId>>, val reflectiveSites: Set<Int>, val possibleNames: Set<String>?)
 
     private val direct = mutableMapOf<NodeId, MutableList<Writer>>()
     private val reflective = mutableListOf<Writer>()
@@ -304,13 +313,27 @@ private class FieldWriteIndex(facts: List<ClassFacts>, lookup: FieldLookup, load
                 }
             }
             if (targets.isEmpty() && reflectiveSites.isEmpty()) continue
-            val writer = Writer(fact.internalName, method, instructions, targets, reflectiveSites)
+            // 동적 문자열·field read가 없을 때만 literal 이름으로 제외한다. 알 수 없는 이름은 넓게 둔다.
+            fun reference(type: Type): Boolean = type.sort == Type.OBJECT || type.sort == Type.ARRAY
+            val computedName = Type.getArgumentTypes(method.desc).any(::reference) || instructions.any { instruction ->
+                (instruction is FieldInsnNode && instruction.opcode in setOf(Opcodes.GETSTATIC, Opcodes.GETFIELD)) ||
+                    (instruction is MethodInsnNode && reference(Type.getReturnType(instruction.desc)) &&
+                        RuntimeLibraryModels.find(instruction.owner, instruction.name, instruction.desc,
+                            instruction.opcode == Opcodes.INVOKESTATIC, loader)?.operation != RuntimeOperation.FIELD_LOOKUP) ||
+                    (instruction is InvokeDynamicInsnNode && reference(Type.getReturnType(instruction.desc))) ||
+                    (instruction is LdcInsnNode && instruction.cst !is String && instruction.cst !is Number && instruction.cst !is Type)
+            }
+            val names = if (computedName) null else instructions.filterIsInstance<LdcInsnNode>().mapNotNull { it.cst as? String }.toSet()
+            val writer = Writer(fact.internalName, method, instructions, targets, reflectiveSites, names)
             targets.values.flatten().toSet().forEach { field -> direct.getOrPut(field) { mutableListOf() } += writer }
             if (reflectiveSites.isNotEmpty()) reflective += writer
         }
     }
 
-    fun forField(field: NodeId): List<Writer> = (direct[field].orEmpty() + reflective).distinct()
+    fun forField(field: NodeId): List<Writer> {
+        val name = field.value.substringAfter('#').substringBefore(':')
+        return (direct[field].orEmpty() + reflective.filter { it.possibleNames == null || name in it.possibleNames }).distinct()
+    }
 }
 
 // 실행 순서를 가정하지 않는 may-write 요약이다. 초기화 전 null·재진입·외부 변경은 항상 unknown 가능성으로 남긴다.
@@ -320,6 +343,7 @@ private class FieldValues(
     private val lookup: FieldLookup,
     private val loader: (String) -> Boolean,
     private val returns: Map<NodeId, Pair<String, MethodNode>>,
+    private val fieldDemand: RuntimeFieldDemand,
 ) {
     private val cache = mutableMapOf<NodeId, FlowValue?>()
     private val active = mutableSetOf<NodeId>()
@@ -327,7 +351,7 @@ private class FieldValues(
     private var analyses = 0
     var cycleEpoch = 0L
         private set
-    private val summaries = ReturnValues(returns, loader, ::read) { cycleEpoch }
+    private val summaries = ReturnValues(returns, loader, fieldDemand, ::read) { cycleEpoch }
 
     fun read(instruction: FieldInsnNode?, members: Set<MemberValue>?, limited: () -> Unit): FlowValue? {
         val fields = if (instruction != null) lookup.direct(instruction.owner, instruction.name, instruction.desc)
@@ -364,7 +388,10 @@ private class FieldValues(
                 }
                 analyses++
                 slots += frameSlots(method)
-                val interpreter = FlowInterpreter(loader, returnedValue = summaries::evaluate, fieldValue = ::read, retainFieldCandidates = true)
+                val consumers = (writer.directTargets.filterValues { field.id in it }.keys + writer.reflectiveSites)
+                    .map { writer.instructions[it] }
+                val interpreter = FlowInterpreter(loader, returnedValue = summaries::evaluate, fieldValue = ::read, retainFieldCandidates = true,
+                    demandedFields = fieldDemand.fieldsFeeding(writer.owner, method, consumers))
                 val frames = try { Analyzer(interpreter).analyze(writer.owner, method) } catch (_: AnalyzerException) { limit(); continue }
                 for (index in writer.instructions.indices) {
                     val frame = frames[index] ?: continue
@@ -419,6 +446,7 @@ private class FlowInterpreter(
     private val returnedValue: (MethodInsnNode, List<FlowValue>, () -> Unit) -> FlowValue? = { _, _, _ -> null },
     private val fieldValue: (FieldInsnNode?, Set<MemberValue>?, () -> Unit) -> FlowValue? = { _, _, _ -> null },
     private val retainFieldCandidates: Boolean = false,
+    private val demandedFields: Set<AbstractInsnNode>? = null,
 ) : Interpreter<FlowValue>(Opcodes.ASM9) {
     private val base = BasicInterpreter()
     var limitReached = false
@@ -432,7 +460,7 @@ private class FlowInterpreter(
         val before = limitEvents
         val value = FlowValue(base.newOperation(insn))
         val result = when {
-            insn is FieldInsnNode && insn.opcode == Opcodes.GETSTATIC -> {
+            insn is FieldInsnNode && insn.opcode == Opcodes.GETSTATIC && (demandedFields == null || insn in demandedFields) -> {
                 var exhausted = false
                 val found = fieldValue(insn, null) { exhausted = true; limited() }
                 (found ?: value).copy(basic = value.basic, incompleteByLimit = exhausted || found?.incompleteByLimit == true)
@@ -507,6 +535,7 @@ private class FlowInterpreter(
             insn.opcode == Opcodes.INVOKESTATIC, isClassLoader) ?: return unknown
         fun value(index: Int): FlowValue? = values.getOrNull(index)
         if (model.operation == RuntimeOperation.FIELD_ACCESS && insn.name == "get") {
+            if (demandedFields != null && insn !in demandedFields) return unknown
             var exhausted = false
             val found = fieldValue(null, value(0)?.fields) { exhausted = true; limited() }
             return (found ?: unknown).copy(basic = result, uncertain = found?.uncertain == true || unknown.uncertain,

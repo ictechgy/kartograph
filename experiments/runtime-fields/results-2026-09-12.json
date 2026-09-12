@@ -4,7 +4,8 @@
   "baselineCommit": "e505a92a8ca9c705c9f02acc7e145f57c9b0c04a",
   "candidateSourceSha256": {
     "index/src/main/kotlin/dev/kartograph/index/ClassFileIndexer.kt": "48d5883845b000446c07d521e821ef98af5fc8de69d264bbb492aa11cac913cf",
-    "index/src/main/kotlin/dev/kartograph/index/RuntimeValueAnalyzer.kt": "81e42f03449529cc525aa55aa99a19b1110b69963a1cd24d3e4fd04172b9ed87"
+    "index/src/main/kotlin/dev/kartograph/index/RuntimeValueAnalyzer.kt": "498a0d32a6a7320649b577c54b8c6e8993fd0b19e5f956c48b742195cd4a5a90",
+    "index/src/main/kotlin/dev/kartograph/index/RuntimeFieldDemand.kt": "bb838b3527d37a59a6b2983a225e858a8810d1266e7e46b1e31918cf66301fb5"
   },
   "fieldComparison": {
     "scope": "Executed synthetic compiler cases; not real-project repair accuracy or complete runtime coverage.",
@@ -35,7 +36,7 @@
         "cli-0.7.0.jar": "af976ffa88281e3d0b235aaa781c295f4020a2f49e886ee332da7f82f5a35656",
         "core-0.7.0.jar": "54ee52924aacf78072d210dd4d471295162b7bc98b4d3280822bda3c3d8094ec",
         "export-0.7.0.jar": "1af16b64ae38db60a055c39a4dccd6a214c40b59798d0368b40c6f3a6a7f92e3",
-        "index-0.7.0.jar": "02781972d3f565f5f9fa10ace6d1645ac288591e34adc49027ac6b732a3f6cc7",
+        "index-0.7.0.jar": "59c22f85fd88b7c575c298b04cf5be19f08262e015cb478ba778219cf419705f",
         "kotlin-metadata-jvm-2.4.10.jar": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4",
         "kotlin-stdlib-2.4.10.jar": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
       }
@@ -56,7 +57,7 @@
         "dependencySha256": {},
         "tools": {
           "baseline": {
-            "captureSeconds": 0.15341108303982764,
+            "captureSeconds": 0.15098504099296406,
             "snapshotBytes": 4515,
             "Used": {
               "mainInImpact": false,
@@ -67,11 +68,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09376183297717944,
+              "queryMedianSeconds": 0.0925543750054203,
               "querySamplesSeconds": [
-                0.09376183297717944,
-                0.09214208298362792,
-                0.09412645798875019
+                0.09519770898623392,
+                0.08920529100578278,
+                0.0925543750054203
               ]
             },
             "Unused": {
@@ -83,16 +84,16 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09270495903911069,
+              "queryMedianSeconds": 0.09348562499508262,
               "querySamplesSeconds": [
-                0.09104095795191824,
-                0.09270495903911069,
-                0.0958088330226019
+                0.09719362499890849,
+                0.09348562499508262,
+                0.08962391701061279
               ]
             }
           },
           "binary": {
-            "captureSeconds": 0.12555641698418185,
+            "captureSeconds": 0.12783970800228417,
             "snapshotBytes": 4537,
             "Used": {
               "mainInImpact": true,
@@ -159,11 +160,11 @@
                   "usr": "method:probe/Entry#main([Ljava/lang/String;)V"
                 }
               ],
-              "queryMedianSeconds": 0.089723166951444,
+              "queryMedianSeconds": 0.0920990000013262,
               "querySamplesSeconds": [
-                0.09072575002210215,
-                0.08908395795151591,
-                0.089723166951444
+                0.09204608300933614,
+                0.09232570900348946,
+                0.0920990000013262
               ]
             },
             "Unused": {
@@ -175,11 +176,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09246379201067612,
+              "queryMedianSeconds": 0.09305791702354327,
               "querySamplesSeconds": [
-                0.09135404200060293,
-                0.09246379201067612,
-                0.09611270797904581
+                0.09324270801153034,
+                0.09305791702354327,
+                0.0919356249505654
               ]
             }
           }
@@ -198,7 +199,7 @@
         "dependencySha256": {},
         "tools": {
           "baseline": {
-            "captureSeconds": 0.11662549996981397,
+            "captureSeconds": 0.1144625410088338,
             "snapshotBytes": 4597,
             "Used": {
               "mainInImpact": false,
@@ -210,11 +211,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09301037498516962,
+              "queryMedianSeconds": 0.08920808299444616,
               "querySamplesSeconds": [
-                0.09301037498516962,
-                0.08802933304104954,
-                0.09304695896571502
+                0.08725974999833852,
+                0.08920808299444616,
+                0.09056600002804771
               ]
             },
             "Unused": {
@@ -227,16 +228,16 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09105645801173523,
+              "queryMedianSeconds": 0.09165187500184402,
               "querySamplesSeconds": [
-                0.08766979200299829,
-                0.09105645801173523,
-                0.09428679198026657
+                0.09214466600678861,
+                0.09165187500184402,
+                0.08800920803332701
               ]
             }
           },
           "binary": {
-            "captureSeconds": 0.12497179198544472,
+            "captureSeconds": 0.11916008300613612,
             "snapshotBytes": 4653,
             "Used": {
               "mainInImpact": true,
@@ -304,11 +305,11 @@
                   "usr": "method:probe/Entry#main([Ljava/lang/String;)V"
                 }
               ],
-              "queryMedianSeconds": 0.09131445898674428,
+              "queryMedianSeconds": 0.09342870797263458,
               "querySamplesSeconds": [
-                0.09131445898674428,
-                0.09007279196521267,
-                0.09333374997368082
+                0.09517091698944569,
+                0.09342870797263458,
+                0.0911592910415493
               ]
             },
             "Unused": {
@@ -321,11 +322,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09283458295976743,
+              "queryMedianSeconds": 0.0924273330019787,
               "querySamplesSeconds": [
-                0.0905060000368394,
-                0.09353454102529213,
-                0.09283458295976743
+                0.09150500001851469,
+                0.09267550002550706,
+                0.0924273330019787
               ]
             }
           }
@@ -346,7 +347,7 @@
         "dependencySha256": {},
         "tools": {
           "baseline": {
-            "captureSeconds": 0.11379491601837799,
+            "captureSeconds": 0.1162361660390161,
             "snapshotBytes": 5315,
             "Used": {
               "mainInImpact": false,
@@ -357,11 +358,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09416741697350517,
+              "queryMedianSeconds": 0.09435708302771673,
               "querySamplesSeconds": [
-                0.0964294170262292,
-                0.09416741697350517,
-                0.0918213750119321
+                0.09363412501988932,
+                0.09524400002555922,
+                0.09435708302771673
               ]
             },
             "Unused": {
@@ -373,16 +374,16 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.093098999990616,
+              "queryMedianSeconds": 0.09282854100456461,
               "querySamplesSeconds": [
-                0.09406870801467448,
-                0.093098999990616,
-                0.089759792026598
+                0.09313258301699534,
+                0.09282854100456461,
+                0.09069979202467948
               ]
             }
           },
           "binary": {
-            "captureSeconds": 0.1226834169938229,
+            "captureSeconds": 0.12019033305114135,
             "snapshotBytes": 5361,
             "Used": {
               "mainInImpact": true,
@@ -449,11 +450,11 @@
                   "usr": "method:probe/Entry#main([Ljava/lang/String;)V"
                 }
               ],
-              "queryMedianSeconds": 0.09351833298569545,
+              "queryMedianSeconds": 0.0914894999586977,
               "querySamplesSeconds": [
-                0.0947505829972215,
-                0.08970875001978129,
-                0.09351833298569545
+                0.09070516604697332,
+                0.09533187502529472,
+                0.0914894999586977
               ]
             },
             "Unused": {
@@ -465,11 +466,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09434124996187165,
+              "queryMedianSeconds": 0.0923178750090301,
               "querySamplesSeconds": [
-                0.09434124996187165,
-                0.09142791701015085,
-                0.09530595800606534
+                0.09420487500028685,
+                0.088815999974031,
+                0.0923178750090301
               ]
             }
           }
@@ -490,7 +491,7 @@
         "dependencySha256": {},
         "tools": {
           "baseline": {
-            "captureSeconds": 0.11835729196900502,
+            "captureSeconds": 0.11489562498172745,
             "snapshotBytes": 4919,
             "Used": {
               "mainInImpact": false,
@@ -501,11 +502,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09156670898664743,
+              "queryMedianSeconds": 0.09145408304175362,
               "querySamplesSeconds": [
-                0.09156670898664743,
-                0.0902742090402171,
-                0.09471258299890906
+                0.08856499998364598,
+                0.09464770799968392,
+                0.09145408304175362
               ]
             },
             "Unused": {
@@ -517,16 +518,16 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09360504196956754,
+              "queryMedianSeconds": 0.09304437495302409,
               "querySamplesSeconds": [
-                0.09360504196956754,
-                0.08964704198297113,
-                0.0965827499749139
+                0.09343179099960253,
+                0.09304437495302409,
+                0.08998091699322686
               ]
             }
           },
           "binary": {
-            "captureSeconds": 0.12784883298445493,
+            "captureSeconds": 0.12439854099648073,
             "snapshotBytes": 4941,
             "Used": {
               "mainInImpact": true,
@@ -593,11 +594,11 @@
                   "usr": "method:probe/Entry#main([Ljava/lang/String;)V"
                 }
               ],
-              "queryMedianSeconds": 0.09472704102518037,
+              "queryMedianSeconds": 0.09156812500441447,
               "querySamplesSeconds": [
-                0.09472704102518037,
-                0.09482695796759799,
-                0.0909510410274379
+                0.09156812500441447,
+                0.08743454201612622,
+                0.09185374999651685
               ]
             },
             "Unused": {
@@ -609,11 +610,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.08769283298170194,
+              "queryMedianSeconds": 0.09071391599718481,
               "querySamplesSeconds": [
-                0.08769283298170194,
-                0.08917266695061699,
-                0.07731600000988692
+                0.09065191698027775,
+                0.09324837499298155,
+                0.09071391599718481
               ]
             }
           }
@@ -636,7 +637,7 @@
         },
         "tools": {
           "baseline": {
-            "captureSeconds": 0.1942329170415178,
+            "captureSeconds": 0.18482141697313637,
             "snapshotBytes": 5673,
             "Used": {
               "mainInImpact": false,
@@ -647,11 +648,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09426958300173283,
+              "queryMedianSeconds": 0.09381287498399615,
               "querySamplesSeconds": [
-                0.09426958300173283,
-                0.09378250001464039,
-                0.09435724996728823
+                0.09381287498399615,
+                0.09333841601619497,
+                0.09442741598468274
               ]
             },
             "Unused": {
@@ -663,16 +664,16 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09245620900765061,
+              "queryMedianSeconds": 0.09229879197664559,
               "querySamplesSeconds": [
-                0.0937330829910934,
-                0.09245620900765061,
-                0.09170016698772088
+                0.09276362496893853,
+                0.09229879197664559,
+                0.08886520803207532
               ]
             }
           },
           "binary": {
-            "captureSeconds": 0.18624083301983774,
+            "captureSeconds": 0.18214833398815244,
             "snapshotBytes": 5696,
             "Used": {
               "mainInImpact": true,
@@ -739,11 +740,11 @@
                   "usr": "method:probe/Entry#main([Ljava/lang/String;)V"
                 }
               ],
-              "queryMedianSeconds": 0.09292666701367125,
+              "queryMedianSeconds": 0.09323408297495916,
               "querySamplesSeconds": [
-                0.08986591704888269,
-                0.09292666701367125,
-                0.09356066701002419
+                0.09323408297495916,
+                0.09389274998102337,
+                0.0903235410223715
               ]
             },
             "Unused": {
@@ -755,11 +756,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09195916599128395,
+              "queryMedianSeconds": 0.09252962504979223,
               "querySamplesSeconds": [
-                0.09381741698598489,
-                0.09092587500344962,
-                0.09195916599128395
+                0.08908470900496468,
+                0.09278470801655203,
+                0.09252962504979223
               ]
             }
           }
@@ -780,7 +781,7 @@
         "dependencySha256": {},
         "tools": {
           "baseline": {
-            "captureSeconds": 0.11878929100930691,
+            "captureSeconds": 0.11949995800387114,
             "snapshotBytes": 5216,
             "Used": {
               "mainInImpact": false,
@@ -792,11 +793,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.08973591699032113,
+              "queryMedianSeconds": 0.09288504102732986,
               "querySamplesSeconds": [
-                0.07873437501257285,
-                0.08973591699032113,
-                0.0979296249570325
+                0.08835899998666719,
+                0.09288504102732986,
+                0.09335120796458796
               ]
             },
             "Unused": {
@@ -809,16 +810,16 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09353216603631154,
+              "queryMedianSeconds": 0.0916231669834815,
               "querySamplesSeconds": [
-                0.09353216603631154,
-                0.09420966595644131,
-                0.09335787501186132
+                0.0898096669698134,
+                0.0916231669834815,
+                0.0928670420544222
               ]
             }
           },
           "binary": {
-            "captureSeconds": 0.12364495795918629,
+            "captureSeconds": 0.11932175001129508,
             "snapshotBytes": 5238,
             "Used": {
               "mainInImpact": false,
@@ -830,11 +831,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09309270797530189,
+              "queryMedianSeconds": 0.09700966702075675,
               "querySamplesSeconds": [
-                0.09274133300641552,
-                0.09335687500424683,
-                0.09309270797530189
+                0.09479779202956706,
+                0.09700966702075675,
+                0.0975339999422431
               ]
             },
             "Unused": {
@@ -847,11 +848,11 @@
                 "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
               ],
               "witness": [],
-              "queryMedianSeconds": 0.09516908403020352,
+              "queryMedianSeconds": 0.0944650000310503,
               "querySamplesSeconds": [
-                0.09516908403020352,
-                0.09166929201455787,
-                0.097959833976347
+                0.09097095800098032,
+                0.0944650000310503,
+                0.09507437498541549
               ]
             }
           }
@@ -933,30 +934,30 @@
       "measurements": {
         "class": {
           "diagnostics": 4,
-          "seconds": 1.216
+          "seconds": 1.165
         },
         "member": {
           "diagnostics": 2,
-          "seconds": 1.045
+          "seconds": 1.041
         }
       },
       "multipreviewDeclarations": 8,
       "revision": "12f80da6518e161ed16a06a68e71fb8a873576d6",
       "snapshot": {
         "bytes": 26581826,
-        "captureSeconds": 1.298,
+        "captureSeconds": 1.322,
         "queries": [
           {
             "seconds": {
               "live": [
-                1.068,
-                1.065,
-                1.046
+                1.061,
+                1.084,
+                1.03
               ],
               "saved": [
-                0.45,
-                0.45,
-                0.426
+                0.421,
+                0.431,
+                0.443
               ]
             },
             "symbol": "class:com/google/samples/apps/nowinandroid/MainActivity"
@@ -964,14 +965,14 @@
           {
             "seconds": {
               "live": [
-                1.068,
-                1.063,
-                1.072
+                1.077,
+                1.085,
+                1.058
               ],
               "saved": [
-                0.439,
-                0.426,
-                0.442
+                0.424,
+                0.431,
+                0.425
               ]
             },
             "symbol": "class:com/google/samples/apps/nowinandroid/core/datastore/ListToMapMigration"
@@ -979,14 +980,14 @@
           {
             "seconds": {
               "live": [
-                1.088,
-                1.086,
-                1.049
+                1.051,
+                1.048,
+                1.038
               ],
               "saved": [
-                0.443,
-                0.44,
-                0.443
+                0.429,
+                0.432,
+                0.436
               ]
             },
             "symbol": "method:com/google/samples/apps/nowinandroid/feature/foryou/impl/ForYouScreenKt#ForYouScreenLoading(Landroidx/compose/runtime/Composer;I)V"
@@ -999,33 +1000,33 @@
     "status": "PASS",
     "perCommandBudget": 5.0,
     "totalBudget": 15.0,
-    "totalSeconds": 2.368,
+    "totalSeconds": 2.403,
     "measurements": {
       "graph": {
-        "seconds": 0.418,
+        "seconds": 0.405,
         "returncode": 0,
-        "nodes": 3488
+        "nodes": 3528
       },
       "dead": {
-        "seconds": 0.397,
-        "returncode": 0,
-        "findings": 0
-      },
-      "dead_private": {
         "seconds": 0.401,
         "returncode": 0,
         "findings": 0
       },
+      "dead_private": {
+        "seconds": 0.41,
+        "returncode": 0,
+        "findings": 0
+      },
       "cycles": {
-        "seconds": 0.343,
+        "seconds": 0.365,
         "returncode": 0
       },
       "rules": {
-        "seconds": 0.438,
+        "seconds": 0.455,
         "returncode": 0
       },
       "metrics": {
-        "seconds": 0.369,
+        "seconds": 0.367,
         "returncode": 0,
         "rows": 6
       }

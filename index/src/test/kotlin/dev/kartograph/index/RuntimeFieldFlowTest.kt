@@ -21,6 +21,94 @@ import org.objectweb.asm.Opcodes
 
 class RuntimeFieldFlowTest {
     @Test
+    fun `unused Object field reads do not consume a literal reflection budget`(@TempDir root: Path) {
+        val indexed = compile(root, """
+            static Object f8=new Object();
+            static Object f7=Entry.f8,f6=Entry.f7,f5=Entry.f6,f4=Entry.f5,f3=Entry.f4,f2=Entry.f3,f1=Entry.f2,f0=Entry.f1;
+            static void read() throws Exception {
+                Object unused=f0;
+                Class.forName("probe.Entry${'$'}A").getDeclaredConstructor().newInstance();
+            }
+        """)
+        assertTargets(indexed, "read", "A")
+        assertEquals(0, indexed.observations.sumOf { it.valueAnalysisLimits })
+    }
+
+    @Test
+    fun `unused reflected field values do not consume a literal reflection budget`(@TempDir root: Path) {
+        val indexed = compile(root, """
+            public static Object f8=new Object();
+            public static Object f7=Entry.f8,f6=Entry.f7,f5=Entry.f6,f4=Entry.f5,f3=Entry.f4,f2=Entry.f3,f1=Entry.f2,f0=Entry.f1;
+            static void read() throws Exception {
+                Object unused=Entry.class.getField("f0").get(null);
+                Class.forName("probe.Entry${'$'}A").getDeclaredConstructor().newInstance();
+            }
+        """)
+        assertTargets(indexed, "read", "A")
+        assertEquals(0, indexed.observations.sumOf { it.valueAnalysisLimits })
+        assertEquals(listOf("field:probe/Entry#f0:Ljava/lang/Object;"), indexed.graph.externalCalls.single {
+            it.owner == "java/lang/reflect/Field" && it.name == "get"
+        }.resolvedTargets.map { it.value })
+    }
+
+    @Test
+    fun `Object typed fields retain Class and String values used by reflection`(@TempDir root: Path) {
+        val indexed = compile(root, """
+            public static Object type=A.class;
+            public static Object name="probe.Entry${'$'}B";
+            static void direct() throws Exception {((Class<?>)type).getDeclaredConstructor().newInstance();}
+            static void reflective() throws Exception {
+                Class.forName((String)Entry.class.getField("name").get(null)).getDeclaredConstructor().newInstance();
+            }
+        """)
+        assertTargets(indexed, "direct", "A")
+        assertTargets(indexed, "reflective", "B")
+    }
+
+    @Test
+    fun `known reflective names avoid charging setters for another field`(@TempDir root: Path) {
+        val setters = (0..128).joinToString("\n") {
+            "static void set$it() throws Exception {Entry.class.getField(\"other\").set(null,new Object());}"
+        }
+        val indexed = compile(root, """
+            public static Class<?> type=A.class; public static Object other;
+            $setters
+            static void read() throws Exception {type.getDeclaredConstructor().newInstance();}
+        """)
+        assertTargets(indexed, "read", "A")
+        assertEquals(0, indexed.observations.sumOf { it.valueAnalysisLimits })
+    }
+
+    @Test
+    fun `computed reflective names remain eligible writer candidates`(@TempDir root: Path) {
+        val indexed = compile(root, """
+            public static Class<?> type=A.class;
+            public static String field="type";
+            static String name(){return "ty".concat("pe");}
+            static void helper() throws Exception {Entry.class.getField(name()).set(null,B.class);}
+            static void fromField() throws Exception {Entry.class.getField(field).set(null,C.class);}
+            static void read() throws Exception {type.getDeclaredConstructor().newInstance();}
+        """)
+        assertTargets(indexed, "read", "A", "B", "C")
+    }
+
+    @Test
+    fun `bounded demand collection falls back without losing a known field target`(@TempDir root: Path) {
+        val choices = (0..64).joinToString("\n") { "case $it: selected=type;break;" }
+        val indexed = compile(root, """
+            static Class<?> type=A.class;
+            static void read(int choice) throws Exception {
+                Class<?> selected;
+                switch(choice){$choices default:selected=type;}
+                selected.getDeclaredConstructor().newInstance();
+            }
+        """)
+        assertTargets(indexed, "read", "A")
+        assertEquals(0, indexed.observations.sumOf { it.valueAnalysisLimits })
+    }
+
+
+    @Test
     fun `looping concatenation and reset in a writer terminates with a measured limit`(@TempDir root: Path) {
         val source = root.resolve("Entry.java")
         Files.writeString(source, """

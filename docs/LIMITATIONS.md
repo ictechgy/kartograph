@@ -172,7 +172,11 @@ static field는 실제 `PUTSTATIC`과 알려진 `Field.set`의 stack 값에서 S
 순환 read는 unknown으로 끊고 그 결과에 의존한 field/helper 요약은 다른 read를 위해 캐시하지 않는다.
 field의 String/Class 후보를 각각 16개·깊이 8·writer 분석 128회·누적 frame slot 1,000,000개로 runtime 메서드별로 제한한다.
 직접 writer를 한 번 인덱싱해 무관한 field의 쓰기는 예산을 소비하지 않는다. 알려진 reflective setter는 실제 조회 대상이
-정해질 때까지 후보 writer로 분석한다. 개별 메서드 예산은 위와 같으며 field writer의 helper들은 별도의 반환값 예산
+정해질 때까지 후보 writer로 분석한다. 이름이 literal에 한정되면 다른 field의 setter를 제외하며, field/문자열 계산에서
+이름이 올 수 있으면 후보를 유지한다. 호출·반환·선택한 write의 입력을 역방향으로 조사해 소비되지 않는 field 값은
+해석하지 않는다. `Object`에 담긴 String/Class도 소비 경로가 있으면 분석한다. 이 의존 수집은 명령당 producer 64개와
+method당 의존 간선 100,000개로 제한하며 불완전하면 기존 전체 값 분석으로 되돌아가 후보를 임의로 버리지 않는다.
+개별 메서드 예산은 위와 같으며 field writer의 helper들은 별도의 반환값 예산
 (깊이 8·문맥 128·frame slot 1,000,000)을 공유한다. 호출자에서 직접 분석하는 helper 예산과는 독립적이다.
 write 값에 영향을 준 한도는 부분 요약을 버리고 `runtime-analysis-limits`를 남긴다. 후보 집합이 한도를 넘은 상태는
 합류 때 다시 알려진 후보로 되돌아가지 않게 해 반복문 분석이 수렴하도록 한다.
