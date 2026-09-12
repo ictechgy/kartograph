@@ -1,0 +1,70 @@
+{
+  "baseline": "Compare native member selection with the original changed-file selection and literal original-source member/class-name search. Literal search is a simple baseline, not an IDE or another dependency analyzer.",
+  "cases": [
+    {
+      "case": "google__gson-1391",
+      "fixPatchSha256": "9277dc6f50b4841a90cec3379a0bd804eacc3a754bd435e1ca373238b0796bcc",
+      "selectionBasis": "Existing source members changed by the production fix; include compiler lambda helpers of changed functions. Newly introduced helpers have no pre-edit declaration. Jackson changed field modifier is retained as a seed.",
+      "selectors": [
+        "method:com/google/gson/internal/$Gson$Types#resolve(Ljava/lang/reflect/Type;Ljava/lang/Class;Ljava/lang/reflect/Type;)Ljava/lang/reflect/Type;",
+        "method:com/google/gson/internal/$Gson$Types#resolve(Ljava/lang/reflect/Type;Ljava/lang/Class;Ljava/lang/reflect/Type;Ljava/util/Collection;)Ljava/lang/reflect/Type;"
+      ],
+      "sourceMemberNames": [
+        "resolve"
+      ],
+      "sourceOwner": "com/google/gson/internal/$Gson$Types"
+    },
+    {
+      "case": "fasterxml__jackson-core-1208",
+      "fixPatchSha256": "a18328e4e163da3a7a0f3a770d9d4c341586a809cb1a1d664d38583cdda309c3",
+      "selectionBasis": "Existing source members changed by the production fix; include compiler lambda helpers of changed functions. Newly introduced helpers have no pre-edit declaration. Jackson changed field modifier is retained as a seed.",
+      "selectors": [
+        "field:com/fasterxml/jackson/core/JsonFactory#_rootCharSymbols:Lcom/fasterxml/jackson/core/sym/CharsToNameCanonicalizer;",
+        "method:com/fasterxml/jackson/core/JsonFactory#setStreamReadConstraints(Lcom/fasterxml/jackson/core/StreamReadConstraints;)Lcom/fasterxml/jackson/core/JsonFactory;"
+      ],
+      "sourceMemberNames": [
+        "setStreamReadConstraints",
+        "_rootCharSymbols"
+      ],
+      "sourceOwner": "com/fasterxml/jackson/core/JsonFactory"
+    },
+    {
+      "case": "detekt_detekt-7718",
+      "fixPatchSha256": "c25f3b1cdff5166729cdad2ca88ef1e87156e886bf3daba77c8957588f4125db",
+      "selectionBasis": "Existing source members changed by the production fix; include compiler lambda helpers of changed functions. Newly introduced helpers have no pre-edit declaration. Jackson changed field modifier is retained as a seed.",
+      "selectors": [
+        "method:io/github/detekt/report/sarif/ResultsKt#toResult(Lio/gitlab/arturbosch/detekt/api/Issue;)Lio/github/detekt/sarif4k/Result;"
+      ],
+      "sourceMemberNames": [
+        "toResult"
+      ],
+      "sourceOwner": "io/github/detekt/report/sarif/ResultsKt"
+    },
+    {
+      "case": "pinterest_ktlint-2895",
+      "fixPatchSha256": "ec75d921a4f3de7f85364ecc514cc09b279d7e107d038890289989e503b344d5",
+      "selectionBasis": "Existing source members changed by the production fix; include compiler lambda helpers of changed functions. Newly introduced helpers have no pre-edit declaration. Jackson changed field modifier is retained as a seed.",
+      "selectors": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule#findCorrelatedFunction$lambda$10(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Z",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule#findCorrelatedFunction$lambda$11(Lcom/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule;Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Z",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule#findCorrelatedFunction$lambda$12(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule#findCorrelatedFunction(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule#findCorrelatedProperty$lambda$7(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Z",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule#findCorrelatedProperty$lambda$8(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule#findCorrelatedProperty(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule#visitBackingProperty(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;Lkotlin/jvm/functions/Function3;)V"
+      ],
+      "sourceMemberNames": [
+        "visitBackingProperty",
+        "findCorrelatedProperty",
+        "findCorrelatedFunction"
+      ],
+      "sourceOwner": "com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule"
+    }
+  ],
+  "cohort": "cohort-v2.json",
+  "resultInterpretation": "Candidate reduction alone is insufficient: retain observed pre-existing failure targets, unresolved mapping, all traversal/path limitations and direct/structural/transitive relation counts. Do not approve test omission.",
+  "schemaVersion": 1,
+  "scope": "All four Java/Kotlin JVM cases. Android cases remain in whole-change file measurements because their changes also span new declarations, resources and multiple runtime entrypoints. This is a declared granular comparison, not a replacement for full-change coverage.",
+  "selectionTiming": "Production patch and pristine declaration IDs inspected before these member impact queries and production-only/original-test replays. No original failing-test target is used to choose seeds. Selectors remain evaluator-only."
+}
