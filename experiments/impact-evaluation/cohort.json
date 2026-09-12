@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "frozenAt": "2026-09-12T16:37:34.942821+00:00",
+  "productBase": "bc723c02d100cdb2ec990f5d3d0569e57f67c7e9",
+  "selectionRule": "Largest numeric PR IDs with full base SHA and nonempty f2p expectation in each named repository; two Anki cases; no product/model outcome used.",
+  "primaryCases": [
+    {
+      "id": "google__gson-1555",
+      "repository": "google/gson",
+      "stratum": "java-library",
+      "role": "held-out",
+      "base": "aa236ec38d39f434c1641aeaef9241aec18affde",
+      "dataset": "multi-swe-bench",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetFile": "java/google__gson_dataset.jsonl",
+      "datasetFileSha256": "fc4e6547d8ccd761719c68dc09053b9e10ba9aca8db97b4b565dbf88c83473f6",
+      "expectedF2pGroups": 1,
+      "oracleGranularity": "dataset groups; refine from actual JUnit results",
+      "selectionExclusions": [
+        {
+          "number": 1787,
+          "reason": "no-f2p-expectation"
+        },
+        {
+          "number": 1703,
+          "reason": "no-f2p-expectation"
+        }
+      ]
+    },
+    {
+      "id": "fasterxml__jackson-core-1309",
+      "repository": "FasterXML/jackson-core",
+      "stratum": "java-library",
+      "role": "held-out",
+      "base": "449ed86748bf672b0a65f13e7f8573298b543384",
+      "dataset": "multi-swe-bench",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetFile": "java/fasterxml__jackson-core_dataset.jsonl",
+      "datasetFileSha256": "21f1f1350dcaf687840f6cf0dce4198c7958cc66cd6ab6722a0dd3a18860147e",
+      "expectedF2pGroups": 1,
+      "oracleGranularity": "dataset groups; refine from actual JUnit results",
+      "selectionExclusions": []
+    },
+    {
+      "id": "detekt_detekt-7888",
+      "repository": "detekt/detekt",
+      "stratum": "kotlin-jvm",
+      "role": "held-out",
+      "base": "6c8f571d886aa581b62b02964e00ef7008559e72",
+      "dataset": "kotlin-swe-bench",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+      "datasetDirectory": "tasks/detekt_detekt-7888",
+      "expectedTestsSha256": "ca927722624d94cda2b8e9f9e6676f825639bcc322262591e741ac1b5f11b603",
+      "expectedF2pGroups": 1,
+      "oracleGranularity": "dataset test labels; refine JVM identity from actual compile/test evidence",
+      "selectionExclusions": []
+    },
+    {
+      "id": "pinterest_ktlint-2983",
+      "repository": "pinterest/ktlint",
+      "stratum": "kotlin-jvm",
+      "role": "held-out",
+      "base": "eab1e9dfd37386c417dad06ca9386efb84878c61",
+      "dataset": "kotlin-swe-bench",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+      "datasetDirectory": "tasks/pinterest_ktlint-2983",
+      "expectedTestsSha256": "e33f9bd6ac91607777479dd32b32a0722415972c8ab1007abe2022c68671d2d6",
+      "expectedF2pGroups": 1,
+      "oracleGranularity": "dataset test labels; refine JVM identity from actual compile/test evidence",
+      "selectionExclusions": []
+    },
+    {
+      "id": "ankidroid_Anki-Android-20250",
+      "repository": "ankidroid/Anki-Android",
+      "stratum": "android",
+      "role": "held-out",
+      "base": "0ef7450b619afae2aa3bfab925a3427b10031f5c",
+      "dataset": "kotlin-swe-bench",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+      "datasetDirectory": "tasks/ankidroid_Anki-Android-20250",
+      "expectedTestsSha256": "7caa9a70c3f77b245738b43ec89894ebc1f89b6c9a3ee3ed649e7a52d916740e",
+      "expectedF2pGroups": 1,
+      "oracleGranularity": "dataset test labels; refine JVM identity from actual compile/test evidence",
+      "selectionExclusions": []
+    },
+    {
+      "id": "ankidroid_Anki-Android-19982",
+      "repository": "ankidroid/Anki-Android",
+      "stratum": "android",
+      "role": "held-out",
+      "base": "77002d5b4331568249dd47c2db6d3a906c960c73",
+      "dataset": "kotlin-swe-bench",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+      "datasetDirectory": "tasks/ankidroid_Anki-Android-19982",
+      "expectedTestsSha256": "e368dc014c504f783cfc1269605c098979bed906ab76259e9f7937edf30a6509",
+      "expectedF2pGroups": 1,
+      "oracleGranularity": "dataset test labels; refine JVM identity from actual compile/test evidence",
+      "selectionExclusions": []
+    }
+  ],
+  "developmentCases": [
+    "square_okhttp-6887",
+    "ankidroid_Anki-Android-19661"
+  ],
+  "reserveRule": "Next descending eligible PR in the same pinned dataset, at most one per repository, only for unresolved native setup failure; primary failure remains reported.",
+  "nativeSetupFailureRule": "Investigate and record the cause and adaptations; a case still unreproducible after a bounded 60-minute native setup effort may activate its predetermined reserve. No substitution for product/AI outcomes.",
+  "trials": {
+    "arms": [
+      "source",
+      "skill-impact"
+    ],
+    "repetitionsPerArm": 2,
+    "order": [
+      "source,skill-impact",
+      "skill-impact,source"
+    ],
+    "wallSeconds": 900,
+    "maxToolAttempts": 12,
+    "maxModelRequests": 13,
+    "maxToolOutputChars": 12000,
+    "effort": "low",
+    "modelFamily": "Claude Opus 5",
+    "reportedModelIdObservedBeforeTrials": "claude-opus-5[1m]"
+  },
+  "status": "frozen-before-replay-and-model-trials"
+}
