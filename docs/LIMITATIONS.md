@@ -156,7 +156,7 @@ JDK API 모델은 owner·이름·descriptor·static 여부를 확인하고 해�
 `Class.getMethod/getDeclaredMethod`와 `Method.invoke`는 알려진 이름·인자 개수의 프로젝트 method 후보를 연결한다.
 같은 개수의 overload는 보수적으로 포함하며 선언 밖의 override·실제 receiver까지 완전하게 구분하지 않는다.
 `Class.getField/getDeclaredField`의 이름을 `Field.get/set` 및 primitive 변형까지 전달한다. public lookup은 상속된
-선언을 찾되 일치하는 선언에서 멈춰 숨겨진 부모 field를 섞지 않는다. public 선언·interface·superclass 순서로 찾고 declared lookup은 해당 owner만 검색한다. 알려지지 않은 이름은 method/field별 호출 개수로 알린다.
+선언을 찾되 일치하는 선언에서 멈춰 숨겨진 부모 field를 섞지 않는다. 입력 class의 public 선언·interface·superclass 순서로 찾고 declared lookup은 해당 owner만 검색한다. dependency header의 상속 경로도 따르지만 그 header의 field 선언·숨김은 수입하지 않으므로 경계 밖에서는 조상 후보를 보수적으로 포함할 수 있다. 알려지지 않은 이름은 method/field별 호출 개수로 알린다.
 프로젝트 static helper의 String/Class 반환값은 제한적으로 추적하지만 외부 선언의 구현·reflection 메서드 반환값·
 field 값의 일반적 흐름은 여전히 미해결일 수 있다.
 
@@ -169,9 +169,13 @@ static field는 실제 `PUTSTATIC`과 알려진 `Field.set`의 stack 값에서 S
 `reflection-strings`·`reflective-construction` 등의 미해결 개수를 유지한다. 이는 final field에도 적용하는 보수적 한계이며 완전한 값 해석을 뜻하지 않는다.
 알려진 필드에 대한 알려진 reflective write는 후보에 포함하지만, unknown lookup·외부/JNI/MethodHandle write의 값,
 인자를 따라가는 void helper write와 instance field/heap 상태는 복원하지 않는다. 문자열 원문은 보고서에 추가하지 않는다.
-순환 read는 unknown으로 끊고, field의 String/Class 후보를 각각 16개·깊이 8·writer 분석 128회·누적 frame slot 1,000,000개·
-write 검색 명령 1,000,000개를 runtime 메서드별로 제한한다. 개별 메서드 예산은 위와 같고, write 값의 static helper 반환값은
-별도의 기존 반환값 예산을 공유한다. 한도에 걸린 요약은 일부 후보를 반환하지 않고 `runtime-analysis-limits`를 남긴다.
+순환 read는 unknown으로 끊고 그 결과에 의존한 field/helper 요약은 다른 read를 위해 캐시하지 않는다.
+field의 String/Class 후보를 각각 16개·깊이 8·writer 분석 128회·누적 frame slot 1,000,000개로 runtime 메서드별로 제한한다.
+직접 writer를 한 번 인덱싱해 무관한 field의 쓰기는 예산을 소비하지 않는다. 알려진 reflective setter는 실제 조회 대상이
+정해질 때까지 후보 writer로 분석한다. 개별 메서드 예산은 위와 같으며 field writer의 helper들은 별도의 반환값 예산
+(깊이 8·문맥 128·frame slot 1,000,000)을 공유한다. 호출자에서 직접 분석하는 helper 예산과는 독립적이다.
+write 값에 영향을 준 한도는 부분 요약을 버리고 `runtime-analysis-limits`를 남긴다. 후보 집합이 한도를 넘은 상태는
+합류 때 다시 알려진 후보로 되돌아가지 않게 해 반복문 분석이 수렴하도록 한다.
 실제 javac/Kotlin 테스트는 상속/숨김·여러/unknown write·reflective get/set·외부 handle escape·초기화 재진입·한도 초과와
 unused control을 확인한다. `reflective_field` 실행 표본의 mutable 초기화는 바꾸지 않았으며 JVM 실행과 역방향 impact의
 `main → Target 생성자 → Used` 경로를 함께 확인한다. 이는 임의 런타임 경로의 완전성 증거는 아니다.

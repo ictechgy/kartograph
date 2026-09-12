@@ -4,13 +4,89 @@ import dev.kartograph.core.EdgeOrigin
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.io.File
+import java.util.concurrent.TimeUnit
+import java.net.URLClassLoader
 import javax.tools.ToolProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.FieldVisitor
+import org.objectweb.asm.Opcodes
 
 class RuntimeFieldFlowTest {
+    @Test
+    fun `looping concatenation and reset in a writer terminates with a measured limit`(@TempDir root: Path) {
+        val source = root.resolve("Entry.java")
+        Files.writeString(source, """
+            package probe;
+            public class Entry {
+                static String type;
+                static void write(int n) {
+                    String name="probe.Entry${'$'}A";
+                    for(int i=0;i<n;i++) name=(i%2==0) ? "probe.Entry${'$'}B" : name+"x";
+                    type=name;
+                }
+                static void read() throws Exception {Class.forName(type).getDeclaredConstructor().newInstance();}
+                public static class A {} public static class B {}
+            }
+        """.trimIndent())
+        val classes = Files.createDirectories(root.resolve("classes"))
+        val errors = ByteArrayOutputStream()
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, errors, "-g", "-d", classes.toString(), source.toString()), errors.toString())
+        val classpath = listOf(
+            "dev.kartograph.index.fixture.RuntimeFieldProbe", "dev.kartograph.index.ClassFileIndexer",
+            "dev.kartograph.core.CodeGraph", "org.objectweb.asm.ClassReader", "org.objectweb.asm.tree.MethodNode",
+            "org.objectweb.asm.tree.analysis.Analyzer", "kotlin.metadata.jvm.KotlinClassMetadata", "kotlin.KotlinVersion",
+        ).map { name -> Path.of(Class.forName(name).protectionDomain.codeSource.location.toURI()).toString() }
+            .distinct().joinToString(File.pathSeparator)
+        val output = root.resolve("probe-output.txt")
+        val process = ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-Xmx128m",
+            "-cp", classpath, "dev.kartograph.index.fixture.RuntimeFieldProbe", classes.toString())
+            .redirectErrorStream(true).redirectOutput(output.toFile()).start()
+        try {
+            assertTrue(process.waitFor(15, TimeUnit.SECONDS), "field writer analysis did not terminate")
+            assertEquals(0, process.exitValue(), "field writer probe failed")
+            assertTrue(Files.readString(output).trim().toInt() > 0, "overflow must retain its measured limit")
+        } finally {
+            if (process.isAlive) { process.destroyForcibly(); process.waitFor(5, TimeUnit.SECONDS) }
+        }
+    }
+
+    @Test
+    fun `unrelated large writers do not exhaust a trivial field summary`(@TempDir root: Path) {
+        compile(root, """
+            static Class<?> type=A.class; static Object unrelated;
+            static void read() throws Exception {type.getDeclaredConstructor().newInstance();}
+        """)
+        val file = root.resolve("classes/probe/Entry.class")
+        val writer = ClassWriter(0)
+        ClassReader(Files.readAllBytes(file)).accept(object : ClassVisitor(Opcodes.ASM9, writer) {
+            override fun visitEnd() {
+                repeat(101) { number ->
+                    val method = writer.visitMethod(Opcodes.ACC_STATIC, "noise$number", "()V", null, null)
+                    method.visitCode()
+                    repeat(10_000) { method.visitInsn(Opcodes.NOP) }
+                    method.visitInsn(Opcodes.ACONST_NULL)
+                    method.visitFieldInsn(Opcodes.PUTSTATIC, "probe/Entry", "unrelated", "Ljava/lang/Object;")
+                    method.visitInsn(Opcodes.RETURN)
+                    method.visitMaxs(1, 0)
+                    method.visitEnd()
+                }
+                super.visitEnd()
+            }
+        }, 0)
+        Files.write(file, writer.toByteArray())
+        val indexed = ClassFileIndexer().indexWithObservations(listOf(root.resolve("classes")))
+        assertTargets(indexed, "read", "A")
+        assertEquals(0, indexed.observations.sumOf { it.valueAnalysisLimits })
+    }
+
     @Test
     fun `mutable class initialization restores direct and reflective reads`(@TempDir root: Path) {
         val indexed = compile(root, """
@@ -73,6 +149,38 @@ class RuntimeFieldFlowTest {
     }
 
     @Test
+    fun `JVM initializes a static ConstantValue even without the final flag`(@TempDir root: Path) {
+        compile(root, """
+            public static final String type="probe.Entry${'$'}A";
+            public static Object read() throws Exception {
+                return Class.forName((String)Entry.class.getField("type").get(null)).getDeclaredConstructor().newInstance();
+            }
+        """)
+        val file = root.resolve("classes/probe/Entry.class")
+        val writer = ClassWriter(0)
+        ClassReader(Files.readAllBytes(file)).accept(object : ClassVisitor(Opcodes.ASM9, writer) {
+            override fun visitField(access: Int, name: String, descriptor: String, signature: String?, value: Any?): FieldVisitor? =
+                super.visitField(if (name == "type") access and Opcodes.ACC_FINAL.inv() else access, name, descriptor, signature, value)
+        }, 0)
+        Files.write(file, writer.toByteArray())
+        URLClassLoader(arrayOf(root.resolve("classes").toUri().toURL())).use { loader ->
+            val entry = loader.loadClass("probe.Entry")
+            assertFalse(java.lang.reflect.Modifier.isFinal(entry.getField("type").modifiers))
+            assertEquals("probe.Entry${'$'}A", entry.getField("type").get(null))
+            assertEquals("probe.Entry${'$'}A", entry.getMethod("read").invoke(null).javaClass.name)
+        }
+        assertTargets(ClassFileIndexer().indexWithObservations(listOf(root.resolve("classes"))), "read", "A")
+    }
+
+    @Test
+    fun `internal class fact descriptions do not expose raw String constants`() {
+        val value = "a-raw-value-that-must-not-appear-in-diagnostics"
+        val facts = ClassFacts("probe/Entry", emptyList(), emptyList(), null, ClassRuntimeObservation(),
+            constantStringFields = mapOf(JvmNodeId.fieldId("probe/Entry", "value", "Ljava/lang/String;") to value))
+        assertFalse(facts.toString().contains(value))
+    }
+
+    @Test
     fun `oversized String constants retain the runtime analysis limit`(@TempDir root: Path) {
         val indexed = compile(root, """
             public static final String type="${"x".repeat(4097)}";
@@ -83,6 +191,30 @@ class RuntimeFieldFlowTest {
         assertTargets(indexed, "read")
         assertTrue(indexed.observations.sumOf { it.valueAnalysisLimits } > 0)
         assertEquals(1, indexed.observations.sumOf { it.reflectionCalls })
+    }
+
+    @Test
+    fun `oversized literal writes cannot hide their limit behind another known write`(@TempDir root: Path) {
+        val indexed = compile(root, """
+            static String type="probe.Entry${'$'}A";
+            static void write(){type="${"x".repeat(4097)}";}
+            static void read() throws Exception {Class.forName(type).getDeclaredConstructor().newInstance();}
+        """)
+        assertTargets(indexed, "read")
+        assertTrue(indexed.observations.sumOf { it.valueAnalysisLimits } > 0)
+    }
+
+    @Test
+    fun `bounded field arguments retain their limit through a static helper`(@TempDir root: Path) {
+        val indexed = compile(root, """
+            public static final String oversized="${"x".repeat(4097)}";
+            static String type="probe.Entry${'$'}A";
+            static String pass(String value){return value;}
+            static void write() throws Exception {type=pass((String)Entry.class.getField("oversized").get(null));}
+            static void read() throws Exception {Class.forName(type).getDeclaredConstructor().newInstance();}
+        """)
+        assertTargets(indexed, "read")
+        assertTrue(indexed.observations.sumOf { it.valueAnalysisLimits } > 0)
     }
 
     @Test
@@ -194,6 +326,57 @@ class RuntimeFieldFlowTest {
         assertTargets(indexed, "cycle")
         assertTargets(indexed, "reentry")
         assertEquals(2, indexed.observations.sumOf { it.reflectiveConstructions })
+    }
+
+    @Test
+    fun `cycle-cut summaries do not hide a later acyclic read through a helper`(@TempDir root: Path) {
+        val indexed = compile(root, """
+            static Class<?> left=Entry.right;
+            static Class<?> right=Entry.left;
+            static void select(){left=A.class;}
+            static Class<?> alias(){return left;}
+            static void assign(){right=alias();}
+            public static void read() throws Exception {
+                select();assign();
+                left.getDeclaredConstructor().newInstance();
+                right.getDeclaredConstructor().newInstance();
+            }
+        """)
+        URLClassLoader(arrayOf(root.resolve("classes").toUri().toURL())).use { loader ->
+            loader.loadClass("probe.Entry").getMethod("read").invoke(null)
+        }
+        val calls = indexed.graph.externalCalls.filter {
+            "#read(" in it.caller.value && it.owner == "java/lang/reflect/Constructor" && it.name == "newInstance"
+        }
+        assertEquals(2, calls.size)
+        calls.forEach { assertEquals(listOf("method:probe/Entry${'$'}A#<init>()V"), it.resolvedTargets.map { target -> target.value }) }
+        assertEquals(2, indexed.observations.sumOf { it.reflectiveConstructions })
+    }
+
+    @Test
+    fun `supplied dependency hierarchy preserves a project ancestor field path`(@TempDir root: Path) {
+        compile(root, """
+            public static class Parent {public static Class<?> type=A.class;}
+            public static class Dependency extends Parent {}
+            public static class Child extends Dependency {}
+            public static void read() throws Exception {
+                ((Class<?>)Child.class.getField("type").get(null)).getDeclaredConstructor().newInstance();
+            }
+        """)
+        val classes = root.resolve("classes")
+        val dependency = Files.createDirectories(root.resolve("dependency"))
+        val name = "probe/Entry${'$'}Dependency.class"
+        Files.createDirectories(dependency.resolve(name).parent)
+        Files.move(classes.resolve(name), dependency.resolve(name))
+        URLClassLoader(arrayOf(classes.toUri().toURL(), dependency.toUri().toURL())).use { loader ->
+            loader.loadClass("probe.Entry").getMethod("read").invoke(null)
+        }
+        val hierarchy = ClassHierarchyIndexer().index(listOf(dependency))
+        assertEquals(setOf("probe/Entry${'$'}Parent"), hierarchy.directSupertypesOf("probe/Entry${'$'}Dependency"))
+        val indexed = ClassFileIndexer().indexWithObservations(listOf(classes), listOf(dependency))
+        assertTargets(indexed, "read", "A")
+        val access = indexed.graph.externalCalls.single { it.owner == "java/lang/reflect/Field" && it.name == "get" }
+        assertEquals(listOf("field:probe/Entry${'$'}Parent#type:Ljava/lang/Class;"), access.resolvedTargets.map { it.value })
     }
 
     @Test

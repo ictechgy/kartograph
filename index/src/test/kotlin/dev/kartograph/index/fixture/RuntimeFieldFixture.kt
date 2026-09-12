@@ -1,5 +1,13 @@
 package dev.kartograph.index.fixture
 
+/** 별도 JVM에서 분석 종료를 확인해 무한 반복 회귀가 테스트 worker를 남기지 않게 한다. */
+object RuntimeFieldProbe {
+    @JvmStatic fun main(arguments: Array<String>) {
+        val indexed = dev.kartograph.index.ClassFileIndexer().indexWithObservations(listOf(java.nio.file.Path.of(arguments.single())))
+        println(indexed.observations.sumOf { it.valueAnalysisLimits })
+    }
+}
+
 object KotlinFieldFixture {
     class A
     class B

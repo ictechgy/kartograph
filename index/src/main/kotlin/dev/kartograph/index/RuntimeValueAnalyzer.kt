@@ -54,7 +54,8 @@ internal object RuntimeValueAnalyzer {
         val returns = facts.flatMap { fact -> fact.returnMethods.map { method ->
             JvmNodeId.methodId(fact.internalName, method.name, method.desc) to (fact.internalName to method)
         } }.toMap()
-        val fieldLookup = FieldLookup(facts)
+        val fieldLookup = FieldLookup(facts, hierarchy)
+        val fieldWriters = FieldWriteIndex(facts, fieldLookup, ::loader)
         val derived = mutableListOf<GraphEdge>()
         val models = mutableMapOf<Pair<NodeId, Int>, List<NodeId>>()
         val observations = facts.map { fact ->
@@ -69,8 +70,8 @@ internal object RuntimeValueAnalyzer {
             var boundedMethods = 0
             for (method in fact.runtimeMethods) {
                 val caller = JvmNodeId.methodId(fact.internalName, method.name, method.desc)
-                val fields = FieldValues(facts, fieldLookup, ::loader, returns)
-                val summaries = ReturnValues(returns, ::loader, fields::read)
+                val fields = FieldValues(fieldWriters, fieldLookup, ::loader, returns)
+                val summaries = ReturnValues(returns, ::loader, fields::read) { fields.cycleEpoch }
                 val interpreter = FlowInterpreter(::loader, returnedValue = summaries::evaluate, fieldValue = fields::read)
                 val frames = if (exceedsFrameBudget(method)) {
                     boundedMethods++
@@ -191,6 +192,7 @@ private class ReturnValues(
     private val methods: Map<NodeId, Pair<String, MethodNode>>,
     private val loader: (String) -> Boolean,
     private val fieldValue: (FieldInsnNode?, Set<MemberValue>?, () -> Unit) -> FlowValue? = { _, _, _ -> null },
+    private val fieldEpoch: () -> Long = { 0L },
 ) {
     private data class Key(val method: NodeId, val arguments: List<FlowValue>)
     private data class Summary(val value: FlowValue?, val limited: Boolean)
@@ -215,9 +217,10 @@ private class ReturnValues(
         }
         analyses++
         slots += frameSlots(method)
+        val before = fieldEpoch()
         active += id
         val summary = try { analyze(owner, method, arguments) } finally { active -= id }
-        cache[key] = summary
+        if (before == fieldEpoch()) cache[key] = summary
         if (summary.limited) limited()
         return summary.value
     }
@@ -244,7 +247,7 @@ private class ReturnValues(
 }
 
 // JVM field 및 public reflection lookup은 일치하는 선언에서 멈춰 숨겨진 부모 field를 섞지 않는다.
-private class FieldLookup(facts: List<ClassFacts>) {
+private class FieldLookup(facts: List<ClassFacts>, private val hierarchy: ClassHierarchy) {
     private val types = facts.associateBy { it.internalName }
     private val declarations = facts.associate { fact -> fact.internalName to fact.nodes.filter { it.id.value.startsWith("field:") } }
     private val constants = facts.flatMap { it.constantStringFields.entries }.associate { it.key to it.value }
@@ -267,7 +270,8 @@ private class FieldLookup(facts: List<ClassFacts>) {
                 (!publicOnly || it.jvmVisibility == Visibility.PUBLIC)
         }
         if (own.isNotEmpty() || declaredOnly) return own
-        val supers = types[owner]?.nodes?.firstOrNull { it.id == JvmNodeId.classId(owner) }?.supertypes.orEmpty()
+        val supers = types[owner]?.nodes?.firstOrNull { it.id == JvmNodeId.classId(owner) }?.supertypes
+            ?: hierarchy.directSupertypesOf(owner).orEmpty()
         val (interfaces, parents) = supers.partition { parent ->
             types[parent]?.nodes?.any { it.id == JvmNodeId.classId(parent) && it.kind == NodeKind.INTERFACE } == true
         }
@@ -276,21 +280,54 @@ private class FieldLookup(facts: List<ClassFacts>) {
     }
 }
 
+/** 각 field에 쓰는 method를 한 번만 연결해 무관한 writer를 매 read마다 다시 순회하지 않는다. */
+private class FieldWriteIndex(facts: List<ClassFacts>, lookup: FieldLookup, loader: (String) -> Boolean) {
+    class Writer(val owner: String, val method: MethodNode, val instructions: Array<AbstractInsnNode>,
+        val directTargets: Map<Int, Set<NodeId>>, val reflectiveSites: Set<Int>)
+
+    private val direct = mutableMapOf<NodeId, MutableList<Writer>>()
+    private val reflective = mutableListOf<Writer>()
+
+    init {
+        for (fact in facts) for (method in fact.fieldMethods) {
+            val instructions = method.instructions.toArray()
+            val targets = mutableMapOf<Int, Set<NodeId>>()
+            val reflectiveSites = mutableSetOf<Int>()
+            for ((index, instruction) in instructions.withIndex()) {
+                if (instruction is FieldInsnNode && instruction.opcode == Opcodes.PUTSTATIC) {
+                    val fields = lookup.direct(instruction.owner, instruction.name, instruction.desc).mapTo(mutableSetOf()) { it.id }
+                    if (fields.isNotEmpty()) targets[index] = fields
+                } else if (instruction is MethodInsnNode && instruction.name == "set" &&
+                    RuntimeLibraryModels.find(instruction.owner, instruction.name, instruction.desc,
+                        instruction.opcode == Opcodes.INVOKESTATIC, loader)?.operation == RuntimeOperation.FIELD_ACCESS) {
+                    reflectiveSites += index
+                }
+            }
+            if (targets.isEmpty() && reflectiveSites.isEmpty()) continue
+            val writer = Writer(fact.internalName, method, instructions, targets, reflectiveSites)
+            targets.values.flatten().toSet().forEach { field -> direct.getOrPut(field) { mutableListOf() } += writer }
+            if (reflectiveSites.isNotEmpty()) reflective += writer
+        }
+    }
+
+    fun forField(field: NodeId): List<Writer> = (direct[field].orEmpty() + reflective).distinct()
+}
+
 // 실행 순서를 가정하지 않는 may-write 요약이다. 초기화 전 null·재진입·외부 변경은 항상 unknown 가능성으로 남긴다.
 // 불변 String/Class 값의 후보만 복원하며 객체 heap 및 실행 코드를 평가하지 않는다.
 private class FieldValues(
-    facts: List<ClassFacts>,
+    private val writers: FieldWriteIndex,
     private val lookup: FieldLookup,
     private val loader: (String) -> Boolean,
     private val returns: Map<NodeId, Pair<String, MethodNode>>,
 ) {
-    private val methods = facts.flatMap { fact -> fact.fieldMethods.map { fact.internalName to it } }
     private val cache = mutableMapOf<NodeId, FlowValue?>()
     private val active = mutableSetOf<NodeId>()
     private var slots = 0L
     private var analyses = 0
-    private var scannedInstructions = 0L
-    private val summaries = ReturnValues(returns, loader, ::read)
+    var cycleEpoch = 0L
+        private set
+    private val summaries = ReturnValues(returns, loader, ::read) { cycleEpoch }
 
     fun read(instruction: FieldInsnNode?, members: Set<MemberValue>?, limited: () -> Unit): FlowValue? {
         val fields = if (instruction != null) lookup.direct(instruction.owner, instruction.name, instruction.desc)
@@ -310,8 +347,9 @@ private class FieldValues(
     private fun summarize(field: GraphNode, limited: () -> Unit): FlowValue? {
         if (JvmModifier.STATIC !in field.jvmModifiers) return null
         if (cache.containsKey(field.id)) return cache[field.id]
-        if (field.id in active) return null
+        if (field.id in active) { cycleEpoch++; return null }
         if (active.size >= 8) { limited(); return null }
+        val before = cycleEpoch
         active += field.id
         var classes = emptySet<String>()
         var strings = emptySet<String>()
@@ -319,30 +357,20 @@ private class FieldValues(
         fun limit() { exhausted = true; limited() }
         try {
             lookup.constantString(field.id)?.let { value -> strings = bounded(setOf(value), ::limit).orEmpty() }
-            for ((owner, method) in methods) {
-                // 값에 의존하지 않는 직접 write 선택은 분석 비용을 제한한다. reflective set은 lookup 결과로 다시 고른다.
-                scannedInstructions += method.instructions.size()
-                if (scannedInstructions > 1_000_000L) { limit(); break }
-                val instructions = method.instructions.toArray()
-                if (instructions.none { insn ->
-                    (insn is FieldInsnNode && insn.opcode == Opcodes.PUTSTATIC &&
-                        lookup.direct(insn.owner, insn.name, insn.desc).any { it.id == field.id }) ||
-                        (insn is MethodInsnNode && insn.owner == "java/lang/reflect/Field" && insn.name == "set")
-                }) continue
+            for (writer in writers.forField(field.id)) {
+                val method = writer.method
                 if (analyses >= 128 || exceedsFrameBudget(method) || slots + frameSlots(method) > 1_000_000L) {
                     limit(); break
                 }
                 analyses++
                 slots += frameSlots(method)
                 val interpreter = FlowInterpreter(loader, returnedValue = summaries::evaluate, fieldValue = ::read, retainFieldCandidates = true)
-                val frames = try { Analyzer(interpreter).analyze(owner, method) } catch (_: AnalyzerException) { limit(); continue }
-                for ((index, insn) in instructions.withIndex()) {
+                val frames = try { Analyzer(interpreter).analyze(writer.owner, method) } catch (_: AnalyzerException) { limit(); continue }
+                for (index in writer.instructions.indices) {
                     val frame = frames[index] ?: continue
                     val value = when {
-                        insn is FieldInsnNode && insn.opcode == Opcodes.PUTSTATIC &&
-                            lookup.direct(insn.owner, insn.name, insn.desc).any { it.id == field.id } -> frame.getStack(frame.stackSize - 1)
-                        insn is MethodInsnNode && insn.owner == "java/lang/reflect/Field" && insn.name == "set" &&
-                            insn.desc == "(Ljava/lang/Object;Ljava/lang/Object;)V" && frame.stackSize >= 3 -> {
+                        field.id in writer.directTargets[index].orEmpty() -> frame.getStack(frame.stackSize - 1)
+                        index in writer.reflectiveSites && frame.stackSize >= 3 -> {
                             val members = frame.getStack(frame.stackSize - 3).fields
                             if (members?.flatMap(lookup::reflective)?.any { it.id == field.id } != true) null
                             else frame.getStack(frame.stackSize - 1)
@@ -356,8 +384,8 @@ private class FieldValues(
             }
             val result = if (exhausted || (classes.isEmpty() && strings.isEmpty())) null else FlowValue(BasicValue.REFERENCE_VALUE,
                 strings = strings.takeIf { it.isNotEmpty() }, classes = classes.takeIf { it.isNotEmpty() }, uncertain = true)
-            // 한도에 걸린 결과는 캐시로 한계 신호를 숨기지 않는다.
-            if (!exhausted) cache[field.id] = result
+            // 한도나 순환으로 잘린 결과를 다른 read 문맥에서 완전한 요약으로 재사용하지 않는다.
+            if (!exhausted && before == cycleEpoch) cache[field.id] = result
             return result
         } finally { active -= field.id }
     }
@@ -401,8 +429,9 @@ private class FlowInterpreter(
         parameters[local] ?: requireNotNull(newValue(type))
 
     override fun newOperation(insn: AbstractInsnNode): FlowValue {
+        val before = limitEvents
         val value = FlowValue(base.newOperation(insn))
-        return when {
+        val result = when {
             insn is FieldInsnNode && insn.opcode == Opcodes.GETSTATIC -> {
                 var exhausted = false
                 val found = fieldValue(insn, null) { exhausted = true; limited() }
@@ -416,6 +445,7 @@ private class FlowInterpreter(
             insn is TypeInsnNode && insn.opcode == Opcodes.NEW -> value.copy(instances = setOf(Type.getObjectType(insn.desc).descriptor))
             else -> value
         }
+        return if (limitEvents == before) result else result.copy(incompleteByLimit = true)
     }
 
     override fun copyOperation(insn: AbstractInsnNode, value: FlowValue): FlowValue = value
@@ -527,12 +557,15 @@ private class FlowInterpreter(
         if (a == b) return a
         var exhausted = a.incompleteByLimit || b.incompleteByLimit
         fun limit() { exhausted = true; limited() }
+        fun candidates(first: Set<String>?, second: Set<String>?): Set<String>? =
+            if (retainFieldCandidates && exhausted) null
+            else if (retainFieldCandidates) mergeSet(first.orEmpty(), second.orEmpty(), ::limit)?.takeIf { it.isNotEmpty() }
+            else mergeSet(first, second, ::limit)
+        val strings = candidates(a.strings, b.strings)
+        val classes = candidates(a.classes, b.classes)
         return FlowValue(
             base.merge(a.basic, b.basic),
-            if (retainFieldCandidates) mergeSet(a.strings.orEmpty(), b.strings.orEmpty(), ::limit)?.takeIf { it.isNotEmpty() }
-            else mergeSet(a.strings, b.strings, ::limit),
-            if (retainFieldCandidates) mergeSet(a.classes.orEmpty(), b.classes.orEmpty(), ::limit)?.takeIf { it.isNotEmpty() }
-            else mergeSet(a.classes, b.classes, ::limit),
+            strings.takeUnless { retainFieldCandidates && exhausted }, classes.takeUnless { retainFieldCandidates && exhausted },
             mergeSet(a.constructors, b.constructors, ::limit), mergeSet(a.instances, b.instances, ::limit),
             a.integer?.takeIf { it == b.integer }, a.arrayLength?.takeIf { it == b.arrayLength },
             mergeSet(a.methods, b.methods, ::limit), mergeSet(a.fields, b.fields, ::limit),

@@ -562,7 +562,10 @@ internal data class ClassFacts(
     val fieldWriteMethods: Set<NodeId> = emptySet(),
     val fieldMethods: List<MethodNode> = emptyList(),
     val constantStringFields: Map<NodeId, String> = emptyMap(),
-)
+) {
+    // 내부 입력 상수가 디버그·예외 문자열에 섞이지 않게 한다.
+    override fun toString(): String = "class-facts"
+}
 
 // CLASS-retention 생성 marker는 이름만 닮은 사용자 선언을 숨기지 않는다.
 private val GENERATED_MARKERS = setOf(
