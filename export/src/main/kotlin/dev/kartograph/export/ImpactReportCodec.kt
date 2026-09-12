@@ -20,6 +20,32 @@ public object ImpactReportCodec {
         },
         "changed" to report.changed.map(::node), "affected" to report.affected.map(::node),
         "observedAffected" to report.totalAffected,
+        "summary" to sortedMapOf(
+            "observed" to summary(report.navigation.observed),
+            "filtered" to summary(report.navigation.filtered),
+            "returned" to report.navigation.returned,
+        ),
+        "navigation" to sortedMapOf(
+            "offset" to report.navigation.offset,
+            "limit" to report.navigation.limit,
+            "sort" to report.navigation.sort.name.lowerCamel(),
+            "filters" to filters(report.navigation.filters),
+            "observed" to report.navigation.observed.candidates,
+            "filtered" to report.navigation.filtered.candidates,
+            "returned" to report.navigation.returned,
+            "hasPrevious" to report.navigation.hasPrevious,
+            "hasNext" to report.navigation.hasNext,
+        ),
+        "budgets" to sortedMapOf(
+            "visitLimit" to report.budgets.visitLimit,
+            "pathLimit" to report.budgets.pathLimit,
+            "visited" to report.budgets.visited.entries.sortedBy { it.key }.associate { (revision, count) ->
+                revision.name.lowercase() to count
+            },
+            "visitLimitReached" to report.budgets.visitLimitReached.map { it.name.lowercase() }.sorted(),
+            "pathEdgesUsed" to report.budgets.pathEdgesUsed,
+            "pathOmissions" to report.budgets.pathOmissions,
+        ),
         "unresolved" to report.unresolved.map { sortedMapOf("requested" to it.requested, "reason" to it.reason,
             "candidates" to it.candidates.map { id -> id.value }) },
         "limitations" to report.limitations,
@@ -40,15 +66,49 @@ public object ImpactReportCodec {
         "accessibility" to item.node.visibility.name.lowerCamel(),
         "location" to location(item.node.location), "synthesized" to item.node.synthesized,
         "presentIn" to item.presentIn.map { it.name.lowercase() }.sorted(),
+        "observedIn" to item.observedIn.map { it.name.lowercase() }.sorted(),
+        "testStatus" to item.testStatus.name.lowercase(),
+        "relation" to item.relation.name.lowerCamel(),
+        "pathStatus" to item.pathStatus.name.lowerCamel(),
+        "facts" to item.facts.sortedBy { it.revision }.map { fact -> sortedMapOf(
+            "revision" to fact.revision.name.lowercase(), "module" to fact.module,
+            "location" to location(fact.location), "testStatus" to fact.testStatus.name.lowercase(),
+        ) },
         "paths" to item.paths.map { path -> sortedMapOf(
             "revision" to path.revision.name.lowercase(), "changed" to path.changed.value,
             "nodes" to path.nodes.map { it.value },
             "edges" to path.edges.mapIndexed { index, edge -> sortedMapOf("source" to edge.source.value, "target" to edge.target.value,
                 "kind" to edge.kind.name.lowerCamel(), "origin" to edge.origin.name.lowerCamel(),
-                "traversal" to if (edge.source == path.nodes[index]) "dependency" else "overrideContract") },
+                "traversal" to if (edge.source == path.nodes.getOrNull(index)) "dependency" else "overrideContract") },
+        ) },
+        "pathOmissions" to item.pathOmissions.map { omission -> sortedMapOf(
+            "revision" to omission.revision.name.lowercase(), "reason" to omission.reason.name.lowerCamel(),
+            "requiredEdges" to omission.requiredEdges,
+            "edgeKinds" to omission.edgeKinds.map { it.name.lowerCamel() },
         ) },
         "retention" to item.retention.map { sortedMapOf("revision" to it.revision.name.lowercase(),
             "reason" to it.evidence.reason.name.lowerCamel(), "location" to location(it.evidence.location)) },
+    )
+
+    private fun summary(value: dev.kartograph.analysis.ImpactSummary): Map<String, Any?> = sortedMapOf(
+        "candidates" to value.candidates,
+        "byModule" to buckets(value.byModule),
+        "byFile" to buckets(value.byFile),
+        "byTestStatus" to buckets(value.byTestStatus),
+        "byRelation" to buckets(value.byRelation),
+        "byPathStatus" to buckets(value.byPathStatus),
+    )
+
+    private fun buckets(values: List<dev.kartograph.analysis.ImpactBucket>): List<Map<String, Any?>> =
+        values.map { sortedMapOf("value" to it.value, "count" to it.count) }
+
+    private fun filters(value: dev.kartograph.analysis.ImpactFilter): Map<String, Any?> = sortedMapOf(
+        "modules" to value.modules.sorted(),
+        "affectedFiles" to value.affectedFiles.sorted(),
+        "kinds" to value.kinds.map { it.name.lowerCamel() }.sorted(),
+        "testStatus" to value.testStatus?.name?.lowercase(),
+        "relation" to value.relation?.name?.lowerCamel(),
+        "pathStatus" to value.pathStatus?.name?.lowerCamel(),
     )
 
     private fun location(location: SourceLocation?): Map<String, Any?>? = location?.let {
