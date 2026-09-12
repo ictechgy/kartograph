@@ -42,6 +42,8 @@ public object KotlinCompilerWitnesses {
         val known = (libraries + plugins + friends + implementation).map { it.canonicalFile }.toSet()
         // 실행 시 선언된 JAR와 명시 입력의 대응을 검증한다. task 입력 union을 provider에 저장하지 않는다.
         val compilerArtifacts = task.inputs.files.files.filter { it.isFile && it.extension == "jar" && it.canonicalFile !in known }
+            .distinctBy { it.canonicalFile }
+        val compilerPaths = compilerArtifacts.map { it.canonicalFile }.toSet()
         val additional = additionalInputs.files
         val supplied = additional.map { it.canonicalFile }.toSet()
         require(compilerArtifacts.isNotEmpty() && compilerArtifacts.all { it.canonicalFile in supplied }) {
@@ -57,7 +59,7 @@ public object KotlinCompilerWitnesses {
         val jdkHome = jdk.metadata.installationPath.asFile
         val files = libraries.map { "classpath" to it } + plugins.map { "processor" to it } +
             friends.map { "friend" to it } + compilerArtifacts.map { "compiler" to it } +
-            additional.filter { it.canonicalFile !in known && it !in compilerArtifacts }.map { "compilerInput" to it } +
+            additional.filter { it.canonicalFile !in known && it.canonicalFile !in compilerPaths }.map { "compilerInput" to it } +
             ("compiler" to implementation) +
             ("compiler" to File(jdkHome, "lib/modules").canonicalFile)
         return CompilerObservation(sources + javaSources, api.destination(), files.distinct(), api.effectiveArguments())

@@ -117,10 +117,10 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
         require(eligible == observed.sources.map { it.canonicalFile }.toSet()) { "declared source roots do not match compiler sources; include generated and test inputs explicitly" }
         val files = roots.map { "sources" to it } + buildInputs.files.map { "buildConfig" to it } + observed.files
         val covered = byteInputs.files.map { it.canonicalFile }
-        require(files.all { (_, file) -> covered.any { root ->
+        require(files.all { (_, file) ->
             val current = file.canonicalFile
-            current == root || root.isDirectory && current.toPath().startsWith(root.toPath())
-        } }) { "compiler witness byte inputs omit declared compiler files; supply additionalInputs explicitly" }
+            covered.any { root -> current == root || root.isDirectory && current.toPath().startsWith(root.toPath()) }
+        }) { "compiler witness byte inputs omit declared compiler files; supply additionalInputs explicitly" }
         val projectPath = project.toPath()
         val fingerprints = files.mapIndexed { index, (role, file) ->
             ContentFingerprint.capture(projectPath, file.toPath(), role, "$artifact-$role-$index")
@@ -153,8 +153,8 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
         require(task.options.extensionDirs.isNullOrEmpty()) { "compiler witness requires declared javac file input APIs" }
         val arguments = task.options.allCompilerArgs
         validateJavaArguments(arguments, declared)
-        val known = files.map { it.second }.toSet() + task.source.files + sourceRoots.files + buildInputs.files
-        val extraInputs = declared.filter { it !in known }.map { "compilerInput" to it }
+        val known = (files.map { it.second } + task.source.files + sourceRoots.files + buildInputs.files).map { it.canonicalFile }.toSet()
+        val extraInputs = declared.filter { it.canonicalFile !in known }.map { "compilerInput" to it }
         return CompilerObservation(task.source.files, task.destinationDirectory.get().asFile, files + extraInputs,
             listOf(task.sourceCompatibility, task.targetCompatibility, task.options.release.orNull?.toString().orEmpty(),
                 task.options.encoding.orEmpty(), task.options.isDebug.toString(), task.options.debugOptions.debugLevel.orEmpty(),

@@ -53,6 +53,15 @@ class FreshnessCliTest {
         assertContains(captured.second, "generatedInput")
         assertEquals(parsed.provenance!!.inputs.single { it.role == "classes" }.sha256,
             parsed.provenance!!.inputs.single { it.role == "generated-classes" }.sha256)
+        val snapshot = project.resolve("snapshot.json")
+        Files.writeString(snapshot, captured.second)
+        val unbound = run("verify-snapshot", "--project", project.toString(), "--graph-file", snapshot.toString(), "--classes", relative)
+        assertEquals(1, unbound.first, unbound.second)
+        assertContains(unbound.second, "\"status\":\"unverified\"")
+        Files.writeString(classes.resolve("resource.txt"), "changed output")
+        val changed = run("verify-snapshot", "--project", project.toString(), "--graph-file", snapshot.toString(), "--classes", relative)
+        assertEquals(1, changed.first, changed.second)
+        assertContains(changed.second, "\"status\":\"stale\"")
     }
 
     @Test

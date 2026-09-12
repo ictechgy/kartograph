@@ -555,7 +555,15 @@
         "name": "kotlin-stdlib-2.4.10.jar",
         "sha256": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
       }
-    ]
+    ],
+    "sourceCommit": "4ca653c15bd0d551e8acf1760c31514bf4d17895"
   },
-  "captureTimingMeasurementCommit": "ea99f62bab5e00fba0192f4a5efd796a31c4db41"
+  "captureTimingMeasurementCommit": "ea99f62bab5e00fba0192f4a5efd796a31c4db41",
+  "finalRegressionChecks": {
+    "orderedUnboundRoots": "passed",
+    "canonicalCompilerAliases": "passed",
+    "jdk17FullTests": "passed",
+    "jdk17LineCoveragePercent": 91.48331,
+    "producerValidationTests": 2
+  }
 }

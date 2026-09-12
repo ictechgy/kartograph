@@ -96,6 +96,13 @@ that creates a reference back to the same task during configuration-cache restor
 Kotlin evidence uses public source/library/plugin/friend collections and the explicit
 compiler runtime/configuration inputs. Private incremental-cache snapshot files are
 derived build state and are not claimed as supported compiler evidence inputs.
+Java rejects omitted declared files; Kotlin validates runtime JAR coverage but does
+not automatically distinguish custom non-JAR plugin/argument files from private
+cache state. Include those custom files in `additionalInputs`; omitting them leaves
+their changes outside verification. `matched` covers the recorded input contract.
+The Android witness experiment covers the selected Kotlin task. Android JavaCompile
+tasks with additional AGP/processor file inputs require explicit enumeration and
+have not been validated by that experiment.
 
 ## Capture and compare
 
@@ -116,6 +123,8 @@ before and after graph construction; changes abort capture. Source roots include
 Java/Kotlin filenames and bytes, so additions and deletions are visible. Full class
 roots include all output entries. `--classes` and `--classpath` may also be repeated
 on `verify-snapshot` to compare a newly supplied ordered input selection.
+As with capture, `--classes` resolves from the working directory; `--classpath`
+resolves from the project directory. Prefer absolute values when these differ.
 
 External inputs (including the compiler/JDK artifact) appear as `external/...`
 slots. Bind each slot to a local file/directory with repeated

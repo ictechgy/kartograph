@@ -37,12 +37,14 @@ internal object FreshnessCommand {
             }
             val changedRoots = listOf("classes", "classpath").filter { role ->
                 options["--$role"]?.map { value ->
-                    val path = project.resolve(value).normalize()
+                    val path = (if (role == "classes") Path.of(value) else project.resolve(value)).toAbsolutePath().normalize()
                     path to ContentFingerprint.hash(path)
-                }?.let { supplied -> supplied != snapshot.provenance?.inputs?.filter { it.role == role }?.map {
-                    // 서로 다른 슬롯이 같은 외부 root를 가리킬 수 있으므로 연결된 경로와 순서를 비교한다.
-                    val path = if (it.path.startsWith("external/")) external[it.path] else project.resolve(it.path)
-                    path?.toAbsolutePath()?.normalize() to it.sha256
+                }?.let { supplied -> snapshot.provenance?.inputs?.filter { it.role == role }?.let { recorded ->
+                    supplied.size != recorded.size || supplied.zip(recorded).any { (current, previous) ->
+                        // 미연결 슬롯의 위치는 바뀌었다고 단정하지 않는다. 공급된 바이트 차이는 독립적으로 확인한다.
+                        val path = if (previous.path.startsWith("external/")) external[previous.path] else project.resolve(previous.path)
+                        current.second != previous.sha256 || path != null && current.first != path.toAbsolutePath().normalize()
+                    }
                 } } == true
             }
             val status = if (scopeMismatch || changedRoots.isNotEmpty() || identityMismatch.isNotEmpty()) "stale" else result.status
