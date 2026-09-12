@@ -69,6 +69,29 @@ incomplete checks. Empty affected lists do not certify no behavioral impact. Gen
 results, and baseline suppression never hides a candidate. Review known runtime gaps, inlined constants, unbuilt variants and
 external consumers before acting. The report does not approve deleting code or skipping tests.
 
+For a large impact report, treat `affected` as a page, not the complete candidate set. `summary.observed` is calculated
+before filters and page limits; `summary.filtered` is calculated after filters but before the page. Use
+`navigation.hasNext`, `navigation.offset`, and `navigation.limit` for deterministic pagination, or `--all` for an export of
+all observed matching candidates. `--module`, `--affected-file`, `--kind`, `--test-status`, `--relation`, and
+`--path-status` are focused filters. `--file` remains the changed-declaration selector and must not be confused with
+`--affected-file`, which filters candidate source locations. When base/current facts differ, a candidate can appear in
+more than one module, file, or test-status summary bucket; bucket totals are not a partition of the observed candidate count.
+Each metadata filter axis can match either revision independently; inspect `facts` to identify the matching revision.
+Test status describes a recognized source-root convention, not proof that a declaration is a runnable test.
+Keep inputs, filters, sort, and budgets fixed between pages. Set `--path-limit` explicitly when changing page limits,
+because the default path budget depends on the result limit.
+`--kind` selects the representative declaration's kind (current if present). Sorting by test status uses the common
+revision status, or `unknown` when statuses differ; test filters and summary buckets use individual revision facts.
+An offset page remains `partial` relative to the full candidate set even when `hasNext` is false.
+
+Read each candidate's `facts`, `observedIn`, `relation`, `pathStatus`, and `pathOmissions` with its existing `paths`.
+Facts are revision-specific; null module/location and `unknown` test status are missing evidence, not inferred values.
+`direct`, `structural`, and `transitive` are explainable path categories, not risk scores or test-selection advice.
+When `pathStatus` is partial or unavailable, inspect `budgets` and the omission's `requiredEdges`; a path budget omission
+does not remove the candidate or establish that no path exists. Filters and pages never erase unresolved selectors,
+base/current path separation, traversal truncation, freshness limitations, or runtime uncertainty.
+An omission's `edgeKinds` contains distinct kinds, not the full sequence of omitted edges.
+
 ## After inspecting evidence
 
 A public API is not a retention root: public visibility alone neither proves a caller nor rules out external callers. R8 removal is an optimizer result, not source-level unused-code or runtime-safety proof. Static facts do not create deletion authority.

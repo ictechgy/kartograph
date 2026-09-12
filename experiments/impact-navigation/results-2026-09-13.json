@@ -1,0 +1,277 @@
+{
+  "schemaVersion": 1,
+  "inputFingerprints": {
+    "base": "b93dcb007fa90c076b72af2b0cc94bbcdd8fbb78eb88a9abb6489e2cdb819c07",
+    "current": "f0a63359f1a8d61cbad9ed1060c14732fb653aeee35edfdf5dbbae8f6ef99610"
+  },
+  "cliArtifacts": {
+    "baseline": [
+      {
+        "name": "analysis-0.7.0.jar",
+        "sha256": "116981527d5d2a8681e87380b9955bf56634d77f5747bcf48a60549638ae2ed5"
+      },
+      {
+        "name": "annotations-13.0.jar",
+        "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+      },
+      {
+        "name": "asm-9.9.jar",
+        "sha256": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4"
+      },
+      {
+        "name": "asm-analysis-9.9.jar",
+        "sha256": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b"
+      },
+      {
+        "name": "asm-tree-9.9.jar",
+        "sha256": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6"
+      },
+      {
+        "name": "cli-0.7.0.jar",
+        "sha256": "2273bd73989233eed8f13c6aa09efb8c5a0863f2c47985831ff63fb84cbe2768"
+      },
+      {
+        "name": "core-0.7.0.jar",
+        "sha256": "5d2446f899ab51b454dfa269fbffe4adf9382fe28748c2d7bcfdf32ff06103bc"
+      },
+      {
+        "name": "export-0.7.0.jar",
+        "sha256": "ef02811be47ed414c8d833bf511412dbe46484346150261a71885e894ba36c8a"
+      },
+      {
+        "name": "index-0.7.0.jar",
+        "sha256": "3135474540a27a20db9480854f7dcee2128f5c9c5980e2050cda16bd960af455"
+      },
+      {
+        "name": "kotlin-metadata-jvm-2.4.10.jar",
+        "sha256": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4"
+      },
+      {
+        "name": "kotlin-stdlib-2.4.10.jar",
+        "sha256": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+      }
+    ],
+    "candidate": [
+      {
+        "name": "analysis-0.7.0.jar",
+        "sha256": "05d616850df1b00368d084d4498c39bd52f49a622f148c8019489fe7fd8009ff"
+      },
+      {
+        "name": "annotations-13.0.jar",
+        "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+      },
+      {
+        "name": "asm-9.9.jar",
+        "sha256": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4"
+      },
+      {
+        "name": "asm-analysis-9.9.jar",
+        "sha256": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b"
+      },
+      {
+        "name": "asm-tree-9.9.jar",
+        "sha256": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6"
+      },
+      {
+        "name": "cli-0.7.0.jar",
+        "sha256": "56b8f772f117251c87a577f08fc6d3c4e71d3b2fc0b8aa6ea26d945f44174bd3"
+      },
+      {
+        "name": "core-0.7.0.jar",
+        "sha256": "5d2446f899ab51b454dfa269fbffe4adf9382fe28748c2d7bcfdf32ff06103bc"
+      },
+      {
+        "name": "export-0.7.0.jar",
+        "sha256": "f55bc0ee1693a96e67c1ef8b7067bd989defc0cee6f879c174af505c34efc690"
+      },
+      {
+        "name": "index-0.7.0.jar",
+        "sha256": "3135474540a27a20db9480854f7dcee2128f5c9c5980e2050cda16bd960af455"
+      },
+      {
+        "name": "kotlin-metadata-jvm-2.4.10.jar",
+        "sha256": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4"
+      },
+      {
+        "name": "kotlin-stdlib-2.4.10.jar",
+        "sha256": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+      }
+    ]
+  },
+  "changedFiles": [
+    "AnkiDroid/src/main/java/com/ichi2/anki/AnkiDroidApp.kt"
+  ],
+  "failureFile": "AnkiDroid/src/test/java/com/ichi2/anki/DeckPickerNoExternalFilesDirTest.kt",
+  "failureTarget": "method:com/ichi2/anki/DeckPickerNoExternalFilesDirTest#Fatal error is shown when getExternalFilesDir is null and collection is set but unwritable()V",
+  "observedCandidates": 20699,
+  "focusedCandidates": 34,
+  "baselineTargetOrdinal": 9304,
+  "focusedTargetOrdinal": 9,
+  "processSecondsMedian": {
+    "baseline-full": 6.7054731249809265,
+    "candidate-focused": 2.7507371670217253,
+    "candidate-full": 3.6391763749998063,
+    "candidate-page-0": 2.6168781250016764,
+    "candidate-page-10": 2.7389883330324665,
+    "candidate-page-20": 2.8867765410104766,
+    "candidate-page-30": 2.8691166669595987,
+    "candidate-summary": 2.897354417014867
+  },
+  "measurements": [
+    {
+      "name": "baseline-full",
+      "processSeconds": 7.420788332994562,
+      "decodeSeconds": 0.288494291016832,
+      "bytes": 111352103,
+      "observed": 20699,
+      "returned": 20699,
+      "sha256": "8ada9e820cd2ae4886a6cb312875190d7241486bdfacc01935b9ac3faa521152"
+    },
+    {
+      "name": "candidate-full",
+      "processSeconds": 3.6391763749998063,
+      "decodeSeconds": 0.5776363330078311,
+      "bytes": 122165135,
+      "observed": 20699,
+      "returned": 20699,
+      "sha256": "08a2bd6fcd1118b4dfee89a5ba718ac6f4308bc295d3e90d95a5187bd2d75c6d"
+    },
+    {
+      "name": "candidate-focused",
+      "processSeconds": 2.7507371670217253,
+      "decodeSeconds": 0.0012801659759134054,
+      "bytes": 347948,
+      "observed": 20699,
+      "returned": 34,
+      "sha256": "7797fe17e9c8cfdfefb4eca735f585b5f3e0904af53a7733856512e2af33c036"
+    },
+    {
+      "name": "candidate-full",
+      "processSeconds": 4.1689798749866895,
+      "decodeSeconds": 0.37827262497739866,
+      "bytes": 122165135,
+      "observed": 20699,
+      "returned": 20699,
+      "sha256": "08a2bd6fcd1118b4dfee89a5ba718ac6f4308bc295d3e90d95a5187bd2d75c6d"
+    },
+    {
+      "name": "baseline-full",
+      "processSeconds": 6.7054731249809265,
+      "decodeSeconds": 0.2946964169968851,
+      "bytes": 111352103,
+      "observed": 20699,
+      "returned": 20699,
+      "sha256": "8ada9e820cd2ae4886a6cb312875190d7241486bdfacc01935b9ac3faa521152"
+    },
+    {
+      "name": "candidate-focused",
+      "processSeconds": 2.7839049589820206,
+      "decodeSeconds": 0.0012438330450095236,
+      "bytes": 347948,
+      "observed": 20699,
+      "returned": 34,
+      "sha256": "7797fe17e9c8cfdfefb4eca735f585b5f3e0904af53a7733856512e2af33c036"
+    },
+    {
+      "name": "baseline-full",
+      "processSeconds": 5.940059958025813,
+      "decodeSeconds": 0.3097292080055922,
+      "bytes": 111352103,
+      "observed": 20699,
+      "returned": 20699,
+      "sha256": "8ada9e820cd2ae4886a6cb312875190d7241486bdfacc01935b9ac3faa521152"
+    },
+    {
+      "name": "candidate-full",
+      "processSeconds": 3.5696918329922482,
+      "decodeSeconds": 0.3678485419950448,
+      "bytes": 122165135,
+      "observed": 20699,
+      "returned": 20699,
+      "sha256": "08a2bd6fcd1118b4dfee89a5ba718ac6f4308bc295d3e90d95a5187bd2d75c6d"
+    },
+    {
+      "name": "candidate-focused",
+      "processSeconds": 2.614253790990915,
+      "decodeSeconds": 0.001389250042848289,
+      "bytes": 347948,
+      "observed": 20699,
+      "returned": 34,
+      "sha256": "7797fe17e9c8cfdfefb4eca735f585b5f3e0904af53a7733856512e2af33c036"
+    },
+    {
+      "name": "candidate-summary",
+      "processSeconds": 2.897354417014867,
+      "decodeSeconds": 0.0018810000037774444,
+      "bytes": 246400,
+      "observed": 20699,
+      "returned": 1,
+      "sha256": "bf4d8e3469ac166aa8c64b2efb22d6aaf324f8a9a437740483b339b6838ec46a"
+    },
+    {
+      "name": "candidate-page-0",
+      "processSeconds": 2.6168781250016764,
+      "decodeSeconds": 0.0009449160424992442,
+      "bytes": 211815,
+      "observed": 20699,
+      "returned": 10,
+      "sha256": "fff6adf32104ebc6afc681375d08a939ac97486b23c245870001bb227d9b7485"
+    },
+    {
+      "name": "candidate-page-10",
+      "processSeconds": 2.7389883330324665,
+      "decodeSeconds": 0.0009285420528613031,
+      "bytes": 229583,
+      "observed": 20699,
+      "returned": 10,
+      "sha256": "97c26281a3eca7b15d11cb0f0a2de9fe610d3539202be06d7fbd0157ed7f7aae"
+    },
+    {
+      "name": "candidate-page-20",
+      "processSeconds": 2.8867765410104766,
+      "decodeSeconds": 0.0010852920240722597,
+      "bytes": 244658,
+      "observed": 20699,
+      "returned": 10,
+      "sha256": "322f0b3402b0efa7873a8fd0d1088debf86d1f2824d505a494f3f840dcd1ff01"
+    },
+    {
+      "name": "candidate-page-30",
+      "processSeconds": 2.8691166669595987,
+      "decodeSeconds": 0.3796807079925202,
+      "bytes": 208854,
+      "observed": 20699,
+      "returned": 4,
+      "sha256": "ea44b2f94a1ce898dd810c19e616fc8d38d3b77d2e29d828faad2bff85c39dd0"
+    }
+  ],
+  "checks": {
+    "candidateSet": true,
+    "revisionPathDirections": true,
+    "baselineRevisionPaths": true,
+    "summaries": true,
+    "failureTarget": true,
+    "pagination": true,
+    "determinism": true
+  },
+  "limitations": [
+    "An executed failure target is a lower-bound oracle, not a precision denominator.",
+    "The source file is known in this navigation task; blind AI repair is a separate evaluation.",
+    "No source build or snapshot capture is included in query process timing.",
+    "This fixed cohort has no moved source/module facts; movement semantics use separate tests."
+  ],
+  "baselineSourceRevision": "1a60b7ec6541971101e3387bc9f6a80034b0ea44",
+  "upstreamSource": {
+    "repository": "ankidroid/Anki-Android",
+    "base": "8bfadcbe33cb68af5caa471bdce5f80a922500bb",
+    "task": "ankidroid_Anki-Android-19661",
+    "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+    "oracle": "same injected regression test patch in before/after, executed in change-impact evaluation"
+  },
+  "implementationSha256": {
+    "analysis/src/main/kotlin/dev/kartograph/analysis/ChangeImpact.kt": "6644e6e607bd4c8716e840a4dc4e00d1affd64df28108aea70a066f25acfc5ca",
+    "export/src/main/kotlin/dev/kartograph/export/ImpactReportCodec.kt": "b101648d3e78ce93c6f8487fc0cfe21c8ad98782b88dc87f74e20e1aa0e23c93",
+    "cli/src/main/kotlin/dev/kartograph/cli/ImpactCommand.kt": "0ecea860915e58e35f77f3af8bcfa5482bb3343e3d355264ff0f8c7eda4f929d",
+    "Scripts/verify-impact-navigation.py": "63b5ea38857d14d912ef21c7e2c137f381d7bdf29c254cd606efc3b4a68f6715"
+  }
+}

@@ -95,6 +95,52 @@ class ImpactCliTest {
         assertContains(result.second,"overrideContract")
     }
 
+    @Test fun `navigation filters are separate from changed file selection`(@TempDir root: Path) {
+        val target = GraphNode(NodeId("class:p/Target"), "Target", NodeKind.CLASS, moduleName = "app",
+            location = SourceLocation("src/main/kotlin/p/Target.kt"))
+        val caller = GraphNode(NodeId("class:p/Caller"), "Caller", NodeKind.CLASS, moduleName = "app",
+            location = SourceLocation("src/test/kotlin/p/Caller.kt"))
+        val other = GraphNode(NodeId("class:p/Other"), "Other", NodeKind.CLASS, moduleName = "other",
+            location = SourceLocation("src/main/kotlin/p/Other.kt"))
+        val snapshot = root.resolve("graph.json").also {
+            Files.writeString(it, QuerySnapshotCodec.render(QuerySnapshot(
+                CodeGraph(listOf(target, caller, other), listOf(GraphEdge(caller.id, target.id, EdgeKind.CALL),
+                    GraphEdge(other.id, target.id, EdgeKind.CALL))), emptyList(), emptyList())))
+        }
+
+        val result = run("impact", "--file", "src/main/kotlin/p/Target.kt", "--affected-file", "src/test/kotlin/p/Caller.kt",
+            "--graph-file", snapshot.toString(), "--all", "--sort", "file")
+        assertEquals(0, result.first, result.third)
+        assertContains(result.second, "\"observedAffected\": 2")
+        assertContains(result.second, "\"usr\": \"class:p/Caller\"")
+        assertFalse(result.second.contains("class:p/Other"))
+        assertContains(result.second, "\"affectedFiles\": [\"src/test/kotlin/p/Caller.kt\"]")
+        assertContains(result.second, "\"value\": \"test\"")
+    }
+
+    @Test fun `all export retains candidates whose paths exceed the path budget`(@TempDir root: Path) {
+        val target = GraphNode(NodeId("class:p/Target"), "Target", NodeKind.CLASS,
+            location = SourceLocation("src/main/kotlin/p/Target.kt"))
+        val middle = GraphNode(NodeId("class:p/Middle"), "Middle", NodeKind.CLASS,
+            location = SourceLocation("src/main/kotlin/p/Middle.kt"))
+        val caller = GraphNode(NodeId("class:p/Caller"), "Caller", NodeKind.CLASS,
+            location = SourceLocation("src/main/kotlin/p/Caller.kt"))
+        val snapshot = root.resolve("graph.json").also {
+            Files.writeString(it, QuerySnapshotCodec.render(QuerySnapshot(
+                CodeGraph(listOf(target, middle, caller), listOf(GraphEdge(middle.id, target.id, EdgeKind.CALL),
+                    GraphEdge(caller.id, middle.id, EdgeKind.CALL))), emptyList(), emptyList())))
+        }
+
+        val result = run("impact", target.id.value, "--graph-file", snapshot.toString(), "--all", "--path-limit", "1")
+        assertEquals(0, result.first, result.third)
+        assertContains(result.second, "\"observedAffected\": 2")
+        assertContains(result.second, "class:p/Middle")
+        assertContains(result.second, "class:p/Caller")
+        assertContains(result.second, "\"pathOmissions\"")
+        assertContains(result.second, "\"pathStatus\": \"unavailable\"")
+        assertContains(result.second, "\"pathOmissions\": 1")
+    }
+
     private fun run(vararg args: String): Triple<Int,String,String> {
         val output=ByteArrayOutputStream(); val error=ByteArrayOutputStream()
         val status=KartographCli.run(args,PrintStream(output),PrintStream(error))
