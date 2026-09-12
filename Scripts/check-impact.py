@@ -21,10 +21,13 @@ def main():
     parser.add_argument("--base", required=True)
     parser.add_argument("--base-graph", required=True)
     parser.add_argument("--graph-file", required=True)
+    parser.add_argument("--base-project", help="checkout containing the captured base inputs; otherwise base freshness is unverified")
+    parser.add_argument("--input", action="append", default=[], help="current external/slot=path freshness binding")
+    parser.add_argument("--base-input", action="append", default=[], help="base external/slot=path freshness binding")
     parser.add_argument("--depth", type=int, default=100)
     parser.add_argument("--limit", type=int, default=500)
     parser.add_argument("--timeout", type=int, default=120)
-    parser.add_argument("--strict", action="store_true", help="exit 1 when the traversal or selection is incomplete")
+    parser.add_argument("--strict", action="store_true", help="exit 1 when traversal is incomplete or freshness is stale/unverified")
     args = parser.parse_args()
     if args.timeout < 1 or not 1 <= args.depth <= 1000 or not 1 <= args.limit <= 100000:
         raise ValueError("invalid traversal or timeout budget")
@@ -68,8 +71,29 @@ def main():
     inputs = report.get("inputs")
     if not isinstance(inputs, dict) or not all(isinstance(inputs.get(side), dict) and inputs[side].get("scope") for side in ("base", "current")):
         raise RuntimeError("CI impact requires snapshots labeled with --scope project:variant")
-    sys.stdout.write(result.stdout)
-    if args.strict and report["status"] in ("partial", "notFound"):
+
+    def verify(graph, checkout, bindings, scope):
+        command = [str(binary), "verify-snapshot", "--graph-file", str(graph), "--project", str(checkout), "--scope", scope]
+        for binding in bindings:
+            command.extend(["--input", binding])
+        checked = subprocess.run(command, cwd=checkout, env=env, capture_output=True, text=True, timeout=args.timeout)
+        if checked.returncode not in (0, 1):
+            raise RuntimeError("snapshot freshness verification failed; check evidence and external input bindings")
+        try:
+            document = json.loads(checked.stdout)
+        except ValueError:
+            raise RuntimeError("freshness CLI returned invalid JSON") from None
+        if not isinstance(document, dict) or document.get("format") != "kartograph-freshness" or document.get("version") != 1 or document.get("status") not in ("matched", "stale", "unverified") or (checked.returncode == 0) != (document["status"] == "matched"):
+            raise RuntimeError("unexpected freshness report; use a compatible CLI")
+        return document
+
+    report["freshness"] = {
+        "current": verify(current_graph, project, args.input, inputs["current"]["scope"]),
+        "base": verify(base_graph, Path(args.base_project).resolve(strict=True), args.base_input, inputs["base"]["scope"]) if args.base_project else
+            {"status": "unverified", "reasons": ["base-checkout-not-supplied"]},
+    }
+    sys.stdout.write(json.dumps(report, ensure_ascii=True, sort_keys=True) + "\n")
+    if args.strict and (report["status"] in ("partial", "notFound") or any(item["status"] != "matched" for item in report["freshness"].values())):
         return 1
     # 유효한 보고서의 불완전성은 JSON에 남긴다. 기본 CI는 보고용이며 strict만 진단 실패로 만든다.
     return 0

@@ -29,6 +29,7 @@ public data class QuerySnapshot(
     val toolVersion: String = KartographVersion.current,
     val revision: String? = null,
     val scope: String? = null,
+    val provenance: dev.kartograph.core.SnapshotProvenance? = null,
 ) {
     init {
         require(revision == null || Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) { "snapshot revision must be a full commit hash" }
@@ -55,6 +56,7 @@ public object QuerySnapshotCodec {
         "version" to if (compact) 2 else 1,
         "toolVersion" to snapshot.toolVersion,
         "revision" to snapshot.revision, "scope" to snapshot.scope,
+        "provenance" to snapshot.provenance?.let(BuildWitnessCodec::provenanceValue),
         "includePrivateMembers" to snapshot.includePrivateMembers,
         "limitations" to snapshot.limitations.distinct().sorted(),
         "suppressed" to snapshot.suppressed.map { it.value }.sorted(),
@@ -139,7 +141,8 @@ public object QuerySnapshotCodec {
         require(suppressed.all(ids::contains)) { "query snapshot contains invalid baseline references" }
         return QuerySnapshot(CodeGraph(nodes, edges, calls, providers), retention, strings(document["limitations"]), suppressed,
             boolean(document["includePrivateMembers"]), string(document["toolVersion"]),
-            optionalString(document["revision"]), optionalString(document["scope"]))
+            optionalString(document["revision"]), optionalString(document["scope"]),
+            document["provenance"]?.let(BuildWitnessCodec::provenance))
     }
 
     private fun GraphNode.toValue(): Map<String, Any?> = sortedMapOf(

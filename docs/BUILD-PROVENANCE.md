@@ -1,0 +1,132 @@
+# Build provenance and snapshot freshness
+
+`verify-snapshot` compares bytes and membership, not timestamps or commit labels. A
+snapshot carries ordered analysis class roots separately from hierarchy classpaths,
+explicit source/config/retention inputs (including recursive keep-rule includes),
+and optional compiler-task witnesses. Saved `query` and `impact` continue to use the
+captured graph and retention facts offline; comparison never replaces those facts.
+
+A verification report has `matched`, `stale`, or `unverified` status. Exit codes are
+0 for matched evidence, 1 for stale/unverified, 2 for invalid/unreadable documents,
+and 64 for invalid options. Legacy snapshots remain readable and are explicitly
+unverified. Capturing hashes after `true`, a shell build command, or an arbitrary
+caller revision cannot produce compilation evidence.
+
+## Explicit Gradle producer
+
+Apply the kartograph plugin and register the selected **compiler task**. Registration
+is opt-in; it does not discover main/test/generated roots or choose an Android variant.
+For Java (Kotlin DSL):
+
+```kotlin
+import dev.kartograph.gradle.CompilerWitnesses
+import org.gradle.api.tasks.compile.JavaCompile
+
+val witness = CompilerWitnesses.javaCompile(
+    project, tasks.named<JavaCompile>("compileJava"), "sample:main",
+    files("src/main/java"), files("build.gradle.kts", "settings.gradle.kts"),
+)
+```
+
+For Kotlin JVM / a selected Android Kotlin compiler task with KGP 2.4.10:
+
+```kotlin
+import dev.kartograph.gradle.KotlinCompilerWitnesses
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+
+val witness = KotlinCompilerWitnesses.kotlinCompile(
+    project, tasks.named<KotlinCompile>("compileKotlin"), "sample:main",
+    files("src/main/kotlin", "src/main/java"),
+    files("build.gradle.kts", "settings.gradle.kts"),
+    javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(17)) },
+)
+```
+
+Only include existing source roots. Supply generated-source providers with their
+producer dependencies and register test compiler tasks separately with their actual
+source roots. The selected roots must cover the compiler's declared source set
+exactly (Kotlin also consumes Java sources). Supply all relevant build scripts,
+version catalogs and additional safe generator/config files explicitly. Do not
+supply environment files, authentication files, credential stores or a whole home
+or Gradle cache directory. No raw option values or absolute paths are serialized.
+The Kotlin adapter configures the supplied JDK through the public toolchain API.
+Keep the Java and Kotlin bytecode targets aligned explicitly when that toolchain differs
+from an Android variant's default; the JDK used to compile and the bytecode target are separate settings.
+Public KGP APIs are resolved through the selected task's classloader, including effective
+compiler arguments, so an isolated Kotlin plugin classloader is supported.
+
+The compiler's public destination provider is the artifact root. Android users must
+select the compiler task through their supported variant/build API and pass its
+actual destination provider to their capture invocation. PROJECT graph roots and
+ALL hierarchy inputs remain distinct. A transformed AGP JAR is not automatically
+attributed to an earlier compiler directory: an unmatched root remains unverified.
+Automatic variant/task/root capture belongs to the later CI automation goal.
+
+The compiler records inputs before its action, removes the previous witness before
+an attempted compile, and records matching post-action inputs and class outputs only
+on success. A public Gradle completion listener also removes evidence if a later task
+action or dependency fails; registered witnesses are invalidated at build completion
+when any task failed, including `--continue` builds. The witness is a declared compiler output, so a matching up-to-date
+execution or build-cache restoration can reuse it. A separate byte comparison is
+still required before accepting a snapshot. Javac custom launchers and unsupported
+options are rejected. File arguments from providers (such as `--system`) must also
+be declared Gradle file inputs; use declared compiler APIs.
+Kotlin records declared compiler artifact inputs and effective compiler arguments through the KGP public API; an
+unavailable artifact/property is an error, not a fabricated success record.
+Each compiler owns a dedicated witness output directory. The pending marker lives outside
+that directory, and only the completed JSON is a reusable build result.
+
+## Capture and compare
+
+After the compiler task succeeds, pass its returned witness file and destination
+provider values to the existing CLI. The example uses illustrative paths; it does
+not define any AGP output layout:
+
+```sh
+kartograph snapshot --project . --classes "$CLASS_OUTPUT" \
+  --scope sample:main --build-witness "$WITNESS_FILE" \
+  --source-root src/main/java --include-paths --timings > snapshot.json
+kartograph verify-snapshot --project . --graph-file snapshot.json --scope sample:main
+```
+
+Use the same project directory for registration and CLI capture. All supplied class,
+classpath, retention, source, build-config and witness file contents are captured
+before and after graph construction; changes abort capture. Source roots include
+Java/Kotlin filenames and bytes, so additions and deletions are visible. Full class
+roots include all output entries. `--classes` and `--classpath` may also be repeated
+on `verify-snapshot` to compare a newly supplied ordered input selection.
+
+External inputs (including the compiler/JDK artifact) appear as `external/...`
+slots. Bind each slot to a local file/directory with repeated
+`--input external/slot=/local/path`. Bindings are supplied at comparison time and are
+not serialized. Missing bindings fail comparison. Moving an equivalent checkout
+preserves project-relative identities and content digests. The document includes
+compiler kind, compiler task artifact identity and project/variant scope; changed
+witness files or a different requested scope fail comparison.
+Use repeated `--artifact :project:compileTask` and `--compiler javac|kotlin` to
+compare the intended compiler selection in witness order. Artifact identities come
+from Gradle task paths. Scope is the registration's explicit variant label; the
+producer does not infer a variant from a task name or a directory layout.
+
+`check-impact.py` runs comparison for the current snapshot and, when supplied,
+`--base-project` for the base checkout. It accepts repeated `--input` / `--base-input`
+bindings. Report-only mode writes freshness diagnostics and returns 0; `--strict`
+returns 1 for stale/unverified evidence as well as incomplete impact selection.
+Without a base checkout, base freshness is explicitly unverified. Tool/document
+failures remain exit 2 in either mode.
+
+## Evidence and cost
+
+`--timings` writes `captureHashNanos` to stderr separately from indexing/capture;
+`verify-snapshot` reports `hashNanos` separately from offline query time. These are
+wall-clock observations for the supplied inputs, not an incremental-build speedup
+claim. Compiler pre/post hashing is additional build cost, particularly for JDK
+modules and dependency JARs.
+
+Fingerprints provide integrity evidence and supported compiler lifecycle
+correspondence. They do not authenticate a malicious build producer, prove that a
+revision label describes an entire checkout, cover undeclared processor inputs, or
+prove arbitrary runtime completeness. Input consistency is compared at the recorded
+pre/post boundaries. Producer integration tests exercise real Gradle compiler tasks;
+unit witness fixtures alone are not evidence that a build ran.

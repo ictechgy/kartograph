@@ -49,6 +49,7 @@ distributions {
                 "PUBLIC-VALIDATION.md",
                 "IMPACT-PLAN.md",
                 "IMPACT.md",
+                "BUILD-PROVENANCE.md",
             )
             from(releaseDocumentation.map { document -> rootProject.file("docs/$document") }) {
                 into("docs")

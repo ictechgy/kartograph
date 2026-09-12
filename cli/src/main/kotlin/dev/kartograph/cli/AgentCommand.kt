@@ -131,7 +131,7 @@ internal object AgentCommand {
             setOf(
                 "--classes", "--project", "--manifest", "--resources", "--namespace",
                 "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes",
-            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact"),
+            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings"),
             error,
         )
             ?: return ExitStatus.USAGE.code
@@ -160,6 +160,18 @@ internal object AgentCommand {
         val limit = options.positiveInt("--limit", 50, error) ?: return ExitStatus.USAGE.code
         return try {
             val classpath = options.values("--classpath").map { resolveProjectPath(project, it) }
+            val keepScanner = KeepRuleScanner(project, options.values("--include-private-members").isNotEmpty())
+            val keepRules = keepScanner.scan(options.values("--keep-rules").map { resolveProjectPath(project, it) })
+            val fingerprintFiles = classRoots.map { "classes" to it } + classpath.map { "classpath" to it } +
+                listOf("--manifest", "--resources", "--service-resources", "--baseline", "--generated-classes", "--source-root", "--build-input").flatMap { option ->
+                    val role = when (option) { "--source-root" -> "sources"; "--build-input" -> "buildConfig"; else -> option.removePrefix("--") }
+                    options.values(option).map { role to resolveProjectPath(project, it) }
+                } + keepScanner.inputFiles.map { "keepRules" to it }
+            val context = listOf("--namespace", "--include-private-members", "--include-paths", "--scope").flatMap { listOf(it) + options.values(it) }
+            val witnessPaths = options.values("--build-witness").map { resolveProjectPath(project, it) }
+            val hashStarted = System.nanoTime()
+            val provenance = if (requested == null) FreshnessCommand.capture(project, fingerprintFiles, context, witnessPaths) else null
+            var captureHashNanos = System.nanoTime() - hashStarted
             val indexed = ClassFileIndexer().indexWithObservations(classRoots, classpath,
                 options.values("--service-resources").map { resolveProjectPath(project, it) },
                 options.values("--generated-classes").map(Path::of))
@@ -175,9 +187,6 @@ internal object AgentCommand {
                     addAll(AndroidXmlScanner(project).scan(resolveProjectPath(project, resources)))
                 }
             }
-            val keepRules = KeepRuleScanner(project, options.values("--include-private-members").isNotEmpty()).scan(
-                options.values("--keep-rules").map { resolveProjectPath(project, it) },
-            )
             val evidence = DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,
                 includePrivateMembers = options.values("--include-private-members").isNotEmpty())
             val baseline = options.single("--baseline")?.let { path ->
@@ -192,9 +201,13 @@ internal object AgentCommand {
                 val capturedGraph = if (paths == null) graph else dev.kartograph.core.CodeGraph(graph.nodes.values.map { node ->
                     paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
                 }, graph.edges, graph.externalCalls, graph.serviceProviders)
+                val rehashStarted = System.nanoTime()
+                require(provenance == FreshnessCommand.capture(project, fingerprintFiles, context, witnessPaths)) { "snapshot inputs changed during capture" }
+                captureHashNanos += System.nanoTime() - rehashStarted
+                if (options.values("--timings").isNotEmpty()) error.println("captureHashNanos=$captureHashNanos")
                 val captured = QuerySnapshotCodec.render(QuerySnapshot(capturedGraph, evidence, limitations + paths?.limitations.orEmpty(), suppressed,
                     options.values("--include-private-members").isNotEmpty(),
-                    revision = options.single("--revision"), scope = options.single("--scope")), compact = options.values("--compact").isNotEmpty())
+                    revision = options.single("--revision"), scope = options.single("--scope"), provenance = provenance), compact = options.values("--compact").isNotEmpty())
                 // JSON writer는 ASCII escape를 사용하므로 문자 수가 UTF-8 바이트 수와 같다.
                 if (captured.length > QuerySnapshotCodec.MAX_BYTES) {
                     error.println("error: query snapshot (${captured.length} bytes) exceeds 64 MiB; use --compact or capture a narrower input scope")
@@ -237,8 +250,11 @@ internal object AgentCommand {
         val limit = options.positiveInt("--limit", 50, error) ?: return ExitStatus.USAGE.code
         return try {
             val snapshot = SnapshotFiles.read(options.single("--graph-file")!!)
+            val provenanceLimitation = if (snapshot.provenance?.witnesses.isNullOrEmpty())
+                "build-provenance-unverified: no compiler-task evidence was captured"
+                else "build-provenance: captured compiler-task evidence has not been rechecked"
             val document = SymbolQuery.query(snapshot.graph, ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention),
-                requested, (snapshot.limitations + SAVED_GRAPH_LIMITATION).distinct().sorted(), depth, limit, snapshot.suppressed)
+                requested, (snapshot.limitations + SAVED_GRAPH_LIMITATION + provenanceLimitation).distinct().sorted(), depth, limit, snapshot.suppressed)
             output.print(AgentDocumentRenderer.query(document))
             if (document.status == "found") ExitStatus.SUCCESS.code else ExitStatus.USAGE.code
         } catch (_: InvalidPathException) {
@@ -287,7 +303,7 @@ internal object AgentCommand {
                 error.println("error: unknown option: $option")
                 return null
             }
-            if (option in setOf("--include-private-members", "--include-paths", "--compact")) {
+            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings")) {
                 values.getOrPut(option) { mutableListOf() } += "true"
                 index++
                 continue
@@ -344,6 +360,9 @@ internal object AgentCommand {
         --include-paths resolves source locations for `impact --file` and records unresolved path counts.
         --compact writes lossless v2 indexed graph rows and a string table; v1 remains the default.
         --revision <full-commit-hash> and --scope <project:variant> label CI artifacts for input matching.
+        --build-witness <file> attaches a successful supported Gradle compiler-task record (repeatable).
+        --source-root <directory> and --build-input <file> capture additional explicit source/config inputs.
+        --timings reports capture-only fingerprint time to stderr. verify-snapshot reports comparison time.
         These labels are caller assertions; the source freshness checks still apply.
         A snapshot records its input state; it does not prove that current sources or runtime behavior match.
         Ordinary `graph --format json` output does not contain the required retention context.

@@ -17,8 +17,13 @@ public class KeepRuleScanner @JvmOverloads constructor(
     private val projectRoot: Path,
     private val retainClassMembers: Boolean = false,
 ) {
+    /** 재귀 include까지 실제 읽은 입력이다. 빈 규칙 파일도 내용 신선도에 포함한다. */
+    public val inputFiles: Set<Path> get() = observedFiles.toSet()
+    private val observedFiles = linkedSetOf<Path>()
+
     /** 모든 파일을 입력 순서로 읽되 불완전하게 해석할 keep 문법에서는 실패한다. */
     public fun scan(ruleFiles: Iterable<Path>): List<KeepRule> {
+        observedFiles.clear()
         val realProjectRoot = resolveProjectRoot()
         val visited = mutableSetOf<Path>()
         return buildList {
@@ -41,6 +46,7 @@ public class KeepRuleScanner @JvmOverloads constructor(
         active: MutableSet<Path>,
     ): List<KeepRule> {
         if (!visited.add(ruleFile)) return emptyList()
+        observedFiles.add(ruleFile)
         active.add(ruleFile)
         val sourcePath = scope.display(ruleFile)
         val lines = try {
