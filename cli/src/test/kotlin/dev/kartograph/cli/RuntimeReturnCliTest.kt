@@ -54,16 +54,24 @@ class RuntimeReturnCliTest {
     }
 
     @Test
-    fun `unknown return branches and mutable field reads remain unknown`(@TempDir root: Path) {
+    fun `mutable String field returns retain observed candidates and unknown possibilities`(@TempDir root: Path) {
         compile(root, """
-            public static class Used {}
+            public static boolean observed;
+            public static class Used {static {observed=true;}}
+            public static class Unused {}
             static String mutable="probe.Entry${'$'}Used";
             static String name(){ if(System.nanoTime() == 0) return "probe.Entry${'$'}Used"; return mutable; }
             public static void main(String[] args) throws Exception { Class.forName(name()); }
         """)
+        URLClassLoader(arrayOf(root.resolve("classes").toUri().toURL())).use { loader ->
+            val entry = loader.loadClass("probe.Entry")
+            entry.getMethod("main", Array<String>::class.java).invoke(null, emptyArray<String>())
+            assertEquals(true, entry.getField("observed").get(null))
+        }
         val result = query(root, "Used")
         assertContains(result, "reflection-strings:")
-        assertContains(result, "\"state\": \"unreachable\"")
+        assertContains(result, "\"state\": \"reachable\"")
+        assertContains(query(root, "Unused"), "\"state\": \"unreachable\"")
     }
 
     @Test

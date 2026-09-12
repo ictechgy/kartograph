@@ -17,7 +17,7 @@ def main():
     cases = {
         "direct_call": (True, True), "callback_registered": (True, True),
         "callback_unregistered": (False, True), "factory_name": (True, True),
-        "reflective_method": (True, True), "reflective_field": (True, False),
+        "reflective_method": (True, True), "reflective_field": (True, True),
     }
     rows = []
     def run(command, expected=0):
@@ -48,17 +48,24 @@ def main():
             found = [item for item in documents["Used"]["affected"] if item["usr"] == caller]
             if bool(found) != linked or any(item["usr"] == caller for item in documents["Unused"]["affected"]):
                 raise RuntimeError("impact lost its runtime caller or connected an unused control")
-            if not linked and not any("reflective-construction:" in text for text in documents["Used"]["limitations"]):
+            if case == "reflective_field" and not any("reflective-construction:" in text for text in documents["Used"]["limitations"]):
                 raise RuntimeError("unmodeled runtime path lost its measured limitation")
+            if case == "reflective_field" and not any(
+                path["nodes"][0] == caller and
+                "method:probe/Entry$Target#<init>()V" in path["nodes"] and
+                path["nodes"][-1] == "class:probe/Entry$Used"
+                for item in found for path in item["paths"]
+            ):
+                raise RuntimeError("reflective field impact lost the target constructor path")
             origins = sorted({edge["origin"] for item in found for path in item["paths"] for edge in path["edges"]})
-            if case in ("factory_name", "reflective_method") and "runtimeModel" not in origins:
+            if case in ("factory_name", "reflective_method", "reflective_field") and "runtimeModel" not in origins:
                 raise RuntimeError("runtime dependency lost its modeled origin")
             rows.append({"case": case, "runtimeUsed": observed, "mainInImpact": bool(found), "origins": origins,
                 "unusedControlConnected": False, "captureSeconds": capture,
-                "unmodeledPathDisclosed": linked or any("reflective-construction:" in x for x in documents["Used"]["limitations"])})
+                "unmodeledPathDisclosed": case != "reflective_field" or any("reflective-construction:" in x for x in documents["Used"]["limitations"])})
     output = ROOT / "build/reports/impact-runtime.json"
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps({"cases": rows, "interpretation": "Observed use is a lower bound. Unregistered callbacks remain potential dependencies; unknown reflective field values remain disclosed limitations."}, indent=2) + "\n")
+    output.write_text(json.dumps({"cases": rows, "interpretation": "Observed use is a lower bound. Unregistered callbacks remain potential dependencies. Static field Class candidates restore observed paths; initialization order and unknown or external writes remain disclosed limitations."}, indent=2) + "\n")
     print("Impact runtime contracts verified:", len(rows), "executed cases with unused controls")
 
 

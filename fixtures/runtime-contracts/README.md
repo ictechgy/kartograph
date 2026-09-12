@@ -21,5 +21,7 @@ keep 규칙은 `Entry`만 진입점으로 보존한다. 중첩 `Used`는 호출�
 검사하며 이름이 다른 `Unused`는 모든 사례에서 query `unreachable`이고 R8 결과에서 제거되어야 한다.
 
 후속 API 모델 보강으로 `reflective_method`의 kartograph 기대값은 `reachable`로 갱신했다.
-static 반환값 분석 보강으로 `factory_name`도 `reachable`로 갱신했다. field가 반환하는 값은 여전히 미해결 경계다.
+static 반환값 분석 보강으로 `factory_name`도 `reachable`로 갱신했다. 이어 static field의 알려진 값 후보를
+복원하면서 원본 `reflective_field` 실행·영향 경로 검증에 따라 해당 기대값도 `reachable`로 갱신했다.
+미사용 대조군과 R8 기대값은 유지한다. 필드의 알려진 후보가 있어도 외부 쓰기·초기화 순서의 미해결 가능성은 남긴다.
 현재 R8과 별도 helper·Kotlin·overload 대조는 [반환값 비교 실험](../../experiments/runtime-returns/README.md)에 있다.

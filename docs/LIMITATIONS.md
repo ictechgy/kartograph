@@ -36,11 +36,11 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   추적해 프로젝트 class로 연결한다. 알려진 class의 reflection 생성자는 인자 개수에 맞는 후보를 연결한다.
   프로젝트의 정확한 JVM static 호출에서는 불변 인자와 String/Class 반환값을 helper 사이에서도 전파한다.
   반환 경로가 unknown을 포함하면 일부 상수만으로 해석 완료를 주장하지 않는다. virtual/interface 호출의 반환값,
-  dependency 본문, mutable field 값, 임의 계산과 동적 component 등록은 완전하게 해석하지 않는다.
+  dependency 본문, 임의 계산과 동적 component 등록은 완전하게 해석하지 않는다.
   값 집합은 16개·문자열은 4096자, 메서드는 명령 20,000개·frame slot 250,000개로 제한한다. 반환값 분석은
   runtime 메서드별 호출 깊이 8·문맥 128개·누적 frame slot 1,000,000개로 추가 제한하며 재귀·한도 초과는
   `runtime-analysis-limits`와 미해결 호출 개수로 남긴다. 알려진 method 이름·인자 개수와 field 이름의
-  reflection 접근은 연결하되, field에서 읽은 값이나 호출 반환값을 일반적으로 추적하지 않는다.
+  reflection 접근은 연결한다. static field의 String/Class 후보는 아래의 may-write 범위로 복원하며, 일반 객체 상태나 reflection 호출 반환값은 추적하지 않는다.
 - JNI, native lookup, framework callback과 serialization/DI codegen은 bytecode만으로 완전하게 증명할 수 없다.
 - Compose multipreview는 프로젝트 또는 전달된 dependency classpath의 어노테이션 선언에서 `@Preview`와 반복
   컨테이너로 이어지는 경로를 따라간다. 어노테이션 이름만으로 보존하지 않는다. 새 multipreview 경로는 해당
@@ -156,9 +156,33 @@ JDK API 모델은 owner·이름·descriptor·static 여부를 확인하고 해�
 `Class.getMethod/getDeclaredMethod`와 `Method.invoke`는 알려진 이름·인자 개수의 프로젝트 method 후보를 연결한다.
 같은 개수의 overload는 보수적으로 포함하며 선언 밖의 override·실제 receiver까지 완전하게 구분하지 않는다.
 `Class.getField/getDeclaredField`의 이름을 `Field.get/set` 및 primitive 변형까지 전달한다. public lookup은 상속된
-선언도 포함하고 declared lookup은 해당 owner만 검색한다. 알려지지 않은 이름은 method/field별 호출 개수로 알린다.
+선언을 찾되 일치하는 선언에서 멈춰 숨겨진 부모 field를 섞지 않는다. 입력 class의 public 선언·interface·superclass 순서로 찾고 declared lookup은 해당 owner만 검색한다. dependency header의 상속 경로도 따르지만 그 header의 field 선언·숨김은 수입하지 않으므로 경계 밖에서는 조상 후보를 보수적으로 포함할 수 있다. 알려지지 않은 이름은 method/field별 호출 개수로 알린다.
 프로젝트 static helper의 String/Class 반환값은 제한적으로 추적하지만 외부 선언의 구현·reflection 메서드 반환값·
 field 값의 일반적 흐름은 여전히 미해결일 수 있다.
+
+static field는 실제 `PUTSTATIC`과 알려진 `Field.set`의 stack 값에서 String/Class 후보를 수집한다. 직접 `GETSTATIC`과
+`Field.get`은 같은 field lookup을 사용한다. mutable 필드도 대상으로 하며 선언된 타입만으로 값을 만들지 않는다.
+대입 명령이 없는 static String 상수는 classfile `ConstantValue` 속성을 읽으며 같은 4096자 한도를 적용한다.
+별도 helper의 write·여러 write·분기 후보를 합치되, 실행 순서나 마지막 write를 단정하지 않는 may-write 분석이다.
+알려진 후보의 `runtimeModel` 간선을 생성해도 초기화 전 기본값, initializer 순환/재진입, unknown 대입, 공개 field나
+외부로 전달한 reflection handle의 변경 가능성이 남는다. 따라서 field에서 유래한 class 로딩·생성 호출은 후보가 있어도
+`reflection-strings`·`reflective-construction` 등의 미해결 개수를 유지한다. 이는 final field에도 적용하는 보수적 한계이며 완전한 값 해석을 뜻하지 않는다.
+알려진 필드에 대한 알려진 reflective write는 후보에 포함하지만, unknown lookup·외부/JNI/MethodHandle write의 값,
+인자를 따라가는 void helper write와 instance field/heap 상태는 복원하지 않는다. 문자열 원문은 보고서에 추가하지 않는다.
+순환 read는 unknown으로 끊고 그 결과에 의존한 field/helper 요약은 다른 read를 위해 캐시하지 않는다.
+field의 String/Class 후보를 각각 16개·깊이 8·writer 분석 128회·누적 frame slot 1,000,000개로 runtime 메서드별로 제한한다.
+직접 writer를 한 번 인덱싱해 무관한 field의 쓰기는 예산을 소비하지 않는다. 알려진 reflective setter는 실제 조회 대상이
+정해질 때까지 후보 writer로 분석한다. 이름이 literal에 한정되면 다른 field의 setter를 제외하며, field/문자열 계산에서
+이름이 올 수 있으면 후보를 유지한다. 호출·반환·선택한 write의 입력을 역방향으로 조사해 소비되지 않는 field 값은
+해석하지 않는다. `Object`에 담긴 String/Class도 소비 경로가 있으면 분석한다. 이 의존 수집은 명령당 producer 64개와
+method당 의존 간선 100,000개로 제한하며 불완전하면 기존 전체 값 분석으로 되돌아가 후보를 임의로 버리지 않는다.
+개별 메서드 예산은 위와 같으며 field writer의 helper들은 별도의 반환값 예산
+(깊이 8·문맥 128·frame slot 1,000,000)을 공유한다. 호출자에서 직접 분석하는 helper 예산과는 독립적이다.
+write 값에 영향을 준 한도는 부분 요약을 버리고 `runtime-analysis-limits`를 남긴다. 후보 집합이 한도를 넘은 상태는
+합류 때 다시 알려진 후보로 되돌아가지 않게 해 반복문 분석이 수렴하도록 한다.
+실제 javac/Kotlin 테스트는 상속/숨김·여러/unknown write·reflective get/set·외부 handle escape·초기화 재진입·한도 초과와
+unused control을 확인한다. `reflective_field` 실행 표본의 mutable 초기화는 바꾸지 않았으며 JVM 실행과 역방향 impact의
+`main → Target 생성자 → Used` 경로를 함께 확인한다. 이는 임의 런타임 경로의 완전성 증거는 아니다.
 
 이는 NullAway의 라이브러리 모델 분리와 GraalVM의 조건부 metadata 설계를 참고한 호출별 모델이다. GraalVM
 `typeReached` JSON을 Android에 그대로 import하거나 JVM agent의 관측 부재를 미사용 증거로 취급하지 않는다.

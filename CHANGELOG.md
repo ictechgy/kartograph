@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- static field의 String/Class 초기값·재대입·reflection get/set에서 알려진 런타임 후보를 복원한다.
+  필드의 불확실성을 유지하며, classfile String 상수·상속/숨김·분석 한도와 Java/Kotlin 실행 대조를 검증한다.
 - 프로젝트와 dependency에 정의된 반복·중첩 Compose multipreview 어노테이션을 보존 근거로 연결한다.
 - JAR의 2초 시각 정밀도 안에서 발생한 차이는 stale로 단정하지 않고 freshness unknown으로 표시한다.
 
