@@ -22,6 +22,9 @@ configurations.named("compileClasspath") {
 configurations.named("runtimeClasspath") {
     extendsFrom(embedded)
 }
+configurations.named("testCompileClasspath") {
+    extendsFrom(embedded)
+}
 configurations.named("testRuntimeClasspath") {
     extendsFrom(embedded)
 }

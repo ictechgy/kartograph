@@ -21,6 +21,13 @@ Preserve any `--generated-classes` markers: they identify supplied roots contain
 
 For repeated investigation, `kartograph snapshot <the same live-input options>` writes a versioned graph with retention evidence, baseline state and measured limitations. Query it with `kartograph query '<symbol-or-usr>' --graph-file <snapshot.json>`. Ordinary `graph --format json` output lacks this query context. Saved queries use the captured state, add a `saved-graph` limitation, and do not recheck source freshness. Recapture after authorized changes before drawing conclusions about the current build. Live-input options cannot be mixed with `--graph-file`.
 
+For a current-build check, attach the successful registered compiler task's file with `snapshot --build-witness <file>`
+and include the matching `--source-root` / `--build-input` inputs. Run
+`kartograph verify-snapshot --graph-file snapshot.json --project <root>` with the required `--input external/slot=<path>`
+bindings. `matched` confirms recorded file contents and compiler lifecycle evidence; `stale` or `unverified` cannot support
+a current-build claim. Preserve the reason list, and rebuild/recapture only within the authorized task. A commit label alone
+is not compiler evidence, and matching evidence is not runtime completeness or authentication of a malicious producer.
+
 ## Read the actual document
 
 - Check top-level `status` and `limitations` first. For `ambiguous`, use an explicit candidate `usr`; never choose by display name. `notFound` is missing evidence, not an unused result; retain its limitations.
@@ -38,6 +45,9 @@ For a committed change, provide `--base-graph base.json` and repeat `--file <pro
 The CI helper `Scripts/check-impact.py` obtains both old and new paths for renames/deletions from Git and requires
 snapshot `--revision <full-commit-hash>` labels to match the commits. Use the same `--scope <project:variant>` when capturing.
 Labels identify the intended inputs; freshness limitations still need review.
+The helper compares current input contents and can verify the base with `--base-project`; without that checkout the base is
+unverified. Read `freshness` with the impact report. Report-only mode retains these diagnostics, while `--strict` fails on
+stale/unverified evidence. Pass external bindings separately for base and current inputs.
 
 Read `changed`, `affected`, `unresolved`, `truncated` and `limitations` together. Each affected declaration has `paths.nodes`
 ordered from the dependent toward the changed declaration. `edges` preserve original graph endpoints; `traversal` marks

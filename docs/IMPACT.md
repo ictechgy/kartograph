@@ -29,6 +29,9 @@ manifest/XML/keep 파일은 snapshot의 보존 근거 위치와 일치하는 선
 base와 current checkout을 **같은 CLI 빌드·입력 범위·variant**로 빌드해 snapshot을 만든다.
 각 capture에 `--revision <git rev-parse HEAD의 전체 값> --scope <프로젝트:variant>`를 전달한다.
 라벨은 호출자의 선언이며 class/source 내용 지문이나 빌드 신선도 증명이 아니다. 분석 한계를 함께 확인한다.
+현재 빌드와의 대응을 검증하려면 [compiler producer](BUILD-PROVENANCE.md)의 증거를 `--build-witness`로 붙이고
+`verify-snapshot`을 실행한다. producer 입력·출력과 현재 바이트가 맞아야 `matched`가 되며, 증거 없는 snapshot은
+`unverified`다. 동일 크기·시각으로 바뀐 파일도 내용 지문으로 비교한다.
 
 ```sh
 # 각 checkout에서 빌드가 끝난 후 snapshot 생성. 실제 root와 추가 입력은 해당 프로젝트의 것을 사용한다.
@@ -46,6 +49,8 @@ snapshot 라벨과 실제 비교 commit, 두 scope, analyzer version이 다르�
 snapshot 파일 자체는 Git 밖의 CI artifact/cache로 관리하며 기존 미사용 baseline과 별개다.
 helper 기본 모드는 보고용이다. 문서·설정 등 매핑되지 않은 파일도 `unresolved`에 남기되 유효한 보고서를 만들면 0을 반환한다.
 확장자만으로 파일을 자동 무시하지 않는다. `--strict`는 선택/탐색이 partial/notFound일 때 종료 코드 1을 준다.
+신선도도 `freshness`에 보고하며 `--strict`는 stale/unverified 증거에 1을 반환한다. 기준 snapshot의 파일도 검사하려면
+`--base-project`를 제공한다. 외부 입력은 `--input` / `--base-input`으로 각각 연결하며 기준 checkout이 없으면 기준은 미검증이다.
 큰 변경은 `--limit`을 높여 출력 잘림을 줄일 수 있다. 모든 런타임 경로의 완전성을 보장하는 모드는 아니다.
 
 직접 `impact` CLI의 종료 코드는 정상 보고 0, 읽기/입력 문맥/도구 실패 2, 모호한 심볼·매핑할 수 없는 선택/사용 오류 64다.

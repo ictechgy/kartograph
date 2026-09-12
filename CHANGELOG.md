@@ -8,6 +8,8 @@
 
 ### Added
 
+- compiler task의 source/class/config/classpath 지문을 snapshot에 연결하고 `verify-snapshot`과 CI helper에서
+  내용 일치·stale·미검증 상태를 구분한다. Java/Kotlin producer의 실패·캐시·경로 이동과 Android 입력을 검증한다.
 - `impact`: 수정 예정 심볼/파일의 직접·간접 영향 후보를 시점별 경로·간선 출처와 함께 보고한다.
   base/current snapshot, 삭제·rename 경로, interface override 계약, CI helper와 에이전트 스킬을 연결한다.
 - `snapshot --include-paths --revision --scope`와 lossless `--compact` v2. 기존 v1/query 필드 호환성을 유지한다.
