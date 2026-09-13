@@ -52,7 +52,10 @@ class AndroidSnapshotIntegrationTest {
                     targetCompatibility JavaVersion.VERSION_17
                 }
             }
-            kotlin { jvmToolchain(${Runtime.version().feature()}) }
+            kotlin {
+                jvmToolchain(${Runtime.version().feature()})
+                compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 }
+            }
             kartograph {
                 snapshotsEnabled = true
                 includeSourcePaths = true
