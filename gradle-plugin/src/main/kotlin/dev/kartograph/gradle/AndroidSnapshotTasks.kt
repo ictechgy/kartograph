@@ -42,6 +42,7 @@ internal object AndroidSnapshotTasks {
             snapshot.buildInputFiles.from(buildInputs)
             snapshot.buildFileWatches.from(configuration.watchedFiles)
             snapshot.buildDirectoryWatches.from(configuration.watchedDirectories)
+            snapshot.buildLogicWatches.from(configuration.buildLogicRoots)
             snapshot.testJars.convention(emptyList())
             snapshot.testDirectories.convention(emptyList())
             snapshot.testClasspathJars.convention(emptyList())

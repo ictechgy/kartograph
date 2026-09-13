@@ -14,6 +14,51 @@ import org.junit.jupiter.api.io.TempDir
 
 class JvmSnapshotBuildInputsIntegrationTest {
     @Test
+    fun `included convention subproject sources invalidate captured options`(@TempDir root: Path) {
+        fun write(path: String, content: String) {
+            val file = root.resolve(path)
+            Files.createDirectories(file.parent)
+            Files.writeString(file, content)
+        }
+        write("settings.gradle", "pluginManagement { includeBuild('build-logic') }\nrootProject.name='nested-conventions'\n")
+        write("build-logic/settings.gradle", "rootProject.name='build-logic'\ninclude 'convention'\n")
+        write("build-logic/convention/build.gradle", """
+            plugins { id 'java-gradle-plugin' }
+            gradlePlugin { plugins { fixture { id='sample.convention'; implementationClass='sample.Convention' } } }
+        """.trimIndent())
+        val convention = "build-logic/convention/src/main/java/sample/Convention.java"
+        write(convention, """
+            package sample;
+            public class Convention implements org.gradle.api.Plugin<org.gradle.api.Project> {
+                public void apply(org.gradle.api.Project project) {
+                    Object extension = project.getExtensions().getByName("kartograph");
+                    try {
+                        org.gradle.api.provider.Property<Boolean> property = (org.gradle.api.provider.Property<Boolean>) extension.getClass().getMethod("getIncludePrivateMembers").invoke(extension);
+                        property.set(false);
+                    } catch (ReflectiveOperationException error) { throw new IllegalStateException(error); }
+                }
+            }
+        """.trimIndent())
+        write("build.gradle", """
+            plugins { id 'java'; id 'io.github.ictechgy.kartograph'; id 'sample.convention' }
+            kartograph { snapshotsEnabled=true }
+        """.trimIndent())
+        write("src/main/java/p/Entry.java", "package p; public class Entry { private void hidden() {} }")
+        fun capture() = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+            .withArguments("kartographSnapshot", "--offline", "--configuration-cache", "--stacktrace").build()
+        capture()
+        val graph = root.resolve("build/reports/kartograph/jvm-snapshot.json")
+        val snapshot = QuerySnapshotCodec.parse(Files.readString(graph))
+        val bindings = ExternalInputBindingsCodec.parse(Files.readString(root.resolve("build/kartograph/jvm-input-bindings.json")))
+            .mapValues { Path.of(it.value) }
+        assertEquals("matched", ProvenanceVerifier.verify(snapshot.provenance, root, snapshot.scope, bindings).status)
+        write(convention, Files.readString(root.resolve(convention)).replace("property.set(false)", "property.set(true)"))
+        assertEquals("stale", ProvenanceVerifier.verify(snapshot.provenance, root, snapshot.scope, bindings).status)
+        capture()
+        assertTrue(QuerySnapshotCodec.parse(Files.readString(graph)).includePrivateMembers)
+    }
+
+    @Test
     fun `subproject snapshot binds root configuration and detects its change`(@TempDir root: Path) {
         Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'snapshot-build-inputs'\ninclude 'app'\n")
         val build = root.resolve("build.gradle")

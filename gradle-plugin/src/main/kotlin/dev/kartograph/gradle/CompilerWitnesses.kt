@@ -123,11 +123,10 @@ public abstract class FailedWitness : org.gradle.api.services.BuildService<Faile
     override fun onFinish(event: org.gradle.tooling.events.FinishEvent) {
         if (event is org.gradle.tooling.events.task.TaskFinishEvent && event.result is org.gradle.tooling.events.task.TaskFailureResult) {
             failed = true
-            Files.deleteIfExists(parameters.witness.get().asFile.toPath())
         }
     }
     override fun close() {
-        // --continue에서 다른 task가 뒤늦게 성공해도 실패한 build가 증거를 남기지 않는다.
+        // 다른 task의 output/cache 기록 도중에는 파일을 지우지 않는다. build 종료에 실패 증거를 무효화한다.
         if (failed) Files.deleteIfExists(parameters.witness.get().asFile.toPath())
     }
 }
@@ -136,8 +135,11 @@ internal abstract class WitnessEvents @javax.inject.Inject constructor(val regis
 
 internal class MatchingWitness(private val spec: WitnessSpec) : Spec<Task>, Serializable {
     override fun isSatisfiedBy(task: Task): Boolean = try {
-        // output이 없으면 Gradle의 정상 cache 복원을 허용한다. 복원 문서도 소비 시 내용 검증한다.
-        if (!spec.witness.get().asFile.exists()) true else {
+        // 전체 output 부재는 cache 복원을 허용하지만, 비어 있는 기록은 UP-TO-DATE 근거가 아니다.
+        if (!spec.witness.get().asFile.exists()) {
+            !Files.exists(spec.witness.get().asFile.toPath().parent) ||
+                spec.automaticSourceInventory && WitnessRejection.read(spec.rejection()) != null
+        } else {
             val witness = BuildWitnessCodec.parse(Files.readString(spec.witness.get().asFile.toPath()))
             val inputs = spec.observe(task)
             witness.scope == spec.scope && witness.compiler == spec.kind && witness.artifact == spec.taskIdentity &&

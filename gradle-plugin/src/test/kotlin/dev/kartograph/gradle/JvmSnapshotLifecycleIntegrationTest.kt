@@ -17,6 +17,33 @@ import org.junit.jupiter.api.io.TempDir
 
 class JvmSnapshotLifecycleIntegrationTest {
     @Test
+    fun `empty witness output history cannot keep compilation up to date`(@TempDir root: Path) {
+        fixture(root)
+        val build = root.resolve("build.gradle")
+        Files.writeString(build, Files.readString(build) + """
+
+            def eraseWitness = layout.projectDirectory.file('erase-witness')
+            def witnessOutput = layout.buildDirectory.file('kartograph/witnesses/compileJava/witness.json')
+            afterEvaluate {
+                tasks.named('compileJava') {
+                    doLast { if (eraseWitness.asFile.exists()) witnessOutput.get().asFile.delete() }
+                }
+            }
+        """.trimIndent())
+        val marker = root.resolve("erase-witness")
+        Files.writeString(marker, "simulate a witness removed before output history is recorded")
+        GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+            .withArguments("compileJava", "--offline", "--configuration-cache", "--stacktrace").build()
+        val witness = root.resolve("build/kartograph/witnesses/compileJava/witness.json")
+        assertFalse(Files.exists(witness))
+        assertTrue(Files.isDirectory(witness.parent))
+        Files.delete(marker)
+        val recovered = runner(root).build()
+        assertEquals(TaskOutcome.SUCCESS, recovered.task(":compileJava")!!.outcome)
+        assertEquals("matched", verify(root, snapshot(root)).status)
+    }
+
+    @Test
     fun `generated sources and test fixture artifacts survive cache relocation`(@TempDir root: Path) {
         val first = root.resolve("first")
         fixture(first)

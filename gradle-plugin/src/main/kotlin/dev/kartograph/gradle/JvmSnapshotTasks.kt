@@ -47,6 +47,7 @@ internal object JvmSnapshotTasks {
             task.buildInputFiles.from(buildInputs)
             task.buildFileWatches.from(configuration.watchedFiles)
             task.buildDirectoryWatches.from(configuration.watchedDirectories)
+            task.buildLogicWatches.from(configuration.buildLogicRoots)
             compilers.forEach { (compiler, witness) ->
                 val compilation = project.objects.newInstance(SnapshotCompilation::class.java)
                 compilation.identity.set(compiler.map { it.path })

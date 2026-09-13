@@ -74,6 +74,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     public abstract val buildDirectoryWatches: ConfigurableFileCollection
 
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val buildLogicWatches: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val buildWitnessFiles: ConfigurableFileCollection
 
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -167,6 +170,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             buildInputFiles.files.map { "buildConfig" to it.toPath() } +
             buildFileWatches.files.map { "file-watch" to it.toPath() } +
             buildDirectoryWatches.files.map { "directory-watch" to it.toPath() } +
+            buildLogicWatches.files.map { "build-logic-watch" to it.toPath() } +
             scanner.inputFiles.map { "keepRules" to it } + witnessPaths.map { "witness" to it } +
             listOfNotNull(baselineFile.orNull?.asFile?.toPath()?.let { "baseline" to it },
                 manifestFile.orNull?.asFile?.toPath()?.let { "manifest" to it }) +

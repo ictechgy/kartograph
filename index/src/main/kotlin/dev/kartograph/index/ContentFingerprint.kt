@@ -39,6 +39,15 @@ public object ContentFingerprint {
 
     /** watch 역할만 선언된 파일·디렉터리의 부재를 추적한다. 필수 입력의 누락은 계속 오류다. */
     public fun hashInput(path: Path, role: String): String {
+        if (role == "build-logic-watch") {
+            val digest = MessageDigest.getInstance("SHA-256")
+            put(digest, "directory")
+            BuildLogicInputs.files(path).forEach { file ->
+                put(digest, path.relativize(file).toString().replace('\\', '/'))
+                put(digest, fileDigest(file))
+            }
+            return digest.digest().hex()
+        }
         if (role == "file-watch") {
             if (Files.notExists(path, NOFOLLOW_LINKS)) return values(listOf("missing-file"))
             require(Files.isRegularFile(path, NOFOLLOW_LINKS)) { "watched input must be a regular file" }
@@ -57,7 +66,7 @@ public object ContentFingerprint {
     public fun capture(project: Path, path: Path, role: String, externalSlot: String): InputFingerprint {
         val digest = hashInput(path, role)
         val root = project.toRealPath()
-        val absolute = if (role in setOf("source-watch", "directory-watch", "file-watch") && Files.notExists(path, NOFOLLOW_LINKS)) {
+        val absolute = if (role in setOf("source-watch", "directory-watch", "file-watch", "build-logic-watch") && Files.notExists(path, NOFOLLOW_LINKS)) {
             path.toFile().canonicalFile.toPath()
         } else path.toRealPath()
         val identity = if (absolute.startsWith(root)) root.relativize(absolute).toString().replace('\\', '/').ifEmpty { "." }
