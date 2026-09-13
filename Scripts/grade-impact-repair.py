@@ -151,8 +151,12 @@ def _is_test_path(value: str) -> bool:
     parts = value.lower().split("/")
     if any(part in _TEST_PARTS for part in parts):
         return True
-    stem = Path(parts[-1]).stem
-    return stem.startswith("test") or stem.endswith("test") or stem.endswith("tests")
+    stem = Path(value.split("/")[-1]).stem
+    return bool(
+        re.search(r"(?:Test|Tests)$", stem)
+        or re.match(r"^Tests?(?=[A-Z0-9_]|$)", stem)
+        or re.search(r"(?i)(?:^tests?(?:[._-]|$)|[._-]tests?$)", stem)
+    )
 
 
 def _is_build_path(value: str) -> bool:

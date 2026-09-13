@@ -1,0 +1,8 @@
+{
+  "trials": 24,
+  "sourcePathObservations": 31156,
+  "inventoryChanges": 0,
+  "modifiedPathChanges": 0,
+  "scope": "Stored read inventories and actual modified paths of all24 final v2 trials, including checksum-verified reused Java trials. No score or model outcome is recomputed.",
+  "conclusion": "No recorded inventory or modified-path classification changes; existing reported scores are unchanged. Future production filenames Contest/Latest/fastest/Testament are no longer incorrectly excluded."
+}
