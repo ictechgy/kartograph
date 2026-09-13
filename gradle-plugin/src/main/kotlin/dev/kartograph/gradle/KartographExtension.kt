@@ -15,6 +15,9 @@ public abstract class KartographExtension {
     /** Kotlin snapshot compiler에 명시적으로 적용할 toolchain이다. 공개 KGP 인자에는 설치 경로가 노출되지 않는다. */
     public abstract val snapshotKotlinToolchain: Property<org.gradle.jvm.toolchain.JavaLauncher>
 
+    /** 관례 경로 밖의 applied script·convention source·설정 파일을 명시적으로 fingerprint에 포함한다. */
+    public abstract val snapshotBuildInputs: ConfigurableFileCollection
+
     /** 기존 class 보고를 유지하면서 private member 진단을 선택적으로 추가한다. */
     public abstract val includePrivateMembers: Property<Boolean>
 

@@ -68,6 +68,12 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     public abstract val buildInputFiles: ConfigurableFileCollection
 
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val buildFileWatches: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val buildDirectoryWatches: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val buildWitnessFiles: ConfigurableFileCollection
 
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -130,7 +136,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val compiledOutputs = compilations.get().filter { !it.primarySources.isEmpty }.map { compilation ->
             val identity = compilation.identity.get()
             val paths = compilation.witnessFiles.files
-            require(paths.size == 1 && paths.single().isFile) { "missing compiler witness for $identity; rebuild the selected compilation" }
+            require(paths.size == 1 && paths.single().isFile) {
+                "missing compiler witness for $identity: ${WitnessRejection.describe(compilation.rejectionFiles.get())}; rebuild the selected compilation"
+            }
             val witness = witnesses.singleOrNull { it.artifact == identity && it.compiler == compilation.compiler.get() }
             require(witness != null) { "compiler witness identity does not match $identity" }
             val outputs = compilation.classDirectories.files.map { it.canonicalFile }
@@ -157,6 +165,8 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             sourceDirectories.files.map { "source-watch" to it.toPath() } +
             resourceDirectories.files.map { "directory-watch" to it.toPath() } +
             buildInputFiles.files.map { "buildConfig" to it.toPath() } +
+            buildFileWatches.files.map { "file-watch" to it.toPath() } +
+            buildDirectoryWatches.files.map { "directory-watch" to it.toPath() } +
             scanner.inputFiles.map { "keepRules" to it } + witnessPaths.map { "witness" to it } +
             listOfNotNull(baselineFile.orNull?.asFile?.toPath()?.let { "baseline" to it },
                 manifestFile.orNull?.asFile?.toPath()?.let { "manifest" to it }) +
@@ -240,7 +250,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     } else path.fileName.toString().endsWith(".jar")
 
     private fun bindCompilerInputs(provenance: SnapshotProvenance, bindings: MutableMap<String, Path>) {
-        val candidates = (compilerInputFiles.files + dependencyClasspath.files + classRoots.files + sourceFiles.files)
+        val candidates = (compilerInputFiles.files + dependencyClasspath.files + classRoots.files + sourceFiles.files + buildInputFiles.files)
             .filter { it.exists() }.map { it.canonicalFile.toPath() }.distinct()
         val hashes = mutableMapOf<Pair<Path, Boolean>, String>()
         provenance.witnesses.flatMap { it.inputs + it.outputs + it.compilerEvidence }

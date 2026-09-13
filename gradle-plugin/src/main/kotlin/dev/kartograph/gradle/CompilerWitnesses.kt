@@ -211,6 +211,25 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
 
     fun pending(): Path = witness.get().asFile.toPath().parent.parent.resolve("$artifact.pending")
 
+    fun rejection(): Path = witness.get().asFile.toPath().parent.resolve(WitnessRejection.FILE_NAME)
+
+    /** 자동 수집의 미지원 관측은 컴파일 성공과 분리한다. 명시적 수동 producer 계약은 계속 실패한다. */
+    fun capture(task: Task, action: () -> Unit) {
+        try { action() }
+        catch (error: IllegalArgumentException) { reject(task, error) }
+        catch (error: java.io.IOException) { reject(task, error) }
+    }
+
+    private fun reject(task: Task, error: Exception) {
+        if (!automaticSourceInventory) throw error
+        Files.deleteIfExists(witness.get().asFile.toPath())
+        Files.deleteIfExists(pending())
+        val reason = WitnessRejection.from(error)
+        Files.createDirectories(rejection().parent)
+        Files.writeString(rejection(), reason.name)
+        task.logger.warn("kartograph $taskIdentity: ${reason.description}; snapshot capture requires supported compiler inputs")
+    }
+
     fun evidenceDirectory(): Path = witness.get().asFile.toPath().parent.parent.parent.resolve("compiler-evidence").resolve(artifact)
 
     fun token(inputs: List<InputFingerprint>): String = CompilerEvidenceToken.create(scope, kind, taskIdentity, inputs)
@@ -275,9 +294,10 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
 }
 
 internal class BeginWitness(private val spec: WitnessSpec) : Action<Task>, Serializable {
-    override fun execute(task: Task) {
+    override fun execute(task: Task) = spec.capture(task) {
         Files.deleteIfExists(spec.witness.get().asFile.toPath())
         Files.deleteIfExists(spec.pending())
+        Files.deleteIfExists(spec.rejection())
         if (spec.compilerEvidence && Files.exists(spec.evidenceDirectory())) {
             require(Files.isDirectory(spec.evidenceDirectory()) && !Files.isSymbolicLink(spec.evidenceDirectory())) { "invalid compiler evidence output directory" }
             Files.list(spec.evidenceDirectory()).use { entries -> entries.forEach {
@@ -295,6 +315,11 @@ internal class BeginWitness(private val spec: WitnessSpec) : Action<Task>, Seria
 
 internal class CompleteWitness(private val spec: WitnessSpec) : Action<Task>, Serializable {
     override fun execute(task: Task) {
+        if (spec.automaticSourceInventory && Files.exists(spec.rejection())) return
+        spec.capture(task) { complete(task) }
+    }
+
+    private fun complete(task: Task) {
         val inputs = spec.observe(task)
         require(Files.isRegularFile(spec.pending()) && Files.readString(spec.pending()) == spec.token(inputs)) {
             "compiler inputs changed during compilation; rebuild before capturing a snapshot"

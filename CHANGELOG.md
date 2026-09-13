@@ -32,6 +32,8 @@
 
 ### Fixed
 
+- 자동 compiler 관측의 미지원 입력으로 일반 빌드를 중단하지 않고, 스냅샷 요청에서 증거 거부 사유를 보고한다.
+- 하위 프로젝트의 상위 설정 파일 연결과 설정 변경 추적을 보완하고, 설정 파일·catalog·build logic의 추가도 감지한다.
 - Kotlin compiler witness의 toolchain 연결이 기존 bytecode target을 덮어쓰지 않도록 보존한다.
   JDK 21 / target 17 Android 일반 빌드와 자동 수집을 비교해 검증한다.
 - static field의 String/Class 초기값·재대입·reflection get/set에서 알려진 런타임 후보를 복원한다.

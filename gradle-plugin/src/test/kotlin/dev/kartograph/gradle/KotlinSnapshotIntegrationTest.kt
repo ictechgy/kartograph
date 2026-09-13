@@ -17,6 +17,22 @@ import org.junit.jupiter.api.io.TempDir
 
 class KotlinSnapshotIntegrationTest {
     @Test
+    fun `unrecognized Kotlin task input preserves ordinary build but cannot produce verified snapshot`(@TempDir root: Path) {
+        fixture(root)
+        source(root, "src/main/kotlin/p/Entry.kt", "package p; class Entry")
+        java.util.jar.JarOutputStream(Files.newOutputStream(root.resolve("extra-metadata.jar"))).use { }
+        val build = root.resolve("build.gradle")
+        Files.writeString(build, Files.readString(build) + "\ntasks.named('compileKotlin') { inputs.file('extra-metadata.jar') }\n")
+        val result = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+            .withArguments("compileKotlin", "--configuration-cache", "--stacktrace").build()
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlin")!!.outcome)
+        assertTrue(Files.isRegularFile(root.resolve("build/classes/kotlin/main/p/Entry.class")))
+        assertFalse(Files.exists(root.resolve("build/kartograph/witnesses/compileKotlin/witness.json")))
+        val snapshot = runner(root).buildAndFail()
+        assertTrue(snapshot.output.contains("missing compiler witness for :compileKotlin"), snapshot.output)
+    }
+
+    @Test
     fun `mixed Kotlin and Java main test sources receive actual automatic compiler evidence`(@TempDir root: Path) {
         val again = mixedSnapshot(root, inProcess = false)
         assertTrue(again.output.contains("Reusing configuration cache"), again.output)

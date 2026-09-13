@@ -10,6 +10,30 @@ import org.junit.jupiter.api.io.TempDir
 
 class ContentFingerprintTest {
     @Test
+    fun `optional configuration file watch detects creation edits and deletion`(@TempDir root: Path) {
+        val file = root.resolve("gradle.properties")
+        fun watch() = ContentFingerprint.capture(root, file, "file-watch", "configuration")
+        val absent = watch()
+        Files.writeString(file, "")
+        assertNotEquals(absent.sha256, watch().sha256)
+        Files.writeString(file, "enabled=true")
+        val first = watch()
+        val stamp = Files.getLastModifiedTime(file)
+        Files.writeString(file, "enabled=null")
+        Files.setLastModifiedTime(file, stamp)
+        assertNotEquals(first.sha256, watch().sha256)
+        Files.delete(file)
+        assertEquals(absent, watch())
+        Files.createDirectories(file)
+        assertFailsWith<IllegalArgumentException> { watch() }
+        Files.delete(file)
+        val target = root.resolve("target.properties")
+        Files.writeString(target, "enabled=true")
+        Files.createSymbolicLink(file, target)
+        assertFailsWith<IllegalArgumentException> { watch() }
+    }
+
+    @Test
     fun `a project directory named credentials is not a credential file`(@TempDir root: Path) {
         val directory = Files.createDirectories(root.resolve("credentials/classes"))
         Files.write(directory.resolve("A.class"), byteArrayOf(1, 2, 3))

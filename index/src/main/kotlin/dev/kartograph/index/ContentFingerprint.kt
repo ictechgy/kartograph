@@ -37,8 +37,13 @@ public object ContentFingerprint {
         values.forEach { put(digest, it) }
     }.digest().hex()
 
-    /** watch 역할만 아직 없는 디렉터리를 허용한다. 필수 class/source/설정 입력의 누락은 계속 오류다. */
+    /** watch 역할만 선언된 파일·디렉터리의 부재를 추적한다. 필수 입력의 누락은 계속 오류다. */
     public fun hashInput(path: Path, role: String): String {
+        if (role == "file-watch") {
+            if (Files.notExists(path, NOFOLLOW_LINKS)) return values(listOf("missing-file"))
+            require(Files.isRegularFile(path, NOFOLLOW_LINKS)) { "watched input must be a regular file" }
+            return hash(path)
+        }
         if (role !in setOf("source-watch", "directory-watch")) return hash(path, role == "sources")
         // 없음과 빈 디렉터리는 모두 컴파일할 소스가 없는 상태다. 조회 실패를 없음으로 대체하지 않는다.
         if (Files.notExists(path, NOFOLLOW_LINKS)) return values(listOf("directory"))
@@ -52,7 +57,7 @@ public object ContentFingerprint {
     public fun capture(project: Path, path: Path, role: String, externalSlot: String): InputFingerprint {
         val digest = hashInput(path, role)
         val root = project.toRealPath()
-        val absolute = if (role in setOf("source-watch", "directory-watch") && Files.notExists(path, NOFOLLOW_LINKS)) {
+        val absolute = if (role in setOf("source-watch", "directory-watch", "file-watch") && Files.notExists(path, NOFOLLOW_LINKS)) {
             path.toFile().canonicalFile.toPath()
         } else path.toRealPath()
         val identity = if (absolute.startsWith(root)) root.relativize(absolute).toString().replace('\\', '/').ifEmpty { "." }

@@ -80,6 +80,23 @@ kartograph impact 'class:sample/Repository' \
 대신하지 않는다. 소스가 있는 compiler의 출력 또는 증거가 빠지면 캡처가 실패한다.
 소스가 없는 언어의 정상적인 `NO-SOURCE` 출력은 허용한다. 임의 라이브러리 누락은 계속 오류다.
 
+자동 수집이 지원하지 않는 compiler 입력은 일반 컴파일을 막지 않고 증거 생성 거부로 기록한다.
+`kartographSnapshot`은 해당 증거가 없으면 사유와 함께 실패한다. 지원하지 않는 입력을 검증된 것으로
+표시하지 않으며, 명시적인 수동 compiler witness API의 실패 계약은 유지한다.
+
+설정 입력에는 해당 프로젝트와 상위 프로젝트의 build script·properties, `gradle/`의 catalog·wrapper·script,
+`buildSrc` 및 included build의 표준 설정·`src`를 포함한다. 아직 없는 관례 파일·디렉터리도 생성 여부를 추적한다.
+표준 위치 밖의 applied script나 별도 모듈의 convention source는 다음처럼 추가한다.
+
+```kotlin
+kartograph {
+    snapshotBuildInputs.from(rootProject.file("conventions"), rootProject.file("config/analysis.gradle.kts"))
+}
+```
+
+`verify-snapshot`은 기록된 입력의 현재 내용을 비교한다. 임의 Gradle 코드나 환경·네트워크 입력을 다시
+평가하는 기능은 아니므로, 빌드가 외부에서 읽는 설정은 해당 입력 범위에 명시적으로 포함한다.
+
 결과는 compact query snapshot이다. `jvm-input-bindings.json`은 외부 compiler/JDK 입력의 절대경로를
 담는 해당 checkout 전용 파일이므로 커밋하거나 공개 artifact로 올리지 않는다. 아래 CI helper에는
 `--input-bindings`와 `--base-input-bindings`로 각각 전달한다.

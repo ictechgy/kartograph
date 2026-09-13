@@ -21,8 +21,8 @@ internal object AndroidSnapshotTasks {
         val components = listOfNotNull(variant, unitTest)
         val scope = "${project.path}:${variant.name}"
         val roots = components.associate { component -> component.name to project.files(component.sources.java?.all, component.sources.kotlin?.all) }
-        val buildInputs = project.files(project.buildFile, project.rootProject.file("settings.gradle"),
-            project.rootProject.file("settings.gradle.kts"), project.rootProject.file("gradle.properties")).filter { it.isFile }
+        val configuration = SnapshotBuildInputs.collect(project, extension.snapshotBuildInputs)
+        val buildInputs = configuration.files
         val task = project.tasks.register("kartographSnapshot${variant.name.replaceFirstChar(Char::titlecase)}",
             KartographAndroidSnapshotTask::class.java) { snapshot ->
             snapshot.group = "verification"
@@ -40,6 +40,8 @@ internal object AndroidSnapshotTasks {
             snapshot.namespace.set(variant.namespace)
             snapshot.manifestFile.set(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST))
             snapshot.buildInputFiles.from(buildInputs)
+            snapshot.buildFileWatches.from(configuration.watchedFiles)
+            snapshot.buildDirectoryWatches.from(configuration.watchedDirectories)
             snapshot.testJars.convention(emptyList())
             snapshot.testDirectories.convention(emptyList())
             snapshot.testClasspathJars.convention(emptyList())

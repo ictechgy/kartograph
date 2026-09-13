@@ -18,9 +18,8 @@ internal object JvmSnapshotTasks {
         val declaredClassOutputs = project.files(main.output.classesDirs, tests.output.classesDirs)
         val optionalOutputs = project.files(listOfNotNull(main.output.resourcesDir, tests.output.resourcesDir),
             project.providers.provider { declaredClassOutputs.files })
-        val buildInputs = project.files(project.buildFile, project.rootProject.file("settings.gradle"),
-            project.rootProject.file("settings.gradle.kts"), project.rootProject.file("gradle.properties"))
-            .filter { it.isFile }
+        val configuration = SnapshotBuildInputs.collect(project, extension.snapshotBuildInputs)
+        val buildInputs = configuration.files
         val compilers = listOf(main, tests).map { sourceSet ->
             val compiler = project.tasks.named(sourceSet.compileJavaTaskName, JavaCompile::class.java)
             val witness = CompilerWitnesses.automaticJavaCompile(project, compiler, scope,
@@ -46,6 +45,8 @@ internal object JvmSnapshotTasks {
             task.sourceDirectories.from(main.java.sourceDirectories, tests.java.sourceDirectories)
             task.resourceDirectories.from(main.resources.sourceDirectories, tests.resources.sourceDirectories)
             task.buildInputFiles.from(buildInputs)
+            task.buildFileWatches.from(configuration.watchedFiles)
+            task.buildDirectoryWatches.from(configuration.watchedDirectories)
             compilers.forEach { (compiler, witness) ->
                 val compilation = project.objects.newInstance(SnapshotCompilation::class.java)
                 compilation.identity.set(compiler.map { it.path })

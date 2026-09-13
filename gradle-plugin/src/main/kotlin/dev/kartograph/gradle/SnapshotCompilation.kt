@@ -2,6 +2,8 @@ package dev.kartograph.gradle
 
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.Provider
+import java.io.File
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.PathSensitive
@@ -20,4 +22,9 @@ public abstract class SnapshotCompilation {
 
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val witnessFiles: ConfigurableFileCollection
+
+    /** 실패 사유도 선언된 입력으로 읽는다. 성공 증거 형식과 별도 파일이다. */
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public val rejectionFiles: Provider<List<File>>
+        get() = witnessFiles.elements.map { files -> files.map { it.asFile.parentFile.resolve(WitnessRejection.FILE_NAME) } }
 }
