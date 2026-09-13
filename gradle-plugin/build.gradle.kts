@@ -108,6 +108,7 @@ tasks.test {
     systemProperty("kartograph.pluginJar", pluginJar.get().asFile.absolutePath)
     // 명시적인 in-process 통합 테스트는 Gradle도 같은 JVM에서 실행하므로 여유 heap을 준다.
     maxHeapSize = "2g"
+    testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
 }
 
 publishing {

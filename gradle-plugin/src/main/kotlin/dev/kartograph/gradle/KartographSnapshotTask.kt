@@ -250,11 +250,23 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     } else path.fileName.toString().endsWith(".jar")
 
     private fun bindCompilerInputs(provenance: SnapshotProvenance, bindings: MutableMap<String, Path>) {
+        // 자동 producer와 snapshot은 같은 순서의 설정 입력을 공유한다. 동일한 내용의 파일도 위치로 구분한다.
+        val configuration = buildInputFiles.files.map { it.canonicalFile.toPath() }
+        provenance.witnesses.forEach { witness ->
+            val recorded = witness.inputs.filter { it.role == "buildConfig" }
+            require(recorded.size == configuration.size) { "snapshot build configuration inventory does not match compiler inputs" }
+            recorded.zip(configuration).forEach { (input, path) ->
+                if (input.path.startsWith("external/")) bindings[input.path] = path
+                else require(projectDirectory.get().asFile.toPath().resolve(input.path).toFile().canonicalFile.toPath() == path) {
+                    "snapshot build configuration order does not match compiler inputs"
+                }
+            }
+        }
         val candidates = (compilerInputFiles.files + dependencyClasspath.files + classRoots.files + sourceFiles.files + buildInputFiles.files)
             .filter { it.exists() }.map { it.canonicalFile.toPath() }.distinct()
         val hashes = mutableMapOf<Pair<Path, Boolean>, String>()
         provenance.witnesses.flatMap { it.inputs + it.outputs + it.compilerEvidence }
-            .filter { it.path.startsWith("external/") && it.role != "options" }.forEach { input ->
+            .filter { it.path.startsWith("external/") && it.role !in setOf("options", "buildConfig") }.forEach { input ->
                 val matches = candidates.filter { path ->
                     hashes.getOrPut(path to (input.role == "sources")) {
                         ContentFingerprint.hash(path, input.role == "sources")

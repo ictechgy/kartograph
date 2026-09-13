@@ -31,6 +31,14 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Test and verify coverage
         run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
+      - name: Preserve failed test details
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: failed-tests
+          path: '*/build/test-results/test/*.xml'
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Verify CLI contract
         run: Scripts/verify-cli-contract.sh
       - name: Verify PR gate against real Git and compiler outputs
@@ -109,6 +117,14 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Verify supported JDK
         run: ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} test :gradle-plugin:validatePlugins
+      - name: Preserve failed compatibility test details
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: failed-tests-jdk-${{ matrix.java }}
+          path: '*/build/test-results/test/*.xml'
+          if-no-files-found: ignore
+          retention-days: 7
 
   agp-minimum:
     runs-on: ubuntu-latest

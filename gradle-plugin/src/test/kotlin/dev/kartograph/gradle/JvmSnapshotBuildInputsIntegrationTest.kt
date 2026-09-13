@@ -26,6 +26,8 @@ class JvmSnapshotBuildInputsIntegrationTest {
             }
         """.trimIndent())
         val app = Files.createDirectories(root.resolve("app"))
+        Files.writeString(root.resolve("gradle.properties"), "fixtureValue=1\n")
+        Files.writeString(app.resolve("gradle.properties"), "fixtureValue=1\n")
         Files.writeString(app.resolve("build.gradle"), """
             plugins { id 'java'; id 'io.github.ictechgy.kartograph' }
             kartograph { snapshotsEnabled = true; includeSourcePaths = true }
