@@ -5,7 +5,7 @@ indirect. The optional collectors cover javac constants, Kotlin 2.4.10 constant
 uses, and Dagger 2.59 selected bindings. Kotlin joins resolved FIR references to
 names and descriptors emitted by the JVM backend; it does not use the experiment's
 fixture mapping. Compiler dependencies are confined to the separate
-[`compiler-collectors`](../compiler-collectors/README.md) build.
+[`compiler-collectors`](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/compiler-collectors/README.md) build.
 
 These references enter a `snapshot` explicitly. `query` and `impact` then consume
 the saved graph. Default retention remains conservative, and a missing reference
@@ -13,7 +13,8 @@ does not authorize deletion.
 
 ## Build the collector
 
-From the repository root, with `JAVA_HOME` set to JDK 17:
+The optional collector JAR is built from a source checkout; it is not included in
+the CLI archive or Gradle plugin. From the checkout root, with `JAVA_HOME` set to JDK 17:
 
 ```sh
 ./gradlew --no-daemon -p compiler-collectors integrationTest

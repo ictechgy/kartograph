@@ -23,34 +23,38 @@ The current source version is declared in [VERSION](VERSION). Released versions 
 
 Working today:
 
-- The unreleased `impact` command checks potential effects of planned symbol edits or committed file changes using captured graphs. It preserves base/current paths, deletions, runtime evidence and uncertainty for people, agents and CI. See [change impact](docs/IMPACT.md) and the [scored public replays](experiments/change-impact/README.md).
+- The `impact` command checks potential effects of planned symbol edits or committed file changes using captured graphs. It preserves base/current paths, deletions, runtime evidence and uncertainty for people, agents and CI. See [change impact](docs/IMPACT.md) and the [scored public replays](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/change-impact/README.md).
 - `graph` renders compiled class roots as DOT or as a `code-graph` JSON exchange document, with optional project-relative source paths (`--include-paths --project`). JSON also records edge origins and external calls with their resolution status. Repeated `--classes` merge several module/variant outputs; the first root wins deterministically for a repeated JVM class.
 - `dead` reports unreachable class declarations from Android retention roots (manifest, XML, `@Keep`, keep rules, inheritance hierarchies, DI/serialization annotations, JNI and framework callbacks), with `--explain`, baselines, `--since`, and machine-readable reports. Recursive includes and consumer rules are supported.
 - `query`/`bridges`/`skill` expose one symbol's users, dependencies, and reachability, plus Flutter/React Native bridge facts, for agent consumers. `query` includes measured unresolved runtime paths and conservative dispatch candidates.
 - `cycles`/`rules`/`metrics` analyze module/package cycles with weakest edges, fail-closed layer YAML, and Martin Ca/Ce/I/A/D metrics.
 - The Gradle plugin registers `kartographDead<Variant>` and `kartographGraph<Variant>` per Android variant over the AGP public Variant API.
-- The unreleased JVM `kartographSnapshot` task captures compiled main/test inputs for repeated impact queries. See [automatic capture and toolchain configuration](docs/IMPACT.md#jvm-빌드에서-자동-캡처-미출시).
+- The Gradle plugin's `kartographSnapshot` and `kartographSnapshot<Variant>` tasks automatically capture JVM main/test and Android main/unit-test inputs with compiler witnesses for repeated impact queries. See [automatic capture and toolchain configuration](docs/IMPACT.md#jvm-빌드에서-자동-캡처) and the [build provenance contract](docs/BUILD-PROVENANCE.md).
 - Keep-rule parsing fails closed with file and line instead of silently dropping unsupported syntax. Errors and evidence never print absolute paths.
 
-Class loading, reflective construction, and known method/field access use bounded intra-method value tracking; external dispatch uses conservative hierarchy candidates. `META-INF/services` registrations retain providers from class roots and explicit CLI `--service-resources` inputs. The Gradle plugin supplies the selected variant’s Java resource source directories. External-call JSON identifies matching API models separately from resolution results. Dagger binding and callgraph-precision integrations remain standalone experiments; they do not replace the primary graph or retention policy.
+Class loading, reflective construction, and known method/field access use bounded intra-method value tracking; external dispatch uses conservative hierarchy candidates. `META-INF/services` registrations retain providers from class roots and explicit CLI `--service-resources` inputs. The Gradle plugin supplies the selected variant’s Java resource source directories. External-call JSON identifies matching API models separately from resolution results. Optional [compiler collectors](docs/COMPILER-EVIDENCE.md) add javac/Kotlin 2.4.10 constant references and javac Dagger 2.59 selected bindings to snapshots. Build and connect these collectors explicitly; their supported patterns and remaining gaps are documented. The primary graph and retention policy remain in effect. Callgraph precision remains an experiment.
 
 See [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) for what the graph cannot see, and [`docs/PHASE2-VALIDATION.md`](docs/PHASE2-VALIDATION.md) for measured retention behavior.
 
-The unreleased source also follows immutable arguments and String/Class returns through bounded project static helpers.
-In [five executed comparison fixtures](experiments/runtime-returns/README.md), this recovers three previously missed
+The analyzer also tracks immutable arguments and String/Class returns through bounded project static helpers.
+In [five executed comparison fixtures](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/runtime-returns/README.md), this recovers three previously missed
 reflection paths while keeping all unused controls distinct. The report compares SearchDeadCode and current R8, including
 optimization controls and a remaining unknown-input failure. It does not establish overall accuracy or speed superiority.
+Static field values and reflective reads receive additional bounded tracking, with unknown assignments and analysis limits retained.
+The [expanded evaluation](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/impact-evaluation/README.md) records concrete Java/Kotlin pre-edit review benefits,
+and also the AI repair result: 6/12 passes in each condition, with no graph queries. A general AI productivity gain is unproven.
 
 ## Installation and compatibility
 
 Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.ictechgy.kartograph` becomes installable once its version appears on the [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph); a GitHub Release and Portal approval are separate events.
 
 - Building kartograph from source is verified with JDK 17 or 21 and Gradle 9.6.1.
-- Applying the Gradle plugin: AGP 8.7+, Gradle 8.10+, JDK 17+ (AGP 8.7 + Gradle 8.10 verified; AGP 9.x covered by the Android fixture gate).
+- Android graph/dead tasks: AGP 8.7+, Gradle 8.10+, JDK 17+ (AGP 8.7.3 / Gradle 8.10.2 and AGP 9.x verified).
+- Automatic snapshots: JVM Java/Kotlin on Gradle 9.6.1 and JDK 17/21, plus the [tested Android combinations](docs/IMPACT.md#android-variant-자동-캡처). The Kotlin compiler adapter is verified with KGP 2.4.10; other KGP versions are not guaranteed. KGP recommends Gradle 8.14.4+ even though the minimum Android combination was tested on 8.10.2.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.7.0"
+    id("io.github.ictechgy.kartograph") version "0.8.0"
 }
 ```
 
@@ -134,9 +138,9 @@ kartograph {
 
 AGP does not expose dependency consumer rules as a merged file through the public Variant API, so pass those files explicitly. The dead task never reuses up-to-date/cache results, because keep-rule includes are discovered while it runs; the graph task skips reuse only when source-path resolution reads undeclared project sources.
 
-### Saved graph queries and generated inputs (next release)
+### Saved graph queries and generated inputs
 
-These features are available in the source tree and are not included in the published 0.7.0 binaries.
+These features are included in the 0.8.0 binaries.
 Use `snapshot` to capture the graph, retention evidence, baseline state, and measured limitations once.
 Pass the same manifest/resource/namespace/keep/consumer/classpath and private-member inputs as the live query.
 
@@ -175,7 +179,7 @@ This mode conservatively retains `-keepclassmembers` targets with their owners, 
 
 To block **all newly introduced diagnostics** in a PR, follow the [PR gate guide](docs/PR-CHECK.md). The released `Scripts/check-pr.py` reads the base commit's baseline and also checks untouched files. `--since` is a changed-files filter, so it differs from the PR gate, which must catch the blast radius of a caller deletion. Measured public samples (Hilt/Compose/KSP) and remaining limits are in the [public validation record](docs/PUBLIC-VALIDATION.md).
 
-Developing kartograph itself needs JDK 17+.
+The following development checks require a source checkout and JDK 17+.
 
 ```bash
 ./gradlew test
