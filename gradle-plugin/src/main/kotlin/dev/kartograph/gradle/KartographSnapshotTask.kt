@@ -2,9 +2,11 @@ package dev.kartograph.gradle
 
 import dev.kartograph.analysis.DefaultRetention
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.Finding
 import dev.kartograph.core.InputFingerprint
 import dev.kartograph.core.SnapshotProvenance
 import dev.kartograph.export.BuildWitnessCodec
+import dev.kartograph.export.BaselineCodec
 import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.export.QuerySnapshot
 import dev.kartograph.export.QuerySnapshotCodec
@@ -23,6 +25,7 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.LocalState
@@ -73,6 +76,10 @@ public abstract class KartographSnapshotTask : DefaultTask() {
 
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val generatedClassRoots: ConfigurableFileCollection
+
+    /** 기존 baseline은 그래프 정점을 제거하지 않고 query의 억제 상태로 보존한다. */
+    @get:InputFile @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val baselineFile: RegularFileProperty
 
     @get:Input public abstract val scope: Property<String>
     @get:Input @get:Optional public abstract val revision: Property<String>
@@ -131,7 +138,8 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             sourceDirectories.files.map { "source-watch" to it.toPath() } +
             resourceDirectories.files.map { "directory-watch" to it.toPath() } +
             buildInputFiles.files.map { "buildConfig" to it.toPath() } +
-            scanner.inputFiles.map { "keepRules" to it } + witnessPaths.map { "witness" to it }
+            scanner.inputFiles.map { "keepRules" to it } + witnessPaths.map { "witness" to it } +
+            listOfNotNull(baselineFile.orNull?.asFile?.toPath()?.let { "baseline" to it })
         val bindings = linkedMapOf<String, Path>()
         fun capture(): SnapshotProvenance {
             val inputs = files.mapIndexed { index, (role, path) ->
@@ -168,6 +176,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val graph = indexed.graph
         val retention = DefaultRetention.find(graph, emptyList(), rules, indexed.hierarchy,
             includePrivateMembers = includePrivateMembers.get())
+        val baseline = baselineFile.orNull?.asFile?.toPath()?.let { BaselineCodec.parse(Files.readString(it)) }.orEmpty()
+        val suppressed = graph.nodes.values.filter { Finding(it.id, it.location).fingerprint in baseline }
+            .mapTo(mutableSetOf()) { it.id }
         val paths = if (includeSourcePaths.get()) SourcePathIndex.resolve(graph, project, selectedSources) else null
         val located = if (paths == null) graph else CodeGraph(graph.nodes.values.map { node ->
             paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
@@ -176,7 +187,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val finalVerification = ProvenanceVerifier.verify(before, project, scope.get(), bindings)
         require(finalVerification.status == "matched") { "compiler inputs changed during snapshot capture" }
         val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, selectedSources) +
-            paths?.limitations.orEmpty(), includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
+            paths?.limitations.orEmpty(), suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
             scope = scope.get(), provenance = before)
         val content = QuerySnapshotCodec.render(snapshot, compact = true)
         require(content.length <= QuerySnapshotCodec.MAX_BYTES) { "snapshot exceeds 64 MiB; select a smaller input scope" }

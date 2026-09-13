@@ -36,6 +36,7 @@ internal object JvmSnapshotTasks {
             task.includeSourcePaths.set(extension.includeSourcePaths)
             task.includePrivateMembers.set(extension.includePrivateMembers)
             task.keepRuleFiles.from(extension.keepRules)
+            task.baselineFile.set(extension.baseline)
             task.generatedClassRoots.from(extension.generatedClassRoots)
             // test runtime의 test-before-main 순서를 그래프의 첫 root 우선 정책에도 유지한다.
             task.classRoots.from(tests.output.classesDirs, main.output.classesDirs)
