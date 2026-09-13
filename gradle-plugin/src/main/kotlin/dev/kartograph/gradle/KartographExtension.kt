@@ -12,6 +12,9 @@ public abstract class KartographExtension {
     /** CI가 전달한 commit 라벨이다. 컴파일 신선도는 별도의 내용·producer 근거로 검증한다. */
     public abstract val snapshotRevision: Property<String>
 
+    /** Kotlin snapshot compiler에 명시적으로 적용할 toolchain이다. 공개 KGP 인자에는 설치 경로가 노출되지 않는다. */
+    public abstract val snapshotKotlinToolchain: Property<org.gradle.jvm.toolchain.JavaLauncher>
+
     /** 기존 class 보고를 유지하면서 private member 진단을 선택적으로 추가한다. */
     public abstract val includePrivateMembers: Property<Boolean>
 

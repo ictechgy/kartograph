@@ -52,6 +52,44 @@ module·file·test 필터는 각 축이 base 또는 current 사실에 맞으면 
 
 ## CI에서 갱신하고 비교
 
+### JVM 빌드에서 자동 캡처 (미출시)
+
+Java 또는 Kotlin/JVM 프로젝트는 Gradle plugin에서 main/test compiler와 실제 SourceSet 출력 경로를 연결할 수 있다.
+Kotlin은 의도한 Gradle toolchain provider를 명시적으로 지정한다. 이 provider를 Kotlin compiler와 증거 기록에
+함께 적용하므로 기존 프로젝트가 사용하는 toolchain을 선택한다. 현재 KGP 2.4.10 소비 프로젝트에서 검증했다.
+
+```kotlin
+kartograph {
+    snapshotsEnabled.set(true)
+    includeSourcePaths.set(true)
+    // Kotlin/JVM 프로젝트에서 지정한다. Java 전용 프로젝트에는 필요하지 않다.
+    snapshotKotlinToolchain.set(javaToolchains.launcherFor(java.toolchain))
+}
+```
+
+```sh
+./gradlew kartographSnapshot -Pkartograph.revision="$COMMIT_SHA"
+kartograph verify-snapshot --graph-file build/reports/kartograph/jvm-snapshot.json \
+  --project . --input-bindings build/kartograph/jvm-input-bindings.json
+kartograph impact 'class:sample/Repository' \
+  --graph-file build/reports/kartograph/jvm-snapshot.json
+```
+
+`kartographSnapshot`은 테스트를 실행하지 않으며 선택한 컴파일·runtime artifact 생산 작업을 실행한다.
+테스트 실행은 기존 CI 절차를 유지한다. Kotlin compiler가 분석에 읽은 Java 소스는 javac의 성공 증거를
+대신하지 않는다. 소스가 있는 compiler의 출력 또는 증거가 빠지면 캡처가 실패한다.
+소스가 없는 언어의 정상적인 `NO-SOURCE` 출력은 허용한다. 임의 라이브러리 누락은 계속 오류다.
+
+결과는 compact query snapshot이다. `jvm-input-bindings.json`은 외부 compiler/JDK 입력의 절대경로를
+담는 해당 checkout 전용 파일이므로 커밋하거나 공개 artifact로 올리지 않는다. 아래 CI helper에는
+`--input-bindings`와 `--base-input-bindings`로 각각 전달한다.
+
+컴파일 task의 configuration cache·up-to-date 판정은 재사용하지만 snapshot 자체는 매번 전체 캡처한다.
+증분 인덱싱이나 snapshot build cache 지원을 의미하지 않는다. 이 자동 경로의 현재 범위는 JVM main/test이며
+Android variant, 별도 custom source set 및 compiler-evidence collector의 자동 연결은 아직 검증 중이다.
+
+### 두 checkout 비교
+
 base와 current checkout을 **같은 CLI 빌드·입력 범위·variant**로 빌드해 snapshot을 만든다.
 각 capture에 `--revision <git rev-parse HEAD의 전체 값> --scope <프로젝트:variant>`를 전달한다.
 라벨은 호출자의 선언이며 class/source 내용 지문이나 빌드 신선도 증명이 아니다. 분석 한계를 함께 확인한다.

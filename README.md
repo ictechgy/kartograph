@@ -29,6 +29,7 @@ Working today:
 - `query`/`bridges`/`skill` expose one symbol's users, dependencies, and reachability, plus Flutter/React Native bridge facts, for agent consumers. `query` includes measured unresolved runtime paths and conservative dispatch candidates.
 - `cycles`/`rules`/`metrics` analyze module/package cycles with weakest edges, fail-closed layer YAML, and Martin Ca/Ce/I/A/D metrics.
 - The Gradle plugin registers `kartographDead<Variant>` and `kartographGraph<Variant>` per Android variant over the AGP public Variant API.
+- The unreleased JVM `kartographSnapshot` task captures compiled main/test inputs for repeated impact queries. See [automatic capture and toolchain configuration](docs/IMPACT.md#jvm-빌드에서-자동-캡처-미출시).
 - Keep-rule parsing fails closed with file and line instead of silently dropping unsupported syntax. Errors and evidence never print absolute paths.
 
 Class loading, reflective construction, and known method/field access use bounded intra-method value tracking; external dispatch uses conservative hierarchy candidates. `META-INF/services` registrations retain providers from class roots and explicit CLI `--service-resources` inputs. The Gradle plugin supplies the selected variant’s Java resource source directories. External-call JSON identifies matching API models separately from resolution results. Dagger binding and callgraph-precision integrations remain standalone experiments; they do not replace the primary graph or retention policy.

@@ -10,6 +10,8 @@
 
 ### Added
 
+- Gradle JVM main/test의 `kartographSnapshot` 자동 수집과 checkout 전용 external-input bindings를 추가한다.
+  Kotlin/Java별 실제 소스·출력·compiler 증거를 확인하며, 누락된 compiler와 정상 `NO-SOURCE`를 구분한다.
 - compiler task의 source/class/config/classpath 지문을 snapshot에 연결하고 `verify-snapshot`과 CI helper에서
   내용 일치·stale·미검증 상태를 구분한다. Java/Kotlin producer의 실패·캐시·경로 이동과 Android 입력을 검증한다.
 - `impact`: 수정 예정 심볼/파일의 직접·간접 영향 후보를 시점별 경로·간선 출처와 함께 보고한다.

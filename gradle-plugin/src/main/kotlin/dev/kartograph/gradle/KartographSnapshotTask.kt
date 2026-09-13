@@ -21,10 +21,12 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.LocalState
+import org.gradle.api.tasks.Nested
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.PathSensitive
@@ -35,6 +37,9 @@ import org.gradle.work.DisableCachingByDefault
 /** 성공한 compiler provider의 main/test 그래프·보존 근거·내용 지문을 저장한다. */
 @DisableCachingByDefault(because = "Keep-rule includes and captured timestamp diagnostics require cache lifecycle validation")
 public abstract class KartographSnapshotTask : DefaultTask() {
+    @get:Nested
+    public abstract val compilations: ListProperty<SnapshotCompilation>
+
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val classRoots: ConfigurableFileCollection
 
@@ -98,6 +103,19 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             require(Files.size(path) <= QuerySnapshotCodec.MAX_BYTES) { "build witness is too large" }
             BuildWitnessCodec.parse(Files.readString(path))
         }
+        val selectedRoots = classRoots.files.map { it.canonicalFile }.toSet()
+        val compiledOutputs = compilations.get().filter { !it.primarySources.isEmpty }.map { compilation ->
+            val identity = compilation.identity.get()
+            val paths = compilation.witnessFiles.files
+            require(paths.size == 1 && paths.single().isFile) { "missing compiler witness for $identity; rebuild the selected compilation" }
+            val witness = witnesses.singleOrNull { it.artifact == identity && it.compiler == compilation.compiler.get() }
+            require(witness != null) { "compiler witness identity does not match $identity" }
+            val outputs = compilation.classDirectories.files.map { it.canonicalFile }
+            require(outputs.isNotEmpty() && outputs.all { it.isDirectory && it in selectedRoots }) {
+                "missing compiler output for $identity; include and rebuild the selected compilation"
+            }
+            witness to outputs
+        }
         val roots = classRoots.files.map { it.toPath() }.filter { path ->
             Files.exists(path) && (witnesses.any { witness -> witness.outputs.any {
                 !it.path.startsWith("external/") && project.resolve(it.path).normalize() == path.toAbsolutePath().normalize()
@@ -127,6 +145,12 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         }
         val before = capture()
         bindCompilerInputs(before, bindings)
+        compiledOutputs.forEach { (witness, outputs) ->
+            require(outputs.all { output -> witness.outputs.any { recorded ->
+                val path = if (recorded.path.startsWith("external/")) bindings[recorded.path] else project.resolve(recorded.path)
+                path?.toFile()?.canonicalFile == output
+            } }) { "compiler witness output does not match ${witness.artifact}" }
+        }
         val verified = ProvenanceVerifier.verify(before, project, scope.get(), bindings)
         require(verified.status == "matched") {
             "snapshot compiler inputs are ${verified.status}: ${verified.reasons.joinToString()}; rebuild the selected compilations"
