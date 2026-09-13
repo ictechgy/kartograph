@@ -47,4 +47,31 @@ class ContentFingerprintTest {
         assertFailsWith<IllegalArgumentException> { ContentFingerprint.hash(root.resolve("link")) }
         assertFailsWith<IllegalArgumentException> { ContentFingerprint.hash(root) }
     }
+
+    @Test
+    fun `optional source watch observes future source files without weakening required inputs`(@TempDir root: Path) {
+        val source = root.resolve("src/test/java")
+        fun watch() = ContentFingerprint.capture(root, source, "source-watch", "test-sources")
+        val absent = watch()
+        assertEquals("src/test/java", absent.path)
+        assertFailsWith<IllegalArgumentException> { ContentFingerprint.capture(root, source, "sources", "required") }
+        assertFailsWith<IllegalArgumentException> { ContentFingerprint.capture(root, source, "classes", "required") }
+        Files.createDirectories(source)
+        Files.writeString(source.resolve("README.txt"), "not a compiler source")
+        assertEquals(absent, watch())
+        val file = source.resolve("FutureTest.java")
+        Files.writeString(file, "class FutureTest {}")
+        val added = watch()
+        assertNotEquals(absent.sha256, added.sha256)
+        val timestamp = Files.getLastModifiedTime(file)
+        Files.writeString(file, "class FutureTest { int value; }")
+        Files.setLastModifiedTime(file, timestamp)
+        assertNotEquals(added.sha256, watch().sha256)
+        Files.delete(file)
+        assertEquals(absent, watch())
+        val outside = Files.createDirectories(root.resolve("outside"))
+        Files.writeString(outside.resolve("Hidden.java"), "class Hidden {}")
+        Files.createSymbolicLink(source.resolve("linked"), outside)
+        assertFailsWith<IllegalArgumentException> { watch() }
+    }
 }

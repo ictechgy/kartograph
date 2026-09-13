@@ -51,6 +51,18 @@ class ProvenanceVerifierTest {
         val provenance = SnapshotProvenance(witness.outputs + fp("witness", "witness.json"), listOf(witness))
         fun status(value: SnapshotProvenance? = provenance, scope: String = "sample:main") = ProvenanceVerifier.verify(value, root, scope).status
         assertEquals("matched", status())
+        // 아직 없는 test source set도 나중에 소스가 생기면 현재 snapshot을 stale로 만든다.
+        val optionalSources = root.resolve("tests")
+        val watched = provenance.copy(inputs = provenance.inputs +
+            ContentFingerprint.capture(root, optionalSources, "source-watch", "test-sources"))
+        assertEquals("matched", status(watched))
+        Files.createDirectories(optionalSources)
+        Files.writeString(optionalSources.resolve("NewTest.java"), "class NewTest {}")
+        val changedWatch = ProvenanceVerifier.verify(watched, root, "sample:main")
+        assertEquals("stale", changedWatch.status)
+        assertEquals(listOf("changed-source-watch"), changedWatch.reasons)
+        Files.delete(optionalSources.resolve("NewTest.java"))
+        assertEquals("matched", status(watched))
         // 수집기 실행 증명이 아닌 문서/지문 경계 검증용 fixture다.
         val receiptFile = root.resolve("evidence.tsv")
         Files.writeString(receiptFile, "unit collector document")

@@ -23,7 +23,7 @@ public object ProvenanceVerifier {
             val path = locate(input)
             if (path == null) reasons += "missing-external-input"
             else try {
-                if (ContentFingerprint.hash(path, input.role == "sources") != input.sha256) reasons += "changed-${input.role}"
+                if (ContentFingerprint.hashInput(path, input.role) != input.sha256) reasons += "changed-${input.role}"
             } catch (_: java.io.IOException) { reasons += "unavailable-${input.role}" }
             catch (_: IllegalArgumentException) { reasons += "unavailable-${input.role}" }
         }
