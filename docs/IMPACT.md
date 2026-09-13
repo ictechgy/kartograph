@@ -145,8 +145,9 @@ Toolchain 연결은 기존 Kotlin bytecode target을 보존한다. JDK 21로 JVM
 ### 두 checkout 비교
 
 저장소의 `python3 Scripts/verify-gradle-impact-ci.py`는 실제 배포 plugin JAR와 CLI를 사용해 임시 Git의
-두 commit을 각각 빌드·캡처하고 strict CI 비교까지 실행한다. 변경하지 않은 테스트 호출자를 찾고,
-같은 수정 시각·크기의 class 변경은 stale로 거부하는지 검사한다. 결과의 단계별 시간은
+commit별로 빌드·캡처하고 strict CI 비교까지 실행한다. 변경하지 않은 테스트 호출자, no-change 비교,
+rename 뒤 source 위치와 호출자, 잘못된 scope 거부를 검사한다. 같은 수정 시각·크기의 class 변경도
+stale로 거부해야 한다. 변경 없는 build·capture·순수 query를 각각 두 번 반복하고 단계별 시간은
 `build/reports/gradle-impact-ci/result.json`에 기록하며 GitHub CI도 같은 명령을 실행한다.
 이 작은 fixture의 시간은 대형 프로젝트 성능 점수와 구분한다.
 
