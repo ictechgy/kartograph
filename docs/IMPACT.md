@@ -148,6 +148,19 @@ Toolchain 연결은 기존 Kotlin bytecode target을 보존한다. JDK 21로 JVM
 `build/reports/gradle-impact-ci/result.json`에 기록하며 GitHub CI도 같은 명령을 실행한다.
 이 작은 fixture의 시간은 대형 프로젝트 성능 점수와 구분한다.
 
+로컬과 GitHub CI의 같은 두-commit JVM fixture 관측값은 다음과 같다. 각각 한 번의 current 실행이며,
+Gradle 시작 비용을 포함한다. Android 표본이나 대형 저장소의 성능 보장은 아니다.
+
+| 단계 | 로컬 | GitHub CI |
+|---|---:|---:|
+| source build | 2.92초 | 5.01초 |
+| snapshot capture 명령 | 2.68초 | 5.02초 |
+| 내용 검증 | 0.20초 | 0.31초 |
+| impact CI 비교(양쪽 검증 포함) | 0.63초 | 0.83초 |
+
+원격 결과는 [검증 실행](https://github.com/ictechgy/kartograph/actions/runs/34755414975)의
+`gradle-impact-ci` artifact에 단계별 종료 코드와 함께 기록했다.
+
 base와 current checkout을 **같은 CLI 빌드·입력 범위·variant**로 빌드해 snapshot을 만든다.
 각 capture에 `--revision <git rev-parse HEAD의 전체 값> --scope <프로젝트:variant>`를 전달한다.
 라벨은 호출자의 선언이며 class/source 내용 지문이나 빌드 신선도 증명이 아니다. 분석 한계를 함께 확인한다.

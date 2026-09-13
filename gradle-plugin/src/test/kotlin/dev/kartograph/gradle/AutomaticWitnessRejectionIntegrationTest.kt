@@ -12,6 +12,39 @@ import org.junit.jupiter.api.io.TempDir
 
 class AutomaticWitnessRejectionIntegrationTest {
     @Test
+    fun `transient source mutation rejection recovers after inputs return to their original bytes`(@TempDir root: Path) {
+        Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'transient-witness'\n")
+        Files.writeString(root.resolve("build.gradle"), """
+            plugins { id 'java'; id 'io.github.ictechgy.kartograph' }
+            kartograph { snapshotsEnabled = true }
+            def marker = layout.projectDirectory.file('mutate-source')
+            tasks.named('compileJava') {
+                doFirst {
+                    if (marker.asFile.exists()) {
+                        def file = source.singleFile
+                        file.text = file.text.replace('return 1;', 'return 2;')
+                    }
+                }
+            }
+        """.trimIndent())
+        val directory = Files.createDirectories(root.resolve("src/main/java"))
+        val source = directory.resolve("Entry.java")
+        val original = "public class Entry { public int value() { return 1; } }"
+        Files.writeString(source, original)
+        val marker = root.resolve("mutate-source")
+        Files.writeString(marker, "simulate a racing source edit")
+        fun run(task: String) = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+            .withArguments(task, "--offline", "--configuration-cache", "--stacktrace").build()
+        run("compileJava")
+        assertFalse(Files.exists(root.resolve("build/kartograph/witnesses/compileJava/witness.json")))
+        Files.writeString(source, original)
+        Files.delete(marker)
+        val recovered = run("kartographSnapshot")
+        assertEquals(TaskOutcome.SUCCESS, recovered.task(":compileJava")!!.outcome)
+        assertTrue(Files.isRegularFile(root.resolve("build/kartograph/witnesses/compileJava/witness.json")))
+    }
+
+    @Test
     fun `automatic evidence rejects mid compilation mutation without hiding native success`(@TempDir root: Path) {
         Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'changed-witness'\n")
         Files.writeString(root.resolve("build.gradle"), """

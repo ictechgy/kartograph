@@ -15,6 +15,10 @@ internal enum class WitnessRejection(val description: String) {
     CHANGED_INPUTS("compiler inputs changed during compilation; rebuild before capturing a snapshot"),
     UNAVAILABLE("compiler evidence could not be captured; inspect the selected compiler input configuration");
 
+    /** 일시 I/O·빌드 중 변경·내부 launcher 설정은 Gradle의 기존 입력 기록만으로 고정하지 않는다. */
+    val reusableFromGradleInputs: Boolean
+        get() = this == UNSUPPORTED_JAVAC || this == UNSUPPORTED_KOTLIN
+
     companion object {
         const val FILE_NAME: String = "rejection.txt"
 

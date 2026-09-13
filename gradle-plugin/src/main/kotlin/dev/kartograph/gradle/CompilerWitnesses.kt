@@ -138,7 +138,7 @@ internal class MatchingWitness(private val spec: WitnessSpec) : Spec<Task>, Seri
         // 전체 output 부재는 cache 복원을 허용하지만, 비어 있는 기록은 UP-TO-DATE 근거가 아니다.
         if (!spec.witness.get().asFile.exists()) {
             !Files.exists(spec.witness.get().asFile.toPath().parent) ||
-                spec.automaticSourceInventory && WitnessRejection.read(spec.rejection()) != null
+                spec.automaticSourceInventory && WitnessRejection.read(spec.rejection())?.reusableFromGradleInputs == true
         } else {
             val witness = BuildWitnessCodec.parse(Files.readString(spec.witness.get().asFile.toPath()))
             val inputs = spec.observe(task)

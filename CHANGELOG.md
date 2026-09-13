@@ -32,6 +32,7 @@
 
 ### Fixed
 
+- 일시적인 입력 변경·관측 실패가 해결된 뒤 이전 rejection 기록에 묶이지 않고 compiler 증거를 다시 생성한다.
 - 빌드 실패 후 비어 있는 witness 출력이 `UP-TO-DATE`로 고정되는 문제를 복구하고, 실패 기록 삭제를 빌드 종료 시점으로 옮긴다.
 - included build 하위 convention 모듈의 설정·소스 변경도 snapshot 입력으로 추적한다.
 - 자동 compiler 관측의 미지원 입력으로 일반 빌드를 중단하지 않고, 스냅샷 요청에서 증거 거부 사유를 보고한다.
