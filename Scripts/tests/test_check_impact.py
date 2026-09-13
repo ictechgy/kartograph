@@ -56,6 +56,21 @@ class ImpactGateTest(unittest.TestCase):
             self.assertIn("method:Caller#run()V", [item["usr"] for item in report["affected"]])
             self.assertEqual("found", report["status"])
             self.assertEqual("unverified", report["freshness"]["current"]["status"])
+            empty_bindings = {"format": "kartograph-local-input-bindings", "version": 1, "bindings": {}}
+            current_bindings = project / "current-bindings.json"
+            base_bindings = project / "base-bindings.json"
+            current_bindings.write_text(json.dumps(empty_bindings))
+            base_bindings.write_text(json.dumps(empty_bindings))
+            bound_command = command + ["--base-project", project, "--input-bindings", current_bindings,
+                                       "--base-input-bindings", base_bindings]
+            bound = json.loads(run(*bound_command))
+            self.assertEqual("unverified", bound["freshness"]["base"]["status"])
+            base_bindings.write_text("{}")
+            run(*bound_command, expected=2)
+            base_bindings.write_text(json.dumps(empty_bindings))
+            current_bindings.write_text("{}")
+            run(*bound_command, expected=2)
+            current_bindings.write_text(json.dumps(empty_bindings))
             strict = json.loads(run(*command, "--strict", expected=1))
             self.assertEqual("found", strict["status"])
             self.assertEqual("unverified", strict["freshness"]["current"]["status"])

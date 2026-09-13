@@ -3,6 +3,7 @@ package dev.kartograph.cli
 import dev.kartograph.core.InputFingerprint
 import dev.kartograph.core.SnapshotProvenance
 import dev.kartograph.export.BuildWitnessCodec
+import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.index.ContentFingerprint
 import dev.kartograph.index.ProvenanceVerifier
 import java.io.PrintStream
@@ -14,14 +15,21 @@ internal object FreshnessCommand {
         if (arguments == listOf("--help")) {
             output.println("Usage: kartograph verify-snapshot --graph-file <file> --project <directory> [--scope <project:variant>] [--input <external/slot=path>]...")
             output.println("Optional ordered comparisons: --classes <root>, --classpath <root>, --artifact <Gradle-task-path>, --compiler <javac|kotlin> (repeatable).")
+            output.println("--input-bindings <file> reads a generated local binding document; do not publish this file with snapshots.")
             output.println("Exit 0: matching compiler evidence; 1: stale or unverified; 2: invalid input; 64: usage error. Saved queries remain offline.")
             return 0
         }
-        if (arguments.size % 2 != 0 || arguments.chunked(2).any { it[0] !in setOf("--graph-file", "--project", "--scope", "--input", "--classes", "--classpath", "--artifact", "--compiler") }) return 64
+        if (arguments.size % 2 != 0 || arguments.chunked(2).any { it[0] !in setOf("--graph-file", "--project", "--scope", "--input", "--input-bindings", "--classes", "--classpath", "--artifact", "--compiler") }) return 64
         val options = arguments.chunked(2).groupBy({ it[0] }, { it[1] })
-        if (listOf("--graph-file", "--project").any { options[it]?.size != 1 } || (options["--scope"]?.size ?: 0) > 1) return 64
+        if (listOf("--graph-file", "--project").any { options[it]?.size != 1 } ||
+            listOf("--scope", "--input-bindings").any { (options[it]?.size ?: 0) > 1 }) return 64
         return try {
-            val external = try { inputBindings(options["--input"].orEmpty()) } catch (_: IllegalArgumentException) { return 64 }
+            val explicit = try { inputBindings(options["--input"].orEmpty()) } catch (_: IllegalArgumentException) { return 64 }
+            val local = options["--input-bindings"]?.single()?.let { path ->
+                ExternalInputBindingsCodec.parse(SnapshotFiles.readText(path, 1024 * 1024)).mapValues { Path.of(it.value) }
+            }.orEmpty()
+            if (explicit.keys.any(local::containsKey)) return 64
+            val external = local + explicit
             val snapshot = SnapshotFiles.read(options.getValue("--graph-file").single())
             val started = System.nanoTime()
             val project = Path.of(options.getValue("--project").single()).toAbsolutePath().normalize()

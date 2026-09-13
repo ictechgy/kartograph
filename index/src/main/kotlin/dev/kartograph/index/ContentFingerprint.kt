@@ -37,22 +37,22 @@ public object ContentFingerprint {
         values.forEach { put(digest, it) }
     }.digest().hex()
 
-    /** source-watch만 아직 없는 소스 디렉터리를 허용한다. 필수 class/source/설정 입력의 누락은 계속 오류다. */
+    /** watch 역할만 아직 없는 디렉터리를 허용한다. 필수 class/source/설정 입력의 누락은 계속 오류다. */
     public fun hashInput(path: Path, role: String): String {
-        if (role != "source-watch") return hash(path, role == "sources")
+        if (role !in setOf("source-watch", "directory-watch")) return hash(path, role == "sources")
         // 없음과 빈 디렉터리는 모두 컴파일할 소스가 없는 상태다. 조회 실패를 없음으로 대체하지 않는다.
         if (Files.notExists(path, NOFOLLOW_LINKS)) return values(listOf("directory"))
-        require(Files.isDirectory(path, NOFOLLOW_LINKS)) { "source watch input must be a directory" }
+        require(Files.isDirectory(path, NOFOLLOW_LINKS)) { "watched input must be a directory" }
         // 소스 확장자가 없는 symlink 디렉터리도 이후 소스를 숨길 수 있으므로 먼저 거부한다.
         Files.walk(path).use { stream -> stream.forEach(::checkPath) }
-        return hash(path, sourcesOnly = true)
+        return hash(path, sourcesOnly = role == "source-watch")
     }
 
     /** 외부 입력의 로컬 경로를 직렬화하지 않는 이동 가능한 식별자를 만든다. */
     public fun capture(project: Path, path: Path, role: String, externalSlot: String): InputFingerprint {
         val digest = hashInput(path, role)
         val root = project.toRealPath()
-        val absolute = if (role == "source-watch" && Files.notExists(path, NOFOLLOW_LINKS)) {
+        val absolute = if (role in setOf("source-watch", "directory-watch") && Files.notExists(path, NOFOLLOW_LINKS)) {
             path.toFile().canonicalFile.toPath()
         } else path.toRealPath()
         val identity = if (absolute.startsWith(root)) root.relativize(absolute).toString().replace('\\', '/').ifEmpty { "." }

@@ -1,0 +1,174 @@
+package dev.kartograph.gradle
+
+import dev.kartograph.analysis.DefaultRetention
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.InputFingerprint
+import dev.kartograph.core.SnapshotProvenance
+import dev.kartograph.export.BuildWitnessCodec
+import dev.kartograph.export.ExternalInputBindingsCodec
+import dev.kartograph.export.QuerySnapshot
+import dev.kartograph.export.QuerySnapshotCodec
+import dev.kartograph.index.ClassFileIndexer
+import dev.kartograph.index.ContentFingerprint
+import dev.kartograph.index.KeepRuleScanner
+import dev.kartograph.index.ProvenanceVerifier
+import dev.kartograph.index.RuntimeLimitationScanner
+import dev.kartograph.index.SourcePathIndex
+import java.nio.file.Files
+import java.nio.file.Path
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.LocalState
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
+
+/** 성공한 compiler provider의 main/test 그래프·보존 근거·내용 지문을 저장한다. */
+@DisableCachingByDefault(because = "Project source lookup and runtime diagnostics require a bounded declared-input adapter before caching")
+public abstract class KartographSnapshotTask : DefaultTask() {
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val classRoots: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val dependencyClasspath: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val sourceDirectories: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val resourceDirectories: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val serviceResourceRoots: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val buildInputFiles: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val buildWitnessFiles: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val compilerInputFiles: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val keepRuleFiles: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val generatedClassRoots: ConfigurableFileCollection
+
+    @get:Input public abstract val scope: Property<String>
+    @get:Input @get:Optional public abstract val revision: Property<String>
+    @get:Input public abstract val includeSourcePaths: Property<Boolean>
+    @get:Input public abstract val includePrivateMembers: Property<Boolean>
+    @get:Internal public abstract val projectDirectory: DirectoryProperty
+    @get:OutputFile public abstract val snapshotFile: RegularFileProperty
+    @get:LocalState public abstract val localBindingsFile: RegularFileProperty
+
+    /** 입력 집합이 같아도 root 순서에 따라 중복 JVM 선언의 선택이 달라진다. */
+    @get:Input
+    public val orderedRootIdentities: List<String>
+        get() {
+            val project = projectDirectory.get().asFile.canonicalFile.toPath()
+            return (classRoots.files.toList() + dependencyClasspath.files.toList()).mapIndexed { index, file ->
+                val path = file.canonicalFile.toPath()
+                if (path.startsWith(project)) project.relativize(path).toString().replace('\\', '/')
+                else "external-$index"
+            }
+        }
+
+    /** local bindings는 경로를 포함하므로 snapshot과 분리하고 공개 결과에 넣지 않는다. */
+    @TaskAction
+    public fun captureSnapshot() {
+        val project = projectDirectory.get().asFile.toPath()
+        val witnessPaths = buildWitnessFiles.files.filter { it.isFile }.map { it.toPath() }
+        val witnesses = witnessPaths.map { path ->
+            require(Files.size(path) <= QuerySnapshotCodec.MAX_BYTES) { "build witness is too large" }
+            BuildWitnessCodec.parse(Files.readString(path))
+        }
+        val roots = classRoots.files.map { it.toPath() }.filter { path ->
+            Files.exists(path) && (witnesses.any { witness -> witness.outputs.any {
+                !it.path.startsWith("external/") && project.resolve(it.path).normalize() == path.toAbsolutePath().normalize()
+            } } || containsClasses(path))
+        }
+        val classpath = dependencyClasspath.files.filter { it.exists() }.map { it.toPath() }
+        val resources = serviceResourceRoots.files.filter { it.exists() }.map { it.toPath() }
+        val generated = generatedClassRoots.files.map { it.toPath() }
+        val scanner = KeepRuleScanner(project, includePrivateMembers.get())
+        val rules = scanner.scan(keepRuleFiles.files.map { it.toPath() })
+        val files = roots.map { "classes" to it } + classpath.map { "classpath" to it } +
+            resources.map { "service-resources" to it } + generated.map { "generated-classes" to it } +
+            sourceDirectories.files.map { "source-watch" to it.toPath() } +
+            resourceDirectories.files.map { "directory-watch" to it.toPath() } +
+            buildInputFiles.files.map { "buildConfig" to it.toPath() } +
+            scanner.inputFiles.map { "keepRules" to it } + witnessPaths.map { "witness" to it }
+        val bindings = linkedMapOf<String, Path>()
+        fun capture(): SnapshotProvenance {
+            val inputs = files.mapIndexed { index, (role, path) ->
+                ContentFingerprint.capture(project, path, role, "$role-$index").also {
+                    if (it.path.startsWith("external/")) bindings[it.path] = path.toFile().canonicalFile.toPath()
+                }
+            } + InputFingerprint("options", "snapshot-options", ContentFingerprint.values(listOf(
+                scope.get(), includeSourcePaths.get().toString(), includePrivateMembers.get().toString(),
+            )))
+            return SnapshotProvenance(inputs, witnesses)
+        }
+        val before = capture()
+        bindCompilerInputs(before, bindings)
+        val verified = ProvenanceVerifier.verify(before, project, scope.get(), bindings)
+        require(verified.status == "matched") {
+            "snapshot compiler inputs are ${verified.status}: ${verified.reasons.joinToString()}; rebuild the selected compilations"
+        }
+        val indexed = ClassFileIndexer().indexWithObservations(roots, classpath, resources, generated)
+        val graph = indexed.graph
+        val retention = DefaultRetention.find(graph, emptyList(), rules, indexed.hierarchy,
+            includePrivateMembers = includePrivateMembers.get())
+        val paths = if (includeSourcePaths.get()) SourcePathIndex.resolve(graph, project) else null
+        val located = if (paths == null) graph else CodeGraph(graph.nodes.values.map { node ->
+            paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
+        }, graph.edges, graph.externalCalls, graph.serviceProviders)
+        require(before == capture()) { "snapshot inputs changed during capture; rebuild before querying" }
+        val finalVerification = ProvenanceVerifier.verify(before, project, scope.get(), bindings)
+        require(finalVerification.status == "matched") { "compiler inputs changed during snapshot capture" }
+        val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, project) +
+            paths?.limitations.orEmpty(), includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
+            scope = scope.get(), provenance = before)
+        val content = QuerySnapshotCodec.render(snapshot, compact = true)
+        require(content.length <= QuerySnapshotCodec.MAX_BYTES) { "snapshot exceeds 64 MiB; select a smaller input scope" }
+        val output = snapshotFile.get().asFile.toPath()
+        val local = localBindingsFile.get().asFile.toPath()
+        Files.createDirectories(requireNotNull(local.parent))
+        Files.writeString(local, ExternalInputBindingsCodec.render(bindings.mapValues { it.value.toString() }))
+        Files.createDirectories(requireNotNull(output.parent))
+        Files.writeString(output, content)
+        logger.lifecycle("kartograph ${scope.get()}: snapshot ${graph.nodeCount} nodes and ${graph.edgeCount} edges")
+    }
+
+    private fun containsClasses(path: Path): Boolean = if (Files.isDirectory(path)) {
+        Files.walk(path).use { files -> files.anyMatch { it.fileName.toString().endsWith(".class") } }
+    } else path.fileName.toString().endsWith(".jar")
+
+    private fun bindCompilerInputs(provenance: SnapshotProvenance, bindings: MutableMap<String, Path>) {
+        val candidates = (compilerInputFiles.files + dependencyClasspath.files + classRoots.files)
+            .filter { it.exists() }.map { it.canonicalFile.toPath() }.distinct()
+        val hashes = mutableMapOf<Pair<Path, Boolean>, String>()
+        provenance.witnesses.flatMap { it.inputs + it.outputs + it.compilerEvidence }
+            .filter { it.path.startsWith("external/") && it.role != "options" }.forEach { input ->
+                val matches = candidates.filter { path ->
+                    hashes.getOrPut(path to (input.role == "sources")) {
+                        ContentFingerprint.hash(path, input.role == "sources")
+                    } == input.sha256
+                }
+                require(matches.size == 1) { "compiler input binding is missing or ambiguous; check selected compiler inputs" }
+                bindings[input.path] = matches.single()
+            }
+    }
+}

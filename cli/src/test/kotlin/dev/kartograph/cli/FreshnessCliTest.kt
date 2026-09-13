@@ -1,6 +1,7 @@
 package dev.kartograph.cli
 
 import dev.kartograph.export.QuerySnapshotCodec
+import dev.kartograph.export.ExternalInputBindingsCodec
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.nio.file.Files
@@ -13,6 +14,34 @@ import kotlin.test.assertFalse
 import org.junit.jupiter.api.io.TempDir
 
 class FreshnessCliTest {
+    @Test
+    fun `local binding file reconnects external inputs without replacing explicit bindings`(@TempDir root: Path) {
+        val project = Files.createDirectories(root.resolve("project"))
+        val classes = Files.createDirectories(root.resolve("external classes"))
+        val source = Files.writeString(project.resolve("Entry.java"), "public class Entry {}")
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", classes.toString(), source.toString()))
+        val capture = run("snapshot", "--project", project.toString(), "--classes", classes.toString(), "--scope", "sample:main")
+        assertEquals(0, capture.first, capture.second)
+        val snapshot = project.resolve("snapshot.json")
+        Files.writeString(snapshot, capture.second)
+        val slot = QuerySnapshotCodec.parse(capture.second).provenance!!.inputs.single { it.role == "classes" }.path
+        val bindings = project.resolve("local-bindings.json")
+        Files.writeString(bindings, ExternalInputBindingsCodec.render(mapOf(slot to classes.toString())))
+        val arguments = arrayOf("verify-snapshot", "--project", project.toString(), "--graph-file", snapshot.toString(),
+            "--input-bindings", bindings.toString())
+        val connected = run(*arguments)
+        assertEquals(1, connected.first, connected.second)
+        assertContains(connected.second, "missing-build-witness")
+        assertFalse(connected.second.contains("missing-external-input"))
+        assertFalse(connected.second.contains(root.toString()))
+        assertEquals(64, run(*arguments, "--input", "$slot=$classes").first)
+        assertEquals(64, run(*arguments, "--input-bindings", bindings.toString()).first)
+        Files.writeString(classes.resolve("new-resource.txt"), "changed input")
+        assertContains(run(*arguments).second, "changed-classes")
+        Files.writeString(bindings, "{}")
+        assertEquals(2, run(*arguments).first)
+    }
+
     @Test
     fun `raw compiler files need a scope and completed build evidence`(@TempDir root: Path) {
         val source = Files.writeString(root.resolve("Entry.java"), "public class Entry {}")

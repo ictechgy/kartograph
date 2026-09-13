@@ -74,4 +74,17 @@ class ContentFingerprintTest {
         Files.createSymbolicLink(source.resolve("linked"), outside)
         assertFailsWith<IllegalArgumentException> { watch() }
     }
+
+    @Test
+    fun `optional resource directory watches non source additions`(@TempDir root: Path) {
+        val directory = root.resolve("resources")
+        val empty = ContentFingerprint.capture(root, directory, "directory-watch", "resources")
+        Files.createDirectories(directory)
+        assertEquals(empty, ContentFingerprint.capture(root, directory, "directory-watch", "resources"))
+        Files.writeString(directory.resolve("service.txt"), "provider")
+        assertNotEquals(empty.sha256, ContentFingerprint.capture(root, directory, "directory-watch", "resources").sha256)
+        assertFailsWith<IllegalArgumentException> {
+            ContentFingerprint.capture(root, directory.resolve("service.txt"), "directory-watch", "resources")
+        }
+    }
 }
