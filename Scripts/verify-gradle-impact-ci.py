@@ -61,7 +61,7 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
         write(source, "package p; public class Target { public int value() { return 1; } }\n")
         write("src/test/java/p/TargetCheck.java", "package p; public class TargetCheck { public int check() { return new Target().value(); } }\n")
         def git(*arguments):
-            return run("git", ["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", *arguments], current).strip()
+            return run("git-" + arguments[0], ["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", *arguments], current).strip()
         git("init", "-q")
         git("add", "--", ".")
         git("commit", "-qm", "base")
@@ -101,7 +101,9 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
         for repeat in range(1, 3):
             common = [gradle, "--no-daemon", "--console=plain", "--configuration-cache", f"-Pkartograph.revision={current_revision}"]
             run(f"repeat-{repeat}-build", common + ["testClasses"], current)
-            run(f"repeat-{repeat}-capture", common + ["kartographSnapshot"], current)
+            capture_output = run(f"repeat-{repeat}-capture", common + ["kartographSnapshot"], current)
+            if "> Task :kartographSnapshot" not in {line.strip() for line in capture_output.splitlines()}:
+                raise RuntimeError("repeat capture did not execute the snapshot task")
             if hashlib.sha256((current / graph_path).read_bytes()).hexdigest() != snapshot_digest:
                 raise RuntimeError("unchanged automatic capture changed the snapshot contents")
             queried = json.loads(run(f"repeat-{repeat}-query", [binary, "impact", target,
@@ -115,6 +117,10 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
             no_change[no_change.index(option) + 1] = value
         if json.loads(run("impact-ci-no-change", no_change, current))["status"] != "noChanges":
             raise RuntimeError("unchanged commit comparison did not report noChanges")
+        matching_scope = json.loads(run("scope-matched", [binary, "verify-snapshot", "--graph-file", current / graph_path,
+            "--project", current, "--input-bindings", current / binding_path, "--scope", report["inputs"]["current"]["scope"]], current))
+        if matching_scope.get("status") != "matched":
+            raise RuntimeError("automatic snapshot rejected its recorded scope")
         mismatch = json.loads(run("scope-mismatch", [binary, "verify-snapshot", "--graph-file", current / graph_path,
             "--project", current, "--input-bindings", current / binding_path, "--scope", "other:variant"], current, expected=1))
         if mismatch.get("status") != "stale" or "snapshot-scope-mismatch" not in mismatch.get("reasons", []):
@@ -123,6 +129,8 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
         # Git source 상태는 그대로 두고, 같은 크기·수정 시각의 class 바이트 변경을 검증한다.
         classes = current / "build/classes/java/main/p/Target.class"
         original = classes.read_bytes()
+        if not original:
+            raise RuntimeError("compiler produced an empty class file")
         stamp = classes.stat()
         classes.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
         os.utime(classes, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
@@ -141,9 +149,14 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
             f"-Pkartograph.revision={moved_revision}", "kartographSnapshot"], current)
         moved = json.loads(run("impact-ci-rename", command, current))
         changed_target = next((node for node in moved["changed"] if node["usr"] == target), None)
-        if not changed_target or not any(fact["revision"] == "current" and fact.get("location", {}).get("path") == renamed
+        if not changed_target or not any(fact["revision"] == "current" and (fact.get("location") or {}).get("path") == renamed
                                          for fact in changed_target.get("facts", [])):
             raise RuntimeError("automatic rename comparison lost the current source location")
+        if not any(fact["revision"] == "base" and (fact.get("location") or {}).get("path") == source
+                   for fact in changed_target.get("facts", [])):
+            raise RuntimeError("automatic rename comparison lost the base source location")
+        if moved["inputs"]["current"]["revision"] != moved_revision:
+            raise RuntimeError("automatic rename comparison did not use the current commit")
         if caller not in {node["usr"] for node in moved["affected"]} or any(value["status"] != "matched" for value in moved["freshness"].values()):
             raise RuntimeError("automatic rename comparison lost the caller or freshness")
         summary = {"status": "PASS", "analyzerVersion": version, "changedMethod": target, "unchangedTestCaller": caller,
@@ -160,6 +173,6 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError, subprocess.TimeoutExpired) as error:
         print("error: " + (str(error) if isinstance(error, RuntimeError) else "CI fixture inputs unavailable or invalid"), file=sys.stderr)
         raise SystemExit(2)
