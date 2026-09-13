@@ -2,6 +2,7 @@
 """실제 배포 plugin·Git checkout·CI helper를 연결하고 단계별 비용을 기록한다."""
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -96,6 +97,29 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
         if report["status"] != "found" or any(item["status"] != "matched" for item in report["freshness"].values()):
             raise RuntimeError("CI helper did not preserve complete matching base/current inputs")
 
+        snapshot_digest = hashlib.sha256((current / graph_path).read_bytes()).hexdigest()
+        for repeat in range(1, 3):
+            common = [gradle, "--no-daemon", "--console=plain", "--configuration-cache", f"-Pkartograph.revision={current_revision}"]
+            run(f"repeat-{repeat}-build", common + ["testClasses"], current)
+            run(f"repeat-{repeat}-capture", common + ["kartographSnapshot"], current)
+            if hashlib.sha256((current / graph_path).read_bytes()).hexdigest() != snapshot_digest:
+                raise RuntimeError("unchanged automatic capture changed the snapshot contents")
+            queried = json.loads(run(f"repeat-{repeat}-query", [binary, "impact", target,
+                "--graph-file", current / graph_path], current))
+            if caller not in {node["usr"] for node in queried["affected"]}:
+                raise RuntimeError("repeated saved query omitted the known caller")
+
+        no_change = command.copy()
+        for option, value in (("--base", current_revision), ("--base-project", current),
+                              ("--base-graph", current / graph_path), ("--base-input-bindings", current / binding_path)):
+            no_change[no_change.index(option) + 1] = value
+        if json.loads(run("impact-ci-no-change", no_change, current))["status"] != "noChanges":
+            raise RuntimeError("unchanged commit comparison did not report noChanges")
+        mismatch = json.loads(run("scope-mismatch", [binary, "verify-snapshot", "--graph-file", current / graph_path,
+            "--project", current, "--input-bindings", current / binding_path, "--scope", "other:variant"], current, expected=1))
+        if mismatch.get("status") != "stale" or "snapshot-scope-mismatch" not in mismatch.get("reasons", []):
+            raise RuntimeError("automatic snapshot accepted the wrong requested scope")
+
         # Git source 상태는 그대로 두고, 같은 크기·수정 시각의 class 바이트 변경을 검증한다.
         classes = current / "build/classes/java/main/p/Target.class"
         original = classes.read_bytes()
@@ -105,13 +129,31 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
         stale = json.loads(run("impact-ci-stale", command, current, expected=1))
         if stale["freshness"]["current"]["status"] != "stale" or stale["freshness"]["base"]["status"] != "matched":
             raise RuntimeError("CI helper failed to distinguish stale current outputs from the unchanged base")
+        classes.write_bytes(original)
+        os.utime(classes, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+
+        renamed = "src/main/java/renamed/p/Target.java"
+        (current / renamed).parent.mkdir(parents=True)
+        git("mv", source, renamed)
+        git("commit", "-qm", "move target source")
+        moved_revision = git("rev-parse", "HEAD")
+        run("rename-capture", [gradle, "--no-daemon", "--console=plain", "--configuration-cache",
+            f"-Pkartograph.revision={moved_revision}", "kartographSnapshot"], current)
+        moved = json.loads(run("impact-ci-rename", command, current))
+        changed_target = next((node for node in moved["changed"] if node["usr"] == target), None)
+        if not changed_target or not any(fact["revision"] == "current" and fact.get("location", {}).get("path") == renamed
+                                         for fact in changed_target.get("facts", [])):
+            raise RuntimeError("automatic rename comparison lost the current source location")
+        if caller not in {node["usr"] for node in moved["affected"]} or any(value["status"] != "matched" for value in moved["freshness"].values()):
+            raise RuntimeError("automatic rename comparison lost the caller or freshness")
         summary = {"status": "PASS", "analyzerVersion": version, "changedMethod": target, "unchangedTestCaller": caller,
             "freshness": {side: value["status"] for side, value in report["freshness"].items()},
-            "staleCurrentRejected": True, "timings": timings,
-            "scope": "Controlled two-commit JVM fixture using the built standalone plugin and CLI; timings are not a large-project performance benchmark."}
+            "staleCurrentRejected": True, "scopeMismatchRejected": True, "renamePreserved": True,
+            "noChangeVerified": True, "repeatCount": 2, "timings": timings,
+            "scope": "Controlled JVM commits using the built standalone plugin and CLI; repeated build/capture/query timings are not a large-project performance benchmark."}
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-        print("Gradle impact CI verified: base/current matched, unchanged test caller found, stale output rejected")
+        print("Gradle impact CI verified: matched inputs, caller/rename/no-change preserved, stale output and wrong scope rejected")
     return 0
 
 
