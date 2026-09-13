@@ -1,0 +1,418 @@
+{
+  "cases": [
+    {
+      "candidateDeclarations": 1874,
+      "candidateFiles": 136,
+      "candidateRelations": [
+        {
+          "count": 24,
+          "value": "direct"
+        },
+        {
+          "count": 787,
+          "value": "structural"
+        },
+        {
+          "count": 1063,
+          "value": "transitive"
+        }
+      ],
+      "candidateTestStatus": [
+        {
+          "count": 455,
+          "value": "production"
+        },
+        {
+          "count": 1384,
+          "value": "test"
+        },
+        {
+          "count": 35,
+          "value": "unknown"
+        }
+      ],
+      "case": "google__gson-1391",
+      "changedSeeds": 55,
+      "impactDocumentSha256": "c85c1c04c10a31d96608e03ce46c478c2ddb84a7013056b2584071872ef52fb9",
+      "limitations": [
+        "current: dispatch-candidates: 652 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+        "current: external-dispatch: 381 external virtual call(s) have no project implementation target",
+        "current: index-freshness-unknown: 28 of 96 source file(s) have uncertain compiled-source matching or timestamp precision",
+        "current: inlined-constant-references: 98 compile-time constant declaration(s) may have erased use sites",
+        "current: reflection-strings: 1 Class.forName call(s) have unresolved names",
+        "current: reflective-construction: 3 reflective constructor call(s) require runtime target modeling",
+        "current: reflective-field-access: 5 reflective field access call(s) have no resolved member",
+        "current: reflective-method-invocation: 7 Method.invoke call(s) have no resolved member",
+        "current: runtime-member-lookup: 2 known reflective lookup(s) have no project member matching lookup semantics",
+        "current: runtime-targets-outside-graph: 2 resolved runtime target site(s) have no matching project declaration",
+        "current: unresolved-source-paths: 53 of 5039 located node(s) did not match exactly one project source file",
+        "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+        "result-page: 1873 matching candidate(s) are outside this page; use --offset, --limit or --all",
+        "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+      ],
+      "meaning": "Candidate file presence only: a helper/class/field in the same file may cause presence. This does not establish exact test-method reachability, failure prediction, precision, or safe test omission.",
+      "originalJUnitRows": 1050,
+      "originalJUnitRowsByCandidateFile": {
+        "candidateFile": 1007,
+        "outsideCandidateFiles": 12,
+        "unresolved": 31
+      },
+      "originalTestFilesInCandidates": 88,
+      "originalTestFilesMapped": 92,
+      "pristineSnapshotSha256": "3c4d8510283c217c8be683725cf217b262b082a58e42dd6581650fe6089fcbba",
+      "truncation": {
+        "budget": false,
+        "depth": false,
+        "results": true
+      },
+      "unmappedOriginalTestClasses": 4,
+      "unresolvedSelections": []
+    },
+    {
+      "candidateDeclarations": 4977,
+      "candidateFiles": 269,
+      "candidateRelations": [
+        {
+          "count": 721,
+          "value": "direct"
+        },
+        {
+          "count": 3369,
+          "value": "structural"
+        },
+        {
+          "count": 887,
+          "value": "transitive"
+        }
+      ],
+      "candidateTestStatus": [
+        {
+          "count": 2298,
+          "value": "production"
+        },
+        {
+          "count": 2670,
+          "value": "test"
+        },
+        {
+          "count": 9,
+          "value": "unknown"
+        }
+      ],
+      "case": "fasterxml__jackson-core-1208",
+      "changedSeeds": 152,
+      "impactDocumentSha256": "a7f24094bae57e71799fe42426985ea38b65ef80585979235d7695f0c0d5db91",
+      "limitations": [
+        "current: dispatch-candidates: 1628 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+        "current: external-dispatch: 369 external virtual call(s) have no project implementation target",
+        "current: index-freshness-unknown: 11 of 135 source file(s) have uncertain compiled-source matching or timestamp precision",
+        "current: inlined-constant-references: 369 compile-time constant declaration(s) may have erased use sites",
+        "current: reflection-strings: 1 Class.forName call(s) have unresolved names",
+        "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+        "current: reflective-field-access: 1 reflective field access call(s) have no resolved member",
+        "current: unresolved-source-paths: 9 of 7420 located node(s) did not match exactly one project source file",
+        "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+        "result-page: 4976 matching candidate(s) are outside this page; use --offset, --limit or --all",
+        "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+      ],
+      "meaning": "Candidate file presence only: a helper/class/field in the same file may cause presence. This does not establish exact test-method reachability, failure prediction, precision, or safe test omission.",
+      "originalJUnitRows": 1387,
+      "originalJUnitRowsByCandidateFile": {
+        "candidateFile": 1315,
+        "outsideCandidateFiles": 69,
+        "unresolved": 3
+      },
+      "originalTestFilesInCandidates": 169,
+      "originalTestFilesMapped": 183,
+      "pristineSnapshotSha256": "afa090aa92e9d439eadc35a09f0240fefae041fca8fa8728333e708be4309823",
+      "truncation": {
+        "budget": false,
+        "depth": false,
+        "results": true
+      },
+      "unmappedOriginalTestClasses": 2,
+      "unresolvedSelections": []
+    },
+    {
+      "candidateDeclarations": 7484,
+      "candidateFiles": 831,
+      "candidateRelations": [
+        {
+          "count": 2,
+          "value": "direct"
+        },
+        {
+          "count": 7479,
+          "value": "structural"
+        },
+        {
+          "count": 3,
+          "value": "transitive"
+        }
+      ],
+      "candidateTestStatus": [
+        {
+          "count": 2093,
+          "value": "production"
+        },
+        {
+          "count": 4912,
+          "value": "test"
+        },
+        {
+          "count": 479,
+          "value": "unknown"
+        }
+      ],
+      "case": "detekt_detekt-7718",
+      "changedSeeds": 8,
+      "impactDocumentSha256": "e268f1d5cda5bd2fa6abdbc6b32e4d0797533bb13428baa0959fdad4374ed495",
+      "limitations": [
+        "current: dispatch-candidates: 2715 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+        "current: external-dispatch: 2333 external virtual call(s) have no project implementation target",
+        "current: index-freshness-unknown: 80 of 670 source file(s) have uncertain compiled-source matching or timestamp precision",
+        "current: inlined-constant-references: 255 compile-time constant declaration(s) may have erased use sites",
+        "current: reflective-construction: 6 reflective constructor call(s) require runtime target modeling",
+        "current: service-loading: 2 ServiceLoader call(s) require provider registration inputs",
+        "current: unresolved-source-paths: 1698 of 22320 located node(s) did not match exactly one project source file",
+        "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+        "result-page: 7483 matching candidate(s) are outside this page; use --offset, --limit or --all",
+        "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+      ],
+      "meaning": "Candidate file presence only: a helper/class/field in the same file may cause presence. This does not establish exact test-method reachability, failure prediction, precision, or safe test omission.",
+      "originalJUnitRows": 6640,
+      "originalJUnitRowsByCandidateFile": {
+        "candidateFile": 6577,
+        "outsideCandidateFiles": 43,
+        "unresolved": 20
+      },
+      "originalTestFilesInCandidates": 343,
+      "originalTestFilesMapped": 349,
+      "pristineSnapshotSha256": "d4d26436928215b3c1c9e2927b016e4194e5004eb13a9df62870884c02eb4df8",
+      "truncation": {
+        "budget": false,
+        "depth": false,
+        "results": true
+      },
+      "unmappedOriginalTestClasses": 6,
+      "unresolvedSelections": []
+    },
+    {
+      "candidateDeclarations": 4744,
+      "candidateFiles": 300,
+      "candidateRelations": [
+        {
+          "count": 2,
+          "value": "direct"
+        },
+        {
+          "count": 4740,
+          "value": "structural"
+        },
+        {
+          "count": 2,
+          "value": "transitive"
+        }
+      ],
+      "candidateTestStatus": [
+        {
+          "count": 1377,
+          "value": "production"
+        },
+        {
+          "count": 3325,
+          "value": "test"
+        },
+        {
+          "count": 42,
+          "value": "unknown"
+        }
+      ],
+      "case": "pinterest_ktlint-2895",
+      "changedSeeds": 30,
+      "impactDocumentSha256": "f0040dfcd68abb68d2b3616a6abf9ed2ed5f697023643bcf58663eeaad53a72d",
+      "limitations": [
+        "current: dispatch-candidates: 2345 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+        "current: external-dispatch: 114 external virtual call(s) have no project implementation target",
+        "current: index-freshness-unknown: 10 of 209 source file(s) have uncertain compiled-source matching or timestamp precision",
+        "current: inlined-constant-references: 110 compile-time constant declaration(s) may have erased use sites",
+        "current: reflective-construction: 2 reflective constructor call(s) require runtime target modeling",
+        "current: service-loading: 1 ServiceLoader call(s) require provider registration inputs",
+        "current: unresolved-source-paths: 234 of 10333 located node(s) did not match exactly one project source file",
+        "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+        "result-page: 4743 matching candidate(s) are outside this page; use --offset, --limit or --all",
+        "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+      ],
+      "meaning": "Candidate file presence only: a helper/class/field in the same file may cause presence. This does not establish exact test-method reachability, failure prediction, precision, or safe test omission.",
+      "originalJUnitRows": 2721,
+      "originalJUnitRowsByCandidateFile": {
+        "candidateFile": 2614,
+        "outsideCandidateFiles": 107,
+        "unresolved": 0
+      },
+      "originalTestFilesInCandidates": 134,
+      "originalTestFilesMapped": 149,
+      "pristineSnapshotSha256": "d8805eeb26a0afd7e8047b02fa91f7f809e70cb84b7aff1f1d289b28971016f8",
+      "truncation": {
+        "budget": false,
+        "depth": false,
+        "results": true
+      },
+      "unmappedOriginalTestClasses": 0,
+      "unresolvedSelections": []
+    },
+    {
+      "candidateDeclarations": 23448,
+      "candidateFiles": 863,
+      "candidateRelations": [
+        {
+          "count": 564,
+          "value": "direct"
+        },
+        {
+          "count": 21163,
+          "value": "structural"
+        },
+        {
+          "count": 1721,
+          "value": "transitive"
+        }
+      ],
+      "candidateTestStatus": [
+        {
+          "count": 15505,
+          "value": "production"
+        },
+        {
+          "count": 5006,
+          "value": "test"
+        },
+        {
+          "count": 2937,
+          "value": "unknown"
+        }
+      ],
+      "case": "ankidroid_Anki-Android-19509",
+      "changedSeeds": 1507,
+      "impactDocumentSha256": "d206d6841aebe4bcdb8ce3f2d8a350c0f4dac98c2ea2fdaae23b16d90ae925c6",
+      "limitations": [
+        "current: dispatch-candidates: 6718 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+        "current: dynamic-registration: 5 runtime component registration call(s) are absent from the manifest graph",
+        "current: external-dispatch: 8275 external virtual call(s) have no project implementation target",
+        "current: index-freshness-unknown: 62 of 698 source file(s) have uncertain compiled-source matching or timestamp precision",
+        "current: inlined-constant-references: 677 compile-time constant declaration(s) may have erased use sites",
+        "current: missing-source-paths: 70 of 41970 node(s) have no source file in the class debug attributes",
+        "current: reflection-strings: 3 Class.forName call(s) have unresolved names",
+        "current: reflective-construction: 5 reflective constructor call(s) require runtime target modeling",
+        "current: reflective-field-access: 8 reflective field access call(s) have no resolved member",
+        "current: reflective-method-invocation: 15 Method.invoke call(s) have no resolved member",
+        "current: runtime-targets-outside-graph: 1 resolved runtime target site(s) have no matching project declaration",
+        "current: unresolved-source-paths: 7537 of 41900 located node(s) did not match exactly one project source file",
+        "missing-source-locations: some compiled declarations cannot be matched to changed source files",
+        "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+        "result-page: 23447 matching candidate(s) are outside this page; use --offset, --limit or --all",
+        "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness",
+        "source-file-candidates: 1078 node match(es) used a source filename instead of an exact project-relative path"
+      ],
+      "meaning": "Candidate file presence only: a helper/class/field in the same file may cause presence. This does not establish exact test-method reachability, failure prediction, precision, or safe test omission.",
+      "originalJUnitRows": 1209,
+      "originalJUnitRowsByCandidateFile": {
+        "candidateFile": 1008,
+        "outsideCandidateFiles": 75,
+        "unresolved": 126
+      },
+      "originalTestFilesInCandidates": 146,
+      "originalTestFilesMapped": 162,
+      "pristineSnapshotSha256": "90ab0259fd48e8ce71ba14fec467fb1ce472bc737f2685d75078403b0e095529",
+      "truncation": {
+        "budget": false,
+        "depth": false,
+        "results": true
+      },
+      "unmappedOriginalTestClasses": 8,
+      "unresolvedSelections": [
+        {
+          "candidates": [],
+          "reason": "unmappedFile",
+          "requested": "AnkiDroid/src/main/java/com/ichi2/anki/exception/SystemStorageException.kt"
+        }
+      ]
+    },
+    {
+      "candidateDeclarations": 22469,
+      "candidateFiles": 700,
+      "candidateRelations": [
+        {
+          "count": 137,
+          "value": "direct"
+        },
+        {
+          "count": 21467,
+          "value": "structural"
+        },
+        {
+          "count": 865,
+          "value": "transitive"
+        }
+      ],
+      "candidateTestStatus": [
+        {
+          "count": 14309,
+          "value": "production"
+        },
+        {
+          "count": 5208,
+          "value": "test"
+        },
+        {
+          "count": 2952,
+          "value": "unknown"
+        }
+      ],
+      "case": "ankidroid_Anki-Android-19384",
+      "changedSeeds": 747,
+      "impactDocumentSha256": "8d9442274915bf0d5ee4bb0d8c2510c004969ae687b089766a78f1b3fd515a38",
+      "limitations": [
+        "current: dispatch-candidates: 7187 external virtual call(s) use conservative hierarchy candidates rather than proven receivers",
+        "current: dynamic-registration: 5 runtime component registration call(s) are absent from the manifest graph",
+        "current: external-dispatch: 8193 external virtual call(s) have no project implementation target",
+        "current: index-freshness-unknown: 62 of 712 source file(s) have uncertain compiled-source matching or timestamp precision",
+        "current: inlined-constant-references: 698 compile-time constant declaration(s) may have erased use sites",
+        "current: missing-source-paths: 85 of 43690 node(s) have no source file in the class debug attributes",
+        "current: reflection-strings: 3 Class.forName call(s) have unresolved names",
+        "current: reflective-construction: 5 reflective constructor call(s) require runtime target modeling",
+        "current: reflective-field-access: 10 reflective field access call(s) have no resolved member",
+        "current: reflective-method-invocation: 28 Method.invoke call(s) have no resolved member",
+        "current: runtime-targets-outside-graph: 1 resolved runtime target site(s) have no matching project declaration",
+        "current: unresolved-source-paths: 7927 of 43605 located node(s) did not match exactly one project source file",
+        "missing-source-locations: some compiled declarations cannot be matched to changed source files",
+        "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+        "result-page: 22468 matching candidate(s) are outside this page; use --offset, --limit or --all",
+        "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness",
+        "source-file-candidates: 601 node match(es) used a source filename instead of an exact project-relative path"
+      ],
+      "meaning": "Candidate file presence only: a helper/class/field in the same file may cause presence. This does not establish exact test-method reachability, failure prediction, precision, or safe test omission.",
+      "originalJUnitRows": 1286,
+      "originalJUnitRowsByCandidateFile": {
+        "candidateFile": 1051,
+        "outsideCandidateFiles": 86,
+        "unresolved": 149
+      },
+      "originalTestFilesInCandidates": 149,
+      "originalTestFilesMapped": 167,
+      "pristineSnapshotSha256": "542e1a5354401acd911d53a9667f72d3f3a369f25e33730eebf27fb09443922c",
+      "truncation": {
+        "budget": false,
+        "depth": false,
+        "results": true
+      },
+      "unmappedOriginalTestClasses": 10,
+      "unresolvedSelections": []
+    }
+  ],
+  "cohort": "cohort-v2.json",
+  "cohortSha256": "391a28d445ccb269317a4f1b8999d12ffac5446367415959a8d3c10aadff593f",
+  "productCommit": "bc723c02d100cdb2ec990f5d3d0569e57f67c7e9",
+  "schemaVersion": 1,
+  "scope": "Pre-hidden-test snapshots, evaluator-only changed JVM file selectors. Candidate summary precedes paging. Count file presence separately from test-method reachability and failure prediction."
+}

@@ -28,8 +28,8 @@ public enum class ImpactTestStatus { TEST, PRODUCTION, UNKNOWN }
 /** 후보의 경로 증거가 관찰된 시점에 대해 얼마나 materialize 되었는지 나타낸다. */
 public enum class ImpactPathStatus { COMPLETE, PARTIAL, UNAVAILABLE }
 
-/** 결과 페이지를 구성할 때 사용하는 명시적인 정렬 방식이다. */
-public enum class ImpactSort { USR, MODULE, FILE, TEST_STATUS, RELATION, PATH_STATUS, PATH_DEPTH }
+/** REVIEW는 직접·간접 경로를 구조적·미확인 경로보다 먼저 보여준다. 위험도나 삭제 안전성 점수는 아니다. */
+public enum class ImpactSort { USR, MODULE, FILE, TEST_STATUS, RELATION, PATH_STATUS, PATH_DEPTH, REVIEW }
 
 /** 결과 페이지에 적용할 선택 조건이다. 같은 필드의 값은 OR, 서로 다른 필드는 AND다. */
 public data class ImpactFilter(
@@ -416,8 +416,16 @@ public object ChangeImpact {
             ImpactSort.RELATION -> compareValues(left.relation.name, right.relation.name)
             ImpactSort.PATH_STATUS -> compareValues(left.pathStatus.name, right.pathStatus.name)
             ImpactSort.PATH_DEPTH -> compareValues(pathDepth(left), pathDepth(right))
+            ImpactSort.REVIEW -> compareValuesBy(left, right, { reviewRelationRank(it.relation) }, { pathDepth(it) })
         }
         if (primary != 0) primary else compareValues(left.node.id.value, right.node.id.value)
+    }
+
+    private fun reviewRelationRank(relation: ImpactRelation): Int = when (relation) {
+        ImpactRelation.DIRECT -> 0
+        ImpactRelation.TRANSITIVE -> 1
+        ImpactRelation.STRUCTURAL -> 2
+        ImpactRelation.UNKNOWN -> 3
     }
 
     private fun firstValue(item: ImpactNode, value: (ImpactNodeFact) -> String?): String? =

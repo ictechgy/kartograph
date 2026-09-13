@@ -185,6 +185,43 @@ class ChangeImpactTest {
         ).affected.map { it.node.name })
     }
 
+    @Test fun `review sort keeps observations witnesses and omitted paths while ordering stable pages`() {
+        val target = node("Target")
+        val direct = node("MDirect")
+        val near = node("ZNear")
+        val deep = node("ADeep")
+        val structural = node("AStructural")
+        val graph = CodeGraph(listOf(target, direct, near, deep, structural), listOf(
+            GraphEdge(direct.id, target.id, EdgeKind.CALL),
+            GraphEdge(near.id, direct.id, EdgeKind.CALL),
+            GraphEdge(deep.id, near.id, EdgeKind.CALL),
+            GraphEdge(structural.id, target.id, EdgeKind.INHERITANCE),
+        ))
+        val input = ImpactInput(graph, limitations = listOf("fixture boundary"))
+
+        for (pathLimit in listOf(100, 1)) {
+            val legacy = ChangeImpact.analyze(input, listOf(target.id.value), pathLimit = pathLimit)
+            val review = ChangeImpact.analyze(input, listOf(target.id.value), pathLimit = pathLimit, sort = ImpactSort.REVIEW)
+            assertEquals(ImpactSort.USR, legacy.navigation.sort)
+            assertEquals(listOf("MDirect", "ZNear", "ADeep", "AStructural"), review.affected.map { it.node.name })
+            assertEquals(legacy.affected.associateBy { it.node.id }, review.affected.associateBy { it.node.id })
+            assertEquals(legacy.navigation.observed, review.navigation.observed)
+            assertEquals(legacy.navigation.filtered, review.navigation.filtered)
+            assertEquals(legacy.budgets, review.budgets)
+            assertEquals(legacy.truncated, review.truncated)
+            assertEquals(legacy.limitations, review.limitations)
+            assertEquals(legacy.unresolved, review.unresolved)
+
+            val pages = (0..1).flatMap { page ->
+                ChangeImpact.analyze(input, listOf(target.id.value), offset = page * 2, limit = 2,
+                    pathLimit = pathLimit, sort = ImpactSort.REVIEW).affected
+            }
+            assertEquals(review.affected, pages)
+            val reversed = input.copy(graph = CodeGraph(graph.nodes.values.reversed(), graph.edges.reversed()))
+            assertEquals(review, ChangeImpact.analyze(reversed, listOf(target.id.value), pathLimit = pathLimit, sort = ImpactSort.REVIEW))
+        }
+    }
+
     @Test fun `shared candidate reports partial path evidence instead of disappearing`() {
         val base = input(edge("A", "C"))
         val current = input(edge("A", "B"), edge("B", "C"))

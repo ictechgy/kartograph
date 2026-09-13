@@ -50,7 +50,7 @@ internal object ImpactCommand {
         }
         if (symbols.isEmpty() && "--file" !in values && "--files-from" !in values) return usage(error, "provide symbols or changed files")
         val sort = values["--sort"]?.single()?.let { parseSort(it) }
-            ?: if ("--sort" in values) return usage(error, "invalid impact sort") else ImpactSort.USR
+            ?: if ("--sort" in values) return usage(error, "invalid impact sort") else ImpactSort.REVIEW
         val testStatus = values["--test-status"]?.single()?.let { parseTestStatus(it) }
             ?: if ("--test-status" in values) return usage(error, "invalid impact test status") else null
         val relation = values["--relation"]?.single()?.let { parseRelation(it) }
@@ -118,6 +118,7 @@ internal object ImpactCommand {
     }
 
     private fun parseSort(value: String): ImpactSort? = when (value) {
+        "review" -> ImpactSort.REVIEW
         "usr" -> ImpactSort.USR
         "module" -> ImpactSort.MODULE
         "file" -> ImpactSort.FILE
@@ -167,7 +168,7 @@ internal object ImpactCommand {
           --test-status <status>   filter test, production or unknown source-root status
           --relation <relation>    filter direct, structural, transitive or unknown path relation
           --path-status <status>   filter complete, partial or unavailable path evidence
-          --sort <field>           usr, module, file, test, relation, path or path-status
+          --sort <field>           review (default), usr, module, file, test, relation, path or path-status
           --visit-limit <n>        reverse traversal node budget (default 100000)
           --path-limit <n>         path materialization edge budget (default is limit-derived)
           --revision <hash>        require the current snapshot to carry this commit label
@@ -177,6 +178,8 @@ internal object ImpactCommand {
         Paths retain edge kinds, origins and the revision they came from. Summary counts are computed before
         filters and page limits; use navigation.hasNext with --offset for stable pages. Unknown selections return 64;
         invalid snapshots return 2. Partial traversal and path omissions are explicit in the JSON. Baselines never hide impact.
+        Review order places direct and transitive paths before structural and unknown paths, then uses path depth and USR.
+        This changes presentation only; structural and unknown candidates remain part of the complete observed set.
         Candidates do not prove behavior changes, safe deletion or permission to skip tests.
     """.trimIndent() + "\n"
 }
