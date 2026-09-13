@@ -19,11 +19,14 @@ public object ProvenanceVerifier {
         fun locate(input: InputFingerprint): Path? =
             (if (input.path.startsWith("external/")) external[input.path] else root.resolve(input.path))?.toAbsolutePath()?.normalize()
         val inputs = provenance.inputs + provenance.witnesses.flatMap { it.inputs + it.outputs + it.compilerEvidence }
+        // 한 번의 관측 안에서 같은 경로·역할만 재사용한다. 다음 verify와 before/after 관측은 새로 읽는다.
+        val observedHashes = mutableMapOf<Pair<Path, String>, String>()
         inputs.filter { it.role != "options" }.distinct().forEach { input ->
             val path = locate(input)
             if (path == null) reasons += "missing-external-input"
             else try {
-                if (ContentFingerprint.hash(path, input.role == "sources") != input.sha256) reasons += "changed-${input.role}"
+                val actual = observedHashes.getOrPut(path to input.role) { ContentFingerprint.hashInput(path, input.role) }
+                if (actual != input.sha256) reasons += "changed-${input.role}"
             } catch (_: java.io.IOException) { reasons += "unavailable-${input.role}" }
             catch (_: IllegalArgumentException) { reasons += "unavailable-${input.role}" }
         }

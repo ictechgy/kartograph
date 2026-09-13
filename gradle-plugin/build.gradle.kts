@@ -101,6 +101,16 @@ tasks.jar {
     }
 }
 
+// Android 소비 검증은 AGP와 같은 buildscript classloader에서 실제 배포 JAR를 적용한다.
+tasks.test {
+    val pluginJar = tasks.jar.flatMap { it.archiveFile }
+    inputs.file(pluginJar)
+    systemProperty("kartograph.pluginJar", pluginJar.get().asFile.absolutePath)
+    // 명시적인 in-process 통합 테스트는 Gradle도 같은 JVM에서 실행하므로 여유 heap을 준다.
+    maxHeapSize = "2g"
+    testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+}
+
 publishing {
     publications.withType<MavenPublication>().configureEach {
         if (name == "pluginMaven") {

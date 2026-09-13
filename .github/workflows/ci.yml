@@ -31,10 +31,27 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Test and verify coverage
         run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
+      - name: Preserve failed test details
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: failed-tests
+          path: '*/build/test-results/test/*.xml'
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Verify CLI contract
         run: Scripts/verify-cli-contract.sh
       - name: Verify PR gate against real Git and compiler outputs
         run: python3 -m unittest discover -s Scripts/tests -v
+      - name: Verify automatic Gradle snapshots and CI impact
+        run: python3 Scripts/verify-gradle-impact-ci.py
+      - name: Preserve Gradle impact CI evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: gradle-impact-ci
+          path: build/reports/gradle-impact-ci/result.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify analysis smoke gate and self-analysis contracts
         run: python3 Scripts/verify-analysis-smoke-gate.py
       - name: Verify agent query and bridge contracts
@@ -95,8 +112,19 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
           cache: gradle
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+      - name: Install Android snapshot test platform
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Verify supported JDK
         run: ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} test :gradle-plugin:validatePlugins
+      - name: Preserve failed compatibility test details
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: failed-tests-jdk-${{ matrix.java }}
+          path: '*/build/test-results/test/*.xml'
+          if-no-files-found: ignore
+          retention-days: 7
 
   agp-minimum:
     runs-on: ubuntu-latest

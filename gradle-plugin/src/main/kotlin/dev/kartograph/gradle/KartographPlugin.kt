@@ -11,8 +11,15 @@ public class KartographPlugin : Plugin<Project> {
         extension.includePrivateMembers.convention(false)
         extension.reportFormat.convention("gradle")
         extension.includeSourcePaths.convention(false)
+        extension.snapshotsEnabled.convention(false)
+        extension.snapshotRevision.convention(project.providers.gradleProperty("kartograph.revision"))
         project.pluginManager.withPlugin("com.android.application") { AndroidTasks.configureAndroid(project, extension) }
         project.pluginManager.withPlugin("com.android.library") { AndroidTasks.configureAndroid(project, extension) }
+        project.afterEvaluate {
+            if (extension.snapshotsEnabled.get() && project.pluginManager.hasPlugin("java")) {
+                JvmSnapshotTasks.register(project, extension)
+            }
+        }
     }
 
 }

@@ -30,6 +30,20 @@ public object CompilerWitnesses {
         compilerEvidence: Boolean = false): Provider<RegularFile> =
         register(project, compiler, scope, sourceRoots, buildInputs, "javac", additionalInputs, compilerEvidence = compilerEvidence)
 
+    /** Gradle의 선언된 출력만 빈 classpath 디렉터리로 추적한다. producer 검사는 snapshot이 수행한다. */
+    internal fun automaticJavaCompile(project: Project, compiler: TaskProvider<JavaCompile>, scope: String,
+        sourceRoots: FileCollection, buildInputs: FileCollection, optionalClasspathDirectories: FileCollection): Provider<RegularFile> =
+        register(project, compiler, scope, sourceRoots, buildInputs, "javac", project.files(),
+            optionalClasspathDirectories = optionalClasspathDirectories, automaticSourceInventory = true)
+
+    /** AGP의 compiler 생성 callback에서는 현재 task를 직접 설정하고 task container를 다시 변경하지 않는다. */
+    internal fun automaticJavaCompile(project: Project, compiler: JavaCompile, scope: String,
+        sourceRoots: FileCollection, buildInputs: FileCollection, optionalClasspathDirectories: FileCollection,
+        additionalInputs: FileCollection = project.files()): Provider<RegularFile> =
+        register(project, project.tasks.named(compiler.name, JavaCompile::class.java), scope, sourceRoots, buildInputs,
+            "javac", additionalInputs, optionalClasspathDirectories = optionalClasspathDirectories,
+            automaticSourceInventory = true, configuredTask = compiler)
+
     /** 수집기는 compiler action 중에만 이 요청 토큰을 읽는다. 성공 증거나 cache output은 아니다. */
     public fun inputTokenFile(project: Project, compiler: TaskProvider<out Task>): Provider<RegularFile> =
         project.layout.buildDirectory.file("kartograph/witnesses/${compiler.name}.pending")
@@ -42,17 +56,32 @@ public object CompilerWitnesses {
         sourceRoots: FileCollection, buildInputs: FileCollection, kind: String,
         additionalInputs: FileCollection,
         kotlinJdk: Provider<org.gradle.jvm.toolchain.JavaLauncher>? = null,
-        compilerEvidence: Boolean = false): Provider<RegularFile> {
+        compilerEvidence: Boolean = false,
+        optionalClasspathDirectories: FileCollection = project.files(),
+        automaticSourceInventory: Boolean = false, configuredTask: Task? = null): Provider<RegularFile> {
         val witnessDirectory = project.layout.buildDirectory.dir("kartograph/witnesses/${compiler.name}")
         val witness = witnessDirectory.map { it.file("witness.json") }
         val taskIdentity = if (project.path == ":") ":${compiler.name}" else "${project.path}:${compiler.name}"
-        val byteInputs = project.objects.fileCollection().from(sourceRoots, buildInputs, additionalInputs)
-        val spec = WitnessSpec(project.layout.projectDirectory.asFile, scope, compiler.name, taskIdentity, kind, sourceRoots, buildInputs, byteInputs, additionalInputs, witness, kotlinJdk, compilerEvidence)
-        compiler.configure { task ->
-            task.inputs.files(sourceRoots).withPropertyName("kartographSourceRoots").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+        val byteInputs = project.objects.fileCollection().from(buildInputs, additionalInputs)
+        if (!automaticSourceInventory) byteInputs.from(sourceRoots)
+        val spec = WitnessSpec(project.layout.projectDirectory.asFile, scope, compiler.name, taskIdentity, kind, sourceRoots, buildInputs, byteInputs, additionalInputs, witness, kotlinJdk, compilerEvidence, optionalClasspathDirectories, automaticSourceInventory)
+        val configure: (Task) -> Unit = { task ->
+            val selectedSources = if (automaticSourceInventory) {
+                (if (task is JavaCompile) task.source else KotlinCompilerWitnesses.sourceFiles(task)).also { byteInputs.from(it) }
+            } else sourceRoots
+            task.inputs.files(selectedSources).withPropertyName("kartographSourceRoots").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+            task.inputs.property("kartographAutomaticSourceInventory", automaticSourceInventory)
             task.inputs.files(buildInputs).withPropertyName("kartographBuildInputs").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             task.inputs.property("kartographScope", scope)
             task.inputs.property("kartographCompilerEvidenceEnabled", compilerEvidence)
+            val projectFile = project.layout.projectDirectory.asFile
+            task.inputs.property("kartographOptionalClasspathDirectories", project.providers.provider {
+                val root = projectFile.toPath().toAbsolutePath().normalize()
+                optionalClasspathDirectories.files.map { file ->
+                    val path = file.toPath().toAbsolutePath().normalize()
+                    (if (path.startsWith(root)) root.relativize(path) else path).toString().replace('\\', '/')
+                }.sorted()
+            })
             if (compilerEvidence) {
                 task.outputs.dir(evidenceDirectory(project, compiler)).withPropertyName("kartographCompilerEvidence")
                 if (task is JavaCompile) task.options.isIncremental = false
@@ -64,9 +93,8 @@ public object CompilerWitnesses {
                     listOfNotNull(task.classpath, task.options.annotationProcessorPath, task.options.bootstrapClasspath, task.options.sourcepath)
                 }, task.javaCompiler.map { it.metadata.installationPath.file("lib/modules") })
             } else {
-                byteInputs.from(KotlinCompilerWitnesses.byteInputs(task), requireNotNull(kotlinJdk).map {
-                    it.metadata.installationPath.file("lib/modules")
-                })
+                byteInputs.from(KotlinCompilerWitnesses.byteInputs(task))
+                byteInputs.from(requireNotNull(kotlinJdk).map { it.metadata.installationPath.file("lib/modules") })
             }
             task.inputs.files(byteInputs).withPropertyName("kartographByteInputs").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             // KGP는 compiler output을 디렉터리로 준비하므로 증거 전용 디렉터리를 선언한다.
@@ -80,6 +108,7 @@ public object CompilerWitnesses {
             task.doFirst(BeginWitness(spec))
             task.doLast(CompleteWitness(spec))
         }
+        if (configuredTask == null) compiler.configure(configure) else configure(configuredTask)
         return compiler.flatMap { witness }
     }
 }
@@ -94,11 +123,10 @@ public abstract class FailedWitness : org.gradle.api.services.BuildService<Faile
     override fun onFinish(event: org.gradle.tooling.events.FinishEvent) {
         if (event is org.gradle.tooling.events.task.TaskFinishEvent && event.result is org.gradle.tooling.events.task.TaskFailureResult) {
             failed = true
-            Files.deleteIfExists(parameters.witness.get().asFile.toPath())
         }
     }
     override fun close() {
-        // --continue에서 다른 task가 뒤늦게 성공해도 실패한 build가 증거를 남기지 않는다.
+        // 다른 task의 output/cache 기록 도중에는 파일을 지우지 않는다. build 종료에 실패 증거를 무효화한다.
         if (failed) Files.deleteIfExists(parameters.witness.get().asFile.toPath())
     }
 }
@@ -107,8 +135,11 @@ internal abstract class WitnessEvents @javax.inject.Inject constructor(val regis
 
 internal class MatchingWitness(private val spec: WitnessSpec) : Spec<Task>, Serializable {
     override fun isSatisfiedBy(task: Task): Boolean = try {
-        // output이 없으면 Gradle의 정상 cache 복원을 허용한다. 복원 문서도 소비 시 내용 검증한다.
-        if (!spec.witness.get().asFile.exists()) true else {
+        // 전체 output 부재는 cache 복원을 허용하지만, 비어 있는 기록은 UP-TO-DATE 근거가 아니다.
+        if (!spec.witness.get().asFile.exists()) {
+            !Files.exists(spec.witness.get().asFile.toPath().parent) ||
+                spec.automaticSourceInventory && WitnessRejection.read(spec.rejection())?.reusableFromGradleInputs == true
+        } else {
             val witness = BuildWitnessCodec.parse(Files.readString(spec.witness.get().asFile.toPath()))
             val inputs = spec.observe(task)
             witness.scope == spec.scope && witness.compiler == spec.kind && witness.artifact == spec.taskIdentity &&
@@ -125,19 +156,34 @@ internal data class CompilerObservation(val sources: Set<File>, val destination:
 internal data class WitnessSpec(val project: File, val scope: String, val artifact: String, val taskIdentity: String, val kind: String,
     val sourceRoots: FileCollection, val buildInputs: FileCollection, val byteInputs: FileCollection,
     val additionalInputs: FileCollection, val witness: Provider<RegularFile>,
-    val kotlinJdk: Provider<org.gradle.jvm.toolchain.JavaLauncher>?, val compilerEvidence: Boolean = false) : Serializable {
+    val kotlinJdk: Provider<org.gradle.jvm.toolchain.JavaLauncher>?, val compilerEvidence: Boolean = false,
+    val optionalClasspathDirectories: FileCollection? = null,
+    val automaticSourceInventory: Boolean = false) : Serializable {
     fun observe(task: Task): List<InputFingerprint> {
         val observed = if (kind == "javac") javaObservation(task as JavaCompile)
             else KotlinCompilerWitnesses.observe(task, requireNotNull(kotlinJdk).get(), additionalInputs)
         val roots = sourceRoots.files.toList()
         require(roots.isNotEmpty() && buildInputs.files.isNotEmpty()) { "compiler witness requires explicit source roots and build configuration inputs" }
-        val eligible = roots.flatMap { root ->
-            require(root.isDirectory) { "compiler witness source root is missing" }
-            Files.walk(root.toPath()).use { stream -> stream.filter { Files.isRegularFile(it) &&
-                (it.toString().endsWith(".java") || kind == "kotlin" && it.toString().endsWith(".kt")) }.map { it.toFile().canonicalFile }.toList() }
-        }.toSet()
-        require(eligible == observed.sources.map { it.canonicalFile }.toSet()) { "declared source roots do not match compiler sources; include generated and test inputs explicitly" }
-        val files = roots.map { "sources" to it } + buildInputs.files.map { "buildConfig" to it } + observed.files
+        val selectedSources = if (automaticSourceInventory) {
+            val declared = roots.map { it.canonicalFile.toPath() }
+            observed.sources.map { it.canonicalFile }.map { file ->
+                val index = declared.indexOfFirst { file.toPath().startsWith(it) }
+                require(index >= 0) { "compiler sources are outside declared source directories; register generated sources with the source set" }
+                Triple(index, declared[index].relativize(file.toPath()).toString().replace('\\', '/'), file)
+            }.sortedWith(compareBy({ it.first }, { it.second })).map { it.third }
+        } else {
+            val eligible = roots.flatMap { root ->
+                require(root.isDirectory) { "compiler witness source root is missing" }
+                Files.walk(root.toPath()).use { stream -> stream.filter { Files.isRegularFile(it) &&
+                    (it.toString().endsWith(".java") || kind == "kotlin" && it.toString().endsWith(".kt")) }.map { it.toFile().canonicalFile }.toList() }
+            }.toSet()
+            require(eligible == observed.sources.map { it.canonicalFile }.toSet()) { "declared source roots do not match compiler sources; include generated and test inputs explicitly" }
+            roots
+        }
+        val optional = optionalClasspathDirectories?.files?.map { it.canonicalFile }?.toSet().orEmpty()
+        val files = selectedSources.map { "sources" to it } + buildInputs.files.map { "buildConfig" to it } + observed.files.map { (role, file) ->
+            (if (role in setOf("classpath", "friend") && file.canonicalFile in optional) "directory-watch" else role) to file
+        }
         val covered = byteInputs.files.map { it.canonicalFile }
         require(files.all { (_, file) ->
             val current = file.canonicalFile
@@ -145,7 +191,11 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
         }) { "compiler witness byte inputs omit declared compiler files; supply additionalInputs explicitly" }
         val projectPath = project.toPath()
         val fingerprints = files.mapIndexed { index, (role, file) ->
-            ContentFingerprint.capture(projectPath, file.toPath(), role, "$artifact-$role-$index")
+            try {
+                ContentFingerprint.capture(projectPath, file.toPath(), role, "$artifact-$role-$index")
+            } catch (error: IllegalArgumentException) {
+                throw IllegalArgumentException("compiler witness input failed ($artifact, $role)", error)
+            }
         }
         val replacements = (files.zip(fingerprints).flatMap { (entry, fingerprint) ->
             listOf(entry.second.absolutePath, entry.second.toURI().toASCIIString(), entry.second.toPath().toAbsolutePath().toUri().toASCIIString())
@@ -162,6 +212,25 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
     }
 
     fun pending(): Path = witness.get().asFile.toPath().parent.parent.resolve("$artifact.pending")
+
+    fun rejection(): Path = witness.get().asFile.toPath().parent.resolve(WitnessRejection.FILE_NAME)
+
+    /** 자동 수집의 미지원 관측은 컴파일 성공과 분리한다. 명시적 수동 producer 계약은 계속 실패한다. */
+    fun capture(task: Task, action: () -> Unit) {
+        try { action() }
+        catch (error: IllegalArgumentException) { reject(task, error) }
+        catch (error: java.io.IOException) { reject(task, error) }
+    }
+
+    private fun reject(task: Task, error: Exception) {
+        if (!automaticSourceInventory) throw error
+        Files.deleteIfExists(witness.get().asFile.toPath())
+        Files.deleteIfExists(pending())
+        val reason = WitnessRejection.from(error)
+        Files.createDirectories(rejection().parent)
+        Files.writeString(rejection(), reason.name)
+        task.logger.warn("kartograph $taskIdentity: ${reason.description}; snapshot capture requires supported compiler inputs")
+    }
 
     fun evidenceDirectory(): Path = witness.get().asFile.toPath().parent.parent.parent.resolve("compiler-evidence").resolve(artifact)
 
@@ -215,7 +284,7 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
                 val value = arguments.getOrNull(index++) ?: throw IllegalArgumentException("missing declared compiler argument input")
                 val pathValue = if (argument == "--patch-module") value.substringAfter('=', "") else value
                 require(pathValue.isNotEmpty() && pathValue.split(File.pathSeparator).all { File(it).canonicalFile in paths }) {
-                    "compiler argument file inputs must be declared to Gradle"
+                    "compiler argument file inputs must be declared to Gradle ($argument)"
                 }
             } else require(argument in setOf("-parameters", "-Werror", "-Xlint", "-g", "-proc:none", "-proc:full", "--enable-preview", "-XDstringConcat=inline") ||
                 argument.startsWith("-Xlint:") || argument.startsWith("-g:") || argument.startsWith("-A") || argument.startsWith("-Xdiags:") ||
@@ -227,9 +296,10 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
 }
 
 internal class BeginWitness(private val spec: WitnessSpec) : Action<Task>, Serializable {
-    override fun execute(task: Task) {
+    override fun execute(task: Task) = spec.capture(task) {
         Files.deleteIfExists(spec.witness.get().asFile.toPath())
         Files.deleteIfExists(spec.pending())
+        Files.deleteIfExists(spec.rejection())
         if (spec.compilerEvidence && Files.exists(spec.evidenceDirectory())) {
             require(Files.isDirectory(spec.evidenceDirectory()) && !Files.isSymbolicLink(spec.evidenceDirectory())) { "invalid compiler evidence output directory" }
             Files.list(spec.evidenceDirectory()).use { entries -> entries.forEach {
@@ -247,6 +317,11 @@ internal class BeginWitness(private val spec: WitnessSpec) : Action<Task>, Seria
 
 internal class CompleteWitness(private val spec: WitnessSpec) : Action<Task>, Serializable {
     override fun execute(task: Task) {
+        if (spec.automaticSourceInventory && Files.exists(spec.rejection())) return
+        spec.capture(task) { complete(task) }
+    }
+
+    private fun complete(task: Task) {
         val inputs = spec.observe(task)
         require(Files.isRegularFile(spec.pending()) && Files.readString(spec.pending()) == spec.token(inputs)) {
             "compiler inputs changed during compilation; rebuild before capturing a snapshot"

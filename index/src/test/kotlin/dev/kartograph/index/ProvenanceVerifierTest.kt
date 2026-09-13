@@ -31,7 +31,10 @@ class ProvenanceVerifierTest {
         val missing = ProvenanceVerifier.verify(provenance, root, "sample:main", bindings - selected.path)
         assertEquals("unverified", missing.status)
         assertEquals(listOf("missing-external-input"), missing.reasons)
+        val stamp = Files.getLastModifiedTime(classes.resolve("A.class"))
         Files.write(classes.resolve("A.class"), byteArrayOf(4, 5, 6))
+        Files.setLastModifiedTime(classes.resolve("A.class"), stamp)
+        assertEquals("stale", ProvenanceVerifier.verify(provenance, root, "sample:main", bindings).status)
         assertEquals("stale", ProvenanceVerifier.verify(provenance, root, "sample:main", bindings - selected.path).status)
     }
 
@@ -51,6 +54,23 @@ class ProvenanceVerifierTest {
         val provenance = SnapshotProvenance(witness.outputs + fp("witness", "witness.json"), listOf(witness))
         fun status(value: SnapshotProvenance? = provenance, scope: String = "sample:main") = ProvenanceVerifier.verify(value, root, scope).status
         assertEquals("matched", status())
+        val sourceAsConfig = provenance.copy(inputs = provenance.inputs + fp("buildConfig", "src"))
+        Files.writeString(source.resolve("metadata.txt"), "configuration only")
+        assertEquals("stale", status(sourceAsConfig))
+        assertEquals("matched", status())
+        Files.delete(source.resolve("metadata.txt"))
+        // 아직 없는 test source set도 나중에 소스가 생기면 현재 snapshot을 stale로 만든다.
+        val optionalSources = root.resolve("tests")
+        val watched = provenance.copy(inputs = provenance.inputs +
+            ContentFingerprint.capture(root, optionalSources, "source-watch", "test-sources"))
+        assertEquals("matched", status(watched))
+        Files.createDirectories(optionalSources)
+        Files.writeString(optionalSources.resolve("NewTest.java"), "class NewTest {}")
+        val changedWatch = ProvenanceVerifier.verify(watched, root, "sample:main")
+        assertEquals("stale", changedWatch.status)
+        assertEquals(listOf("changed-source-watch"), changedWatch.reasons)
+        Files.delete(optionalSources.resolve("NewTest.java"))
+        assertEquals("matched", status(watched))
         // 수집기 실행 증명이 아닌 문서/지문 경계 검증용 fixture다.
         val receiptFile = root.resolve("evidence.tsv")
         Files.writeString(receiptFile, "unit collector document")

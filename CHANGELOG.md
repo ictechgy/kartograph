@@ -10,6 +10,10 @@
 
 ### Added
 
+- Gradle JVM main/test의 `kartographSnapshot` 자동 수집과 checkout 전용 external-input bindings를 추가한다.
+  Kotlin/Java별 실제 소스·출력·compiler 증거를 확인하며, 누락된 compiler와 정상 `NO-SOURCE`를 구분한다.
+- Android variant의 `kartographSnapshot<Variant>`는 main/unit-test compiler 증거와 SDK·manifest·XML 입력을 함께 캡처한다.
+  실제 AGP 9.3.2 배포 JAR 소비, configuration cache, 같은 수정 시각의 내용 변경과 테스트 소스 삭제를 검증한다.
 - compiler task의 source/class/config/classpath 지문을 snapshot에 연결하고 `verify-snapshot`과 CI helper에서
   내용 일치·stale·미검증 상태를 구분한다. Java/Kotlin producer의 실패·캐시·경로 이동과 Android 입력을 검증한다.
 - `impact`: 수정 예정 심볼/파일의 직접·간접 영향 후보를 시점별 경로·간선 출처와 함께 보고한다.
@@ -28,6 +32,13 @@
 
 ### Fixed
 
+- 일시적인 입력 변경·관측 실패가 해결된 뒤 이전 rejection 기록에 묶이지 않고 compiler 증거를 다시 생성한다.
+- 빌드 실패 후 비어 있는 witness 출력이 `UP-TO-DATE`로 고정되는 문제를 복구하고, 실패 기록 삭제를 빌드 종료 시점으로 옮긴다.
+- included build 하위 convention 모듈의 설정·소스 변경도 snapshot 입력으로 추적한다.
+- 자동 compiler 관측의 미지원 입력으로 일반 빌드를 중단하지 않고, 스냅샷 요청에서 증거 거부 사유를 보고한다.
+- 하위 프로젝트의 상위 설정 파일 연결과 설정 변경 추적을 보완하고, 설정 파일·catalog·build logic의 추가도 감지한다.
+- Kotlin compiler witness의 toolchain 연결이 기존 bytecode target을 덮어쓰지 않도록 보존한다.
+  JDK 21 / target 17 Android 일반 빌드와 자동 수집을 비교해 검증한다.
 - static field의 String/Class 초기값·재대입·reflection get/set에서 알려진 런타임 후보를 복원한다.
   필드의 불확실성을 유지하며, classfile String 상수·상속/숨김·분석 한도와 Java/Kotlin 실행 대조를 검증한다.
 - 프로젝트와 dependency에 정의된 반복·중첩 Compose multipreview 어노테이션을 보존 근거로 연결한다.

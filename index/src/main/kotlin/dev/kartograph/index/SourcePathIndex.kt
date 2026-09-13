@@ -47,7 +47,15 @@ public object SourcePathIndex {
         } catch (error: SecurityException) {
             projectRoot
         }
-        val pathsByFileName = byFileName(root)
+        return resolvePaths(graph, root, byFileName(root))
+    }
+
+    /** 선택된 compiler 소스만 대조한다. 생성 디렉터리도 명시됐으면 포함하고 외부 경로는 확정하지 않는다. */
+    public fun resolve(graph: CodeGraph, projectRoot: Path, sourceFiles: Collection<Path>): SourcePathResolution =
+        resolvePaths(graph, projectRoot.toRealPath(), sourceInventoryFiles(sourceFiles)
+            .groupBy { it.fileName.toString() }.mapValues { it.value.toSet() })
+
+    private fun resolvePaths(graph: CodeGraph, root: Path, pathsByFileName: Map<String, Set<Path>>): SourcePathResolution {
         val byNodeId = mutableMapOf<NodeId, String>()
         var located = 0
         var unresolved = 0
@@ -58,7 +66,7 @@ public object SourcePathIndex {
             // 이름이 여러 파일과 맞거나(모호) project 밖에서 컴파일된 class(무일치)는 확정하지 않는다.
             val match = pathsByFileName[sourceFileName]?.singleOrNull()
             // 이름이 같기만 한 무관한 파일을 사실로 단언하지 않도록 선언의 package와 후보의 위치도 대조한다.
-            if (match == null || !matchesPackage(node.id, root.relativize(match))) {
+            if (match == null || !match.startsWith(root) || !matchesPackage(node.id, root.relativize(match))) {
                 unresolved++
                 return@forEach
             }

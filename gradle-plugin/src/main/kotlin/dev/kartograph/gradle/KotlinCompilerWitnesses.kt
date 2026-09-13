@@ -11,6 +11,15 @@ import java.io.File
 
 /** 공개 Kotlin JVM compiler task API를 통해 명시적으로 선택한 Kotlin/Android compilation을 기록한다. */
 public object KotlinCompilerWitnesses {
+    /** 사용자가 snapshot용으로 선택한 toolchain을 compiler와 입력 지문에 함께 연결한다. */
+    internal fun automaticCompile(project: Project, compiler: TaskProvider<out Task>, scope: String,
+        sourceRoots: FileCollection, buildInputs: FileCollection, compilerRuntime: FileCollection,
+        optionalClasspathDirectories: FileCollection, jdk: Provider<JavaLauncher>): Provider<RegularFile> {
+        compiler.configure { KotlinApi(it).useToolchain(jdk) }
+        return CompilerWitnesses.register(project, compiler, scope, sourceRoots, buildInputs, "kotlin", compilerRuntime,
+            kotlinJdk = jdk, optionalClasspathDirectories = optionalClasspathDirectories, automaticSourceInventory = true)
+    }
+
     /** Java 소스도 Kotlin compiler 입력이므로 mixed source root를 함께 지정해야 한다. */
     @JvmOverloads
     public fun kotlinCompile(project: Project, compiler: TaskProvider<out Task>, scope: String,
@@ -23,6 +32,11 @@ public object KotlinCompilerWitnesses {
     internal fun destination(task: Task): File = KotlinApi(task).destination()
 
     internal fun fullCompilation(task: Task) = KotlinApi(task).fullCompilation()
+
+    internal fun sourceFiles(task: Task): FileCollection = KotlinApi(task).let { api ->
+        api.collection("org.jetbrains.kotlin.gradle.tasks.KotlinCompileTool", "getSources") +
+            api.collection("org.jetbrains.kotlin.gradle.tasks.KotlinCompile", "getJavaSources")
+    }
 
     internal fun byteInputs(task: Task): List<Any> = KotlinApi(task).let { api -> listOf(
         api.collection("org.jetbrains.kotlin.gradle.tasks.KotlinCompileTool", "getSources"),
@@ -124,11 +138,18 @@ private class KotlinApi(private val task: Task) {
     }
 
     fun useToolchain(jdk: Provider<JavaLauncher>) {
+        val options = get(task, "org.jetbrains.kotlin.gradle.dsl.KotlinJvmCompile", "getCompilerOptions")
+        @Suppress("UNCHECKED_CAST")
+        val target = get(options, "org.jetbrains.kotlin.gradle.dsl.KotlinJvmCompilerOptions", "getJvmTarget")
+            as org.gradle.api.provider.Property<Any>
+        val intendedTarget = target.orNull
         val toolchain = get(task, "org.jetbrains.kotlin.gradle.tasks.UsesKotlinJavaToolchain", "getKotlinJavaToolchain")
         val setter = get(toolchain, "org.jetbrains.kotlin.gradle.tasks.KotlinJavaToolchain", "getToolchain")
         try {
             contract("org.jetbrains.kotlin.gradle.tasks.KotlinJavaToolchain${'$'}JavaToolchainSetter")
                 .getMethod("use", Provider::class.java).invoke(setter, jdk)
+            // KGP의 setter가 target도 바꾸므로 JDK 선택과 기존 bytecode target을 분리해 보존한다.
+            if (intendedTarget != null) target.set(intendedTarget)
         } catch (error: ReflectiveOperationException) {
             throw IllegalArgumentException("supported Kotlin compiler toolchain API is unavailable", error)
         }

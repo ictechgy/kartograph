@@ -17,6 +17,7 @@ internal object AndroidTasks {
     private fun registerVariantTask(project: Project, extension: KartographExtension, variant: Variant) {
         registerDeadTask(project, extension, variant)
         registerGraphTask(project, extension, variant)
+        if (extension.snapshotsEnabled.get()) AndroidSnapshotTasks.register(project, extension, variant)
     }
 
     private fun registerDeadTask(project: Project, extension: KartographExtension, variant: Variant) {

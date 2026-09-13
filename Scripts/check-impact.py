@@ -24,6 +24,8 @@ def main():
     parser.add_argument("--base-project", help="checkout containing the captured base inputs; otherwise base freshness is unverified")
     parser.add_argument("--input", action="append", default=[], help="current external/slot=path freshness binding")
     parser.add_argument("--base-input", action="append", default=[], help="base external/slot=path freshness binding")
+    parser.add_argument("--input-bindings", help="generated local external-input binding file for the current checkout")
+    parser.add_argument("--base-input-bindings", help="generated local external-input binding file for the base checkout")
     parser.add_argument("--depth", type=int, default=100)
     parser.add_argument("--limit", type=int, default=500)
     parser.add_argument("--timeout", type=int, default=120)
@@ -72,10 +74,12 @@ def main():
     if not isinstance(inputs, dict) or not all(isinstance(inputs.get(side), dict) and inputs[side].get("scope") for side in ("base", "current")):
         raise RuntimeError("CI impact requires snapshots labeled with --scope project:variant")
 
-    def verify(graph, checkout, bindings, scope):
+    def verify(graph, checkout, bindings, scope, binding_file=None):
         command = [str(binary), "verify-snapshot", "--graph-file", str(graph), "--project", str(checkout), "--scope", scope]
         for binding in bindings:
             command.extend(["--input", binding])
+        if binding_file:
+            command.extend(["--input-bindings", str(Path(binding_file).resolve(strict=True))])
         checked = subprocess.run(command, cwd=checkout, env=env, capture_output=True, text=True, timeout=args.timeout)
         if checked.returncode not in (0, 1):
             raise RuntimeError("snapshot freshness verification failed; check evidence and external input bindings")
@@ -88,8 +92,8 @@ def main():
         return document
 
     report["freshness"] = {
-        "current": verify(current_graph, project, args.input, inputs["current"]["scope"]),
-        "base": verify(base_graph, Path(args.base_project).resolve(strict=True), args.base_input, inputs["base"]["scope"]) if args.base_project else
+        "current": verify(current_graph, project, args.input, inputs["current"]["scope"], args.input_bindings),
+        "base": verify(base_graph, Path(args.base_project).resolve(strict=True), args.base_input, inputs["base"]["scope"], args.base_input_bindings) if args.base_project else
             {"status": "unverified", "reasons": ["base-checkout-not-supplied"]},
     }
     sys.stdout.write(json.dumps(report, ensure_ascii=True, sort_keys=True) + "\n")

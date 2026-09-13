@@ -17,6 +17,11 @@ collector path. Enabling `compilerEvidence` on a supported producer records
 version 2 receipts; raw reference files are imported only through explicit
 `snapshot --compiler-evidence` inputs with matching compiler evidence.
 
+For automatic JVM main/test and Android main/unit-test capture, use the
+[Gradle snapshot workflow](IMPACT.md#jvm-빌드에서-자동-캡처-미출시). It wires actual
+compiler providers and writes a separate checkout-local input-binding document.
+The APIs below remain available for explicitly selected compiler inputs.
+
 ## Explicit Gradle producer
 
 Apply the kartograph plugin and register the selected **compiler task**. Registration
@@ -60,8 +65,9 @@ The tool hashes all files in explicitly selected non-source roots locally, inclu
 public certificate resources; it does not infer confidentiality from a filename.
 Choose those roots accordingly. Symbolic file inputs are rejected.
 The Kotlin adapter configures the supplied JDK through the public toolchain API.
-Keep the Java and Kotlin bytecode targets aligned explicitly when that toolchain differs
-from an Android variant's default; the JDK used to compile and the bytecode target are separate settings.
+The adapter preserves the preexisting Kotlin bytecode target when binding the JDK.
+The JDK used to compile and the bytecode target are separate settings; Java and Kotlin
+targets must still agree for the selected consumer build.
 Public KGP APIs are resolved through the selected task's classloader, including effective
 compiler arguments, so an isolated Kotlin plugin classloader is supported.
 The adapter is tested against KGP 2.4.10; it also uses that version's compiler argument
@@ -76,7 +82,8 @@ select the compiler task through their supported variant/build API and pass its
 actual destination provider to their capture invocation. PROJECT graph roots and
 ALL hierarchy inputs remain distinct. A transformed AGP JAR is not automatically
 attributed to an earlier compiler directory: an unmatched root remains unverified.
-Automatic variant/task/root capture belongs to the later CI automation goal.
+The automatic workflow selects supported main/unit-test artifacts through Gradle/AGP
+providers and retains the same requirement for verified compiler outputs.
 
 The compiler records inputs before its action, removes the previous witness before
 an attempted compile, and records matching post-action inputs and class outputs only
@@ -92,7 +99,11 @@ be declared Gradle file inputs; use declared compiler APIs.
 Kotlin records declared compiler artifact inputs and effective compiler arguments through the KGP public API; an
 unavailable artifact/property is an error, not a fabricated success record.
 Each compiler owns a dedicated witness output directory. The pending marker lives outside
-that directory, and only the completed JSON is a reusable build result.
+that directory, and only the completed JSON proves the supported compiler observation.
+Automatic capture can also store a bounded rejection record in the output directory:
+ordinary compilation continues, but a snapshot requiring that missing witness fails.
+The explicit producer APIs below retain strict rejection. An existing empty witness
+directory is not sufficient for an up-to-date compilation; it must be regenerated.
 Additional declared compiler files outside the adapter's public input collections
 must be supplied through `additionalInputs`. Compilation fails before recording
 evidence if any observed file is missing from the byte-sensitive input roots.
@@ -105,9 +116,9 @@ Java rejects omitted declared files; Kotlin validates runtime JAR coverage but d
 not automatically distinguish custom non-JAR plugin/argument files from private
 cache state. Include those custom files in `additionalInputs`; omitting them leaves
 their changes outside verification. `matched` covers the recorded input contract.
-The Android witness experiment covers the selected Kotlin task. Android JavaCompile
-tasks with additional AGP/processor file inputs require explicit enumeration and
-have not been validated by that experiment.
+The original explicit Android witness experiment covers the selected Kotlin task.
+The automatic workflow additionally validates Android JavaCompile metadata and JDK
+image inputs using actual mixed Java/Kotlin consumers; see its tested version matrix.
 
 ## Capture and compare
 
@@ -134,7 +145,9 @@ resolves from the project directory. Prefer absolute values when these differ.
 External inputs (including the compiler/JDK artifact) appear as `external/...`
 slots. Bind each slot to a local file/directory with repeated
 `--input external/slot=/local/path`. Bindings are supplied at comparison time and are
-not serialized. Missing bindings are `unverified`; proven byte changes are `stale`.
+not serialized into public snapshots. Automatic Gradle capture writes a separate local
+binding file; pass it with `--input-bindings` and keep it out of public artifacts.
+Missing bindings are `unverified`; proven byte changes are `stale`.
 Moving an equivalent checkout
 preserves project-relative identities and content digests. The document includes
 compiler kind, compiler task artifact identity and project/variant scope; changed

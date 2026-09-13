@@ -52,6 +52,117 @@ module·file·test 필터는 각 축이 base 또는 current 사실에 맞으면 
 
 ## CI에서 갱신하고 비교
 
+### JVM 빌드에서 자동 캡처 (미출시)
+
+Java 또는 Kotlin/JVM 프로젝트는 Gradle plugin에서 main/test compiler와 실제 SourceSet 출력 경로를 연결할 수 있다.
+Kotlin은 의도한 Gradle toolchain provider를 명시적으로 지정한다. 이 provider를 Kotlin compiler와 증거 기록에
+함께 적용하므로 기존 프로젝트가 사용하는 toolchain을 선택한다. 현재 KGP 2.4.10 소비 프로젝트에서 검증했다.
+
+```kotlin
+kartograph {
+    snapshotsEnabled.set(true)
+    includeSourcePaths.set(true)
+    // Kotlin/JVM 프로젝트에서 지정한다. Java 전용 프로젝트에는 필요하지 않다.
+    snapshotKotlinToolchain.set(javaToolchains.launcherFor(java.toolchain))
+}
+```
+
+```sh
+./gradlew kartographSnapshot -Pkartograph.revision="$COMMIT_SHA"
+kartograph verify-snapshot --graph-file build/reports/kartograph/jvm-snapshot.json \
+  --project . --input-bindings build/kartograph/jvm-input-bindings.json
+kartograph impact 'class:sample/Repository' \
+  --graph-file build/reports/kartograph/jvm-snapshot.json
+```
+
+`kartographSnapshot`은 테스트를 실행하지 않으며 선택한 컴파일·runtime artifact 생산 작업을 실행한다.
+테스트 실행은 기존 CI 절차를 유지한다. Kotlin compiler가 분석에 읽은 Java 소스는 javac의 성공 증거를
+대신하지 않는다. 소스가 있는 compiler의 출력 또는 증거가 빠지면 캡처가 실패한다.
+소스가 없는 언어의 정상적인 `NO-SOURCE` 출력은 허용한다. 임의 라이브러리 누락은 계속 오류다.
+
+자동 수집이 지원하지 않는 compiler 입력은 일반 컴파일을 막지 않고 증거 생성 거부로 기록한다.
+`kartographSnapshot`은 해당 증거가 없으면 사유와 함께 실패한다. 지원하지 않는 입력을 검증된 것으로
+표시하지 않으며, 명시적인 수동 compiler witness API의 실패 계약은 유지한다.
+
+설정 입력에는 해당 프로젝트와 상위 프로젝트의 build script·properties, `gradle/`의 catalog·wrapper·script,
+`buildSrc` 및 included build 하위 모듈의 표준 설정·`src`를 포함한다. 생성된 `build` 출력과 `.gradle` 등의
+캐시 디렉터리는 제외하며, `src` 안의 같은 이름 패키지는 보존한다. 아직 없는 관례 파일·디렉터리도 생성 여부를 추적한다.
+자동 수집의 included build root는 현재 Gradle 빌드가 직접 포함한 위치다. 그 root 안의 하위 모듈과
+`buildSrc`는 추적하지만, root 밖에서 간접으로 포함한 별도 build나 비표준 위치의 소스는 자동 탐색하지 않는다.
+이러한 외부 build-logic과 applied script는 다음처럼 추가한다.
+
+```kotlin
+kartograph {
+    snapshotBuildInputs.from(rootProject.file("conventions"), rootProject.file("config/analysis.gradle.kts"))
+}
+```
+
+`verify-snapshot`은 기록된 입력의 현재 내용을 비교한다. 임의 Gradle 코드나 환경·네트워크 입력을 다시
+평가하는 기능은 아니므로, 빌드가 외부에서 읽는 설정은 해당 입력 범위에 명시적으로 포함한다.
+
+결과는 compact query snapshot이다. `jvm-input-bindings.json`은 외부 compiler/JDK 입력의 절대경로를
+담는 해당 checkout 전용 파일이므로 커밋하거나 공개 artifact로 올리지 않는다. 아래 CI helper에는
+`--input-bindings`와 `--base-input-bindings`로 각각 전달한다.
+
+컴파일 task의 configuration cache·up-to-date 판정은 재사용하지만 snapshot 자체는 매번 전체 캡처한다.
+증분 인덱싱이나 snapshot build cache 지원을 의미하지 않는다. 이 자동 경로의 현재 범위는 JVM main/test이며
+별도 custom source set 및 compiler-evidence collector의 자동 연결은 아직 검증 중이다.
+
+### Android variant 자동 캡처 (미출시)
+
+Android 프로젝트에도 같은 `snapshotsEnabled` 설정을 사용한다. Kotlin compiler에 적용할 toolchain은
+다음처럼 지정한다. 기존 프로젝트의 toolchain 버전에 맞춰 선택한다.
+
+```kotlin
+kartograph {
+    snapshotsEnabled.set(true)
+    includeSourcePaths.set(true)
+    snapshotKotlinToolchain.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    })
+}
+```
+
+`./gradlew kartographSnapshotDebug`는 debug variant의 main과 활성화된 unit-test component를 캡처한다.
+결과는 `build/reports/kartograph/debug-snapshot.json`, 해당 checkout 전용 경로 연결은
+`build/kartograph/debug-input-bindings.json`이다. 테스트 자체는 실행하지 않는다.
+SDK classpath, merged manifest, XML과 Java resource 입력을 함께 사용하며, 원래 baseline의 억제 상태도 보존한다.
+
+AGP가 선언한 keep 파일 중 build 출력 아래에서 아직 생성되지 않은 파일은 개수를 한계에 보고한다.
+해당 부모 디렉터리의 내용도 추적해 새 파일이 생겼을 때 이전 스냅샷을 그대로 검증하지 않는다.
+소스 트리의 누락된 keep 파일은 계속 오류다.
+
+자동 캡처의 실제 설치 검증 조합은 다음과 같다.
+
+| Android library | Kotlin | Gradle | JDK / SDK | 검증 |
+|---|---|---|---|---|
+| AGP 9.3.2 | 내장 Kotlin | 9.6.1 | 17·21 / 36 | main/unit-test 증거, configuration cache, 같은 시각의 내용 변경, Java 테스트 소스 삭제 |
+| AGP 8.7.3 | KGP 2.4.10 | 8.10.2 | 17 / 35 | compiler 재사용, 동일 snapshot, CLI 신선도 `matched`, Java/Kotlin main/test 선언과 manifest/XML 근거 |
+
+두 번째 조합에서는 KGP가 Gradle 8.14.4 이상으로 업그레이드하도록 권고한다. 경고를 억제하지 않고 검증했다.
+Toolchain 연결은 기존 Kotlin bytecode target을 보존한다. JDK 21로 JVM target 17 코드를 컴파일하는 조합도 검증했다.
+
+### 두 checkout 비교
+
+저장소의 `python3 Scripts/verify-gradle-impact-ci.py`는 실제 배포 plugin JAR와 CLI를 사용해 임시 Git의
+두 commit을 각각 빌드·캡처하고 strict CI 비교까지 실행한다. 변경하지 않은 테스트 호출자를 찾고,
+같은 수정 시각·크기의 class 변경은 stale로 거부하는지 검사한다. 결과의 단계별 시간은
+`build/reports/gradle-impact-ci/result.json`에 기록하며 GitHub CI도 같은 명령을 실행한다.
+이 작은 fixture의 시간은 대형 프로젝트 성능 점수와 구분한다.
+
+로컬과 GitHub CI의 같은 두-commit JVM fixture 관측값은 다음과 같다. 각각 한 번의 current 실행이며,
+Gradle 시작 비용을 포함한다. Android 표본이나 대형 저장소의 성능 보장은 아니다.
+
+| 단계 | 로컬 | GitHub CI |
+|---|---:|---:|
+| source build | 2.92초 | 5.01초 |
+| snapshot capture 명령 | 2.68초 | 5.02초 |
+| 내용 검증 | 0.20초 | 0.31초 |
+| impact CI 비교(양쪽 검증 포함) | 0.63초 | 0.83초 |
+
+원격 결과는 [검증 실행](https://github.com/ictechgy/kartograph/actions/runs/34755414975)의
+`gradle-impact-ci` artifact에 단계별 종료 코드와 함께 기록했다.
+
 base와 current checkout을 **같은 CLI 빌드·입력 범위·variant**로 빌드해 snapshot을 만든다.
 각 capture에 `--revision <git rev-parse HEAD의 전체 값> --scope <프로젝트:variant>`를 전달한다.
 라벨은 호출자의 선언이며 class/source 내용 지문이나 빌드 신선도 증명이 아니다. 분석 한계를 함께 확인한다.
