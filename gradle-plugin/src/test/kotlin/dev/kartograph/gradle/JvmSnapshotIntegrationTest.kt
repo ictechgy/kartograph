@@ -84,6 +84,14 @@ class JvmSnapshotIntegrationTest {
         assertEquals(TaskOutcome.UP_TO_DATE, again.task(":compileTestJava")!!.outcome)
         assertEquals(text, Files.readString(file))
 
+        Files.writeString(main.resolve("Ignored.java"), "changed but still excluded invalid Java")
+        val excludedChange = build()
+        assertEquals(TaskOutcome.UP_TO_DATE, excludedChange.task(":compileJava")!!.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, excludedChange.task(":compileTestJava")!!.outcome)
+        val excludedSnapshot = QuerySnapshotCodec.parse(Files.readString(file))
+        assertEquals(snapshot.graph.nodes, excludedSnapshot.graph.nodes)
+        assertEquals(snapshot.graph.edges, excludedSnapshot.graph.edges)
+
         Files.writeString(other.resolve("Uncompiled.java"), "package p; class Uncompiled {}")
         Files.writeString(buildFile, Files.readString(buildFile) + """
 
