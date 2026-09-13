@@ -13,6 +13,14 @@ internal object KotlinJvmInputs {
     data class Compilation(val compiler: TaskProvider<out Task>, val roots: FileCollection)
 
     fun compilations(project: Project, sourceSets: List<SourceSet>): Map<String, Compilation> {
+        return compilations(project, sourceSets.associate { it.name to it.java.sourceDirectories },
+            "org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension")
+    }
+
+    fun androidCompilations(project: Project, roots: Map<String, FileCollection>): Map<String, Compilation> =
+        compilations(project, roots, "org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension")
+
+    private fun compilations(project: Project, sourceRoots: Map<String, FileCollection>, extensionApi: String): Map<String, Compilation> {
         val extension = project.extensions.findByName("kotlin") ?: return emptyMap()
         val loader = extension.javaClass.classLoader
         fun get(receiver: Any, contract: String, method: String): Any = try {
@@ -20,11 +28,11 @@ internal object KotlinJvmInputs {
         } catch (error: ReflectiveOperationException) {
             throw IllegalArgumentException("supported Kotlin JVM compilation API is unavailable", error)
         }
-        val target = get(extension, "org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension", "getTarget")
+        val target = get(extension, extensionApi, "getTarget")
         val compilations = get(target, "org.jetbrains.kotlin.gradle.plugin.KotlinTarget", "getCompilations")
             as NamedDomainObjectContainer<*>
-        return sourceSets.associate { sourceSet ->
-            val compilation = compilations.getByName(sourceSet.name)
+        return sourceRoots.mapValues { (name, additionalRoots) ->
+            val compilation = compilations.getByName(name)
             @Suppress("UNCHECKED_CAST")
             val compiler = get(compilation, "org.jetbrains.kotlin.gradle.plugin.KotlinCompilation", "getCompileTaskProvider")
                 as TaskProvider<out Task>
@@ -34,7 +42,7 @@ internal object KotlinJvmInputs {
                 (get(requireNotNull(kotlinSet), "org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet", "getKotlin")
                     as SourceDirectorySet).sourceDirectories
             }
-            sourceSet.name to Compilation(compiler, project.files(roots, sourceSet.java.sourceDirectories))
+            Compilation(compiler, project.files(roots, additionalRoots))
         }
     }
 

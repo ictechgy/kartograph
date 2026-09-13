@@ -33,6 +33,7 @@ internal object JvmSnapshotTasks {
             task.scope.set(scope)
             task.revision.set(extension.snapshotRevision)
             task.projectDirectory.set(project.layout.projectDirectory)
+            task.buildDirectory.set(project.layout.buildDirectory)
             task.includeSourcePaths.set(extension.includeSourcePaths)
             task.includePrivateMembers.set(extension.includePrivateMembers)
             task.keepRuleFiles.from(extension.keepRules)

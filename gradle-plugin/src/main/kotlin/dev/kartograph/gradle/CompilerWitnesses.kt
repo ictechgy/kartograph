@@ -36,6 +36,14 @@ public object CompilerWitnesses {
         register(project, compiler, scope, sourceRoots, buildInputs, "javac", project.files(),
             optionalClasspathDirectories = optionalClasspathDirectories, automaticSourceInventory = true)
 
+    /** AGP의 compiler 생성 callback에서는 현재 task를 직접 설정하고 task container를 다시 변경하지 않는다. */
+    internal fun automaticJavaCompile(project: Project, compiler: JavaCompile, scope: String,
+        sourceRoots: FileCollection, buildInputs: FileCollection, optionalClasspathDirectories: FileCollection,
+        additionalInputs: FileCollection = project.files()): Provider<RegularFile> =
+        register(project, project.tasks.named(compiler.name, JavaCompile::class.java), scope, sourceRoots, buildInputs,
+            "javac", additionalInputs, optionalClasspathDirectories = optionalClasspathDirectories,
+            automaticSourceInventory = true, configuredTask = compiler)
+
     /** 수집기는 compiler action 중에만 이 요청 토큰을 읽는다. 성공 증거나 cache output은 아니다. */
     public fun inputTokenFile(project: Project, compiler: TaskProvider<out Task>): Provider<RegularFile> =
         project.layout.buildDirectory.file("kartograph/witnesses/${compiler.name}.pending")
@@ -50,14 +58,14 @@ public object CompilerWitnesses {
         kotlinJdk: Provider<org.gradle.jvm.toolchain.JavaLauncher>? = null,
         compilerEvidence: Boolean = false,
         optionalClasspathDirectories: FileCollection = project.files(),
-        automaticSourceInventory: Boolean = false): Provider<RegularFile> {
+        automaticSourceInventory: Boolean = false, configuredTask: Task? = null): Provider<RegularFile> {
         val witnessDirectory = project.layout.buildDirectory.dir("kartograph/witnesses/${compiler.name}")
         val witness = witnessDirectory.map { it.file("witness.json") }
         val taskIdentity = if (project.path == ":") ":${compiler.name}" else "${project.path}:${compiler.name}"
         val byteInputs = project.objects.fileCollection().from(buildInputs, additionalInputs)
         if (!automaticSourceInventory) byteInputs.from(sourceRoots)
         val spec = WitnessSpec(project.layout.projectDirectory.asFile, scope, compiler.name, taskIdentity, kind, sourceRoots, buildInputs, byteInputs, additionalInputs, witness, kotlinJdk, compilerEvidence, optionalClasspathDirectories, automaticSourceInventory)
-        compiler.configure { task ->
+        val configure: (Task) -> Unit = { task ->
             val selectedSources = if (automaticSourceInventory) {
                 (if (task is JavaCompile) task.source else KotlinCompilerWitnesses.sourceFiles(task)).also { byteInputs.from(it) }
             } else sourceRoots
@@ -100,6 +108,7 @@ public object CompilerWitnesses {
             task.doFirst(BeginWitness(spec))
             task.doLast(CompleteWitness(spec))
         }
+        if (configuredTask == null) compiler.configure(configure) else configure(configuredTask)
         return compiler.flatMap { witness }
     }
 }
@@ -254,7 +263,7 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
                 val value = arguments.getOrNull(index++) ?: throw IllegalArgumentException("missing declared compiler argument input")
                 val pathValue = if (argument == "--patch-module") value.substringAfter('=', "") else value
                 require(pathValue.isNotEmpty() && pathValue.split(File.pathSeparator).all { File(it).canonicalFile in paths }) {
-                    "compiler argument file inputs must be declared to Gradle"
+                    "compiler argument file inputs must be declared to Gradle ($argument)"
                 }
             } else require(argument in setOf("-parameters", "-Werror", "-Xlint", "-g", "-proc:none", "-proc:full", "--enable-preview", "-XDstringConcat=inline") ||
                 argument.startsWith("-Xlint:") || argument.startsWith("-g:") || argument.startsWith("-A") || argument.startsWith("-Xdiags:") ||

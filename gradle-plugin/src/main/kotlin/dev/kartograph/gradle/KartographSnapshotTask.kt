@@ -11,6 +11,8 @@ import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.export.QuerySnapshot
 import dev.kartograph.export.QuerySnapshotCodec
 import dev.kartograph.index.ClassFileIndexer
+import dev.kartograph.index.AndroidManifestScanner
+import dev.kartograph.index.AndroidXmlScanner
 import dev.kartograph.index.ContentFingerprint
 import dev.kartograph.index.KeepRuleScanner
 import dev.kartograph.index.ProvenanceVerifier
@@ -74,6 +76,10 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val keepRuleFiles: ConfigurableFileCollection
 
+    /** AGP가 선언한 rule 중 build 출력 아래의 미생성 파일만 선택적으로 처리한다. */
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val generatedKeepRuleFiles: ConfigurableFileCollection
+
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val generatedClassRoots: ConfigurableFileCollection
 
@@ -81,11 +87,21 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     @get:InputFile @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val baselineFile: RegularFileProperty
 
+    /** Android adapter가 선택 variant의 merged manifest와 resource provider를 연결한다. */
+    @get:InputFile @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val manifestFile: RegularFileProperty
+
+    @get:Input @get:Optional public abstract val namespace: Property<String>
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val androidResourceDirectories: ConfigurableFileCollection
+
     @get:Input public abstract val scope: Property<String>
     @get:Input @get:Optional public abstract val revision: Property<String>
     @get:Input public abstract val includeSourcePaths: Property<Boolean>
     @get:Input public abstract val includePrivateMembers: Property<Boolean>
     @get:Internal public abstract val projectDirectory: DirectoryProperty
+    @get:Internal public abstract val buildDirectory: DirectoryProperty
     @get:OutputFile public abstract val snapshotFile: RegularFileProperty
     @get:LocalState public abstract val localBindingsFile: RegularFileProperty
 
@@ -132,14 +148,20 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val resources = serviceResourceRoots.files.filter { it.exists() }.map { it.toPath() }
         val generated = generatedClassRoots.files.map { it.toPath() }
         val scanner = KeepRuleScanner(project, includePrivateMembers.get())
-        val rules = scanner.scan(keepRuleFiles.files.map { it.toPath() })
+        val generatedRules = generatedKeepRuleFiles.files.map { it.toPath() }
+        val existingGeneratedRules = AndroidKeepRules.existing(generatedRules, buildDirectory.get().asFile.toPath())
+        val missingGeneratedRules = generatedRules - existingGeneratedRules.toSet()
+        val rules = scanner.scan(keepRuleFiles.files.map { it.toPath() } + existingGeneratedRules)
         val files = roots.map { "classes" to it } + classpath.map { "classpath" to it } +
             resources.map { "service-resources" to it } + generated.map { "generated-classes" to it } +
             sourceDirectories.files.map { "source-watch" to it.toPath() } +
             resourceDirectories.files.map { "directory-watch" to it.toPath() } +
             buildInputFiles.files.map { "buildConfig" to it.toPath() } +
             scanner.inputFiles.map { "keepRules" to it } + witnessPaths.map { "witness" to it } +
-            listOfNotNull(baselineFile.orNull?.asFile?.toPath()?.let { "baseline" to it })
+            listOfNotNull(baselineFile.orNull?.asFile?.toPath()?.let { "baseline" to it },
+                manifestFile.orNull?.asFile?.toPath()?.let { "manifest" to it }) +
+            androidResourceDirectories.files.map { "directory-watch" to it.toPath() } +
+            missingGeneratedRules.map { "directory-watch" to requireNotNull(it.parent) }.distinct()
         val bindings = linkedMapOf<String, Path>()
         fun capture(): SnapshotProvenance {
             val inputs = files.mapIndexed { index, (role, path) ->
@@ -147,7 +169,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
                     if (it.path.startsWith("external/")) bindings[it.path] = path.toFile().canonicalFile.toPath()
                 }
             } + InputFingerprint("options", "snapshot-options", ContentFingerprint.values(listOf(
-                scope.get(), includeSourcePaths.get().toString(), includePrivateMembers.get().toString(),
+                scope.get(), includeSourcePaths.get().toString(), includePrivateMembers.get().toString(), namespace.orNull.orEmpty(),
             )))
             return SnapshotProvenance(inputs, witnesses)
         }
@@ -161,7 +183,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         }
         val verified = ProvenanceVerifier.verify(before, project, scope.get(), bindings)
         require(verified.status == "matched") {
-            "snapshot compiler inputs are ${verified.status}: ${verified.reasons.joinToString()}; rebuild the selected compilations"
+            "snapshot compiler inputs are ${verified.status}: ${verified.reasons.joinToString()}; rebuild the selected compilations; " +
+                "class roots=${before.inputs.filter { it.role == "classes" }.map { it.path }.take(10)}; " +
+                "compiler outputs=${witnesses.flatMap { it.outputs }.map { it.path }.take(10)}"
         }
         val selectedSources = sourceFiles.files.map { file ->
             require(file.isFile && !Files.isSymbolicLink(file.toPath())) { "snapshot source inventory contains an unavailable file" }
@@ -174,7 +198,16 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         require(selectedSources == compilerSources) { "snapshot source inventory does not match compiler units" }
         val indexed = ClassFileIndexer().indexWithObservations(roots, classpath, resources, generated)
         val graph = indexed.graph
-        val retention = DefaultRetention.find(graph, emptyList(), rules, indexed.hierarchy,
+        val entryPoints = buildList {
+            manifestFile.orNull?.asFile?.toPath()?.let { manifest ->
+                require(namespace.isPresent) { "snapshot manifest requires its Android namespace" }
+                addAll(AndroidManifestScanner(project).scan(manifest, namespace.get()))
+            }
+            androidResourceDirectories.files.filter { it.isDirectory }.forEach { directory ->
+                addAll(AndroidXmlScanner(project).scan(directory.toPath()))
+            }
+        }
+        val retention = DefaultRetention.find(graph, entryPoints, rules, indexed.hierarchy,
             includePrivateMembers = includePrivateMembers.get())
         val baseline = baselineFile.orNull?.asFile?.toPath()?.let { BaselineCodec.parse(Files.readString(it)) }.orEmpty()
         val suppressed = graph.nodes.values.filter { Finding(it.id, it.location).fingerprint in baseline }
@@ -187,7 +220,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val finalVerification = ProvenanceVerifier.verify(before, project, scope.get(), bindings)
         require(finalVerification.status == "matched") { "compiler inputs changed during snapshot capture" }
         val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, selectedSources) +
-            paths?.limitations.orEmpty(), suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
+            paths?.limitations.orEmpty() + if (missingGeneratedRules.isEmpty()) emptyList() else
+                listOf("missing-generated-keep-files: ${missingGeneratedRules.size}"),
+            suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
             scope = scope.get(), provenance = before)
         val content = QuerySnapshotCodec.render(snapshot, compact = true)
         require(content.length <= QuerySnapshotCodec.MAX_BYTES) { "snapshot exceeds 64 MiB; select a smaller input scope" }

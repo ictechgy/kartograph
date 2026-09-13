@@ -178,21 +178,10 @@ public abstract class KartographDeadTask : DefaultTask() {
      * 소스 트리 경로의 누락은 스캐너가 기존대로 실패로 둔다.
      */
     private fun existingRuleFiles(files: List<Path>): List<Path> {
-        val buildRoot = canonical(buildDirectory.get().asFile.toPath())
-        val existing = files.filter { file -> Files.exists(file) || !canonical(file).startsWith(buildRoot) }
+        val existing = AndroidKeepRules.existing(files, buildDirectory.get().asFile.toPath())
         val skipped = files.size - existing.size
         if (skipped > 0) logger.lifecycle("kartograph ${variantName.get()}: skipped $skipped missing generated keep rule file(s) under the build directory")
         return existing
-    }
-
-    /**
-     * 존재하지 않는 경로도 존재하는 조상 기준으로 심볼릭 링크를 풀어 같은 기준으로 대조한다.
-     * (`/var`와 `/private/var`처럼 같은 곳을 가리키는 표기가 섞여도 일치한다.)
-     */
-    private fun canonical(path: Path): Path = try {
-        Path.of(path.toFile().canonicalPath)
-    } catch (_: java.io.IOException) {
-        path.toAbsolutePath().normalize()
     }
 
     private fun writeReport(findings: List<Finding>, suppressedCount: Int) {

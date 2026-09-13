@@ -101,6 +101,13 @@ tasks.jar {
     }
 }
 
+// Android 소비 검증은 AGP와 같은 buildscript classloader에서 실제 배포 JAR를 적용한다.
+tasks.test {
+    val pluginJar = tasks.jar.flatMap { it.archiveFile }
+    inputs.file(pluginJar)
+    systemProperty("kartograph.pluginJar", pluginJar.get().asFile.absolutePath)
+}
+
 publishing {
     publications.withType<MavenPublication>().configureEach {
         if (name == "pluginMaven") {

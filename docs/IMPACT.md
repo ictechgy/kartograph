@@ -86,7 +86,35 @@ kartograph impact 'class:sample/Repository' \
 
 컴파일 task의 configuration cache·up-to-date 판정은 재사용하지만 snapshot 자체는 매번 전체 캡처한다.
 증분 인덱싱이나 snapshot build cache 지원을 의미하지 않는다. 이 자동 경로의 현재 범위는 JVM main/test이며
-Android variant, 별도 custom source set 및 compiler-evidence collector의 자동 연결은 아직 검증 중이다.
+별도 custom source set 및 compiler-evidence collector의 자동 연결은 아직 검증 중이다.
+
+### Android variant 자동 캡처 (미출시)
+
+Android 프로젝트에도 같은 `snapshotsEnabled` 설정을 사용한다. Kotlin compiler에 적용할 toolchain은
+다음처럼 지정한다. 기존 프로젝트의 toolchain 버전에 맞춰 선택한다.
+
+```kotlin
+kartograph {
+    snapshotsEnabled.set(true)
+    includeSourcePaths.set(true)
+    snapshotKotlinToolchain.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    })
+}
+```
+
+`./gradlew kartographSnapshotDebug`는 debug variant의 main과 활성화된 unit-test component를 캡처한다.
+결과는 `build/reports/kartograph/debug-snapshot.json`, 해당 checkout 전용 경로 연결은
+`build/kartograph/debug-input-bindings.json`이다. 테스트 자체는 실행하지 않는다.
+SDK classpath, merged manifest, XML과 Java resource 입력을 함께 사용하며, 원래 baseline의 억제 상태도 보존한다.
+
+AGP가 선언한 keep 파일 중 build 출력 아래에서 아직 생성되지 않은 파일은 개수를 한계에 보고한다.
+해당 부모 디렉터리의 내용도 추적해 새 파일이 생겼을 때 이전 스냅샷을 그대로 검증하지 않는다.
+소스 트리의 누락된 keep 파일은 계속 오류다.
+
+현재 자동 캡처의 실제 설치 검증은 AGP 9.3.2 library, 내장 Kotlin, Gradle 9.6.1, JDK 17 조합이다.
+main/unit-test 증거, configuration cache, 같은 수정 시각의 내용 변경과 Java 테스트 소스 삭제를 확인했다.
+AGP 8과 다른 조합의 자동 캡처 검증은 진행 중이다.
 
 ### 두 checkout 비교
 
