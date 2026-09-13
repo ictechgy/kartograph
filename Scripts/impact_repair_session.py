@@ -235,8 +235,12 @@ class RepairSession:
             "integrationtest", "functionaltest", "commontest", "sharedtest",
         } for part in parts):
             return True
-        stem = Path(parts[-1]).stem
-        return stem.startswith("test") or stem.endswith("test") or stem.endswith("tests")
+        stem = Path(path.split("/")[-1]).stem
+        return bool(
+            re.search(r"(?:Test|Tests)$", stem)
+            or re.match(r"^Tests?(?=[A-Z0-9_]|$)", stem)
+            or re.search(r"(?i)(?:^tests?(?:[._-]|$)|[._-]tests?$)", stem)
+        )
 
     def _is_read_allowed(self, path: str) -> bool:
         return any(root == "" or path == root or path.startswith(root + "/") for root in self._read_paths)
