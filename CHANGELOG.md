@@ -21,6 +21,11 @@
 - `snapshot`과 `query --graph-file`: 그래프·보존 근거·baseline 상태·계량 한계를 저장하고 원본 입력 없이 질의한다.
 - `--generated-classes`와 Gradle `generatedClassRoots`: 생성 전용 컴파일 입력의 출처로 선언을 구분하며 정점·간선은 유지한다.
 
+### Changed
+
+- CLI `impact`의 기본 정렬을 `review`로 바꿔 직접·간접 경로를 구조적·미확인 경로보다 먼저 보여준다.
+  전체 후보·경로·한계는 유지한다. 기존 순서는 `--sort usr`로 선택하며 분석 API의 기본 정렬은 바뀌지 않는다.
+
 ### Fixed
 
 - static field의 String/Class 초기값·재대입·reflection get/set에서 알려진 런타임 후보를 복원한다.

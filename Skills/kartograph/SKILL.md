@@ -80,6 +80,11 @@ Each metadata filter axis can match either revision independently; inspect `fact
 Test status describes a recognized source-root convention, not proof that a declaration is a runnable test.
 Keep inputs, filters, sort, and budgets fixed between pages. Set `--path-limit` explicitly when changing page limits,
 because the default path budget depends on the result limit.
+The CLI defaults to `--sort review`: direct paths, then transitive, structural, and unknown paths, with path depth and
+USR as deterministic tie-breakers. Use `--sort usr` for canonical identity order. Review order changes the page order
+only; retain structural and unknown candidates when assessing interface changes and uncertain runtime behavior.
+Relation combines recorded paths and omissions: any structural edge keeps a candidate structural even when another
+path is direct. Inspect the revision-specific paths instead of interpreting the order as a risk score.
 `--kind` selects the representative declaration's kind (current if present). Sorting by test status uses the common
 revision status, or `unknown` when statuses differ; test filters and summary buckets use individual revision facts.
 An offset page remains `partial` relative to the full candidate set even when `hasNext` is false.

@@ -166,16 +166,21 @@ class RepairSessionTest(unittest.TestCase):
             self.assertTrue(refreshed["ok"], refreshed)
             self.assertTrue((root / "trial.json").is_file())
             result = session.execute({"action": "impact", "symbol": "class:Caller",
-                                      "module": ["feature"], "relation": "direct", "limit": 3})
+                                      "module": ["feature"], "relation": "direct", "sort": "review", "limit": 3})
             self.assertTrue(result["ok"], result)
             self.assertEqual("kartograph-impact", result["result"]["format"])
             calls = [json.loads(line) for line in log.read_text().splitlines()]
             self.assertEqual("snapshot", calls[0][0])
             self.assertEqual("impact", calls[1][0])
             self.assertIn("--module", calls[1])
+            self.assertEqual("review", calls[1][calls[1].index("--sort") + 1])
             self.assertEqual(1, result["result"]["observedAffected"])
             self.assertEqual(len(session.source_hashes()), refreshed["sourceHashCount"])
             self.assertNotIn("sourceHashes", refreshed)
+            default_result = session.execute({"action": "impact", "symbol": "class:Caller"})
+            self.assertTrue(default_result["ok"], default_result)
+            default_call = json.loads(log.read_text().splitlines()[-1])
+            self.assertNotIn("--sort", default_call)
 
     def test_query_uses_saved_snapshot_argv_and_preserves_document_metadata(self):
         with tempfile.TemporaryDirectory() as directory:

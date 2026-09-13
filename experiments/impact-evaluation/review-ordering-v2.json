@@ -1,0 +1,184 @@
+{
+  "baselineProductCommit": "bc723c02d100cdb2ec990f5d3d0569e57f67c7e9",
+  "behavior": "CLI default review ordering; analysis API default USR and explicit legacy sorts unchanged. No removal of structural/unknown candidates, witnesses, limitations or counts.",
+  "cases": [
+    {
+      "allCandidateFactsAndWitnessesEqual": true,
+      "case": "google__gson-1391",
+      "firstPageEqualsFullPrefix": true,
+      "navigationEqualExceptSort": true,
+      "newSort": "review",
+      "observedCandidates": 1804,
+      "originalLimitationsPreserved": true,
+      "otherDocumentFieldsEqual": {
+        "budgets": true,
+        "changed": true,
+        "format": true,
+        "inputs": true,
+        "limitations": true,
+        "observedAffected": true,
+        "status": true,
+        "summary": true,
+        "truncated": true,
+        "unresolved": true,
+        "version": true
+      },
+      "queryMetrics": {
+        "review-all": {
+          "exit": 0,
+          "outputSha256": "47c4f89108583db5609a652b2a96c739c028359f695d77db80523791d0f4d38d",
+          "seconds": null,
+          "timingNote": "Existing first-attempt response retained; initial in-memory timing was not saved."
+        },
+        "review-first-page": {
+          "exit": 0,
+          "outputSha256": "02fbca5e18f77a09c5c576e485b269486f1011a45daf2e9b71fe6429cf1521d5",
+          "seconds": null,
+          "timingNote": "Existing first-attempt response retained; initial in-memory timing was not saved."
+        }
+      },
+      "targets": []
+    },
+    {
+      "allCandidateFactsAndWitnessesEqual": true,
+      "case": "fasterxml__jackson-core-1208",
+      "firstPageEqualsFullPrefix": true,
+      "navigationEqualExceptSort": true,
+      "newSort": "review",
+      "observedCandidates": 3735,
+      "originalLimitationsPreserved": true,
+      "otherDocumentFieldsEqual": {
+        "budgets": true,
+        "changed": true,
+        "format": true,
+        "inputs": true,
+        "limitations": true,
+        "observedAffected": true,
+        "status": true,
+        "summary": true,
+        "truncated": true,
+        "unresolved": true,
+        "version": true
+      },
+      "queryMetrics": {
+        "review-all": {
+          "exit": 0,
+          "outputSha256": "aa105235d4a7aae08318ed92f354176525567a6efa5ab4a19f93fdbea9cdf657",
+          "seconds": 0.541267
+        },
+        "review-first-page": {
+          "exit": 0,
+          "outputSha256": "3692fcc03693d73ef2592b46606895525e26315d3eb46da98f2c59ae466a91dc",
+          "seconds": 0.426366
+        }
+      },
+      "targets": []
+    },
+    {
+      "allCandidateFactsAndWitnessesEqual": true,
+      "case": "detekt_detekt-7718",
+      "firstPageEqualsFullPrefix": true,
+      "navigationEqualExceptSort": true,
+      "newSort": "review",
+      "observedCandidates": 7485,
+      "originalLimitationsPreserved": true,
+      "otherDocumentFieldsEqual": {
+        "budgets": true,
+        "changed": true,
+        "format": true,
+        "inputs": true,
+        "limitations": true,
+        "observedAffected": true,
+        "status": true,
+        "summary": true,
+        "truncated": true,
+        "unresolved": true,
+        "version": true
+      },
+      "queryMetrics": {
+        "review-all": {
+          "exit": 0,
+          "outputSha256": "68cb29492761ebcdc65d01345bdb6e9949a23e0a89b8f278d5c88cb3c006fb86",
+          "seconds": 1.305782
+        },
+        "review-first-page": {
+          "exit": 0,
+          "outputSha256": "47ae4dd0b02b5d521ed6a5d8261e19d47355b188421cb5bb5a88d2151ed01a44",
+          "seconds": 1.002538
+        }
+      },
+      "targets": [
+        {
+          "afterRank": 4,
+          "beforeRank": 600,
+          "inFirstPage": true,
+          "name": "renders multiple issues()",
+          "usr": "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues()V"
+        },
+        {
+          "afterRank": 3,
+          "beforeRank": 599,
+          "inFirstPage": true,
+          "name": "renders multiple issues with rule set to warning by default()",
+          "usr": "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues with rule set to warning by default()V"
+        }
+      ]
+    },
+    {
+      "allCandidateFactsAndWitnessesEqual": true,
+      "case": "pinterest_ktlint-2895",
+      "firstPageEqualsFullPrefix": true,
+      "navigationEqualExceptSort": true,
+      "newSort": "review",
+      "observedCandidates": 1949,
+      "originalLimitationsPreserved": true,
+      "otherDocumentFieldsEqual": {
+        "budgets": true,
+        "changed": true,
+        "format": true,
+        "inputs": true,
+        "limitations": true,
+        "observedAffected": true,
+        "status": true,
+        "summary": true,
+        "truncated": true,
+        "unresolved": true,
+        "version": true
+      },
+      "queryMetrics": {
+        "review-all": {
+          "exit": 0,
+          "outputSha256": "5aca1970962da9e41910e4c342cb16d016fe3a53acd3c3060dc29b0a93a5dde1",
+          "seconds": 0.932468
+        },
+        "review-first-page": {
+          "exit": 0,
+          "outputSha256": "110989e25f8e1ae4d02d98bf9a037bc924abfb134361f4d757e0ec35073cfb2c",
+          "seconds": 0.653025
+        }
+      },
+      "targets": []
+    }
+  ],
+  "review": {
+    "claude": "No blocking findings; default-forwarding test and documentation suggestions incorporated.",
+    "glm": "Provider failures; review remains incomplete."
+  },
+  "schemaVersion": 1,
+  "scope": "Same saved pre-edit graphs, member selections, traversal/path budgets. Presentation comparison only; no graph precision or AI productivity claim.",
+  "selectionPlan": "member-selectors-v2.json",
+  "validation": {
+    "cliAndAgentContracts": "passed",
+    "jvmToolchains": [
+      17,
+      21
+    ],
+    "lineCoverageGate": "90 percent passed",
+    "productFailures": 0,
+    "productTestsPerToolchain": 444,
+    "pythonTests": 100,
+    "selfAnalysisContractCount": 6,
+    "selfAnalysisPassed": true,
+    "selfAnalysisTotalBudgetSeconds": 15
+  }
+}

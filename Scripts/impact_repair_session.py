@@ -75,7 +75,7 @@ _IMPACT_SCALAR_OPTIONS = {
     "test_status": ("--test-status", {"test", "production", "unknown"}),
     "relation": ("--relation", {"direct", "structural", "transitive", "unknown"}),
     "path_status": ("--path-status", {"complete", "partial", "unavailable"}),
-    "sort": ("--sort", {"usr", "module", "file", "test", "test-status", "relation", "path", "path-depth", "path-status"}),
+    "sort": ("--sort", {"review", "usr", "module", "file", "test", "test-status", "relation", "path", "path-depth", "path-status"}),
 }
 _PRESERVE_IMPACT_KEYS = {
     "observedAffected", "unresolved", "truncated", "limitations", "summary",

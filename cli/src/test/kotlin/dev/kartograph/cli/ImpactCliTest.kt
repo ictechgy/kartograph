@@ -141,6 +141,42 @@ class ImpactCliTest {
         assertContains(result.second, "\"pathOmissions\": 1")
     }
 
+    @Test fun `default page prioritizes direct and transitive evidence without dropping structural candidates`(@TempDir root: Path) {
+        fun node(name: String) = GraphNode(NodeId("class:p/$name"), name, NodeKind.CLASS,
+            location = SourceLocation("src/main/kotlin/p/$name.kt"))
+        val target = node("Target")
+        val direct = node("ZDirect")
+        val transitive = node("ZZTest").copy(location = SourceLocation("src/test/kotlin/p/ZZTest.kt"))
+        val structural = (0 until 20).map { node("A%02d".format(it)) }
+        val graph = CodeGraph(listOf(target, direct, transitive) + structural,
+            listOf(GraphEdge(direct.id, target.id, EdgeKind.CALL),
+                GraphEdge(transitive.id, direct.id, EdgeKind.CALL)) +
+                structural.map { GraphEdge(it.id, target.id, EdgeKind.INHERITANCE) })
+        val snapshot = root.resolve("graph.json").also {
+            Files.writeString(it, QuerySnapshotCodec.render(QuerySnapshot(graph, emptyList(), listOf("fixture boundary"))))
+        }
+
+        val first = run("impact", target.id.value, "--graph-file", snapshot.toString(), "--limit", "2", "--path-limit", "100")
+        assertEquals(0, first.first, first.third)
+        assertContains(first.second, "\"usr\": \"class:p/ZDirect\"")
+        assertContains(first.second, "\"usr\": \"class:p/ZZTest\"")
+        assertFalse(first.second.contains("\"usr\": \"class:p/A00\""))
+        assertContains(first.second, "\"observedAffected\": 22")
+        assertContains(first.second, "\"sort\": \"review\"")
+        assertContains(first.second, "fixture boundary")
+
+        val next = run("impact", target.id.value, "--graph-file", snapshot.toString(), "--limit", "2", "--offset", "2", "--path-limit", "100")
+        assertEquals(0, next.first, next.third)
+        assertContains(next.second, "\"usr\": \"class:p/A00\"")
+        assertContains(next.second, "\"usr\": \"class:p/A01\"")
+        assertContains(next.second, "\"observedAffected\": 22")
+
+        val legacy = run("impact", target.id.value, "--graph-file", snapshot.toString(), "--limit", "2", "--sort", "usr", "--path-limit", "100")
+        assertEquals(0, legacy.first, legacy.third)
+        assertContains(legacy.second, "\"usr\": \"class:p/A00\"")
+        assertFalse(legacy.second.contains("\"usr\": \"class:p/ZZTest\""))
+    }
+
     private fun run(vararg args: String): Triple<Int,String,String> {
         val output=ByteArrayOutputStream(); val error=ByteArrayOutputStream()
         val status=KartographCli.run(args,PrintStream(output),PrintStream(error))
