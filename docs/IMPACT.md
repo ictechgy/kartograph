@@ -52,7 +52,7 @@ module·file·test 필터는 각 축이 base 또는 current 사실에 맞으면 
 
 ## CI에서 갱신하고 비교
 
-### JVM 빌드에서 자동 캡처 (미출시)
+### JVM 빌드에서 자동 캡처
 
 Java 또는 Kotlin/JVM 프로젝트는 Gradle plugin에서 main/test compiler와 실제 SourceSet 출력 경로를 연결할 수 있다.
 Kotlin은 의도한 Gradle toolchain provider를 명시적으로 지정한다. 이 provider를 Kotlin compiler와 증거 기록에
@@ -105,10 +105,10 @@ kartograph {
 `--input-bindings`와 `--base-input-bindings`로 각각 전달한다.
 
 컴파일 task의 configuration cache·up-to-date 판정은 재사용하지만 snapshot 자체는 매번 전체 캡처한다.
-증분 인덱싱이나 snapshot build cache 지원을 의미하지 않는다. 이 자동 경로의 현재 범위는 JVM main/test이며
-별도 custom source set 및 compiler-evidence collector의 자동 연결은 아직 검증 중이다.
+증분 인덱싱이나 snapshot build cache 지원을 의미하지 않는다. 이 자동 경로의 현재 범위는 JVM main/test와
+지원하는 Android main/unit-test이며, 별도 custom source set 및 compiler-evidence collector의 자동 연결은 아직 검증 중이다.
 
-### Android variant 자동 캡처 (미출시)
+### Android variant 자동 캡처
 
 Android 프로젝트에도 같은 `snapshotsEnabled` 설정을 사용한다. Kotlin compiler에 적용할 toolchain은
 다음처럼 지정한다. 기존 프로젝트의 toolchain 버전에 맞춰 선택한다.
@@ -243,4 +243,4 @@ snapshot freshness/runtime limitation은 페이지나 필터를 사용해도 보
 인라인 상수의 지워진 사용처, 입력 밖의 호출자, 임의 runtime 값과 누락된 variant는 별도로 검토한다.
 현재 갱신은 전체 snapshot capture다. 저장 그래프 재사용은 증분 인덱싱이 아니다.
 평가는 [계획](IMPACT-PLAN.md)의 실제 변경 과제와 compiler/runtime 코퍼스에서 수행한다.
-20,699개 후보의 탐색·출력량·시간 비교와 재현 명령은 [영향 탐색 평가](../experiments/impact-navigation/README.md)에 있다.
+20,699개 후보의 탐색·출력량·시간 비교와 재현 명령은 [영향 탐색 평가](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/impact-navigation/README.md)에 있다.

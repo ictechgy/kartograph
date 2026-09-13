@@ -18,7 +18,7 @@ version 2 receipts; raw reference files are imported only through explicit
 `snapshot --compiler-evidence` inputs with matching compiler evidence.
 
 For automatic JVM main/test and Android main/unit-test capture, use the
-[Gradle snapshot workflow](IMPACT.md#jvm-빌드에서-자동-캡처-미출시). It wires actual
+[Gradle snapshot workflow](IMPACT.md#jvm-빌드에서-자동-캡처). It wires actual
 compiler providers and writes a separate checkout-local input-binding document.
 The APIs below remain available for explicitly selected compiler inputs.
 

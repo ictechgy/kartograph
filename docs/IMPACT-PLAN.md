@@ -38,7 +38,9 @@ CI에서 갱신할 수 있는 속도. 주 원천과 query v1 계약을 유지한
 ## 상태
 
 - 초기 순수 분석·snapshot 기반 CLI·CI helper·compact v2 구현과 회귀 검증을 완료했다.
-  `9c66cc6` 당시 공개 OkHttp/AnkiDroid 2개 과제와 AI **질의** A/B 결과는 [초기 채점](../experiments/change-impact/README.md)에 남긴다.
-- PR #40까지 후속 구현을 머지했고, 현재는 별도의 Java·Kotlin·Android 6개 사례에서 실제 AI 읽기·수정·테스트를 비교한다.
-  [확대 평가](../experiments/impact-evaluation/README.md)는 고정한 표본·숨긴 회귀·성공률·시간·비용과 실패를 함께 기록한다.
-  기존 HANDOFF.md 변경은 보존한다. 전체 CI 갱신 자동화와 최종 배포의 완료는 후속 검증으로 판단한다.
+  `9c66cc6` 당시 공개 OkHttp/AnkiDroid 2개 과제와 AI **질의** A/B 결과는 [초기 채점](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/change-impact/README.md)에 남긴다.
+- PR #41까지 후속 구현을 머지했고, 별도의 Java·Kotlin·Android 6개 사례에서 실제 AI 읽기·수정·테스트를 비교했다.
+  [확대 평가](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/impact-evaluation/README.md)는 고정한 24회 표본(각 조건 6/12 통과, 실제 graph query 0회)과 숨긴 회귀·시간·비용·실패를 기록하며, 일반적인 AI 생산성 향상을 주장하지 않는다.
+- PR #42와 acceptance PR #43의 CI 갱신 자동화가 머지되어 최종 head에서 검증됐다. 기존 HANDOFF.md 변경은 보존한다.
+  배포 상태는 [GitHub Releases](https://github.com/ictechgy/kartograph/releases)와
+  [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph)에서 각각 확인한다.

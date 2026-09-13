@@ -6,9 +6,11 @@
 
 ## [Unreleased]
 
-- Add optional javac, Kotlin JVM backend and Dagger collectors with compiler-bound receipts, explicit snapshot enrichment and measured incomplete-reference diagnostics.
+## [0.8.0] - 2026-09-13
 
 ### Added
+
+- 선택적 javac/Kotlin 2.4.10 상수 참조와 javac Dagger 2.59 선택 binding collector를 compiler 증거와 함께 snapshot에 연결하고, 불완전한 참조를 계량한다.
 
 - Gradle JVM main/test의 `kartographSnapshot` 자동 수집과 checkout 전용 external-input bindings를 추가한다.
   Kotlin/Java별 실제 소스·출력·compiler 증거를 확인하며, 누락된 compiler와 정상 `NO-SOURCE`를 구분한다.
@@ -222,7 +224,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/ictechgy/kartograph/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ictechgy/kartograph/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ictechgy/kartograph/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ictechgy/kartograph/compare/v0.4.1...v0.5.0

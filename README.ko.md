@@ -23,34 +23,39 @@ Android만의 이점이 하나 있다. "안 쓰는 것처럼 보이지만 지우
 
 현재 동작하는 것:
 
-- 미배포 소스의 `impact`는 변경 예정 심볼 또는 commit 간 변경 파일의 잠재적 영향을 저장 그래프에서 조사한다. base/current 경로·삭제·runtime 근거·불확실성을 사람·에이전트·CI에 같은 의미로 전달한다. [사용법](docs/IMPACT.md)과 [실제 변경 채점](experiments/change-impact/README.md)을 참고한다.
+- `impact`는 변경 예정 심볼 또는 commit 간 변경 파일의 잠재적 영향을 저장 그래프에서 조사한다. base/current 경로·삭제·runtime 근거·불확실성을 사람·에이전트·CI에 같은 의미로 전달한다. [사용법](docs/IMPACT.md)과 [실제 변경 채점](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/change-impact/README.md)을 참고한다.
 - `graph`는 컴파일된 class root를 DOT 또는 `code-graph` JSON 교환 문서로 렌더링하며, 요청하면 project 기준 source 경로를 해석한다(`--include-paths --project`). JSON에는 간선 출처와 외부 호출의 해석 상태도 기록한다. `--classes`를 반복해 여러 module/variant output root를 합칠 수 있고, 같은 JVM class는 첫 root의 사실을 결정적으로 사용한다.
 - `dead`는 Android 보존 근거(manifest, XML, `@Keep`, keep 규칙, 상속 hierarchy, DI/직렬화 어노테이션, JNI·프레임워크 콜백)에서 도달 불가한 class 선언을 보고하며, `--explain`·baseline·`--since`·machine report를 지원한다. 재귀 include와 consumer rules 입력도 지원한다.
 - `query`/`bridges`/`skill`은 전체 graph 덤프 대신 한 symbol의 사용·의존·도달성과 Flutter/React Native 브리지 사실을 에이전트에게 제공한다. `query`는 미해결 runtime 경로와 보수적 dispatch 후보도 계량한다.
 - `cycles`/`rules`/`metrics`는 module/package 순환과 weakest edge, fail-closed layer YAML, Martin Ca/Ce/I/A/D 지표를 분석한다.
 - Gradle plugin은 AGP public Variant API 위에서 Android variant마다 `kartographDead<Variant>`와 `kartographGraph<Variant>` task를 등록한다.
+- Gradle plugin의 `kartographSnapshot`과 `kartographSnapshot<Variant>` task는 JVM main/test와 Android main/unit-test 입력을 compiler witness와 함께 자동 캡처한다. 반복 영향 질의는 [자동 캡처와 toolchain 설정](docs/IMPACT.md#jvm-빌드에서-자동-캡처)과 [build provenance 계약](docs/BUILD-PROVENANCE.md)을 참고한다.
 - keep 규칙 파싱은 지원하지 않는 문법을 조용히 버리지 않고 파일·줄과 함께 실패한다(fail-closed). 근거와 오류에는 절대경로를 출력하지 않는다.
 
 class 로딩·reflection 생성자·알려진 method/field 접근은 제한된 메서드 내 값 추적으로, 외부 dispatch는 보수적 상속 후보로 연결한다.
-class root 및 CLI `--service-resources`의 `META-INF/services` 등록은 provider를 보존한다. Gradle plugin은 선택한 variant의 Java resource 원천 디렉터리를 전달한다. 외부 호출 JSON의 API 모델 ID와 해석 결과는 별개다. Dagger binding·callgraph 정밀도 보강은 독립 실험이며 주 그래프나 보존 정책을 대체하지 않는다.
+class root 및 CLI `--service-resources`의 `META-INF/services` 등록은 provider를 보존한다. Gradle plugin은 선택한 variant의 Java resource 원천 디렉터리를 전달한다. 외부 호출 JSON의 API 모델 ID와 해석 결과는 별개다. 선택적 [compiler collector](docs/COMPILER-EVIDENCE.md)는 javac/Kotlin 2.4.10 상수 참조와 javac Dagger 2.59 선택 binding을 snapshot에 추가한다. collector는 별도로 빌드하고 명시적으로 연결하며, 지원 패턴과 남은 한계를 문서에 기록한다. 주 그래프와 보존 정책은 유지한다. callgraph 정밀도 보강은 실험으로 유지한다.
 
 그래프가 보지 못하는 것은 [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md)에, 측정된 보존 동작은 [`docs/PHASE2-VALIDATION.md`](docs/PHASE2-VALIDATION.md)에 있다.
 
-미배포 소스는 프로젝트 static helper 사이의 불변 인자와 String/Class 반환값도 제한적으로 추적한다.
-[실행 표본 5개 비교](experiments/runtime-returns/README.md)에서 기존에 놓친 reflection 경로 3개를 복원하면서
+분석기는 프로젝트 static helper 사이의 불변 인자와 String/Class 반환값도 제한적으로 추적한다.
+[실행 표본 5개 비교](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/runtime-returns/README.md)에서 기존에 놓친 reflection 경로 3개를 복원하면서
 미사용 대조군을 모두 구분했다. SearchDeadCode와 현재 R8의 실제 결과, 최적화 대조군, 여전히 놓치는 runtime 입력을
 함께 기록했다. 도구 전체의 정확도·속도 우위를 증명한 결과는 아니다.
+static field 값과 reflection 읽기에도 제한된 추적을 추가했으며 unknown 대입과 분석 한도를 유지한다.
+[확대 평가](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/impact-evaluation/README.md)는 Java/Kotlin 수정 전 검토에서 확인한 실익과 함께
+AI 수정 결과도 기록한다. 각 조건 6/12 통과, 실제 graph query 0회로 일반적인 AI 생산성 향상은 입증되지 않았다.
 
 ## 설치와 호환성
 
 CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechgy.kartograph`는 [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph)에 version이 표시된 뒤 설치할 수 있다. GitHub Release 공개와 Portal 승인·설치 가능 여부는 별개다.
 
 - kartograph 소스 빌드는 JDK 17 또는 21, Gradle 9.6.1로 검증한다.
-- Gradle plugin 적용: AGP 8.7 이상, Gradle 8.10 이상, JDK 17 이상(AGP 8.7 + Gradle 8.10 조합 검증, AGP 9.x는 Android fixture 게이트로 검증).
+- Android graph/dead task: AGP 8.7+·Gradle 8.10+·JDK 17+(AGP 8.7.3 / Gradle 8.10.2 및 AGP 9.x 검증).
+- 자동 snapshot: JVM Java/Kotlin은 Gradle 9.6.1·JDK 17/21, Android는 [검증된 조합](docs/IMPACT.md#android-variant-자동-캡처)을 따른다. Kotlin compiler adapter는 KGP 2.4.10에서 검증했으며 다른 버전은 보장하지 않는다. 최소 Android 조합은 Gradle 8.10.2에서 검증했지만 KGP는 8.14.4 이상을 권고한다.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.7.0"
+    id("io.github.ictechgy.kartograph") version "0.8.0"
 }
 ```
 
@@ -134,9 +139,9 @@ kartograph {
 
 AGP public Variant API가 dependency consumer rules를 merged file로 노출하지 않으므로 해당 파일은 직접 지정한다. keep-rule include가 task 실행 중 발견되는 현재 구조에서는 stale report를 피하기 위해 dead task output을 up-to-date/cache 결과로 재사용하지 않는다. 그래프 task는 경로 해석을 켰을 때만 선언되지 않은 project source를 읽으므로 그때만 재사용하지 않는다.
 
-### 저장 그래프 질의와 생성 입력 (다음 릴리스)
+### 저장 그래프 질의와 생성 입력
 
-아래 기능은 현재 소스에서 제공하며 공개 0.7.0 배포본에는 포함되지 않는다.
+아래 기능은 0.8.0 배포본에 포함된다.
 반복 조사에는 `snapshot`으로 그래프·보존 근거·baseline 상태·계량 한계를 한 번 저장한다.
 기존 live query와 같은 manifest/resource/namespace/keep/consumer/classpath 및 private 모드 입력을 전달한다.
 
@@ -174,7 +179,7 @@ private member 진단은 `dead --include-private-members`로 선택한다(0.2.0�
 
 PR에서 **새로 생긴 진단 전체**를 막으려면 [PR gate 안내](docs/PR-CHECK.md)를 따른다. 배포본의 `Scripts/check-pr.py`는 기준 commit의 baseline을 읽고 수정하지 않은 파일까지 검사한다. `--since`는 변경 파일 필터이므로 호출자 삭제의 파급 효과를 모두 검사하는 PR gate와는 다르다. 실제 Hilt/Compose/KSP 공개 표본의 측정과 남은 한계는 [공개 검증 기록](docs/PUBLIC-VALIDATION.md)에 있다.
 
-kartograph 자체 개발에는 JDK 17 이상이 필요하다.
+아래 개발 검증은 소스 checkout과 JDK 17 이상이 필요하다.
 
 ```bash
 ./gradlew test
