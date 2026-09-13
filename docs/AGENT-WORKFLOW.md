@@ -25,6 +25,9 @@
 
 제품 PR에서는 CI의 전체 테스트·line coverage 90%·JDK 17/21·CLI/agent/Android/plugin 계약을 유지한다.
 CLI 계약은 `Scripts/verify-cli-contract.sh`, agent 계약은 `Scripts/verify-agent-surface.sh`다. 먼저 `:cli:installDist`로 실행 파일을 준비한다.
+Gradle plugin의 일반 TestKit 시나리오는 별도 JVM에서 configuration cache 재사용을 검증한다.
+별도 `instrumented` 시나리오는 주요 동작 검증을 테스트 JVM에서 실행해 Kover에 집계한다.
+Gradle 9.6.1의 [Java agent·TestKit configuration cache 제약](https://docs.gradle.org/9.6.1/userguide/configuration_cache_status.html#config_cache:not_yet_implemented:testkit_build_with_java_agent) 때문에 두 실행 검증을 유지한다.
 생성 코드/새 오탐에는 양방향 exact fixture를 추가한다. 외부 도그푸딩은 [PUBLIC-VALIDATION](PUBLIC-VALIDATION.md)의 실제 입력으로 재현한다.
 자기 분석은 6개 production root, `.kartograph-self.pro`, `.kartograph.yml`로 class-only/private dead·strict cycles/rules 0과 실행 시간 예산(명령당 5.0초, 총합 15.0초)을 확인한다. `Scripts/verify-analysis-smoke-gate.py`로 자동 검증하며 분석 root 누락으로 0을 만들지 않는다.
 

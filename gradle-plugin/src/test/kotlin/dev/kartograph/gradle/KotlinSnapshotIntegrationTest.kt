@@ -11,18 +11,29 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.gradle.testkit.runner.GradleRunner
+import org.gradle.testkit.runner.BuildResult
 import org.gradle.testkit.runner.TaskOutcome
 import org.junit.jupiter.api.io.TempDir
 
 class KotlinSnapshotIntegrationTest {
     @Test
     fun `mixed Kotlin and Java main test sources receive actual automatic compiler evidence`(@TempDir root: Path) {
+        val again = mixedSnapshot(root, inProcess = false)
+        assertTrue(again.output.contains("Reusing configuration cache"), again.output)
+    }
+
+    @Test
+    fun `instrumented Kotlin build validates mixed producers and missing javac evidence`(@TempDir root: Path) {
+        mixedSnapshot(root, inProcess = true)
+    }
+
+    private fun mixedSnapshot(root: Path, inProcess: Boolean): BuildResult {
         fixture(root)
         source(root, "src/main/java/p/Helper.java", "package p; public class Helper { public static int value() { return 1; } }")
         source(root, "src/main/kotlin/p/Entry.kt", "package p; class Entry { fun value() = Helper.value() }")
         source(root, "src/test/java/p/JavaCheck.java", "package p; public class JavaCheck { public int check() { return new Entry().value(); } }")
         source(root, "src/test/kotlin/p/KotlinCheck.kt", "package p; class KotlinCheck { fun check() = Entry().value() }")
-        fun build() = runner(root).build()
+        fun build() = runner(root, inProcess = inProcess).build()
         val first = build()
         assertEquals(null, first.task(":test"))
         val snapshotFile = root.resolve("build/reports/kartograph/jvm-snapshot.json")
@@ -39,7 +50,6 @@ class KotlinSnapshotIntegrationTest {
         assertEquals("matched", ProvenanceVerifier.verify(provenance, root, snapshot.scope, bindings).status)
         assertFalse(text.contains(root.toString()))
         val again = build()
-        assertTrue(again.output.contains("Reusing configuration cache"), again.output)
         for (task in listOf("compileJava", "compileKotlin", "compileTestJava", "compileTestKotlin")) {
             assertEquals(TaskOutcome.UP_TO_DATE, again.task(":$task")!!.outcome, task)
         }
@@ -48,8 +58,11 @@ class KotlinSnapshotIntegrationTest {
         // Kotlin의 Java 분석 입력만으로 누락된 javac 산출물을 대신 증명할 수 없다.
         Files.delete(root.resolve("build/classes/java/main/p/Helper.class"))
         Files.delete(root.resolve("build/kartograph/witnesses/compileJava/witness.json"))
-        val missingJava = runner(root, "-x", "compileJava", "--no-build-cache").buildAndFail()
+        // 계측 모드의 KGP는 -x 생산자 값을 먼저 거부한다. onlyIf도 Java 산출물을 만들지 않는 독립적인 실패 경로다.
+        val skip = if (inProcess) arrayOf("-PskipJavac=true") else arrayOf("-x", "compileJava")
+        val missingJava = runner(root, *skip, "--no-build-cache", inProcess = inProcess).buildAndFail()
         assertTrue(missingJava.output.contains("missing compiler witness for :compileJava"), missingJava.output)
+        return again
     }
 
     @Test
@@ -105,6 +118,8 @@ class KotlinSnapshotIntegrationTest {
                 snapshotKotlinToolchain = javaToolchains.launcherFor(java.toolchain)
             }
             tasks.named('test') { doFirst { throw new GradleException('snapshot must not run tests') } }
+            def skipJavac = providers.gradleProperty('skipJavac').map { it.toBoolean() }.orElse(false)
+            tasks.named('compileJava') { onlyIf { !skipJavac.get() } }
         """.trimIndent())
     }
 
@@ -114,7 +129,9 @@ class KotlinSnapshotIntegrationTest {
         Files.writeString(file, text)
     }
 
-    private fun runner(root: Path, vararg arguments: String): GradleRunner =
+    private fun runner(root: Path, vararg arguments: String, inProcess: Boolean = false): GradleRunner =
         GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
-            .withArguments(listOf("kartographSnapshot", "--configuration-cache", "--stacktrace") + arguments)
+            .withDebug(inProcess)
+            .withArguments(listOf("kartographSnapshot", "--stacktrace") + arguments +
+                if (inProcess) emptyList() else listOf("--configuration-cache"))
 }

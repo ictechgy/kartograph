@@ -12,12 +12,23 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.gradle.testkit.runner.GradleRunner
+import org.gradle.testkit.runner.BuildResult
 import org.gradle.testkit.runner.TaskOutcome
 import org.junit.jupiter.api.io.TempDir
 
 class AndroidSnapshotIntegrationTest {
     @Test
     fun `Android variant captures mixed main unit test compilers and runtime entry inputs`(@TempDir root: Path) {
+        val again = androidSnapshot(root, inProcess = false)
+        assertTrue(again.output.contains("Reusing configuration cache"), again.output)
+    }
+
+    @Test
+    fun `instrumented Android build validates snapshot freshness and source deletion`(@TempDir root: Path) {
+        androidSnapshot(root, inProcess = true)
+    }
+
+    private fun androidSnapshot(root: Path, inProcess: Boolean): BuildResult {
         val pluginJar = requireNotNull(System.getProperty("kartograph.pluginJar"))
             .replace("\\", "\\\\").replace("'", "\\'")
         write(root, "settings.gradle", "rootProject.name = 'android-snapshot'\n")
@@ -63,7 +74,9 @@ class AndroidSnapshotIntegrationTest {
         write(root, "src/test/java/p/JavaCheck.java", "package p; public class JavaCheck { public int check() { return new Entry().value(); } }")
         write(root, "src/test/kotlin/p/KotlinCheck.kt", "package p; class KotlinCheck { fun check() = Entry().value() }")
         fun build() = GradleRunner.create().withProjectDir(root.toFile())
-            .withArguments("kartographSnapshotDebug", "--configuration-cache", "--stacktrace").build()
+            .withDebug(inProcess)
+            .withArguments(listOf("kartographSnapshotDebug", "--stacktrace") +
+                if (inProcess) emptyList() else listOf("--configuration-cache")).build()
         val result = build()
         assertEquals(null, result.task(":testDebugUnitTest"))
         val file = root.resolve("build/reports/kartograph/debug-snapshot.json")
@@ -80,7 +93,6 @@ class AndroidSnapshotIntegrationTest {
         assertEquals("matched", ProvenanceVerifier.verify(snapshot.provenance, root, snapshot.scope, bindings).status)
         assertFalse(text.contains(root.toString()))
         val again = build()
-        assertTrue(again.output.contains("Reusing configuration cache"), again.output)
         for (task in listOf("compileDebugJavaWithJavac", "compileDebugKotlin", "compileDebugUnitTestJavaWithJavac", "compileDebugUnitTestKotlin")) {
             assertEquals(TaskOutcome.UP_TO_DATE, again.task(":$task")!!.outcome, task)
         }
@@ -105,6 +117,7 @@ class AndroidSnapshotIntegrationTest {
         assertTrue(NodeId("class:p/KotlinCheck") in withoutJavaTest.graph.nodes)
         assertEquals(3, withoutJavaTest.provenance!!.witnesses.size)
         assertFalse(withoutJavaTest.provenance!!.witnesses.any { it.artifact == ":compileDebugUnitTestJavaWithJavac" })
+        return again
     }
 
     private fun write(root: Path, relative: String, text: String) {

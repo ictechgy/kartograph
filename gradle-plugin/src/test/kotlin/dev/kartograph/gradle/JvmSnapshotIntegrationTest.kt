@@ -11,12 +11,23 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.gradle.testkit.runner.GradleRunner
+import org.gradle.testkit.runner.BuildResult
 import org.gradle.testkit.runner.TaskOutcome
 import org.junit.jupiter.api.io.TempDir
 
 class JvmSnapshotIntegrationTest {
     @Test
     fun `Java main and test snapshot follows configured compiler outputs without running tests`(@TempDir root: Path) {
+        val again = javaSnapshot(root, inProcess = false)
+        assertTrue(again.output.contains("Reusing configuration cache"), again.output)
+    }
+
+    @Test
+    fun `instrumented Java build validates snapshot and missing source inventory`(@TempDir root: Path) {
+        javaSnapshot(root, inProcess = true)
+    }
+
+    private fun javaSnapshot(root: Path, inProcess: Boolean): BuildResult {
         Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'snapshot-consumer'\n")
         Files.writeString(root.resolve("build.gradle"), """
             plugins {
@@ -43,6 +54,7 @@ class JvmSnapshotIntegrationTest {
         Files.writeString(other.resolve("Target.java"), "package p; class Target {}")
 
         val ordinary = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+            .withDebug(inProcess)
             .withArguments("testClasses", "--offline", "--stacktrace").build()
         assertEquals(TaskOutcome.SUCCESS, ordinary.task(":compileTestJava")!!.outcome)
         assertTrue(Files.isRegularFile(root.resolve("build/custom/main/p/Target.class")))
@@ -50,7 +62,9 @@ class JvmSnapshotIntegrationTest {
         Files.writeString(buildFile, Files.readString(buildFile).replace("snapshotsEnabled = false", "snapshotsEnabled = true"))
 
         fun build() = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
-            .withArguments("kartographSnapshot", "--offline", "--configuration-cache", "--stacktrace").build()
+            .withDebug(inProcess)
+            .withArguments(listOf("kartographSnapshot", "--offline", "--stacktrace") +
+                if (inProcess) emptyList() else listOf("--configuration-cache")).build()
         val first = build()
         assertEquals(TaskOutcome.SUCCESS, first.task(":compileJava")!!.outcome)
         assertEquals(TaskOutcome.SUCCESS, first.task(":compileTestJava")!!.outcome)
@@ -79,7 +93,6 @@ class JvmSnapshotIntegrationTest {
         assertTrue(Files.isRegularFile(localFile))
 
         val again = build()
-        assertTrue(again.output.contains("Reusing configuration cache"), again.output)
         assertEquals(TaskOutcome.UP_TO_DATE, again.task(":compileJava")!!.outcome)
         assertEquals(TaskOutcome.UP_TO_DATE, again.task(":compileTestJava")!!.outcome)
         assertEquals(text, Files.readString(file))
@@ -100,8 +113,10 @@ class JvmSnapshotIntegrationTest {
             }
         """.trimIndent())
         val widened = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+            .withDebug(inProcess)
             .withArguments("kartographSnapshot", "--offline", "--stacktrace").buildAndFail()
         assertTrue(widened.output.contains("snapshot source inventory does not match compiler units"), widened.output)
+        return again
     }
 
     @Test
