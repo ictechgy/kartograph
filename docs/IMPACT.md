@@ -87,7 +87,9 @@ kartograph impact 'class:sample/Repository' \
 설정 입력에는 해당 프로젝트와 상위 프로젝트의 build script·properties, `gradle/`의 catalog·wrapper·script,
 `buildSrc` 및 included build 하위 모듈의 표준 설정·`src`를 포함한다. 생성된 `build` 출력과 `.gradle` 등의
 캐시 디렉터리는 제외하며, `src` 안의 같은 이름 패키지는 보존한다. 아직 없는 관례 파일·디렉터리도 생성 여부를 추적한다.
-표준 위치 밖의 applied script나 별도 모듈의 convention source는 다음처럼 추가한다.
+자동 수집의 included build root는 현재 Gradle 빌드가 직접 포함한 위치다. 그 root 안의 하위 모듈과
+`buildSrc`는 추적하지만, root 밖에서 간접으로 포함한 별도 build나 비표준 위치의 소스는 자동 탐색하지 않는다.
+이러한 외부 build-logic과 applied script는 다음처럼 추가한다.
 
 ```kotlin
 kartograph {

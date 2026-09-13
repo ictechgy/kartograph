@@ -14,6 +14,37 @@ import org.junit.jupiter.api.io.TempDir
 
 class JvmSnapshotBuildInputsIntegrationTest {
     @Test
+    fun `explicit external configuration input preserves its freshness boundary`(@TempDir workspace: Path) {
+        val root = Files.createDirectories(workspace.resolve("consumer"))
+        val shared = Files.createDirectories(workspace.resolve("shared-build-logic"))
+        val convention = shared.resolve("convention.gradle")
+        Files.writeString(convention, "kartograph { includePrivateMembers = false }\n")
+        Files.writeString(root.resolve("settings.gradle"), "rootProject.name='external-convention'\n")
+        Files.writeString(root.resolve("build.gradle"), """
+            plugins { id 'java'; id 'io.github.ictechgy.kartograph' }
+            apply from: '../shared-build-logic/convention.gradle'
+            kartograph {
+                snapshotsEnabled = true
+                snapshotBuildInputs.from('../shared-build-logic')
+            }
+        """.trimIndent())
+        val sources = Files.createDirectories(root.resolve("src/main/java"))
+        Files.writeString(sources.resolve("Entry.java"), "public class Entry { private int value() { return 1; } }")
+        fun capture() = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+            .withArguments("kartographSnapshot", "--offline", "--configuration-cache", "--stacktrace").build()
+        capture()
+        val graph = root.resolve("build/reports/kartograph/jvm-snapshot.json")
+        val snapshot = QuerySnapshotCodec.parse(Files.readString(graph))
+        val bindings = ExternalInputBindingsCodec.parse(Files.readString(root.resolve("build/kartograph/jvm-input-bindings.json")))
+            .mapValues { Path.of(it.value) }
+        assertEquals("matched", ProvenanceVerifier.verify(snapshot.provenance, root, snapshot.scope, bindings).status)
+        Files.writeString(convention, "kartograph { includePrivateMembers = true }\n")
+        assertEquals("stale", ProvenanceVerifier.verify(snapshot.provenance, root, snapshot.scope, bindings).status)
+        capture()
+        assertTrue(QuerySnapshotCodec.parse(Files.readString(graph)).includePrivateMembers)
+    }
+
+    @Test
     fun `included convention subproject sources invalidate captured options`(@TempDir root: Path) {
         fun write(path: String, content: String) {
             val file = root.resolve(path)
