@@ -112,9 +112,14 @@ AGP가 선언한 keep 파일 중 build 출력 아래에서 아직 생성되지 �
 해당 부모 디렉터리의 내용도 추적해 새 파일이 생겼을 때 이전 스냅샷을 그대로 검증하지 않는다.
 소스 트리의 누락된 keep 파일은 계속 오류다.
 
-현재 자동 캡처의 실제 설치 검증은 AGP 9.3.2 library, 내장 Kotlin, Gradle 9.6.1, JDK 17 조합이다.
-main/unit-test 증거, configuration cache, 같은 수정 시각의 내용 변경과 Java 테스트 소스 삭제를 확인했다.
-AGP 8과 다른 조합의 자동 캡처 검증은 진행 중이다.
+자동 캡처의 실제 설치 검증 조합은 다음과 같다.
+
+| Android library | Kotlin | Gradle | JDK / SDK | 검증 |
+|---|---|---|---|---|
+| AGP 9.3.2 | 내장 Kotlin | 9.6.1 | 17 / 36 | main/unit-test 증거, configuration cache, 같은 시각의 내용 변경, Java 테스트 소스 삭제 |
+| AGP 8.7.3 | KGP 2.4.10 | 8.10.2 | 17 / 35 | compiler 재사용, 동일 snapshot, CLI 신선도 `matched`, Java/Kotlin main/test 선언과 manifest/XML 근거 |
+
+두 번째 조합에서는 KGP가 Gradle 8.14.4 이상으로 업그레이드하도록 권고한다. 경고를 억제하지 않고 검증했다.
 
 ### 두 checkout 비교
 
