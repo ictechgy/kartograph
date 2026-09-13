@@ -93,11 +93,14 @@ class RuntimeLimitationScannerTest {
         writer.visitSource("A.kt", null)
         writer.visitEnd()
         classes.resolve("A.class").writeBytes(writer.toByteArray())
-        root.resolve("A.kt").writeText("class A")
+        val selected = root.resolve("A.kt").apply { writeText("class A") }
+        Files.setLastModifiedTime(selected, FileTime.fromMillis(1_000))
         root.resolve("other").createDirectories().resolve("A.kt").writeText("class A")
         root.resolve("New.kt").writeText("class New")
         assertEquals(listOf("index-freshness-unknown: 3 of 3 source file(s) have uncertain compiled-source matching or timestamp precision"),
             RuntimeLimitationScanner.scan(listOf(classes), root))
+        val indexed = ClassFileIndexer().indexWithObservations(listOf(classes))
+        assertEquals(emptyList(), RuntimeLimitationScanner.scan(indexed, listOf(selected)))
     }
 
     @Test

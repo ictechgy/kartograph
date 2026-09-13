@@ -49,9 +49,17 @@ public object RuntimeLimitationScanner {
 
     /** 이미 인덱싱한 class를 다시 읽지 않고 source 신선도와 계량 한계를 반환한다. */
     public fun scan(indexed: IndexedClasses, projectRoot: Path): List<String> {
-        val observations = indexed.observations
         val sources = mutableListOf<Path>()
         if (Files.isDirectory(projectRoot)) ProjectTraversal.walkSources(projectRoot) { sources.add(it) }
+        return scanSources(indexed, sources)
+    }
+
+    /** 빌드가 제공한 소스 inventory만 관측하며 다른 source set을 project에서 찾아 섞지 않는다. */
+    public fun scan(indexed: IndexedClasses, sourceFiles: Collection<Path>): List<String> =
+        scanSources(indexed, sourceInventoryFiles(sourceFiles))
+
+    private fun scanSources(indexed: IndexedClasses, sources: Collection<Path>): List<String> {
+        val observations = indexed.observations
         val sourcesByName = sources.groupBy { it.fileName.toString() }
         val outputByName = observations.filter { it.sourceFile != null }.groupBy { it.sourceFile }
         var staleCount = 0

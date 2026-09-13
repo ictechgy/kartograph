@@ -33,7 +33,7 @@ import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
 
 /** 성공한 compiler provider의 main/test 그래프·보존 근거·내용 지문을 저장한다. */
-@DisableCachingByDefault(because = "Project source lookup and runtime diagnostics require a bounded declared-input adapter before caching")
+@DisableCachingByDefault(because = "Keep-rule includes and captured timestamp diagnostics require cache lifecycle validation")
 public abstract class KartographSnapshotTask : DefaultTask() {
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val classRoots: ConfigurableFileCollection
@@ -43,6 +43,10 @@ public abstract class KartographSnapshotTask : DefaultTask() {
 
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val sourceDirectories: ConfigurableFileCollection
+
+    /** 실제 선택한 compiler의 파일 집합이며 경로 해석과 runtime 관측의 읽기 경계다. */
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val sourceFiles: ConfigurableFileCollection
 
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val resourceDirectories: ConfigurableFileCollection
@@ -127,18 +131,27 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         require(verified.status == "matched") {
             "snapshot compiler inputs are ${verified.status}: ${verified.reasons.joinToString()}; rebuild the selected compilations"
         }
+        val selectedSources = sourceFiles.files.map { file ->
+            require(file.isFile && !Files.isSymbolicLink(file.toPath())) { "snapshot source inventory contains an unavailable file" }
+            file.canonicalFile.toPath()
+        }.toSet()
+        val compilerSources = witnesses.flatMap { it.inputs }.filter { it.role == "sources" }.map { input ->
+            if (input.path.startsWith("external/")) bindings.getValue(input.path) else project.resolve(input.path)
+        }.filter { Files.isRegularFile(it) && it.fileName.toString().let { name -> name.endsWith(".java") || name.endsWith(".kt") } }
+            .map { it.toRealPath() }.toSet()
+        require(selectedSources == compilerSources) { "snapshot source inventory does not match compiler units" }
         val indexed = ClassFileIndexer().indexWithObservations(roots, classpath, resources, generated)
         val graph = indexed.graph
         val retention = DefaultRetention.find(graph, emptyList(), rules, indexed.hierarchy,
             includePrivateMembers = includePrivateMembers.get())
-        val paths = if (includeSourcePaths.get()) SourcePathIndex.resolve(graph, project) else null
+        val paths = if (includeSourcePaths.get()) SourcePathIndex.resolve(graph, project, selectedSources) else null
         val located = if (paths == null) graph else CodeGraph(graph.nodes.values.map { node ->
             paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
         }, graph.edges, graph.externalCalls, graph.serviceProviders)
         require(before == capture()) { "snapshot inputs changed during capture; rebuild before querying" }
         val finalVerification = ProvenanceVerifier.verify(before, project, scope.get(), bindings)
         require(finalVerification.status == "matched") { "compiler inputs changed during snapshot capture" }
-        val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, project) +
+        val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, selectedSources) +
             paths?.limitations.orEmpty(), includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
             scope = scope.get(), provenance = before)
         val content = QuerySnapshotCodec.render(snapshot, compact = true)
@@ -157,7 +170,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     } else path.fileName.toString().endsWith(".jar")
 
     private fun bindCompilerInputs(provenance: SnapshotProvenance, bindings: MutableMap<String, Path>) {
-        val candidates = (compilerInputFiles.files + dependencyClasspath.files + classRoots.files)
+        val candidates = (compilerInputFiles.files + dependencyClasspath.files + classRoots.files + sourceFiles.files)
             .filter { it.exists() }.map { it.canonicalFile.toPath() }.distinct()
         val hashes = mutableMapOf<Pair<Path, Boolean>, String>()
         provenance.witnesses.flatMap { it.inputs + it.outputs + it.compilerEvidence }

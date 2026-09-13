@@ -41,6 +41,7 @@ internal object JvmSnapshotTasks {
             task.resourceDirectories.from(main.resources.sourceDirectories, tests.resources.sourceDirectories)
             task.buildInputFiles.from(buildInputs)
             compilers.forEach { (compiler, witness) ->
+                task.sourceFiles.from(compiler.map { it.source })
                 task.buildWitnessFiles.from(witness)
                 task.compilerInputFiles.from(compiler.map { it.classpath }, compiler.flatMap { it.javaCompiler }.map {
                     it.metadata.installationPath.file("lib/modules")
@@ -48,7 +49,7 @@ internal object JvmSnapshotTasks {
             }
             task.snapshotFile.set(project.layout.buildDirectory.file("reports/kartograph/jvm-snapshot.json"))
             task.localBindingsFile.set(project.layout.buildDirectory.file("kartograph/jvm-input-bindings.json"))
-            // 전체 project를 읽는 현재 경로/진단 adapter는 별도 입력 경계 검증 전에는 캐시하지 않는다.
+            // 재귀 keep 입력과 시각 관측의 캐시 계약을 검증하기 전에는 snapshot을 다시 캡처한다.
             task.outputs.upToDateWhen { false }
         }
     }

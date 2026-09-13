@@ -30,13 +30,17 @@ class JvmSnapshotIntegrationTest {
                 snapshotRevision = '${"a".repeat(40)}'
             }
             sourceSets.main.java.destinationDirectory = layout.buildDirectory.dir('custom/main')
+            sourceSets.main.java.exclude('**/Ignored.java')
             sourceSets.test.java.destinationDirectory = layout.buildDirectory.dir('custom/test')
             tasks.named('test') { doFirst { throw new GradleException('snapshot must not run tests') } }
         """.trimIndent())
         val main = Files.createDirectories(root.resolve("src/main/java/p"))
         val tests = Files.createDirectories(root.resolve("src/test/java/p"))
         Files.writeString(main.resolve("Target.java"), "package p; public class Target { public static void run() {} }")
+        Files.writeString(main.resolve("Ignored.java"), "not valid Java and intentionally excluded")
         Files.writeString(tests.resolve("TargetCheck.java"), "package p; public class TargetCheck { public void check() { Target.run(); } }")
+        val other = Files.createDirectories(root.resolve("unselected/p"))
+        Files.writeString(other.resolve("Target.java"), "package p; class Target {}")
 
         val ordinary = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
             .withArguments("testClasses", "--offline", "--stacktrace").build()
@@ -57,8 +61,11 @@ class JvmSnapshotIntegrationTest {
         assertEquals("a".repeat(40), snapshot.revision)
         assertTrue(NodeId("class:p/Target") in snapshot.graph.nodes)
         assertTrue(NodeId("class:p/TargetCheck") in snapshot.graph.nodes)
+        assertEquals("src/main/java/p/Target.java", snapshot.graph.nodes.getValue(NodeId("class:p/Target")).location?.path)
         assertEquals("src/test/java/p/TargetCheck.java", snapshot.graph.nodes.getValue(NodeId("class:p/TargetCheck")).location?.path)
         assertEquals(2, snapshot.provenance!!.witnesses.size)
+        assertEquals(listOf("src/main/java/p/Target.java"), snapshot.provenance!!.witnesses
+            .single { it.artifact == ":compileJava" }.inputs.filter { it.role == "sources" }.map { it.path })
         assertEquals(setOf("build/custom/main", "build/custom/test"), snapshot.provenance!!.inputs.filter { it.role == "classes" }.map { it.path }.toSet())
         val external = (snapshot.provenance!!.inputs + snapshot.provenance!!.witnesses.flatMap { it.inputs + it.outputs })
             .filter { it.path.startsWith("external/") }
@@ -76,6 +83,17 @@ class JvmSnapshotIntegrationTest {
         assertEquals(TaskOutcome.UP_TO_DATE, again.task(":compileJava")!!.outcome)
         assertEquals(TaskOutcome.UP_TO_DATE, again.task(":compileTestJava")!!.outcome)
         assertEquals(text, Files.readString(file))
+
+        Files.writeString(other.resolve("Uncompiled.java"), "package p; class Uncompiled {}")
+        Files.writeString(buildFile, Files.readString(buildFile) + """
+
+            afterEvaluate {
+                tasks.named('kartographSnapshot') { sourceFiles.from('unselected/p/Uncompiled.java') }
+            }
+        """.trimIndent())
+        val widened = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+            .withArguments("kartographSnapshot", "--offline", "--stacktrace").buildAndFail()
+        assertTrue(widened.output.contains("snapshot source inventory does not match compiler units"), widened.output)
     }
 
     @Test

@@ -11,9 +11,32 @@ import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 import org.junit.jupiter.api.io.TempDir
 
 class SourcePathIndexTest {
+    @Test
+    fun `explicit inventory keeps generated sources and ignores unselected names without claiming external paths`(@TempDir root: Path) {
+        val project = root.resolve("project").createDirectories()
+        write(project, "src/p/Target.kt")
+        write(project, "other/p/Target.kt")
+        write(project, "build/generated/p/Generated.kt")
+        write(root, "external/Outside.kt")
+        val target = node("class:p/Target", "Target", "Target.kt")
+        val generated = node("class:p/Generated", "Generated", "Generated.kt")
+        val outside = node("class:Outside", "Outside", "Outside.kt")
+        val graph = CodeGraph(listOf(target, generated, outside), emptyList())
+        val files = listOf(project.resolve("src/p/Target.kt"), project.resolve("build/generated/p/Generated.kt"), root.resolve("external/Outside.kt"))
+        val selected = SourcePathIndex.resolve(graph, project, files)
+        assertEquals("src/p/Target.kt", selected.byNodeId[target.id])
+        assertEquals("build/generated/p/Generated.kt", selected.byNodeId[generated.id])
+        assertEquals(null, selected.byNodeId[outside.id])
+        assertTrue(selected.limitations.any { it.startsWith("unresolved-source-paths: 1 of 3") })
+        assertTrue(SourcePathIndex.resolve(graph, project, files + listOf(project.resolve("other/p/Target.kt")))
+            .limitations.any { it.startsWith("unresolved-source-paths: 2 of 3") })
+        assertFailsWith<IllegalArgumentException> { SourcePathIndex.resolve(graph, project, listOf(project.resolve("missing.kt"))) }
+    }
+
     @Test
     fun `external file link cannot become a confirmed project source`(@TempDir root: Path) {
         val project = root.resolve("project").createDirectories()
