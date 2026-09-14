@@ -348,13 +348,13 @@ internal object AgentCommand {
         }
         return try {
             val snapshot = options.single("--graph-file")?.let { SnapshotFiles.read(it) }
-            val graph = snapshot?.graph
+            val freshness = snapshot?.let { SavedSnapshotOperations.freshness(it, project, null, emptyMap()) }
+            val graph = snapshot?.takeUnless { freshness?.status == "stale" }?.graph
             val scanned = if (messages) BridgeFactScanner(project).scanMessages(graph = graph)
             else BridgeFactScanner(project).scan(graph = graph, targetFilter = options.single("--target"))
             val document = snapshot?.let {
-                val freshness = SavedSnapshotOperations.freshness(it, project, null, emptyMap())
-                val evidence = "graph-file-freshness-${freshness.status}: " + freshness.reasons.joinToString(";")
-                scanned.copy(limitations = (scanned.limitations + evidence).distinct().sorted())
+                val evidence = "graph-file-freshness-${freshness!!.status}: " + freshness.reasons.joinToString(";")
+                scanned.copy(limitations = (scanned.limitations + it.limitations + evidence).distinct().sorted())
             } ?: scanned
             output.print(AgentDocumentRenderer.bridges(document))
             ExitStatus.SUCCESS.code

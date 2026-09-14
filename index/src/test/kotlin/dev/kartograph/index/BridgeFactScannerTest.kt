@@ -276,6 +276,35 @@ class BridgeFactScannerTest {
     }
 
     @Test
+    fun `v1 maps every when method fact to the enclosing Kotlin function`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            class Plugin {
+              override fun configureFlutterEngine(messenger: Any) {
+                MethodChannel(messenger, "camera").setMethodCallHandler { call, result ->
+                  when (call.method) {
+                    "echo" -> result.success(Unit)
+                    "failure" -> result.error("failure", null, null)
+                    "slow" -> result.success(Unit)
+                    "never" -> Unit
+                  }
+                }
+              }
+            }
+            """.trimIndent(),
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/Plugin#configureFlutterEngine(Ljava/lang/Object;)V"), "configureFlutterEngine", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 2, 3)),
+        ), emptyList())
+
+        val facts = BridgeFactScanner(project).scan(graph = graph).facts.filter { it.kind == "method-handle" }
+
+        assertEquals(4, facts.size)
+        assertTrue(facts.all { it.symbol?.usr == "method:app/Plugin#configureFlutterEngine(Ljava/lang/Object;)V" })
+    }
+
+    @Test
     fun `snapshot symbol remains absent for stale or ambiguous source mappings`(@TempDir project: Path) {
         project.resolve("Plugin.kt").writeText(
             """

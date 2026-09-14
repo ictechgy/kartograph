@@ -316,7 +316,7 @@ private fun enclosingDeclaration(projectRoot: Path, relativePath: String, line: 
     lines.forEachIndexed { index, text ->
         val start = index + 1
         val before = depth
-        val declaration = DECLARATION.find(text)
+        val declaration = KOTLIN_DECLARATION.find(text) ?: JAVA_DECLARATION.find(text)
         val opening = declaration?.let { text.indexOf('{', it.range.first) } ?: -1
         if (declaration != null && opening >= 0) {
             val openingDepth = before + 1
@@ -381,4 +381,5 @@ private fun maskDeclarationComments(source: String): String = buildString(source
 
 private fun braceDelta(text: String): Int = text.count { it == '{' } - text.count { it == '}' }
 
-private val DECLARATION = Regex("\\b(?:fun\\s+|(?:public|private|protected|internal|override|static|final|suspend|inline|native)\\s+)*([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^)]*\\)\\s*(?:\\{|:)")
+private val KOTLIN_DECLARATION = Regex("\\bfun\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^)]*\\)\\s*\\{")
+private val JAVA_DECLARATION = Regex("\\b(?:public\\s+|private\\s+|protected\\s+|static\\s+|final\\s+|synchronized\\s+|native\\s+|abstract\\s+)*(?:[A-Za-z_][A-Za-z0-9_<>.?\\[\\]]*\\s+)([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^)]*\\)\\s*\\{")
