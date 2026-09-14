@@ -15,7 +15,36 @@ import org.junit.jupiter.api.io.TempDir
 
 class BridgeFactScannerTest {
     @Test
-    fun `messages follows aliases mutation shadowing and removes null handlers`(@TempDir project: Path) {
+    fun `messages does not resolve a mutable receiver from a conditional assignment`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText("""
+            fun register(messenger: Any, codec: Any, alternate: Boolean) {
+              var channel = BasicMessageChannel<Any?>(messenger, "a", codec)
+              if (alternate) { channel = BasicMessageChannel<Any?>(messenger, "b", codec) }
+              channel.setMessageHandler { _, _ -> Unit }
+            }
+        """.trimIndent())
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+        assertTrue(fact.dynamic)
+        assertEquals(null, fact.channelPrefix)
+    }
+
+    @Test
+    fun `messages does not treat mutable channel name fields as constants`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText("""
+            var channelName = "a"
+            fun change() { channelName = "b" }
+            fun register(messenger: Any, codec: Any) {
+              val channel = BasicMessageChannel<Any?>(messenger, channelName, codec)
+              channel.setMessageHandler { _, _ -> Unit }
+            }
+        """.trimIndent())
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+        assertTrue(fact.dynamic)
+        assertEquals(null, fact.channelPrefix)
+    }
+
+    @Test
+    fun `messages preserves mutable alias uncertainty and removes null handlers`(@TempDir project: Path) {
         project.resolve("src/main/kotlin/app/Plugin.kt").also { source ->
             source.parent.createDirectories()
             source.writeText(
@@ -44,10 +73,10 @@ class BridgeFactScannerTest {
 
         assertEquals(2, document.facts.size)
         assertEquals(
-            listOf("message-handle" to "first", "message-handle" to "inner"),
+            listOf("message-handle" to "channel", "message-handle" to "channel"),
             document.facts.map { it.kind to it.channel },
         )
-        assertTrue(document.facts.all { it.dynamic.not() })
+        assertTrue(document.facts.all { it.dynamic })
         assertTrue(document.facts.all { it.symbol == null })
         assertTrue(document.limitations.any { it.startsWith("missing-handler-usrs:") })
         assertTrue(document.limitations.any { it.startsWith("unscanned-message-sends:") })
@@ -119,7 +148,7 @@ class BridgeFactScannerTest {
             """
             class Plugin {
               void register(Object messenger, Object codec) {
-                BasicMessageChannel<Object> channel = new BasicMessageChannel<>(messenger, "java", codec);
+                final BasicMessageChannel<Object> channel = new BasicMessageChannel<>(messenger, "java", codec);
                 channel.setMessageHandler((message, reply) -> { });
                 channel.send("outgoing");
               }

@@ -80,13 +80,20 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         }
         SEND.findAll(eventCode).forEach { match -> events += Event.Send(match.range.first, match.groupValues[1]) }
 
+        // 실행 순서·분기·외부 setter를 분석하지 않으므로 mutable 이름을 literal로 확정하지 않는다.
+        // 파일 안의 동명 shadow도 보수적으로 취급하며 실제 위치와 동적 근거는 유지한다.
+        val mutableNames = MUTABLE_DECLARATION.findAll(eventCode).map { it.groupValues[1] }.toMutableSet()
+        events.filterIsInstance<Event.Constructor>().mapNotNull { it.binding }
+            .filter { it.mutable }.forEach { mutableNames += it.name }
         val bindings = mutableListOf<Binding>()
+        fun channelFor(name: String, scope: List<Int>): Channel? =
+            if (name in mutableNames) Channel(name, true, null) else lookup(bindings, name, scope)
         events.sortedBy { it.offset }.forEach { event ->
             val scope = scopePath(eventCode, event.offset)
             when (event) {
                 is Event.Constructor -> {
                     val expression = event.arguments.firstNamed("name") ?: event.arguments.getOrNull(1)
-                    val resolved = expression?.let { lookup(bindings, it.trim(), scope) ?: resolveChannel(it) }
+                    val resolved = expression?.let { channelFor(it.trim(), scope) ?: resolveChannel(it) }
                         ?: resolveChannel(null)
                     event.binding?.let { assignment ->
                         val existing = bindings.lastOrNull { it.name == assignment.name && isPrefix(it.scope, scope) }
@@ -96,11 +103,11 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
                     event.directHandler = resolved
                 }
                 is Event.Alias -> {
-                    lookup(bindings, event.source, scope)?.let { channel -> bindings += Binding(event.name, scope, channel) }
+                    channelFor(event.source, scope)?.let { channel -> bindings += Binding(event.name, scope, channel) }
                 }
                 is Event.StringAlias -> bindings += Binding(event.name, scope, resolveChannel(event.expression))
                 is Event.Handler -> if (!event.isNull) {
-                    val channel = event.receiver?.let { lookup(bindings, it, scope) }
+                    val channel = event.receiver?.let { channelFor(it, scope) }
                         ?: previousChainedConstructor(events, event.offset, code)?.directHandler
                     val location = location(relative, source, event.offset)
                     facts += BridgeFact("message-handle", channel?.value, dynamic = channel?.dynamic ?: true,
@@ -124,7 +131,7 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
     private fun precedingBinding(source: String, offset: Int): BindingSpec? {
         val prefix = source.substring(0, offset).takeLast(240)
         ASSIGNMENT.find(prefix)?.let { match -> return BindingSpec(match.groupValues[2], match.groupValues[1] == "var") }
-        JAVA_ASSIGNMENT.find(prefix)?.let { match -> return BindingSpec(match.groupValues[1], true) }
+        JAVA_ASSIGNMENT.find(prefix)?.let { match -> return BindingSpec(match.groupValues[2], match.groupValues[1].isEmpty()) }
         MUTATION_ASSIGNMENT.find(prefix)?.let { match -> return BindingSpec(match.groupValues[1], true) }
         return null
     }
@@ -371,7 +378,8 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         val CONSTRUCTOR = Regex("\\b(?:new\\s+)?BasicMessageChannel(?:\\s*<[^>\\n]*>)?\\s*\\(")
         val STRING_ALIAS = Regex("\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*\"")
         val ASSIGNMENT = Regex("\\b(val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*$")
-        val JAVA_ASSIGNMENT = Regex("\\b(?:[A-Za-z_][A-Za-z0-9_]*)(?:\\s*<[^>\\n]*>)?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*$")
+        val JAVA_ASSIGNMENT = Regex("\\b(?:(final)\\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\\s*<[^>\\n]*>)?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*$")
+        val MUTABLE_DECLARATION = Regex("\\bvar\\s+([A-Za-z_][A-Za-z0-9_]*)\\b")
         val ALIAS_ASSIGNMENT = Regex("(?m)\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)")
         val MUTATION_ASSIGNMENT = Regex("(?m)(?<![.\\w])([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*(?=(?:BasicMessageChannel|new\\s+BasicMessageChannel))")
         val HANDLER = Regex("(?:\\b([A-Za-z_][A-Za-z0-9_]*)|\\))\\s*\\??\\.\\s*setMessageHandler\\s*(?=\\(|\\{)")

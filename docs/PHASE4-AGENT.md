@@ -44,7 +44,9 @@ Flutter `MethodChannel` 등록·method handler와 React Native `@ReactModule`·`
 `BasicMessageChannel`의 실제 `setMessageHandler` 등록만 bridge-facts v2로 출력한다. Kotlin 송신
 호출은 receiver 전용 교환 계약에 맞지 않아 fact로 만들지 않고 `unscanned-message-sends` limitation으로 센다.
 채널을 만들기만 한 지점과 `setMessageHandler(null)`은 등록 사실로 만들지 않는다. literal 이름,
-alias·shadowing·mutable 재할당을 추적하며 문자열 interpolation에서는 보수적으로 확인한
+immutable alias를 추적하며 Kotlin `var`·Java non-final·관찰한 재할당의 이름은 실행 순서를
+확정하지 않고 dynamic으로 남긴다. 같은 파일의 동명 shadow도 보수적으로 영향을 받을 수 있다.
+Kotlin `val`·Java `final`과 직접 연결한 생성식의 literal은 유지한다. 문자열 interpolation에서는 보수적으로 확인한
 비어 있지 않은 `channelPrefix`만 함께 낸다. `--graph-file`을 주면 관찰 위치를 compiler snapshot의
 실제 Kotlin/JVM 함수·메서드 정점과 조인할 수 있을 때만 `symbol.usr`를 붙인다. source scanner가
 이름이나 Pigeon 생성 규칙으로 JVM identity를 추측하지 않으며, graph가 없거나 위치가 모호하면
