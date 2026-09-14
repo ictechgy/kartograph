@@ -5,7 +5,13 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
+
+if not __debug__:
+    sys.exit('Runtime corpus verification requires Python assertions; remove -O/PYTHONOPTIMIZE.')
+if not os.environ.get('JAVA_HOME'):
+    sys.exit('Set JAVA_HOME to a JDK before runtime corpus verification.')
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "fixtures/runtime-corpus"
@@ -27,6 +33,49 @@ def query(project, classes, symbol, expected_state, *extra):
     assert document["status"] == "found", symbol
     assert document["result"]["reachability"]["state"] == expected_state, (symbol, document["result"]["reachability"])
     return document
+
+
+def verify_instance_helpers(temporary, kotlin_version):
+    cases = [("java_final", "java", True), ("java_private", "java", True),
+             ("java_override", "java", False), ("java_state", "java", False),
+             ("kotlin_object", "kotlin", True), ("kotlin_companion", "kotlin", True)]
+    stdlib = next((BINARY.parent.parent / "lib").glob("kotlin-stdlib-*.jar"))
+    kotlin_root = temporary / "instance-helpers"
+    kotlin_root.mkdir()
+    (kotlin_root / "settings.gradle.kts").write_text('include(":kotlin_object", ":kotlin_companion")\n')
+    (kotlin_root / "build.gradle.kts").write_text('''import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
+plugins { kotlin("jvm") version "''' + kotlin_version + '''" apply false }
+subprojects {
+ apply(plugin = "org.jetbrains.kotlin.jvm")
+ repositories { mavenCentral() }
+ extensions.configure<KotlinJvmProjectExtension> { jvmToolchain(17) }
+}
+''')
+    for case, language, _ in cases:
+        project = kotlin_root / case
+        relative = "src/probe/Entry.java" if language == "java" else "src/main/kotlin/probe/Entry.kt"
+        source = project / relative
+        source.parent.mkdir(parents=True)
+        source.write_bytes((FIXTURES / ("helper_" + case) / relative).read_bytes())
+        (project / "keep.pro").write_text("-keep class probe.Entry { *; }\n")
+        if language == "java":
+            classes = project / "classes"
+            classes.mkdir()
+            run([JDK / "bin/javac", "-g", "-d", classes, source])
+    (kotlin_root / "gradle").mkdir()
+    (kotlin_root / "gradle/verification-metadata.xml").write_bytes((ROOT / "gradle/verification-metadata.xml").read_bytes())
+    run([ROOT / "gradlew", "--offline", "--no-daemon", "-p", kotlin_root, "classes"], cwd=ROOT, timeout=600)
+    for case, language, positive in cases:
+        project = kotlin_root / case
+        classes = project / ("classes" if language == "java" else "build/classes/kotlin/main")
+        classpath = [classes] + ([stdlib] if language == "kotlin" else [])
+        arguments = ["probe.Used"] if case == "java_state" else []
+        assert run([JDK / "bin/java", "-cp", os.pathsep.join(map(str, classpath)), "probe.Entry", *arguments]).strip() == "USED"
+        used = query(project, classes, "class:probe/Used", "reachable" if positive else "unreachable")
+        query(project, classes, "class:probe/Unused", "unreachable")
+        if not positive:
+            assert any(item.startswith("reflection-strings:") for item in used["limitations"])
+        print("Instance helper verified:", case, flush=True)
 
 
 def main():
@@ -102,7 +151,8 @@ subprojects {
                 query(project, classes, "field:probe/ConstantObject#USED:I", "retained")
                 query(project, classes, "class:probe/UnusedConstantObject", "retained")
             print("Kotlin verified:", backend, flush=True)
-    print("Runtime corpus verified: 13 compiler/runtime cases, unused controls preserved")
+        verify_instance_helpers(temporary, version)
+    print("Runtime corpus verified: 19 compiler/runtime cases, unused and unresolved controls preserved")
 
 
 if __name__ == "__main__":

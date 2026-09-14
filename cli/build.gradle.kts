@@ -51,6 +51,8 @@ distributions {
                 "IMPACT.md",
                 "BUILD-PROVENANCE.md",
                 "COMPILER-EVIDENCE.md",
+                "INDEX-CACHE.md",
+                "MCP.md",
             )
             from(releaseDocumentation.map { document -> rootProject.file("docs/$document") }) {
                 into("docs")

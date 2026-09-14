@@ -13,6 +13,49 @@ BINARY = Path(os.environ.get("KARTOGRAPH_BINARY", ROOT / "cli/build/install/kart
 
 
 class ImpactGateTest(unittest.TestCase):
+    def test_snapshot_size_budget_reaches_impact_and_both_freshness_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            subprocess.run(['git', 'init', '-q', str(project)], check=True)
+            subprocess.run(['git', '-C', str(project), '-c', 'user.name=Fixture',
+                            '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'base'], check=True)
+            base = subprocess.check_output(['git', '-C', str(project), 'rev-parse', 'HEAD'], text=True).strip()
+            graph = project / 'graph.json'
+            graph.write_text('{}')
+            calls = project / 'calls.jsonl'
+            binary = project / 'fixture-cli'
+            binary.write_text('#!' + sys.executable + '\n' +
+                'import json,sys\nfrom pathlib import Path\n' +
+                'with Path(' + repr(str(calls)) + ').open("a") as log: log.write(json.dumps(sys.argv[1:])+"\\n")\n' +
+                'if sys.argv[1] == "impact":\n' +
+                ' print(json.dumps({"format":"kartograph-impact","version":1,"status":"noChanges",' +
+                '"inputs":{"base":{"scope":"fixture:main"},"current":{"scope":"fixture:main"}}}))\n' +
+                'else: print(json.dumps({"format":"kartograph-freshness","version":1,"status":"matched"}))\n')
+            binary.chmod(0o700)
+            command = [sys.executable, str(ROOT / 'Scripts/check-impact.py'), '--binary', str(binary),
+                       '--project', str(project), '--base-project', str(project), '--base', base,
+                       '--base-graph', str(graph), '--graph-file', str(graph), '--snapshot-max-mib', '128']
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            self.assertEqual(0, result.returncode, result.stderr)
+            recorded = [json.loads(line) for line in calls.read_text().splitlines()]
+            self.assertEqual(['impact', 'verify-snapshot', 'verify-snapshot'], [row[0] for row in recorded])
+            for row in recorded:
+                self.assertEqual('128', row[row.index('--snapshot-max-mib') + 1])
+            default = subprocess.run(command[:-2], capture_output=True, text=True, timeout=30)
+            self.assertEqual(0, default.returncode, default.stderr)
+            for row in [json.loads(line) for line in calls.read_text().splitlines()][-3:]:
+                self.assertNotIn('--snapshot-max-mib', row)
+            without_base = command.copy()
+            at = without_base.index('--base-project')
+            del without_base[at:at + 2]
+            self.assertEqual(64, subprocess.run(without_base + ['--base-input', 'external/example=unused'],
+                                                capture_output=True, timeout=30).returncode)
+            for value in ['0', '129', 'bad']:
+                invalid = command[:-1] + [value]
+                self.assertEqual(64, subprocess.run(invalid, capture_output=True, timeout=30).returncode)
+            self.assertEqual(64, subprocess.run(command + ['--snapshot-max-mib', '64'],
+                                                capture_output=True, timeout=30).returncode)
+
     def test_deleted_source_keeps_old_callers_and_noop_is_explicit(self):
         javac = str(Path(os.environ["JAVA_HOME"]) / "bin/javac") if "JAVA_HOME" in os.environ else shutil.which("javac")
         if not javac:
@@ -62,7 +105,7 @@ class ImpactGateTest(unittest.TestCase):
             current_bindings.write_text(json.dumps(empty_bindings))
             base_bindings.write_text(json.dumps(empty_bindings))
             bound_command = command + ["--base-project", project, "--input-bindings", current_bindings,
-                                       "--base-input-bindings", base_bindings]
+                                       "--base-input-bindings", base_bindings, "--snapshot-max-mib", "128"]
             bound = json.loads(run(*bound_command))
             self.assertEqual("unverified", bound["freshness"]["base"]["status"])
             base_bindings.write_text("{}")

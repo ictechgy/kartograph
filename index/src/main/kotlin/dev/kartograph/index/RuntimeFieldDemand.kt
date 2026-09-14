@@ -16,22 +16,40 @@ internal class RuntimeFieldDemand {
     private val graphs = mutableMapOf<MethodNode, Map<AbstractInsnNode, Set<AbstractInsnNode>>?>()
 
     /** consumer 자체의 반환값이 아니라 그 입력에 필요한 field read 명령을 찾는다. */
-    fun fieldsFeeding(owner: String, method: MethodNode, consumers: Collection<AbstractInsnNode>): Set<AbstractInsnNode>? {
+    fun fieldsFeeding(owner: String, method: MethodNode, consumers: Collection<AbstractInsnNode>): Set<AbstractInsnNode>? =
+        instructionsFeeding(owner, method, consumers, ::isFieldRead)
+
+    /** consumer 입력에 실제로 기여하는 call만 return 요약 대상으로 고른다. */
+    fun callsFeeding(
+        owner: String,
+        method: MethodNode,
+        consumers: Collection<AbstractInsnNode>,
+        candidate: (MethodInsnNode) -> Boolean,
+    ): Set<AbstractInsnNode>? = instructionsFeeding(owner, method, consumers) { instruction ->
+        instruction is MethodInsnNode && candidate(instruction)
+    }
+
+    private fun instructionsFeeding(
+        owner: String,
+        method: MethodNode,
+        consumers: Collection<AbstractInsnNode>,
+        selected: (AbstractInsnNode) -> Boolean,
+    ): Set<AbstractInsnNode>? {
         if (consumers.isEmpty()) return emptySet()
         val instructions = method.instructions.toArray()
-        if (instructions.none(::isFieldRead)) return emptySet()
+        if (instructions.none(selected)) return emptySet()
         if (!graphs.containsKey(method)) graphs[method] = dependencies(owner, method)
         val graph = graphs[method] ?: return null
         val pending = ArrayDeque(consumers.flatMap { graph[it].orEmpty() })
         val visited = mutableSetOf<AbstractInsnNode>()
-        val fields = mutableSetOf<AbstractInsnNode>()
+        val demanded = mutableSetOf<AbstractInsnNode>()
         while (pending.isNotEmpty()) {
             val instruction = pending.removeFirst()
             if (!visited.add(instruction)) continue
-            if (isFieldRead(instruction)) fields += instruction
+            if (selected(instruction)) demanded += instruction
             pending.addAll(graph[instruction].orEmpty())
         }
-        return fields
+        return demanded
     }
 
     private fun dependencies(owner: String, method: MethodNode): Map<AbstractInsnNode, Set<AbstractInsnNode>>? {

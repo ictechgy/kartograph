@@ -34,8 +34,9 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 
 - `Class.forName`의 overload와 `ClassLoader.loadClass`는 같은 메서드 안의 지역 변수·분기·일부 문자열 결합을
   추적해 프로젝트 class로 연결한다. 알려진 class의 reflection 생성자는 인자 개수에 맞는 후보를 연결한다.
-  프로젝트의 정확한 JVM static 호출에서는 불변 인자와 String/Class 반환값을 helper 사이에서도 전파한다.
-  반환 경로가 unknown을 포함하면 일부 상수만으로 해석 완료를 주장하지 않는다. virtual/interface 호출의 반환값,
+  프로젝트의 정확한 JVM static 호출과 override 불가능한 instance helper에서는 불변 인자와 String/Class 반환값을 전파한다.
+  Instance helper는 선언 자체가 private/final이거나 owner class가 final인 경우에 한정한다. Kotlin object/companion도 실제 JVM modifier를 확인하며 receiver의 field 상태는 추측하지 않는다.
+  반환 경로가 unknown을 포함하면 일부 상수만으로 해석 완료를 주장하지 않는다. override 가능한 virtual/interface 호출의 반환값,
   dependency 본문, 임의 계산과 동적 component 등록은 완전하게 해석하지 않는다.
   값 집합은 16개·문자열은 4096자, 메서드는 명령 20,000개·frame slot 250,000개로 제한한다. 반환값 분석은
   runtime 메서드별 호출 깊이 8·문맥 128개·누적 frame slot 1,000,000개로 추가 제한하며 재귀·한도 초과는
@@ -96,7 +97,7 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   원본 class/source/규칙 파일을 읽지 않으며 `saved-graph` 한계를 추가한다. 현재 source와 일치하는지는 확인하지
   않으므로 변경 후에는 새 snapshot을 만든다. live 입력이나 baseline을 섞어 저장된 의미를 바꿀 수 없다.
   일반 `graph --format json` 문서에는 보존 문맥이 없으므로 질의 snapshot으로 읽지 않는다. 입력은 UTF-8 JSON,
-  최대 64 MiB이며 지원하지 않는 버전·손상·중복 정점·dangling edge를 오류로 거부한다.
+  기본 64 MiB이며 `--snapshot-max-mib`로 명시한 경우 최대 128 MiB다. 지원하지 않는 버전·손상·중복 정점·dangling edge를 오류로 거부한다.
 - `snapshot --compact` v2는 반복 문자열과 graph 행을 인덱스로 저장한다. 사실을 생략하지 않으며 v1도 계속 읽는다.
   `--revision`/`--scope`는 호출자의 입력 라벨이고 내용 지문이나 빌드 신선도 증명이 아니다.
 - `impact`는 잠재적 사용/계약 의존을 역방향으로 조사하며 실제 동작 변화나 테스트 생략을 승인하지 않는다.
@@ -157,7 +158,7 @@ JDK API 모델은 owner·이름·descriptor·static 여부를 확인하고 해�
 같은 개수의 overload는 보수적으로 포함하며 선언 밖의 override·실제 receiver까지 완전하게 구분하지 않는다.
 `Class.getField/getDeclaredField`의 이름을 `Field.get/set` 및 primitive 변형까지 전달한다. public lookup은 상속된
 선언을 찾되 일치하는 선언에서 멈춰 숨겨진 부모 field를 섞지 않는다. 입력 class의 public 선언·interface·superclass 순서로 찾고 declared lookup은 해당 owner만 검색한다. dependency header의 상속 경로도 따르지만 그 header의 field 선언·숨김은 수입하지 않으므로 경계 밖에서는 조상 후보를 보수적으로 포함할 수 있다. 알려지지 않은 이름은 method/field별 호출 개수로 알린다.
-프로젝트 static helper의 String/Class 반환값은 제한적으로 추적하지만 외부 선언의 구현·reflection 메서드 반환값·
+프로젝트 static helper와 정확히 선택되는 private/final instance helper의 String/Class 반환값은 제한적으로 추적하지만 외부 선언의 구현·reflection 메서드 반환값·
 field 값의 일반적 흐름은 여전히 미해결일 수 있다.
 
 static field는 실제 `PUTSTATIC`과 알려진 `Field.set`의 stack 값에서 String/Class 후보를 수집한다. 직접 `GETSTATIC`과

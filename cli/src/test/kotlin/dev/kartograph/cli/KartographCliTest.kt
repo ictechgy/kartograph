@@ -23,6 +23,17 @@ import org.junit.jupiter.api.io.TempDir
 
 class KartographCliTest {
     @Test
+    fun `graph reports invalid dependency inputs as sanitized tool failures`(@TempDir root: Path) {
+        val broken = root.resolve("broken.jar").apply { writeText("not a jar") }
+        for (dependency in listOf(broken, root.resolve("missing.jar"))) {
+            val result = execute("graph", "--classes", classRoot.toString(), "--classpath", dependency.toString())
+            assertEquals(ExitStatus.FAILURE.code, result.status)
+            assertEquals("", result.output)
+            assertTrue(!result.error.contains(root.toString()))
+        }
+    }
+
+    @Test
     fun `forced skill replacement preserves external hard link contents`(@TempDir root: Path) {
         val project = root.resolve("project").createDirectories()
         val target = project.resolve(".claude/skills/kartograph/SKILL.md")

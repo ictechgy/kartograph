@@ -56,9 +56,13 @@ class AnalysisSmokeGateTest(unittest.TestCase):
         self.assertEqual(res.returncode, 0)
         data = json.loads(res.stdout)
         self.assertEqual(data["status"], "PASS")
-        # Ensure graph counts actual vertices (around 2,900), not DOT lines including edges (7,600+)
+        # 저장소가 커져도 DOT 간선을 정점으로 잘못 세지 않는지 독립 JSON 출력과 비교한다.
         self.assertGreaterEqual(data["measurements"]["graph"]["nodes"], 2000)
-        self.assertLessEqual(data["measurements"]["graph"]["nodes"], 5000)
+        command = [str(BINARY), "graph", "--format", "json"]
+        for module in ("core", "index", "analysis", "export", "cli", "gradle-plugin"):
+            command.extend(["--classes", str(ROOT / module / "build/classes/kotlin/main")])
+        graph = subprocess.run(command, capture_output=True, text=True, timeout=60, check=True)
+        self.assertEqual(data["measurements"]["graph"]["nodes"], len(json.loads(graph.stdout)["nodes"]))
         self.assertEqual(data["measurements"]["dead"]["findings"], 0)
         self.assertEqual(data["measurements"]["dead_private"]["findings"], 0)
         self.assertGreaterEqual(data["measurements"]["metrics"]["rows"], 6)

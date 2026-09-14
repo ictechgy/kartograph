@@ -1,8 +1,6 @@
 package dev.kartograph.cli
 
-import dev.kartograph.analysis.ChangeImpact
 import dev.kartograph.analysis.ImpactFilter
-import dev.kartograph.analysis.ImpactInput
 import dev.kartograph.analysis.ImpactPathStatus
 import dev.kartograph.analysis.ImpactRelation
 import dev.kartograph.analysis.ImpactSort
@@ -35,6 +33,8 @@ internal object ImpactCommand {
         if (values["--graph-file"]?.size != 1) return usage(error, "provide exactly one --graph-file")
         val repeatable = setOf("--symbol", "--file", "--module", "--affected-file", "--filter-file", "--kind")
         if (values.any { (key, value) -> key !in repeatable && value.size != 1 }) return usage(error, "duplicate impact option")
+        val snapshotLimit = SnapshotFiles.limit(values["--snapshot-max-mib"].orEmpty())
+            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128")
         if (all && "--limit" in values) return usage(error, "--all cannot be combined with --limit")
         if (listOf("--revision", "--base-revision").any { key -> values[key]?.single()?.let { !Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(it) } == true }) return usage(error, "revision must be a full commit hash")
         if ("--base-revision" in values && "--base-graph" !in values) return usage(error, "base-revision requires base-graph")
@@ -45,9 +45,11 @@ internal object ImpactCommand {
         val offset = values["--offset"]?.single()?.toIntOrNull() ?: if ("--offset" in values) -1 else 0
         val visitLimit = values["--visit-limit"]?.single()?.toIntOrNull() ?: if ("--visit-limit" in values) 0 else 100_000
         val pathLimit = values["--path-limit"]?.single()?.toIntOrNull() ?: if ("--path-limit" in values) 0 else null
+        val summaryLimit = values["--summary-limit"]?.single()?.toIntOrNull() ?: if ("--summary-limit" in values) 0 else null
         if (depth !in 1..1000 || (!all && limit !in 1..100_000) || offset < 0 || visitLimit !in 1..5_000_000 || pathLimit != null && pathLimit !in 1..5_000_000) {
             return usage(error, "depth must be 1..1000, limit must be 1..100000, offset must be non-negative, and budgets must be positive")
         }
+        if (summaryLimit != null && summaryLimit !in 1..100_000) return usage(error, "summary-limit must be 1..100000")
         if (symbols.isEmpty() && "--file" !in values && "--files-from" !in values) return usage(error, "provide symbols or changed files")
         val sort = values["--sort"]?.single()?.let { parseSort(it) }
             ?: if ("--sort" in values) return usage(error, "invalid impact sort") else ImpactSort.REVIEW
@@ -69,14 +71,10 @@ internal object ImpactCommand {
             val affectedFiles = values["--affected-file"].orEmpty() + values["--filter-file"].orEmpty()
             if ((files + affectedFiles).any { !portable(it) }) return usage(error, "impact files must be portable project-relative paths")
             if (values["--module"].orEmpty().any { it.isBlank() || it.any(Char::isISOControl) }) return usage(error, "impact modules must be non-empty")
-            val current = SnapshotFiles.read(values.getValue("--graph-file").single())
-            val base = values["--base-graph"]?.single()?.let(SnapshotFiles::read)
-            if (base != null && current.toolVersion != base.toolVersion) {
-                error.println("error: snapshot analyzer versions differ; recapture both with the same version")
-                return 2
-            }
-            if (base != null && base.scope != current.scope) {
-                error.println("error: snapshot scopes differ; capture the same project and variant")
+            val current = SnapshotFiles.read(values.getValue("--graph-file").single(), snapshotLimit.maximumBytes)
+            val base = values["--base-graph"]?.single()?.let { SnapshotFiles.read(it, snapshotLimit.maximumBytes) }
+            try { SavedSnapshotOperations.compatible(current, base) } catch (invalid: IllegalArgumentException) {
+                error.println("error: ${invalid.message}")
                 return 2
             }
             if (("--revision" in values && current.revision != values.getValue("--revision").single()) ||
@@ -86,11 +84,11 @@ internal object ImpactCommand {
             }
             val effectiveLimit = if (all) Int.MAX_VALUE else limit
             val effectivePathLimit = pathLimit ?: if (all) 500_000 else maxOf(100_000, minOf(500_000, limit * 10))
-            val report = ChangeImpact.analyze(
-                current = ImpactInput(current.graph, current.retention, current.limitations),
+            val report = SavedSnapshotOperations.impact(
+                current = current,
                 symbols = symbols,
                 files = files,
-                base = base?.let { ImpactInput(it.graph, it.retention, it.limitations) },
+                base = base,
                 depth = depth,
                 limit = effectiveLimit,
                 visitLimit = visitLimit,
@@ -105,19 +103,17 @@ internal object ImpactCommand {
                     pathStatus = pathStatus,
                 ),
                 sort = sort,
+                summaryLimit = summaryLimit,
             )
-            val limitations = report.limitations + "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness" +
-                if (current.scope == null) listOf("snapshot-scope: project and variant labels were not provided") else emptyList()
-            output.print(ImpactReportCodec.render(report.copy(limitations = limitations.sorted()),
-                buildMap { put("current", current); base?.let { put("base", it) } }))
-            if (report.unresolved.isEmpty()) 0 else 64
+            output.print(report.json)
+            report.status
         } catch (_: Exception) {
-            error.println("error: unable to read impact inputs; use valid UTF-8 snapshots (64 MiB max) and a JSON file list (1 MiB max)")
+            error.println("error: unable to read impact inputs; use valid UTF-8 snapshots (${snapshotLimit.maximumMiB} MiB max) and a JSON file list (1 MiB max)")
             2
         }
     }
 
-    private fun parseSort(value: String): ImpactSort? = when (value) {
+    internal fun parseSort(value: String): ImpactSort? = when (value) {
         "review" -> ImpactSort.REVIEW
         "usr" -> ImpactSort.USR
         "module" -> ImpactSort.MODULE
@@ -129,15 +125,15 @@ internal object ImpactCommand {
         else -> null
     }
 
-    private fun parseTestStatus(value: String): ImpactTestStatus? = ImpactTestStatus.entries.firstOrNull { it.name.lowercase() == value }
-    private fun parseRelation(value: String): ImpactRelation? = ImpactRelation.entries.firstOrNull { it.name.lowercase() == value }
-    private fun parsePathStatus(value: String): ImpactPathStatus? = ImpactPathStatus.entries.firstOrNull { it.name.lowercase() == value }
+    internal fun parseTestStatus(value: String): ImpactTestStatus? = ImpactTestStatus.entries.firstOrNull { it.name.lowercase() == value }
+    internal fun parseRelation(value: String): ImpactRelation? = ImpactRelation.entries.firstOrNull { it.name.lowercase() == value }
+    internal fun parsePathStatus(value: String): ImpactPathStatus? = ImpactPathStatus.entries.firstOrNull { it.name.lowercase() == value }
 
     private fun String.lowerCamel(): String = lowercase().split('_').let { words ->
         words.first() + words.drop(1).joinToString("") { it.replaceFirstChar { character -> character.titlecase() } }
     }
 
-    private fun portable(path: String): Boolean = path.isNotBlank() && !path.startsWith('/') && !path.endsWith('/') &&
+    internal fun portable(path: String): Boolean = path.isNotBlank() && !path.startsWith('/') && !path.endsWith('/') &&
         !Regex("^[A-Za-z]:").containsMatchIn(path) && '\\' !in path && path.split('/').none { it == ".." || it.isEmpty() } && !path.any(Char::isISOControl)
 
     private fun usage(error: PrintStream, text: String): Int { error.println("error: $text"); return 64 }
@@ -145,6 +141,7 @@ internal object ImpactCommand {
         "--graph-file", "--base-graph", "--symbol", "--file", "--files-from", "--depth", "--limit", "--offset",
         "--module", "--affected-file", "--filter-file", "--kind", "--test-status", "--relation", "--path-status", "--sort",
         "--visit-limit", "--path-limit", "--revision", "--base-revision",
+        "--snapshot-max-mib", "--summary-limit",
     )
     private val HELP = """
         Inspect potential change impact using captured graphs.
@@ -171,8 +168,10 @@ internal object ImpactCommand {
           --sort <field>           review (default), usr, module, file, test, relation, path or path-status
           --visit-limit <n>        reverse traversal node budget (default 100000)
           --path-limit <n>         path materialization edge budget (default is limit-derived)
+          --summary-limit <n>      buckets retained per summary axis, 1..100000 (default unbounded)
           --revision <hash>        require the current snapshot to carry this commit label
           --base-revision <hash>   require the base snapshot to carry this commit label
+          --snapshot-max-mib <n>  current/base snapshot read maximum in MiB, 1..128 (default 64)
 
         Capture matching project/variant inputs with `snapshot --include-paths` after building.
         Paths retain edge kinds, origins and the revision they came from. Summary counts are computed before

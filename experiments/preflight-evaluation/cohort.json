@@ -1,0 +1,81 @@
+{
+  "frozenAt": "2026-09-13T17:09:23.102940+00:00",
+  "task": "Pre-edit impact review of a supplied production change, with same source tools/model/budget and additional actual product MCP graph tools in the graph arm. Historical generic repair result remains separate.",
+  "selectionRule": "Same four Java/Kotlin library repository strata; highest numeric PR ID with full base SHA and declared F2P, excluding prior evaluated/development cases. No model/product outcomes consulted. Kotlin7871/2950 already excluded for noF2P in prior intake.",
+  "previousCases": [
+    "ankidroid_Anki-Android-19384",
+    "ankidroid_Anki-Android-19509",
+    "ankidroid_Anki-Android-19661",
+    "ankidroid_Anki-Android-19982",
+    "ankidroid_Anki-Android-20250",
+    "detekt_detekt-7718",
+    "detekt_detekt-7888",
+    "fasterxml__jackson-core-1208",
+    "fasterxml__jackson-core-1309",
+    "google__gson-1391",
+    "google__gson-1555",
+    "pinterest_ktlint-2895",
+    "pinterest_ktlint-2983",
+    "square_okhttp-6887"
+  ],
+  "primary": [
+    {
+      "id": "google__gson-1093",
+      "repository": "google/gson",
+      "base": "0aaef0fd1bb1b9729543dc40168adfb829eb75a4",
+      "language": "java",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetFile": "google__gson-dataset.jsonl",
+      "datasetSha256": "fc4e6547d8ccd761719c68dc09053b9e10ba9aca8db97b4b565dbf88c83473f6"
+    },
+    {
+      "id": "fasterxml__jackson-core-1172",
+      "repository": "FasterXML/jackson-core",
+      "base": "fb695545312cc2340604e61642f36138152fba93",
+      "language": "java",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetFile": "fasterxml__jackson-core-dataset.jsonl",
+      "datasetSha256": "21f1f1350dcaf687840f6cf0dce4198c7958cc66cd6ab6722a0dd3a18860147e"
+    },
+    {
+      "id": "detekt_detekt-7715",
+      "repository": "detekt/detekt",
+      "base": "8a3565572208446ff769152ded9ca5bdf957f8b0",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    },
+    {
+      "id": "pinterest_ktlint-2891",
+      "repository": "pinterest/ktlint",
+      "base": "e098f10ef78bc83bbb79dcbf12b2d9246ccd6bd7",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "google__gson-1787",
+      "reason": "missing declared F2P or full base SHA"
+    },
+    {
+      "id": "google__gson-1703",
+      "reason": "missing declared F2P or full base SHA"
+    },
+    {
+      "id": "fasterxml__jackson-core-1263",
+      "reason": "missing declared F2P or full base SHA"
+    },
+    {
+      "id": "fasterxml__jackson-core-1204",
+      "reason": "missing declared F2P or full base SHA"
+    },
+    {
+      "id": "fasterxml__jackson-core-1182",
+      "reason": "missing declared F2P or full base SHA"
+    }
+  ],
+  "repeatsPerArm": 2,
+  "plannedTrials": 16,
+  "qualification": "Before model exposure, verify original unchanged source/tests and build/oracle provenance. A missing original target or build failure is recorded; replacements follow the same descending-ID rule with explicit reason, never product/model success. Do not inject new tests into the pre-edit graph or expose oracle outcomes.",
+  "status": "Metadata frozen; native qualification and model runs not executed."
+}

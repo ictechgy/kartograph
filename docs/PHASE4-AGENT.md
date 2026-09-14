@@ -28,7 +28,8 @@ build 이후 수정된 source를 센다. 관측된 항목이 없으면 배열은
 `saved-graph` 한계는 현재 파일이나 신선도를 재검사하지 않았다는 의미이며 `notFound`에도 포함한다.
 
 일반 `graph --format json` 문서는 보존 문맥이 없으므로 입력으로 거부한다. snapshot reader는 UTF-8·버전·타입·
-중복 정점·dangling edge·상대 source 경로를 검사하고, 최대 64 MiB와 JSON 중첩 깊이 제한을 적용한다.
+중복 정점·dangling edge·상대 source 경로를 검사하고, 기본 64 MiB와 JSON 중첩 깊이 제한을 적용한다.
+큰 snapshot은 저장·읽기 명령의 `--snapshot-max-mib`로 최대 128 MiB까지 명시적으로 허용할 수 있다.
 불완전한 문서를 빈 그래프나 성공으로 바꾸지 않는다. 보존 판정은 저장된 근거에서 공통 도달성 알고리즘으로 계산한다.
 변경 후의 상태를 조사하려면 해당 입력으로 새 snapshot을 만들어야 한다.
 

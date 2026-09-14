@@ -1,0 +1,882 @@
+{
+  "status": "Negative efficacy result; all 16 trials retained.",
+  "manifestSha256": "6772170424a7733cb55313c4bfe0a31f1b815405d79b4eb90037ca25fa306332",
+  "oracleSha256": "39297ee3ece3e03859499cdf092d7cae049bafb643e9689cd6277c664a46d297",
+  "summary": {
+    "source": {
+      "trials": 8,
+      "credit": 18.0,
+      "anchors": 28,
+      "secondsMean": 52.67912253662598,
+      "costUsdMean": 0.27841099999999996,
+      "validAnswers": 8
+    },
+    "mcp": {
+      "trials": 8,
+      "credit": 10.5,
+      "anchors": 28,
+      "secondsMean": 55.274119473874634,
+      "costUsdMean": 0.286053625,
+      "validAnswers": 7
+    }
+  },
+  "trials": [
+    {
+      "case": "alibaba__fastjson2-2559",
+      "repeat": 0,
+      "arm": "source",
+      "seconds": 45.92429808399902,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 6,
+      "anchorCredits": {
+        "method:com/alibaba/fastjson2/JSON#to(Ljava/lang/Class;Ljava/lang/Object;)Ljava/lang/Object;": 1.0,
+        "method:com/alibaba/fastjson2/reader/ConstructorFunction#apply(Ljava/util/Map;)Ljava/lang/Object;": 1.0,
+        "method:com/alibaba/fastjson2/reader/FieldReader#acceptAny(Ljava/lang/Object;Ljava/lang/Object;J)V": 1.0,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_castToJavaBean_0()V": 0.0,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_cast_0()V": 0.0,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_error_0()V": 0.0
+      },
+      "coverage": 0.5,
+      "targetCount": 10,
+      "additionalTargets": 7,
+      "observedToolContentBytes": 19635,
+      "malformedStreamLines": 0,
+      "informationCalls": 13,
+      "graphCalls": 0,
+      "costUsd": 0.24284199999999995,
+      "evidenceHashes": {
+        "stream": "73de0804773296ce20eca15f9e6cfa1c4fe684abfe6f6a47b943330162549a77",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "7f297923bfba7557175eb7f8bc6279612f7feecf01ad8caa7584101d82d5c77d"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 1,
+      "sourceReads": 5,
+      "uniqueReadFiles": 4,
+      "sourceReadLines": 248,
+      "sourceSearches": 7,
+      "sourceSearchMatches": 43,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "material_causal_error",
+        "targetFidelity": "All ten target files exist, and Issue1300 plus the writer/reader registrations are the right review surface.",
+        "concreteErrors": [
+          "The answer uses TypeUtils.toDouble as evidence for the registered conversion, but ObjectReaderBaseModule registers com.alibaba.fastjson2.function.impl.ToDouble instead.",
+          "ToDouble.apply accepts any Number; it does not require a BigDecimal. The answer's assertion that applying it to obj is likely a ClassCastException because Decimal128 is not a Number is unsupported by the permitted source and rests on the wrong converter implementation."
+        ],
+        "limitations": [
+          "The proposed Double regression in Issue1300 remains appropriate even though the claimed failure mechanism is not established.",
+          "The broad FieldReader/JSON/constructor target list identifies real cast callers but does not demonstrate a Decimal128-to-Double flow in each caller."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "alibaba__fastjson2-2559",
+      "repeat": 0,
+      "arm": "mcp",
+      "seconds": 52.71170383300341,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": false,
+      "anchorCount": 6,
+      "anchorCredits": {
+        "method:com/alibaba/fastjson2/JSON#to(Ljava/lang/Class;Ljava/lang/Object;)Ljava/lang/Object;": 0,
+        "method:com/alibaba/fastjson2/reader/ConstructorFunction#apply(Ljava/util/Map;)Ljava/lang/Object;": 0,
+        "method:com/alibaba/fastjson2/reader/FieldReader#acceptAny(Ljava/lang/Object;Ljava/lang/Object;J)V": 0,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_castToJavaBean_0()V": 0,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_cast_0()V": 0,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_error_0()V": 0
+      },
+      "coverage": 0.0,
+      "targetCount": 0,
+      "additionalTargets": 0,
+      "observedToolContentBytes": 18290,
+      "malformedStreamLines": 0,
+      "informationCalls": 13,
+      "graphCalls": 4,
+      "costUsd": 0.24840699999999996,
+      "evidenceHashes": {
+        "stream": "f2b07259e4399f276a7cbea8c4b15e945d3f39f7a3b720ee2d88b8ebdb6c61dd",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "aaa47f391944cf50f323fe29b64dd2273630c1c744103ed4d0291efb311bf71d"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 1,
+      "sourceReads": 4,
+      "uniqueReadFiles": 3,
+      "sourceReadLines": 203,
+      "sourceSearches": 4,
+      "sourceSearchMatches": 10,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "no_answer",
+        "targetFidelity": "No targets, explanation, evidence, summary, or unknowns were supplied.",
+        "concreteErrors": [
+          "The answer value is null and cannot support any review decision."
+        ],
+        "limitations": [],
+        "unsafeOrCompletenessClaims": []
+      },
+      "invalidAnswerNote": "The provider returned a nonempty response of 6,149 characters that failed strict answer JSON parsing. The blinded reviewer received null; the provider response itself was not empty."
+    },
+    {
+      "case": "fasterxml__jackson-core-1142",
+      "repeat": 0,
+      "arm": "mcp",
+      "seconds": 52.15668095799629,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 2,
+      "anchorCredits": {
+        "method:com/fasterxml/jackson/core/TestVersions#testMisc()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testEqualsAndHashCode()V": 1.0
+      },
+      "coverage": 1.0,
+      "targetCount": 10,
+      "additionalTargets": 8,
+      "observedToolContentBytes": 36271,
+      "malformedStreamLines": 0,
+      "informationCalls": 11,
+      "graphCalls": 3,
+      "costUsd": 0.329213,
+      "evidenceHashes": {
+        "stream": "ce2ae0a66b2e398256a9216127ba6a5fa85c6689384c683f6de7d568f37f6a65",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "18fae3e1d9026bf20008282c7363f71fb70dd85e7b5d8bfecf8ca7bd3c2cb9df"
+      },
+      "servedCalls": 11,
+      "deniedAfterBudget": 0,
+      "sourceReads": 6,
+      "uniqueReadFiles": 6,
+      "sourceReadLines": 343,
+      "sourceSearches": 2,
+      "sourceSearchMatches": 42,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate",
+        "targetFidelity": "All ten targets exist. Version, VersionUtil, VersionTest, and TestVersions are the correct primary surface.",
+        "concreteErrors": [
+          "TestVersionUtil.testVersionParsing uses the non-null qualifier foo, so that test does not exercise the repaired null-snapshot path despite being described as the production path where null matters."
+        ],
+        "limitations": [
+          "PackageVersion assertions are valid general regression tests, but the checked-out 2.16.1-SNAPSHOT build does not establish the answer's release/null premise.",
+          "The null-safe behavior change and UNKNOWN_VERSION identity asymmetry are otherwise accurately described."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "fasterxml__jackson-core-1142",
+      "repeat": 0,
+      "arm": "source",
+      "seconds": 44.71542462499929,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 2,
+      "anchorCredits": {
+        "method:com/fasterxml/jackson/core/TestVersions#testMisc()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testEqualsAndHashCode()V": 1.0
+      },
+      "coverage": 1.0,
+      "targetCount": 9,
+      "additionalTargets": 7,
+      "observedToolContentBytes": 17574,
+      "malformedStreamLines": 0,
+      "informationCalls": 7,
+      "graphCalls": 0,
+      "costUsd": 0.192245,
+      "evidenceHashes": {
+        "stream": "6861899dc9035e2daac9ab1865d7650e0ac69413280db637b278f2cc45fae206",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "9517199a1a3cc5a3994d4694d770d5698729587a099dd7e577a21389c8102023"
+      },
+      "servedCalls": 7,
+      "deniedAfterBudget": 0,
+      "sourceReads": 5,
+      "uniqueReadFiles": 5,
+      "sourceReadLines": 270,
+      "sourceSearches": 2,
+      "sourceSearchMatches": 30,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate",
+        "targetFidelity": "All nine targets exist and the main null-equals/hashCode targets are precise.",
+        "concreteErrors": [],
+        "limitations": [
+          "PackageVersion-based tests are described as a null-snapshot release path, but this checkout generates a SNAPSHOT qualifier and those calls may also return the same PackageVersion singleton.",
+          "Calling the overall change low-risk exceeds the in-repository evidence because downstream Version consumers were explicitly not inspected; it is not a safe-edit guarantee."
+        ],
+        "unsafeOrCompletenessClaims": [
+          "Treat the low-risk label as an unverified scope judgment, not proof that downstream equality/hash behavior is harmless."
+        ]
+      }
+    },
+    {
+      "case": "detekt_detekt-7667",
+      "repeat": 0,
+      "arm": "source",
+      "seconds": 43.06290175000322,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 2,
+      "anchorCredits": {
+        "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues with rule set to warning by default()V": 1.0,
+        "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues()V": 1.0
+      },
+      "coverage": 1.0,
+      "targetCount": 7,
+      "additionalTargets": 5,
+      "observedToolContentBytes": 25606,
+      "malformedStreamLines": 0,
+      "informationCalls": 12,
+      "graphCalls": 0,
+      "costUsd": 0.2582545,
+      "evidenceHashes": {
+        "stream": "242e5f02b9f63e8120c559bc298daf531d9990bc6afb235484deb1fc969d7357",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "2ec8917cd3b95995668b36d2f8b239e10099ca44284eb6a8616be008f0465b27"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 0,
+      "sourceReads": 3,
+      "uniqueReadFiles": 3,
+      "sourceReadLines": 169,
+      "sourceSearches": 8,
+      "sourceSearchMatches": 75,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "high_fidelity_with_speculative_downstream_risk",
+        "targetFidelity": "All seven targets exist and the core golden-output and dangling-SRCROOT relationship is exact.",
+        "concreteErrors": [],
+        "limitations": [
+          "ReportMergeTask is a sensible integration surface, but source alone does not prove consumer path-resolution breakage.",
+          "RuleDescriptors is unaffected and low relevance.",
+          "The answer correctly says the merge functional assertion should remain green."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "detekt_detekt-7667",
+      "repeat": 0,
+      "arm": "mcp",
+      "seconds": 47.396981666999636,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 2,
+      "anchorCredits": {
+        "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues with rule set to warning by default()V": 1.0,
+        "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues()V": 1.0
+      },
+      "coverage": 1.0,
+      "targetCount": 6,
+      "additionalTargets": 4,
+      "observedToolContentBytes": 21209,
+      "malformedStreamLines": 0,
+      "informationCalls": 15,
+      "graphCalls": 1,
+      "costUsd": 0.254231,
+      "evidenceHashes": {
+        "stream": "aacb612ac3d27c026ea0a6dd8f1e497c9106b27517149f59b2bdd92d5117ea6d",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "31457d8db7c6b65b8843295a753cedfa4417121aa6693deaab1aeeadb5030b77"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 3,
+      "sourceReads": 2,
+      "uniqueReadFiles": 2,
+      "sourceReadLines": 139,
+      "sourceSearches": 8,
+      "sourceSearchMatches": 60,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate",
+        "targetFidelity": "All six targets exist. The two golden tests and Results.kt are the essential targets.",
+        "concreteErrors": [],
+        "limitations": [
+          "The answer inferred rather than opened the golden files, but the inferred originalUriBaseIds blocks are present.",
+          "The merge-test risk is speculative: its actual assertion checks only ruleId presence and should not fail solely from this metadata removal.",
+          "SARIF consumer behavior and the assertion that an undefined uriBaseId is permitted are external-protocol claims not established by the permitted source."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "pinterest_ktlint-2873",
+      "repeat": 0,
+      "arm": "mcp",
+      "seconds": 56.19622558300034,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 4,
+      "anchorCredits": {
+        "method:com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider#getRuleProviders$lambda$25()Lcom/pinterest/ktlint/rule/engine/core/api/Rule;": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and the first line of a multi line body expression body fit on the same line then reformat to single line signature but keep body expression on separate line(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 1.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature, keep the body expression on a separate line(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 0.0
+      },
+      "coverage": 0.25,
+      "targetCount": 8,
+      "additionalTargets": 7,
+      "observedToolContentBytes": 30102,
+      "malformedStreamLines": 0,
+      "informationCalls": 15,
+      "graphCalls": 1,
+      "costUsd": 0.3185825,
+      "evidenceHashes": {
+        "stream": "574e9a71755fdb570b5976d02a13a19e7b0fb1cb01f4ab080bd6dd4b69fd317f",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "62441c1d92557237b8a74fa66ea04c9aee51dcd055d2790ef5915887c4e60e8e"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 3,
+      "sourceReads": 4,
+      "uniqueReadFiles": 2,
+      "sourceReadLines": 420,
+      "sourceSearches": 7,
+      "sourceSearchMatches": 11,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "high_fidelity",
+        "targetFidelity": "All eight targets exist and the two full-enum conflicts are explained from the exact branches and expectations.",
+        "concreteErrors": [],
+        "limitations": [
+          "The uninspected lines and missing CLI/docs checks are disclosed; they do not undermine the confirmed two-test result."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "pinterest_ktlint-2873",
+      "repeat": 0,
+      "arm": "source",
+      "seconds": 58.57112575000065,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 4,
+      "anchorCredits": {
+        "method:com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider#getRuleProviders$lambda$25()Lcom/pinterest/ktlint/rule/engine/core/api/Rule;": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and the first line of a multi line body expression body fit on the same line then reformat to single line signature but keep body expression on separate line(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 1.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 1.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature, keep the body expression on a separate line(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 1.0
+      },
+      "coverage": 0.75,
+      "targetCount": 8,
+      "additionalTargets": 6,
+      "observedToolContentBytes": 36432,
+      "malformedStreamLines": 0,
+      "informationCalls": 13,
+      "graphCalls": 0,
+      "costUsd": 0.3408185,
+      "evidenceHashes": {
+        "stream": "2c3b2e9d116cc9aa0f9116e82d77191aab03c9dfb8597e7fdbf1a1bf7f15c1cc",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "a78a59a0998b80f1f44687b02c246d065a8c9d89a2386941488333a0b78786e5"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 1,
+      "sourceReads": 6,
+      "uniqueReadFiles": 2,
+      "sourceReadLines": 520,
+      "sourceSearches": 6,
+      "sourceSearchMatches": 17,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "high_fidelity",
+        "targetFidelity": "All eight targets exist. The two failing full-enum cases and nearby unchanged always-mode anchors are accurately selected.",
+        "concreteErrors": [],
+        "limitations": [
+          "Documentation and external-ruleset impact are correctly left as unknown rather than asserted complete."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "alibaba__fastjson2-2559",
+      "repeat": 1,
+      "arm": "mcp",
+      "seconds": 56.30499691700243,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 6,
+      "anchorCredits": {
+        "method:com/alibaba/fastjson2/JSON#to(Ljava/lang/Class;Ljava/lang/Object;)Ljava/lang/Object;": 0.0,
+        "method:com/alibaba/fastjson2/reader/ConstructorFunction#apply(Ljava/util/Map;)Ljava/lang/Object;": 0.0,
+        "method:com/alibaba/fastjson2/reader/FieldReader#acceptAny(Ljava/lang/Object;Ljava/lang/Object;J)V": 0.0,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_castToJavaBean_0()V": 0.0,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_cast_0()V": 0.0,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_error_0()V": 0.0
+      },
+      "coverage": 0.0,
+      "targetCount": 8,
+      "additionalTargets": 8,
+      "observedToolContentBytes": 18212,
+      "malformedStreamLines": 0,
+      "informationCalls": 14,
+      "graphCalls": 3,
+      "costUsd": 0.2568845,
+      "evidenceHashes": {
+        "stream": "082a621bf71378edf1a00d41765249b47e8e992ba6ddbb6ac0b94606183d9ab0",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "e5f164b21c7968bb2c4da0a796d322c9ae3067f554b661b75260fc103006fa94"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 2,
+      "sourceReads": 4,
+      "uniqueReadFiles": 4,
+      "sourceReadLines": 198,
+      "sourceSearches": 5,
+      "sourceSearchMatches": 10,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "material_causal_error",
+        "targetFidelity": "All eight targets exist and the answer correctly identifies the missing Decimal128-to-Double regression.",
+        "concreteErrors": [
+          "The claimed likely ClassCastException assumes the resolved converter is BigDecimal-specific. The actual registered ToDouble.apply accepts any Number.",
+          "The statement that Decimal128 is not a Number is not supported by the permitted repository source; the external class declaration is absent. The answer therefore does not establish that apply(obj) is erroneous."
+        ],
+        "limitations": [
+          "The exact cast-overload chain and exact-map converter lookup are correctly identified."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "alibaba__fastjson2-2559",
+      "repeat": 1,
+      "arm": "source",
+      "seconds": 55.45224199999939,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 6,
+      "anchorCredits": {
+        "method:com/alibaba/fastjson2/JSON#to(Ljava/lang/Class;Ljava/lang/Object;)Ljava/lang/Object;": 0.5,
+        "method:com/alibaba/fastjson2/reader/ConstructorFunction#apply(Ljava/util/Map;)Ljava/lang/Object;": 0.0,
+        "method:com/alibaba/fastjson2/reader/FieldReader#acceptAny(Ljava/lang/Object;Ljava/lang/Object;J)V": 0.5,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_castToJavaBean_0()V": 0.0,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_cast_0()V": 0.0,
+        "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_error_0()V": 0.0
+      },
+      "coverage": 0.16666666666666666,
+      "targetCount": 9,
+      "additionalTargets": 7,
+      "observedToolContentBytes": 23439,
+      "malformedStreamLines": 0,
+      "informationCalls": 14,
+      "graphCalls": 0,
+      "costUsd": 0.2846735,
+      "evidenceHashes": {
+        "stream": "c5317f20049f8629f2e502fe1895f20f31aaaafb5a7f8d5a139ecf49c1a40804",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "a24d77589ca192c7df256d8397ba5a9c98fd6172bfbeca9d61140c01e1c32d53"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 2,
+      "sourceReads": 5,
+      "uniqueReadFiles": 4,
+      "sourceReadLines": 228,
+      "sourceSearches": 7,
+      "sourceSearchMatches": 62,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "partially_accurate_with_material_unresolved_cause",
+        "targetFidelity": "All nine targets exist and Issue1300 plus the conversion registrations are relevant.",
+        "concreteErrors": [
+          "The answer leaves ToDouble's implementation uninspected and still elevates apply(obj) to a likely defect. The source shows ToDouble accepts any Number, eliminating the proposed BigDecimal cast failure if Decimal128 is a Number.",
+          "It suggests the earlier Decimal128-to-Double lookup may resolve through a registered Number superclass. ObjectReaderProvider.getTypeConvert is an exact map lookup, so that fallback does not occur."
+        ],
+        "limitations": [
+          "Unlike the other fastjson answers, it explicitly states the decisive Number question as an uncertainty in parts of the answer, which limits rather than removes the overclaim.",
+          "A Double-target test is still a sound recommendation."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "fasterxml__jackson-core-1142",
+      "repeat": 1,
+      "arm": "source",
+      "seconds": 44.13563145900116,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 2,
+      "anchorCredits": {
+        "method:com/fasterxml/jackson/core/TestVersions#testMisc()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testEqualsAndHashCode()V": 1.0
+      },
+      "coverage": 1.0,
+      "targetCount": 12,
+      "additionalTargets": 10,
+      "observedToolContentBytes": 27460,
+      "malformedStreamLines": 0,
+      "informationCalls": 9,
+      "graphCalls": 0,
+      "costUsd": 0.254746,
+      "evidenceHashes": {
+        "stream": "1c89a09a41e52f27440929da2af3732b1fe12571288c463b6fcc551b13108123",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "3bdfd8b377fa384dc877f247c1cffe36165a5af1c8bfacd2ebdfcf8af3aad334"
+      },
+      "servedCalls": 9,
+      "deniedAfterBudget": 0,
+      "sourceReads": 6,
+      "uniqueReadFiles": 6,
+      "sourceReadLines": 464,
+      "sourceSearches": 3,
+      "sourceSearchMatches": 37,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate_with_minor_causal_error",
+        "targetFidelity": "All twelve targets exist; the central Version and VersionUtil explanation is correct.",
+        "concreteErrors": [
+          "VersionTest.testCreatesVersionTaking6ArgumentsAndCallsCompareTo is not evidence of a null-versus-empty qualifier inconsistency: its artifact IDs differ, so compareTo returns before reaching snapshotInfo.",
+          "TestVersionUtil.testMavenVersionParsing expects SNAPSHOT and therefore does not cover null snapshotInfo."
+        ],
+        "limitations": [
+          "The null/empty compareTo-versus-equals inconsistency is real, but testCompareToReturningZero is the relevant existing example.",
+          "TestDelegates is an existent but low-relevance extra and is appropriately labeled low risk."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "fasterxml__jackson-core-1142",
+      "repeat": 1,
+      "arm": "mcp",
+      "seconds": 47.423515374997805,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 2,
+      "anchorCredits": {
+        "method:com/fasterxml/jackson/core/TestVersions#testMisc()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testEqualsAndHashCode()V": 1.0
+      },
+      "coverage": 1.0,
+      "targetCount": 10,
+      "additionalTargets": 8,
+      "observedToolContentBytes": 36259,
+      "malformedStreamLines": 0,
+      "informationCalls": 11,
+      "graphCalls": 3,
+      "costUsd": 0.3114925,
+      "evidenceHashes": {
+        "stream": "943ce4293f5d615097be7b198a43c3d859ae6fce307d520fa6f6790db56a4e14",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "097ea6fe1d697dda2578ffaf2a2648411f2c53ebcbe8ce6868fa4c58a8da5a4f"
+      },
+      "servedCalls": 11,
+      "deniedAfterBudget": 0,
+      "sourceReads": 6,
+      "uniqueReadFiles": 5,
+      "sourceReadLines": 333,
+      "sourceSearches": 2,
+      "sourceSearchMatches": 42,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "high_fidelity_with_minor_scope_caveat",
+        "targetFidelity": "All ten targets exist and accurately cover nullable Version construction, equality, hashing, and comparison.",
+        "concreteErrors": [],
+        "limitations": [
+          "The PackageVersion test's null qualifier is build-version dependent; this checkout is a SNAPSHOT build, as the answer partly acknowledges.",
+          "The answer correctly excludes conservative Object.equals graph candidates rather than treating them as real Version callers."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "detekt_detekt-7667",
+      "repeat": 1,
+      "arm": "mcp",
+      "seconds": 65.71871408299921,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 2,
+      "anchorCredits": {
+        "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues with rule set to warning by default()V": 1.0,
+        "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues()V": 1.0
+      },
+      "coverage": 1.0,
+      "targetCount": 10,
+      "additionalTargets": 8,
+      "observedToolContentBytes": 14524,
+      "malformedStreamLines": 0,
+      "informationCalls": 14,
+      "graphCalls": 2,
+      "costUsd": 0.219537,
+      "evidenceHashes": {
+        "stream": "e01d38e6aa073f840290283ddb3cb9c483ebe7044ce71d789115f1e245cab884",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "01445b733850861a9d7315aa090eaeb45c566678c5baf2bee7e2786abe3aaaab"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 2,
+      "sourceReads": 2,
+      "uniqueReadFiles": 2,
+      "sourceReadLines": 115,
+      "sourceSearches": 8,
+      "sourceSearchMatches": 34,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "high_fidelity_with_low_relevance_extras",
+        "targetFidelity": "All ten targets exist. It correctly identifies the two golden failures, retained SRCROOT use, and existence-only Gradle checks.",
+        "concreteErrors": [],
+        "limitations": [
+          "DetektBasePluginSpec and DetektTaskDslSpec are low-relevance extras explicitly presented as checks rather than predicted failures.",
+          "External SARIF consumer resolution is a reasonable concern but remains unverified."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "detekt_detekt-7667",
+      "repeat": 1,
+      "arm": "source",
+      "seconds": 62.29400233300112,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 2,
+      "anchorCredits": {
+        "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues with rule set to warning by default()V": 1.0,
+        "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues()V": 1.0
+      },
+      "coverage": 1.0,
+      "targetCount": 9,
+      "additionalTargets": 7,
+      "observedToolContentBytes": 25080,
+      "malformedStreamLines": 0,
+      "informationCalls": 14,
+      "graphCalls": 0,
+      "costUsd": 0.26685949999999997,
+      "evidenceHashes": {
+        "stream": "7fcc5285fbcdc3129d665dfed6e5ddae3e005b7f78198aa40985f4517f225694",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "f5a06167faf6aa49224726f07a3404e823b5e3542a084dcc4b37c57713620f2e"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 2,
+      "sourceReads": 4,
+      "uniqueReadFiles": 4,
+      "sourceReadLines": 221,
+      "sourceSearches": 7,
+      "sourceSearchMatches": 61,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "high_fidelity_with_speculative_downstream_risk",
+        "targetFidelity": "All nine targets exist. Golden resources, Results.kt, report initialization, and the merge path are accurately distinguished.",
+        "concreteErrors": [],
+        "limitations": [
+          "The resource contents were inferred, but the stated %SRCROOT% blocks are confirmed in the files.",
+          "RuleDescriptors is an unaffected classloader anchor and adds little review value.",
+          "Downstream URI resolution remains a clearly labeled external uncertainty, not a proven regression."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "pinterest_ktlint-2873",
+      "repeat": 1,
+      "arm": "source",
+      "seconds": 67.27735429200402,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 4,
+      "anchorCredits": {
+        "method:com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider#getRuleProviders$lambda$25()Lcom/pinterest/ktlint/rule/engine/core/api/Rule;": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and the first line of a multi line body expression body fit on the same line then reformat to single line signature but keep body expression on separate line(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 1.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 1.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature, keep the body expression on a separate line(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 1.0
+      },
+      "coverage": 0.75,
+      "targetCount": 12,
+      "additionalTargets": 10,
+      "observedToolContentBytes": 43533,
+      "malformedStreamLines": 0,
+      "informationCalls": 12,
+      "graphCalls": 0,
+      "costUsd": 0.386849,
+      "evidenceHashes": {
+        "stream": "d0017a3dcd96f0a23d8de70fb2583c28a7ceed5a40914519a48c084f360edd6f",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "f31254fd96d1dea82feb7011f7524c3c108212af6763001e90aa4d7c6130459e"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 0,
+      "sourceReads": 6,
+      "uniqueReadFiles": 3,
+      "sourceReadLines": 610,
+      "sourceSearches": 6,
+      "sourceSearchMatches": 22,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "high_fidelity",
+        "targetFidelity": "All twelve targets exist. It precisely separates the two expected failures from nearby unchanged and cross-rule regression tests.",
+        "concreteErrors": [],
+        "limitations": [
+          "Documentation and downstream behavior are proposed for review rather than claimed as known."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    },
+    {
+      "case": "pinterest_ktlint-2873",
+      "repeat": 1,
+      "arm": "mcp",
+      "seconds": 64.28413737499795,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 4,
+      "anchorCredits": {
+        "method:com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider#getRuleProviders$lambda$25()Lcom/pinterest/ktlint/rule/engine/core/api/Rule;": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and the first line of a multi line body expression body fit on the same line then reformat to single line signature but keep body expression on separate line(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 0.5,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 0.5,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature, keep the body expression on a separate line(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V": 0.5
+      },
+      "coverage": 0.375,
+      "targetCount": 9,
+      "additionalTargets": 8,
+      "observedToolContentBytes": 33000,
+      "malformedStreamLines": 0,
+      "informationCalls": 14,
+      "graphCalls": 1,
+      "costUsd": 0.3500815,
+      "evidenceHashes": {
+        "stream": "2a0ab593bc47ae13fffe0bf9e6a7827ab18b02672ebd58c1a0978722a7a178dd",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "5b38273f4adff8e3fddc9cadfcf377732ab4ef233c64b306199edea78f7b1812"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 2,
+      "sourceReads": 5,
+      "uniqueReadFiles": 3,
+      "sourceReadLines": 430,
+      "sourceSearches": 6,
+      "sourceSearchMatches": 23,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate",
+        "targetFidelity": "All nine target files exist. The two expected failing tests and the rule method are exact and causally relevant.",
+        "concreteErrors": [],
+        "limitations": [
+          "The grouped file-level warning about six further enum tests is overly broad: the source shows explicit names filters on most of them and their explicit-return-type shapes make them unaffected. The answer labels this evidence as incomplete, so it is low-value rather than a false finding."
+        ],
+        "unsafeOrCompletenessClaims": []
+      }
+    }
+  ],
+  "manualReviewMethod": "An independent reviewer read 16 answers with condition labels hidden and checked frozen base sources before seeing scores, the condition key, or the oracle. Answer content can reveal tool use. The parent checked material claims against ToDouble, ObjectReaderProvider, and the actual dependency javap declaration showing that Decimal128 extends Number.",
+  "verifiedCause": "The smallest exact-method Fastjson impact report was 47,864 bytes, including 43,109 bytes of global summary. Reducing the affected page and path limits could not meet the 16 KiB content budget. Summary buckets need an independent, explicitly reported output limit.",
+  "warning": "Coverage uses known review anchors only. No general AI productivity benefit is claimed. One invalid formatted answer is scored zero and retained. The original v1 negative result is also retained."
+}

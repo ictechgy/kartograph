@@ -1,0 +1,1003 @@
+{
+  "status": "Causal graph productivity is unproven; all 16 trials retained.",
+  "manifestSha256": "765eaa39b0fa912cfe32f6d4f25195426460efc50e22b4741738f46a97a29ecb",
+  "oracleSha256": "3f0ba858c5e4c3a0a87a8b3dfe8fd47112a65ce2a14dc05a41a6600a275fad56",
+  "summary": {
+    "source": {
+      "trials": 8,
+      "credit": 16.5,
+      "anchors": 40,
+      "validAnswers": 6,
+      "secondsMean": 51.676301004999004,
+      "costUsdMean": 0.263485125
+    },
+    "mcp": {
+      "trials": 8,
+      "credit": 24.5,
+      "anchors": 40,
+      "validAnswers": 8,
+      "secondsMean": 55.75031819299966,
+      "costUsdMean": 0.269257625
+    }
+  },
+  "actualProductCalls": [
+    {
+      "trial": "01-alibaba__fastjson2-2285-0-mcp",
+      "name": "freshness"
+    },
+    {
+      "trial": "02-fasterxml__jackson-core-1053-0-mcp",
+      "name": "freshness"
+    },
+    {
+      "trial": "05-detekt_detekt-7635-0-mcp",
+      "name": "freshness"
+    },
+    {
+      "trial": "06-pinterest_ktlint-2823-0-mcp",
+      "name": "freshness"
+    },
+    {
+      "trial": "06-pinterest_ktlint-2823-0-mcp",
+      "name": "query_symbol"
+    },
+    {
+      "trial": "08-alibaba__fastjson2-2285-1-mcp",
+      "name": "freshness"
+    },
+    {
+      "trial": "11-fasterxml__jackson-core-1053-1-mcp",
+      "name": "freshness"
+    },
+    {
+      "trial": "12-detekt_detekt-7635-1-mcp",
+      "name": "freshness"
+    },
+    {
+      "trial": "15-pinterest_ktlint-2823-1-mcp",
+      "name": "freshness"
+    }
+  ],
+  "trials": [
+    {
+      "case": "alibaba__fastjson2-2285",
+      "repeat": 0,
+      "arm": "source",
+      "seconds": 58.05452558300021,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 5,
+      "anchorCredits": {
+        "method:com/alibaba/fastjson2/writer/ObjectWriterBaseModule#createEnumWriter(Ljava/lang/Class;)Lcom/alibaba/fastjson2/writer/ObjectWriter;": 0.0,
+        "method:com/alibaba/fastjson2/writer/ObjectWriterBaseModule#getObjectWriter(Ljava/lang/reflect/Type;Ljava/lang/Class;)Lcom/alibaba/fastjson2/writer/ObjectWriter;": 0.0,
+        "method:com/alibaba/fastjson2/writer/ObjectWriterProvider#getBeanInfo(Lcom/alibaba/fastjson2/codec/BeanInfo;Ljava/lang/Class;)V": 0.0,
+        "method:com/alibaba/fastjson2/annotation/JSONType_serializer#test()V": 1.0,
+        "method:com/alibaba/fastjson2/annotation/JSONType_serializer#test1()V": 1.0
+      },
+      "coverage": 0.4,
+      "targetCount": 11,
+      "additionalTargets": 10,
+      "observedToolContentBytes": 26277,
+      "malformedStreamLines": 0,
+      "informationCalls": 14,
+      "graphCalls": 0,
+      "costUsd": 0.2953885,
+      "evidenceHashes": {
+        "stream": "3fb95596fc3cc6699c25a3e174d00e912c2083b59c1d79c574f1191ff726faad",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "f160fabb6a53f4cbc51570174ee5f2951df11925209b4e87bf74ee419efb1835"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 2,
+      "sourceReads": 8,
+      "uniqueReadFiles": 6,
+      "sourceReadLines": 374,
+      "sourceSearches": 4,
+      "sourceSearchMatches": 40,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate_with_secondary_causal_errors",
+        "targetFidelity": "All eleven files exist and the primary createEnumWriter-to-creator path is correctly selected.",
+        "concreteErrors": [
+          "The named getEnumWriter method is actually createEnumWriter.",
+          "The suggested processJSONType1x parity gap is false because its serializer case already sets writeEnumAsJavaBean and serializer together.",
+          "The exact BeanUtils.isWriteEnumAsJavaBean caller at ObjectWriterCreator lines 919-926 is not identified, leaving the most concrete overload inconsistency implicit."
+        ],
+        "limitations": [
+          "The answer accurately identifies the missing enum+serializer test and keeps non-enum harmlessness qualified."
+        ],
+        "unsafeOrCompletenessClaims": []
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "alibaba__fastjson2-2285",
+      "repeat": 0,
+      "arm": "mcp",
+      "seconds": 60.50514237499738,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 5,
+      "anchorCredits": {
+        "method:com/alibaba/fastjson2/writer/ObjectWriterBaseModule#createEnumWriter(Ljava/lang/Class;)Lcom/alibaba/fastjson2/writer/ObjectWriter;": 0.0,
+        "method:com/alibaba/fastjson2/writer/ObjectWriterBaseModule#getObjectWriter(Ljava/lang/reflect/Type;Ljava/lang/Class;)Lcom/alibaba/fastjson2/writer/ObjectWriter;": 0.0,
+        "method:com/alibaba/fastjson2/writer/ObjectWriterProvider#getBeanInfo(Lcom/alibaba/fastjson2/codec/BeanInfo;Ljava/lang/Class;)V": 0.0,
+        "method:com/alibaba/fastjson2/annotation/JSONType_serializer#test()V": 1.0,
+        "method:com/alibaba/fastjson2/annotation/JSONType_serializer#test1()V": 1.0
+      },
+      "coverage": 0.4,
+      "targetCount": 12,
+      "additionalTargets": 11,
+      "observedToolContentBytes": 23870,
+      "malformedStreamLines": 0,
+      "informationCalls": 14,
+      "graphCalls": 1,
+      "costUsd": 0.28572,
+      "evidenceHashes": {
+        "stream": "25e7205ca648938debb3248f4271ddf5e53ede0a35e662de53f7ecbe6287f410",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "ee9898f51b074c7de1428ebcc61a5e318093aa01633d5600c07b7b3ed49533ec"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 2,
+      "sourceReads": 8,
+      "uniqueReadFiles": 6,
+      "sourceReadLines": 349,
+      "sourceSearches": 3,
+      "sourceSearchMatches": 32,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate_with_exact_symbol_and_compatibility_errors",
+        "targetFidelity": "All twelve files exist and most enum writer/field writer targets are relevant.",
+        "concreteErrors": [
+          "The named getEnumWriter symbol does not exist; the private method is createEnumWriter.",
+          "The claimed 1.x annotation consistency gap is not present in processJSONType1x, whose serializer case already couples both fields.",
+          "It identifies BeanUtils.isWriteEnumAsJavaBean disagreement but does not identify its concrete method-based FieldWriter caller at ObjectWriterCreator lines 919-926."
+        ],
+        "limitations": [
+          "The cache-ordering observation and explicit writeEnumAsJavaBean baseline tests are well grounded.",
+          "The exact enum-provider fallthrough was left as an uncertainty even though ObjectWriterProvider lines 404-465 show it."
+        ],
+        "unsafeOrCompletenessClaims": []
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "fasterxml__jackson-core-1053",
+      "repeat": 0,
+      "arm": "mcp",
+      "seconds": 54.104970417000004,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 6,
+      "anchorCredits": {
+        "method:com/fasterxml/jackson/core/TestVersions#testMisc()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToAndCreatesVersionTaking6ArgumentsAndUnknownVersion()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToOne()V": 0.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToReturningZero()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToTwo()V": 0.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCreatesVersionTaking6ArgumentsAndCallsCompareTo()V": 1.0
+      },
+      "coverage": 0.6666666666666666,
+      "targetCount": 11,
+      "additionalTargets": 7,
+      "observedToolContentBytes": 31269,
+      "malformedStreamLines": 0,
+      "informationCalls": 12,
+      "graphCalls": 1,
+      "costUsd": 0.3032335,
+      "evidenceHashes": {
+        "stream": "4a65802aa6dfe0d61015604b178d48f74b6cc4e22c45fe29ab4748f754062a61",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "e68ea3d1490ec1066bb927823df9ce992eb32a1a1c7ad3a732cedc50ba918da0"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 0,
+      "sourceReads": 6,
+      "uniqueReadFiles": 5,
+      "sourceReadLines": 400,
+      "sourceSearches": 5,
+      "sourceSearchMatches": 73,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "high_fidelity",
+        "targetFidelity": "All eleven files exist. It distinguishes identity comparisons, non-identity nullable equality, hashCode, and compareTo field ordering correctly.",
+        "concreteErrors": [],
+        "limitations": [
+          "PackageVersion's release/null case is general rather than active in this 2.16.0-SNAPSHOT checkout, which the answer explicitly leaves unchecked.",
+          "It accurately states that the existing compare tests with differing group/artifact IDs do not reach the new snapshot branch."
+        ],
+        "unsafeOrCompletenessClaims": []
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "fasterxml__jackson-core-1053",
+      "repeat": 0,
+      "arm": "source",
+      "seconds": 39.791392082996026,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 6,
+      "anchorCredits": {
+        "method:com/fasterxml/jackson/core/TestVersions#testMisc()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToAndCreatesVersionTaking6ArgumentsAndUnknownVersion()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToOne()V": 0.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToReturningZero()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToTwo()V": 0.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCreatesVersionTaking6ArgumentsAndCallsCompareTo()V": 1.0
+      },
+      "coverage": 0.6666666666666666,
+      "targetCount": 12,
+      "additionalTargets": 8,
+      "observedToolContentBytes": 19978,
+      "malformedStreamLines": 0,
+      "informationCalls": 7,
+      "graphCalls": 0,
+      "costUsd": 0.2034125,
+      "evidenceHashes": {
+        "stream": "edd7180f8adf5824f628add6ca2da41d20faf3734ec8c1ecdfa105a0da09a1bd",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "8fc76d79e30858476d973597849d29b69c6264cd6b682ffb306f192c20179580"
+      },
+      "servedCalls": 7,
+      "deniedAfterBudget": 0,
+      "sourceReads": 5,
+      "uniqueReadFiles": 5,
+      "sourceReadLines": 364,
+      "sourceSearches": 2,
+      "sourceSearchMatches": 21,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "material_causal_errors",
+        "targetFidelity": "All twelve files exist and the nullable hash/non-identity equality bug is real.",
+        "concreteErrors": [
+          "TestVersions.testMisc and TestVersionUtil.testVersionForUnknownVersion do not dereference null because Version.equals returns immediately for the identical UNKNOWN_VERSION object.",
+          "testCompareToAndCreatesVersionTaking6ArgumentsAndUnknownVersion differs in groupId, so compareTo never reaches the added snapshot ordering; the predicted failure is false.",
+          "testCreatesVersionTaking6ArgumentsAndCallsCompareTo differs in artifactId, so it also does not exercise the new snapshot branch as described."
+        ],
+        "limitations": [
+          "Calling the change unsafe is still supportable from unknownVersion().hashCode and distinct null-snapshot equality, but not from the listed identity-test failures."
+        ],
+        "unsafeOrCompletenessClaims": [
+          "The broad unsafe conclusion must be separated from the incorrect claim that current singleton-equality tests fail."
+        ]
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "detekt_detekt-7635",
+      "repeat": 0,
+      "arm": "source",
+      "seconds": 41.525560458001564,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 4,
+      "anchorCredits": {
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/CommentSmellProvider$instance$6#invoke(Lio/gitlab/arturbosch/detekt/api/Config;)Lio/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClass;": 0.5,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should not report inner objects when turned off()V": 1.0,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should not report in private or internal companion class - #7217()V": 1.0,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should report in public companion class - #7217()V": 1.0
+      },
+      "coverage": 0.875,
+      "targetCount": 9,
+      "additionalTargets": 4,
+      "observedToolContentBytes": 18648,
+      "malformedStreamLines": 0,
+      "informationCalls": 10,
+      "graphCalls": 0,
+      "costUsd": 0.22071599999999997,
+      "evidenceHashes": {
+        "stream": "f7e559f6161f9201cca2cd6f5bf1cc8ecc18e3f068ba8e84ebe6417cd398a21a",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "63d8d3ce11c58d22f82944801ec1e58898e7384d134c1914dc268ec8c12e8246"
+      },
+      "servedCalls": 10,
+      "deniedAfterBudget": 0,
+      "sourceReads": 3,
+      "uniqueReadFiles": 2,
+      "sourceReadLines": 330,
+      "sourceSearches": 7,
+      "sourceSearchMatches": 23,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate_with_generator_overreach",
+        "targetFidelity": "All nine files exist. Runtime companion behavior and missing option coverage are accurately described.",
+        "concreteErrors": [
+          "Exclusion.kt is not a registration mechanism for the new @Configuration property; it supplies exclusion defaults for selected rules."
+        ],
+        "limitations": [
+          "The default config file exists and can be directly inspected, contrary to the answer's source-visibility limitation.",
+          "Generated YAML/docs should be reviewed, but no cited source proves a failing synchronization gate."
+        ],
+        "unsafeOrCompletenessClaims": [
+          "The statement that generated config must be regenerated is a process recommendation, not a demonstrated test failure."
+        ]
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "detekt_detekt-7635",
+      "repeat": 0,
+      "arm": "mcp",
+      "seconds": 42.63528375000169,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 4,
+      "anchorCredits": {
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/CommentSmellProvider$instance$6#invoke(Lio/gitlab/arturbosch/detekt/api/Config;)Lio/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClass;": 0.0,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should not report inner objects when turned off()V": 1.0,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should not report in private or internal companion class - #7217()V": 1.0,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should report in public companion class - #7217()V": 1.0
+      },
+      "coverage": 0.75,
+      "targetCount": 9,
+      "additionalTargets": 5,
+      "observedToolContentBytes": 17470,
+      "malformedStreamLines": 0,
+      "informationCalls": 12,
+      "graphCalls": 1,
+      "costUsd": 0.2256815,
+      "evidenceHashes": {
+        "stream": "da85e2bf60522cd14f8836a912ea8a77908bec924f5e657e8e044e2fd3ad82b5",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "7ff55a1941e1ac4d8841d56a20c145e053d5c476e02ca6bc0f27d52a4fb20e73"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 0,
+      "sourceReads": 4,
+      "uniqueReadFiles": 2,
+      "sourceReadLines": 330,
+      "sourceSearches": 7,
+      "sourceSearchMatches": 14,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate_with_false_test_prediction",
+        "targetFidelity": "All nine files exist. The companion and object visitor tests are correctly selected.",
+        "concreteErrors": [
+          "DetektYmlConfigSpec will not fail merely because the new @Configuration key is absent: ConfigAssert checks rule class names against YAML rule names, not each rule's property keys."
+        ],
+        "limitations": [
+          "The default YAML resource is available in the base despite being described as unavailable to the source tools.",
+          "The new option and explicit Companion-name edge remain genuinely untested."
+        ],
+        "unsafeOrCompletenessClaims": [
+          "Regenerating default config/docs may be a release requirement, but the cited test is not proof that it is enforced."
+        ]
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "pinterest_ktlint-2823",
+      "repeat": 0,
+      "arm": "mcp",
+      "seconds": 71.18358116700256,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 5,
+      "anchorCredits": {
+        "method:com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider#getRuleProviders$lambda$33()Lcom/pinterest/ktlint/rule/engine/core/api/Rule;": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Issue 1247 - Formats function literal with multiple value parameters()V": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Given a function literal with comment before the parameter list()V": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Issue 1247 - Given a function literal with single value parameter()V": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest$Given the ktlint_official code style is enabled#Issue 1681 - Given a lambda having multiple arguments on different lines()V": 1.0
+      },
+      "coverage": 0.2,
+      "targetCount": 8,
+      "additionalTargets": 7,
+      "observedToolContentBytes": 30095,
+      "malformedStreamLines": 0,
+      "informationCalls": 14,
+      "graphCalls": 2,
+      "costUsd": 0.3235495,
+      "evidenceHashes": {
+        "stream": "a77e79cac70650f52a0a389762b71ae2b3ad8f932453e416a8d362ae28a773ae",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "83b62a629eb1f3055ede32a48c9ab9ead287d9cdecf90cdd9f9927dc017c57a8"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 2,
+      "sourceReads": 4,
+      "uniqueReadFiles": 3,
+      "sourceReadLines": 270,
+      "sourceSearches": 6,
+      "sourceSearchMatches": 29,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "partially_complete_but_core_accurate",
+        "targetFidelity": "All eight files exist and the explicit Issue 1681/visitLbrace targets are correct.",
+        "concreteErrors": [],
+        "limitations": [
+          "It omits the three affected default-code-style tests; the source fixes the default as ktlint_official.",
+          "It leaves ParameterListWrappingRuleTest conditional despite that file's shared builder adding IndentationRule.",
+          "The API-consumer reachability target supplies no evidence that its fixture contains the changed lambda shape and is low relevance."
+        ],
+        "unsafeOrCompletenessClaims": []
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "pinterest_ktlint-2823",
+      "repeat": 0,
+      "arm": "source",
+      "seconds": 60.87584083299589,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 5,
+      "anchorCredits": {
+        "method:com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider#getRuleProviders$lambda$33()Lcom/pinterest/ktlint/rule/engine/core/api/Rule;": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Issue 1247 - Formats function literal with multiple value parameters()V": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Given a function literal with comment before the parameter list()V": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Issue 1247 - Given a function literal with single value parameter()V": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest$Given the ktlint_official code style is enabled#Issue 1681 - Given a lambda having multiple arguments on different lines()V": 1.0
+      },
+      "coverage": 0.2,
+      "targetCount": 8,
+      "additionalTargets": 7,
+      "observedToolContentBytes": 30462,
+      "malformedStreamLines": 0,
+      "informationCalls": 15,
+      "graphCalls": 0,
+      "costUsd": 0.33364000000000005,
+      "evidenceHashes": {
+        "stream": "cfc662b157d5fd247b12d62365322cb31abcac3888a452bbbee3ec31d60f99bc",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "9510aee97a1aeb137da91cfe5a35e8ef6e94ecf6d7c24bd5c5c8d319fd4ac4b7"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 3,
+      "sourceReads": 4,
+      "uniqueReadFiles": 3,
+      "sourceReadLines": 260,
+      "sourceSearches": 8,
+      "sourceSearchMatches": 76,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "partially_complete_but_core_accurate",
+        "targetFidelity": "All eight files exist. Issue 1681 and visitLbrace are exact, and ParameterListWrappingRuleTest is relevant.",
+        "concreteErrors": [],
+        "limitations": [
+          "It omits the three no-override lambda-parameter tests at lines 3963-4114, which are affected because the default code style is ktlint_official.",
+          "It leaves ParameterListWrappingRuleTest participation uncertain although its shared builder explicitly adds IndentationRule.",
+          "FunctionLiteralRuleTest and broad self-lint searches are speculative, low-specificity additions."
+        ],
+        "unsafeOrCompletenessClaims": []
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "alibaba__fastjson2-2285",
+      "repeat": 1,
+      "arm": "mcp",
+      "seconds": 74.51893820900295,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 5,
+      "anchorCredits": {
+        "method:com/alibaba/fastjson2/writer/ObjectWriterBaseModule#createEnumWriter(Ljava/lang/Class;)Lcom/alibaba/fastjson2/writer/ObjectWriter;": 0.0,
+        "method:com/alibaba/fastjson2/writer/ObjectWriterBaseModule#getObjectWriter(Ljava/lang/reflect/Type;Ljava/lang/Class;)Lcom/alibaba/fastjson2/writer/ObjectWriter;": 1.0,
+        "method:com/alibaba/fastjson2/writer/ObjectWriterProvider#getBeanInfo(Lcom/alibaba/fastjson2/codec/BeanInfo;Ljava/lang/Class;)V": 0.0,
+        "method:com/alibaba/fastjson2/annotation/JSONType_serializer#test()V": 1.0,
+        "method:com/alibaba/fastjson2/annotation/JSONType_serializer#test1()V": 1.0
+      },
+      "coverage": 0.6,
+      "targetCount": 11,
+      "additionalTargets": 9,
+      "observedToolContentBytes": 21950,
+      "malformedStreamLines": 0,
+      "informationCalls": 15,
+      "graphCalls": 1,
+      "costUsd": 0.2946035,
+      "evidenceHashes": {
+        "stream": "0890e12053fa29126ccf180de8e86b5d4546219b58975bfcc575da0cf5818446",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "a4b72208501b89faad570dc5355e1d1ffef7dbaa57ac2f54526a55e9b93f3d53"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 3,
+      "sourceReads": 6,
+      "uniqueReadFiles": 5,
+      "sourceReadLines": 259,
+      "sourceSearches": 5,
+      "sourceSearchMatches": 45,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate_with_secondary_causal_errors",
+        "targetFidelity": "All eleven files exist and the main custom-enum serializer route is correctly explained.",
+        "concreteErrors": [
+          "The lines 1490-1503 behavior is in createEnumWriter, not the named getObjectWriter method.",
+          "The proposed fastjson 1.x parity gap is false: processJSONType1x's serializer case already assigns writeEnumAsJavaBean=true immediately before beanInfo.serializer.",
+          "The answer misses the method-based createFieldWriter overload at lines 919-926, which uses BeanUtils.isWriteEnumAsJavaBean and can disagree with the newly changed BeanInfo path."
+        ],
+        "limitations": [
+          "The no-arg custom writer construction, non-enum regression tests, and missing enum custom-serializer test are accurately identified."
+        ],
+        "unsafeOrCompletenessClaims": [
+          "The statement that unconditional non-enum flag assignment is harmless is supported in the searched core branches but is not proof for unsearched modules."
+        ]
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "alibaba__fastjson2-2285",
+      "repeat": 1,
+      "arm": "source",
+      "seconds": 60.77937941699929,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 5,
+      "anchorCredits": {
+        "method:com/alibaba/fastjson2/writer/ObjectWriterBaseModule#createEnumWriter(Ljava/lang/Class;)Lcom/alibaba/fastjson2/writer/ObjectWriter;": 0.0,
+        "method:com/alibaba/fastjson2/writer/ObjectWriterBaseModule#getObjectWriter(Ljava/lang/reflect/Type;Ljava/lang/Class;)Lcom/alibaba/fastjson2/writer/ObjectWriter;": 0.0,
+        "method:com/alibaba/fastjson2/writer/ObjectWriterProvider#getBeanInfo(Lcom/alibaba/fastjson2/codec/BeanInfo;Ljava/lang/Class;)V": 0.0,
+        "method:com/alibaba/fastjson2/annotation/JSONType_serializer#test()V": 1.0,
+        "method:com/alibaba/fastjson2/annotation/JSONType_serializer#test1()V": 1.0
+      },
+      "coverage": 0.4,
+      "targetCount": 12,
+      "additionalTargets": 11,
+      "observedToolContentBytes": 26678,
+      "malformedStreamLines": 0,
+      "informationCalls": 14,
+      "graphCalls": 0,
+      "costUsd": 0.3056805,
+      "evidenceHashes": {
+        "stream": "23bffb8b1e6d72356a4afeb13bb7cf028ab27c64c3a910a803a196c39b5a356a",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "e65e79c8f0ee80b8684e4ebd2380718ed20ac27092fd0366aaa5855b260b5609"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 2,
+      "sourceReads": 8,
+      "uniqueReadFiles": 6,
+      "sourceReadLines": 389,
+      "sourceSearches": 4,
+      "sourceSearchMatches": 40,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "high_fidelity_with_symbol_naming_error",
+        "targetFidelity": "All twelve files exist. It finds the main enum path, all major BeanInfo-based field paths, BeanUtils disagreement, and useful baselines.",
+        "concreteErrors": [
+          "The named getEnumWriter symbol is createEnumWriter."
+        ],
+        "limitations": [
+          "It flags BeanUtils.isWriteEnumAsJavaBean but leaves its callers unenumerated; the concrete missed overload is ObjectWriterCreator's method FieldWriter path at lines 919-926.",
+          "It avoids the false processJSONType1x parity claim made by the other fastjson answers."
+        ],
+        "unsafeOrCompletenessClaims": [
+          "Non-enum impact being nil is well supported in core but remains qualified by the unsearched extension modules."
+        ]
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "fasterxml__jackson-core-1053",
+      "repeat": 1,
+      "arm": "source",
+      "seconds": 55.910987707997265,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": false,
+      "anchorCount": 6,
+      "anchorCredits": {
+        "method:com/fasterxml/jackson/core/TestVersions#testMisc()V": 0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToAndCreatesVersionTaking6ArgumentsAndUnknownVersion()V": 0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToOne()V": 0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToReturningZero()V": 0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToTwo()V": 0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCreatesVersionTaking6ArgumentsAndCallsCompareTo()V": 0
+      },
+      "coverage": 0.0,
+      "targetCount": 0,
+      "additionalTargets": 0,
+      "observedToolContentBytes": 20714,
+      "malformedStreamLines": 0,
+      "informationCalls": 9,
+      "graphCalls": 0,
+      "costUsd": 0.23829599999999998,
+      "evidenceHashes": {
+        "stream": "d2814cb32383d285fd295a06018ae5ca61584d884ad251c7ca2205dbf622dd02",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "f36d0dd69c45482889f1788bd0942bf5fc728dbb73bf88ad6f87ab92fa51e0ce"
+      },
+      "servedCalls": 9,
+      "deniedAfterBudget": 0,
+      "sourceReads": 5,
+      "uniqueReadFiles": 5,
+      "sourceReadLines": 364,
+      "sourceSearches": 4,
+      "sourceSearchMatches": 25,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "invalid_unassessable",
+        "targetFidelity": "The parsed answer is null and contains no targets, explanation, evidence, summary, or uncertainty.",
+        "concreteErrors": [
+          "No review conclusion can be supported from the null parsed answer."
+        ],
+        "limitations": [
+          "This does not prove any particular provider response or failure mode."
+        ],
+        "unsafeOrCompletenessClaims": []
+      },
+      "invalidAnswerNote": "A nonempty provider response failed strict answer JSON parsing; the blinded reviewer received null and did not assess its contents.",
+      "answerInvalidReason": "invalid-json"
+    },
+    {
+      "case": "fasterxml__jackson-core-1053",
+      "repeat": 1,
+      "arm": "mcp",
+      "seconds": 44.525249375001295,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 6,
+      "anchorCredits": {
+        "method:com/fasterxml/jackson/core/TestVersions#testMisc()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToAndCreatesVersionTaking6ArgumentsAndUnknownVersion()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToOne()V": 0.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToReturningZero()V": 1.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCompareToTwo()V": 0.0,
+        "method:com/fasterxml/jackson/core/VersionTest#testCreatesVersionTaking6ArgumentsAndCallsCompareTo()V": 1.0
+      },
+      "coverage": 0.6666666666666666,
+      "targetCount": 12,
+      "additionalTargets": 8,
+      "observedToolContentBytes": 21751,
+      "malformedStreamLines": 0,
+      "informationCalls": 9,
+      "graphCalls": 1,
+      "costUsd": 0.22482,
+      "evidenceHashes": {
+        "stream": "9fe23a18837a514e19a3e7bad64cc88e1201be02a9adcb1fbe40dc7122897803",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "7e17718dcb0e5da2059bbf8e4494c1b4c665166f32aa3dab22dac5ae7e5d921f"
+      },
+      "servedCalls": 9,
+      "deniedAfterBudget": 0,
+      "sourceReads": 5,
+      "uniqueReadFiles": 5,
+      "sourceReadLines": 383,
+      "sourceSearches": 3,
+      "sourceSearchMatches": 23,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "material_causal_errors",
+        "targetFidelity": "All twelve files exist and the nullable hash/equality risk is a real central finding.",
+        "concreteErrors": [
+          "It predicts TestVersions.testMisc and TestVersionUtil.testVersionForUnknownVersion will throw, but both compare the same UNKNOWN_VERSION singleton and Version.equals returns true before accessing snapshotInfo.",
+          "It predicts testCompareToAndCreatesVersionTaking6ArgumentsAndUnknownVersion will change because of snapshot ordering, but groupId differs and compareTo returns from the earlier group comparison.",
+          "The summary repeats those false existing-test failure predictions as expected outcomes."
+        ],
+        "limitations": [
+          "Version.unknownVersion().hashCode and equality between distinct null-snapshot instances remain valid untested defects identified by the answer."
+        ],
+        "unsafeOrCompletenessClaims": []
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "detekt_detekt-7635",
+      "repeat": 1,
+      "arm": "mcp",
+      "seconds": 43.28792383399559,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": true,
+      "anchorCount": 4,
+      "anchorCredits": {
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/CommentSmellProvider$instance$6#invoke(Lio/gitlab/arturbosch/detekt/api/Config;)Lio/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClass;": 0.5,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should not report inner objects when turned off()V": 1.0,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should not report in private or internal companion class - #7217()V": 1.0,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should report in public companion class - #7217()V": 1.0
+      },
+      "coverage": 0.875,
+      "targetCount": 8,
+      "additionalTargets": 3,
+      "observedToolContentBytes": 11565,
+      "malformedStreamLines": 0,
+      "informationCalls": 12,
+      "graphCalls": 1,
+      "costUsd": 0.20167700000000002,
+      "evidenceHashes": {
+        "stream": "c07759f83c31353f0964c115d20b65e7db3daa53261f7afa962fcf4166509d77",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "6d95616b129a3fdc1dfaf85581efd89e82470c7ff0ba390bfe0b16d85c131aad"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 0,
+      "sourceReads": 3,
+      "uniqueReadFiles": 2,
+      "sourceReadLines": 110,
+      "sourceSearches": 8,
+      "sourceSearchMatches": 23,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate_with_generator_overreach",
+        "targetFidelity": "All eight files exist. The companion tests and object visitor are exact primary targets.",
+        "concreteErrors": [
+          "The unknown claiming default-detekt-config.yml could not be found is factually wrong; the file exists at the stated detekt-core resource path.",
+          "Exclusion.kt is described as a generator registration point sensitive to the new property, but it only supplies exclusion patterns for generated default config."
+        ],
+        "limitations": [
+          "ProcessingSpecSettingsBridgeSpec reads only the rule's active flag and is a low-relevance regression target.",
+          "The answer correctly leaves PSI nameIdentifier behavior and generated-output enforcement uncertain."
+        ],
+        "unsafeOrCompletenessClaims": []
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "detekt_detekt-7635",
+      "repeat": 1,
+      "arm": "source",
+      "seconds": 37.23983241600217,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": false,
+      "answerValid": false,
+      "anchorCount": 4,
+      "anchorCredits": {
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/CommentSmellProvider$instance$6#invoke(Lio/gitlab/arturbosch/detekt/api/Config;)Lio/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClass;": 0,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should not report inner objects when turned off()V": 0,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should not report in private or internal companion class - #7217()V": 0,
+        "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should report in public companion class - #7217()V": 0
+      },
+      "coverage": 0.0,
+      "targetCount": 0,
+      "additionalTargets": 0,
+      "observedToolContentBytes": 15503,
+      "malformedStreamLines": 0,
+      "informationCalls": 9,
+      "graphCalls": 0,
+      "costUsd": 0.189983,
+      "evidenceHashes": {
+        "stream": "6e66138edc25f7635e3f5b7e1b25b929de664cccb4a55cb33e59bc1ea96b913f",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "53d7ca8a37bba1cae750e0b304fc9e505f50a2076c20f72a5ccc9a8782bad213"
+      },
+      "servedCalls": 9,
+      "deniedAfterBudget": 0,
+      "sourceReads": 3,
+      "uniqueReadFiles": 1,
+      "sourceReadLines": 300,
+      "sourceSearches": 6,
+      "sourceSearchMatches": 15,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "invalid_unassessable",
+        "targetFidelity": "The parsed answer is null and contains no targets, explanation, evidence, summary, or uncertainty.",
+        "concreteErrors": [
+          "No review conclusion can be supported from the null parsed answer."
+        ],
+        "limitations": [
+          "This does not establish that a provider returned empty text; the cause is outside the permitted artifact."
+        ],
+        "unsafeOrCompletenessClaims": []
+      },
+      "invalidAnswerNote": "A nonempty provider response failed strict answer JSON parsing; the blinded reviewer received null and did not assess its contents.",
+      "answerInvalidReason": "invalid-json"
+    },
+    {
+      "case": "pinterest_ktlint-2823",
+      "repeat": 1,
+      "arm": "source",
+      "seconds": 59.23288954199961,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 5,
+      "anchorCredits": {
+        "method:com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider#getRuleProviders$lambda$33()Lcom/pinterest/ktlint/rule/engine/core/api/Rule;": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Issue 1247 - Formats function literal with multiple value parameters()V": 1.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Given a function literal with comment before the parameter list()V": 1.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Issue 1247 - Given a function literal with single value parameter()V": 1.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest$Given the ktlint_official code style is enabled#Issue 1681 - Given a lambda having multiple arguments on different lines()V": 1.0
+      },
+      "coverage": 0.8,
+      "targetCount": 10,
+      "additionalTargets": 6,
+      "observedToolContentBytes": 28807,
+      "malformedStreamLines": 0,
+      "informationCalls": 15,
+      "graphCalls": 0,
+      "costUsd": 0.3207645,
+      "evidenceHashes": {
+        "stream": "41901098ef0640512ca2501ed2166d2a2884a29bd7d3959aca78baf6f5aea0cf",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "02677ebe72e7badfa3114d7e55b962e3af5da5135230c8938e3ec3dc679ec5fe"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 3,
+      "sourceReads": 6,
+      "uniqueReadFiles": 3,
+      "sourceReadLines": 435,
+      "sourceSearches": 6,
+      "sourceSearchMatches": 29,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate_but_underconfirmed",
+        "targetFidelity": "All ten files exist. The direct caller, explicit Issue 1681 failure, default-style tests, and ParameterListWrapping integration are the right surface.",
+        "concreteErrors": [],
+        "limitations": [
+          "The answer unnecessarily leaves the default-style tests conditional; CODE_STYLE_PROPERTY explicitly defaults to ktlint_official, so all three cited tests are affected.",
+          "ParameterListWrappingRuleTest's builder explicitly includes IndentationRule, resolving the answer's uncertainty and making that formatted-output expectation directly affected.",
+          "RuleExecutionContext is a formatting consequence, not a behavioral caller of the changed IndentationRule helper."
+        ],
+        "unsafeOrCompletenessClaims": []
+      },
+      "answerInvalidReason": null
+    },
+    {
+      "case": "pinterest_ktlint-2823",
+      "repeat": 1,
+      "arm": "mcp",
+      "seconds": 55.24145641699579,
+      "exit": 0,
+      "timedOut": false,
+      "resultPresent": true,
+      "providerError": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "answerValid": true,
+      "anchorCount": 5,
+      "anchorCredits": {
+        "method:com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider#getRuleProviders$lambda$33()Lcom/pinterest/ktlint/rule/engine/core/api/Rule;": 0.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Issue 1247 - Formats function literal with multiple value parameters()V": 1.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Given a function literal with comment before the parameter list()V": 1.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Issue 1247 - Given a function literal with single value parameter()V": 1.0,
+        "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest$Given the ktlint_official code style is enabled#Issue 1681 - Given a lambda having multiple arguments on different lines()V": 1.0
+      },
+      "coverage": 0.8,
+      "targetCount": 9,
+      "additionalTargets": 5,
+      "observedToolContentBytes": 24739,
+      "malformedStreamLines": 0,
+      "informationCalls": 14,
+      "graphCalls": 1,
+      "costUsd": 0.294776,
+      "evidenceHashes": {
+        "stream": "8dfbb4962626675b32b952c686f437d40b894ba0e011e48f9b3b6bf292ee72ca",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "57ea7703f205b987d9a7f35f53a9c2c168721d75f539d1460bdce6293e50828c"
+      },
+      "servedCalls": 12,
+      "deniedAfterBudget": 2,
+      "sourceReads": 5,
+      "uniqueReadFiles": 3,
+      "sourceReadLines": 395,
+      "sourceSearches": 6,
+      "sourceSearchMatches": 19,
+      "sourceReadAndSearchFidelity": true,
+      "productToProxyResultEquality": true,
+      "nativeClientOutputSpills": 0,
+      "manualReview": {
+        "judgment": "mostly_accurate_but_underconfirmed",
+        "targetFidelity": "All nine files exist. It identifies the direct helper caller, explicit Issue 1681 test, default-style tests, and ParameterList integration.",
+        "concreteErrors": [],
+        "limitations": [
+          "The three default-style tests are definitely affected because CODE_STYLE_PROPERTY defaults to ktlint_official; they should not remain conditional.",
+          "ParameterListWrappingRuleTest definitely composes IndentationRule through its shared builder, so its formatted output is directly affected.",
+          "ParameterListWrappingRule's own production logic does not call the changed helper; its relevance is output consistency rather than direct causality."
+        ],
+        "unsafeOrCompletenessClaims": []
+      },
+      "answerInvalidReason": null
+    }
+  ],
+  "interpretation": "The MCP arm has a higher raw score, but eight of nine product calls only check freshness and the source arm has two invalid JSON responses. This is not replicated evidence that dependency-graph analysis improved review quality or productivity.",
+  "manualReviewMethod": "Independent label-blinded review of 16 answers against frozen base sources before reading scores or oracle; answer content can reveal tools. Parsed null does not imply an empty provider response.",
+  "finalGraderReview": {
+    "graderSha256": "c79c29d5e484d124cb6e447e9bef6eba19999d0a2b8f115898790d834428d114",
+    "previousResults": "results-v3-before-final-review.json",
+    "previousResultsSha256": "35cd5bea847a0da1fb1be72b470559da8a485854e93285a6a7771842b8ba7fb9",
+    "allOriginalAnswersRegraded": true,
+    "modelsRerun": false,
+    "oracleChanged": false,
+    "changedTrials": 0,
+    "correction": "Require full method names instead of Kotlin-name prefixes; preserve explicit method lists and callsite annotations. Keep class-level credit separate. Classify invalid JSON, shape and target limits.",
+    "sourceIntegrityAudit": {
+      "trackedHeadClean": true,
+      "manifestSourceHashesMatched": true,
+      "allSourceFilesWithinOneMiB": true
+    }
+  }
+}

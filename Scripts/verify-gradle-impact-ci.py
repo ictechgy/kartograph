@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -77,7 +78,8 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
         graph_path = "build/reports/kartograph/jvm-snapshot.json"
         binding_path = "build/kartograph/jvm-input-bindings.json"
         for label, checkout, revision in (("base", base, base_revision), ("current", current, current_revision)):
-            common = [gradle, "--no-daemon", "--console=plain", "--configuration-cache", f"-Pkartograph.revision={revision}"]
+            common = [gradle, "--no-daemon", "--console=plain", "--configuration-cache", "--info",
+                      "-Pkartograph.indexCache=true", f"-Pkartograph.revision={revision}"]
             run(label + "-build", common + ["testClasses"], checkout)
             run(label + "-capture", common + ["kartographSnapshot"], checkout)
             document = json.loads(run(label + "-verify", [binary, "verify-snapshot", "--graph-file", checkout / graph_path,
@@ -98,12 +100,19 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
             raise RuntimeError("CI helper did not preserve complete matching base/current inputs")
 
         snapshot_digest = hashlib.sha256((current / graph_path).read_bytes()).hexdigest()
+        run("full-capture-oracle", [gradle, "--no-daemon", "--console=plain", "--configuration-cache",
+            "-Pkartograph.indexCache=false", f"-Pkartograph.revision={current_revision}", "kartographSnapshot"], current)
+        if hashlib.sha256((current / graph_path).read_bytes()).hexdigest() != snapshot_digest:
+            raise RuntimeError("cached capture differs from the full capture oracle")
         for repeat in range(1, 3):
-            common = [gradle, "--no-daemon", "--console=plain", "--configuration-cache", f"-Pkartograph.revision={current_revision}"]
+            common = [gradle, "--no-daemon", "--console=plain", "--configuration-cache", "--info",
+                      "-Pkartograph.indexCache=true", f"-Pkartograph.revision={current_revision}"]
             run(f"repeat-{repeat}-build", common + ["testClasses"], current)
             capture_output = run(f"repeat-{repeat}-capture", common + ["kartographSnapshot"], current)
             if "> Task :kartographSnapshot" not in {line.strip() for line in capture_output.splitlines()}:
                 raise RuntimeError("repeat capture did not execute the snapshot task")
+            if not re.search(r"kartograph index: classes=2 hits=2 parsed=0 invalid=0 writeFailures=0\b", capture_output):
+                raise RuntimeError("repeat capture did not reuse both validated class parse entries")
             if hashlib.sha256((current / graph_path).read_bytes()).hexdigest() != snapshot_digest:
                 raise RuntimeError("unchanged automatic capture changed the snapshot contents")
             queried = json.loads(run(f"repeat-{repeat}-query", [binary, "impact", target,
@@ -146,7 +155,7 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
         git("commit", "-qm", "move target source")
         moved_revision = git("rev-parse", "HEAD")
         run("rename-capture", [gradle, "--no-daemon", "--console=plain", "--configuration-cache",
-            f"-Pkartograph.revision={moved_revision}", "kartographSnapshot"], current)
+            "-Pkartograph.indexCache=true", f"-Pkartograph.revision={moved_revision}", "kartographSnapshot"], current)
         moved = json.loads(run("impact-ci-rename", command, current))
         changed_target = next((node for node in moved["changed"] if node["usr"] == target), None)
         if not changed_target or not any(fact["revision"] == "current" and (fact.get("location") or {}).get("path") == renamed
@@ -163,6 +172,7 @@ tasks.named('test') {{ doFirst {{ throw new GradleException('snapshot must not e
             "freshness": {side: value["status"] for side, value in report["freshness"].items()},
             "staleCurrentRejected": True, "scopeMismatchRejected": True, "renamePreserved": True,
             "noChangeVerified": True, "repeatCount": 2, "timings": timings,
+            "indexCacheVerified": True, "fullCaptureIdentical": True,
             "scope": "Controlled JVM commits using the built standalone plugin and CLI; repeated build/capture/query timings are not a large-project performance benchmark."}
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

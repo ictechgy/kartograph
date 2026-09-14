@@ -8,11 +8,50 @@ import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.RetentionReason
+import dev.kartograph.core.SourceLocation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SymbolQueryTest {
+    @Test
+    fun `source style discovery returns every overload without resolving the query`() {
+        val primitive = GraphNode(NodeId("method:com/acme/Writer#value(D)V"), "value", NodeKind.METHOD,
+            jvmSignature = "com/acme/Writer#value(D)V", location = SourceLocation("src/Writer.java", 10))
+        val objectValue = GraphNode(NodeId("method:com/acme/Writer#value(Ljava/lang/Object;)V"), "value", NodeKind.METHOD,
+            jvmSignature = "com/acme/Writer#value(Ljava/lang/Object;)V", location = SourceLocation("src/Writer.java", 11))
+        val collision = GraphNode(NodeId("method:other/Writer#value(D)V"), "value", NodeKind.METHOD,
+            jvmSignature = "other/Writer#value(D)V")
+        val graph = CodeGraph(listOf(primitive, objectValue, collision), emptyList())
+
+        val page = SymbolDiscovery.suggest(listOf(graph), "com.acme.Writer.value(double)", 10)
+
+        assertEquals(2, page.total)
+        assertEquals(listOf(primitive.id.value, objectValue.id.value), page.candidates.map { it.usr })
+        assertTrue(page.candidates.all { it.qualifiedName == "com.acme.Writer.value" })
+        assertEquals(SourceLocation("src/Writer.java", 10), page.candidates.first().location)
+        assertEquals("notFound", SymbolQuery.query(graph, ReachabilityAnalyzer.analyze(graph, emptyList()),
+            "com.acme.Writer.value(double)", emptyList()).status)
+    }
+
+    @Test
+    fun `discovery is case sensitive owner qualified bounded and deterministic`() {
+        val nodes = listOf("a/Writer", "b/Writer", "c/writer").map { owner ->
+            GraphNode(NodeId("method:$owner#value()V"), "value", NodeKind.METHOD, jvmSignature = "$owner#value()V")
+        }
+        val graph = CodeGraph(nodes.reversed(), emptyList())
+
+        val page = SymbolDiscovery.suggest(listOf(graph), "Writer.value()", 1)
+
+        assertEquals(2, page.total)
+        assertEquals(1, page.returned)
+        assertTrue(page.truncated)
+        assertEquals("method:a/Writer#value()V", page.candidates.single().usr)
+        assertEquals(0, SymbolDiscovery.suggest(listOf(graph), "WRITER.value()", 10).total)
+        assertEquals(0, SymbolDiscovery.suggest(listOf(graph), "value()", 10).total)
+    }
+
     @Test
     fun `found query uses sibling document fields and usage edges`() {
         val root = NodeId("class:app/Root")

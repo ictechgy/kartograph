@@ -1,5 +1,6 @@
 package dev.kartograph.gradle
 
+import dev.kartograph.export.QuerySnapshotCodec
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 
@@ -12,6 +13,15 @@ public class KartographPlugin : Plugin<Project> {
         extension.reportFormat.convention("gradle")
         extension.includeSourcePaths.convention(false)
         extension.snapshotsEnabled.convention(false)
+        extension.snapshotMaxMiB.convention(QuerySnapshotCodec.DEFAULT_MAX_MIB)
+        extension.snapshotIndexCacheEnabled.convention(project.providers.gradleProperty("kartograph.indexCache").map { value ->
+            when (value) {
+                "true" -> true
+                "false" -> false
+                else -> throw IllegalArgumentException("kartograph.indexCache must be true or false")
+            }
+        }.orElse(false))
+        extension.snapshotIndexCacheDirectory.convention(project.layout.buildDirectory.dir("kartograph/index-cache"))
         extension.snapshotRevision.convention(project.providers.gradleProperty("kartograph.revision"))
         project.pluginManager.withPlugin("com.android.application") { AndroidTasks.configureAndroid(project, extension) }
         project.pluginManager.withPlugin("com.android.library") { AndroidTasks.configureAndroid(project, extension) }

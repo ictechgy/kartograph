@@ -19,30 +19,85 @@ import org.objectweb.asm.Type
 import org.objectweb.asm.Opcodes
 
 /** directory와 JAR dependency에서 method body 없이 class 상속 header만 읽는다. */
-public class ClassHierarchyIndexer {
+public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
+    private var maximumSnapshotBytes: Int = safeSnapshotMaximum(MAX_JAR_SNAPSHOT_BYTES)
+    private var observedJarDigests: ObservedJarDigestLookup? = null
+
+    internal constructor(cache: ClassIndexCache?, maximumSnapshotBytes: Int) : this(cache) {
+        require(maximumSnapshotBytes > 0)
+        this.maximumSnapshotBytes = safeSnapshotMaximum(maximumSnapshotBytes)
+    }
+
+    internal constructor(cache: ClassIndexCache?, observedJarDigests: ObservedJarDigestLookup) : this(cache) {
+        this.observedJarDigests = observedJarDigests
+    }
+
+    internal var statistics: HierarchyIndexingStatistics = HierarchyIndexingStatistics()
+        private set
+
     /** 입력 순서를 보존하고 중복 class는 첫 번째 hierarchy를 사용한다. */
     public fun index(
         classpathEntries: Iterable<Path>,
         referencedSupertypes: Iterable<String> = emptyList(),
     ): ClassHierarchy {
+        val runStatistics = MutableHierarchyIndexingStatistics()
         val supertypesByClass = linkedMapOf<String, Set<String>>()
         val methodsByClass = linkedMapOf<String, List<HierarchyMethod>>()
         val annotationTypes = linkedMapOf<String, Set<String>>()
-        classpathEntries.forEach { entry ->
-            val facts = when {
-                entry.isDirectory() -> readDirectory(entry)
-                entry.isRegularFile() && entry.fileName.toString().endsWith(".jar", ignoreCase = true) -> readJar(entry)
-                else -> throw ClassHierarchyIndexingException("classpath entry must be a class directory or JAR")
-            }
-            facts.forEach { fact ->
+        fun merge(indexed: IndexedHierarchyEntry) {
+            runStatistics.add(indexed.statistics)
+            indexed.facts.forEach { fact ->
                 if (supertypesByClass.putIfAbsent(fact.internalName, fact.supertypes) == null) {
                     methodsByClass[fact.internalName] = fact.methods
                     if (fact.isAnnotation) annotationTypes[fact.internalName] = fact.annotations
                 }
             }
         }
-        expandJdkHierarchy(supertypesByClass, methodsByClass, referencedSupertypes)
-        return ClassHierarchy(supertypesByClass, methodsByClass, annotationTypes)
+        return try {
+            if (cache == null) {
+                classpathEntries.forEach { entry ->
+                    merge(indexEntry(PreparedHierarchyEntry(entry, observedJarDigests?.take(entry))))
+                }
+            } else {
+                val prepared = classpathEntries.map { entry ->
+                    // 동일 path의 서로 다른 관측값도 worker 시작 순서가 아니라 classpath 순서로 고정한다.
+                    PreparedHierarchyEntry(entry, observedJarDigests?.take(entry))
+                }
+                try {
+                    IndexWorkPool().use { pool ->
+                        // 완료 facts를 전체 classpath만큼 중복 보관하지 않고 worker batch마다 순서대로 병합한다.
+                        prepared.chunked(MAX_PARALLEL_HEADER_BATCH).forEach { batch ->
+                            pool.map(batch, ::indexEntry).forEach(::merge)
+                        }
+                    }
+                } finally {
+                    // 실패로 제출되지 않은 뒤쪽 batch의 owned spool도 즉시 해제한다.
+                    prepared.forEach { it.observedJar?.complete(false) }
+                }
+            }
+            expandJdkHierarchy(supertypesByClass, methodsByClass, referencedSupertypes)
+            ClassHierarchy(supertypesByClass, methodsByClass, annotationTypes)
+        } finally {
+            statistics = runStatistics.freeze()
+        }
+    }
+
+    private fun indexEntry(prepared: PreparedHierarchyEntry): IndexedHierarchyEntry {
+        val entryStatistics = MutableHierarchyIndexingStatistics()
+        val facts = when {
+            prepared.path.isDirectory() -> try {
+                readDirectory(prepared.path)
+            } finally {
+                prepared.observedJar?.complete(false)
+            }
+            prepared.path.isRegularFile() && prepared.path.fileName.toString().endsWith(".jar", ignoreCase = true) ->
+                readJar(prepared.path, entryStatistics, prepared.observedJar)
+            else -> {
+                prepared.observedJar?.complete(false)
+                throw ClassHierarchyIndexingException("classpath entry must be a class directory or JAR")
+            }
+        }
+        return IndexedHierarchyEntry(facts, entryStatistics.freeze())
     }
 
     private fun expandJdkHierarchy(
@@ -95,7 +150,105 @@ public class ClassHierarchyIndexer {
         throw ClassHierarchyIndexingException("classpath directory cannot be read", error)
     }
 
-    private fun readJar(jar: Path): List<HierarchyFact> = try {
+    private fun readJar(
+        jar: Path,
+        statistics: MutableHierarchyIndexingStatistics,
+        observedJar: ObservedJarInput?,
+    ): List<HierarchyFact> {
+        statistics.hierarchyJars++
+        var completionReported = false
+        fun complete(cacheReady: Boolean) {
+            if (!completionReported) {
+                observedJar?.complete(cacheReady)
+                completionReported = true
+            }
+        }
+        try {
+            val configuredCache = cache
+            if (configuredCache == null) {
+                statistics.hierarchyParsedJars++
+                return readJarFile(jar).also { complete(false) }
+            }
+            if (configuredCache.identity == null || configuredCache.namespace == null) {
+                statistics.hierarchyUnavailableEntries++
+                statistics.hierarchyParsedJars++
+                return readJarFile(jar).also { complete(false) }
+            }
+            val hierarchyCache = HierarchyIndexCache(configuredCache)
+            fun storeFacts(jarHash: String, facts: List<HierarchyFact>): List<HierarchyFact> {
+                when (hierarchyCache.write(jarHash, facts)) {
+                    CacheWriteResult.Written -> complete(true)
+                    CacheWriteResult.Failed -> {
+                        statistics.hierarchyWriteFailures++
+                        complete(false)
+                    }
+                    CacheWriteResult.Unavailable -> {
+                        statistics.hierarchyUnavailableEntries++
+                        complete(false)
+                    }
+                }
+                return facts
+            }
+            val observedJarHash = observedJar?.sha256
+            if (observedJarHash != null) {
+                readCachedFacts(hierarchyCache, observedJarHash, statistics)?.let { facts ->
+                    complete(true)
+                    return facts
+                }
+            }
+            val capturedSpool = observedJar?.takeSpool()
+            if (capturedSpool != null) {
+                val jarHash = requireNotNull(observedJarHash)
+                statistics.hierarchyParsedJars++
+                val facts = capturedSpool.consume(::readJarFile)
+                return storeFacts(jarHash, facts)
+            }
+            val snapshot = readBoundedSnapshot(jar)
+            if (snapshot == null) {
+                statistics.hierarchyUnavailableEntries++
+                statistics.hierarchyParsedJars++
+                return readJarFile(jar).also { complete(false) }
+            }
+            val jarHash = sha256(snapshot)
+            if (observedJarHash != null && jarHash != observedJarHash) {
+                throw ClassHierarchyIndexingException("classpath input changed during verified capture")
+            }
+            if (observedJarHash == null) {
+                readCachedFacts(hierarchyCache, jarHash, statistics)?.let { facts ->
+                    complete(true)
+                    return facts
+                }
+            }
+            statistics.hierarchyParsedJars++
+            val facts = readSnapshotJar(snapshot)
+            if (facts == null) {
+                statistics.hierarchyUnavailableEntries++
+                return readJarFile(jar).also { complete(false) }
+            }
+            return storeFacts(jarHash, facts)
+        } finally {
+            if (!completionReported) complete(false)
+        }
+    }
+
+    private fun readCachedFacts(
+        cache: HierarchyIndexCache,
+        jarHash: String,
+        statistics: MutableHierarchyIndexingStatistics,
+    ): List<HierarchyFact>? = when (val cached = cache.read(jarHash)) {
+        is HierarchyCacheReadResult.Hit -> cached.facts.also { statistics.hierarchyCacheHits++ }
+        HierarchyCacheReadResult.Miss -> null
+        HierarchyCacheReadResult.Invalid -> {
+            statistics.hierarchyInvalidEntries++
+            null
+        }
+        HierarchyCacheReadResult.Unavailable -> {
+            statistics.hierarchyUnavailableEntries++
+            null
+        }
+    }
+
+    private fun readJarFile(jar: Path): List<HierarchyFact> = try {
         JarFile(jar.toFile(), false).use { archive ->
             val multiRelease = archive.manifest?.mainAttributes?.getValue("Multi-Release")
                 ?.equals("true", ignoreCase = true) == true
@@ -110,6 +263,65 @@ public class ClassHierarchyIndexer {
         }
     } catch (error: IOException) {
         throw ClassHierarchyIndexingException("classpath JAR cannot be read", error)
+    }
+
+    private fun readBoundedSnapshot(jar: Path): ByteArray? = try {
+        val observedSize = Files.size(jar)
+        if (observedSize !in 0..maximumSnapshotBytes.toLong()) return null
+        val snapshot = ByteArray(observedSize.toInt())
+        Files.newInputStream(jar).use { input ->
+            var offset = 0
+            while (offset < snapshot.size) {
+                val count = input.read(snapshot, offset, snapshot.size - offset)
+                if (count < 0) return snapshot.copyOf(offset)
+                if (count == 0) continue
+                offset += count
+            }
+            // 크기 관측 뒤 커진 파일은 live fallback으로 보내고 이 snapshot으로 캐시하지 않는다.
+            if (input.read() >= 0) return null
+        }
+        snapshot
+    } catch (_: IOException) {
+        null
+    } catch (_: SecurityException) {
+        null
+    } catch (_: UnsupportedOperationException) {
+        null
+    } catch (_: OutOfMemoryError) {
+        null
+    }
+
+    /** JarFile의 manifest 탐색과 multi-release/entry 의미를 그대로 쓰기 위해 snapshot을 임시 JAR로 연다. */
+    private fun readSnapshotJar(snapshot: ByteArray): List<HierarchyFact>? {
+        val temporary = try {
+            Files.createTempFile("kartograph-hierarchy-", ".jar")
+        } catch (_: IOException) {
+            return null
+        } catch (_: SecurityException) {
+            return null
+        } catch (_: UnsupportedOperationException) {
+            return null
+        }
+        try {
+            try {
+                Files.write(temporary, snapshot)
+            } catch (_: IOException) {
+                return null
+            } catch (_: SecurityException) {
+                return null
+            } catch (_: UnsupportedOperationException) {
+                return null
+            }
+            return readJarFile(temporary)
+        } finally {
+            try {
+                Files.deleteIfExists(temporary)
+            } catch (_: IOException) {
+                temporary.toFile().deleteOnExit()
+            } catch (_: SecurityException) {
+                temporary.toFile().deleteOnExit()
+            }
+        }
     }
 
     private fun readClasspathClass(input: InputStream): HierarchyFact =
@@ -141,10 +353,56 @@ public class ClassHierarchyIndexer {
             ?.let { ClassCandidate(it, version, this) }
     }
 
-    private companion object {
-        const val MULTI_RELEASE_PREFIX = "META-INF/versions/"
-        val JDK_PACKAGE_PREFIXES = listOf("java/", "javax/", "jdk/", "com/sun/", "sun/")
+    internal companion object {
+        private const val MULTI_RELEASE_PREFIX = "META-INF/versions/"
+        private const val MAX_PARALLEL_HEADER_BATCH = 16
+        private const val MAX_JAR_SNAPSHOT_BYTES = 256 * 1024 * 1024
+        private val JDK_PACKAGE_PREFIXES = listOf("java/", "javax/", "jdk/", "com/sun/", "sun/")
+
+        fun defaultSnapshotMaximumBytes(): Int = safeSnapshotMaximum(MAX_JAR_SNAPSHOT_BYTES)
+
+        private fun safeSnapshotMaximum(configured: Int): Int = minOf(
+            configured.toLong(),
+            Runtime.getRuntime().maxMemory() / 8,
+        ).coerceAtLeast(1).toInt()
     }
+}
+
+private data class PreparedHierarchyEntry(
+    val path: Path,
+    val observedJar: ObservedJarInput?,
+)
+
+private data class IndexedHierarchyEntry(
+    val facts: List<HierarchyFact>,
+    val statistics: HierarchyIndexingStatistics,
+)
+
+private class MutableHierarchyIndexingStatistics {
+    var hierarchyJars: Int = 0
+    var hierarchyCacheHits: Int = 0
+    var hierarchyParsedJars: Int = 0
+    var hierarchyInvalidEntries: Int = 0
+    var hierarchyWriteFailures: Int = 0
+    var hierarchyUnavailableEntries: Int = 0
+
+    fun add(other: HierarchyIndexingStatistics) {
+        hierarchyJars += other.hierarchyJars
+        hierarchyCacheHits += other.hierarchyCacheHits
+        hierarchyParsedJars += other.hierarchyParsedJars
+        hierarchyInvalidEntries += other.hierarchyInvalidEntries
+        hierarchyWriteFailures += other.hierarchyWriteFailures
+        hierarchyUnavailableEntries += other.hierarchyUnavailableEntries
+    }
+
+    fun freeze(): HierarchyIndexingStatistics = HierarchyIndexingStatistics(
+        hierarchyJars,
+        hierarchyCacheHits,
+        hierarchyParsedJars,
+        hierarchyInvalidEntries,
+        hierarchyWriteFailures,
+        hierarchyUnavailableEntries,
+    )
 }
 
 private data class ClassCandidate(val logicalName: String, val version: Int, val entry: JarEntry)
@@ -191,7 +449,7 @@ private class HierarchyVisitor : ClassVisitor(Opcodes.ASM9) {
     fun fact(): HierarchyFact = HierarchyFact(internalName, supertypes, methods, isAnnotation, annotations)
 }
 
-private data class HierarchyFact(
+internal data class HierarchyFact(
     val internalName: String,
     val supertypes: Set<String>,
     val methods: List<HierarchyMethod>,
