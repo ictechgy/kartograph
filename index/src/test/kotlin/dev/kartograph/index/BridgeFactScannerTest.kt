@@ -296,6 +296,69 @@ class BridgeFactScannerTest {
     }
 
     @Test
+    fun `messages keeps dollar shaped characters that are not at a dollar position`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any) {
+              BasicMessageChannel<Any?>(messenger, "a{'${'$'}'}", codec)
+                .setMessageHandler { _, _ -> Unit }
+            }
+            """.trimIndent(),
+        )
+
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+
+        assertEquals("a{'${'$'}'}", fact.channel)
+        assertTrue(!fact.dynamic)
+    }
+
+    @Test
+    fun `messages treats backslash dollar in a raw channel as interpolation`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(listOf(
+            "fun register(messenger: Any, codec: Any, suffix: String) {",
+            "  BasicMessageChannel<Any?>(messenger, \"\"\"prefix.\\${'$'}suffix\"\"\", codec)",
+            "    .setMessageHandler { _, _ -> Unit }",
+            "}",
+        ).joinToString("\n"))
+
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+
+        assertTrue(fact.dynamic)
+        assertEquals("prefix.\\", fact.channelPrefix)
+    }
+
+    @Test
+    fun `messages decodes raw dollar literal template into a literal channel`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(listOf(
+            "fun register(messenger: Any, codec: Any) {",
+            "  BasicMessageChannel<Any?>(messenger, \"\"\"prefix.${'$'}{'${'$'}'}suffix\"\"\", codec)",
+            "    .setMessageHandler { _, _ -> Unit }",
+            "}",
+        ).joinToString("\n"))
+
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+
+        assertEquals("prefix.${'$'}suffix", fact.channel)
+        assertTrue(!fact.dynamic)
+    }
+
+    @Test
+    fun `messages ignores triple quote content inside comments`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(listOf(
+            "/* \"\"\"",
+            "BasicMessageChannel<Any?>(messenger, \"fake\", codec).setMessageHandler { _, _ -> Unit }",
+            "}\"\"\" */",
+            "fun register(messenger: Any, codec: Any) {",
+            "  BasicMessageChannel<Any?>(messenger, \"real\", codec).setMessageHandler { _, _ -> Unit }",
+            "}",
+        ).joinToString("\n"))
+
+        val facts = BridgeFactScanner(project).scanMessages().facts
+
+        assertEquals(listOf("real"), facts.map { it.channel })
+    }
+
+    @Test
     fun `extracts MethodChannel registrations and React Native exports`(@TempDir project: Path) {
         project.resolve("src/main/kotlin/app/Plugin.kt").also { source ->
             source.parent.createDirectories()
@@ -463,6 +526,30 @@ class BridgeFactScannerTest {
         assertEquals(null, staleFact.symbol)
         assertEquals(null, ambiguousFact.symbol)
         assertTrue(staleFact.symbol == null && ambiguousFact.symbol == null)
+    }
+
+    @Test
+    fun `snapshot symbol stays absent when two preceding methods are possible`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun first() { }
+            fun second() {
+              MethodChannel(messenger, "camera").setMethodCallHandler(handler)
+            }
+            """.trimIndent(),
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/Plugin#first()V"), "first", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 1, 1)),
+            GraphNode(NodeId("method:app/Plugin#second()V"), "second", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 2, 1)),
+            GraphNode(NodeId("method:app/Plugin#second(Ljava/lang/Object;)V"), "second", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 3, 2)),
+        ), emptyList())
+
+        val fact = BridgeFactScanner(project).scan(graph = graph).facts.single()
+
+        assertEquals(null, fact.symbol)
     }
 
     @Test

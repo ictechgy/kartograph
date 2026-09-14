@@ -148,6 +148,13 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         var escaped = false
         var index = 0
         while (index < source.length) {
+            val c = source[index]
+            val next = source.getOrNull(index + 1)
+            if (block) {
+                if (c == '*' && next == '/') { out.append("  "); block = false; index += 2 }
+                else { out.append(if (c == '\n') '\n' else ' '); index++ }
+                continue
+            }
             if (rawQuote && source.startsWith("\"\"\"", index)) {
                 out.append("\"\"\""); rawQuote = false; index += 3; continue
             }
@@ -155,11 +162,7 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
             if (quote == null && source.startsWith("\"\"\"", index)) {
                 out.append("\"\"\""); rawQuote = true; index += 3; continue
             }
-            val c = source[index]
-            val next = source.getOrNull(index + 1)
             when {
-                block && c == '*' && next == '/' -> { out.append("  "); block = false; index += 2 }
-                block -> { out.append(if (c == '\n') '\n' else ' '); index++ }
                 quote != null -> {
                     out.append(c)
                     when { escaped -> escaped = false; c == '\\' -> escaped = true; c == quote -> quote = null }
@@ -286,11 +289,11 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
             val raw = expression.trim()
             val triple = raw.startsWith("\"\"\"") && raw.endsWith("\"\"\"")
             val body = if (triple) raw.substring(3, raw.length - 3) else raw.substring(1, raw.length - 1)
-            val interpolation = interpolationIndex(body)
+            val interpolation = interpolationIndex(body, triple)
             if (interpolation >= 0) {
-                val prefix = if (triple) body.substring(0, interpolation) else decodeLiteral(body.substring(0, interpolation))
+                val prefix = if (triple) decodeRawLiteral(body.substring(0, interpolation)) else decodeLiteral(body.substring(0, interpolation))
                 Channel(raw, true, prefix.takeIf { it.isNotEmpty() })
-            } else Channel(if (triple) body else decodeLiteral(body), false, null)
+            } else Channel(if (triple) decodeRawLiteral(body) else decodeLiteral(body), false, null)
         }
         else -> Channel(expression.trim(), true, null)
     }
@@ -299,13 +302,14 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         argument.substringBefore('=', "").trim() == name
     }?.substringAfter('=', "")?.trim()
 
-    private fun interpolationIndex(value: String): Int {
+    private fun interpolationIndex(value: String, raw: Boolean): Int {
         var index = 0
         while (index < value.length) {
-            if (value[index] == '\\') { index += 2; continue }
+            if (!raw && value[index] == '\\') { index += 2; continue }
             if (value[index] == '$') {
                 if (value.isDollarLiteral(index)) { index += 6; continue }
-                return index
+                val next = value.getOrNull(index + 1)
+                if (next == '{' || next == '_' || next?.isLetter() == true) return index
             }
             index++
         }
@@ -313,8 +317,15 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
     }
 
     private fun String.isDollarLiteral(index: Int): Boolean =
-        index + 5 < length && this[index + 1] == '{' && this[index + 2] == '\'' &&
+        index + 5 < length && this[index] == '$' && this[index + 1] == '{' && this[index + 2] == '\'' &&
             this[index + 3] == '$' && this[index + 4] == '\'' && this[index + 5] == '}'
+
+    private fun decodeRawLiteral(value: String): String = buildString {
+        var index = 0
+        while (index < value.length) {
+            if (value.isDollarLiteral(index)) { append('$'); index += 6 } else { append(value[index]); index++ }
+        }
+    }
 
     private fun decodeLiteral(value: String): String = buildString {
         var index = 0
@@ -375,10 +386,8 @@ internal fun attachSnapshotSymbol(fact: BridgeFact, graph: CodeGraph, projectRoo
             node.name == declaration.name &&
             node.kind.name.lowercase() in setOf("function", "method")
     }
-    val node = candidates.filter { (it.location?.line ?: Int.MAX_VALUE) <= fact.location.line }
-        .groupBy { it.location?.line }
-        .maxByOrNull { it.key ?: Int.MIN_VALUE }?.value?.singleOrNull()
-        ?: candidates.singleOrNull()
+    val preceding = candidates.filter { (it.location?.line ?: Int.MAX_VALUE) <= fact.location.line }
+    val node = preceding.singleOrNull() ?: candidates.singleOrNull()
         ?: return fact
     return fact.copy(symbol = BridgeSymbol(node.qualifiedName, node.id.value))
 }
@@ -476,16 +485,22 @@ private fun maskDeclarationComments(source: String): String = buildString(source
     var escaped = false
     var index = 0
     while (index < source.length) {
+        val character = source[index]
+        val next = source.getOrNull(index + 1)
+        if (line) {
+            if (character == '\n') { line = false; append(character) } else append(' ')
+            index++
+            continue
+        }
+        if (block) {
+            if (character == '*' && next == '/') { block = false; append("  "); index += 2 }
+            else { append(if (character == '\n') '\n' else ' '); index++ }
+            continue
+        }
         if (rawQuote && source.startsWith("\"\"\"", index)) { rawQuote = false; quote = false; append("\"\"\""); index += 3; continue }
         if (!quote && source.startsWith("\"\"\"", index)) { rawQuote = true; quote = true; append("\"\"\""); index += 3; continue }
         if (rawQuote) { append(source[index]); index++; continue }
-        val character = source[index]
-        val next = source.getOrNull(index + 1)
         when {
-            line && character == '\n' -> { line = false; append(character) }
-            line -> append(' ')
-            block && character == '*' && next == '/' -> { block = false; append("  "); index++ }
-            block -> append(if (character == '\n') '\n' else ' ')
             !quote && character == '/' && next == '/' -> { line = true; append("  "); index++ }
             !quote && character == '/' && next == '*' -> { block = true; append("  "); index++ }
             quote && character == '\\' && !escaped -> { escaped = true; append(character) }
