@@ -15,6 +15,34 @@ import org.junit.jupiter.api.io.TempDir
 
 class BridgeFactScannerTest {
     @Test
+    fun `messages keeps aliases with concatenation transformation or getter unresolved`(@TempDir project: Path) {
+        for (initializer in listOf("\"a\" + \"b\"", "\"a\"\n  .plus(\"b\")", "\"a\"\n  get() = \"b\"")) {
+            project.resolve("Plugin.kt").writeText("""
+                val channelName = $initializer
+                fun register(messenger: Any, codec: Any) {
+                  BasicMessageChannel<Any?>(messenger, channelName, codec).setMessageHandler { _, _ -> Unit }
+                }
+            """.trimIndent())
+            val fact = BridgeFactScanner(project).scanMessages().facts.single()
+            assertTrue(fact.dynamic, initializer)
+            assertEquals(null, fact.channelPrefix)
+        }
+    }
+
+    @Test
+    fun `messages does not decode a quoted concatenation as one literal`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText("""
+            fun register(messenger: Any, codec: Any) {
+              BasicMessageChannel<Any?>(messenger, "a" + "b", codec).setMessageHandler { _, _ -> Unit }
+            }
+        """.trimIndent())
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+        assertTrue(fact.dynamic)
+        assertEquals(null, fact.channelPrefix)
+        assertEquals("\"a\" + \"b\"", fact.channel)
+    }
+
+    @Test
     fun `messages does not resolve a mutable receiver from a conditional assignment`(@TempDir project: Path) {
         project.resolve("Plugin.kt").writeText("""
             fun register(messenger: Any, codec: Any, alternate: Boolean) {

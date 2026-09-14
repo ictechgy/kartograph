@@ -66,7 +66,14 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         STRING_ALIAS.findAll(eventCode).forEach { match ->
             val quote = code.indexOf('"', match.range.first)
             val end = quote.takeIf { it >= 0 }?.let { closingQuote(code, it) } ?: -1
-            if (quote >= 0 && end > quote) events += Event.StringAlias(match.range.first, match.groupValues[1], code.substring(quote, end + 1))
+            if (quote >= 0 && end > quote) {
+                val following = code.substring(end + 1)
+                val lineTail = following.substringBefore('\n').trimStart()
+                val complete = (lineTail.isEmpty() || lineTail.startsWith(';') || lineTail.startsWith('}')) &&
+                    !ALIAS_CONTINUATION.containsMatchIn(following.trimStart())
+                events += Event.StringAlias(match.range.first, match.groupValues[1],
+                    if (complete) code.substring(quote, end + 1) else match.groupValues[1])
+            }
         }
         ALIAS_ASSIGNMENT.findAll(eventCode).forEach { match -> events += Event.Alias(match.range.first, match.groupValues[1], match.groupValues[2]) }
         HANDLER.findAll(eventCode).forEach { match ->
@@ -358,8 +365,8 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
     }
 
     private fun String.isQuotedOrInterpolated(): Boolean = trim().let {
-        (it.length >= 2 && it.first() == '"' && it.last() == '"') ||
-            (it.startsWith("\"\"\"") && it.endsWith("\"\"\"") && it.length >= 6)
+        if (it.startsWith("\"\"\"")) it.length >= 6 && it.indexOf("\"\"\"", 3) == it.length - 3
+        else it.length >= 2 && it.first() == '"' && closingQuote(it, 0) == it.lastIndex
     }
 
     private data class Channel(val value: String?, val dynamic: Boolean, val prefix: String?)
@@ -380,6 +387,7 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         val ASSIGNMENT = Regex("\\b(val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*$")
         val JAVA_ASSIGNMENT = Regex("\\b(?:(final)\\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\\s*<[^>\\n]*>)?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*$")
         val MUTABLE_DECLARATION = Regex("\\bvar\\s+([A-Za-z_][A-Za-z0-9_]*)\\b")
+        val ALIAS_CONTINUATION = Regex("^(?:[.+*/%?:<>=!&|\\-]|get\\b|@)")
         val ALIAS_ASSIGNMENT = Regex("(?m)\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)")
         val MUTATION_ASSIGNMENT = Regex("(?m)(?<![.\\w])([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*(?=(?:BasicMessageChannel|new\\s+BasicMessageChannel))")
         val HANDLER = Regex("(?:\\b([A-Za-z_][A-Za-z0-9_]*)|\\))\\s*\\??\\.\\s*setMessageHandler\\s*(?=\\(|\\{)")
