@@ -59,6 +59,30 @@
 - **C. 증거 없이 제외(기각).** R.jar는 선언 그래프에 기여하지 않으니 빼는 방향이지만, R.class 참조가
   정말 그래프에 필요 없는지 먼저 증명해야 하며(리소스 상수 인라인), 실패 이유를 공개 문서로 유지해야 한다.
 
+### 후보 A 구현 스케치 (1단계 확인으로 확정 후 착수)
+
+`AppModuleRJarCliTest`가 계약을 양방향으로 고정했으므로, wiring은 다음 순서로 기계적이다. 다만
+1~3단계의 실측(어느 provider가 R.jar를 노출하는지)이 선행된다 — 이 스케치는 그 확인 전까지 착수하지 않는다.
+
+1. **producer 식별.** 1단계 재현에서 `process<Variant>Resources` task의 declared outputs 중 R.jar의
+   정확한 provider를 확인한다. 후보: task output file(`outputs.files`에서 이름이 `R.jar`인 것), AGP
+   variant artifact provider, 또는 ScopedArtifact PROJECT scope가 R.jar를 병합하는 중간 디렉터리.
+   `AndroidSnapshotTasks.kt` 70-77행의 `forScope(ScopedArtifacts.Scope.PROJECT).toGet(CLASSES)`가
+   스냅샷 class root를 만드는 지점이고, 거부의 원인은 이 scope 안의 R.jar 기원 파일이 witness output
+   목록에 없다는 것이다.
+2. **witness 생성.** `CompilerWitnesses`에 `automaticResourceProcess(project, processResourcesTask,
+   scope, additionalInputs)` 형태의 자동 producer를 추가한다. `BuildWitness`는 compiler 식별자를
+   `"agp-process-resources"`로, inputs는 res 소스·buildConfig·compiler(aapt2)·options, outputs는
+   R.jar fingerprint(`role="classes"`)로 채운다. 기록 실패 시 기존 compiler witness와 같이
+   bounded rejection record로 실패시킨다.
+3. **wiring.** `AndroidSnapshotTasks.register`에서 resource witness 파일을 `snapshot.buildWitnessFiles.from(...)`
+   에 추가하고, `fingerprintFiles`의 classes 입력이 R.jar root를 계속 포함하는지 유지한다.
+   `ProvenanceVerifier` 변경은 불필요하다 — AppModuleRJarCliTest가 보여줬듯 기존 판정으로 matched가 된다.
+4. **회귀 앵커.** `AppModuleRJarCliTest`는 그대로 유지하고, `Scripts/verify-agp-8-app-snapshot.sh`의
+   기대를 `matched`로 뒤집는다. 거부 경로의 회귀는 script의 실패 모드와 코퍼스 단위 테스트가 잠근다.
+5. **검증표 확장.** library 검증표에 application 행을 추가하고(AGP 최소/최대 조합·독립 설치), 릴리스
+   노트의 "Android library 전용" 문구를 갱신한다.
+
 ## 검증 범위 (구현 시)
 
 - 단위: 합성 witness로 R.jar 커버 유지·부재 시나리오 양쪽(양방향 코퍼스 관례 준수).
