@@ -153,6 +153,23 @@ class BridgeFactScannerTest {
     }
 
     @Test
+    fun `messages does not reuse a prior chained channel for an unknown receiver`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any, unknown: Any) {
+              BasicMessageChannel<Any?>(messenger, "known", codec).setMessageHandler { _, _ -> Unit }
+              unknown.setMessageHandler { _, _ -> Unit }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scanMessages().facts
+
+        assertEquals(listOf("known", null), facts.map { it.channel })
+        assertTrue(facts[1].dynamic)
+    }
+
+    @Test
     fun `messages resolves immutable channel aliases and ignores code-like strings`(@TempDir project: Path) {
         project.resolve("Plugin.kt").writeText(
             """

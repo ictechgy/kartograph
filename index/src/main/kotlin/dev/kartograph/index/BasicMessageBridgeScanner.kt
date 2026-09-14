@@ -118,7 +118,7 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
     private fun previousChainedConstructor(events: List<Event>, offset: Int, source: String): Event.Constructor? =
         events.filterIsInstance<Event.Constructor>().lastOrNull { constructor ->
             (constructor.end == offset && source.getOrNull(offset) == ')') ||
-                (constructor.end < offset && source.substring(constructor.end + 1, offset).trim().startsWith("."))
+                (constructor.end < offset && source.substring(constructor.end + 1, offset).trim() == ".")
         }
 
     private fun precedingBinding(source: String, offset: Int): BindingSpec? {
