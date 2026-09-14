@@ -23,7 +23,7 @@
 - AGP 8 application 모듈의 독립 사전검증에서 `kartographSnapshotDebug`가 snapshot 뒤 신선도 검사에서
   `unwitnessed-class-root`로 거부됐다. 재현 자료: `build/reports/product-limits-20260914/local-android-1.log`,
   `local-android-consumer/`(로컬 증거, Git 제외).
-- 원인 가설(검증 전): AGP 8 앱의 `process<Variant>Resources`가 만드는 생성 `R.jar`가 PROJECT class
+- 원인(아래 CLI 실험으로 확인): AGP 8 앱의 `process<Variant>Resources`가 만드는 생성 `R.jar`가 PROJECT class
   root에 포함되는데, compiler witness(javac/kotlinc task output)의 `outputs`는 javac classes만 커버한다.
   `ProvenanceVerifier`는 모든 `classes` role 입력이 어떤 witness output(경로+sha256)으로 덮이는지
   요구하므로(`index/src/main/kotlin/dev/kartograph/index/ProvenanceVerifier.kt`의 `unwitnessed-class-root`)
@@ -35,9 +35,11 @@
 ## 재현·비교 실험 계획 (구현 전 필수)
 
 0. **CLI 절반 완료(위 섹션).** 남은 것은 실제 AGP 절반이다.
-1. **최소 재현 유지(AGP 필요).** AGP 8.7.3/Gradle 8.10.2 application 1개(활동 1개, resource 1개)로
-   `kartographSnapshotDebug` → `verify-snapshot` 재현을 스크립트로 고정한다. 기존 `local-android-1.log`와
-   같은 실패 이유 집합(`unwitnessed-class-root`)이 나오는지 확인하고, R.jar의 실제 class root 포함 경로를 확인한다.
+1. **최소 재현 유지(AGP 필요).** `Scripts/verify-agp-8-app-snapshot.sh`가 이 단계를 자동 실행한다
+   (`GRADLE_8_HOME`·`ANDROID_HOME` 필요, `fixtures/agp-8-smoke` application fixture 사용).
+   현재 계약: `kartographSnapshotDebug`가 `unwitnessed-class-root`로 실패하거나, 캡처가 성공하면
+   verify 단계의 같은 사유를 확인한다. 캡처가 성공하는데 scope에 R.jar가 없으면 fixture에
+   `src/main/res/values/strings.xml`을 추가해 R.jar 생성을 보장하는 것이 기록된 다음 진단이다.
 2. **producer 사실 관계 측정.** 같은 빌드에서 `processDebugResources`의 declared inputs(merged resources,
    aapt2, namespace)와 outputs(`R.jar`, merged resources, proguard rules)를 Gradle Variant/Artifact API로
    덤프해 표로 남긴다. R.jar의 class root 통합 경로(어느 task가 R.jar를 `--classes`에 합치는지)를
