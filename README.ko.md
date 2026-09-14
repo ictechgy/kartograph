@@ -110,6 +110,8 @@ cli/build/install/kartograph/bin/kartograph dead \
 # 전체 graph 덤프 대신 한 symbol의 사용·의존·도달성을 query한다.
 kartograph query UserService --classes path/to/classes --project . --depth 2 --limit 100
 kartograph bridges --project . --format json
+# Kotlin/JVM Flutter BasicMessageChannel 사실(v2)을 선택적으로 생성한다.
+kartograph bridges --project . --target flutter --messages --graph-file build/reports/kartograph/main-graph.json
 kartograph skill --project .
 ```
 

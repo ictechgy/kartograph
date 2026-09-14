@@ -543,6 +543,30 @@ class KartographCliTest {
     }
 
     @Test
+    fun `bridges messages emits Kotlin BasicMessageChannel v2 and target option`(@TempDir projectRoot: Path) {
+        projectRoot.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any) {
+              val channel = BasicMessageChannel<Any?>(messenger, "camera", codec)
+              channel.setMessageHandler { _, _ -> Unit }
+              channel.send(Unit)
+            }
+            """.trimIndent(),
+        )
+
+        val execution = execute(
+            "bridges", "--project", projectRoot.toString(), "--target", "flutter", "--messages",
+        )
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        assertContains(execution.output, "\"version\": 2")
+        assertContains(execution.output, "\"transport\": \"basic-message-channel\"")
+        assertContains(execution.output, "\"kind\": \"message-handle\"")
+        assertContains(execution.output, "\"kind\": \"message-send\"")
+        kotlin.test.assertFalse(execution.output.contains(projectRoot.toString()))
+    }
+
+    @Test
     fun `skill installs reviewed guidance without overwriting by default`(@TempDir projectRoot: Path) {
         val bundled = Path.of("../Skills/kartograph/SKILL.md").readText()
         val execution = execute("skill", "--project", projectRoot.toString())

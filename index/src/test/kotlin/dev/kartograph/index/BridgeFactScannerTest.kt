@@ -1,6 +1,11 @@
 package dev.kartograph.index
 
 import java.nio.file.Path
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
+import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
+import dev.kartograph.core.SourceLocation
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -9,6 +14,126 @@ import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
 class BridgeFactScannerTest {
+    @Test
+    fun `messages follows aliases mutation shadowing and removes null handlers`(@TempDir project: Path) {
+        project.resolve("src/main/kotlin/app/Plugin.kt").also { source ->
+            source.parent.createDirectories()
+            source.writeText(
+                """
+                package app
+                class Plugin {
+                  fun register(messenger: Any, codec: Any) {
+                    var channel = BasicMessageChannel<Any?>(messenger, "first", codec)
+                    val alias = channel
+                    alias.setMessageHandler { _, _ -> Unit }
+                    channel = BasicMessageChannel<Any?>(messenger, "second", codec)
+                    channel.send("outgoing")
+                    fun nested() {
+                      val channel = BasicMessageChannel<Any?>(messenger, "inner", codec)
+                      channel.setMessageHandler { _, _ -> Unit }
+                      channel.send("nested")
+                    }
+                    channel.setMessageHandler(null)
+                  }
+                }
+                """.trimIndent(),
+            )
+        }
+
+        val document = BridgeFactScanner(project).scanMessages(generatedAt = "2026-09-14T00:00:00Z")
+
+        assertEquals(4, document.facts.size)
+        assertEquals(
+            listOf("message-handle" to "first", "message-send" to "second",
+                "message-handle" to "inner", "message-send" to "inner"),
+            document.facts.map { it.kind to it.channel },
+        )
+        assertTrue(document.facts.all { it.dynamic.not() })
+        assertTrue(document.facts.all { it.symbol == null })
+        assertTrue(document.limitations.any { it.startsWith("missing-handler-usrs:") })
+    }
+
+    @Test
+    fun `messages preserves dynamic expression and proven nonempty prefix`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any, suffix: String) {
+              val channel = BasicMessageChannel<Any?>(messenger, "dev.flutter.pigeon.Camera.${'$'}suffix", codec)
+              channel.send(Unit)
+            }
+            """.trimIndent(),
+        )
+
+        val fact = BridgeFactScanner(project).scanMessages(generatedAt = "2026-09-14T00:00:00Z").facts.single()
+
+        assertEquals("message-send", fact.kind)
+        assertEquals("\"dev.flutter.pigeon.Camera.${'$'}suffix\"", fact.channel)
+        assertEquals("dev.flutter.pigeon.Camera.", fact.channelPrefix)
+        assertTrue(fact.dynamic)
+    }
+
+    @Test
+    fun `messages attaches an enclosing compiler snapshot JVM symbol without guessing names`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            class Plugin {
+              fun register(messenger: Any, codec: Any) {
+                val channel = BasicMessageChannel<Any?>(messenger, "camera", codec)
+                channel.send(Unit)
+              }
+            }
+            """.trimIndent(),
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/Plugin#register(Ljava/lang/Object;Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 2, 3)),
+        ), emptyList())
+
+        val fact = BridgeFactScanner(project).scanMessages(graph = graph).facts.single()
+
+        assertEquals("method:app/Plugin#register(Ljava/lang/Object;Ljava/lang/Object;)V", fact.symbol?.usr)
+        assertEquals("app.Plugin.register", fact.symbol?.qualifiedName)
+    }
+
+    @Test
+    fun `messages scans raw Java syntax and reports source limitation`(@TempDir project: Path) {
+        project.resolve("Plugin.java").writeText(
+            """
+            class Plugin {
+              void register(Object messenger, Object codec) {
+                BasicMessageChannel<Object> channel = new BasicMessageChannel<>(messenger, "java", codec);
+                channel.setMessageHandler((message, reply) -> { });
+                channel.send("outgoing");
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanMessages()
+
+        assertEquals(listOf("message-handle" to "java", "message-send" to "java"), document.facts.map { it.kind to it.channel })
+        assertTrue(document.limitations.any { it.startsWith("java-source-basic-message-analysis:") })
+    }
+
+    @Test
+    fun `messages does not attach an opaque handler to the previous channel`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any, handler: Any) {
+              val known = BasicMessageChannel<Any?>(messenger, "known", codec)
+              handler.setMessageHandler { _, _ -> Unit }
+            }
+            """.trimIndent(),
+        )
+
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+
+        assertEquals("message-handle", fact.kind)
+        assertEquals(null, fact.channel)
+        assertTrue(fact.dynamic)
+        assertTrue(fact.location.line > 0)
+    }
+
     @Test
     fun `extracts MethodChannel registrations and React Native exports`(@TempDir project: Path) {
         project.resolve("src/main/kotlin/app/Plugin.kt").also { source ->

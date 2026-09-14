@@ -40,6 +40,16 @@ Flutter `MethodChannel` 등록·method handler와 React Native `@ReactModule`·`
 문서의 `project`는 현재 입력 root를 뜻하는 `.`이고 모든 위치는 project-relative다. build, test source set,
 `node_modules`, worktree 복제본은 제외한다.
 
+`kartograph bridges --project <root> --target flutter --messages`는 Kotlin/JVM Flutter
+`BasicMessageChannel`의 실제 `setMessageHandler` 등록과 `send` 호출만 bridge-facts v2로 출력한다.
+채널을 만들기만 한 지점과 `setMessageHandler(null)`은 등록 사실로 만들지 않는다. literal 이름,
+alias·shadowing·mutable 재할당을 추적하며 문자열 interpolation에서는 보수적으로 확인한
+비어 있지 않은 `channelPrefix`만 함께 낸다. `--graph-file`을 주면 관찰 위치를 compiler snapshot의
+실제 Kotlin/JVM 함수·메서드 정점과 조인할 수 있을 때만 `symbol.usr`를 붙인다. source scanner가
+이름이나 Pigeon 생성 규칙으로 JVM identity를 추측하지 않으며, graph가 없거나 위치가 모호하면
+`missing-handler-usrs` limitation을 보존한다. raw Java는 lexical 사실을 낼 수 있지만 Kotlin
+metadata와 generated identity는 graph snapshot 없이는 증명하지 않는다.
+
 동적 channel, 귀속하지 못한 handler, inline lambda가 아닌 handler, source scan으로 JVM USR을 만들 수 없는
 handler는 fact를 버리거나 성공으로 가장하지 않고 각각 limitation으로 센다. 현재 source scanner는
 `missing-handler-usrs`를 항상 명시하며, isthmus는 `channel: null` 또는 dynamic fact를 조인하지 않는다.

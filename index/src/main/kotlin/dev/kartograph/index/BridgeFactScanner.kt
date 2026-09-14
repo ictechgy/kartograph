@@ -3,12 +3,17 @@ package dev.kartograph.index
 import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
 import dev.kartograph.core.BridgeLocation
+import dev.kartograph.core.CodeGraph
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 
 /** Kotlin/Java 소스의 정적 리터럴만 추출하고 동적 이름은 버리지 않는 브리지 스캐너다. */
 public class BridgeFactScanner(private val projectRoot: Path) {
+    /** Flutter BasicMessageChannel 전용 bridge-facts v2를 opt-in으로 생성한다. */
+    public fun scanMessages(generatedAt: String? = null, graph: CodeGraph? = null): BridgeFactsDocument =
+        BasicMessageBridgeScanner(projectRoot).scan(generatedAt, graph)
+
     /**
      * 프로젝트 상대 근거와 조인 불가능한 사실의 한계를 bridge-facts v1 문서로 만든다.
      * generatedAt을 생략하면 최신 source 수정 시각을 snapshot 시각으로 사용한다(빈 입력은 Unix epoch).

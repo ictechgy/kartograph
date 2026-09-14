@@ -331,7 +331,8 @@ internal object AgentCommand {
             output.print(BRIDGES_HELP)
             return ExitStatus.SUCCESS.code
         }
-        val options = parsePaths(arguments, setOf("--project", "--format"), error) ?: return ExitStatus.USAGE.code
+        val options = parsePaths(arguments, setOf("--project", "--format", "--target", "--graph-file", "--messages"), error)
+            ?: return ExitStatus.USAGE.code
         val project = try {
             options.single("--project")?.let(Path::of)?.toAbsolutePath()?.normalize()
                 ?: return usage(error, "missing required --project path")
@@ -339,12 +340,16 @@ internal object AgentCommand {
             return usage(error, "invalid path")
         }
         if (options.single("--format")?.let { it != "json" } == true) return usage(error, "invalid bridges format")
+        if (options.single("--target")?.let { it != "flutter" } == true) return usage(error, "bridges currently supports only --target flutter")
+        val messages = options.values("--messages").isNotEmpty()
         if (!Files.isDirectory(project)) {
             error.println("error: project root does not exist")
             return ExitStatus.FAILURE.code
         }
         return try {
-            val document = BridgeFactScanner(project).scan()
+            val graph = options.single("--graph-file")?.let { SnapshotFiles.read(it).graph }
+            val document = if (messages) BridgeFactScanner(project).scanMessages(graph = graph)
+            else BridgeFactScanner(project).scan()
             output.print(AgentDocumentRenderer.bridges(document))
             ExitStatus.SUCCESS.code
         } catch (_: Exception) {
@@ -362,7 +367,7 @@ internal object AgentCommand {
                 error.println("error: unknown option: $option")
                 return null
             }
-            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings")) {
+            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings", "--messages")) {
                 values.getOrPut(option) { mutableListOf() } += "true"
                 index++
                 continue
@@ -438,8 +443,11 @@ internal object AgentCommand {
         Scan project sources for Flutter MethodChannel and React Native module registrations.
 
         Usage:
-          kartograph bridges --project <directory> [--format json]
+          kartograph bridges --project <directory> [--format json] [--target flutter]
+          kartograph bridges --project <directory> --target flutter --messages [--graph-file <snapshot>]
 
+        --messages emits opt-in bridge-facts v2 for Kotlin/JVM BasicMessageChannel handlers and send calls.
+        --graph-file may attach an exact compiler snapshot JVM symbol at the observed source line.
         Static literals only; dynamic channel names and unattributed handlers are reported as limitations.
         generatedAt is the newest scanned source modification time (Unix epoch for an empty source tree).
     """.trimIndent() + "\n"
