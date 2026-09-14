@@ -309,7 +309,7 @@ private fun enclosingDeclaration(projectRoot: Path, relativePath: String, line: 
     } catch (_: Exception) {
         return null
     }
-    val masked = maskDeclarationStrings(source)
+    val masked = maskDeclarationStrings(maskDeclarationComments(source))
     val ranges = mutableListOf<SourceDeclaration>()
     var depth = 0
     val lines = masked.split('\n')
@@ -351,6 +351,31 @@ private fun maskDeclarationStrings(source: String): String = buildString(source.
             quoted -> append(' ')
             else -> append(character)
         }
+    }
+}
+
+private fun maskDeclarationComments(source: String): String = buildString(source.length) {
+    var block = false
+    var line = false
+    var quote = false
+    var escaped = false
+    var index = 0
+    while (index < source.length) {
+        val character = source[index]
+        val next = source.getOrNull(index + 1)
+        when {
+            line && character == '\n' -> { line = false; append(character) }
+            line -> append(' ')
+            block && character == '*' && next == '/' -> { block = false; append("  "); index++ }
+            block -> append(if (character == '\n') '\n' else ' ')
+            !quote && character == '/' && next == '/' -> { line = true; append("  "); index++ }
+            !quote && character == '/' && next == '*' -> { block = true; append("  "); index++ }
+            quote && character == '\\' && !escaped -> { escaped = true; append(character) }
+            quote && escaped -> { escaped = false; append(character) }
+            character == '"' -> { quote = !quote; append(character) }
+            else -> { escaped = false; append(character) }
+        }
+        index++
     }
 }
 
