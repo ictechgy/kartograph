@@ -171,6 +171,41 @@ class RuntimeLimitationScannerTest {
     }
 
     @Test
+    fun `source channel counts sum unresolved runtime channels per source`(@TempDir root: Path) {
+        val classes = root.resolve("classes").createDirectories()
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "app/RuntimeUse", null, "java/lang/Object", null)
+        writer.visitSource("RuntimeUse.kt", null)
+        writer.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_NATIVE, "nativeCall", "()V", null, null).visitEnd()
+        writer.visitMethod(Opcodes.ACC_PUBLIC, "run", "()V", null, null).also { method ->
+            method.visitCode()
+            method.visitLdcInsn("app.Plugin")
+            method.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Class", "forName", "(Ljava/lang/String;)Ljava/lang/Class;", false)
+            method.visitInsn(Opcodes.POP)
+            method.visitInsn(Opcodes.ACONST_NULL)
+            method.visitInsn(Opcodes.ACONST_NULL)
+            method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "android/content/Context", "registerReceiver", "(Ljava/lang/Object;)V", false)
+            method.visitInsn(Opcodes.RETURN)
+            method.visitMaxs(2, 1)
+            method.visitEnd()
+        }
+        writer.visitEnd()
+        classes.resolve("RuntimeUse.class").writeBytes(writer.toByteArray())
+        val clean = ClassWriter(0)
+        clean.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "app/Clean", null, "java/lang/Object", null)
+        clean.visitSource("Clean.kt", null)
+        clean.visitEnd()
+        classes.resolve("Clean.class").writeBytes(clean.toByteArray())
+
+        val counts = RuntimeLimitationScanner.sourceChannelCounts(ClassFileIndexer().indexWithObservations(listOf(classes)))
+
+        // native 1 + project 밖 forName 대상 1 + 동적 등록 1
+        assertEquals(3, counts["RuntimeUse.kt"])
+        assertEquals(0, counts["Clean.kt"])
+        assertEquals(null, counts["Missing.kt"])
+    }
+
+    @Test
     fun `scans JAR class roots and ignores unrelated registration names`(@TempDir root: Path) {
         val writer = ClassWriter(0)
         writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "app/JarRuntime", null, "java/lang/Object", null)

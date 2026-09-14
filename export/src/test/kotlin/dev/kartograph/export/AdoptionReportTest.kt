@@ -9,6 +9,7 @@ import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
 class AdoptionReportTest {
@@ -129,5 +130,112 @@ class AdoptionReportTest {
         val sarif = AdoptionReporter.render(ReportFormat.SARIF, listOf(finding), emptyList(), 0)
 
         assertContains(sarif, "src/%5Bgenerated%5D%23%20file.kt")
+    }
+
+    @Test
+    fun `markdown report renders a review table with measured confidence`() {
+        val confidence = mapOf(
+            findings.last().nodeId to FindingConfidence.STATIC,
+            findings.first().nodeId to FindingConfidence.REVIEW,
+        )
+
+        val markdown = AdoptionReporter.render(ReportFormat.MARKDOWN, findings, AnalysisLimitation.entries, 1, confidence)
+
+        assertContains(markdown, "| Location | Declaration | Confidence |")
+        assertContains(markdown, "| `src/A.kt:3` | `class:a/Unused` | static |")
+        assertContains(markdown, "| `src/Z file.kt:7:2` | `class:z/Unused` | needs-runtime-review |")
+        assertContains(markdown, "2 finding(s) reported; 1 suppressed by baseline")
+        assertContains(markdown, "Findings are reachability facts, not deletion approvals.")
+        assertContains(markdown, "## Limitations")
+    }
+
+    @Test
+    fun `machine reports carry confidence and expired suppression counts only when provided`() {
+        val json = AdoptionReporter.render(
+            ReportFormat.JSON,
+            findings,
+            AnalysisLimitation.entries,
+            0,
+            mapOf(findings.last().nodeId to FindingConfidence.UNMEASURED),
+            2,
+        )
+        assertContains(json, "\"confidence\": \"unmeasured\"")
+        assertContains(json, "\"expiredSuppressions\": 2")
+
+        val plain = AdoptionReporter.render(ReportFormat.JSON, findings, AnalysisLimitation.entries, 0)
+        assertFalse(plain.contains("confidence"))
+        assertFalse(plain.contains("expiredSuppressions"))
+
+        val sarif = AdoptionReporter.render(
+            ReportFormat.SARIF,
+            findings,
+            AnalysisLimitation.entries,
+            0,
+            mapOf(findings.first().nodeId to FindingConfidence.REVIEW),
+        )
+        assertContains(sarif, "\"properties\": {\"confidence\": \"needs-runtime-review\"}")
+    }
+
+    @Test
+    fun `report format options resolve exactly`() {
+        assertEquals(ReportFormat.MARKDOWN, ReportFormat.fromOption("markdown"))
+        assertEquals(null, ReportFormat.fromOption("md"))
+    }
+
+    @Test
+    fun `suppress codec round trips deterministic sorted entries`() {
+        val entry = SuppressionEntry("dead|class:a/Unused|src/A.kt", "review window", java.time.LocalDate.parse("2027-01-31"))
+        val later = entry.copy(fingerprint = "dead|class:b/B|src/B.kt", expires = java.time.LocalDate.parse("2027-02-28"))
+
+        val rendered = SuppressCodec.render(listOf(later, entry))
+
+        assertEquals(
+            """
+                {
+                  "suppressions": [
+                    {
+                      "expires": "2027-01-31",
+                      "fingerprint": "dead|class:a/Unused|src/A.kt",
+                      "reason": "review window"
+                    },
+                    {
+                      "expires": "2027-02-28",
+                      "fingerprint": "dead|class:b/B|src/B.kt",
+                      "reason": "review window"
+                    }
+                  ],
+                  "version": 1
+                }
+
+            """.trimIndent(),
+            rendered,
+        )
+        assertEquals(listOf(entry, later), SuppressCodec.parse(rendered))
+    }
+
+    @Test
+    fun `suppress codec fails closed on malformed content`() {
+        assertEquals(emptyList(), SuppressCodec.parse("{\n  \"suppressions\": [],\n  \"version\": 1\n}"))
+        assertFailsWith<IllegalArgumentException> { SuppressCodec.parse("{\n  \"version\": 1\n}") }
+        assertFailsWith<IllegalArgumentException> {
+            SuppressCodec.parse(
+                "{\n  \"suppressions\": [{\"fingerprint\": \"x\", \"reason\": \"y\", \"expires\": \"2027-13-01\"}],\n  \"version\": 1\n}",
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            SuppressCodec.parse(
+                "{\n  \"suppressions\": [{\"fingerprint\": \"x\", \"reason\": \"y\", \"expires\": \"2027-01-01\"}],\n  \"version\": 2\n}",
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            SuppressCodec.parse(
+                "{\n  \"suppressions\": [{\"fingerprint\": \"x\", \"reason\": \"y\", \"extra\": 1, \"expires\": \"2027-01-01\"}],\n  \"version\": 1\n}",
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            SuppressCodec.parse(
+                "{\n  \"suppressions\": [{\"fingerprint\": \"x\", \"reason\": \"\", \"expires\": \"2027-01-01\"}],\n  \"version\": 1\n}",
+            )
+        }
     }
 }

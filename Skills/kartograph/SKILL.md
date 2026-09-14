@@ -32,6 +32,13 @@ Repeat `--classes` for relevant main Kotlin/Java/generated outputs. Preserve the
 
 Preserve any `--generated-classes` markers: they identify supplied roots containing only generated declarations. The graph still contains those nodes; the marker does not make a declaration a retention root. Do not infer generated input from class names.
 
+For one declaration's verdict in a single step, `kartograph why <symbol>` (same live-input options as `dead`)
+prints the state (`retained`, `retainedByMember`, `reachable`, `unreachable`), every retention evidence line with
+its file:line provenance, the representative path from a retention root, direct callers, a `used-by-tests` marker
+when `--test-classes` is supplied, and for unreachable declarations a measured `confidence` tier derived from the
+unresolved runtime channels observed in that declaration's own source file. The tier is a review aid; the global
+limitations are still printed, and the answer remains a reachability fact rather than deletion approval.
+
 For repeated investigation, `kartograph snapshot <the same live-input options>` writes a versioned graph with retention evidence, baseline state and measured limitations. Query it with `kartograph query '<symbol-or-usr>' --graph-file <snapshot.json>`. Ordinary `graph --format json` output lacks this query context. Saved queries use the captured state, add a `saved-graph` limitation, and do not recheck source freshness. Recapture after authorized changes before drawing conclusions about the current build. Live-input options cannot be mixed with `--graph-file`.
 
 For a current-build check, attach the successful registered compiler task's file with `snapshot --build-witness <file>`
