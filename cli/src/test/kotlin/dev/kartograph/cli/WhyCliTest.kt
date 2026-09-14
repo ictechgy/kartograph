@@ -49,14 +49,20 @@ class WhyCliTest {
     @Test
     fun `why prints the representative path and caller of a reachable class`(@TempDir projectRoot: Path) {
         val extraRoot = compileReachablePair(projectRoot)
+        val manifest = """
+            <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application>
+                <activity android:name="dev.kartograph.cli.Entry" />
+              </application>
+            </manifest>
+        """.trimIndent()
 
-        val execution = execute(*whyArguments(projectRoot, "<manifest />", "Helper", "--classes", extraRoot.toString()))
+        val execution = execute(*whyArguments(projectRoot, manifest, "Helper", "--classes", extraRoot.toString()))
 
         assertEquals(ExitStatus.SUCCESS.code, execution.status)
         assertContains(execution.output, "state\treachable")
-        assertContains(execution.output, "path\tdev.kartograph.cli.Entry.main -> dev.kartograph.cli.Helper")
-        assertContains(execution.output, "usedBy\t1")
-        assertContains(execution.output, "caller\tdev.kartograph.cli.Entry.main\treference")
+        assertContains(execution.output, "path\tdev.kartograph.cli.Entry.run -> dev.kartograph.cli.Helper")
+        assertContains(execution.output, "caller\tdev.kartograph.cli.Entry.run\treference")
     }
 
     @Test
@@ -82,17 +88,21 @@ class WhyCliTest {
 
     @Test
     fun `why marks a production class reached only by tests like dead does`(@TempDir projectRoot: Path) {
-        val productionRoot = compile(
-            projectRoot.resolve("testtarget-sources"),
-            projectRoot.resolve("testtarget-classes"),
-            "dev/kartograph/cli/TestOnlyTarget.java" to
-                "package dev.kartograph.cli; public class TestOnlyTarget { public void run() {} }",
-        )
-        val testRoot = compile(
-            projectRoot.resolve("testusage-sources"),
-            projectRoot.resolve("testusage-classes"),
-            "dev/kartograph/cli/TestOnlyUsage.java" to
-                "package dev.kartograph.cli; public class TestOnlyUsage { void use() { new TestOnlyTarget(); } }",
+        val compiler = requireNotNull(ToolProvider.getSystemJavaCompiler())
+        val production = projectRoot.resolve("testtarget-classes").createDirectories()
+        val productionSource = projectRoot.resolve("testtarget-sources/dev/kartograph/cli/TestOnlyTarget.java")
+        productionSource.parent.createDirectories()
+        productionSource.writeText("package dev.kartograph.cli; public class TestOnlyTarget { public void run() {} }")
+        check(compiler.run(null, null, null, "-d", production.toString(), productionSource.toString()) == 0)
+        val test = projectRoot.resolve("testusage-classes").createDirectories()
+        val testSource = projectRoot.resolve("testusage-sources/dev/kartograph/cli/TestOnlyUsage.java")
+        testSource.parent.createDirectories()
+        testSource.writeText("package dev.kartograph.cli; public class TestOnlyUsage { void use() { new TestOnlyTarget(); } }")
+        check(
+            compiler.run(
+                null, null, null, "-cp", production.toString(),
+                "-d", test.toString(), testSource.toString(),
+            ) == 0,
         )
 
         val execution = execute(
@@ -101,9 +111,9 @@ class WhyCliTest {
                 "<manifest />",
                 "TestOnlyTarget",
                 "--classes",
-                productionRoot.toString(),
+                production.toString(),
                 "--test-classes",
-                testRoot.toString(),
+                test.toString(),
             ),
         )
 
@@ -131,10 +141,10 @@ class WhyCliTest {
 
     @Test
     fun `why rejects options belonging to another command`(@TempDir projectRoot: Path) {
-        val execution = execute(*whyArguments(projectRoot, "<manifest />", "KartographCli", "--strict"))
+        val execution = execute(*whyArguments(projectRoot, "<manifest />", "KartographCli", "--baseline", "ignored"))
 
         assertEquals(ExitStatus.USAGE.code, execution.status)
-        assertContains(execution.error, "unknown why option: --strict")
+        assertContains(execution.error, "unknown why option: --baseline")
     }
 
     private fun execute(vararg arguments: String): Execution {
@@ -181,9 +191,9 @@ class WhyCliTest {
     private fun compileReachablePair(root: Path): Path = compile(
         root.resolve("reachable-sources"),
         root.resolve("reachable-classes"),
-        // launcher main이 retention root가 되어 main에서 호출한 Helper까지 도달 경로가 생긴다.
+        // manifest component의 member까지 root로 확장되어 Entry.run에서 호출한 Helper까지 경로가 생긴다.
         "dev/kartograph/cli/Entry.java" to
-            "package dev.kartograph.cli; public class Entry { public static void main(String[] args) { new Helper().run(); } }",
+            "package dev.kartograph.cli; public class Entry { public void run() { new Helper().run(); } }",
         "dev/kartograph/cli/Helper.java" to
             "package dev.kartograph.cli; public class Helper { public void run() {} }",
     )

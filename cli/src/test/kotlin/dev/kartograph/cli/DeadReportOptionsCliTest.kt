@@ -16,7 +16,7 @@ class DeadReportOptionsCliTest {
     @Test
     fun `dead json grades findings by measured runtime channels of their source`(@TempDir projectRoot: Path) {
         val classRoot = compileSamplePair(projectRoot)
-        val arguments = deadArguments(projectRoot, "<manifest />", "--report-format", "json")
+        val arguments = deadArguments(projectRoot, "<manifest />", "--report-format", "json", "--strict")
 
         val execution = execute(*arguments, "--classes", classRoot.toString())
 
@@ -33,7 +33,7 @@ class DeadReportOptionsCliTest {
     @Test
     fun `dead text format stays free of confidence annotations`(@TempDir projectRoot: Path) {
         val classRoot = compileSamplePair(projectRoot)
-        val arguments = deadArguments(projectRoot, "<manifest />", "--classes", classRoot.toString())
+        val arguments = deadArguments(projectRoot, "<manifest />", "--classes", classRoot.toString(), "--strict")
 
         val execution = execute(*arguments)
 
@@ -52,6 +52,7 @@ class DeadReportOptionsCliTest {
             classRoot.toString(),
             "--report-format",
             "markdown",
+            "--strict",
         )
 
         val execution = execute(*arguments)

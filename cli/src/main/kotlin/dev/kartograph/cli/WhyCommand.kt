@@ -3,6 +3,7 @@ package dev.kartograph.cli
 import dev.kartograph.analysis.IncompleteKeepRuleHierarchyException
 import dev.kartograph.core.AnalysisLimitation
 import dev.kartograph.core.RetentionReason
+import dev.kartograph.core.qualifiedName
 import dev.kartograph.export.toPlainTextLocation
 import dev.kartograph.index.AndroidResourceScanningException
 import dev.kartograph.index.ClassHierarchyIndexingException
