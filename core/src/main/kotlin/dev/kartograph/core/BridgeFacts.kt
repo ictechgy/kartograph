@@ -11,6 +11,8 @@ public data class BridgeFactsDocument(
     val project: String,
     val facts: List<BridgeFact>,
     val limitations: List<String>,
+    /** v2 BasicMessageChannel 문서에서만 쓰는 transport 식별자다. */
+    val transport: String? = null,
 )
 
 /** 교환 문서의 생산 도구 식별자다. */
@@ -25,6 +27,8 @@ public data class BridgeFact(
     val location: BridgeLocation,
     val symbol: BridgeSymbol? = null,
     val target: String,
+    /** 동적 Basic 채널 표현식에서 AST로 확인한 비어 있지 않은 literal prefix다. */
+    val channelPrefix: String? = null,
 )
 
 /** 프로젝트 상대 파일과 1부터 시작하는 위치다. */

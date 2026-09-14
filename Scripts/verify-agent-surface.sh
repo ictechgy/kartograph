@@ -55,8 +55,9 @@ if not impact["unresolved"] or not any(x.startswith("potential-impact:") for x i
 bridges = json.loads(pathlib.Path(sys.argv[2]).read_text())
 if bridges["format"] != "bridge-facts" or bridges["version"] != 1 or bridges["platform"] != "kotlin":
     raise SystemExit("bridge document metadata does not match v1")
-if bridges["project"] != ".":
-    raise SystemExit("bridge document project must not expose an absolute path")
+expected_project = str(pathlib.Path("fixtures/bridge-corpus").resolve()).replace("\\", "/")
+if bridges["project"] != expected_project:
+    raise SystemExit("bridge document project is not the canonical project root")
 facts = {(fact["kind"], fact["channel"], fact.get("method")) for fact in bridges["facts"]}
 expected = {
     ("channel-register", "dev.kartograph/camera", None),
@@ -69,5 +70,9 @@ if facts != expected:
 if not any(item.startswith("missing-handler-usrs:") for item in bridges["limitations"]):
     raise SystemExit("bridge facts omit the unresolved handler identifier limitation")
 PY
+PYTHON_STATUS=$?
+if [[ "$PYTHON_STATUS" -ne 0 ]]; then
+    exit "$PYTHON_STATUS"
+fi
 
 echo "Agent surface verified"

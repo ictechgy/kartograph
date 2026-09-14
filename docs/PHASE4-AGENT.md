@@ -37,8 +37,21 @@ build 이후 수정된 source를 센다. 관측된 항목이 없으면 배열은
 
 `kartograph bridges --project <root>`은 isthmus `bridge-facts` version 1을 출력한다. Kotlin 수신 측에서
 Flutter `MethodChannel` 등록·method handler와 React Native `@ReactModule`·`@ReactMethod`를 수집한다.
-문서의 `project`는 현재 입력 root를 뜻하는 `.`이고 모든 위치는 project-relative다. build, test source set,
+문서의 `project`는 현재 입력 root의 canonical POSIX 절대경로이고 모든 위치는 project-relative다. build, test source set,
 `node_modules`, worktree 복제본은 제외한다.
+
+`kartograph bridges --project <root> --target flutter --messages`는 Kotlin/JVM Flutter
+`BasicMessageChannel`의 실제 `setMessageHandler` 등록만 bridge-facts v2로 출력한다. Kotlin 송신
+호출은 receiver 전용 교환 계약에 맞지 않아 fact로 만들지 않고 `unscanned-message-sends` limitation으로 센다.
+채널을 만들기만 한 지점과 `setMessageHandler(null)`은 등록 사실로 만들지 않는다. literal 이름,
+immutable alias를 추적하며 Kotlin `var`·Java non-final·관찰한 재할당의 이름은 실행 순서를
+확정하지 않고 dynamic으로 남긴다. 같은 파일의 동명 shadow도 보수적으로 영향을 받을 수 있다.
+Kotlin `val`·Java `final`과 직접 연결한 생성식의 literal은 유지한다. 문자열 interpolation에서는 보수적으로 확인한
+비어 있지 않은 `channelPrefix`만 함께 낸다. `--graph-file`을 주면 관찰 위치를 compiler snapshot의
+실제 Kotlin/JVM 함수·메서드 정점과 조인할 수 있을 때만 `symbol.usr`를 붙인다. source scanner가
+이름이나 Pigeon 생성 규칙으로 JVM identity를 추측하지 않으며, graph가 없거나 위치가 모호하면
+`missing-handler-usrs` limitation을 보존한다. raw Java는 lexical 사실을 낼 수 있지만 Kotlin
+metadata와 generated identity는 graph snapshot 없이는 증명하지 않는다.
 
 동적 channel, 귀속하지 못한 handler, inline lambda가 아닌 handler, source scan으로 JVM USR을 만들 수 없는
 handler는 fact를 버리거나 성공으로 가장하지 않고 각각 limitation으로 센다. 현재 source scanner는
