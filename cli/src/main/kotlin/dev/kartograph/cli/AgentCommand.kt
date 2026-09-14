@@ -447,7 +447,7 @@ internal object AgentCommand {
           kartograph bridges --project <directory> --target flutter --messages [--graph-file <snapshot>]
 
         --messages emits opt-in bridge-facts v2 for Kotlin/JVM BasicMessageChannel handlers and send calls.
-        --graph-file may attach an exact compiler snapshot JVM symbol at the observed source line.
+        --graph-file may attach a compiler snapshot JVM symbol at the observed or enclosing source location.
         Static literals only; dynamic channel names and unattributed handlers are reported as limitations.
         generatedAt is the newest scanned source modification time (Unix epoch for an empty source tree).
     """.trimIndent() + "\n"
