@@ -71,7 +71,8 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         ALIAS_ASSIGNMENT.findAll(eventCode).forEach { match -> events += Event.Alias(match.range.first, match.groupValues[1], match.groupValues[2]) }
         HANDLER.findAll(eventCode).forEach { match ->
             val receiver = match.groupValues[1].takeUnless { it.isBlank() }
-            val open = code.indexOf('(', match.range.first)
+            val callTail = code.substring(match.range.last + 1).dropWhile(Char::isWhitespace)
+            val open = if (callTail.startsWith("(")) code.indexOf('(', match.range.last + 1) else -1
             val end = balancedEnd(code, open)
             val isNull = open >= 0 && end > open && code.substring(open + 1, end).trim() == "null"
             events += Event.Handler(match.range.first, receiver, isNull)
@@ -83,7 +84,7 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
             val scope = scopePath(eventCode, event.offset)
             when (event) {
                 is Event.Constructor -> {
-                    val expression = event.arguments.getOrNull(1)
+                    val expression = event.arguments.firstNamed("name") ?: event.arguments.getOrNull(1)
                     val resolved = expression?.let { lookup(bindings, it.trim(), scope) ?: resolveChannel(it) }
                         ?: resolveChannel(null)
                     event.binding?.let { assignment ->
@@ -105,7 +106,9 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
                         location = location, target = "flutter", channelPrefix = channel?.prefix)
                 }
                 is Event.Send -> {
-                    stats.unsupportedSends++
+                    if (lookup(bindings, event.receiver, scope) != null ||
+                        previousChainedConstructor(events, event.offset, code)?.directHandler != null
+                    ) stats.unsupportedSends++
                 }
             }
         }
@@ -141,9 +144,17 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         val out = StringBuilder(source.length)
         var block = false
         var quote: Char? = null
+        var rawQuote = false
         var escaped = false
         var index = 0
         while (index < source.length) {
+            if (rawQuote && source.startsWith("\"\"\"", index)) {
+                out.append("\"\"\""); rawQuote = false; index += 3; continue
+            }
+            if (rawQuote) { out.append(source[index]); index++; continue }
+            if (quote == null && source.startsWith("\"\"\"", index)) {
+                out.append("\"\"\""); rawQuote = true; index += 3; continue
+            }
             val c = source[index]
             val next = source.getOrNull(index + 1)
             when {
@@ -185,9 +196,20 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
     private fun maskStringContents(source: String): String {
         val out = StringBuilder(source.length)
         var quote = false
+        var rawQuote = false
         var escaped = false
-        source.forEach { c ->
+        var index = 0
+        while (index < source.length) {
+            if (!quote && source.startsWith("\"\"\"", index)) {
+                rawQuote = true; quote = true; out.append("   "); index += 3; continue
+            }
+            if (rawQuote && source.startsWith("\"\"\"", index)) {
+                rawQuote = false; quote = false; out.append("   "); index += 3; continue
+            }
+            val c = source[index]
             when {
+                rawQuote && c == '\n' -> out.append('\n')
+                rawQuote -> out.append(' ')
                 !quote && c == '"' -> { quote = true; out.append(c) }
                 quote && escaped -> { escaped = false; out.append(' ') }
                 quote && c == '\\' -> { escaped = true; out.append(' ') }
@@ -196,6 +218,7 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
                 quote -> out.append(' ')
                 else -> out.append(c)
             }
+            index++
         }
         return out.toString()
     }
@@ -204,11 +227,19 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         if (open < 0 || source.getOrNull(open) != '(') return -1
         var depth = 0
         var quote = false
+        var rawQuote = false
         var escaped = false
-        for (index in open until source.length) {
+        var index = open
+        while (index < source.length) {
+            if (rawQuote) {
+                if (source.startsWith("\"\"\"", index)) { rawQuote = false; index += 3 } else index++
+                continue
+            }
+            if (!quote && source.startsWith("\"\"\"", index)) { rawQuote = true; index += 3; continue }
             val c = source[index]
-            if (quote) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == '"' -> quote = false }; continue }
+            if (quote) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == '"' -> quote = false }; index++; continue }
             when (c) { '"' -> quote = true; '(' -> depth++; ')' -> { depth--; if (depth == 0) return index } }
+            index++
         }
         return -1
     }
@@ -231,11 +262,19 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         var start = open + 1
         var depth = 0
         var quote = false
+        var rawQuote = false
         var escaped = false
-        for (index in start until end) {
+        var index = start
+        while (index < end) {
+            if (rawQuote) {
+                if (source.startsWith("\"\"\"", index)) { rawQuote = false; index += 3 } else index++
+                continue
+            }
+            if (!quote && source.startsWith("\"\"\"", index)) { rawQuote = true; index += 3; continue }
             val c = source[index]
-            if (quote) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == '"' -> quote = false }; continue }
+            if (quote) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == '"' -> quote = false }; index++; continue }
             when (c) { '"' -> quote = true; '(' -> depth++; ')' -> depth--; ',' -> if (depth == 0) { values += source.substring(start, index).trim(); start = index + 1 } }
+            index++
         }
         values += source.substring(start, end).trim()
         return values
@@ -245,22 +284,62 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         expression == null -> Channel(null, true, null)
         expression.isQuotedOrInterpolated() -> {
             val raw = expression.trim()
-            val decoded = decodeLiteral(raw.substring(1, raw.length - 1).substringBefore('$'))
-            if ('$' in raw && decoded.isNotEmpty()) Channel(raw, true, decoded) else Channel(decodeLiteral(raw.substring(1, raw.length - 1)), '$' in raw, null)
+            val triple = raw.startsWith("\"\"\"") && raw.endsWith("\"\"\"")
+            val body = if (triple) raw.substring(3, raw.length - 3) else raw.substring(1, raw.length - 1)
+            val interpolation = interpolationIndex(body)
+            if (interpolation >= 0) {
+                val prefix = if (triple) body.substring(0, interpolation) else decodeLiteral(body.substring(0, interpolation))
+                Channel(raw, true, prefix.takeIf { it.isNotEmpty() })
+            } else Channel(if (triple) body else decodeLiteral(body), false, null)
         }
         else -> Channel(expression.trim(), true, null)
     }
 
-    private fun decodeLiteral(value: String): String = buildString {
-        var escaped = false
-        value.forEach { c ->
-            if (escaped) { append(when (c) { 'n' -> '\n'; 'r' -> '\r'; 't' -> '\t'; '\\' -> '\\'; '"' -> '"'; else -> c }); escaped = false }
-            else if (c == '\\') escaped = true else append(c)
+    private fun List<String>.firstNamed(name: String): String? = firstOrNull { argument ->
+        argument.substringBefore('=', "").trim() == name
+    }?.substringAfter('=', "")?.trim()
+
+    private fun interpolationIndex(value: String): Int {
+        var index = 0
+        while (index < value.length) {
+            if (value[index] == '\\') { index += 2; continue }
+            if (value[index] == '$') {
+                if (value.isDollarLiteral(index)) { index += 6; continue }
+                return index
+            }
+            index++
         }
-        if (escaped) append('\\')
+        return -1
     }
 
-    private fun String.isQuotedOrInterpolated(): Boolean = trim().let { it.length >= 2 && it.first() == '"' && it.last() == '"' }
+    private fun String.isDollarLiteral(index: Int): Boolean =
+        index + 5 < length && this[index + 1] == '{' && this[index + 2] == '\'' &&
+            this[index + 3] == '$' && this[index + 4] == '\'' && this[index + 5] == '}'
+
+    private fun decodeLiteral(value: String): String = buildString {
+        var index = 0
+        while (index < value.length) {
+            if (value.isDollarLiteral(index)) { append('$'); index += 6; continue }
+            when (val c = value[index]) {
+                '\\' -> when (val escaped = value.getOrNull(index + 1)) {
+                    null -> { append('\\'); index++ }
+                    'u' -> {
+                        val digits = value.substring(index + 2, (index + 6).coerceAtMost(value.length))
+                        if (digits.length == 4 && digits.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) {
+                            append(digits.toInt(16).toChar()); index += 6
+                        } else { append('u'); index += 2 }
+                    }
+                    else -> { append(when (escaped) { 'n' -> '\n'; 'r' -> '\r'; 't' -> '\t'; '\\' -> '\\'; '"' -> '"'; '\'' -> '\''; else -> escaped }); index += 2 }
+                }
+                else -> { append(c); index++ }
+            }
+        }
+    }
+
+    private fun String.isQuotedOrInterpolated(): Boolean = trim().let {
+        (it.length >= 2 && it.first() == '"' && it.last() == '"') ||
+            (it.startsWith("\"\"\"") && it.endsWith("\"\"\"") && it.length >= 6)
+    }
 
     private data class Channel(val value: String?, val dynamic: Boolean, val prefix: String?)
     private data class Binding(val name: String, val scope: List<Int>, var channel: Channel)
@@ -281,7 +360,7 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         val JAVA_ASSIGNMENT = Regex("\\b(?:[A-Za-z_][A-Za-z0-9_]*)(?:\\s*<[^>\\n]*>)?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*$")
         val ALIAS_ASSIGNMENT = Regex("(?m)\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)")
         val MUTATION_ASSIGNMENT = Regex("(?m)(?<![.\\w])([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*(?=(?:BasicMessageChannel|new\\s+BasicMessageChannel))")
-        val HANDLER = Regex("(?:\\b([A-Za-z_][A-Za-z0-9_]*)|\\))\\s*\\.\\s*setMessageHandler\\s*(?=\\(|\\{)")
+        val HANDLER = Regex("(?:\\b([A-Za-z_][A-Za-z0-9_]*)|\\))\\s*\\??\\.\\s*setMessageHandler\\s*(?=\\(|\\{)")
         val SEND = Regex("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*send\\s*\\(")
     }
 }
@@ -296,7 +375,11 @@ internal fun attachSnapshotSymbol(fact: BridgeFact, graph: CodeGraph, projectRoo
             node.name == declaration.name &&
             node.kind.name.lowercase() in setOf("function", "method")
     }
-    val node = candidates.singleOrNull() ?: return fact
+    val node = candidates.filter { (it.location?.line ?: Int.MAX_VALUE) <= fact.location.line }
+        .groupBy { it.location?.line }
+        .maxByOrNull { it.key ?: Int.MIN_VALUE }?.value?.singleOrNull()
+        ?: candidates.singleOrNull()
+        ?: return fact
     return fact.copy(symbol = BridgeSymbol(node.qualifiedName, node.id.value))
 }
 
@@ -363,9 +446,16 @@ private fun findKotlinOpening(lines: List<String>, declarationLine: Int, afterOp
 
 private fun maskDeclarationStrings(source: String): String = buildString(source.length) {
     var quoted = false
+    var rawQuoted = false
     var escaped = false
-    source.forEach { character ->
+    var index = 0
+    while (index < source.length) {
+        if (rawQuoted && source.startsWith("\"\"\"", index)) { rawQuoted = false; quoted = false; append("   "); index += 3; continue }
+        if (!quoted && source.startsWith("\"\"\"", index)) { rawQuoted = true; quoted = true; append("   "); index += 3; continue }
+        val character = source[index]
         when {
+            rawQuoted && character == '\n' -> append('\n')
+            rawQuoted -> append(' ')
             !quoted && character == '"' -> { quoted = true; append(character) }
             quoted && escaped -> { escaped = false; append(' ') }
             quoted && character == '\\' -> { escaped = true; append(' ') }
@@ -374,6 +464,7 @@ private fun maskDeclarationStrings(source: String): String = buildString(source.
             quoted -> append(' ')
             else -> append(character)
         }
+        index++
     }
 }
 
@@ -381,9 +472,13 @@ private fun maskDeclarationComments(source: String): String = buildString(source
     var block = false
     var line = false
     var quote = false
+    var rawQuote = false
     var escaped = false
     var index = 0
     while (index < source.length) {
+        if (rawQuote && source.startsWith("\"\"\"", index)) { rawQuote = false; quote = false; append("\"\"\""); index += 3; continue }
+        if (!quote && source.startsWith("\"\"\"", index)) { rawQuote = true; quote = true; append("\"\"\""); index += 3; continue }
+        if (rawQuote) { append(source[index]); index++; continue }
         val character = source[index]
         val next = source.getOrNull(index + 1)
         when {

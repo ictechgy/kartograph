@@ -85,7 +85,7 @@ class BridgeFactScannerTest {
 
         val fact = BridgeFactScanner(project).scanMessages().facts.single()
 
-        assertEquals("name = name", fact.channel)
+        assertEquals("name", fact.channel)
         assertTrue(fact.dynamic)
         assertEquals(null, fact.channelPrefix)
     }
@@ -188,6 +188,111 @@ class BridgeFactScannerTest {
 
         assertEquals(listOf("first", null), facts.map { it.channel })
         assertTrue(facts[1].dynamic)
+    }
+
+    @Test
+    fun `messages keeps a handler when its lambda calls reply with null`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any) {
+              val channel = BasicMessageChannel<Any?>(messenger, "camera", codec)
+              channel.setMessageHandler { _, reply -> reply.reply(null) }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scanMessages().facts
+
+        assertEquals(listOf("message-handle" to "camera"), facts.map { it.kind to it.channel })
+    }
+
+    @Test
+    fun `messages decodes escaped dollar as a literal channel`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any) {
+              BasicMessageChannel<Any?>(messenger, "dev.flutter.pigeon.Api.\${'$'}literal", codec)
+                .setMessageHandler { _, _ -> Unit }
+            }
+            """.trimIndent(),
+        )
+
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+
+        assertEquals("dev.flutter.pigeon.Api.${'$'}literal", fact.channel)
+        assertTrue(!fact.dynamic)
+        assertEquals(null, fact.channelPrefix)
+    }
+
+    @Test
+    fun `messages ignores braces and bridge text inside a Kotlin raw string`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(listOf(
+            "fun first(messenger: Any, codec: Any) {",
+            "  val doc = \"\"\"config } channel.send(\\\"fake\\\")\"\"\"",
+            "  val channel = BasicMessageChannel<Any?>(messenger, \"first\", codec)",
+            "  channel.setMessageHandler { _, _ -> Unit }",
+            "}",
+            "fun second(messenger: Any, codec: Any) {",
+            "  val channel = BasicMessageChannel<Any?>(messenger, \"second\", codec)",
+            "  channel.setMessageHandler { _, _ -> Unit }",
+            "}",
+        ).joinToString("\n"))
+
+        val facts = BridgeFactScanner(project).scanMessages().facts
+
+        assertEquals(listOf("first", "second"), facts.map { it.channel })
+    }
+
+    @Test
+    fun `messages resolves named channel constructor argument`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any) {
+              BasicMessageChannel<Any?>(codec = codec, name = "named", binaryMessenger = messenger)
+                .setMessageHandler { _, _ -> Unit }
+            }
+            """.trimIndent(),
+        )
+
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+
+        assertEquals("named", fact.channel)
+        assertTrue(!fact.dynamic)
+    }
+
+    @Test
+    fun `messages decodes unicode escapes in channel literals`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any) {
+              BasicMessageChannel<Any?>(messenger, "dev.flutter.pigeon.Api.\u0041pi", codec)
+                .setMessageHandler { _, _ -> Unit }
+            }
+            """.trimIndent(),
+        )
+
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+
+        assertEquals("dev.flutter.pigeon.Api.Api", fact.channel)
+        assertTrue(!fact.dynamic)
+    }
+
+    @Test
+    fun `messages records nullable safe-call handlers and ignores unrelated send calls`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any, other: Any) {
+              val channel = BasicMessageChannel<Any?>(messenger, "camera", codec)
+              channel?.setMessageHandler { _, _ -> Unit }
+              other.send(Unit)
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanMessages()
+
+        assertEquals(listOf("message-handle" to "camera"), document.facts.map { it.kind to it.channel })
+        assertTrue(document.limitations.none { it.startsWith("unscanned-message-sends:") })
     }
 
     @Test
@@ -321,7 +426,9 @@ class BridgeFactScannerTest {
         )
         val graph = CodeGraph(listOf(
             GraphNode(NodeId("method:app/MessagesAsync#setUp(Ljava/lang/Object;Ljava/lang/Object;)V"), "setUp", NodeKind.METHOD,
-                location = SourceLocation("MessagesAsync.kt", 7, null)),
+                location = SourceLocation("MessagesAsync.kt", 2, null)),
+            GraphNode(NodeId("method:app/MessagesAsync#setUp(Ljava/lang/Object;)V"), "setUp", NodeKind.METHOD,
+                location = SourceLocation("MessagesAsync.kt", 20, null)),
         ), emptyList())
 
         val fact = BridgeFactScanner(project).scanMessages(graph = graph).facts.single()
