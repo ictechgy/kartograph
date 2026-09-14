@@ -316,26 +316,49 @@ private fun enclosingDeclaration(projectRoot: Path, relativePath: String, line: 
     lines.forEachIndexed { index, text ->
         val start = index + 1
         val before = depth
-        val declaration = KOTLIN_DECLARATION.find(text) ?: JAVA_DECLARATION.find(text)
-        val opening = declaration?.let { text.indexOf('{', it.range.first) } ?: -1
-        if (declaration != null && opening >= 0) {
+        val kotlinHeader = KOTLIN_HEADER_START.find(text)
+        val kotlinOpening = kotlinHeader?.let { findKotlinOpening(lines, index, it.range.last) }
+        val javaDeclaration = if (kotlinHeader == null) JAVA_DECLARATION.find(text) else null
+        val declarationName = kotlinHeader?.groupValues?.get(1) ?: javaDeclaration?.groupValues?.get(1)
+        val openingLine = kotlinOpening ?: javaDeclaration?.let { index }
+        if (declarationName != null && openingLine != null) {
             val openingDepth = before + 1
-            var after = before + braceDelta(text)
+            var after = before
             var end = start
-            if (after >= openingDepth) {
-                var cursor = index + 1
-                var current = after
+            var cursor = index
+            var current = before
+            while (cursor <= openingLine) {
+                current += braceDelta(lines[cursor])
+                cursor++
+            }
+            if (current >= openingDepth) {
                 while (cursor < lines.size && current >= openingDepth) {
                     current += braceDelta(lines[cursor])
                     cursor++
                     end = cursor
                 }
             }
-            ranges += SourceDeclaration(declaration.groupValues[1], start, end)
+            if (end == start) end = openingLine + 1
+            ranges += SourceDeclaration(declarationName, start, end)
         }
         depth = (before + braceDelta(text)).coerceAtLeast(0)
     }
     return ranges.filter { line in it.startLine..it.endLine }.minByOrNull { it.endLine - it.startLine }
+}
+
+private fun findKotlinOpening(lines: List<String>, declarationLine: Int, afterOpen: Int): Int? {
+    var parentheses = 1
+    for (lineIndex in declarationLine until minOf(lines.size, declarationLine + 128)) {
+        val text = lines[lineIndex].let { if (lineIndex == declarationLine) it.substring(afterOpen + 1) else it }
+        for (character in text) {
+            when {
+                parentheses > 0 && character == '(' -> parentheses++
+                parentheses > 0 && character == ')' -> parentheses--
+                parentheses == 0 && character == '{' -> return lineIndex
+            }
+        }
+    }
+    return null
 }
 
 private fun maskDeclarationStrings(source: String): String = buildString(source.length) {
@@ -381,5 +404,5 @@ private fun maskDeclarationComments(source: String): String = buildString(source
 
 private fun braceDelta(text: String): Int = text.count { it == '{' } - text.count { it == '}' }
 
-private val KOTLIN_DECLARATION = Regex("\\bfun\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^)]*\\)\\s*\\{")
+private val KOTLIN_HEADER_START = Regex("\\bfun\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(")
 private val JAVA_DECLARATION = Regex("\\b(?:public\\s+|private\\s+|protected\\s+|static\\s+|final\\s+|synchronized\\s+|native\\s+|abstract\\s+)*(?:[A-Za-z_][A-Za-z0-9_<>.?\\[\\]]*\\s+)([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^)]*\\)\\s*\\{")

@@ -305,6 +305,32 @@ class BridgeFactScannerTest {
     }
 
     @Test
+    fun `v1 attaches symbol for multiline Kotlin function header`(@TempDir project: Path) {
+        project.resolve("MessagesAsync.kt").writeText(
+            """
+            class MessagesAsync {
+              fun setUp(
+                binaryMessenger: Any,
+                api: Any,
+              ): Unit {
+                BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.Api.echo", api)
+                  .setMessageHandler { _, _ -> Unit }
+              }
+            }
+            """.trimIndent(),
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/MessagesAsync#setUp(Ljava/lang/Object;Ljava/lang/Object;)V"), "setUp", NodeKind.METHOD,
+                location = SourceLocation("MessagesAsync.kt", 7, null)),
+        ), emptyList())
+
+        val fact = BridgeFactScanner(project).scanMessages(graph = graph).facts.single()
+
+        assertEquals("dev.flutter.pigeon.Api.echo", fact.channel)
+        assertEquals("method:app/MessagesAsync#setUp(Ljava/lang/Object;Ljava/lang/Object;)V", fact.symbol?.usr)
+    }
+
+    @Test
     fun `snapshot symbol remains absent for stale or ambiguous source mappings`(@TempDir project: Path) {
         project.resolve("Plugin.kt").writeText(
             """
