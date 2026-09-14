@@ -1,8 +1,22 @@
 # Android application 모듈의 R.jar 증거 연결 — 재현·설계 노트
 
-상태: **설계 전 재현 대기**. 이 문서는 구현을 요구하지 않으며, `unwitnessed-class-root` 판정을
-약화하지 않는 선에서 application 모듈 자동 캡처를 일반화하기 위한 비교 실험 계획이다.
-0.9.0의 자동 캡처 검증표는 **Android library**다. 앱 전체 지원으로 일반화하지 않는다.
+상태: **CLI 레벨 비교 실험 완료, 실제 AGP 재현 대기**. 이 문서는 `unwitnessed-class-root` 판정을
+약화하지 않는 선에서 application 모듈 자동 캡처를 일반화하기 위한 실험 계획과 그중 CLI 절반의
+실행 결과를 기록한다. 0.9.0의 자동 캡처 검증표는 **Android library**다. 앱 전체 지원으로 일반화하지 않는다.
+
+## CLI 레벨 비교 실험 결과 (2026-09-14, AppModuleRJarCliTest)
+
+실제 AGP 빌드 없이 verifier 계약을 양방향으로 실행했다(`cli/src/test/kotlin/.../AppModuleRJarCliTest.kt`):
+
+- **재현.** javac 산출 `classes/`와 processResources 형태의 `generated/R.jar`를 같은 snapshot의
+  class root로 캡처하고, `classes`만 커버하는 compiler witness를 붙였다. `verify-snapshot`은
+  `unverified` + `unwitnessed-class-root`(exit 1)로 거부한다. AGP 8 application 거부의
+  원인 가설이 verifier 계약과 일치함을 확인했다.
+- **후보 A 계약 검증.** 같은 시나리오에 `processDebugResources`를 producer로 하는 두 번째 witness
+  (inputs: sources=res, buildConfig, compiler, options / outputs: classes=generated/R.jar)를 추가하면
+  `matched`(exit 0)가 된다. R.jar 내용을 한 바이트라도 바꾸면 `stale` + `changed-classes`로 실패한다.
+  즉 witness 추가로 거부를 풀어도 producer 증거 강제력은 그대로 유지된다.
+- capture 단계는 witness가 없어도 성공하고 거부는 verify 단계에서 일어난다는 경계도 그대로다.
 
 ## 현재 실패의 사실 관계
 
@@ -20,9 +34,10 @@
 
 ## 재현·비교 실험 계획 (구현 전 필수)
 
-1. **최소 재현 유지.** AGP 8.7.3/Gradle 8.10.2 application 1개(활동 1개, resource 1개)로
+0. **CLI 절반 완료(위 섹션).** 남은 것은 실제 AGP 절반이다.
+1. **최소 재현 유지(AGP 필요).** AGP 8.7.3/Gradle 8.10.2 application 1개(활동 1개, resource 1개)로
    `kartographSnapshotDebug` → `verify-snapshot` 재현을 스크립트로 고정한다. 기존 `local-android-1.log`와
-   같은 실패 이유 집합이 나오는지 먼저 확인한다.
+   같은 실패 이유 집합(`unwitnessed-class-root`)이 나오는지 확인하고, R.jar의 실제 class root 포함 경로를 확인한다.
 2. **producer 사실 관계 측정.** 같은 빌드에서 `processDebugResources`의 declared inputs(merged resources,
    aapt2, namespace)와 outputs(`R.jar`, merged resources, proguard rules)를 Gradle Variant/Artifact API로
    덤프해 표로 남긴다. R.jar의 class root 통합 경로(어느 task가 R.jar를 `--classes`에 합치는지)를
