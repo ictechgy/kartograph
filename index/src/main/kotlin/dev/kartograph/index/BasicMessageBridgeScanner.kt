@@ -75,7 +75,8 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
             val open = if (callTail.startsWith("(")) code.indexOf('(', match.range.last + 1) else -1
             val end = balancedEnd(code, open)
             val isNull = open >= 0 && end > open && code.substring(open + 1, end).trim() == "null"
-            events += Event.Handler(match.range.first, receiver, isNull)
+            val handlerOffset = eventCode.indexOf("setMessageHandler", match.range.first).takeIf { it >= 0 } ?: match.range.first
+            events += Event.Handler(handlerOffset, receiver, isNull)
         }
         SEND.findAll(eventCode).forEach { match -> events += Event.Send(match.range.first, match.groupValues[1]) }
 
@@ -101,7 +102,7 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
                 is Event.Handler -> if (!event.isNull) {
                     val channel = event.receiver?.let { lookup(bindings, it, scope) }
                         ?: previousChainedConstructor(events, event.offset, code)?.directHandler
-                    val location = location(relative, code, event.offset)
+                    val location = location(relative, source, event.offset)
                     facts += BridgeFact("message-handle", channel?.value, dynamic = channel?.dynamic ?: true,
                         location = location, target = "flutter", channelPrefix = channel?.prefix)
                 }
@@ -117,7 +118,7 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
     private fun previousChainedConstructor(events: List<Event>, offset: Int, source: String): Event.Constructor? =
         events.filterIsInstance<Event.Constructor>().lastOrNull { constructor ->
             (constructor.end == offset && source.getOrNull(offset) == ')') ||
-                (constructor.end < offset && source.substring(constructor.end + 1, offset).trim() == ".")
+                (constructor.end < offset && source.substring(constructor.end + 1, offset).trim().startsWith("."))
         }
 
     private fun precedingBinding(source: String, offset: Int): BindingSpec? {
@@ -137,7 +138,9 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
     private fun location(path: String, source: String, offset: Int): BridgeLocation {
         val line = source.substring(0, offset.coerceIn(0, source.length)).count { it == '\n' } + 1
         val lineStart = source.lastIndexOf('\n', (offset - 1).coerceAtLeast(0)) + 1
-        return BridgeLocation(path, line, offset - lineStart + 1)
+        val column = source.substring(lineStart, offset.coerceIn(lineStart, source.length))
+            .toByteArray(Charsets.UTF_8).size + 1
+        return BridgeLocation(path, line, column)
     }
 
     private fun stripComments(source: String): String {

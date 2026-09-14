@@ -359,6 +359,30 @@ class BridgeFactScannerTest {
     }
 
     @Test
+    fun `v1 bridge columns count UTF8 bytes before registration and method facts`(@TempDir project: Path) {
+        val line = "/* 한😀 */ MethodChannel(messenger, \"camera\").setMethodCallHandler { call, _ -> when (call.method) { \"take\" -> Unit } }"
+        project.resolve("Plugin.kt").writeText(line)
+
+        val facts = BridgeFactScanner(project).scan().facts
+        val registrationPrefix = line.substring(0, line.indexOf("setMethodCallHandler"))
+        val methodPrefix = line.substring(0, line.indexOf("take"))
+
+        assertEquals(registrationPrefix.toByteArray(Charsets.UTF_8).size + 1, facts[0].location.column)
+        assertEquals(methodPrefix.toByteArray(Charsets.UTF_8).size + 1, facts[1].location.column)
+    }
+
+    @Test
+    fun `v2 message handler column counts UTF8 bytes after a comment prefix`(@TempDir project: Path) {
+        val line = "/* 한😀 */ BasicMessageChannel<Any?>(messenger, \"camera\", codec).setMessageHandler { _, _ -> Unit }"
+        project.resolve("Plugin.kt").writeText(line)
+
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+        val prefix = line.substring(0, line.indexOf("setMessageHandler"))
+
+        assertEquals(prefix.toByteArray(Charsets.UTF_8).size + 1, fact.location.column)
+    }
+
+    @Test
     fun `extracts MethodChannel registrations and React Native exports`(@TempDir project: Path) {
         project.resolve("src/main/kotlin/app/Plugin.kt").also { source ->
             source.parent.createDirectories()

@@ -238,7 +238,8 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         target: String,
     ): BridgeFact = BridgeFact(
         kind, channel, method, dynamic,
-        BridgeLocation(path, line, source.indexOf(token).coerceAtLeast(0) + 1),
+        BridgeLocation(path, line, source.substring(0, source.indexOf(token).coerceAtLeast(0))
+            .toByteArray(Charsets.UTF_8).size + 1),
         target = target,
     )
 
