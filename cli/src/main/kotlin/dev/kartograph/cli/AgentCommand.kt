@@ -347,9 +347,15 @@ internal object AgentCommand {
             return ExitStatus.FAILURE.code
         }
         return try {
-            val graph = options.single("--graph-file")?.let { SnapshotFiles.read(it).graph }
-            val document = if (messages) BridgeFactScanner(project).scanMessages(graph = graph)
-            else BridgeFactScanner(project).scan()
+            val snapshot = options.single("--graph-file")?.let { SnapshotFiles.read(it) }
+            val graph = snapshot?.graph
+            val scanned = if (messages) BridgeFactScanner(project).scanMessages(graph = graph)
+            else BridgeFactScanner(project).scan(graph = graph, targetFilter = options.single("--target"))
+            val document = snapshot?.let {
+                val freshness = SavedSnapshotOperations.freshness(it, project, null, emptyMap())
+                val evidence = "graph-file-freshness-${freshness.status}: " + freshness.reasons.joinToString(";")
+                scanned.copy(limitations = (scanned.limitations + evidence).distinct().sorted())
+            } ?: scanned
             output.print(AgentDocumentRenderer.bridges(document))
             ExitStatus.SUCCESS.code
         } catch (_: Exception) {
@@ -446,7 +452,7 @@ internal object AgentCommand {
           kartograph bridges --project <directory> [--format json] [--target flutter]
           kartograph bridges --project <directory> --target flutter --messages [--graph-file <snapshot>]
 
-        --messages emits opt-in bridge-facts v2 for Kotlin/JVM BasicMessageChannel handlers and send calls.
+        --messages emits opt-in bridge-facts v2 for Kotlin/JVM BasicMessageChannel native handlers.
         --graph-file may attach a compiler snapshot JVM symbol at the observed or enclosing source location.
         Static literals only; dynamic channel names and unattributed handlers are reported as limitations.
         generatedAt is the newest scanned source modification time (Unix epoch for an empty source tree).

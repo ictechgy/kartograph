@@ -37,11 +37,12 @@ build 이후 수정된 source를 센다. 관측된 항목이 없으면 배열은
 
 `kartograph bridges --project <root>`은 isthmus `bridge-facts` version 1을 출력한다. Kotlin 수신 측에서
 Flutter `MethodChannel` 등록·method handler와 React Native `@ReactModule`·`@ReactMethod`를 수집한다.
-문서의 `project`는 현재 입력 root를 뜻하는 `.`이고 모든 위치는 project-relative다. build, test source set,
+문서의 `project`는 현재 입력 root의 canonical POSIX 절대경로이고 모든 위치는 project-relative다. build, test source set,
 `node_modules`, worktree 복제본은 제외한다.
 
 `kartograph bridges --project <root> --target flutter --messages`는 Kotlin/JVM Flutter
-`BasicMessageChannel`의 실제 `setMessageHandler` 등록과 `send` 호출만 bridge-facts v2로 출력한다.
+`BasicMessageChannel`의 실제 `setMessageHandler` 등록만 bridge-facts v2로 출력한다. Kotlin 송신
+호출은 receiver 전용 교환 계약에 맞지 않아 fact로 만들지 않고 `unscanned-message-sends` limitation으로 센다.
 채널을 만들기만 한 지점과 `setMessageHandler(null)`은 등록 사실로 만들지 않는다. literal 이름,
 alias·shadowing·mutable 재할당을 추적하며 문자열 interpolation에서는 보수적으로 확인한
 비어 있지 않은 `channelPrefix`만 함께 낸다. `--graph-file`을 주면 관찰 위치를 compiler snapshot의

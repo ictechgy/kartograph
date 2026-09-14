@@ -5,7 +5,6 @@ import dev.kartograph.core.BridgeFactsDocument
 import dev.kartograph.core.BridgeLocation
 import dev.kartograph.core.BridgeSymbol
 import dev.kartograph.core.CodeGraph
-import dev.kartograph.core.NodeKind
 import dev.kartograph.core.qualifiedName
 import java.nio.file.Files
 import java.nio.file.Path
@@ -24,24 +23,26 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         val limitations = mutableListOf<String>()
         val files = mutableListOf<Path>()
         ProjectTraversal.walkSources(projectRoot) { files.add(it) }
-        files.sorted().forEach { scanFile(it, facts) }
+        val stats = ScanStats()
+        files.sorted().forEach { scanFile(it, facts, stats) }
 
         val withSymbols = facts.map { fact ->
-            graph?.let { attachSymbol(fact, it) } ?: fact
+            graph?.let { attachSnapshotSymbol(fact, it, projectRoot) } ?: fact
         }.sortedWith(compareBy({ it.location.path }, { it.location.line }, { it.location.column }, { it.kind }, { it.channel.orEmpty() }))
         val dynamicCount = withSymbols.count { it.dynamic }
         val unattributedCount = withSymbols.count { it.kind == "message-handle" && it.channel == null }
         val sourceOnlyCount = withSymbols.count { it.symbol == null }
         if (dynamicCount > 0) limitations += "dynamic-message-channel-names: $dynamicCount message fact(s) use a non-literal channel name"
         if (unattributedCount > 0) limitations += "unattributed-message-handles: $unattributedCount message handler(s) have no channel"
+        if (stats.unsupportedSends > 0) limitations += "unscanned-message-sends: ${stats.unsupportedSends} Kotlin sender call(s) are outside the native receiver-only v2 contract"
         if (sourceOnlyCount > 0) limitations += "missing-handler-usrs: source scanning cannot resolve JVM identifiers for $sourceOnlyCount message fact(s); pass --graph-file with a matching compiler snapshot"
-        if (files.any { it.fileName.toString().endsWith(".java") }) {
+        if (stats.javaMessageSources > 0) {
             limitations += "java-source-basic-message-analysis: raw Java source is scanned lexically; Kotlin metadata and generated Pigeon identities require --graph-file"
         }
         val newest = files.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() } ?: Instant.EPOCH
         return BridgeFactsDocument(
             generatedAt = generatedAt ?: newest.toString(),
-            project = ".",
+            project = projectRoot.toRealPath().toString().replace('\\', '/'),
             target = withSymbols.firstOrNull()?.let { "flutter" },
             facts = withSymbols,
             limitations = limitations.distinct().sorted(),
@@ -50,96 +51,70 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         )
     }
 
-    private fun attachSymbol(fact: BridgeFact, graph: CodeGraph): BridgeFact {
-        val candidates = graph.nodes.values.filter { node ->
-            val location = node.location ?: return@filter false
-            location.path.replace('\\', '/') == fact.location.path && location.line == fact.location.line
-        }
-        // A source line can contain multiple declarations (or a generated synthetic
-        // node). An ambiguous match is evidence we cannot safely attach.
-        val node = candidates.singleOrNull() ?: run {
-            // JVM snapshots generally locate the enclosing Kotlin function at its
-            // declaration line, while the bridge call is inside its body. Use the
-            // nearest unique function/method declaration before the observed line;
-            // unrelated fields/classes are deliberately excluded.
-            val enclosing = graph.nodes.values.filter { candidate ->
-                val location = candidate.location ?: return@filter false
-                val line = location.line ?: return@filter false
-                location.path.replace('\\', '/') == fact.location.path &&
-                    line <= fact.location.line &&
-                    candidate.kind in setOf(NodeKind.FUNCTION, NodeKind.METHOD)
-            }.groupBy { it.location!!.line!! }.maxByOrNull { it.key }?.value.orEmpty()
-            enclosing.singleOrNull()
-        } ?: return fact
-        return fact.copy(symbol = BridgeSymbol(node.qualifiedName, node.id.value))
-    }
-
-    private fun scanFile(path: Path, facts: MutableList<BridgeFact>) {
+    private fun scanFile(path: Path, facts: MutableList<BridgeFact>, stats: ScanStats) {
         val relative = projectRoot.toRealPath().relativize(path.toAbsolutePath().normalize()).toString().replace('\\', '/')
         val source = ProjectTraversal.readSourceLines(projectRoot, path).joinToString("\n")
         val code = stripComments(source)
+        val eventCode = maskStringContents(code)
         val events = mutableListOf<Event>()
-        CONSTRUCTOR.findAll(code).forEach { match ->
+        CONSTRUCTOR.findAll(eventCode).forEach { match ->
             val open = code.indexOf('(', match.range.first)
             val end = balancedEnd(code, open)
             if (open >= 0 && end > open) events += Event.Constructor(match.range.first, end, open, precedingBinding(code, match.range.first), callArguments(code, open, end))
         }
-        ALIAS_ASSIGNMENT.findAll(code).forEach { match -> events += Event.Alias(match.range.first, match.groupValues[1], match.groupValues[2]) }
-        HANDLER.findAll(code).forEach { match ->
+        if (path.fileName.toString().endsWith(".java") && events.any { it is Event.Constructor }) stats.javaMessageSources++
+        STRING_ALIAS.findAll(eventCode).forEach { match ->
+            val quote = code.indexOf('"', match.range.first)
+            val end = quote.takeIf { it >= 0 }?.let { closingQuote(code, it) } ?: -1
+            if (quote >= 0 && end > quote) events += Event.StringAlias(match.range.first, match.groupValues[1], code.substring(quote, end + 1))
+        }
+        ALIAS_ASSIGNMENT.findAll(eventCode).forEach { match -> events += Event.Alias(match.range.first, match.groupValues[1], match.groupValues[2]) }
+        HANDLER.findAll(eventCode).forEach { match ->
             val receiver = match.groupValues[1].takeUnless { it.isBlank() }
             val open = code.indexOf('(', match.range.first)
-            val hasBody = code.getOrNull(match.range.last + 1) == '{'
-            val isNull = open >= 0 && balancedEnd(code, open) > open && code.substring(open + 1, balancedEnd(code, open)).trim() == "null"
-            events += Event.Handler(match.range.first, receiver, hasBody, isNull, code.lastIndexOf(')', match.range.first))
+            val end = balancedEnd(code, open)
+            val isNull = open >= 0 && end > open && code.substring(open + 1, end).trim() == "null"
+            events += Event.Handler(match.range.first, receiver, isNull)
         }
-        SEND.findAll(code).forEach { match -> events += Event.Send(match.range.first, match.groupValues[1], code.lastIndexOf(')', match.range.first)) }
+        SEND.findAll(eventCode).forEach { match -> events += Event.Send(match.range.first, match.groupValues[1]) }
 
         val bindings = mutableListOf<Binding>()
-        var lastOffset = 0
         events.sortedBy { it.offset }.forEach { event ->
-            val depth = braceDepth(code, event.offset)
-            bindings.removeIf { it.depth > depth }
+            val scope = scopePath(eventCode, event.offset)
             when (event) {
                 is Event.Constructor -> {
-                    val resolved = resolveChannel(event.arguments.firstOrNull { it.isQuotedOrInterpolated() })
+                    val expression = event.arguments.getOrNull(1)
+                    val resolved = expression?.let { lookup(bindings, it.trim(), scope) ?: resolveChannel(it) }
+                        ?: resolveChannel(null)
                     event.binding?.let { assignment ->
-                        val existing = bindings.lastOrNull { it.name == assignment.name && it.depth <= depth }
+                        val existing = bindings.lastOrNull { it.name == assignment.name && isPrefix(it.scope, scope) }
                         if (existing != null && assignment.mutable) existing.channel = resolved
-                        else bindings += Binding(assignment.name, depth, resolved)
+                        else bindings += Binding(assignment.name, scope, resolved)
                     }
                     event.directHandler = resolved
                 }
                 is Event.Alias -> {
-                    lookup(bindings, event.source, depth)?.let { channel ->
-                        val existing = bindings.lastOrNull { it.name == event.name && it.depth <= depth }
-                        if (existing != null) existing.channel = channel else bindings += Binding(event.name, depth, channel)
-                    }
+                    lookup(bindings, event.source, scope)?.let { channel -> bindings += Binding(event.name, scope, channel) }
                 }
+                is Event.StringAlias -> bindings += Binding(event.name, scope, resolveChannel(event.expression))
                 is Event.Handler -> if (!event.isNull) {
-                    val channel = event.receiver?.let { lookup(bindings, it, depth) }
+                    val channel = event.receiver?.let { lookup(bindings, it, scope) }
                         ?: previousChainedConstructor(events, event.offset, code)?.directHandler
                     val location = location(relative, code, event.offset)
                     facts += BridgeFact("message-handle", channel?.value, dynamic = channel?.dynamic ?: true,
                         location = location, target = "flutter", channelPrefix = channel?.prefix)
                 }
                 is Event.Send -> {
-                    val channel = lookup(bindings, event.receiver, depth)
-                        ?: previousChainedConstructor(events, event.offset, code)?.directHandler
-                    val location = location(relative, code, event.offset)
-                    facts += BridgeFact("message-send", channel?.value, dynamic = channel?.dynamic ?: true,
-                        location = location, target = "flutter", channelPrefix = channel?.prefix)
+                    stats.unsupportedSends++
                 }
             }
-            lastOffset = event.offset
         }
-        // Keep the local variable to make the event pass explicit for future parser
-        // extensions and to prevent accidental source-order changes during refactors.
-        if (lastOffset < 0) error("unreachable source event offset")
     }
 
     private fun previousChainedConstructor(events: List<Event>, offset: Int, source: String): Event.Constructor? =
         events.filterIsInstance<Event.Constructor>().lastOrNull { constructor ->
-            constructor.end < offset && source.substring(constructor.end + 1, offset).trim() == "."
+            (constructor.end == offset && source.getOrNull(offset) == ')') ||
+                (constructor.end < offset && source.substring(constructor.end + 1, offset).trim() == ".")
         }
 
     private fun precedingBinding(source: String, offset: Int): BindingSpec? {
@@ -150,8 +125,11 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         return null
     }
 
-    private fun lookup(bindings: List<Binding>, name: String, depth: Int): Channel? =
-        bindings.asReversed().firstOrNull { it.name == name && it.depth <= depth }?.channel
+    private fun lookup(bindings: List<Binding>, name: String, scope: List<Int>): Channel? =
+        bindings.asReversed().firstOrNull { it.name == name && isPrefix(it.scope, scope) }?.channel
+
+    private fun isPrefix(prefix: List<Int>, value: List<Int>): Boolean =
+        prefix.size <= value.size && prefix.indices.all { prefix[it] == value[it] }
 
     private fun location(path: String, source: String, offset: Int): BridgeLocation {
         val line = source.substring(0, offset.coerceIn(0, source.length)).count { it == '\n' } + 1
@@ -187,15 +165,39 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         return out.toString()
     }
 
-    private fun braceDepth(source: String, end: Int): Int {
-        var depth = 0
+    private fun scopePath(source: String, end: Int): List<Int> {
+        val stack = mutableListOf(0)
+        var nextScope = 1
         var quote = false
         var escaped = false
         source.take(end).forEach { c ->
             if (quote) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == '"' -> quote = false }; return@forEach }
-            when (c) { '"' -> quote = true; '{' -> depth++; '}' -> depth-- }
+            when (c) {
+                '"' -> quote = true
+                '{' -> stack += nextScope++
+                '}' -> if (stack.size > 1) stack.removeLast()
+            }
         }
-        return depth.coerceAtLeast(0)
+        return stack.toList()
+    }
+
+    /** Event regexes run against a string-masked view, so code-like text is not a fact. */
+    private fun maskStringContents(source: String): String {
+        val out = StringBuilder(source.length)
+        var quote = false
+        var escaped = false
+        source.forEach { c ->
+            when {
+                !quote && c == '"' -> { quote = true; out.append(c) }
+                quote && escaped -> { escaped = false; out.append(' ') }
+                quote && c == '\\' -> { escaped = true; out.append(' ') }
+                quote && c == '"' -> { quote = false; out.append(c) }
+                quote && c == '\n' -> out.append('\n')
+                quote -> out.append(' ')
+                else -> out.append(c)
+            }
+        }
+        return out.toString()
     }
 
     private fun balancedEnd(source: String, open: Int): Int {
@@ -207,6 +209,18 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
             val c = source[index]
             if (quote) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == '"' -> quote = false }; continue }
             when (c) { '"' -> quote = true; '(' -> depth++; ')' -> { depth--; if (depth == 0) return index } }
+        }
+        return -1
+    }
+
+    private fun closingQuote(source: String, opening: Int): Int {
+        var escaped = false
+        for (index in opening + 1 until source.length) {
+            when (val c = source[index]) {
+                '\\' -> escaped = !escaped
+                '"' -> if (!escaped) return index
+                else -> escaped = false
+            }
         }
         return -1
     }
@@ -249,17 +263,20 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
     private fun String.isQuotedOrInterpolated(): Boolean = trim().let { it.length >= 2 && it.first() == '"' && it.last() == '"' }
 
     private data class Channel(val value: String?, val dynamic: Boolean, val prefix: String?)
-    private data class Binding(val name: String, val depth: Int, var channel: Channel)
+    private data class Binding(val name: String, val scope: List<Int>, var channel: Channel)
+    private data class ScanStats(var unsupportedSends: Int = 0, var javaMessageSources: Int = 0)
     private data class BindingSpec(val name: String, val mutable: Boolean)
     private sealed class Event(open val offset: Int) {
         data class Constructor(override val offset: Int, val end: Int, val open: Int, val binding: BindingSpec?, val arguments: List<String>, var directHandler: Channel? = null) : Event(offset)
+        data class StringAlias(override val offset: Int, val name: String, val expression: String) : Event(offset)
         data class Alias(override val offset: Int, val name: String, val source: String) : Event(offset)
-        data class Handler(override val offset: Int, val receiver: String?, val hasBody: Boolean, val isNull: Boolean, val previousClose: Int) : Event(offset)
-        data class Send(override val offset: Int, val receiver: String, val previousClose: Int) : Event(offset)
+        data class Handler(override val offset: Int, val receiver: String?, val isNull: Boolean) : Event(offset)
+        data class Send(override val offset: Int, val receiver: String) : Event(offset)
     }
 
     private companion object {
         val CONSTRUCTOR = Regex("\\b(?:new\\s+)?BasicMessageChannel(?:\\s*<[^>\\n]*>)?\\s*\\(")
+        val STRING_ALIAS = Regex("\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*\"")
         val ASSIGNMENT = Regex("\\b(val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*$")
         val JAVA_ASSIGNMENT = Regex("\\b(?:[A-Za-z_][A-Za-z0-9_]*)(?:\\s*<[^>\\n]*>)?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*$")
         val ALIAS_ASSIGNMENT = Regex("(?m)\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)")
@@ -268,3 +285,75 @@ internal class BasicMessageBridgeScanner(private val projectRoot: Path) {
         val SEND = Regex("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*send\\s*\\(")
     }
 }
+
+/** Snapshot의 실제 source location이 한 정점으로만 해석될 때만 JVM identity를 붙인다. */
+internal fun attachSnapshotSymbol(fact: BridgeFact, graph: CodeGraph, projectRoot: Path): BridgeFact {
+    val declaration = enclosingDeclaration(projectRoot, fact.location.path, fact.location.line) ?: return fact
+    val candidates = graph.nodes.values.filter { node ->
+        val location = node.location ?: return@filter false
+        location.path.replace('\\', '/') == fact.location.path &&
+            location.line in declaration.startLine..declaration.endLine &&
+            node.name == declaration.name &&
+            node.kind.name.lowercase() in setOf("function", "method")
+    }
+    val node = candidates.singleOrNull() ?: return fact
+    return fact.copy(symbol = BridgeSymbol(node.qualifiedName, node.id.value))
+}
+
+private data class SourceDeclaration(val name: String, val startLine: Int, val endLine: Int)
+
+/** Current source supplies the only safe body range; graph lines alone do not. */
+private fun enclosingDeclaration(projectRoot: Path, relativePath: String, line: Int): SourceDeclaration? {
+    val source = try {
+        ProjectTraversal.readSourceLines(projectRoot, projectRoot.resolve(relativePath)).joinToString("\n")
+    } catch (_: Exception) {
+        return null
+    }
+    val masked = maskDeclarationStrings(source)
+    val ranges = mutableListOf<SourceDeclaration>()
+    var depth = 0
+    val lines = masked.split('\n')
+    lines.forEachIndexed { index, text ->
+        val start = index + 1
+        val before = depth
+        val declaration = DECLARATION.find(text)
+        val opening = declaration?.let { text.indexOf('{', it.range.first) } ?: -1
+        if (declaration != null && opening >= 0) {
+            val openingDepth = before + 1
+            var after = before + braceDelta(text)
+            var end = start
+            if (after >= openingDepth) {
+                var cursor = index + 1
+                var current = after
+                while (cursor < lines.size && current >= openingDepth) {
+                    current += braceDelta(lines[cursor])
+                    cursor++
+                    end = cursor
+                }
+            }
+            ranges += SourceDeclaration(declaration.groupValues[1], start, end)
+        }
+        depth = (before + braceDelta(text)).coerceAtLeast(0)
+    }
+    return ranges.filter { line in it.startLine..it.endLine }.minByOrNull { it.endLine - it.startLine }
+}
+
+private fun maskDeclarationStrings(source: String): String = buildString(source.length) {
+    var quoted = false
+    var escaped = false
+    source.forEach { character ->
+        when {
+            !quoted && character == '"' -> { quoted = true; append(character) }
+            quoted && escaped -> { escaped = false; append(' ') }
+            quoted && character == '\\' -> { escaped = true; append(' ') }
+            quoted && character == '"' -> { quoted = false; append(character) }
+            quoted && character == '\n' -> append('\n')
+            quoted -> append(' ')
+            else -> append(character)
+        }
+    }
+}
+
+private fun braceDelta(text: String): Int = text.count { it == '{' } - text.count { it == '}' }
+
+private val DECLARATION = Regex("\\b(?:fun\\s+|(?:public|private|protected|internal|override|static|final|suspend|inline|native)\\s+)*([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^)]*\\)\\s*(?:\\{|:)")

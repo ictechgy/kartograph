@@ -537,8 +537,7 @@ class KartographCliTest {
         assertEquals(ExitStatus.SUCCESS.code, execution.status)
         assertContains(execution.output, "\"format\": \"bridge-facts\"")
         assertContains(execution.output, "\"kind\": \"channel-register\"")
-        assertContains(execution.output, "\"project\": \".\"")
-        kotlin.test.assertFalse(execution.output.contains(projectRoot.toString()))
+        assertContains(execution.output, "\"project\": \"${projectRoot.toRealPath().toString().replace('\\', '/')}\"")
         kotlin.test.assertFalse(execution.output.contains(projectRoot.resolve("Plugin.kt").toString()))
     }
 
@@ -562,8 +561,8 @@ class KartographCliTest {
         assertContains(execution.output, "\"version\": 2")
         assertContains(execution.output, "\"transport\": \"basic-message-channel\"")
         assertContains(execution.output, "\"kind\": \"message-handle\"")
-        assertContains(execution.output, "\"kind\": \"message-send\"")
-        kotlin.test.assertFalse(execution.output.contains(projectRoot.toString()))
+        assertContains(execution.output, "\"project\": \"${projectRoot.toRealPath().toString().replace('\\', '/')}\"")
+        kotlin.test.assertFalse(execution.output.contains(projectRoot.resolve("Plugin.kt").toString()))
     }
 
     @Test

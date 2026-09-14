@@ -42,15 +42,15 @@ class BridgeFactScannerTest {
 
         val document = BridgeFactScanner(project).scanMessages(generatedAt = "2026-09-14T00:00:00Z")
 
-        assertEquals(4, document.facts.size)
+        assertEquals(2, document.facts.size)
         assertEquals(
-            listOf("message-handle" to "first", "message-send" to "second",
-                "message-handle" to "inner", "message-send" to "inner"),
+            listOf("message-handle" to "first", "message-handle" to "inner"),
             document.facts.map { it.kind to it.channel },
         )
         assertTrue(document.facts.all { it.dynamic.not() })
         assertTrue(document.facts.all { it.symbol == null })
         assertTrue(document.limitations.any { it.startsWith("missing-handler-usrs:") })
+        assertTrue(document.limitations.any { it.startsWith("unscanned-message-sends:") })
     }
 
     @Test
@@ -59,17 +59,35 @@ class BridgeFactScannerTest {
             """
             fun register(messenger: Any, codec: Any, suffix: String) {
               val channel = BasicMessageChannel<Any?>(messenger, "dev.flutter.pigeon.Camera.${'$'}suffix", codec)
-              channel.send(Unit)
+              channel.setMessageHandler { _, _ -> Unit }
             }
             """.trimIndent(),
         )
 
         val fact = BridgeFactScanner(project).scanMessages(generatedAt = "2026-09-14T00:00:00Z").facts.single()
 
-        assertEquals("message-send", fact.kind)
+        assertEquals("message-handle", fact.kind)
         assertEquals("\"dev.flutter.pigeon.Camera.${'$'}suffix\"", fact.channel)
         assertEquals("dev.flutter.pigeon.Camera.", fact.channelPrefix)
         assertTrue(fact.dynamic)
+    }
+
+    @Test
+    fun `messages keeps a named nonliteral channel expression without prefix`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any, name: String) {
+              BasicMessageChannel<Any?>(binaryMessenger = messenger, name = name, codec = codec)
+                .setMessageHandler { _, _ -> Unit }
+            }
+            """.trimIndent(),
+        )
+
+        val fact = BridgeFactScanner(project).scanMessages().facts.single()
+
+        assertEquals("name = name", fact.channel)
+        assertTrue(fact.dynamic)
+        assertEquals(null, fact.channelPrefix)
     }
 
     @Test
@@ -79,14 +97,14 @@ class BridgeFactScannerTest {
             class Plugin {
               fun register(messenger: Any, codec: Any) {
                 val channel = BasicMessageChannel<Any?>(messenger, "camera", codec)
-                channel.send(Unit)
+                channel.setMessageHandler { _, _ -> Unit }
               }
             }
             """.trimIndent(),
         )
         val graph = CodeGraph(listOf(
             GraphNode(NodeId("method:app/Plugin#register(Ljava/lang/Object;Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
-                location = SourceLocation("Plugin.kt", 2, 3)),
+                location = SourceLocation("Plugin.kt", 4, 3)),
         ), emptyList())
 
         val fact = BridgeFactScanner(project).scanMessages(graph = graph).facts.single()
@@ -111,7 +129,7 @@ class BridgeFactScannerTest {
 
         val document = BridgeFactScanner(project).scanMessages()
 
-        assertEquals(listOf("message-handle" to "java", "message-send" to "java"), document.facts.map { it.kind to it.channel })
+        assertEquals(listOf("message-handle" to "java"), document.facts.map { it.kind to it.channel })
         assertTrue(document.limitations.any { it.startsWith("java-source-basic-message-analysis:") })
     }
 
@@ -132,6 +150,44 @@ class BridgeFactScannerTest {
         assertEquals(null, fact.channel)
         assertTrue(fact.dynamic)
         assertTrue(fact.location.line > 0)
+    }
+
+    @Test
+    fun `messages resolves immutable channel aliases and ignores code-like strings`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            private val basicName = "dev.flutter.pigeon.runtime.Api.echo"
+            fun register(messenger: Any, codec: Any) {
+              val source = "channel.send(\"fake\")"
+              BasicMessageChannel<Any?>(messenger, basicName, codec).setMessageHandler { _, _ -> Unit }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanMessages()
+
+        assertEquals(listOf("message-handle" to "dev.flutter.pigeon.runtime.Api.echo"), document.facts.map { it.kind to it.channel })
+        assertTrue(document.limitations.none { it.startsWith("unscanned-message-sends:") })
+    }
+
+    @Test
+    fun `messages does not leak bindings between sibling function scopes`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun first(messenger: Any, codec: Any) {
+              val channel = BasicMessageChannel<Any?>(messenger, "first", codec)
+              channel.setMessageHandler { _, _ -> Unit }
+            }
+            fun second(handler: Any) {
+              handler.setMessageHandler { _, _ -> Unit }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scanMessages().facts
+
+        assertEquals(listOf("first", null), facts.map { it.channel })
+        assertTrue(facts[1].dynamic)
     }
 
     @Test
@@ -163,7 +219,7 @@ class BridgeFactScannerTest {
         assertEquals(1, document.version)
         assertEquals("kotlin", document.platform)
         assertEquals("flutter", document.target)
-        assertEquals(".", document.project)
+        assertEquals(project.toRealPath().toString().replace('\\', '/'), document.project)
         assertEquals(
             listOf("channel-register", "method-handle", "module-export", "method-handle"),
             document.facts.map { it.kind },
@@ -175,6 +231,76 @@ class BridgeFactScannerTest {
         assertTrue(document.limitations.any { it.startsWith("missing-handler-usrs:") })
         assertTrue(document.limitations.any { it.startsWith("mixed-targets:") })
         assertTrue(document.facts.all { !it.location.path.startsWith('/') && it.location.line > 0 })
+    }
+
+    @Test
+    fun `target filter keeps Flutter facts and records omitted React Native facts`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            val channel = MethodChannel(messenger, "camera")
+            channel.setMethodCallHandler(handler)
+            @ReactModule(name = "Calendar") class CalendarModule {
+              @ReactMethod fun addEvent() = Unit
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scan(targetFilter = "flutter")
+
+        assertTrue(document.facts.isNotEmpty())
+        assertTrue(document.facts.all { it.target == "flutter" })
+        assertTrue(document.limitations.any { it.startsWith("target-filter:") })
+        assertEquals("flutter", document.target)
+    }
+
+    @Test
+    fun `v1 resolves immutable MethodChannel name and attaches unique snapshot symbol`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            private val methodName = "camera"
+            fun register(messenger: Any) {
+              MethodChannel(messenger, methodName).setMethodCallHandler(handler)
+            }
+            """.trimIndent(),
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/Plugin#register(Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 3, 3)),
+        ), emptyList())
+
+        val fact = BridgeFactScanner(project).scan(graph = graph).facts.single()
+
+        assertEquals("camera", fact.channel)
+        assertEquals("method:app/Plugin#register(Ljava/lang/Object;)V", fact.symbol?.usr)
+        assertTrue(!BridgeFactScanner(project).scan(graph = graph).limitations.any { it.startsWith("missing-handler-usrs:") })
+    }
+
+    @Test
+    fun `snapshot symbol remains absent for stale or ambiguous source mappings`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              MethodChannel(messenger, "camera").setMethodCallHandler(handler)
+            }
+            """.trimIndent(),
+        )
+        val stale = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/Plugin#register(Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
+                location = SourceLocation("Other.kt", 2, 1)),
+        ), emptyList())
+        val ambiguous = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/Plugin#register(Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 2, 1)),
+            GraphNode(NodeId("method:app/Other#register(Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 2, 2)),
+        ), emptyList())
+
+        val staleFact = BridgeFactScanner(project).scan(graph = stale).facts.single()
+        val ambiguousFact = BridgeFactScanner(project).scan(graph = ambiguous).facts.single()
+
+        assertEquals(null, staleFact.symbol)
+        assertEquals(null, ambiguousFact.symbol)
+        assertTrue(staleFact.symbol == null && ambiguousFact.symbol == null)
     }
 
     @Test

@@ -18,24 +18,26 @@ public class BridgeFactScanner(private val projectRoot: Path) {
      * 프로젝트 상대 근거와 조인 불가능한 사실의 한계를 bridge-facts v1 문서로 만든다.
      * generatedAt을 생략하면 최신 source 수정 시각을 snapshot 시각으로 사용한다(빈 입력은 Unix epoch).
      */
-    public fun scan(generatedAt: String? = null): BridgeFactsDocument {
+    public fun scan(generatedAt: String? = null, graph: CodeGraph? = null, targetFilter: String? = null): BridgeFactsDocument {
         val facts = mutableListOf<BridgeFact>()
         val stats = ScanStats()
         val sources = mutableListOf<Path>()
         ProjectTraversal.walkSources(projectRoot) { sources.add(it) }
         sources.sorted().forEach { scanFile(it, facts, stats) }
         val ordered = facts.sortedWith(compareBy({ it.location.path }, { it.location.line }, { it.kind }, { it.method.orEmpty() }))
-        val counts = ordered.groupingBy(BridgeFact::target).eachCount()
+        val filtered = targetFilter?.let { target -> ordered.filter { it.target == target } } ?: ordered
+        val withSymbols = filtered.map { graph?.let { snapshot -> attachSnapshotSymbol(it, snapshot, projectRoot) } ?: it }
+        val counts = filtered.groupingBy(BridgeFact::target).eachCount()
         val target = counts.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .firstOrNull()?.key
         val limitations = buildList {
-            val dynamic = ordered.count { it.dynamic && it.kind == "channel-register" }
+            val dynamic = filtered.count { it.dynamic && it.kind == "channel-register" }
             if (dynamic > 0) add("dynamic-channel-names: $dynamic channel registration(s) use a non-literal name")
-            val missingHandlerUsrs = ordered.count { it.kind == "method-handle" && it.symbol?.usr == null }
+            val missingHandlerUsrs = withSymbols.count { it.kind == "method-handle" && it.symbol?.usr == null }
             if (missingHandlerUsrs > 0) add(
                 "missing-handler-usrs: source scanning cannot resolve JVM identifiers for $missingHandlerUsrs method handler(s)",
             )
-            val unattributed = ordered.count { it.kind == "method-handle" && it.channel == null }
+            val unattributed = filtered.count { it.kind == "method-handle" && it.channel == null }
             if (unattributed > 0) add(
                 "unattributed-method-handles: $unattributed method handler(s) could not be assigned to a channel",
             )
@@ -46,13 +48,15 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                 "mixed-targets: facts come from more than one bridge " +
                     counts.toSortedMap().entries.joinToString(prefix = "(", postfix = ")") { "${it.key} ${it.value}" },
             )
+            val omitted = ordered.size - filtered.size
+            if (targetFilter != null && omitted > 0) add("target-filter: omitted $omitted fact(s) outside --target $targetFilter")
         }
         return BridgeFactsDocument(
             generatedAt = generatedAt ?: (sources.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() }
                 ?: Instant.EPOCH).toString(),
             target = target,
-            project = ".",
-            facts = ordered,
+            project = projectRoot.toRealPath().toString().replace('\\', '/'),
+            facts = withSymbols,
             limitations = limitations,
         )
     }
@@ -61,6 +65,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         val relative = projectRoot.toRealPath().relativize(path.toAbsolutePath().normalize())
             .joinToString("/")
         val flutterChannels = mutableMapOf<String, Channel>()
+        var pendingChainedChannel: Channel? = null
         var pendingChannel: PendingChannel? = null
         val handlerScopes = ArrayDeque<HandlerScope>()
         val methodScopes = ArrayDeque<MethodScope>()
@@ -76,12 +81,17 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             lineNumber: Int,
             code: String,
         ) {
-            val channel = completed.arguments.getOrNull(1)?.literalOrDynamic() ?: Channel(null, true)
+            val channelExpression = completed.arguments.getOrNull(1)
+            val channel = channelExpression?.let { flutterChannels[it.trim()] ?: it.literalOrDynamic() } ?: Channel(null, true)
             if (pending.variable != null) {
                 flutterChannels[pending.variable] = channel
                 return
             }
-            val handler = CHAINED_SUFFIX.find(completed.remainder) ?: return
+            val handler = CHAINED_SUFFIX.find(completed.remainder)
+            if (handler == null) {
+                pendingChainedChannel = channel
+                return
+            }
             facts += fact(
                 "channel-register", channel.value, null, channel.dynamic,
                 relative, lineNumber, line, "setMethodCallHandler", "flutter",
@@ -100,6 +110,20 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             val stripped = stripComments(line, inBlockComment)
             inBlockComment = stripped.inBlockComment
             val code = stripped.code
+            pendingChainedChannel?.let { channel ->
+                val handler = CHAINED_SUFFIX.find(code)
+                if (handler != null) {
+                    facts += fact("channel-register", channel.value, null, channel.dynamic, relative, lineNumber, line,
+                        "setMethodCallHandler", "flutter")
+                    val openingBrace = code.indexOf('{', handler.range.first)
+                    if (openingBrace >= 0) handlerScopes.addLast(HandlerScope(channel, braceDepth + braceDelta(code.substring(0, openingBrace + 1))))
+                    else stats.unscannedHandlers++
+                }
+                pendingChainedChannel = null
+            }
+            STRING_LITERAL_ASSIGNMENT.findAll(code).forEach { match ->
+                flutterChannels[match.groupValues[1]] = match.groupValues[2].literalOrDynamic()
+            }
             val pending = pendingChannel
             if (pending != null) {
                 pending.collector.consume("\n$code")?.let { completed ->
@@ -367,6 +391,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
     private companion object {
         val SOURCE_EXTENSIONS = setOf("kt", "java")
         val METHOD_CHANNEL = Regex("(?:\\b(?:val|var)\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*MethodChannel\\s*\\(")
+        val STRING_LITERAL_ASSIGNMENT = Regex("\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*(\"(?:\\\\.|[^\"])*\")")
         val METHOD_CHANNEL_CALL = Regex("\\bMethodChannel\\s*\\(")
         val SET_HANDLER = Regex("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*setMethodCallHandler\\s*(?:\\(|\\{)")
         val WHEN_METHOD = Regex("\\\"([^\\\"]+)\\\"\\s*->")
