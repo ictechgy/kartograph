@@ -41,14 +41,26 @@ public data class QuerySnapshot(
 public object QuerySnapshotCodec {
     /** 일반 code-graph JSON과 보존 문맥 없는 파일을 구분한다. */
     public const val FORMAT: String = "kartograph-query-snapshot"
+    /** 저장 snapshot의 호환 기본 상한이며 opt-in하지 않은 호출에 적용한다. */
+    public const val DEFAULT_MAX_MIB: Int = 64
+    /** 명시적 저장 snapshot 상한이 넘을 수 없는 절대 경계다. */
+    public const val MAX_MIB: Int = 128
     /** 한 번에 읽는 질의 문서의 상한이다. */
-    public const val MAX_BYTES: Int = 64 * 1024 * 1024
+    public const val MAX_BYTES: Int = DEFAULT_MAX_MIB * 1024 * 1024
+
+    /** CLI/adapter의 MiB 설정을 overflow 없는 byte 상한으로 검증한다. */
+    public fun maximumBytes(maximumMiB: Int): Int {
+        require(maximumMiB in 1..MAX_MIB) { "snapshot maximum must be 1..128 MiB" }
+        return maximumMiB * 1024 * 1024
+    }
 
     /** 정렬된 그래프 사실과 보존 근거를 출력하며 로컬 절대경로는 내보내지 않는다. */
-    public fun render(snapshot: QuerySnapshot): String = render(snapshot, false)
+    public fun render(snapshot: QuerySnapshot): String = render(snapshot, false, MAX_BYTES)
 
     /** v2는 간선의 반복 USR을 node 배열 위치로 저장하며 모든 사실과 보존 문맥을 유지한다. */
-    public fun render(snapshot: QuerySnapshot, compact: Boolean): String {
+    public fun render(snapshot: QuerySnapshot, compact: Boolean): String = render(snapshot, compact, MAX_BYTES)
+
+    private fun renderContent(snapshot: QuerySnapshot, compact: Boolean): String {
         val positions = if (compact) snapshot.graph.nodeIds.withIndex().associate { it.value to it.index } else emptyMap()
         val encoding = if (compact) CompactSnapshotGraph(positions.mapKeys { it.key.value }) else null
         return jsonValue(sortedMapOf(
@@ -85,9 +97,16 @@ public object QuerySnapshotCodec {
         ).filterValues { it != null }) + "\n"
     }
 
+    /** 저장 전에 선택한 byte 상한을 적용하며 문서 schema와 정렬은 바꾸지 않는다. */
+    public fun render(snapshot: QuerySnapshot, compact: Boolean, maximumBytes: Int): String =
+        renderContent(snapshot, compact).also { requireMaximum(it, maximumBytes) }
+
     /** 불완전한 그래프를 정상 결과로 처리하지 않도록 타입·중복·참조 대상을 조립 전에 검증한다. */
-    public fun parse(content: String): QuerySnapshot {
-        require(content.length <= MAX_BYTES) { "query snapshot is too large" }
+    public fun parse(content: String): QuerySnapshot = parse(content, MAX_BYTES)
+
+    /** 파일 adapter가 이미 적용한 같은 raw byte 상한을 direct String 호출에도 적용한다. */
+    public fun parse(content: String, maximumBytes: Int): QuerySnapshot {
+        requireMaximum(content, maximumBytes)
         val document = objectValue(SnapshotJsonParser(content).parse())
         val version = integer(document["version"])
         require(document["format"] == FORMAT && version in 1..2) {
@@ -145,6 +164,36 @@ public object QuerySnapshotCodec {
             document["provenance"]?.let(BuildWitnessCodec::provenance))
     }
 
+    /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */
+    public fun requireMaximum(content: String, maximumBytes: Int) {
+        require(maximumBytes in 1..QuerySnapshotCodec.maximumBytes(MAX_MIB)) {
+            "query snapshot byte maximum must be between 1 byte and 128 MiB"
+        }
+        if (!utf8BytesAtMost(content, maximumBytes)) throw QuerySnapshotSizeException()
+    }
+
+    /** String을 다시 byte 배열로 복사하지 않고 UTF-8 크기 상한을 조기에 판정한다. */
+    private fun utf8BytesAtMost(content: String, maximumBytes: Int): Boolean {
+        var bytes = 0L
+        var index = 0
+        while (index < content.length) {
+            val character = content[index]
+            bytes += when {
+                character.code <= 0x7f -> 1
+                character.code <= 0x7ff -> 2
+                Character.isHighSurrogate(character) && content.getOrNull(index + 1)?.let { Character.isLowSurrogate(it) } == true -> {
+                    index++
+                    4
+                }
+                Character.isSurrogate(character) -> 1
+                else -> 3
+            }
+            if (bytes > maximumBytes) return false
+            index++
+        }
+        return true
+    }
+
     private fun GraphNode.toValue(): Map<String, Any?> = sortedMapOf(
         "usr" to id.value, "name" to name, "kind" to kind.name.lowerCamel(), "module" to moduleName,
         "jvmSignature" to jvmSignature, "location" to locationValue(location), "accessibility" to visibility.name.lowerCamel(),
@@ -186,8 +235,11 @@ public object QuerySnapshotCodec {
         .flatten().associate { it.name.lowerCamel() to it.name }
 }
 
+/** 선택한 저장 snapshot byte 상한을 넘었음을 다른 문서 검증 오류와 구분한다. */
+public class QuerySnapshotSizeException internal constructor() : IllegalArgumentException("query snapshot is too large")
+
 /** 문서 밖의 입력을 오류 문구에 넣지 않는, 깊이와 크기가 제한된 JSON reader다. */
-internal class SnapshotJsonParser(private val text: String) {
+internal class SnapshotJsonParser(private val text: String, private val generalNumbers: Boolean = false) {
     private var offset = 0
 
     fun parse(): Any? {
@@ -269,13 +321,39 @@ internal class SnapshotJsonParser(private val text: String) {
         }
     }
 
-    private fun numberValue(): Long {
+    private fun numberValue(): Number {
         val start = offset
         if (text.getOrNull(offset) == '-') offset++
         val digits = offset
         while (text.getOrNull(offset) in '0'..'9') offset++
         checkInput(offset > digits && (text[digits] != '0' || offset == digits + 1))
-        return text.substring(start, offset).toLongOrNull() ?: invalid()
+        checkInput(offset - start <= MAX_NUMBER_CHARACTERS)
+        if (!generalNumbers) return text.substring(start, offset).toLongOrNull() ?: invalid()
+        var decimal = false
+        if (text.getOrNull(offset) == '.') {
+            decimal = true
+            offset++
+            val fraction = offset
+            while (text.getOrNull(offset) in '0'..'9') offset++
+            checkInput(offset > fraction)
+        }
+        if (text.getOrNull(offset) == 'e' || text.getOrNull(offset) == 'E') {
+            decimal = true
+            offset++
+            if (text.getOrNull(offset) == '+' || text.getOrNull(offset) == '-') offset++
+            val exponent = offset
+            var magnitude = 0
+            while (text.getOrNull(offset) in '0'..'9') {
+                val digit = text[offset++].digitToInt()
+                checkInput(magnitude <= (MAX_EXPONENT_MAGNITUDE - digit) / 10)
+                magnitude = magnitude * 10 + digit
+            }
+            checkInput(offset > exponent)
+        }
+        checkInput(offset - start <= MAX_NUMBER_CHARACTERS)
+        val number = text.substring(start, offset)
+        return if (decimal) number.toBigDecimalOrNull() ?: invalid()
+            else number.toLongOrNull() ?: number.toBigIntegerOrNull() ?: invalid()
     }
 
     private fun literal(expected: String, result: Any?): Any? {
@@ -299,4 +377,9 @@ internal class SnapshotJsonParser(private val text: String) {
     }
     private fun checkInput(condition: Boolean) { if (!condition) invalid() }
     private fun invalid(): Nothing = throw IllegalArgumentException("query snapshot JSON is malformed")
+
+    private companion object {
+        const val MAX_NUMBER_CHARACTERS = 128
+        const val MAX_EXPONENT_MAGNITUDE = 10_000
+    }
 }

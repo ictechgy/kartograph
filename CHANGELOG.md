@@ -6,6 +6,40 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-14
+
+### Added
+
+- `snapshot --index-cache`와 Gradle snapshot의 선택적 로컬 파싱 캐시를 추가한다.
+  현재 class 내용·분석기 구현·dependency JAR 내용을 확인하고, 변경되지 않은 파싱 사실만 재사용한다.
+  입력 신선도·전체 분석·보존·source 위치는 다시 계산하며 cold/warm/변경 입력의 snapshot 일치를 검증한다.
+- `mcp`는 MCP 2025-11-25 stdio에서 `query_symbol`·`impact`·`freshness`를 제공한다.
+  시작 시 고정한 snapshot과 CLI의 분석·보고 경로를 공유하고, 크기 제한·취소·EOF·실제 Claude 연결을 검증한다.
+- 정확히 선택되는 Java private/final instance helper와 Kotlin object/companion의 String/Class 반환값을 추적한다.
+  실제 실행 표본 4건의 누락 경로를 복원하고 override·receiver 상태·재귀·분석 한도는 unknown으로 유지한다.
+- 저장·읽기 한도를 명시하는 `--snapshot-max-mib`와 Gradle `snapshotMaxMiB`를 추가한다.
+  기본 64 MiB를 유지하며 최대 128 MiB까지 허용한다. 실제 fastjson2 core/test의 88.7 MB snapshot을 검증한다.
+
+### Fixed
+
+- 공개 Gradle 표본의 classpath 수집을 task 실행 시점으로 옮겨 configuration lifecycle 오류를 해결한다.
+- 자기 분석 smoke의 정점 수 검증을 독립 JSON 출력과 대조해 제품 성장에도 정점과 간선을 구분한다.
+- 저장할 수 없는 큰 JAR 때문에 cache population을 반복하지 않고, 캐시 사용 불가 통계를 class당 한 번 센다.
+- 실제 class header의 FINAL을 사용하고, 런타임 입력에 기여하지 않는 helper 호출이 분석 예산을 소진하지 않도록 한다.
+- MCP의 실패한 source-style selector에 실제 USR 후보를 제공하며 overload를 임의 선택하지 않는다.
+  도구 내용은 16 KiB로 제한하고, 페이지·경로 예산 조정을 명시해 클라이언트 표시 한도에 대응한다.
+- `impact --summary-limit`와 MCP `summaryLimit`으로 전역 요약 항목 수를 별도로 제한한다.
+  원래·반환·생략 수를 기록하며 선택·영향 후보·경로·분석 한계를 바꾸지 않는다.
+- MCP worker의 치명적 오류가 영구 busy 상태를 남기지 않도록 종료하며,
+  graph 명령의 손상·누락 classpath 입력을 정제된 도구 오류 2로 반환한다.
+- 중첩 JSON 출력의 임시 문자열 생성을 줄이며 기존 출력 바이트와 문자 식별자를 보존한다.
+
+### Changed
+
+- `QuerySnapshotCodec`의 기본 render도 reader와 같은 64 MiB 한도를 적용한다.
+  큰 문서를 직접 만드는 API 호출은 명시적 한도 overload를 사용하며 최대 128 MiB까지 허용한다.
+- AI 변경 전 조사 48회와 원본 입력 감사를 공개한다. 일반적인 AI 생산성 향상은 미입증으로 유지한다.
+
 ## [0.8.0] - 2026-09-13
 
 ### Added

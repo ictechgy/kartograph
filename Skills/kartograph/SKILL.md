@@ -11,6 +11,19 @@ Follow the user's requested outcome. Explanation/review requests are read-only; 
 
 Use an available trusted CLI and the matching compiled variant. Do not guess class roots, install a tool, or run the application's build merely to answer a report question when supplied evidence suffices. If evidence is missing or stale, identify the missing input; rebuild when that is within the authorized task.
 
+When trusted kartograph MCP tools are connected, use `query_symbol`, `impact`, and `freshness` for the same investigation.
+Read the original report in the tool wrapper's `document` field with its snapshot identity. Query and impact use snapshots
+loaded when the server started; they do not check live inputs. Call `freshness` before making a current-build claim, retain
+`stale`/`unverified` reasons, and restart the server after an authorized recapture. Request paths in `impact.files` are graph
+selectors, not file reads. Use the advertised limits and pagination; an oversized tool result is incomplete evidence.
+The CLI workflow below remains available when MCP is not connected. See `docs/MCP.md` for startup configuration.
+If a source-style method selector is missing, use the real USRs in `suggestions` to resolve overloads explicitly.
+Read `response.effective` when a page/path budget was adapted to the 16 KiB content limit; follow the returned
+navigation and retain path omissions. `impact.files` and `impact.symbols` select a union, so use a narrow selector
+when investigating one method.
+MCP impact also bounds summary buckets. Read `summaryNavigation` and the effective `summaryLimit`; omitted
+summary buckets do not reduce candidate totals or prove absent callers. Use the full CLI summary when needed.
+
 ```bash
 kartograph query '<symbol-or-usr>' --classes <compiled-root> --project <root>
 ```

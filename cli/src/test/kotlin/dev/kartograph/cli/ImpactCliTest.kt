@@ -74,6 +74,9 @@ class ImpactCliTest {
         val list=root.resolve("files.json").also { Files.writeString(it,"[3]") }
         assertEquals(2,run("impact","--files-from",list.toString(),"--graph-file",current.toString()).first)
         assertEquals(64,run("impact","A","--graph-file",current.toString(),"--limit","0").first)
+        assertEquals(64,run("impact","A","--graph-file",current.toString(),"--summary-limit","0").first)
+        assertEquals(64,run("impact","A","--graph-file",current.toString(),"--summary-limit","100001").first)
+        assertEquals(64,run("impact","A","--graph-file",current.toString(),"--summary-limit","1","--summary-limit","2").first)
         assertEquals(64,run("impact","A","--graph-file",current.toString(),"--depth","1001").first)
         assertEquals(64,run("impact","A","--graph-file",current.toString(),"--graph-file",base.toString()).first)
         assertEquals(64,run("impact","A","--graph-file",current.toString(),"--revision","invalid").first)

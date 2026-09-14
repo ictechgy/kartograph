@@ -1,0 +1,212 @@
+{
+  "status": "Frozen before v3 product queries or efficacy model trials",
+  "method": "Independent javap call references plus source-selected existing relevant native tests. Original skips excluded. Known review anchors only, not complete behavioral impact; factory/interface sites are explicitly candidates. No new PR tests included.",
+  "cases": [
+    {
+      "id": "alibaba__fastjson2-2285",
+      "base": "27ca2b45c33cd362fa35613416f5d62ff9567921",
+      "targets": [
+        {
+          "id": "method:com/alibaba/fastjson2/writer/ObjectWriterBaseModule#createEnumWriter(Ljava/lang/Class;)Lcom/alibaba/fastjson2/writer/ObjectWriter;",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/writer/ObjectWriterBaseModule.java",
+          "name": "createEnumWriter",
+          "basis": "Existing direct or interface getBeanInfo invocation; interface dispatch is a review candidate, not proof that every call selects this processor",
+          "evidence": [
+            "153: invokevirtual #632                // Method com/alibaba/fastjson2/writer/ObjectWriterBaseModule$WriterAnnotationProcessor.getBeanInfo:(Lcom/alibaba/fastjson2/codec/BeanInfo;Ljava/lang/Class;)V",
+            "168: invokevirtual #632                // Method com/alibaba/fastjson2/writer/ObjectWriterBaseModule$WriterAnnotationProcessor.getBeanInfo:(Lcom/alibaba/fastjson2/codec/BeanInfo;Ljava/lang/Class;)V"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/writer/ObjectWriterBaseModule#getObjectWriter(Ljava/lang/reflect/Type;Ljava/lang/Class;)Lcom/alibaba/fastjson2/writer/ObjectWriter;",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/writer/ObjectWriterBaseModule.java",
+          "name": "getObjectWriter",
+          "basis": "Existing direct or interface getBeanInfo invocation; interface dispatch is a review candidate, not proof that every call selects this processor",
+          "evidence": [
+            "2286: invokevirtual #632                // Method com/alibaba/fastjson2/writer/ObjectWriterBaseModule$WriterAnnotationProcessor.getBeanInfo:(Lcom/alibaba/fastjson2/codec/BeanInfo;Ljava/lang/Class;)V"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/writer/ObjectWriterProvider#getBeanInfo(Lcom/alibaba/fastjson2/codec/BeanInfo;Ljava/lang/Class;)V",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/writer/ObjectWriterProvider.java",
+          "name": "getBeanInfo",
+          "basis": "Existing direct or interface getBeanInfo invocation; interface dispatch is a review candidate, not proof that every call selects this processor",
+          "evidence": [
+            "79: invokeinterface #243,  3          // InterfaceMethod com/alibaba/fastjson2/modules/ObjectWriterAnnotationProcessor.getBeanInfo:(Lcom/alibaba/fastjson2/codec/BeanInfo;Ljava/lang/Class;)V"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/annotation/JSONType_serializer#test()V",
+          "kind": "test",
+          "file": "core/src/test/java/com/alibaba/fastjson2/annotation/JSONType_serializer.java",
+          "name": "test",
+          "basis": "Source explicitly uses @JSONType(serializer=BeanWriter.class), the annotation path whose BeanInfo flag changes; regular-bean behavior is a compatibility control, not an enum-failure prediction. Original native testcase executed successfully; declared JVM method verified by javap."
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/annotation/JSONType_serializer#test1()V",
+          "kind": "test",
+          "file": "core/src/test/java/com/alibaba/fastjson2/annotation/JSONType_serializer.java",
+          "name": "test1",
+          "basis": "Source explicitly uses @JSONType(serializer=BeanWriter.class), the annotation path whose BeanInfo flag changes; regular-bean behavior is a compatibility control, not an enum-failure prediction. Original native testcase executed successfully; declared JVM method verified by javap."
+        }
+      ],
+      "sourceChangeSha256": "e8376d73e1b46b3ac729d369834e2ebd40b4974632abfb45d5f3475731cb3727",
+      "directOracleSha256": "16201ea11407cf1c0f5a61d4e9e294e38469abb50546d175987239b2216f7e27"
+    },
+    {
+      "id": "fasterxml__jackson-core-1053",
+      "base": "bb778a0a4d6d492ca0a39d7d0e32b6e44e90e7aa",
+      "targets": [
+        {
+          "id": "method:com/fasterxml/jackson/core/TestVersions#testMisc()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/TestVersions.java",
+          "name": "testMisc",
+          "basis": "Exact javap call of changed Version method and original focused test execution",
+          "evidence": [
+            "24: invokevirtual #68                 // Method com/fasterxml/jackson/core/Version.equals:(Ljava/lang/Object;)Z"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/VersionTest#testCompareToAndCreatesVersionTaking6ArgumentsAndUnknownVersion()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/VersionTest.java",
+          "name": "testCompareToAndCreatesVersionTaking6ArgumentsAndUnknownVersion",
+          "basis": "Exact javap call of changed Version method and original focused test execution",
+          "evidence": [
+            "23: invokevirtual #20                 // Method com/fasterxml/jackson/core/Version.compareTo:(Lcom/fasterxml/jackson/core/Version;)I"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/VersionTest#testCompareToOne()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/VersionTest.java",
+          "name": "testCompareToOne",
+          "basis": "Exact javap call of changed Version method and original focused test execution",
+          "evidence": [
+            "30: invokevirtual #20                 // Method com/fasterxml/jackson/core/Version.compareTo:(Lcom/fasterxml/jackson/core/Version;)I"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/VersionTest#testCompareToReturningZero()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/VersionTest.java",
+          "name": "testCompareToReturningZero",
+          "basis": "Exact javap call of changed Version method and original focused test execution",
+          "evidence": [
+            "24: invokevirtual #20                 // Method com/fasterxml/jackson/core/Version.compareTo:(Lcom/fasterxml/jackson/core/Version;)I"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/VersionTest#testCompareToTwo()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/VersionTest.java",
+          "name": "testCompareToTwo",
+          "basis": "Exact javap call of changed Version method and original focused test execution",
+          "evidence": [
+            "23: invokevirtual #20                 // Method com/fasterxml/jackson/core/Version.compareTo:(Lcom/fasterxml/jackson/core/Version;)I"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/VersionTest#testCreatesVersionTaking6ArgumentsAndCallsCompareTo()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/VersionTest.java",
+          "name": "testCreatesVersionTaking6ArgumentsAndCallsCompareTo",
+          "basis": "Exact javap call of changed Version method and original focused test execution",
+          "evidence": [
+            "34: invokevirtual #20                 // Method com/fasterxml/jackson/core/Version.compareTo:(Lcom/fasterxml/jackson/core/Version;)I"
+          ]
+        }
+      ],
+      "sourceChangeSha256": "01ecc642177f2135809ae72123bfa6253ae8fda977cb39a48ee88393210ab140",
+      "directOracleSha256": "aec84c0909f11fd58dac040754ebc5d7b453caaf8a7184d4f8b7821018df8ce4"
+    },
+    {
+      "id": "detekt_detekt-7635",
+      "base": "d53028caa506a25443e9ea9c1498329daf94b001",
+      "targets": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/documentation/CommentSmellProvider$instance$6#invoke(Lio/gitlab/arturbosch/detekt/api/Config;)Lio/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClass;",
+          "kind": "registration",
+          "file": "detekt-rules-documentation/src/main/kotlin/io/gitlab/arturbosch/detekt/rules/documentation/CommentSmellProvider.kt",
+          "name": "instance",
+          "basis": "Independent javap invocation; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "11: invokespecial #32                 // Method io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClass.\"<init>\":(Lio/gitlab/arturbosch/detekt/api/Config;)V"
+          ]
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should not report inner objects when turned off()V",
+          "kind": "test",
+          "file": "detekt-rules-documentation/src/test/kotlin/io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec.kt",
+          "name": "should not report inner objects when turned off",
+          "basis": "Existing object/companion cases directly relevant to visitObjectDeclaration change; new PR tests are excluded. Original native testcase executed successfully; declared JVM method verified by javap."
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should not report in private or internal companion class - #7217()V",
+          "kind": "test",
+          "file": "detekt-rules-documentation/src/test/kotlin/io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec.kt",
+          "name": "should not report in private or internal companion class - #7217",
+          "basis": "Existing object/companion cases directly relevant to visitObjectDeclaration change; new PR tests are excluded. Original native testcase executed successfully; declared JVM method verified by javap."
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec#should report in public companion class - #7217()V",
+          "kind": "test",
+          "file": "detekt-rules-documentation/src/test/kotlin/io/gitlab/arturbosch/detekt/rules/documentation/UndocumentedPublicClassSpec.kt",
+          "name": "should report in public companion class - #7217",
+          "basis": "Existing object/companion cases directly relevant to visitObjectDeclaration change; new PR tests are excluded. Original native testcase executed successfully; declared JVM method verified by javap."
+        }
+      ],
+      "sourceChangeSha256": "bdf6978d757c37df85a5a88815efc8b3ae7560463a820b0a77a30cc5fac1bb96",
+      "directOracleSha256": "2ce7fa0805152de5cb5fe3276e116221177fefdbb954ed18bb4ef336e2fb0727"
+    },
+    {
+      "id": "pinterest_ktlint-2823",
+      "base": "7655731bdea470d4bc1b400a660af7dd90955808",
+      "targets": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider#getRuleProviders$lambda$33()Lcom/pinterest/ktlint/rule/engine/core/api/Rule;",
+          "kind": "registration",
+          "file": "ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt",
+          "name": "getRuleProviders",
+          "basis": "Independent javap invocation; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "4: invokespecial #647                // Method com/pinterest/ktlint/ruleset/standard/rules/IndentationRule.\"<init>\":()V"
+          ]
+        },
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Issue 1247 - Formats function literal with multiple value parameters()V",
+          "kind": "test",
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest.kt",
+          "name": "Issue 1247 - Formats function literal with multiple value parameters",
+          "basis": "Existing function-literal parameter indentation coverage selected from source before graph/model queries. Original native testcase executed successfully; declared JVM method verified by javap."
+        },
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Given a function literal with comment before the parameter list()V",
+          "kind": "test",
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest.kt",
+          "name": "Given a function literal with comment before the parameter list",
+          "basis": "Existing function-literal parameter indentation coverage selected from source before graph/model queries. Original native testcase executed successfully; declared JVM method verified by javap."
+        },
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest#Issue 1247 - Given a function literal with single value parameter()V",
+          "kind": "test",
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest.kt",
+          "name": "Issue 1247 - Given a function literal with single value parameter",
+          "basis": "Existing function-literal parameter indentation coverage selected from source before graph/model queries. Original native testcase executed successfully; declared JVM method verified by javap."
+        },
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest$Given the ktlint_official code style is enabled#Issue 1681 - Given a lambda having multiple arguments on different lines()V",
+          "kind": "test",
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/IndentationRuleTest.kt",
+          "name": "Issue 1681 - Given a lambda having multiple arguments on different lines",
+          "basis": "Existing ktlint_official multiline lambda case; matches changed code-style branch. Original native testcase executed successfully; declared JVM method verified by javap."
+        }
+      ],
+      "sourceChangeSha256": "76e51d642e7ee26aa069da4a516f82573abf2817c440e8fd7f14979126d933a3",
+      "directOracleSha256": "94fd157f701b3e107fdf9c7ab2bb889ff56e6d81eca4669b3dbda47655c38203"
+    }
+  ]
+}

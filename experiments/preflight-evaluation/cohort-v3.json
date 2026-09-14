@@ -1,0 +1,66 @@
+{
+  "frozenAt": "2026-09-13T23:48:58.035565+00:00",
+  "task": "Pre-edit impact review of a supplied production change, with same source tools/model/budget and additional actual product MCP graph tools in the graph arm. Historical generic repair result remains separate.",
+  "selectionRule": "Next highest eligible unused numericPR in each of the four v2 repository strata. Prior v1/v2/repair/development cases excluded. Metadata selection before product/model outcome or patch inspection.",
+  "previousCases": [
+    "ankidroid_Anki-Android-19384",
+    "ankidroid_Anki-Android-19509",
+    "ankidroid_Anki-Android-19661",
+    "ankidroid_Anki-Android-19982",
+    "ankidroid_Anki-Android-20250",
+    "detekt_detekt-7718",
+    "detekt_detekt-7888",
+    "fasterxml__jackson-core-1208",
+    "fasterxml__jackson-core-1309",
+    "google__gson-1391",
+    "google__gson-1555",
+    "pinterest_ktlint-2895",
+    "pinterest_ktlint-2983",
+    "square_okhttp-6887",
+    "google__gson-1093",
+    "fasterxml__jackson-core-1172",
+    "detekt_detekt-7715",
+    "pinterest_ktlint-2891",
+    "alibaba__fastjson2-2559",
+    "fasterxml__jackson-core-1142",
+    "detekt_detekt-7667",
+    "pinterest_ktlint-2873"
+  ],
+  "primary": [
+    {
+      "id": "alibaba__fastjson2-2285",
+      "repository": "alibaba/fastjson2",
+      "base": "27ca2b45c33cd362fa35613416f5d62ff9567921",
+      "language": "java",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetSha256": "7e02214eba338dcfb41c961f15cec28d299dda5c74836794463ae70a3c0832a4"
+    },
+    {
+      "id": "fasterxml__jackson-core-1053",
+      "repository": "fasterxml/jackson-core",
+      "base": "bb778a0a4d6d492ca0a39d7d0e32b6e44e90e7aa",
+      "language": "java",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetSha256": "21f1f1350dcaf687840f6cf0dce4198c7958cc66cd6ab6722a0dd3a18860147e"
+    },
+    {
+      "id": "detekt_detekt-7635",
+      "repository": "detekt/detekt",
+      "base": "d53028caa506a25443e9ea9c1498329daf94b001",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    },
+    {
+      "id": "pinterest_ktlint-2823",
+      "repository": "pinterest/ktlint",
+      "base": "7655731bdea470d4bc1b400a660af7dd90955808",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    }
+  ],
+  "exclusions": [],
+  "repeatsPerArm": 2,
+  "plannedTrials": 16,
+  "qualification": "Before model exposure, verify original unchanged source/tests and build/oracle provenance. A missing original target or build failure is recorded; replacements follow the same descending-ID rule with explicit reason, never product/model success. Do not inject new tests into the pre-edit graph or expose oracle outcomes.",
+  "status": "Metadata frozen; native qualification/oracle/model runs pending"
+}

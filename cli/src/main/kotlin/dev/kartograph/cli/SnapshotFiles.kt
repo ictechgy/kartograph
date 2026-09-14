@@ -9,14 +9,36 @@ import java.nio.file.Path
 
 /** 저장 질의와 영향 점검에 같은 UTF-8·크기 제한을 적용한다. */
 internal object SnapshotFiles {
-    fun read(path: String): QuerySnapshot = QuerySnapshotCodec.parse(readText(path, QuerySnapshotCodec.MAX_BYTES))
+    fun limit(values: List<String>): SnapshotFileLimit? {
+        if (values.size > 1) return null
+        val maximumMiB = when {
+            values.isEmpty() -> QuerySnapshotCodec.DEFAULT_MAX_MIB
+            else -> values.single().toIntOrNull() ?: return null
+        }
+        val maximumBytes = try {
+            QuerySnapshotCodec.maximumBytes(maximumMiB)
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+        return SnapshotFileLimit(maximumMiB, maximumBytes)
+    }
+
+    fun read(path: String, maximumBytes: Int = QuerySnapshotCodec.MAX_BYTES): QuerySnapshot =
+        QuerySnapshotCodec.parse(readText(path, maximumBytes), maximumBytes)
 
     fun readText(value: String, maximum: Int): String {
+        require(maximum > 0)
         val path = Path.of(value)
         require(Files.isRegularFile(path))
-        val bytes = Files.newInputStream(path).use { it.readNBytes(maximum + 1) }
-        require(bytes.size <= maximum)
+        val observedSize = Files.size(path)
+        require(observedSize in 0..maximum.toLong())
+        val bytes = ByteArray(observedSize.toInt())
+        Files.newInputStream(path).use { input ->
+            require(input.readNBytes(bytes, 0, bytes.size) == bytes.size && input.read() == -1)
+        }
         return Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
     }
 }
+
+internal data class SnapshotFileLimit(val maximumMiB: Int, val maximumBytes: Int)

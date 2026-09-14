@@ -1,6 +1,7 @@
 package dev.kartograph.gradle
 
 import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 
@@ -8,6 +9,15 @@ import org.gradle.api.provider.Property
 public abstract class KartographExtension {
     /** 컴파일 입력과 main/test snapshot의 자동 수집을 명시적으로 활성화한다. */
     public abstract val snapshotsEnabled: Property<Boolean>
+
+    /** snapshot의 class 파싱 결과만 재사용하며 전체 분석·신선도 검사는 매번 수행한다. */
+    public abstract val snapshotIndexCacheEnabled: Property<Boolean>
+
+    /** 저장 snapshot의 reader/writer 자원 상한(MiB)이며 그래프 provenance 의미에는 포함하지 않는다. */
+    public abstract val snapshotMaxMiB: Property<Int>
+
+    /** 공개 snapshot과 분리한 로컬 파싱 캐시 위치이며 variant가 같은 class 바이트를 공유할 수 있다. */
+    public abstract val snapshotIndexCacheDirectory: DirectoryProperty
 
     /** CI가 전달한 commit 라벨이다. 컴파일 신선도는 별도의 내용·producer 근거로 검증한다. */
     public abstract val snapshotRevision: Property<String>

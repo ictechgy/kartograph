@@ -28,7 +28,7 @@ import org.objectweb.asm.tree.analysis.BasicValue
 import org.objectweb.asm.tree.analysis.Interpreter
 import org.objectweb.asm.tree.analysis.Value
 
-/** 필요한 stack/local 값과 프로젝트 static 반환값을 제한적으로 전파한다. 문자열 원문은 결과나 오류에 싣지 않는다. */
+/** 필요한 stack/local 값과 프로젝트의 정확한 helper 반환값을 제한적으로 전파한다. 문자열 원문은 결과나 오류에 싣지 않는다. */
 internal object RuntimeValueAnalyzer {
     // hierarchy 완성 전 후보를 넓게 고르고, 실제 모델 적용은 아래의 loader 관계로 다시 확인한다.
     fun requiresValueAnalysis(call: dev.kartograph.core.ExternalCall): Boolean =
@@ -76,10 +76,14 @@ internal object RuntimeValueAnalyzer {
                 val consumers = method.instructions.toArray().filterIsInstance<MethodInsnNode>().filter {
                     RuntimeLibraryModels.find(it.owner, it.name, it.desc, it.opcode == Opcodes.INVOKESTATIC, ::loader)?.sensitive == true
                 }
-                val demanded = if (exceedsFrameBudget(method)) null else fieldDemand.fieldsFeeding(fact.internalName, method, consumers)
+                val frameBudgetExceeded = exceedsFrameBudget(method)
+                val demandedFields = if (frameBudgetExceeded) null else fieldDemand.fieldsFeeding(fact.internalName, method, consumers)
+                val demandedCalls = if (frameBudgetExceeded) null else fieldDemand.callsFeeding(fact.internalName, method, consumers) { call ->
+                    JvmNodeId.methodId(call.owner, call.name, call.desc) in returns
+                }
                 val interpreter = FlowInterpreter(::loader, returnedValue = summaries::evaluate, fieldValue = fields::read,
-                    demandedFields = demanded)
-                val frames = if (exceedsFrameBudget(method)) {
+                    demandedFields = demandedFields, demandedCalls = demandedCalls)
+                val frames = if (frameBudgetExceeded) {
                     boundedMethods++
                     null
                 } else try {
@@ -209,11 +213,18 @@ private class ReturnValues(
     private var slots = 0L
 
     fun evaluate(call: MethodInsnNode, values: List<FlowValue>, limited: () -> Unit): FlowValue? {
-        if (call.opcode != Opcodes.INVOKESTATIC) return null
+        when (call.opcode) {
+            Opcodes.INVOKESTATIC, Opcodes.INVOKEVIRTUAL, Opcodes.INVOKESPECIAL, Opcodes.INVOKEINTERFACE -> Unit
+            else -> return null
+        }
         val id = JvmNodeId.methodId(call.owner, call.name, call.desc)
         val (owner, method) = methods[id] ?: return null
+        // 본문 목록은 own static 또는 JVM modifier로 override 불가가 확인된 선언만 포함한다.
+        val isStatic = method.access and Opcodes.ACC_STATIC != 0
+        if (isStatic != (call.opcode == Opcodes.INVOKESTATIC)) return null
         if (method.instructions.size() == 0) return null
-        val arguments = values.map { value -> FlowValue(value.basic, strings = value.strings, classes = value.classes,
+        // receiver 상태를 추측하지 않는다. 인자만 전달하고 instance local 0은 unknown으로 둔다.
+        val arguments = values.drop(if (isStatic) 0 else 1).map { value -> FlowValue(value.basic, strings = value.strings, classes = value.classes,
             integer = value.integer, arrayLength = value.arrayLength, uncertain = value.uncertain, incompleteByLimit = value.incompleteByLimit) }
         val key = Key(id, arguments)
         cache[key]?.let { if (it.limited) limited(); return it.value }
@@ -234,14 +245,18 @@ private class ReturnValues(
 
     private fun analyze(owner: String, method: MethodNode, arguments: List<FlowValue>): Summary {
         val parameters = mutableMapOf<Int, FlowValue>()
-        var local = 0
+        var local = if (method.access and Opcodes.ACC_STATIC != 0) 0 else 1
         for ((index, type) in Type.getArgumentTypes(method.desc).withIndex()) {
             arguments.getOrNull(index)?.let { parameters[local] = it }
             local += type.size
         }
         val consumers = method.instructions.toArray().filter { it.opcode == Opcodes.ARETURN }
+        val demandedFields = fieldDemand.fieldsFeeding(owner, method, consumers)
+        val demandedCalls = fieldDemand.callsFeeding(owner, method, consumers) { call ->
+            JvmNodeId.methodId(call.owner, call.name, call.desc) in methods
+        }
         val interpreter = FlowInterpreter(loader, parameters, ::evaluate, fieldValue,
-            demandedFields = fieldDemand.fieldsFeeding(owner, method, consumers))
+            demandedFields = demandedFields, demandedCalls = demandedCalls)
         val frames = try { Analyzer(interpreter).analyze(owner, method) } catch (_: AnalyzerException) { return Summary(null, true) }
         var result: FlowValue? = null
         for ((index, instruction) in method.instructions.toArray().withIndex()) {
@@ -390,8 +405,12 @@ private class FieldValues(
                 slots += frameSlots(method)
                 val consumers = (writer.directTargets.filterValues { field.id in it }.keys + writer.reflectiveSites)
                     .map { writer.instructions[it] }
+                val demandedFields = fieldDemand.fieldsFeeding(writer.owner, method, consumers)
+                val demandedCalls = fieldDemand.callsFeeding(writer.owner, method, consumers) { call ->
+                    JvmNodeId.methodId(call.owner, call.name, call.desc) in returns
+                }
                 val interpreter = FlowInterpreter(loader, returnedValue = summaries::evaluate, fieldValue = ::read, retainFieldCandidates = true,
-                    demandedFields = fieldDemand.fieldsFeeding(writer.owner, method, consumers))
+                    demandedFields = demandedFields, demandedCalls = demandedCalls)
                 val frames = try { Analyzer(interpreter).analyze(writer.owner, method) } catch (_: AnalyzerException) { limit(); continue }
                 for (index in writer.instructions.indices) {
                     val frame = frames[index] ?: continue
@@ -447,6 +466,7 @@ private class FlowInterpreter(
     private val fieldValue: (FieldInsnNode?, Set<MemberValue>?, () -> Unit) -> FlowValue? = { _, _, _ -> null },
     private val retainFieldCandidates: Boolean = false,
     private val demandedFields: Set<AbstractInsnNode>? = null,
+    private val demandedCalls: Set<AbstractInsnNode>? = null,
 ) : Interpreter<FlowValue>(Opcodes.ASM9) {
     private val base = BasicInterpreter()
     var limitReached = false
@@ -528,9 +548,11 @@ private class FlowInterpreter(
             return unknown.copy(strings = concatRecipe(recipe, values.mapIndexed { index, value -> value.asStrings(types[index]) }, insn.bsmArgs.drop(1), ::limited))
         }
         if (insn !is MethodInsnNode) return unknown
-        var returnLimited = false
-        returnedValue(insn, values) { returnLimited = true; limited() }?.let { return it.copy(basic = result) }
-        if (returnLimited) return unknown.copy(incompleteByLimit = true)
+        if (demandedCalls == null || insn in demandedCalls) {
+            var returnLimited = false
+            returnedValue(insn, values) { returnLimited = true; limited() }?.let { return it.copy(basic = result) }
+            if (returnLimited) return unknown.copy(incompleteByLimit = true)
+        }
         val model = RuntimeLibraryModels.find(insn.owner, insn.name, insn.desc,
             insn.opcode == Opcodes.INVOKESTATIC, isClassLoader) ?: return unknown
         fun value(index: Int): FlowValue? = values.getOrNull(index)

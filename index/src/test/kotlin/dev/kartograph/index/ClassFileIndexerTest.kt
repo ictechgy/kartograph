@@ -9,6 +9,9 @@ import dev.kartograph.index.fixture.Caller
 import dev.kartograph.index.fixture.JavaFixture
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.FileTime
+import java.io.IOException
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 import kotlin.io.path.createDirectories
@@ -21,13 +24,276 @@ import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertNotEquals
+import java.util.concurrent.Executors
 import org.junit.jupiter.api.io.TempDir
 import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.ConstantDynamic
+import org.objectweb.asm.Handle
 import org.objectweb.asm.Label
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 
 class ClassFileIndexerTest {
+    @Test
+    fun `cache batches preserve root precedence and recover after malformed input`(@TempDir directory: Path) {
+        val first = directory.resolve("first").createDirectories()
+        val second = directory.resolve("second").createDirectories()
+        repeat(40) { index ->
+            first.resolve("Type$index.class").writeBytes(duplicateClass("First.java", Opcodes.ACC_PUBLIC, "Type$index"))
+            second.resolve("Type$index.class").writeBytes(duplicateClass("Second.java", Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL, "Type$index"))
+        }
+        val cache = ClassIndexCache(directory.resolve("cache"), "batches")
+        val roots = listOf(first, second)
+        val oracle = ClassFileIndexer().indexWithObservations(roots)
+        val cold = ClassFileIndexer(cache).indexWithObservations(roots)
+        assertSameSemantics(oracle, cold)
+        assertEquals(80, cold.statistics.parsedClasses)
+        val reversed = roots.reversed()
+        val warm = ClassFileIndexer(cache).indexWithObservations(reversed)
+        assertSameSemantics(ClassFileIndexer().indexWithObservations(reversed), warm)
+        assertEquals(80, warm.statistics.cacheHits)
+        assertEquals(0, warm.statistics.parsedClasses)
+
+        val broken = first.resolve("Type20.class")
+        val original = Files.readAllBytes(broken)
+        broken.writeBytes(byteArrayOf(0, 1, 2))
+        assertFailsWith<ClassIndexingException> { ClassFileIndexer(cache).indexWithObservations(roots) }
+        broken.writeBytes(original)
+        val recovered = ClassFileIndexer(cache).indexWithObservations(roots)
+        assertSameSemantics(ClassFileIndexer().indexWithObservations(roots), recovered)
+        assertEquals(80, recovered.statistics.cacheHits)
+    }
+
+    @Test
+    fun `content keyed cache reuses unchanged facts and rejects same timestamp edits`(@TempDir directory: Path) {
+        val classes = directory.resolve("classes").createDirectories()
+        val cache = ClassIndexCache(directory.resolve("cache"))
+        val classFile = classes.resolve("dev/fixture/Cached.class").also { it.parent.createDirectories() }
+        classFile.writeBytes(duplicateClass("Cached.java", Opcodes.ACC_PUBLIC, "dev/fixture/Cached"))
+
+        val cold = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        val warm = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        assertEquals(1, cold.statistics.cacheMisses)
+        assertEquals(1, warm.statistics.cacheHits)
+        assertSameSemantics(cold, warm)
+
+        val timestamp = Files.getLastModifiedTime(classFile)
+        classFile.writeBytes(duplicateClass("Cached.java", Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL, "dev/fixture/Cached"))
+        Files.setLastModifiedTime(classFile, timestamp)
+        val changed = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        assertEquals(0, changed.statistics.cacheHits)
+        assertEquals(1, changed.statistics.cacheMisses)
+        assertEquals(1, changed.statistics.parsedClasses)
+        assertNotEquals(cold.graph, changed.graph)
+    }
+
+    @Test
+    fun `corrupt cache entry is a counted miss and authoritative parse still succeeds`(@TempDir directory: Path) {
+        val classes = directory.resolve("classes").createDirectories()
+        val cacheDir = directory.resolve("cache")
+        val file = classes.resolve("Cached.class")
+        file.writeBytes(duplicateClass("Cached.java", Opcodes.ACC_PUBLIC, "Cached"))
+        val cache = ClassIndexCache(cacheDir)
+        ClassFileIndexer(cache).index(listOf(classes))
+        Files.list(cacheDir).use { stream -> Files.write(stream.findFirst().orElseThrow(), byteArrayOf(1, 2, 3)) }
+        val result = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        assertEquals(1, result.statistics.cacheMisses)
+        assertEquals(1, result.statistics.invalidEntries)
+        assertEquals(1, result.statistics.parsedClasses)
+    }
+
+    @Test
+    fun `cached Java and Kotlin method bodies preserve runtime-enriched graph`(@TempDir directory: Path) {
+        val cache = ClassIndexCache(directory.resolve("cache"))
+        val oracle = ClassFileIndexer().indexWithObservations(listOf(testClassesRoot))
+        ClassFileIndexer(cache).indexWithObservations(listOf(testClassesRoot))
+        val cached = ClassFileIndexer(cache).indexWithObservations(listOf(testClassesRoot))
+        assertSameSemantics(oracle, cached)
+        assertTrue(cached.statistics.cacheHits > 0)
+        assertEquals(0, cached.statistics.parsedClasses)
+    }
+
+    @Test
+    fun `ASM reduced body round trips branches handlers wide locals handles indy and condy`(@TempDir directory: Path) {
+        val classes = directory.resolve("classes").createDirectories()
+        classes.resolve("Shapes.class").writeBytes(runtimeBodyShapes())
+        val oracle = ClassFileIndexer().indexWithObservations(listOf(classes))
+        val cache = ClassIndexCache(directory.resolve("cache"), "body-shapes")
+        ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        val warm = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+
+        assertEquals(1, warm.statistics.cacheHits)
+        assertEquals(0, warm.statistics.parsedClasses)
+        assertSameSemantics(oracle, warm)
+    }
+
+    @Test
+    fun `cached project facts still recompute changed dependency hierarchy`(@TempDir directory: Path) {
+        val classes = directory.resolve("classes").createDirectories()
+        val dependencies = directory.resolve("dependencies").createDirectories()
+        classes.resolve("Project.class").writeBytes(classWithSuper("dev/fixture/Project", "lib/Child"))
+        dependencies.resolve("Child.class").writeBytes(classWithSuper("lib/Child", "lib/First"))
+        val cache = ClassIndexCache(directory.resolve("cache"), "hierarchy")
+        ClassFileIndexer(cache).indexWithObservations(listOf(classes), listOf(dependencies))
+
+        dependencies.resolve("Child.class").writeBytes(classWithSuper("lib/Child", "lib/Second"))
+        val oracle = ClassFileIndexer().indexWithObservations(listOf(classes), listOf(dependencies))
+        val warm = ClassFileIndexer(cache).indexWithObservations(listOf(classes), listOf(dependencies))
+        assertEquals(1, warm.statistics.cacheHits)
+        assertEquals(oracle.hierarchy.directSupertypesOf("lib/Child"), warm.hierarchy.directSupertypesOf("lib/Child"))
+        assertEquals(setOf("lib/Second"), warm.hierarchy.directSupertypesOf("lib/Child"))
+        assertSameSemantics(oracle, warm)
+    }
+
+    @Test
+    fun `cache observes additions deletions renames and fresh timestamps`(@TempDir directory: Path) {
+        val classes = directory.resolve("classes").createDirectories()
+        val cache = ClassIndexCache(directory.resolve("cache"), "lifecycle")
+        val first = classes.resolve("First.class")
+        first.writeBytes(duplicateClass("First.java", 0, "dev/fixture/First"))
+        ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+
+        val changedTime = FileTime.fromMillis(Files.getLastModifiedTime(first).toMillis() + 10_000)
+        Files.setLastModifiedTime(first, changedTime)
+        val timestampOracle = ClassFileIndexer().indexWithObservations(listOf(classes))
+        val timestampCached = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        assertEquals(1, timestampCached.statistics.cacheHits)
+        assertEquals(timestampOracle.observations, timestampCached.observations)
+
+        val second = classes.resolve("Second.class")
+        Files.move(first, second)
+        second.writeBytes(duplicateClass("Second.java", 0, "dev/fixture/Second"))
+        val renamed = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        assertEquals(1, renamed.statistics.cacheMisses)
+        assertTrue(JvmNodeId.classId("dev/fixture/First") !in renamed.graph.nodes)
+        assertTrue(JvmNodeId.classId("dev/fixture/Second") in renamed.graph.nodes)
+
+        classes.resolve("Added.class").writeBytes(duplicateClass("Added.java", 0, "dev/fixture/Added"))
+        val added = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        assertEquals(1, added.statistics.cacheHits)
+        assertEquals(1, added.statistics.cacheMisses)
+        Files.delete(second)
+        val deleted = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        assertEquals(1, deleted.statistics.classFiles)
+        assertTrue(JvmNodeId.classId("dev/fixture/Second") !in deleted.graph.nodes)
+    }
+
+    @Test
+    fun `cache recomputes duplicate root generated jar and service selection`(@TempDir directory: Path) {
+        val first = directory.resolve("first").createDirectories()
+        val second = directory.resolve("second").createDirectories()
+        first.resolve("Duplicate.class").writeBytes(duplicateClass("First.java", Opcodes.ACC_FINAL))
+        second.resolve("Duplicate.class").writeBytes(duplicateClass("Second.java", Opcodes.ACC_ABSTRACT))
+        val services = directory.resolve("resources/META-INF/services").createDirectories()
+        services.resolve("dev.fixture.Service").writeText("dev.fixture.Duplicate\n")
+        val cache = ClassIndexCache(directory.resolve("cache"), "global")
+        ClassFileIndexer(cache).indexWithObservations(listOf(first, second), null, listOf(directory.resolve("resources")), listOf(first))
+
+        services.resolve("dev.fixture.Service").writeText("dev.fixture.Other\n")
+        val oracle = ClassFileIndexer().indexWithObservations(listOf(second, first), null, listOf(directory.resolve("resources")), emptyList())
+        val warm = ClassFileIndexer(cache).indexWithObservations(listOf(second, first), null, listOf(directory.resolve("resources")), emptyList())
+        assertEquals(2, warm.statistics.cacheHits)
+        assertSameSemantics(oracle, warm)
+        assertEquals("Second.java", warm.graph.node(JvmNodeId.classId("dev/fixture/Duplicate"))?.location?.path)
+        assertFalse(warm.graph.nodes.getValue(JvmNodeId.classId("dev/fixture/Duplicate")).synthesized)
+        assertEquals("dev/fixture/Other", warm.graph.serviceProviders.single().provider.value.removePrefix("class:"))
+    }
+
+    @Test
+    fun `cache rejects trailing oversized symlinked and other-engine entries`(@TempDir directory: Path) {
+        val classes = directory.resolve("classes").createDirectories()
+        classes.resolve("Cached.class").writeBytes(duplicateClass("Cached.java", 0, "dev/fixture/Cached"))
+        val cacheDir = directory.resolve("cache")
+        val first = ClassIndexCache(cacheDir, "engine-a")
+        ClassFileIndexer(first).indexWithObservations(listOf(classes))
+        val entry = Files.list(cacheDir).use { it.findFirst().orElseThrow() }
+
+        Files.write(entry, byteArrayOf(1), StandardOpenOption.APPEND)
+        assertEquals(1, ClassFileIndexer(first).indexWithObservations(listOf(classes)).statistics.invalidEntries)
+        Files.write(entry, ByteArray(ClassIndexCache.MAX_ENTRY_BYTES + 1))
+        assertEquals(1, ClassFileIndexer(first).indexWithObservations(listOf(classes)).statistics.invalidEntries)
+
+        Files.delete(entry)
+        val target = directory.resolve("target").also { it.writeText("not cache data") }
+        try {
+            Files.createSymbolicLink(entry, target)
+            val symlinked = ClassFileIndexer(first).indexWithObservations(listOf(classes))
+            assertEquals(1, symlinked.statistics.cacheMisses)
+            assertEquals(0, symlinked.statistics.cacheHits)
+        } catch (_: UnsupportedOperationException) {
+            // 이 파일시스템이 symlink를 지원하지 않으면 나머지 손상 경계를 계속 검증한다.
+        } catch (_: IOException) {
+            // 이 파일시스템이 symlink 생성을 허용하지 않아도 손상/engine 경계는 검증한다.
+        }
+        val changedEngine = ClassFileIndexer(ClassIndexCache(cacheDir, "engine-b")).indexWithObservations(listOf(classes))
+        assertEquals(1, changedEngine.statistics.cacheMisses)
+        assertEquals(0, changedEngine.statistics.cacheHits)
+    }
+
+    @Test
+    fun `simultaneous writers leave a reusable complete entry`(@TempDir directory: Path) {
+        val classes = directory.resolve("classes").createDirectories()
+        classes.resolve("Cached.class").writeBytes(duplicateClass("Cached.java", 0, "dev/fixture/Cached"))
+        val cache = ClassIndexCache(directory.resolve("cache"), "concurrent")
+        val pool = Executors.newFixedThreadPool(4)
+        try {
+            val tasks = List(12) { pool.submit<IndexedClasses> { ClassFileIndexer(cache).indexWithObservations(listOf(classes)) } }
+            tasks.forEach { assertTrue(it.get().graph.nodes.isNotEmpty()) }
+        } finally {
+            pool.shutdownNow()
+        }
+        val warm = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        assertEquals(1, warm.statistics.cacheHits)
+        assertEquals(0, warm.statistics.invalidEntries)
+    }
+
+    @Test
+    fun `unavailable automatic identity disables reuse without partial output`(@TempDir directory: Path) {
+        val classes = directory.resolve("classes").createDirectories()
+        classes.resolve("Cached.class").writeBytes(duplicateClass("Cached.java", 0, "dev/fixture/Cached"))
+        val cacheDirectory = directory.resolve("cache")
+        val unavailable = ClassIndexCache(cacheDirectory, null)
+
+        val first = ClassFileIndexer(unavailable).indexWithObservations(listOf(classes))
+        val second = ClassFileIndexer(unavailable).indexWithObservations(listOf(classes))
+
+        assertEquals(0, first.statistics.cacheHits)
+        assertEquals(1, first.statistics.parsedClasses)
+        assertTrue(first.statistics.unavailableEntries >= 1)
+        assertSameSemantics(first, second)
+        assertFalse(Files.exists(cacheDirectory))
+    }
+
+    @Test
+    fun `cached facts preserve isolated UTF16 source code units`(@TempDir directory: Path) {
+        val classes = directory.resolve("classes").createDirectories()
+        classes.resolve("Cached.class").writeBytes(duplicateClass("\uD800.java", 0, "dev/fixture/Cached"))
+        val cache = ClassIndexCache(directory.resolve("cache"))
+        val original = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        val cached = ClassFileIndexer(cache).indexWithObservations(listOf(classes))
+        assertEquals(1, cached.statistics.cacheHits)
+        assertSameSemantics(original, cached)
+    }
+
+    @Test
+    fun `engine identity includes separate helpers and binds dependency roles`(@TempDir directory: Path) {
+        val module = directory.resolve("module").createDirectories()
+        val helper = module.resolve("SeparateHelper.class")
+        module.resolve("Parser.class").writeBytes(byteArrayOf(1, 2, 3))
+        helper.writeBytes(byteArrayOf(4, 5, 6))
+        val dependency = directory.resolve("dependency.jar")
+        dependency.writeBytes(byteArrayOf(7, 8, 9))
+        val original = CacheIdentity.fromArtifacts(mapOf("parser" to module, "library" to dependency))
+        assertTrue(original != null)
+        assertEquals(original, CacheIdentity.fromArtifacts(linkedMapOf("library" to dependency, "parser" to module)))
+        helper.writeBytes(byteArrayOf(4, 5, 7))
+        assertTrue(original != CacheIdentity.fromArtifacts(mapOf("parser" to module, "library" to dependency)))
+        helper.writeBytes(byteArrayOf(4, 5, 6))
+        assertTrue(original != CacheIdentity.fromArtifacts(mapOf("parser" to dependency, "library" to module)))
+        assertEquals(null, CacheIdentity.fromArtifacts(mapOf("parser" to module, "missing" to directory.resolve("absent.jar"))))
+    }
+
     @Test
     fun `marks Dagger generated markers and enclosed classes but not name lookalikes`(@TempDir directory: Path) {
         directory.resolve("Factory.class").writeBytes(annotatedClass(
@@ -327,6 +593,27 @@ class ClassFileIndexerTest {
     }
 
     @Test
+    fun `cached R jar facts apply current jar origin after rename`(@TempDir directory: Path) {
+        val resourceJar = directory.resolve("R.jar")
+        JarOutputStream(Files.newOutputStream(resourceJar)).use { output ->
+            output.putNextEntry(JarEntry("dev/fixture/Widget.class"))
+            output.write(duplicateClass("Widget.java", Opcodes.ACC_FINAL, "dev/fixture/Widget"))
+            output.closeEntry()
+        }
+        val cache = ClassIndexCache(directory.resolve("cache"), "r-jar")
+        val generated = ClassFileIndexer(cache).indexWithObservations(listOf(resourceJar))
+        assertTrue(generated.graph.nodes.getValue(JvmNodeId.classId("dev/fixture/Widget")).synthesized)
+
+        val ordinaryJar = directory.resolve("resources.jar")
+        Files.move(resourceJar, ordinaryJar)
+        val oracle = ClassFileIndexer().indexWithObservations(listOf(ordinaryJar))
+        val warm = ClassFileIndexer(cache).indexWithObservations(listOf(ordinaryJar))
+        assertEquals(1, warm.statistics.cacheHits)
+        assertFalse(warm.graph.nodes.getValue(JvmNodeId.classId("dev/fixture/Widget")).synthesized)
+        assertSameSemantics(oracle, warm)
+    }
+
+    @Test
     fun `marks Android generated class names as synthesized outside R jars`(@TempDir directory: Path) {
         val generatedNames = listOf("BuildConfig", "BR", "R", "R${'$'}string", "Manifest", "Manifest${'$'}permission")
         generatedNames.forEach { name ->
@@ -592,6 +879,16 @@ class ClassFileIndexerTest {
     private val testClassesRoot: Path
         get() = Path.of(requireNotNull(Caller::class.java.protectionDomain.codeSource).location.toURI())
 
+    private fun assertSameSemantics(expected: IndexedClasses, actual: IndexedClasses) {
+        assertEquals(expected.graph.nodes, actual.graph.nodes)
+        assertEquals(expected.graph.edges, actual.graph.edges)
+        assertEquals(expected.graph.externalCalls, actual.graph.externalCalls)
+        assertEquals(expected.graph.serviceProviders, actual.graph.serviceProviders)
+        assertEquals(expected.observations, actual.observations)
+        assertEquals(expected.declarationsByRoot, actual.declarationsByRoot)
+        assertEquals(expected.selectedRootByNode, actual.selectedRootByNode)
+    }
+
     private fun duplicateClass(
         sourceFile: String,
         modifier: Int,
@@ -599,6 +896,45 @@ class ClassFileIndexerTest {
     ): ByteArray = ClassWriter(0).apply {
         visit(Opcodes.V17, Opcodes.ACC_PUBLIC or modifier, internalName, null, "java/lang/Object", null)
         visitSource(sourceFile, null)
+        visitEnd()
+    }.toByteArray()
+
+    private fun classWithSuper(internalName: String, superName: String): ByteArray = ClassWriter(0).apply {
+        visit(Opcodes.V17, Opcodes.ACC_PUBLIC, internalName, null, superName, null)
+        visitEnd()
+    }.toByteArray()
+
+    private fun runtimeBodyShapes(): ByteArray = ClassWriter(ClassWriter.COMPUTE_MAXS).apply {
+        visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "dev/fixture/Shapes", null, "java/lang/Object", null)
+        visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "inspect", "(I)V", null, null).apply {
+            val zero = Label(); val one = Label(); val afterSwitch = Label(); val handler = Label(); val end = Label()
+            visitCode()
+            visitVarInsn(Opcodes.ILOAD, 0)
+            visitTableSwitchInsn(0, 1, afterSwitch, zero, one)
+            visitLabel(zero); visitInsn(Opcodes.ICONST_0); visitVarInsn(Opcodes.ISTORE, 300); visitJumpInsn(Opcodes.GOTO, afterSwitch)
+            visitLabel(one); visitInsn(Opcodes.ICONST_1); visitVarInsn(Opcodes.ISTORE, 300)
+            visitLabel(afterSwitch)
+            visitTryCatchBlock(afterSwitch, end, handler, "java/lang/Exception")
+            visitLdcInsn(ConstantDynamic("constant", "Ljava/lang/Object;", Handle(Opcodes.H_INVOKESTATIC,
+                "java/lang/invoke/ConstantBootstraps", "nullConstant",
+                "(Ljava/lang/invoke/MethodHandles\$Lookup;Ljava/lang/String;Ljava/lang/Class;)Ljava/lang/Object;", false)))
+            visitInsn(Opcodes.POP)
+            visitVarInsn(Opcodes.ILOAD, 300)
+            visitInvokeDynamicInsn("makeConcatWithConstants", "(I)Ljava/lang/String;", Handle(Opcodes.H_INVOKESTATIC,
+                "java/lang/invoke/StringConcatFactory", "makeConcatWithConstants",
+                "(Ljava/lang/invoke/MethodHandles\$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;", false), "value=\u0001")
+            visitInsn(Opcodes.POP)
+            visitLdcInsn("java.lang.String")
+            visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Class", "forName", "(Ljava/lang/String;)Ljava/lang/Class;", false)
+            visitInsn(Opcodes.POP)
+            visitMethodInsn(Opcodes.INVOKESTATIC, "dev/fixture/Shapes", "recursive", "()V", false)
+            visitLabel(end); visitInsn(Opcodes.RETURN)
+            visitLabel(handler); visitInsn(Opcodes.POP); visitInsn(Opcodes.RETURN)
+            visitMaxs(0, 0); visitEnd()
+        }
+        visitMethod(Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC or Opcodes.ACC_SYNCHRONIZED, "recursive", "()V", null, null).apply {
+            visitCode(); visitInsn(Opcodes.RETURN); visitMaxs(0, 0); visitEnd()
+        }
         visitEnd()
     }.toByteArray()
 

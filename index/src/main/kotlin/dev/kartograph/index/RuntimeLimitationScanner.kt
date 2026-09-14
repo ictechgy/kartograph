@@ -17,11 +17,38 @@ public class IndexedClasses internal constructor(
     public val hierarchy: ClassHierarchy = ClassHierarchy.EMPTY,
     public val declarationsByRoot: List<Set<NodeId>> = emptyList(),
     public val selectedRootByNode: Map<NodeId, Int> = emptyMap(),
+    public val statistics: IndexingStatistics = IndexingStatistics(),
 ) {
     /** 1회 파싱한 그래프에 dependency header를 보강하며 관측값과 호출 위치는 재사용한다. */
     public fun withHierarchy(hierarchy: ClassHierarchy): IndexedClasses =
-        IndexedClasses(ExternalDispatchIndexer.enrich(graph, hierarchy), observations, hierarchy, declarationsByRoot, selectedRootByNode)
+        IndexedClasses(ExternalDispatchIndexer.enrich(graph, hierarchy), observations, hierarchy, declarationsByRoot, selectedRootByNode, statistics)
 }
+
+/** 한 인덱싱 실행에서 관측한 캐시 수명주기와 주요 phase 시간이다. */
+public data class IndexingStatistics(
+    val classFiles: Int = 0,
+    val cacheHits: Int = 0,
+    val cacheMisses: Int = 0,
+    val parsedClasses: Int = 0,
+    val invalidEntries: Int = 0,
+    val writeFailures: Int = 0,
+    val readNanos: Long = 0,
+    val cacheReadNanos: Long = 0,
+    val parseNanos: Long = 0,
+    val assemblyNanos: Long = 0,
+    val hierarchyNanos: Long = 0,
+    val runtimeNanos: Long = 0,
+    val cacheWriteNanos: Long = 0,
+    val totalNanos: Long = 0,
+    val unavailableEntries: Int = 0,
+    val hierarchyJars: Int = 0,
+    val hierarchyCacheHits: Int = 0,
+    val hierarchyParsedJars: Int = 0,
+    val hierarchyInvalidEntries: Int = 0,
+    val hierarchyWriteFailures: Int = 0,
+    val hierarchyUnavailableEntries: Int = 0,
+    val dispatchNanos: Long = 0,
+)
 
 /** 파일 이름과 시각은 신선도 비교에만 사용하며 절대경로를 내보내지 않는다. */
 internal data class ClassRuntimeObservation(
