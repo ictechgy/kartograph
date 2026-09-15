@@ -3,7 +3,7 @@ import org.gradle.api.tasks.bundling.AbstractArchiveTask
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 
 plugins {
-    kotlin("jvm") version "2.4.10" apply false
+    kotlin("jvm") version "2.4.20" apply false
     id("org.jetbrains.kotlinx.kover") version "0.9.9"
 }
 
