@@ -36,6 +36,7 @@ internal object KartographCli {
         "graph" -> runGraph(arguments.drop(1), output, error)
         "dead" -> DeadCommand.run(arguments.drop(1), output, error)
         "baseline" -> DeadCommand.runBaseline(arguments.drop(1), output, error)
+        "why" -> WhyCommand.run(arguments.drop(1), output, error)
         "query" -> AgentCommand.query(arguments.drop(1), output, error)
         "snapshot" -> AgentCommand.snapshot(arguments.drop(1), output, error)
         "verify-snapshot" -> FreshnessCommand.run(arguments.drop(1), output, error)
@@ -216,6 +217,7 @@ internal object KartographCli {
             [--include-paths --project <directory>] [--classpath <path>] [--service-resources <path>]
           kartograph dead --classes <directory> --project <directory> [options]
           kartograph baseline --write <file> --classes <directory> --project <directory> [options]
+          kartograph why <symbol> --classes <directory> --project <directory> [options]
           kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
           kartograph snapshot --classes <directory-or-jar> --project <directory> [--snapshot-max-mib <1..128>] [options]
           kartograph verify-snapshot --graph-file <snapshot.json> --project <directory> [--snapshot-max-mib <1..128>] [options]

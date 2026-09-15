@@ -25,7 +25,8 @@ Working today:
 
 - The `impact` command checks potential effects of planned symbol edits or committed file changes using captured graphs. It preserves base/current paths, deletions, runtime evidence and uncertainty for people, agents and CI. See [change impact](docs/IMPACT.md) and the [scored public replays](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/change-impact/README.md).
 - `graph` renders compiled class roots as DOT or as a `code-graph` JSON exchange document, with optional project-relative source paths (`--include-paths --project`). JSON also records edge origins and external calls with their resolution status. Repeated `--classes` merge several module/variant outputs; the first root wins deterministically for a repeated JVM class.
-- `dead` reports unreachable class declarations from Android retention roots (manifest, XML, `@Keep`, keep rules, inheritance hierarchies, DI/serialization annotations, JNI and framework callbacks), with `--explain`, baselines, `--since`, and machine-readable reports. Recursive includes and consumer rules are supported.
+- `dead` reports unreachable class declarations from Android retention roots (manifest, XML, `@Keep`, keep rules, inheritance hierarchies, DI/serialization annotations, JNI and framework callbacks), with `--explain`, baselines, expiring `--suppress` entries, `--since`, and machine-readable reports (text/gradle/github-actions/sarif/json/markdown). JSON, SARIF and markdown findings carry a `confidence` tier (static / needs-runtime-review / unmeasured) derived from the unresolved runtime channels measured in each declaration's own source file. Recursive includes and consumer rules are supported.
+- `why <symbol>` answers in one step why a declaration is retained, reachable, or unreachable: retention evidence with file:line provenance, the representative path from a retention root, direct callers, a test-only marker, and a measured confidence tier for unreachable declarations. The answer is a reachability fact, not a deletion approval.
 - `query`/`bridges`/`skill` expose one symbol's users, dependencies, and reachability, plus Flutter/React Native bridge facts, for agent consumers. `query` includes measured unresolved runtime paths and conservative dispatch candidates.
 - `cycles`/`rules`/`metrics` analyze module/package cycles with weakest edges, fail-closed layer YAML, and Martin Ca/Ce/I/A/D metrics.
 - The Gradle plugin registers `kartographDead<Variant>` and `kartographGraph<Variant>` per Android variant over the AGP public Variant API.
@@ -131,7 +132,7 @@ kartograph {
     keepRules.from("proguard-rules.pro", "path/to/dependency/consumer-rules.pro")
     strict.set(true)
     baseline.set(layout.projectDirectory.file(".kartograph-baseline.json"))
-    reportFormat.set("github-actions") // gradle, github-actions, sarif, json, text
+    reportFormat.set("github-actions") // gradle, github-actions, sarif, json, markdown, text
     includeSourcePaths.set(true) // resolve project-relative source paths into the graph document (default false)
 }
 ```

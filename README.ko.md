@@ -25,7 +25,8 @@ Android만의 이점이 하나 있다. "안 쓰는 것처럼 보이지만 지우
 
 - `impact`는 변경 예정 심볼 또는 commit 간 변경 파일의 잠재적 영향을 저장 그래프에서 조사한다. base/current 경로·삭제·runtime 근거·불확실성을 사람·에이전트·CI에 같은 의미로 전달한다. [사용법](docs/IMPACT.md)과 [실제 변경 채점](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/change-impact/README.md)을 참고한다.
 - `graph`는 컴파일된 class root를 DOT 또는 `code-graph` JSON 교환 문서로 렌더링하며, 요청하면 project 기준 source 경로를 해석한다(`--include-paths --project`). JSON에는 간선 출처와 외부 호출의 해석 상태도 기록한다. `--classes`를 반복해 여러 module/variant output root를 합칠 수 있고, 같은 JVM class는 첫 root의 사실을 결정적으로 사용한다.
-- `dead`는 Android 보존 근거(manifest, XML, `@Keep`, keep 규칙, 상속 hierarchy, DI/직렬화 어노테이션, JNI·프레임워크 콜백)에서 도달 불가한 class 선언을 보고하며, `--explain`·baseline·`--since`·machine report를 지원한다. 재귀 include와 consumer rules 입력도 지원한다.
+- `dead`는 Android 보존 근거(manifest, XML, `@Keep`, keep 규칙, 상속 hierarchy, DI/직렬화 어노테이션, JNI·프레임워크 콜백)에서 도달 불가한 class 선언을 보고하며, `--explain`·baseline·만료가 있는 `--suppress`·`--since`·machine report(text/gradle/github-actions/sarif/json/markdown)를 지원한다. JSON·SARIF·markdown 보고에는 같은 소스 파일에서 측정된 미해결 runtime 채널 관측에서 온 `confidence` 등급(static / needs-runtime-review / unmeasured)이 함께 실린다. 재귀 include와 consumer rules 입력도 지원한다.
+- `why <symbol>`은 한 선언이 보존·도달·도달 불가인 이유를 한 번에 답한다. 보존 근거(파일·줄), 보존 root부터의 대표 경로, 직접 caller, test 전용 도달 표시와 도달 불가 선언의 측정된 신뢰도 등급을 출력한다. 답은 도달성 사실이지 삭제 승인이 아니다.
 - `query`/`bridges`/`skill`은 전체 graph 덤프 대신 한 symbol의 사용·의존·도달성과 Flutter/React Native 브리지 사실을 에이전트에게 제공한다. `query`는 미해결 runtime 경로와 보수적 dispatch 후보도 계량한다.
 - `cycles`/`rules`/`metrics`는 module/package 순환과 weakest edge, fail-closed layer YAML, Martin Ca/Ce/I/A/D 지표를 분석한다.
 - Gradle plugin은 AGP public Variant API 위에서 Android variant마다 `kartographDead<Variant>`와 `kartographGraph<Variant>` task를 등록한다.
@@ -132,7 +133,7 @@ kartograph {
     keepRules.from("proguard-rules.pro", "path/to/dependency/consumer-rules.pro")
     strict.set(true)
     baseline.set(layout.projectDirectory.file(".kartograph-baseline.json"))
-    reportFormat.set("github-actions") // gradle, github-actions, sarif, json, text
+    reportFormat.set("github-actions") // gradle, github-actions, sarif, json, markdown, text
     includeSourcePaths.set(true) // 그래프 문서에 project 기준 source 경로를 해석해 싣는다(기본 false)
 }
 ```

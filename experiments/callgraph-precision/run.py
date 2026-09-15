@@ -66,7 +66,10 @@ def main():
     run([ROOT / "gradlew", "--no-daemon", "-p", HERE, "jar", "sootDependencies", "walaDependencies"], timeout=600)
     run([ROOT / "gradlew", "--no-daemon", ":cli:installDist"], timeout=600)
     kotlin_version = re.search(r'kotlin\("jvm"\) version "([^\"]+)"', (ROOT / "build.gradle.kts").read_text()).group(1)
-    stdlib = ROOT / f"cli/build/install/kartograph/lib/kotlin-stdlib-{kotlin_version}.jar"
+    # 배포 stdlib은 kotlin-metadata-jvm 의존성 버전과 함께 움직일 수 있어 최신 것을 택한다.
+    stdlib_candidates = sorted((ROOT / "cli/build/install/kartograph/lib").glob("kotlin-stdlib-*.jar"))
+    assert stdlib_candidates, "kotlin-stdlib jar is missing from the installed CLI"
+    stdlib = stdlib_candidates[-1]
     engine_jar = HERE / "build/libs/callgraph-precision-experiment.jar"
     paths = {name: sorted((HERE / "build/libraries" / name).glob("*.jar")) for name in ("soot", "wala")}
     expected = json.loads((HERE / "expectations.json").read_text())

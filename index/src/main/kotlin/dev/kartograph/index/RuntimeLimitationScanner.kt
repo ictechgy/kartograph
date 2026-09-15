@@ -85,6 +85,21 @@ public object RuntimeLimitationScanner {
     public fun scan(indexed: IndexedClasses, sourceFiles: Collection<Path>): List<String> =
         scanSources(indexed, sourceInventoryFiles(sourceFiles))
 
+    /**
+     * 소스 파일(파일 이름)별로 측정한 미해결 runtime 채널 관측 횟수다. 중첩 class 등 같은 소스의
+     * 관측은 합산한다. 보고의 신뢰도 등급 재료이며 채널이 없다는 사실은 완전성 증명이 아니다.
+     */
+    public fun sourceChannelCounts(indexed: IndexedClasses): Map<String, Int> = indexed.observations
+        .filter { it.sourceFile != null }
+        .groupingBy { requireNotNull(it.sourceFile) }
+        .fold(0) { total, observation -> total + channelTotal(observation) }
+
+    private fun channelTotal(observation: ClassRuntimeObservation): Int =
+        observation.reflectionCalls + observation.dynamicRegistrations + observation.nativeMethods +
+            observation.classLoadingCalls + observation.reflectiveConstructions + observation.outsideRuntimeTargets +
+            observation.valueAnalysisLimits + observation.serviceLoadingCalls + observation.reflectiveMethods +
+            observation.reflectiveFields + observation.reflectiveMemberMisses
+
     private fun scanSources(indexed: IndexedClasses, sources: Collection<Path>): List<String> {
         val observations = indexed.observations
         val sourcesByName = sources.groupBy { it.fileName.toString() }
