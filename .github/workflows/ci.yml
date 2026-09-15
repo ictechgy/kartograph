@@ -29,7 +29,7 @@ jobs:
       # android-actions/setup-android v4.0.1은 cmdline-tools 구 URL 변경(android-actions#536)으로
       # 404가 난다. 러너 기본 sdkmanager로 라이선스를 승인하고 필요한 패키지를 설치한다.
       - name: Accept Android SDK licenses
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+        run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
       - name: Install fixture Android platform
         run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"
       - name: Test and verify coverage
@@ -116,7 +116,7 @@ jobs:
           java-version: ${{ matrix.java }}
           cache: gradle
       - name: Accept Android SDK licenses
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+        run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
       - name: Install Android snapshot test platform
         run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"
       - name: Verify supported JDK
@@ -142,7 +142,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - name: Accept Android SDK licenses
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+        run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
       - run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35"
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
         with:
