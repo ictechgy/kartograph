@@ -4,7 +4,7 @@
 약화하지 않는 선에서 application 모듈 자동 캡처를 일반화하기 위한 실험 계획과 그중 CLI 절반의
 실행 결과를 기록한다. 0.9.0의 자동 캡처 검증표는 **Android library**다. 앱 전체 지원으로 일반화하지 않는다.
 
-## CLI 레벨 비교 실험 결과 (2026-09-14, AppModuleRJarCliTest)
+## CLI 레벨 비교 실험 결과 (2026-09-14, AppModuleRJarCliTest / 2026-09-15 실물 산출물, RealAgpRJarCliTest)
 
 실제 AGP 빌드 없이 verifier 계약을 양방향으로 실행했다(`cli/src/test/kotlin/.../AppModuleRJarCliTest.kt`):
 
@@ -17,6 +17,17 @@
   `matched`(exit 0)가 된다. R.jar 내용을 한 바이트라도 바꾸면 `stale` + `changed-classes`로 실패한다.
   즉 witness 추가로 거부를 풀어도 producer 증거 강제력은 그대로 유지된다.
 - capture 단계는 witness가 없어도 성공하고 거부는 verify 단계에서 일어난다는 경계도 그대로다.
+
+**실물 AGP 산출물 실험 (2026-09-15, RealAgpRJarCliTest — 보존된 Now in Android demoDebug 빌드 산출물 기준).**
+합성 픽스처를 실제 AGP 산출물로 대체해 동일 계약을 재검증했다:
+
+- 입력: 실제 앱·라이브러리 모듈의 `transformDemoDebugClassesWithAsm/dirs` 22개(726개 class,
+  Hilt/KSP 생성 코드 포함) + 실제 `compile_r_class_jar` 산출 `R.jar`.
+- witness가 class 디렉터리만 커버하면 실물 R.jar root에서 `unverified` + `unwitnessed-class-root`,
+  resource producer witness를 추가하면 `matched`, 실물 R.jar 변조 시 `stale` + `changed-classes`.
+  합성 실험과 동일한 계약이 실물 산출물에서도 성립함을 확인했다.
+- 남은 실 AGP 절반은 Gradle plugin wiring 자체다: 실제 `kartographSnapshotDebug` 실행(Gradle 데몬·
+  AGP artifact 필요)으로 1단계를 마무리하고 위 스케치대로 구현한다.
 
 ## 현재 실패의 사실 관계
 
