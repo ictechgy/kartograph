@@ -26,7 +26,10 @@ class RuntimeFieldCliTest {
         assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, errors, "-g", "-d", classes.toString(), source.toString()), errors.toString())
         val output = root.resolve("execution.txt")
         val process = ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-            "-cp", classes.toString(), "probe.Entry").redirectErrorStream(true).redirectOutput(output.toFile()).start()
+            "-cp", classes.toString(), "probe.Entry")
+            // 전역 주입되는 JAVA_TOOL_OPTIONS 에이전트 배너가 probe 출력 파싱을 오염시키지 않게 한다.
+            .apply { environment().remove("JAVA_TOOL_OPTIONS") }
+            .redirectErrorStream(true).redirectOutput(output.toFile()).start()
         try {
             assertTrue(process.waitFor(30, TimeUnit.SECONDS), "fixture execution timed out")
             assertEquals(0, process.exitValue())
