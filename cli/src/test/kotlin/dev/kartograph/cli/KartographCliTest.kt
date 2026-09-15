@@ -1,9 +1,17 @@
 package dev.kartograph.cli
 
 import dev.kartograph.core.Finding
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
+import dev.kartograph.core.InputFingerprint
+import dev.kartograph.core.SnapshotProvenance
 import dev.kartograph.core.SourceLocation
 import dev.kartograph.export.BaselineCodec
+import dev.kartograph.export.QuerySnapshot
+import dev.kartograph.export.QuerySnapshotCodec
+import dev.kartograph.index.ContentFingerprint
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.nio.file.Files
@@ -537,9 +545,66 @@ class KartographCliTest {
         assertEquals(ExitStatus.SUCCESS.code, execution.status)
         assertContains(execution.output, "\"format\": \"bridge-facts\"")
         assertContains(execution.output, "\"kind\": \"channel-register\"")
-        assertContains(execution.output, "\"project\": \".\"")
-        kotlin.test.assertFalse(execution.output.contains(projectRoot.toString()))
+        assertContains(execution.output, "\"project\": \"${projectRoot.toRealPath().toString().replace('\\', '/')}\"")
         kotlin.test.assertFalse(execution.output.contains(projectRoot.resolve("Plugin.kt").toString()))
+    }
+
+    @Test
+    fun `bridges messages emits Kotlin BasicMessageChannel v2 and target option`(@TempDir projectRoot: Path) {
+        projectRoot.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any) {
+              val channel = BasicMessageChannel<Any?>(messenger, "camera", codec)
+              channel.setMessageHandler { _, _ -> Unit }
+              channel.send(Unit)
+            }
+            """.trimIndent(),
+        )
+
+        val execution = execute(
+            "bridges", "--project", projectRoot.toString(), "--target", "flutter", "--messages",
+        )
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        assertContains(execution.output, "\"version\": 2")
+        assertContains(execution.output, "\"transport\": \"basic-message-channel\"")
+        assertContains(execution.output, "\"kind\": \"message-handle\"")
+        assertContains(execution.output, "\"project\": \"${projectRoot.toRealPath().toString().replace('\\', '/')}\"")
+        kotlin.test.assertFalse(execution.output.contains(projectRoot.resolve("Plugin.kt").toString()))
+    }
+
+    @Test
+    fun `bridges drops snapshot symbols when the graph input becomes stale`(@TempDir projectRoot: Path) {
+        projectRoot.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              MethodChannel(messenger, "camera").setMethodCallHandler(handler)
+            }
+            """.trimIndent(),
+        )
+        val classes = projectRoot.resolve("classes").createDirectories()
+        classes.resolve("Main.class").writeText("before")
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/Plugin#register(Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 2, 3)),
+        ), emptyList())
+        val snapshot = projectRoot.resolve("snapshot.json")
+        snapshot.writeText(QuerySnapshotCodec.render(QuerySnapshot(
+            graph = graph,
+            retention = emptyList(),
+            limitations = listOf("captured snapshot limitation"),
+            provenance = SnapshotProvenance(listOf(
+                InputFingerprint("classes", "classes", ContentFingerprint.hash(classes)),
+            ), emptyList()),
+        )))
+        classes.resolve("Main.class").writeText("after")
+
+        val execution = execute("bridges", "--project", projectRoot.toString(), "--graph-file", snapshot.toString())
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        assertContains(execution.output, "graph-file-freshness-stale")
+        assertContains(execution.output, "captured snapshot limitation")
+        kotlin.test.assertFalse(execution.output.contains("\"usr\""))
     }
 
     @Test

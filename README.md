@@ -110,6 +110,8 @@ cli/build/install/kartograph/bin/kartograph dead \
 # One symbol instead of a full graph dump.
 kartograph query UserService --classes path/to/classes --project . --depth 2 --limit 100
 kartograph bridges --project . --format json
+# Opt-in Flutter BasicMessageChannel facts for Kotlin/JVM sources.
+kartograph bridges --project . --target flutter --messages --graph-file build/reports/kartograph/main-graph.json
 kartograph skill --project .
 ```
 

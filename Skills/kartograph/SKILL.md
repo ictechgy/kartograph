@@ -127,7 +127,7 @@ For an analysis-only task, explain the finding, evidence, uncertainty and next c
 
 ## Bridge investigations
 
-Only for Flutter MethodChannel or React Native NativeModule questions, use `kartograph bridges --project <root>` and, when available and in scope, join facts through isthmus. Dynamic or unattributed facts are limitations. Missing isthmus or other-platform evidence does not block a useful local explanation or prove that the other side is absent.
+For Flutter MethodChannel or React Native NativeModule questions, use `kartograph bridges --project <root>` and, when available and in scope, join facts through isthmus. For Kotlin/JVM Flutter BasicMessageChannel questions, opt in with `--target flutter --messages`; pass the matching compiler snapshot with `--graph-file` when JVM identities are needed. Dynamic or unattributed facts are limitations. Missing isthmus or other-platform evidence does not block a useful local explanation or prove that the other side is absent.
 
 ## Deliverable
 
