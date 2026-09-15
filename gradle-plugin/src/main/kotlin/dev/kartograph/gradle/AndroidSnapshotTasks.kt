@@ -23,6 +23,7 @@ internal object AndroidSnapshotTasks {
         val roots = components.associate { component -> component.name to project.files(component.sources.java?.all, component.sources.kotlin?.all) }
         val configuration = SnapshotBuildInputs.collect(project, extension.snapshotBuildInputs)
         val buildInputs = configuration.files
+        val resDirs = project.files()
         val task = project.tasks.register("kartographSnapshot${variant.name.replaceFirstChar(Char::titlecase)}",
             KartographAndroidSnapshotTask::class.java) { snapshot ->
             snapshot.group = "verification"
@@ -55,14 +56,17 @@ internal object AndroidSnapshotTasks {
             snapshot.dependencyClasspath.from(snapshot.testClasspathJars, snapshot.testClasspathDirectories,
                 snapshot.mainClasspathJars, snapshot.mainClasspathDirectories,
                 project.extensions.getByType(AndroidComponentsExtension::class.java).sdkComponents.bootClasspath)
-            components.forEach { component ->
-                snapshot.sourceDirectories.from(roots.getValue(component.name))
-                component.sources.res?.all?.let { layers -> snapshot.androidResourceDirectories.from(layers.map { it.flatten() }) }
-                component.sources.resources?.all?.let { resources ->
-                    snapshot.serviceResourceRoots.from(resources)
-                    snapshot.resourceDirectories.from(resources)
-                }
+        components.forEach { component ->
+            snapshot.sourceDirectories.from(roots.getValue(component.name))
+            component.sources.res?.all?.let { layers ->
+                resDirs.from(layers.map { it.flatten() })
+                snapshot.androidResourceDirectories.from(layers.map { it.flatten() })
             }
+            component.sources.resources?.all?.let { resources ->
+                snapshot.serviceResourceRoots.from(resources)
+                snapshot.resourceDirectories.from(resources)
+            }
+        }
             snapshot.snapshotFile.set(project.layout.buildDirectory.file("reports/kartograph/${variant.name}-snapshot.json"))
             snapshot.localBindingsFile.set(project.layout.buildDirectory.file("kartograph/${variant.name}-input-bindings.json"))
             snapshot.outputs.upToDateWhen { false }
@@ -77,6 +81,24 @@ internal object AndroidSnapshotTasks {
             ?.toGet(ScopedArtifact.CLASSES, KartographAndroidSnapshotTask::testClasspathJars, KartographAndroidSnapshotTask::testClasspathDirectories)
 
         val optionalOutputs = project.files()
+        // AGP application의 processResources 산출 R.jar를 resource producer witness로 덮는다(후보 A).
+        if (variant is com.android.build.api.variant.ApplicationVariant) {
+            val processTaskName = "process${variant.name.replaceFirstChar(Char::titlecase)}Resources"
+            val rJar = project.provider {
+                val processTask = project.tasks.getByName(processTaskName)
+                requireNotNull(processTask.outputs.files.firstOrNull { file -> file.name == "R.jar" }) {
+                    "process resources task does not declare the R.jar output"
+                }
+            }
+            val resourceWitness = ResourceProcessWitnesses.automaticProcessResources(
+                project, processTaskName, scope, variant.namespace, resDirs,
+                variant.artifacts.get(SingleArtifact.MERGED_MANIFEST), buildInputs,
+                project.files(project.extensions.getByType(AndroidComponentsExtension::class.java)
+                    .sdkComponents.bootClasspath),
+                rJar,
+            )
+            task.configure { snapshot -> snapshot.buildWitnessFiles.from(resourceWitness) }
+        }
         val javaInputs = components.associate { component ->
             val input = project.objects.newInstance(SnapshotCompilation::class.java)
             input.compiler.set("javac")

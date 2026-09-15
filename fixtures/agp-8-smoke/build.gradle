@@ -6,6 +6,8 @@ buildscript {
         classpath files("../../gradle-plugin/build/libs/kartograph-gradle-plugin-${file('../../VERSION').text.trim()}.jar")
     }
 }
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 apply plugin: 'io.github.ictechgy.kartograph'
@@ -19,6 +21,9 @@ android {
     buildTypes { release { minifyEnabled true; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt') } }
 }
 kartograph {
+    // R.jar 증거 연결 재현(1단계)을 위해 snapshot 태스크를 활성화한다.
+    snapshotsEnabled = true
+    snapshotKotlinToolchain = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
     reportFormat.set('text')
     strict.set(providers.gradleProperty('kartograph.strict').map { it.toBoolean() }.orElse(false))
     includeSourcePaths.set(true)

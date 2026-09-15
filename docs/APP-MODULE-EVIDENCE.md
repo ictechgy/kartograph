@@ -1,8 +1,9 @@
 # Android application 모듈의 R.jar 증거 연결 — 재현·설계 노트
 
-상태: **CLI 레벨 비교 실험 완료, 실제 AGP 재현 대기**. 이 문서는 `unwitnessed-class-root` 판정을
-약화하지 않는 선에서 application 모듈 자동 캡처를 일반화하기 위한 실험 계획과 그중 CLI 절반의
-실행 결과를 기록한다. 0.9.0의 자동 캡처 검증표는 **Android library**다. 앱 전체 지원으로 일반화하지 않는다.
+상태: **1단계(실물 AGP 재현)와 후보 A wiring 구현·실물 검증 완료**. application 모듈의 R.jar가
+resource producer witness(processResources)로 커버되며, 실물 fixture에서 거부→matched 회복과
+변조 시 stale 거부가 모두 확인됐다. 0.9.0의 자동 캡처 검증표는 **Android library**였으나
+이 변경으로 application 모듈까지 확장된다.
 
 ## CLI 레벨 비교 실험 결과 (2026-09-14, AppModuleRJarCliTest / 2026-09-15 실물 산출물, RealAgpRJarCliTest)
 
@@ -29,7 +30,28 @@
 - 남은 실 AGP 절반은 Gradle plugin wiring 자체다: 실제 `kartographSnapshotDebug` 실행(Gradle 데몬·
   AGP artifact 필요)으로 1단계를 마무리하고 위 스케치대로 구현한다.
 
-## 현재 실패의 사실 관계
+## 실물 AGP 재현·후보 A wiring 검증 (2026-09-15 완료)
+
+`Scripts/verify-agp-8-app-snapshot.sh`(GRADLE_8_HOME·ANDROID_HOME 필요, `fixtures/agp-8-smoke`
+application fixture, AGP 8.7.3/Gradle 8.10.2/KGP 2.0.21)로 1단계를 자동 실행한다:
+
+1. **거부 재현(wiring 전)**: `kartographSnapshotDebug`가 `unwitnessed-class-root`로 실패하며,
+   실패 메시지가 class roots 3개(R.jar·kotlin classes dir·javac classes dir) 중 R.jar만
+   unwitnessed임을 명시한다. R.jar 경로:
+   `build/intermediates/compile_and_runtime_not_namespaced_r_class_jar/<variant>/processDebugResources/R.jar`
+   — res 소스가 없어도 application은 R.jar를 생성한다.
+2. **후보 A wiring**: `ResourceProcessWitnesses.automaticProcessResources`가
+   `process<Variant>Resources` task(AGP가 늦게 생성하므로 lazy matching)에 resource producer
+   witness를 붙인다. 입력: res 디렉터리(존재하는 것만)·merged manifest·build 입력·
+   boot classpath(external slot)·namespace(options). 출력: R.jar(role classes).
+   application variant에만 적용하고, library·JVM 프로젝트는 기존 경로 그대로다.
+3. **회복·강제**: wiring 후 같은 fixture에서 `kartographSnapshotDebug` 성공,
+   `verify-snapshot`(`--input-bindings` 포함)가 `matched`를 반환한다. 실물 R.jar 변조 시
+   `stale` + `changed-classes`로 실패한다 — producer 증거 강제력은 그대로다.
+4. **알려진 진단**: external slot 식별자에 task identity의 `:`를 넣으면 InputFingerprint의
+   이동성 계약이 거부하므로 slot에서 `:`를 제거한다.
+
+## 현재 실패의 사실 관계 (wiring 이전)
 
 - AGP 8 application 모듈의 독립 사전검증에서 `kartographSnapshotDebug`가 snapshot 뒤 신선도 검사에서
   `unwitnessed-class-root`로 거부됐다. 재현 자료: `build/reports/product-limits-20260914/local-android-1.log`,
@@ -43,14 +65,12 @@
   producer 없는 class root를 `unverified` 대신 `matched`로 승격하는 것. 이는 producer 증거 계약을
   약화한다([BUILD-PROVENANCE](BUILD-PROVENANCE.md)).
 
-## 재현·비교 실험 계획 (구현 전 필수)
+## 재현·비교 실험 계획 (완료 — 위 섹션)
 
-0. **CLI 절반 완료(위 섹션).** 남은 것은 실제 AGP 절반이다.
-1. **최소 재현 유지(AGP 필요).** `Scripts/verify-agp-8-app-snapshot.sh`가 이 단계를 자동 실행한다
-   (`GRADLE_8_HOME`·`ANDROID_HOME` 필요, `fixtures/agp-8-smoke` application fixture 사용).
-   현재 계약: `kartographSnapshotDebug`가 `unwitnessed-class-root`로 실패하거나, 캡처가 성공하면
-   verify 단계의 같은 사유를 확인한다. 캡처가 성공하는데 scope에 R.jar가 없으면 fixture에
-   `src/main/res/values/strings.xml`을 추가해 R.jar 생성을 보장하는 것이 기록된 다음 진단이다.
+0. **CLI 절반 완료**(위 섹션).
+1. **실물 최소 재현 완료**: `Scripts/verify-agp-8-app-snapshot.sh`가 fixture에서
+   거부 재현과 회복을 자동 단언한다. 2~3단계(producer 입력 덤프·library 대조)는
+   wiring 유지보수 시 참고 자료로 남긴다.
 2. **producer 사실 관계 측정.** 같은 빌드에서 `processDebugResources`의 declared inputs(merged resources,
    aapt2, namespace)와 outputs(`R.jar`, merged resources, proguard rules)를 Gradle Variant/Artifact API로
    덤프해 표로 남긴다. R.jar의 class root 통합 경로(어느 task가 R.jar를 `--classes`에 합치는지)를
