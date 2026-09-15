@@ -45,7 +45,7 @@ def render_comment(report):
     summary = [f"{count} finding(s) reported"]
     suppressed = report.get("suppressedCount")
     if suppressed:
-        summary.append(f"{suppressed} suppressed by baseline")
+        summary.append(f"{suppressed} suppressed by baseline or suppress entries")
     expired = report.get("expiredSuppressions")
     if expired:
         summary.append(f"{expired} suppression(s) expired")

@@ -90,14 +90,21 @@ internal object AndroidSnapshotTasks {
                     "process resources task does not declare the R.jar output"
                 }
             }
+            // R.jar는 variant(main)의 res에서 생성되므로 unitTest res는 witness 입력에서 제외한다.
+            val witnessResDirs = project.files()
+            variant.sources.res?.all?.let { layers -> witnessResDirs.from(layers.map { it.flatten() }) }
             val resourceWitness = ResourceProcessWitnesses.automaticProcessResources(
-                project, processTaskName, scope, variant.namespace, resDirs,
+                project, processTaskName, scope, variant.namespace, witnessResDirs,
                 variant.artifacts.get(SingleArtifact.MERGED_MANIFEST), buildInputs,
                 project.files(project.extensions.getByType(AndroidComponentsExtension::class.java)
                     .sdkComponents.bootClasspath),
                 rJar,
             )
-            task.configure { snapshot -> snapshot.buildWitnessFiles.from(resourceWitness) }
+            // resource witness 파일이 processResources 산출에 의존함을 명시적 계약으로 만든다.
+            task.configure { snapshot ->
+                snapshot.dependsOn(processTaskName)
+                snapshot.buildWitnessFiles.from(resourceWitness)
+            }
         }
         val javaInputs = components.associate { component ->
             val input = project.objects.newInstance(SnapshotCompilation::class.java)

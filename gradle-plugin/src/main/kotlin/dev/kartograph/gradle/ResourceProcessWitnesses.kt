@@ -85,8 +85,11 @@ internal object ResourceProcessWitnesses {
             )
         }
 
-        fun output(): InputFingerprint =
-            ContentFingerprint.capture(project.toPath(), rJar.get().toPath(), "classes", "$taskIdentity-classes")
+        fun output(): InputFingerprint {
+            // slot은 프로젝트 내 경로에만 사용되지만 이동성 계약을 위해 ':'를 제거한다.
+            val slot = taskIdentity.removePrefix(":").replace(':', '-')
+            return ContentFingerprint.capture(project.toPath(), rJar.get().toPath(), "classes", "$slot-classes")
+        }
 
         fun witness(): BuildWitness =
             BuildWitness(scope, "agp-process-resources", taskIdentity, observe(), listOf(output()))

@@ -30,8 +30,8 @@ Git 실행 실패와 shallow history의 누락은 경로나 raw ref를 출력하
 
 `dead --suppress <file>`은 기한이 있는 억제를 baseline과 별개로 적용한다. 파일은 version 1 JSON이고 각
 항목은 baseline과 같은 지문과 사람이 읽는 `reason`, ISO 달력날짜 `expires`를 가진다. `expires` 날짜까지
-(그날 포함) finding이 report와 strict 판정에서 제외되고, 만료한 항목은 억제하지 않으며 machine report의
-`expiredSuppressions`에 개수를 기록한다. 무기한 억제는 baseline의 역할이다. 모르는 버전·필드·날짜 형식은
+(그날 포함) finding이 report와 strict 판정에서 제외되고, 만료한 항목은 억제하지 않으며 machine report의 `expiredSuppressions`에 개수를 기록한다.
+개수는 현재 finding과 매치되지 않는 만료 항목까지 포함한 전체 만료 항목 수다. 무기한 억제는 baseline의 역할이다. 모르는 버전·필드·날짜 형식은
 부분 적용하지 않고 exit 2로 실패한다. `--explain`·`--write-baseline` 모드와 함께 쓰면 사용 오류이다.
 
 ```json

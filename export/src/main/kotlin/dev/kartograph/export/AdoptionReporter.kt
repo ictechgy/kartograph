@@ -215,7 +215,7 @@ public object AdoptionReporter {
             }
         }
         append("\n").append(findings.size).append(" finding(s) reported; ")
-        append(suppressedCount).append(" suppressed by baseline")
+        append(suppressedCount).append(" suppressed by baseline or suppress entries")
         if (expiredSuppressions > 0) append("; ").append(expiredSuppressions).append(" suppression(s) expired")
         append(". Findings are reachability facts, not deletion approvals.\n")
         append("\n## Limitations\n\n")

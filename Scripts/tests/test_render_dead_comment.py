@@ -65,7 +65,7 @@ class RenderDeadCommentTest(unittest.TestCase):
         self.assertIn("| `src/A.kt:3` | `class:a/Unused` | static |", first.stdout)
         self.assertIn("`src/Z\\|Weird.kt:7`", first.stdout)
         self.assertIn("needs-runtime-review (used only by tests)", first.stdout)
-        self.assertIn("2 finding(s) reported, 4 suppressed by baseline, 1 suppression(s) expired", first.stdout)
+        self.assertIn("2 finding(s) reported, 4 suppressed by baseline or suppress entries, 1 suppression(s) expired", first.stdout)
         self.assertIn("<details>", first.stdout)
         self.assertIn("- reflection strings limitation text", first.stdout)
         self.assertIn("not deletion approvals", first.stdout)

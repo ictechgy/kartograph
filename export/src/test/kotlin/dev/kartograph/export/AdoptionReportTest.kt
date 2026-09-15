@@ -144,7 +144,7 @@ class AdoptionReportTest {
         assertContains(markdown, "| Location | Declaration | Confidence |")
         assertContains(markdown, "| `src/A.kt:3` | `class:a/Unused` | static |")
         assertContains(markdown, "| `src/Z file.kt:7:2` | `class:z/Unused` | needs-runtime-review |")
-        assertContains(markdown, "2 finding(s) reported; 1 suppressed by baseline")
+        assertContains(markdown, "2 finding(s) reported; 1 suppressed by baseline or suppress entries")
         assertContains(markdown, "Findings are reachability facts, not deletion approvals.")
         assertContains(markdown, "## Limitations")
     }

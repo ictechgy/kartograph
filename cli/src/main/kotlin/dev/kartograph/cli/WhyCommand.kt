@@ -27,6 +27,7 @@ internal object WhyCommand {
             return ExitStatus.SUCCESS.code
         }
         val requested = arguments.firstOrNull()?.takeUnless { it.startsWith('-') }
+            ?.replace(Regex("[\\t\\n\\r]"), " ")
             ?: run {
                 error.println("error: why requires a symbol")
                 return ExitStatus.USAGE.code
