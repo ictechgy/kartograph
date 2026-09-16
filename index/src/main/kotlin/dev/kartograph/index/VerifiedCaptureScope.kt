@@ -5,6 +5,8 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
 
@@ -26,6 +28,8 @@ public class VerifiedCaptureScope private constructor(
     private var populationFailed = false
     private val populationLock = Any()
     private val digestWorkers = IndexWorkPool()
+    // worker가 만든 spool의 기록. interrupt로 결과를 받지 못한 묶음의 spool은 close()가 worker 종료 뒤 이 기록으로 닫는다.
+    private val spoolRegistry = ConcurrentLinkedQueue<OwnedJarSpool>()
 
     /** 현재 capture pass에서 파일을 새로 읽으며, action 단계의 오래된 관측 재사용을 막는다. */
     public fun capture(project: Path, path: Path, role: String, externalSlot: String): InputFingerprint =
@@ -33,90 +37,96 @@ public class VerifiedCaptureScope private constructor(
 
     /**
      * 여러 입력을 한 번의 capture pass 안에서 관측한다. spool 예산과 입력 기록은 입력 순서대로 호출 스레드에서 정하고,
-     * 파일 digest만 제한된 worker에서 병렬로 계산한다. 결과 값과 순서는 [capture]를 차례로 부른 것과 같다.
+     * 파일 digest만 제한된 worker에서 병렬로 계산한다. 반환 목록은 [inputs]와 1:1 같은 순서이며,
+     * 값은 [capture]를 차례로 부른 것과 같다. capture pass는 호출 스레드 전용이다.
      */
     public fun captureAll(project: Path, inputs: List<CaptureInput>): List<InputFingerprint> {
         check(phase == Phase.BEFORE_CAPTURE || phase == Phase.AFTER_CAPTURE) {
             "verified capture inputs can only be read during capture passes"
         }
         // 첫 JAR의 spool 결정은 캐시 준비를 기다리므로, 그 앞의 입력은 먼저 digest해 준비와 겹치게 한다.
-        val firstJar = if (phase == Phase.BEFORE_CAPTURE) inputs.indexOfFirst(::isEligibleJar) else -1
+        val firstJar = if (phase == Phase.BEFORE_CAPTURE) inputs.indexOfFirst { isEligibleJar(it, attributesOf(it.path)) } else -1
         if (firstJar <= 0) return captureSegment(project, inputs)
         return captureSegment(project, inputs.subList(0, firstJar)) + captureSegment(project, inputs.subList(firstJar, inputs.size))
     }
 
     private fun captureSegment(project: Path, inputs: List<CaptureInput>): List<InputFingerprint> {
-        val decisions = inputs.map(::decideSpool)
+        val decisions = inputs.map(::reserveSpoolBudget)
         val requests = inputs.zip(decisions).map { (input, decision) ->
-            ObservationRequest(input.path, input.role, input.externalSlot, decision.retainedMaximum, spoolDirectory)
+            ObservationRequest(input.path, input.role, input.externalSlot, decision.retainedMaximum, spoolDirectory, decision.sizeHint)
         }
-        val observed = ContentFingerprint.captureObservedAll(project, requests, ::digestJobs)
+        val observed = ContentFingerprint.captureObservedAll(project, requests, spoolRegistry, ::digestJobs)
+        // 성공한 묶음의 spool은 아래 기록으로 소유권이 넘어가므로 registry는 실패·interrupt 정리용으로만 남긴다.
+        spoolRegistry.clear()
+        recordSegment(inputs, decisions, observed)
+        return observed.map { it.fingerprint }
+    }
+
+    /** 예약을 실제 spool 크기로 정산하고, before pass면 관측에 성공한 입력을 기록한다. */
+    private fun recordSegment(inputs: List<CaptureInput>, decisions: List<SpoolDecision>, observed: List<CapturedContentFingerprint>) {
         observed.forEachIndexed { index, captured ->
             val decision = decisions[index]
             // 예약은 크기 기준이므로 실제 spool 크기로 정산한다. 같은 묶음 안의 결정은 이미 끝나 영향을 받지 않는다.
             remainingSpoolBytes += decision.reservedBytes - (captured.spool?.byteSize ?: 0)
-            if (phase == Phase.BEFORE_CAPTURE) {
-                // 순차 구현과 같이 관측에 성공한 JAR만 population 대상으로 센다.
-                if (decision.captureSpool) eligibleJars++
-                initialInputs += ObservedInput(
-                    inputs[index].role,
-                    captured.realPath,
-                    captured.rawFileSha256,
-                    captured.spool,
-                    decision.captureSpool,
-                )
-            }
+            if (phase != Phase.BEFORE_CAPTURE) return@forEachIndexed
+            // 순차 구현과 같이 관측에 성공한 JAR만 population 대상으로 센다.
+            if (decision.captureSpool) eligibleJars++
+            initialInputs += ObservedInput(inputs[index].role, captured.realPath, captured.rawFileSha256, captured.spool, decision.captureSpool)
         }
-        return observed.map { it.fingerprint }
     }
 
-    /** spool 여부와 상한을 입력 순서대로 정하고, 예상 크기만큼 예산을 먼저 차감한다. */
-    private fun decideSpool(input: CaptureInput): SpoolDecision {
-        val captureSpool = isEligibleJar(input) && captureColdSpools() && isCacheableJarSize(input.path)
+    /**
+     * spool 여부와 상한을 입력 순서대로 정하고, 예상 크기만큼 예산을 먼저 차감한다. 크기는 입력당 한 번만 읽어
+     * 스케줄링 힌트로도 넘긴다. 크기를 못 읽으면 상한 전체를 예약해, 같은 묶음의 뒤 JAR가 그 예산을 겹쳐 쓰지 못하게 한다.
+     */
+    private fun reserveSpoolBudget(input: CaptureInput): SpoolDecision {
+        val attributes = attributesOf(input.path)
+        val size = attributes?.takeIf { it.isRegularFile }?.size()
+        val captureSpool = isEligibleJar(input, attributes) && captureColdSpools() && (size == null || size <= maximumCacheableJarBytes)
         val retainedMaximum = if (captureSpool) minOf(MAX_RETAINED_JAR_BYTES, remainingSpoolBytes) else 0
-        val reserved = if (retainedMaximum > 0) expectedSpoolBytes(input.path, retainedMaximum) else 0
+        val reserved = when {
+            retainedMaximum <= 0 -> 0
+            size == null -> retainedMaximum
+            size in 0..retainedMaximum -> size
+            else -> 0
+        }
         remainingSpoolBytes -= reserved
-        return SpoolDecision(captureSpool, retainedMaximum, reserved)
+        return SpoolDecision(captureSpool, retainedMaximum, reserved, sizeHint = size ?: 0)
     }
 
-    private fun isEligibleJar(input: CaptureInput): Boolean = phase == Phase.BEFORE_CAPTURE && input.role == "classpath" &&
-        input.path.fileName.toString().endsWith(".jar", ignoreCase = true) && Files.isRegularFile(input.path, NOFOLLOW_LINKS)
+    private fun isEligibleJar(input: CaptureInput, attributes: BasicFileAttributes?): Boolean =
+        phase == Phase.BEFORE_CAPTURE && input.role == "classpath" &&
+            input.path.fileName.toString().endsWith(".jar", ignoreCase = true) && attributes?.isRegularFile == true
 
-    /** 실제 spool과 같은 규칙(크기가 상한 이내일 때만)으로 예약량을 정한다. 크기를 못 읽으면 예약하지 않고 실제 관측에 맡긴다. */
-    private fun expectedSpoolBytes(path: Path, maximum: Long): Long = try {
-        Files.size(path).takeIf { it in 0..maximum } ?: 0
+    /** 권고용 속성 관측이다. 실패하면 null을 돌려주고 실제 fingerprint 읽기가 오류를 결정한다. */
+    private fun attributesOf(path: Path): BasicFileAttributes? = try {
+        Files.readAttributes(path, BasicFileAttributes::class.java, NOFOLLOW_LINKS)
     } catch (_: IOException) {
-        0
+        null
     } catch (_: SecurityException) {
-        0
+        null
     } catch (_: UnsupportedOperationException) {
-        0
+        null
     }
 
     /**
      * 큰 독립 파일(JAR)부터 배정해 마지막에 긴 작업 하나만 남는 꼬리를 줄인다. 결과는 요청 순서로 되돌린다.
-     * 디렉터리 멤버는 크기를 재지 않는다. 수백 개 class 파일에 stat을 더하면 이득보다 비용이 컸다(cross-check 기록 참고).
+     * 크기는 [reserveSpoolBudget]이 이미 관측한 힌트만 쓰고 여기서 파일 시스템을 읽지 않는다.
+     * 디렉터리 멤버는 힌트 0이라 뒤로 간다(수백 개 class 파일에 stat을 더하면 이득보다 비용이 컸다, cross-check 기록 참고).
      */
     private fun digestJobs(
         jobs: List<FileDigestJob>,
         digest: (FileDigestJob) -> Result<FileObservation>,
     ): List<Result<FileObservation>> {
-        val order = if (jobs.none(FileDigestJob::standalone)) jobs.indices.toList()
-            else jobs.indices.sortedByDescending { index -> if (jobs[index].standalone) sizeHint(jobs[index].path) else 0L }
-        val mapped = digestWorkers.map(order.map(jobs::get), chunkSize = Int.MAX_VALUE, digest)
+        val order = if (jobs.all { it.sizeHint == 0L }) jobs.indices.toList() else jobs.indices.sortedByDescending { jobs[it].sizeHint }
+        val mapped = try {
+            digestWorkers.map(order.map(jobs::get), chunkSize = null, digest)
+        } catch (interrupted: ClassIndexingException) {
+            throw ClassIndexingException("fingerprint capture was interrupted", interrupted)
+        }
         val results = arrayOfNulls<Result<FileObservation>>(jobs.size)
         order.forEachIndexed { position, index -> results[index] = mapped[position] }
         return results.map(::requireNotNull)
-    }
-
-    private fun sizeHint(path: Path): Long = try {
-        Files.size(path)
-    } catch (_: IOException) {
-        0
-    } catch (_: SecurityException) {
-        0
-    } catch (_: UnsupportedOperationException) {
-        0
     }
 
     /** before에 같은 역할·순서로 완전히 fingerprint된 입력만 인덱싱한다. */
@@ -206,7 +216,10 @@ public class VerifiedCaptureScope private constructor(
 
     internal fun close(primaryFailure: Throwable? = null) {
         phase = Phase.CLOSED
+        // worker 종료를 기다린 뒤 닫아야 뒤늦게 기록된 spool까지 정리된다.
         digestWorkers.close()
+        spoolRegistry.forEach(OwnedJarSpool::close)
+        spoolRegistry.clear()
         initialInputs.forEach(ObservedInput::releaseSpool)
         initialInputs.clear()
         try {
@@ -225,16 +238,6 @@ public class VerifiedCaptureScope private constructor(
         return enabled
     }
 
-    private fun isCacheableJarSize(path: Path): Boolean = try {
-        Files.size(path) <= maximumCacheableJarBytes
-    } catch (_: IOException) {
-        // 권고용 크기 관측 실패는 실제 fingerprint/JAR 읽기와 population 재시도에 맡긴다.
-        true
-    } catch (_: SecurityException) {
-        true
-    } catch (_: UnsupportedOperationException) {
-        true
-    }
 
     private class ObservedInput(
         val role: String,
@@ -251,8 +254,8 @@ public class VerifiedCaptureScope private constructor(
     }
     private enum class Phase { BEFORE_CAPTURE, ACTION, AFTER_CAPTURE, CLOSED }
 
-    /** 입력 하나의 spool 결정: 대상 여부, spool 상한, 미리 차감한 예산이다. */
-    private class SpoolDecision(val captureSpool: Boolean, val retainedMaximum: Long, val reservedBytes: Long)
+    /** 입력 하나의 spool 결정: 대상 여부, spool 상한, 미리 차감한 예산, 스케줄링용 크기 힌트(모르면 0)다. */
+    private class SpoolDecision(val captureSpool: Boolean, val retainedMaximum: Long, val reservedBytes: Long, val sizeHint: Long)
 
     internal companion object {
         private const val MAX_RETAINED_JAR_BYTES = 128L * 1024 * 1024
@@ -309,7 +312,7 @@ public class VerifiedCaptureScope private constructor(
 }
 
 /** [VerifiedCaptureScope.captureAll]에 넘기는 입력 하나: 경로, provenance 역할, 외부 입력 slot 이름이다. */
-public data class CaptureInput(val path: Path, val role: String, val externalSlot: String)
+public class CaptureInput(public val path: Path, public val role: String, public val externalSlot: String)
 
 internal fun interface ObservedJarDigestLookup {
     fun take(jar: Path): ObservedJarInput?
