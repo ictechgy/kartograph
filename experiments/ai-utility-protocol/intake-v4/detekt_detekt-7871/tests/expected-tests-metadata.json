@@ -1,0 +1,22 @@
+{
+  "case": "detekt_detekt-7871",
+  "role": "excluded",
+  "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+  "source": {
+    "path": "tasks/detekt_detekt-7871/tests/expected_tests.json",
+    "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/detekt_detekt-7871/tests/expected_tests.json",
+    "bytes": 2200959,
+    "sha256": "2974a848020bee01728b425d68be529276393a99589a4f047e81bb1fa4948f4b"
+  },
+  "note": "원본이 1 MiB를 넘어 저장소에는 복사하지 않고 요약만 남긴다. curl의 명시적 --max-filesize 20000000 상한으로 전체를 내려받아 해시를 확인했다.",
+  "counts": {
+    "f2p_tests": 0,
+    "p2p_tests": 4790,
+    "s2p_tests": 0,
+    "n2p_tests": 260
+  },
+  "f2pTests": [],
+  "eligibility": {
+    "hasNonEmptyF2p": false
+  }
+}

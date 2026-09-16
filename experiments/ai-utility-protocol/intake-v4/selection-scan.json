@@ -1,0 +1,740 @@
+{
+  "intake": "ai-utility-v4",
+  "selectionRule": "각 stratum에서 적격이면서 미사용인 가장 높은 숫자 PR id를 고른다. 적격 = 전체 base SHA가 있고 선언된 fail-to-pass 테스트가 비어 있지 않음. 미사용 = cohort.json/cohort-v2.json/cohort-v3.json의 previousCases·primary 26건과 각 cohort의 exclusions에 없음. metadata만 보고 제품·모델 결과는 보지 않았다.",
+  "javaDatasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+  "kotlinDatasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+  "kotlinBaseShaSource": "tasks/<case>/environment/prepare.sh의 git checkout 인자. v3의 detekt_detekt-7635·pinterest_ktlint-2823 base와 대조해 방법을 검증했다.",
+  "notCheckedBelowSelection": "Kotlin은 선택 지점 아래의 id를 내려받아 확인하지 않았다. 내림차순 규칙상 필요하지 않다.",
+  "strata": [
+    {
+      "stratum": "alibaba/fastjson2",
+      "language": "java",
+      "datasetPath": "java/alibaba__fastjson2_dataset.jsonl",
+      "totalCases": 6,
+      "selected": "alibaba__fastjson2-2097",
+      "scan": [
+        {
+          "id": "alibaba__fastjson2-2775",
+          "number": 2775,
+          "baseSha": "12b40c7ba3e7c30e35977195770c80beb34715c5",
+          "hasFullBaseSha": true,
+          "f2pCount": 0,
+          "eligible": false,
+          "disposition": "excluded-prior"
+        },
+        {
+          "id": "alibaba__fastjson2-2559",
+          "number": 2559,
+          "baseSha": "45cc6b34343bc133a03c632d6c9dd4a2d895e2e9",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "used-v2-primary"
+        },
+        {
+          "id": "alibaba__fastjson2-2285",
+          "number": 2285,
+          "baseSha": "27ca2b45c33cd362fa35613416f5d62ff9567921",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "used-v3-primary"
+        },
+        {
+          "id": "alibaba__fastjson2-2097",
+          "number": 2097,
+          "baseSha": "3f6275bcc3cd40a57f6d257cdeec322d1b9ae06d",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "selected"
+        },
+        {
+          "id": "alibaba__fastjson2-1245",
+          "number": 1245,
+          "baseSha": "6648b96c0162c222467eb44bac30a9d59392c7ff",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "alibaba__fastjson2-82",
+          "number": 82,
+          "baseSha": "3aed80608b36c310d0fe5f240f49d670b3638698",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "not-reached"
+        }
+      ]
+    },
+    {
+      "stratum": "FasterXML/jackson-core",
+      "language": "java",
+      "datasetPath": "java/fasterxml__jackson-core_dataset.jsonl",
+      "totalCases": 18,
+      "selected": "fasterxml__jackson-core-1016",
+      "scan": [
+        {
+          "id": "fasterxml__jackson-core-1309",
+          "number": 1309,
+          "baseSha": "449ed86748bf672b0a65f13e7f8573298b543384",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "used-v1-previous"
+        },
+        {
+          "id": "fasterxml__jackson-core-1263",
+          "number": 1263,
+          "baseSha": "9ed17fc7e9df9203f11ccb17819009ab0a898aa3",
+          "hasFullBaseSha": true,
+          "f2pCount": 0,
+          "eligible": false,
+          "disposition": "excluded-prior"
+        },
+        {
+          "id": "fasterxml__jackson-core-1208",
+          "number": 1208,
+          "baseSha": "9438a5ec743342ccd04ae396ce410ef75f08371b",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "used-v1-previous"
+        },
+        {
+          "id": "fasterxml__jackson-core-1204",
+          "number": 1204,
+          "baseSha": "2fdbf07978813ff40bea88f9ca9961cece59467c",
+          "hasFullBaseSha": true,
+          "f2pCount": 0,
+          "eligible": false,
+          "disposition": "excluded-prior"
+        },
+        {
+          "id": "fasterxml__jackson-core-1182",
+          "number": 1182,
+          "baseSha": "d14acac9536939886e432d7145670a9210f54699",
+          "hasFullBaseSha": true,
+          "f2pCount": 0,
+          "eligible": false,
+          "disposition": "excluded-prior"
+        },
+        {
+          "id": "fasterxml__jackson-core-1172",
+          "number": 1172,
+          "baseSha": "fb695545312cc2340604e61642f36138152fba93",
+          "hasFullBaseSha": true,
+          "f2pCount": 2,
+          "eligible": true,
+          "disposition": "used-v1-primary"
+        },
+        {
+          "id": "fasterxml__jackson-core-1142",
+          "number": 1142,
+          "baseSha": "f1dc3c512d211ae3e14fb59af231caebf037d510",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "used-v2-primary"
+        },
+        {
+          "id": "fasterxml__jackson-core-1053",
+          "number": 1053,
+          "baseSha": "bb778a0a4d6d492ca0a39d7d0e32b6e44e90e7aa",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "used-v3-primary"
+        },
+        {
+          "id": "fasterxml__jackson-core-1016",
+          "number": 1016,
+          "baseSha": "315ac5ad2ad5228129a3df50623570d9bc2d7045",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "selected"
+        },
+        {
+          "id": "fasterxml__jackson-core-980",
+          "number": 980,
+          "baseSha": "0de50fbc6e9709d0f814fd6e30b6595905f70e63",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "fasterxml__jackson-core-964",
+          "number": 964,
+          "baseSha": "2b53cce78c6ca037938e6f26d6935c5f9b8c07dd",
+          "hasFullBaseSha": true,
+          "f2pCount": 0,
+          "eligible": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "fasterxml__jackson-core-922",
+          "number": 922,
+          "baseSha": "5956b59a77f9599317c7ca7eaa073cb5d5348940",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "fasterxml__jackson-core-891",
+          "number": 891,
+          "baseSha": "287ec3223b039f24d2db99809ae04a333b287435",
+          "hasFullBaseSha": true,
+          "f2pCount": 2,
+          "eligible": true,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "fasterxml__jackson-core-729",
+          "number": 729,
+          "baseSha": "4465e7a383b4ca33f9a011e1444d67d7f58fca1c",
+          "hasFullBaseSha": true,
+          "f2pCount": 0,
+          "eligible": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "fasterxml__jackson-core-566",
+          "number": 566,
+          "baseSha": "3b20a1c603cb02b7f499ce28b6030577ad63c0f7",
+          "hasFullBaseSha": true,
+          "f2pCount": 0,
+          "eligible": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "fasterxml__jackson-core-370",
+          "number": 370,
+          "baseSha": "f42556388bb8ad547a55e4ee7cfb52a99f670186",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "fasterxml__jackson-core-183",
+          "number": 183,
+          "baseSha": "ac6d8e22847c19b2695cbd7d1f418e07a9a3dbb2",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "fasterxml__jackson-core-174",
+          "number": 174,
+          "baseSha": "b0f217a849703a453952f93b5999c557c201a4be",
+          "hasFullBaseSha": true,
+          "f2pCount": 0,
+          "eligible": false,
+          "disposition": "not-reached"
+        }
+      ]
+    },
+    {
+      "stratum": "detekt/detekt",
+      "language": "kotlin",
+      "datasetPath": "tasks/",
+      "totalCases": 28,
+      "selected": "detekt_detekt-7625",
+      "scan": [
+        {
+          "id": "detekt_detekt-7888",
+          "number": 7888,
+          "checked": false,
+          "disposition": "used-v1-previous"
+        },
+        {
+          "id": "detekt_detekt-7871",
+          "number": 7871,
+          "checked": true,
+          "baseSha": "",
+          "hasFullBaseSha": false,
+          "f2pCount": 0,
+          "eligible": false,
+          "disposition": "excluded-now"
+        },
+        {
+          "id": "detekt_detekt-7718",
+          "number": 7718,
+          "checked": false,
+          "disposition": "used-v1-previous"
+        },
+        {
+          "id": "detekt_detekt-7715",
+          "number": 7715,
+          "checked": false,
+          "disposition": "used-v1-primary"
+        },
+        {
+          "id": "detekt_detekt-7667",
+          "number": 7667,
+          "checked": false,
+          "disposition": "used-v2-primary"
+        },
+        {
+          "id": "detekt_detekt-7635",
+          "number": 7635,
+          "checked": false,
+          "disposition": "used-v3-primary"
+        },
+        {
+          "id": "detekt_detekt-7625",
+          "number": 7625,
+          "checked": true,
+          "baseSha": "82ab4c5ac06f006a0906920687dc016af37642a6",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "selected"
+        },
+        {
+          "id": "detekt_detekt-7212",
+          "number": 7212,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-6446",
+          "number": 6446,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-6443",
+          "number": 6443,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-6352",
+          "number": 6352,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-5684",
+          "number": 5684,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-5577",
+          "number": 5577,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-5516",
+          "number": 5516,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-5459",
+          "number": 5459,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-5352",
+          "number": 5352,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-5252",
+          "number": 5252,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-5009",
+          "number": 5009,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-5006",
+          "number": 5006,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-4994",
+          "number": 4994,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-4818",
+          "number": 4818,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-4808",
+          "number": 4808,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-4738",
+          "number": 4738,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-4733",
+          "number": 4733,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-4728",
+          "number": 4728,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-4628",
+          "number": 4628,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-4249",
+          "number": 4249,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "detekt_detekt-4205",
+          "number": 4205,
+          "checked": false,
+          "disposition": "not-reached"
+        }
+      ]
+    },
+    {
+      "stratum": "pinterest/ktlint",
+      "language": "kotlin",
+      "datasetPath": "tasks/",
+      "totalCases": 43,
+      "selected": "pinterest_ktlint-2785",
+      "scan": [
+        {
+          "id": "pinterest_ktlint-2983",
+          "number": 2983,
+          "checked": false,
+          "disposition": "used-v1-previous"
+        },
+        {
+          "id": "pinterest_ktlint-2950",
+          "number": 2950,
+          "checked": true,
+          "baseSha": "",
+          "hasFullBaseSha": false,
+          "f2pCount": 0,
+          "eligible": false,
+          "disposition": "excluded-now"
+        },
+        {
+          "id": "pinterest_ktlint-2895",
+          "number": 2895,
+          "checked": false,
+          "disposition": "used-v1-previous"
+        },
+        {
+          "id": "pinterest_ktlint-2891",
+          "number": 2891,
+          "checked": false,
+          "disposition": "used-v1-primary"
+        },
+        {
+          "id": "pinterest_ktlint-2873",
+          "number": 2873,
+          "checked": false,
+          "disposition": "used-v2-primary"
+        },
+        {
+          "id": "pinterest_ktlint-2823",
+          "number": 2823,
+          "checked": false,
+          "disposition": "used-v3-primary"
+        },
+        {
+          "id": "pinterest_ktlint-2785",
+          "number": 2785,
+          "checked": true,
+          "baseSha": "4ec50723be8efe08589f2aa0c9ea100828919f8e",
+          "hasFullBaseSha": true,
+          "f2pCount": 1,
+          "eligible": true,
+          "disposition": "selected"
+        },
+        {
+          "id": "pinterest_ktlint-2774",
+          "number": 2774,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2727",
+          "number": 2727,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2715",
+          "number": 2715,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2617",
+          "number": 2617,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2555",
+          "number": 2555,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2554",
+          "number": 2554,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2553",
+          "number": 2553,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2541",
+          "number": 2541,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2516",
+          "number": 2516,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2505",
+          "number": 2505,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2493",
+          "number": 2493,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2442",
+          "number": 2442,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2432",
+          "number": 2432,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2431",
+          "number": 2431,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2407",
+          "number": 2407,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2405",
+          "number": 2405,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2400",
+          "number": 2400,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2395",
+          "number": 2395,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2386",
+          "number": 2386,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2381",
+          "number": 2381,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2375",
+          "number": 2375,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2365",
+          "number": 2365,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2362",
+          "number": 2362,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2300",
+          "number": 2300,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2287",
+          "number": 2287,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2275",
+          "number": 2275,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2273",
+          "number": 2273,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2263",
+          "number": 2263,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2216",
+          "number": 2216,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2193",
+          "number": 2193,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2141",
+          "number": 2141,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2134",
+          "number": 2134,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2127",
+          "number": 2127,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2091",
+          "number": 2091,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2053",
+          "number": 2053,
+          "checked": false,
+          "disposition": "not-reached"
+        },
+        {
+          "id": "pinterest_ktlint-2029",
+          "number": 2029,
+          "checked": false,
+          "disposition": "not-reached"
+        }
+      ]
+    }
+  ],
+  "newExclusions": [
+    {
+      "id": "detekt_detekt-7871",
+      "reason": "expected_tests.json의 f2p_tests가 빈 배열"
+    },
+    {
+      "id": "pinterest_ktlint-2950",
+      "reason": "expected_tests.json의 f2p_tests가 빈 배열"
+    }
+  ],
+  "carriedExclusions": [
+    {
+      "id": "google__gson-1787",
+      "reason": "cohort.json exclusions — missing declared F2P or full base SHA"
+    },
+    {
+      "id": "google__gson-1703",
+      "reason": "cohort.json exclusions — missing declared F2P or full base SHA"
+    },
+    {
+      "id": "fasterxml__jackson-core-1263",
+      "reason": "cohort.json exclusions — missing declared F2P or full base SHA"
+    },
+    {
+      "id": "fasterxml__jackson-core-1204",
+      "reason": "cohort.json exclusions — missing declared F2P or full base SHA"
+    },
+    {
+      "id": "fasterxml__jackson-core-1182",
+      "reason": "cohort.json exclusions — missing declared F2P or full base SHA"
+    },
+    {
+      "id": "alibaba__fastjson2-2775",
+      "reason": "cohort-v2.json exclusions — no declared F2P"
+    }
+  ]
+}

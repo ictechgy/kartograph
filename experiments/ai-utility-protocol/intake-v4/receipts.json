@@ -1,0 +1,174 @@
+{
+  "intake": "ai-utility-v4",
+  "fetchedAt": "2026-09-16T04:39:46Z",
+  "datasets": [
+    {
+      "name": "ByteDance-Seed/Multi-SWE-bench",
+      "revision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "strata": [
+        "alibaba/fastjson2",
+        "FasterXML/jackson-core"
+      ]
+    },
+    {
+      "name": "Kotlin/kotlin-swe-bench",
+      "revision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+      "strata": [
+        "detekt/detekt",
+        "pinterest/ktlint"
+      ]
+    }
+  ],
+  "notes": [
+    "stored가 null인 항목은 저장소에 복사하지 않고 해시만 남긴 원본이다.",
+    "detekt/ktlint의 expected_tests.json 3건(detekt-7625·detekt-7871·ktlint-2785)은 1 MiB를 넘어 curl --max-filesize 20000000 상한으로 전체를 받고 요약본만 저장소에 남겼다.",
+    "kotlin-task-index는 GitHub tree API 응답이라 바이트 재현이 보장되지 않는다. 해시는 이번 조회분에 한정한 기록이다.",
+    "모델·제품 실행은 하지 않았다. 선택은 metadata만 보고 끝냈다."
+  ],
+  "entries": [
+    {
+      "case": "alibaba__fastjson2-2097",
+      "path": "java/alibaba__fastjson2_dataset.jsonl",
+      "bytes": 3658853,
+      "sha256": "7e02214eba338dcfb41c961f15cec28d299dda5c74836794463ae70a3c0832a4",
+      "url": "https://huggingface.co/datasets/ByteDance-Seed/Multi-SWE-bench/resolve/56ff018c04a38e27ada1e9d0a6d5839a51f88f0d/java/alibaba__fastjson2_dataset.jsonl",
+      "stored": null,
+      "purpose": "fastjson2 stratum 전체 PR metadata. 다중 MB라 저장소에 복사하지 않는다."
+    },
+    {
+      "case": "fasterxml__jackson-core-1016",
+      "path": "java/fasterxml__jackson-core_dataset.jsonl",
+      "bytes": 967999,
+      "sha256": "21f1f1350dcaf687840f6cf0dce4198c7958cc66cd6ab6722a0dd3a18860147e",
+      "url": "https://huggingface.co/datasets/ByteDance-Seed/Multi-SWE-bench/resolve/56ff018c04a38e27ada1e9d0a6d5839a51f88f0d/java/fasterxml__jackson-core_dataset.jsonl",
+      "stored": null,
+      "purpose": "jackson-core stratum 전체 PR metadata. 다중 MB라 저장소에 복사하지 않는다."
+    },
+    {
+      "case": "kotlin-task-index",
+      "path": "tasks/",
+      "bytes": 512704,
+      "sha256": "850dbc4cdedbf2a8d45f72c3ce336bfc6a014355da73ca700fec54d0ee2375e0",
+      "url": "https://api.github.com/repos/Kotlin/kotlin-swe-bench/git/trees/b9025d86f7ae634901396766bd61f6d4ae6d2165?recursive=1",
+      "stored": null,
+      "purpose": "Kotlin stratum의 task 색인. API 응답이므로 바이트 재현이 보장되지 않는다."
+    },
+    {
+      "case": "detekt_detekt-7625",
+      "path": "tasks/detekt_detekt-7625/task.toml",
+      "bytes": 790,
+      "sha256": "f55a079af4c1fe8af4d33925c571ca1737bd5b7dffe6f00e796efa115794fd97",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/detekt_detekt-7625/task.toml",
+      "stored": "detekt_detekt-7625/task.toml",
+      "purpose": "선정 사례의 출처·PR 번호 확인."
+    },
+    {
+      "case": "detekt_detekt-7625",
+      "path": "tasks/detekt_detekt-7625/environment/prepare.sh",
+      "bytes": 309,
+      "sha256": "a010899ff7e9eb0b3385178c913efd86c7c02213e7dd31e3f7aeb9d203657709",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/detekt_detekt-7625/environment/prepare.sh",
+      "stored": "detekt_detekt-7625/environment/prepare.sh",
+      "purpose": "고정 base commit(checkout 대상) 근거."
+    },
+    {
+      "case": "detekt_detekt-7625",
+      "path": "tasks/detekt_detekt-7625/environment/Dockerfile",
+      "bytes": 630,
+      "sha256": "706441a6f41666ffaf85483ffc410537d151fb3df642ae66172283a403748e68",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/detekt_detekt-7625/environment/Dockerfile",
+      "stored": null,
+      "purpose": "task 환경 구조 확인용으로만 읽었다."
+    },
+    {
+      "case": "detekt_detekt-7625",
+      "path": "tasks/detekt_detekt-7625/tests/expected_tests.json",
+      "bytes": 2200414,
+      "sha256": "7112fb756662387367584bc3b93faafba9fc4894bd6a9c11792f669411fafe8f",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/detekt_detekt-7625/tests/expected_tests.json",
+      "stored": "detekt_detekt-7625/tests/expected-tests-metadata.json",
+      "purpose": "선언된 fail-to-pass 목록 확인. 1 MiB 초과라 요약본만 저장소에 남긴다."
+    },
+    {
+      "case": "pinterest_ktlint-2785",
+      "path": "tasks/pinterest_ktlint-2785/task.toml",
+      "bytes": 795,
+      "sha256": "4b760913774a0242f7fa8756a71fd82b5db696c620e0f2448048e0f98405399d",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/pinterest_ktlint-2785/task.toml",
+      "stored": "pinterest_ktlint-2785/task.toml",
+      "purpose": "선정 사례의 출처·PR 번호 확인."
+    },
+    {
+      "case": "pinterest_ktlint-2785",
+      "path": "tasks/pinterest_ktlint-2785/environment/prepare.sh",
+      "bytes": 352,
+      "sha256": "9434c1b1f8b6aeb1572927af156a6b05dc3d11479dfa5b9cf0b394dfad125d1f",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/pinterest_ktlint-2785/environment/prepare.sh",
+      "stored": "pinterest_ktlint-2785/environment/prepare.sh",
+      "purpose": "고정 base commit(checkout 대상) 근거."
+    },
+    {
+      "case": "pinterest_ktlint-2785",
+      "path": "tasks/pinterest_ktlint-2785/tests/expected_tests.json",
+      "bytes": 1295102,
+      "sha256": "c176f80451ac0b5c467da3e0c7121af75436e04001c3687044282de5b009b959",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/pinterest_ktlint-2785/tests/expected_tests.json",
+      "stored": "pinterest_ktlint-2785/tests/expected-tests-metadata.json",
+      "purpose": "선언된 fail-to-pass 목록 확인. 1 MiB 초과라 요약본만 저장소에 남긴다."
+    },
+    {
+      "case": "detekt_detekt-7871",
+      "path": "tasks/detekt_detekt-7871/task.toml",
+      "bytes": 790,
+      "sha256": "ec52efa410189f09b27574eaedd8fec9d77e4e51689fe3cef91e74c5b4a2d9e8",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/detekt_detekt-7871/task.toml",
+      "stored": "detekt_detekt-7871/task.toml",
+      "purpose": "제외 후보의 출처 확인."
+    },
+    {
+      "case": "detekt_detekt-7871",
+      "path": "tasks/detekt_detekt-7871/tests/expected_tests.json",
+      "bytes": 2200959,
+      "sha256": "2974a848020bee01728b425d68be529276393a99589a4f047e81bb1fa4948f4b",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/detekt_detekt-7871/tests/expected_tests.json",
+      "stored": "detekt_detekt-7871/tests/expected-tests-metadata.json",
+      "purpose": "fail-to-pass가 비어 있음을 고정 revision에서 재확인. 1 MiB 초과."
+    },
+    {
+      "case": "pinterest_ktlint-2950",
+      "path": "tasks/pinterest_ktlint-2950/task.toml",
+      "bytes": 795,
+      "sha256": "888393ee95ac137e1e1b3600e84beef3a6b3c9ed6638ada214020d6574b7871e",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/pinterest_ktlint-2950/task.toml",
+      "stored": "pinterest_ktlint-2950/task.toml",
+      "purpose": "제외 후보의 출처 확인."
+    },
+    {
+      "case": "pinterest_ktlint-2950",
+      "path": "tasks/pinterest_ktlint-2950/tests/expected_tests.json",
+      "bytes": 980512,
+      "sha256": "2f0bf0a3744734d1e403f14014a75f36c9ea336c34c7d3b1885bf4ef32e50a49",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/pinterest_ktlint-2950/tests/expected_tests.json",
+      "stored": "pinterest_ktlint-2950/tests/expected-tests-metadata.json",
+      "purpose": "fail-to-pass가 비어 있음을 고정 revision에서 재확인."
+    },
+    {
+      "case": "detekt_detekt-7635",
+      "path": "tasks/detekt_detekt-7635/environment/prepare.sh",
+      "bytes": 309,
+      "sha256": "b31e136594f76ad18160b04aa5ed3902b4b2b9f9839165001d6a0a7de0d75595",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/detekt_detekt-7635/environment/prepare.sh",
+      "stored": null,
+      "purpose": "v3에 고정된 base SHA와 대조해 base 추출 방법을 검증했다."
+    },
+    {
+      "case": "pinterest_ktlint-2823",
+      "path": "tasks/pinterest_ktlint-2823/environment/prepare.sh",
+      "bytes": 352,
+      "sha256": "f5e134729bfbd2ee6cababaf070ec699e9d57da9c0d1ce16ad99871ae8ca6620",
+      "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/pinterest_ktlint-2823/environment/prepare.sh",
+      "stored": null,
+      "purpose": "v3에 고정된 base SHA와 대조해 base 추출 방법을 검증했다."
+    }
+  ]
+}

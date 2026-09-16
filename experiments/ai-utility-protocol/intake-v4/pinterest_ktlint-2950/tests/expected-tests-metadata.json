@@ -1,0 +1,22 @@
+{
+  "case": "pinterest_ktlint-2950",
+  "role": "excluded",
+  "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+  "source": {
+    "path": "tasks/pinterest_ktlint-2950/tests/expected_tests.json",
+    "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/pinterest_ktlint-2950/tests/expected_tests.json",
+    "bytes": 980512,
+    "sha256": "2f0bf0a3744734d1e403f14014a75f36c9ea336c34c7d3b1885bf4ef32e50a49"
+  },
+  "note": "원본이 1 MiB 이하지만 동일한 요약 형식을 유지한다. 전체를 내려받아 해시를 확인했다.",
+  "counts": {
+    "f2p_tests": 0,
+    "p2p_tests": 463,
+    "s2p_tests": 0,
+    "n2p_tests": 2153
+  },
+  "f2pTests": [],
+  "eligibility": {
+    "hasNonEmptyF2p": false
+  }
+}
