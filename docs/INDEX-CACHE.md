@@ -119,7 +119,12 @@ Now in Android one-class ratios were 0.781, 0.782 and 0.821 against baseline
 measurement band (0.851, 0.821, 0.838 against 0.859, 0.846, 0.838), so the
 internal 15% target for that small input is still not established. One candidate run
 missed the warm target (0.857) while every mode of that run was uniformly slower
-under host load; it is retained with the passing runs.
+under host load; it is retained with the passing runs. The investigation was
+closed there: the small input's ratio is bounded by capture costs shared by both
+modes (JVM start, class loading, rendering), a C1-only JIT experiment made the
+ratio worse, and reusing global analysis across captures was not attempted
+because it would risk the cache-on/off equality contract for at most about
+0.1 s. Design record: `ONE-CLASS-CHANGE-DESIGN.md`.
 
 Default-heap peak resident memory on the same Android input was about 765 MB for
 full capture, 746 MB for cold cache population and 667 MB for warm capture.
