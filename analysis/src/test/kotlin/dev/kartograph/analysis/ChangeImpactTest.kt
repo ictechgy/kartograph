@@ -289,21 +289,39 @@ class ChangeImpactTest {
         val field = NodeId("field:p/Locator#hints:Ljava/util/List;")
         val member = NodeId("method:p/Locator#find()V")
         val external = NodeId("method:p/Context#run()V")
+        val nested = NodeId("class:p/Locator\$Companion")
+        val reader = NodeId("method:p/Locator#readHints()V")
         val nodes = listOf(
             GraphNode(owner, "Locator", NodeKind.CLASS, location = SourceLocation("Locator.kt")),
             GraphNode(clinit, "<clinit>", NodeKind.METHOD, location = SourceLocation("Locator.kt")),
             GraphNode(field, "hints", NodeKind.FIELD, location = SourceLocation("Locator.kt")),
             GraphNode(member, "find", NodeKind.METHOD, location = SourceLocation("Locator.kt")),
             GraphNode(external, "run", NodeKind.METHOD, location = SourceLocation("Context.kt")),
+            GraphNode(nested, "Companion", NodeKind.CLASS, location = SourceLocation("Locator.kt")),
+            GraphNode(reader, "readHints", NodeKind.METHOD, location = SourceLocation("Locator.kt")),
         )
         val graph = CodeGraph(nodes, listOf(
             GraphEdge(owner, clinit, EdgeKind.MEMBER), GraphEdge(owner, field, EdgeKind.MEMBER), GraphEdge(owner, member, EdgeKind.MEMBER),
+            GraphEdge(owner, reader, EdgeKind.MEMBER),
             GraphEdge(owner, clinit, EdgeKind.REFERENCE),
             GraphEdge(clinit, owner, EdgeKind.REFERENCE), GraphEdge(field, owner, EdgeKind.REFERENCE), GraphEdge(member, owner, EdgeKind.REFERENCE),
+            GraphEdge(reader, owner, EdgeKind.REFERENCE),
             GraphEdge(external, owner, EdgeKind.REFERENCE),
+            // 중첩 class가 바깥 class를 참조하는 간선은 소유 참조가 아니므로 유지된다.
+            GraphEdge(nested, owner, EdgeKind.REFERENCE),
+            // 같은 class의 멤버라도 <clinit>이 초기화하는 static field를 실제로 읽으면 field_access 사슬로 남는다.
+            GraphEdge(clinit, field, EdgeKind.FIELD_ACCESS), GraphEdge(reader, field, EdgeKind.FIELD_ACCESS),
         ))
         val result = ChangeImpact.analyze(ImpactInput(graph), listOf(clinit.value))
-        assertEquals(listOf(owner, external).sorted(), result.affected.map { it.node.id }.sorted())
+        assertEquals(listOf(owner, external, nested).sorted(), result.affected.map { it.node.id }.sorted())
         assertEquals(ImpactRelation.TRANSITIVE, result.affected.single { it.node.id == external }.relation)
+        assertFalse(result.affected.any { it.node.id == member || it.node.id == reader })
+
+        // 변경 대상이 static field라면 그 field를 실제로 읽는 같은 class의 멤버는 field_access 사슬로 직접 후보가 되고,
+        // 읽지 않는 멤버는 소유 참조만으로는 후보가 되지 않는다. clinit→class→외부 사용자 전파는 기존대로 유지된다.
+        val fieldChange = ChangeImpact.analyze(ImpactInput(graph), listOf(field.value))
+        assertEquals(ImpactRelation.DIRECT, fieldChange.affected.single { it.node.id == reader }.relation)
+        assertFalse(fieldChange.affected.any { it.node.id == member })
+        assertTrue(fieldChange.affected.any { it.node.id == external })
     }
 }

@@ -16,7 +16,13 @@ public enum class EdgeKind {
         get() = this != MEMBER
 }
 
-/** 관측된 명령과 metadata·모델·compiler 참조 보강을 구분하는 간선 출처다. */
+/**
+ * 관측된 명령과 metadata·모델·compiler 참조 보강을 구분하는 간선 출처다.
+ *
+ * `DISPATCH_MODEL`의 OVERRIDE 간선은 항상 **호출자 → 구현 후보** 방향이다(`ExternalDispatchIndexer`).
+ * 상위 선언 → 구현 방향의 실제 override는 BYTECODE·KOTLIN_METADATA 출처만 만든다. 변경 영향의 계약 확장은
+ * 이 불변식에 의존하므로, 선언 → 구현 간선을 새 출처로 추가할 때는 이 출처를 재사용하지 않는다.
+ */
 public enum class EdgeOrigin { BYTECODE, KOTLIN_METADATA, DISPATCH_MODEL, RUNTIME_MODEL, COMPILER_REFERENCE }
 
 /** 동일 signature의 발생 횟수를 weight로 합치는 그래프 간선이다. */
