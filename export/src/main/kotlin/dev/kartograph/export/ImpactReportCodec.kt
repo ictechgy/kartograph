@@ -8,21 +8,33 @@ import dev.kartograph.core.qualifiedName
 /** 사람·에이전트·CI가 같은 의미로 읽는 영향 보고서와 변경 경로 목록의 JSON codec이다. */
 public object ImpactReportCodec {
     /** 간선의 시점·출처와 불완전한 선택/탐색을 숨기지 않고 결정적으로 출력한다. */
-    public fun render(report: ImpactReport, snapshots: Map<String, QuerySnapshot> = emptyMap()): String = jsonValue(sortedMapOf(
+    public fun render(report: ImpactReport, snapshots: Map<String, QuerySnapshot> = emptyMap()): String =
+        render(report, snapshots, null)
+
+    /** 명시한 요약 항목 한도와 생략 수를 알리며 원래 영향·경로 사실을 유지한다. */
+    public fun render(
+        report: ImpactReport,
+        snapshots: Map<String, QuerySnapshot> = emptyMap(),
+        summaryLimit: Int?,
+    ): String {
+        require(summaryLimit == null || summaryLimit in 1..100_000)
+        val summaryTruncated = summaryLimit != null && listOf(report.navigation.observed, report.navigation.filtered)
+            .any { value -> summaryAxes(value).any { it.size > summaryLimit } }
+        val value = sortedMapOf<String, Any?>(
         "format" to "kartograph-impact", "version" to 1,
         "inputs" to snapshots.toSortedMap().mapValues { (_, snapshot) -> sortedMapOf(
             "revision" to snapshot.revision, "scope" to snapshot.scope, "toolVersion" to snapshot.toolVersion) },
         "status" to when {
             report.unresolved.isNotEmpty() && report.changed.isEmpty() -> "notFound"
-            report.unresolved.isNotEmpty() || report.truncated.results || report.truncated.depth || report.truncated.budget -> "partial"
+            report.unresolved.isNotEmpty() || report.truncated.results || report.truncated.depth || report.truncated.budget || summaryTruncated -> "partial"
             report.changed.isEmpty() -> "noChanges"
             else -> "found"
         },
         "changed" to report.changed.map(::node), "affected" to report.affected.map(::node),
         "observedAffected" to report.totalAffected,
         "summary" to sortedMapOf(
-            "observed" to summary(report.navigation.observed),
-            "filtered" to summary(report.navigation.filtered),
+            "observed" to summary(report.navigation.observed, summaryLimit),
+            "filtered" to summary(report.navigation.filtered, summaryLimit),
             "returned" to report.navigation.returned,
         ),
         "navigation" to sortedMapOf(
@@ -50,7 +62,20 @@ public object ImpactReportCodec {
             "candidates" to it.candidates.map { id -> id.value }) },
         "limitations" to report.limitations,
         "truncated" to sortedMapOf("results" to report.truncated.results, "depth" to report.truncated.depth, "budget" to report.truncated.budget),
-    )) + "\n"
+        )
+        if (summaryLimit != null) {
+            value["resultMetadata"] = sortedMapOf(
+                "summary" to "Summary buckets are a deterministic prefix; use CLI impact without --summary-limit for the complete summary or request more buckets.",
+                "summaryLimit" to summaryLimit,
+            )
+            value["summaryNavigation"] = sortedMapOf(
+                "filtered" to summaryNavigation(report.navigation.filtered, summaryLimit),
+                "observed" to summaryNavigation(report.navigation.observed, summaryLimit),
+                "truncated" to summaryTruncated,
+            )
+        }
+        return jsonValue(value) + "\n"
+    }
 
     /** Git 경로의 공백·따옴표를 유지하며 빈 배열도 명시적인 변경 없음으로 읽는다. */
     public fun parseFiles(content: String): List<String> {
@@ -90,17 +115,39 @@ public object ImpactReportCodec {
             "reason" to it.evidence.reason.name.lowerCamel(), "location" to location(it.evidence.location)) },
     )
 
-    private fun summary(value: dev.kartograph.analysis.ImpactSummary): Map<String, Any?> = sortedMapOf(
+    private fun summary(value: dev.kartograph.analysis.ImpactSummary, limit: Int?): Map<String, Any?> = sortedMapOf(
         "candidates" to value.candidates,
-        "byModule" to buckets(value.byModule),
-        "byFile" to buckets(value.byFile),
-        "byTestStatus" to buckets(value.byTestStatus),
-        "byRelation" to buckets(value.byRelation),
-        "byPathStatus" to buckets(value.byPathStatus),
+        "byModule" to buckets(value.byModule, limit),
+        "byFile" to buckets(value.byFile, limit),
+        "byTestStatus" to buckets(value.byTestStatus, limit),
+        "byRelation" to buckets(value.byRelation, limit),
+        "byPathStatus" to buckets(value.byPathStatus, limit),
     )
 
-    private fun buckets(values: List<dev.kartograph.analysis.ImpactBucket>): List<Map<String, Any?>> =
-        values.map { sortedMapOf("value" to it.value, "count" to it.count) }
+    private fun buckets(values: List<dev.kartograph.analysis.ImpactBucket>, limit: Int?): List<Map<String, Any?>> =
+        values.let { if (limit == null) it else it.take(limit) }.map { sortedMapOf("value" to it.value, "count" to it.count) }
+
+    private fun summaryAxes(value: dev.kartograph.analysis.ImpactSummary) = listOf(
+        value.byModule, value.byFile, value.byTestStatus, value.byRelation, value.byPathStatus)
+
+    private fun summaryNavigation(value: dev.kartograph.analysis.ImpactSummary, limit: Int): Map<String, Any?> = sortedMapOf(
+        "byModule" to bucketNavigation(value.byModule, limit),
+        "byFile" to bucketNavigation(value.byFile, limit),
+        "byTestStatus" to bucketNavigation(value.byTestStatus, limit),
+        "byRelation" to bucketNavigation(value.byRelation, limit),
+        "byPathStatus" to bucketNavigation(value.byPathStatus, limit),
+    )
+
+    private fun bucketNavigation(values: List<dev.kartograph.analysis.ImpactBucket>, limit: Int): Map<String, Any?> {
+        val returned = minOf(values.size, limit)
+        return sortedMapOf(
+            "originalBuckets" to values.size,
+            "returnedBuckets" to returned,
+            "omittedBuckets" to values.size - returned,
+            "omittedCandidates" to values.drop(returned).fold(0L) { total, bucket -> total + bucket.count.toLong() },
+            "truncated" to (returned < values.size),
+        )
+    }
 
     private fun filters(value: dev.kartograph.analysis.ImpactFilter): Map<String, Any?> = sortedMapOf(
         "modules" to value.modules.sorted(),

@@ -3,6 +3,8 @@
 `impact`는 수정할 선언에 의존하는 심볼과 연결 경로를 조사한다. 반환값은 **잠재적 영향 후보**이며 동작 변화의 증명,
 삭제 승인이나 테스트 생략 승인이 아니다. `dead`의 도달성/보존 판정과 다른 질의다.
 
+AI 클라이언트에서는 [MCP 서버](MCP.md)의 `query_symbol`, `impact`, `freshness`로 같은 조사를 수행할 수 있다.
+
 ## 수정 전에 조사
 
 해당 variant를 먼저 빌드하고 기존 query와 같은 class·classpath·manifest/XML·keep 입력으로 capture한다.
@@ -36,19 +38,33 @@ kartograph impact 'class:sample/Repository' --graph-file graph.json --all
 
 같은 필터 축의 값은 OR, 서로 다른 축은 AND다. 지원하는 필터는 `--module`, `--affected-file`, `--kind`,
 `--test-status {test|production|unknown}`, `--relation {direct|structural|transitive|unknown}`,
-`--path-status {complete|partial|unavailable}`다. 정렬은 `--sort usr|module|file|test|relation|path|path-status`이며,
+`--path-status {complete|partial|unavailable}`다. 정렬은 기본 `review`와 `--sort usr|module|file|test|relation|path|path-status`를 지원하며,
 동률은 항상 JVM USR로 결정한다. test 상태는 명시적으로 인식한 `src/test`, `src/androidTest`,
 `src/testFixtures` 등의 source root와 `src/main` 등의 root만 분류하고, 나머지는 `unknown`으로 남긴다.
 이 분류는 source 경로 관례이며 해당 선언이 실행 가능한 테스트라는 증거는 아니다.
 module·file·test 필터는 각 축이 base 또는 current 사실에 맞으면 포함하며, 축별 일치 시점이 다를 수 있다.
 같은 페이지 탐색에서는 입력·필터·정렬·예산을 고정한다. 결과 한도가 기본 경로 예산에도 영향을 주므로 한도를
 바꿔 비교하려면 `--path-limit`을 명시한다.
+전역 요약이 큰 경우 `--summary-limit <1..100000>`으로 각 축의 앞부분만 표시할 수 있다.
+`summaryNavigation`은 원래·반환·생략 항목 수와 생략 후보 수를 알리고, 요약 생략 시 상태는
+`partial`이다. 후보 총수·영향 페이지·선택·경로·한계는 바뀌지 않는다. 기본 CLI 출력은 전체 요약이며,
+요약 항목의 제한은 영향 페이지 offset과 별개다.
+`omittedCandidates`는 생략된 bucket count의 합이다. 시점별 파일·모듈이 다르면 같은 후보가
+여러 bucket에 들어갈 수 있으므로 고유 후보 수를 뜻하지 않는다.
 `--kind`는 대표 선언(current에 있으면 current)의 종류를 선택한다. `--sort test`는 시점별 분류가 같으면
 그 상태로, 다르면 `unknown`으로 정렬한다. 필터·bucket은 개별 시점의 source 사실을 사용한다.
 
 대형 입력에는 `snapshot --compact`를 사용한다. v2는 문자열 사전과 node/call/edge 배열의 참조 인덱스로 반복 정보를 줄인다.
 정점·간선·외부 호출·보존 근거를 버리지 않으며 기존 v1과 같은 검증을 거친다. 기본 출력은 v1이고 query/impact는 두 형식을 읽는다.
-저장 파일의 64 MiB 입력 제한은 유지한다.
+저장·읽기 한도는 기본 64 MiB다. 큰 그래프는 capture와 saved query·impact·verify-snapshot·MCP 시작 시
+`--snapshot-max-mib 128`을 지정해 최대 128 MiB까지 허용할 수 있다(1..128). 이 옵션은 그래프 사실이나
+신선도 증거를 바꾸지 않는다. 일반 compiled query에는 적용하지 않는다. 메모리에 파싱한 그래프와 분석 작업은
+파일 크기보다 많은 heap을 사용할 수 있다.
+
+Gradle 자동 캡처에는 `kartograph { snapshotMaxMiB.set(128) }`을 설정한다. 기본값은 64이며
+JVM·Android snapshot task에 같은 범위 검증을 적용한다. CI에서 만든 큰 파일을 읽는 명령에도 한도를 명시한다.
+`Scripts/check-impact.py`에도 `--snapshot-max-mib 128`을 전달하면 영향 조사와 base/current 신선도
+검사에 같은 한도를 적용한다. 옵션을 생략한 기존 실행 방식은 유지한다.
 
 ## CI에서 갱신하고 비교
 
@@ -105,7 +121,8 @@ kartograph {
 `--input-bindings`와 `--base-input-bindings`로 각각 전달한다.
 
 컴파일 task의 configuration cache·up-to-date 판정은 재사용하지만 snapshot 자체는 매번 전체 캡처한다.
-증분 인덱싱이나 snapshot build cache 지원을 의미하지 않는다. 이 자동 경로의 현재 범위는 JVM main/test와
+선택적 [증분 class 파싱 캐시](INDEX-CACHE.md)는 같은 class 바이트의 파싱 결과를 재사용하며,
+전체 관계·보존·신선도 검사는 계속 실행한다. snapshot output의 build cache를 의미하지 않는다. 이 자동 경로의 현재 범위는 JVM main/test와
 지원하는 Android main/unit-test이며, 별도 custom source set 및 compiler-evidence collector의 자동 연결은 아직 검증 중이다.
 
 ### Android variant 자동 캡처

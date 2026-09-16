@@ -5,7 +5,6 @@ import dev.kartograph.core.SnapshotProvenance
 import dev.kartograph.export.BuildWitnessCodec
 import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.index.ContentFingerprint
-import dev.kartograph.index.ProvenanceVerifier
 import java.io.PrintStream
 import java.nio.file.Path
 
@@ -13,16 +12,18 @@ import java.nio.file.Path
 internal object FreshnessCommand {
     fun run(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
         if (arguments == listOf("--help")) {
-            output.println("Usage: kartograph verify-snapshot --graph-file <file> --project <directory> [--scope <project:variant>] [--input <external/slot=path>]...")
+            output.println("Usage: kartograph verify-snapshot --graph-file <file> --project <directory> [--snapshot-max-mib <1..128>] [--scope <project:variant>] [--input <external/slot=path>]...")
             output.println("Optional ordered comparisons: --classes <root>, --classpath <root>, --artifact <Gradle-task-path>, --compiler <javac|kotlin> (repeatable).")
             output.println("--input-bindings <file> reads a generated local binding document; do not publish this file with snapshots.")
+            output.println("--snapshot-max-mib bounds the saved snapshot read to 1..128 MiB (default 64).")
             output.println("Exit 0: matching compiler evidence; 1: stale or unverified; 2: invalid input; 64: usage error. Saved queries remain offline.")
             return 0
         }
-        if (arguments.size % 2 != 0 || arguments.chunked(2).any { it[0] !in setOf("--graph-file", "--project", "--scope", "--input", "--input-bindings", "--classes", "--classpath", "--artifact", "--compiler") }) return 64
+        if (arguments.size % 2 != 0 || arguments.chunked(2).any { it[0] !in setOf("--graph-file", "--project", "--scope", "--input", "--input-bindings", "--classes", "--classpath", "--artifact", "--compiler", "--snapshot-max-mib") }) return 64
         val options = arguments.chunked(2).groupBy({ it[0] }, { it[1] })
         if (listOf("--graph-file", "--project").any { options[it]?.size != 1 } ||
-            listOf("--scope", "--input-bindings").any { (options[it]?.size ?: 0) > 1 }) return 64
+            listOf("--scope", "--input-bindings", "--snapshot-max-mib").any { (options[it]?.size ?: 0) > 1 }) return 64
+        val snapshotLimit = SnapshotFiles.limit(options["--snapshot-max-mib"].orEmpty()) ?: return 64
         return try {
             val explicit = try { inputBindings(options["--input"].orEmpty()) } catch (_: IllegalArgumentException) { return 64 }
             val local = options["--input-bindings"]?.single()?.let { path ->
@@ -30,11 +31,10 @@ internal object FreshnessCommand {
             }.orEmpty()
             if (explicit.keys.any(local::containsKey)) return 64
             val external = local + explicit
-            val snapshot = SnapshotFiles.read(options.getValue("--graph-file").single())
+            val snapshot = SnapshotFiles.read(options.getValue("--graph-file").single(), snapshotLimit.maximumBytes)
             val started = System.nanoTime()
             val project = Path.of(options.getValue("--project").single()).toAbsolutePath().normalize()
-            val result = ProvenanceVerifier.verify(snapshot.provenance, project, snapshot.scope, external)
-            val scopeMismatch = options["--scope"]?.single()?.let { it != snapshot.scope } == true
+            val result = SavedSnapshotOperations.freshness(snapshot, project, options["--scope"]?.single(), external)
             val identityMismatch = listOf("artifact", "compiler").filter { key ->
                 options["--$key"]?.let { expected -> expected != snapshot.provenance?.witnesses?.map { if (key == "artifact") it.artifact else it.compiler } } == true
             }
@@ -50,13 +50,13 @@ internal object FreshnessCommand {
                     }
                 } } == true
             }
-            val status = if (scopeMismatch || changedRoots.isNotEmpty() || identityMismatch.isNotEmpty()) "stale" else result.status
-            val reasons = (result.reasons + (if (scopeMismatch) listOf("snapshot-scope-mismatch") else emptyList()) +
+            val status = if (changedRoots.isNotEmpty() || identityMismatch.isNotEmpty()) "stale" else result.status
+            val reasons = (result.reasons +
                 changedRoots.map { "changed-$it-order" } + identityMismatch.map { "build-$it-mismatch" }).distinct().sorted()
             output.println("{\"format\":\"kartograph-freshness\",\"version\":1,\"status\":\"$status\",\"hashNanos\":${System.nanoTime() - started},\"reasons\":[${reasons.joinToString(",") { "\"$it\"" }}]}")
             if (status == "matched") 0 else 1
         } catch (_: Exception) {
-            error.println("error: unable to verify snapshot inputs; supply a valid snapshot, project and external input bindings")
+            error.println("error: unable to verify snapshot inputs; supply a valid snapshot (maximum ${snapshotLimit.maximumMiB} MiB), project and external input bindings")
             2
         }
     }
@@ -73,10 +73,13 @@ internal object FreshnessCommand {
         return bindings
     }
 
-    fun capture(project: Path, files: List<Pair<String, Path>>, context: List<String>, witnessPaths: List<Path>): SnapshotProvenance {
-        val inputs = files.mapIndexed { index, (role, path) -> ContentFingerprint.capture(project, path, role, "$role-$index") } +
+    fun capture(project: Path, files: List<Pair<String, Path>>, context: List<String>, witnessPaths: List<Path>,
+        scope: dev.kartograph.index.VerifiedCaptureScope? = null): SnapshotProvenance {
+        fun fingerprint(path: Path, role: String, slot: String) = scope?.capture(project, path, role, slot)
+            ?: ContentFingerprint.capture(project, path, role, slot)
+        val inputs = files.mapIndexed { index, (role, path) -> fingerprint(path, role, "$role-$index") } +
             InputFingerprint("options", "snapshot-options", ContentFingerprint.values(context)) +
-            witnessPaths.mapIndexed { index, path -> ContentFingerprint.capture(project, path, "witness", "witness-$index") }
+            witnessPaths.mapIndexed { index, path -> fingerprint(path, "witness", "witness-$index") }
         val witnesses = witnessPaths.map { BuildWitnessCodec.parse(SnapshotFiles.readText(it.toString(), 64 * 1024 * 1024)) }
         return SnapshotProvenance(inputs, witnesses)
     }

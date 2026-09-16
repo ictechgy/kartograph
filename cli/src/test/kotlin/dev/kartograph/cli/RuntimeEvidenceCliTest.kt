@@ -12,6 +12,22 @@ import org.junit.jupiter.api.io.TempDir
 
 class RuntimeEvidenceCliTest {
     @Test
+    fun `exact instance helpers resolve targets while override and receiver state stay unknown`(@TempDir root: Path) {
+        for ((case, expected) in listOf(
+            "helper_java_final" to "reachable",
+            "helper_java_private" to "reachable",
+            "helper_java_override" to "unreachable",
+            "helper_java_state" to "unreachable",
+        )) {
+            val fixture = compile(root.resolve(case), case)
+            val used = query(fixture, "class:probe/Used")
+            assertContains(used, "\"state\": \"$expected\"")
+            if (expected == "unreachable") assertContains(used, "reflection-strings:")
+            assertContains(query(fixture, "class:probe/Unused"), "\"state\": \"unreachable\"")
+        }
+    }
+
+    @Test
     fun `constant queries preserve declarations but expose missing use sites`(@TempDir root: Path) {
         val fixture = compile(root, "java_constants")
         val result = query(fixture, "field:probe/Entry${'$'}Constants#USED:I")

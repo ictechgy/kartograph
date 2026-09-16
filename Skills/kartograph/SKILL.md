@@ -11,6 +11,19 @@ Follow the user's requested outcome. Explanation/review requests are read-only; 
 
 Use an available trusted CLI and the matching compiled variant. Do not guess class roots, install a tool, or run the application's build merely to answer a report question when supplied evidence suffices. If evidence is missing or stale, identify the missing input; rebuild when that is within the authorized task.
 
+When trusted kartograph MCP tools are connected, use `query_symbol`, `impact`, and `freshness` for the same investigation.
+Read the original report in the tool wrapper's `document` field with its snapshot identity. Query and impact use snapshots
+loaded when the server started; they do not check live inputs. Call `freshness` before making a current-build claim, retain
+`stale`/`unverified` reasons, and restart the server after an authorized recapture. Request paths in `impact.files` are graph
+selectors, not file reads. Use the advertised limits and pagination; an oversized tool result is incomplete evidence.
+The CLI workflow below remains available when MCP is not connected. See `docs/MCP.md` for startup configuration.
+If a source-style method selector is missing, use the real USRs in `suggestions` to resolve overloads explicitly.
+Read `response.effective` when a page/path budget was adapted to the 16 KiB content limit; follow the returned
+navigation and retain path omissions. `impact.files` and `impact.symbols` select a union, so use a narrow selector
+when investigating one method.
+MCP impact also bounds summary buckets. Read `summaryNavigation` and the effective `summaryLimit`; omitted
+summary buckets do not reduce candidate totals or prove absent callers. Use the full CLI summary when needed.
+
 ```bash
 kartograph query '<symbol-or-usr>' --classes <compiled-root> --project <root>
 ```
@@ -18,6 +31,13 @@ kartograph query '<symbol-or-usr>' --classes <compiled-root> --project <root>
 Repeat `--classes` for relevant main Kotlin/Java/generated outputs. Preserve the report's manifest, resources, namespace, keep/consumer rules, dependency `--classpath`, baseline and `--include-private-members` mode. Missing inputs are not proof that a declaration is unused.
 
 Preserve any `--generated-classes` markers: they identify supplied roots containing only generated declarations. The graph still contains those nodes; the marker does not make a declaration a retention root. Do not infer generated input from class names.
+
+For one declaration's verdict in a single step, `kartograph why <symbol>` (same live-input options as `dead`)
+prints the state (`retained`, `retainedByMember`, `reachable`, `unreachable`), every retention evidence line with
+its file:line provenance, the representative path from a retention root, direct callers, a `used-by-tests` marker
+when `--test-classes` is supplied, and for unreachable declarations a measured `confidence` tier derived from the
+unresolved runtime channels observed in that declaration's own source file. The tier is a review aid; the global
+limitations are still printed, and the answer remains a reachability fact rather than deletion approval.
 
 For repeated investigation, `kartograph snapshot <the same live-input options>` writes a versioned graph with retention evidence, baseline state and measured limitations. Query it with `kartograph query '<symbol-or-usr>' --graph-file <snapshot.json>`. Ordinary `graph --format json` output lacks this query context. Saved queries use the captured state, add a `saved-graph` limitation, and do not recheck source freshness. Recapture after authorized changes before drawing conclusions about the current build. Live-input options cannot be mixed with `--graph-file`.
 
@@ -107,7 +127,7 @@ For an analysis-only task, explain the finding, evidence, uncertainty and next c
 
 ## Bridge investigations
 
-Only for Flutter MethodChannel or React Native NativeModule questions, use `kartograph bridges --project <root>` and, when available and in scope, join facts through isthmus. Dynamic or unattributed facts are limitations. Missing isthmus or other-platform evidence does not block a useful local explanation or prove that the other side is absent.
+For Flutter MethodChannel or React Native NativeModule questions, use `kartograph bridges --project <root>` and, when available and in scope, join facts through isthmus. For Kotlin/JVM Flutter BasicMessageChannel questions, opt in with `--target flutter --messages`; pass the matching compiler snapshot with `--graph-file` when JVM identities are needed. Dynamic or unattributed facts are limitations. Missing isthmus or other-platform evidence does not block a useful local explanation or prove that the other side is absent.
 
 ## Deliverable
 

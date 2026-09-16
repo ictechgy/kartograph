@@ -10,7 +10,9 @@ import dev.kartograph.export.BaselineCodec
 import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.export.QuerySnapshot
 import dev.kartograph.export.QuerySnapshotCodec
-import dev.kartograph.index.ClassFileIndexer
+import dev.kartograph.index.IndexedClasses
+import dev.kartograph.index.VerifiedCaptureScope
+import dev.kartograph.index.ClassIndexCache
 import dev.kartograph.index.AndroidManifestScanner
 import dev.kartograph.index.AndroidXmlScanner
 import dev.kartograph.index.ContentFingerprint
@@ -109,10 +111,21 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     @get:Input @get:Optional public abstract val revision: Property<String>
     @get:Input public abstract val includeSourcePaths: Property<Boolean>
     @get:Input public abstract val includePrivateMembers: Property<Boolean>
+    /** 저장 파일 크기만 제한하며 snapshot graph/provenance 사실에는 포함하지 않는다. */
+    @get:Input public abstract val snapshotMaxMiB: Property<Int>
+    /** 파싱 캐시는 결과 의미나 compiler 증거를 변경하지 않는 명시적 성능 옵션이다. */
+    @get:Input public abstract val indexCacheEnabled: Property<Boolean>
+    @get:LocalState public abstract val indexCacheDirectory: DirectoryProperty
     @get:Internal public abstract val projectDirectory: DirectoryProperty
     @get:Internal public abstract val buildDirectory: DirectoryProperty
     @get:OutputFile public abstract val snapshotFile: RegularFileProperty
     @get:LocalState public abstract val localBindingsFile: RegularFileProperty
+
+    init {
+        snapshotMaxMiB.convention(QuerySnapshotCodec.DEFAULT_MAX_MIB)
+        indexCacheEnabled.convention(false)
+        indexCacheDirectory.convention(buildDirectory.dir("kartograph/index-cache"))
+    }
 
     /** 입력 집합이 같아도 root 순서에 따라 중복 JVM 선언의 선택이 달라진다. */
     @get:Input
@@ -129,6 +142,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     /** local bindings는 경로를 포함하므로 snapshot과 분리하고 공개 결과에 넣지 않는다. */
     @TaskAction
     public fun captureSnapshot() {
+        val snapshotMaximumBytes = QuerySnapshotCodec.maximumBytes(snapshotMaxMiB.get())
         val project = projectDirectory.get().asFile.toPath()
         val witnessPaths = buildWitnessFiles.files.filter { it.isFile }.map { it.toPath() }
         val witnesses = witnessPaths.map { path ->
@@ -177,9 +191,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             androidResourceDirectories.files.map { "directory-watch" to it.toPath() } +
             missingGeneratedRules.map { "directory-watch" to requireNotNull(it.parent) }.distinct()
         val bindings = linkedMapOf<String, Path>()
-        fun capture(): SnapshotProvenance {
+        fun capture(observation: VerifiedCaptureScope): SnapshotProvenance {
             val inputs = files.mapIndexed { index, (role, path) ->
-                ContentFingerprint.capture(project, path, role, "$role-$index").also {
+                observation.capture(project, path, role, "$role-$index").also {
                     if (it.path.startsWith("external/")) bindings[it.path] = path.toFile().canonicalFile.toPath()
                 }
             } + InputFingerprint("options", "snapshot-options", ContentFingerprint.values(listOf(
@@ -187,67 +201,78 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             )))
             return SnapshotProvenance(inputs, witnesses)
         }
-        val before = capture()
-        bindCompilerInputs(before, bindings)
-        compiledOutputs.forEach { (witness, outputs) ->
-            require(outputs.all { output -> witness.outputs.any { recorded ->
-                val path = if (recorded.path.startsWith("external/")) bindings[recorded.path] else project.resolve(recorded.path)
-                path?.toFile()?.canonicalFile == output
-            } }) { "compiler witness output does not match ${witness.artifact}" }
-        }
-        val verified = ProvenanceVerifier.verify(before, project, scope.get(), bindings)
-        require(verified.status == "matched") {
-            "snapshot compiler inputs are ${verified.status}: ${verified.reasons.joinToString()}; rebuild the selected compilations; " +
-                "class roots=${before.inputs.filter { it.role == "classes" }.map { it.path }.take(10)}; " +
-                "compiler outputs=${witnesses.flatMap { it.outputs }.map { it.path }.take(10)}"
-        }
-        val selectedSources = sourceFiles.files.map { file ->
-            require(file.isFile && !Files.isSymbolicLink(file.toPath())) { "snapshot source inventory contains an unavailable file" }
-            file.canonicalFile.toPath()
-        }.toSet()
-        val compilerSources = witnesses.flatMap { it.inputs }.filter { it.role == "sources" }.map { input ->
-            if (input.path.startsWith("external/")) bindings.getValue(input.path) else project.resolve(input.path)
-        }.filter { Files.isRegularFile(it) && it.fileName.toString().let { name -> name.endsWith(".java") || name.endsWith(".kt") } }
-            .map { it.toRealPath() }.toSet()
-        require(selectedSources == compilerSources) { "snapshot source inventory does not match compiler units" }
-        val indexed = ClassFileIndexer().indexWithObservations(roots, classpath, resources, generated)
-        val graph = indexed.graph
-        val entryPoints = buildList {
-            manifestFile.orNull?.asFile?.toPath()?.let { manifest ->
-                require(namespace.isPresent) { "snapshot manifest requires its Android namespace" }
-                addAll(AndroidManifestScanner(project).scan(manifest, namespace.get()))
+        val indexCache = if (indexCacheEnabled.get()) ClassIndexCache(indexCacheDirectory.get().asFile.toPath()) else null
+        val prepared = ContentFingerprint.withVerifiedCapture(::capture, indexCache) { observation, before ->
+            bindCompilerInputs(before, bindings)
+            compiledOutputs.forEach { (witness, outputs) ->
+                require(outputs.all { output -> witness.outputs.any { recorded ->
+                    val path = if (recorded.path.startsWith("external/")) bindings[recorded.path] else project.resolve(recorded.path)
+                    path?.toFile()?.canonicalFile == output
+                } }) { "compiler witness output does not match ${witness.artifact}" }
             }
-            androidResourceDirectories.files.filter { it.isDirectory }.forEach { directory ->
-                addAll(AndroidXmlScanner(project).scan(directory.toPath()))
+            val verified = ProvenanceVerifier.verify(before, project, scope.get(), bindings)
+            require(verified.status == "matched") {
+                "snapshot compiler inputs are ${verified.status}: ${verified.reasons.joinToString()}; rebuild the selected compilations; " +
+                    "class roots=${before.inputs.filter { it.role == "classes" }.map { it.path }.take(10)}; " +
+                    "compiler outputs=${witnesses.flatMap { it.outputs }.map { it.path }.take(10)}"
             }
+            val selectedSources = sourceFiles.files.map { file ->
+                require(file.isFile && !Files.isSymbolicLink(file.toPath())) { "snapshot source inventory contains an unavailable file" }
+                file.canonicalFile.toPath()
+            }.toSet()
+            val compilerSources = witnesses.flatMap { it.inputs }.filter { it.role == "sources" }.map { input ->
+                if (input.path.startsWith("external/")) bindings.getValue(input.path) else project.resolve(input.path)
+            }.filter { Files.isRegularFile(it) && it.fileName.toString().let { name -> name.endsWith(".java") || name.endsWith(".kt") } }
+                .map { it.toRealPath() }.toSet()
+            require(selectedSources == compilerSources) { "snapshot source inventory does not match compiler units" }
+            val indexed = observation.indexWithObservations(roots, classpath, resources, generated, indexCache)
+            val graph = indexed.graph
+            val entryPoints = buildList {
+                manifestFile.orNull?.asFile?.toPath()?.let { manifest ->
+                    require(namespace.isPresent) { "snapshot manifest requires its Android namespace" }
+                    addAll(AndroidManifestScanner(project).scan(manifest, namespace.get()))
+                }
+                androidResourceDirectories.files.filter { it.isDirectory }.forEach { directory ->
+                    addAll(AndroidXmlScanner(project).scan(directory.toPath()))
+                }
+            }
+            val retention = DefaultRetention.find(graph, entryPoints, rules, indexed.hierarchy,
+                includePrivateMembers = includePrivateMembers.get())
+            val baseline = baselineFile.orNull?.asFile?.toPath()?.let { BaselineCodec.parse(Files.readString(it)) }.orEmpty()
+            val suppressed = graph.nodes.values.filter { Finding(it.id, it.location).fingerprint in baseline }
+                .mapTo(mutableSetOf()) { it.id }
+            val paths = if (includeSourcePaths.get()) SourcePathIndex.resolve(graph, project, selectedSources) else null
+            val located = if (paths == null) graph else CodeGraph(graph.nodes.values.map { node ->
+                paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
+            }, graph.edges, graph.externalCalls, graph.serviceProviders)
+            val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, selectedSources) +
+                paths?.limitations.orEmpty() + if (missingGeneratedRules.isEmpty()) emptyList() else
+                    listOf("missing-generated-keep-files: ${missingGeneratedRules.size}"),
+                suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
+                scope = scope.get(), provenance = before)
+            val content = QuerySnapshotCodec.render(snapshot, compact = true, maximumBytes = snapshotMaximumBytes)
+            SnapshotOutput(content, indexed, before)
         }
-        val retention = DefaultRetention.find(graph, entryPoints, rules, indexed.hierarchy,
-            includePrivateMembers = includePrivateMembers.get())
-        val baseline = baselineFile.orNull?.asFile?.toPath()?.let { BaselineCodec.parse(Files.readString(it)) }.orEmpty()
-        val suppressed = graph.nodes.values.filter { Finding(it.id, it.location).fingerprint in baseline }
-            .mapTo(mutableSetOf()) { it.id }
-        val paths = if (includeSourcePaths.get()) SourcePathIndex.resolve(graph, project, selectedSources) else null
-        val located = if (paths == null) graph else CodeGraph(graph.nodes.values.map { node ->
-            paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
-        }, graph.edges, graph.externalCalls, graph.serviceProviders)
-        require(before == capture()) { "snapshot inputs changed during capture; rebuild before querying" }
-        val finalVerification = ProvenanceVerifier.verify(before, project, scope.get(), bindings)
+        val finalVerification = ProvenanceVerifier.verify(prepared.provenance, project, scope.get(), bindings)
         require(finalVerification.status == "matched") { "compiler inputs changed during snapshot capture" }
-        val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, selectedSources) +
-            paths?.limitations.orEmpty() + if (missingGeneratedRules.isEmpty()) emptyList() else
-                listOf("missing-generated-keep-files: ${missingGeneratedRules.size}"),
-            suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
-            scope = scope.get(), provenance = before)
-        val content = QuerySnapshotCodec.render(snapshot, compact = true)
-        require(content.length <= QuerySnapshotCodec.MAX_BYTES) { "snapshot exceeds 64 MiB; select a smaller input scope" }
         val output = snapshotFile.get().asFile.toPath()
         val local = localBindingsFile.get().asFile.toPath()
         Files.createDirectories(requireNotNull(local.parent))
         Files.writeString(local, ExternalInputBindingsCodec.render(bindings.mapValues { it.value.toString() }))
         Files.createDirectories(requireNotNull(output.parent))
-        Files.writeString(output, content)
+        Files.writeString(output, prepared.content)
+        val graph = prepared.indexed.graph
         logger.lifecycle("kartograph ${scope.get()}: snapshot ${graph.nodeCount} nodes and ${graph.edgeCount} edges")
+        val stats = prepared.indexed.statistics
+        logger.info("kartograph index: classes=${stats.classFiles} hits=${stats.cacheHits} parsed=${stats.parsedClasses} " +
+            "invalid=${stats.invalidEntries} writeFailures=${stats.writeFailures} unavailable=${stats.unavailableEntries}")
     }
+
+    private data class SnapshotOutput(
+        val content: String,
+        val indexed: IndexedClasses,
+        val provenance: SnapshotProvenance,
+    )
 
     private fun containsClasses(path: Path): Boolean = if (Files.isDirectory(path)) {
         Files.walk(path).use { files -> files.anyMatch { it.fileName.toString().endsWith(".class") } }

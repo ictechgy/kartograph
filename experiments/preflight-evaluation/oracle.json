@@ -1,0 +1,217 @@
+{
+  "status": "Frozen before any efficacy model run or cohort product query",
+  "method": "Independent javap direct references plus original native test records and one explicit source override. These are known review anchors, not a complete runtime-impact oracle. New tests introduced by PRs are excluded.",
+  "cases": [
+    {
+      "id": "google__gson-1093",
+      "base": "0aaef0fd1bb1b9729543dc40168adfb829eb75a4",
+      "targets": [
+        {
+          "id": "method:com/google/gson/stream/JsonWriterTest#testDoubles()V",
+          "kind": "test",
+          "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+          "name": "testDoubles",
+          "basis": "Exact javap invocation of one of the changed existing methods",
+          "evidence": [
+            "26: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "32: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "40: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "48: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "54: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "62: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "70: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "78: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "86: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;"
+          ]
+        },
+        {
+          "id": "method:com/google/gson/stream/JsonWriterTest#testNonFiniteDoubles()V",
+          "kind": "test",
+          "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+          "name": "testNonFiniteDoubles",
+          "basis": "Exact javap invocation of one of the changed existing methods",
+          "evidence": [
+            "26: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "41: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "56: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;"
+          ]
+        },
+        {
+          "id": "method:com/google/gson/stream/JsonWriterTest#testPrettyPrintArray()V",
+          "kind": "test",
+          "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+          "name": "testPrettyPrintArray",
+          "basis": "Exact javap invocation of one of the changed existing methods",
+          "evidence": [
+            "44: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "67: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "80: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "98: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "106: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;"
+          ]
+        },
+        {
+          "id": "method:com/google/gson/stream/JsonWriterTest#testPrettyPrintObject()V",
+          "kind": "test",
+          "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+          "name": "testPrettyPrintObject",
+          "basis": "Exact javap invocation of one of the changed existing methods",
+          "evidence": [
+            "59: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "87: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "95: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "123: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;",
+            "136: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;"
+          ]
+        },
+        {
+          "id": "method:com/google/gson/stream/JsonWriterTest#testTopLevelValueTypes()V",
+          "kind": "test",
+          "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+          "name": "testTopLevelValueTypes",
+          "basis": "Exact javap invocation of one of the changed existing methods",
+          "evidence": [
+            "143: invokevirtual #19                 // Method com/google/gson/stream/JsonWriter.value:(D)Lcom/google/gson/stream/JsonWriter;"
+          ]
+        },
+        {
+          "id": "method:com/google/gson/internal/bind/JsonTreeWriter#value(D)Lcom/google/gson/stream/JsonWriter;",
+          "kind": "override",
+          "file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeWriter.java",
+          "name": "value",
+          "basis": "Existing override of the changed public double overload; review contract consistency, not proof its behavior changes",
+          "aliases": [
+            "JsonTreeWriter.value",
+            "JsonTreeWriter#value"
+          ]
+        }
+      ],
+      "sourceChangeSha256": "3d1b76c39c54c4ad1a1e70a8ac5e1998cb8d48f3698aa1c72f2fbe0890cb69eb",
+      "directOracleSha256": "9e6edff6cc0037f506ec91f77bd36dca68ce8d21855158a83cd5e68e6735738e"
+    },
+    {
+      "id": "fasterxml__jackson-core-1172",
+      "base": "fb695545312cc2340604e61642f36138152fba93",
+      "targets": [
+        {
+          "id": "method:com/fasterxml/jackson/core/jsonptr/JsonPointerTest#testAppend()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/jsonptr/JsonPointerTest.java",
+          "name": "testAppend",
+          "basis": "Exact javap invocation of one of the changed existing methods",
+          "evidence": [
+            "22: invokevirtual #153                // Method com/fasterxml/jackson/core/JsonPointer.append:(Lcom/fasterxml/jackson/core/JsonPointer;)Lcom/fasterxml/jackson/core/JsonPointer;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/jsonptr/JsonPointerTest#testAppendIndex()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/jsonptr/JsonPointerTest.java",
+          "name": "testAppendIndex",
+          "basis": "Exact javap invocation of one of the changed existing methods",
+          "evidence": [
+            "15: invokevirtual #174                // Method com/fasterxml/jackson/core/JsonPointer.appendIndex:(I)Lcom/fasterxml/jackson/core/JsonPointer;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/jsonptr/JsonPointerTest#testAppendProperty()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/jsonptr/JsonPointerTest.java",
+          "name": "testAppendProperty",
+          "basis": "Exact javap invocation of one of the changed existing methods",
+          "evidence": [
+            "20: invokevirtual #163                // Method com/fasterxml/jackson/core/JsonPointer.appendProperty:(Ljava/lang/String;)Lcom/fasterxml/jackson/core/JsonPointer;",
+            "29: invokevirtual #163                // Method com/fasterxml/jackson/core/JsonPointer.appendProperty:(Ljava/lang/String;)Lcom/fasterxml/jackson/core/JsonPointer;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/jsonptr/JsonPointerTest#testAppendPropertyEmpty()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/jsonptr/JsonPointerTest.java",
+          "name": "testAppendPropertyEmpty",
+          "basis": "Exact javap invocation of one of the changed existing methods",
+          "evidence": [
+            "12: invokevirtual #163                // Method com/fasterxml/jackson/core/JsonPointer.appendProperty:(Ljava/lang/String;)Lcom/fasterxml/jackson/core/JsonPointer;",
+            "21: invokevirtual #163                // Method com/fasterxml/jackson/core/JsonPointer.appendProperty:(Ljava/lang/String;)Lcom/fasterxml/jackson/core/JsonPointer;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/jsonptr/JsonPointerTest#testAppendWithFinalSlash()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/jsonptr/JsonPointerTest.java",
+          "name": "testAppendWithFinalSlash",
+          "basis": "Exact javap invocation of one of the changed existing methods",
+          "evidence": [
+            "22: invokevirtual #153                // Method com/fasterxml/jackson/core/JsonPointer.append:(Lcom/fasterxml/jackson/core/JsonPointer;)Lcom/fasterxml/jackson/core/JsonPointer;"
+          ]
+        }
+      ],
+      "sourceChangeSha256": "1ca83ab40a91189eb34d71311e3f1dea5d972b7ed472145fd4a438018c2206e6",
+      "directOracleSha256": "57e367ef021cc2de9ea5312acc958acc0386ca7b2798ae575ae819dbdb91d64e"
+    },
+    {
+      "id": "detekt_detekt-7715",
+      "base": "8a3565572208446ff769152ded9ca5bdf957f8b0",
+      "targets": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/exceptions/ThrowingExceptionsWithoutMessageOrCauseSpec$a test code which asserts an exception#does not report a call to this exception()V",
+          "kind": "test",
+          "file": "detekt-rules-exceptions/src/test/kotlin/io/gitlab/arturbosch/detekt/rules/exceptions/ThrowingExceptionsWithoutMessageOrCauseSpec.kt",
+          "name": "does not report a call to this exception",
+          "basis": "Unchanged existing focused test, actually executed successfully on frozen base"
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/exceptions/ThrowingExceptionsWithoutMessageOrCauseSpec$several exception calls#reports calls to the default constructor()V",
+          "kind": "test",
+          "file": "detekt-rules-exceptions/src/test/kotlin/io/gitlab/arturbosch/detekt/rules/exceptions/ThrowingExceptionsWithoutMessageOrCauseSpec.kt",
+          "name": "reports calls to the default constructor",
+          "basis": "Unchanged existing focused test, actually executed successfully on frozen base"
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/exceptions/ThrowingExceptionsWithoutMessageOrCauseSpec$several exception calls#does not report calls to the default constructor with empty configuration()V",
+          "kind": "test",
+          "file": "detekt-rules-exceptions/src/test/kotlin/io/gitlab/arturbosch/detekt/rules/exceptions/ThrowingExceptionsWithoutMessageOrCauseSpec.kt",
+          "name": "does not report calls to the default constructor with empty configuration",
+          "basis": "Unchanged existing focused test, actually executed successfully on frozen base"
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/exceptions/ExceptionsProvider$instance$7#invoke(Lio/gitlab/arturbosch/detekt/api/Config;)Lio/gitlab/arturbosch/detekt/rules/exceptions/ThrowingExceptionsWithoutMessageOrCause;",
+          "kind": "registration",
+          "file": "detekt-rules-exceptions/src/main/kotlin/io/gitlab/arturbosch/detekt/rules/exceptions/ExceptionsProvider.kt",
+          "name": "instance",
+          "basis": "Exact javap constructor reference establishes existing rule registration/factory",
+          "evidence": [
+            "11: invokespecial #32                 // Method io/gitlab/arturbosch/detekt/rules/exceptions/ThrowingExceptionsWithoutMessageOrCause.\"<init>\":(Lio/gitlab/arturbosch/detekt/api/Config;)V"
+          ]
+        }
+      ],
+      "sourceChangeSha256": "46d22a03b50e915bac95dedc1a4a3e8d7f86d4f538ca1f72d244e3ac2ae57b92",
+      "directOracleSha256": "e10556ab8381f5f7ead8d8b8ddf7716d7c7a297b330225b955b9bfd0d3cb5038"
+    },
+    {
+      "id": "pinterest_ktlint-2891",
+      "base": "e098f10ef78bc83bbb79dcbf12b2d9246ccd6bd7",
+      "targets": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/UnnecessaryParenthesesBeforeTrailingLambdaRuleTest#Remove unnecessary parentheses in function call followed by lambda()V",
+          "kind": "test",
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/UnnecessaryParenthesesBeforeTrailingLambdaRuleTest.kt",
+          "name": "Remove unnecessary parentheses in function call followed by lambda",
+          "basis": "Unchanged existing focused test, actually executed successfully on frozen base"
+        },
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider#getRuleProviders$lambda$95()Lcom/pinterest/ktlint/rule/engine/core/api/Rule;",
+          "kind": "registration",
+          "file": "ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt",
+          "name": "getRuleProviders",
+          "basis": "Exact javap constructor reference establishes existing rule registration/factory",
+          "evidence": [
+            "4: invokespecial #838                // Method com/pinterest/ktlint/ruleset/standard/rules/UnnecessaryParenthesesBeforeTrailingLambdaRule.\"<init>\":()V"
+          ]
+        }
+      ],
+      "sourceChangeSha256": "12b7ac2c5be06f68c96870404c37c0e50e856b119244b086131b55d8727bd609",
+      "directOracleSha256": "97ad3e32f05259d1fa2d90ba6a1dbcfd1310d10b220f8fa3b9fda9b331bfe92a"
+    }
+  ]
+}

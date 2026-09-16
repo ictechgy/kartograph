@@ -28,9 +28,18 @@ def main():
     parser.add_argument("--base-input-bindings", help="generated local external-input binding file for the base checkout")
     parser.add_argument("--depth", type=int, default=100)
     parser.add_argument("--limit", type=int, default=500)
+    parser.add_argument("--snapshot-max-mib", type=int, action="append",
+                        help="saved snapshot read limit, 1..128 MiB (omitted: compatible CLI default, 64 MiB)")
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--strict", action="store_true", help="exit 1 when traversal is incomplete or freshness is stale/unverified")
     args = parser.parse_args()
+    if not args.base_project and (args.base_input or args.base_input_bindings):
+        raise ValueError("base input bindings require --base-project")
+    snapshot_limits = args.snapshot_max_mib if args.snapshot_max_mib is not None else [64]
+    if len(snapshot_limits) != 1 or not 1 <= snapshot_limits[0] <= 128:
+        raise ValueError("snapshot maximum must be one integer from 1 to 128 MiB")
+    snapshot_limit = snapshot_limits[0]
+    snapshot_options = ["--snapshot-max-mib", str(snapshot_limit)] if args.snapshot_max_mib is not None else []
     if args.timeout < 1 or not 1 <= args.depth <= 1000 or not 1 <= args.limit <= 100000:
         raise ValueError("invalid traversal or timeout budget")
     project = Path(args.project).resolve(strict=True)
@@ -60,7 +69,7 @@ def main():
         paths.write_text(json.dumps(files), encoding="utf-8")
         result = subprocess.run([str(binary), "impact", "--files-from", str(paths), "--graph-file", str(current_graph),
             "--base-graph", str(base_graph), "--revision", current, "--base-revision", base,
-            "--depth", str(args.depth), "--limit", str(args.limit)], cwd=project, env=env,
+            "--depth", str(args.depth), "--limit", str(args.limit)] + snapshot_options, cwd=project, env=env,
             capture_output=True, text=True, timeout=args.timeout)
     if result.returncode not in (0, 64) or not result.stdout:
         raise RuntimeError("impact analysis failed; check snapshot revisions, scope, analyzer version and input files")
@@ -75,7 +84,8 @@ def main():
         raise RuntimeError("CI impact requires snapshots labeled with --scope project:variant")
 
     def verify(graph, checkout, bindings, scope, binding_file=None):
-        command = [str(binary), "verify-snapshot", "--graph-file", str(graph), "--project", str(checkout), "--scope", scope]
+        command = [str(binary), "verify-snapshot", "--graph-file", str(graph), "--project", str(checkout),
+                   "--scope", scope] + snapshot_options
         for binding in bindings:
             command.extend(["--input", binding])
         if binding_file:

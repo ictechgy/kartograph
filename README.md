@@ -25,11 +25,14 @@ Working today:
 
 - The `impact` command checks potential effects of planned symbol edits or committed file changes using captured graphs. It preserves base/current paths, deletions, runtime evidence and uncertainty for people, agents and CI. See [change impact](docs/IMPACT.md) and the [scored public replays](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/change-impact/README.md).
 - `graph` renders compiled class roots as DOT or as a `code-graph` JSON exchange document, with optional project-relative source paths (`--include-paths --project`). JSON also records edge origins and external calls with their resolution status. Repeated `--classes` merge several module/variant outputs; the first root wins deterministically for a repeated JVM class.
-- `dead` reports unreachable class declarations from Android retention roots (manifest, XML, `@Keep`, keep rules, inheritance hierarchies, DI/serialization annotations, JNI and framework callbacks), with `--explain`, baselines, `--since`, and machine-readable reports. Recursive includes and consumer rules are supported.
+- `dead` reports unreachable class declarations from Android retention roots (manifest, XML, `@Keep`, keep rules, inheritance hierarchies, DI/serialization annotations, JNI and framework callbacks), with `--explain`, baselines, expiring `--suppress` entries, `--since`, and machine-readable reports (text/gradle/github-actions/sarif/json/markdown). JSON, SARIF and markdown findings carry a `confidence` tier (static / needs-runtime-review / unmeasured) derived from the unresolved runtime channels measured in each declaration's own source file. Recursive includes and consumer rules are supported.
+- `why <symbol>` answers in one step why a declaration is retained, reachable, or unreachable: retention evidence with file:line provenance, the representative path from a retention root, direct callers, a test-only marker, and a measured confidence tier for unreachable declarations. The answer is a reachability fact, not a deletion approval.
 - `query`/`bridges`/`skill` expose one symbol's users, dependencies, and reachability, plus Flutter/React Native bridge facts, for agent consumers. `query` includes measured unresolved runtime paths and conservative dispatch candidates.
 - `cycles`/`rules`/`metrics` analyze module/package cycles with weakest edges, fail-closed layer YAML, and Martin Ca/Ce/I/A/D metrics.
 - The Gradle plugin registers `kartographDead<Variant>` and `kartographGraph<Variant>` per Android variant over the AGP public Variant API.
 - The Gradle plugin's `kartographSnapshot` and `kartographSnapshot<Variant>` tasks automatically capture JVM main/test and Android main/unit-test inputs with compiler witnesses for repeated impact queries. See [automatic capture and toolchain configuration](docs/IMPACT.md#jvm-빌드에서-자동-캡처) and the [build provenance contract](docs/BUILD-PROVENANCE.md).
+- Optional [incremental parsing](docs/INDEX-CACHE.md) reuses unchanged class facts and dependency JAR headers while checking current inputs and rebuilding analysis on every capture.
+- The [MCP stdio server](docs/MCP.md) exposes `query_symbol`, `impact` and `freshness` over fixed local snapshots, using the same reports as the CLI.
 - Keep-rule parsing fails closed with file and line instead of silently dropping unsupported syntax. Errors and evidence never print absolute paths.
 
 Class loading, reflective construction, and known method/field access use bounded intra-method value tracking; external dispatch uses conservative hierarchy candidates. `META-INF/services` registrations retain providers from class roots and explicit CLI `--service-resources` inputs. The Gradle plugin supplies the selected variant’s Java resource source directories. External-call JSON identifies matching API models separately from resolution results. Optional [compiler collectors](docs/COMPILER-EVIDENCE.md) add javac/Kotlin 2.4.10 constant references and javac Dagger 2.59 selected bindings to snapshots. Build and connect these collectors explicitly; their supported patterns and remaining gaps are documented. The primary graph and retention policy remain in effect. Callgraph precision remains an experiment.
@@ -41,6 +44,7 @@ In [five executed comparison fixtures](https://github.com/ictechgy/kartograph/bl
 reflection paths while keeping all unused controls distinct. The report compares SearchDeadCode and current R8, including
 optimization controls and a remaining unknown-input failure. It does not establish overall accuracy or speed superiority.
 Static field values and reflective reads receive additional bounded tracking, with unknown assignments and analysis limits retained.
+Exact private/final instance helpers, including Kotlin object/companion methods, now support the same bounded String/Class return tracking. Four additional executed Java/Kotlin cases recover their runtime targets; overridable methods and unknown receiver state remain unresolved.
 The [expanded evaluation](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/impact-evaluation/README.md) records concrete Java/Kotlin pre-edit review benefits,
 and also the AI repair result: 6/12 passes in each condition, with no graph queries. A general AI productivity gain is unproven.
 
@@ -54,7 +58,7 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.8.0"
+    id("io.github.ictechgy.kartograph") version "0.10.0"
 }
 ```
 
@@ -106,6 +110,8 @@ cli/build/install/kartograph/bin/kartograph dead \
 # One symbol instead of a full graph dump.
 kartograph query UserService --classes path/to/classes --project . --depth 2 --limit 100
 kartograph bridges --project . --format json
+# Opt-in Flutter BasicMessageChannel facts for Kotlin/JVM sources.
+kartograph bridges --project . --target flutter --messages --graph-file build/reports/kartograph/main-graph.json
 kartograph skill --project .
 ```
 
@@ -126,7 +132,7 @@ kartograph {
     keepRules.from("proguard-rules.pro", "path/to/dependency/consumer-rules.pro")
     strict.set(true)
     baseline.set(layout.projectDirectory.file(".kartograph-baseline.json"))
-    reportFormat.set("github-actions") // gradle, github-actions, sarif, json, text
+    reportFormat.set("github-actions") // gradle, github-actions, sarif, json, markdown, text
     includeSourcePaths.set(true) // resolve project-relative source paths into the graph document (default false)
 }
 ```
@@ -140,7 +146,7 @@ AGP does not expose dependency consumer rules as a merged file through the publi
 
 ### Saved graph queries and generated inputs
 
-These features are included in the 0.8.0 binaries.
+These features are included in the 0.10.0 binaries.
 Use `snapshot` to capture the graph, retention evidence, baseline state, and measured limitations once.
 Pass the same manifest/resource/namespace/keep/consumer/classpath and private-member inputs as the live query.
 

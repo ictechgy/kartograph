@@ -26,10 +26,55 @@ Git 출력은 NUL delimiter로 읽으므로 공백·줄바꿈·Unicode 파일명
 
 Git 실행 실패와 shallow history의 누락은 경로나 raw ref를 출력하지 않고 exit 2와 해결 방향으로 반환한다.
 
+## Suppression with expiry
+
+`dead --suppress <file>`은 기한이 있는 억제를 baseline과 별개로 적용한다. 파일은 version 1 JSON이고 각
+항목은 baseline과 같은 지문과 사람이 읽는 `reason`, ISO 달력날짜 `expires`를 가진다. `expires` 날짜까지
+(그날 포함) finding이 report와 strict 판정에서 제외되고, 만료한 항목은 억제하지 않으며 machine report의 `expiredSuppressions`에 개수를 기록한다.
+개수는 현재 finding과 매치되지 않는 만료 항목까지 포함한 전체 만료 항목 수다. 무기한 억제는 baseline의 역할이다. 모르는 버전·필드·날짜 형식은
+부분 적용하지 않고 exit 2로 실패한다. `--explain`·`--write-baseline` 모드와 함께 쓰면 사용 오류이다.
+
+```json
+{
+  "suppressions": [
+    {
+      "expires": "2027-01-31",
+      "fingerprint": "dead|class:app/Legacy|src/app/Legacy.kt",
+      "reason": "reviewed 2026-09; removal scheduled with the api cleanup"
+    }
+  ],
+  "version": 1
+}
+```
+
+## Confidence tiers
+
+JSON·SARIF·markdown 보고의 finding은 같은 소스 파일(파일 이름)에서 측정된 미해결 runtime 채널
+(reflection 문자열·동적 등록·JNI·class loading·reflection 생성·ServiceLoader·reflection member 접근·값 분석 한도)
+관측 합계에서 온 `confidence` 등급을 가질 수 있다.
+
+- `static` — 같은 소스에서 측정된 채널이 0개다.
+- `needs-runtime-review` — 같은 소스에서 하나 이상이 측정됐다.
+- `unmeasured` — 소스 위치나 대응 관측이 없어 측정하지 못했다.
+
+등급은 같은 컴파일 단위의 관측이라는 좁은 근거만 말하며, 전역 분석 한계는 모든 형식에 계속 함께
+보고된다. 등급은 삭제 판정이 아니다. text/gradle/github-actions 형식은 바뀌지 않고, 등급을 전달하지
+않는 호출자(예: 현재 Gradle plugin task)의 출력도 바뀌지 않는다.
+
+## PR comment rendering
+
+배포본 `Scripts/render-dead-comment.py`는 dead JSON 리포트를 리뷰 코멘트용 마크다운 본문으로 바꾼다.
+게시(gh 등)는 호출자가 소유한다. 같은 리포트는 같은 본문을 만든다.
+
+```bash
+kartograph dead ... --report-format json | python3 Scripts/render-dead-comment.py > comment.md
+```
+
 ## Reports
 
-`--report-format`은 `text`, `gradle`, `github-actions`, `sarif`, `json`을 지원한다. 모든 형식은 finding을
+`--report-format`은 `text`, `gradle`, `github-actions`, `sarif`, `json`, `markdown`을 지원한다. 모든 형식은 finding을
 결정적으로 정렬하며 알려진 분석 한계를 함께 운반한다. JSON과 SARIF는 표준 JSON parser로 검증한다.
+`markdown`은 사람의 리뷰 설명을 위한 표(위치·선언·confidence)와 한계 목록을 렌더링한다.
 
 Gradle plugin은 같은 renderer와 baseline codec을 사용한다.
 

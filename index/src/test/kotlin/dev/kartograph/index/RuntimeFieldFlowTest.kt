@@ -136,6 +136,8 @@ class RuntimeFieldFlowTest {
         val output = root.resolve("probe-output.txt")
         val process = ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-Xmx128m",
             "-cp", classpath, "dev.kartograph.index.fixture.RuntimeFieldProbe", classes.toString())
+            // 전역 주입되는 JAVA_TOOL_OPTIONS 에이전트 배너가 probe 출력 파싱을 오염시키지 않게 한다.
+            .apply { environment().remove("JAVA_TOOL_OPTIONS") }
             .redirectErrorStream(true).redirectOutput(output.toFile()).start()
         try {
             assertTrue(process.waitFor(15, TimeUnit.SECONDS), "field writer analysis did not terminate")

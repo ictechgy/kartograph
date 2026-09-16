@@ -3,11 +3,13 @@ package dev.kartograph.export
 import dev.kartograph.core.AnalysisLimitation
 import dev.kartograph.core.Finding
 import dev.kartograph.core.KartographVersion
+import dev.kartograph.core.NodeId
 import java.net.URI
 
 /** Phase 3에서 지원하는 진단 출력 형식이다. */
 public enum class ReportFormat(public val option: String) {
-    TEXT("text"), GRADLE("gradle"), GITHUB_ACTIONS("github-actions"), SARIF("sarif"), JSON("json");
+    TEXT("text"), GRADLE("gradle"), GITHUB_ACTIONS("github-actions"), SARIF("sarif"), JSON("json"),
+    MARKDOWN("markdown");
 
     public companion object {
         /** CLI/Gradle 설정 문자열과 정확히 일치하는 형식만 반환한다. */
@@ -17,18 +19,24 @@ public enum class ReportFormat(public val option: String) {
 
 /** 같은 finding 집합을 사람과 CI가 소비하는 결정적 문서로 렌더링한다. */
 public object AdoptionReporter {
-    /** finding과 한계를 선택한 표준 형식으로 정렬해 렌더링한다. */
+    /**
+     * finding과 한계를 선택한 표준 형식으로 정렬해 렌더링한다. confidence는 소스별로 측정한
+     * 보고 보조 신호이고, 만료된 억제 항목 수는 0보다 클 때만 machine 형식에 나타난다.
+     */
     public fun render(
         format: ReportFormat,
         findings: Collection<Finding>,
         limitations: Collection<AnalysisLimitation>,
         suppressedCount: Int,
+        confidence: Map<NodeId, FindingConfidence> = emptyMap(),
+        expiredSuppressions: Int = 0,
     ): String = when (format) {
         ReportFormat.TEXT -> text(findings, limitations)
         ReportFormat.GRADLE -> gradle(findings, limitations)
         ReportFormat.GITHUB_ACTIONS -> github(findings, limitations)
-        ReportFormat.JSON -> json(findings, limitations, suppressedCount)
-        ReportFormat.SARIF -> sarif(findings, limitations)
+        ReportFormat.JSON -> json(findings, limitations, suppressedCount, confidence, expiredSuppressions)
+        ReportFormat.SARIF -> sarif(findings, limitations, confidence)
+        ReportFormat.MARKDOWN -> markdown(findings, limitations, suppressedCount, confidence, expiredSuppressions)
     }
 
     private fun text(findings: Collection<Finding>, limitations: Collection<AnalysisLimitation>): String = buildString {
@@ -80,6 +88,8 @@ public object AdoptionReporter {
         findings: Collection<Finding>,
         limitations: Collection<AnalysisLimitation>,
         suppressedCount: Int,
+        confidence: Map<NodeId, FindingConfidence>,
+        expiredSuppressions: Int,
     ): String = buildString {
         append("{\n  \"command\": \"dead\",\n  \"diagnostics\": [")
         val sorted = findings.sorted()
@@ -94,6 +104,9 @@ public object AdoptionReporter {
                 append("\",\n      \"nodeId\": \"").append(jsonEscape(finding.nodeId.toString()))
                 append("\",\n      \"ruleId\": \"dead\",\n      \"state\": \"unreachable\"")
                 if (finding.testOnly) append(",\n      \"testOnly\": true")
+                confidence[finding.nodeId]?.let { tier ->
+                    append(",\n      \"confidence\": \"").append(tier.label).append('"')
+                }
                 append("\n    }")
                 if (index != sorted.lastIndex) append(',')
                 append('\n')
@@ -113,7 +126,9 @@ public object AdoptionReporter {
             }
             append("  ]")
         }
-        append(",\n  \"suppressedCount\": $suppressedCount,\n  \"tool\": \"kartograph\",\n  \"version\": \"")
+        append(",\n  \"suppressedCount\": $suppressedCount")
+        if (expiredSuppressions > 0) append(",\n  \"expiredSuppressions\": $expiredSuppressions")
+        append(",\n  \"tool\": \"kartograph\",\n  \"version\": \"")
         append(jsonEscape(KartographVersion.current)).append("\"\n}\n")
     }
 
@@ -128,6 +143,7 @@ public object AdoptionReporter {
     private fun sarif(
         findings: Collection<Finding>,
         limitations: Collection<AnalysisLimitation>,
+        confidence: Map<NodeId, FindingConfidence>,
     ): String = buildString {
         append("{\n  \"${'$'}schema\": \"https://json.schemastore.org/sarif-2.1.0.json\",\n  \"runs\": [\n    {\n")
         append("      \"invocations\": [{\"executionSuccessful\": true, \"toolExecutionNotifications\": [")
@@ -154,7 +170,16 @@ public object AdoptionReporter {
                 }
                 append("], \"message\": {\"text\": \"").append(jsonEscape(finding.unreachableMessage()))
                 append("\"}, \"ruleId\": \"dead\"")
-                if (finding.testOnly) append(", \"properties\": {\"testOnly\": true}")
+                val tier = confidence[finding.nodeId]
+                if (finding.testOnly || tier != null) {
+                    append(", \"properties\": {")
+                    val properties = buildList {
+                        if (finding.testOnly) add("\"testOnly\": true")
+                        tier?.let { add("\"confidence\": \"${it.label}\"") }
+                    }
+                    append(properties.joinToString(", "))
+                    append("}")
+                }
                 append("}")
                 if (index != sorted.lastIndex) append(',')
                 append('\n')
@@ -165,6 +190,41 @@ public object AdoptionReporter {
         append(jsonEscape(KartographVersion.current)).append("\"}}\n")
         append("    }\n  ],\n  \"version\": \"2.1.0\"\n}\n")
     }
+
+    /** 사람이 리뷰에서 바로 읽도록 finding 표와 한계를 마크다운으로 렌더링한다. */
+    private fun markdown(
+        findings: Collection<Finding>,
+        limitations: Collection<AnalysisLimitation>,
+        suppressedCount: Int,
+        confidence: Map<NodeId, FindingConfidence>,
+        expiredSuppressions: Int,
+    ): String = buildString {
+        append("## kartograph dead findings\n\n")
+        if (findings.isEmpty()) {
+            append("No unreachable declarations.\n")
+        } else {
+            append("| Location | Declaration | Confidence |\n")
+            append("|---|---|---|\n")
+            findings.sorted().forEach { finding ->
+                append("| `").append(markdownCell(finding.location.toPlainTextLocation()))
+                append("` | `").append(markdownCell(finding.nodeId.toString()))
+                append("` | ")
+                append(confidence[finding.nodeId]?.label ?: FindingConfidence.UNMEASURED.label)
+                if (finding.testOnly) append(" (used only by tests)")
+                append(" |\n")
+            }
+        }
+        append("\n").append(findings.size).append(" finding(s) reported; ")
+        append(suppressedCount).append(" suppressed by baseline or suppress entries")
+        if (expiredSuppressions > 0) append("; ").append(expiredSuppressions).append(" suppression(s) expired")
+        append(". Findings are reachability facts, not deletion approvals.\n")
+        append("\n## Limitations\n\n")
+        limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
+            append("- ").append(limitation.name).append(" — ").append(limitation.description).append('\n')
+        }
+    }
+
+    private fun markdownCell(value: String): String = value.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
     private fun uriReference(path: String): String = URI(null, null, path, null).rawPath
     private fun githubMessage(value: String): String = value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A").replace(":", "%3A")

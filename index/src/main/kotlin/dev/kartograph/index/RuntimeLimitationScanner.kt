@@ -17,11 +17,38 @@ public class IndexedClasses internal constructor(
     public val hierarchy: ClassHierarchy = ClassHierarchy.EMPTY,
     public val declarationsByRoot: List<Set<NodeId>> = emptyList(),
     public val selectedRootByNode: Map<NodeId, Int> = emptyMap(),
+    public val statistics: IndexingStatistics = IndexingStatistics(),
 ) {
     /** 1회 파싱한 그래프에 dependency header를 보강하며 관측값과 호출 위치는 재사용한다. */
     public fun withHierarchy(hierarchy: ClassHierarchy): IndexedClasses =
-        IndexedClasses(ExternalDispatchIndexer.enrich(graph, hierarchy), observations, hierarchy, declarationsByRoot, selectedRootByNode)
+        IndexedClasses(ExternalDispatchIndexer.enrich(graph, hierarchy), observations, hierarchy, declarationsByRoot, selectedRootByNode, statistics)
 }
+
+/** 한 인덱싱 실행에서 관측한 캐시 수명주기와 주요 phase 시간이다. */
+public data class IndexingStatistics(
+    val classFiles: Int = 0,
+    val cacheHits: Int = 0,
+    val cacheMisses: Int = 0,
+    val parsedClasses: Int = 0,
+    val invalidEntries: Int = 0,
+    val writeFailures: Int = 0,
+    val readNanos: Long = 0,
+    val cacheReadNanos: Long = 0,
+    val parseNanos: Long = 0,
+    val assemblyNanos: Long = 0,
+    val hierarchyNanos: Long = 0,
+    val runtimeNanos: Long = 0,
+    val cacheWriteNanos: Long = 0,
+    val totalNanos: Long = 0,
+    val unavailableEntries: Int = 0,
+    val hierarchyJars: Int = 0,
+    val hierarchyCacheHits: Int = 0,
+    val hierarchyParsedJars: Int = 0,
+    val hierarchyInvalidEntries: Int = 0,
+    val hierarchyWriteFailures: Int = 0,
+    val hierarchyUnavailableEntries: Int = 0,
+    val dispatchNanos: Long = 0,
+)
 
 /** 파일 이름과 시각은 신선도 비교에만 사용하며 절대경로를 내보내지 않는다. */
 internal data class ClassRuntimeObservation(
@@ -57,6 +84,21 @@ public object RuntimeLimitationScanner {
     /** 빌드가 제공한 소스 inventory만 관측하며 다른 source set을 project에서 찾아 섞지 않는다. */
     public fun scan(indexed: IndexedClasses, sourceFiles: Collection<Path>): List<String> =
         scanSources(indexed, sourceInventoryFiles(sourceFiles))
+
+    /**
+     * 소스 파일(파일 이름)별로 측정한 미해결 runtime 채널 관측 횟수다. 중첩 class 등 같은 소스의
+     * 관측은 합산한다. 보고의 신뢰도 등급 재료이며 채널이 없다는 사실은 완전성 증명이 아니다.
+     */
+    public fun sourceChannelCounts(indexed: IndexedClasses): Map<String, Int> = indexed.observations
+        .filter { it.sourceFile != null }
+        .groupingBy { requireNotNull(it.sourceFile) }
+        .fold(0) { total, observation -> total + channelTotal(observation) }
+
+    private fun channelTotal(observation: ClassRuntimeObservation): Int =
+        observation.reflectionCalls + observation.dynamicRegistrations + observation.nativeMethods +
+            observation.classLoadingCalls + observation.reflectiveConstructions + observation.outsideRuntimeTargets +
+            observation.valueAnalysisLimits + observation.serviceLoadingCalls + observation.reflectiveMethods +
+            observation.reflectiveFields + observation.reflectiveMemberMisses
 
     private fun scanSources(indexed: IndexedClasses, sources: Collection<Path>): List<String> {
         val observations = indexed.observations

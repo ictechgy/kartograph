@@ -25,11 +25,14 @@ Android만의 이점이 하나 있다. "안 쓰는 것처럼 보이지만 지우
 
 - `impact`는 변경 예정 심볼 또는 commit 간 변경 파일의 잠재적 영향을 저장 그래프에서 조사한다. base/current 경로·삭제·runtime 근거·불확실성을 사람·에이전트·CI에 같은 의미로 전달한다. [사용법](docs/IMPACT.md)과 [실제 변경 채점](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/change-impact/README.md)을 참고한다.
 - `graph`는 컴파일된 class root를 DOT 또는 `code-graph` JSON 교환 문서로 렌더링하며, 요청하면 project 기준 source 경로를 해석한다(`--include-paths --project`). JSON에는 간선 출처와 외부 호출의 해석 상태도 기록한다. `--classes`를 반복해 여러 module/variant output root를 합칠 수 있고, 같은 JVM class는 첫 root의 사실을 결정적으로 사용한다.
-- `dead`는 Android 보존 근거(manifest, XML, `@Keep`, keep 규칙, 상속 hierarchy, DI/직렬화 어노테이션, JNI·프레임워크 콜백)에서 도달 불가한 class 선언을 보고하며, `--explain`·baseline·`--since`·machine report를 지원한다. 재귀 include와 consumer rules 입력도 지원한다.
+- `dead`는 Android 보존 근거(manifest, XML, `@Keep`, keep 규칙, 상속 hierarchy, DI/직렬화 어노테이션, JNI·프레임워크 콜백)에서 도달 불가한 class 선언을 보고하며, `--explain`·baseline·만료가 있는 `--suppress`·`--since`·machine report(text/gradle/github-actions/sarif/json/markdown)를 지원한다. JSON·SARIF·markdown 보고에는 같은 소스 파일에서 측정된 미해결 runtime 채널 관측에서 온 `confidence` 등급(static / needs-runtime-review / unmeasured)이 함께 실린다. 재귀 include와 consumer rules 입력도 지원한다.
+- `why <symbol>`은 한 선언이 보존·도달·도달 불가인 이유를 한 번에 답한다. 보존 근거(파일·줄), 보존 root부터의 대표 경로, 직접 caller, test 전용 도달 표시와 도달 불가 선언의 측정된 신뢰도 등급을 출력한다. 답은 도달성 사실이지 삭제 승인이 아니다.
 - `query`/`bridges`/`skill`은 전체 graph 덤프 대신 한 symbol의 사용·의존·도달성과 Flutter/React Native 브리지 사실을 에이전트에게 제공한다. `query`는 미해결 runtime 경로와 보수적 dispatch 후보도 계량한다.
 - `cycles`/`rules`/`metrics`는 module/package 순환과 weakest edge, fail-closed layer YAML, Martin Ca/Ce/I/A/D 지표를 분석한다.
 - Gradle plugin은 AGP public Variant API 위에서 Android variant마다 `kartographDead<Variant>`와 `kartographGraph<Variant>` task를 등록한다.
 - Gradle plugin의 `kartographSnapshot`과 `kartographSnapshot<Variant>` task는 JVM main/test와 Android main/unit-test 입력을 compiler witness와 함께 자동 캡처한다. 반복 영향 질의는 [자동 캡처와 toolchain 설정](docs/IMPACT.md#jvm-빌드에서-자동-캡처)과 [build provenance 계약](docs/BUILD-PROVENANCE.md)을 참고한다.
+- 선택적 [증분 파싱](docs/INDEX-CACHE.md)은 바뀌지 않은 class 사실과 dependency JAR header를 재사용하며, 매 캡처에서 현재 입력 검사와 전체 분석을 다시 수행한다.
+- [MCP stdio 서버](docs/MCP.md)는 고정된 로컬 snapshot에 `query_symbol`·`impact`·`freshness`를 제공하며 CLI와 같은 보고서를 사용한다.
 - keep 규칙 파싱은 지원하지 않는 문법을 조용히 버리지 않고 파일·줄과 함께 실패한다(fail-closed). 근거와 오류에는 절대경로를 출력하지 않는다.
 
 class 로딩·reflection 생성자·알려진 method/field 접근은 제한된 메서드 내 값 추적으로, 외부 dispatch는 보수적 상속 후보로 연결한다.
@@ -42,6 +45,7 @@ class root 및 CLI `--service-resources`의 `META-INF/services` 등록은 provid
 미사용 대조군을 모두 구분했다. SearchDeadCode와 현재 R8의 실제 결과, 최적화 대조군, 여전히 놓치는 runtime 입력을
 함께 기록했다. 도구 전체의 정확도·속도 우위를 증명한 결과는 아니다.
 static field 값과 reflection 읽기에도 제한된 추적을 추가했으며 unknown 대입과 분석 한도를 유지한다.
+정확히 선택되는 private/final instance helper와 Kotlin object/companion에도 String/Class 반환값 추적을 확장했다. 추가 Java/Kotlin 실행 표본 4건의 runtime 대상을 복원하며, override 가능한 메서드와 알 수 없는 receiver 상태는 미해결로 유지한다.
 [확대 평가](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/impact-evaluation/README.md)는 Java/Kotlin 수정 전 검토에서 확인한 실익과 함께
 AI 수정 결과도 기록한다. 각 조건 6/12 통과, 실제 graph query 0회로 일반적인 AI 생산성 향상은 입증되지 않았다.
 
@@ -55,7 +59,7 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.8.0"
+    id("io.github.ictechgy.kartograph") version "0.10.0"
 }
 ```
 
@@ -107,6 +111,8 @@ cli/build/install/kartograph/bin/kartograph dead \
 # 전체 graph 덤프 대신 한 symbol의 사용·의존·도달성을 query한다.
 kartograph query UserService --classes path/to/classes --project . --depth 2 --limit 100
 kartograph bridges --project . --format json
+# Kotlin/JVM Flutter BasicMessageChannel 사실(v2)을 선택적으로 생성한다.
+kartograph bridges --project . --target flutter --messages --graph-file build/reports/kartograph/main-graph.json
 kartograph skill --project .
 ```
 
@@ -127,7 +133,7 @@ kartograph {
     keepRules.from("proguard-rules.pro", "path/to/dependency/consumer-rules.pro")
     strict.set(true)
     baseline.set(layout.projectDirectory.file(".kartograph-baseline.json"))
-    reportFormat.set("github-actions") // gradle, github-actions, sarif, json, text
+    reportFormat.set("github-actions") // gradle, github-actions, sarif, json, markdown, text
     includeSourcePaths.set(true) // 그래프 문서에 project 기준 source 경로를 해석해 싣는다(기본 false)
 }
 ```
@@ -141,7 +147,7 @@ AGP public Variant API가 dependency consumer rules를 merged file로 노출하�
 
 ### 저장 그래프 질의와 생성 입력
 
-아래 기능은 0.8.0 배포본에 포함된다.
+아래 기능은 0.10.0 배포본에 포함된다.
 반복 조사에는 `snapshot`으로 그래프·보존 근거·baseline 상태·계량 한계를 한 번 저장한다.
 기존 live query와 같은 manifest/resource/namespace/keep/consumer/classpath 및 private 모드 입력을 전달한다.
 

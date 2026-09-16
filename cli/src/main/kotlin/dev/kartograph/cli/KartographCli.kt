@@ -4,6 +4,7 @@ import dev.kartograph.core.CodeGraph
 import dev.kartograph.export.DotGraphRenderer
 import dev.kartograph.export.GraphJsonRenderer
 import dev.kartograph.index.ClassFileIndexer
+import dev.kartograph.index.ClassHierarchyIndexingException
 import dev.kartograph.index.ClassIndexingException
 import dev.kartograph.index.SourcePathIndex
 import dev.kartograph.index.SourcePathResolution
@@ -21,19 +22,25 @@ internal enum class ExitStatus(val code: Int) {
 }
 
 internal object KartographCli {
-    fun run(
+    fun run(arguments: Array<out String>, output: PrintStream, error: PrintStream): Int =
+        runWithInput(arguments, output, error, System.`in`)
+
+    fun runWithInput(
         arguments: Array<out String>,
         output: PrintStream,
         error: PrintStream,
+        input: java.io.InputStream,
     ): Int = when (arguments.firstOrNull()) {
         null, "--help", "-h" -> printHelp(output)
         "--version" -> printVersion(output)
         "graph" -> runGraph(arguments.drop(1), output, error)
         "dead" -> DeadCommand.run(arguments.drop(1), output, error)
         "baseline" -> DeadCommand.runBaseline(arguments.drop(1), output, error)
+        "why" -> WhyCommand.run(arguments.drop(1), output, error)
         "query" -> AgentCommand.query(arguments.drop(1), output, error)
         "snapshot" -> AgentCommand.snapshot(arguments.drop(1), output, error)
         "verify-snapshot" -> FreshnessCommand.run(arguments.drop(1), output, error)
+        "mcp" -> McpCommand.run(arguments.drop(1), input, output, error)
         "impact" -> ImpactCommand.run(arguments.drop(1), output, error)
         "bridges" -> AgentCommand.bridges(arguments.drop(1), output, error)
         "skill" -> AgentCommand.skill(arguments.drop(1), output, error)
@@ -76,6 +83,8 @@ internal object KartographCli {
             ExitStatus.SUCCESS.code
         } catch (indexingError: ClassIndexingException) {
             toolFailure(error, indexingError.message ?: "class indexing failed")
+        } catch (hierarchyError: ClassHierarchyIndexingException) {
+            toolFailure(error, hierarchyError.message ?: "classpath indexing failed")
         }
     }
 
@@ -208,12 +217,14 @@ internal object KartographCli {
             [--include-paths --project <directory>] [--classpath <path>] [--service-resources <path>]
           kartograph dead --classes <directory> --project <directory> [options]
           kartograph baseline --write <file> --classes <directory> --project <directory> [options]
+          kartograph why <symbol> --classes <directory> --project <directory> [options]
           kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
-          kartograph snapshot --classes <directory-or-jar> --project <directory> [options]
-          kartograph verify-snapshot --graph-file <snapshot.json> --project <directory> [options]
-          kartograph impact <symbol> --graph-file <snapshot.json> [--base-graph <snapshot.json>] [options]
-          kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>]
+          kartograph snapshot --classes <directory-or-jar> --project <directory> [--snapshot-max-mib <1..128>] [options]
+          kartograph verify-snapshot --graph-file <snapshot.json> --project <directory> [--snapshot-max-mib <1..128>] [options]
+          kartograph impact <symbol> --graph-file <snapshot.json> [--base-graph <snapshot.json>] [--snapshot-max-mib <1..128>] [options]
+          kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>] [--snapshot-max-mib <1..128>]
           kartograph bridges --project <directory> [--format json]
+          kartograph mcp --graph-file <snapshot.json> [--snapshot-max-mib <1..128>] [options]
           kartograph skill
           kartograph cycles --classes <directory-or-jar> [--classes <directory-or-jar>]... [--strict]
           kartograph rules --classes <directory-or-jar> --config <file> [--strict] [--explain <symbol>]

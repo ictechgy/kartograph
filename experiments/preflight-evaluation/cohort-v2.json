@@ -1,0 +1,68 @@
+{
+  "frozenAt": "2026-09-13T21:59:12.815901+00:00",
+  "task": "Pre-edit impact review of a supplied production change, with same source tools/model/budget and additional actual product MCP graph tools in the graph arm. Historical generic repair result remains separate.",
+  "selectionRule": "Same next-highest eligible unused changes for Jackson/detekt/ktlint. Gson exhausted its three eligible cases; frozen preflight-v2-intake/selection-rule.json picks alphabetically first unused pinned Java repository (fastjson2), highest eligible PR. Metadata selected before product queries or model outcomes.",
+  "previousCases": [
+    "ankidroid_Anki-Android-19384",
+    "ankidroid_Anki-Android-19509",
+    "ankidroid_Anki-Android-19661",
+    "ankidroid_Anki-Android-19982",
+    "ankidroid_Anki-Android-20250",
+    "detekt_detekt-7718",
+    "detekt_detekt-7888",
+    "fasterxml__jackson-core-1208",
+    "fasterxml__jackson-core-1309",
+    "google__gson-1391",
+    "google__gson-1555",
+    "pinterest_ktlint-2895",
+    "pinterest_ktlint-2983",
+    "square_okhttp-6887",
+    "google__gson-1093",
+    "fasterxml__jackson-core-1172",
+    "detekt_detekt-7715",
+    "pinterest_ktlint-2891"
+  ],
+  "primary": [
+    {
+      "id": "alibaba__fastjson2-2559",
+      "repository": "alibaba/fastjson2",
+      "base": "45cc6b34343bc133a03c632d6c9dd4a2d895e2e9",
+      "language": "java",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetFile": "java/alibaba__fastjson2_dataset.jsonl",
+      "datasetSha256": "7e02214eba338dcfb41c961f15cec28d299dda5c74836794463ae70a3c0832a4"
+    },
+    {
+      "id": "fasterxml__jackson-core-1142",
+      "repository": "FasterXML/jackson-core",
+      "base": "f1dc3c512d211ae3e14fb59af231caebf037d510",
+      "language": "java",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetSha256": "21f1f1350dcaf687840f6cf0dce4198c7958cc66cd6ab6722a0dd3a18860147e"
+    },
+    {
+      "id": "detekt_detekt-7667",
+      "repository": "detekt/detekt",
+      "base": "7f5799dd496e63648212550b5a3d3c7cac9b77ff",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    },
+    {
+      "id": "pinterest_ktlint-2873",
+      "repository": "pinterest/ktlint",
+      "base": "bb14930ea7e89286024cc1b4239c79f936edcf56",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "alibaba__fastjson2-2775",
+      "reason": "No declared F2P; excluded before inspecting product/model outcomes"
+    }
+  ],
+  "repeatsPerArm": 2,
+  "plannedTrials": 16,
+  "qualification": "Before model exposure, verify original unchanged source/tests and build/oracle provenance. A missing original target or build failure is recorded; replacements follow the same descending-ID rule with explicit reason, never product/model success. Do not inject new tests into the pre-edit graph or expose oracle outcomes.",
+  "status": "Metadata frozen; native qualification, independent oracle and model runs pending"
+}
