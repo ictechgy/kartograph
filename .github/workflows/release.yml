@@ -53,6 +53,7 @@ jobs:
         run: |
           export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
           bash Scripts/verify-agp-8-fixture.sh
+          bash Scripts/verify-agp-8-app-snapshot.sh
       - name: Verify release artifacts without publishing
         run: Scripts/verify-release-readiness.sh
       - name: Create GitHub release

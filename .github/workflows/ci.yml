@@ -152,3 +152,8 @@ jobs:
         run: |
           export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
           bash Scripts/verify-agp-8-fixture.sh
+      - name: Verify application R.jar resource witness on minimum AGP and Gradle
+        shell: bash
+        run: |
+          export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
+          bash Scripts/verify-agp-8-app-snapshot.sh
