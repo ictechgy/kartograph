@@ -1,6 +1,7 @@
 package dev.kartograph.analysis
 
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
@@ -13,6 +14,26 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class ArchitectureAnalysisTest {
+    @Test
+    fun `runtime dispatch candidates preserve reachability without reversing module dependencies`() {
+        val lower = node("lower", "domain")
+        val upper = node("upper", "app")
+        val graph = CodeGraph(listOf(lower, upper), listOf(
+            GraphEdge(upper.id, lower.id, EdgeKind.CALL),
+            GraphEdge(lower.id, upper.id, EdgeKind.OVERRIDE, origin = EdgeOrigin.DISPATCH_MODEL),
+        ))
+        assertEquals(listOf(upper.id), graph.usageSuccessorsOf(lower.id))
+        assertEquals(emptyList(), CycleAnalyzer.analyze(ArchitectureGraph.aggregate(graph)))
+        val evaluator = LayerRuleEvaluator(
+            listOf(LayerDefinition("Domain", listOf("domain")), LayerDefinition("App", listOf("app"))),
+            listOf(LayerRule("domain boundary", "Domain", allow = emptyList())),
+        )
+        assertEquals(emptyList(), evaluator.evaluate(graph))
+        assertEquals(0, MartinMetrics.calculate(graph).single { it.module == "domain" }.efferentCoupling)
+        val actualDependency = CodeGraph(listOf(lower, upper), listOf(GraphEdge(lower.id, upper.id, EdgeKind.CALL)))
+        assertEquals(1, evaluator.evaluate(actualDependency).size)
+    }
+
     @Test
     fun `tarjan returns deterministic components and weakest usage edge`() {
         val graph = CodeGraph(

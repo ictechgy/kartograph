@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 
 
@@ -43,7 +44,13 @@ def main():
     if len(roots) != 22:
         raise RuntimeError("expected 22 class roots for the pinned commit; build its demoDebug variant first")
     class_options = [value for root in roots for value in ("--classes", str(root))]
-    graph = run([binary, "graph", *class_options])
+    generated_roots = [project / "core/datastore-proto/build/classes/java/main",
+                       project / "core/datastore-proto/build/classes/kotlin/main"]
+    if not all(root in roots for root in generated_roots):
+        raise RuntimeError("public protobuf generated class roots are missing")
+    class_options += [value for root in generated_roots for value in ("--generated-classes", str(root))]
+    graph = json.loads(run([binary, "graph", *class_options, "--format", "json"]))
+    nodes = {node["usr"]: node for node in graph["nodes"]}
     generated_ids = [
         "class:com/google/samples/apps/nowinandroid/MainActivityViewModel_Factory",
         "class:com/google/samples/apps/nowinandroid/MainActivityViewModel_HiltModules",
@@ -51,9 +58,23 @@ def main():
         "class:com/google/samples/apps/nowinandroid/DaggerNiaApplication_HiltComponents_SingletonC$Builder",
     ]
     for node_id in generated_ids:
-        node_lines = [line for line in graph.splitlines() if line.startswith('  "' + node_id + '" [')]
-        if len(node_lines) != 1 or "style=dashed" not in node_lines[0]:
+        if node_id not in nodes or not nodes[node_id]["synthesized"]:
             raise RuntimeError("public Hilt regression: generated node is missing or not marked synthesized")
+    explicit_generated = {node_id for node_id, node in nodes.items() if "generatedInput" in node.get("attributes", [])}
+    if "class:com/google/samples/apps/nowinandroid/core/datastore/DarkThemeConfig" not in explicit_generated:
+        raise RuntimeError("public protobuf provenance is missing")
+    preview_ids = set()
+    for owner, names in {
+        "foryou/impl/ForYouScreenKt": ["ForYouScreenLoading", "ForYouScreenOfflinePopulatedFeed",
+            "ForYouScreenPopulatedAndLoading", "ForYouScreenPopulatedFeed", "ForYouScreenTopicSelection"],
+        "interests/impl/InterestsScreenKt": ["InterestsScreenEmpty", "InterestsScreenLoading", "InterestsScreenPopulated"],
+    }.items():
+        for name in names:
+            prefix = "method:com/google/samples/apps/nowinandroid/feature/" + owner + "#" + name + "("
+            matches = {node_id for node_id in nodes if node_id.startswith(prefix)}
+            if len(matches) != 1:
+                raise RuntimeError("public multipreview declaration is missing or ambiguous")
+            preview_ids.update(matches)
     classpath = (project / "app/build/kartograph-validation-classpath.txt").read_text().splitlines()
     if not classpath or not all(Path(path).exists() for path in classpath):
         raise RuntimeError("public sample dependency artifacts are missing; rerun the classpath task")
@@ -69,12 +90,40 @@ def main():
         start = time.monotonic()
         document = json.loads(run(args + (["--include-private-members"] if mode == "member" else [])))
         reported = {item["nodeId"] for item in document["diagnostics"]}
-        if reported.intersection(generated_ids):
-            raise RuntimeError("public Hilt regression: generated declarations were reported")
+        if reported.intersection(set(generated_ids) | explicit_generated | preview_ids):
+            raise RuntimeError("public generated or multipreview declaration was reported")
+        if "class:com/google/samples/apps/nowinandroid/core/datastore/ListToMapMigration" not in reported:
+            raise RuntimeError("public unused control was suppressed")
         if not document["limitations"]:
             raise RuntimeError("public sample report is missing analysis limitations")
         measurements[mode] = {"diagnostics": len(reported), "seconds": round(time.monotonic() - start, 3)}
-    print(json.dumps({"revision": REVISION, "classRoots": len(roots), "measurements": measurements}, sort_keys=True))
+    query_options = args[2:].copy()
+    report_index = query_options.index("--report-format")
+    del query_options[report_index:report_index + 2]
+    start = time.monotonic()
+    captured = run([binary, "snapshot", *query_options])
+    snapshot_metrics = {"captureSeconds": round(time.monotonic() - start, 3), "bytes": len(captured.encode()), "queries": []}
+    subjects = ["class:com/google/samples/apps/nowinandroid/MainActivity",
+                "class:com/google/samples/apps/nowinandroid/core/datastore/ListToMapMigration", sorted(preview_ids)[0]]
+    with tempfile.TemporaryDirectory(prefix="kartograph-public-snapshot-") as directory:
+        snapshot = Path(directory) / "query.json"
+        snapshot.write_text(captured)
+        for subject in subjects:
+            timings = {"live": [], "saved": []}
+            for repeat in range(3):
+                documents = {}
+                for mode in (["live", "saved"] if repeat % 2 == 0 else ["saved", "live"]):
+                    mode_options = query_options if mode == "live" else ["--graph-file", str(snapshot)]
+                    start = time.monotonic()
+                    documents[mode] = json.loads(run([binary, "query", subject, *mode_options, "--depth", "2", "--limit", "100"]))
+                    timings[mode].append(round(time.monotonic() - start, 3))
+                if documents["live"]["status"] != "found" or documents["saved"]["result"] != documents["live"]["result"]:
+                    raise RuntimeError("public saved query differs from live query")
+                if not any(value.startswith("saved-graph:") for value in documents["saved"]["limitations"]):
+                    raise RuntimeError("public saved query omitted snapshot limitation")
+            snapshot_metrics["queries"].append({"symbol": subject, "seconds": timings})
+    print(json.dumps({"revision": REVISION, "classRoots": len(roots), "measurements": measurements,
+                      "multipreviewDeclarations": len(preview_ids), "snapshot": snapshot_metrics}, sort_keys=True))
 
 
 if __name__ == "__main__":

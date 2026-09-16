@@ -1,0 +1,39 @@
+// 평가용 공개 checkout에서 실제로 해석한 classpath를 기록한다.
+gradle.projectsEvaluated {
+    def destination = gradle.rootProject.providers.gradleProperty('preflight.classpathOutput')
+    def collections = gradle.rootProject.allprojects.collectMany { project ->
+        ['compileClasspath', 'runtimeClasspath', 'testCompileClasspath', 'testRuntimeClasspath'].collect { name ->
+            project.configurations.findByName(name)
+        }.findAll { it != null && it.canBeResolved }
+    }
+    gradle.rootProject.tasks.register('preflightClasspath') {
+        inputs.files(collections)
+        outputs.file(destination)
+        outputs.file(destination.map { value -> new File(new File(value).parentFile, 'inputs.json') })
+        doLast {
+            def entries = new LinkedHashSet<String>()
+            collections.each { configuration ->
+                configuration.files.each { file -> if (file.exists()) entries.add(file.canonicalPath) }
+            }
+            def output = new File(destination.get())
+            output.parentFile.mkdirs()
+            output.text = entries.join('\n') + '\n'
+            def classRoots = new LinkedHashSet<String>()
+            def resources = new LinkedHashSet<String>()
+            def sourceRoots = new LinkedHashSet<String>()
+            gradle.rootProject.allprojects.each { project ->
+                def sets = project.extensions.findByName('sourceSets')
+                if (sets != null) sets.each { sourceSet ->
+                    sourceSet.output.classesDirs.files.each { file -> if (file.isDirectory()) classRoots.add(file.canonicalPath) }
+                    def resource = sourceSet.output.resourcesDir
+                    if (resource != null && resource.isDirectory()) resources.add(resource.canonicalPath)
+                    sourceSet.allSource.srcDirs.each { file -> if (file.isDirectory()) sourceRoots.add(file.canonicalPath) }
+                }
+            }
+            new File(output.parentFile, 'inputs.json').text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([
+                classRoots: classRoots as List, classpath: entries as List,
+                serviceResources: resources as List, sourceRoots: sourceRoots as List,
+            ])) + '\n'
+        }
+    }
+}

@@ -1,0 +1,184 @@
+{
+  "status": "Frozen before any v2 product query or efficacy model trial",
+  "method": "Independent exact javap references, original native focused tests and explicitly selected existing source test configurations; known review anchors only. New PR tests are excluded. Fastjson includes the source/bytecode-proven unchanged delegating Class overload; other unexecuted tests/internal helper references are not scored.",
+  "cases": [
+    {
+      "id": "alibaba__fastjson2-2559",
+      "base": "45cc6b34343bc133a03c632d6c9dd4a2d895e2e9",
+      "targets": [
+        {
+          "id": "method:com/alibaba/fastjson2/JSON#to(Ljava/lang/Class;Ljava/lang/Object;)Ljava/lang/Object;",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/JSON.java",
+          "name": "to",
+          "basis": "External-to-TypeUtils production caller found independently by javap; includes the unchanged two-argument Class overload that delegates to the changed overload",
+          "evidence": [
+            "31: invokestatic  #548                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;)Ljava/lang/Object;"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ConstructorFunction#apply(Ljava/util/Map;)Ljava/lang/Object;",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ConstructorFunction.java",
+          "name": "apply",
+          "basis": "External-to-TypeUtils production caller found independently by javap; includes the unchanged two-argument Class overload that delegates to the changed overload",
+          "evidence": [
+            "302: invokestatic  #214                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;",
+            "391: invokestatic  #214                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;",
+            "456: invokestatic  #214                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;",
+            "710: invokestatic  #214                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReader#acceptAny(Ljava/lang/Object;Ljava/lang/Object;J)V",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/FieldReader.java",
+          "name": "acceptAny",
+          "basis": "External-to-TypeUtils production caller found independently by javap; includes the unchanged two-argument Class overload that delegates to the changed overload",
+          "evidence": [
+            "340: invokestatic  #384                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;)Ljava/lang/Object;"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_castToJavaBean_0()V",
+          "kind": "test",
+          "file": "core/src/test/java/com/alibaba/fastjson2/util/TypeUtilsTest.java",
+          "name": "test_castToJavaBean_0",
+          "basis": "Original focused TypeUtils tests passed; javap calls unchanged two-argument Class overload, which delegates to the changed three-argument Class/provider overload",
+          "evidence": [
+            "12: invokestatic  #227                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;",
+            "21: invokestatic  #227                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_cast_0()V",
+          "kind": "test",
+          "file": "core/src/test/java/com/alibaba/fastjson2/util/TypeUtilsTest.java",
+          "name": "test_cast_0",
+          "basis": "Original focused TypeUtils tests passed; javap calls unchanged two-argument Class overload, which delegates to the changed three-argument Class/provider overload",
+          "evidence": [
+            "23: invokestatic  #227                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;",
+            "36: invokestatic  #227                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;",
+            "48: invokestatic  #227                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;",
+            "61: invokestatic  #227                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;",
+            "92: invokestatic  #227                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;",
+            "117: invokestatic  #227                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;",
+            "137: invokestatic  #227                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/util/TypeUtilsTest#test_error_0()V",
+          "kind": "test",
+          "file": "core/src/test/java/com/alibaba/fastjson2/util/TypeUtilsTest.java",
+          "name": "test_error_0",
+          "basis": "Original focused TypeUtils tests passed; javap calls unchanged two-argument Class overload, which delegates to the changed three-argument Class/provider overload",
+          "evidence": [
+            "333: invokestatic  #227                // Method com/alibaba/fastjson2/util/TypeUtils.cast:(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;"
+          ]
+        }
+      ],
+      "sourceChangeSha256": "66ac1ce513c7a52387e3cd5c423c6d4b6d1d34c93a6e402039c548cbd8aa55ed",
+      "directOracleSha256": "92e079260c8ebbd38209fce84aa99ae9a52dff583f783d1d2ed86e394cd1384d"
+    },
+    {
+      "id": "fasterxml__jackson-core-1142",
+      "base": "f1dc3c512d211ae3e14fb59af231caebf037d510",
+      "targets": [
+        {
+          "id": "method:com/fasterxml/jackson/core/TestVersions#testMisc()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/TestVersions.java",
+          "name": "testMisc",
+          "basis": "Exact javap invocation and successful original focused test suite, with no injected tests",
+          "evidence": [
+            "24: invokevirtual #74                 // Method com/fasterxml/jackson/core/Version.equals:(Ljava/lang/Object;)Z"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/VersionTest#testEqualsAndHashCode()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/VersionTest.java",
+          "name": "testEqualsAndHashCode",
+          "basis": "Exact javap invocation and successful original focused test suite, with no injected tests",
+          "evidence": [
+            "45: invokevirtual #20                 // Method com/fasterxml/jackson/core/Version.hashCode:()I",
+            "50: invokevirtual #20                 // Method com/fasterxml/jackson/core/Version.hashCode:()I"
+          ]
+        }
+      ],
+      "sourceChangeSha256": "d37ba3a995c4947beb8ba4e2bd15cb858d9f7e8a65e0b03192fdd9aa8cbeb620",
+      "directOracleSha256": "993b994419be7e4ffaf6da4dfb55c655c0114ddadeeadd32f92fa216b7e3c24f"
+    },
+    {
+      "id": "detekt_detekt-7667",
+      "base": "7f5799dd496e63648212550b5a3d3c7cac9b77ff",
+      "targets": [
+        {
+          "id": "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues with rule set to warning by default()V",
+          "kind": "test",
+          "file": "detekt-report-sarif/src/test/kotlin/io/github/detekt/report/sarif/SarifOutputReportSpec.kt",
+          "name": "renders multiple issues with rule set to warning by default",
+          "basis": "Exact javap invocation and successful original focused test suite, with no injected tests",
+          "evidence": [
+            "132: invokespecial #110                // Method io/github/detekt/report/sarif/SarifOutputReport.\"<init>\":()V",
+            "165: invokevirtual #121                // Method io/github/detekt/report/sarif/SarifOutputReport.init:(Lio/gitlab/arturbosch/detekt/api/SetupContext;)V",
+            "174: invokevirtual #127                // Method io/github/detekt/report/sarif/SarifOutputReport.render:(Lio/gitlab/arturbosch/detekt/api/Detektion;)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:io/github/detekt/report/sarif/SarifOutputReportSpec#renders multiple issues()V",
+          "kind": "test",
+          "file": "detekt-report-sarif/src/test/kotlin/io/github/detekt/report/sarif/SarifOutputReportSpec.kt",
+          "name": "renders multiple issues",
+          "basis": "Exact javap invocation and successful original focused test suite, with no injected tests",
+          "evidence": [
+            "298: invokespecial #110                // Method io/github/detekt/report/sarif/SarifOutputReport.\"<init>\":()V",
+            "331: invokevirtual #121                // Method io/github/detekt/report/sarif/SarifOutputReport.init:(Lio/gitlab/arturbosch/detekt/api/SetupContext;)V",
+            "340: invokevirtual #127                // Method io/github/detekt/report/sarif/SarifOutputReport.render:(Lio/gitlab/arturbosch/detekt/api/Detektion;)Ljava/lang/String;"
+          ]
+        }
+      ],
+      "sourceChangeSha256": "b1f5d2a03bf6da2ff7a0b61b1ff75a94e4d21ffad82a717334c02bf33e28d61c",
+      "directOracleSha256": "cfbf78059d3b597f062a33f2e90a91bb004b813f5d320efae3fe7720aada3493"
+    },
+    {
+      "id": "pinterest_ktlint-2873",
+      "base": "bb14930ea7e89286024cc1b4239c79f936edcf56",
+      "targets": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider#getRuleProviders$lambda$25()Lcom/pinterest/ktlint/rule/engine/core/api/Rule;",
+          "kind": "registration",
+          "file": "ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt",
+          "name": "getRuleProviders",
+          "basis": "Exact javap constructor call from the unchanged StandardRuleSetProvider factory",
+          "evidence": [
+            "4: invokespecial #628                // Method com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule.\"<init>\":()V"
+          ]
+        },
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and the first line of a multi line body expression body fit on the same line then reformat to single line signature but keep body expression on separate line(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V",
+          "kind": "test",
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest.kt",
+          "name": "Given that the function signature and the first line of a multi line body expression body fit on the same line then reformat to single line signature but keep body expression on separate line",
+          "basis": "Unchanged EnumSource cases for multiline/always and default in BodyExpressionOnSeparateLine; selected from source configuration nearest the changed always branch, before graph/model queries. Full original focused suite passed86/0/0/0; duplicate parameter display labels are not used as method identity. JVM method descriptor verified by javap."
+        },
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V",
+          "kind": "test",
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest.kt",
+          "name": "Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature",
+          "basis": "Unchanged EnumSource cases for multiline/always and default in BodyExpressionOnSeparateLine; selected from source configuration nearest the changed always branch, before graph/model queries. Full original focused suite passed86/0/0/0; duplicate parameter display labels are not used as method identity. JVM method descriptor verified by javap."
+        },
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest$BodyExpressionOnSeparateLine#Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature, keep the body expression on a separate line(Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule$FunctionBodyExpressionWrapping;)V",
+          "kind": "test",
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRuleTest.kt",
+          "name": "Given that the function signature and first line of a multiline body expression body fit on the same line then do reformat as single line signature, keep the body expression on a separate line",
+          "basis": "Unchanged EnumSource cases for multiline/always and default in BodyExpressionOnSeparateLine; selected from source configuration nearest the changed always branch, before graph/model queries. Full original focused suite passed86/0/0/0; duplicate parameter display labels are not used as method identity. JVM method descriptor verified by javap."
+        }
+      ],
+      "sourceChangeSha256": "64c94cd0d61867239396849e8132b9e82cecabb09336b6f8382f8fb48c547506",
+      "directOracleSha256": "9c2ec38b26425f80677441c990a2c92563cb907ee29ff07e288a3f31618e6c76"
+    }
+  ]
+}

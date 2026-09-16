@@ -58,6 +58,11 @@ public abstract class KartographDeadTask : DefaultTask() {
     @get:Classpath
     public abstract val projectDirectories: ListProperty<Directory>
 
+    /** 생성 전용 입력을 이름 추측 없이 구분한다. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val generatedClassRoots: ConfigurableFileCollection
+
     @get:Classpath
     public abstract val classpathJars: ListProperty<RegularFile>
 
@@ -75,6 +80,11 @@ public abstract class KartographDeadTask : DefaultTask() {
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val keepRuleFiles: ConfigurableFileCollection
+
+    /** variant의 Java resource root다. 기본 source set 중 미생성 디렉터리는 실행 시 제외한다. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val serviceResourceDirectories: ConfigurableFileCollection
 
     @get:Input
     public abstract val namespace: Property<String>
@@ -115,16 +125,16 @@ public abstract class KartographDeadTask : DefaultTask() {
             addAll(projectDirectories.get().map { directory -> directory.asFile.toPath() })
             addAll(projectJars.get().map { jar -> jar.asFile.toPath() })
         }
-        val graph = ClassFileIndexer().index(classRoots)
         val classpath = buildList {
             addAll(classpathDirectories.get().map { directory -> directory.asFile.toPath() })
             addAll(classpathJars.get().map { jar -> jar.asFile.toPath() })
             addAll(platformClasspath.files.sorted().map { it.toPath() })
         }
-        val hierarchy = ClassHierarchyIndexer().index(
-            classpath,
-            graph.nodes.values.flatMap(GraphNode::supertypes),
-        )
+        val indexed = ClassFileIndexer().indexWithObservations(classRoots, classpath,
+            serviceResourceDirectories.files.filter(java.io.File::isDirectory).sorted().map(java.io.File::toPath),
+            generatedClassRoots.files.sorted().map(java.io.File::toPath))
+        val graph = indexed.graph
+        val hierarchy = indexed.hierarchy
         val evidence = retentionEvidence(projectRoot, graph, hierarchy)
         val result = ReachabilityAnalyzer.analyze(graph, evidence)
         val allFindings = DeadFindings.collect(graph, result, includePrivateMembers.get())
@@ -168,21 +178,10 @@ public abstract class KartographDeadTask : DefaultTask() {
      * 소스 트리 경로의 누락은 스캐너가 기존대로 실패로 둔다.
      */
     private fun existingRuleFiles(files: List<Path>): List<Path> {
-        val buildRoot = canonical(buildDirectory.get().asFile.toPath())
-        val existing = files.filter { file -> Files.exists(file) || !canonical(file).startsWith(buildRoot) }
+        val existing = AndroidKeepRules.existing(files, buildDirectory.get().asFile.toPath())
         val skipped = files.size - existing.size
         if (skipped > 0) logger.lifecycle("kartograph ${variantName.get()}: skipped $skipped missing generated keep rule file(s) under the build directory")
         return existing
-    }
-
-    /**
-     * 존재하지 않는 경로도 존재하는 조상 기준으로 심볼릭 링크를 풀어 같은 기준으로 대조한다.
-     * (`/var`와 `/private/var`처럼 같은 곳을 가리키는 표기가 섞여도 일치한다.)
-     */
-    private fun canonical(path: Path): Path = try {
-        Path.of(path.toFile().canonicalPath)
-    } catch (_: java.io.IOException) {
-        path.toAbsolutePath().normalize()
     }
 
     private fun writeReport(findings: List<Finding>, suppressedCount: Int) {

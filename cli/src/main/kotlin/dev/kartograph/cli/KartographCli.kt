@@ -4,6 +4,7 @@ import dev.kartograph.core.CodeGraph
 import dev.kartograph.export.DotGraphRenderer
 import dev.kartograph.export.GraphJsonRenderer
 import dev.kartograph.index.ClassFileIndexer
+import dev.kartograph.index.ClassHierarchyIndexingException
 import dev.kartograph.index.ClassIndexingException
 import dev.kartograph.index.SourcePathIndex
 import dev.kartograph.index.SourcePathResolution
@@ -21,17 +22,26 @@ internal enum class ExitStatus(val code: Int) {
 }
 
 internal object KartographCli {
-    fun run(
+    fun run(arguments: Array<out String>, output: PrintStream, error: PrintStream): Int =
+        runWithInput(arguments, output, error, System.`in`)
+
+    fun runWithInput(
         arguments: Array<out String>,
         output: PrintStream,
         error: PrintStream,
+        input: java.io.InputStream,
     ): Int = when (arguments.firstOrNull()) {
         null, "--help", "-h" -> printHelp(output)
         "--version" -> printVersion(output)
         "graph" -> runGraph(arguments.drop(1), output, error)
         "dead" -> DeadCommand.run(arguments.drop(1), output, error)
         "baseline" -> DeadCommand.runBaseline(arguments.drop(1), output, error)
+        "why" -> WhyCommand.run(arguments.drop(1), output, error)
         "query" -> AgentCommand.query(arguments.drop(1), output, error)
+        "snapshot" -> AgentCommand.snapshot(arguments.drop(1), output, error)
+        "verify-snapshot" -> FreshnessCommand.run(arguments.drop(1), output, error)
+        "mcp" -> McpCommand.run(arguments.drop(1), input, output, error)
+        "impact" -> ImpactCommand.run(arguments.drop(1), output, error)
         "bridges" -> AgentCommand.bridges(arguments.drop(1), output, error)
         "skill" -> AgentCommand.skill(arguments.drop(1), output, error)
         "cycles" -> ArchitectureCommand.cycles(arguments.drop(1), output, error)
@@ -68,10 +78,13 @@ internal object KartographCli {
             return toolFailure(error, "project root does not exist; pass the directory that holds the source files")
         }
         return try {
-            output.print(renderGraph(ClassFileIndexer().index(options.classRoots), options))
+            output.print(renderGraph(ClassFileIndexer().indexWithObservations(options.classRoots,
+                options.classpath.takeIf { it.isNotEmpty() }, options.serviceResources, options.generatedClassRoots).graph, options))
             ExitStatus.SUCCESS.code
         } catch (indexingError: ClassIndexingException) {
             toolFailure(error, indexingError.message ?: "class indexing failed")
+        } catch (hierarchyError: ClassHierarchyIndexingException) {
+            toolFailure(error, hierarchyError.message ?: "classpath indexing failed")
         }
     }
 
@@ -87,6 +100,9 @@ internal object KartographCli {
 
     private fun parseGraphOptions(arguments: List<String>, error: PrintStream): GraphOptions? {
         val classRoots = mutableListOf<Path>()
+        val classpath = mutableListOf<Path>()
+        val serviceResources = mutableListOf<Path>()
+        val generatedClassRoots = mutableListOf<Path>()
         var format = "dot"
         var includePaths = false
         var projectRoot: Path? = null
@@ -95,6 +111,15 @@ internal object KartographCli {
             when (val argument = arguments[index]) {
                 "--classes" -> {
                     classRoots.add(Path.of(valueAfter(arguments, index, argument, error) ?: return null))
+                    index += 2
+                }
+                "--generated-classes" -> {
+                    generatedClassRoots.add(Path.of(valueAfter(arguments, index, argument, error) ?: return null))
+                    index += 2
+                }
+                "--classpath", "--service-resources" -> {
+                    val value = Path.of(valueAfter(arguments, index, argument, error) ?: return null)
+                    if (argument == "--classpath") classpath.add(value) else serviceResources.add(value)
                     index += 2
                 }
                 "--format" -> {
@@ -139,7 +164,7 @@ internal object KartographCli {
             usageError(error, "missing required --classes path")
             return null
         }
-        return GraphOptions(classRoots, resolved, projectRoot)
+        return GraphOptions(classRoots, resolved, projectRoot, classpath, serviceResources, generatedClassRoots)
     }
 
     private fun valueAfter(
@@ -179,6 +204,9 @@ internal object KartographCli {
         val classRoots: List<Path>,
         val format: GraphFormat,
         val projectRoot: Path?,
+        val classpath: List<Path>,
+        val serviceResources: List<Path>,
+        val generatedClassRoots: List<Path>,
     )
 
     private val HELP = """
@@ -186,11 +214,17 @@ internal object KartographCli {
 
         Usage:
           kartograph graph --classes <directory-or-jar> [--classes <directory-or-jar>]... [--format dot|json] \
-            [--include-paths --project <directory>]
+            [--include-paths --project <directory>] [--classpath <path>] [--service-resources <path>]
           kartograph dead --classes <directory> --project <directory> [options]
           kartograph baseline --write <file> --classes <directory> --project <directory> [options]
+          kartograph why <symbol> --classes <directory> --project <directory> [options]
           kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
+          kartograph snapshot --classes <directory-or-jar> --project <directory> [--snapshot-max-mib <1..128>] [options]
+          kartograph verify-snapshot --graph-file <snapshot.json> --project <directory> [--snapshot-max-mib <1..128>] [options]
+          kartograph impact <symbol> --graph-file <snapshot.json> [--base-graph <snapshot.json>] [--snapshot-max-mib <1..128>] [options]
+          kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>] [--snapshot-max-mib <1..128>]
           kartograph bridges --project <directory> [--format json]
+          kartograph mcp --graph-file <snapshot.json> [--snapshot-max-mib <1..128>] [options]
           kartograph skill
           kartograph cycles --classes <directory-or-jar> [--classes <directory-or-jar>]... [--strict]
           kartograph rules --classes <directory-or-jar> --config <file> [--strict] [--explain <symbol>]
@@ -208,7 +242,7 @@ internal object KartographCli {
 
         Usage:
           kartograph graph --classes <directory-or-jar> [--classes <directory-or-jar>]... [--format dot|json] \
-            [--include-paths --project <directory>]
+            [--include-paths --project <directory>] [--classpath <path>] [--service-resources <path>]
 
         dot omits source locations. json carries one node per declaration with its usr, qualifiedName, kind,
         accessibility and, when the class debug attributes recorded it, the source file name.
@@ -217,5 +251,8 @@ internal object KartographCli {
         when exactly one source file matches. Every location states its origin in pathKind, and the counts that
         stayed unresolved are reported as unresolved-source-paths and missing-source-paths limitations.
         Absolute local paths are never emitted.
+
+        --generated-classes <path> marks an existing --classes root as generated-only (repeatable).
+        Nodes remain in the graph with synthesized=true and the generatedInput attribute.
     """.trimIndent() + "\n"
 }

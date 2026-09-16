@@ -44,7 +44,25 @@ public object GraphJsonRenderer {
             },
             "tool" to sortedMapOf("name" to "kartograph", "version" to toolVersion),
             "version" to VERSION,
-        ),
+        ).apply {
+            if (graph.serviceProviders.isNotEmpty()) put("serviceProviders", graph.serviceProviders.map { provider ->
+                sortedMapOf("service" to provider.service, "provider" to provider.provider.value,
+                    "location" to provider.location.toJsonValue(null))
+            })
+            if (graph.externalCalls.isNotEmpty()) put("externalCalls", graph.externalCalls.map { call ->
+                sortedMapOf<String, Any?>(
+                    "caller" to call.caller.value,
+                    "target" to call.target.value,
+                    "kind" to call.kind.name.lowerCamel(),
+                    "ordinal" to call.ordinal,
+                    "resolvedTargets" to call.resolvedTargets.map { it.value }.sorted(),
+                    "resolution" to call.resolution.name.lowerCamel(),
+                ).apply {
+                    call.location?.toJsonValue(projectRelativePaths[call.caller])?.let { put("location", it) }
+                    call.model?.let { put("model", it) }
+                }
+            })
+        },
     ) + "\n"
 
     // query 문서와 같은 필드 이름(usr·qualifiedName·accessibility·location)을 써서 두 표면을 join할 수 있게 한다.
@@ -78,10 +96,10 @@ public object GraphJsonRenderer {
         }.toSortedMap()
     }
 
-    private fun GraphEdge.toJsonValue(): Map<String, Any?> = sortedMapOf(
+    private fun GraphEdge.toJsonValue(): Map<String, Any?> = sortedMapOf<String, Any?>(
         "kind" to kind.name.lowerCamel(),
         "source" to source.value,
         "target" to target.value,
         "weight" to weight,
-    )
+    ).apply { if (origin != dev.kartograph.core.EdgeOrigin.BYTECODE) put("origin", origin.name.lowerCamel()) }
 }

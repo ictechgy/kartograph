@@ -11,12 +11,13 @@ internal fun annotationRetentionEvidence(
     reasonByAnnotation: Map<String, RetentionReason>,
     ownerReason: (RetentionReason) -> RetentionReason = { reason -> reason },
     memberReason: ((RetentionReason) -> RetentionReason)? = null,
+    includeOwners: Boolean = true,
 ): List<RetentionEvidence> = graph.nodeIds.flatMap { nodeId ->
     val annotatedNode = graph.nodes.getValue(nodeId)
     annotatedNode.annotations.mapNotNull(reasonByAnnotation::get).flatMap { reason ->
         buildList {
             add(RetentionEvidence(annotatedNode.id, reason, annotatedNode.location))
-            owningDeclarations(nodeId, graph).forEach { ownerId ->
+            (if (includeOwners) owningDeclarations(nodeId, graph) else emptyList()).forEach { ownerId ->
                 add(RetentionEvidence(ownerId, ownerReason(reason), annotatedNode.location))
             }
             memberReason?.let { retainedMemberReason ->
@@ -45,7 +46,7 @@ private fun owningDeclarations(nodeId: NodeId, graph: CodeGraph): List<NodeId> {
     return owners
 }
 
-private val RETENTION_ORDER = compareBy<RetentionEvidence>(
+internal val RETENTION_ORDER = compareBy<RetentionEvidence>(
     RetentionEvidence::nodeId,
     { evidence -> evidence.reason.ordinal },
     { evidence -> evidence.location?.path.orEmpty() },

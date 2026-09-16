@@ -1,0 +1,85 @@
+{
+  "direct": {
+    "observed": [
+      "Live"
+    ],
+    "engines": {
+      "kartograph": [
+        "Dormant",
+        "Live"
+      ],
+      "soot-cha": [
+        "Dormant",
+        "Live"
+      ],
+      "soot-rta": [
+        "Live"
+      ],
+      "wala-01cfa": [
+        "Live"
+      ]
+    }
+  },
+  "extra_allocation": {
+    "observed": [
+      "Live"
+    ],
+    "engines": {
+      "kartograph": [
+        "Dormant",
+        "Live"
+      ],
+      "soot-cha": [
+        "Dormant",
+        "Live"
+      ],
+      "soot-rta": [
+        "Dormant",
+        "Live"
+      ],
+      "wala-01cfa": [
+        "Live"
+      ]
+    }
+  },
+  "kotlin_extra": {
+    "observed": [
+      "Live"
+    ],
+    "engines": {
+      "kartograph": [
+        "Dormant",
+        "Live"
+      ],
+      "soot-cha": [
+        "Dormant",
+        "Live"
+      ],
+      "soot-rta": [
+        "Dormant",
+        "Live"
+      ],
+      "wala-01cfa": [
+        "Live"
+      ]
+    }
+  },
+  "reflective": {
+    "observed": [
+      "Dormant",
+      "Live"
+    ],
+    "engines": {
+      "kartograph": [
+        "Dormant",
+        "Live"
+      ],
+      "soot-cha": [
+        "Dormant",
+        "Live"
+      ],
+      "soot-rta": [],
+      "wala-01cfa": []
+    }
+  }
+}

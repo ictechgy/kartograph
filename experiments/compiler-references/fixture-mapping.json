@@ -1,0 +1,8 @@
+{
+  "probe/readObject": "method:probe/NamedConstants#readObject()Ljava/lang/String;",
+  "probe/readTop": "method:probe/NamedConstants#readTop()Ljava/lang/String;",
+  "probe/readCompanion": "method:probe/NamedConstants#readCompanion()Ljava/lang/String;",
+  "probe/Constants.USED": "field:probe/Constants#USED:Ljava/lang/String;",
+  "probe/TOP_USED": "field:probe/NamedConstants#TOP_USED:Ljava/lang/String;",
+  "probe/Holder.Companion.USED": "field:probe/Holder#USED:Ljava/lang/String;"
+}

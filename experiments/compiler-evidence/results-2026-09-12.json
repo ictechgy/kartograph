@@ -1,0 +1,351 @@
+{
+  "status": "passed",
+  "version": "0.7.0",
+  "collectorSha256": "215a2e5ed24f607ab36209c6dded1443bd7aa23dfb01c32a3cf07f5270a7cbb8",
+  "pluginSha256": "8b18e2ce2ab12de483fbe749d51794573a3e9894f3d1fed90a4c1941cc9641a4",
+  "cases": {
+    "java": {
+      "references": [
+        {
+          "kind": "reference",
+          "origin": "compilerReference",
+          "source": "method:fixture/JavaConstants#read()Ljava/lang/String;",
+          "target": "field:fixture/JavaConstants#USED:Ljava/lang/String;",
+          "weight": 1
+        }
+      ],
+      "matched": true,
+      "affected": 1,
+      "generatedSourceReceipts": 0
+    },
+    "kotlin": {
+      "references": [
+        {
+          "kind": "reference",
+          "origin": "compilerReference",
+          "source": "method:fixture/RenamedConstants#overloaded(I)Ljava/lang/String;",
+          "target": "field:fixture/Constants#USED:Ljava/lang/String;",
+          "weight": 1
+        },
+        {
+          "kind": "reference",
+          "origin": "compilerReference",
+          "source": "method:fixture/RenamedConstants#overloaded(Ljava/lang/String;)Ljava/lang/String;",
+          "target": "field:fixture/RenamedConstants#TOP_USED:Ljava/lang/String;",
+          "weight": 1
+        },
+        {
+          "kind": "reference",
+          "origin": "compilerReference",
+          "source": "method:fixture/RenamedConstants#readCompanion()Ljava/lang/String;",
+          "target": "field:fixture/Holder#USED:Ljava/lang/String;",
+          "weight": 1
+        },
+        {
+          "kind": "reference",
+          "origin": "compilerReference",
+          "source": "method:fixture/RenamedConstants#readObject()Ljava/lang/String;",
+          "target": "field:fixture/Constants#USED:Ljava/lang/String;",
+          "weight": 1
+        },
+        {
+          "kind": "reference",
+          "origin": "compilerReference",
+          "source": "method:fixture/RenamedConstants#readTop()Ljava/lang/String;",
+          "target": "field:fixture/RenamedConstants#TOP_USED:Ljava/lang/String;",
+          "weight": 1
+        },
+        {
+          "kind": "reference",
+          "origin": "compilerReference",
+          "source": "method:fixture/RenamedConstants#renamedRead()Ljava/lang/String;",
+          "target": "field:fixture/RenamedConstants#TOP_USED:Ljava/lang/String;",
+          "weight": 1
+        }
+      ],
+      "matched": true,
+      "affected": 2,
+      "generatedSourceReceipts": 0
+    },
+    "dagger": {
+      "references": [
+        {
+          "kind": "reference",
+          "origin": "compilerReference",
+          "source": "method:fixture/DaggerBindings$App#service()Lfixture/DaggerBindings$Service;",
+          "target": "method:fixture/DaggerBindings$Bindings#selected(Lfixture/DaggerBindings$Selected;)Lfixture/DaggerBindings$Service;",
+          "weight": 1
+        },
+        {
+          "kind": "reference",
+          "origin": "compilerReference",
+          "source": "method:fixture/DaggerBindings$Bindings#selected(Lfixture/DaggerBindings$Selected;)Lfixture/DaggerBindings$Service;",
+          "target": "method:fixture/DaggerBindings$Selected#<init>(Lfixture/DaggerBindings$Dependency;)V",
+          "weight": 1
+        },
+        {
+          "kind": "reference",
+          "origin": "compilerReference",
+          "source": "method:fixture/DaggerBindings$Selected#<init>(Lfixture/DaggerBindings$Dependency;)V",
+          "target": "method:fixture/DaggerBindings$Dependency#<init>()V",
+          "weight": 1
+        }
+      ],
+      "matched": true,
+      "affected": 2,
+      "generatedSourceReceipts": 5
+    }
+  },
+  "steps": [
+    {
+      "name": "java-build",
+      "exit": 0,
+      "seconds": 3.994
+    },
+    {
+      "name": "java-unchanged",
+      "exit": 0,
+      "seconds": 2.676
+    },
+    {
+      "name": "java-clean",
+      "exit": 0,
+      "seconds": 1.999
+    },
+    {
+      "name": "java-restore",
+      "exit": 0,
+      "seconds": 1.941
+    },
+    {
+      "name": "java-inputs",
+      "exit": 0,
+      "seconds": 2.749
+    },
+    {
+      "name": "java-snapshot",
+      "exit": 0,
+      "seconds": 0.648
+    },
+    {
+      "name": "java-verify",
+      "exit": 0,
+      "seconds": 0.541
+    },
+    {
+      "name": "java-one-file-change",
+      "exit": 0,
+      "seconds": 3.727
+    },
+    {
+      "name": "java-updated-snapshot",
+      "exit": 0,
+      "seconds": 0.561
+    },
+    {
+      "name": "java-updated-verify",
+      "exit": 0,
+      "seconds": 0.515
+    },
+    {
+      "name": "java-wrong-scope",
+      "exit": 1,
+      "seconds": 0.517
+    },
+    {
+      "name": "java-impact",
+      "exit": 0,
+      "seconds": 0.105
+    },
+    {
+      "name": "java-tampered",
+      "exit": 1,
+      "seconds": 0.52
+    },
+    {
+      "name": "java-preserved-mtime",
+      "exit": 1,
+      "seconds": 0.545
+    },
+    {
+      "name": "java-old-sidecar-replay",
+      "exit": 1,
+      "seconds": 4.026
+    },
+    {
+      "name": "java-partial-sidecar",
+      "exit": 1,
+      "seconds": 3.232
+    },
+    {
+      "name": "java-rebuild",
+      "exit": 0,
+      "seconds": 2.247
+    },
+    {
+      "name": "java-source-deletion",
+      "exit": 0,
+      "seconds": 2.134
+    },
+    {
+      "name": "kotlin-build",
+      "exit": 0,
+      "seconds": 7.281
+    },
+    {
+      "name": "kotlin-unchanged",
+      "exit": 0,
+      "seconds": 2.987
+    },
+    {
+      "name": "kotlin-clean",
+      "exit": 0,
+      "seconds": 2.671
+    },
+    {
+      "name": "kotlin-restore",
+      "exit": 0,
+      "seconds": 2.152
+    },
+    {
+      "name": "kotlin-inputs",
+      "exit": 0,
+      "seconds": 3.48
+    },
+    {
+      "name": "kotlin-snapshot",
+      "exit": 0,
+      "seconds": 0.851
+    },
+    {
+      "name": "kotlin-verify",
+      "exit": 0,
+      "seconds": 0.776
+    },
+    {
+      "name": "kotlin-one-file-change",
+      "exit": 0,
+      "seconds": 6.045
+    },
+    {
+      "name": "kotlin-updated-snapshot",
+      "exit": 0,
+      "seconds": 0.84
+    },
+    {
+      "name": "kotlin-updated-verify",
+      "exit": 0,
+      "seconds": 0.775
+    },
+    {
+      "name": "kotlin-wrong-scope",
+      "exit": 1,
+      "seconds": 0.78
+    },
+    {
+      "name": "kotlin-impact",
+      "exit": 0,
+      "seconds": 0.101
+    },
+    {
+      "name": "kotlin-tampered",
+      "exit": 1,
+      "seconds": 0.766
+    },
+    {
+      "name": "dagger-build",
+      "exit": 0,
+      "seconds": 4.36
+    },
+    {
+      "name": "dagger-unchanged",
+      "exit": 0,
+      "seconds": 2.094
+    },
+    {
+      "name": "dagger-clean",
+      "exit": 0,
+      "seconds": 1.793
+    },
+    {
+      "name": "dagger-restore",
+      "exit": 0,
+      "seconds": 1.614
+    },
+    {
+      "name": "dagger-inputs",
+      "exit": 0,
+      "seconds": 2.41
+    },
+    {
+      "name": "dagger-snapshot",
+      "exit": 0,
+      "seconds": 0.652
+    },
+    {
+      "name": "dagger-verify",
+      "exit": 0,
+      "seconds": 0.61
+    },
+    {
+      "name": "dagger-one-file-change",
+      "exit": 0,
+      "seconds": 3.877
+    },
+    {
+      "name": "dagger-updated-snapshot",
+      "exit": 0,
+      "seconds": 0.668
+    },
+    {
+      "name": "dagger-updated-verify",
+      "exit": 0,
+      "seconds": 0.587
+    },
+    {
+      "name": "dagger-wrong-scope",
+      "exit": 1,
+      "seconds": 0.593
+    },
+    {
+      "name": "dagger-impact",
+      "exit": 0,
+      "seconds": 0.104
+    },
+    {
+      "name": "dagger-tampered",
+      "exit": 1,
+      "seconds": 0.586
+    },
+    {
+      "name": "dagger-runtime",
+      "exit": 0,
+      "seconds": 0.026
+    },
+    {
+      "name": "dagger-missing-binding",
+      "exit": 1,
+      "seconds": 3.424
+    },
+    {
+      "name": "dagger-failed-build-snapshot",
+      "exit": 1,
+      "seconds": 0.607
+    }
+  ],
+  "evaluationScope": "Controlled compiler fixtures and product lifecycle; not the later held-out application/AI comparison.",
+  "javaImpactComparison": {
+    "baselineAffected": 0,
+    "candidateAffected": 1,
+    "unusedAffected": 0
+  },
+  "additionalCollectorContracts": [
+    "Kotlin class/object/private callers and named companion",
+    "exact pre-lowering field identity",
+    "external constant cannot target same-name project field",
+    "javac multi-top-level classes and package-info",
+    "unmapped implicit JVM constructor parameters",
+    "Dagger component-less module",
+    "concurrent and corrupted Dagger staging"
+  ]
+}

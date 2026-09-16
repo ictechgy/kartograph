@@ -24,14 +24,14 @@ public data class MartinMetric(
         get() = abs(abstractness + instability - 1.0)
 }
 
-/** CodeGraph의 공용 `impliesUsage` 의미만 사용해 모듈 지표를 계산한다. */
+/** CodeGraph의 공유 선언 의존 관계로 모듈 지표를 계산한다. */
 public object MartinMetrics {
     /** moduleName이 없으면 JVM package를 단위로 삼아 정렬된 지표를 만든다. */
     public fun calculate(graph: CodeGraph): List<MartinMetric> {
         val units = graph.nodes.mapValues { (_, node) -> ArchitectureGraph.unitOf(node) }
         val nodesByModule = graph.nodes.values.groupBy { units.getValue(it.id) }
         val moduleEdges = graph.edges.asSequence()
-            .filter { it.kind.impliesUsage }
+            .filter(ArchitectureGraph::isDependency)
             .mapNotNull { edge ->
                 val source = units[edge.source]
                 val target = units[edge.target]

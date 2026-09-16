@@ -1,0 +1,569 @@
+{
+  "date": "2026-09-12",
+  "platform": "Darwin arm64",
+  "baselineCommit": "dc33ba05238da9d1d7b3171ed5b849efc5f5a8fa",
+  "javaWorkflow": {
+    "sourceBefore": "26d9d470a767a6e590bdcadf8191b61df5160cbb",
+    "sourceAfter": "b75cca797f801da6e23feaa5c01d951d74d6bdc8",
+    "initial": {
+      "format": "kartograph-freshness",
+      "version": 1,
+      "status": "matched",
+      "hashNanos": 376019375,
+      "reasons": []
+    },
+    "changedWithoutRebuild": {
+      "format": "kartograph-freshness",
+      "version": 1,
+      "status": "stale",
+      "hashNanos": 369808333,
+      "reasons": [
+        "changed-sources"
+      ]
+    },
+    "latestLabelWithOldClasses": {
+      "format": "kartograph-freshness",
+      "version": 1,
+      "status": "stale",
+      "hashNanos": 368104041,
+      "reasons": [
+        "changed-sources"
+      ]
+    },
+    "afterRecompile": {
+      "format": "kartograph-freshness",
+      "version": 1,
+      "status": "matched",
+      "hashNanos": 385260667,
+      "reasons": []
+    },
+    "sameMtimeAndSizeMutation": true,
+    "oldClassesUnchangedUntilRecompile": true,
+    "commands": [
+      {
+        "name": "java-git-init",
+        "exit": 0,
+        "seconds": 0.019915416021831334
+      },
+      {
+        "name": "java-git-add",
+        "exit": 0,
+        "seconds": 0.015419374976772815
+      },
+      {
+        "name": "source-before",
+        "exit": 0,
+        "seconds": 0.023477999959141016
+      },
+      {
+        "name": "source-before-id",
+        "exit": 0,
+        "seconds": 0.011731292004697025
+      },
+      {
+        "name": "java-compile-before",
+        "exit": 0,
+        "seconds": 3.762122125015594
+      },
+      {
+        "name": "java-snapshot-before",
+        "exit": 0,
+        "seconds": 0.1750469590188004
+      },
+      {
+        "name": "java-verify-before",
+        "exit": 0,
+        "seconds": 0.4647468749899417
+      },
+      {
+        "name": "java-git-add-after",
+        "exit": 0,
+        "seconds": 0.013684541976545006
+      },
+      {
+        "name": "source-after",
+        "exit": 0,
+        "seconds": 0.021747458027675748
+      },
+      {
+        "name": "source-after-id",
+        "exit": 0,
+        "seconds": 0.011671375017613173
+      },
+      {
+        "name": "java-verify-stale",
+        "exit": 1,
+        "seconds": 0.4612745419726707
+      },
+      {
+        "name": "java-snapshot-relabeled",
+        "exit": 0,
+        "seconds": 0.13017245900118724
+      },
+      {
+        "name": "java-verify-relabeled",
+        "exit": 1,
+        "seconds": 0.45686291600577533
+      },
+      {
+        "name": "java-compile-after",
+        "exit": 0,
+        "seconds": 2.986961834016256
+      },
+      {
+        "name": "java-snapshot-current",
+        "exit": 0,
+        "seconds": 0.14515129203209653
+      },
+      {
+        "name": "java-verify-current",
+        "exit": 0,
+        "seconds": 0.48176799999782816
+      }
+    ]
+  },
+  "externalOutput": {
+    "status": "matched",
+    "distinctSlots": [
+      "external/compileJava-classes",
+      "external/classes-0",
+      "external/compileJava-compiler-3"
+    ],
+    "orderedRootComparison": true
+  },
+  "androidWorkflow": {
+    "scope": "fixture-library:debug",
+    "compiler": "kotlin",
+    "artifact": ":fixture-library:compileDebugKotlin",
+    "status": "matched",
+    "inputs": 9,
+    "externalBindings": 24,
+    "output": [
+      {
+        "path": "build/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes",
+        "role": "classes",
+        "sha256": "6a9a87818091027fdc5f26b33df2af9f30495d6a3fe3b32111aa8154ea053fbc"
+      }
+    ]
+  },
+  "publicSample": {
+    "baseline": {
+      "classRoots": 22,
+      "measurements": {
+        "class": {
+          "diagnostics": 4,
+          "seconds": 1.138
+        },
+        "member": {
+          "diagnostics": 2,
+          "seconds": 1.048
+        }
+      },
+      "multipreviewDeclarations": 8,
+      "revision": "12f80da6518e161ed16a06a68e71fb8a873576d6",
+      "snapshot": {
+        "bytes": 26581826,
+        "captureSeconds": 1.332,
+        "queries": [
+          {
+            "seconds": {
+              "live": [
+                1.076,
+                1.095,
+                1.058
+              ],
+              "saved": [
+                0.427,
+                0.426,
+                0.439
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/MainActivity"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.077,
+                1.083,
+                1.051
+              ],
+              "saved": [
+                0.435,
+                0.444,
+                0.435
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/core/datastore/ListToMapMigration"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.063,
+                1.076,
+                1.092
+              ],
+              "saved": [
+                0.433,
+                0.436,
+                0.452
+              ]
+            },
+            "symbol": "method:com/google/samples/apps/nowinandroid/feature/foryou/impl/ForYouScreenKt#ForYouScreenLoading(Landroidx/compose/runtime/Composer;I)V"
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "classRoots": 22,
+      "measurements": {
+        "class": {
+          "diagnostics": 4,
+          "seconds": 1.061
+        },
+        "member": {
+          "diagnostics": 2,
+          "seconds": 1.068
+        }
+      },
+      "multipreviewDeclarations": 8,
+      "revision": "12f80da6518e161ed16a06a68e71fb8a873576d6",
+      "snapshot": {
+        "bytes": 26619965,
+        "captureSeconds": 2.744,
+        "queries": [
+          {
+            "seconds": {
+              "live": [
+                1.105,
+                1.082,
+                1.071
+              ],
+              "saved": [
+                0.468,
+                0.467,
+                0.467
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/MainActivity"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.068,
+                1.06,
+                1.055
+              ],
+              "saved": [
+                0.443,
+                0.46,
+                0.443
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/core/datastore/ListToMapMigration"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.06,
+                1.077,
+                1.094
+              ],
+              "saved": [
+                0.458,
+                0.456,
+                0.467
+              ]
+            },
+            "symbol": "method:com/google/samples/apps/nowinandroid/feature/foryou/impl/ForYouScreenKt#ForYouScreenLoading(Landroidx/compose/runtime/Composer;I)V"
+          }
+        ]
+      }
+    }
+  },
+  "selfAnalysis": {
+    "status": "PASS",
+    "perCommandBudget": 5.0,
+    "totalBudget": 15.0,
+    "totalSeconds": 2.999,
+    "measurements": {
+      "graph": {
+        "seconds": 0.548,
+        "returncode": 0,
+        "nodes": 3799
+      },
+      "dead": {
+        "seconds": 0.459,
+        "returncode": 0,
+        "findings": 0
+      },
+      "dead_private": {
+        "seconds": 0.474,
+        "returncode": 0,
+        "findings": 0
+      },
+      "cycles": {
+        "seconds": 0.446,
+        "returncode": 0
+      },
+      "rules": {
+        "seconds": 0.605,
+        "returncode": 0
+      },
+      "metrics": {
+        "seconds": 0.467,
+        "returncode": 0,
+        "rows": 6
+      }
+    },
+    "contractFailures": [],
+    "budgetFailures": []
+  },
+  "consumerGates": [
+    {
+      "name": "minimum-agp",
+      "exit": 0,
+      "seconds": 61.823
+    },
+    {
+      "name": "android",
+      "exit": 0,
+      "seconds": 55.051
+    },
+    {
+      "name": "plugin",
+      "exit": 0,
+      "seconds": 45.354
+    }
+  ],
+  "compilerTests": {
+    "JDK17": "canonical full tests and kover >=90 passed; Java/Kotlin lifecycle, configuration cache and build cache integration tests passed",
+    "JDK21": "canonical full tests and kover >=90 passed with compiler toolchains aligned to the running JDK"
+  },
+  "interpretation": "Integrity of observed inputs and supported compiler lifecycle; no malicious-producer authentication or guarantee against changes reverted between observation boundaries.",
+  "artifacts": {
+    "cliRuntime": {
+      "analysis-0.7.0.jar": "116981527d5d2a8681e87380b9955bf56634d77f5747bcf48a60549638ae2ed5",
+      "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+      "asm-9.9.jar": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4",
+      "asm-analysis-9.9.jar": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b",
+      "asm-tree-9.9.jar": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6",
+      "cli-0.7.0.jar": "a812cdb9b1ca6c1b3c703b5b8f461fab080faec68b2fb67a6473d57e257e369c",
+      "core-0.7.0.jar": "01474d989961753b193788b21181a2db3eb45fb98eaca95ac8653d797ad392cb",
+      "export-0.7.0.jar": "a196c6f595c3e40cd47b61cdcb13f67a3920ed89841ab12f174bad342154cf45",
+      "index-0.7.0.jar": "ac841f1ff1fe64bbd8742536529e167a2b428563bb7b65c0053cc717cf0d0fa0",
+      "kotlin-metadata-jvm-2.4.10.jar": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4",
+      "kotlin-stdlib-2.4.10.jar": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+    },
+    "pluginSha256": "bb61641a10f8284e54b1225fffcc132a4a99843aa824f5b04ed36ddd07da214a"
+  },
+  "reviewFollowup": {
+    "javaWorkflow": {
+      "sourceBefore": "3e30048674adac01c8a07a94c6e9f42475446feb",
+      "sourceAfter": "c0b6903ad3078dd7501c68bf700514459a190e95",
+      "initial": {
+        "format": "kartograph-freshness",
+        "version": 1,
+        "status": "matched",
+        "hashNanos": 383181959,
+        "reasons": []
+      },
+      "changedWithoutRebuild": {
+        "format": "kartograph-freshness",
+        "version": 1,
+        "status": "stale",
+        "hashNanos": 375318541,
+        "reasons": [
+          "changed-sources"
+        ]
+      },
+      "latestLabelWithOldClasses": {
+        "format": "kartograph-freshness",
+        "version": 1,
+        "status": "stale",
+        "hashNanos": 374018625,
+        "reasons": [
+          "changed-sources"
+        ]
+      },
+      "afterRecompile": {
+        "format": "kartograph-freshness",
+        "version": 1,
+        "status": "matched",
+        "hashNanos": 379919875,
+        "reasons": []
+      },
+      "sameMtimeAndSizeMutation": true,
+      "oldClassesUnchangedUntilRecompile": true,
+      "commands": [
+        {
+          "name": "java-git-init",
+          "exit": 0,
+          "seconds": 0.021643375046551228
+        },
+        {
+          "name": "java-git-add",
+          "exit": 0,
+          "seconds": 0.015121250005904585
+        },
+        {
+          "name": "source-before",
+          "exit": 0,
+          "seconds": 0.02212670899461955
+        },
+        {
+          "name": "source-before-id",
+          "exit": 0,
+          "seconds": 0.011205292015802115
+        },
+        {
+          "name": "java-compile-before",
+          "exit": 0,
+          "seconds": 3.4034284590161406
+        },
+        {
+          "name": "java-snapshot-before",
+          "exit": 0,
+          "seconds": 0.17820683302124962
+        },
+        {
+          "name": "java-verify-before",
+          "exit": 0,
+          "seconds": 0.4727727919816971
+        },
+        {
+          "name": "java-git-add-after",
+          "exit": 0,
+          "seconds": 0.014204917009919882
+        },
+        {
+          "name": "source-after",
+          "exit": 0,
+          "seconds": 0.022891415981575847
+        },
+        {
+          "name": "source-after-id",
+          "exit": 0,
+          "seconds": 0.011255833960603923
+        },
+        {
+          "name": "java-verify-stale",
+          "exit": 1,
+          "seconds": 0.4630952919833362
+        },
+        {
+          "name": "java-snapshot-relabeled",
+          "exit": 0,
+          "seconds": 0.13280575000680983
+        },
+        {
+          "name": "java-verify-relabeled",
+          "exit": 1,
+          "seconds": 0.4490462919929996
+        },
+        {
+          "name": "java-compile-after",
+          "exit": 0,
+          "seconds": 2.9062011670321226
+        },
+        {
+          "name": "java-snapshot-current",
+          "exit": 0,
+          "seconds": 0.13145004102261737
+        },
+        {
+          "name": "java-verify-current",
+          "exit": 0,
+          "seconds": 0.45485154195921496
+        }
+      ]
+    },
+    "androidWorkflow": {
+      "scope": "fixture-library:debug",
+      "compiler": "kotlin",
+      "artifact": ":fixture-library:compileDebugKotlin",
+      "status": "matched",
+      "inputs": 9,
+      "externalBindings": 17,
+      "captureSeconds": 0.45218087499961257,
+      "output": [
+        {
+          "path": "build/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes",
+          "role": "classes",
+          "sha256": "6a9a87818091027fdc5f26b33df2af9f30495d6a3fe3b32111aa8154ea053fbc"
+        }
+      ]
+    },
+    "compilerIntegrationTests": 7,
+    "producerValidationTests": 1,
+    "jdk17LineCoveragePercent": 90.71754,
+    "jdk17And21Gates": "passed",
+    "regressions": [
+      "ABI-neutral dependency change plus clean under configuration cache",
+      "generated source providers before byte-key calculation",
+      "continued build failure removes witness",
+      "omitted Java or Kotlin compiler byte inputs reject evidence",
+      "public certificate resources and credentials-named parents",
+      "relative generated roots share indexing paths",
+      "unbound external evidence is unverified"
+    ],
+    "artifacts": [
+      {
+        "name": "kartograph-gradle-plugin-0.7.0.jar",
+        "sha256": "1a3d21072c0733e8b3db1c23045b244346e35490c1f4bd867e4df29ab5d14e04"
+      },
+      {
+        "name": "analysis-0.7.0.jar",
+        "sha256": "116981527d5d2a8681e87380b9955bf56634d77f5747bcf48a60549638ae2ed5"
+      },
+      {
+        "name": "annotations-13.0.jar",
+        "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+      },
+      {
+        "name": "asm-9.9.jar",
+        "sha256": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4"
+      },
+      {
+        "name": "asm-analysis-9.9.jar",
+        "sha256": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b"
+      },
+      {
+        "name": "asm-tree-9.9.jar",
+        "sha256": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6"
+      },
+      {
+        "name": "cli-0.7.0.jar",
+        "sha256": "88fb143d37f021f1c3d0ca69a0a76ae2a2081b2e7247e25dd3006b87fcad879f"
+      },
+      {
+        "name": "core-0.7.0.jar",
+        "sha256": "01474d989961753b193788b21181a2db3eb45fb98eaca95ac8653d797ad392cb"
+      },
+      {
+        "name": "export-0.7.0.jar",
+        "sha256": "a196c6f595c3e40cd47b61cdcb13f67a3920ed89841ab12f174bad342154cf45"
+      },
+      {
+        "name": "index-0.7.0.jar",
+        "sha256": "099a31fc48f56af76f53db4734684636f4ba4467072dfdc11a341f28910b53fd"
+      },
+      {
+        "name": "kotlin-metadata-jvm-2.4.10.jar",
+        "sha256": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4"
+      },
+      {
+        "name": "kotlin-stdlib-2.4.10.jar",
+        "sha256": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+      }
+    ],
+    "sourceCommit": "4ca653c15bd0d551e8acf1760c31514bf4d17895"
+  },
+  "captureTimingMeasurementCommit": "ea99f62bab5e00fba0192f4a5efd796a31c4db41",
+  "finalRegressionChecks": {
+    "orderedUnboundRoots": "passed",
+    "canonicalCompilerAliases": "passed",
+    "jdk17FullTests": "passed",
+    "jdk17LineCoveragePercent": 91.48331,
+    "producerValidationTests": 2
+  }
+}

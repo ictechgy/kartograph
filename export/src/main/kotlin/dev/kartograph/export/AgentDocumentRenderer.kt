@@ -33,17 +33,18 @@ public object AgentDocumentRenderer {
     ) + "\n"
 
     /** isthmus bridge-facts v1의 public 필드만 포함한 JSON을 만든다. */
-    public fun bridges(document: BridgeFactsDocument): String = jsonValue(sortedMapOf(
-        "facts" to document.facts.map { it.toJsonValue() },
-        "format" to document.format,
-        "generatedAt" to document.generatedAt,
-        "limitations" to document.limitations.sorted(),
-        "platform" to document.platform,
-        "project" to document.project,
-        "target" to document.target,
-        "tool" to sortedMapOf("name" to document.tool.name, "version" to document.tool.version),
-        "version" to document.version,
-    )) + "\n"
+    public fun bridges(document: BridgeFactsDocument): String = jsonValue(buildMap<String, Any?> {
+        put("facts", document.facts.map { it.toJsonValue() })
+        put("format", document.format)
+        put("generatedAt", document.generatedAt)
+        put("limitations", document.limitations.sorted())
+        put("platform", document.platform)
+        put("project", document.project)
+        put("target", document.target)
+        put("tool", sortedMapOf("name" to document.tool.name, "version" to document.tool.version))
+        put("version", document.version)
+        document.transport?.let { put("transport", it) }
+    }.toSortedMap()) + "\n"
 
     private fun SymbolQueryResult.toJsonValue(): Map<String, Any?> = buildMap<String, Any?> {
         declaredIn?.let { put("declaredIn", it.toJsonValue()) }
@@ -103,6 +104,7 @@ public object AgentDocumentRenderer {
         put("kind", kind)
         put("location", sortedMapOf("column" to location.column, "line" to location.line, "path" to location.path))
         if (method != null) put("method", method)
+        if (channelPrefix != null) put("channelPrefix", channelPrefix)
         symbol?.let { value ->
             put(
                 "symbol",

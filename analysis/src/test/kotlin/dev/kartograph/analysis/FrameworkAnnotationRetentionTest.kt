@@ -13,6 +13,57 @@ import kotlin.test.assertEquals
 
 class FrameworkAnnotationRetentionTest {
     @Test
+    fun `direct single and repeated preview annotations preserve the same owner policy`() {
+        val preview = "androidx/compose/ui/tooling/preview/Preview"
+        val owner = node("class:app/ScreenKt", NodeKind.CLASS)
+        val sibling = node("method:app/ScreenKt#other()V", NodeKind.FUNCTION)
+        for (annotation in listOf(preview, preview + '$' + "Container")) {
+            val method = node("method:app/ScreenKt#preview()V", NodeKind.FUNCTION, setOf(annotation))
+            val graph = CodeGraph(listOf(owner, method, sibling), listOf(
+                GraphEdge(owner.id, method.id, EdgeKind.MEMBER), GraphEdge(owner.id, sibling.id, EdgeKind.MEMBER),
+                GraphEdge(method.id, owner.id, EdgeKind.REFERENCE)))
+            val evidence = DefaultRetention.find(graph, emptyList(), emptyList())
+            assertEquals(true, sibling.id in ReachabilityAnalyzer.analyze(graph, evidence).reachableNodeIds)
+        }
+    }
+
+    @Test
+    fun `project declaration shadows dependency annotation metadata`() {
+        val target = node("method:app/Screen#preview()V", NodeKind.FUNCTION, setOf("lib/Devices"))
+        val hierarchy = dev.kartograph.core.ClassHierarchy(emptyMap(), emptyMap(),
+            mapOf("lib/Devices" to setOf("androidx/compose/ui/tooling/preview/Preview")))
+        assertEquals(listOf(target.id), FrameworkAnnotationRetention.find(CodeGraph(listOf(target), emptyList()), hierarchy).map { it.nodeId })
+        for (kind in listOf(NodeKind.ANNOTATION_CLASS, NodeKind.CLASS)) {
+            val shadow = node("class:lib/Devices", kind)
+            assertEquals(emptyList(), FrameworkAnnotationRetention.find(CodeGraph(listOf(target, shadow), emptyList()), hierarchy))
+        }
+    }
+
+    @Test
+    fun `retains transitive repeatable multipreview uses without treating unrelated annotations as roots`() {
+        val previewContainer = "androidx/compose/ui/tooling/preview/Preview" + '$' + "Container"
+        val devices = node("class:app/Devices", NodeKind.ANNOTATION_CLASS, setOf(previewContainer))
+        val nested = node("class:app/NestedPreview", NodeKind.ANNOTATION_CLASS, setOf("app/Devices", "app/Cycle"))
+        val cycle = node("class:app/Cycle", NodeKind.ANNOTATION_CLASS, setOf("app/NestedPreview"))
+        val facade = node("class:app/ScreenKt", NodeKind.CLASS)
+        val preview = node("method:app/ScreenKt#preview()V", NodeKind.FUNCTION,
+            setOf("app/Cycle"), SourceLocation("Screen.kt", 7))
+        val unused = node("method:app/ScreenKt#unused()V", NodeKind.FUNCTION, setOf("app/Unrelated"))
+        val unrelated = node("class:app/Unrelated", NodeKind.ANNOTATION_CLASS)
+        val impostor = node("class:app/NotAnAnnotation", NodeKind.CLASS, setOf(previewContainer))
+        val notPreview = node("method:app/ScreenKt#notPreview()V", NodeKind.FUNCTION, setOf("app/NotAnAnnotation"))
+        val graph = CodeGraph(listOf(devices, nested, cycle, facade, preview, unused, unrelated, impostor, notPreview),
+            listOf(GraphEdge(facade.id, preview.id, EdgeKind.MEMBER), GraphEdge(preview.id, facade.id, EdgeKind.REFERENCE)))
+
+        val evidence = FrameworkAnnotationRetention.find(graph)
+        assertEquals(RetentionReason.RUNTIME_ENTRY_POINT, evidence.single { it.nodeId == preview.id }.reason)
+        assertEquals(SourceLocation("Screen.kt", 7), evidence.single { it.nodeId == preview.id }.location)
+        assertEquals(true, facade.id in ReachabilityAnalyzer.analyze(graph, evidence).reachableNodeIds)
+        assertEquals(emptyList(), evidence.filter { it.nodeId == facade.id })
+        assertEquals(emptyList(), evidence.filter { it.nodeId in setOf(unused.id, unrelated.id, notPreview.id) })
+    }
+
+    @Test
     fun `retains DI members with their owner and serialization classes`() {
         val owner = node("class:dev/fixture/Injected", NodeKind.CLASS)
         val constructor = node(

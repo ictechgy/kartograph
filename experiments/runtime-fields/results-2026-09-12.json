@@ -1,0 +1,1121 @@
+{
+  "date": "2026-09-12",
+  "platform": "Darwin arm64",
+  "baselineCommit": "e505a92a8ca9c705c9f02acc7e145f57c9b0c04a",
+  "candidateSourceSha256": {
+    "index/src/main/kotlin/dev/kartograph/index/ClassFileIndexer.kt": "48d5883845b000446c07d521e821ef98af5fc8de69d264bbb492aa11cac913cf",
+    "index/src/main/kotlin/dev/kartograph/index/RuntimeValueAnalyzer.kt": "498a0d32a6a7320649b577c54b8c6e8993fd0b19e5f956c48b742195cd4a5a90",
+    "index/src/main/kotlin/dev/kartograph/index/RuntimeFieldDemand.kt": "bb838b3527d37a59a6b2983a225e858a8810d1266e7e46b1e31918cf66301fb5"
+  },
+  "fieldComparison": {
+    "scope": "Executed synthetic compiler cases; not real-project repair accuracy or complete runtime coverage.",
+    "versions": {
+      "javac": "javac 17.0.20",
+      "kotlin": "2.4.10"
+    },
+    "kartographJars": {
+      "baseline": {
+        "analysis-0.7.0.jar": "116981527d5d2a8681e87380b9955bf56634d77f5747bcf48a60549638ae2ed5",
+        "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+        "asm-9.9.jar": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4",
+        "asm-analysis-9.9.jar": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b",
+        "asm-tree-9.9.jar": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6",
+        "cli-0.7.0.jar": "af976ffa88281e3d0b235aaa781c295f4020a2f49e886ee332da7f82f5a35656",
+        "core-0.7.0.jar": "54ee52924aacf78072d210dd4d471295162b7bc98b4d3280822bda3c3d8094ec",
+        "export-0.7.0.jar": "1af16b64ae38db60a055c39a4dccd6a214c40b59798d0368b40c6f3a6a7f92e3",
+        "index-0.7.0.jar": "830ee0adaf7990c688955c40c8d624b3261b2f543d09ff14d7badcf4a80563bb",
+        "kotlin-metadata-jvm-2.4.10.jar": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4",
+        "kotlin-stdlib-2.4.10.jar": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+      },
+      "binary": {
+        "analysis-0.7.0.jar": "116981527d5d2a8681e87380b9955bf56634d77f5747bcf48a60549638ae2ed5",
+        "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+        "asm-9.9.jar": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4",
+        "asm-analysis-9.9.jar": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b",
+        "asm-tree-9.9.jar": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6",
+        "cli-0.7.0.jar": "af976ffa88281e3d0b235aaa781c295f4020a2f49e886ee332da7f82f5a35656",
+        "core-0.7.0.jar": "54ee52924aacf78072d210dd4d471295162b7bc98b4d3280822bda3c3d8094ec",
+        "export-0.7.0.jar": "1af16b64ae38db60a055c39a4dccd6a214c40b59798d0368b40c6f3a6a7f92e3",
+        "index-0.7.0.jar": "59c22f85fd88b7c575c298b04cf5be19f08262e015cb478ba778219cf419705f",
+        "kotlin-metadata-jvm-2.4.10.jar": "233aaa84ca268e26d6d3a99ce30401e6dc111a7ae10e0a0b4794ce6351d7adc4",
+        "kotlin-stdlib-2.4.10.jar": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+      }
+    },
+    "repeats": 3,
+    "cases": [
+      {
+        "case": "reflective_initial",
+        "sourceSha256": "4e9df9e099973d369aefbf69c8e62ed39e39e8c7b7667aacec5c8c35e81f2ceb",
+        "runtimeUsed": true,
+        "classSha256": {
+          "probe/Entry$Holder.class": "263020168688312dbf23cc4dc526a49e7db73aeaa1507b79a2d093d53984db0c",
+          "probe/Entry$Target.class": "647238c7ca698f5aa769fe547fc9ea2e53c4d04feb4909773be4e9307f22f8d0",
+          "probe/Entry$Unused.class": "4c21bf8e0873fbe09a52f547d98fc4f4ea4d5877eda2eecb6e6002b7833be6c4",
+          "probe/Entry$Used.class": "39874d980374700fd920ff65466cbf158b4b707bb6acb0d541c129d585bc9135",
+          "probe/Entry.class": "47bd1f40357c832cd21ddaeac4c4551f1b0cfe88e770cedc0fc319ba011c8737"
+        },
+        "dependencySha256": {},
+        "tools": {
+          "baseline": {
+            "captureSeconds": 0.15098504099296406,
+            "snapshotBytes": 4515,
+            "Used": {
+              "mainInImpact": false,
+              "affectedCount": 2,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.0925543750054203,
+              "querySamplesSeconds": [
+                0.09519770898623392,
+                0.08920529100578278,
+                0.0925543750054203
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09348562499508262,
+              "querySamplesSeconds": [
+                0.09719362499890849,
+                0.09348562499508262,
+                0.08962391701061279
+              ]
+            }
+          },
+          "binary": {
+            "captureSeconds": 0.12783970800228417,
+            "snapshotBytes": 4537,
+            "Used": {
+              "mainInImpact": true,
+              "affectedCount": 3,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [
+                {
+                  "accessibility": "public",
+                  "kind": "method",
+                  "location": {
+                    "column": null,
+                    "line": 10,
+                    "path": "src/probe/Entry.java"
+                  },
+                  "module": null,
+                  "name": "main",
+                  "paths": [
+                    {
+                      "changed": "class:probe/Entry$Used",
+                      "edges": [
+                        {
+                          "kind": "reference",
+                          "origin": "runtimeModel",
+                          "source": "method:probe/Entry#main([Ljava/lang/String;)V",
+                          "target": "method:probe/Entry$Target#<init>()V",
+                          "traversal": "dependency"
+                        },
+                        {
+                          "kind": "reference",
+                          "origin": "bytecode",
+                          "source": "method:probe/Entry$Target#<init>()V",
+                          "target": "class:probe/Entry$Used",
+                          "traversal": "dependency"
+                        }
+                      ],
+                      "nodes": [
+                        "method:probe/Entry#main([Ljava/lang/String;)V",
+                        "method:probe/Entry$Target#<init>()V",
+                        "class:probe/Entry$Used"
+                      ],
+                      "revision": "current"
+                    }
+                  ],
+                  "presentIn": [
+                    "current"
+                  ],
+                  "qualifiedName": "probe.Entry.main",
+                  "retention": [
+                    {
+                      "location": {
+                        "column": null,
+                        "line": 1,
+                        "path": "keep.pro"
+                      },
+                      "reason": "keepRule",
+                      "revision": "current"
+                    }
+                  ],
+                  "synthesized": false,
+                  "usr": "method:probe/Entry#main([Ljava/lang/String;)V"
+                }
+              ],
+              "queryMedianSeconds": 0.0920990000013262,
+              "querySamplesSeconds": [
+                0.09204608300933614,
+                0.09232570900348946,
+                0.0920990000013262
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09305791702354327,
+              "querySamplesSeconds": [
+                0.09324270801153034,
+                0.09305791702354327,
+                0.0919356249505654
+              ]
+            }
+          }
+        }
+      },
+      {
+        "case": "direct_string",
+        "sourceSha256": "7717e287a848b6fd5ddbb173c6b953c7f3c5d5900f409ceca8f27beda7354f25",
+        "runtimeUsed": true,
+        "classSha256": {
+          "probe/Entry$Target.class": "a10d81ef4df6ba73bc1ddc763ee3536999df639fb77c11c58295f893f7db8a92",
+          "probe/Entry$Unused.class": "2fd9be9d411c7568355c47258cca8fd6b5b78f495e4933a765f91a8429caf0fe",
+          "probe/Entry$Used.class": "c4dca88f6af4f37281ba4d7514e75f06d3781dea7299eb29c63505c7939dd774",
+          "probe/Entry.class": "9614dd79221a87488e7bdc9b3627e0bbb9c30c81cd8f0ab2e4598d4efca57ec5"
+        },
+        "dependencySha256": {},
+        "tools": {
+          "baseline": {
+            "captureSeconds": 0.1144625410088338,
+            "snapshotBytes": 4597,
+            "Used": {
+              "mainInImpact": false,
+              "affectedCount": 2,
+              "limitations": [
+                "current: reflection-strings: 1 Class.forName call(s) have unresolved names",
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.08920808299444616,
+              "querySamplesSeconds": [
+                0.08725974999833852,
+                0.08920808299444616,
+                0.09056600002804771
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflection-strings: 1 Class.forName call(s) have unresolved names",
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09165187500184402,
+              "querySamplesSeconds": [
+                0.09214466600678861,
+                0.09165187500184402,
+                0.08800920803332701
+              ]
+            }
+          },
+          "binary": {
+            "captureSeconds": 0.11916008300613612,
+            "snapshotBytes": 4653,
+            "Used": {
+              "mainInImpact": true,
+              "affectedCount": 3,
+              "limitations": [
+                "current: reflection-strings: 1 Class.forName call(s) have unresolved names",
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [
+                {
+                  "accessibility": "public",
+                  "kind": "method",
+                  "location": {
+                    "column": null,
+                    "line": 11,
+                    "path": "src/probe/Entry.java"
+                  },
+                  "module": null,
+                  "name": "main",
+                  "paths": [
+                    {
+                      "changed": "class:probe/Entry$Used",
+                      "edges": [
+                        {
+                          "kind": "reference",
+                          "origin": "runtimeModel",
+                          "source": "method:probe/Entry#main([Ljava/lang/String;)V",
+                          "target": "method:probe/Entry$Target#<init>()V",
+                          "traversal": "dependency"
+                        },
+                        {
+                          "kind": "reference",
+                          "origin": "bytecode",
+                          "source": "method:probe/Entry$Target#<init>()V",
+                          "target": "class:probe/Entry$Used",
+                          "traversal": "dependency"
+                        }
+                      ],
+                      "nodes": [
+                        "method:probe/Entry#main([Ljava/lang/String;)V",
+                        "method:probe/Entry$Target#<init>()V",
+                        "class:probe/Entry$Used"
+                      ],
+                      "revision": "current"
+                    }
+                  ],
+                  "presentIn": [
+                    "current"
+                  ],
+                  "qualifiedName": "probe.Entry.main",
+                  "retention": [
+                    {
+                      "location": {
+                        "column": null,
+                        "line": 1,
+                        "path": "keep.pro"
+                      },
+                      "reason": "keepRule",
+                      "revision": "current"
+                    }
+                  ],
+                  "synthesized": false,
+                  "usr": "method:probe/Entry#main([Ljava/lang/String;)V"
+                }
+              ],
+              "queryMedianSeconds": 0.09342870797263458,
+              "querySamplesSeconds": [
+                0.09517091698944569,
+                0.09342870797263458,
+                0.0911592910415493
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflection-strings: 1 Class.forName call(s) have unresolved names",
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.0924273330019787,
+              "querySamplesSeconds": [
+                0.09150500001851469,
+                0.09267550002550706,
+                0.0924273330019787
+              ]
+            }
+          }
+        }
+      },
+      {
+        "case": "reassigned",
+        "sourceSha256": "139f004a8f898737942e27f5efc3f6ae063bb51ceb4ca51061898695444bebb0",
+        "runtimeUsed": true,
+        "classSha256": {
+          "probe/Entry$Holder.class": "ead204daf0f7647b51b051aa1b40d9dfcec1409e0340270946988a8caa689ebc",
+          "probe/Entry$Initial.class": "88e9ac2924859405c4dff3a08144b8540465f058549e1a8d62fc5baf79e5475e",
+          "probe/Entry$Target.class": "a10d81ef4df6ba73bc1ddc763ee3536999df639fb77c11c58295f893f7db8a92",
+          "probe/Entry$Unused.class": "2fd9be9d411c7568355c47258cca8fd6b5b78f495e4933a765f91a8429caf0fe",
+          "probe/Entry$Used.class": "c4dca88f6af4f37281ba4d7514e75f06d3781dea7299eb29c63505c7939dd774",
+          "probe/Entry.class": "e0b3c3e0c6dc4f797837c9c12a7cb4987e8cd6e461dfba4bff587df57948fe36"
+        },
+        "dependencySha256": {},
+        "tools": {
+          "baseline": {
+            "captureSeconds": 0.1162361660390161,
+            "snapshotBytes": 5315,
+            "Used": {
+              "mainInImpact": false,
+              "affectedCount": 2,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09435708302771673,
+              "querySamplesSeconds": [
+                0.09363412501988932,
+                0.09524400002555922,
+                0.09435708302771673
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09282854100456461,
+              "querySamplesSeconds": [
+                0.09313258301699534,
+                0.09282854100456461,
+                0.09069979202467948
+              ]
+            }
+          },
+          "binary": {
+            "captureSeconds": 0.12019033305114135,
+            "snapshotBytes": 5361,
+            "Used": {
+              "mainInImpact": true,
+              "affectedCount": 3,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [
+                {
+                  "accessibility": "public",
+                  "kind": "method",
+                  "location": {
+                    "column": null,
+                    "line": 13,
+                    "path": "src/probe/Entry.java"
+                  },
+                  "module": null,
+                  "name": "main",
+                  "paths": [
+                    {
+                      "changed": "class:probe/Entry$Used",
+                      "edges": [
+                        {
+                          "kind": "reference",
+                          "origin": "runtimeModel",
+                          "source": "method:probe/Entry#main([Ljava/lang/String;)V",
+                          "target": "method:probe/Entry$Target#<init>()V",
+                          "traversal": "dependency"
+                        },
+                        {
+                          "kind": "reference",
+                          "origin": "bytecode",
+                          "source": "method:probe/Entry$Target#<init>()V",
+                          "target": "class:probe/Entry$Used",
+                          "traversal": "dependency"
+                        }
+                      ],
+                      "nodes": [
+                        "method:probe/Entry#main([Ljava/lang/String;)V",
+                        "method:probe/Entry$Target#<init>()V",
+                        "class:probe/Entry$Used"
+                      ],
+                      "revision": "current"
+                    }
+                  ],
+                  "presentIn": [
+                    "current"
+                  ],
+                  "qualifiedName": "probe.Entry.main",
+                  "retention": [
+                    {
+                      "location": {
+                        "column": null,
+                        "line": 1,
+                        "path": "keep.pro"
+                      },
+                      "reason": "keepRule",
+                      "revision": "current"
+                    }
+                  ],
+                  "synthesized": false,
+                  "usr": "method:probe/Entry#main([Ljava/lang/String;)V"
+                }
+              ],
+              "queryMedianSeconds": 0.0914894999586977,
+              "querySamplesSeconds": [
+                0.09070516604697332,
+                0.09533187502529472,
+                0.0914894999586977
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.0923178750090301,
+              "querySamplesSeconds": [
+                0.09420487500028685,
+                0.088815999974031,
+                0.0923178750090301
+              ]
+            }
+          }
+        }
+      },
+      {
+        "case": "inherited",
+        "sourceSha256": "eb7165f9d5462ce1f74642f0bbb55ec916b5802f0367b25c6559955c37e1afef",
+        "runtimeUsed": true,
+        "classSha256": {
+          "probe/Entry$Child.class": "50fba84b8a99cd63447409b53bf69eaf9bbe6cd57656ef25c430aaf80a580b29",
+          "probe/Entry$Parent.class": "d495d722d5e3553250e003aa2f88e62797df52a2161600d7083706c8b12107e3",
+          "probe/Entry$Target.class": "a10d81ef4df6ba73bc1ddc763ee3536999df639fb77c11c58295f893f7db8a92",
+          "probe/Entry$Unused.class": "2fd9be9d411c7568355c47258cca8fd6b5b78f495e4933a765f91a8429caf0fe",
+          "probe/Entry$Used.class": "c4dca88f6af4f37281ba4d7514e75f06d3781dea7299eb29c63505c7939dd774",
+          "probe/Entry.class": "45d417d79788db500c8bda4454a014f8c12b021a48766e67b397fa844ee4b0f4"
+        },
+        "dependencySha256": {},
+        "tools": {
+          "baseline": {
+            "captureSeconds": 0.11489562498172745,
+            "snapshotBytes": 4919,
+            "Used": {
+              "mainInImpact": false,
+              "affectedCount": 2,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09145408304175362,
+              "querySamplesSeconds": [
+                0.08856499998364598,
+                0.09464770799968392,
+                0.09145408304175362
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09304437495302409,
+              "querySamplesSeconds": [
+                0.09343179099960253,
+                0.09304437495302409,
+                0.08998091699322686
+              ]
+            }
+          },
+          "binary": {
+            "captureSeconds": 0.12439854099648073,
+            "snapshotBytes": 4941,
+            "Used": {
+              "mainInImpact": true,
+              "affectedCount": 3,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [
+                {
+                  "accessibility": "public",
+                  "kind": "method",
+                  "location": {
+                    "column": null,
+                    "line": 11,
+                    "path": "src/probe/Entry.java"
+                  },
+                  "module": null,
+                  "name": "main",
+                  "paths": [
+                    {
+                      "changed": "class:probe/Entry$Used",
+                      "edges": [
+                        {
+                          "kind": "reference",
+                          "origin": "runtimeModel",
+                          "source": "method:probe/Entry#main([Ljava/lang/String;)V",
+                          "target": "method:probe/Entry$Target#<init>()V",
+                          "traversal": "dependency"
+                        },
+                        {
+                          "kind": "reference",
+                          "origin": "bytecode",
+                          "source": "method:probe/Entry$Target#<init>()V",
+                          "target": "class:probe/Entry$Used",
+                          "traversal": "dependency"
+                        }
+                      ],
+                      "nodes": [
+                        "method:probe/Entry#main([Ljava/lang/String;)V",
+                        "method:probe/Entry$Target#<init>()V",
+                        "class:probe/Entry$Used"
+                      ],
+                      "revision": "current"
+                    }
+                  ],
+                  "presentIn": [
+                    "current"
+                  ],
+                  "qualifiedName": "probe.Entry.main",
+                  "retention": [
+                    {
+                      "location": {
+                        "column": null,
+                        "line": 1,
+                        "path": "keep.pro"
+                      },
+                      "reason": "keepRule",
+                      "revision": "current"
+                    }
+                  ],
+                  "synthesized": false,
+                  "usr": "method:probe/Entry#main([Ljava/lang/String;)V"
+                }
+              ],
+              "queryMedianSeconds": 0.09156812500441447,
+              "querySamplesSeconds": [
+                0.09156812500441447,
+                0.08743454201612622,
+                0.09185374999651685
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09071391599718481,
+              "querySamplesSeconds": [
+                0.09065191698027775,
+                0.09324837499298155,
+                0.09071391599718481
+              ]
+            }
+          }
+        }
+      },
+      {
+        "case": "kotlin_object",
+        "sourceSha256": "3910b77162a1fde64ff5d247e5687e84ab410adabfe531d6abe7f35422f67836",
+        "runtimeUsed": true,
+        "classSha256": {
+          "probe/Entry.class": "ca3b6a6e61e40d1bc4743d4b1d38f1ae235585fd260750627c64f52117bf7a10",
+          "probe/Holder.class": "47a1187307f4ffc1a6babf33b2c4a5b1c66357efdb4597765793f9563088e777",
+          "probe/Target.class": "8bf40fddb35e104770465d132d748095dc9bf2e8d9956d13b812965713ab94a8",
+          "probe/Unused.class": "466d42f7b025146991decba8e2ebde9c609d473b04b2eaa1ff2b9560925e94d8",
+          "probe/Used.class": "4e4347ff2a8ed5c150461f6ba9cec86839bf588b014e58dbaa8fbaab3f870952"
+        },
+        "dependencySha256": {
+          "kotlin-stdlib-2.4.10.jar": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df",
+          "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+        },
+        "tools": {
+          "baseline": {
+            "captureSeconds": 0.18482141697313637,
+            "snapshotBytes": 5673,
+            "Used": {
+              "mainInImpact": false,
+              "affectedCount": 2,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09381287498399615,
+              "querySamplesSeconds": [
+                0.09381287498399615,
+                0.09333841601619497,
+                0.09442741598468274
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09229879197664559,
+              "querySamplesSeconds": [
+                0.09276362496893853,
+                0.09229879197664559,
+                0.08886520803207532
+              ]
+            }
+          },
+          "binary": {
+            "captureSeconds": 0.18214833398815244,
+            "snapshotBytes": 5696,
+            "Used": {
+              "mainInImpact": true,
+              "affectedCount": 3,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [
+                {
+                  "accessibility": "public",
+                  "kind": "method",
+                  "location": {
+                    "column": null,
+                    "line": 14,
+                    "path": "src/probe/Entry.kt"
+                  },
+                  "module": null,
+                  "name": "main",
+                  "paths": [
+                    {
+                      "changed": "class:probe/Used",
+                      "edges": [
+                        {
+                          "kind": "reference",
+                          "origin": "runtimeModel",
+                          "source": "method:probe/Entry#main([Ljava/lang/String;)V",
+                          "target": "method:probe/Target#<init>()V",
+                          "traversal": "dependency"
+                        },
+                        {
+                          "kind": "reference",
+                          "origin": "bytecode",
+                          "source": "method:probe/Target#<init>()V",
+                          "target": "class:probe/Used",
+                          "traversal": "dependency"
+                        }
+                      ],
+                      "nodes": [
+                        "method:probe/Entry#main([Ljava/lang/String;)V",
+                        "method:probe/Target#<init>()V",
+                        "class:probe/Used"
+                      ],
+                      "revision": "current"
+                    }
+                  ],
+                  "presentIn": [
+                    "current"
+                  ],
+                  "qualifiedName": "probe.Entry.main",
+                  "retention": [
+                    {
+                      "location": {
+                        "column": null,
+                        "line": 1,
+                        "path": "keep.pro"
+                      },
+                      "reason": "keepRule",
+                      "revision": "current"
+                    }
+                  ],
+                  "synthesized": false,
+                  "usr": "method:probe/Entry#main([Ljava/lang/String;)V"
+                }
+              ],
+              "queryMedianSeconds": 0.09323408297495916,
+              "querySamplesSeconds": [
+                0.09323408297495916,
+                0.09389274998102337,
+                0.0903235410223715
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09252962504979223,
+              "querySamplesSeconds": [
+                0.08908470900496468,
+                0.09278470801655203,
+                0.09252962504979223
+              ]
+            }
+          }
+        }
+      },
+      {
+        "case": "unknown_write",
+        "sourceSha256": "d79a6d091b51bae4cc5a7104cc55476822c03cd0502c745cba80c5f25c5b3608",
+        "runtimeUsed": true,
+        "classSha256": {
+          "probe/Entry$Holder.class": "ead204daf0f7647b51b051aa1b40d9dfcec1409e0340270946988a8caa689ebc",
+          "probe/Entry$Initial.class": "88e9ac2924859405c4dff3a08144b8540465f058549e1a8d62fc5baf79e5475e",
+          "probe/Entry$Target.class": "a10d81ef4df6ba73bc1ddc763ee3536999df639fb77c11c58295f893f7db8a92",
+          "probe/Entry$Unused.class": "2fd9be9d411c7568355c47258cca8fd6b5b78f495e4933a765f91a8429caf0fe",
+          "probe/Entry$Used.class": "c4dca88f6af4f37281ba4d7514e75f06d3781dea7299eb29c63505c7939dd774",
+          "probe/Entry.class": "25d852c41b68ec579938d9aeef8ecbbfd3f8f31694e5e651b224bac9f964e1e7"
+        },
+        "dependencySha256": {},
+        "tools": {
+          "baseline": {
+            "captureSeconds": 0.11949995800387114,
+            "snapshotBytes": 5216,
+            "Used": {
+              "mainInImpact": false,
+              "affectedCount": 2,
+              "limitations": [
+                "current: reflection-strings: 1 Class.forName call(s) have unresolved names",
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09288504102732986,
+              "querySamplesSeconds": [
+                0.08835899998666719,
+                0.09288504102732986,
+                0.09335120796458796
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflection-strings: 1 Class.forName call(s) have unresolved names",
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.0916231669834815,
+              "querySamplesSeconds": [
+                0.0898096669698134,
+                0.0916231669834815,
+                0.0928670420544222
+              ]
+            }
+          },
+          "binary": {
+            "captureSeconds": 0.11932175001129508,
+            "snapshotBytes": 5238,
+            "Used": {
+              "mainInImpact": false,
+              "affectedCount": 2,
+              "limitations": [
+                "current: reflection-strings: 1 Class.forName call(s) have unresolved names",
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.09700966702075675,
+              "querySamplesSeconds": [
+                0.09479779202956706,
+                0.09700966702075675,
+                0.0975339999422431
+              ]
+            },
+            "Unused": {
+              "mainInImpact": false,
+              "affectedCount": 1,
+              "limitations": [
+                "current: reflection-strings: 1 Class.forName call(s) have unresolved names",
+                "current: reflective-construction: 1 reflective constructor call(s) require runtime target modeling",
+                "potential-impact: graph dependencies are review candidates; behavior changes, external consumers and runtime paths may require additional validation",
+                "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness"
+              ],
+              "witness": [],
+              "queryMedianSeconds": 0.0944650000310503,
+              "querySamplesSeconds": [
+                0.09097095800098032,
+                0.0944650000310503,
+                0.09507437498541549
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "verificationPassed": true,
+    "failures": []
+  },
+  "publicSample": {
+    "baseline": {
+      "classRoots": 22,
+      "measurements": {
+        "class": {
+          "diagnostics": 4,
+          "seconds": 1.161
+        },
+        "member": {
+          "diagnostics": 2,
+          "seconds": 1.038
+        }
+      },
+      "multipreviewDeclarations": 8,
+      "revision": "12f80da6518e161ed16a06a68e71fb8a873576d6",
+      "snapshot": {
+        "bytes": 26581826,
+        "captureSeconds": 1.291,
+        "queries": [
+          {
+            "seconds": {
+              "live": [
+                1.064,
+                1.087,
+                1.072
+              ],
+              "saved": [
+                0.435,
+                0.414,
+                0.446
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/MainActivity"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.081,
+                1.066,
+                1.065
+              ],
+              "saved": [
+                0.428,
+                0.427,
+                0.427
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/core/datastore/ListToMapMigration"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.065,
+                1.072,
+                1.04
+              ],
+              "saved": [
+                0.425,
+                0.433,
+                0.432
+              ]
+            },
+            "symbol": "method:com/google/samples/apps/nowinandroid/feature/foryou/impl/ForYouScreenKt#ForYouScreenLoading(Landroidx/compose/runtime/Composer;I)V"
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "classRoots": 22,
+      "measurements": {
+        "class": {
+          "diagnostics": 4,
+          "seconds": 1.165
+        },
+        "member": {
+          "diagnostics": 2,
+          "seconds": 1.041
+        }
+      },
+      "multipreviewDeclarations": 8,
+      "revision": "12f80da6518e161ed16a06a68e71fb8a873576d6",
+      "snapshot": {
+        "bytes": 26581826,
+        "captureSeconds": 1.322,
+        "queries": [
+          {
+            "seconds": {
+              "live": [
+                1.061,
+                1.084,
+                1.03
+              ],
+              "saved": [
+                0.421,
+                0.431,
+                0.443
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/MainActivity"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.077,
+                1.085,
+                1.058
+              ],
+              "saved": [
+                0.424,
+                0.431,
+                0.425
+              ]
+            },
+            "symbol": "class:com/google/samples/apps/nowinandroid/core/datastore/ListToMapMigration"
+          },
+          {
+            "seconds": {
+              "live": [
+                1.051,
+                1.048,
+                1.038
+              ],
+              "saved": [
+                0.429,
+                0.432,
+                0.436
+              ]
+            },
+            "symbol": "method:com/google/samples/apps/nowinandroid/feature/foryou/impl/ForYouScreenKt#ForYouScreenLoading(Landroidx/compose/runtime/Composer;I)V"
+          }
+        ]
+      }
+    }
+  },
+  "selfAnalysis": {
+    "status": "PASS",
+    "perCommandBudget": 5.0,
+    "totalBudget": 15.0,
+    "totalSeconds": 2.403,
+    "measurements": {
+      "graph": {
+        "seconds": 0.405,
+        "returncode": 0,
+        "nodes": 3528
+      },
+      "dead": {
+        "seconds": 0.401,
+        "returncode": 0,
+        "findings": 0
+      },
+      "dead_private": {
+        "seconds": 0.41,
+        "returncode": 0,
+        "findings": 0
+      },
+      "cycles": {
+        "seconds": 0.365,
+        "returncode": 0
+      },
+      "rules": {
+        "seconds": 0.455,
+        "returncode": 0
+      },
+      "metrics": {
+        "seconds": 0.367,
+        "returncode": 0,
+        "rows": 6
+      }
+    },
+    "contractFailures": [],
+    "budgetFailures": []
+  },
+  "existingRuntimeDifferential": {
+    "buildTools": "35.0.0",
+    "r8Version": "R8 8.6.2-dev (build abaab469b5ebd4dd2bb91ba0ed6f45277faae4ca from go/r8bot (luci-r8-custom-ci-archive-0-77gl))",
+    "r8Sha256": "305622ad00535684534eb8f742cbf5e628a9abc09d8ea4d39d1babb95bf0cee5",
+    "cases": [
+      {
+        "case": "callback_registered",
+        "runtimeUsed": true,
+        "kartographState": "reachable",
+        "r8KeepsUsed": true,
+        "r8Exit": 0,
+        "r8PreservesExecution": true,
+        "unusedControl": "unreachable",
+        "r8Reasons": [
+          "instantiation",
+          "keepRule"
+        ]
+      },
+      {
+        "case": "callback_unregistered",
+        "runtimeUsed": false,
+        "kartographState": "reachable",
+        "r8KeepsUsed": true,
+        "r8Exit": 0,
+        "r8PreservesExecution": true,
+        "unusedControl": "unreachable",
+        "r8Reasons": [
+          "instantiation",
+          "keepRule"
+        ]
+      },
+      {
+        "case": "direct_call",
+        "runtimeUsed": true,
+        "kartographState": "reachable",
+        "r8KeepsUsed": true,
+        "r8Exit": 0,
+        "r8PreservesExecution": true,
+        "unusedControl": "unreachable",
+        "r8Reasons": [
+          "instantiation",
+          "keepRule"
+        ]
+      },
+      {
+        "case": "factory_name",
+        "runtimeUsed": true,
+        "kartographState": "reachable",
+        "r8KeepsUsed": false,
+        "r8Exit": 1,
+        "r8PreservesExecution": false,
+        "unusedControl": "unreachable",
+        "r8Reasons": [
+          "notKept"
+        ]
+      },
+      {
+        "case": "reflective_field",
+        "runtimeUsed": true,
+        "kartographState": "reachable",
+        "r8KeepsUsed": false,
+        "r8Exit": 1,
+        "r8PreservesExecution": false,
+        "unusedControl": "unreachable",
+        "r8Reasons": [
+          "notKept"
+        ]
+      },
+      {
+        "case": "reflective_method",
+        "runtimeUsed": true,
+        "kartographState": "reachable",
+        "r8KeepsUsed": true,
+        "r8Exit": 0,
+        "r8PreservesExecution": true,
+        "unusedControl": "unreachable",
+        "r8Reasons": [
+          "reflection",
+          "instantiation",
+          "keepRule"
+        ]
+      }
+    ]
+  }
+}

@@ -49,10 +49,10 @@ public class LayerRuleEvaluator(
         return LayerAssignment(null, null, null)
     }
 
-    /** 공용 usage 간선에 걸린 모든 위반을 간선의 결정적 순서로 반환한다. */
+    /** 선언 의존 간선에 걸린 모든 위반을 간선의 결정적 순서로 반환한다. */
     public fun evaluate(graph: CodeGraph): List<LayerViolation> {
         val assignments = graph.nodes.mapValues { assignment(it.value).layer }
-        return graph.edges.filter { it.kind.impliesUsage }.flatMap { edge ->
+        return graph.edges.filter(ArchitectureGraph::isDependency).flatMap { edge ->
             val source = assignments[edge.source] ?: return@flatMap emptyList()
             val target = assignments[edge.target] ?: return@flatMap emptyList()
             if (source == target) return@flatMap emptyList()

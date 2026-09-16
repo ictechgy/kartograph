@@ -26,17 +26,70 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
-      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+      # android-actions/setup-android v4.0.1은 cmdline-tools 구 URL 변경(android-actions#536)으로
+      # 404가 난다. 러너 기본 sdkmanager로 라이선스를 승인하고 필요한 패키지를 설치한다.
+      - name: Accept Android SDK licenses
+        run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
       - name: Install fixture Android platform
-        run: sdkmanager "platforms;android-36"
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
       - name: Test and verify coverage
         run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
+      - name: Preserve failed test details
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: failed-tests
+          path: '*/build/test-results/test/*.xml'
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Verify CLI contract
         run: Scripts/verify-cli-contract.sh
       - name: Verify PR gate against real Git and compiler outputs
         run: python3 -m unittest discover -s Scripts/tests -v
+      - name: Verify automatic Gradle snapshots and CI impact
+        run: python3 Scripts/verify-gradle-impact-ci.py
+      - name: Preserve Gradle impact CI evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: gradle-impact-ci
+          path: build/reports/gradle-impact-ci/result.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Verify analysis smoke gate and self-analysis contracts
+        run: python3 Scripts/verify-analysis-smoke-gate.py
       - name: Verify agent query and bridge contracts
         run: Scripts/verify-agent-surface.sh
+      - name: Verify runtime blind-spot corpus
+        run: python3 Scripts/verify-runtime-corpus.py
+      - name: Verify runtime and R8 differential contracts
+        run: python3 Scripts/verify-runtime-contracts.py
+      - name: Compare compiler references before constant inlining
+        run: python3 experiments/compiler-references/run.py
+      - name: Verify Dagger selected binding evidence
+        run: python3 experiments/dagger-bindings/run.py
+      - name: Verify compiler collectors and product evidence lifecycle
+        run: |
+          ./gradlew --no-daemon -p compiler-collectors integrationTest
+          python3 Scripts/verify-compiler-evidence.py
+      - name: Preserve compiler evidence validation
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: compiler-evidence-validation
+          path: build/reports/compiler-evidence-integration/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Compare callgraph precision
+        run: python3 experiments/callgraph-precision/run.py
+      - name: Preserve precision comparison evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: callgraph-precision
+          path: |
+            build/reports/callgraph-precision/results.json
+            build/reports/callgraph-precision/timings.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify Android fixture corpus
         run: Scripts/verify-fixture-corpus.sh
       - name: Verify Gradle plugin against Android fixture
@@ -62,8 +115,20 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
           cache: gradle
+      - name: Accept Android SDK licenses
+        run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
+      - name: Install Android snapshot test platform
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
       - name: Verify supported JDK
         run: ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} test :gradle-plugin:validatePlugins
+      - name: Preserve failed compatibility test details
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: failed-tests-jdk-${{ matrix.java }}
+          path: '*/build/test-results/test/*.xml'
+          if-no-files-found: ignore
+          retention-days: 7
 
   agp-minimum:
     runs-on: ubuntu-latest
@@ -76,8 +141,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
-      - run: sdkmanager "platforms;android-35"
+      - name: Accept Android SDK licenses
+        run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35"'
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
         with:
           gradle-version: '8.10.2'

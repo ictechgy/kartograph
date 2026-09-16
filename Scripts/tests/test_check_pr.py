@@ -124,6 +124,13 @@ class CheckPrTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["suppressedCount"], 1)
 
+    def test_service_resources_option_is_forwarded(self):
+        resources = self.project / "services"
+        resources.mkdir()
+        result = self.gate("--service-resources", "services")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["suppressedCount"], 1)
+
     def test_inherited_git_override_is_not_forwarded_to_cli(self):
         binary = self.project / "environment-cli"
         binary.write_text("#!/usr/bin/env python3\nimport os, sys\nsys.exit(7 if 'GIT_DIR' in os.environ else 0)\n")

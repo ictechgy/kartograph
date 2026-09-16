@@ -6,22 +6,157 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-16
+
+### Added
+
+- `why <symbol>` 명령은 `dead`와 같은 입력·분석으로 한 선언의 보존 상태, 파일:줄 근거, 보존 root부터의 대표 경로,
+  직접 caller, test-only 표시, 측정된 신뢰도 등급을 한 번에 출력한다. 답은 도달성 사실이며 삭제 승인이 아니다.
+- JSON·SARIF·markdown finding에 `confidence` 등급(`static`/`needs-runtime-review`/`unmeasured`)을 싣는다.
+  같은 소스 파일에서 측정된 미해결 runtime 채널 관측에서 산출하며 text/gradle/github-actions 출력은 바꾸지 않는다.
+- `dead --suppress <file>`은 `expires` 날짜가 있는 finding 억제를 fail-closed로 읽고, 만료된 억제는 풀어
+  machine report의 `expiredSuppressions`에 남긴다. `markdown` 리포트 형식과 dead JSON을 PR 코멘트 본문으로 바꾸는
+  `Scripts/render-dead-comment.py`를 추가한다.
+- Gradle plugin의 Android **application** variant 자동 캡처가 `process<Variant>Resources`의 생성 `R.jar`를
+  resource producer witness로 덮는다. 0.9.0에서 `unwitnessed-class-root`로 거부되던 application snapshot이
+  `matched`가 되고, R.jar가 바뀌면 `stale`로 보고한다. task 실패 시 witness를 기록하지 않는다.
+- `bridges --target flutter --messages`는 Kotlin/JVM Flutter `BasicMessageChannel`의 실제 `setMessageHandler`
+  등록을 선택적으로 bridge-facts v2로 내보낸다. literal 채널 이름과 immutable alias만 해석하고,
+  Kotlin `var`·Java non-final·재할당된 이름은 dynamic으로 남긴다. Kotlin 송신 호출은 fact로 만들지 않고
+  `unscanned-message-sends` limitation으로 센다.
+- `--graph-file`을 주면 관찰 위치를 compiler snapshot의 실제 Kotlin/JVM 함수·메서드 정점과 조인할 때만
+  `symbol.usr`를 붙이고, graph가 없거나 위치가 모호하면 `missing-handler-usrs` limitation을 보존한다.
+  MethodChannel 사실도 같은 compiler 신원을 사용하며, snapshot 신선도를 먼저 확인해 stale 그래프의 USR은 버리고
+  `graph-file-freshness-<status>` limitation으로 기록한다.
+
 ### Fixed
 
-- source 탐색과 skill 설치가 프로젝트 밖 심볼릭 링크를 따라 읽거나 쓰지 않도록 경계를 검사한다.
-- 컴파일 선언이 없는 입력을 실패로 처리하고 명령에 맞지 않거나 다른 모드에서 무시되는 CLI 옵션을 거부한다.
-- source 신선도를 대응 class별로 비교하고 대응 불가능한 source는 계량 한계로 알린다.
-- 누락된 JDK 상위 타입을 오류에 안내하고 bridges 시각은 반복 가능한 source snapshot 시각으로 기록한다.
+- bridge-facts v1과 v2의 위치 열을 교환 계약대로 UTF-8 byte offset으로 계산한다. 다국어 주석이 앞에 있는
+  줄에서 문자 인덱스를 열로 내던 문제를 바로잡는다.
+- Kotlin 함수 범위 계산에서 주석과 `when` 제어문을 제외해 compiler symbol 귀속이 오염되지 않게 한다.
+
+### Changed
+
+- ASM 9.10.1과 kotlin-metadata-jvm 2.4.20으로 갱신하고 의존성 검증 metadata를 다시 생성했다.
+- `bridges` 문서의 `project`는 `.` 대신 입력 root의 canonical POSIX 절대경로다. 모든 위치는 여전히 project-relative다.
+
+## [0.9.0] - 2026-09-14
+
+### Added
+
+- `snapshot --index-cache`와 Gradle snapshot의 선택적 로컬 파싱 캐시를 추가한다.
+  현재 class 내용·분석기 구현·dependency JAR 내용을 확인하고, 변경되지 않은 파싱 사실만 재사용한다.
+  입력 신선도·전체 분석·보존·source 위치는 다시 계산하며 cold/warm/변경 입력의 snapshot 일치를 검증한다.
+- `mcp`는 MCP 2025-11-25 stdio에서 `query_symbol`·`impact`·`freshness`를 제공한다.
+  시작 시 고정한 snapshot과 CLI의 분석·보고 경로를 공유하고, 크기 제한·취소·EOF·실제 Claude 연결을 검증한다.
+- 정확히 선택되는 Java private/final instance helper와 Kotlin object/companion의 String/Class 반환값을 추적한다.
+  실제 실행 표본 4건의 누락 경로를 복원하고 override·receiver 상태·재귀·분석 한도는 unknown으로 유지한다.
+- 저장·읽기 한도를 명시하는 `--snapshot-max-mib`와 Gradle `snapshotMaxMiB`를 추가한다.
+  기본 64 MiB를 유지하며 최대 128 MiB까지 허용한다. 실제 fastjson2 core/test의 88.7 MB snapshot을 검증한다.
+
+### Fixed
+
+- 공개 Gradle 표본의 classpath 수집을 task 실행 시점으로 옮겨 configuration lifecycle 오류를 해결한다.
+- 자기 분석 smoke의 정점 수 검증을 독립 JSON 출력과 대조해 제품 성장에도 정점과 간선을 구분한다.
+- 저장할 수 없는 큰 JAR 때문에 cache population을 반복하지 않고, 캐시 사용 불가 통계를 class당 한 번 센다.
+- 실제 class header의 FINAL을 사용하고, 런타임 입력에 기여하지 않는 helper 호출이 분석 예산을 소진하지 않도록 한다.
+- MCP의 실패한 source-style selector에 실제 USR 후보를 제공하며 overload를 임의 선택하지 않는다.
+  도구 내용은 16 KiB로 제한하고, 페이지·경로 예산 조정을 명시해 클라이언트 표시 한도에 대응한다.
+- `impact --summary-limit`와 MCP `summaryLimit`으로 전역 요약 항목 수를 별도로 제한한다.
+  원래·반환·생략 수를 기록하며 선택·영향 후보·경로·분석 한계를 바꾸지 않는다.
+- MCP worker의 치명적 오류가 영구 busy 상태를 남기지 않도록 종료하며,
+  graph 명령의 손상·누락 classpath 입력을 정제된 도구 오류 2로 반환한다.
+- 중첩 JSON 출력의 임시 문자열 생성을 줄이며 기존 출력 바이트와 문자 식별자를 보존한다.
+
+### Changed
+
+- `QuerySnapshotCodec`의 기본 render도 reader와 같은 64 MiB 한도를 적용한다.
+  큰 문서를 직접 만드는 API 호출은 명시적 한도 overload를 사용하며 최대 128 MiB까지 허용한다.
+- AI 변경 전 조사 48회와 원본 입력 감사를 공개한다. 일반적인 AI 생산성 향상은 미입증으로 유지한다.
+
+## [0.8.0] - 2026-09-13
+
+### Added
+
+- 선택적 javac/Kotlin 2.4.10 상수 참조와 javac Dagger 2.59 선택 binding collector를 compiler 증거와 함께 snapshot에 연결하고, 불완전한 참조를 계량한다.
+
+- Gradle JVM main/test의 `kartographSnapshot` 자동 수집과 checkout 전용 external-input bindings를 추가한다.
+  Kotlin/Java별 실제 소스·출력·compiler 증거를 확인하며, 누락된 compiler와 정상 `NO-SOURCE`를 구분한다.
+- Android variant의 `kartographSnapshot<Variant>`는 main/unit-test compiler 증거와 SDK·manifest·XML 입력을 함께 캡처한다.
+  실제 AGP 9.3.2 배포 JAR 소비, configuration cache, 같은 수정 시각의 내용 변경과 테스트 소스 삭제를 검증한다.
+- compiler task의 source/class/config/classpath 지문을 snapshot에 연결하고 `verify-snapshot`과 CI helper에서
+  내용 일치·stale·미검증 상태를 구분한다. Java/Kotlin producer의 실패·캐시·경로 이동과 Android 입력을 검증한다.
+- `impact`: 수정 예정 심볼/파일의 직접·간접 영향 후보를 시점별 경로·간선 출처와 함께 보고한다.
+  base/current snapshot, 삭제·rename 경로, interface override 계약, CI helper와 에이전트 스킬을 연결한다.
+- `snapshot --include-paths --revision --scope`와 lossless `--compact` v2. 기존 v1/query 필드 호환성을 유지한다.
+- 공개 OkHttp/AnkiDroid 실제 회귀, runtime 영향 경로, 읽기 전용 AI 질의 비교와 재현·채점 스크립트.
+- 프로젝트 static helper의 String/Class 반환값과 불변 인자를 제한적으로 전파해 reflection 대상을 연결한다.
+  Java/Kotlin 실행·overload·unknown·재귀·분석량 제한 회귀와 SearchDeadCode/R8 비교 실험을 추가한다.
+- `snapshot`과 `query --graph-file`: 그래프·보존 근거·baseline 상태·계량 한계를 저장하고 원본 입력 없이 질의한다.
+- `--generated-classes`와 Gradle `generatedClassRoots`: 생성 전용 컴파일 입력의 출처로 선언을 구분하며 정점·간선은 유지한다.
+
+### Changed
+
+- CLI `impact`의 기본 정렬을 `review`로 바꿔 직접·간접 경로를 구조적·미확인 경로보다 먼저 보여준다.
+  전체 후보·경로·한계는 유지한다. 기존 순서는 `--sort usr`로 선택하며 분석 API의 기본 정렬은 바뀌지 않는다.
+
+### Fixed
+
+- 일시적인 입력 변경·관측 실패가 해결된 뒤 이전 rejection 기록에 묶이지 않고 compiler 증거를 다시 생성한다.
+- 빌드 실패 후 비어 있는 witness 출력이 `UP-TO-DATE`로 고정되는 문제를 복구하고, 실패 기록 삭제를 빌드 종료 시점으로 옮긴다.
+- included build 하위 convention 모듈의 설정·소스 변경도 snapshot 입력으로 추적한다.
+- 자동 compiler 관측의 미지원 입력으로 일반 빌드를 중단하지 않고, 스냅샷 요청에서 증거 거부 사유를 보고한다.
+- 하위 프로젝트의 상위 설정 파일 연결과 설정 변경 추적을 보완하고, 설정 파일·catalog·build logic의 추가도 감지한다.
+- Kotlin compiler witness의 toolchain 연결이 기존 bytecode target을 덮어쓰지 않도록 보존한다.
+  JDK 21 / target 17 Android 일반 빌드와 자동 수집을 비교해 검증한다.
+- static field의 String/Class 초기값·재대입·reflection get/set에서 알려진 런타임 후보를 복원한다.
+  필드의 불확실성을 유지하며, classfile String 상수·상속/숨김·분석 한도와 Java/Kotlin 실행 대조를 검증한다.
+- 프로젝트와 dependency에 정의된 반복·중첩 Compose multipreview 어노테이션을 보존 근거로 연결한다.
+- JAR의 2초 시각 정밀도 안에서 발생한 차이는 stale로 단정하지 않고 freshness unknown으로 표시한다.
+
+## [0.7.0] - 2026-09-09
+
+### Added
+
+- Java/Kotlin 4개 표본에서 실제 실행과 SootUp CHA/RTA·WALA 0-1-CFA·kartograph를 대조하는 정밀도 실험과 CI 검증.
+- 호출 signature로 선택하는 JDK runtime 모델 목록과 외부 호출의 모델 ID.
+- 알려진 reflection method/field 접근을 연결하고 미해결 호출을 각각 계량한다.
+- 실제 Dagger SPI의 qualifier별 선택 binding을 JVM 선언에 연결하고 stale 입력·누락 binding을 거부하는 독립 실험.
+- DroidBench 패턴의 Java 실행·kartograph 후보·R8 보존/실행을 분리하는 6개 차등 회귀 계약과 CI 검증.
+
+## [0.6.0] - 2026-09-08
+
+### Added
+
+- 인라인 전 javac/FIR 상수 참조를 같은 입력의 그래프에 연결하는 독립 비교 실험과 CI 검증을 추가한다(제품 자동 보강은 아님).
+- 제한된 메서드 내 값 추적에 기반한 class 로딩·reflection 생성자, 외부 상위 타입 dispatch와 서비스 provider 입력을 그래프에 연결한다.
+- 간선 출처와 외부 호출 해석 상태를 JSON에 기록하고 Java/Kotlin 실행 코퍼스 13건을 CI에서 검증한다.
+- 외부 호출 사실을 앱 선언과 분리해 그래프에 보존하고 런타임 사각지대와 상수 참조 손실을 query에 계량한다.
+- Java/Kotlin 런타임·상수·DI 반례를 고정한 compiler 코퍼스를 추가한다.
+
+### Fixed
+
+- 인코딩된 어노테이션 기본값의 class 참조를 도달성에 반영한다.
+- 상수 field query가 보존된 owner와 달리 unreachable로 보이지 않도록 INLINE_CONSTANT 근거를 공유한다.
+
+## [0.5.0] - 2026-09-08
+
+### Added
+
+- AGP 8.7.3 / Gradle 8.10.2 / KGP 2.0.21의 영구 소비 프로젝트와 CI 게이트.
+- 빌드 의존성 SHA256 검증, Dependabot, 배포 runtime CycloneDX SBOM과 SHA256SUMS.
 
 ### Changed
 
 - 세 source 스캐너가 실제 하위 디렉터리 가지치기를 공유한다. XML 위치 계산은 파일당 줄 목록을 한 번 읽는다.
 - query는 class 인덱싱에서 수집한 runtime 관측값을 재사용한다.
 
-### Added
+### Fixed
 
-- AGP 8.7.3 / Gradle 8.10.2 / KGP 2.0.21의 영구 소비 프로젝트와 CI 게이트.
-- 빌드 의존성 SHA256 검증, Dependabot, 배포 runtime CycloneDX SBOM과 SHA256SUMS.
+- source 탐색과 skill 설치가 프로젝트 밖 심볼릭 링크를 따라 읽거나 쓰지 않도록 경계를 검사한다.
+- 컴파일 선언이 없는 입력을 실패로 처리하고 명령에 맞지 않거나 다른 모드에서 무시되는 CLI 옵션을 거부한다.
+- source 신선도를 대응 class별로 비교하고 대응 불가능한 source는 계량 한계로 알린다.
+- 누락된 JDK 상위 타입을 오류에 안내하고 bridges 시각은 반복 가능한 source snapshot 시각으로 기록한다.
 
 ## [0.4.1] - 2026-09-07
 
@@ -157,7 +292,13 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/ictechgy/kartograph/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/ictechgy/kartograph/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/ictechgy/kartograph/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/ictechgy/kartograph/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/ictechgy/kartograph/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/ictechgy/kartograph/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/ictechgy/kartograph/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ictechgy/kartograph/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/ictechgy/kartograph/compare/v0.3.0...v0.3.1

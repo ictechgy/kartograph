@@ -7,12 +7,19 @@ import dev.kartograph.analysis.SymbolQuery
 import dev.kartograph.core.Finding
 import dev.kartograph.export.AgentDocumentRenderer
 import dev.kartograph.export.BaselineCodec
+import dev.kartograph.export.QuerySnapshot
+import dev.kartograph.export.QuerySnapshotCodec
+import dev.kartograph.export.QuerySnapshotSizeException
 import dev.kartograph.index.AndroidManifestScanner
 import dev.kartograph.index.AndroidXmlScanner
 import dev.kartograph.index.BridgeFactScanner
 import dev.kartograph.index.ClassFileIndexer
+import dev.kartograph.index.ClassIndexCache
+import dev.kartograph.index.CompilerEvidenceContext
+import dev.kartograph.index.CompilerEvidenceIndexer
 import dev.kartograph.index.ClassHierarchyIndexer
 import dev.kartograph.index.KeepRuleScanner
+import dev.kartograph.index.KeepRuleScanningException
 import dev.kartograph.index.RuntimeLimitationScanner
 import java.io.PrintStream
 import java.nio.file.Files
@@ -109,15 +116,38 @@ internal object AgentCommand {
         }
         val requested = arguments.firstOrNull()?.takeUnless { it.startsWith('-') }
             ?: return usage(error, "query requires a symbol")
+        val options = arguments.drop(1)
+        return if ("--graph-file" in options) savedQuery(requested, options, output, error)
+        else compiledQuery(options, requested, output, error)
+    }
+
+    fun snapshot(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
+        if (arguments == listOf("--help") || arguments == listOf("-h")) {
+            output.print(SNAPSHOT_HELP)
+            return ExitStatus.SUCCESS.code
+        }
+        return compiledQuery(arguments, null, output, error)
+    }
+
+    private fun compiledQuery(arguments: List<String>, requested: String?, output: PrintStream, error: PrintStream): Int {
         val options = parsePaths(
-            arguments.drop(1),
+            arguments,
             setOf(
-                "--classes", "--project", "--depth", "--limit", "--manifest", "--resources", "--namespace",
-                "--keep-rules", "--classpath", "--baseline", "--include-private-members",
-            ),
+                "--classes", "--project", "--manifest", "--resources", "--namespace",
+                "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes",
+            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings", "--compiler-evidence", "--input", "--index-cache", "--snapshot-max-mib"),
             error,
         )
             ?: return ExitStatus.USAGE.code
+        val snapshotLimit = if (requested == null) SnapshotFiles.limit(options.values("--snapshot-max-mib"))
+            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128") else null
+        if (requested == null) {
+            if (options.values("--revision").size > 1 || options.values("--scope").size > 1) return usage(error, "duplicate snapshot context option")
+            if (options.values("--index-cache").size > 1 || options.single("--index-cache")?.isBlank() == true)
+                return usage(error, "--index-cache requires one non-empty directory path")
+            if (options.single("--revision")?.let { !Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(it) } == true) return usage(error, "snapshot revision must be a full commit hash")
+            if (options.single("--scope")?.let { it.length > 200 || !Regex("[A-Za-z0-9_.:-]+").matches(it) } == true) return usage(error, "scope must be a portable project:variant label")
+        }
         val classRoots: List<Path>
         val project: Path
         try {
@@ -136,44 +166,125 @@ internal object AgentCommand {
         }
         val depth = options.positiveInt("--depth", 1, error) ?: return ExitStatus.USAGE.code
         val limit = options.positiveInt("--limit", 50, error) ?: return ExitStatus.USAGE.code
+        if (options.values("--compiler-evidence").isNotEmpty() && options.single("--scope") == null)
+            return usage(error, "--compiler-evidence requires --scope and completed --build-witness inputs")
+        if (options.values("--input").isNotEmpty() && options.values("--compiler-evidence").isEmpty())
+            return usage(error, "--input requires --compiler-evidence on snapshot")
+        val externalInputs = try { FreshnessCommand.inputBindings(options.values("--input")) }
+            catch (_: IllegalArgumentException) { return usage(error, "invalid --input binding") }
         return try {
-            val indexed = ClassFileIndexer().indexWithObservations(classRoots)
-            val graph = indexed.graph
             val classpath = options.values("--classpath").map { resolveProjectPath(project, it) }
-            val hierarchy = ClassHierarchyIndexer().index(classpath, graph.nodes.values.flatMap { it.supertypes })
-            val inputEvidence = buildList {
-                options.single("--manifest")?.let { manifest ->
-                    val namespace = options.single("--namespace")
-                        ?: return usage(error, "query with --manifest requires --namespace")
-                    addAll(AndroidManifestScanner(project).scan(resolveProjectPath(project, manifest), namespace))
-                }
-                options.values("--resources").forEach { resources ->
-                    addAll(AndroidXmlScanner(project).scan(resolveProjectPath(project, resources)))
+            val keepScanner = KeepRuleScanner(project, options.values("--include-private-members").isNotEmpty())
+            val keepRules = keepScanner.scan(options.values("--keep-rules").map { resolveProjectPath(project, it) })
+            val generatedRoots = options.values("--generated-classes").map(Path::of)
+            val compilerEvidence = options.values("--compiler-evidence").map { resolveProjectPath(project, it) }
+            val fingerprintFiles = classRoots.map { "classes" to it } + classpath.map { "classpath" to it } +
+                compilerEvidence.map { "compilerEvidence" to it } +
+                generatedRoots.map { "generated-classes" to it } +
+                listOf("--manifest", "--resources", "--service-resources", "--baseline", "--source-root", "--build-input").flatMap { option ->
+                    val role = when (option) { "--source-root" -> "sources"; "--build-input" -> "buildConfig"; else -> option.removePrefix("--") }
+                    options.values(option).map { role to resolveProjectPath(project, it) }
+                } + keepScanner.inputFiles.map { "keepRules" to it }
+            val context = listOf("--namespace", "--include-private-members", "--include-paths", "--scope").flatMap { listOf(it) + options.values(it) }
+            val witnessPaths = options.values("--build-witness").map { resolveProjectPath(project, it) }
+            val indexCache = options.single("--index-cache")?.let { ClassIndexCache(resolveProjectPath(project, it)) }
+            var captureHashNanos = 0L
+            var renderNanos = 0L
+            var renderedSnapshot: String? = null
+            var indexStatistics: dev.kartograph.index.IndexingStatistics? = null
+            fun capture(scope: dev.kartograph.index.VerifiedCaptureScope): dev.kartograph.core.SnapshotProvenance {
+                val started = System.nanoTime()
+                return FreshnessCommand.capture(project, fingerprintFiles, context, witnessPaths, scope).also {
+                    captureHashNanos += System.nanoTime() - started
                 }
             }
-            val keepRules = KeepRuleScanner(project, options.values("--include-private-members").isNotEmpty()).scan(
-                options.values("--keep-rules").map { resolveProjectPath(project, it) },
-            )
-            val evidence = DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,
-                includePrivateMembers = options.values("--include-private-members").isNotEmpty())
-            val reachability = ReachabilityAnalyzer.analyze(graph, evidence)
-            val baseline = options.single("--baseline")?.let { path ->
-                BaselineCodec.parse(Files.readString(resolveProjectPath(project, path)))
-            }.orEmpty()
-            val suppressed = graph.nodes.values
-                .filter { node -> Finding(node.id, node.location).fingerprint in baseline }
-                .mapTo(mutableSetOf()) { node -> node.id }
-            val document = SymbolQuery.query(
-                graph,
-                reachability,
-                requested,
-                RuntimeLimitationScanner.scan(indexed, project),
-                depth,
-                limit,
-                suppressed,
-            )
-            output.print(AgentDocumentRenderer.query(document))
-            if (document.status == "found") ExitStatus.SUCCESS.code else ExitStatus.USAGE.code
+            fun analyze(scope: dev.kartograph.index.VerifiedCaptureScope?, provenance: dev.kartograph.core.SnapshotProvenance?): Int {
+                val services = options.values("--service-resources").map { resolveProjectPath(project, it) }
+                val indexed = scope?.indexWithObservations(classRoots, classpath, services, generatedRoots, indexCache)
+                    ?: ClassFileIndexer().indexWithObservations(classRoots, classpath, services, generatedRoots)
+                indexStatistics = indexed.statistics
+                val compilerFacts = try {
+                    CompilerEvidenceIndexer.enrich(indexed, classRoots, compilerEvidence,
+                        if (compilerEvidence.isEmpty()) null else CompilerEvidenceContext(project, requireNotNull(options.single("--scope")),
+                            requireNotNull(provenance), externalInputs))
+                } catch (evidenceError: IllegalArgumentException) {
+                    error.println("error: ${evidenceError.message ?: "invalid compiler evidence"}")
+                    return ExitStatus.FAILURE.code
+                }
+                val graph = compilerFacts.graph
+                val hierarchy = indexed.hierarchy
+                val inputEvidence = buildList {
+                    options.single("--manifest")?.let { manifest ->
+                        val namespace = options.single("--namespace")
+                            ?: return usage(error, "query with --manifest requires --namespace")
+                        addAll(AndroidManifestScanner(project).scan(resolveProjectPath(project, manifest), namespace))
+                    }
+                    options.values("--resources").forEach { resources ->
+                        addAll(AndroidXmlScanner(project).scan(resolveProjectPath(project, resources)))
+                    }
+                }
+                val evidence = DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,
+                    includePrivateMembers = options.values("--include-private-members").isNotEmpty())
+                val baseline = options.single("--baseline")?.let { path ->
+                    BaselineCodec.parse(Files.readString(resolveProjectPath(project, path)))
+                }.orEmpty()
+                val suppressed = graph.nodes.values
+                    .filter { node -> Finding(node.id, node.location).fingerprint in baseline }
+                    .mapTo(mutableSetOf()) { node -> node.id }
+                val limitations = RuntimeLimitationScanner.scan(indexed, project) + buildList {
+                    if (compilerFacts.unmappedReferences > 0) add("compiler-evidence-unmapped-references: ${compilerFacts.unmappedReferences}")
+                    if (compilerFacts.outsideGraphReferences > 0) add("compiler-evidence-outside-graph: ${compilerFacts.outsideGraphReferences}")
+                    if (compilerFacts.shadowedReferences > 0) add("compiler-evidence-shadowed-references: ${compilerFacts.shadowedReferences}")
+                }
+                return if (requested == null) {
+                    val paths = if (options.values("--include-paths").isNotEmpty()) dev.kartograph.index.SourcePathIndex.resolve(graph, project) else null
+                    val capturedGraph = if (paths == null) graph else dev.kartograph.core.CodeGraph(graph.nodes.values.map { node ->
+                        paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
+                    }, graph.edges, graph.externalCalls, graph.serviceProviders)
+                    val renderStarted = System.nanoTime()
+                    val selectedLimit = requireNotNull(snapshotLimit)
+                    val captured = try {
+                        QuerySnapshotCodec.render(QuerySnapshot(capturedGraph, evidence, limitations + paths?.limitations.orEmpty(), suppressed,
+                            options.values("--include-private-members").isNotEmpty(), revision = options.single("--revision"),
+                            scope = options.single("--scope"), provenance = provenance),
+                            compact = options.values("--compact").isNotEmpty(), maximumBytes = selectedLimit.maximumBytes)
+                    } catch (_: QuerySnapshotSizeException) {
+                        renderNanos = System.nanoTime() - renderStarted
+                        error.println("error: query snapshot exceeds ${selectedLimit.maximumMiB} MiB; use --compact, increase --snapshot-max-mib up to 128, or capture a narrower input scope")
+                        return ExitStatus.FAILURE.code
+                    }
+                    renderNanos = System.nanoTime() - renderStarted
+                    renderedSnapshot = captured
+                    ExitStatus.SUCCESS.code
+                } else {
+                    val document = SymbolQuery.query(graph, ReachabilityAnalyzer.analyze(graph, evidence), requested,
+                        limitations, depth, limit, suppressed)
+                    output.print(AgentDocumentRenderer.query(document))
+                    if (document.status == "found") ExitStatus.SUCCESS.code else ExitStatus.USAGE.code
+                }
+            }
+            val status = if (requested == null) dev.kartograph.index.ContentFingerprint.withVerifiedCapture(::capture, indexCache) { scope, before ->
+                analyze(scope, before)
+            } else analyze(null, null)
+            if (requested == null && status == ExitStatus.SUCCESS.code) {
+                if (options.values("--timings").isNotEmpty()) {
+                    error.println("captureHashNanos=$captureHashNanos snapshotRenderNanos=$renderNanos")
+                    val stats = requireNotNull(indexStatistics)
+                    error.println("indexClassFiles=${stats.classFiles} indexCacheHits=${stats.cacheHits} " +
+                        "indexCacheMisses=${stats.cacheMisses} indexParsedClasses=${stats.parsedClasses} " +
+                        "indexInvalidEntries=${stats.invalidEntries} indexWriteFailures=${stats.writeFailures} " +
+                        "indexUnavailableEntries=${stats.unavailableEntries} " +
+                        "indexReadNanos=${stats.readNanos} indexCacheReadNanos=${stats.cacheReadNanos} " +
+                        "indexParseNanos=${stats.parseNanos} indexAssemblyNanos=${stats.assemblyNanos} " +
+                        "indexHierarchyNanos=${stats.hierarchyNanos} indexRuntimeNanos=${stats.runtimeNanos} indexDispatchNanos=${stats.dispatchNanos} " +
+                        "indexCacheWriteNanos=${stats.cacheWriteNanos} indexTotalNanos=${stats.totalNanos} " +
+                        "hierarchyJars=${stats.hierarchyJars} hierarchyCacheHits=${stats.hierarchyCacheHits} " +
+                        "hierarchyParsedJars=${stats.hierarchyParsedJars} hierarchyInvalidEntries=${stats.hierarchyInvalidEntries} " +
+                        "hierarchyWriteFailures=${stats.hierarchyWriteFailures} hierarchyUnavailableEntries=${stats.hierarchyUnavailableEntries}")
+                }
+                output.print(requireNotNull(renderedSnapshot))
+            }
+            status
         } catch (_: InvalidPathException) {
             usage(error, "invalid path")
         } catch (hierarchyError: IncompleteKeepRuleHierarchyException) {
@@ -185,8 +296,32 @@ internal object AgentCommand {
         } catch (hierarchyError: dev.kartograph.index.ClassHierarchyIndexingException) {
             error.println("error: ${hierarchyError.message}")
             ExitStatus.FAILURE.code
+        } catch (ruleError: KeepRuleScanningException) {
+            error.println("error: ${ruleError.message}")
+            ExitStatus.FAILURE.code
         } catch (_: Exception) {
             error.println("error: unable to query compiled declarations; check the inputs")
+            ExitStatus.FAILURE.code
+        }
+    }
+
+    private fun savedQuery(requested: String, arguments: List<String>, output: PrintStream, error: PrintStream): Int {
+        val options = parsePaths(arguments, setOf("--graph-file", "--depth", "--limit", "--snapshot-max-mib"), error)
+            ?: return ExitStatus.USAGE.code
+        if (options.values("--graph-file").size != 1) return usage(error, "provide exactly one --graph-file")
+        val snapshotLimit = SnapshotFiles.limit(options.values("--snapshot-max-mib"))
+            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128")
+        val depth = options.positiveInt("--depth", 1, error) ?: return ExitStatus.USAGE.code
+        val limit = options.positiveInt("--limit", 50, error) ?: return ExitStatus.USAGE.code
+        return try {
+            val snapshot = SnapshotFiles.read(options.single("--graph-file")!!, snapshotLimit.maximumBytes)
+            val document = SavedSnapshotOperations.query(snapshot, requested, depth, limit)
+            output.print(document.json)
+            document.status
+        } catch (_: InvalidPathException) {
+            usage(error, "invalid graph file path")
+        } catch (_: Exception) {
+            error.println("error: unable to read query snapshot (maximum ${snapshotLimit.maximumMiB} MiB); capture a valid file with `kartograph snapshot`")
             ExitStatus.FAILURE.code
         }
     }
@@ -196,7 +331,8 @@ internal object AgentCommand {
             output.print(BRIDGES_HELP)
             return ExitStatus.SUCCESS.code
         }
-        val options = parsePaths(arguments, setOf("--project", "--format"), error) ?: return ExitStatus.USAGE.code
+        val options = parsePaths(arguments, setOf("--project", "--format", "--target", "--graph-file", "--messages"), error)
+            ?: return ExitStatus.USAGE.code
         val project = try {
             options.single("--project")?.let(Path::of)?.toAbsolutePath()?.normalize()
                 ?: return usage(error, "missing required --project path")
@@ -204,12 +340,22 @@ internal object AgentCommand {
             return usage(error, "invalid path")
         }
         if (options.single("--format")?.let { it != "json" } == true) return usage(error, "invalid bridges format")
+        if (options.single("--target")?.let { it != "flutter" } == true) return usage(error, "bridges currently supports only --target flutter")
+        val messages = options.values("--messages").isNotEmpty()
         if (!Files.isDirectory(project)) {
             error.println("error: project root does not exist")
             return ExitStatus.FAILURE.code
         }
         return try {
-            val document = BridgeFactScanner(project).scan()
+            val snapshot = options.single("--graph-file")?.let { SnapshotFiles.read(it) }
+            val freshness = snapshot?.let { SavedSnapshotOperations.freshness(it, project, null, emptyMap()) }
+            val graph = snapshot?.takeUnless { freshness?.status == "stale" }?.graph
+            val scanned = if (messages) BridgeFactScanner(project).scanMessages(graph = graph)
+            else BridgeFactScanner(project).scan(graph = graph, targetFilter = options.single("--target"))
+            val document = snapshot?.let {
+                val evidence = "graph-file-freshness-${freshness!!.status}: " + freshness.reasons.joinToString(";")
+                scanned.copy(limitations = (scanned.limitations + it.limitations + evidence).distinct().sorted())
+            } ?: scanned
             output.print(AgentDocumentRenderer.bridges(document))
             ExitStatus.SUCCESS.code
         } catch (_: Exception) {
@@ -227,7 +373,7 @@ internal object AgentCommand {
                 error.println("error: unknown option: $option")
                 return null
             }
-            if (option == "--include-private-members") {
+            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings", "--messages")) {
                 values.getOrPut(option) { mutableListOf() } += "true"
                 index++
                 continue
@@ -253,6 +399,7 @@ internal object AgentCommand {
 
         Usage:
           kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
+          kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>] [--snapshot-max-mib <1..128>]
 
         Options:
           --depth <n>               neighbor depth, a positive integer (default 1)
@@ -262,16 +409,51 @@ internal object AgentCommand {
           --namespace <name>        manifest package name
           --keep-rules <file>       retention rule file, repeatable
           --classpath <path>        dependency hierarchy entry, repeatable
+          --service-resources <path> Java resource directory or JAR, repeatable
           --baseline <file>         suppress fingerprinted findings
           --include-private-members include private members in the graph
+          --generated-classes <path> mark a supplied class root as generated, repeatable
+          --graph-file <file>       query a saved snapshot without reading live inputs
+          --snapshot-max-mib <n>    saved snapshot read maximum in MiB, 1..128 (default 64)
+
+        --classes and --generated-classes resolve from the working directory. Other live-input paths resolve
+        from --project. Saved queries accept no live-input overrides.
+    """.trimIndent() + "\n"
+
+    private val SNAPSHOT_HELP = """
+        Capture a compiled graph with its retention evidence, baseline state and measured limitations.
+
+        Usage:
+          kartograph snapshot --classes <directory-or-jar> [--classes <path>]... --project <directory> [options]
+
+        Accepts the live-input options of query except --depth and --limit. Writes a deterministic JSON
+        snapshot to stdout. Query it with `kartograph query <symbol> --graph-file <snapshot.json>`.
+        --include-paths resolves source locations for `impact --file` and records unresolved path counts.
+        --compact writes lossless v2 indexed graph rows and a string table; v1 remains the default.
+        --revision <full-commit-hash> and --scope <project:variant> label CI artifacts for input matching.
+        --build-witness <file> attaches a successful supported Gradle compiler-task record (repeatable).
+        --source-root <directory> and --build-input <file> capture additional explicit source/config inputs.
+        --index-cache <directory> reuses content-verified class parse facts; relative paths use --project.
+        --snapshot-max-mib <n> sets the output maximum to 1..128 MiB (default 64).
+        Global analysis, retention and current input checks still run on every capture.
+        --timings reports fingerprint, index/cache phases and render time to stderr.
+        verify-snapshot reports comparison time. Cache and timing settings do not change snapshot facts.
+        --compiler-evidence <file> attaches explicitly selected compiler facts with completed build receipts.
+        It requires --scope, --build-witness and --input bindings for every external witness input.
+        These labels are caller assertions; the source freshness checks still apply.
+        A snapshot records its input state; it does not prove that current sources or runtime behavior match.
+        Ordinary `graph --format json` output does not contain the required retention context.
     """.trimIndent() + "\n"
 
     private val BRIDGES_HELP = """
         Scan project sources for Flutter MethodChannel and React Native module registrations.
 
         Usage:
-          kartograph bridges --project <directory> [--format json]
+          kartograph bridges --project <directory> [--format json] [--target flutter]
+          kartograph bridges --project <directory> --target flutter --messages [--graph-file <snapshot>]
 
+        --messages emits opt-in bridge-facts v2 for Kotlin/JVM BasicMessageChannel native handlers.
+        --graph-file may attach a compiler snapshot JVM symbol at the observed or enclosing source location.
         Static literals only; dynamic channel names and unattributed handlers are reported as limitations.
         generatedAt is the newest scanned source modification time (Unix epoch for an empty source tree).
     """.trimIndent() + "\n"

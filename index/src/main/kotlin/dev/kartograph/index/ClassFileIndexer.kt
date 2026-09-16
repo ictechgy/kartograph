@@ -1,7 +1,11 @@
 package dev.kartograph.index
 
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.ClassHierarchy
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.EdgeKind
+import dev.kartograph.core.ExternalCall
+import dev.kartograph.core.InvocationKind
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.GeneratedSiblingNaming
@@ -28,9 +32,10 @@ import org.objectweb.asm.Label
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
+import org.objectweb.asm.tree.MethodNode
 
 /** class root의 JVM 산출물을 읽어 구조와 instruction 관계로 된 코드 그래프를 만든다. */
-public class ClassFileIndexer {
+public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
     /**
      * 각 root를 재귀 탐색하고 JVM class name이 같은 중복 산출물은 첫 번째 것만 사용한다.
      * class 하나라도 깨졌으면 불완전한 그래프를 반환하지 않는다.
@@ -38,12 +43,108 @@ public class ClassFileIndexer {
     public fun index(classRoots: Iterable<Path>): CodeGraph = indexWithObservations(classRoots).graph
 
     /** 그래프와 runtime 관측값을 같은 class 방문에서 모아 후속 질의의 재파싱을 없앤다. */
-    public fun indexWithObservations(classRoots: Iterable<Path>): IndexedClasses {
+    public fun indexWithObservations(classRoots: Iterable<Path>): IndexedClasses = indexWithObservations(classRoots, null)
+
+    /** 명시된 dependency 입력을 함께 읽어 외부 상속과 runtime 모델의 문맥으로 사용한다. */
+    public fun indexWithObservations(classRoots: Iterable<Path>, classpath: Iterable<Path>?): IndexedClasses =
+        indexWithObservations(classRoots, classpath, emptyList())
+
+    /** Java resource 입력의 ServiceLoader 등록도 같은 variant의 사실에 포함한다. */
+    public fun indexWithObservations(classRoots: Iterable<Path>, classpath: Iterable<Path>?, serviceResources: Iterable<Path>): IndexedClasses =
+        indexWithObservations(classRoots, classpath, serviceResources, emptyList())
+
+    /** 생성 전용 컴파일 root의 명시적 출처를 사용하며, 중복 class는 선택된 첫 입력의 출처를 유지한다. */
+    public fun indexWithObservations(
+        classRoots: Iterable<Path>,
+        classpath: Iterable<Path>?,
+        serviceResources: Iterable<Path>,
+        generatedClassRoots: Iterable<Path>,
+    ): IndexedClasses = indexWithObservations(classRoots, classpath, serviceResources, generatedClassRoots, null)
+
+    internal fun indexWithObservations(
+        classRoots: Iterable<Path>,
+        classpath: Iterable<Path>?,
+        serviceResources: Iterable<Path>,
+        generatedClassRoots: Iterable<Path>,
+        observedJarDigests: ObservedJarDigestLookup?,
+    ): IndexedClasses {
+        val started = System.nanoTime()
+        var classFiles = 0
+        var cacheHits = 0
+        var cacheMisses = 0
+        var parsedClasses = 0
+        var invalidEntries = 0
+        var unavailableEntries = 0
+        var writeFailures = 0
+        var readNanos = 0L
+        var cacheReadNanos = 0L
+        var parseNanos = 0L
+        var assemblyNanos = 0L
+        var hierarchyNanos = 0L
+        var runtimeNanos = 0L
+        var cacheWriteNanos = 0L
+        fun parse(bytes: ByteArray): ClassFacts = try {
+            readFacts(ClassReader(bytes))
+        } catch (error: RuntimeException) {
+            throw ClassIndexingException("invalid class file", error)
+        }
+        val roots = classRoots.toList()
+        val generated = generatedClassRoots.toList()
+        val markedRoots = if (generated.isEmpty()) emptySet() else try {
+            val selected = roots.associateWith { it.toRealPath() }
+            val marked = generated.mapTo(mutableSetOf()) { it.toRealPath() }
+            if (!selected.values.containsAll(marked)) throw ClassIndexingException("generated class roots must also be supplied as class roots")
+            selected.filterValues(marked::contains).keys
+        } catch (error: IOException) {
+            throw ClassIndexingException("class roots cannot be resolved; check the compiled inputs", error)
+        }
         val factsByClass = linkedMapOf<String, ClassFacts>()
-        classRoots.forEach { root ->
-            readRoot(root).forEach { facts ->
-                factsByClass.putIfAbsent(facts.internalName, facts)
+        val rootByClass = linkedMapOf<String, Int>()
+        val declarationsByRoot = mutableListOf<Set<NodeId>>()
+        val loader = cache?.let { CachedClassBatchLoader(it, ::parse) }
+        fun readMany(inputs: List<() -> ClassInput>): List<ClassFacts> {
+            if (loader != null) {
+                val loaded = loader.load(inputs)
+                val measured = loaded.statistics
+                classFiles += measured.classFiles
+                cacheHits += measured.cacheHits
+                cacheMisses += measured.cacheMisses
+                parsedClasses += measured.parsedClasses
+                invalidEntries += measured.invalidEntries
+                unavailableEntries += measured.unavailableEntries
+                writeFailures += measured.writeFailures
+                readNanos += measured.readNanos
+                cacheReadNanos += measured.cacheReadNanos
+                parseNanos += measured.parseNanos
+                cacheWriteNanos += measured.cacheWriteNanos
+                return loaded.facts
             }
+            return inputs.map { read ->
+                var phaseStart = System.nanoTime()
+                val input = read()
+                readNanos += System.nanoTime() - phaseStart
+                phaseStart = System.nanoTime()
+                val facts = parse(input.bytes)
+                parseNanos += System.nanoTime() - phaseStart
+                classFiles++
+                parsedClasses++
+                facts.copy(runtime = facts.runtime.copy(modified = input.modified))
+            }
+        }
+        try {
+            roots.forEachIndexed { rootIndex, root ->
+                val generatedInput = root in markedRoots
+                val rootFacts = readRoot(root, ::readMany)
+                declarationsByRoot += rootFacts.flatMap { facts -> facts.nodes.map { it.id } }.toSet()
+                rootFacts.forEach { facts ->
+                    val selected = if (generatedInput) facts.copy(nodes = facts.nodes.map { node ->
+                        node.copy(synthesized = true, attributes = node.attributes + NodeAttribute.GENERATED_INPUT)
+                    }) else facts
+                    if (factsByClass.putIfAbsent(facts.internalName, selected) == null) rootByClass[facts.internalName] = rootIndex
+                }
+            }
+        } finally {
+            loader?.close()
         }
         if (factsByClass.isEmpty()) throw ClassIndexingException("no compiled declarations found; check class roots and build the project")
         val generatedSiblingNames = factsByClass.values.flatMapTo(mutableSetOf(), ClassFacts::generatedSiblingNames)
@@ -63,19 +164,52 @@ public class ClassFileIndexer {
         val classFacts = factsByClass.values.map { facts ->
             if (facts.internalName in generatedSiblingNames) facts.asSynthesized() else facts
         }
+        val assemblyStart = System.nanoTime()
         val graph = CodeGraph(
             nodes = classFacts.flatMap(ClassFacts::nodes),
             edges = classFacts.flatMap(ClassFacts::edges) +
                 projectOverrideEdges(classFacts) +
                 frameworkCallbackEdges(classFacts) +
                 enclosingContainerEdges(classFacts),
+            externalCalls = classFacts.flatMap(ClassFacts::calls),
+            serviceProviders = ServiceProviderScanner.scan(roots + serviceResources),
         )
-        return IndexedClasses(graph, classFacts.map(ClassFacts::runtime))
+        assemblyNanos = System.nanoTime() - assemblyStart
+        val hierarchyStart = System.nanoTime()
+        val hierarchyIndexer = if (observedJarDigests == null) {
+            ClassHierarchyIndexer(cache)
+        } else {
+            ClassHierarchyIndexer(cache, observedJarDigests)
+        }
+        val hierarchy = classpath?.let { hierarchyIndexer.index(it, graph.nodes.values.flatMap(GraphNode::supertypes)) } ?: ClassHierarchy.EMPTY
+        hierarchyNanos = System.nanoTime() - hierarchyStart
+        val runtimeStart = System.nanoTime()
+        val (modeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
+        runtimeNanos = System.nanoTime() - runtimeStart
+        val selectedRootByNode = classFacts.flatMap { facts -> facts.nodes.map { it.id to rootByClass.getValue(facts.internalName) } }.toMap()
+        val dispatchStart = System.nanoTime()
+        val dispatched = IndexedClasses(modeled, observations, hierarchy, declarationsByRoot.toList(), selectedRootByNode)
+            .withHierarchy(hierarchy)
+        val dispatchNanos = System.nanoTime() - dispatchStart
+        val statistics = IndexingStatistics(classFiles, cacheHits, cacheMisses, parsedClasses, invalidEntries, writeFailures,
+            readNanos, cacheReadNanos, parseNanos, assemblyNanos, hierarchyNanos, runtimeNanos, cacheWriteNanos,
+            System.nanoTime() - started, unavailableEntries,
+            hierarchyIndexer.statistics.hierarchyJars, hierarchyIndexer.statistics.hierarchyCacheHits,
+            hierarchyIndexer.statistics.hierarchyParsedJars, hierarchyIndexer.statistics.hierarchyInvalidEntries,
+            hierarchyIndexer.statistics.hierarchyWriteFailures, hierarchyIndexer.statistics.hierarchyUnavailableEntries,
+            dispatchNanos)
+        return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics)
     }
 
-    private fun readRoot(root: Path): List<ClassFacts> = when {
-        root.isDirectory() -> discoverClassFiles(root).map(::readClass)
-        root.isRegularFile() && root.fileName.toString().endsWith(".jar", ignoreCase = true) -> readJar(root)
+    private fun readRoot(root: Path, readMany: (List<() -> ClassInput>) -> List<ClassFacts>): List<ClassFacts> = when {
+        root.isDirectory() -> readMany(discoverClassFiles(root).map { file ->
+            { try {
+                ClassInput(Files.readAllBytes(file), Files.getLastModifiedTime(file))
+            } catch (error: IOException) {
+                throw ClassIndexingException("class file cannot be read", error)
+            } }
+        })
+        root.isRegularFile() && root.fileName.toString().endsWith(".jar", ignoreCase = true) -> readJar(root, readMany)
         !root.exists() -> throw ClassIndexingException("class root does not exist; build the project before indexing")
         else -> throw ClassIndexingException("class root must be a class directory or JAR")
     }.filterNot { facts -> facts.internalName == "module-info" || facts.internalName.endsWith("/package-info") }
@@ -93,36 +227,26 @@ public class ClassFileIndexer {
         }
     }
 
-    private fun readClass(classFile: Path): ClassFacts = try {
-        val visitor = FactsVisitor()
-        ClassReader(Files.readAllBytes(classFile)).accept(visitor, 0)
-        visitor.facts().let { it.copy(runtime = it.runtime.copy(modified = Files.getLastModifiedTime(classFile))) }
-    } catch (error: IOException) {
-        throw ClassIndexingException("class file cannot be read", error)
-    } catch (error: RuntimeException) {
-        throw ClassIndexingException("invalid class file", error)
-    }
-
-    private fun readJar(jar: Path): List<ClassFacts> = try {
+    private fun readJar(jar: Path, readMany: (List<() -> ClassInput>) -> List<ClassFacts>): List<ClassFacts> = try {
         JarFile(jar.toFile(), false).use { archive ->
-            archive.entries().asSequence()
+            val entries = archive.entries().asSequence()
                 .filter { entry ->
                     !entry.isDirectory && entry.name.endsWith(".class") &&
                         !entry.name.startsWith("META-INF/versions/")
                 }
                 .sortedBy { entry -> entry.name }
-                .map { entry ->
-                    archive.getInputStream(entry).use { input ->
-                        val visitor = FactsVisitor()
-                        ClassReader(input).accept(visitor, 0)
-                        val observed = visitor.facts()
+                .toList()
+            readMany(entries.map { entry ->
+                { archive.getInputStream(entry).use { input ->
                         val modified = entry.time.takeIf { it >= 0 }?.let(FileTime::fromMillis)
                             ?: Files.getLastModifiedTime(jar)
-                        val facts = observed.copy(runtime = observed.runtime.copy(modified = modified))
-                        if (jar.fileName.toString() == "R.jar") facts.asSynthesized() else facts
-                    }
-                }
-                .toList()
+                        ClassInput(input.readBytes(), modified)
+                } }
+            }).map { parsed ->
+                // 일반 ZIP의 DOS timestamp는 2초 단위다. 더 정밀한 extra가 있어도 이 상한을 보수적으로 쓴다.
+                val facts = parsed.copy(runtime = parsed.runtime.copy(modifiedPrecisionMillis = 2_000))
+                if (jar.fileName.toString() == "R.jar") facts.asSynthesized() else facts
+            }
         }
     } catch (error: IOException) {
         throw ClassIndexingException("class JAR cannot be read", error)
@@ -130,11 +254,38 @@ public class ClassFileIndexer {
         throw ClassIndexingException("invalid class file in class JAR", error)
     }
 
+    // runtime 호출과 반환값 후보의 본문만 보관한다. 같은 reader를 재사용해 파일을 다시 읽지 않는다.
+    private fun readFacts(reader: ClassReader): ClassFacts {
+        val visitor = FactsVisitor()
+        reader.accept(visitor, 0)
+        val facts = visitor.facts()
+        val methods = facts.calls.filter { RuntimeValueAnalyzer.requiresValueAnalysis(it) }.map { it.caller }.toSet()
+        val finalOwner = facts.nodes.any { it.id == JvmNodeId.classId(facts.internalName) && JvmModifier.FINAL in it.jvmModifiers }
+        val returns = facts.nodes.filter { node ->
+            (JvmModifier.STATIC in node.jvmModifiers || JvmModifier.FINAL in node.jvmModifiers ||
+                node.jvmVisibility == Visibility.PRIVATE || finalOwner) &&
+                (node.id.value.endsWith(")Ljava/lang/String;") || node.id.value.endsWith(")Ljava/lang/Class;"))
+        }.mapTo(mutableSetOf(), GraphNode::id)
+        val writes = facts.fieldWriteMethods
+        if (methods.isEmpty() && returns.isEmpty() && writes.isEmpty()) return facts
+        val bodies = mutableMapOf<NodeId, MethodNode>()
+        reader.accept(object : ClassVisitor(Opcodes.ASM9) {
+            override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<out String>?): MethodVisitor? {
+                val id = JvmNodeId.methodId(facts.internalName, name, descriptor)
+                return if (id in methods || id in returns || id in writes) MethodNode(Opcodes.ASM9, access, name, descriptor, signature, exceptions)
+                    .also { bodies[id] = it } else null
+            }
+        }, ClassReader.SKIP_FRAMES)
+        return facts.copy(runtimeMethods = bodies.filterKeys(methods::contains).values.toList(),
+            returnMethods = bodies.filterKeys(returns::contains).values.toList(),
+            fieldMethods = bodies.filterKeys { it in writes || it in methods }.values.toList())
+    }
+
     private fun isClassFile(path: Path): Boolean =
         Files.isRegularFile(path) && path.fileName.toString().endsWith(".class")
 }
 
-private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
+internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private lateinit var internalName: String
     private var enclosingClass: String? = null
     private var classAccess: Int = 0
@@ -143,6 +294,9 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private var metadataValues: MetadataAnnotationValues? = null
     private val nodes = mutableListOf<GraphNode>()
     private val edges = mutableListOf<GraphEdge>()
+    private val calls = mutableListOf<ExternalCall>()
+    private val fieldWriteMethods = mutableSetOf<NodeId>()
+    private val constantStringFields = mutableMapOf<NodeId, String>()
     private val classAnnotations = mutableSetOf<String>()
     private val supertypes = mutableSetOf<String>()
     private var nativeMethods = 0
@@ -201,6 +355,9 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         value: Any?,
     ): FieldVisitor {
         val fieldId = JvmNodeId.fieldId(internalName, name, descriptor)
+        if (value is String && descriptor == "Ljava/lang/String;" && access and Opcodes.ACC_STATIC != 0) {
+            constantStringFields[fieldId] = value
+        }
         val annotations = mutableSetOf<String>()
         edges += GraphEdge(JvmNodeId.classId(internalName), fieldId, EdgeKind.MEMBER)
         edges += GraphEdge(fieldId, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
@@ -255,7 +412,10 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         }
         return object : MethodVisitor(Opcodes.ASM9) {
             private var firstLine: Int? = null
-            private var pendingStringConstant: String? = null
+            private var currentLine: Int? = null
+            private var callOrdinal = 0
+
+            override fun visitAnnotationDefault(): AnnotationVisitor = AnnotationValueVisitor(methodId, JvmNodeId.classId(internalName))
 
             override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor? {
                 annotations += annotationInternalName(annotationDescriptor)
@@ -275,26 +435,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
 
             override fun visitLineNumber(line: Int, start: Label) {
                 if (firstLine == null) firstLine = line
-            }
-
-            override fun visitVarInsn(opcode: Int, variable: Int) {
-                pendingStringConstant = null
-            }
-
-            override fun visitInsn(opcode: Int) {
-                pendingStringConstant = null
-            }
-
-            override fun visitIntInsn(opcode: Int, operand: Int) {
-                pendingStringConstant = null
-            }
-
-            override fun visitJumpInsn(opcode: Int, label: Label) {
-                pendingStringConstant = null
-            }
-
-            override fun visitIincInsn(variable: Int, increment: Int) {
-                pendingStringConstant = null
+                currentLine = line
             }
 
             override fun visitMethodInsn(
@@ -304,15 +445,15 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 targetDescriptor: String,
                 isInterface: Boolean,
             ) {
+                val invocationKind = when (opcode) {
+                    Opcodes.INVOKESTATIC -> InvocationKind.STATIC
+                    Opcodes.INVOKESPECIAL -> InvocationKind.SPECIAL
+                    Opcodes.INVOKEINTERFACE -> InvocationKind.INTERFACE
+                    else -> InvocationKind.VIRTUAL
+                }
+                calls += ExternalCall(methodId, owner, targetName, targetDescriptor, invocationKind, sourceLocation(currentLine), callOrdinal++)
                 if (owner == "java/lang/Class" && targetName == "forName") reflectionCalls++
                 if (RuntimeLimitationScanner.isDynamicRegistration(owner, targetName)) dynamicRegistrations++
-                val reflectionTarget = pendingStringConstant
-                pendingStringConstant = null
-                if (owner == "java/lang/Class" && targetName == "forName" && reflectionTarget != null) {
-                    classNameToInternalNames(reflectionTarget).forEach { resolved ->
-                        edges += GraphEdge(methodId, JvmNodeId.classId(resolved), EdgeKind.REFERENCE)
-                    }
-                }
                 edges += GraphEdge(
                     methodId,
                     JvmNodeId.methodId(owner, targetName, targetDescriptor),
@@ -322,7 +463,7 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             }
 
             override fun visitFieldInsn(opcode: Int, owner: String, targetName: String, targetDescriptor: String) {
-                pendingStringConstant = null
+                if (opcode == Opcodes.PUTSTATIC && targetDescriptor.startsWith("L")) fieldWriteMethods += methodId
                 edges += GraphEdge(
                     methodId,
                     JvmNodeId.fieldId(owner, targetName, targetDescriptor),
@@ -337,7 +478,11 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 bootstrapMethodHandle: Handle,
                 vararg bootstrapMethodArguments: Any,
             ) {
-                pendingStringConstant = null
+                val ordinal = callOrdinal++
+                edges += GraphEdge(methodId, JvmNodeId.methodId(bootstrapMethodHandle.owner, bootstrapMethodHandle.name, bootstrapMethodHandle.desc), EdgeKind.CALL)
+                edges += GraphEdge(methodId, JvmNodeId.classId(bootstrapMethodHandle.owner), EdgeKind.REFERENCE)
+                calls += ExternalCall(methodId, bootstrapMethodHandle.owner, bootstrapMethodHandle.name,
+                    bootstrapMethodHandle.desc, InvocationKind.BOOTSTRAP, sourceLocation(currentLine), ordinal)
                 bootstrapMethodArguments.filterIsInstance<Handle>().forEach { handle ->
                     when (handle.tag) {
                         Opcodes.H_GETFIELD, Opcodes.H_GETSTATIC, Opcodes.H_PUTFIELD, Opcodes.H_PUTSTATIC -> {
@@ -354,6 +499,13 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                         Opcodes.H_NEWINVOKESPECIAL,
                         Opcodes.H_INVOKEINTERFACE,
                         -> {
+                            val kind = when (handle.tag) {
+                                Opcodes.H_INVOKESTATIC -> InvocationKind.STATIC
+                                Opcodes.H_INVOKEINTERFACE -> InvocationKind.INTERFACE
+                                Opcodes.H_INVOKEVIRTUAL -> InvocationKind.VIRTUAL
+                                else -> InvocationKind.SPECIAL
+                            }
+                            calls += ExternalCall(methodId, handle.owner, handle.name, handle.desc, kind, sourceLocation(currentLine), ordinal)
                             edges += GraphEdge(
                                 methodId,
                                 JvmNodeId.methodId(handle.owner, handle.name, handle.desc),
@@ -366,7 +518,6 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             }
 
             override fun visitTypeInsn(opcode: Int, type: String) {
-                pendingStringConstant = null
                 val targetTypes = if (type.startsWith('[')) descriptorClassNames(type) else setOf(type)
                 targetTypes.forEach { target ->
                     edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
@@ -380,18 +531,12 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             }
 
             override fun visitMultiANewArrayInsn(descriptor: String, numDimensions: Int) {
-                pendingStringConstant = null
                 descriptorClassNames(descriptor).forEach { target ->
                     edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
                 }
             }
 
             override fun visitLdcInsn(value: Any?) {
-                if (value is String) {
-                    pendingStringConstant = value
-                    return
-                }
-                pendingStringConstant = null
                 if (value is Type && value.sort in setOf(Type.OBJECT, Type.ARRAY)) {
                     descriptorClassNames(value.descriptor).forEach { target ->
                         edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
@@ -427,7 +572,10 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             location = sourceLocation(),
             visibility = effectiveClassAccess.toVisibility(),
             jvmVisibility = effectiveClassAccess.toVisibility(),
-            jvmModifiers = effectiveClassAccess.toJvmModifiers(),
+            jvmModifiers = effectiveClassAccess.toJvmModifiers().let { modifiers ->
+                if (classAccess and Opcodes.ACC_FINAL != 0) modifiers + JvmModifier.FINAL
+                else modifiers - JvmModifier.FINAL
+            },
             annotations = classAnnotations,
             supertypes = supertypes,
             synthesized = effectiveClassAccess.isSynthetic() || internalName.isAndroidGeneratedClass(),
@@ -437,7 +585,8 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     fun facts(): ClassFacts {
         val facts = ClassFacts(internalName, nodes, edges, enclosingClass,
             ClassRuntimeObservation(sourceLocation()?.path, FileTime.fromMillis(0),
-                nativeMethods, reflectionCalls, dynamicRegistrations))
+                nativeMethods, reflectionCalls, dynamicRegistrations), calls, fieldWriteMethods = fieldWriteMethods,
+            constantStringFields = constantStringFields)
         val metadata = metadataValues?.toMetadata() ?: return facts
         return KotlinMetadataEnricher.enrich(facts, metadata)
     }
@@ -454,17 +603,17 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
      * 어노테이션 member 값으로 참조되는 class를 선언과 REFERENCE 간선으로 연결한다.
      * 중첩 어노테이션과 배열 값을 재귀적으로 따라가지만 값이 없는 primitive·문자열은 무시한다.
      */
-    private inner class AnnotationValueVisitor(private val source: NodeId) : AnnotationVisitor(Opcodes.ASM9) {
+    private inner class AnnotationValueVisitor(private val source: NodeId, private val defaultOwner: NodeId? = null) : AnnotationVisitor(Opcodes.ASM9) {
         override fun visit(name: String?, value: Any?) {
             if (value is Type) addTypeReference(value)
         }
 
         override fun visitEnum(name: String?, descriptor: String?, value: String?) {
-            descriptor?.let { edges += referenceEdge(Type.getType(it).internalName) }
+            descriptor?.let { addReference(Type.getType(it).internalName) }
         }
 
         override fun visitAnnotation(name: String?, descriptor: String?): AnnotationVisitor {
-            descriptor?.let { edges += referenceEdge(Type.getType(it).internalName) }
+            descriptor?.let { addReference(Type.getType(it).internalName) }
             return this
         }
 
@@ -472,11 +621,13 @@ private class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
 
         private fun addTypeReference(type: Type) {
             val elementType = if (type.sort == Type.ARRAY) type.elementType else type
-            if (elementType.sort == Type.OBJECT) edges += referenceEdge(elementType.internalName)
+            if (elementType.sort == Type.OBJECT) addReference(elementType.internalName)
         }
 
-        private fun referenceEdge(internalName: String): GraphEdge =
-            GraphEdge(source, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
+        private fun addReference(internalName: String) {
+            edges += GraphEdge(source, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
+            defaultOwner?.let { owner -> edges += GraphEdge(owner, JvmNodeId.classId(internalName), EdgeKind.REFERENCE) }
+        }
     }
 
     /**
@@ -496,7 +647,16 @@ internal data class ClassFacts(
     val edges: List<GraphEdge>,
     val enclosingClass: String? = null,
     val runtime: ClassRuntimeObservation = ClassRuntimeObservation(),
-)
+    val calls: List<ExternalCall> = emptyList(),
+    val runtimeMethods: List<MethodNode> = emptyList(),
+    val returnMethods: List<MethodNode> = emptyList(),
+    val fieldWriteMethods: Set<NodeId> = emptySet(),
+    val fieldMethods: List<MethodNode> = emptyList(),
+    val constantStringFields: Map<NodeId, String> = emptyMap(),
+) {
+    // 내부 입력 상수가 디버그·예외 문자열에 섞이지 않게 한다.
+    override fun toString(): String = "class-facts"
+}
 
 // CLASS-retention 생성 marker는 이름만 닮은 사용자 선언을 숨기지 않는다.
 private val GENERATED_MARKERS = setOf(
@@ -544,7 +704,7 @@ private fun frameworkCallbackEdges(classFacts: List<ClassFacts>): List<GraphEdge
         if (facts.projectSupertypes(factsByName).none(RUNTIME_CALLBACK_TYPES::contains)) return@flatMap emptyList()
         val classId = JvmNodeId.classId(facts.internalName)
         facts.nodes.filter(GraphNode::isRuntimeCallbackMember)
-            .map { member -> GraphEdge(classId, member.id, EdgeKind.REFERENCE) }
+            .map { member -> GraphEdge(classId, member.id, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL) }
     }
 }
 
@@ -593,6 +753,7 @@ private val RUNTIME_CALLBACK_TYPES = setOf(
     "android/webkit/WebViewClient",
     "androidx/lifecycle/ViewModel",
     "androidx/lifecycle/ViewModelProvider\$Factory",
+    "org/objectweb/asm/tree/analysis/Interpreter",
     "org/objectweb/asm/AnnotationVisitor",
     "org/objectweb/asm/ClassVisitor",
     "org/objectweb/asm/FieldVisitor",
@@ -618,18 +779,6 @@ private fun MutableSet<String>.addDescriptorType(type: Type) {
 }
 
 // Class.forName 인자 binary name이나 배열 descriptor를 internal name으로 바꾼다. class 이름이 아니면 무시한다.
-private fun classNameToInternalNames(className: String): Set<String> {
-    val trimmed = className.trim()
-    if (trimmed.startsWith('[')) {
-        // 잘못된 배열 descriptor 문자열 상수는 class file 자체를 무효화하지 않고 해석 불가로 무시한다.
-        return runCatching { descriptorClassNames(trimmed.replace('.', '/')) }.getOrDefault(emptySet())
-    }
-    if (!trimmed.matches(BINARY_CLASS_NAME)) return emptySet()
-    return setOf(trimmed.replace('.', '/'))
-}
-
-private val BINARY_CLASS_NAME = Regex("[A-Za-z_\$][A-Za-z0-9_\$]*(\\.[A-Za-z_\$][A-Za-z0-9_\$]*)*")
-
 private fun String.isAndroidGeneratedClass(): Boolean {
     val simpleName = substringAfterLast('/')
     return simpleName == "BuildConfig" || simpleName == "BR" || simpleName == "R" ||

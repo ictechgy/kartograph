@@ -44,7 +44,7 @@ internal object KotlinMetadataEnricher {
                 nodes.replaceAll { _, node -> node.copy(synthesized = true) }
                 val classId = JvmNodeId.classId(facts.internalName)
                 facts.nodes.filter { node -> node.kind == NodeKind.METHOD }.forEach { method ->
-                    runtimeEdges += GraphEdge(classId, method.id, EdgeKind.REFERENCE)
+                    runtimeEdges += GraphEdge(classId, method.id, EdgeKind.REFERENCE, origin = dev.kartograph.core.EdgeOrigin.KOTLIN_METADATA)
                 }
             }
             else -> Unit

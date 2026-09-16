@@ -1,0 +1,86 @@
+package dev.kartograph.cli
+
+import dev.kartograph.core.InputFingerprint
+import dev.kartograph.core.SnapshotProvenance
+import dev.kartograph.export.BuildWitnessCodec
+import dev.kartograph.export.ExternalInputBindingsCodec
+import dev.kartograph.index.ContentFingerprint
+import java.io.PrintStream
+import java.nio.file.Path
+
+/** 내용 검증을 저장 그래프 질의와 분리해 오프라인 질의의 의미를 보존한다. */
+internal object FreshnessCommand {
+    fun run(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
+        if (arguments == listOf("--help")) {
+            output.println("Usage: kartograph verify-snapshot --graph-file <file> --project <directory> [--snapshot-max-mib <1..128>] [--scope <project:variant>] [--input <external/slot=path>]...")
+            output.println("Optional ordered comparisons: --classes <root>, --classpath <root>, --artifact <Gradle-task-path>, --compiler <javac|kotlin> (repeatable).")
+            output.println("--input-bindings <file> reads a generated local binding document; do not publish this file with snapshots.")
+            output.println("--snapshot-max-mib bounds the saved snapshot read to 1..128 MiB (default 64).")
+            output.println("Exit 0: matching compiler evidence; 1: stale or unverified; 2: invalid input; 64: usage error. Saved queries remain offline.")
+            return 0
+        }
+        if (arguments.size % 2 != 0 || arguments.chunked(2).any { it[0] !in setOf("--graph-file", "--project", "--scope", "--input", "--input-bindings", "--classes", "--classpath", "--artifact", "--compiler", "--snapshot-max-mib") }) return 64
+        val options = arguments.chunked(2).groupBy({ it[0] }, { it[1] })
+        if (listOf("--graph-file", "--project").any { options[it]?.size != 1 } ||
+            listOf("--scope", "--input-bindings", "--snapshot-max-mib").any { (options[it]?.size ?: 0) > 1 }) return 64
+        val snapshotLimit = SnapshotFiles.limit(options["--snapshot-max-mib"].orEmpty()) ?: return 64
+        return try {
+            val explicit = try { inputBindings(options["--input"].orEmpty()) } catch (_: IllegalArgumentException) { return 64 }
+            val local = options["--input-bindings"]?.single()?.let { path ->
+                ExternalInputBindingsCodec.parse(SnapshotFiles.readText(path, 1024 * 1024)).mapValues { Path.of(it.value) }
+            }.orEmpty()
+            if (explicit.keys.any(local::containsKey)) return 64
+            val external = local + explicit
+            val snapshot = SnapshotFiles.read(options.getValue("--graph-file").single(), snapshotLimit.maximumBytes)
+            val started = System.nanoTime()
+            val project = Path.of(options.getValue("--project").single()).toAbsolutePath().normalize()
+            val result = SavedSnapshotOperations.freshness(snapshot, project, options["--scope"]?.single(), external)
+            val identityMismatch = listOf("artifact", "compiler").filter { key ->
+                options["--$key"]?.let { expected -> expected != snapshot.provenance?.witnesses?.map { if (key == "artifact") it.artifact else it.compiler } } == true
+            }
+            val changedRoots = listOf("classes", "classpath").filter { role ->
+                options["--$role"]?.map { value ->
+                    val path = (if (role == "classes") Path.of(value) else project.resolve(value)).toAbsolutePath().normalize()
+                    path to ContentFingerprint.hash(path)
+                }?.let { supplied -> snapshot.provenance?.inputs?.filter { it.role == role }?.let { recorded ->
+                    supplied.size != recorded.size || supplied.zip(recorded).any { (current, previous) ->
+                        // 미연결 슬롯의 위치는 바뀌었다고 단정하지 않는다. 공급된 바이트 차이는 독립적으로 확인한다.
+                        val path = if (previous.path.startsWith("external/")) external[previous.path] else project.resolve(previous.path)
+                        current.second != previous.sha256 || path != null && current.first != path.toAbsolutePath().normalize()
+                    }
+                } } == true
+            }
+            val status = if (changedRoots.isNotEmpty() || identityMismatch.isNotEmpty()) "stale" else result.status
+            val reasons = (result.reasons +
+                changedRoots.map { "changed-$it-order" } + identityMismatch.map { "build-$it-mismatch" }).distinct().sorted()
+            output.println("{\"format\":\"kartograph-freshness\",\"version\":1,\"status\":\"$status\",\"hashNanos\":${System.nanoTime() - started},\"reasons\":[${reasons.joinToString(",") { "\"$it\"" }}]}")
+            if (status == "matched") 0 else 1
+        } catch (_: Exception) {
+            error.println("error: unable to verify snapshot inputs; supply a valid snapshot (maximum ${snapshotLimit.maximumMiB} MiB), project and external input bindings")
+            2
+        }
+    }
+
+    internal fun inputBindings(values: List<String>): Map<String, Path> {
+        val bindings = linkedMapOf<String, Path>()
+        for (value in values) {
+            val key = value.substringBefore('=')
+            require('=' in value && key.startsWith("external/") && key !in bindings && value.substringAfter('=').isNotBlank()) {
+                "invalid external input binding"
+            }
+            bindings[key] = Path.of(value.substringAfter('='))
+        }
+        return bindings
+    }
+
+    fun capture(project: Path, files: List<Pair<String, Path>>, context: List<String>, witnessPaths: List<Path>,
+        scope: dev.kartograph.index.VerifiedCaptureScope? = null): SnapshotProvenance {
+        fun fingerprint(path: Path, role: String, slot: String) = scope?.capture(project, path, role, slot)
+            ?: ContentFingerprint.capture(project, path, role, slot)
+        val inputs = files.mapIndexed { index, (role, path) -> fingerprint(path, role, "$role-$index") } +
+            InputFingerprint("options", "snapshot-options", ContentFingerprint.values(context)) +
+            witnessPaths.mapIndexed { index, path -> fingerprint(path, "witness", "witness-$index") }
+        val witnesses = witnessPaths.map { BuildWitnessCodec.parse(SnapshotFiles.readText(it.toString(), 64 * 1024 * 1024)) }
+        return SnapshotProvenance(inputs, witnesses)
+    }
+}
