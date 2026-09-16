@@ -57,7 +57,10 @@ and one eighth of the JVM maximum heap (64 MiB with `-Xmx512m`). Larger JARs use
 uncached parsing when an eligible captured spool is unavailable. Directory
 headers and the running JDK's hierarchy expansion continue to be read directly.
 
-Class and dependency-header inputs are processed in ordered batches with at most
+Input fingerprints digest files with at most four workers; the combined digest is
+assembled on the calling thread in input order, so the recorded values equal a
+sequential computation and the before/after comparison is unchanged. Class and
+dependency-header inputs are processed in ordered batches with at most
 four workers. Global analysis starts after those jobs finish. During initial
 header-cache population, a verified capture streams the JAR bytes it fingerprints
 to owned temporary files, bounded to 128 MiB per JAR and 256 MiB in total. This
@@ -107,6 +110,16 @@ not establish a reliable 15% reduction for this workload. The warm-cache and col
 targets passed on both inputs, and the one-class Android target passed. These results do not promise
 the same reduction on another machine or in a complete CI build. Now in Android
 was pinned at `12f80da6518e161ed16a06a68e71fb8a873576d6`.
+
+After the parallel input fingerprint (0.10.1 development, three seven-run comparisons
+against the same main baseline on one machine, unchanged runners and inputs), the
+Now in Android one-class ratios were 0.781, 0.782 and 0.821 against baseline
+0.840, 0.828 and 0.835, and its warm ratios 0.787, 0.772 and 0.756 against
+0.827, 0.832 and 0.832. The kartograph one-class ratios stayed inside the
+measurement band (0.851, 0.821, 0.838 against 0.859, 0.846, 0.838), so the
+internal 15% target for that small input is still not established. One candidate run
+missed the warm target (0.857) while every mode of that run was uniformly slower
+under host load; it is retained with the passing runs.
 
 Default-heap peak resident memory on the same Android input was about 765 MB for
 full capture, 746 MB for cold cache population and 667 MB for warm capture.
