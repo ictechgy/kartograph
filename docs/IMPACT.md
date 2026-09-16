@@ -164,7 +164,14 @@ library와 JVM 프로젝트의 경로는 바뀌지 않는다. 재현·설계 기
 | application | AGP 8.7.3 | KGP 2.4.10 | 8.10.2 | 17 / 35 | 공개 Portal 0.10.0 plugin, `processDebugResources` witness와 R.jar class root 포함 snapshot, configuration cache 재사용, class 캐시 6/6 hit, CLI·MCP 신선도 `matched` |
 
 application 행은 Portal plugin DSL만 사용한 별도 프로젝트에서 2회 빌드해 확인했다. Android 기기 실행은 검증하지 않았다.
-AGP 최소·최대 조합의 application 검증은 아직 library 행과 같은 범위로 확장하지 않았다.
+application의 R.jar witness 계약은 CI가 두 조합에서 고정한다. 최소 조합은 `agp-minimum` job과 tag workflow의
+`Scripts/verify-agp-8-app-snapshot.sh`(AGP 8.7.3/Gradle 8.10.2 fixture)가 R.jar class root를 포함한 snapshot이
+`verify-snapshot`에서 `matched`인지 검사한다. 최대 조합은 `AndroidApplicationSnapshotIntegrationTest`(AGP 9.3.2,
+저장소 wrapper, JDK 17·21)가 witness 3종, R.jar class root, configuration cache 재사용을 검사한다. 같은 크기·수정 시각의
+R.jar 내용 변경은 Gradle이 알아채지 못해 producer가 다시 실행되지 않는데, 이때 `verify-snapshot`은 `stale`,
+capture는 `changed-classes`로 실패하며 이전 snapshot을 덮어쓰지 않는다. R.jar를 다시 생성하면 `matched`로 돌아오고
+snapshot 바이트도 처음과 같다. witness가 없는 R.jar를
+`unwitnessed-class-root`로 거부하는 계약은 `AppModuleRJarCliTest`·`RealAgpRJarCliTest`가 CLI 수준에서 고정한다.
 
 library 두 번째 조합에서는 KGP가 Gradle 8.14.4 이상으로 업그레이드하도록 권고한다. 경고를 억제하지 않고 검증했다.
 Toolchain 연결은 기존 Kotlin bytecode target을 보존한다. JDK 21로 JVM target 17 코드를 컴파일하는 조합도 검증했다.
