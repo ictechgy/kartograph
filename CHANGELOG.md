@@ -6,6 +6,40 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-16
+
+### Added
+
+- `why <symbol>` 명령은 `dead`와 같은 입력·분석으로 한 선언의 보존 상태, 파일:줄 근거, 보존 root부터의 대표 경로,
+  직접 caller, test-only 표시, 측정된 신뢰도 등급을 한 번에 출력한다. 답은 도달성 사실이며 삭제 승인이 아니다.
+- JSON·SARIF·markdown finding에 `confidence` 등급(`static`/`needs-runtime-review`/`unmeasured`)을 싣는다.
+  같은 소스 파일에서 측정된 미해결 runtime 채널 관측에서 산출하며 text/gradle/github-actions 출력은 바꾸지 않는다.
+- `dead --suppress <file>`은 `expires` 날짜가 있는 finding 억제를 fail-closed로 읽고, 만료된 억제는 풀어
+  machine report의 `expiredSuppressions`에 남긴다. `markdown` 리포트 형식과 dead JSON을 PR 코멘트 본문으로 바꾸는
+  `Scripts/render-dead-comment.py`를 추가한다.
+- Gradle plugin의 Android **application** variant 자동 캡처가 `process<Variant>Resources`의 생성 `R.jar`를
+  resource producer witness로 덮는다. 0.9.0에서 `unwitnessed-class-root`로 거부되던 application snapshot이
+  `matched`가 되고, R.jar가 바뀌면 `stale`로 보고한다. task 실패 시 witness를 기록하지 않는다.
+- `bridges --target flutter --messages`는 Kotlin/JVM Flutter `BasicMessageChannel`의 실제 `setMessageHandler`
+  등록을 선택적으로 bridge-facts v2로 내보낸다. literal 채널 이름과 immutable alias만 해석하고,
+  Kotlin `var`·Java non-final·재할당된 이름은 dynamic으로 남긴다. Kotlin 송신 호출은 fact로 만들지 않고
+  `unscanned-message-sends` limitation으로 센다.
+- `--graph-file`을 주면 관찰 위치를 compiler snapshot의 실제 Kotlin/JVM 함수·메서드 정점과 조인할 때만
+  `symbol.usr`를 붙이고, graph가 없거나 위치가 모호하면 `missing-handler-usrs` limitation을 보존한다.
+  MethodChannel 사실도 같은 compiler 신원을 사용하며, snapshot 신선도를 먼저 확인해 stale 그래프의 USR은 버리고
+  `graph-file-freshness-<status>` limitation으로 기록한다.
+
+### Fixed
+
+- bridge-facts v1과 v2의 위치 열을 교환 계약대로 UTF-8 byte offset으로 계산한다. 다국어 주석이 앞에 있는
+  줄에서 문자 인덱스를 열로 내던 문제를 바로잡는다.
+- Kotlin 함수 범위 계산에서 주석과 `when` 제어문을 제외해 compiler symbol 귀속이 오염되지 않게 한다.
+
+### Changed
+
+- ASM 9.10.1과 kotlin-metadata-jvm 2.4.20으로 갱신하고 의존성 검증 metadata를 다시 생성했다.
+- `bridges` 문서의 `project`는 `.` 대신 입력 root의 canonical POSIX 절대경로다. 모든 위치는 여전히 project-relative다.
+
 ## [0.9.0] - 2026-09-14
 
 ### Added
@@ -258,7 +292,9 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/ictechgy/kartograph/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/ictechgy/kartograph/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/ictechgy/kartograph/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ictechgy/kartograph/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ictechgy/kartograph/compare/v0.5.0...v0.6.0

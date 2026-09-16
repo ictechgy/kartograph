@@ -59,7 +59,7 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.9.0"
+    id("io.github.ictechgy.kartograph") version "0.10.0"
 }
 ```
 
@@ -147,7 +147,7 @@ AGP public Variant API가 dependency consumer rules를 merged file로 노출하�
 
 ### 저장 그래프 질의와 생성 입력
 
-아래 기능은 0.9.0 배포본에 포함된다.
+아래 기능은 0.10.0 배포본에 포함된다.
 반복 조사에는 `snapshot`으로 그래프·보존 근거·baseline 상태·계량 한계를 한 번 저장한다.
 기존 live query와 같은 manifest/resource/namespace/keep/consumer/classpath 및 private 모드 입력을 전달한다.
 
