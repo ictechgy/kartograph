@@ -30,7 +30,7 @@ Android만의 이점이 하나 있다. "안 쓰는 것처럼 보이지만 지우
 - `query`/`bridges`/`skill`은 전체 graph 덤프 대신 한 symbol의 사용·의존·도달성과 Flutter/React Native 브리지 사실을 에이전트에게 제공한다. `query`는 미해결 runtime 경로와 보수적 dispatch 후보도 계량한다.
 - `cycles`/`rules`/`metrics`는 module/package 순환과 weakest edge, fail-closed layer YAML, Martin Ca/Ce/I/A/D 지표를 분석한다.
 - Gradle plugin은 AGP public Variant API 위에서 Android variant마다 `kartographDead<Variant>`와 `kartographGraph<Variant>` task를 등록한다.
-- Gradle plugin의 `kartographSnapshot`과 `kartographSnapshot<Variant>` task는 JVM main/test와 Android main/unit-test 입력을 compiler witness와 함께 자동 캡처한다. 반복 영향 질의는 [자동 캡처와 toolchain 설정](docs/IMPACT.md#jvm-빌드에서-자동-캡처)과 [build provenance 계약](docs/BUILD-PROVENANCE.md)을 참고한다.
+- Gradle plugin의 `kartographSnapshot`과 `kartographSnapshot<Variant>` task는 JVM main/test와 Android main/unit-test 입력을 compiler witness와 함께 자동 캡처한다. Android application variant는 생성된 `R.jar`도 `processResources` producer witness로 덮는다. 반복 영향 질의는 [자동 캡처와 toolchain 설정](docs/IMPACT.md#jvm-빌드에서-자동-캡처)과 [build provenance 계약](docs/BUILD-PROVENANCE.md)을 참고한다.
 - 선택적 [증분 파싱](docs/INDEX-CACHE.md)은 바뀌지 않은 class 사실과 dependency JAR header를 재사용하며, 매 캡처에서 현재 입력 검사와 전체 분석을 다시 수행한다.
 - [MCP stdio 서버](docs/MCP.md)는 고정된 로컬 snapshot에 `query_symbol`·`impact`·`freshness`를 제공하며 CLI와 같은 보고서를 사용한다.
 - keep 규칙 파싱은 지원하지 않는 문법을 조용히 버리지 않고 파일·줄과 함께 실패한다(fail-closed). 근거와 오류에는 절대경로를 출력하지 않는다.
