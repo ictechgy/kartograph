@@ -946,4 +946,38 @@ class BridgeFactScannerTest {
 
         assertEquals("method:app/Plugin#register(Ljava/lang/Object;)V", fact.symbol?.usr)
     }
+
+    @Test
+    fun `reports JNI interop files as uncovered evidence across transports`(@TempDir project: Path) {
+        project.resolve("Native.kt").writeText(
+            """
+            class Native {
+              init { System.loadLibrary("native-lib") }
+              external fun nativeCall(): Int
+            }
+            """.trimIndent(),
+        )
+
+        val label = "unscanned-ffi-interop: 1 Kotlin/Java source file(s) declare JNI/native interop"
+        assertTrue(BridgeFactScanner(project).scan().limitations.any { it.startsWith(label) })
+        assertTrue(BridgeFactScanner(project).scanEvents().limitations.any { it.startsWith(label) })
+        assertTrue(BridgeFactScanner(project).scanMessages().limitations.any { it.startsWith(label) })
+    }
+
+    @Test
+    fun `does not flag ordinary Kotlin identifiers as JNI interop`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              val native = EventChannel(messenger, "charging")
+              native.setStreamHandler(handler)
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents()
+
+        assertTrue(document.limitations.none { it.startsWith("unscanned-ffi-interop:") })
+        assertEquals("charging", document.facts.single().channel)
+    }
 }

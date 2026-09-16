@@ -50,6 +50,9 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
         if (stats.javaSources > 0) {
             limitations += "${spec.javaLimitation}: raw Java source is scanned lexically; Kotlin metadata and generated Pigeon identities require --graph-file"
         }
+        if (stats.jniInteropSources > 0) {
+            limitations += "unscanned-ffi-interop: ${stats.jniInteropSources} Kotlin/Java source file(s) declare JNI/native interop outside channel join coverage"
+        }
         val newest = files.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() } ?: Instant.EPOCH
         return BridgeFactsDocument(
             generatedAt = generatedAt ?: newest.toString(),
@@ -67,6 +70,10 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
         val source = ProjectTraversal.readSourceLines(projectRoot, path).joinToString("\n")
         val code = stripComments(source)
         val eventCode = maskStringContents(code)
+        // 채널 계약 밖의 JNI/FFI interop은 파일 수준 한계로만 관측한다.
+        if (JNI_INTEROP_PATTERN.containsMatchIn(code) ||
+            (path.fileName.toString().endsWith(".java") && JAVA_NATIVE_METHOD_PATTERN.containsMatchIn(code))
+        ) stats.jniInteropSources++
         val events = mutableListOf<Event>()
         CONSTRUCTOR.findAll(eventCode).forEach { match ->
             val open = code.indexOf('(', match.range.first)
@@ -382,7 +389,7 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
 
     private data class Channel(val value: String?, val dynamic: Boolean, val prefix: String?)
     private data class Binding(val name: String, val scope: List<Int>, var channel: Channel)
-    private data class ScanStats(var unsupportedSends: Int = 0, var javaSources: Int = 0)
+    private data class ScanStats(var unsupportedSends: Int = 0, var javaSources: Int = 0, var jniInteropSources: Int = 0)
     private data class BindingSpec(val name: String, val mutable: Boolean)
     private sealed class Event(open val offset: Int) {
         data class Constructor(override val offset: Int, val end: Int, val open: Int, val binding: BindingSpec?, val arguments: List<String>, var directHandler: Channel? = null) : Event(offset)

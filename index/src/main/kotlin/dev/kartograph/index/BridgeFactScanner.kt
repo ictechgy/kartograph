@@ -35,6 +35,9 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         val target = counts.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .firstOrNull()?.key
         val limitations = buildList {
+            if (stats.jniInteropSources > 0) add(
+                "unscanned-ffi-interop: ${stats.jniInteropSources} Kotlin/Java source file(s) declare JNI/native interop outside channel join coverage",
+            )
             val dynamic = filtered.count { it.dynamic && it.kind == "channel-register" }
             if (dynamic > 0) add("dynamic-channel-names: $dynamic channel registration(s) use a non-literal name")
             val missingHandlerUsrs = withSymbols.count { it.kind == "method-handle" && it.symbol?.usr == null }
@@ -68,6 +71,9 @@ public class BridgeFactScanner(private val projectRoot: Path) {
     private fun scanFile(path: Path, facts: MutableList<BridgeFact>, stats: ScanStats) {
         val relative = projectRoot.toRealPath().relativize(path.toAbsolutePath().normalize())
             .joinToString("/")
+        // FFI/JNI는 채널 조인 범위 밖의 interop다. 파일 수준으로만 관측해 한계 근거로 남긴다.
+        val isJava = path.fileName.toString().endsWith(".java")
+        var fileHasJni = false
         val flutterChannels = mutableMapOf<String, Channel>()
         var pendingChainedChannel: Channel? = null
         var pendingChannel: PendingChannel? = null
@@ -114,6 +120,9 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             val stripped = stripComments(line, inBlockComment)
             inBlockComment = stripped.inBlockComment
             val code = stripped.code
+            if (!fileHasJni && (JNI_INTEROP_PATTERN.containsMatchIn(code) ||
+                    (isJava && JAVA_NATIVE_METHOD_PATTERN.containsMatchIn(code)))
+            ) fileHasJni = true
             pendingChainedChannel?.let { channel ->
                 val handler = CHAINED_SUFFIX.find(code)
                 if (handler != null) {
@@ -228,6 +237,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             while (handlerScopes.lastOrNull()?.let { braceDepth < it.depth } == true) handlerScopes.removeLast()
             reactScope?.let { scope -> if (braceDepth < scope.depth) reactScope = null }
         }
+        if (fileHasJni) stats.jniInteropSources++
     }
 
     private fun fact(
@@ -343,7 +353,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
 
     private data class StrippedLine(val code: String, val inBlockComment: Boolean)
 
-    private data class ScanStats(var unscannedHandlers: Int = 0)
+    private data class ScanStats(var unscannedHandlers: Int = 0, var jniInteropSources: Int = 0)
 
     private class CallArguments {
         private val arguments = mutableListOf<String>()
@@ -409,3 +419,11 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         val CLASS_DECLARATION = Regex("\\b(?:class|object)\\s+[A-Za-z_][A-Za-z0-9_]*")
     }
 }
+
+// Kotlin `external fun`, System.loadLibrary, JNI export(Java_패키지_클래스_메서드) 표식.
+// Java의 `native`는 Kotlin에서 예약어가 아니라 식별자가 될 수 있어 .java에만 적용한다.
+// v1·v2 브리지 스캐너가 같은 표식 한 벌을 공유한다.
+internal val JNI_INTEROP_PATTERN =
+    Regex("\\bSystem\\.loadLibrary\\s*\\(|\\bexternal\\s+fun\\b|\\bJava_[a-z][A-Za-z0-9_]*_[A-Za-z0-9_]+")
+internal val JAVA_NATIVE_METHOD_PATTERN =
+    Regex("\\bnative\\s+[A-Za-z_][A-Za-z0-9_<>.?\\[\\]]*\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\(")
