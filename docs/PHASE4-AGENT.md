@@ -53,6 +53,11 @@ Kotlin `val`·Java `final`과 직접 연결한 생성식의 literal은 유지한
 `missing-handler-usrs` limitation을 보존한다. raw Java는 lexical 사실을 낼 수 있지만 Kotlin
 metadata와 generated identity는 graph snapshot 없이는 증명하지 않는다.
 
+`kartograph bridges --project <root> --target flutter --events`는 같은 스캐너를
+`EventChannel`·`setStreamHandler` 표면에 적용해 `transport: event-channel` v2 문서의
+`stream-handle` fact를 출력한다. `--messages`와 `--events`는 별도 문서이며 동시에 쓸 수 없다.
+EventChannel에는 Kotlin 송신 측 개념이 없으므로 send 계열 limitation을 만들지 않는다.
+
 동적 channel, 귀속하지 못한 handler, inline lambda가 아닌 handler, source scan으로 JVM USR을 만들 수 없는
 handler는 fact를 버리거나 성공으로 가장하지 않고 각각 limitation으로 센다. 현재 source scanner는
 `missing-handler-usrs`를 항상 명시하며, isthmus는 `channel: null` 또는 dynamic fact를 조인하지 않는다.
