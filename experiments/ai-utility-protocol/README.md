@@ -131,7 +131,9 @@ metadata만 고정했고 **아무것도 실행하지 않았다**. 표본 4건과
 | pinterest_ktlint-2785 | 4 | 1.000 | mcp | 0.000, 0.250 | 0.125 | 0.000, 0.143 | 0.071 | 49.0 | 0.5239 |
 
 코호트 평균(4사례 전부, 조건당 8회): source recall 0.329 / precision 0.195, mcp recall 0.339 /
-precision 0.155. `fasterxml__jackson-core-1016`은 천장이 0.375라 위 표에 별도 행으로도 남겼다.
+precision 0.155. 무효 응답(jackson source 반복0) 1건은 recall에 0으로 포함되고 precision은 분모가 없어 평균에서
+빠지므로 source precision 0.195는 유효 7회의 평균이다. 이 취합 방식은 `grade_v4.py`의 동작을 실행 후 서술한 것이며
+사전 등록 문면에는 없었다. `fasterxml__jackson-core-1016`은 천장이 0.375라 위 표에 별도 행으로도 남겼다.
 jackson을 뺀 서술용 평균은 source recall 0.429 / precision 0.197, mcp recall 0.452 / precision 0.206이며
 대체 코호트 평균이 아니다.
 
@@ -166,7 +168,7 @@ source 조건에는 freshness가 없으므로 0회이고, 이 0을 낮은 점수
 
 - 16회 총 비용 5.0049 USD(실행당 0.2301~0.4539 USD). 실행당 상한 3 USD와 총 48 USD 모두 넘지 않았다.
   smoke 1회 0.4250 USD를 더하면 5.4299 USD다.
-- 벽시계는 실행당 42.3~88.2초, 16회 합계 956.4초(전체 경과 959.2초)다. 900초 상한에 걸린 실행은 없다.
+- 벽시계는 실행당 42.3~88.2초, 16회 합계 956.2초(실행별 초를 합한 뒤 반올림)(전체 경과 959.2초)다. 900초 상한에 걸린 실행은 없다.
 - 16회 모두 exit 0이고 인프라 오류·timeout·provider 오류·stream 손상은 0건이다. 도구 표면은 16회 모두
   기대한 집합과 정확히 같았고(`source_*` 3개, mcp 조건은 여기에 `query_symbol`/`impact`/`freshness` 추가),
   MCP 서버 상태는 모두 `connected`였다.
