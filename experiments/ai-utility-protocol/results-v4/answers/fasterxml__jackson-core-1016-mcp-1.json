@@ -1,0 +1,47 @@
+{
+  "label": "fasterxml__jackson-core-1016-mcp-1",
+  "case": "fasterxml__jackson-core-1016",
+  "arm": "mcp",
+  "repeat": 1,
+  "subtype": "success",
+  "isError": false,
+  "totalCostUsd": 0.2929795,
+  "durationMs": 54944,
+  "numTurns": 16,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 14440,
+    "cache_read_input_tokens": 41423,
+    "output_tokens": 5011,
+    "output_tokens_details": {
+      "thinking_tokens": 446
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14440,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3107,
+        "cache_read_input_tokens": 15775,
+        "cache_creation_input_tokens": 787,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 787
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "finalText": "```json\n{\"targets\":[\n{\"file\":\"src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java\",\"symbol\":\"com.fasterxml.jackson.core.sym.PlaceholderSymbolTableTest.testBasicPlaceholderLookups\",\"kind\":\"test\",\"reason\":\"Defines the placeholder contract the change now relies on in production: makeChildOrPlaceholder(0) yields size()==-1, isCanonicalizing()==false, findName(...) always null. Parsers' _symbols.findName paths (UTF8DataInputJsonParser lines 1583–1821; NonBlockingJsonParserBase lines 648–676) will now always miss and fall through to addName when CANONICALIZE_FIELD_NAMES is disabled.\",\"evidence\":\"PlaceholderSymbolTableTest.java:10-25; ByteQuadsCanonicalizer.java:381-389 returns new ByteQuadsCanonicalizer(_tableInfo.get()) when feature disabled; isCanonicalizing() at :472-475 returns _parent != null\"},\n{\"file\":\"src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java\",\"symbol\":\"com.fasterxml.jackson.core.sym.PlaceholderSymbolTableTest.testBasicPlaceholderAddFails\",\"kind\":\"test\",\"reason\":\"Placeholder addName throws 'Cannot add names to Placeholder'. The new early-return in addName/_addName (before _symbols.addName at UTF8DataInputJsonParser:1940 and NonBlockingJsonParserBase:797) is the only guard; verify no other addName entry point exists in either parser. Also confirms placeholder.release() is safe, which matters for UTF8DataInputJsonParser:185 and NonBlockingJsonParserBase:307 (_symbols.release()).\",\"evidence\":\"PlaceholderSymbolTableTest.java:29-76; _symbols.addName only at UTF8DataInputJsonParser.java:1940 and NonBlockingJsonParserBase.java:797; _symbols.release() at UTF8DataInputJsonParser.java:185, NonBlockingJsonParserBase.java:307\"},\n{\"file\":\"src/test/java/com/fasterxml/jackson/core/sym/TestSymbolTables.java\",\"symbol\":\"com.fasterxml.jackson.core.sym.TestSymbolTables (line ~52, assertTrue(symbols.isCanonicalizing()))\",\"kind\":\"test\",\"reason\":\"Existing assertion on isCanonicalizing() for a real child; sanity check that default-configured factories (CANONICALIZE_FIELD_NAMES=true) still get canonicalizing children via makeChildOrPlaceholder's inlined makeChild branch.\",\"evidence\":\"TestSymbolTables.java:52; ByteQuadsCanonicalizer.java:382-387\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/JsonFactory.java\",\"symbol\":\"com.fasterxml.jackson.core.JsonFactory.createNonBlockingByteArrayParser()\",\"kind\":\"caller\",\"reason\":\"Changed callsite; NonBlockingJsonParser receives a placeholder canonicalizer when CANONICALIZE_FIELD_NAMES disabled. No existing test found that disables CANONICALIZE_FIELD_NAMES (search of src/test returned 0 hits), so this path is untested by the current suite.\",\"evidence\":\"JsonFactory.java:1302 makeChild(_factoryFeatures) -> makeChildOrPlaceholder\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/JsonFactory.java\",\"symbol\":\"com.fasterxml.jackson.core.JsonFactory.createNonBlockingByteBufferParser()\",\"kind\":\"caller\",\"reason\":\"Changed callsite; same placeholder behavior for NonBlockingByteBufferJsonParser.\",\"evidence\":\"JsonFactory.java:1329\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/JsonFactory.java\",\"symbol\":\"com.fasterxml.jackson.core.JsonFactory._createParser(DataInput, IOContext)\",\"kind\":\"caller\",\"reason\":\"Changed callsite; UTF8DataInputJsonParser now gets a placeholder when canonicalization disabled. Any BaseTest MODE_DATA_INPUT-driven tests exercise this parser but with default features only.\",\"evidence\":\"JsonFactory.java:1852\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/json/ByteSourceJsonBootstrapper.java\",\"symbol\":\"com.fasterxml.jackson.core.json.ByteSourceJsonBootstrapper.constructParser(...)\",\"kind\":\"caller\",\"reason\":\"Reference behavior for the same feature: when CANONICALIZE_FIELD_NAMES is disabled it avoids the byte parser entirely and uses ReaderBasedJsonParser. The change diverges (byte parsers with placeholder) — review for consistency (e.g. INTERN_FIELD_NAMES is silently ignored under placeholder since intern flag is only applied in the makeChild branch).\",\"evidence\":\"ByteSourceJsonBootstrapper.java:263-270; ByteQuadsCanonicalizer.java:382-389\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java\",\"symbol\":\"com.fasterxml.jackson.core.json.UTF8DataInputJsonParser.addName(int[], int, int)\",\"kind\":\"caller\",\"reason\":\"Modified method; early return skips the quads un-align step and _symbols.addName. Verify callers (findName at 1583/1657/1757/1821 and q1/q2/q3 variants 1775-1803) do not rely on quads[qlen-1] being restored after addName.\",\"evidence\":\"UTF8DataInputJsonParser.java:1583-1821 findName callers; :1940 addName\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase.java\",\"symbol\":\"com.fasterxml.jackson.core.json.async.NonBlockingJsonParserBase._addName(int[], int, int)\",\"kind\":\"caller\",\"reason\":\"Modified method shared by NonBlockingJsonParser and NonBlockingByteBufferJsonParser; same concern as above for callers at 648/662/676.\",\"evidence\":\"NonBlockingJsonParserBase.java:648-676, :797\"},\n{\"file\":\"src/test/java/com/fasterxml/jackson/core/read/SimpleParserTest.java\",\"symbol\":\"com.fasterxml.jackson.core.read.SimpleParserTest (line ~63, configure INTERN_FIELD_NAMES)\",\"kind\":\"test\",\"reason\":\"Closest existing factory-feature test on field-name handling; candidate to extend with CANONICALIZE_FIELD_NAMES=false across DataInput and async modes.\",\"evidence\":\"SimpleParserTest.java:63-65\"},\n{\"file\":\"src/test/java/com/fasterxml/jackson/core/json/JsonFactoryTest.java\",\"symbol\":\"com.fasterxml.jackson.core.json.JsonFactoryTest (INTERN_FIELD_NAMES config tests, lines 134-264)\",\"kind\":\"test\",\"reason\":\"Feature-configuration tests for JsonFactory; file-level evidence only — none disables CANONICALIZE_FIELD_NAMES.\",\"evidence\":\"JsonFactoryTest.java:134,136,245-264\"}\n],\n\"unknowns\":[\"Freshness status 'unverified' (build-scope-mismatch, missing build witness); graph queries not used, evidence is text-search based.\",\"No test in src/test references CANONICALIZE_FIELD_NAMES, so the placeholder path through real parsers is untested; async test base classes and MODE_DATA_INPUT tests were not enumerated (tool budget exhausted).\",\"Placeholder constructor (ByteQuadsCanonicalizer(TableInfo)) internals not read; behavior inferred from PlaceholderSymbolTableTest.\",\"External consumers (jackson-databind, format modules calling makeChild or subclassing JsonFactory) unavailable.\"],\n\"summary\":\"Change routes three JsonFactory byte-parser paths through makeChildOrPlaceholder and guards addName/_addName with isCanonicalizing(). Existing PlaceholderSymbolTableTest defines the placeholder contract (findName null, addName throws, release safe) the parsers now depend on; the only _symbols.addName callsites in both parsers are inside the guarded methods. Risk: no existing test disables CANONICALIZE_FIELD_NAMES for DataInput/async parsers, INTERN_FIELD_NAMES is silently dropped in placeholder mode, and behavior diverges from ByteSourceJsonBootstrapper which falls back to ReaderBasedJsonParser.\"}\n```",
+  "streamSha256": "fe82b610ad0c5a020d9a951c12175afbd9ab44582d31dce8805d876ccab852e9",
+  "toolsSha256": "54ff1ec579b68cc50540e759189f2a59b8ba3ab49f941dc0d4bb8599edc6252c"
+}

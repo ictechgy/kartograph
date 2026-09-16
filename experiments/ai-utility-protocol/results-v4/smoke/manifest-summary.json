@@ -1,0 +1,29 @@
+{
+  "note": "전체 smoke manifest는 source 해시 때문에 크므로 scratch에만 둔다. 여기에는 계약 값과 해시만 남긴다.",
+  "fullManifestSha256": "157bab5de74fca551db9e7fcd5a4542da7b759290ceff584a18b58f20ff86943",
+  "fullManifestBytes": 943807,
+  "mode": "smoke",
+  "model": "claude-opus-5[1m]",
+  "effort": "low",
+  "maxTools": 12,
+  "wallSeconds": 900,
+  "maxBudgetUsd": 3,
+  "snapshotMaxMiB": 128,
+  "oracleSha256": "c05648e7916af7a0ad039cba4bfcf77caa9d5e8779c8fe7d8248679e77a276fb",
+  "scoringRulesSha256": "274bce59b28291044b2e015b1e683158e8a952a746a004c6c3b9c41644ad3086",
+  "schedule": [
+    {
+      "case": "alibaba__fastjson2-2097",
+      "arm": "mcp",
+      "repeat": 0,
+      "label": "smoke-0"
+    }
+  ],
+  "cohortPromptSha256": {
+    "alibaba__fastjson2-2097": "a04976e21a6d0af021859a399122af38d4b0c9ba0537942a7e5012aeb71667cd",
+    "fasterxml__jackson-core-1016": "cc990079e1285397bf37e110f207e5d46bfca3a945e998c8552e2e740433ed48",
+    "detekt_detekt-7625": "cb10d97a4ccda562bfe2f72b50fed655b9fabc5e674764a1d5881a4385c751e4",
+    "pinterest_ktlint-2785": "9bf275127bcc9c074b42ab353491bfbb1400b9a2d9df15c35248759818ab4783"
+  },
+  "scoringRulesNote": "smoke는 overloadMatching 해설 추가 이전 규약(274bce59...)으로 실행했다. smoke는 결과에 포함하지 않는다."
+}

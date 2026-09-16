@@ -1,0 +1,2153 @@
+[
+  {
+    "case": "alibaba__fastjson2-2097",
+    "arm": "source",
+    "repeat": 0,
+    "label": "alibaba__fastjson2-2097-source-0",
+    "directory": "<scratch>/v4/run16/00-alibaba__fastjson2-2097-source-0",
+    "seconds": 88.0863565839827,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 60,
+          "limit": 200
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CLASS_ARRAYS_LIST"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 260,
+          "limit": 200
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplListStr.java",
+          "startLine": 70,
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(0).getClass()",
+          "prefix": "core/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays$ArrayList"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 460,
+          "limit": 180
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(",
+          "prefix": "core/src/test/java/com/alibaba/fastjson2/issues",
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderBaseModule.java",
+          "startLine": 1845,
+          "limit": 25
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "ObjectReaderImplList",
+          "prefix": "core/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(1).getClass()"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/test/java/com/alibaba/fastjson2/dubbo/DubboTest6.java",
+          "startLine": 20,
+          "limit": 80
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(",
+          "prefix": "core/src/test/java/com/alibaba/fastjson2/JSONBTest",
+          "limit": 15
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "(Arrays.asList(",
+          "prefix": "core/src/test/java/com/alibaba/fastjson2/",
+          "limit": 40
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "a04976e21a6d0af021859a399122af38d4b0c9ba0537942a7e5012aeb71667cd",
+      "snapshot": "381a989179feabaa640e0ce85ecf46bc55c99c43a0ad444c73ebf6e3180ed212",
+      "sourceManifest": "e565c07b9bcf2a5feec28916577ba4c4124be97aca2d620b6ac8d16a9b0aeda9",
+      "productCommand": "b572cd747dc968081562084ae956a22c0dfdd7c9339ed2217cfc30ddcbbaed8e",
+      "mcpConfig": "350d6fda4bd52a15283231bffe1dea6c4d18d79161b1a316b671ac9d8b6904df"
+    },
+    "evidenceHashes": {
+      "stream": "8c177b9a91a807e9b2478c8fadff0198a285047ddf33275dc72968955c96e033",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "8c2d2f646a9e0ad5d0bff31c2295f70da9314fda1d163ecc106ef27ee54b9b75"
+    }
+  },
+  {
+    "case": "alibaba__fastjson2-2097",
+    "arm": "source",
+    "repeat": 1,
+    "label": "alibaba__fastjson2-2097-source-1",
+    "directory": "<scratch>/v4/run16/01-alibaba__fastjson2-2097-source-1",
+    "seconds": 71.7099369589996,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 60,
+          "limit": 160
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CLASS_ARRAYS_LIST",
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 220,
+          "limit": 200
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 420,
+          "limit": 200
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplListStr.java",
+          "startLine": 20,
+          "limit": 120
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays$ArrayList",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "public static Constructor getDefaultConstructor(",
+          "prefix": "core/src/main/java/com/alibaba/fastjson2/util/BeanUtils.java"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "ObjectReaderImplList.of(",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(1).getClass()",
+          "prefix": "core/src/test",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(",
+          "prefix": "core/src/test/java/com/alibaba/fastjson2/issues",
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/util/BeanUtils.java",
+          "startLine": 384,
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderBaseModule.java",
+          "startLine": 1845,
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays$ArrayList",
+          "prefix": "core/src/test",
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "JSON.parseObject(str, Arrays.asList",
+          "prefix": "core/src/test",
+          "limit": 20
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "a04976e21a6d0af021859a399122af38d4b0c9ba0537942a7e5012aeb71667cd",
+      "snapshot": "381a989179feabaa640e0ce85ecf46bc55c99c43a0ad444c73ebf6e3180ed212",
+      "sourceManifest": "e565c07b9bcf2a5feec28916577ba4c4124be97aca2d620b6ac8d16a9b0aeda9",
+      "productCommand": "b572cd747dc968081562084ae956a22c0dfdd7c9339ed2217cfc30ddcbbaed8e",
+      "mcpConfig": "6f2c8740c36eeaed57e6621d424d5745cbdd56aeb754dfc6c35e2334b7f913f7"
+    },
+    "evidenceHashes": {
+      "stream": "90197f1f1280ffcf8edcb680e4c51690ce7c840ea87f406697a83688c6411d5b",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "be03639833bc011372d35fa4b9d7c5818d6b49eaffdf6d64fb4a9f46f726086c"
+    }
+  },
+  {
+    "case": "alibaba__fastjson2-2097",
+    "arm": "mcp",
+    "repeat": 0,
+    "label": "alibaba__fastjson2-2097-mcp-0",
+    "directory": "<scratch>/v4/run16/02-alibaba__fastjson2-2097-mcp-0",
+    "seconds": 72.9847660420055,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__freshness",
+      "mcp__preflight__impact",
+      "mcp__preflight__query_symbol",
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__freshness",
+        "input": {}
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 60,
+          "limit": 120
+        }
+      },
+      {
+        "name": "mcp__preflight__query_symbol",
+        "input": {
+          "symbol": "com.alibaba.fastjson2.reader.ObjectReaderImplList.of",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 180,
+          "limit": 200
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CLASS_ARRAYS_LIST",
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(",
+          "prefix": "core/src/test",
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 380,
+          "limit": 180
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplListStr.java",
+          "startLine": 20,
+          "limit": 120
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderBaseModule.java",
+          "startLine": 1845,
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays$ArrayList",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/test/java/com/alibaba/fastjson2/dubbo/DubboTest6.java",
+          "startLine": 30,
+          "limit": 60
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/test/java/com/alibaba/fastjson2/autoType/AutoTypeTest27.java",
+          "startLine": 178,
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "ObjectReaderImplList.of(",
+          "prefix": "core/src/test",
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(",
+          "prefix": "core/src/test/java/com/alibaba/fastjson2/reader",
+          "limit": 20
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "a04976e21a6d0af021859a399122af38d4b0c9ba0537942a7e5012aeb71667cd",
+      "snapshot": "381a989179feabaa640e0ce85ecf46bc55c99c43a0ad444c73ebf6e3180ed212",
+      "sourceManifest": "e565c07b9bcf2a5feec28916577ba4c4124be97aca2d620b6ac8d16a9b0aeda9",
+      "productCommand": "b572cd747dc968081562084ae956a22c0dfdd7c9339ed2217cfc30ddcbbaed8e",
+      "mcpConfig": "4bde171e6110b94b63ac0e13c17d7a7c038fe1ad85c2ac453bbe290abe362296"
+    },
+    "evidenceHashes": {
+      "stream": "f13b6ae68ba8d2d3e62c4560c8c69cb3bddfcd0c6809cd8d06aecbe4254ddf06",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "eef77816a35ee5c2054a6b272656dfb382ba427ce0dba3b4c42d30893a232901"
+    }
+  },
+  {
+    "case": "alibaba__fastjson2-2097",
+    "arm": "mcp",
+    "repeat": 1,
+    "label": "alibaba__fastjson2-2097-mcp-1",
+    "directory": "<scratch>/v4/run16/03-alibaba__fastjson2-2097-mcp-1",
+    "seconds": 88.20318170901737,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__freshness",
+      "mcp__preflight__impact",
+      "mcp__preflight__query_symbol",
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__freshness",
+        "input": {}
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 60,
+          "limit": 200
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CLASS_ARRAYS_LIST"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 260,
+          "limit": 200
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplListStr.java",
+          "startLine": 70,
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays$ArrayList",
+          "prefix": "core/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(0).getClass()",
+          "prefix": "core/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 460,
+          "limit": 180
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(",
+          "prefix": "core/src/test/java/com/alibaba/fastjson2/jsonb",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "ArraysAsList",
+          "prefix": "core/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__impact",
+        "input": {
+          "symbols": [
+            "com.alibaba.fastjson2.reader.ObjectReaderImplList.of"
+          ],
+          "depth": 2,
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderBaseModule.java",
+          "startLine": 1845,
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/test/java/com/alibaba/fastjson2/jsonb/basic/CollectionTest.java",
+          "startLine": 25,
+          "limit": 60
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/test/java/com/alibaba/fastjson2/dubbo/DubboTest6.java",
+          "startLine": 40,
+          "limit": 50
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList",
+          "prefix": "core/src/test/java/com/alibaba/fastjson2/issues/Issue1676.java"
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "a04976e21a6d0af021859a399122af38d4b0c9ba0537942a7e5012aeb71667cd",
+      "snapshot": "381a989179feabaa640e0ce85ecf46bc55c99c43a0ad444c73ebf6e3180ed212",
+      "sourceManifest": "e565c07b9bcf2a5feec28916577ba4c4124be97aca2d620b6ac8d16a9b0aeda9",
+      "productCommand": "b572cd747dc968081562084ae956a22c0dfdd7c9339ed2217cfc30ddcbbaed8e",
+      "mcpConfig": "0372aa383e3ac27f88f278d1384882cd5c5532c5a95f4288a9d567ca47543629"
+    },
+    "evidenceHashes": {
+      "stream": "dda3edeacbce4878c5349a64b30eafddb58e11223a06775c9fe5dd19471e1184",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "5c6750ce53499bbf325628a21bfd26fda94f3809c8630956759cccda5987fea5"
+    }
+  },
+  {
+    "case": "fasterxml__jackson-core-1016",
+    "arm": "source",
+    "repeat": 0,
+    "label": "fasterxml__jackson-core-1016-source-0",
+    "directory": "<scratch>/v4/run16/04-fasterxml__jackson-core-1016-source-0",
+    "seconds": 55.602440624992596,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "makeChildOrPlaceholder"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "isCanonicalizing()"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CANONICALIZE_FIELD_NAMES",
+          "prefix": "src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/sym/ByteQuadsCanonicalizer.java",
+          "startLine": 340,
+          "limit": 150
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "_byteSymbolCanonicalizer.makeChild"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "isCanonicalizing",
+          "prefix": "src/main"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CANONICALIZE_FIELD_NAMES",
+          "prefix": "src/test",
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "createNonBlockingByteArrayParser()",
+          "prefix": "src/test",
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CANONICALIZE",
+          "prefix": "src/test",
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Placeholder",
+          "prefix": "src/main",
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "_symbols.addName(",
+          "prefix": "src/main"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/sym/ByteQuadsCanonicalizer.java",
+          "startLine": 985,
+          "limit": 25
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8StreamJsonParser.java",
+          "startLine": 2466,
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "makeChildOrPlaceholder",
+          "prefix": "src/main/java/com/fasterxml/jackson/core/json"
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "cc990079e1285397bf37e110f207e5d46bfca3a945e998c8552e2e740433ed48",
+      "snapshot": "81815623d96165d7f49c482d2e8ddb8204fcbb8434d830c9a8233bf4f105dd70",
+      "sourceManifest": "9f85463706e4f4fff6bfd64e136ff14150ba4f64a52e9cf124951a16a184d7a0",
+      "productCommand": "28c3d98c7eae9877820f06e2635afa51e595772bc95f8bcb3868d1198242f488",
+      "mcpConfig": "1b6963c8868d0a05e572b668c8589e6201870a4823e3a973ea1ddde46e1c4da9"
+    },
+    "evidenceHashes": {
+      "stream": "28580600d625b7f07e08c3080e5db0d7d7b7102efc9356aa5b602a84146a0ce1",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "1b04416009b78d205bfbf0f4bfdb86934ead00a9d0c896a8fe58e770fb6b993f"
+    }
+  },
+  {
+    "case": "fasterxml__jackson-core-1016",
+    "arm": "source",
+    "repeat": 1,
+    "label": "fasterxml__jackson-core-1016-source-1",
+    "directory": "<scratch>/v4/run16/05-fasterxml__jackson-core-1016-source-1",
+    "seconds": 54.312973292020615,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "makeChildOrPlaceholder"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "isCanonicalizing()"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CANONICALIZE_FIELD_NAMES",
+          "prefix": "src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/sym/ByteQuadsCanonicalizer.java",
+          "startLine": 360,
+          "limit": 130
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "makeChild(_factoryFeatures)"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "isCanonicalizing",
+          "prefix": "src/main"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "_symbols.addName",
+          "prefix": "src/main"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CANONICALIZE_FIELD_NAMES"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "createNonBlockingByteArrayParser"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8StreamJsonParser.java",
+          "startLine": 2455,
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/json/ByteSourceJsonBootstrapper.java",
+          "startLine": 250,
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CANONICALIZE",
+          "prefix": "src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Cannot add names to Placeholder",
+          "prefix": "src/main"
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "cc990079e1285397bf37e110f207e5d46bfca3a945e998c8552e2e740433ed48",
+      "snapshot": "81815623d96165d7f49c482d2e8ddb8204fcbb8434d830c9a8233bf4f105dd70",
+      "sourceManifest": "9f85463706e4f4fff6bfd64e136ff14150ba4f64a52e9cf124951a16a184d7a0",
+      "productCommand": "28c3d98c7eae9877820f06e2635afa51e595772bc95f8bcb3868d1198242f488",
+      "mcpConfig": "25a339b46dae0805f0d2e5e1fab23e360fc1dbd33f1e02e6f694479eb5dd3239"
+    },
+    "evidenceHashes": {
+      "stream": "a4b4494fceab260a214cc849fb8ddb72836e01401999261d5d7c631636a2058b",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "8e53f304424228b8a328c48157db84f0155ec8366aa484bb5bd301a1671091b8"
+    }
+  },
+  {
+    "case": "fasterxml__jackson-core-1016",
+    "arm": "mcp",
+    "repeat": 0,
+    "label": "fasterxml__jackson-core-1016-mcp-0",
+    "directory": "<scratch>/v4/run16/06-fasterxml__jackson-core-1016-mcp-0",
+    "seconds": 58.25164216698613,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__freshness",
+      "mcp__preflight__impact",
+      "mcp__preflight__query_symbol",
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__freshness",
+        "input": {}
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "makeChildOrPlaceholder"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "isCanonicalizing()"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CANONICALIZE_FIELD_NAMES",
+          "prefix": "src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/sym/ByteQuadsCanonicalizer.java",
+          "startLine": 340,
+          "limit": 150
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "makeChild(_factoryFeatures)"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CANONICALIZE_FIELD_NAMES"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/json/ByteSourceJsonBootstrapper.java",
+          "startLine": 255,
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Cannot add names to Placeholder"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "_symbols.addName(",
+          "prefix": "src/main"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "createNonBlockingByteBufferParser",
+          "prefix": "src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "DataInput",
+          "prefix": "src/test/java/com/fasterxml/jackson/core/json",
+          "limit": 15
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/TestSymbolTables.java",
+          "startLine": 38,
+          "limit": 25
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase.java",
+          "startLine": 740,
+          "limit": 60
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "cc990079e1285397bf37e110f207e5d46bfca3a945e998c8552e2e740433ed48",
+      "snapshot": "81815623d96165d7f49c482d2e8ddb8204fcbb8434d830c9a8233bf4f105dd70",
+      "sourceManifest": "9f85463706e4f4fff6bfd64e136ff14150ba4f64a52e9cf124951a16a184d7a0",
+      "productCommand": "28c3d98c7eae9877820f06e2635afa51e595772bc95f8bcb3868d1198242f488",
+      "mcpConfig": "aeea21c7a092bd315468ef595ee8f3e505d0d596ec9feebbbd34a9ff597a46fc"
+    },
+    "evidenceHashes": {
+      "stream": "a1e12eca2be13675e294c34778d605c58e65f23401d93e2be8e76bbe4803e4ed",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "a38e20782db7178157da1fbf6e967271d58976daae55590da97c8df6e800a26c"
+    }
+  },
+  {
+    "case": "fasterxml__jackson-core-1016",
+    "arm": "mcp",
+    "repeat": 1,
+    "label": "fasterxml__jackson-core-1016-mcp-1",
+    "directory": "<scratch>/v4/run16/07-fasterxml__jackson-core-1016-mcp-1",
+    "seconds": 56.159207582997624,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__freshness",
+      "mcp__preflight__impact",
+      "mcp__preflight__query_symbol",
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__freshness",
+        "input": {}
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "makeChildOrPlaceholder"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "isCanonicalizing()"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CANONICALIZE_FIELD_NAMES",
+          "prefix": "src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/sym/ByteQuadsCanonicalizer.java",
+          "startLine": 340,
+          "limit": 150
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "makeChild(",
+          "prefix": "src/main"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CANONICALIZE_FIELD_NAMES"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "_symbols.",
+          "prefix": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "_symbols.",
+          "prefix": "src/main/java/com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase.java"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/json/ByteSourceJsonBootstrapper.java",
+          "startLine": 255,
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Feature.INTERN_FIELD_NAMES",
+          "prefix": "src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "src/main/java/com/fasterxml/jackson/core/sym/ByteQuadsCanonicalizer.java",
+          "startLine": 270,
+          "limit": 70
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "MODE_DATA_INPUT",
+          "prefix": "src/test/java/com/fasterxml/jackson/core/BaseTest.java"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "createNonBlockingByteBufferParser",
+          "prefix": "src/test",
+          "limit": 10
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "cc990079e1285397bf37e110f207e5d46bfca3a945e998c8552e2e740433ed48",
+      "snapshot": "81815623d96165d7f49c482d2e8ddb8204fcbb8434d830c9a8233bf4f105dd70",
+      "sourceManifest": "9f85463706e4f4fff6bfd64e136ff14150ba4f64a52e9cf124951a16a184d7a0",
+      "productCommand": "28c3d98c7eae9877820f06e2635afa51e595772bc95f8bcb3868d1198242f488",
+      "mcpConfig": "28b9251fca39cf99ac179d9746e5f282b68ee29c438cafc9cc818e45201a6999"
+    },
+    "evidenceHashes": {
+      "stream": "fe82b610ad0c5a020d9a951c12175afbd9ab44582d31dce8805d876ccab852e9",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "54ff1ec579b68cc50540e759189f2a59b8ba3ab49f941dc0d4bb8599edc6252c"
+    }
+  },
+  {
+    "case": "detekt_detekt-7625",
+    "arm": "source",
+    "repeat": 0,
+    "label": "detekt_detekt-7625-source-0",
+    "directory": "<scratch>/v4/run16/08-detekt_detekt-7625-source-0",
+    "seconds": 47.44140658399556,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "BaselineFormat()"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "writeEmptyElement"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "BaselineResultMapping"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "limit": 120
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "emptySet()",
+          "prefix": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "createOrUpdate("
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CurrentIssues/>"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "startLine": 121
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "fun XMLStreamWriter.tag("
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "BaselineHandler"
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "cb10d97a4ccda562bfe2f72b50fed655b9fabc5e674764a1d5881a4385c751e4",
+      "snapshot": "717f092d0c49d917bc8708780fdd8088eaaa805c5f9f567d7d5e1af75a943f2a",
+      "sourceManifest": "4d41caa52c5281b9bdd9c4d02ee14a51aa9884913aba3ff1e09d569a0cc064c8",
+      "productCommand": "f8aeb1dbb45051eded873ff8a9b49407b55a101c176ea03a83cc8711c0f271d9",
+      "mcpConfig": "e6fffb56d8eded8b25e08f5e1cd958406d8f0db56c11cdf8f9585de8c1dfafbc"
+    },
+    "evidenceHashes": {
+      "stream": "961fbf63223e59fadb1a3a4a6b6acddacaffcc5dce686da0d92b1ed9c1aa15ca",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "b9e3f6ee4cdb8bc54d3108a1b8ad4d0128572287479f94fe027355cda7fcbe8d"
+    }
+  },
+  {
+    "case": "detekt_detekt-7625",
+    "arm": "source",
+    "repeat": 1,
+    "label": "detekt_detekt-7625-source-1",
+    "directory": "<scratch>/v4/run16/09-detekt_detekt-7625-source-1",
+    "seconds": 46.65627995799878,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "BaselineFormat()"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "writeEmptyElement"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter.kt",
+          "startLine": 60,
+          "limit": 60
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt",
+          "startLine": 40,
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "BaselineResultMapping"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "createOrUpdate("
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter.kt",
+          "startLine": 1,
+          "limit": 60
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "<CurrentIssues/>"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "<ManuallySuppressedIssues>"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "startLine": 140,
+          "limit": 80
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "fun XMLStreamWriter.tag("
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "cb10d97a4ccda562bfe2f72b50fed655b9fabc5e674764a1d5881a4385c751e4",
+      "snapshot": "717f092d0c49d917bc8708780fdd8088eaaa805c5f9f567d7d5e1af75a943f2a",
+      "sourceManifest": "4d41caa52c5281b9bdd9c4d02ee14a51aa9884913aba3ff1e09d569a0cc064c8",
+      "productCommand": "f8aeb1dbb45051eded873ff8a9b49407b55a101c176ea03a83cc8711c0f271d9",
+      "mcpConfig": "d4d863d2983fa6455704cb51023f4a1fc70290628cc1c934c3fbf858ba73ad61"
+    },
+    "evidenceHashes": {
+      "stream": "7ffcd4267bcffef7346ae31679c18ea46c440ecdb316a9a3003615414da72d2e",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "6ccf485dd4fe3efffb52b86eceb5c2b2d4dc3014474bd38ca4e21eac6cf19d50"
+    }
+  },
+  {
+    "case": "detekt_detekt-7625",
+    "arm": "mcp",
+    "repeat": 0,
+    "label": "detekt_detekt-7625-mcp-0",
+    "directory": "<scratch>/v4/run16/10-detekt_detekt-7625-mcp-0",
+    "seconds": 63.88191137497779,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__freshness",
+      "mcp__preflight__impact",
+      "mcp__preflight__query_symbol",
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__freshness",
+        "input": {}
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "BaselineFormat()"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "writeEmptyElement"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter.kt",
+          "startLine": 60,
+          "limit": 60
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt",
+          "startLine": 40,
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "BaselineResultMapping"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "createOrUpdate",
+          "prefix": "detekt-core/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter.kt",
+          "startLine": 1,
+          "limit": 60
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": ".write(",
+          "prefix": "detekt-cli/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "startLine": 145,
+          "limit": 75
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "BaselineHandler",
+          "prefix": "detekt-core/src/test"
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "cb10d97a4ccda562bfe2f72b50fed655b9fabc5e674764a1d5881a4385c751e4",
+      "snapshot": "717f092d0c49d917bc8708780fdd8088eaaa805c5f9f567d7d5e1af75a943f2a",
+      "sourceManifest": "4d41caa52c5281b9bdd9c4d02ee14a51aa9884913aba3ff1e09d569a0cc064c8",
+      "productCommand": "f8aeb1dbb45051eded873ff8a9b49407b55a101c176ea03a83cc8711c0f271d9",
+      "mcpConfig": "7c60c9923d8b1a94963a23cae9e0bfb8c038e58b780c214202bc76e6097a2844"
+    },
+    "evidenceHashes": {
+      "stream": "549391412285d0fc7f88d9f2366cec92dc2dbf9bcd8780b79c0d94554bcbf8c1",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "bd967097a4a6a389d75f5613ae2fbec232663943f626a318178005d9a1c9eb3a"
+    }
+  },
+  {
+    "case": "detekt_detekt-7625",
+    "arm": "mcp",
+    "repeat": 1,
+    "label": "detekt_detekt-7625-mcp-1",
+    "directory": "<scratch>/v4/run16/11-detekt_detekt-7625-mcp-1",
+    "seconds": 67.43136233300902,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__freshness",
+      "mcp__preflight__impact",
+      "mcp__preflight__query_symbol",
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__freshness",
+        "input": {}
+      },
+      {
+        "name": "mcp__preflight__query_symbol",
+        "input": {
+          "symbol": "io.gitlab.arturbosch.detekt.core.baseline.BaselineFormat.save"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "writeEmptyElement"
+        }
+      },
+      {
+        "name": "mcp__preflight__impact",
+        "input": {
+          "symbols": [
+            "io.gitlab.arturbosch.detekt.core.baseline.BaselineResultMapping.createOrUpdate"
+          ],
+          "depth": 2,
+          "limit": 15
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "startLine": 140,
+          "limit": 70
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/XmlExtensions.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt",
+          "startLine": 20,
+          "limit": 60
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CurrentIssues/>"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CurrentIssues></CurrentIssues>"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "ManuallySuppressedIssues></ManuallySuppressedIssues>"
+        }
+      },
+      {
+        "name": "mcp__preflight__impact",
+        "input": {
+          "symbols": [
+            "io.github.detekt.tooling.api.BaselineProvider.write"
+          ],
+          "depth": 1,
+          "limit": 10,
+          "relation": "direct"
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "cb10d97a4ccda562bfe2f72b50fed655b9fabc5e674764a1d5881a4385c751e4",
+      "snapshot": "717f092d0c49d917bc8708780fdd8088eaaa805c5f9f567d7d5e1af75a943f2a",
+      "sourceManifest": "4d41caa52c5281b9bdd9c4d02ee14a51aa9884913aba3ff1e09d569a0cc064c8",
+      "productCommand": "f8aeb1dbb45051eded873ff8a9b49407b55a101c176ea03a83cc8711c0f271d9",
+      "mcpConfig": "22abf8204a036a44453fc7e676649bbf409b0a25cb156aa8d909266f55e64fbc"
+    },
+    "evidenceHashes": {
+      "stream": "b2ce58ef4290bd3c4df5262c2aecc872b8aa250ad60181dbf10d22e18eb7a49c",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "0c815f6cb6d97cf9d625503aeb1e79d978bd466bdce00701a45a8d8bc3160a31"
+    }
+  },
+  {
+    "case": "pinterest_ktlint-2785",
+    "arm": "source",
+    "repeat": 0,
+    "label": "pinterest_ktlint-2785-source-0",
+    "directory": "<scratch>/v4/run16/12-pinterest_ktlint-2785-source-0",
+    "seconds": 45.158737416990334,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "startLine": 200,
+          "limit": 120
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "PropertyName",
+          "prefix": "ktlint-rule-engine/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "LocalVariableName"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "SUPPRESS_ANNOTATION_RULE_MAP"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "ObjectPropertyName"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_list",
+        "input": {
+          "prefix": "ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/Suppress"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "startLine": 255,
+          "limit": 70
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "@Suppress(\\\"",
+          "prefix": "ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorTest.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "SuppressionLocator(",
+          "prefix": "ktlint-rule-engine/src/main"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Suppress",
+          "prefix": "ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorTest.kt",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "local",
+          "prefix": "ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "IntelliJ IDEA suppression",
+          "prefix": "ktlint-ruleset-standard/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule.kt",
+          "startLine": 40,
+          "limit": 80
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "PrivatePropertyName"
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "9bf275127bcc9c074b42ab353491bfbb1400b9a2d9df15c35248759818ab4783",
+      "snapshot": "645e29f19cbec3c3310860f3c1480ceabeeb849d5d3758eae74a47b11475a21e",
+      "sourceManifest": "036d4673b44c23d43b306a378a09287d32bc0e149a431fbeb4aa1ee33e6d9cec",
+      "productCommand": "99421658a9757b88469c9c01691ab1d24ea857731bd478a10ec7cfd65130bc6c",
+      "mcpConfig": "dc85b2a313a929681ae9a19cba8525beca8f024d99e2a6a57bf6dd22784b2f30"
+    },
+    "evidenceHashes": {
+      "stream": "f9a6c0e32193e0f6feb8063878f3411575ddf97f06f3e1baa6923352cd9efbae",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "85289a7af41853dbbd14f4928bc3a3cd6dff90c19677317428ab8ee6f7c2774b"
+    }
+  },
+  {
+    "case": "pinterest_ktlint-2785",
+    "arm": "source",
+    "repeat": 1,
+    "label": "pinterest_ktlint-2785-source-1",
+    "directory": "<scratch>/v4/run16/13-pinterest_ktlint-2785-source-1",
+    "seconds": 42.32777804200305,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "startLine": 200,
+          "limit": 120
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "FunctionName",
+          "prefix": "ktlint-rule-engine/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "backing-property-naming",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "SUPPRESS_ANNOTATION_RULE_MAP"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Suppress(\\\"",
+          "prefix": "ktlint-rule-engine/src/test",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "startLine": 240,
+          "limit": 80
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "PropertyName",
+          "prefix": "ktlint-ruleset-standard/src/test",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "SuppressionLocator("
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "EnumEntryName",
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "startLine": 320,
+          "limit": 45
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "suppressionLocator",
+          "prefix": "ktlint-rule-engine/src",
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "isLocalVariable",
+          "prefix": "ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_list",
+        "input": {
+          "prefix": "ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal"
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "9bf275127bcc9c074b42ab353491bfbb1400b9a2d9df15c35248759818ab4783",
+      "snapshot": "645e29f19cbec3c3310860f3c1480ceabeeb849d5d3758eae74a47b11475a21e",
+      "sourceManifest": "036d4673b44c23d43b306a378a09287d32bc0e149a431fbeb4aa1ee33e6d9cec",
+      "productCommand": "99421658a9757b88469c9c01691ab1d24ea857731bd478a10ec7cfd65130bc6c",
+      "mcpConfig": "2710932c327d2b90730ed7002f35d381ea26a27fda9ae0db358d72f572dd7e8f"
+    },
+    "evidenceHashes": {
+      "stream": "458287516d1da7791d0ec52a792a861d2cb104dcd30fdb6098ef7abc149cc68e",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "1c5b979d14938700a3f5226ae0698f26559574ac65f6293c489abc9a03e11c5e"
+    }
+  },
+  {
+    "case": "pinterest_ktlint-2785",
+    "arm": "mcp",
+    "repeat": 0,
+    "label": "pinterest_ktlint-2785-mcp-0",
+    "directory": "<scratch>/v4/run16/14-pinterest_ktlint-2785-mcp-0",
+    "seconds": 49.1526352079818,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__freshness",
+      "mcp__preflight__impact",
+      "mcp__preflight__query_symbol",
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__freshness",
+        "input": {}
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "startLine": 220,
+          "limit": 90
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "LocalVariableName"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "backing-property-naming",
+          "prefix": "ktlint-rule-engine"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "ObjectPropertyName"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "PropertyName",
+          "prefix": "ktlint-ruleset-standard/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "SuppressionLocator("
+        }
+      },
+      {
+        "name": "mcp__preflight__source_list",
+        "input": {
+          "prefix": "ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/Suppress"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "startLine": 265,
+          "limit": 95
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "@Suppress",
+          "prefix": "ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorTest.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "local variable",
+          "prefix": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "isLocal",
+          "prefix": "ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule.kt"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "SUPPRESS_ANNOTATION_RULE_MAP"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "startLine": 180,
+          "limit": 48
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "9bf275127bcc9c074b42ab353491bfbb1400b9a2d9df15c35248759818ab4783",
+      "snapshot": "645e29f19cbec3c3310860f3c1480ceabeeb849d5d3758eae74a47b11475a21e",
+      "sourceManifest": "036d4673b44c23d43b306a378a09287d32bc0e149a431fbeb4aa1ee33e6d9cec",
+      "productCommand": "99421658a9757b88469c9c01691ab1d24ea857731bd478a10ec7cfd65130bc6c",
+      "mcpConfig": "f3303b17edb0f27bbff5539d36dc19e6a8c4d4207ef910680063ec21a3c3ed15"
+    },
+    "evidenceHashes": {
+      "stream": "56ddb861571ac39b4d22dea1e36b2e45da96055e0be9436e4a126c121df1b457",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "4b65a3bdba7a4264dd039365dffec20eaf34d0991c7c3e6039cfb878d9ec3213"
+    }
+  },
+  {
+    "case": "pinterest_ktlint-2785",
+    "arm": "mcp",
+    "repeat": 1,
+    "label": "pinterest_ktlint-2785-mcp-1",
+    "directory": "<scratch>/v4/run16/15-pinterest_ktlint-2785-mcp-1",
+    "seconds": 48.88630841599661,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__freshness",
+      "mcp__preflight__impact",
+      "mcp__preflight__query_symbol",
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__freshness",
+        "input": {}
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "startLine": 200,
+          "limit": 120
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "LocalVariableName"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Suppress(\"PropertyName\")"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "startLine": 300,
+          "limit": 90
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "SUPPRESS_ANNOTATION_RULE_MAP"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "ObjectPropertyName"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "findRuleSuppressionIds"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "startLine": 265,
+          "limit": 36
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "@Suppress(\\\"",
+          "prefix": "ktlint-rule-engine/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Suppress annotation",
+          "prefix": "ktlint-rule-engine/src/test"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "EnumEntryName"
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRuleTest.kt",
+          "startLine": 262,
+          "limit": 60
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "backing-property-naming",
+          "prefix": "documentation"
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+      "prompt": "9bf275127bcc9c074b42ab353491bfbb1400b9a2d9df15c35248759818ab4783",
+      "snapshot": "645e29f19cbec3c3310860f3c1480ceabeeb849d5d3758eae74a47b11475a21e",
+      "sourceManifest": "036d4673b44c23d43b306a378a09287d32bc0e149a431fbeb4aa1ee33e6d9cec",
+      "productCommand": "99421658a9757b88469c9c01691ab1d24ea857731bd478a10ec7cfd65130bc6c",
+      "mcpConfig": "8665a56d912a127b844ffb9ad90ebab8d9874d24458600212da66ac174ca15e1"
+    },
+    "evidenceHashes": {
+      "stream": "43313bef9b555ff4b4efe7c75cb3d2e12a9ba3a6610dbfe8e3e4f87a88efb870",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "6203715f003e57e7dc994279caec949876b20f43525228571178a7dff79ca791"
+    }
+  }
+]

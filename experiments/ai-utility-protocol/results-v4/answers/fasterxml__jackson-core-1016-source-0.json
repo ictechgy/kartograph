@@ -1,0 +1,47 @@
+{
+  "label": "fasterxml__jackson-core-1016-source-0",
+  "case": "fasterxml__jackson-core-1016",
+  "arm": "source",
+  "repeat": 0,
+  "subtype": "success",
+  "isError": false,
+  "totalCostUsd": 0.2702805,
+  "durationMs": 54584,
+  "numTurns": 16,
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 12142,
+    "cache_read_input_tokens": 41875,
+    "output_tokens": 5011,
+    "output_tokens_details": {
+      "thinking_tokens": 594
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12142,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2887,
+        "cache_read_input_tokens": 12226,
+        "cache_creation_input_tokens": 779,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 779
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "finalText": "Budget exhausted; concluding with the evidence gathered.\n\n```json\n{\"targets\":[\n{\"file\":\"src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java\",\"symbol\":\"PlaceholderSymbolTableTest.testBasicPlaceholderLookups\",\"kind\":\"test\",\"reason\":\"Only existing test of makeChildOrPlaceholder/isCanonicalizing contract the change now relies on in three new parser paths (placeholder returns size -1, findName null, isCanonicalizing false).\",\"evidence\":\"lines 10-25: root.makeChildOrPlaceholder(0); assertEquals(-1, placeholder.size()); assertFalse(placeholder.isCanonicalizing()); assertNull(placeholder.findName(...))\"},\n{\"file\":\"src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java\",\"symbol\":\"PlaceholderSymbolTableTest.testBasicPlaceholderAddFails\",\"kind\":\"test\",\"reason\":\"Confirms placeholder.addName throws 'Cannot add names to Placeholder'; the new isCanonicalizing() early-return in UTF8DataInputJsonParser.addName and NonBlockingJsonParserBase._addName exists precisely to avoid hitting this path. Without the guard, disabling CANONICALIZE_FIELD_NAMES would throw IllegalStateException at runtime.\",\"evidence\":\"lines 37-63 verifyException(e, \\\"Cannot add names to Placeholder\\\"); ByteQuadsCanonicalizer.java:1002 throw new IllegalStateException(\\\"Internal error: Cannot add names to Placeholder symbol table\\\")\"},\n{\"file\":\"src/test/java/com/fasterxml/jackson/core/sym/TestSymbolTables.java\",\"symbol\":\"TestSymbolTables (assertion at line 52, method name not read)\",\"kind\":\"test\",\"reason\":\"Asserts symbols.isCanonicalizing() true for a real child; sanity baseline for the new isCanonicalizing() checks.\",\"evidence\":\"TestSymbolTables.java:52 assertTrue(symbols.isCanonicalizing());\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/sym/ByteQuadsCanonicalizer.java\",\"symbol\":\"ByteQuadsCanonicalizer.makeChildOrPlaceholder(int)\",\"kind\":\"caller\",\"reason\":\"New callee for three JsonFactory paths; returns placeholder (no parent, _parent==null) when CANONICALIZE_FIELD_NAMES disabled, which also disables INTERN_FIELD_NAMES and FAIL_ON_SYMBOL_HASH_OVERFLOW behaviour for those parsers.\",\"evidence\":\"lines 381-390: if CANONICALIZE_FIELD_NAMES.enabledIn(flags) return new ByteQuadsCanonicalizer(this,...); return new ByteQuadsCanonicalizer(_tableInfo.get());\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/sym/ByteQuadsCanonicalizer.java\",\"symbol\":\"ByteQuadsCanonicalizer.isCanonicalizing()\",\"kind\":\"caller\",\"reason\":\"Guard the parsers now depend on; implemented as _parent != null, so any future placeholder construction with a parent would break the guard.\",\"evidence\":\"lines 472-475: return _parent != null;\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/json/UTF8StreamJsonParser.java\",\"symbol\":\"UTF8StreamJsonParser.addName(int[],int,int)\",\"kind\":\"caller\",\"reason\":\"Sibling path that calls _symbols.addName identically at line 2482; no isCanonicalizing() guard was found in src/main outside the diff. Verify how the blocking stream parser handles placeholders (likely via ByteSourceJsonBootstrapper) to confirm consistency or a remaining gap.\",\"evidence\":\"search 'isCanonicalizing' in src/main -> only ByteQuadsCanonicalizer.java:472; UTF8StreamJsonParser.java:2482 return _symbols.addName(baseName, quads, qlen);\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/JsonFactory.java\",\"symbol\":\"JsonFactory.createNonBlockingByteArrayParser()\",\"kind\":\"caller\",\"reason\":\"Changed to makeChildOrPlaceholder; async parsers created with CANONICALIZE_FIELD_NAMES disabled now get placeholder and rely on the new _addName guard.\",\"evidence\":\"JsonFactory.java:1302 (pre-change) _byteSymbolCanonicalizer.makeChild(_factoryFeatures)\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/JsonFactory.java\",\"symbol\":\"JsonFactory.createNonBlockingByteBufferParser()\",\"kind\":\"caller\",\"reason\":\"Same as above for NonBlockingByteBufferJsonParser.\",\"evidence\":\"JsonFactory.java:1329 makeChild(_factoryFeatures)\"},\n{\"file\":\"src/main/java/com/fasterxml/jackson/core/JsonFactory.java\",\"symbol\":\"JsonFactory._createParser(DataInput, IOContext)\",\"kind\":\"caller\",\"reason\":\"Changed path for UTF8DataInputJsonParser; protected method, subclasses (e.g. format backends) may override or call it.\",\"evidence\":\"JsonFactory.java:1852 makeChild(_factoryFeatures)\"},\n{\"file\":\"src/test/java/com/fasterxml/jackson/core/async/AsyncTestBase.java\",\"symbol\":\"AsyncTestBase.asyncForBytes (line 23)\",\"kind\":\"test\",\"reason\":\"Base helper for all async tests; exercises createNonBlockingByteArrayParser with default features (canonicalizing on), confirming no regression in the common path.\",\"evidence\":\"AsyncTestBase.java:23 new AsyncReaderWrapperForByteArray(f.createNonBlockingByteArrayParser(), ...\"},\n{\"file\":\"src/test/java/com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest.java\",\"symbol\":\"AsyncTokenFilterTest (lines 36, 81)\",\"kind\":\"test\",\"reason\":\"Directly casts result of createNonBlockingByteArrayParser to NonBlockingJsonParser; regression coverage for changed factory method.\",\"evidence\":\"lines 36, 81: (NonBlockingJsonParser) JSON_F.createNonBlockingByteArrayParser()\"},\n{\"file\":\"src/test/java/com/fasterxml/jackson/core/json/async/AsyncLocationTest.java\",\"symbol\":\"AsyncLocationTest (line 17)\",\"kind\":\"test\",\"reason\":\"Another direct consumer of the changed factory method.\",\"evidence\":\"line 17: DEFAULT_F.createNonBlockingByteArrayParser()\"}\n],\n\"unknowns\":[\n\"No existing test in src/test references CANONICALIZE_FIELD_NAMES (search returned 0 hits), so there is no end-to-end coverage of DataInput/async parsing with canonicalization disabled; a new test would be needed.\",\n\"Could not read UTF8StreamJsonParser.addName context or ByteSourceJsonBootstrapper to confirm how the blocking byte parser avoids placeholder addName (budget exhausted); consistency with this change unverified.\",\n\"Overrides of JsonFactory._createParser(DataInput,...) / createNonBlocking* in downstream format modules (jackson-dataformats, e.g. Smile/CBOR) are not in this repository and could not be checked.\",\n\"Exact test method names for TestSymbolTables line 52 and AsyncTestBase line 23 not read.\"\n],\n\"summary\":\"Change makes DataInput and non-blocking parsers honor CANONICALIZE_FIELD_NAMES by creating placeholder symbol tables and short-circuiting addName when !isCanonicalizing(). Key risk is the placeholder's addName throwing IllegalStateException if any parser path still reaches _symbols.addName; review PlaceholderSymbolTableTest and the sibling UTF8StreamJsonParser.addName for consistency. No existing test covers the disabled-feature path for these parsers.\"}\n```",
+  "streamSha256": "28580600d625b7f07e08c3080e5db0d7d7b7102efc9356aa5b602a84146a0ce1",
+  "toolsSha256": "1b04416009b78d205bfbf0f4bfdb86934ead00a9d0c896a8fe58e770fb6b993f"
+}

@@ -1,0 +1,98 @@
+{
+  "d03628ddd394": {
+    "case": "alibaba__fastjson2-2097",
+    "repeat": 0,
+    "arm": "source",
+    "directory": "<scratch>/v4/run16/00-alibaba__fastjson2-2097-source-0"
+  },
+  "3012808a9245": {
+    "case": "alibaba__fastjson2-2097",
+    "repeat": 1,
+    "arm": "source",
+    "directory": "<scratch>/v4/run16/01-alibaba__fastjson2-2097-source-1"
+  },
+  "5be0347a9a15": {
+    "case": "alibaba__fastjson2-2097",
+    "repeat": 0,
+    "arm": "mcp",
+    "directory": "<scratch>/v4/run16/02-alibaba__fastjson2-2097-mcp-0"
+  },
+  "81f2d1dbe1fd": {
+    "case": "alibaba__fastjson2-2097",
+    "repeat": 1,
+    "arm": "mcp",
+    "directory": "<scratch>/v4/run16/03-alibaba__fastjson2-2097-mcp-1"
+  },
+  "84fe91ffabef": {
+    "case": "fasterxml__jackson-core-1016",
+    "repeat": 0,
+    "arm": "source",
+    "directory": "<scratch>/v4/run16/04-fasterxml__jackson-core-1016-source-0"
+  },
+  "3edee05b109d": {
+    "case": "fasterxml__jackson-core-1016",
+    "repeat": 1,
+    "arm": "source",
+    "directory": "<scratch>/v4/run16/05-fasterxml__jackson-core-1016-source-1"
+  },
+  "1d4d39df1210": {
+    "case": "fasterxml__jackson-core-1016",
+    "repeat": 0,
+    "arm": "mcp",
+    "directory": "<scratch>/v4/run16/06-fasterxml__jackson-core-1016-mcp-0"
+  },
+  "89d07d94972e": {
+    "case": "fasterxml__jackson-core-1016",
+    "repeat": 1,
+    "arm": "mcp",
+    "directory": "<scratch>/v4/run16/07-fasterxml__jackson-core-1016-mcp-1"
+  },
+  "866466f3f04e": {
+    "case": "detekt_detekt-7625",
+    "repeat": 0,
+    "arm": "source",
+    "directory": "<scratch>/v4/run16/08-detekt_detekt-7625-source-0"
+  },
+  "f805a7b01155": {
+    "case": "detekt_detekt-7625",
+    "repeat": 1,
+    "arm": "source",
+    "directory": "<scratch>/v4/run16/09-detekt_detekt-7625-source-1"
+  },
+  "aa59036509f8": {
+    "case": "detekt_detekt-7625",
+    "repeat": 0,
+    "arm": "mcp",
+    "directory": "<scratch>/v4/run16/10-detekt_detekt-7625-mcp-0"
+  },
+  "42e798a8d084": {
+    "case": "detekt_detekt-7625",
+    "repeat": 1,
+    "arm": "mcp",
+    "directory": "<scratch>/v4/run16/11-detekt_detekt-7625-mcp-1"
+  },
+  "0778dbd56e60": {
+    "case": "pinterest_ktlint-2785",
+    "repeat": 0,
+    "arm": "source",
+    "directory": "<scratch>/v4/run16/12-pinterest_ktlint-2785-source-0"
+  },
+  "def06d674b6b": {
+    "case": "pinterest_ktlint-2785",
+    "repeat": 1,
+    "arm": "source",
+    "directory": "<scratch>/v4/run16/13-pinterest_ktlint-2785-source-1"
+  },
+  "f632019f2bcf": {
+    "case": "pinterest_ktlint-2785",
+    "repeat": 0,
+    "arm": "mcp",
+    "directory": "<scratch>/v4/run16/14-pinterest_ktlint-2785-mcp-0"
+  },
+  "dac24228ae3f": {
+    "case": "pinterest_ktlint-2785",
+    "repeat": 1,
+    "arm": "mcp",
+    "directory": "<scratch>/v4/run16/15-pinterest_ktlint-2785-mcp-1"
+  }
+}

@@ -1,0 +1,227 @@
+{
+  "format": "kartograph-ai-utility-v4-results",
+  "version": 1,
+  "mode": "smoke",
+  "manifestSha256": "157bab5de74fca551db9e7fcd5a4542da7b759290ceff584a18b58f20ff86943",
+  "oracleSha256": "c05648e7916af7a0ad039cba4bfcf77caa9d5e8779c8fe7d8248679e77a276fb",
+  "scoringRulesSha256": "274bce59b28291044b2e015b1e683158e8a952a746a004c6c3b9c41644ad3086",
+  "scoringRules": {
+    "format": "kartograph-ai-utility-v4-scoring",
+    "version": 1,
+    "frozenBeforeModelExposure": true,
+    "recallDenominator": "The full oracle size of the case: direct targets plus indirect (depth-2) targets. Per-case ceiling = min(1, 12 / oracle size) and is reported next to every recall value.",
+    "precisionDenominator": "The number of valid targets the model listed. An answer with more than 12 targets stays invalid under the v3 rule (too-many-targets) and is not rescored.",
+    "cohortMean": "The cohort mean includes all four cases. fasterxml__jackson-core-1016 (oracle 32, ceiling 0.375) is additionally reported on its own row so the structural ceiling is never read as a tool effect.",
+    "kindBlind": "Matching ignores kind (test/caller/override/registration) and looks only at file plus symbol. The v1 Gson-specific override overload heuristic in grade.py is therefore not applied in v4.",
+    "oracleTestTargets": {
+      "alibaba__fastjson2-2097": 0,
+      "detekt_detekt-7625": 2,
+      "fasterxml__jackson-core-1016": 9,
+      "pinterest_ktlint-2785": 0,
+      "note": "fastjson2 and ktlint have zero test targets in the oracle. That is the result of the uniform evidence rule, not a claim that no related tests exist."
+    },
+    "transitiveCaseMeaning": "transitiveCase marks the cases that receive the direct-and-indirect listing question. The tie-break is ascending Unicode code point order of the cohort-v4 id string (user-confirmed), which selects alibaba__fastjson2-2097 and detekt_detekt-7625.",
+    "partialCredit": "A file-level-only match scores 0.5 in grade.py. In v4 it is recorded as a separate partial count and never enters recall or precision.",
+    "freshness": "Freshness is only observable in the mcp arm. Freshness calls and their status are recorded and scored separately, never mixed into recall/precision and never compared across arms.",
+    "toolCounts": "query_symbol/impact/freshness call counts are recorded, never converted into a score, and never used to claim a causal effect."
+  },
+  "plannedTrials": 1,
+  "executedTrials": 1,
+  "trials": [
+    {
+      "label": "smoke-0",
+      "case": "alibaba__fastjson2-2097",
+      "arm": "mcp",
+      "repeat": 0,
+      "transitiveCase": true,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 7,
+      "oracleDirect": 4,
+      "oracleIndirect": 3,
+      "recallCeiling": 1.0,
+      "recall": 0.42857142857142855,
+      "precision": 0.16666666666666666,
+      "matchedOracleTargets": 3,
+      "matchedPredictions": 2,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 12,
+      "validPredictions": 12,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 10,
+      "perOracleTarget": [
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#processExtra(Lcom/alibaba/fastjson2/JSONReader;Ljava/lang/Object;)V",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#readFieldValue(Lcom/alibaba/fastjson2/JSONReader;)Ljava/lang/Object;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReader(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 15,
+        "requestedSource": 13,
+        "requestedProduct": 2,
+        "requestedByTool": {
+          "freshness": 1,
+          "source_read": 6,
+          "source_search": 7,
+          "impact": 1
+        },
+        "processedSource": 10,
+        "processedProduct": 2,
+        "processedByTool": {
+          "freshness": 1,
+          "source_read": 5,
+          "source_search": 5,
+          "impact": 1
+        },
+        "budgetRejected": 3,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": true,
+        "calls": 1,
+        "statuses": [
+          "unverified"
+        ],
+        "reasons": [
+          [
+            "build-scope-mismatch",
+            "missing-build-witness",
+            "unwitnessed-class-root"
+          ]
+        ]
+      },
+      "observedToolContentBytes": 42371,
+      "malformedStreamLines": 0,
+      "seconds": 80.03528087498853,
+      "costUsd": 0.4249725,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 23378,
+        "cache_read_input_tokens": 48571,
+        "output_tokens": 6610,
+        "output_tokens_details": {
+          "thinking_tokens": 1122
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 23378,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3664,
+            "cache_read_input_tokens": 22033,
+            "cache_creation_input_tokens": 1345,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 1345
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "eee34b37432ab3d47510c99721310b9eb1ad6258bdae765f176c4ad94d40dbf8",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "b5e763c512c914424416e0fe3947c933c57c2dd9685858843232ed42ad6aa293"
+      }
+    }
+  ],
+  "byCaseAndArm": [
+    {
+      "case": "alibaba__fastjson2-2097",
+      "arm": "mcp",
+      "trials": 1,
+      "oracleSize": 7,
+      "recallCeiling": 1.0,
+      "transitiveCase": true,
+      "recallValues": [
+        0.42857142857142855
+      ],
+      "recallMean": 0.42857142857142855,
+      "precisionValues": [
+        0.16666666666666666
+      ],
+      "precisionMean": 0.16666666666666666,
+      "partialOracleTargets": [
+        0
+      ],
+      "validAnswers": 1,
+      "invalidReasons": [],
+      "productCallsRequested": 2,
+      "productCallsProcessed": 2,
+      "sourceCallsRequested": 13,
+      "sourceCallsProcessed": 10,
+      "freshnessCalls": 1,
+      "freshnessStatuses": [
+        "unverified"
+      ],
+      "secondsMean": 80.03528087498853,
+      "costUsdTotal": 0.4249725
+    }
+  ],
+  "byArm": [
+    {
+      "arm": "mcp",
+      "trials": 1,
+      "recallMeanAllCases": 0.42857142857142855,
+      "precisionMeanAllCases": 0.16666666666666666,
+      "recallMeanExcludingJackson": 0.42857142857142855,
+      "precisionMeanExcludingJackson": 0.16666666666666666,
+      "note": "fasterxml__jackson-core-1016 has a structural recall ceiling of 0.375 and is also reported on its own row. The excluding-jackson mean is descriptive only, not a substitute cohort mean."
+    }
+  ],
+  "manualReviewPending": true,
+  "warning": "Recall/precision are measured against a frozen review anchor built from javap references, existing executed tests and original override declarations, not complete runtime impact. Tool-call counts are recorded, never scored, and never read as a causal effect."
+}
