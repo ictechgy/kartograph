@@ -133,3 +133,23 @@ HANDOFF의 측정 계약 그대로: 같은 러너(`measure-one-class-change.py`,
 - self는 예측대로 노이즈 밴드에 남았다. 중간 빌드의 디렉터리 멤버 `Files.size`가 full 모드 captureHash를 +18 ms 늘려 제거했다(교차 측정 90→77 ms).
 - 1차 후보의 self warm 0.857 미달은 같은 실행의 모든 모드가 일괄 느려진 부하 사례였고 2차·3차는 통과했다. 기록은 보존한다.
 - **15% self 목표는 이 단계로 달성되지 않았다.** 다음은 단계 B(C1-only 측정)와, 그래도 남으면 단계 C다.
+
+## 10. 단계 B 측정 결과 — 기각 (2026-09-16)
+
+main e02d71e 바이너리를 기본 JIT과 `-XX:TieredStopAtLevel=1` 래퍼로 같은 러너·입력·7회로 비교했다(부하 있는 호스트, 순서 기본→C1).
+근거: `build/reports/benchmark-20260916-stage-b/README.md`.
+
+| 코호트 | 지표 | 기본 | C1-only |
+|---|---|---:|---:|
+| self | one-class/full | 0.864 | **0.913** |
+| self | full / warm 벽시계 | 769 / 655 ms | 667 / 557 ms |
+| nia | one-class/full | 0.814 | 0.793 |
+| nia | full / warm 벽시계 | 1884 / 1427 ms | **2151 / 1665 ms** |
+| nia | changed captureHash | 629 ms | 906 ms |
+
+- 채택 조건("nia full이 느려지지 않을 것")을 위반한다. nia는 모든 모드에서 11~17% 느려지며, 원인은 C2 없이 SHA-256 루프가 느려지는 것이다.
+- self는 절대 시간이 줄지만 one-class 비율은 오히려 나빠진다. C1은 파싱이 많은 full 캡처의 JIT 예열을 더 많이 줄이므로 비율 지표에는 역효과다.
+- 따라서 단계 B는 채택하지 않고 `applicationDefaultJvmArgs`도 바꾸지 않는다. 2차(순서 반전)는 차이가 노이즈보다 훨씬 커서 생략했다.
+- §3의 spike(self full 799→695 ms)는 절대 시간에 관해서는 재현됐으나, 비율 목표에는 도움이 되지 않는다는 것이 이번 측정의 결론이다.
+
+**남은 경로.** self 15% 목표를 위한 저비용 지렛대는 소진됐다. 다음은 단계 C(변경 없는 class의 runtime·dispatch 분석 결과 재사용)의 별도 설계이며, 착수 전에 이득 상한(self 약 180 ms, 비율 하한 0.63)과 의존 추적 비용을 사용자와 다시 저울질해야 한다.
