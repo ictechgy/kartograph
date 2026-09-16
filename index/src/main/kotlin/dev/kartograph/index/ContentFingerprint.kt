@@ -2,12 +2,15 @@ package dev.kartograph.index
 
 import dev.kartograph.core.InputFingerprint
 import dev.kartograph.core.SnapshotProvenance
+import java.io.InterruptedIOException
 import java.nio.ByteBuffer
+import java.nio.channels.ClosedByInterruptException
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.HexFormat
+import java.util.concurrent.ConcurrentLinkedQueue
 
 /** 시간·크기가 아니라 정렬된 상대 이름과 바이트를 읽는다. 입력 오류에는 원시 경로를 노출하지 않는다. */
 public object ContentFingerprint {
@@ -123,11 +126,22 @@ public object ContentFingerprint {
     ): List<CapturedContentFingerprint> {
         val plans = requests.map { planInput(it.path, it.role, it.maximumSpoolBytes, it.spoolDirectory) }
         val jobs = plans.flatMap(ObservationPlan::jobs)
-        val results = mapJobs(jobs) { job -> runCatching { observeFile(job.path, job.maximumSpoolBytes, job.spoolDirectory) } }
-        check(results.size == jobs.size) { "fingerprint digests do not match the requested inputs" }
+        // worker가 만든 spool은 결과 목록과 별도로 기록한다. 호출 스레드가 interrupt되면 결과 목록을 받지 못하므로
+        // 이 기록으로 닫는다. cancel된 worker는 observeFile의 finally가 자기 spool을 닫는다.
+        val createdSpools = ConcurrentLinkedQueue<OwnedJarSpool>()
+        val results = try {
+            mapJobs(jobs) { job -> digestJob(job, createdSpools) }
+        } catch (error: Throwable) {
+            createdSpools.forEach(OwnedJarSpool::close)
+            throw error
+        }
+        if (results.size != jobs.size) {
+            createdSpools.forEach(OwnedJarSpool::close)
+            throw IllegalStateException("fingerprint digests do not match the requested inputs")
+        }
         val observations = results.map { result ->
             result.getOrElse { failure ->
-                results.forEach { completed -> completed.getOrNull()?.spool?.close() }
+                createdSpools.forEach(OwnedJarSpool::close)
                 throw failure
             }
         }
@@ -149,6 +163,17 @@ public object ContentFingerprint {
             }
         }
     }
+
+    /** worker 스레드의 digest 하나. interrupt로 끊긴 읽기는 IO 실패가 아니라 중단으로 보고한다. */
+    private fun digestJob(job: FileDigestJob, createdSpools: ConcurrentLinkedQueue<OwnedJarSpool>): Result<FileObservation> =
+        runCatching {
+            observeFile(job.path, job.maximumSpoolBytes, job.spoolDirectory).also { observed -> observed.spool?.let(createdSpools::add) }
+        }.recoverCatching { failure ->
+            if (failure is ClosedByInterruptException || failure is InterruptedIOException) {
+                throw ClassIndexingException("fingerprint capture was interrupted", failure)
+            }
+            throw failure
+        }
 
     private fun resolveIdentity(project: Path, request: ObservationRequest, observation: HashObservation): CapturedContentFingerprint {
         val root = project.toRealPath()

@@ -56,6 +56,8 @@ public class VerifiedCaptureScope private constructor(
             // 예약은 크기 기준이므로 실제 spool 크기로 정산한다. 같은 묶음 안의 결정은 이미 끝나 영향을 받지 않는다.
             remainingSpoolBytes += decision.reservedBytes - (captured.spool?.byteSize ?: 0)
             if (phase == Phase.BEFORE_CAPTURE) {
+                // 순차 구현과 같이 관측에 성공한 JAR만 population 대상으로 센다.
+                if (decision.captureSpool) eligibleJars++
                 initialInputs += ObservedInput(
                     inputs[index].role,
                     captured.realPath,
@@ -72,7 +74,6 @@ public class VerifiedCaptureScope private constructor(
     private fun decideSpool(input: CaptureInput): SpoolDecision {
         val captureSpool = isEligibleJar(input) && captureColdSpools() && isCacheableJarSize(input.path)
         val retainedMaximum = if (captureSpool) minOf(MAX_RETAINED_JAR_BYTES, remainingSpoolBytes) else 0
-        if (captureSpool) eligibleJars++
         val reserved = if (retainedMaximum > 0) expectedSpoolBytes(input.path, retainedMaximum) else 0
         remainingSpoolBytes -= reserved
         return SpoolDecision(captureSpool, retainedMaximum, reserved)
