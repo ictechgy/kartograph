@@ -149,14 +149,24 @@ AGP가 선언한 keep 파일 중 build 출력 아래에서 아직 생성되지 �
 해당 부모 디렉터리의 내용도 추적해 새 파일이 생겼을 때 이전 스냅샷을 그대로 검증하지 않는다.
 소스 트리의 누락된 keep 파일은 계속 오류다.
 
+application variant는 `process<Variant>Resources`가 생성하는 `R.jar`도 PROJECT class root에 들어온다.
+plugin은 이 task에 resource producer witness(`agp-process-resources`)를 붙여 R.jar를 `classes` 출력으로 덮는다.
+입력은 res 디렉터리·merged manifest·namespace·boot classpath이고, task가 실패하면 witness를 기록하지 않는다.
+witness 없이 R.jar가 있으면 `verify-snapshot`은 `unwitnessed-class-root`로 거부하며, R.jar 내용이 바뀌면 `stale`이다.
+library와 JVM 프로젝트의 경로는 바뀌지 않는다. 재현·설계 기록은 [APP-MODULE-EVIDENCE](APP-MODULE-EVIDENCE.md)다.
+
 자동 캡처의 실제 설치 검증 조합은 다음과 같다.
 
-| Android library | Kotlin | Gradle | JDK / SDK | 검증 |
-|---|---|---|---|---|
-| AGP 9.3.2 | 내장 Kotlin | 9.6.1 | 17·21 / 36 | main/unit-test 증거, configuration cache, 같은 시각의 내용 변경, Java 테스트 소스 삭제 |
-| AGP 8.7.3 | KGP 2.4.10 | 8.10.2 | 17 / 35 | compiler 재사용, 동일 snapshot, CLI 신선도 `matched`, Java/Kotlin main/test 선언과 manifest/XML 근거 |
+| 모듈 | Android | Kotlin | Gradle | JDK / SDK | 검증 |
+|---|---|---|---|---|---|
+| library | AGP 9.3.2 | 내장 Kotlin | 9.6.1 | 17·21 / 36 | main/unit-test 증거, configuration cache, 같은 시각의 내용 변경, Java 테스트 소스 삭제 |
+| library | AGP 8.7.3 | KGP 2.4.10 | 8.10.2 | 17 / 35 | compiler 재사용, 동일 snapshot, CLI 신선도 `matched`, Java/Kotlin main/test 선언과 manifest/XML 근거 |
+| application | AGP 8.7.3 | KGP 2.4.10 | 8.10.2 | 17 / 35 | 공개 Portal 0.10.0 plugin, `processDebugResources` witness와 R.jar class root 포함 snapshot, configuration cache 재사용, class 캐시 6/6 hit, CLI·MCP 신선도 `matched` |
 
-두 번째 조합에서는 KGP가 Gradle 8.14.4 이상으로 업그레이드하도록 권고한다. 경고를 억제하지 않고 검증했다.
+application 행은 Portal plugin DSL만 사용한 별도 프로젝트에서 2회 빌드해 확인했다. Android 기기 실행은 검증하지 않았다.
+AGP 최소·최대 조합의 application 검증은 아직 library 행과 같은 범위로 확장하지 않았다.
+
+library 두 번째 조합에서는 KGP가 Gradle 8.14.4 이상으로 업그레이드하도록 권고한다. 경고를 억제하지 않고 검증했다.
 Toolchain 연결은 기존 Kotlin bytecode target을 보존한다. JDK 21로 JVM target 17 코드를 컴파일하는 조합도 검증했다.
 
 ### 두 checkout 비교
