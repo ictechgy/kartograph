@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `impact`의 계약 확장이 dispatch 모델의 호출자→구현 후보 간선(`origin = dispatchModel`)을 변경 method의 override로 잘못
+  따르던 문제를 고친다. 변경 method가 호출하는 인터페이스의 구현체가 영향 후보에 오르고, 실제 호출 사슬 대신 후보 경로가
+  witness로 선택돼 `transitive` 호출자가 `structural`로 분류되던 사례가 있었다. 호출자 방향의 dispatch 후보 사용은 그대로다.
+- `impact`가 멤버→소유 class `reference` 간선(도달성용)을 사용 관계로 읽어, `<clinit>`이나 class 정점에 닿는 변경이 같은 class의
+  모든 멤버로 퍼지던 문제를 고친다. 다른 class와 중첩 class에서 오는 참조는 계속 영향에 포함한다.
+
 ## [0.10.0] - 2026-09-16
 
 ### Added

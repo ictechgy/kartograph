@@ -254,6 +254,13 @@ helper 기본 모드는 보고용이다. 문서·설정 등 매핑되지 않은 
 - `paths.nodes`: 후보 → 변경 선언 방향의 경로. `edges`는 `revision` 그래프의 실제 간선을 그대로 보존하며 `kind`와 `origin`을 포함한다.
   직접 변경한 method 계약의 하위 override도 포함한다. 그래프의 override는 상위→구현 방향이므로 이때는
   `traversal = overrideContract`로 역방향으로 읽음을 표시한다. 일반 간선은 `traversal = dependency`다.
+  이 계약 확장은 실제 상속 관계의 override 간선만 따른다. dispatch 모델이 호출자→구현 후보로 기록한
+  `origin = dispatchModel` 간선은 변경 method가 호출하는 인터페이스의 구현체를 "변경 계약의 override"로 만들지 않으며,
+  호출자 방향(구현이 바뀌면 그 후보로 dispatch될 수 있는 호출자)으로만 계속 쓴다.
+  멤버가 자기 소유 class를 가리키는 `reference` 간선(도달성용)은 영향 탐색의 사용 관계로 읽지 않는다. 따라서 `<clinit>`처럼
+  class 정점에 닿는 변경은 그 class를 참조하는 다른 class·중첩 class·외부 호출자로 이어지지만, 같은 class의 멤버 전부로
+  퍼지지는 않는다. `class:X` 자체를 변경 대상으로 고를 때도 X의 멤버는 이 소유 참조 경로로는 나열되지 않으며, 멤버가 X의
+  생성자·static field 등을 실제로 쓰는 `call`·`field_access` 사슬은 그대로 후보가 된다.
   base/current 간선을 합쳐 실제로 없었던 경로를 만들지 않는다. 후보마다 각 시점의 결정적인 최단 경로 하나를 제공한다.
 - `retention`: 시점별 보존 이유와 파일·줄. 보존 근거는 호출자 간선이 아니다.
 - `observedAffected`: 탐색 한도 안에서 관측한 후보 수. 출력 한도보다 클 수 있다.
