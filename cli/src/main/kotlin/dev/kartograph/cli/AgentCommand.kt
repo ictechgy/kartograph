@@ -331,7 +331,7 @@ internal object AgentCommand {
             output.print(BRIDGES_HELP)
             return ExitStatus.SUCCESS.code
         }
-        val options = parsePaths(arguments, setOf("--project", "--format", "--target", "--graph-file", "--messages"), error)
+        val options = parsePaths(arguments, setOf("--project", "--format", "--target", "--graph-file", "--messages", "--events"), error)
             ?: return ExitStatus.USAGE.code
         val project = try {
             options.single("--project")?.let(Path::of)?.toAbsolutePath()?.normalize()
@@ -342,6 +342,8 @@ internal object AgentCommand {
         if (options.single("--format")?.let { it != "json" } == true) return usage(error, "invalid bridges format")
         if (options.single("--target")?.let { it != "flutter" } == true) return usage(error, "bridges currently supports only --target flutter")
         val messages = options.values("--messages").isNotEmpty()
+        val events = options.values("--events").isNotEmpty()
+        if (messages && events) return usage(error, "--messages and --events are separate documents and cannot be combined")
         if (!Files.isDirectory(project)) {
             error.println("error: project root does not exist")
             return ExitStatus.FAILURE.code
@@ -350,8 +352,12 @@ internal object AgentCommand {
             val snapshot = options.single("--graph-file")?.let { SnapshotFiles.read(it) }
             val freshness = snapshot?.let { SavedSnapshotOperations.freshness(it, project, null, emptyMap()) }
             val graph = snapshot?.takeUnless { freshness?.status == "stale" }?.graph
-            val scanned = if (messages) BridgeFactScanner(project).scanMessages(graph = graph)
-            else BridgeFactScanner(project).scan(graph = graph, targetFilter = options.single("--target"))
+            val scanner = BridgeFactScanner(project)
+            val scanned = when {
+                messages -> scanner.scanMessages(graph = graph)
+                events -> scanner.scanEvents(graph = graph)
+                else -> scanner.scan(graph = graph, targetFilter = options.single("--target"))
+            }
             val document = snapshot?.let {
                 val evidence = "graph-file-freshness-${freshness!!.status}: " + freshness.reasons.joinToString(";")
                 scanned.copy(limitations = (scanned.limitations + it.limitations + evidence).distinct().sorted())
@@ -373,7 +379,7 @@ internal object AgentCommand {
                 error.println("error: unknown option: $option")
                 return null
             }
-            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings", "--messages")) {
+            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings", "--messages", "--events")) {
                 values.getOrPut(option) { mutableListOf() } += "true"
                 index++
                 continue
@@ -451,8 +457,11 @@ internal object AgentCommand {
         Usage:
           kartograph bridges --project <directory> [--format json] [--target flutter]
           kartograph bridges --project <directory> --target flutter --messages [--graph-file <snapshot>]
+          kartograph bridges --project <directory> --target flutter --events [--graph-file <snapshot>]
 
         --messages emits opt-in bridge-facts v2 for Kotlin/JVM BasicMessageChannel native handlers.
+        --events emits opt-in bridge-facts v2 for Kotlin/JVM EventChannel stream handlers and cannot
+        be combined with --messages.
         --graph-file may attach a compiler snapshot JVM symbol at the observed or enclosing source location.
         Static literals only; dynamic channel names and unattributed handlers are reported as limitations.
         generatedAt is the newest scanned source modification time (Unix epoch for an empty source tree).

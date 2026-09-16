@@ -11,7 +11,7 @@ public data class BridgeFactsDocument(
     val project: String,
     val facts: List<BridgeFact>,
     val limitations: List<String>,
-    /** v2 BasicMessageChannel 문서에서만 쓰는 transport 식별자다. */
+    /** v2 보조 채널(BasicMessageChannel·EventChannel) 문서에서만 쓰는 transport 식별자다. */
     val transport: String? = null,
 )
 
@@ -27,7 +27,7 @@ public data class BridgeFact(
     val location: BridgeLocation,
     val symbol: BridgeSymbol? = null,
     val target: String,
-    /** 동적 Basic 채널 표현식에서 AST로 확인한 비어 있지 않은 literal prefix다. */
+    /** 동적 보조 채널 표현식에서 AST로 확인한 비어 있지 않은 literal prefix다. */
     val channelPrefix: String? = null,
 )
 

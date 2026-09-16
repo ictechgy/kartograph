@@ -809,4 +809,287 @@ class BridgeFactScannerTest {
 
         assertEquals(listOf("camera"), document.facts.map { it.channel })
     }
+
+    @Test
+    fun `events emits stream-handle facts in an event-channel document`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              val channel = EventChannel(messenger, "dev.fluttercommunity.plus/charging")
+              channel.setStreamHandler(chargingHandler)
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents(generatedAt = "2026-10-01T00:00:00Z")
+
+        assertEquals("bridge-facts", document.format)
+        assertEquals(2, document.version)
+        assertEquals("event-channel", document.transport)
+        assertEquals("flutter", document.target)
+        val fact = document.facts.single()
+        assertEquals("stream-handle", fact.kind)
+        assertEquals("dev.fluttercommunity.plus/charging", fact.channel)
+        assertTrue(!fact.dynamic)
+        assertEquals(null, fact.method)
+    }
+
+    @Test
+    fun `events resolves a chained stream handler and ignores null clears`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              EventChannel(messenger, "charging").setStreamHandler(ChargingHandler())
+              EventChannel(messenger, "cleared").setStreamHandler(null)
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scanEvents().facts
+
+        assertEquals(listOf("stream-handle" to "charging"), facts.map { it.kind to it.channel })
+    }
+
+    @Test
+    fun `events keeps dynamic names and proven prefixes without flagging sink calls`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, flavor: String, events: Any) {
+              val channel = EventChannel(messenger, "dev.flutter/${'$'}flavor/charging")
+              channel.setStreamHandler(handler)
+              events.success("tick")
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents()
+
+        val fact = document.facts.single()
+        assertTrue(fact.dynamic)
+        assertEquals("dev.flutter/", fact.channelPrefix)
+        assertTrue(document.limitations.any { it.startsWith("dynamic-event-channel-names:") })
+        assertTrue(document.limitations.none { it.startsWith("unscanned-message-sends:") })
+    }
+
+    @Test
+    fun `events does not resolve a mutable receiver from a conditional assignment`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, alternate: Boolean) {
+              var channel = EventChannel(messenger, "a")
+              if (alternate) { channel = EventChannel(messenger, "b") }
+              channel.setStreamHandler(handler)
+            }
+            """.trimIndent(),
+        )
+
+        val fact = BridgeFactScanner(project).scanEvents().facts.single()
+
+        assertTrue(fact.dynamic)
+        assertEquals(null, fact.channelPrefix)
+        assertEquals("stream-handle", fact.kind)
+    }
+
+    @Test
+    fun `events emits no facts for MethodChannel or BasicMessageChannel registrations`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any) {
+              MethodChannel(messenger, "battery").setMethodCallHandler(handler)
+              BasicMessageChannel<Any?>(messenger, "pigeon", codec).setMessageHandler { _, _ -> Unit }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents()
+
+        assertTrue(document.facts.isEmpty())
+        assertEquals(null, document.target)
+    }
+
+    @Test
+    fun `events scans raw Java syntax and reports source limitation`(@TempDir project: Path) {
+        project.resolve("Plugin.java").writeText(
+            """
+            class Plugin {
+              void register(Object messenger) {
+                final EventChannel channel = new EventChannel(messenger, "charging");
+                channel.setStreamHandler(handler);
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents()
+
+        assertEquals(listOf("stream-handle" to "charging"), document.facts.map { it.kind to it.channel })
+        assertTrue(document.limitations.any { it.startsWith("java-source-event-channel-analysis:") })
+    }
+
+    @Test
+    fun `events attaches an enclosing compiler snapshot JVM symbol`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            class Plugin {
+              fun register(messenger: Any) {
+                EventChannel(messenger, "charging").setStreamHandler(handler)
+              }
+            }
+            """.trimIndent(),
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/Plugin#register(Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 2, 3)),
+        ), emptyList())
+
+        val fact = BridgeFactScanner(project).scanEvents(graph = graph).facts.single()
+
+        assertEquals("method:app/Plugin#register(Ljava/lang/Object;)V", fact.symbol?.usr)
+    }
+
+    @Test
+    fun `reports JNI interop files as uncovered evidence across transports`(@TempDir project: Path) {
+        project.resolve("Native.kt").writeText(
+            """
+            class Native {
+              init { System.loadLibrary("native-lib") }
+              external fun nativeCall(): Int
+            }
+            """.trimIndent(),
+        )
+
+        val label = "unscanned-ffi-interop: 1 Kotlin/Java source file(s) declare JNI/native interop"
+        assertTrue(BridgeFactScanner(project).scan().limitations.any { it.startsWith(label) })
+        assertTrue(BridgeFactScanner(project).scanEvents().limitations.any { it.startsWith(label) })
+        assertTrue(BridgeFactScanner(project).scanMessages().limitations.any { it.startsWith(label) })
+    }
+
+    @Test
+    fun `does not flag ordinary Kotlin identifiers as JNI interop`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              val native = EventChannel(messenger, "charging")
+              native.setStreamHandler(handler)
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents()
+
+        assertTrue(document.limitations.none { it.startsWith("unscanned-ffi-interop:") })
+        assertEquals("charging", document.facts.single().channel)
+    }
+
+    @Test
+    fun `events attributes a stream handler chained through non-null assert`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              EventChannel(messenger, "charging")!!.setStreamHandler(ChargingHandler())
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents()
+
+        val fact = document.facts.single()
+        assertEquals("stream-handle", fact.kind)
+        assertEquals("charging", fact.channel)
+        assertTrue(!fact.dynamic)
+        assertTrue(document.limitations.none { it.startsWith("unattributed-stream-handles:") })
+    }
+
+    @Test
+    fun `events attributes a receiver reached through safe call or non-null assert`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            class Plugin {
+              private var channel: EventChannel? = null
+              private val direct = EventChannel(messenger, "direct")
+              fun register(messenger: Any) {
+                direct!!.setStreamHandler(handler)
+                channel?.setStreamHandler(handler)
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scanEvents().facts
+
+        assertEquals(2, facts.size)
+        assertEquals("direct", facts[0].channel)
+        assertTrue(!facts[0].dynamic)
+        assertTrue(facts[1].dynamic)
+        // mutable 이름은 literal로 확정하지 않고 원 표현을 dynamic으로 보존한다.
+        assertEquals("channel", facts[1].channel)
+    }
+
+    @Test
+    fun `messages counts send calls through safe call and non-null assert`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            class Plugin(codec: Any) {
+              private val channel = BasicMessageChannel<Any?>(messenger, "pigeon", codec)
+              fun emit() {
+                channel!!.send("payload")
+                channel?.send("payload")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanMessages()
+
+        assertTrue(document.limitations.any { it.startsWith("unscanned-message-sends: 2") })
+    }
+
+    @Test
+    fun `does not flag JNI markers inside string literals`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            class Plugin {
+              fun explain() {
+                println("call System.loadLibrary(\"x\") to load, or declare external fun")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val scans = listOf(
+            BridgeFactScanner(project).scan().limitations,
+            BridgeFactScanner(project).scanEvents().limitations,
+            BridgeFactScanner(project).scanMessages().limitations,
+        )
+
+        assertTrue(scans.all { limitations ->
+            limitations.none { it.startsWith("unscanned-ffi-interop:") }
+        })
+    }
+
+    @Test
+    fun `reports Java native methods with generics multiline and default-package JNI names`(@TempDir project: Path) {
+        project.resolve("Native.java").writeText(
+            """
+            class Native {
+              private native List<? extends Foo>
+                load(String key);
+            }
+            """.trimIndent(),
+        )
+        project.resolve("Exports.kt").writeText(
+            """
+            class Exports {
+              fun named() = Unit
+            }
+            fun Java_MyClass_open(): Int = 0
+            """.trimIndent(),
+        )
+
+        val label = "unscanned-ffi-interop"
+        assertTrue(
+            BridgeFactScanner(project).scanEvents().limitations
+                .any { it.startsWith("$label: 2") },
+        )
+    }
 }

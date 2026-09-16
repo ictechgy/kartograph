@@ -574,6 +574,35 @@ class KartographCliTest {
     }
 
     @Test
+    fun `bridges events emits Kotlin EventChannel v2 and rejects combined transports`(@TempDir projectRoot: Path) {
+        projectRoot.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              val channel = EventChannel(messenger, "charging")
+              channel.setStreamHandler(handler)
+            }
+            """.trimIndent(),
+        )
+
+        val execution = execute(
+            "bridges", "--project", projectRoot.toString(), "--target", "flutter", "--events",
+        )
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        assertContains(execution.output, "\"version\": 2")
+        assertContains(execution.output, "\"transport\": \"event-channel\"")
+        assertContains(execution.output, "\"kind\": \"stream-handle\"")
+        assertContains(execution.output, "\"channel\": \"charging\"")
+        kotlin.test.assertFalse(execution.output.contains(projectRoot.resolve("Plugin.kt").toString()))
+
+        val combined = execute(
+            "bridges", "--project", projectRoot.toString(), "--target", "flutter", "--messages", "--events",
+        )
+        assertEquals(ExitStatus.USAGE.code, combined.status)
+        assertContains(combined.error, "cannot be combined")
+    }
+
+    @Test
     fun `bridges drops snapshot symbols when the graph input becomes stale`(@TempDir projectRoot: Path) {
         projectRoot.resolve("Plugin.kt").writeText(
             """
