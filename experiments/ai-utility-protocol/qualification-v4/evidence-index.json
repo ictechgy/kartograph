@@ -1,0 +1,2099 @@
+{
+  "generatedFor": "oracle-v4.json",
+  "oracleSha256": "c05648e7916af7a0ad039cba4bfcf77caa9d5e8779c8fe7d8248679e77a276fb",
+  "purpose": "oracle-v4.json의 evidence 문자열을 javap 덤프의 정확한 위치와 수집 pass로 해석한다. oracle 대상 항목은 바꾸지 않는다.",
+  "evidenceStringFormat": {
+    "shape": "\"<dump file>: <bytecode offset>: <opcode> #<constant pool index> // <Method|InterfaceMethod|Field> <reference>\"",
+    "leadingIntegerIsNotALineNumber": "콜론 앞 정수는 caller 메서드 안의 bytecode offset이다. 덤프 파일의 줄 번호가 아니다. 서로 다른 두 메서드가 같은 offset을 가질 수 있으므로 같은 문자열이 두 항목에 나타날 수 있다. 아래 dumpLine이 실제 줄 번호다.",
+    "dumpFileScope": "javap-N.txt는 collect_refs.py가 class 파일을 150개씩 끊어 실행한 N번째 덤프다. pass 디렉터리(depth1/depth2) 안에서만 유효하다."
+  },
+  "evidenceSelectionRule": {
+    "collected": "collect_refs.py가 대상 owner/member 집합에 맞는 invoke*/get*/put* 명령을 만날 때마다 (caller, target, javapFile, instruction)을 기록한다.",
+    "assembledInto": "build_oracle.py가 같은 caller의 기록을 depth1·depth2 두 pass에서 모아 evidence 배열에 넣고 정렬한다. 따라서 한 항목의 evidence에는 그 항목의 oracle 편입을 정당화하는 행(justifying=true)과, 같은 선언이 다른 pass에서 남긴 행(justifying=false)이 함께 들어갈 수 있다.",
+    "justifyingDefinition": "targets 항목은 depth1 pass의 기록이, indirectTargets 항목은 depth2 pass의 기록이 정당화 행이다. kind=override 항목은 javap 참조가 아니라 원본 선언이 근거이므로 이 색인의 대상이 아니다."
+  },
+  "cases": [
+    {
+      "case": "alibaba__fastjson2-2097",
+      "dumps": {
+        "depth1/javap-0.txt": {
+          "sha256": "aec55827c7356ad31d8b56f5b58839dd598afe98c61fefd8c040edd18f10863b",
+          "bytes": 6704748,
+          "lines": 179793
+        },
+        "depth1/javap-1.txt": {
+          "sha256": "2358f893fc8d8186a31990a9526ae8ed3d68ebad06ebe7cb43e40cdd339fe3b9",
+          "bytes": 1420416,
+          "lines": 31737
+        },
+        "depth1/javap-10.txt": {
+          "sha256": "50016e9554e054e7035e863c3b3933af52aa67c89d2a7009b7bdc7971b535f82",
+          "bytes": 558829,
+          "lines": 10581
+        },
+        "depth1/javap-11.txt": {
+          "sha256": "2c0ab439e239757d0f5f4b831a183367dd96e0a4136caff2b728b82bf227b9c4",
+          "bytes": 621634,
+          "lines": 11065
+        },
+        "depth1/javap-12.txt": {
+          "sha256": "034dcef91ecf7639af173d26ca83e20db03a4b362595dc7eb6ae886f887a2223",
+          "bytes": 1256890,
+          "lines": 23430
+        },
+        "depth1/javap-13.txt": {
+          "sha256": "89e367202a3d89a7f49310e4fc1d5980d04ab6060337a0e0fbaeb3841e3b1bcd",
+          "bytes": 630553,
+          "lines": 12686
+        },
+        "depth1/javap-14.txt": {
+          "sha256": "2cf1f2711444a0774abe3b9faf2821a08d4d0ab77007908457090c3271081397",
+          "bytes": 766498,
+          "lines": 16415
+        },
+        "depth1/javap-15.txt": {
+          "sha256": "6c32583d325b1f3d3b2414b8cdf54b7177b1cbd0f9c76dfed18a9eb379769b4e",
+          "bytes": 597184,
+          "lines": 14087
+        },
+        "depth1/javap-16.txt": {
+          "sha256": "366882a72b79fe4e7fc087cca5d5c1d6fad3ff6e29c78c3fd65e24a46e75ba00",
+          "bytes": 543884,
+          "lines": 11572
+        },
+        "depth1/javap-17.txt": {
+          "sha256": "3101ce7b29a9d0c40782d2ed69ae92faf94bd11d9eef82e08ec58bfdd3dab50c",
+          "bytes": 616248,
+          "lines": 13159
+        },
+        "depth1/javap-18.txt": {
+          "sha256": "1ab94adebde3c0c79fc6a5dd6ae7c82d27bb428bb2a933c9724d832680117406",
+          "bytes": 599664,
+          "lines": 13138
+        },
+        "depth1/javap-19.txt": {
+          "sha256": "6d574f2ac931dc24ad0c46eac85180547ad7980248135879a316494e9a73abd1",
+          "bytes": 437436,
+          "lines": 9373
+        },
+        "depth1/javap-2.txt": {
+          "sha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+          "bytes": 3881980,
+          "lines": 80522
+        },
+        "depth1/javap-20.txt": {
+          "sha256": "c0f4a7410cae8fdd94c5c1045b781a3802319c4c57fff4ba9b5a085b1ba02beb",
+          "bytes": 484834,
+          "lines": 9724
+        },
+        "depth1/javap-21.txt": {
+          "sha256": "27d75823e13d56dc2218dc8c8708e820dca8ce7246505b3cbc2f80821e10d9e9",
+          "bytes": 525163,
+          "lines": 10397
+        },
+        "depth1/javap-22.txt": {
+          "sha256": "bd01e6728ea4c9ac16d3e907fe0be9886e6f102c07c625f939b6fa5a3e915b2a",
+          "bytes": 444207,
+          "lines": 9189
+        },
+        "depth1/javap-23.txt": {
+          "sha256": "d6ea849ec9ee3f67c13c9d727f2557301b9fceee97d30f5e9d0d9f7521e3638d",
+          "bytes": 659136,
+          "lines": 15001
+        },
+        "depth1/javap-24.txt": {
+          "sha256": "8ea7afb15dd188fedcfb3134b29971804e952df0a9f9b52fcc463ba0d35414a1",
+          "bytes": 789378,
+          "lines": 14393
+        },
+        "depth1/javap-25.txt": {
+          "sha256": "ffec0627b3897f745e3dc8c7c8815e66bc142c0709fc9dac237c228fd26103b7",
+          "bytes": 1799530,
+          "lines": 38188
+        },
+        "depth1/javap-26.txt": {
+          "sha256": "dfe0fa421fd33e075348e3c1578bc924ce21012e48fd2956cea9b64e83d49dc6",
+          "bytes": 1788511,
+          "lines": 35294
+        },
+        "depth1/javap-27.txt": {
+          "sha256": "6a5c808465b9bf97c807d6f80a72df6202ecc2920bb4924d296d8d312f74aa8b",
+          "bytes": 622235,
+          "lines": 10782
+        },
+        "depth1/javap-28.txt": {
+          "sha256": "65b134fa835d554acbf13ddf03ae22eecc85f7b2bac0c419a9b9e72960362ccb",
+          "bytes": 789399,
+          "lines": 12442
+        },
+        "depth1/javap-29.txt": {
+          "sha256": "ad602f516600e335f06826e0dbab5aff23d25f80010b24afa3bd4c8f657d6f56",
+          "bytes": 815676,
+          "lines": 14689
+        },
+        "depth1/javap-3.txt": {
+          "sha256": "4575ec94f7748e37eaf3593189eb093b44b77105e8b21d105a1c4f929a0aa172",
+          "bytes": 4035840,
+          "lines": 111450
+        },
+        "depth1/javap-30.txt": {
+          "sha256": "a7b6b22cf3753d21c7921e925320eb7011b0abfc86d8e61ec0d5127fcd7132c6",
+          "bytes": 988149,
+          "lines": 17843
+        },
+        "depth1/javap-31.txt": {
+          "sha256": "0db0ddd08ac5980ea3465ccc6c1301843e0fbbdc3f1aa3a260859ae56110f6d5",
+          "bytes": 1949829,
+          "lines": 36859
+        },
+        "depth1/javap-32.txt": {
+          "sha256": "b4e62065ecbcc89405819cfabca97f744433c77047f7294580e055e507e9d815",
+          "bytes": 383229,
+          "lines": 7309
+        },
+        "depth1/javap-33.txt": {
+          "sha256": "ddaea789558835217157f33257e5d14235f8934121cae21e8a3a85c54a37effa",
+          "bytes": 281427,
+          "lines": 5484
+        },
+        "depth1/javap-34.txt": {
+          "sha256": "4c03b185ddbb2c75aef7a1901b05730ea36cf15c417e3e17a8f1c4eeac059ea2",
+          "bytes": 451057,
+          "lines": 11152
+        },
+        "depth1/javap-35.txt": {
+          "sha256": "1f818758a2537dcb5edfa332292564991d32606fc7efa8534f8b318424cd7c3f",
+          "bytes": 414533,
+          "lines": 8022
+        },
+        "depth1/javap-36.txt": {
+          "sha256": "4960d0487461bb95f19ae8b5c56e579972c79515bd38bef5f77b73ff3cb0345c",
+          "bytes": 486415,
+          "lines": 9499
+        },
+        "depth1/javap-37.txt": {
+          "sha256": "e545ed62edd6e3b33e1a0ab5ed143f57bdad7a4ece2571246f84c586ef5d7369",
+          "bytes": 852324,
+          "lines": 16306
+        },
+        "depth1/javap-38.txt": {
+          "sha256": "6c4e98e07d185b4c3767fcd3fa41bf1311dae6083d1da40867332c08874796fb",
+          "bytes": 632233,
+          "lines": 29393
+        },
+        "depth1/javap-4.txt": {
+          "sha256": "430a6fec302dde0afb5ae0e8501d70f72dadb511407d5c4383c3e597387226c4",
+          "bytes": 2883826,
+          "lines": 54982
+        },
+        "depth1/javap-5.txt": {
+          "sha256": "11b7b2748c1d8f34ab252c008717159a1763694edf50fcef26c42fdc969cab0e",
+          "bytes": 2633837,
+          "lines": 51730
+        },
+        "depth1/javap-6.txt": {
+          "sha256": "6499918de4e1968913fb0701a681acce4ada7cf90b5cd72a1aaaaf195db5c6d8",
+          "bytes": 470157,
+          "lines": 8568
+        },
+        "depth1/javap-7.txt": {
+          "sha256": "de3e064e4dd5798f31aabe77327995b042ec35caa5b43b6f32f07dd7201b55c5",
+          "bytes": 368436,
+          "lines": 7673
+        },
+        "depth1/javap-8.txt": {
+          "sha256": "b4f160da8230c1e1ce5e24c732044494b5e062d33c3bd6dee5fe907c179cb85f",
+          "bytes": 894036,
+          "lines": 15811
+        },
+        "depth1/javap-9.txt": {
+          "sha256": "931edaa2922e1c8a3ec860745d18ba60c720313d61b37ad752df896f2ad1d45d",
+          "bytes": 694957,
+          "lines": 11994
+        },
+        "depth2/javap-0.txt": {
+          "sha256": "aec55827c7356ad31d8b56f5b58839dd598afe98c61fefd8c040edd18f10863b",
+          "bytes": 6704748,
+          "lines": 179793
+        },
+        "depth2/javap-1.txt": {
+          "sha256": "2358f893fc8d8186a31990a9526ae8ed3d68ebad06ebe7cb43e40cdd339fe3b9",
+          "bytes": 1420416,
+          "lines": 31737
+        },
+        "depth2/javap-10.txt": {
+          "sha256": "50016e9554e054e7035e863c3b3933af52aa67c89d2a7009b7bdc7971b535f82",
+          "bytes": 558829,
+          "lines": 10581
+        },
+        "depth2/javap-11.txt": {
+          "sha256": "2c0ab439e239757d0f5f4b831a183367dd96e0a4136caff2b728b82bf227b9c4",
+          "bytes": 621634,
+          "lines": 11065
+        },
+        "depth2/javap-12.txt": {
+          "sha256": "034dcef91ecf7639af173d26ca83e20db03a4b362595dc7eb6ae886f887a2223",
+          "bytes": 1256890,
+          "lines": 23430
+        },
+        "depth2/javap-13.txt": {
+          "sha256": "89e367202a3d89a7f49310e4fc1d5980d04ab6060337a0e0fbaeb3841e3b1bcd",
+          "bytes": 630553,
+          "lines": 12686
+        },
+        "depth2/javap-14.txt": {
+          "sha256": "2cf1f2711444a0774abe3b9faf2821a08d4d0ab77007908457090c3271081397",
+          "bytes": 766498,
+          "lines": 16415
+        },
+        "depth2/javap-15.txt": {
+          "sha256": "6c32583d325b1f3d3b2414b8cdf54b7177b1cbd0f9c76dfed18a9eb379769b4e",
+          "bytes": 597184,
+          "lines": 14087
+        },
+        "depth2/javap-16.txt": {
+          "sha256": "366882a72b79fe4e7fc087cca5d5c1d6fad3ff6e29c78c3fd65e24a46e75ba00",
+          "bytes": 543884,
+          "lines": 11572
+        },
+        "depth2/javap-17.txt": {
+          "sha256": "3101ce7b29a9d0c40782d2ed69ae92faf94bd11d9eef82e08ec58bfdd3dab50c",
+          "bytes": 616248,
+          "lines": 13159
+        },
+        "depth2/javap-18.txt": {
+          "sha256": "1ab94adebde3c0c79fc6a5dd6ae7c82d27bb428bb2a933c9724d832680117406",
+          "bytes": 599664,
+          "lines": 13138
+        },
+        "depth2/javap-19.txt": {
+          "sha256": "6d574f2ac931dc24ad0c46eac85180547ad7980248135879a316494e9a73abd1",
+          "bytes": 437436,
+          "lines": 9373
+        },
+        "depth2/javap-2.txt": {
+          "sha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+          "bytes": 3881980,
+          "lines": 80522
+        },
+        "depth2/javap-20.txt": {
+          "sha256": "c0f4a7410cae8fdd94c5c1045b781a3802319c4c57fff4ba9b5a085b1ba02beb",
+          "bytes": 484834,
+          "lines": 9724
+        },
+        "depth2/javap-21.txt": {
+          "sha256": "27d75823e13d56dc2218dc8c8708e820dca8ce7246505b3cbc2f80821e10d9e9",
+          "bytes": 525163,
+          "lines": 10397
+        },
+        "depth2/javap-22.txt": {
+          "sha256": "bd01e6728ea4c9ac16d3e907fe0be9886e6f102c07c625f939b6fa5a3e915b2a",
+          "bytes": 444207,
+          "lines": 9189
+        },
+        "depth2/javap-23.txt": {
+          "sha256": "d6ea849ec9ee3f67c13c9d727f2557301b9fceee97d30f5e9d0d9f7521e3638d",
+          "bytes": 659136,
+          "lines": 15001
+        },
+        "depth2/javap-24.txt": {
+          "sha256": "8ea7afb15dd188fedcfb3134b29971804e952df0a9f9b52fcc463ba0d35414a1",
+          "bytes": 789378,
+          "lines": 14393
+        },
+        "depth2/javap-25.txt": {
+          "sha256": "ffec0627b3897f745e3dc8c7c8815e66bc142c0709fc9dac237c228fd26103b7",
+          "bytes": 1799530,
+          "lines": 38188
+        },
+        "depth2/javap-26.txt": {
+          "sha256": "dfe0fa421fd33e075348e3c1578bc924ce21012e48fd2956cea9b64e83d49dc6",
+          "bytes": 1788511,
+          "lines": 35294
+        },
+        "depth2/javap-27.txt": {
+          "sha256": "6a5c808465b9bf97c807d6f80a72df6202ecc2920bb4924d296d8d312f74aa8b",
+          "bytes": 622235,
+          "lines": 10782
+        },
+        "depth2/javap-28.txt": {
+          "sha256": "65b134fa835d554acbf13ddf03ae22eecc85f7b2bac0c419a9b9e72960362ccb",
+          "bytes": 789399,
+          "lines": 12442
+        },
+        "depth2/javap-29.txt": {
+          "sha256": "ad602f516600e335f06826e0dbab5aff23d25f80010b24afa3bd4c8f657d6f56",
+          "bytes": 815676,
+          "lines": 14689
+        },
+        "depth2/javap-3.txt": {
+          "sha256": "4575ec94f7748e37eaf3593189eb093b44b77105e8b21d105a1c4f929a0aa172",
+          "bytes": 4035840,
+          "lines": 111450
+        },
+        "depth2/javap-30.txt": {
+          "sha256": "a7b6b22cf3753d21c7921e925320eb7011b0abfc86d8e61ec0d5127fcd7132c6",
+          "bytes": 988149,
+          "lines": 17843
+        },
+        "depth2/javap-31.txt": {
+          "sha256": "0db0ddd08ac5980ea3465ccc6c1301843e0fbbdc3f1aa3a260859ae56110f6d5",
+          "bytes": 1949829,
+          "lines": 36859
+        },
+        "depth2/javap-32.txt": {
+          "sha256": "b4e62065ecbcc89405819cfabca97f744433c77047f7294580e055e507e9d815",
+          "bytes": 383229,
+          "lines": 7309
+        },
+        "depth2/javap-33.txt": {
+          "sha256": "ddaea789558835217157f33257e5d14235f8934121cae21e8a3a85c54a37effa",
+          "bytes": 281427,
+          "lines": 5484
+        },
+        "depth2/javap-34.txt": {
+          "sha256": "4c03b185ddbb2c75aef7a1901b05730ea36cf15c417e3e17a8f1c4eeac059ea2",
+          "bytes": 451057,
+          "lines": 11152
+        },
+        "depth2/javap-35.txt": {
+          "sha256": "1f818758a2537dcb5edfa332292564991d32606fc7efa8534f8b318424cd7c3f",
+          "bytes": 414533,
+          "lines": 8022
+        },
+        "depth2/javap-36.txt": {
+          "sha256": "4960d0487461bb95f19ae8b5c56e579972c79515bd38bef5f77b73ff3cb0345c",
+          "bytes": 486415,
+          "lines": 9499
+        },
+        "depth2/javap-37.txt": {
+          "sha256": "e545ed62edd6e3b33e1a0ab5ed143f57bdad7a4ece2571246f84c586ef5d7369",
+          "bytes": 852324,
+          "lines": 16306
+        },
+        "depth2/javap-38.txt": {
+          "sha256": "6c4e98e07d185b4c3767fcd3fa41bf1311dae6083d1da40867332c08874796fb",
+          "bytes": 632233,
+          "lines": 29393
+        },
+        "depth2/javap-4.txt": {
+          "sha256": "430a6fec302dde0afb5ae0e8501d70f72dadb511407d5c4383c3e597387226c4",
+          "bytes": 2883826,
+          "lines": 54982
+        },
+        "depth2/javap-5.txt": {
+          "sha256": "11b7b2748c1d8f34ab252c008717159a1763694edf50fcef26c42fdc969cab0e",
+          "bytes": 2633837,
+          "lines": 51730
+        },
+        "depth2/javap-6.txt": {
+          "sha256": "6499918de4e1968913fb0701a681acce4ada7cf90b5cd72a1aaaaf195db5c6d8",
+          "bytes": 470157,
+          "lines": 8568
+        },
+        "depth2/javap-7.txt": {
+          "sha256": "de3e064e4dd5798f31aabe77327995b042ec35caa5b43b6f32f07dd7201b55c5",
+          "bytes": 368436,
+          "lines": 7673
+        },
+        "depth2/javap-8.txt": {
+          "sha256": "b4f160da8230c1e1ce5e24c732044494b5e062d33c3bd6dee5fe907c179cb85f",
+          "bytes": 894036,
+          "lines": 15811
+        },
+        "depth2/javap-9.txt": {
+          "sha256": "931edaa2922e1c8a3ec860745d18ba60c720313d61b37ad752df896f2ad1d45d",
+          "bytes": 694957,
+          "lines": 11994
+        }
+      },
+      "counts": {
+        "entries": 7,
+        "evidenceLines": 24,
+        "justifying": 22,
+        "nonJustifying": 2,
+        "unresolved": 0
+      },
+      "targets": [
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 101: invokestatic  #60                 // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "2358f893fc8d8186a31990a9526ae8ed3d68ebad06ebe7cb43e40cdd339fe3b9",
+              "dumpLine": 29826,
+              "bytecodeOffset": 101,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 127: invokestatic  #60                 // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "2358f893fc8d8186a31990a9526ae8ed3d68ebad06ebe7cb43e40cdd339fe3b9",
+              "dumpLine": 29759,
+              "bytecodeOffset": 127,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-2.txt: 1735: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17164,
+              "bytecodeOffset": 1735,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 1770: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17181,
+              "bytecodeOffset": 1770,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 1798: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17195,
+              "bytecodeOffset": 1798,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 1819: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17206,
+              "bytecodeOffset": 1819,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 1875: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17232,
+              "bytecodeOffset": 1875,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 1952: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17267,
+              "bytecodeOffset": 1952,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 1966: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17275,
+              "bytecodeOffset": 1966,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 2082: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17330,
+              "bytecodeOffset": 2082,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 2854: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17655,
+              "bytecodeOffset": 2854,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 2939: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17692,
+              "bytecodeOffset": 2939,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 3016: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17726,
+              "bytecodeOffset": 3016,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 3085: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17757,
+              "bytecodeOffset": 3085,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 3198: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17805,
+              "bytecodeOffset": 3198,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 3331: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17850,
+              "bytecodeOffset": 3331,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 3380: invokevirtual #1010               // Method getObjectReader:(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth2/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17874,
+              "bytecodeOffset": 3380,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": false,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-2.txt: 3436: invokevirtual #1010               // Method getObjectReader:(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth2/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 17903,
+              "bytecodeOffset": 3436,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": false,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-2.txt: 5140: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 18431,
+              "bytecodeOffset": 5140,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            },
+            {
+              "cited": "javap-2.txt: 5290: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 18503,
+              "bytecodeOffset": 5290,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-2.txt: 328: invokestatic  #588                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth1/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 61077,
+              "bytecodeOffset": 328,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#processExtra(Lcom/alibaba/fastjson2/JSONReader;Ljava/lang/Object;)V",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 10: invokevirtual #348                // Method getObjectReader:(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth2/javap-1.txt",
+              "dumpSha256": "2358f893fc8d8186a31990a9526ae8ed3d68ebad06ebe7cb43e40cdd339fe3b9",
+              "dumpLine": 30430,
+              "bytecodeOffset": 10,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#readFieldValue(Lcom/alibaba/fastjson2/JSONReader;)Ljava/lang/Object;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 10: invokevirtual #348                // Method getObjectReader:(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth2/javap-1.txt",
+              "dumpSha256": "2358f893fc8d8186a31990a9526ae8ed3d68ebad06ebe7cb43e40cdd339fe3b9",
+              "dumpLine": 30381,
+              "bytecodeOffset": 10,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReader(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-2.txt: 124: invokespecial #569                // Method getObjectReaderInternal:(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "dumpFile": "depth2/javap-2.txt",
+              "dumpSha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+              "dumpLine": 60921,
+              "bytecodeOffset": 124,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "detekt_detekt-7625",
+      "dumps": {
+        "depth1/javap-0.txt": {
+          "sha256": "30314a9891bad0f7ce113d8c806466074dde80e3cee50dcaf2547458eb1d28d5",
+          "bytes": 626305,
+          "lines": 10706
+        },
+        "depth1/javap-1.txt": {
+          "sha256": "9e6ce8b65f7c2f8f59feebbb1631dce6335d220356796e352a8db57a3fba304f",
+          "bytes": 1267963,
+          "lines": 22662
+        },
+        "depth1/javap-10.txt": {
+          "sha256": "18f94aa509a95866590b29d668de354e26d67226ade16d2ae8a15db795a98ee9",
+          "bytes": 1194050,
+          "lines": 18710
+        },
+        "depth1/javap-11.txt": {
+          "sha256": "8c3acb40a3924678a284ae63e416ab7210897bb41f1c46e185c55bf4ca360bd7",
+          "bytes": 1222292,
+          "lines": 18411
+        },
+        "depth1/javap-12.txt": {
+          "sha256": "ae1f04cd9b233c13963db1cdb10c71db1f12668fda964172c234b347241452c8",
+          "bytes": 1078480,
+          "lines": 16943
+        },
+        "depth1/javap-13.txt": {
+          "sha256": "fcca05ded7bfe15e7177444521bcf594f06a49382e9a0e63f7b404250203ec37",
+          "bytes": 1530905,
+          "lines": 27569
+        },
+        "depth1/javap-14.txt": {
+          "sha256": "986dda72d585e68f0aafcbbbb8700eac5eb9df526fd06b727c47930614a477c1",
+          "bytes": 862999,
+          "lines": 15462
+        },
+        "depth1/javap-15.txt": {
+          "sha256": "e4eb9cc49da9b68a7b8b92bb4db425c4821f68682540e1408fd4aba443881f46",
+          "bytes": 1958205,
+          "lines": 31201
+        },
+        "depth1/javap-16.txt": {
+          "sha256": "06db109388fca431f7a7f53451eed6d52616e101a3672d77ce307abf5e9598ab",
+          "bytes": 1265492,
+          "lines": 19655
+        },
+        "depth1/javap-17.txt": {
+          "sha256": "ba02d1d3499589fc12913179074887fe9f4e2371c569d2a4d418004d45d97488",
+          "bytes": 1398933,
+          "lines": 20850
+        },
+        "depth1/javap-18.txt": {
+          "sha256": "ea444249ead9bf34f0c235827594d9bcbfdf0994ea0d24f492c4ec38bb0f0336",
+          "bytes": 1238349,
+          "lines": 18155
+        },
+        "depth1/javap-19.txt": {
+          "sha256": "51b5181c2dc3d7abf63f3fd63631dd9b1291865ace97e8b9536cbae75cb0dfe5",
+          "bytes": 621245,
+          "lines": 12099
+        },
+        "depth1/javap-2.txt": {
+          "sha256": "b9a5738691c6fbb3dab689ce0ef906a9691cf3f5f95c8f5a06203299a91f54e9",
+          "bytes": 1080684,
+          "lines": 18934
+        },
+        "depth1/javap-3.txt": {
+          "sha256": "4f5c75bcfe8f61707752a4d523bd1215d1dc70733e06bd4d2e03793cb5364ba9",
+          "bytes": 1001901,
+          "lines": 14915
+        },
+        "depth1/javap-4.txt": {
+          "sha256": "170bb380e023dd10fb9c3f82123c83af3d1d3ab8ec8c0a499a233e5715ed26bb",
+          "bytes": 648776,
+          "lines": 10995
+        },
+        "depth1/javap-5.txt": {
+          "sha256": "3f0a0360b2ca1b81995e11a12d632ae926a2ef6c9edbfc0eb9613f98e0c83d02",
+          "bytes": 1012853,
+          "lines": 17901
+        },
+        "depth1/javap-6.txt": {
+          "sha256": "3ac52151a0778f007c07a859e9bc9b341fa1410b8599ac0c535a50d53ae5047c",
+          "bytes": 1544242,
+          "lines": 25855
+        },
+        "depth1/javap-7.txt": {
+          "sha256": "b412e0d4890a6347062d323bf3068c2a21f8c48ed269df96bd7482380fe2f0fa",
+          "bytes": 923060,
+          "lines": 16280
+        },
+        "depth1/javap-8.txt": {
+          "sha256": "f6e4aca0af96485df77d4265472f0605166c83402d118c35cff9895a3a42ab7f",
+          "bytes": 1439565,
+          "lines": 25533
+        },
+        "depth1/javap-9.txt": {
+          "sha256": "8790340ab7502e298c619b0250aebbfe64a896f56efb4e0f4ce5ea3e1e286c12",
+          "bytes": 1360208,
+          "lines": 20946
+        },
+        "depth2/javap-0.txt": {
+          "sha256": "30314a9891bad0f7ce113d8c806466074dde80e3cee50dcaf2547458eb1d28d5",
+          "bytes": 626305,
+          "lines": 10706
+        },
+        "depth2/javap-1.txt": {
+          "sha256": "9e6ce8b65f7c2f8f59feebbb1631dce6335d220356796e352a8db57a3fba304f",
+          "bytes": 1267963,
+          "lines": 22662
+        },
+        "depth2/javap-10.txt": {
+          "sha256": "18f94aa509a95866590b29d668de354e26d67226ade16d2ae8a15db795a98ee9",
+          "bytes": 1194050,
+          "lines": 18710
+        },
+        "depth2/javap-11.txt": {
+          "sha256": "8c3acb40a3924678a284ae63e416ab7210897bb41f1c46e185c55bf4ca360bd7",
+          "bytes": 1222292,
+          "lines": 18411
+        },
+        "depth2/javap-12.txt": {
+          "sha256": "ae1f04cd9b233c13963db1cdb10c71db1f12668fda964172c234b347241452c8",
+          "bytes": 1078480,
+          "lines": 16943
+        },
+        "depth2/javap-13.txt": {
+          "sha256": "fcca05ded7bfe15e7177444521bcf594f06a49382e9a0e63f7b404250203ec37",
+          "bytes": 1530905,
+          "lines": 27569
+        },
+        "depth2/javap-14.txt": {
+          "sha256": "986dda72d585e68f0aafcbbbb8700eac5eb9df526fd06b727c47930614a477c1",
+          "bytes": 862999,
+          "lines": 15462
+        },
+        "depth2/javap-15.txt": {
+          "sha256": "e4eb9cc49da9b68a7b8b92bb4db425c4821f68682540e1408fd4aba443881f46",
+          "bytes": 1958205,
+          "lines": 31201
+        },
+        "depth2/javap-16.txt": {
+          "sha256": "06db109388fca431f7a7f53451eed6d52616e101a3672d77ce307abf5e9598ab",
+          "bytes": 1265492,
+          "lines": 19655
+        },
+        "depth2/javap-17.txt": {
+          "sha256": "ba02d1d3499589fc12913179074887fe9f4e2371c569d2a4d418004d45d97488",
+          "bytes": 1398933,
+          "lines": 20850
+        },
+        "depth2/javap-18.txt": {
+          "sha256": "ea444249ead9bf34f0c235827594d9bcbfdf0994ea0d24f492c4ec38bb0f0336",
+          "bytes": 1238349,
+          "lines": 18155
+        },
+        "depth2/javap-19.txt": {
+          "sha256": "51b5181c2dc3d7abf63f3fd63631dd9b1291865ace97e8b9536cbae75cb0dfe5",
+          "bytes": 621245,
+          "lines": 12099
+        },
+        "depth2/javap-2.txt": {
+          "sha256": "b9a5738691c6fbb3dab689ce0ef906a9691cf3f5f95c8f5a06203299a91f54e9",
+          "bytes": 1080684,
+          "lines": 18934
+        },
+        "depth2/javap-3.txt": {
+          "sha256": "4f5c75bcfe8f61707752a4d523bd1215d1dc70733e06bd4d2e03793cb5364ba9",
+          "bytes": 1001901,
+          "lines": 14915
+        },
+        "depth2/javap-4.txt": {
+          "sha256": "170bb380e023dd10fb9c3f82123c83af3d1d3ab8ec8c0a499a233e5715ed26bb",
+          "bytes": 648776,
+          "lines": 10995
+        },
+        "depth2/javap-5.txt": {
+          "sha256": "3f0a0360b2ca1b81995e11a12d632ae926a2ef6c9edbfc0eb9613f98e0c83d02",
+          "bytes": 1012853,
+          "lines": 17901
+        },
+        "depth2/javap-6.txt": {
+          "sha256": "3ac52151a0778f007c07a859e9bc9b341fa1410b8599ac0c535a50d53ae5047c",
+          "bytes": 1544242,
+          "lines": 25855
+        },
+        "depth2/javap-7.txt": {
+          "sha256": "b412e0d4890a6347062d323bf3068c2a21f8c48ed269df96bd7482380fe2f0fa",
+          "bytes": 923060,
+          "lines": 16280
+        },
+        "depth2/javap-8.txt": {
+          "sha256": "f6e4aca0af96485df77d4265472f0605166c83402d118c35cff9895a3a42ab7f",
+          "bytes": 1439565,
+          "lines": 25533
+        },
+        "depth2/javap-9.txt": {
+          "sha256": "8790340ab7502e298c619b0250aebbfe64a896f56efb4e0f4ce5ea3e1e286c12",
+          "bytes": 1360208,
+          "lines": 20946
+        }
+      },
+      "counts": {
+        "entries": 4,
+        "evidenceLines": 4,
+        "justifying": 4,
+        "nonJustifying": 0,
+        "unresolved": 0
+      },
+      "targets": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 100: invokespecial #240                // Method save:(Ljavax/xml/stream/XMLStreamWriter;Lio/github/detekt/tooling/api/Baseline;)V",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "9e6ce8b65f7c2f8f59feebbb1631dce6335d220356796e352a8db57a3fba304f",
+              "dumpLine": 20163,
+              "bytecodeOffset": 100,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#save(Ljavax/xml/stream/XMLStreamWriter;Lio/github/detekt/tooling/api/Baseline;)V",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V",
+          "oracleList": "indirectTargets",
+          "kind": "test",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-2.txt: 25: invokevirtual #61                 // Method io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.write:(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+              "dumpFile": "depth2/javap-2.txt",
+              "dumpSha256": "b9a5738691c6fbb3dab689ce0ef906a9691cf3f5f95c8f5a06203299a91f54e9",
+              "dumpLine": 17068,
+              "bytecodeOffset": 25,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V",
+          "oracleList": "indirectTargets",
+          "kind": "test",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-2.txt: 25: invokevirtual #61                 // Method io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.write:(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+              "dumpFile": "depth2/javap-2.txt",
+              "dumpSha256": "b9a5738691c6fbb3dab689ce0ef906a9691cf3f5f95c8f5a06203299a91f54e9",
+              "dumpLine": 17037,
+              "bytecodeOffset": 25,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 209: invokevirtual #256                // Method io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.write:(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+              "dumpFile": "depth2/javap-1.txt",
+              "dumpSha256": "9e6ce8b65f7c2f8f59feebbb1631dce6335d220356796e352a8db57a3fba304f",
+              "dumpLine": 20984,
+              "bytecodeOffset": 209,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "fasterxml__jackson-core-1016",
+      "dumps": {
+        "depth1/javap-0.txt": {
+          "sha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+          "bytes": 3730778,
+          "lines": 95562
+        },
+        "depth1/javap-1.txt": {
+          "sha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+          "bytes": 5342206,
+          "lines": 125979
+        },
+        "depth1/javap-2.txt": {
+          "sha256": "8cd237979143425be024e761207ea6493fe231b38c5eeafe159ba9db6eb7199b",
+          "bytes": 2290684,
+          "lines": 40578
+        },
+        "depth2/javap-0.txt": {
+          "sha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+          "bytes": 3730778,
+          "lines": 95562
+        },
+        "depth2/javap-1.txt": {
+          "sha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+          "bytes": 5342206,
+          "lines": 125979
+        },
+        "depth2/javap-2.txt": {
+          "sha256": "8cd237979143425be024e761207ea6493fe231b38c5eeafe159ba9db6eb7199b",
+          "bytes": 2290684,
+          "lines": 40578
+        }
+      },
+      "counts": {
+        "entries": 32,
+        "evidenceLines": 48,
+        "justifying": 47,
+        "nonJustifying": 1,
+        "unresolved": 0
+      },
+      "targets": [
+        {
+          "id": "method:com/fasterxml/jackson/core/JsonFactory#createParser(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 19: invokevirtual #346                // Method _createParser:(Ljava/io/DataInput;Lcom/fasterxml/jackson/core/io/IOContext;)Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth1/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 3329,
+              "bytecodeOffset": 19,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#_createParser(Ljava/io/DataInput;Lcom/fasterxml/jackson/core/io/IOContext;)Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForByteBuffer(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 5: invokevirtual #22                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteBufferParser:()Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+              "dumpLine": 3801,
+              "bytecodeOffset": 5,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForBytes(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 5: invokevirtual #11                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteArrayParser:()Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+              "dumpLine": 3788,
+              "bytecodeOffset": 5,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_handleOddName(I)Ljava/lang/String;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 18: invokevirtual #593                // Method _parseAposName:()Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52789,
+              "bytecodeOffset": 18,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseAposName()Ljava/lang/String;",
+              "justifying": false,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 215: invokespecial #586                // Method addName:([III)Ljava/lang/String;",
+              "dumpFile": "depth1/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52899,
+              "bytecodeOffset": 215,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#addName([III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseAposName()Ljava/lang/String;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 366: invokespecial #586                // Method addName:([III)Ljava/lang/String;",
+              "dumpFile": "depth1/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 53115,
+              "bytecodeOffset": 366,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#addName([III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(II)Ljava/lang/String;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 35: invokespecial #586                // Method addName:([III)Ljava/lang/String;",
+              "dumpFile": "depth1/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 53146,
+              "bytecodeOffset": 35,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#addName([III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(III)Ljava/lang/String;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 46: invokespecial #586                // Method addName:([III)Ljava/lang/String;",
+              "dumpFile": "depth1/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 53181,
+              "bytecodeOffset": 46,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#addName([III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(IIII)Ljava/lang/String;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 59: invokespecial #586                // Method addName:([III)Ljava/lang/String;",
+              "dumpFile": "depth1/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 53223,
+              "bytecodeOffset": 59,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#addName([III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName([IIII)Ljava/lang/String;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 51: invokespecial #586                // Method addName:([III)Ljava/lang/String;",
+              "dumpFile": "depth1/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 53260,
+              "bytecodeOffset": 51,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#addName([III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 327: invokespecial #586                // Method addName:([III)Ljava/lang/String;",
+              "dumpFile": "depth1/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52772,
+              "bytecodeOffset": 327,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#addName([III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsets()V",
+          "oracleList": "targets",
+          "kind": "test",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 4: invokevirtual #16                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteArrayParser:()Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+              "dumpLine": 111341,
+              "bytecodeOffset": 4,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsetsByteBuffer()V",
+          "oracleList": "targets",
+          "kind": "test",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 4: invokevirtual #86                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteBufferParser:()Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+              "dumpLine": 111437,
+              "bytecodeOffset": 4,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingByteBufferParserAllContent()V",
+          "oracleList": "targets",
+          "kind": "test",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 4: invokevirtual #69                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteBufferParser:()Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+              "dumpLine": 122460,
+              "bytecodeOffset": 4,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingParserAllContent()V",
+          "oracleList": "targets",
+          "kind": "test",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 4: invokevirtual #16                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteArrayParser:()Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+              "dumpLine": 122412,
+              "bytecodeOffset": 4,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplit()V",
+          "oracleList": "targets",
+          "kind": "test",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 4: invokevirtual #16                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteArrayParser:()Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+              "dumpLine": 122508,
+              "bytecodeOffset": 4,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplitByteBuffer()V",
+          "oracleList": "targets",
+          "kind": "test",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 4: invokevirtual #69                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteBufferParser:()Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+              "dumpLine": 122568,
+              "bytecodeOffset": 4,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(II)Ljava/lang/String;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 35: invokevirtual #289                // Method _addName:([III)Ljava/lang/String;",
+              "dumpFile": "depth1/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 76044,
+              "bytecodeOffset": 35,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_addName([III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(III)Ljava/lang/String;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 46: invokevirtual #289                // Method _addName:([III)Ljava/lang/String;",
+              "dumpFile": "depth1/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 76079,
+              "bytecodeOffset": 46,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_addName([III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(IIII)Ljava/lang/String;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 59: invokevirtual #289                // Method _addName:([III)Ljava/lang/String;",
+              "dumpFile": "depth1/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 76121,
+              "bytecodeOffset": 59,
+              "collectionPass": "depth1",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_addName([III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "oracleList": "targets",
+          "kind": "override",
+          "evidenceKind": "original-declaration",
+          "note": "javap 참조가 아니라 원본 선언이 근거다. 재유도 기록은 override-rederivation-*.json을 본다.",
+          "resolved": []
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "oracleList": "targets",
+          "kind": "override",
+          "evidenceKind": "original-declaration",
+          "note": "javap 참조가 아니라 원본 선언이 근거다. 재유도 기록은 override-rederivation-*.json을 본다.",
+          "resolved": []
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeDecimalDataOutput()V",
+          "oracleList": "indirectTargets",
+          "kind": "test",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 65: invokevirtual #147                // Method com/fasterxml/jackson/core/JsonFactory.createParser:(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth2/javap-1.txt",
+              "dumpSha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+              "dumpLine": 7561,
+              "bytecodeOffset": 65,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createParser(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeIntegerDataOutput()V",
+          "oracleList": "indirectTargets",
+          "kind": "test",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 65: invokevirtual #147                // Method com/fasterxml/jackson/core/JsonFactory.createParser:(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth2/javap-1.txt",
+              "dumpSha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+              "dumpLine": 7246,
+              "bytecodeOffset": 65,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createParser(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/JsonParserClosedCaseTest#parsers()Ljava/util/Collection;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 72: invokevirtual #40                 // Method com/fasterxml/jackson/core/JsonFactory.createParser:(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth2/javap-1.txt",
+              "dumpSha256": "093916d93df0536529990b99e34abbeb8604916abde56743744a2fec3f0ed9db",
+              "dumpLine": 102877,
+              "bytecodeOffset": 72,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createParser(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseLongName(III)Ljava/lang/String;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 129: invokespecial #560                // Method findName:([IIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52428,
+              "bytecodeOffset": 129,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName([IIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 144: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52437,
+              "bytecodeOffset": 144,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 191: invokespecial #560                // Method findName:([IIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52462,
+              "bytecodeOffset": 191,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName([IIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 206: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52471,
+              "bytecodeOffset": 206,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 253: invokespecial #560                // Method findName:([IIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52496,
+              "bytecodeOffset": 253,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName([IIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 268: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52505,
+              "bytecodeOffset": 268,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 67: invokespecial #560                // Method findName:([IIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52394,
+              "bytecodeOffset": 67,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName([IIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 82: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52403,
+              "bytecodeOffset": 82,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName(I)Ljava/lang/String;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 137: invokespecial #544                // Method findName:(III)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52164,
+              "bytecodeOffset": 137,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 189: invokespecial #544                // Method findName:(III)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52196,
+              "bytecodeOffset": 189,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 33: invokespecial #544                // Method findName:(III)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52100,
+              "bytecodeOffset": 33,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 85: invokespecial #544                // Method findName:(III)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52132,
+              "bytecodeOffset": 85,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(III)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName2(II)Ljava/lang/String;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 155: invokespecial #552                // Method findName:(IIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52302,
+              "bytecodeOffset": 155,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(IIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 214: invokespecial #552                // Method findName:(IIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52336,
+              "bytecodeOffset": 214,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(IIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 37: invokespecial #552                // Method findName:(IIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52234,
+              "bytecodeOffset": 37,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(IIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 96: invokespecial #552                // Method findName:(IIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52268,
+              "bytecodeOffset": 96,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(IIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseName(I)Ljava/lang/String;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 137: invokespecial #534                // Method findName:(II)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52017,
+              "bytecodeOffset": 137,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(II)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 158: invokespecial #534                // Method findName:(II)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52031,
+              "bytecodeOffset": 158,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(II)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 179: invokespecial #534                // Method findName:(II)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52045,
+              "bytecodeOffset": 179,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(II)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 200: invokespecial #534                // Method findName:(II)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52059,
+              "bytecodeOffset": 200,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(II)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            },
+            {
+              "cited": "javap-0.txt: 8: invokevirtual #522                // Method _handleOddName:(I)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 51942,
+              "bytecodeOffset": 8,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_handleOddName(I)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(III)Ljava/lang/String;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 9: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52538,
+              "bytecodeOffset": 9,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIII)Ljava/lang/String;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 17: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52556,
+              "bytecodeOffset": 17,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIIII)Ljava/lang/String;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-0.txt: 25: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;",
+              "dumpFile": "depth2/javap-0.txt",
+              "dumpSha256": "b06e333de6b542e026637c6e814a383edf38105adb634fb345a99c796f630d07",
+              "dumpLine": 52579,
+              "bytecodeOffset": 25,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/read/SimpleParserTest#testUtf8BOMHandling()V",
+          "oracleList": "indirectTargets",
+          "kind": "test",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-2.txt: 129: invokevirtual #536                // Method com/fasterxml/jackson/core/JsonFactory.createParser:(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+              "dumpFile": "depth2/javap-2.txt",
+              "dumpSha256": "8cd237979143425be024e761207ea6493fe231b38c5eeafe159ba9db6eb7199b",
+              "dumpLine": 17959,
+              "bytecodeOffset": 129,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/fasterxml/jackson/core/JsonFactory#createParser(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "pinterest_ktlint-2785",
+      "dumps": {
+        "depth1/javap-0.txt": {
+          "sha256": "ea63cc32454e6762c1d7952040a8dc70495978f58f06ee675231db9eeeeec5ae",
+          "bytes": 2222381,
+          "lines": 36775
+        },
+        "depth1/javap-1.txt": {
+          "sha256": "e3d409fb7f596894adaa79437235caa9de8bc290c1ca5f4c6efde9b4f012f8ad",
+          "bytes": 1437501,
+          "lines": 23647
+        },
+        "depth1/javap-2.txt": {
+          "sha256": "fa1214b339996e5887e685fc87bff2aff4f0a2e656c6baaf9098b1ac46b00818",
+          "bytes": 1664506,
+          "lines": 23843
+        },
+        "depth1/javap-3.txt": {
+          "sha256": "b461f6c1d497248609b8b21ebb695c707e4b568be11da531858131588519f4ee",
+          "bytes": 2731689,
+          "lines": 45354
+        },
+        "depth1/javap-4.txt": {
+          "sha256": "4c59b393a91f9ecf340d42dafc6d36b14f32ad9189ed7a4743662743251252fc",
+          "bytes": 2406105,
+          "lines": 39714
+        },
+        "depth1/javap-5.txt": {
+          "sha256": "80d0df1083b5878ca80fce37a95b1ae9a6e04e78aabe0c1945f35ab27acfd894",
+          "bytes": 2190184,
+          "lines": 33209
+        },
+        "depth1/javap-6.txt": {
+          "sha256": "0aa8a297c1fbbb718660460f0fef293099b7726409b8608d33897470d3796493",
+          "bytes": 1840770,
+          "lines": 29495
+        },
+        "depth2/javap-0.txt": {
+          "sha256": "ea63cc32454e6762c1d7952040a8dc70495978f58f06ee675231db9eeeeec5ae",
+          "bytes": 2222381,
+          "lines": 36775
+        },
+        "depth2/javap-1.txt": {
+          "sha256": "e3d409fb7f596894adaa79437235caa9de8bc290c1ca5f4c6efde9b4f012f8ad",
+          "bytes": 1437501,
+          "lines": 23647
+        },
+        "depth2/javap-2.txt": {
+          "sha256": "fa1214b339996e5887e685fc87bff2aff4f0a2e656c6baaf9098b1ac46b00818",
+          "bytes": 1664506,
+          "lines": 23843
+        },
+        "depth2/javap-3.txt": {
+          "sha256": "b461f6c1d497248609b8b21ebb695c707e4b568be11da531858131588519f4ee",
+          "bytes": 2731689,
+          "lines": 45354
+        },
+        "depth2/javap-4.txt": {
+          "sha256": "4c59b393a91f9ecf340d42dafc6d36b14f32ad9189ed7a4743662743251252fc",
+          "bytes": 2406105,
+          "lines": 39714
+        },
+        "depth2/javap-5.txt": {
+          "sha256": "80d0df1083b5878ca80fce37a95b1ae9a6e04e78aabe0c1945f35ab27acfd894",
+          "bytes": 2190184,
+          "lines": 33209
+        },
+        "depth2/javap-6.txt": {
+          "sha256": "0aa8a297c1fbbb718660460f0fef293099b7726409b8608d33897470d3796493",
+          "bytes": 1840770,
+          "lines": 29495
+        }
+      },
+      "counts": {
+        "entries": 4,
+        "evidenceLines": 4,
+        "justifying": 4,
+        "nonJustifying": 0,
+        "unresolved": 0
+      },
+      "targets": [
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#access$getSUPPRESS_ANNOTATION_RULE_MAP$cp()Ljava/util/Map;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 0: getstatic     #557                // Field SUPPRESS_ANNOTATION_RULE_MAP:Ljava/util/Map;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "e3d409fb7f596894adaa79437235caa9de8bc290c1ca5f4c6efde9b4f012f8ad",
+              "dumpLine": 21599,
+              "bytecodeOffset": 0,
+              "collectionPass": "depth1",
+              "referenceKind": "field",
+              "referenceTarget": "field:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#SUPPRESS_ANNOTATION_RULE_MAP:Ljava/util/Map;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;",
+          "oracleList": "targets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 111: getstatic     #557                // Field SUPPRESS_ANNOTATION_RULE_MAP:Ljava/util/Map;",
+              "dumpFile": "depth1/javap-1.txt",
+              "dumpSha256": "e3d409fb7f596894adaa79437235caa9de8bc290c1ca5f4c6efde9b4f012f8ad",
+              "dumpLine": 21523,
+              "bytecodeOffset": 111,
+              "collectionPass": "depth1",
+              "referenceKind": "field",
+              "referenceTarget": "field:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#SUPPRESS_ANNOTATION_RULE_MAP:Ljava/util/Map;",
+              "justifying": true,
+              "justifies": "바뀐 심볼에 대한 직접 참조"
+            }
+          ]
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#createSuppressionHintFromAnnotations(Lorg/jetbrains/kotlin/psi/KtAnnotated;)Lcom/pinterest/ktlint/rule/engine/internal/SuppressionLocator$SuppressionHint;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 304: invokespecial #483                // Method findRuleSuppressionIds:(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;",
+              "dumpFile": "depth2/javap-1.txt",
+              "dumpSha256": "e3d409fb7f596894adaa79437235caa9de8bc290c1ca5f4c6efde9b4f012f8ad",
+              "dumpLine": 21411,
+              "bytecodeOffset": 304,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator$Companion#getSUPPRESS_ANNOTATION_RULE_MAP()Ljava/util/Map;",
+          "oracleList": "indirectTargets",
+          "kind": "caller",
+          "evidenceKind": "javap-reference",
+          "resolved": [
+            {
+              "cited": "javap-1.txt: 0: invokestatic  #19                 // Method com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.access$getSUPPRESS_ANNOTATION_RULE_MAP$cp:()Ljava/util/Map;",
+              "dumpFile": "depth2/javap-1.txt",
+              "dumpSha256": "e3d409fb7f596894adaa79437235caa9de8bc290c1ca5f4c6efde9b4f012f8ad",
+              "dumpLine": 20357,
+              "bytecodeOffset": 0,
+              "collectionPass": "depth2",
+              "referenceKind": "method",
+              "referenceTarget": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#access$getSUPPRESS_ANNOTATION_RULE_MAP$cp()Ljava/util/Map;",
+              "justifying": true,
+              "justifies": "depth-1 직접 호출자에 대한 참조(간접 1단계)"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

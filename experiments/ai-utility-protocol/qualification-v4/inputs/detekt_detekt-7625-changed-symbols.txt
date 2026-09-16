@@ -1,0 +1,1 @@
+method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#save(Ljavax/xml/stream/XMLStreamWriter;Lio/github/detekt/tooling/api/Baseline;)V

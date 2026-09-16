@@ -1,0 +1,635 @@
+{
+  "status": "Frozen before v4 product-informed changes or efficacy model trials",
+  "method": "Independent javap method/field references from the unchanged base build, plus existing tests actually executed on that base and override declarations read from the original source. Direct targets are depth-1 references to the changed symbols; indirectTargets are depth-2 references obtained by expanding every depth-1 caller without selection or cap. Known review anchors only, not complete behavioral impact. No new PR tests are included. The product impact cross-check is reported separately and never adds or removes an oracle entry.",
+  "transitiveCaseRule": "All four cases had at least one new depth-2 target, so the pre-registered tie-break applies: the two lowest cohort-v4 case ids in ascending Unicode order (alibaba__fastjson2-2097, detekt_detekt-7625) carry the direct-and-indirect listing question.",
+  "responseCapNote": "The response cap is 12 investigation targets per case. Cases whose oracle exceeds 12 entries therefore carry a recall ceiling below 1.0; per-case oracle sizes are in counts.",
+  "cases": [
+    {
+      "id": "alibaba__fastjson2-2097",
+      "base": "3f6275bcc3cd40a57f6d257cdeec322d1b9ae06d",
+      "changedSymbols": [
+        "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+      ],
+      "targets": [
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/FieldReaderObject.java",
+          "name": "getObjectReader",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 101: invokestatic  #60                 // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/FieldReaderObject.java",
+          "name": "getObjectReader",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 127: invokestatic  #60                 // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderBaseModule.java",
+          "name": "getObjectReader",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-2.txt: 1735: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 1770: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 1798: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 1819: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 1875: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 1952: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 1966: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 2082: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 2854: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 2939: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 3016: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 3085: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 3198: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 3331: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 3380: invokevirtual #1010               // Method getObjectReader:(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 3436: invokevirtual #1010               // Method getObjectReader:(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 5140: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "javap-2.txt: 5290: invokestatic  #799                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderProvider.java",
+          "name": "getObjectReaderInternal",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-2.txt: 328: invokestatic  #588                // Method com/alibaba/fastjson2/reader/ObjectReaderImplList.of:(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ]
+        }
+      ],
+      "indirectTargets": [
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#processExtra(Lcom/alibaba/fastjson2/JSONReader;Ljava/lang/Object;)V",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/FieldReaderObject.java",
+          "name": "processExtra",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-1.txt: 10: invokevirtual #348                // Method getObjectReader:(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#readFieldValue(Lcom/alibaba/fastjson2/JSONReader;)Ljava/lang/Object;",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/FieldReaderObject.java",
+          "name": "readFieldValue",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-1.txt: 10: invokevirtual #348                // Method getObjectReader:(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ]
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReader(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "kind": "caller",
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderProvider.java",
+          "name": "getObjectReader",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-2.txt: 124: invokespecial #569                // Method getObjectReaderInternal:(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ]
+        }
+      ],
+      "counts": {
+        "targets": 4,
+        "indirectTargets": 3,
+        "total": 7,
+        "responseCap": 12,
+        "recallCeiling": 1.0
+      },
+      "sourceChangeSha256": "4ce8b37cdf1832adae6f18314f988196ac01e9c56edd40253df2e1e7fc6fc746",
+      "directOracleSha256": "210ad2b26b8b27d7fdeaa036154a23e669e75883eb68c4ec56127de083ce6dbf",
+      "indirectOracleSha256": "5254a685b4063fce8ed39a0fc82c54ac0e9ee043702c01ee6bcccdadcfe6f62a",
+      "transitiveCase": true
+    },
+    {
+      "id": "detekt_detekt-7625",
+      "base": "82ab4c5ac06f006a0906920687dc016af37642a6",
+      "changedSymbols": [
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#save(Ljavax/xml/stream/XMLStreamWriter;Lio/github/detekt/tooling/api/Baseline;)V"
+      ],
+      "targets": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+          "kind": "caller",
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.kt",
+          "name": "write",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 100: invokespecial #240                // Method save:(Ljavax/xml/stream/XMLStreamWriter;Lio/github/detekt/tooling/api/Baseline;)V"
+          ]
+        }
+      ],
+      "indirectTargets": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V",
+          "kind": "test",
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "name": "asserts that the saved and loaded baseline files are equal",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-2.txt: 25: invokevirtual #61                 // Method io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.write:(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "PASS"
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V",
+          "kind": "test",
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "name": "has a new line at the end of the written baseline file",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-2.txt: 25: invokevirtual #61                 // Method io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.write:(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "PASS"
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V",
+          "kind": "caller",
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt",
+          "name": "createOrUpdate",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-1.txt: 209: invokevirtual #256                // Method io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.write:(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V"
+          ]
+        }
+      ],
+      "counts": {
+        "targets": 1,
+        "indirectTargets": 3,
+        "total": 4,
+        "responseCap": 12,
+        "recallCeiling": 1.0
+      },
+      "sourceChangeSha256": "c01f307f434a890d91835c497a815b726a53c762bb99cdcac8624de0f13dcbc3",
+      "directOracleSha256": "48f9948bb38300553a647700c5b534d5b9b0031aa0d4fdecb5a6029c11c89178",
+      "indirectOracleSha256": "a197410e6066f7a422524b6a7d6bb9be590c52a26874f7c2fc002f2d92954e35",
+      "transitiveCase": true
+    },
+    {
+      "id": "fasterxml__jackson-core-1016",
+      "base": "315ac5ad2ad5228129a3df50623570d9bc2d7045",
+      "changedSymbols": [
+        "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+        "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+        "method:com/fasterxml/jackson/core/JsonFactory#_createParser(Ljava/io/DataInput;Lcom/fasterxml/jackson/core/io/IOContext;)Lcom/fasterxml/jackson/core/JsonParser;",
+        "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#addName([III)Ljava/lang/String;",
+        "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_addName([III)Ljava/lang/String;"
+      ],
+      "targets": [
+        {
+          "id": "method:com/fasterxml/jackson/core/JsonFactory#createParser(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/JsonFactory.java",
+          "name": "createParser",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-0.txt: 19: invokevirtual #346                // Method _createParser:(Ljava/io/DataInput;Lcom/fasterxml/jackson/core/io/IOContext;)Lcom/fasterxml/jackson/core/JsonParser;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForByteBuffer(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "kind": "caller",
+          "file": "src/test/java/com/fasterxml/jackson/core/async/AsyncTestBase.java",
+          "name": "asyncForByteBuffer",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 5: invokevirtual #22                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteBufferParser:()Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "not-a-junit-test-method (test-support declaration)"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForBytes(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "kind": "caller",
+          "file": "src/test/java/com/fasterxml/jackson/core/async/AsyncTestBase.java",
+          "name": "asyncForBytes",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 5: invokevirtual #11                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteArrayParser:()Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "not-a-junit-test-method (test-support declaration)"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_handleOddName(I)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "_handleOddName",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-0.txt: 18: invokevirtual #593                // Method _parseAposName:()Ljava/lang/String;",
+            "javap-0.txt: 215: invokespecial #586                // Method addName:([III)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseAposName()Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "_parseAposName",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-0.txt: 366: invokespecial #586                // Method addName:([III)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(II)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "findName",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-0.txt: 35: invokespecial #586                // Method addName:([III)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(III)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "findName",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-0.txt: 46: invokespecial #586                // Method addName:([III)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(IIII)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "findName",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-0.txt: 59: invokespecial #586                // Method addName:([III)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName([IIII)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "findName",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-0.txt: 51: invokespecial #586                // Method addName:([III)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "parseEscapedName",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-0.txt: 327: invokespecial #586                // Method addName:([III)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsets()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/json/async/AsyncLocationTest.java",
+          "name": "testLocationOffsets",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 4: invokevirtual #16                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteArrayParser:()Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "PASS"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsetsByteBuffer()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/json/async/AsyncLocationTest.java",
+          "name": "testLocationOffsetsByteBuffer",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 4: invokevirtual #86                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteBufferParser:()Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "PASS"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingByteBufferParserAllContent()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest.java",
+          "name": "testFilteredNonBlockingByteBufferParserAllContent",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 4: invokevirtual #69                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteBufferParser:()Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "PASS"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingParserAllContent()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest.java",
+          "name": "testFilteredNonBlockingParserAllContent",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 4: invokevirtual #16                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteArrayParser:()Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "PASS"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplit()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest.java",
+          "name": "testSkipChildrenFailOnSplit",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 4: invokevirtual #16                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteArrayParser:()Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "PASS"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplitByteBuffer()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest.java",
+          "name": "testSkipChildrenFailOnSplitByteBuffer",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 4: invokevirtual #69                 // Method com/fasterxml/jackson/core/JsonFactory.createNonBlockingByteBufferParser:()Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "PASS"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(II)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase.java",
+          "name": "_findName",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-0.txt: 35: invokevirtual #289                // Method _addName:([III)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(III)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase.java",
+          "name": "_findName",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-0.txt: 46: invokevirtual #289                // Method _addName:([III)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(IIII)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase.java",
+          "name": "_findName",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-0.txt: 59: invokevirtual #289                // Method _addName:([III)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "file": "src/main/java/com/fasterxml/jackson/core/TokenStreamFactory.java",
+          "name": "createNonBlockingByteArrayParser",
+          "basis": "Original abstract declaration at TokenStreamFactory.java:189 that the changed JsonFactory method overrides; verified from the source declaration, not from product output.",
+          "evidence": [
+            "src/main/java/com/fasterxml/jackson/core/TokenStreamFactory.java:189: public abstract JsonParser createNonBlockingByteArrayParser() throws IOException;"
+          ],
+          "kind": "override"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "file": "src/main/java/com/fasterxml/jackson/core/TokenStreamFactory.java",
+          "name": "createNonBlockingByteBufferParser",
+          "basis": "Original abstract declaration at TokenStreamFactory.java:207 that the changed JsonFactory method overrides; verified from the source declaration, not from product output.",
+          "evidence": [
+            "src/main/java/com/fasterxml/jackson/core/TokenStreamFactory.java:207: public abstract JsonParser createNonBlockingByteBufferParser() throws IOException;"
+          ],
+          "kind": "override"
+        }
+      ],
+      "indirectTargets": [
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeDecimalDataOutput()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/constraints/LargeNumberWriteTest.java",
+          "name": "testWriteLargeDecimalDataOutput",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-1.txt: 65: invokevirtual #147                // Method com/fasterxml/jackson/core/JsonFactory.createParser:(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "PASS"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeIntegerDataOutput()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/constraints/LargeNumberWriteTest.java",
+          "name": "testWriteLargeIntegerDataOutput",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-1.txt: 65: invokevirtual #147                // Method com/fasterxml/jackson/core/JsonFactory.createParser:(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "PASS"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/JsonParserClosedCaseTest#parsers()Ljava/util/Collection;",
+          "kind": "caller",
+          "file": "src/test/java/com/fasterxml/jackson/core/json/JsonParserClosedCaseTest.java",
+          "name": "parsers",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-1.txt: 72: invokevirtual #40                 // Method com/fasterxml/jackson/core/JsonFactory.createParser:(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "not-a-junit-test-method (test-support declaration)"
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseLongName(III)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "_parseLongName",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-0.txt: 129: invokespecial #560                // Method findName:([IIII)Ljava/lang/String;",
+            "javap-0.txt: 144: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;",
+            "javap-0.txt: 191: invokespecial #560                // Method findName:([IIII)Ljava/lang/String;",
+            "javap-0.txt: 206: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;",
+            "javap-0.txt: 253: invokespecial #560                // Method findName:([IIII)Ljava/lang/String;",
+            "javap-0.txt: 268: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;",
+            "javap-0.txt: 67: invokespecial #560                // Method findName:([IIII)Ljava/lang/String;",
+            "javap-0.txt: 82: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName(I)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "_parseMediumName",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-0.txt: 137: invokespecial #544                // Method findName:(III)Ljava/lang/String;",
+            "javap-0.txt: 189: invokespecial #544                // Method findName:(III)Ljava/lang/String;",
+            "javap-0.txt: 33: invokespecial #544                // Method findName:(III)Ljava/lang/String;",
+            "javap-0.txt: 85: invokespecial #544                // Method findName:(III)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName2(II)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "_parseMediumName2",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-0.txt: 155: invokespecial #552                // Method findName:(IIII)Ljava/lang/String;",
+            "javap-0.txt: 214: invokespecial #552                // Method findName:(IIII)Ljava/lang/String;",
+            "javap-0.txt: 37: invokespecial #552                // Method findName:(IIII)Ljava/lang/String;",
+            "javap-0.txt: 96: invokespecial #552                // Method findName:(IIII)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseName(I)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "_parseName",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-0.txt: 137: invokespecial #534                // Method findName:(II)Ljava/lang/String;",
+            "javap-0.txt: 158: invokespecial #534                // Method findName:(II)Ljava/lang/String;",
+            "javap-0.txt: 179: invokespecial #534                // Method findName:(II)Ljava/lang/String;",
+            "javap-0.txt: 200: invokespecial #534                // Method findName:(II)Ljava/lang/String;",
+            "javap-0.txt: 8: invokevirtual #522                // Method _handleOddName:(I)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(III)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "parseName",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-0.txt: 9: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIII)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "parseName",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-0.txt: 17: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIIII)Ljava/lang/String;",
+          "kind": "caller",
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "name": "parseName",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-0.txt: 25: invokevirtual #563                // Method parseEscapedName:([IIIII)Ljava/lang/String;"
+          ]
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/read/SimpleParserTest#testUtf8BOMHandling()V",
+          "kind": "test",
+          "file": "src/test/java/com/fasterxml/jackson/core/read/SimpleParserTest.java",
+          "name": "testUtf8BOMHandling",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-2.txt: 129: invokevirtual #536                // Method com/fasterxml/jackson/core/JsonFactory.createParser:(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "testSourceRoot": true,
+          "baseRunResult": "PASS"
+        }
+      ],
+      "counts": {
+        "targets": 21,
+        "indirectTargets": 11,
+        "total": 32,
+        "responseCap": 12,
+        "recallCeiling": 0.375
+      },
+      "sourceChangeSha256": "e323b0e8c68acd4fae2b987e90068fbd70cde4acdedc10f3fcccaebc0210825a",
+      "directOracleSha256": "a99a80a4543d440cb440ab729d336303a35326ed6db6889dcc01298847f504cc",
+      "indirectOracleSha256": "252fa21f93d984d2f1bdbee2d7286115e3c251d5f100876d7e9700ac279b6725",
+      "transitiveCase": false
+    },
+    {
+      "id": "pinterest_ktlint-2785",
+      "base": "4ec50723be8efe08589f2aa0c9ea100828919f8e",
+      "changedSymbols": [
+        "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#<clinit>()V",
+        "field:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#SUPPRESS_ANNOTATION_RULE_MAP:Ljava/util/Map;"
+      ],
+      "targets": [
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#access$getSUPPRESS_ANNOTATION_RULE_MAP$cp()Ljava/util/Map;",
+          "kind": "caller",
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "name": "access$getSUPPRESS_ANNOTATION_RULE_MAP$cp",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 0: getstatic     #557                // Field SUPPRESS_ANNOTATION_RULE_MAP:Ljava/util/Map;"
+          ],
+          "synthetic": true
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;",
+          "kind": "caller",
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "name": "findRuleSuppressionIds",
+          "basis": "Exact javap method/field reference to a changed symbol in the unchanged base build; a known review candidate, not proof of changed behavior",
+          "evidence": [
+            "javap-1.txt: 111: getstatic     #557                // Field SUPPRESS_ANNOTATION_RULE_MAP:Ljava/util/Map;"
+          ]
+        }
+      ],
+      "indirectTargets": [
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#createSuppressionHintFromAnnotations(Lorg/jetbrains/kotlin/psi/KtAnnotated;)Lcom/pinterest/ktlint/rule/engine/internal/SuppressionLocator$SuppressionHint;",
+          "kind": "caller",
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "name": "createSuppressionHintFromAnnotations",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-1.txt: 304: invokespecial #483                // Method findRuleSuppressionIds:(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;"
+          ]
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator$Companion#getSUPPRESS_ANNOTATION_RULE_MAP()Ljava/util/Map;",
+          "kind": "caller",
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "name": "getSUPPRESS_ANNOTATION_RULE_MAP",
+          "basis": "Two-step javap evidence: this declaration references a depth-1 direct caller of a changed symbol. All depth-1 callers were expanded without selection or cap",
+          "evidence": [
+            "javap-1.txt: 0: invokestatic  #19                 // Method com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.access$getSUPPRESS_ANNOTATION_RULE_MAP$cp:()Ljava/util/Map;"
+          ]
+        }
+      ],
+      "counts": {
+        "targets": 2,
+        "indirectTargets": 2,
+        "total": 4,
+        "responseCap": 12,
+        "recallCeiling": 1.0
+      },
+      "sourceChangeSha256": "a399971f2a3a97a0be9a9cbbf4f0df7e442d1dae463d5aa60957f441cf9c9e74",
+      "directOracleSha256": "264780e0702347e75a90e6d82bf90d4f54be9b67aa31ad1d7455dbf877367966",
+      "indirectOracleSha256": "0cf72ed77a874cbf5945a21ad5f67485809e066e68c0f225fb2432c9c15f95a3",
+      "transitiveCase": false
+    }
+  ]
+}

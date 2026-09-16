@@ -1,0 +1,5 @@
+method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;
+method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;
+method:com/fasterxml/jackson/core/JsonFactory#_createParser(Ljava/io/DataInput;Lcom/fasterxml/jackson/core/io/IOContext;)Lcom/fasterxml/jackson/core/JsonParser;
+method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#addName([III)Ljava/lang/String;
+method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_addName([III)Ljava/lang/String;
