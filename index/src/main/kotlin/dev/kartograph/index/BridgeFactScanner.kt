@@ -12,7 +12,11 @@ import java.time.Instant
 public class BridgeFactScanner(private val projectRoot: Path) {
     /** Flutter BasicMessageChannel 전용 bridge-facts v2를 opt-in으로 생성한다. */
     public fun scanMessages(generatedAt: String? = null, graph: CodeGraph? = null): BridgeFactsDocument =
-        BasicMessageBridgeScanner(projectRoot).scan(generatedAt, graph)
+        ChannelBridgeScanner(projectRoot, BASIC_MESSAGE_CHANNEL_SPEC).scan(generatedAt, graph)
+
+    /** Flutter EventChannel 전용 bridge-facts v2를 opt-in으로 생성한다. */
+    public fun scanEvents(generatedAt: String? = null, graph: CodeGraph? = null): BridgeFactsDocument =
+        ChannelBridgeScanner(projectRoot, EVENT_CHANNEL_SPEC).scan(generatedAt, graph)
 
     /**
      * 프로젝트 상대 근거와 조인 불가능한 사실의 한계를 bridge-facts v1 문서로 만든다.
@@ -394,7 +398,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         val METHOD_CHANNEL = Regex("(?:\\b(?:val|var)\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*MethodChannel\\s*\\(")
         val STRING_LITERAL_ASSIGNMENT = Regex("\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*(\"(?:\\\\.|[^\"])*\")")
         val METHOD_CHANNEL_CALL = Regex("\\bMethodChannel\\s*\\(")
-        val SET_HANDLER = Regex("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*setMethodCallHandler\\s*(?:\\(|\\{)")
+        val SET_HANDLER = Regex("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?:!!|\\?)?\\s*\\.\\s*setMethodCallHandler\\s*(?:\\(|\\{)")
         val WHEN_METHOD = Regex("\\\"([^\\\"]+)\\\"\\s*->")
         val METHOD_WHEN = Regex("\\bwhen\\s*\\(\\s*[A-Za-z_][A-Za-z0-9_]*\\.method\\s*\\)\\s*\\{")
         val ANY_WHEN = Regex("\\bwhen\\s*\\(")

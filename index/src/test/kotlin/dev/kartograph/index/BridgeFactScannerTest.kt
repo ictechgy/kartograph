@@ -809,4 +809,141 @@ class BridgeFactScannerTest {
 
         assertEquals(listOf("camera"), document.facts.map { it.channel })
     }
+
+    @Test
+    fun `events emits stream-handle facts in an event-channel document`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              val channel = EventChannel(messenger, "dev.fluttercommunity.plus/charging")
+              channel.setStreamHandler(chargingHandler)
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents(generatedAt = "2026-10-01T00:00:00Z")
+
+        assertEquals("bridge-facts", document.format)
+        assertEquals(2, document.version)
+        assertEquals("event-channel", document.transport)
+        assertEquals("flutter", document.target)
+        val fact = document.facts.single()
+        assertEquals("stream-handle", fact.kind)
+        assertEquals("dev.fluttercommunity.plus/charging", fact.channel)
+        assertTrue(!fact.dynamic)
+        assertEquals(null, fact.method)
+    }
+
+    @Test
+    fun `events resolves a chained stream handler and ignores null clears`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              EventChannel(messenger, "charging").setStreamHandler(ChargingHandler())
+              EventChannel(messenger, "cleared").setStreamHandler(null)
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scanEvents().facts
+
+        assertEquals(listOf("stream-handle" to "charging"), facts.map { it.kind to it.channel })
+    }
+
+    @Test
+    fun `events keeps dynamic names and proven prefixes without flagging sink calls`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, flavor: String, events: Any) {
+              val channel = EventChannel(messenger, "dev.flutter/${'$'}flavor/charging")
+              channel.setStreamHandler(handler)
+              events.success("tick")
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents()
+
+        val fact = document.facts.single()
+        assertTrue(fact.dynamic)
+        assertEquals("dev.flutter/", fact.channelPrefix)
+        assertTrue(document.limitations.any { it.startsWith("dynamic-event-channel-names:") })
+        assertTrue(document.limitations.none { it.startsWith("unscanned-message-sends:") })
+    }
+
+    @Test
+    fun `events does not resolve a mutable receiver from a conditional assignment`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, alternate: Boolean) {
+              var channel = EventChannel(messenger, "a")
+              if (alternate) { channel = EventChannel(messenger, "b") }
+              channel.setStreamHandler(handler)
+            }
+            """.trimIndent(),
+        )
+
+        val fact = BridgeFactScanner(project).scanEvents().facts.single()
+
+        assertTrue(fact.dynamic)
+        assertEquals(null, fact.channelPrefix)
+        assertEquals("stream-handle", fact.kind)
+    }
+
+    @Test
+    fun `events emits no facts for MethodChannel or BasicMessageChannel registrations`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any, codec: Any) {
+              MethodChannel(messenger, "battery").setMethodCallHandler(handler)
+              BasicMessageChannel<Any?>(messenger, "pigeon", codec).setMessageHandler { _, _ -> Unit }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents()
+
+        assertTrue(document.facts.isEmpty())
+        assertEquals(null, document.target)
+    }
+
+    @Test
+    fun `events scans raw Java syntax and reports source limitation`(@TempDir project: Path) {
+        project.resolve("Plugin.java").writeText(
+            """
+            class Plugin {
+              void register(Object messenger) {
+                final EventChannel channel = new EventChannel(messenger, "charging");
+                channel.setStreamHandler(handler);
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents()
+
+        assertEquals(listOf("stream-handle" to "charging"), document.facts.map { it.kind to it.channel })
+        assertTrue(document.limitations.any { it.startsWith("java-source-event-channel-analysis:") })
+    }
+
+    @Test
+    fun `events attaches an enclosing compiler snapshot JVM symbol`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            class Plugin {
+              fun register(messenger: Any) {
+                EventChannel(messenger, "charging").setStreamHandler(handler)
+              }
+            }
+            """.trimIndent(),
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/Plugin#register(Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 2, 3)),
+        ), emptyList())
+
+        val fact = BridgeFactScanner(project).scanEvents(graph = graph).facts.single()
+
+        assertEquals("method:app/Plugin#register(Ljava/lang/Object;)V", fact.symbol?.usr)
+    }
 }
