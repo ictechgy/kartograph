@@ -1,0 +1,24 @@
+{
+  "case": "detekt_detekt-7625",
+  "role": "primary",
+  "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+  "source": {
+    "path": "tasks/detekt_detekt-7625/tests/expected_tests.json",
+    "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/detekt_detekt-7625/tests/expected_tests.json",
+    "bytes": 2200414,
+    "sha256": "7112fb756662387367584bc3b93faafba9fc4894bd6a9c11792f669411fafe8f"
+  },
+  "note": "원본이 1 MiB를 넘어 저장소에는 복사하지 않고 요약만 남긴다. curl의 명시적 --max-filesize 20000000 상한으로 전체를 내려받아 해시를 확인했다.",
+  "counts": {
+    "f2p_tests": 1,
+    "p2p_tests": 4973,
+    "s2p_tests": 0,
+    "n2p_tests": 0
+  },
+  "f2pTests": [
+    "io.gitlab.arturbosch.detekt.core.baseline.BaselineResultMappingSpec.creates on top of an existing a baseline file without issues()"
+  ],
+  "eligibility": {
+    "hasNonEmptyF2p": true
+  }
+}

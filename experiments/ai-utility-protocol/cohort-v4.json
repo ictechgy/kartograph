@@ -1,0 +1,81 @@
+{
+  "frozenAt": "2026-09-16T04:39:46.171560+00:00",
+  "task": "Pre-edit impact review of a supplied production change, with same source tools/model/budget and additional actual product MCP graph tools in the graph arm. Historical generic repair result remains separate.",
+  "selectionRule": "Next highest eligible unused numeric PR id in each of the four v2/v3 repository strata (alibaba/fastjson2, FasterXML/jackson-core, detekt/detekt, pinterest/ktlint). Eligible = full 40-hex base SHA present and non-empty declared fail-to-pass tests. Unused = not among the 26 prior ids in cohort.json/cohort-v2.json/cohort-v3.json previousCases and primary lists, and not among the carried exclusions google__gson-1787, google__gson-1703, fasterxml__jackson-core-1263, fasterxml__jackson-core-1204, fasterxml__jackson-core-1182, alibaba__fastjson2-2775. Java eligibility read from the pinned Multi-SWE-bench jsonl; Kotlin base SHA read from tasks/<case>/environment/prepare.sh and fail-to-pass from tasks/<case>/tests/expected_tests.json at the pinned revision. Metadata only; no product query, model outcome or patch inspection informed the selection. Full descending scan recorded in intake-v4/selection-scan.json.",
+  "previousCases": [
+    "ankidroid_Anki-Android-19384",
+    "ankidroid_Anki-Android-19509",
+    "ankidroid_Anki-Android-19661",
+    "ankidroid_Anki-Android-19982",
+    "ankidroid_Anki-Android-20250",
+    "detekt_detekt-7718",
+    "detekt_detekt-7888",
+    "fasterxml__jackson-core-1208",
+    "fasterxml__jackson-core-1309",
+    "google__gson-1391",
+    "google__gson-1555",
+    "pinterest_ktlint-2895",
+    "pinterest_ktlint-2983",
+    "square_okhttp-6887",
+    "google__gson-1093",
+    "fasterxml__jackson-core-1172",
+    "detekt_detekt-7715",
+    "pinterest_ktlint-2891",
+    "alibaba__fastjson2-2559",
+    "fasterxml__jackson-core-1142",
+    "detekt_detekt-7667",
+    "pinterest_ktlint-2873",
+    "alibaba__fastjson2-2285",
+    "fasterxml__jackson-core-1053",
+    "detekt_detekt-7635",
+    "pinterest_ktlint-2823"
+  ],
+  "primary": [
+    {
+      "id": "alibaba__fastjson2-2097",
+      "repository": "alibaba/fastjson2",
+      "base": "3f6275bcc3cd40a57f6d257cdeec322d1b9ae06d",
+      "language": "java",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetFile": "java/alibaba__fastjson2_dataset.jsonl",
+      "datasetSha256": "7e02214eba338dcfb41c961f15cec28d299dda5c74836794463ae70a3c0832a4"
+    },
+    {
+      "id": "fasterxml__jackson-core-1016",
+      "repository": "FasterXML/jackson-core",
+      "base": "315ac5ad2ad5228129a3df50623570d9bc2d7045",
+      "language": "java",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetFile": "java/fasterxml__jackson-core_dataset.jsonl",
+      "datasetSha256": "21f1f1350dcaf687840f6cf0dce4198c7958cc66cd6ab6722a0dd3a18860147e"
+    },
+    {
+      "id": "detekt_detekt-7625",
+      "repository": "detekt/detekt",
+      "base": "82ab4c5ac06f006a0906920687dc016af37642a6",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    },
+    {
+      "id": "pinterest_ktlint-2785",
+      "repository": "pinterest/ktlint",
+      "base": "4ec50723be8efe08589f2aa0c9ea100828919f8e",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "detekt_detekt-7871",
+      "reason": "Empty declared fail-to-pass list (f2p_tests == []) in tasks/detekt_detekt-7871/tests/expected_tests.json at the pinned revision; re-verified at v4 intake, consistent with the prior intake note in cohort.json"
+    },
+    {
+      "id": "pinterest_ktlint-2950",
+      "reason": "Empty declared fail-to-pass list (f2p_tests == []) in tasks/pinterest_ktlint-2950/tests/expected_tests.json at the pinned revision; re-verified at v4 intake, consistent with the prior intake note in cohort.json"
+    }
+  ],
+  "repeatsPerArm": 2,
+  "plannedTrials": 16,
+  "qualification": "Before model exposure, verify original unchanged source/tests and build/oracle provenance. A missing original target or build failure is recorded; replacements follow the same descending-ID rule with explicit reason, never product/model success. Do not inject new tests into the pre-edit graph or expose oracle outcomes.",
+  "status": "Metadata frozen; native qualification/oracle/model runs pending"
+}
