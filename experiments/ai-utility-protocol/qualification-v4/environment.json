@@ -70,6 +70,22 @@
       "path": "<scratch>/oracle-work/sanitize.py",
       "sha256": "062fffeb44743af5335d81c27620c3db48b870b914ecb635870fb86d4f88a12a",
       "role": "공개 기록의 로컬 절대경로를 <scratch>/<kartograph-cli-install> 토큰으로 바꾼다."
+    },
+    "rederive_overrides.py": {
+      "path": "experiments/ai-utility-protocol/qualification-v4/tools/rederive_overrides.py",
+      "sha256": "5476df286c34e3cdd1a76a5632968d53c800221c8fc1145220ced87490704b9f",
+      "asRunSha256": "5476df286c34e3cdd1a76a5632968d53c800221c8fc1145220ced87490704b9f",
+      "role": "override 지점을 원본 선언(javap -p -s)만으로 다시 유도한다. 제품 출력을 읽지 않는다. 저장본과 실행본이 동일하다."
+    },
+    "build_evidence_index.py": {
+      "path": "<scratch>/review-fix/build_evidence_index.py",
+      "sha256": "c3b6833cb96b674a222bf45741be53d8afd99eeae95dd517dd100c2cc0e86c4b",
+      "role": "oracle-v4.json의 evidence 문자열을 javap 덤프의 정확한 줄·수집 pass로 해석한 evidence-index.json을 만든다. oracle은 읽기만 한다."
+    },
+    "patch_records.py": {
+      "path": "<scratch>/review-fix/patch_records.py",
+      "sha256": "5035e29bfc1c2d4b15f2dbc99b80f95eaaab26a2f527092140c312586182ddff",
+      "role": "GLM 리뷰 지적(D1·D3·D4·D5)을 사례 기록에 반영한다. oracle-v4.json은 건드리지 않는다."
     }
   },
   "datasets": {
@@ -177,5 +193,39 @@
     "detekt_detekt-7625": "c01f307f434a890d91835c497a815b726a53c762bb99cdcac8624de0f13dcbc3",
     "fasterxml__jackson-core-1016": "e323b0e8c68acd4fae2b987e90068fbd70cde4acdedc10f3fcccaebc0210825a",
     "pinterest_ktlint-2785": "a399971f2a3a97a0be9a9cbbf4f0df7e442d1dae463d5aa60957f441cf9c9e74"
+  },
+  "reviewFollowUp": {
+    "date": "2026-09-16",
+    "source": "GLM 리뷰 — 자격 검증 산출물의 기록·재현성 결함",
+    "oracleUnchanged": true,
+    "oracleSha256BeforeAndAfter": "c05648e7916af7a0ad039cba4bfcf77caa9d5e8779c8fe7d8248679e77a276fb",
+    "items": {
+      "D1": "jackson override 2건을 제품 출력 없이 grep+javap만으로 재유도한 명령·출력과 경위를 남겼다.",
+      "D2": "ktlint base SHA가 세 곳 모두 40-hex 4ec50723be8efe08589f2aa0c9ea100828919f8e임을 확인만 했다(변경 없음).",
+      "D3": "evidence 문자열의 선택 규칙을 정의하고 evidence-index.json으로 덤프 줄 번호·수집 pass·정당화 여부를 해석했다.",
+      "D4": "directOracleSha256/indirectOracleSha256의 해시 대상을 정의하고 javap 덤프·빌드/테스트 로그 해시를 추가했다.",
+      "D5": "class root 구성과 javap 판독 가능성을 사례별로 기록했다.",
+      "M1": "tie-break 확정과 대안 해석을 dated note로 남겼다."
+    },
+    "newArtifacts": {
+      "experiments/ai-utility-protocol/qualification-v4/evidence-index.json": "636103b8ebb927f0260ecc9d740923fb573be13dfb845578a147ca5ae33adc94",
+      "experiments/ai-utility-protocol/qualification-v4/override-rederivation-jackson-core-1016.txt": "b02fcad96e40cd119157ebae66d8f30f3b5c9ae8e681a9182429a7c6a5d13ae3",
+      "experiments/ai-utility-protocol/qualification-v4/tools/rederive_overrides.py": "5476df286c34e3cdd1a76a5632968d53c800221c8fc1145220ced87490704b9f"
+    },
+    "scratchArtifacts": {
+      "<scratch>/review-fix/build_evidence_index.py": "c3b6833cb96b674a222bf45741be53d8afd99eeae95dd517dd100c2cc0e86c4b",
+      "<scratch>/review-fix/class-root-majors.json": "2cc871e05d05606dde119fe445df9404616f06845c95d7ec952131803966e6f2",
+      "<scratch>/review-fix/override-rederivation-alibaba__fastjson2-2097.err": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "<scratch>/review-fix/override-rederivation-alibaba__fastjson2-2097.json": "0c36a3e653117f2f9135a97652753c498503315e96cba29c5cf9c6680196d52b",
+      "<scratch>/review-fix/override-rederivation-detekt_detekt-7625.err": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "<scratch>/review-fix/override-rederivation-detekt_detekt-7625.json": "5acbec7fd1d7e59340bf4c88e845f2cdfd1e3d9165fd7f4db7f2284ca16a8202",
+      "<scratch>/review-fix/override-rederivation-fasterxml__jackson-core-1016.err": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "<scratch>/review-fix/override-rederivation-fasterxml__jackson-core-1016.json": "d834a4e374cf6c6bdb8d5a36f52c7c6376b15fd1b71bf418e9ee7cbec993422f",
+      "<scratch>/review-fix/override-rederivation-pinterest_ktlint-2785.err": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "<scratch>/review-fix/override-rederivation-pinterest_ktlint-2785.json": "166a891c24f02ee8e1d9c32b9ecfb11882b09be49ffe82071d3bb531f1a0eebc",
+      "<scratch>/review-fix/override-rederivation-transcript-fasterxml__jackson-core-1016.txt": "b02fcad96e40cd119157ebae66d8f30f3b5c9ae8e681a9182429a7c6a5d13ae3",
+      "<scratch>/review-fix/patch_records.py": "5035e29bfc1c2d4b15f2dbc99b80f95eaaab26a2f527092140c312586182ddff",
+      "<scratch>/review-fix/rederive_overrides.py": "5476df286c34e3cdd1a76a5632968d53c800221c8fc1145220ced87490704b9f"
+    }
   }
 }

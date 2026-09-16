@@ -1,0 +1,87 @@
+# jackson override 2건의 제품-무관 재유도 기록
+# 실행 위치: <scratch>/fasterxml__jackson-core-1016/base (base 315ac5ad2ad5228129a3df50623570d9bc2d7045, 추적 파일 변경 0건)
+# javap: JDK 17.0.20. 제품 CLI/MCP 출력은 이 절차에 전혀 쓰이지 않는다.
+
+### 1) 바뀐 메서드 소유 타입의 상위 타입을 원본 선언에서 확인
+$ grep -n -A2 "^public class JsonFactory" src/main/java/com/fasterxml/jackson/core/JsonFactory.java
+46:public class JsonFactory
+47-    extends TokenStreamFactory
+48-    implements Versioned,
+
+### 2) 바뀐 메서드 3개의 이름을 저장소의 모든 Java 선언에서 찾는다
+$ grep -rn --include=*.java -E "(public|protected|abstract).*(createNonBlockingByteArrayParser|createNonBlockingByteBufferParser|_createParser\(DataInput)" src/main src/test
+src/main/java/com/fasterxml/jackson/core/JsonFactory.java:1296:    public JsonParser createNonBlockingByteArrayParser() throws IOException
+src/main/java/com/fasterxml/jackson/core/JsonFactory.java:1323:    public JsonParser createNonBlockingByteBufferParser() throws IOException
+src/main/java/com/fasterxml/jackson/core/JsonFactory.java:1844:    protected JsonParser _createParser(DataInput input, IOContext ctxt) throws IOException
+src/main/java/com/fasterxml/jackson/core/TokenStreamFactory.java:189:    public abstract JsonParser createNonBlockingByteArrayParser() throws IOException;
+src/main/java/com/fasterxml/jackson/core/TokenStreamFactory.java:207:    public abstract JsonParser createNonBlockingByteBufferParser() throws IOException;
+
+### 3) 상위 타입과 바뀐 선언의 name+descriptor가 같은지 javap로 확인
+$ javap -p -s -cp target/classes com.fasterxml.jackson.core.TokenStreamFactory | grep -A1 -E "createNonBlockingByte(Array|Buffer)Parser"
+  public abstract com.fasterxml.jackson.core.JsonParser createNonBlockingByteArrayParser() throws java.io.IOException;
+    descriptor: ()Lcom/fasterxml/jackson/core/JsonParser;
+--
+  public abstract com.fasterxml.jackson.core.JsonParser createNonBlockingByteBufferParser() throws java.io.IOException;
+    descriptor: ()Lcom/fasterxml/jackson/core/JsonParser;
+
+$ javap -p -s -cp target/classes com.fasterxml.jackson.core.JsonFactory | grep -A1 -E "createNonBlockingByte(Array|Buffer)Parser"
+  public com.fasterxml.jackson.core.JsonParser createNonBlockingByteArrayParser() throws java.io.IOException;
+    descriptor: ()Lcom/fasterxml/jackson/core/JsonParser;
+--
+  public com.fasterxml.jackson.core.JsonParser createNonBlockingByteBufferParser() throws java.io.IOException;
+    descriptor: ()Lcom/fasterxml/jackson/core/JsonParser;
+
+### 4) TokenStreamFactory에는 _createParser(DataInput,IOContext) 선언이 없다(0건)
+$ javap -p -s -cp target/classes com.fasterxml.jackson.core.TokenStreamFactory | grep -c "_createParser"
+0
+
+### 5) JsonFactory를 상속하는 checkout 내 타입에 같은 선언은 없다
+$ grep -rln --include=*.java "extends JsonFactory" src/main src/test | xargs grep -n -E "createNonBlockingByte(Array|Buffer)Parser|_createParser\(DataInput" || echo "(no match)"
+(no match)
+
+### 6) 같은 판정을 기계적으로 재현한 스크립트 출력 (override-rederivation-fasterxml__jackson-core-1016.json)
+$ python3 rederive_overrides.py --case fasterxml__jackson-core-1016 --base base --roots-file roots.txt --changed changed-symbols.txt --javap $JAVA_HOME/bin/javap
+{
+  "case": "fasterxml__jackson-core-1016",
+  "classCount": 436,
+  "typeCount": 424,
+  "findings": [
+    {
+      "changed": "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+      "overridable": true,
+      "reason": "선언 flag ['public']",
+      "relatedTypesScanned": 7,
+      "sites": [
+        "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;"
+      ]
+    },
+    {
+      "changed": "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+      "overridable": true,
+      "reason": "선언 flag ['public']",
+      "relatedTypesScanned": 7,
+      "sites": [
+        "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;"
+      ]
+    },
+    {
+      "changed": "method:com/fasterxml/jackson/core/JsonFactory#_createParser(Ljava/io/DataInput;Lcom/fasterxml/jackson/core/io/IOContext;)Lcom/fasterxml/jackson/core/JsonParser;",
+      "overridable": true,
+      "reason": "선언 flag ['protected']",
+      "relatedTypesScanned": 7,
+      "sites": []
+    },
+    {
+      "changed": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#addName([III)Ljava/lang/String;",
+      "overridable": false,
+      "reason": "선언 flag ['final', 'private'] — ['final', 'private'] 때문에 override 지점이 없다",
+      "sites": []
+    },
+    {
+      "changed": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_addName([III)Ljava/lang/String;",
+      "overridable": false,
+      "reason": "선언 flag ['final', 'protected'] — ['final'] 때문에 override 지점이 없다",
+      "sites": []
+    }
+  ]
+}

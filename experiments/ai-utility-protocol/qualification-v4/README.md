@@ -11,8 +11,11 @@
   [fasterxml__jackson-core-1016](fasterxml__jackson-core-1016.json),
   [pinterest_ktlint-2785](pinterest_ktlint-2785.json)
 
-- 증거 수집기: [tools/collect_refs.py](tools/collect_refs.py), [tools/driver2.py](tools/driver2.py)
+- 증거 수집기: [tools/collect_refs.py](tools/collect_refs.py), [tools/driver2.py](tools/driver2.py),
+  [tools/rederive_overrides.py](tools/rederive_overrides.py)
 - 수집기 입력(class root·바뀐 심볼): [inputs/](inputs)
+- evidence 문자열의 덤프 위치 해석: [evidence-index.json](evidence-index.json)
+- override 재유도 전문: [override-rederivation-jackson-core-1016.txt](override-rederivation-jackson-core-1016.txt)
 
 snapshot·javap 덤프·빌드 로그는 다중 MB라 저장소에 넣지 않고 sha256과 scratch 상대경로만 남겼다.
 로컬 절대경로는 공개 기록에서 제외하고 `<scratch>`·`<kartograph-cli-install>` 토큰으로 적는다.
@@ -122,3 +125,84 @@ jackson의 `TokenStreamFactory` abstract 선언 2건만 원본 선언으로 독�
 - jackson의 oracle 32개는 응답 상한 12개를 넘는다. 이 사례의 recall은 구조적으로 0.375를 넘을 수 없다.
 - fastjson2와 ktlint의 oracle에는 test 대상이 0개다. 균일한 증거 규칙을 유지한 결과이며
   "관련 테스트가 없다"는 주장이 아니다.
+
+## 2026-09-16 검토 반영 (oracle 대상은 바꾸지 않음)
+
+GLM 리뷰가 기록·재현성 결함을 지적했다. **oracle-v4.json의 대상 배열은 한 항목도 바꾸지 않았고
+sha256도 `c05648e7916af7a0ad039cba4bfcf77caa9d5e8779c8fe7d8248679e77a276fb` 그대로다.** 아래는 기록만 보강한 것이다.
+
+### tie-break 확정 (M1)
+
+- **확정 규칙(사용자 확정)**: cohort-v4.json의 `id` 문자열을 Unicode code point 오름차순으로 정렬해
+  앞의 2건을 "직접·간접 영향 나열" 사례로 쓴다. 정렬 결과는
+  `alibaba__fastjson2-2097` < `detekt_detekt-7625` < `fasterxml__jackson-core-1016` < `pinterest_ktlint-2785`이고,
+  선택된 2건은 **fastjson2-2097과 detekt-7625**다. 두 사례의 oracle 크기는 7과 4라 recall 천장이 모두 1.00이며,
+  transitive 질문을 받는 사례가 응답 상한 때문에 불리해지지 않는다.
+- **채택하지 않은 대안 해석**: "사례 id"를 숫자 PR 번호로 읽으면 오름차순은
+  1016 < 2097 < 2785 < 7625이고 선택은 **jackson-core-1016과 fastjson2-2097**이 된다. 그 경우 transitive 사례
+  하나(jackson, oracle 32개)의 recall 천장이 0.375로 떨어져, 두 transitive 사례의 천장이 0.375와 1.00으로
+  불균형해진다. 이 해석은 채택하지 않았다.
+- 두 해석은 모두 metadata만 쓰며 제품·모델 결과를 보지 않는다. 확정 규칙은
+  `oracle-v4.json`의 `transitiveCaseRule` 문장과 같다.
+
+### evidence 문자열의 선택 규칙 (D3)
+
+- 문자열 모양은 `"<덤프 파일>: <bytecode offset>: <opcode> #<상수풀 index> // <Method|InterfaceMethod|Field> <참조>"`다.
+  **콜론 앞 정수는 caller 메서드 안의 bytecode offset이고 덤프 파일의 줄 번호가 아니다.** 서로 다른 두 메서드가
+  같은 offset을 가질 수 있으므로 같은 문자열이 두 항목에 나타날 수 있다(예: fastjson2의 `processExtra`·
+  `readFieldValue`가 둘 다 `javap-1.txt: 10: …`, detekt의 두 테스트가 둘 다 `javap-2.txt: 25: …`).
+  실제 위치는 서로 다르며 [evidence-index.json](evidence-index.json)의 `dumpLine`이 1-based 줄 번호다
+  (각각 30430/30381, 17068/17037).
+- `javap-N.txt`는 수집기가 class 파일을 150개씩 끊어 실행한 N번째 덤프이며 pass 디렉터리
+  (`depth1/`, `depth2/`) 안에서만 유효하다. 두 pass에 같은 이름의 파일이 있고 내용은 다르다.
+- 한 항목의 evidence 배열은 **그 caller가 depth1·depth2 두 pass에서 남긴 기록을 합친 것**이다. 따라서
+  oracle 편입을 정당화하는 행(`justifying: true`)과 같은 선언이 다른 pass에서 남긴 부가 행
+  (`justifying: false`)이 섞일 수 있다. `targets` 항목은 depth1 기록이, `indirectTargets` 항목은 depth2 기록이
+  정당화 행이다. 부가 행은 3개뿐이며 모두 수집기 필터 안의 정상 기록이다.
+  - `ObjectReaderBaseModule#getObjectReader`의 offset 3380·3436은 자기 자신을 다시 호출하는 depth2 pass 기록이다.
+  - jackson `_handleOddName`의 offset 18은 depth-1 직접 호출자 `_parseAposName`을 부르는 depth2 pass 기록이고,
+    직접 대상 자격을 주는 행은 offset 215의 `addName` 호출이다.
+- `kind: "override"` 항목은 javap 참조가 아니라 원본 선언이 근거라 이 색인의 대상이 아니다.
+- 색인은 80개 evidence 행을 모두 해석했고 미해결 0건이다(정당화 77, 부가 3).
+
+### 해시 대상 정의 (D4)
+
+- `directOracleSha256` = `<scratch>/<case>/refs/depth1/direct-invocations.json` **파일 전체**의 sha256.
+  부분집합이 아니다. 직렬화는 수집기가 쓴 그대로 `json.dumps(result, indent=2) + "\n"`(UTF-8)이며 키 순서는
+  삽입 순서(`case`, `scope`, `classCount`, `roots`, `references`)로 정렬하지 않는다. `references`는 javap 순회
+  순서를 유지하고 `json.dumps(row, sort_keys=True)` 문자열로 중복만 제거하며, 각 원소의 키 순서는
+  `caller`, `target`, `refKind`, `sourceCandidates`, `javapFile`, `instruction`이다.
+- `indirectOracleSha256`은 같은 정의의 `depth2` 출력이다.
+- 두 값은 **수집기 출력 파일**의 해시이며 `oracle-v4.json` 문서의 해시와 다른 대상이다.
+- 인용한 `javap-N.txt` 덤프, 빌드·테스트·snapshot 로그, 테스트 결과 XML, 수집기 입력
+  (`targets-depth1.json`/`targets-depth2.json`), `depth-summary.json`, `impact` 출력의 sha256을 사례 기록의
+  `javapCollection.javapDumps`·`javapCollection.collectorInputs`·`artifactHashes`에 추가했다. 파일 자체는 scratch에 둔다.
+
+### class root 구성과 javap 판독 (D5)
+
+root 패턴은 `^[^/]+/build/classes/[^/]+/[^/]+$`(모듈/`build/classes/<lang>/<sourceSet>`)이고 `build-logic/`
+접두는 제외한다. 수집 root의 class 파일은 네 사례 모두 **전부 major 52**이고 JDK 17.0.20 javap의 상한 61
+이하라 전부 판독됐다(javap 오류 0건): fastjson2 2 root·5,825개, detekt 60 root·2,963개,
+jackson 2 root·436개, ktlint 32 root·1,005개. ktlint는 Gradle을 JDK 21로 돌렸지만 산출물의 major는 52이며,
+JDK 17 실행을 막았던 major 65 파일 18개는 `build-logic/build/kotlin-dsl/plugins-blocks/compiled/`에 있어
+root 패턴에서 이미 제외됐다(detekt의 build-logic 463개는 major 52, ktlint의 build-logic 614개는 major 61,
+모두 제외).
+
+### override 대상의 경위 (D1)
+
+jackson의 `TokenStreamFactory` abstract 선언 2건은 **단서(clue)가 제품 impact의 depth-1 structural 출력**이었다.
+증거(evidence)는 원본 선언이며, 제품 출력을 읽지 않는 규칙만으로 같은 두 항목이 재유도됨을 확인했기 때문에
+oracle에 남겼다. **독립 증거가 나오지 않았다면 제외 대상이었다.** 재유도 규칙은 "바뀐 메서드 심볼 중
+private/static/final·`<init>`/`<clinit>`가 아닌 것에 대해 checkout 안에서 소유 타입의 상위·하위 타입을
+전이적으로 모으고 같은 name+descriptor를 선언하는 타입을 모두 고른다"이며,
+[tools/rederive_overrides.py](tools/rederive_overrides.py)가 그대로 구현한다. 명령과 출력 전문은
+[override-rederivation-jackson-core-1016.txt](override-rederivation-jackson-core-1016.txt)에 있고
+`grep`과 `javap`만 쓴다. 같은 스크립트를 네 사례에 모두 돌려 jackson 2건 외에는 0건임을 확인했다
+(fastjson2 `of`는 static, detekt `save`는 private final, ktlint는 `<clinit>`과 field).
+제품 depth-1 structural의 나머지 4건은 이 규칙에서 나오지 않아 넣지 않았다.
+
+### base SHA 확인 (D2)
+
+ktlint의 base SHA는 `cohort-v4.json`, `oracle-v4.json`, `qualification-v4/pinterest_ktlint-2785.json`
+(`checkout.command`·`checkout.headSha`·`netProductionDiff.source.prBaseSha`) 모두 40-hex 전체 값
+`4ec50723be8efe08589f2aa0c9ea100828919f8e`였다. 마스킹·축약 형태는 없었고 아무것도 바꾸지 않았다.

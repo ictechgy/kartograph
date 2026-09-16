@@ -114,7 +114,104 @@
     "expansionRule": "3단계 규칙대로 depth-1 직접 호출자 전부를 확장했다. 선택도 상한도 두지 않았다.",
     "directOracleSha256": "264780e0702347e75a90e6d82bf90d4f54be9b67aa31ad1d7455dbf877367966",
     "indirectOracleSha256": "0cf72ed77a874cbf5945a21ad5f67485809e066e68c0f225fb2432c9c15f95a3",
-    "scratchPath": "<scratch>/pinterest_ktlint-2785/refs"
+    "scratchPath": "<scratch>/pinterest_ktlint-2785/refs",
+    "hashDefinitions": {
+      "directOracleSha256": {
+        "file": "<scratch>/<case>/refs/depth1/direct-invocations.json",
+        "scope": "파일 전체(부분집합 아님)의 바이트",
+        "serialization": "collect_refs.py가 json.dumps(result, indent=2) + '\\n'으로 UTF-8 기록한 그대로다. 키 순서는 삽입 순서(case, scope, classCount, roots, references)이고 정렬하지 않는다. references는 javap 순회 순서를 유지하며 json.dumps(row, sort_keys=True) 문자열로 중복만 제거한다. 각 reference 객체의 키 순서는 caller, target, refKind, sourceCandidates, javapFile, instruction이다.",
+        "value": "264780e0702347e75a90e6d82bf90d4f54be9b67aa31ad1d7455dbf877367966"
+      },
+      "indirectOracleSha256": {
+        "file": "<scratch>/<case>/refs/depth2/direct-invocations.json",
+        "scope": "파일 전체(부분집합 아님)의 바이트",
+        "serialization": "위와 같다. depth2 pass의 출력이다.",
+        "value": "0cf72ed77a874cbf5945a21ad5f67485809e066e68c0f225fb2432c9c15f95a3"
+      },
+      "note": "oracle-v4.json 자체의 sha256과는 다른 대상이다. 두 값은 수집기 출력 파일의 해시이지 oracle 문서의 해시가 아니다."
+    },
+    "javapDumps": {
+      "path": "<scratch>/pinterest_ktlint-2785/refs/<pass>/javap-N.txt",
+      "count": 14,
+      "note": "evidence 문자열이 인용하는 덤프다. 파일은 scratch에만 두고 해시만 남긴다. 줄 단위 해석은 evidence-index.json을 본다.",
+      "files": {
+        "depth1/javap-0.txt": {
+          "sha256": "ea63cc32454e6762c1d7952040a8dc70495978f58f06ee675231db9eeeeec5ae",
+          "bytes": 2222381
+        },
+        "depth1/javap-1.txt": {
+          "sha256": "e3d409fb7f596894adaa79437235caa9de8bc290c1ca5f4c6efde9b4f012f8ad",
+          "bytes": 1437501
+        },
+        "depth1/javap-2.txt": {
+          "sha256": "fa1214b339996e5887e685fc87bff2aff4f0a2e656c6baaf9098b1ac46b00818",
+          "bytes": 1664506
+        },
+        "depth1/javap-3.txt": {
+          "sha256": "b461f6c1d497248609b8b21ebb695c707e4b568be11da531858131588519f4ee",
+          "bytes": 2731689
+        },
+        "depth1/javap-4.txt": {
+          "sha256": "4c59b393a91f9ecf340d42dafc6d36b14f32ad9189ed7a4743662743251252fc",
+          "bytes": 2406105
+        },
+        "depth1/javap-5.txt": {
+          "sha256": "80d0df1083b5878ca80fce37a95b1ae9a6e04e78aabe0c1945f35ab27acfd894",
+          "bytes": 2190184
+        },
+        "depth1/javap-6.txt": {
+          "sha256": "0aa8a297c1fbbb718660460f0fef293099b7726409b8608d33897470d3796493",
+          "bytes": 1840770
+        },
+        "depth2/javap-0.txt": {
+          "sha256": "ea63cc32454e6762c1d7952040a8dc70495978f58f06ee675231db9eeeeec5ae",
+          "bytes": 2222381
+        },
+        "depth2/javap-1.txt": {
+          "sha256": "e3d409fb7f596894adaa79437235caa9de8bc290c1ca5f4c6efde9b4f012f8ad",
+          "bytes": 1437501
+        },
+        "depth2/javap-2.txt": {
+          "sha256": "fa1214b339996e5887e685fc87bff2aff4f0a2e656c6baaf9098b1ac46b00818",
+          "bytes": 1664506
+        },
+        "depth2/javap-3.txt": {
+          "sha256": "b461f6c1d497248609b8b21ebb695c707e4b568be11da531858131588519f4ee",
+          "bytes": 2731689
+        },
+        "depth2/javap-4.txt": {
+          "sha256": "4c59b393a91f9ecf340d42dafc6d36b14f32ad9189ed7a4743662743251252fc",
+          "bytes": 2406105
+        },
+        "depth2/javap-5.txt": {
+          "sha256": "80d0df1083b5878ca80fce37a95b1ae9a6e04e78aabe0c1945f35ab27acfd894",
+          "bytes": 2190184
+        },
+        "depth2/javap-6.txt": {
+          "sha256": "0aa8a297c1fbbb718660460f0fef293099b7726409b8608d33897470d3796493",
+          "bytes": 1840770
+        }
+      }
+    },
+    "collectorInputs": {
+      "<scratch>/pinterest_ktlint-2785/refs/targets-depth1.json": "af414ca93d6d16cc9318411a1e141ecd9229471e7e485d593f91b22859c132e5",
+      "<scratch>/pinterest_ktlint-2785/refs/targets-depth2.json": "d48cbfe1ce2fd798a67ffa37acdeb4a744e7b5165a916442e63ebdce3aa10782"
+    },
+    "depthSummarySha256": "e97902bf737547dbc7e0fc5ce6738346a98698c37d0679f57a140d5e3e86d272",
+    "classRootComposition": {
+      "rootPattern": "^[^/]+/build/classes/[^/]+/[^/]+$ (모듈/build/classes/<lang>/<sourceSet>), build-logic/ 접두 제외",
+      "roots": 32,
+      "classFilesScanned": 1005,
+      "classFileMajorVersions": {
+        "52": 1005
+      },
+      "buildLogicClassFilesInCheckoutExcluded": 632,
+      "buildLogicMajorVersions": {
+        "61": 614,
+        "65": 18
+      },
+      "statement": "수집 root 32개의 class 1005개는 모두 major 52이고 JDK 17.0.20 javap의 상한 61 이하라 전부 판독됐다(javap 오류 0건). ktlint는 JDK 21로 빌드했지만 그 결과물의 major도 52이며, major 65인 build-logic/build/kotlin-dsl/plugins-blocks/compiled 산출물은 root 패턴에서 제외돼 수집에 들어가지 않았다."
+    }
   },
   "oracleCounts": {
     "targets": 2,
@@ -202,5 +299,70 @@
     ],
     "rule": "제품 결과는 정답이 아니다. oracle 항목을 추가하거나 빼지 않았다.",
     "scratchPath": "<scratch>/impact"
+  },
+  "artifactHashes": {
+    "note": "빌드·테스트·snapshot 로그와 테스트 결과 XML. 파일은 scratch에 두고 해시만 남긴다.",
+    "files": {
+      "<scratch>/logs/clone-pinterest_ktlint-2785.log": {
+        "sha256": "d33d41748c5fc3094e39abeb0d6613832dea169d835f3bef806785dcf783185f",
+        "bytes": 946
+      },
+      "<scratch>/logs/build-ktlint.log": {
+        "sha256": "489808a8a6b792631d85b296dc9bdc4518380fe43b2429d18fa67a1943dc7a42",
+        "bytes": 1334
+      },
+      "<scratch>/logs/build-ktlint-jdk21.log": {
+        "sha256": "2b5bbe6e32dbaa506fdc5a1b3a76016ced11125fea1d57a913bbb4d5950b10c9",
+        "bytes": 19349
+      },
+      "<scratch>/logs/test-ktlint.log": {
+        "sha256": "d8a49e04d3825c05c9aac5d159d87f746309c51694df17eff2bc7f6e2349ecdc",
+        "bytes": 7234
+      },
+      "<scratch>/logs/snapshot-pinterest_ktlint-2785.log": {
+        "sha256": "d24c1ac1e7116dda8d127ddddf504b7cc3d5ff21f0cbd96a2a99859c5b19c91f",
+        "bytes": 29
+      },
+      "<scratch>/logs/snapshot-compact-pinterest_ktlint-2785.log": {
+        "sha256": "92308335bc3b102d466e9df4d5288a0ca3472f63788b67920e7a972e681ae38e",
+        "bytes": 29
+      },
+      "<scratch>/pinterest_ktlint-2785/base/ktlint-ruleset-standard/build/test-results/test/TEST-com.pinterest.ktlint.ruleset.standard.rules.BackingPropertyNamingRuleTest$Given#20a#20backing#20property#20correlating#20with#20a#20function.xml": {
+        "sha256": "8b95867aa8e83ef2900439c96d5e3ac1f6fa68b0082f85f486641059b81fe504",
+        "bytes": 12167
+      },
+      "<scratch>/pinterest_ktlint-2785/base/ktlint-ruleset-standard/build/test-results/test/TEST-com.pinterest.ktlint.ruleset.standard.rules.BackingPropertyNamingRuleTest$Given#20a#20backing#20property#20correlating#20with#20a#20property.xml": {
+        "sha256": "9610e83a67a3eb6356580bcccff05c49ef92a534043642ee516172649f80958f",
+        "bytes": 11624
+      },
+      "<scratch>/pinterest_ktlint-2785/base/ktlint-ruleset-standard/build/test-results/test/TEST-com.pinterest.ktlint.ruleset.standard.rules.BackingPropertyNamingRuleTest.xml": {
+        "sha256": "689a4e4f65867ee5e43c322e2cacfa24c98e9e2f499b6af21fda5bee5ac599f1",
+        "bytes": 8539
+      }
+    },
+    "netProductionDiffSha256": "a399971f2a3a97a0be9a9cbbf4f0df7e442d1dae463d5aa60957f441cf9c9e74",
+    "impactOutputs": {
+      "<scratch>/impact/pinterest_ktlint-2785.depth1.json": "4c50d9b7b85883bf322f4979bf4d1798ea76229dc4dd772c9a9398aa690ed10e",
+      "<scratch>/impact/pinterest_ktlint-2785.depth2.json": "795e1f1896cb8485a97b638d2a69d6ecc1fc3bd1dc7b298a59c7051ce38d432d"
+    }
+  },
+  "overrideProvenance": {
+    "rule": "바뀐 메서드 심볼 중 private/static/final·<init>/<clinit>가 아닌 것에 대해, checkout의 class root 안에서 소유 타입의 상위·하위 타입을 전이적으로 모으고 같은 name+descriptor를 선언하는 타입을 모두 고른다. 원본 선언(javap -p -s)만 읽으며 제품 출력을 읽지 않는다.",
+    "script": {
+      "path": "experiments/ai-utility-protocol/qualification-v4/tools/rederive_overrides.py",
+      "sha256": "5476df286c34e3cdd1a76a5632968d53c800221c8fc1145220ced87490704b9f"
+    },
+    "command": "python3 tools/rederive_overrides.py --case pinterest_ktlint-2785 --base <scratch>/pinterest_ktlint-2785/base --roots-file <scratch>/pinterest_ktlint-2785/roots.txt --changed <scratch>/pinterest_ktlint-2785/changed-symbols.txt --javap $JAVA_HOME/bin/javap",
+    "output": {
+      "path": "<scratch>/review-fix/override-rederivation-pinterest_ktlint-2785.json",
+      "sha256": "166a891c24f02ee8e1d9c32b9ecfb11882b09be49ffe82071d3bb531f1a0eebc"
+    },
+    "derivedSites": [],
+    "sitesFound": 0,
+    "discoveryOrder": "이 사례에는 제품 단서도 독립 증거도 없었다. override 대상 0건."
+  },
+  "evidenceIndex": {
+    "file": "experiments/ai-utility-protocol/qualification-v4/evidence-index.json",
+    "note": "evidence 문자열 앞의 정수는 caller 메서드 안의 bytecode offset이고 덤프 파일의 줄 번호가 아니다. 정확한 줄 번호·수집 pass·정당화 여부는 evidence-index.json에 있다."
   }
 }

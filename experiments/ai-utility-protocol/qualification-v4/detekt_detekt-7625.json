@@ -102,7 +102,207 @@
     "expansionRule": "3단계 규칙대로 depth-1 직접 호출자 전부를 확장했다. 선택도 상한도 두지 않았다.",
     "directOracleSha256": "48f9948bb38300553a647700c5b534d5b9b0031aa0d4fdecb5a6029c11c89178",
     "indirectOracleSha256": "a197410e6066f7a422524b6a7d6bb9be590c52a26874f7c2fc002f2d92954e35",
-    "scratchPath": "<scratch>/detekt_detekt-7625/refs"
+    "scratchPath": "<scratch>/detekt_detekt-7625/refs",
+    "hashDefinitions": {
+      "directOracleSha256": {
+        "file": "<scratch>/<case>/refs/depth1/direct-invocations.json",
+        "scope": "파일 전체(부분집합 아님)의 바이트",
+        "serialization": "collect_refs.py가 json.dumps(result, indent=2) + '\\n'으로 UTF-8 기록한 그대로다. 키 순서는 삽입 순서(case, scope, classCount, roots, references)이고 정렬하지 않는다. references는 javap 순회 순서를 유지하며 json.dumps(row, sort_keys=True) 문자열로 중복만 제거한다. 각 reference 객체의 키 순서는 caller, target, refKind, sourceCandidates, javapFile, instruction이다.",
+        "value": "48f9948bb38300553a647700c5b534d5b9b0031aa0d4fdecb5a6029c11c89178"
+      },
+      "indirectOracleSha256": {
+        "file": "<scratch>/<case>/refs/depth2/direct-invocations.json",
+        "scope": "파일 전체(부분집합 아님)의 바이트",
+        "serialization": "위와 같다. depth2 pass의 출력이다.",
+        "value": "a197410e6066f7a422524b6a7d6bb9be590c52a26874f7c2fc002f2d92954e35"
+      },
+      "note": "oracle-v4.json 자체의 sha256과는 다른 대상이다. 두 값은 수집기 출력 파일의 해시이지 oracle 문서의 해시가 아니다."
+    },
+    "javapDumps": {
+      "path": "<scratch>/detekt_detekt-7625/refs/<pass>/javap-N.txt",
+      "count": 40,
+      "note": "evidence 문자열이 인용하는 덤프다. 파일은 scratch에만 두고 해시만 남긴다. 줄 단위 해석은 evidence-index.json을 본다.",
+      "files": {
+        "depth1/javap-0.txt": {
+          "sha256": "30314a9891bad0f7ce113d8c806466074dde80e3cee50dcaf2547458eb1d28d5",
+          "bytes": 626305
+        },
+        "depth1/javap-1.txt": {
+          "sha256": "9e6ce8b65f7c2f8f59feebbb1631dce6335d220356796e352a8db57a3fba304f",
+          "bytes": 1267963
+        },
+        "depth1/javap-2.txt": {
+          "sha256": "b9a5738691c6fbb3dab689ce0ef906a9691cf3f5f95c8f5a06203299a91f54e9",
+          "bytes": 1080684
+        },
+        "depth1/javap-3.txt": {
+          "sha256": "4f5c75bcfe8f61707752a4d523bd1215d1dc70733e06bd4d2e03793cb5364ba9",
+          "bytes": 1001901
+        },
+        "depth1/javap-4.txt": {
+          "sha256": "170bb380e023dd10fb9c3f82123c83af3d1d3ab8ec8c0a499a233e5715ed26bb",
+          "bytes": 648776
+        },
+        "depth1/javap-5.txt": {
+          "sha256": "3f0a0360b2ca1b81995e11a12d632ae926a2ef6c9edbfc0eb9613f98e0c83d02",
+          "bytes": 1012853
+        },
+        "depth1/javap-6.txt": {
+          "sha256": "3ac52151a0778f007c07a859e9bc9b341fa1410b8599ac0c535a50d53ae5047c",
+          "bytes": 1544242
+        },
+        "depth1/javap-7.txt": {
+          "sha256": "b412e0d4890a6347062d323bf3068c2a21f8c48ed269df96bd7482380fe2f0fa",
+          "bytes": 923060
+        },
+        "depth1/javap-8.txt": {
+          "sha256": "f6e4aca0af96485df77d4265472f0605166c83402d118c35cff9895a3a42ab7f",
+          "bytes": 1439565
+        },
+        "depth1/javap-9.txt": {
+          "sha256": "8790340ab7502e298c619b0250aebbfe64a896f56efb4e0f4ce5ea3e1e286c12",
+          "bytes": 1360208
+        },
+        "depth1/javap-10.txt": {
+          "sha256": "18f94aa509a95866590b29d668de354e26d67226ade16d2ae8a15db795a98ee9",
+          "bytes": 1194050
+        },
+        "depth1/javap-11.txt": {
+          "sha256": "8c3acb40a3924678a284ae63e416ab7210897bb41f1c46e185c55bf4ca360bd7",
+          "bytes": 1222292
+        },
+        "depth1/javap-12.txt": {
+          "sha256": "ae1f04cd9b233c13963db1cdb10c71db1f12668fda964172c234b347241452c8",
+          "bytes": 1078480
+        },
+        "depth1/javap-13.txt": {
+          "sha256": "fcca05ded7bfe15e7177444521bcf594f06a49382e9a0e63f7b404250203ec37",
+          "bytes": 1530905
+        },
+        "depth1/javap-14.txt": {
+          "sha256": "986dda72d585e68f0aafcbbbb8700eac5eb9df526fd06b727c47930614a477c1",
+          "bytes": 862999
+        },
+        "depth1/javap-15.txt": {
+          "sha256": "e4eb9cc49da9b68a7b8b92bb4db425c4821f68682540e1408fd4aba443881f46",
+          "bytes": 1958205
+        },
+        "depth1/javap-16.txt": {
+          "sha256": "06db109388fca431f7a7f53451eed6d52616e101a3672d77ce307abf5e9598ab",
+          "bytes": 1265492
+        },
+        "depth1/javap-17.txt": {
+          "sha256": "ba02d1d3499589fc12913179074887fe9f4e2371c569d2a4d418004d45d97488",
+          "bytes": 1398933
+        },
+        "depth1/javap-18.txt": {
+          "sha256": "ea444249ead9bf34f0c235827594d9bcbfdf0994ea0d24f492c4ec38bb0f0336",
+          "bytes": 1238349
+        },
+        "depth1/javap-19.txt": {
+          "sha256": "51b5181c2dc3d7abf63f3fd63631dd9b1291865ace97e8b9536cbae75cb0dfe5",
+          "bytes": 621245
+        },
+        "depth2/javap-0.txt": {
+          "sha256": "30314a9891bad0f7ce113d8c806466074dde80e3cee50dcaf2547458eb1d28d5",
+          "bytes": 626305
+        },
+        "depth2/javap-1.txt": {
+          "sha256": "9e6ce8b65f7c2f8f59feebbb1631dce6335d220356796e352a8db57a3fba304f",
+          "bytes": 1267963
+        },
+        "depth2/javap-2.txt": {
+          "sha256": "b9a5738691c6fbb3dab689ce0ef906a9691cf3f5f95c8f5a06203299a91f54e9",
+          "bytes": 1080684
+        },
+        "depth2/javap-3.txt": {
+          "sha256": "4f5c75bcfe8f61707752a4d523bd1215d1dc70733e06bd4d2e03793cb5364ba9",
+          "bytes": 1001901
+        },
+        "depth2/javap-4.txt": {
+          "sha256": "170bb380e023dd10fb9c3f82123c83af3d1d3ab8ec8c0a499a233e5715ed26bb",
+          "bytes": 648776
+        },
+        "depth2/javap-5.txt": {
+          "sha256": "3f0a0360b2ca1b81995e11a12d632ae926a2ef6c9edbfc0eb9613f98e0c83d02",
+          "bytes": 1012853
+        },
+        "depth2/javap-6.txt": {
+          "sha256": "3ac52151a0778f007c07a859e9bc9b341fa1410b8599ac0c535a50d53ae5047c",
+          "bytes": 1544242
+        },
+        "depth2/javap-7.txt": {
+          "sha256": "b412e0d4890a6347062d323bf3068c2a21f8c48ed269df96bd7482380fe2f0fa",
+          "bytes": 923060
+        },
+        "depth2/javap-8.txt": {
+          "sha256": "f6e4aca0af96485df77d4265472f0605166c83402d118c35cff9895a3a42ab7f",
+          "bytes": 1439565
+        },
+        "depth2/javap-9.txt": {
+          "sha256": "8790340ab7502e298c619b0250aebbfe64a896f56efb4e0f4ce5ea3e1e286c12",
+          "bytes": 1360208
+        },
+        "depth2/javap-10.txt": {
+          "sha256": "18f94aa509a95866590b29d668de354e26d67226ade16d2ae8a15db795a98ee9",
+          "bytes": 1194050
+        },
+        "depth2/javap-11.txt": {
+          "sha256": "8c3acb40a3924678a284ae63e416ab7210897bb41f1c46e185c55bf4ca360bd7",
+          "bytes": 1222292
+        },
+        "depth2/javap-12.txt": {
+          "sha256": "ae1f04cd9b233c13963db1cdb10c71db1f12668fda964172c234b347241452c8",
+          "bytes": 1078480
+        },
+        "depth2/javap-13.txt": {
+          "sha256": "fcca05ded7bfe15e7177444521bcf594f06a49382e9a0e63f7b404250203ec37",
+          "bytes": 1530905
+        },
+        "depth2/javap-14.txt": {
+          "sha256": "986dda72d585e68f0aafcbbbb8700eac5eb9df526fd06b727c47930614a477c1",
+          "bytes": 862999
+        },
+        "depth2/javap-15.txt": {
+          "sha256": "e4eb9cc49da9b68a7b8b92bb4db425c4821f68682540e1408fd4aba443881f46",
+          "bytes": 1958205
+        },
+        "depth2/javap-16.txt": {
+          "sha256": "06db109388fca431f7a7f53451eed6d52616e101a3672d77ce307abf5e9598ab",
+          "bytes": 1265492
+        },
+        "depth2/javap-17.txt": {
+          "sha256": "ba02d1d3499589fc12913179074887fe9f4e2371c569d2a4d418004d45d97488",
+          "bytes": 1398933
+        },
+        "depth2/javap-18.txt": {
+          "sha256": "ea444249ead9bf34f0c235827594d9bcbfdf0994ea0d24f492c4ec38bb0f0336",
+          "bytes": 1238349
+        },
+        "depth2/javap-19.txt": {
+          "sha256": "51b5181c2dc3d7abf63f3fd63631dd9b1291865ace97e8b9536cbae75cb0dfe5",
+          "bytes": 621245
+        }
+      }
+    },
+    "collectorInputs": {
+      "<scratch>/detekt_detekt-7625/refs/targets-depth1.json": "c3ab690c15f299948767891d96bb9a5543d7c958c07c35c0b83b1e1bf76864e8",
+      "<scratch>/detekt_detekt-7625/refs/targets-depth2.json": "155fb86d2cbd601392b15e26d876515f5f5318a5e7c199bb2a65060e62eadfc4"
+    },
+    "depthSummarySha256": "dbccaf78e5823d306afd7f81450b45388066c0772631f37f916e4b7b803fad55",
+    "classRootComposition": {
+      "rootPattern": "^[^/]+/build/classes/[^/]+/[^/]+$ (모듈/build/classes/<lang>/<sourceSet>), build-logic/ 접두 제외",
+      "roots": 60,
+      "classFilesScanned": 2963,
+      "classFileMajorVersions": {
+        "52": 2963
+      },
+      "buildLogicClassFilesInCheckoutExcluded": 486,
+      "buildLogicMajorVersions": {
+        "52": 486
+      },
+      "statement": "수집 root 60개의 class 2963개는 모두 major 52이고 JDK 17.0.20 javap의 상한 61 이하라 전부 판독됐다(javap 오류 0건). build-logic 산출물은 root 패턴에서 제외했다."
+    }
   },
   "oracleCounts": {
     "targets": 1,
@@ -163,5 +363,70 @@
     ],
     "rule": "제품 결과는 정답이 아니다. oracle 항목을 추가하거나 빼지 않았다.",
     "scratchPath": "<scratch>/impact"
+  },
+  "artifactHashes": {
+    "note": "빌드·테스트·snapshot 로그와 테스트 결과 XML. 파일은 scratch에 두고 해시만 남긴다.",
+    "files": {
+      "<scratch>/logs/clone-detekt_detekt-7625.log": {
+        "sha256": "7385c056bdfa3f73cafe5230a258895b60f1f54e270cbe7df9ade720d8fb14e9",
+        "bytes": 920
+      },
+      "<scratch>/logs/build-detekt.log": {
+        "sha256": "4baea23c2e88ea877efc700bec529d9aafc75812891fd45a315b7e4080065eb1",
+        "bytes": 20253
+      },
+      "<scratch>/logs/test-detekt.log": {
+        "sha256": "56c3f35a082dbdcc34dee0371bda43c2a242fe1439390df05cde84bd502721e7",
+        "bytes": 10154
+      },
+      "<scratch>/logs/snapshot-detekt_detekt-7625.log": {
+        "sha256": "472073cd821d18bf68ee3aacef9d82b2ee721119770a7fbc94803b4b0bfc307b",
+        "bytes": 156
+      },
+      "<scratch>/logs/snapshot-compact-detekt_detekt-7625.log": {
+        "sha256": "e65aefae4e9e9d2cd3af9be443bbec58265c8583a738ead9017d23b948cc980e",
+        "bytes": 29
+      },
+      "<scratch>/detekt_detekt-7625/base/detekt-core/build/test-results/test/TEST-io.gitlab.arturbosch.detekt.core.baseline.BaselineFormatSpec$implements#20tooling#20api.xml": {
+        "sha256": "6195303ef403eb8a34d3ad458507a13639117cb5d023e60fc42742dbc822ddc7",
+        "bytes": 691
+      },
+      "<scratch>/detekt_detekt-7625/base/detekt-core/build/test-results/test/TEST-io.gitlab.arturbosch.detekt.core.baseline.BaselineFormatSpec$read#20a#20baseline#20file.xml": {
+        "sha256": "aff2938a5bd32a2f4e4912db7bb613915f972bf1a356eebb79b166891ca3eb19",
+        "bytes": 879
+      },
+      "<scratch>/detekt_detekt-7625/base/detekt-core/build/test-results/test/TEST-io.gitlab.arturbosch.detekt.core.baseline.BaselineFormatSpec$writes#20a#20baseline#20file.xml": {
+        "sha256": "149484963ad1893c5f9ba31472bfc20c1a8e6fc98ff7ba9872d000dc86dab02a",
+        "bytes": 755
+      },
+      "<scratch>/detekt_detekt-7625/base/detekt-core/build/test-results/test/TEST-io.gitlab.arturbosch.detekt.core.baseline.BaselineResultMappingSpec.xml": {
+        "sha256": "1da8bfed685c68c39104e97a33f97204690c4db155883a71fb2322b069591ca6",
+        "bytes": 2311
+      }
+    },
+    "netProductionDiffSha256": "c01f307f434a890d91835c497a815b726a53c762bb99cdcac8624de0f13dcbc3",
+    "impactOutputs": {
+      "<scratch>/impact/detekt_detekt-7625.depth1.json": "47bd4800bec59d44c731ff1961524fda2ed2df2c308aa0cbc8a173de9ec2e0b9",
+      "<scratch>/impact/detekt_detekt-7625.depth2.json": "73da42a806d4bf5aa29e584df25b686c313064ffbb9029546a03dc31fc694463"
+    }
+  },
+  "overrideProvenance": {
+    "rule": "바뀐 메서드 심볼 중 private/static/final·<init>/<clinit>가 아닌 것에 대해, checkout의 class root 안에서 소유 타입의 상위·하위 타입을 전이적으로 모으고 같은 name+descriptor를 선언하는 타입을 모두 고른다. 원본 선언(javap -p -s)만 읽으며 제품 출력을 읽지 않는다.",
+    "script": {
+      "path": "experiments/ai-utility-protocol/qualification-v4/tools/rederive_overrides.py",
+      "sha256": "5476df286c34e3cdd1a76a5632968d53c800221c8fc1145220ced87490704b9f"
+    },
+    "command": "python3 tools/rederive_overrides.py --case detekt_detekt-7625 --base <scratch>/detekt_detekt-7625/base --roots-file <scratch>/detekt_detekt-7625/roots.txt --changed <scratch>/detekt_detekt-7625/changed-symbols.txt --javap $JAVA_HOME/bin/javap",
+    "output": {
+      "path": "<scratch>/review-fix/override-rederivation-detekt_detekt-7625.json",
+      "sha256": "5acbec7fd1d7e59340bf4c88e845f2cdfd1e3d9165fd7f4db7f2284ca16a8202"
+    },
+    "derivedSites": [],
+    "sitesFound": 0,
+    "discoveryOrder": "이 사례에는 제품 단서도 독립 증거도 없었다. override 대상 0건."
+  },
+  "evidenceIndex": {
+    "file": "experiments/ai-utility-protocol/qualification-v4/evidence-index.json",
+    "note": "evidence 문자열 앞의 정수는 caller 메서드 안의 bytecode offset이고 덤프 파일의 줄 번호가 아니다. 정확한 줄 번호·수집 pass·정당화 여부는 evidence-index.json에 있다."
   }
 }

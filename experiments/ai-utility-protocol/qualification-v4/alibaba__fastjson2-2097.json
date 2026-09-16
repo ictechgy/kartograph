@@ -79,7 +79,357 @@
     "expansionRule": "3단계 규칙대로 depth-1 직접 호출자 전부를 확장했다. 선택도 상한도 두지 않았다.",
     "directOracleSha256": "210ad2b26b8b27d7fdeaa036154a23e669e75883eb68c4ec56127de083ce6dbf",
     "indirectOracleSha256": "5254a685b4063fce8ed39a0fc82c54ac0e9ee043702c01ee6bcccdadcfe6f62a",
-    "scratchPath": "<scratch>/alibaba__fastjson2-2097/refs"
+    "scratchPath": "<scratch>/alibaba__fastjson2-2097/refs",
+    "hashDefinitions": {
+      "directOracleSha256": {
+        "file": "<scratch>/<case>/refs/depth1/direct-invocations.json",
+        "scope": "파일 전체(부분집합 아님)의 바이트",
+        "serialization": "collect_refs.py가 json.dumps(result, indent=2) + '\\n'으로 UTF-8 기록한 그대로다. 키 순서는 삽입 순서(case, scope, classCount, roots, references)이고 정렬하지 않는다. references는 javap 순회 순서를 유지하며 json.dumps(row, sort_keys=True) 문자열로 중복만 제거한다. 각 reference 객체의 키 순서는 caller, target, refKind, sourceCandidates, javapFile, instruction이다.",
+        "value": "210ad2b26b8b27d7fdeaa036154a23e669e75883eb68c4ec56127de083ce6dbf"
+      },
+      "indirectOracleSha256": {
+        "file": "<scratch>/<case>/refs/depth2/direct-invocations.json",
+        "scope": "파일 전체(부분집합 아님)의 바이트",
+        "serialization": "위와 같다. depth2 pass의 출력이다.",
+        "value": "5254a685b4063fce8ed39a0fc82c54ac0e9ee043702c01ee6bcccdadcfe6f62a"
+      },
+      "note": "oracle-v4.json 자체의 sha256과는 다른 대상이다. 두 값은 수집기 출력 파일의 해시이지 oracle 문서의 해시가 아니다."
+    },
+    "javapDumps": {
+      "path": "<scratch>/alibaba__fastjson2-2097/refs/<pass>/javap-N.txt",
+      "count": 78,
+      "note": "evidence 문자열이 인용하는 덤프다. 파일은 scratch에만 두고 해시만 남긴다. 줄 단위 해석은 evidence-index.json을 본다.",
+      "files": {
+        "depth1/javap-0.txt": {
+          "sha256": "aec55827c7356ad31d8b56f5b58839dd598afe98c61fefd8c040edd18f10863b",
+          "bytes": 6704748
+        },
+        "depth1/javap-1.txt": {
+          "sha256": "2358f893fc8d8186a31990a9526ae8ed3d68ebad06ebe7cb43e40cdd339fe3b9",
+          "bytes": 1420416
+        },
+        "depth1/javap-2.txt": {
+          "sha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+          "bytes": 3881980
+        },
+        "depth1/javap-3.txt": {
+          "sha256": "4575ec94f7748e37eaf3593189eb093b44b77105e8b21d105a1c4f929a0aa172",
+          "bytes": 4035840
+        },
+        "depth1/javap-4.txt": {
+          "sha256": "430a6fec302dde0afb5ae0e8501d70f72dadb511407d5c4383c3e597387226c4",
+          "bytes": 2883826
+        },
+        "depth1/javap-5.txt": {
+          "sha256": "11b7b2748c1d8f34ab252c008717159a1763694edf50fcef26c42fdc969cab0e",
+          "bytes": 2633837
+        },
+        "depth1/javap-6.txt": {
+          "sha256": "6499918de4e1968913fb0701a681acce4ada7cf90b5cd72a1aaaaf195db5c6d8",
+          "bytes": 470157
+        },
+        "depth1/javap-7.txt": {
+          "sha256": "de3e064e4dd5798f31aabe77327995b042ec35caa5b43b6f32f07dd7201b55c5",
+          "bytes": 368436
+        },
+        "depth1/javap-8.txt": {
+          "sha256": "b4f160da8230c1e1ce5e24c732044494b5e062d33c3bd6dee5fe907c179cb85f",
+          "bytes": 894036
+        },
+        "depth1/javap-9.txt": {
+          "sha256": "931edaa2922e1c8a3ec860745d18ba60c720313d61b37ad752df896f2ad1d45d",
+          "bytes": 694957
+        },
+        "depth1/javap-10.txt": {
+          "sha256": "50016e9554e054e7035e863c3b3933af52aa67c89d2a7009b7bdc7971b535f82",
+          "bytes": 558829
+        },
+        "depth1/javap-11.txt": {
+          "sha256": "2c0ab439e239757d0f5f4b831a183367dd96e0a4136caff2b728b82bf227b9c4",
+          "bytes": 621634
+        },
+        "depth1/javap-12.txt": {
+          "sha256": "034dcef91ecf7639af173d26ca83e20db03a4b362595dc7eb6ae886f887a2223",
+          "bytes": 1256890
+        },
+        "depth1/javap-13.txt": {
+          "sha256": "89e367202a3d89a7f49310e4fc1d5980d04ab6060337a0e0fbaeb3841e3b1bcd",
+          "bytes": 630553
+        },
+        "depth1/javap-14.txt": {
+          "sha256": "2cf1f2711444a0774abe3b9faf2821a08d4d0ab77007908457090c3271081397",
+          "bytes": 766498
+        },
+        "depth1/javap-15.txt": {
+          "sha256": "6c32583d325b1f3d3b2414b8cdf54b7177b1cbd0f9c76dfed18a9eb379769b4e",
+          "bytes": 597184
+        },
+        "depth1/javap-16.txt": {
+          "sha256": "366882a72b79fe4e7fc087cca5d5c1d6fad3ff6e29c78c3fd65e24a46e75ba00",
+          "bytes": 543884
+        },
+        "depth1/javap-17.txt": {
+          "sha256": "3101ce7b29a9d0c40782d2ed69ae92faf94bd11d9eef82e08ec58bfdd3dab50c",
+          "bytes": 616248
+        },
+        "depth1/javap-18.txt": {
+          "sha256": "1ab94adebde3c0c79fc6a5dd6ae7c82d27bb428bb2a933c9724d832680117406",
+          "bytes": 599664
+        },
+        "depth1/javap-19.txt": {
+          "sha256": "6d574f2ac931dc24ad0c46eac85180547ad7980248135879a316494e9a73abd1",
+          "bytes": 437436
+        },
+        "depth1/javap-20.txt": {
+          "sha256": "c0f4a7410cae8fdd94c5c1045b781a3802319c4c57fff4ba9b5a085b1ba02beb",
+          "bytes": 484834
+        },
+        "depth1/javap-21.txt": {
+          "sha256": "27d75823e13d56dc2218dc8c8708e820dca8ce7246505b3cbc2f80821e10d9e9",
+          "bytes": 525163
+        },
+        "depth1/javap-22.txt": {
+          "sha256": "bd01e6728ea4c9ac16d3e907fe0be9886e6f102c07c625f939b6fa5a3e915b2a",
+          "bytes": 444207
+        },
+        "depth1/javap-23.txt": {
+          "sha256": "d6ea849ec9ee3f67c13c9d727f2557301b9fceee97d30f5e9d0d9f7521e3638d",
+          "bytes": 659136
+        },
+        "depth1/javap-24.txt": {
+          "sha256": "8ea7afb15dd188fedcfb3134b29971804e952df0a9f9b52fcc463ba0d35414a1",
+          "bytes": 789378
+        },
+        "depth1/javap-25.txt": {
+          "sha256": "ffec0627b3897f745e3dc8c7c8815e66bc142c0709fc9dac237c228fd26103b7",
+          "bytes": 1799530
+        },
+        "depth1/javap-26.txt": {
+          "sha256": "dfe0fa421fd33e075348e3c1578bc924ce21012e48fd2956cea9b64e83d49dc6",
+          "bytes": 1788511
+        },
+        "depth1/javap-27.txt": {
+          "sha256": "6a5c808465b9bf97c807d6f80a72df6202ecc2920bb4924d296d8d312f74aa8b",
+          "bytes": 622235
+        },
+        "depth1/javap-28.txt": {
+          "sha256": "65b134fa835d554acbf13ddf03ae22eecc85f7b2bac0c419a9b9e72960362ccb",
+          "bytes": 789399
+        },
+        "depth1/javap-29.txt": {
+          "sha256": "ad602f516600e335f06826e0dbab5aff23d25f80010b24afa3bd4c8f657d6f56",
+          "bytes": 815676
+        },
+        "depth1/javap-30.txt": {
+          "sha256": "a7b6b22cf3753d21c7921e925320eb7011b0abfc86d8e61ec0d5127fcd7132c6",
+          "bytes": 988149
+        },
+        "depth1/javap-31.txt": {
+          "sha256": "0db0ddd08ac5980ea3465ccc6c1301843e0fbbdc3f1aa3a260859ae56110f6d5",
+          "bytes": 1949829
+        },
+        "depth1/javap-32.txt": {
+          "sha256": "b4e62065ecbcc89405819cfabca97f744433c77047f7294580e055e507e9d815",
+          "bytes": 383229
+        },
+        "depth1/javap-33.txt": {
+          "sha256": "ddaea789558835217157f33257e5d14235f8934121cae21e8a3a85c54a37effa",
+          "bytes": 281427
+        },
+        "depth1/javap-34.txt": {
+          "sha256": "4c03b185ddbb2c75aef7a1901b05730ea36cf15c417e3e17a8f1c4eeac059ea2",
+          "bytes": 451057
+        },
+        "depth1/javap-35.txt": {
+          "sha256": "1f818758a2537dcb5edfa332292564991d32606fc7efa8534f8b318424cd7c3f",
+          "bytes": 414533
+        },
+        "depth1/javap-36.txt": {
+          "sha256": "4960d0487461bb95f19ae8b5c56e579972c79515bd38bef5f77b73ff3cb0345c",
+          "bytes": 486415
+        },
+        "depth1/javap-37.txt": {
+          "sha256": "e545ed62edd6e3b33e1a0ab5ed143f57bdad7a4ece2571246f84c586ef5d7369",
+          "bytes": 852324
+        },
+        "depth1/javap-38.txt": {
+          "sha256": "6c4e98e07d185b4c3767fcd3fa41bf1311dae6083d1da40867332c08874796fb",
+          "bytes": 632233
+        },
+        "depth2/javap-0.txt": {
+          "sha256": "aec55827c7356ad31d8b56f5b58839dd598afe98c61fefd8c040edd18f10863b",
+          "bytes": 6704748
+        },
+        "depth2/javap-1.txt": {
+          "sha256": "2358f893fc8d8186a31990a9526ae8ed3d68ebad06ebe7cb43e40cdd339fe3b9",
+          "bytes": 1420416
+        },
+        "depth2/javap-2.txt": {
+          "sha256": "ec3e9b80f289212fe7bd54db1caaf9764d92a387751361d9a4d87de9dfa707b1",
+          "bytes": 3881980
+        },
+        "depth2/javap-3.txt": {
+          "sha256": "4575ec94f7748e37eaf3593189eb093b44b77105e8b21d105a1c4f929a0aa172",
+          "bytes": 4035840
+        },
+        "depth2/javap-4.txt": {
+          "sha256": "430a6fec302dde0afb5ae0e8501d70f72dadb511407d5c4383c3e597387226c4",
+          "bytes": 2883826
+        },
+        "depth2/javap-5.txt": {
+          "sha256": "11b7b2748c1d8f34ab252c008717159a1763694edf50fcef26c42fdc969cab0e",
+          "bytes": 2633837
+        },
+        "depth2/javap-6.txt": {
+          "sha256": "6499918de4e1968913fb0701a681acce4ada7cf90b5cd72a1aaaaf195db5c6d8",
+          "bytes": 470157
+        },
+        "depth2/javap-7.txt": {
+          "sha256": "de3e064e4dd5798f31aabe77327995b042ec35caa5b43b6f32f07dd7201b55c5",
+          "bytes": 368436
+        },
+        "depth2/javap-8.txt": {
+          "sha256": "b4f160da8230c1e1ce5e24c732044494b5e062d33c3bd6dee5fe907c179cb85f",
+          "bytes": 894036
+        },
+        "depth2/javap-9.txt": {
+          "sha256": "931edaa2922e1c8a3ec860745d18ba60c720313d61b37ad752df896f2ad1d45d",
+          "bytes": 694957
+        },
+        "depth2/javap-10.txt": {
+          "sha256": "50016e9554e054e7035e863c3b3933af52aa67c89d2a7009b7bdc7971b535f82",
+          "bytes": 558829
+        },
+        "depth2/javap-11.txt": {
+          "sha256": "2c0ab439e239757d0f5f4b831a183367dd96e0a4136caff2b728b82bf227b9c4",
+          "bytes": 621634
+        },
+        "depth2/javap-12.txt": {
+          "sha256": "034dcef91ecf7639af173d26ca83e20db03a4b362595dc7eb6ae886f887a2223",
+          "bytes": 1256890
+        },
+        "depth2/javap-13.txt": {
+          "sha256": "89e367202a3d89a7f49310e4fc1d5980d04ab6060337a0e0fbaeb3841e3b1bcd",
+          "bytes": 630553
+        },
+        "depth2/javap-14.txt": {
+          "sha256": "2cf1f2711444a0774abe3b9faf2821a08d4d0ab77007908457090c3271081397",
+          "bytes": 766498
+        },
+        "depth2/javap-15.txt": {
+          "sha256": "6c32583d325b1f3d3b2414b8cdf54b7177b1cbd0f9c76dfed18a9eb379769b4e",
+          "bytes": 597184
+        },
+        "depth2/javap-16.txt": {
+          "sha256": "366882a72b79fe4e7fc087cca5d5c1d6fad3ff6e29c78c3fd65e24a46e75ba00",
+          "bytes": 543884
+        },
+        "depth2/javap-17.txt": {
+          "sha256": "3101ce7b29a9d0c40782d2ed69ae92faf94bd11d9eef82e08ec58bfdd3dab50c",
+          "bytes": 616248
+        },
+        "depth2/javap-18.txt": {
+          "sha256": "1ab94adebde3c0c79fc6a5dd6ae7c82d27bb428bb2a933c9724d832680117406",
+          "bytes": 599664
+        },
+        "depth2/javap-19.txt": {
+          "sha256": "6d574f2ac931dc24ad0c46eac85180547ad7980248135879a316494e9a73abd1",
+          "bytes": 437436
+        },
+        "depth2/javap-20.txt": {
+          "sha256": "c0f4a7410cae8fdd94c5c1045b781a3802319c4c57fff4ba9b5a085b1ba02beb",
+          "bytes": 484834
+        },
+        "depth2/javap-21.txt": {
+          "sha256": "27d75823e13d56dc2218dc8c8708e820dca8ce7246505b3cbc2f80821e10d9e9",
+          "bytes": 525163
+        },
+        "depth2/javap-22.txt": {
+          "sha256": "bd01e6728ea4c9ac16d3e907fe0be9886e6f102c07c625f939b6fa5a3e915b2a",
+          "bytes": 444207
+        },
+        "depth2/javap-23.txt": {
+          "sha256": "d6ea849ec9ee3f67c13c9d727f2557301b9fceee97d30f5e9d0d9f7521e3638d",
+          "bytes": 659136
+        },
+        "depth2/javap-24.txt": {
+          "sha256": "8ea7afb15dd188fedcfb3134b29971804e952df0a9f9b52fcc463ba0d35414a1",
+          "bytes": 789378
+        },
+        "depth2/javap-25.txt": {
+          "sha256": "ffec0627b3897f745e3dc8c7c8815e66bc142c0709fc9dac237c228fd26103b7",
+          "bytes": 1799530
+        },
+        "depth2/javap-26.txt": {
+          "sha256": "dfe0fa421fd33e075348e3c1578bc924ce21012e48fd2956cea9b64e83d49dc6",
+          "bytes": 1788511
+        },
+        "depth2/javap-27.txt": {
+          "sha256": "6a5c808465b9bf97c807d6f80a72df6202ecc2920bb4924d296d8d312f74aa8b",
+          "bytes": 622235
+        },
+        "depth2/javap-28.txt": {
+          "sha256": "65b134fa835d554acbf13ddf03ae22eecc85f7b2bac0c419a9b9e72960362ccb",
+          "bytes": 789399
+        },
+        "depth2/javap-29.txt": {
+          "sha256": "ad602f516600e335f06826e0dbab5aff23d25f80010b24afa3bd4c8f657d6f56",
+          "bytes": 815676
+        },
+        "depth2/javap-30.txt": {
+          "sha256": "a7b6b22cf3753d21c7921e925320eb7011b0abfc86d8e61ec0d5127fcd7132c6",
+          "bytes": 988149
+        },
+        "depth2/javap-31.txt": {
+          "sha256": "0db0ddd08ac5980ea3465ccc6c1301843e0fbbdc3f1aa3a260859ae56110f6d5",
+          "bytes": 1949829
+        },
+        "depth2/javap-32.txt": {
+          "sha256": "b4e62065ecbcc89405819cfabca97f744433c77047f7294580e055e507e9d815",
+          "bytes": 383229
+        },
+        "depth2/javap-33.txt": {
+          "sha256": "ddaea789558835217157f33257e5d14235f8934121cae21e8a3a85c54a37effa",
+          "bytes": 281427
+        },
+        "depth2/javap-34.txt": {
+          "sha256": "4c03b185ddbb2c75aef7a1901b05730ea36cf15c417e3e17a8f1c4eeac059ea2",
+          "bytes": 451057
+        },
+        "depth2/javap-35.txt": {
+          "sha256": "1f818758a2537dcb5edfa332292564991d32606fc7efa8534f8b318424cd7c3f",
+          "bytes": 414533
+        },
+        "depth2/javap-36.txt": {
+          "sha256": "4960d0487461bb95f19ae8b5c56e579972c79515bd38bef5f77b73ff3cb0345c",
+          "bytes": 486415
+        },
+        "depth2/javap-37.txt": {
+          "sha256": "e545ed62edd6e3b33e1a0ab5ed143f57bdad7a4ece2571246f84c586ef5d7369",
+          "bytes": 852324
+        },
+        "depth2/javap-38.txt": {
+          "sha256": "6c4e98e07d185b4c3767fcd3fa41bf1311dae6083d1da40867332c08874796fb",
+          "bytes": 632233
+        }
+      }
+    },
+    "collectorInputs": {
+      "<scratch>/alibaba__fastjson2-2097/refs/targets-depth1.json": "2c6e743ef8c14d105ebab2f61b2370bd437a905bf6feee4686eac38458226739",
+      "<scratch>/alibaba__fastjson2-2097/refs/targets-depth2.json": "ac32054ee79ce0d7e7b565505a17643b388aaf68ed13b710cf167bba5d7dc786"
+    },
+    "depthSummarySha256": "696d3001a503e129c7486547b81e32fe8b7921dd7f34efc987ac410c48103206",
+    "classRootComposition": {
+      "rootPattern": "^[^/]+/build/classes/[^/]+/[^/]+$ (모듈/build/classes/<lang>/<sourceSet>), build-logic/ 접두 제외",
+      "roots": 2,
+      "classFilesScanned": 5825,
+      "classFileMajorVersions": {
+        "52": 5825
+      },
+      "buildLogicClassFilesInCheckoutExcluded": 0,
+      "buildLogicMajorVersions": {},
+      "statement": "수집 root 2개의 class 5825개는 모두 major 52이고 JDK 17.0.20 javap의 상한 61 이하라 전부 판독됐다(javap 오류 0건). build-logic 산출물은 root 패턴에서 제외했다."
+    }
   },
   "oracleCounts": {
     "targets": 4,
@@ -131,5 +481,50 @@
     "discrepancies": [],
     "rule": "제품 결과는 정답이 아니다. oracle 항목을 추가하거나 빼지 않았다.",
     "scratchPath": "<scratch>/impact"
+  },
+  "artifactHashes": {
+    "note": "빌드·테스트·snapshot 로그와 테스트 결과 XML. 파일은 scratch에 두고 해시만 남긴다.",
+    "files": {
+      "<scratch>/logs/clone-alibaba__fastjson2-2097.log": {
+        "sha256": "2346a527fe4c7b12a5409c4924718039edb5ba3402ad2991b162c4f116400840",
+        "bytes": 935
+      },
+      "<scratch>/logs/build-fastjson2.log": {
+        "sha256": "d57c9978ee41819373172a5f78c65f6e14643cca8a47229f822bfc5a9286a49e",
+        "bytes": 261419
+      },
+      "<scratch>/logs/snapshot-alibaba__fastjson2-2097.log": {
+        "sha256": "4b63b1cb6ccbc83a2d8ff6de9abcee909eee047ff16a1507aa55bd2cff66fa21",
+        "bytes": 157
+      },
+      "<scratch>/logs/snapshot-compact-alibaba__fastjson2-2097.log": {
+        "sha256": "0ea62850b7305ff71b48dfded4f57bbdfef37152b1f5031d23569d299926d418",
+        "bytes": 30
+      }
+    },
+    "netProductionDiffSha256": "4ce8b37cdf1832adae6f18314f988196ac01e9c56edd40253df2e1e7fc6fc746",
+    "impactOutputs": {
+      "<scratch>/impact/alibaba__fastjson2-2097.depth1.json": "89d8f4a46794fea5e9c3ca805b218d843dccac23f85892ad1293f64702b1e4a3",
+      "<scratch>/impact/alibaba__fastjson2-2097.depth2.json": "f7586ca4da58e9d8faa7aef52958b03242abc1ab1739b7a1038558def0ef9e65"
+    }
+  },
+  "overrideProvenance": {
+    "rule": "바뀐 메서드 심볼 중 private/static/final·<init>/<clinit>가 아닌 것에 대해, checkout의 class root 안에서 소유 타입의 상위·하위 타입을 전이적으로 모으고 같은 name+descriptor를 선언하는 타입을 모두 고른다. 원본 선언(javap -p -s)만 읽으며 제품 출력을 읽지 않는다.",
+    "script": {
+      "path": "experiments/ai-utility-protocol/qualification-v4/tools/rederive_overrides.py",
+      "sha256": "5476df286c34e3cdd1a76a5632968d53c800221c8fc1145220ced87490704b9f"
+    },
+    "command": "python3 tools/rederive_overrides.py --case alibaba__fastjson2-2097 --base <scratch>/alibaba__fastjson2-2097/base --roots-file <scratch>/alibaba__fastjson2-2097/roots.txt --changed <scratch>/alibaba__fastjson2-2097/changed-symbols.txt --javap $JAVA_HOME/bin/javap",
+    "output": {
+      "path": "<scratch>/review-fix/override-rederivation-alibaba__fastjson2-2097.json",
+      "sha256": "0c36a3e653117f2f9135a97652753c498503315e96cba29c5cf9c6680196d52b"
+    },
+    "derivedSites": [],
+    "sitesFound": 0,
+    "discoveryOrder": "이 사례에는 제품 단서도 독립 증거도 없었다. override 대상 0건."
+  },
+  "evidenceIndex": {
+    "file": "experiments/ai-utility-protocol/qualification-v4/evidence-index.json",
+    "note": "evidence 문자열 앞의 정수는 caller 메서드 안의 bytecode offset이고 덤프 파일의 줄 번호가 아니다. 정확한 줄 번호·수집 pass·정당화 여부는 evidence-index.json에 있다."
   }
 }
