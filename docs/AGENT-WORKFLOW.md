@@ -60,7 +60,7 @@ GitHub 공개, Portal 제출, Portal 승인, 독립 프로젝트 설치는 별�
 `GRADLE_8_HOME=/path/to/gradle-8.10.2 bash Scripts/verify-agp-8-fixture.sh`는 최소 지원 조합의
 정확한 finding·graph·strict 실패·configuration cache 재사용을 검사한다. 제품 JAR은 저장소 wrapper로
 만들고 소비 프로젝트를 별도 Gradle 8.10.2로 실행해 실제 배포물의 하위 호환성을 검사한다.
-PR CI와 tag workflow 모두 같은 fixture를 실행한다. JDK 17과 Android SDK 35가 필요하다.
+PR CI와 tag workflow 모두 같은 fixture를 실행하며, 이어서 `Scripts/verify-agp-8-app-snapshot.sh`로 같은 fixture의 application snapshot이 R.jar class root를 포함한 채 `matched`인지 검사한다. JDK 17과 Android SDK 35가 필요하다.
 
 `runtimeSbom`은 각 배포 runtime에 실제 해석된 외부 라이브러리 좌표와 JAR SHA256을
 [CycloneDX 1.6](https://cyclonedx.org/docs/1.6/json/) inventory로 기록한다. 컴파일 전용 AGP·테스트 의존성이나
