@@ -11,6 +11,7 @@ import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.export.QuerySnapshot
 import dev.kartograph.export.QuerySnapshotCodec
 import dev.kartograph.index.IndexedClasses
+import dev.kartograph.index.CaptureInput
 import dev.kartograph.index.VerifiedCaptureScope
 import dev.kartograph.index.ClassIndexCache
 import dev.kartograph.index.AndroidManifestScanner
@@ -192,10 +193,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             missingGeneratedRules.map { "directory-watch" to requireNotNull(it.parent) }.distinct()
         val bindings = linkedMapOf<String, Path>()
         fun capture(observation: VerifiedCaptureScope): SnapshotProvenance {
-            val inputs = files.mapIndexed { index, (role, path) ->
-                observation.capture(project, path, role, "$role-$index").also {
-                    if (it.path.startsWith("external/")) bindings[it.path] = path.toFile().canonicalFile.toPath()
-                }
+            val requested = files.mapIndexed { index, (role, path) -> CaptureInput(path, role, "$role-$index") }
+            val inputs = observation.captureAll(project, requested).onEachIndexed { index, captured ->
+                if (captured.path.startsWith("external/")) bindings[captured.path] = requested[index].path.toFile().canonicalFile.toPath()
             } + InputFingerprint("options", "snapshot-options", ContentFingerprint.values(listOf(
                 scope.get(), includeSourcePaths.get().toString(), includePrivateMembers.get().toString(), namespace.orNull.orEmpty(),
             )))

@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `snapshot`의 입력 fingerprint가 파일 digest를 최대 4개 worker에서 병렬로 계산한다. digest 값·입력 순서·before/after 검증
+  계약·내용 해시 정책은 그대로이며, spool 예산은 입력 순서대로 크기 기준으로 선할당한 뒤 실제 크기로 정산한다.
+  dependency JAR이 많은 입력에서 fingerprint 단계 시간이 줄고, class 하나를 바꾼 뒤의 캡처 비율 측정은 `docs/INDEX-CACHE.md`에 기록한다.
+
 ### Fixed
 
 - `impact`의 계약 확장이 dispatch 모델의 호출자→구현 후보 간선(`origin = dispatchModel`)을 변경 method의 override로 잘못

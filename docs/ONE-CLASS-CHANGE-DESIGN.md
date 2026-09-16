@@ -1,0 +1,135 @@
+# 한 클래스 변경 캡처 속도 — 구조적 접근 설계 노트 (2026-09-16)
+
+`snapshot --index-cache`에서 class 하나를 바꾼 뒤의 캡처 시간이 전체 캡처의 85% 이하(15% 단축)로 **측정 조건에 관계없이** 나오게 하는 설계다.
+15%는 사용자가 요청한 수치가 아닌 내부 목표이며, 0.9.0 최종 0.8586·2026-09-16 1차 0.8538/0.8596 미달 기록은 그대로 둔다.
+이 문서는 설계 합의용으로 쓰였고, 단계 A는 합의 후 구현·측정했다(§9).
+
+## 1. 실측: 지배 단계
+
+기존 공식 러너 출력(`build/reports/benchmark-20260916/`, `--timings` stderr)을 재실행 없이 집계했다.
+집계 스크립트와 결과: `build/reports/one-class-design-20260916/phase-breakdown-run2-idle.txt`(2차·유휴 실행, 7회 중앙값).
+`other`는 벽시계 − (captureHash + indexTotal + snapshotRender), 즉 JVM 기동·클래스 로딩·keep/manifest 스캔·retention·출력 쓰기다.
+
+| 단계 (ms, 중앙값) | self full | self changed | self 비중 | nia full | nia changed | nia 비중 |
+|---|---:|---:|---:|---:|---:|---:|
+| captureHash (fingerprint, before+after 2패스) | 92 | 88 | 12.9% | 1367 | **1363** | **61.6%** |
+| index: read+cacheRead+parse+cacheWrite | 188 | 88 | 12.8% | 186 | 113 | 5.1% |
+| index: assembly | 73 | 69 | 10.1% | 94 | 81 | 3.7% |
+| index: hierarchy (dependency JAR header) | 4 | 4 | 0.5% | 467 | 128 | 5.8% |
+| index: runtime (값 전파) | 60 | 54 | 7.8% | 34 | 32 | 1.4% |
+| index: dispatch | 68 | 58 | 8.5% | 44 | 55 | 2.5% |
+| snapshotRender | 129 | 129 | 18.8% | 128 | 133 | 6.0% |
+| other | 183 | 164 | 23.9% | 270 | 254 | 11.5% |
+| **wall** | **807** | **686** | | **2616** | **2211** | |
+
+두 코호트의 병목이 다르다.
+
+- **nia**: fingerprint가 changed 벽시계의 62%다. 227개 JAR 208.7 MB를 before/after 두 번, 단일 스레드 SHA-256으로 읽는다(`FreshnessCommand.capture` → `VerifiedCaptureScope.capture` 순차 호출). 전역 분석(assembly+runtime+dispatch)은 8%에 불과하다. **HANDOFF의 "global analysis가 지배적이면 구조적 접근" 가설은 nia에서 기각된다.**
+- **self**: 지배 단계가 없다. 전역 분석 27%, 기타 24%, 렌더 19%, fingerprint 13%. 변경 시 줄어드는 것은 parse뿐(169→35)이고, 그 35 ms도 class 1개가 아니라 파서 클래스 로딩·JIT 예열이다(nia도 1개 파싱에 30 ms).
+
+## 2. 비율의 구조
+
+`ratio = (F + Vc) / (F + Vf)`. F = 두 모드에 공통인 고정비, Vf/Vc = full/changed의 가변비.
+
+| 코호트 | F | Vf | Vc | 현재 ratio | 전역 분석을 전부 없애도 | F를 150 ms 줄이면 |
+|---|---:|---:|---:|---:|---:|---:|
+| self | ≈ 400 (hash 88 + render 129 + other 164 + 잔여) | 403 | 290 | 0.850 | 0.63 (비현실) | 0.816 |
+| nia | ≈ 1760 | 858 | 453 | 0.845 | 0.73 (비현실) | 0.836 |
+
+F는 wall − indexTotal로 계산했다(self 807−403, nia 2616−858). "전역 분석을 전부 없애도"는 changed의 assembly+hierarchy+runtime+dispatch를 0으로 둔 가상 하한이다.
+
+self는 표본이 작아(0.8 s) 고정비가 비율을 지배한다. 전역 분석 재사용(후보 1)은 self에서 최대 180 ms를 건드리지만, nia에서는 fingerprint 한 항목(1.36 s)이 그보다 7배 크다.
+
+## 3. 후보 평가
+
+| 후보 | 근거 | 판단 |
+|---|---|---|
+| 1. 변경 없는 class의 분석 결과 재사용 | `RuntimeValueAnalyzer.enrich`는 class별로 돌지만 다른 class의 `returns`·`FieldWriteIndex`·전역 `typeSupers`·hierarchy를 소비하는 interprocedural 전파다. `projectOverrideEdges`·`ExternalDispatchIndexer`도 전역이다. 재사용하려면 분석 중 소비한 타 class 요약을 기록하는 의존 추적과 무효화 경계 증명이 필요하다. 이득 상한은 self 180 ms, nia 170 ms. | **보류.** 단계 A·B 측정 뒤에도 self가 0.82 밴드에 남을 때만 착수. |
+| 2. fingerprint 비용 절감 | nia 62%. spike(`ShaSpike.java`): 같은 227 JAR을 단일 스레드 596 ms, 4 worker 289 ms, 8 worker 264 ms. 하한은 87.5 MB JAR 한 개(≈250 ms). 이 JDK(17.0.20 aarch64)는 SHA intrinsic이 없어(`UseSHA=false`, 켜면 JVM 기동 거부) 단일 스레드 350 MB/s가 상한이다. | **채택 (단계 A).** 다이제스트 값·before/after 계약·내용 해시 정책 불변. |
+| 3. 목표 재정의 | 벽시계 비율은 고정비에 묶여 있어 self에서 조건 민감하다. 그러나 단계 A만으로 nia는 큰 여유가 생기고 self도 하한이 내려간다. | **채택 안 함.** 15% 지표는 그대로 두고, 러너에 단계 계약(§6)을 *보조 진단*으로만 추가한다. |
+
+추가로 확인한 고정비 지렛대(제품 코드 밖, `build/reports/one-class-design-20260916/spikes.md`):
+CLI 시작 스크립트의 JVM 옵션. self full 5회 중앙값: 기본 799 ms, `-XX:TieredStopAtLevel=1` 695 ms, AppCDS 765 ms, 둘 다 653 ms(load 4~5로 노이즈 있음, 로컬 0.9.0 installDist 사용).
+AppCDS는 같은 JDK 빌드에서만 유효한 아카이브가 필요해 배포 기본값이 될 수 없다. C1-only는 이식 가능하지만 긴 실행(nia)에서 C2 손실 여부를 측정해야 한다.
+
+## 4. 제안
+
+**단계 A — fingerprint 병렬화 (구조적, 계약 불변).** 주 변경.
+**단계 B — CLI JVM 고정비 (조건부).** nia full에서 손해가 없을 때만 `DEFAULT_JVM_OPTS`에 C1-only를 넣는다. Gradle plugin 경로에는 영향 없음(daemon 내부 실행).
+**단계 C — 후보 1.** A·B 측정 후 self가 여전히 0.82 이상이면 별도 설계로 착수한다. 이 문서 범위 밖.
+
+### 단계 A 상세
+
+**어디.** `index/VerifiedCaptureScope`에 일괄 캡처 진입점을 추가하고 `cli/FreshnessCommand.capture`가 파일 목록을 한 번에 넘긴다.
+`ContentFingerprint`의 해시 정의(정렬된 상대 이름 + 파일 다이제스트, 길이 구분 SHA-256)는 손대지 않는다.
+
+**무엇을 병렬로.**
+- 입력 목록(role, path, slot) 단위로 최대 4 worker(기존 class batch 정책과 동일)에서 `captureObserved`를 실행한다.
+- 디렉터리 입력(class root, source root)은 내부 파일 다이제스트를 같은 pool에서 계산하고, 상위 다이제스트 결합은 정렬 순서대로 주 스레드에서 한다.
+- before 패스와 after 패스 모두 적용한다. 두 패스 사이의 `phase` 상태 검사는 그대로 유지한다.
+
+**결정성.**
+- 파일 다이제스트는 서로 독립이고, 결합은 기존과 같은 순서로 주 스레드에서 하므로 결과 값은 순차 구현과 바이트 단위로 동일하다. 계약 테스트: 같은 입력에 대해 순차/병렬 `SnapshotProvenance` 동일, 캐시 on/off snapshot 바이트 동일(기존 테스트 유지).
+- 오류 우선순위: 계획 단계(입력 존재·symlink·역할 검사)는 모든 입력에 대해 digest보다 먼저 입력 순서대로 실행되므로, 계획 오류가 있으면 파일을 읽지 않고 그 중 첫 입력의 오류를 보고한다. 계획이 모두 통과하면 digest 오류 중 작업 순서상 첫 것을 보고한다. 이미 제출된 digest 작업은 취소하지 않고 끝까지 실행한 뒤 spool을 닫는다(순차 구현과 달리 "같은 입력의 읽기 오류가 뒤 입력의 계획 오류보다 먼저" 보고되지 않는다). 메시지(원시 경로 비노출)는 그대로다.
+- interrupt: 호출 스레드가 interrupt되면 worker가 이미 만든 spool을 별도 기록으로 닫고 `ClassIndexingException`으로 보고한다. worker 쪽 interrupt(`ClosedByInterruptException`)도 IO 실패가 아닌 중단으로 보고한다.
+- 순서·역할 검증(`verifyInputs`)은 `initialInputs`를 입력 순서대로 채우므로 변하지 않는다.
+
+**spool 예산.** cold population의 `remainingSpoolBytes`·`eligibleJars`는 현재 순차 캡처 순서에 의존한다. 병렬화 후에는 주 스레드가 입력 순서대로 `Files.size` 기준으로 예산을 **선할당**하고, 실제 spool 크기로 사후 정산한다.
+차이는 spool 쓰기가 중간에 실패한 경우 후속 JAR에 예산이 되돌아가지 않는 것뿐이며, spool은 최적화이지 검증이 아니므로(`INDEX-CACHE.md`) 정확성에 영향이 없다. 이 경우를 테스트로 고정한다.
+
+**메모리.** worker당 64 KiB 버퍼와 `MessageDigest` 하나. spool 상한(JAR 128 MiB, 총 256 MiB)은 그대로다.
+
+**무효화 경계.** 없음. fingerprint의 의미·값·비교 시점이 바뀌지 않으므로 캐시 항목·신선도 판정·witness 계약에 영향이 없다. 이 사실 자체를 계약 테스트로 남긴다.
+
+**예상 효과(추정, 측정으로 확인).** nia: captureHash 1363 → 약 600 ms(2×~290). changed ≈ 1450, full ≈ 1850, ratio ≈ 0.78. self: 392개 소파일이라 syscall 지배적이며 88 → 40~50 ms 추정, ratio ≈ 0.84. self는 단계 A만으로 안정 통과를 기대하지 않는다.
+
+### 단계 B 상세
+
+`cli/build.gradle.kts`의 `applicationDefaultJvmArgs`에 `-XX:TieredStopAtLevel=1`을 추가하는 한 줄이다. 채택 조건: nia full 7회 중앙값이 기본 대비 느려지지 않을 것. 느려지면 넣지 않고 spike 기록만 남긴다.
+self 추정: F −100 ms → 단계 A와 합쳐 ratio ≈ 0.80.
+
+## 5. 측정 계획
+
+HANDOFF의 측정 계약 그대로: 같은 러너(`measure-one-class-change.py`, `measure-index-cache.py`), 같은 고정 입력(frozen-self 392 class, nia 22 root·227 JAR), 7회 중앙값, load < 2 확인 후 시작, 1차·2차 모두 보존, `--timings` 동반, snapshot 바이트 일치·정확히 1개 재파싱·`hierarchyParsedJars=0` 유지.
+
+순서: ① 기준선(현재 main) → ② 단계 A → ③ 단계 A+B(nia full 손실 검사 포함). 각 단계의 단계별 집계를 `phase_breakdown.py`로 같이 남긴다.
+판정: 두 코호트 모두 ratio ≤ 0.85이고, self·nia의 7회 min–max 상한도 0.85 이하면 "안정 달성"으로 쓴다. 중앙값만 통과하면 "통과(조건 민감)"로 쓴다.
+
+## 6. 보조 진단 (목표를 바꾸지 않음)
+
+러너 요약에 단계 계약을 추가한다: `indexParsedClasses == 1`, `hierarchyParsedJars == 0`(이미 있음) + `captureHashNanos(changed) / wall(changed)` 비중 기록. 통과/미달 판정에는 쓰지 않고, 다음에 지표가 흔들릴 때 어느 단계가 흔들렸는지 바로 보이게 하는 용도다.
+
+## 7. 리스크
+
+- 병렬 fingerprint가 IO 경합으로 cold 페이지 캐시에서는 이득이 줄 수 있다. 러너는 warm 페이지 캐시 조건이므로 cold 조건은 별도로 기록만 한다.
+- spool 예산 선할당은 극단 실패 경로에서 spool 대상 JAR 집합을 바꿀 수 있다. 정확성은 불변이나 cold/full 비율에 미세 영향이 가능하므로 warm/cold 계약(≤0.85/≤1.10)을 같이 재측정한다.
+- C1-only는 JIT 특성상 큰 입력에서 느려질 수 있다. 측정으로 결정하며 기본값 변경을 추정으로 하지 않는다.
+- spool 예약은 `Files.size`로 정하므로 결정과 digest 사이에 JAR 크기가 바뀌면 그 묶음의 spool 대상 집합이 순차 구현과 다를 수 있다(순차 구현도 같은 종류의 TOCTOU가 있었다). 정확성에는 영향이 없다.
+- 모든 입력의 디렉터리 목록과 파일 관측을 동시에 메모리에 둔다(순차 구현은 입력 하나씩). 문서화된 규모(22 root·227 JAR)에서는 문제없으나 매우 큰 source root에서는 메모리 형태가 다르다.
+- self 코호트는 단계 A+B 후에도 0.80~0.84 밴드가 예상이다. 그때 단계 C(후보 1) 또는 목표 재정의를 다시 논의한다. 이 문서는 그 결정을 미리 내리지 않는다.
+
+## 8. 합의가 필요한 항목
+
+1. 단계 A를 먼저 구현하고 측정한 뒤 B를 조건부로 붙이는 순서.
+2. 단계 C(전역 분석 재사용)를 지금은 착수하지 않는 것.
+3. 구현 브랜치: HANDOFF대로 main(95c2cea)에서 새 브랜치를 만든다. 현재 체크아웃(`feat/adoption-competitiveness`)은 다른 세션이 같은 시각에 EventChannel 커밋(2952aec, 98a633e)을 쌓고 있고 미커밋 `HANDOFF.md`·`AGENTS.md`가 있으므로, 이 체크아웃에서 브랜치를 전환하지 않고 별도 worktree에서 구현하는 편이 안전하다.
+
+## 9. 단계 A 구현·측정 결과 (2026-09-16)
+
+구현: `VerifiedCaptureScope.captureAll`(입력 순서대로 spool 예산 선할당·사후 정산, 첫 JAR 앞 세그먼트는 캐시 준비와 겹침),
+`ContentFingerprint`의 계획→digest→결합 분해, `IndexWorkPool.map(chunkSize)`, CLI `FreshnessCommand.capture`·plugin `KartographSnapshotTask`의 일괄 호출.
+계약 테스트 `ParallelCaptureTest`(순차/병렬 값·순서 동일, 첫 오류 순서·spool 잔여 없음, 예산 순서). 근거 원본: `build/reports/benchmark-20260916-parallel/README.md`.
+
+| 코호트 | 지표 | 기준선(3회) | 후보(3회, 3차가 최종 코드) |
+|---|---|---|---|
+| nia | one-class/full | 0.840 / 0.828 / 0.835 | 0.781 / 0.782 / 0.821 |
+| nia | warm/full | 0.827 / 0.832 / 0.832 | 0.787 / 0.772 / 0.756 |
+| nia | changed captureHash | 1.34 s | 0.62~0.70 s |
+| self | one-class/full | **0.859** / 0.846 / 0.838 | **0.851** / 0.821 / 0.838 |
+| self | warm/full | 0.823 / 0.809 / 0.829 | **0.857** / 0.788 / 0.763 |
+| self | changed captureHash | 82~84 ms | 61 ms(최종), 85 ms(중간 빌드) |
+
+- nia는 예측(0.78)대로 안정적으로 내려갔고 절대 시간도 full 2.56→1.84 s, warm 2.13→1.40 s다.
+- self는 예측대로 노이즈 밴드에 남았다. 중간 빌드의 디렉터리 멤버 `Files.size`가 full 모드 captureHash를 +18 ms 늘려 제거했다(교차 측정 90→77 ms).
+- 1차 후보의 self warm 0.857 미달은 같은 실행의 모든 모드가 일괄 느려진 부하 사례였고 2차·3차는 통과했다. 기록은 보존한다.
+- **15% self 목표는 이 단계로 달성되지 않았다.** 다음은 단계 B(C1-only 측정)와, 그래도 남으면 단계 C다.

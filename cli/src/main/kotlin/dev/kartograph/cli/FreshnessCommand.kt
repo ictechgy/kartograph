@@ -4,6 +4,7 @@ import dev.kartograph.core.InputFingerprint
 import dev.kartograph.core.SnapshotProvenance
 import dev.kartograph.export.BuildWitnessCodec
 import dev.kartograph.export.ExternalInputBindingsCodec
+import dev.kartograph.index.CaptureInput
 import dev.kartograph.index.ContentFingerprint
 import java.io.PrintStream
 import java.nio.file.Path
@@ -75,11 +76,14 @@ internal object FreshnessCommand {
 
     fun capture(project: Path, files: List<Pair<String, Path>>, context: List<String>, witnessPaths: List<Path>,
         scope: dev.kartograph.index.VerifiedCaptureScope? = null): SnapshotProvenance {
-        fun fingerprint(path: Path, role: String, slot: String) = scope?.capture(project, path, role, slot)
-            ?: ContentFingerprint.capture(project, path, role, slot)
-        val inputs = files.mapIndexed { index, (role, path) -> fingerprint(path, role, "$role-$index") } +
+        // 파일과 witness를 한 묶음으로 넘겨 digest를 병렬화한다. provenance 순서(파일, 옵션, witness)는 그대로다.
+        val requested = files.mapIndexed { index, (role, path) -> CaptureInput(path, role, "$role-$index") } +
+            witnessPaths.mapIndexed { index, path -> CaptureInput(path, "witness", "witness-$index") }
+        val captured = scope?.captureAll(project, requested)
+            ?: requested.map { ContentFingerprint.capture(project, it.path, it.role, it.externalSlot) }
+        val inputs = captured.take(files.size) +
             InputFingerprint("options", "snapshot-options", ContentFingerprint.values(context)) +
-            witnessPaths.mapIndexed { index, path -> fingerprint(path, "witness", "witness-$index") }
+            captured.drop(files.size)
         val witnesses = witnessPaths.map { BuildWitnessCodec.parse(SnapshotFiles.readText(it.toString(), 64 * 1024 * 1024)) }
         return SnapshotProvenance(inputs, witnesses)
     }
