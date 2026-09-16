@@ -259,4 +259,51 @@ class ChangeImpactTest {
         assertEquals(NodeId("class:p/C"), result.changed.single().node.id)
         assertEquals(setOf(ImpactRevision.BASE, ImpactRevision.CURRENT), result.changed.single().presentIn)
     }
+
+    @Test fun `dispatch model candidates are not treated as overrides of a changed method`() {
+        // save가 인터페이스 iterator()를 호출하면 dispatch 모델은 save→구현 후보로 OVERRIDE(DISPATCH_MODEL) 간선을 만든다.
+        // 그 간선은 "save의 하위 override"가 아니므로 계약 확장에 쓰이면 안 되고, 실제 호출 사슬 createOrUpdate→write→save가 경로여야 한다.
+        val save = NodeId("method:p/Format#save()V")
+        val write = NodeId("method:p/Format#write()V")
+        val createOrUpdate = NodeId("method:p/Mapping#createOrUpdate()V")
+        val iterator = NodeId("method:p/Values#iterator()Ljava/util/Iterator;")
+        fun method(id: NodeId) = GraphNode(id, id.value.substringAfter('#').substringBefore('('), NodeKind.METHOD, location = SourceLocation("p.kt"))
+        val graph = CodeGraph(listOf(save, write, createOrUpdate, iterator).map(::method), listOf(
+            GraphEdge(write, save, EdgeKind.CALL),
+            GraphEdge(createOrUpdate, write, EdgeKind.CALL),
+            GraphEdge(save, iterator, EdgeKind.OVERRIDE, origin = EdgeOrigin.DISPATCH_MODEL),
+            GraphEdge(createOrUpdate, iterator, EdgeKind.OVERRIDE, origin = EdgeOrigin.DISPATCH_MODEL),
+        ))
+        val result = ChangeImpact.analyze(ImpactInput(graph), listOf(save.value))
+        assertEquals(listOf(write, createOrUpdate).sorted(), result.affected.map { it.node.id }.sorted())
+        val caller = result.affected.single { it.node.id == createOrUpdate }
+        assertEquals(ImpactRelation.TRANSITIVE, caller.relation)
+        assertEquals(listOf(createOrUpdate, write, save), caller.paths.single().nodes)
+    }
+
+    @Test fun `members of the changed class owner are not affected through their own owner reference`() {
+        // 모든 멤버는 소유 class를 REFERENCE로 참조하고 class는 <clinit>을 REFERENCE로 참조한다.
+        // <clinit> 변경이 class를 거쳐 자기 멤버 전부로 퍼지면 안 되고, class를 참조하는 외부 사용자는 남아야 한다.
+        val owner = NodeId("class:p/Locator")
+        val clinit = NodeId("method:p/Locator#<clinit>()V")
+        val field = NodeId("field:p/Locator#hints:Ljava/util/List;")
+        val member = NodeId("method:p/Locator#find()V")
+        val external = NodeId("method:p/Context#run()V")
+        val nodes = listOf(
+            GraphNode(owner, "Locator", NodeKind.CLASS, location = SourceLocation("Locator.kt")),
+            GraphNode(clinit, "<clinit>", NodeKind.METHOD, location = SourceLocation("Locator.kt")),
+            GraphNode(field, "hints", NodeKind.FIELD, location = SourceLocation("Locator.kt")),
+            GraphNode(member, "find", NodeKind.METHOD, location = SourceLocation("Locator.kt")),
+            GraphNode(external, "run", NodeKind.METHOD, location = SourceLocation("Context.kt")),
+        )
+        val graph = CodeGraph(nodes, listOf(
+            GraphEdge(owner, clinit, EdgeKind.MEMBER), GraphEdge(owner, field, EdgeKind.MEMBER), GraphEdge(owner, member, EdgeKind.MEMBER),
+            GraphEdge(owner, clinit, EdgeKind.REFERENCE),
+            GraphEdge(clinit, owner, EdgeKind.REFERENCE), GraphEdge(field, owner, EdgeKind.REFERENCE), GraphEdge(member, owner, EdgeKind.REFERENCE),
+            GraphEdge(external, owner, EdgeKind.REFERENCE),
+        ))
+        val result = ChangeImpact.analyze(ImpactInput(graph), listOf(clinit.value))
+        assertEquals(listOf(owner, external).sorted(), result.affected.map { it.node.id }.sorted())
+        assertEquals(ImpactRelation.TRANSITIVE, result.affected.single { it.node.id == external }.relation)
+    }
 }

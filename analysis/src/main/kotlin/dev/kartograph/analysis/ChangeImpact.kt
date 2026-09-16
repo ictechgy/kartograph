@@ -2,6 +2,7 @@ package dev.kartograph.analysis
 
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.EdgeKind
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
@@ -227,7 +228,7 @@ public object ChangeImpact {
             val contracts = seeds.toMutableSet()
             val contractQueue = ArrayDeque(seeds)
             while (contractQueue.isNotEmpty()) {
-                for (edge in input.graph.outgoingEdgesFrom(contractQueue.removeFirst()).filter { it.kind == EdgeKind.OVERRIDE }) {
+                for (edge in input.graph.outgoingEdgesFrom(contractQueue.removeFirst()).filter(::isOverrideContract)) {
                     if (edge.target in contracts) continue
                     if (contracts.size >= visitLimit) {
                         budgetTruncated = true
@@ -250,9 +251,10 @@ public object ChangeImpact {
             val root = seeds.associateWith { it }.toMutableMap()
             while (pending.isNotEmpty()) {
                 val (target, distance) = pending.removeFirst()
-                val incoming = input.graph.incomingEdgesTo(target).filter { it.kind.impliesUsage }.map { it.source to it }
+                val incoming = input.graph.incomingEdgesTo(target)
+                    .filter { it.kind.impliesUsage && !isOwnerReference(it) }.map { it.source to it }
                 val overrides = if (target in contracts) input.graph.outgoingEdgesFrom(target)
-                    .filter { it.kind == EdgeKind.OVERRIDE }.map { it.target to it } else emptyList()
+                    .filter(::isOverrideContract).map { it.target to it } else emptyList()
                 for ((dependent, edge) in (incoming + overrides).sortedWith(compareBy({ it.first }, { it.second }))) {
                     if (dependent in visited) continue
                     if (distance >= depth) {
@@ -440,6 +442,31 @@ public object ChangeImpact {
 
     private fun pathDepth(item: ImpactNode): Int = (item.paths.map { it.edges.size } + item.pathOmissions.map { it.requiredEdges })
         .minOrNull() ?: Int.MAX_VALUE
+
+    /**
+     * 계약 확장에 쓸 수 있는 진짜 override 간선(상위 선언→구현)인지 판단한다.
+     * dispatch 모델은 호출자→구현 후보를 같은 OVERRIDE 종류로 기록하므로(origin DISPATCH_MODEL), 이를 계약 확장에 쓰면
+     * 변경 method가 호출하는 인터페이스의 구현체가 "변경 계약의 override"로 잘못 포함되고 실제 호출 사슬 대신
+     * 후보 경로가 witness로 선택된다. 역방향 사용 관계(호출자가 이 구현으로 dispatch될 수 있음)로는 계속 쓴다.
+     */
+    private fun isOverrideContract(edge: GraphEdge): Boolean =
+        edge.kind == EdgeKind.OVERRIDE && edge.origin != EdgeOrigin.DISPATCH_MODEL
+
+    /**
+     * 멤버가 자기 소유 class를 가리키는 REFERENCE 간선인지 판단한다.
+     * 인덱서는 도달성(멤버가 살아 있으면 class도 살아 있음)을 위해 모든 method/field에서 소유 class로 REFERENCE를 만든다.
+     * 영향 탐색에서 이 간선을 사용 관계로 읽으면 class 정점에 닿는 변경(예: `<clinit>`)이 그 class의 모든 멤버로 퍼진다.
+     * 멤버는 소유 class의 소비자가 아니므로 제외하고, 다른 class에서 오는 참조와 중첩 class의 참조는 그대로 둔다.
+     */
+    private fun isOwnerReference(edge: GraphEdge): Boolean {
+        if (edge.kind != EdgeKind.REFERENCE) return false
+        val source = edge.source.value
+        val owner = when {
+            source.startsWith("method:") || source.startsWith("field:") -> source.substringAfter(':').substringBefore('#', "")
+            else -> return false
+        }
+        return owner.isNotEmpty() && edge.target.value == "class:$owner"
+    }
 
     private fun relation(paths: List<ImpactPath>, omissions: List<ImpactPathOmission>): ImpactRelation {
         val kinds = paths.flatMap { it.edges.map(GraphEdge::kind) } + omissions.flatMap { it.edgeKinds }
