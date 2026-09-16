@@ -73,7 +73,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             .joinToString("/")
         // FFI/JNI는 채널 조인 범위 밖의 interop다. 파일 수준으로만 관측해 한계 근거로 남긴다.
         val isJava = path.fileName.toString().endsWith(".java")
-        var fileHasJni = false
+        val strippedSource = StringBuilder()
         val flutterChannels = mutableMapOf<String, Channel>()
         var pendingChainedChannel: Channel? = null
         var pendingChannel: PendingChannel? = null
@@ -120,9 +120,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             val stripped = stripComments(line, inBlockComment)
             inBlockComment = stripped.inBlockComment
             val code = stripped.code
-            if (!fileHasJni && (JNI_INTEROP_PATTERN.containsMatchIn(code) ||
-                    (isJava && JAVA_NATIVE_METHOD_PATTERN.containsMatchIn(code)))
-            ) fileHasJni = true
+            strippedSource.append(code).append('\n')
             pendingChainedChannel?.let { channel ->
                 val handler = CHAINED_SUFFIX.find(code)
                 if (handler != null) {
@@ -237,7 +235,13 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             while (handlerScopes.lastOrNull()?.let { braceDepth < it.depth } == true) handlerScopes.removeLast()
             reactScope?.let { scope -> if (braceDepth < scope.depth) reactScope = null }
         }
-        if (fileHasJni) stats.jniInteropSources++
+        // JNI 표식은 문자열이 마스킹된 전체 뷰에서 판정한다 — 문자열 안의
+        // "System.loadLibrary(...)" 같은 텍스트를 선언으로 오인하지 않고,
+        // 여러 줄 `native` 시그니처도 잡기 위함이다.
+        val maskedSource = maskStringContents(strippedSource.toString())
+        if (JNI_INTEROP_PATTERN.containsMatchIn(maskedSource) ||
+            (isJava && JAVA_NATIVE_METHOD_PATTERN.containsMatchIn(maskedSource))
+        ) stats.jniInteropSources++
     }
 
     private fun fact(
@@ -424,6 +428,8 @@ public class BridgeFactScanner(private val projectRoot: Path) {
 // Java의 `native`는 Kotlin에서 예약어가 아니라 식별자가 될 수 있어 .java에만 적용한다.
 // v1·v2 브리지 스캐너가 같은 표식 한 벌을 공유한다.
 internal val JNI_INTEROP_PATTERN =
-    Regex("\\bSystem\\.loadLibrary\\s*\\(|\\bexternal\\s+fun\\b|\\bJava_[a-z][A-Za-z0-9_]*_[A-Za-z0-9_]+")
+    Regex("\\bSystem\\.loadLibrary\\s*\\(|\\bexternal\\s+fun\\b|\\bJava_[A-Za-z_][A-Za-z0-9_]*_[A-Za-z0-9_]+")
+// 제네릭(`List<? extends Foo>`)과 qualified 타입에 공백·`.`이 들어가고,
+// 반환 타입과 이름이 여러 줄로 갈라질 수 있어 `\s`를 허용한다.
 internal val JAVA_NATIVE_METHOD_PATTERN =
-    Regex("\\bnative\\s+[A-Za-z_][A-Za-z0-9_<>.?\\[\\]]*\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\(")
+    Regex("\\bnative\\s+[A-Za-z_][A-Za-z0-9_$.<>?\\[\\],\\s]*?\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\(")

@@ -48,7 +48,7 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
         }
         if (sourceOnlyCount > 0) limitations += "missing-handler-usrs: source scanning cannot resolve JVM identifiers for $sourceOnlyCount $noun fact(s); pass --graph-file with a matching compiler snapshot"
         if (stats.javaSources > 0) {
-            limitations += "${spec.javaLimitation}: raw Java source is scanned lexically; Kotlin metadata and generated Pigeon identities require --graph-file"
+            limitations += "${spec.javaLimitation}: raw Java source is scanned lexically; Kotlin metadata and generator-produced channel identities require --graph-file"
         }
         if (stats.jniInteropSources > 0) {
             limitations += "unscanned-ffi-interop: ${stats.jniInteropSources} Kotlin/Java source file(s) declare JNI/native interop outside channel join coverage"
@@ -71,8 +71,10 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
         val code = stripComments(source)
         val eventCode = maskStringContents(code)
         // 채널 계약 밖의 JNI/FFI interop은 파일 수준 한계로만 관측한다.
-        if (JNI_INTEROP_PATTERN.containsMatchIn(code) ||
-            (path.fileName.toString().endsWith(".java") && JAVA_NATIVE_METHOD_PATTERN.containsMatchIn(code))
+        // 문자열 리터럴 안의 표식은 마스킹된 뷰로 제외한다 — 로그 메시지의
+        // "System.loadLibrary(...)" 같은 텍스트를 선언으로 오인하지 않기 위해서다.
+        if (JNI_INTEROP_PATTERN.containsMatchIn(eventCode) ||
+            (path.fileName.toString().endsWith(".java") && JAVA_NATIVE_METHOD_PATTERN.containsMatchIn(eventCode))
         ) stats.jniInteropSources++
         val events = mutableListOf<Event>()
         CONSTRUCTOR.findAll(eventCode).forEach { match ->
@@ -150,8 +152,12 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
     private fun previousChainedConstructor(events: List<Event>, offset: Int, source: String): Event.Constructor? =
         events.filterIsInstance<Event.Constructor>().lastOrNull { constructor ->
             (constructor.end == offset && source.getOrNull(offset) == ')') ||
-                (constructor.end < offset && source.substring(constructor.end + 1, offset).trim() == ".")
+                (constructor.end < offset && isChainedSeparator(source, constructor.end + 1, offset))
         }
+
+    /** `)`와 메서드 이름 사이가 `.`·`!!.`·`?.`처럼 연쇄 호출 접미사만인지 확인한다. */
+    private fun isChainedSeparator(source: String, from: Int, to: Int): Boolean =
+        source.substring(from, to).replace("!!", "").replace("?", "").trim() == "."
 
     private fun precedingBinding(source: String, offset: Int): BindingSpec? {
         val prefix = source.substring(0, offset).takeLast(240)
@@ -228,37 +234,6 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
             }
         }
         return stack.toList()
-    }
-
-    /** Event regexes run against a string-masked view, so code-like text is not a fact. */
-    private fun maskStringContents(source: String): String {
-        val out = StringBuilder(source.length)
-        var quote = false
-        var rawQuote = false
-        var escaped = false
-        var index = 0
-        while (index < source.length) {
-            if (!quote && source.startsWith("\"\"\"", index)) {
-                rawQuote = true; quote = true; out.append("   "); index += 3; continue
-            }
-            if (rawQuote && source.startsWith("\"\"\"", index)) {
-                rawQuote = false; quote = false; out.append("   "); index += 3; continue
-            }
-            val c = source[index]
-            when {
-                rawQuote && c == '\n' -> out.append('\n')
-                rawQuote -> out.append(' ')
-                !quote && c == '"' -> { quote = true; out.append(c) }
-                quote && escaped -> { escaped = false; out.append(' ') }
-                quote && c == '\\' -> { escaped = true; out.append(' ') }
-                quote && c == '"' -> { quote = false; out.append(c) }
-                quote && c == '\n' -> out.append('\n')
-                quote -> out.append(' ')
-                else -> out.append(c)
-            }
-            index++
-        }
-        return out.toString()
     }
 
     private fun balancedEnd(source: String, open: Int): Int {
@@ -407,6 +382,41 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
         val ALIAS_CONTINUATION = Regex("^(?:[.+*/%?:<>=!&|\\-]|get\\b|@)")
         val ALIAS_ASSIGNMENT = Regex("(?m)\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)")
     }
+}
+
+/**
+ * 문자열 리터럴 내용을 공백으로 마스킹한 뷰를 만든다 — 이벤트 regex와 JNI 표식
+ * 판정이 코드처럼 생긴 문자열 텍스트를 사실·선언으로 오인하지 않기 위해서다.
+ * v1·v2 브리지 스캐너가 공유한다.
+ */
+internal fun maskStringContents(source: String): String {
+    val out = StringBuilder(source.length)
+    var quote = false
+    var rawQuote = false
+    var escaped = false
+    var index = 0
+    while (index < source.length) {
+        if (!quote && source.startsWith("\"\"\"", index)) {
+            rawQuote = true; quote = true; out.append("   "); index += 3; continue
+        }
+        if (rawQuote && source.startsWith("\"\"\"", index)) {
+            rawQuote = false; quote = false; out.append("   "); index += 3; continue
+        }
+        val c = source[index]
+        when {
+            rawQuote && c == '\n' -> out.append('\n')
+            rawQuote -> out.append(' ')
+            !quote && c == '"' -> { quote = true; out.append(c) }
+            quote && escaped -> { escaped = false; out.append(' ') }
+            quote && c == '\\' -> { escaped = true; out.append(' ') }
+            quote && c == '"' -> { quote = false; out.append(c) }
+            quote && c == '\n' -> out.append('\n')
+            quote -> out.append(' ')
+            else -> out.append(c)
+        }
+        index++
+    }
+    return out.toString()
 }
 
 /** transport별 표면 차이 — 생성자·등록 메서드·fact kind·한계 라벨만 다르고 스캔 의미는 같다. */

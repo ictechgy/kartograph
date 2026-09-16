@@ -980,4 +980,116 @@ class BridgeFactScannerTest {
         assertTrue(document.limitations.none { it.startsWith("unscanned-ffi-interop:") })
         assertEquals("charging", document.facts.single().channel)
     }
+
+    @Test
+    fun `events attributes a stream handler chained through non-null assert`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              EventChannel(messenger, "charging")!!.setStreamHandler(ChargingHandler())
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanEvents()
+
+        val fact = document.facts.single()
+        assertEquals("stream-handle", fact.kind)
+        assertEquals("charging", fact.channel)
+        assertTrue(!fact.dynamic)
+        assertTrue(document.limitations.none { it.startsWith("unattributed-stream-handles:") })
+    }
+
+    @Test
+    fun `events attributes a receiver reached through safe call or non-null assert`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            class Plugin {
+              private var channel: EventChannel? = null
+              private val direct = EventChannel(messenger, "direct")
+              fun register(messenger: Any) {
+                direct!!.setStreamHandler(handler)
+                channel?.setStreamHandler(handler)
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scanEvents().facts
+
+        assertEquals(2, facts.size)
+        assertEquals("direct", facts[0].channel)
+        assertTrue(!facts[0].dynamic)
+        assertTrue(facts[1].dynamic)
+        // mutable 이름은 literal로 확정하지 않고 원 표현을 dynamic으로 보존한다.
+        assertEquals("channel", facts[1].channel)
+    }
+
+    @Test
+    fun `messages counts send calls through safe call and non-null assert`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            class Plugin(codec: Any) {
+              private val channel = BasicMessageChannel<Any?>(messenger, "pigeon", codec)
+              fun emit() {
+                channel!!.send("payload")
+                channel?.send("payload")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scanMessages()
+
+        assertTrue(document.limitations.any { it.startsWith("unscanned-message-sends: 2") })
+    }
+
+    @Test
+    fun `does not flag JNI markers inside string literals`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText(
+            """
+            class Plugin {
+              fun explain() {
+                println("call System.loadLibrary(\"x\") to load, or declare external fun")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val scans = listOf(
+            BridgeFactScanner(project).scan().limitations,
+            BridgeFactScanner(project).scanEvents().limitations,
+            BridgeFactScanner(project).scanMessages().limitations,
+        )
+
+        assertTrue(scans.all { limitations ->
+            limitations.none { it.startsWith("unscanned-ffi-interop:") }
+        })
+    }
+
+    @Test
+    fun `reports Java native methods with generics multiline and default-package JNI names`(@TempDir project: Path) {
+        project.resolve("Native.java").writeText(
+            """
+            class Native {
+              private native List<? extends Foo>
+                load(String key);
+            }
+            """.trimIndent(),
+        )
+        project.resolve("Exports.kt").writeText(
+            """
+            class Exports {
+              fun named() = Unit
+            }
+            fun Java_MyClass_open(): Int = 0
+            """.trimIndent(),
+        )
+
+        val label = "unscanned-ffi-interop"
+        assertTrue(
+            BridgeFactScanner(project).scanEvents().limitations
+                .any { it.startsWith("$label: 2") },
+        )
+    }
 }
