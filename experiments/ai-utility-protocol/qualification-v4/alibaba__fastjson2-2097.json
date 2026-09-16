@@ -1,0 +1,135 @@
+{
+  "case": "alibaba__fastjson2-2097",
+  "repository": "alibaba/fastjson2",
+  "language": "java",
+  "checkout": {
+    "command": "git clone --filter=blob:none https://github.com/alibaba/fastjson2.git base && git -C base checkout --detach 3f6275bcc3cd40a57f6d257cdeec322d1b9ae06d",
+    "headSha": "3f6275bcc3cd40a57f6d257cdeec322d1b9ae06d",
+    "headSubject": "Bump com.networknt:json-schema-validator from 1.0.87 to 1.0.88",
+    "workingTreeClean": true,
+    "untrackedFilesAdded": [],
+    "note": "git status --porcelain은 추적 파일 변경 0건이다. 빌드 산출물은 .gitignore 대상이다.",
+    "scratchPath": "<scratch>/alibaba__fastjson2-2097/base"
+  },
+  "netProductionDiff": {
+    "source": {
+      "kind": "multi-swe-bench fix_patch",
+      "datasetFile": "java/alibaba__fastjson2_dataset.jsonl",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetSha256": "7e02214eba338dcfb41c961f15cec28d299dda5c74836794463ae70a3c0832a4",
+      "datasetSha256Verified": true,
+      "note": "fix_patch에 test 파일이 없어 net production diff가 fix_patch와 같다."
+    },
+    "productionFiles": [
+      "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java"
+    ],
+    "excludedTestFiles": [],
+    "bytes": 925,
+    "sha256": "4ce8b37cdf1832adae6f18314f988196ac01e9c56edd40253df2e1e7fc6fc746",
+    "gitApplyCheck": {
+      "command": "git -C base apply --check alibaba__fastjson2-2097.net-production.diff",
+      "exitCode": 0,
+      "result": "applies cleanly to the pinned base"
+    },
+    "applied": false,
+    "note": "그래프·oracle은 변경 전 원본에서만 만들었다. diff를 checkout에 적용하지 않았다.",
+    "scratchPath": "<scratch>/diffs/alibaba__fastjson2-2097.net-production.diff"
+  },
+  "environment": {
+    "javaHome": "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home",
+    "javaVersion": "17.0.20 (Homebrew)"
+  },
+  "build": [
+    {
+      "step": "main+test compile",
+      "command": "./mvnw -B -pl core -am -DskipTests test-compile",
+      "cwd": "base",
+      "wallSeconds": 53.22,
+      "buildToolSeconds": 52.456,
+      "result": "SUCCESS",
+      "log": "logs/build-fastjson2.log"
+    }
+  ],
+  "buildWorkarounds": [],
+  "failToPass": [
+    {
+      "declared": "com.alibaba.fastjson2.issues_2000.Issue2096",
+      "declaredBy": "Multi-SWE-bench f2p_tests (run=NONE, test=FAIL, fix=PASS)",
+      "presentAtBase": false,
+      "result": "MISSING_AT_BASE",
+      "detail": "core/src/test/java/com/alibaba/fastjson2/issues_2000/Issue2096.java는 test_patch가 새로 추가하는 파일이다. 변경 전 원본에는 없으므로 base에서 실패시킬 수 없다. 새 테스트를 주입하지 않았다."
+    }
+  ],
+  "oracleTestRuns": [],
+  "changedSymbols": {
+    "symbols": [
+      "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+    ],
+    "derivation": "net production diff가 바꾼 선언을 원본 source와 javap 선언으로 확인했다."
+  },
+  "javapCollection": {
+    "tool": "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home/bin/javap",
+    "collector": "experiments/preflight-evaluation/collect_direct_oracle.py (원본) + scratch collect_refs.py (field 참조와 다중 root 지원 추가)",
+    "collectorEquivalence": "두 Java 사례에서 collect_refs.py의 결과가 원본 collect_direct_oracle.py 결과와 depth1·depth2·indirectNew 모두 완전히 일치함을 확인했다.",
+    "classRoots": 2,
+    "classCount": 5825,
+    "depth1Callers": 4,
+    "depth2Callers": 4,
+    "indirectNewTargets": 3,
+    "expansionRule": "3단계 규칙대로 depth-1 직접 호출자 전부를 확장했다. 선택도 상한도 두지 않았다.",
+    "directOracleSha256": "210ad2b26b8b27d7fdeaa036154a23e669e75883eb68c4ec56127de083ce6dbf",
+    "indirectOracleSha256": "5254a685b4063fce8ed39a0fc82c54ac0e9ee043702c01ee6bcccdadcfe6f62a",
+    "scratchPath": "<scratch>/alibaba__fastjson2-2097/refs"
+  },
+  "oracleCounts": {
+    "targets": 4,
+    "indirectTargets": 3,
+    "total": 7,
+    "responseCap": 12,
+    "recallCeiling": 1.0
+  },
+  "transitiveCase": true,
+  "ownerLevelScanNote": "owner 단위(바뀐 심볼의 소유 클래스 전체) 스캔에서는 test root 참조가 JSONTest.test_list_0 한 건이다. 다만 그 참조 대상은 INSTANCE 필드·getFieldReader·createInstance 등 바뀌지 않은 멤버이고 바뀐 of(Type,Class,long)가 아니다. 균일한 owner 단위 규칙은 jackson에서 461건으로 폭발하므로 채택하지 않았고, 이 사례의 oracle에는 test 대상이 없다.",
+  "notInOracle": [
+    "바뀐 of(Type,Class,long)는 static이라 override 지점이 없고, 별도 등록 지점도 없다. 4개 직접 호출자가 조회·생성 지점 자체다."
+  ],
+  "snapshot": {
+    "command": "kartograph snapshot --classes <root>... --project . --include-paths --compact --snapshot-max-mib 128",
+    "classRoots": 2,
+    "firstAttemptV1Format": {
+      "result": "FAILED",
+      "seconds": 6.17,
+      "error": "query snapshot exceeds 128 MiB; use --compact, increase --snapshot-max-mib up to 128, or capture a narrower input scope"
+    },
+    "compact": {
+      "bytes": 76065285,
+      "seconds": 4.65,
+      "sha256": "381a989179feabaa640e0ce85ecf46bc55c99c43a0ad444c73ebf6e3180ed212",
+      "scratchPath": "<scratch>/snapshots/alibaba__fastjson2-2097.compact.json"
+    },
+    "freshness": "수동 snapshot이라 compiler witness가 없다. 제품 신선도는 unverified로 남는다."
+  },
+  "impactCrossCheck": {
+    "command": "kartograph impact <changed symbols> --graph-file <compact snapshot> --snapshot-max-mib 128 --depth {1,2} --all",
+    "toolVersion": "0.10.0",
+    "status": "partial (truncated.depth=true, 의도한 depth 제한)",
+    "directAgreement": {
+      "javap": 4,
+      "product": 4,
+      "intersection": 4
+    },
+    "indirectAgreement": {
+      "javap": 3,
+      "productTransitive": 3,
+      "intersection": 3
+    },
+    "productOnlyDirect": [],
+    "javapOnlyDirect": [],
+    "productOnlyIndirect": [],
+    "javapOnlyIndirect": [],
+    "structuralNote": "impact depth1의 structural 8건은 ParameterizedType 구현체의 getRawType/getActualTypeArguments로, 바뀐 심볼에 대한 javap 직접 참조가 아니다. oracle에 넣지 않았다.",
+    "discrepancies": [],
+    "rule": "제품 결과는 정답이 아니다. oracle 항목을 추가하거나 빼지 않았다.",
+    "scratchPath": "<scratch>/impact"
+  }
+}

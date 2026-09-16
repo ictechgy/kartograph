@@ -1,0 +1,181 @@
+{
+  "stage": "ai-utility v4 qualification",
+  "note": "모델·제품 질의로 oracle을 바꾸지 않았다. 모든 수치는 실제 실행 로그에서 왔다. 대용량 산출물(snapshot, javap 덤프, 빌드 로그)은 저장소에 넣지 않고 scratch 경로와 해시만 남긴다.",
+  "host": {
+    "platform": "darwin arm64 (macOS 25.6.0)"
+  },
+  "jdks": {
+    "primary": {
+      "path": "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home",
+      "version": "openjdk 17.0.20 2026-07-21 (Homebrew)"
+    },
+    "ktlintOnly": {
+      "path": "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home",
+      "version": "openjdk 21.0.12 2026-07-21 (Homebrew)",
+      "reason": "ktlint build-logic이 class file 65를 만들어 JDK 17 Gradle 실행이 실패한다."
+    }
+  },
+  "javap": {
+    "path": "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home/bin/javap",
+    "version": "17.0.20",
+    "note": "네 사례 모두 같은 javap로 수집했다. 모든 class root의 class file major version이 17 이하다."
+  },
+  "buildTools": {
+    "mavenWrapper": "apache-maven 3.9.0 (both Java checkouts' .mvn/wrapper)",
+    "gradleWrapper": {
+      "detekt": "gradle-8.10-all",
+      "ktlint": "gradle-8.10-bin"
+    }
+  },
+  "kartographCli": {
+    "path": "<kartograph-cli-install>/bin/kartograph",
+    "version": "0.10.0",
+    "worktreeHead": "e06b9fb426a5f4faa0ad3bc3ee0f97eeb9137d4c",
+    "launcherSha256": "7f983b9cc8b08b159ac6dd7ebf5a06f1bca26ba1d7c7750cbe793a6d6f0a460e",
+    "jarSha256": {
+      "analysis-0.10.0.jar": "d9a494408a77e21538555c5911f20b85fe140bcc62c996fe01a8106281181a23"
+    },
+    "usage": "읽기 전용 교차 확인에만 썼다. oracle 생성에는 쓰지 않았다."
+  },
+  "scripts": {
+    "collect_direct_oracle.py": {
+      "path": "experiments/preflight-evaluation/collect_direct_oracle.py",
+      "sha256": "dac9996a78506ff3448a83cbcc343d72af2013180afa0f72919733effd13c3aa",
+      "role": "원본 직접 참조 수집기. 수정하지 않았다."
+    },
+    "collect_refs.py": {
+      "path": "experiments/ai-utility-protocol/qualification-v4/tools/collect_refs.py",
+      "sha256": "8c2fccdee1bdeb5682148c9bfcc6568c334ed1940e51bb37c21a543c2bdbdd70",
+      "asRunSha256": "7f2580acd5e876d325b64486261db45e9e048d815a96b5f602722963ecc92f9a",
+      "asRunDelta": "실행본과 저장본의 차이는 collect_direct_oracle.py를 찾는 sys.path 한 줄뿐이다. 저장본으로 네 사례를 다시 수집해 depth1·depth2 direct-invocations.json과 depth-summary.json이 바이트까지 같음을 확인했다.",
+      "role": "원본 collect_direct_oracle.py의 method_name 파서를 import하고 field 참조(getstatic/putstatic/getfield/putfield)와 다중 class root를 추가했다."
+    },
+    "driver2.py": {
+      "path": "experiments/ai-utility-protocol/qualification-v4/tools/driver2.py",
+      "sha256": "2d29290fc76269b68b61218d06cdf37ef7cf2f2ba94de817a5ed6a3133d1427b",
+      "asRunSha256": "2d29290fc76269b68b61218d06cdf37ef7cf2f2ba94de817a5ed6a3133d1427b",
+      "role": "depth-1 수집 후 직접 호출자 전부를 target으로 삼아 depth-2를 수집한다. 선택·상한 없음."
+    },
+    "build_oracle.py": {
+      "path": "<scratch>/oracle-work/build_oracle.py",
+      "sha256": "90a1e696427795e3f21865001ad41b31cbc2de156fff5357aa9bcf9eb606486f",
+      "role": "oracle-v4.json 조립. 증거 수집이 아니라 기록 조립이라 저장소에 넣지 않았다."
+    },
+    "build_records.py": {
+      "path": "<scratch>/oracle-work/build_records.py",
+      "sha256": "bcb09012a0b412ce6e437aaa854c82c659be1d64a1d3391b22bf55df41b02f33",
+      "role": "사례 기록 JSON 조립."
+    },
+    "sanitize.py": {
+      "path": "<scratch>/oracle-work/sanitize.py",
+      "sha256": "062fffeb44743af5335d81c27620c3db48b870b914ecb635870fb86d4f88a12a",
+      "role": "공개 기록의 로컬 절대경로를 <scratch>/<kartograph-cli-install> 토큰으로 바꾼다."
+    }
+  },
+  "datasets": {
+    "multiSweBench": {
+      "revision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "files": {
+        "java/alibaba__fastjson2_dataset.jsonl": {
+          "bytes": 3658853,
+          "sha256": "7e02214eba338dcfb41c961f15cec28d299dda5c74836794463ae70a3c0832a4",
+          "matchesReceipt": true
+        },
+        "java/fasterxml__jackson-core_dataset.jsonl": {
+          "bytes": 967999,
+          "sha256": "21f1f1350dcaf687840f6cf0dce4198c7958cc66cd6ab6722a0dd3a18860147e",
+          "matchesReceipt": true
+        }
+      }
+    },
+    "kotlinSweBench": {
+      "revision": "b9025d86f7ae634901396766bd61f6d4ae6d2165",
+      "note": "Kotlin 두 사례의 production 변경은 dataset이 아니라 GitHub PR의 net diff에서 받았다. PR base SHA가 cohort의 고정 base와 같음을 확인했다."
+    }
+  },
+  "scratchRoot": "<scratch>",
+  "oracle": {
+    "path": "experiments/ai-utility-protocol/oracle-v4.json",
+    "sha256": "c05648e7916af7a0ad039cba4bfcf77caa9d5e8779c8fe7d8248679e77a276fb",
+    "bytes": 44440
+  },
+  "largeArtifacts": [
+    {
+      "kind": "compact snapshot",
+      "case": "alibaba__fastjson2-2097",
+      "path": "<scratch>/snapshots/alibaba__fastjson2-2097.compact.json",
+      "bytes": 76065285,
+      "sha256": "381a989179feabaa640e0ce85ecf46bc55c99c43a0ad444c73ebf6e3180ed212"
+    },
+    {
+      "kind": "compact snapshot",
+      "case": "fasterxml__jackson-core-1016",
+      "path": "<scratch>/snapshots/fasterxml__jackson-core-1016.compact.json",
+      "bytes": 4544622,
+      "sha256": "81815623d96165d7f49c482d2e8ddb8204fcbb8434d830c9a8233bf4f105dd70"
+    },
+    {
+      "kind": "compact snapshot",
+      "case": "detekt_detekt-7625",
+      "path": "<scratch>/snapshots/detekt_detekt-7625.compact.json",
+      "bytes": 38185675,
+      "sha256": "717f092d0c49d917bc8708780fdd8088eaaa805c5f9f567d7d5e1af75a943f2a"
+    },
+    {
+      "kind": "compact snapshot",
+      "case": "pinterest_ktlint-2785",
+      "path": "<scratch>/snapshots/pinterest_ktlint-2785.compact.json",
+      "bytes": 26373429,
+      "sha256": "645e29f19cbec3c3310860f3c1480ceabeeb849d5d3758eae74a47b11475a21e"
+    },
+    {
+      "kind": "javap dump + direct-invocations.json",
+      "case": "alibaba__fastjson2-2097",
+      "path": "<scratch>/alibaba__fastjson2-2097/refs"
+    },
+    {
+      "kind": "javap dump + direct-invocations.json",
+      "case": "fasterxml__jackson-core-1016",
+      "path": "<scratch>/fasterxml__jackson-core-1016/refs"
+    },
+    {
+      "kind": "javap dump + direct-invocations.json",
+      "case": "detekt_detekt-7625",
+      "path": "<scratch>/detekt_detekt-7625/refs"
+    },
+    {
+      "kind": "javap dump + direct-invocations.json",
+      "case": "pinterest_ktlint-2785",
+      "path": "<scratch>/pinterest_ktlint-2785/refs"
+    },
+    {
+      "kind": "build/test logs",
+      "path": "<scratch>/logs"
+    },
+    {
+      "kind": "impact JSON outputs",
+      "path": "<scratch>/impact"
+    },
+    {
+      "kind": "net production diffs",
+      "path": "<scratch>/diffs"
+    }
+  ],
+  "scratchRootNote": "실제 절대경로는 로컬에만 두고 공개 기록에는 남기지 않는다(AGENTS.md). 이 단계의 <scratch>는 실행 에이전트가 운영자에게 따로 보고한 세션 scratch 디렉터리다. 재현 시에는 같은 구조(<scratch>/<case>/base, /diffs, /snapshots, /impact, /logs, /oracle-work)를 만들면 된다.",
+  "committedInputs": {
+    "qualification-v4/inputs/alibaba__fastjson2-2097-changed-symbols.txt": "70c86b9355aab3097b66dd8b7ae303558b691e72b6cd44e8bd943dff32469fe6",
+    "qualification-v4/inputs/alibaba__fastjson2-2097-class-roots.txt": "cf180a72c7d58b5e91c00656e905fdb98df22cd631b083987ec5cd3264e5b033",
+    "qualification-v4/inputs/detekt_detekt-7625-changed-symbols.txt": "5d3b06a7a12cec49cd308748ac42947df203627c276a41973aee7d7e91d31844",
+    "qualification-v4/inputs/detekt_detekt-7625-class-roots.txt": "4184e709a522b538e5686e1e54c33cce0a30463983c0144881baf4d69a9d5ba0",
+    "qualification-v4/inputs/fasterxml__jackson-core-1016-changed-symbols.txt": "07c915dc141eac223c96ef6e17215a399bb85d840542483062bacfa271c4dc84",
+    "qualification-v4/inputs/fasterxml__jackson-core-1016-class-roots.txt": "055fd47dc91652e7c7b2362438ca62342d725928d303228a4286d149669a53b0",
+    "qualification-v4/inputs/pinterest_ktlint-2785-changed-symbols.txt": "47ca86bd23f4d5d31ce2035859fca1434d382a034d08c05e73c4006d99712d31",
+    "qualification-v4/inputs/pinterest_ktlint-2785-class-roots.txt": "6d19b807bc1d93d7cb14a846f0e4dd9b00ce280bd02a4f8f3237de559989682d"
+  },
+  "netProductionDiffSha256": {
+    "alibaba__fastjson2-2097": "4ce8b37cdf1832adae6f18314f988196ac01e9c56edd40253df2e1e7fc6fc746",
+    "detekt_detekt-7625": "c01f307f434a890d91835c497a815b726a53c762bb99cdcac8624de0f13dcbc3",
+    "fasterxml__jackson-core-1016": "e323b0e8c68acd4fae2b987e90068fbd70cde4acdedc10f3fcccaebc0210825a",
+    "pinterest_ktlint-2785": "a399971f2a3a97a0be9a9cbbf4f0df7e442d1dae463d5aa60957f441cf9c9e74"
+  }
+}

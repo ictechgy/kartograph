@@ -1,0 +1,164 @@
+{
+  "case": "fasterxml__jackson-core-1016",
+  "repository": "FasterXML/jackson-core",
+  "language": "java",
+  "checkout": {
+    "command": "git clone --filter=blob:none https://github.com/FasterXML/jackson-core.git base && git -C base checkout --detach 315ac5ad2ad5228129a3df50623570d9bc2d7045",
+    "headSha": "315ac5ad2ad5228129a3df50623570d9bc2d7045",
+    "headSubject": "Merge branch '2.15' into 2.16",
+    "workingTreeClean": true,
+    "untrackedFilesAdded": [
+      "pom-release-parent.xml"
+    ],
+    "note": "git status --porcelain은 추적 파일 변경 0건이다. 빌드 산출물은 .gitignore 대상이다.",
+    "scratchPath": "<scratch>/fasterxml__jackson-core-1016/base"
+  },
+  "netProductionDiff": {
+    "source": {
+      "kind": "multi-swe-bench fix_patch",
+      "datasetFile": "java/fasterxml__jackson-core_dataset.jsonl",
+      "datasetRevision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "datasetSha256": "21f1f1350dcaf687840f6cf0dce4198c7958cc66cd6ab6722a0dd3a18860147e",
+      "datasetSha256Verified": true,
+      "note": "fix_patch에 test 파일이 없어 net production diff가 fix_patch와 같다."
+    },
+    "productionFiles": [
+      "src/main/java/com/fasterxml/jackson/core/JsonFactory.java",
+      "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+      "src/main/java/com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase.java"
+    ],
+    "excludedTestFiles": [],
+    "bytes": 3878,
+    "sha256": "e323b0e8c68acd4fae2b987e90068fbd70cde4acdedc10f3fcccaebc0210825a",
+    "gitApplyCheck": {
+      "command": "git -C base apply --check fasterxml__jackson-core-1016.net-production.diff",
+      "exitCode": 0,
+      "result": "applies cleanly to the pinned base"
+    },
+    "applied": false,
+    "note": "그래프·oracle은 변경 전 원본에서만 만들었다. diff를 checkout에 적용하지 않았다.",
+    "scratchPath": "<scratch>/diffs/fasterxml__jackson-core-1016.net-production.diff"
+  },
+  "environment": {
+    "javaHome": "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home",
+    "javaVersion": "17.0.20 (Homebrew)"
+  },
+  "build": [
+    {
+      "step": "main+test compile",
+      "command": "./mvnw -B -f pom-release-parent.xml -DskipTests test-compile",
+      "cwd": "base",
+      "wallSeconds": 26.33,
+      "buildToolSeconds": 24.431,
+      "result": "SUCCESS",
+      "log": "logs/build-jackson.log"
+    }
+  ],
+  "buildWorkarounds": [
+    {
+      "problem": "원본 pom.xml의 parent가 미배포 com.fasterxml.jackson:jackson-base:2.16.0-SNAPSHOT이다.",
+      "fix": "checkout 루트에 추적되지 않는 pom-release-parent.xml을 만들어 parent만 정식 2.16.0으로 바꾸고 -f로 지정했다. 원본 pom.xml과 source는 바꾸지 않았다(git status에 ?? pom-release-parent.xml만 남는다).",
+      "precedent": "v3에서 같은 2.16.0-SNAPSHOT parent 문제에 쓴 것과 같은 방식"
+    }
+  ],
+  "failToPass": [
+    {
+      "declared": "com.fasterxml.jackson.core.json.JsonFactoryTest",
+      "declaredBy": "Multi-SWE-bench f2p_tests (run=PASS, test=FAIL, fix=PASS)",
+      "presentAtBase": true,
+      "result": "PASSES_AT_BASE",
+      "detail": "test_patch가 추가하는 testCanonicalizationEnabled/testCanonicalizationDisabled 두 메서드는 base에 없다. base의 JsonFactoryTest 7개는 모두 통과한다. 새 테스트를 주입하지 않았다.",
+      "baseRun": {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    }
+  ],
+  "oracleTestRuns": [
+    {
+      "command": "./mvnw -B -f pom-release-parent.xml test -Dsurefire.failIfNoSpecifiedTests=false -Dtest='JsonFactoryTest,AsyncLocationTest,AsyncTokenFilterTest,LargeNumberWriteTest,JsonParserClosedCaseTest,SimpleParserTest'",
+      "wallSeconds": 6.65,
+      "buildToolSeconds": 5.89,
+      "result": "Tests run: 52, Failures: 0, Errors: 0, Skipped: 0",
+      "log": "logs/test-jackson.log"
+    }
+  ],
+  "changedSymbols": {
+    "symbols": [
+      "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+      "method:com/fasterxml/jackson/core/JsonFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+      "method:com/fasterxml/jackson/core/JsonFactory#_createParser(Ljava/io/DataInput;Lcom/fasterxml/jackson/core/io/IOContext;)Lcom/fasterxml/jackson/core/JsonParser;",
+      "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#addName([III)Ljava/lang/String;",
+      "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_addName([III)Ljava/lang/String;"
+    ],
+    "derivation": "net production diff가 바꾼 선언을 원본 source와 javap 선언으로 확인했다."
+  },
+  "javapCollection": {
+    "tool": "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home/bin/javap",
+    "collector": "experiments/preflight-evaluation/collect_direct_oracle.py (원본) + scratch collect_refs.py (field 참조와 다중 root 지원 추가)",
+    "collectorEquivalence": "두 Java 사례에서 collect_refs.py의 결과가 원본 collect_direct_oracle.py 결과와 depth1·depth2·indirectNew 모두 완전히 일치함을 확인했다.",
+    "classRoots": 2,
+    "classCount": 436,
+    "depth1Callers": 19,
+    "depth2Callers": 12,
+    "indirectNewTargets": 11,
+    "expansionRule": "3단계 규칙대로 depth-1 직접 호출자 전부를 확장했다. 선택도 상한도 두지 않았다.",
+    "directOracleSha256": "a99a80a4543d440cb440ab729d336303a35326ed6db6889dcc01298847f504cc",
+    "indirectOracleSha256": "252fa21f93d984d2f1bdbee2d7286115e3c251d5f100876d7e9700ac279b6725",
+    "scratchPath": "<scratch>/fasterxml__jackson-core-1016/refs"
+  },
+  "oracleCounts": {
+    "targets": 21,
+    "indirectTargets": 11,
+    "total": 32,
+    "responseCap": 12,
+    "recallCeiling": 0.375
+  },
+  "transitiveCase": false,
+  "ownerLevelScanNote": "owner 단위 스캔은 test root 참조 461건을 낸다. JsonFactory가 거의 모든 테스트에서 쓰이기 때문이며 바뀐 메서드의 직접 참조가 아니다. 채택하지 않았다.",
+  "notInOracle": [
+    "UTF8DataInputJsonParser.addName은 private, NonBlockingJsonParserBase._addName은 protected final이라 override 지점이 없다. JsonFactory._createParser(DataInput,IOContext)를 다시 선언하는 subtype은 checkout 안에 없다."
+  ],
+  "snapshot": {
+    "command": "kartograph snapshot --classes <root>... --project . --include-paths --compact --snapshot-max-mib 128",
+    "classRoots": 2,
+    "firstAttemptV1Format": {
+      "result": "SUCCESS",
+      "seconds": 0.99,
+      "bytes": 20498857,
+      "sha256": "7ba470ca544133457f5f06841fc72dfa344bbf8739556ea0d65f6a1288855e42"
+    },
+    "compact": {
+      "bytes": 4544622,
+      "seconds": 0.83,
+      "sha256": "81815623d96165d7f49c482d2e8ddb8204fcbb8434d830c9a8233bf4f105dd70",
+      "scratchPath": "<scratch>/snapshots/fasterxml__jackson-core-1016.compact.json"
+    },
+    "freshness": "수동 snapshot이라 compiler witness가 없다. 제품 신선도는 unverified로 남는다."
+  },
+  "impactCrossCheck": {
+    "command": "kartograph impact <changed symbols> --graph-file <compact snapshot> --snapshot-max-mib 128 --depth {1,2} --all",
+    "toolVersion": "0.10.0",
+    "status": "partial (truncated.depth=true, 의도한 depth 제한)",
+    "directAgreement": {
+      "javap": 19,
+      "product": 19,
+      "intersection": 19
+    },
+    "indirectAgreement": {
+      "javap": 11,
+      "productTransitive": 11,
+      "intersection": 11
+    },
+    "productOnlyDirect": [],
+    "javapOnlyDirect": [],
+    "productOnlyIndirect": [],
+    "javapOnlyIndirect": [],
+    "structuralNote": "impact depth1의 structural 6건에는 TokenStreamFactory의 두 abstract 선언이 포함된다. 이 둘은 원본 선언으로 독립 확인해 oracle에 override로 넣었고, 나머지 4건(ParserMinimalBase._reportInvalidEOF, NonBlockingUtf8JsonParserBase 3건)은 javap 직접 참조가 아니어서 넣지 않았다.",
+    "discrepancies": [],
+    "rule": "제품 결과는 정답이 아니다. oracle 항목을 추가하거나 빼지 않았다.",
+    "scratchPath": "<scratch>/impact"
+  }
+}

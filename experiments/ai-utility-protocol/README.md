@@ -55,7 +55,9 @@
 - freshness 질문(스냅샷 신선도 판단)은 별도 점수로 유지한다 — 0.9.0에서 v3가 freshness 8회로
   유의미한 사용을 보인 유일 축이었기 때문이다.
 
-## v4 상태
+## v4 intake 상태 (선택 시점 기록)
+
+이 절은 표본을 고정한 intake 시점의 기록이며 이후 단계로 바꾸지 않는다. 자격 검증 결과는 다음 절에 있다.
 
 metadata만 고정했고 **아무것도 실행하지 않았다**. 표본 4건과 제외 2건은 고정 revision의 base SHA와
 선언된 fail-to-pass 존재 여부만 보고 정했으며, 제품 질의·모델 실행·빌드·oracle 작성은 하지 않았다.
@@ -65,4 +67,26 @@ metadata만 고정했고 **아무것도 실행하지 않았다**. 표본 4건과
 - 고정 표본: [cohort-v4.json](cohort-v4.json)
 - 내림차순 선택 스캔 기록: [intake-v4/selection-scan.json](intake-v4/selection-scan.json)
 - download receipt(url·bytes·sha256): [intake-v4/receipts.json](intake-v4/receipts.json)
-- 남은 작업: 원본 빌드·focused 테스트 자격 검증, oracle 작성과 sha256 고정, 16회 실행, 채점.
+- intake 시점의 남은 작업: 원본 빌드·focused 테스트 자격 검증, oracle 작성과 sha256 고정, 16회 실행, 채점.
+
+## v4 자격 검증 상태 (완료, 모델 미실행)
+
+원본 빌드·기존 테스트 실행·oracle 작성·제품 `impact` 오프라인 대조를 끝냈다. 모델은 실행하지 않았고
+채점 key도 공개하지 않았다. 이 절은 효용 결과를 주장하지 않는다.
+
+- 확정 oracle: [oracle-v4.json](oracle-v4.json), sha256
+  `c05648e7916af7a0ad039cba4bfcf77caa9d5e8779c8fe7d8248679e77a276fb`
+- 사례별 기록·도구 해시: [qualification-v4/](qualification-v4/README.md)
+- 네 사례 모두 빌드에 성공했다. jackson은 미배포 parent 대신 정식 `2.16.0`을 쓰는 대체 POM으로,
+  ktlint는 build-logic의 class file 65 때문에 JDK 21로 빌드했다. 우회는 모두 기록에 남겼다.
+- 네 사례의 선언 fail-to-pass는 변경 전 원본에서 **실패하지 않는다**. 3건은 해당 테스트가 원본에 없고
+  1건은 이미 통과한다. 새 테스트를 주입하지 않았고 이 사실을 결과에서 숨기지 않는다.
+- 후보 4건 모두 새 depth-2 대상이 있어 4단계 규칙대로 사례 id 오름차순 앞 2건
+  (`alibaba__fastjson2-2097`, `detekt_detekt-7625`)을 "직접·간접 영향 나열" 사례로 고정했다.
+  **최소 2건 요건을 충족한다.**
+- 사례별 oracle 크기는 fastjson2-2097 7개, detekt-7625 4개, jackson-core-1016 32개,
+  ktlint-2785 4개다. 응답 상한 12개 때문에 `fasterxml__jackson-core-1016`의 recall 천장은
+  0.375이며 나머지 세 사례는 1.00이다.
+- 제품 `impact` 대조는 보고서로만 남겼고 oracle 항목을 더하거나 빼지 않았다. 불일치 2건
+  (detekt의 relation 분류, ktlint의 클래스 포함 관계 확장)은 javap 증거를 유지한 채 기록했다.
+- 남은 작업: 16회 실행과 채점.

@@ -1,0 +1,167 @@
+{
+  "case": "detekt_detekt-7625",
+  "repository": "detekt/detekt",
+  "language": "kotlin",
+  "checkout": {
+    "command": "git clone --filter=blob:none https://github.com/detekt/detekt.git base && git -C base checkout --detach 82ab4c5ac06f006a0906920687dc016af37642a6",
+    "headSha": "82ab4c5ac06f006a0906920687dc016af37642a6",
+    "headSubject": "chore(deps): update plugin com.gradle.plugin-publish to v1.3.0 (#7624)",
+    "workingTreeClean": true,
+    "untrackedFilesAdded": [],
+    "note": "git status --porcelain은 추적 파일 변경 0건이다. 빌드 산출물은 .gitignore 대상이다.",
+    "scratchPath": "<scratch>/detekt_detekt-7625/base"
+  },
+  "netProductionDiff": {
+    "source": {
+      "kind": "GitHub PR net diff",
+      "pullRequest": "https://github.com/detekt/detekt/pull/7625",
+      "prBaseSha": "82ab4c5ac06f006a0906920687dc016af37642a6",
+      "prHeadSha": "b44ff5ea2a6a408380638f2d68d590ee4c53e3ca",
+      "mergeCommitSha": "f1b85a98eb3dd233650cf2f2b50d61ad33867693",
+      "commits": 3,
+      "note": "3 commit PR의 최종 net diff를 받아 test 파일 1건을 제외했다. PR base SHA가 고정 base와 같다."
+    },
+    "productionFiles": [
+      "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.kt"
+    ],
+    "excludedTestFiles": [
+      "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt"
+    ],
+    "bytes": 1506,
+    "sha256": "c01f307f434a890d91835c497a815b726a53c762bb99cdcac8624de0f13dcbc3",
+    "gitApplyCheck": {
+      "command": "git -C base apply --check detekt_detekt-7625.net-production.diff",
+      "exitCode": 0,
+      "result": "applies cleanly to the pinned base"
+    },
+    "applied": false,
+    "note": "그래프·oracle은 변경 전 원본에서만 만들었다. diff를 checkout에 적용하지 않았다.",
+    "scratchPath": "<scratch>/diffs/detekt_detekt-7625.net-production.diff"
+  },
+  "environment": {
+    "javaHome": "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home",
+    "javaVersion": "17.0.20 (Homebrew)"
+  },
+  "build": [
+    {
+      "step": "all modules testClasses",
+      "command": "./gradlew testClasses --console=plain",
+      "cwd": "base",
+      "wallSeconds": 176.45,
+      "buildToolSeconds": 175.0,
+      "result": "BUILD SUCCESSFUL (144 tasks)",
+      "log": "logs/build-detekt.log"
+    }
+  ],
+  "buildWorkarounds": [
+    {
+      "problem": "Develocity(ge.detekt.dev) remote build cache와 Predictive Test Selection이 이 환경에서 접속되지 않는다.",
+      "fix": "별도 설정 없이 Gradle이 자동으로 remote cache를 끄고 PTS가 전체 테스트를 선택하도록 두었다. 빌드 스크립트나 gradle.properties는 바꾸지 않았다.",
+      "precedent": null
+    }
+  ],
+  "failToPass": [
+    {
+      "declared": "io.gitlab.arturbosch.detekt.core.baseline.BaselineResultMappingSpec.creates on top of an existing a baseline file without issues()",
+      "declaredBy": "kotlin-swe-bench tasks/detekt_detekt-7625/tests/expected_tests.json f2p_tests",
+      "presentAtBase": true,
+      "result": "PASSES_AT_BASE",
+      "detail": "해당 테스트는 base에 이미 있고 통과한다. PR의 test diff는 기대 XML을 <CurrentIssues></CurrentIssues>에서 <CurrentIssues/>로 바꾸는 수정이며, 그 수정 없이는 base에서 실패하지 않는다. 테스트를 수정하거나 주입하지 않았다.",
+      "baseRun": {
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    }
+  ],
+  "oracleTestRuns": [
+    {
+      "command": "./gradlew :detekt-core:test --console=plain --tests 'io.gitlab.arturbosch.detekt.core.baseline.BaselineFormatSpec' --tests 'io.gitlab.arturbosch.detekt.core.baseline.BaselineResultMappingSpec'",
+      "wallSeconds": 33.91,
+      "buildToolSeconds": 33.0,
+      "result": "BaselineFormatSpec 7 tests + BaselineResultMappingSpec 11 tests, all PASS",
+      "log": "logs/test-detekt.log"
+    }
+  ],
+  "changedSymbols": {
+    "symbols": [
+      "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#save(Ljavax/xml/stream/XMLStreamWriter;Lio/github/detekt/tooling/api/Baseline;)V"
+    ],
+    "derivation": "net production diff가 바꾼 선언을 원본 source와 javap 선언으로 확인했다."
+  },
+  "javapCollection": {
+    "tool": "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home/bin/javap",
+    "collector": "experiments/preflight-evaluation/collect_direct_oracle.py (원본) + scratch collect_refs.py (field 참조와 다중 root 지원 추가)",
+    "collectorEquivalence": "두 Java 사례에서 collect_refs.py의 결과가 원본 collect_direct_oracle.py 결과와 depth1·depth2·indirectNew 모두 완전히 일치함을 확인했다.",
+    "classRoots": 60,
+    "classCount": 2963,
+    "depth1Callers": 1,
+    "depth2Callers": 3,
+    "indirectNewTargets": 3,
+    "expansionRule": "3단계 규칙대로 depth-1 직접 호출자 전부를 확장했다. 선택도 상한도 두지 않았다.",
+    "directOracleSha256": "48f9948bb38300553a647700c5b534d5b9b0031aa0d4fdecb5a6029c11c89178",
+    "indirectOracleSha256": "a197410e6066f7a422524b6a7d6bb9be590c52a26874f7c2fc002f2d92954e35",
+    "scratchPath": "<scratch>/detekt_detekt-7625/refs"
+  },
+  "oracleCounts": {
+    "targets": 1,
+    "indirectTargets": 3,
+    "total": 4,
+    "responseCap": 12,
+    "recallCeiling": 1.0
+  },
+  "transitiveCase": true,
+  "ownerLevelScanNote": "owner 단위 스캔의 test root 참조 5건 중 2건은 이미 depth-2 대상이고 3건은 BaselineFormat.read/<init> 참조라 바뀐 save와 무관하다.",
+  "notInOracle": [
+    "detekt-core/src/main/resources/META-INF/services/io.github.detekt.tooling.api.BaselineProvider가 BaselineFormat을 등록하고, BaselineFormat.write는 BaselineProvider.write를 override한다. 둘 다 바뀐 심볼(private save)의 override·등록 지점이 아니므로 oracle에 넣지 않았다."
+  ],
+  "snapshot": {
+    "command": "kartograph snapshot --classes <root>... --project . --include-paths --compact --snapshot-max-mib 128",
+    "classRoots": 60,
+    "firstAttemptV1Format": {
+      "result": "FAILED",
+      "seconds": 2.84,
+      "error": "query snapshot exceeds 128 MiB; use --compact, increase --snapshot-max-mib up to 128, or capture a narrower input scope"
+    },
+    "compact": {
+      "bytes": 38185675,
+      "seconds": 2.41,
+      "sha256": "717f092d0c49d917bc8708780fdd8088eaaa805c5f9f567d7d5e1af75a943f2a",
+      "scratchPath": "<scratch>/snapshots/detekt_detekt-7625.compact.json"
+    },
+    "freshness": "수동 snapshot이라 compiler witness가 없다. 제품 신선도는 unverified로 남는다."
+  },
+  "impactCrossCheck": {
+    "command": "kartograph impact <changed symbols> --graph-file <compact snapshot> --snapshot-max-mib 128 --depth {1,2} --all",
+    "toolVersion": "0.10.0",
+    "status": "partial (truncated.depth=true, 의도한 depth 제한)",
+    "directAgreement": {
+      "javap": 1,
+      "product": 1,
+      "intersection": 1
+    },
+    "indirectAgreement": {
+      "javap": 3,
+      "productTransitive": 2,
+      "intersection": 2
+    },
+    "productOnlyDirect": [],
+    "javapOnlyDirect": [],
+    "productOnlyIndirect": [],
+    "javapOnlyIndirect": [
+      "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V"
+    ],
+    "structuralNote": "impact depth1의 structural 5건(IndentingXMLStreamWriter 4건, ValuesWithReason.iterator 1건)은 javap 직접 참조가 아니어서 oracle에 넣지 않았다.",
+    "discrepancies": [
+      {
+        "target": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V",
+        "javap": "createOrUpdate는 BaselineFormat.write를 invokevirtual로 직접 호출하고 write는 save를 직접 호출한다. 2단계 호출 사슬이 확정적이다.",
+        "product": "impact --depth 2에서 이 대상은 affected에 있지만 relation이 transitive가 아니라 structural이고, 실제 경로는 createOrUpdate → ValuesWithReason.iterator() → save라는 보수적 dispatch 경로로 표시됐다. 같은 그래프에서 impact 'BaselineFormat#write' --depth 1을 실행하면 createOrUpdate가 direct로 나온다.",
+        "resolution": "javap 증거를 유지하고 oracle의 indirectTargets에 남긴다. 제품 분류 차이는 기록만 한다."
+      }
+    ],
+    "rule": "제품 결과는 정답이 아니다. oracle 항목을 추가하거나 빼지 않았다.",
+    "scratchPath": "<scratch>/impact"
+  }
+}

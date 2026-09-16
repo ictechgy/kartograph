@@ -1,0 +1,2 @@
+method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#<clinit>()V
+field:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#SUPPRESS_ANNOTATION_RULE_MAP:Ljava/util/Map;

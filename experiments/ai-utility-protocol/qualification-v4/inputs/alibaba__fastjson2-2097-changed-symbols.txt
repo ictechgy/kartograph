@@ -1,0 +1,1 @@
+method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;

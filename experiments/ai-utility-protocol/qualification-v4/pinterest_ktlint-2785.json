@@ -1,0 +1,206 @@
+{
+  "case": "pinterest_ktlint-2785",
+  "repository": "pinterest/ktlint",
+  "language": "kotlin",
+  "checkout": {
+    "command": "git clone --filter=blob:none https://github.com/pinterest/ktlint.git base && git -C base checkout --detach 4ec50723be8efe08589f2aa0c9ea100828919f8e",
+    "headSha": "4ec50723be8efe08589f2aa0c9ea100828919f8e",
+    "headSubject": "Ignore `max_line_length` property unless `max-line-length` rule is enabled  (#2783)",
+    "workingTreeClean": true,
+    "untrackedFilesAdded": [],
+    "note": "git status --porcelain은 추적 파일 변경 0건이다. 빌드 산출물은 .gitignore 대상이다.",
+    "scratchPath": "<scratch>/pinterest_ktlint-2785/base"
+  },
+  "netProductionDiff": {
+    "source": {
+      "kind": "GitHub PR net diff",
+      "pullRequest": "https://github.com/pinterest/ktlint/pull/2785",
+      "prBaseSha": "4ec50723be8efe08589f2aa0c9ea100828919f8e",
+      "prHeadSha": "f90deef5108a87285fb4103a4b9df6134e4bbe1d",
+      "mergeCommitSha": "9ba1d0c0cce380428c51db112c6c5ba4cf84536e",
+      "commits": 3,
+      "note": "3 commit PR의 최종 net diff를 받아 test 파일 1건을 제외했다. PR base SHA가 고정 base와 같다."
+    },
+    "productionFiles": [
+      "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt"
+    ],
+    "excludedTestFiles": [
+      "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt"
+    ],
+    "bytes": 1072,
+    "sha256": "a399971f2a3a97a0be9a9cbbf4f0df7e442d1dae463d5aa60957f441cf9c9e74",
+    "gitApplyCheck": {
+      "command": "git -C base apply --check pinterest_ktlint-2785.net-production.diff",
+      "exitCode": 0,
+      "result": "applies cleanly to the pinned base"
+    },
+    "applied": false,
+    "note": "그래프·oracle은 변경 전 원본에서만 만들었다. diff를 checkout에 적용하지 않았다.",
+    "scratchPath": "<scratch>/diffs/pinterest_ktlint-2785.net-production.diff"
+  },
+  "environment": {
+    "javaHome": "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home",
+    "javaVersion": "21.0.12 (Homebrew)"
+  },
+  "build": [
+    {
+      "step": "all modules testClasses (JDK 17 시도)",
+      "command": "./gradlew testClasses --console=plain",
+      "cwd": "base",
+      "javaHome": "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home",
+      "wallSeconds": 94.99,
+      "result": "FAILED",
+      "error": "Execution failed for task ':build-logic:generatePrecompiledScriptPluginAccessors' — Ktlint_dokka_gradle has been compiled by a more recent version of the Java Runtime (class file version 65.0), this version of the Java Runtime only recognizes class file versions up to 61.0",
+      "log": "logs/build-ktlint.log"
+    },
+    {
+      "step": "all modules testClasses (JDK 21)",
+      "command": "./gradlew testClasses --console=plain",
+      "cwd": "base",
+      "javaHome": "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home",
+      "wallSeconds": 34.0,
+      "buildToolSeconds": 33.0,
+      "result": "BUILD SUCCESSFUL (76 tasks)",
+      "log": "logs/build-ktlint-jdk21.log"
+    }
+  ],
+  "buildWorkarounds": [
+    {
+      "problem": "build-logic이 libs.versions.toml의 java-compilation=21 toolchain으로 precompiled script plugin을 컴파일해 class file 65를 만든다. JDK 17로 Gradle을 실행하면 이를 읽지 못한다.",
+      "fix": "ktlint만 JAVA_HOME을 JDK 21.0.12로 바꿔 실행했다. 저장소 파일은 바꾸지 않았다. 다른 세 사례는 JDK 17.0.20을 썼다.",
+      "precedent": "v1~v3 실행의 JDK 21 설정과 같은 방향"
+    }
+  ],
+  "failToPass": [
+    {
+      "declared": "com.pinterest.ktlint.ruleset.standard.rules.BackingPropertyNamingRuleTest.Issue 2779 - Given a property name suppressed via 'LocalVariableName' then also suppress the ktlint violation()",
+      "declaredBy": "kotlin-swe-bench tasks/pinterest_ktlint-2785/tests/expected_tests.json f2p_tests",
+      "presentAtBase": false,
+      "result": "MISSING_AT_BASE",
+      "detail": "해당 테스트 메서드는 PR이 새로 추가하는 것이며 base의 BackingPropertyNamingRuleTest.kt에 없다(grep 결과 0건). 포함 클래스는 base에 있고 34개 테스트가 모두 통과한다. 새 테스트를 주입하지 않았다.",
+      "baseRun": {
+        "tests": 34,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    }
+  ],
+  "oracleTestRuns": [
+    {
+      "command": "CLI_TEST_MAX_DURATION_IN_SECONDS=60 ./gradlew :ktlint-ruleset-standard:test --console=plain --tests 'com.pinterest.ktlint.ruleset.standard.rules.BackingPropertyNamingRuleTest'",
+      "wallSeconds": 2.55,
+      "buildToolSeconds": 2.0,
+      "result": "BackingPropertyNamingRuleTest 34 tests, all PASS",
+      "log": "logs/test-ktlint.log"
+    }
+  ],
+  "changedSymbols": {
+    "symbols": [
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#<clinit>()V",
+      "field:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#SUPPRESS_ANNOTATION_RULE_MAP:Ljava/util/Map;"
+    ],
+    "derivation": "net production diff가 바꾼 선언을 원본 source와 javap 선언으로 확인했다."
+  },
+  "javapCollection": {
+    "tool": "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home/bin/javap",
+    "collector": "experiments/preflight-evaluation/collect_direct_oracle.py (원본) + scratch collect_refs.py (field 참조와 다중 root 지원 추가)",
+    "collectorEquivalence": "두 Java 사례에서 collect_refs.py의 결과가 원본 collect_direct_oracle.py 결과와 depth1·depth2·indirectNew 모두 완전히 일치함을 확인했다.",
+    "classRoots": 32,
+    "classCount": 1005,
+    "depth1Callers": 2,
+    "depth2Callers": 2,
+    "indirectNewTargets": 2,
+    "expansionRule": "3단계 규칙대로 depth-1 직접 호출자 전부를 확장했다. 선택도 상한도 두지 않았다.",
+    "directOracleSha256": "264780e0702347e75a90e6d82bf90d4f54be9b67aa31ad1d7455dbf877367966",
+    "indirectOracleSha256": "0cf72ed77a874cbf5945a21ad5f67485809e066e68c0f225fb2432c9c15f95a3",
+    "scratchPath": "<scratch>/pinterest_ktlint-2785/refs"
+  },
+  "oracleCounts": {
+    "targets": 2,
+    "indirectTargets": 2,
+    "total": 4,
+    "responseCap": 12,
+    "recallCeiling": 1.0
+  },
+  "transitiveCase": false,
+  "ownerLevelScanNote": "owner 단위 스캔에서 test root 참조는 0건이다. SuppressionLocator는 internal 클래스이고 테스트는 KtLintRuleEngine 경유로만 도달한다. 이 사례의 oracle에는 test 대상이 없다.",
+  "notInOracle": [
+    "바뀐 대상은 companion의 private static final field와 그것을 초기화하는 <clinit>이다. override·등록 지점이 없다. <clinit> 자체는 JVM이 암묵 호출하므로 직접 호출자가 0건이다."
+  ],
+  "snapshot": {
+    "command": "kartograph snapshot --classes <root>... --project . --include-paths --compact --snapshot-max-mib 128",
+    "classRoots": 32,
+    "firstAttemptV1Format": {
+      "result": "SUCCESS",
+      "seconds": 1.62,
+      "bytes": 93584074,
+      "sha256": "cfc0c364f06b05d11f67357d1662ddd3012f8790d6dbdf9f31fcc4f701a10233"
+    },
+    "compact": {
+      "bytes": 26373429,
+      "seconds": 1.4,
+      "sha256": "645e29f19cbec3c3310860f3c1480ceabeeb849d5d3758eae74a47b11475a21e",
+      "scratchPath": "<scratch>/snapshots/pinterest_ktlint-2785.compact.json"
+    },
+    "freshness": "수동 snapshot이라 compiler witness가 없다. 제품 신선도는 unverified로 남는다."
+  },
+  "impactCrossCheck": {
+    "command": "kartograph impact <changed symbols> --graph-file <compact snapshot> --snapshot-max-mib 128 --depth {1,2} --all",
+    "toolVersion": "0.10.0",
+    "status": "partial (truncated.depth=true, 의도한 depth 제한)",
+    "directAgreement": {
+      "javap": 2,
+      "product": 3,
+      "intersection": 2
+    },
+    "indirectAgreement": {
+      "javap": 2,
+      "productTransitive": 27,
+      "intersection": 2
+    },
+    "productOnlyDirect": [
+      "class:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator"
+    ],
+    "javapOnlyDirect": [],
+    "productOnlyIndirect": [
+      "class:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator$CommentSuppressionHint",
+      "class:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator$Companion",
+      "class:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator$SuppressionHint",
+      "class:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator$WhenMappings",
+      "field:com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext#suppressionLocator:Lcom/pinterest/ktlint/rule/engine/internal/SuppressionLocator;",
+      "field:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#ALL_KTLINT_RULES_SUPPRESSION_ID:Ljava/lang/String;",
+      "field:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#Companion:Lcom/pinterest/ktlint/rule/engine/internal/SuppressionLocator$Companion;",
+      "field:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#SUPPRESS_ANNOTATIONS:Ljava/util/Set;",
+      "field:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#formatterTags:Lcom/pinterest/ktlint/rule/engine/internal/FormatterTags;",
+      "field:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#hashcodeASTNodeText:Ljava/lang/Integer;",
+      "field:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#suppressionHints:Ljava/util/List;",
+      "method:com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext#<init>(Lcom/pinterest/ktlint/rule/engine/api/Code;Lorg/jetbrains/kotlin/com/intellij/lang/FileASTNode;Ljava/util/Set;Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig;Lkotlin/jvm/functions/Function1;)V",
+      "method:com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext#executeRuleWithAutocorrectApproveHandlerOnNodeRecursively(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;Lcom/pinterest/ktlint/rule/engine/core/api/Rule;Lcom/pinterest/ktlint/rule/engine/internal/AutocorrectHandler;Lkotlin/jvm/functions/Function3;)V",
+      "method:com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext#executeRuleWithoutAutocorrectApproveHandlerOnNodeRecursively(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;Lcom/pinterest/ktlint/rule/engine/core/api/Rule;Lcom/pinterest/ktlint/rule/engine/internal/AutocorrectHandler;Lkotlin/jvm/functions/Function3;)V",
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#<init>(Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig;)V",
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#access$getSUPPRESS_ANNOTATIONS$cp()Ljava/util/Set;",
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#createSuppressionHintFromComment(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Lcom/pinterest/ktlint/rule/engine/internal/SuppressionLocator$CommentSuppressionHint;",
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findSuppressionHints$lambda$6(Lcom/pinterest/ktlint/rule/engine/internal/SuppressionLocator;Ljava/util/List;Ljava/util/ArrayList;Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Lkotlin/Unit;",
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findSuppressionHints(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Ljava/util/List;",
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findSuppressionHints(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;Lkotlin/jvm/functions/Function1;)V",
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#rbraceOfContainingBlock(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;",
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#suppress(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;ILcom/pinterest/ktlint/rule/engine/core/api/Rule;)Z",
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#tail(Ljava/util/List;)Ljava/util/List;",
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#toSuppressionHints(Ljava/util/List;)Ljava/util/List;",
+      "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator$Companion#getSUPPRESS_ANNOTATIONS()Ljava/util/Set;"
+    ],
+    "javapOnlyIndirect": [],
+    "structuralNote": "impact depth1에 structural 항목은 없었다.",
+    "discrepancies": [
+      {
+        "target": "class:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator (외 26건)",
+        "javap": "바뀐 field를 읽는 선언은 findRuleSuppressionIds와 합성 접근자 access$getSUPPRESS_ANNOTATION_RULE_MAP$cp 둘뿐이고, 그 호출자는 createSuppressionHintFromAnnotations와 Companion.getSUPPRESS_ANNOTATION_RULE_MAP 둘뿐이다.",
+        "product": "impact는 depth 1에서 class:SuppressionLocator 노드를 direct로 추가하고, depth 2에서 그 클래스의 다른 멤버 27건(class/object/property/field/constructor 포함)을 transitive로 반환한다. 이는 클래스 포함 관계를 따라간 결과이며 javap의 호출/참조 사슬이 아니다.",
+        "resolution": "제품만 찾은 대상은 oracle에 넣지 않는다. 별도 목록으로만 기록한다."
+      }
+    ],
+    "rule": "제품 결과는 정답이 아니다. oracle 항목을 추가하거나 빼지 않았다.",
+    "scratchPath": "<scratch>/impact"
+  }
+}
