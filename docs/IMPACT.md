@@ -125,6 +125,22 @@ kartograph {
 전체 관계·보존·신선도 검사는 계속 실행한다. snapshot output의 build cache를 의미하지 않는다. 이 자동 경로의 현재 범위는 JVM main/test와
 지원하는 Android main/unit-test이며, 별도 custom source set 및 compiler-evidence collector의 자동 연결은 아직 검증 중이다.
 
+#### Kotlin Multiplatform 프로젝트의 jvm target
+
+KMP 프로젝트의 `jvm()` target은 `commonMain`과 `jvmMain`을 함께 일반 JVM class로 컴파일한다. kartograph의 원천은
+JVM bytecode와 Kotlin metadata이므로 이 산출물은 그대로 분석 대상이며, 새 원천이나 설정은 필요 없다.
+`kartograph snapshot --classes build/classes/kotlin/jvm/main --project . --include-paths`로 캡처하면
+`commonMain`과 `jvmMain`의 소스 위치가 모두 해석되고, `actual` 선언을 `impact`로 질의하면 `commonMain`의
+호출자를 해당 `commonMain` 파일 위치로 보고했다. Kotlin 2.4.10 multiplatform plugin과 `jvm()` target만 있는
+표본에서 CLI로 확인했다. Gradle plugin의 `kartographSnapshot` 자동 캡처를 KMP jvm target compilation에 연결하는
+것은 검증하지 않았다.
+
+이 경로가 답하는 범위는 **JVM target에 미치는 영향**이다. `commonMain` 변경이 iOS·JS·Wasm target에 미치는 영향은
+JVM 그래프로 증명하지 못한다. `expect`/`actual` 관계도 노출하지 않는다. 위 표본의 JVM 컴파일 결과에는 짝이 되는
+선언 중 `actual` 쪽만 남았고, 그 class의 소스 파일은 `actual`이 있는 `jvmMain` 파일로 기록됐다. top-level `expect`
+선언 자체는 class를 만들지 않았고, 남은 class·function·property의 metadata `isExpect` 플래그는 모두 false였다.
+`actual typealias`나 다른 컴파일러 옵션은 측정하지 않았다. 자세한 조사와 결정은 [KMP 도달성 노트](KMP-REACHABILITY-NOTES.md)다.
+
 ### Android variant 자동 캡처
 
 Android 프로젝트에도 같은 `snapshotsEnabled` 설정을 사용한다. Kotlin compiler에 적용할 toolchain은

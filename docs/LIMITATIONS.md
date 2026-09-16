@@ -17,6 +17,11 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   container와 인코딩된 어노테이션 기본값의 class 참조는 도달성에 포함한다. bytecode에 남지 않는 SOURCE 보존
   어노테이션은 복원하지 못한다. `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
 
+- Kotlin Multiplatform 프로젝트에서 검증·문서화한 입력은 `jvm()` target의 class 출력이다. `commonMain` 코드의 영향은 JVM target에
+  대해서만 답하며 iOS·JS·Wasm target은 다루지 않는다. 측정한 표본(Kotlin 2.4.10, JDK 17)의 JVM 산출물에는 `expect`/`actual` 짝 중
+  `actual` 쪽만 남았으므로 그 관계는 근거로 노출하지 않으며, 짝의 class 소스 위치는 `actual`이 있는 파일이다.
+  [KMP 도달성 노트](KMP-REACHABILITY-NOTES.md)를 본다.
+
 - `--include-private-members`는 JVM/source 모두 private인 method·field/property만 선택적으로 추가한다.
   class member는 reachable 비생성 owner가 하나로 확정되는 경우에 한하며 constructor/native/constant는 제외한다.
   file facade의 private top-level 함수는 아래 top-level 보고 규칙을 따르며 이 reachable-owner 요건을 추가로
