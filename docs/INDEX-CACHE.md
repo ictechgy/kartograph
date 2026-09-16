@@ -121,10 +121,12 @@ internal 15% target for that small input is still not established. One candidate
 missed the warm target (0.857) while every mode of that run was uniformly slower
 under host load; it is retained with the passing runs. The investigation was
 closed there: the small input's ratio is bounded by capture costs shared by both
-modes (JVM start, class loading, rendering), a C1-only JIT experiment made the
-ratio worse, and reusing global analysis across captures was not attempted
-because it would risk the cache-on/off equality contract for at most about
-0.1 s. Design record: `ONE-CLASS-CHANGE-DESIGN.md`.
+modes (JVM start, class loading, JIT warm-up, rendering and the input
+fingerprint, which the parallel digest reduced but did not remove), a C1-only
+JIT experiment made the ratio worse, and reusing global analysis across captures
+was not attempted because it would risk the cache-on/off equality contract for
+an estimated upper bound of about 0.18 s (about 0.1 s for the part that closes
+per class). Design record: `ONE-CLASS-CHANGE-DESIGN.md`.
 
 Default-heap peak resident memory on the same Android input was about 765 MB for
 full capture, 746 MB for cold cache population and 667 MB for warm capture.
