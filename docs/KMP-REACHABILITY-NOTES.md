@@ -33,3 +33,36 @@
    계약("원천 변경에는 비교 실험이 먼저다")상 단독으로 진행하지 않는다.
 
 결론: 당장의 제품 가치는 (1)이다. (2)·(3)은 실험 계약 없이 착수하지 않는다.
+
+## 2026-09-16 실험 결과와 결정
+
+Kotlin 2.4.10 multiplatform plugin, `jvm()` target만 있는 최소 표본(`commonMain`: `expect class Platform`,
+`expect fun currentTimeMillis`, `expect val lineSeparator`, `expect object Registry`, 이들을 호출하는 `Greeter`,
+`actual` 없는 `CommonOnly`; `jvmMain`: 대응 `actual` 4개와 `JvmOnly`)을 JDK 17로 컴파일하고 JVM 산출물을 조사했다.
+
+- **산출 class:** `CommonOnly`, `Greeter`, `JvmKt`, `JvmOnly`, `Platform`, `Registry` 6개. `expect` top-level 선언을 담는
+  `CommonKt` facade는 생기지 않고, top-level 함수·프로퍼티는 `actual` 쪽만 `JvmKt`에 남는다. class/object의 `actual`은
+  각자의 class(`Platform`, `Registry`)로 나온다.
+- **expect 흔적:** kotlin-metadata-jvm 2.4.20의 `Attributes.isExpect`는 class·function·property 전부 false다.
+  `Platform.class`의 `SourceFile`은 `Jvm.kt`(actual의 파일)이고 상수 풀에 `Common.kt`나 `expect` 문자열이 없다.
+  즉 **이 표본(Kotlin 2.4.10, `jvm()` target, JDK 17, 기본 컴파일러 옵션)의 JVM 산출물에서는 어느 선언이 `expect`였는지,
+  어느 `actual`과 짝인지 복원할 근거를 찾지 못했다.** 설계 관점에서도 JVM ABI에는 expect/actual 개념이 없고 common·platform
+  source set이 class 생성 전에 하나로 컴파일되므로 일반적으로 남지 않을 것으로 보이지만, 이는 실측이 아닌 추론이다.
+  `actual typealias`, 다른 컴파일러 옵션·버전은 측정하지 않았다. klib의 common metadata에는 `expect` 정보가 남는 것이
+  일반적이므로 이 결론은 JVM 산출물에 한정한다.
+- **kartograph 동작:** `snapshot --classes build/classes/kotlin/jvm/main --include-paths`는 `commonMain`·`jvmMain`
+  소스 위치를 모두 해석했고, `impact 'method:probe/Platform#name()Ljava/lang/String;'`는
+  `Greeter#greet`(`src/commonMain/kotlin/probe/Common.kt`)를 직접 영향으로 보고했다. 즉 (1)의 가치는 실제로 있다.
+
+결정:
+
+1. **(1) JVM target 문서화 — 완료.** [IMPACT](IMPACT.md#kotlin-multiplatform-프로젝트의-jvm-target)에 CLI 경로와 범위·한계를 적었다.
+   Gradle plugin 자동 캡처의 KMP jvm compilation 연결은 검증하지 않았고 문서에도 그렇게 썼다.
+2. **(2) expect/actual 근거 노출 — 현재 원천(JVM 산출물)으로는 착수하지 않는다.** 위 실험에서 JVM 산출물의 bytecode·metadata에
+   링크 근거를 찾지 못했으므로 `EXPECT_ACTUAL` 근거를 JVM 산출물의 metadata에서 만들 수 없다. 코퍼스 케이스로 고정할 대상
+   사실 자체가 없어 설계를 진행하지 않는다. 이 항목은 (3)의 klib/common metadata 원천이 있을 때 다시 연다.
+3. **(3) klib 원천 — 변경 없음.** 원천 결정 실험 없이는 진행하지 않는다.
+
+원본 표본·컴파일 산출물·metadata 프로브·CLI 출력은 로컬 증거 `build/reports/kmp-experiment-20260916/`에 보존했다.
+이 경로는 Git 밖이며 위 항목들이 재현에 필요한 사실(표본 구성·버전·관찰값)을 모두 담도록 썼다.
+
