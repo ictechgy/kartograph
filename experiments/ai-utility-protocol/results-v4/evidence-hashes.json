@@ -1,0 +1,204 @@
+{
+  "note": "다중 MB stream 로그와 대용량 입력은 저장소에 넣지 않는다. 여기에는 sha256과 scratch 상대경로만 남긴다. 로컬 절대경로는 공개 기록에서 제외하고 <scratch> 토큰으로 적는다(AGENTS.md).",
+  "streams": {
+    "alibaba__fastjson2-2097-source-0": {
+      "path": "<scratch>/v4/run16/00-alibaba__fastjson2-2097-source-0/stream.jsonl",
+      "bytes": 192268,
+      "sha256": "8c177b9a91a807e9b2478c8fadff0198a285047ddf33275dc72968955c96e033",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "e565c07b9bcf2a5feec28916577ba4c4124be97aca2d620b6ac8d16a9b0aeda9"
+    },
+    "alibaba__fastjson2-2097-source-1": {
+      "path": "<scratch>/v4/run16/01-alibaba__fastjson2-2097-source-1/stream.jsonl",
+      "bytes": 204287,
+      "sha256": "90197f1f1280ffcf8edcb680e4c51690ce7c840ea87f406697a83688c6411d5b",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "e565c07b9bcf2a5feec28916577ba4c4124be97aca2d620b6ac8d16a9b0aeda9"
+    },
+    "alibaba__fastjson2-2097-mcp-0": {
+      "path": "<scratch>/v4/run16/02-alibaba__fastjson2-2097-mcp-0/stream.jsonl",
+      "bytes": 219561,
+      "sha256": "f13b6ae68ba8d2d3e62c4560c8c69cb3bddfcd0c6809cd8d06aecbe4254ddf06",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "e565c07b9bcf2a5feec28916577ba4c4124be97aca2d620b6ac8d16a9b0aeda9"
+    },
+    "alibaba__fastjson2-2097-mcp-1": {
+      "path": "<scratch>/v4/run16/03-alibaba__fastjson2-2097-mcp-1/stream.jsonl",
+      "bytes": 181462,
+      "sha256": "dda3edeacbce4878c5349a64b30eafddb58e11223a06775c9fe5dd19471e1184",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "e565c07b9bcf2a5feec28916577ba4c4124be97aca2d620b6ac8d16a9b0aeda9"
+    },
+    "fasterxml__jackson-core-1016-source-0": {
+      "path": "<scratch>/v4/run16/04-fasterxml__jackson-core-1016-source-0/stream.jsonl",
+      "bytes": 99230,
+      "sha256": "28580600d625b7f07e08c3080e5db0d7d7b7102efc9356aa5b602a84146a0ce1",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "9f85463706e4f4fff6bfd64e136ff14150ba4f64a52e9cf124951a16a184d7a0"
+    },
+    "fasterxml__jackson-core-1016-source-1": {
+      "path": "<scratch>/v4/run16/05-fasterxml__jackson-core-1016-source-1/stream.jsonl",
+      "bytes": 105844,
+      "sha256": "a4b4494fceab260a214cc849fb8ddb72836e01401999261d5d7c631636a2058b",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "9f85463706e4f4fff6bfd64e136ff14150ba4f64a52e9cf124951a16a184d7a0"
+    },
+    "fasterxml__jackson-core-1016-mcp-0": {
+      "path": "<scratch>/v4/run16/06-fasterxml__jackson-core-1016-mcp-0/stream.jsonl",
+      "bytes": 109316,
+      "sha256": "a1e12eca2be13675e294c34778d605c58e65f23401d93e2be8e76bbe4803e4ed",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "9f85463706e4f4fff6bfd64e136ff14150ba4f64a52e9cf124951a16a184d7a0"
+    },
+    "fasterxml__jackson-core-1016-mcp-1": {
+      "path": "<scratch>/v4/run16/07-fasterxml__jackson-core-1016-mcp-1/stream.jsonl",
+      "bytes": 113894,
+      "sha256": "fe82b610ad0c5a020d9a951c12175afbd9ab44582d31dce8805d876ccab852e9",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "9f85463706e4f4fff6bfd64e136ff14150ba4f64a52e9cf124951a16a184d7a0"
+    },
+    "detekt_detekt-7625-source-0": {
+      "path": "<scratch>/v4/run16/08-detekt_detekt-7625-source-0/stream.jsonl",
+      "bytes": 129451,
+      "sha256": "961fbf63223e59fadb1a3a4a6b6acddacaffcc5dce686da0d92b1ed9c1aa15ca",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "4d41caa52c5281b9bdd9c4d02ee14a51aa9884913aba3ff1e09d569a0cc064c8"
+    },
+    "detekt_detekt-7625-source-1": {
+      "path": "<scratch>/v4/run16/09-detekt_detekt-7625-source-1/stream.jsonl",
+      "bytes": 107304,
+      "sha256": "7ffcd4267bcffef7346ae31679c18ea46c440ecdb316a9a3003615414da72d2e",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "4d41caa52c5281b9bdd9c4d02ee14a51aa9884913aba3ff1e09d569a0cc064c8"
+    },
+    "detekt_detekt-7625-mcp-0": {
+      "path": "<scratch>/v4/run16/10-detekt_detekt-7625-mcp-0/stream.jsonl",
+      "bytes": 105914,
+      "sha256": "549391412285d0fc7f88d9f2366cec92dc2dbf9bcd8780b79c0d94554bcbf8c1",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "4d41caa52c5281b9bdd9c4d02ee14a51aa9884913aba3ff1e09d569a0cc064c8"
+    },
+    "detekt_detekt-7625-mcp-1": {
+      "path": "<scratch>/v4/run16/11-detekt_detekt-7625-mcp-1/stream.jsonl",
+      "bytes": 207849,
+      "sha256": "b2ce58ef4290bd3c4df5262c2aecc872b8aa250ad60181dbf10d22e18eb7a49c",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "4d41caa52c5281b9bdd9c4d02ee14a51aa9884913aba3ff1e09d569a0cc064c8"
+    },
+    "pinterest_ktlint-2785-source-0": {
+      "path": "<scratch>/v4/run16/12-pinterest_ktlint-2785-source-0/stream.jsonl",
+      "bytes": 108360,
+      "sha256": "f9a6c0e32193e0f6feb8063878f3411575ddf97f06f3e1baa6923352cd9efbae",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "036d4673b44c23d43b306a378a09287d32bc0e149a431fbeb4aa1ee33e6d9cec"
+    },
+    "pinterest_ktlint-2785-source-1": {
+      "path": "<scratch>/v4/run16/13-pinterest_ktlint-2785-source-1/stream.jsonl",
+      "bytes": 97853,
+      "sha256": "458287516d1da7791d0ec52a792a861d2cb104dcd30fdb6098ef7abc149cc68e",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "036d4673b44c23d43b306a378a09287d32bc0e149a431fbeb4aa1ee33e6d9cec"
+    },
+    "pinterest_ktlint-2785-mcp-0": {
+      "path": "<scratch>/v4/run16/14-pinterest_ktlint-2785-mcp-0/stream.jsonl",
+      "bytes": 103570,
+      "sha256": "56ddb861571ac39b4d22dea1e36b2e45da96055e0be9436e4a126c121df1b457",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "036d4673b44c23d43b306a378a09287d32bc0e149a431fbeb4aa1ee33e6d9cec"
+    },
+    "pinterest_ktlint-2785-mcp-1": {
+      "path": "<scratch>/v4/run16/15-pinterest_ktlint-2785-mcp-1/stream.jsonl",
+      "bytes": 130211,
+      "sha256": "43313bef9b555ff4b4efe7c75cb3d2e12a9ba3a6610dbfe8e3e4f87a88efb870",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceManifestSha256": "036d4673b44c23d43b306a378a09287d32bc0e149a431fbeb4aa1ee33e6d9cec"
+    },
+    "smoke-0": {
+      "path": "<scratch>/v4/smoke-run/00-smoke-0/stream.jsonl",
+      "bytes": 194041,
+      "sha256": "eee34b37432ab3d47510c99721310b9eb1ad6258bdae765f176c4ad94d40dbf8",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "runManifest": {
+    "trials": {
+      "path": "experiments/ai-utility-protocol/results-v4/manifest.json",
+      "sha256": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44"
+    },
+    "smoke": {
+      "path": "<scratch>/v4/smoke-run/manifest.json",
+      "sha256": "157bab5de74fca551db9e7fcd5a4542da7b759290ceff584a18b58f20ff86943"
+    }
+  },
+  "inputs": {
+    "alibaba__fastjson2-2097": {
+      "compactSnapshot": {
+        "path": "<scratch>/snapshots/alibaba__fastjson2-2097.compact.json",
+        "bytes": 76065285,
+        "sha256": "381a989179feabaa640e0ce85ecf46bc55c99c43a0ad444c73ebf6e3180ed212"
+      },
+      "netProductionDiff": {
+        "path": "<scratch>/diffs/alibaba__fastjson2-2097.net-production.diff",
+        "bytes": 925,
+        "sha256": "4ce8b37cdf1832adae6f18314f988196ac01e9c56edd40253df2e1e7fc6fc746"
+      },
+      "baseCheckout": "<scratch>/alibaba__fastjson2-2097/base"
+    },
+    "fasterxml__jackson-core-1016": {
+      "compactSnapshot": {
+        "path": "<scratch>/snapshots/fasterxml__jackson-core-1016.compact.json",
+        "bytes": 4544622,
+        "sha256": "81815623d96165d7f49c482d2e8ddb8204fcbb8434d830c9a8233bf4f105dd70"
+      },
+      "netProductionDiff": {
+        "path": "<scratch>/diffs/fasterxml__jackson-core-1016.net-production.diff",
+        "bytes": 3878,
+        "sha256": "e323b0e8c68acd4fae2b987e90068fbd70cde4acdedc10f3fcccaebc0210825a"
+      },
+      "baseCheckout": "<scratch>/fasterxml__jackson-core-1016/base"
+    },
+    "detekt_detekt-7625": {
+      "compactSnapshot": {
+        "path": "<scratch>/snapshots/detekt_detekt-7625.compact.json",
+        "bytes": 38185675,
+        "sha256": "717f092d0c49d917bc8708780fdd8088eaaa805c5f9f567d7d5e1af75a943f2a"
+      },
+      "netProductionDiff": {
+        "path": "<scratch>/diffs/detekt_detekt-7625.net-production.diff",
+        "bytes": 1506,
+        "sha256": "c01f307f434a890d91835c497a815b726a53c762bb99cdcac8624de0f13dcbc3"
+      },
+      "baseCheckout": "<scratch>/detekt_detekt-7625/base"
+    },
+    "pinterest_ktlint-2785": {
+      "compactSnapshot": {
+        "path": "<scratch>/snapshots/pinterest_ktlint-2785.compact.json",
+        "bytes": 26373429,
+        "sha256": "645e29f19cbec3c3310860f3c1480ceabeeb849d5d3758eae74a47b11475a21e"
+      },
+      "netProductionDiff": {
+        "path": "<scratch>/diffs/pinterest_ktlint-2785.net-production.diff",
+        "bytes": 1072,
+        "sha256": "a399971f2a3a97a0be9a9cbbf4f0df7e442d1dae463d5aa60957f441cf9c9e74"
+      },
+      "baseCheckout": "<scratch>/pinterest_ktlint-2785/base"
+    }
+  }
+}

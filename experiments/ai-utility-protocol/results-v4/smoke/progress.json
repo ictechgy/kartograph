@@ -1,0 +1,155 @@
+[
+  {
+    "case": "alibaba__fastjson2-2097",
+    "arm": "mcp",
+    "repeat": 0,
+    "label": "smoke-0",
+    "directory": "<scratch>/v4/smoke-run/00-smoke-0",
+    "seconds": 80.03528087498853,
+    "exit": 0,
+    "timedOut": false,
+    "resultPresent": true,
+    "providerError": false,
+    "infrastructureErrors": [],
+    "eventParseErrors": [],
+    "toolSurface": [
+      "mcp__preflight__freshness",
+      "mcp__preflight__impact",
+      "mcp__preflight__query_symbol",
+      "mcp__preflight__source_list",
+      "mcp__preflight__source_read",
+      "mcp__preflight__source_search"
+    ],
+    "toolUses": [
+      {
+        "name": "mcp__preflight__freshness",
+        "input": {}
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 60,
+          "limit": 200
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "CLASS_ARRAYS_LIST",
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 290,
+          "limit": 180
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplListStr.java",
+          "startLine": 70,
+          "limit": 60
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(0).getClass()",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays$ArrayList",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "startLine": 500,
+          "limit": 140
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderBaseModule.java",
+          "startLine": 1845,
+          "limit": 25
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(",
+          "prefix": "core/src/test/java/com/alibaba/fastjson2/reader/",
+          "limit": 40
+        }
+      },
+      {
+        "name": "mcp__preflight__impact",
+        "input": {
+          "symbols": [
+            "com.alibaba.fastjson2.reader.ObjectReaderImplList.of"
+          ],
+          "depth": 2,
+          "limit": 20
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList",
+          "prefix": "core/src/test/java/com/alibaba/fastjson2/issues_1600/Issue1676.java",
+          "limit": 10
+        }
+      },
+      {
+        "name": "mcp__preflight__source_read",
+        "input": {
+          "file": "core/src/test/java/com/alibaba/fastjson2/dubbo/DubboTest6.java",
+          "startLine": 20,
+          "limit": 80
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList",
+          "prefix": "core/src/test/java/com/alibaba/fastjson2/jsonb/",
+          "limit": 30
+        }
+      },
+      {
+        "name": "mcp__preflight__source_search",
+        "input": {
+          "text": "Arrays.asList(1, 2).getClass()",
+          "prefix": "core/src/test/",
+          "limit": 20
+        }
+      }
+    ],
+    "toolBudgetExceeded": true,
+    "inputHashes": {
+      "manifest": "157bab5de74fca551db9e7fcd5a4542da7b759290ceff584a18b58f20ff86943",
+      "prompt": "a04976e21a6d0af021859a399122af38d4b0c9ba0537942a7e5012aeb71667cd",
+      "snapshot": "381a989179feabaa640e0ce85ecf46bc55c99c43a0ad444c73ebf6e3180ed212",
+      "sourceManifest": "e565c07b9bcf2a5feec28916577ba4c4124be97aca2d620b6ac8d16a9b0aeda9",
+      "productCommand": "b572cd747dc968081562084ae956a22c0dfdd7c9339ed2217cfc30ddcbbaed8e",
+      "mcpConfig": "7219cd4d53f2deb9f5ad96f3ee4ff90c64dfa6cf5139fe42f59c6ba5e29889a3"
+    },
+    "evidenceHashes": {
+      "stream": "eee34b37432ab3d47510c99721310b9eb1ad6258bdae765f176c4ad94d40dbf8",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tools": "b5e763c512c914424416e0fe3947c933c57c2dd9685858843232ed42ad6aa293"
+    }
+  }
+]

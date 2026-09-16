@@ -1,0 +1,47 @@
+{
+  "label": "pinterest_ktlint-2785-source-1",
+  "case": "pinterest_ktlint-2785",
+  "arm": "source",
+  "repeat": 1,
+  "subtype": "success",
+  "isError": false,
+  "totalCostUsd": 0.23006700000000002,
+  "durationMs": 41192,
+  "numTurns": 14,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 11815,
+    "cache_read_input_tokens": 28624,
+    "output_tokens": 3839,
+    "output_tokens_details": {
+      "thinking_tokens": 22
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 11815,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2329,
+        "cache_read_input_tokens": 11795,
+        "cache_creation_input_tokens": 883,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 883
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "finalText": "```json\n{\"targets\":[{\"file\":\"ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt\",\"symbol\":\"SuppressionLocator.findRuleSuppressionIds (ValueArgument extension)\",\"kind\":\"caller\",\"reason\":\"Sole consumer of SUPPRESS_ANNOTATION_RULE_MAP; the new 'LocalVariableName' key is resolved here via map lookup in the `else` branch, so this is the runtime path that changes behaviour.\",\"evidence\":\"SuppressionLocator.kt:223-226 `else -> { SUPPRESS_ANNOTATION_RULE_MAP[argumentExpressionText] }`; map defined at lines 256-270.\"},{\"file\":\"ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext.kt\",\"symbol\":\"RuleExecutionContext.suppressionLocator / suppress(rootNode, node.startOffset, rule) callsites\",\"kind\":\"caller\",\"reason\":\"Only construction/usage point of SuppressionLocator; every rule's lint/format emit goes through this, so any new suppression mapping applies to all rules matching 'standard:backing-property-naming'.\",\"evidence\":\"RuleExecutionContext.kt:42 `private var suppressionLocator = SuppressionLocator(editorConfig)`; lines 146 and 174 call `suppressionLocator.suppress(rootNode, node.startOffset, rule)`.\"},{\"file\":\"ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt\",\"symbol\":\"`Given a property with a disallowed name which is suppressed`(suppressionName: String)\",\"kind\":\"test\",\"reason\":\"Parameterized test enumerating IntelliJ suppression ids mapped to backing-property-naming ('ktlint:standard:backing-property-naming', 'PropertyName', 'ObjectPropertyName'). 'LocalVariableName' is not in the list; this is the natural place where existing coverage documents the mapping and where the new key is currently unverified.\",\"evidence\":\"BackingPropertyNamingRuleTest.kt:275-290 @ValueSource strings = [\\\"ktlint:standard:backing-property-naming\\\", \\\"PropertyName\\\", \\\"ObjectPropertyName\\\"]; body uses `@Suppress(\\\"$suppressionName\\\") val _foo = Foo()`.\"},{\"file\":\"ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt\",\"symbol\":\"`Given a property name suppressed via 'PropertyName' then also suppress the ktlint violation`()\",\"kind\":\"test\",\"reason\":\"Existing test asserting IDE-suppression → ktlint suppression for this rule; shows the pattern the change extends and that suppression coverage is class-property based, not local-variable based.\",\"evidence\":\"BackingPropertyNamingRuleTest.kt:337-347 `@Suppress(\\\"PropertyName\\\") var FOO = \\\"foo\\\"` → hasNoLintViolations().\"},{\"file\":\"ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRuleTest.kt\",\"symbol\":\"`Given a property name suppressed via 'PropertyName' then also suppress the ktlint violation`() and neighbouring Issue 2441/2612 suppression tests (lines 265-306)\",\"kind\":\"test\",\"reason\":\"Sibling tests for the same SUPPRESS_ANNOTATION_RULE_MAP; note the change maps 'LocalVariableName' only to backing-property-naming and NOT to property-naming, which is an asymmetry vs 'PropertyName'/'ObjectPropertyName'. Review whether that is intended.\",\"evidence\":\"PropertyNamingRuleTest.kt:144 \\\"PropertyName\\\" ValueSource; lines 265-306 tests for PropertyName/ConstPropertyName/PrivatePropertyName/ObjectPropertyName; SuppressionLocator.kt:265,267 map both PropertyName and ObjectPropertyName to two rules.\"},{\"file\":\"ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule.kt\",\"symbol\":\"BackingPropertyNamingRule (file-level)\",\"kind\":\"caller\",\"reason\":\"Target rule id 'backing-property-naming' whose violations become suppressible by @Suppress(\\\"LocalVariableName\\\"). Worth checking that the rule actually reports on local variables (no `isLocalVariable` text found in the file), otherwise the mapping may be a no-op or over-broad.\",\"evidence\":\"BackingPropertyNamingRule.kt:32 `id = \\\"backing-property-naming\\\"`; search for 'isLocalVariable' in the file returned 0 hits (file-level evidence only).\"}],\"unknowns\":[\"Tool budget exhausted before listing ktlint-rule-engine/src/test/.../internal; could not confirm whether a SuppressionLocatorTest exists that enumerates SUPPRESS_ANNOTATION_RULE_MAP entries (search for 'FunctionName' and 'Suppress(\\\\\\\"' under ktlint-rule-engine/src/test returned 0 hits, suggesting no direct unit test of the map).\",\"Did not read BackingPropertyNamingRule body to confirm whether it emits violations on local variables (where IntelliJ would use LocalVariableName); the mapping's practical effect is unverified.\",\"No external consumers can be assessed; SuppressionLocator is internal and SUPPRESS_ANNOTATION_RULE_MAP is private, so only in-repo RuleExecutionContext is affected.\",\"Documentation (docs/ or CHANGELOG) listing supported IntelliJ suppression ids was not checked.\"],\"summary\":\"Low-risk additive entry in the private SUPPRESS_ANNOTATION_RULE_MAP consumed only by SuppressionLocator.findRuleSuppressionIds via RuleExecutionContext. Review focus: (1) the parameterized suppression test in BackingPropertyNamingRuleTest lacks 'LocalVariableName' so the new mapping is untested by existing tests; (2) unlike 'PropertyName'/'ObjectPropertyName', the new key maps only to backing-property-naming and not property-naming—confirm intended; (3) confirm BackingPropertyNamingRule actually reports on local variables so the mapping is meaningful.\"}\n```",
+  "streamSha256": "458287516d1da7791d0ec52a792a861d2cb104dcd30fdb6098ef7abc149cc68e",
+  "toolsSha256": "1c5b979d14938700a3f5226ae0698f26559574ac65f6293c489abc9a03e11c5e"
+}

@@ -1,0 +1,3078 @@
+{
+  "format": "kartograph-ai-utility-v4-results",
+  "version": 1,
+  "mode": "trials",
+  "manifestSha256": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+  "oracleSha256": "c05648e7916af7a0ad039cba4bfcf77caa9d5e8779c8fe7d8248679e77a276fb",
+  "scoringRulesSha256": "1b356474687379bc67367c6957cad61d1328407503c4cbcd813ab0baaf183a5b",
+  "scoringRules": {
+    "format": "kartograph-ai-utility-v4-scoring",
+    "version": 1,
+    "frozenBeforeModelExposure": true,
+    "recallDenominator": "The full oracle size of the case: direct targets plus indirect (depth-2) targets. Per-case ceiling = min(1, 12 / oracle size) and is reported next to every recall value.",
+    "precisionDenominator": "The number of valid targets the model listed. An answer with more than 12 targets stays invalid under the v3 rule (too-many-targets) and is not rescored.",
+    "cohortMean": "The cohort mean includes all four cases. fasterxml__jackson-core-1016 (oracle 32, ceiling 0.375) is additionally reported on its own row so the structural ceiling is never read as a tool effect.",
+    "kindBlind": "Matching ignores kind (test/caller/override/registration) and looks only at file plus symbol. The v1 Gson-specific override overload heuristic in grade.py is therefore not applied in v4.",
+    "overloadMatching": "Symbol matching reuses the v3 grade.py rule unchanged and therefore does not distinguish same-named overloads: one prediction naming a method can credit every oracle overload of that name in the same file, while an exact USR credits exactly one. In cases with many same-named overloads (jackson in particular) recall can come out structurally high, and the results section states this limitation. The rule itself is not changed.",
+    "oracleTestTargets": {
+      "alibaba__fastjson2-2097": 0,
+      "detekt_detekt-7625": 2,
+      "fasterxml__jackson-core-1016": 9,
+      "pinterest_ktlint-2785": 0,
+      "note": "fastjson2 and ktlint have zero test targets in the oracle. That is the result of the uniform evidence rule, not a claim that no related tests exist."
+    },
+    "transitiveCaseMeaning": "transitiveCase marks the cases that receive the direct-and-indirect listing question. The tie-break is ascending Unicode code point order of the cohort-v4 id string (user-confirmed), which selects alibaba__fastjson2-2097 and detekt_detekt-7625.",
+    "partialCredit": "A file-level-only match scores 0.5 in grade.py. In v4 it is recorded as a separate partial count and never enters recall or precision.",
+    "freshness": "Freshness is only observable in the mcp arm. Freshness calls and their status are recorded and scored separately, never mixed into recall/precision and never compared across arms.",
+    "toolCounts": "query_symbol/impact/freshness call counts are recorded, never converted into a score, and never used to claim a causal effect."
+  },
+  "preExecutionChanges": [
+    {
+      "at": "after the smoke trial, before the first of the 16 pre-registered trials",
+      "modelExposure": "none of the 16 trials had started; only the excluded smoke-0 trial had run",
+      "change": "Added the scoringRules.overloadMatching explanation. The smoke trial showed that the inherited v3 symbol rule credits every same-named overload in the matched file. Only the wording was added; no matching rule, oracle entry, prompt, cohort, budget or schedule was changed.",
+      "previousScoringRulesSha256": "274bce59b28291044b2e015b1e683158e8a952a746a004c6c3b9c41644ad3086",
+      "previousManifestSha256": "54f4999f1df0b54ffb252060e4e63ecc26b135f290ae6f713406bf0ce0724946",
+      "oracleSha256Unchanged": "c05648e7916af7a0ad039cba4bfcf77caa9d5e8779c8fe7d8248679e77a276fb"
+    }
+  ],
+  "plannedTrials": 16,
+  "executedTrials": 16,
+  "trials": [
+    {
+      "label": "alibaba__fastjson2-2097-source-0",
+      "case": "alibaba__fastjson2-2097",
+      "arm": "source",
+      "repeat": 0,
+      "transitiveCase": true,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 7,
+      "oracleDirect": 4,
+      "oracleIndirect": 3,
+      "recallCeiling": 1.0,
+      "recall": 0.14285714285714285,
+      "precision": 0.08333333333333333,
+      "matchedOracleTargets": 1,
+      "matchedPredictions": 1,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 12,
+      "validPredictions": 12,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 11,
+      "perOracleTarget": [
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#processExtra(Lcom/alibaba/fastjson2/JSONReader;Ljava/lang/Object;)V",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#readFieldValue(Lcom/alibaba/fastjson2/JSONReader;)Ljava/lang/Object;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReader(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 14,
+        "requestedSource": 14,
+        "requestedProduct": 0,
+        "requestedByTool": {
+          "source_read": 6,
+          "source_search": 8
+        },
+        "processedSource": 12,
+        "processedProduct": 0,
+        "processedByTool": {
+          "source_read": 6,
+          "source_search": 6
+        },
+        "budgetRejected": 2,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": false,
+        "calls": 0,
+        "statuses": [],
+        "reasons": []
+      },
+      "observedToolContentBytes": 46314,
+      "malformedStreamLines": 0,
+      "seconds": 88.0863565839827,
+      "costUsd": 0.416914,
+      "usage": {
+        "input_tokens": 12,
+        "cache_creation_input_tokens": 23508,
+        "cache_read_input_tokens": 63474,
+        "output_tokens": 5938,
+        "output_tokens_details": {
+          "thinking_tokens": 681
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 23508,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3690,
+            "cache_read_input_tokens": 22832,
+            "cache_creation_input_tokens": 676,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 676
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "8c177b9a91a807e9b2478c8fadff0198a285047ddf33275dc72968955c96e033",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "8c2d2f646a9e0ad5d0bff31c2295f70da9314fda1d163ecc106ef27ee54b9b75"
+      }
+    },
+    {
+      "label": "alibaba__fastjson2-2097-source-1",
+      "case": "alibaba__fastjson2-2097",
+      "arm": "source",
+      "repeat": 1,
+      "transitiveCase": true,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 7,
+      "oracleDirect": 4,
+      "oracleIndirect": 3,
+      "recallCeiling": 1.0,
+      "recall": 0.42857142857142855,
+      "precision": 0.16666666666666666,
+      "matchedOracleTargets": 3,
+      "matchedPredictions": 2,
+      "partialOracleTargets": 2,
+      "partialPredictions": 1,
+      "listedTargets": 12,
+      "validPredictions": 12,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 9,
+      "perOracleTarget": [
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#processExtra(Lcom/alibaba/fastjson2/JSONReader;Ljava/lang/Object;)V",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#readFieldValue(Lcom/alibaba/fastjson2/JSONReader;)Ljava/lang/Object;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReader(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.5
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 14,
+        "requestedSource": 14,
+        "requestedProduct": 0,
+        "requestedByTool": {
+          "source_read": 6,
+          "source_search": 8
+        },
+        "processedSource": 12,
+        "processedProduct": 0,
+        "processedByTool": {
+          "source_read": 6,
+          "source_search": 6
+        },
+        "budgetRejected": 2,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": false,
+        "calls": 0,
+        "statuses": [],
+        "reasons": []
+      },
+      "observedToolContentBytes": 48323,
+      "malformedStreamLines": 0,
+      "seconds": 71.7099369589996,
+      "costUsd": 0.41351399999999994,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 23116,
+        "cache_read_input_tokens": 47844,
+        "output_tokens": 6270,
+        "output_tokens_details": {
+          "thinking_tokens": 801
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 23116,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3750,
+            "cache_read_input_tokens": 21681,
+            "cache_creation_input_tokens": 2298,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 2298
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "90197f1f1280ffcf8edcb680e4c51690ce7c840ea87f406697a83688c6411d5b",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "be03639833bc011372d35fa4b9d7c5818d6b49eaffdf6d64fb4a9f46f726086c"
+      }
+    },
+    {
+      "label": "alibaba__fastjson2-2097-mcp-0",
+      "case": "alibaba__fastjson2-2097",
+      "arm": "mcp",
+      "repeat": 0,
+      "transitiveCase": true,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 7,
+      "oracleDirect": 4,
+      "oracleIndirect": 3,
+      "recallCeiling": 1.0,
+      "recall": 0.42857142857142855,
+      "precision": 0.25,
+      "matchedOracleTargets": 3,
+      "matchedPredictions": 3,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 12,
+      "validPredictions": 12,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 9,
+      "perOracleTarget": [
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#processExtra(Lcom/alibaba/fastjson2/JSONReader;Ljava/lang/Object;)V",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#readFieldValue(Lcom/alibaba/fastjson2/JSONReader;)Ljava/lang/Object;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReader(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 14,
+        "requestedSource": 12,
+        "requestedProduct": 2,
+        "requestedByTool": {
+          "freshness": 1,
+          "source_read": 7,
+          "query_symbol": 1,
+          "source_search": 5
+        },
+        "processedSource": 10,
+        "processedProduct": 2,
+        "processedByTool": {
+          "freshness": 1,
+          "source_read": 7,
+          "query_symbol": 1,
+          "source_search": 3
+        },
+        "budgetRejected": 2,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": true,
+        "calls": 1,
+        "statuses": [
+          "unverified"
+        ],
+        "reasons": [
+          [
+            "build-scope-mismatch",
+            "missing-build-witness",
+            "unwitnessed-class-root"
+          ]
+        ]
+      },
+      "observedToolContentBytes": 55522,
+      "malformedStreamLines": 0,
+      "seconds": 72.9847660420055,
+      "costUsd": 0.45390500000000006,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 26625,
+        "cache_read_input_tokens": 58556,
+        "output_tokens": 6269,
+        "output_tokens_details": {
+          "thinking_tokens": 758
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 26625,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3914,
+            "cache_read_input_tokens": 25289,
+            "cache_creation_input_tokens": 3458,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 3458
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "f13b6ae68ba8d2d3e62c4560c8c69cb3bddfcd0c6809cd8d06aecbe4254ddf06",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "eef77816a35ee5c2054a6b272656dfb382ba427ce0dba3b4c42d30893a232901"
+      }
+    },
+    {
+      "label": "alibaba__fastjson2-2097-mcp-1",
+      "case": "alibaba__fastjson2-2097",
+      "arm": "mcp",
+      "repeat": 1,
+      "transitiveCase": true,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 7,
+      "oracleDirect": 4,
+      "oracleIndirect": 3,
+      "recallCeiling": 1.0,
+      "recall": 0.2857142857142857,
+      "precision": 0.18181818181818182,
+      "matchedOracleTargets": 2,
+      "matchedPredictions": 2,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 11,
+      "validPredictions": 11,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 9,
+      "perOracleTarget": [
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#processExtra(Lcom/alibaba/fastjson2/JSONReader;Ljava/lang/Object;)V",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/FieldReaderObject#readFieldValue(Lcom/alibaba/fastjson2/JSONReader;)Ljava/lang/Object;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReader(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 15,
+        "requestedSource": 13,
+        "requestedProduct": 2,
+        "requestedByTool": {
+          "freshness": 1,
+          "source_read": 7,
+          "source_search": 6,
+          "impact": 1
+        },
+        "processedSource": 10,
+        "processedProduct": 2,
+        "processedByTool": {
+          "freshness": 1,
+          "source_read": 5,
+          "source_search": 5,
+          "impact": 1
+        },
+        "budgetRejected": 3,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": true,
+        "calls": 1,
+        "statuses": [
+          "unverified"
+        ],
+        "reasons": [
+          [
+            "build-scope-mismatch",
+            "missing-build-witness",
+            "unwitnessed-class-root"
+          ]
+        ]
+      },
+      "observedToolContentBytes": 42862,
+      "malformedStreamLines": 0,
+      "seconds": 88.20318170901737,
+      "costUsd": 0.380975,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 20527,
+        "cache_read_input_tokens": 48946,
+        "output_tokens": 5983,
+        "output_tokens_details": {
+          "thinking_tokens": 534
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 20527,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3724,
+            "cache_read_input_tokens": 20863,
+            "cache_creation_input_tokens": 1786,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 1786
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "dda3edeacbce4878c5349a64b30eafddb58e11223a06775c9fe5dd19471e1184",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "5c6750ce53499bbf325628a21bfd26fda94f3809c8630956759cccda5987fea5"
+      }
+    },
+    {
+      "label": "fasterxml__jackson-core-1016-source-0",
+      "case": "fasterxml__jackson-core-1016",
+      "arm": "source",
+      "repeat": 0,
+      "transitiveCase": false,
+      "answerValid": false,
+      "answerInvalidReason": "invalid-json",
+      "oracleSize": 32,
+      "oracleDirect": 21,
+      "oracleIndirect": 11,
+      "recallCeiling": 0.375,
+      "recall": 0.0,
+      "precision": null,
+      "matchedOracleTargets": 0,
+      "matchedPredictions": 0,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 0,
+      "validPredictions": 0,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 0,
+      "perOracleTarget": [
+        {
+          "id": "method:com/fasterxml/jackson/core/JsonFactory#createParser(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForByteBuffer(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForBytes(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_handleOddName(I)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseAposName()Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(II)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(III)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName([IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsets()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsetsByteBuffer()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingByteBufferParserAllContent()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingParserAllContent()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplit()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplitByteBuffer()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(II)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(III)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "override",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "override",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeDecimalDataOutput()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeIntegerDataOutput()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/JsonParserClosedCaseTest#parsers()Ljava/util/Collection;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseLongName(III)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName(I)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName2(II)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseName(I)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(III)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIII)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIIII)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/read/SimpleParserTest#testUtf8BOMHandling()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 15,
+        "requestedSource": 15,
+        "requestedProduct": 0,
+        "requestedByTool": {
+          "source_search": 11,
+          "source_read": 4
+        },
+        "processedSource": 12,
+        "processedProduct": 0,
+        "processedByTool": {
+          "source_search": 10,
+          "source_read": 2
+        },
+        "budgetRejected": 3,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": false,
+        "calls": 0,
+        "statuses": [],
+        "reasons": []
+      },
+      "observedToolContentBytes": 16171,
+      "malformedStreamLines": 0,
+      "seconds": 55.602440624992596,
+      "costUsd": 0.2702805,
+      "usage": {
+        "input_tokens": 12,
+        "cache_creation_input_tokens": 12142,
+        "cache_read_input_tokens": 41875,
+        "output_tokens": 5011,
+        "output_tokens_details": {
+          "thinking_tokens": 594
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 12142,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2887,
+            "cache_read_input_tokens": 12226,
+            "cache_creation_input_tokens": 779,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 779
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "28580600d625b7f07e08c3080e5db0d7d7b7102efc9356aa5b602a84146a0ce1",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "1b04416009b78d205bfbf0f4bfdb86934ead00a9d0c896a8fe58e770fb6b993f"
+      }
+    },
+    {
+      "label": "fasterxml__jackson-core-1016-source-1",
+      "case": "fasterxml__jackson-core-1016",
+      "arm": "source",
+      "repeat": 1,
+      "transitiveCase": false,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 32,
+      "oracleDirect": 21,
+      "oracleIndirect": 11,
+      "recallCeiling": 0.375,
+      "recall": 0.0625,
+      "precision": 0.18181818181818182,
+      "matchedOracleTargets": 2,
+      "matchedPredictions": 2,
+      "partialOracleTargets": 6,
+      "partialPredictions": 2,
+      "listedTargets": 11,
+      "validPredictions": 11,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 7,
+      "perOracleTarget": [
+        {
+          "id": "method:com/fasterxml/jackson/core/JsonFactory#createParser(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForByteBuffer(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForBytes(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_handleOddName(I)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseAposName()Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(II)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(III)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName([IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsets()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsetsByteBuffer()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingByteBufferParserAllContent()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingParserAllContent()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplit()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplitByteBuffer()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(II)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(III)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "override",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "override",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeDecimalDataOutput()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeIntegerDataOutput()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/JsonParserClosedCaseTest#parsers()Ljava/util/Collection;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseLongName(III)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName(I)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName2(II)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseName(I)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(III)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIII)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIIII)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/read/SimpleParserTest#testUtf8BOMHandling()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 14,
+        "requestedSource": 14,
+        "requestedProduct": 0,
+        "requestedByTool": {
+          "source_search": 10,
+          "source_read": 4
+        },
+        "processedSource": 12,
+        "processedProduct": 0,
+        "processedByTool": {
+          "source_search": 8,
+          "source_read": 4
+        },
+        "budgetRejected": 2,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": false,
+        "calls": 0,
+        "statuses": [],
+        "reasons": []
+      },
+      "observedToolContentBytes": 19428,
+      "malformedStreamLines": 0,
+      "seconds": 54.312973292020615,
+      "costUsd": 0.267852,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 13207,
+        "cache_read_input_tokens": 30348,
+        "output_tokens": 4721,
+        "output_tokens_details": {
+          "thinking_tokens": 486
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 13207,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2920,
+            "cache_read_input_tokens": 11695,
+            "cache_creation_input_tokens": 2375,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 2375
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "a4b4494fceab260a214cc849fb8ddb72836e01401999261d5d7c631636a2058b",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "8e53f304424228b8a328c48157db84f0155ec8366aa484bb5bd301a1671091b8"
+      }
+    },
+    {
+      "label": "fasterxml__jackson-core-1016-mcp-0",
+      "case": "fasterxml__jackson-core-1016",
+      "arm": "mcp",
+      "repeat": 0,
+      "transitiveCase": false,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 32,
+      "oracleDirect": 21,
+      "oracleIndirect": 11,
+      "recallCeiling": 0.375,
+      "recall": 0.0,
+      "precision": 0.0,
+      "matchedOracleTargets": 0,
+      "matchedPredictions": 0,
+      "partialOracleTargets": 8,
+      "partialPredictions": 3,
+      "listedTargets": 12,
+      "validPredictions": 12,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 9,
+      "perOracleTarget": [
+        {
+          "id": "method:com/fasterxml/jackson/core/JsonFactory#createParser(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForByteBuffer(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForBytes(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_handleOddName(I)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseAposName()Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(II)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(III)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName([IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsets()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsetsByteBuffer()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingByteBufferParserAllContent()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingParserAllContent()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplit()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplitByteBuffer()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.5
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(II)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(III)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "override",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "override",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeDecimalDataOutput()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeIntegerDataOutput()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/JsonParserClosedCaseTest#parsers()Ljava/util/Collection;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseLongName(III)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName(I)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName2(II)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseName(I)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(III)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIII)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIIII)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/read/SimpleParserTest#testUtf8BOMHandling()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 15,
+        "requestedSource": 14,
+        "requestedProduct": 1,
+        "requestedByTool": {
+          "freshness": 1,
+          "source_search": 9,
+          "source_read": 5
+        },
+        "processedSource": 11,
+        "processedProduct": 1,
+        "processedByTool": {
+          "freshness": 1,
+          "source_search": 8,
+          "source_read": 3
+        },
+        "budgetRejected": 3,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": true,
+        "calls": 1,
+        "statuses": [
+          "unverified"
+        ],
+        "reasons": [
+          [
+            "build-scope-mismatch",
+            "missing-build-witness",
+            "unwitnessed-class-root"
+          ]
+        ]
+      },
+      "observedToolContentBytes": 19485,
+      "malformedStreamLines": 0,
+      "seconds": 58.25164216698613,
+      "costUsd": 0.2900445,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 13472,
+        "cache_read_input_tokens": 39883,
+        "output_tokens": 5312,
+        "output_tokens_details": {
+          "thinking_tokens": 645
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 13472,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3262,
+            "cache_read_input_tokens": 14602,
+            "cache_creation_input_tokens": 992,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 992
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "a1e12eca2be13675e294c34778d605c58e65f23401d93e2be8e76bbe4803e4ed",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "a38e20782db7178157da1fbf6e967271d58976daae55590da97c8df6e800a26c"
+      }
+    },
+    {
+      "label": "fasterxml__jackson-core-1016-mcp-1",
+      "case": "fasterxml__jackson-core-1016",
+      "arm": "mcp",
+      "repeat": 1,
+      "transitiveCase": false,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 32,
+      "oracleDirect": 21,
+      "oracleIndirect": 11,
+      "recallCeiling": 0.375,
+      "recall": 0.0,
+      "precision": 0.0,
+      "matchedOracleTargets": 0,
+      "matchedPredictions": 0,
+      "partialOracleTargets": 1,
+      "partialPredictions": 1,
+      "listedTargets": 11,
+      "validPredictions": 11,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 10,
+      "perOracleTarget": [
+        {
+          "id": "method:com/fasterxml/jackson/core/JsonFactory#createParser(Ljava/io/DataInput;)Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForByteBuffer(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForBytes(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_handleOddName(I)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseAposName()Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(II)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(III)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName(IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#findName([IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseEscapedName([IIIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsets()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsetsByteBuffer()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingByteBufferParserAllContent()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingParserAllContent()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplit()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplitByteBuffer()V",
+          "relation": "direct",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(II)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(III)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase#_findName(IIII)Ljava/lang/String;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "override",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteBufferParser()Lcom/fasterxml/jackson/core/JsonParser;",
+          "relation": "direct",
+          "kind": "override",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeDecimalDataOutput()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/constraints/LargeNumberWriteTest#testWriteLargeIntegerDataOutput()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/JsonParserClosedCaseTest#parsers()Ljava/util/Collection;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseLongName(III)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName(I)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseMediumName2(II)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#_parseName(I)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(III)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIII)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/json/UTF8DataInputJsonParser#parseName(IIIII)Ljava/lang/String;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/fasterxml/jackson/core/read/SimpleParserTest#testUtf8BOMHandling()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 0.5
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 15,
+        "requestedSource": 14,
+        "requestedProduct": 1,
+        "requestedByTool": {
+          "freshness": 1,
+          "source_search": 10,
+          "source_read": 4
+        },
+        "processedSource": 11,
+        "processedProduct": 1,
+        "processedByTool": {
+          "freshness": 1,
+          "source_search": 8,
+          "source_read": 3
+        },
+        "budgetRejected": 3,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": true,
+        "calls": 1,
+        "statuses": [
+          "unverified"
+        ],
+        "reasons": [
+          [
+            "build-scope-mismatch",
+            "missing-build-witness",
+            "unwitnessed-class-root"
+          ]
+        ]
+      },
+      "observedToolContentBytes": 21870,
+      "malformedStreamLines": 0,
+      "seconds": 56.159207582997624,
+      "costUsd": 0.2929795,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 14440,
+        "cache_read_input_tokens": 41423,
+        "output_tokens": 5011,
+        "output_tokens_details": {
+          "thinking_tokens": 446
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 14440,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3107,
+            "cache_read_input_tokens": 15775,
+            "cache_creation_input_tokens": 787,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 787
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "fe82b610ad0c5a020d9a951c12175afbd9ab44582d31dce8805d876ccab852e9",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "54ff1ec579b68cc50540e759189f2a59b8ba3ab49f941dc0d4bb8599edc6252c"
+      }
+    },
+    {
+      "label": "detekt_detekt-7625-source-0",
+      "case": "detekt_detekt-7625",
+      "arm": "source",
+      "repeat": 0,
+      "transitiveCase": true,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 4,
+      "oracleDirect": 1,
+      "oracleIndirect": 3,
+      "recallCeiling": 1.0,
+      "recall": 0.75,
+      "precision": 0.3,
+      "matchedOracleTargets": 3,
+      "matchedPredictions": 3,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 10,
+      "validPredictions": 10,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 7,
+      "perOracleTarget": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 1.0
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 1.0
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 1.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 14,
+        "requestedSource": 14,
+        "requestedProduct": 0,
+        "requestedByTool": {
+          "source_read": 6,
+          "source_search": 8
+        },
+        "processedSource": 12,
+        "processedProduct": 0,
+        "processedByTool": {
+          "source_read": 6,
+          "source_search": 6
+        },
+        "budgetRejected": 2,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": false,
+        "calls": 0,
+        "statuses": [],
+        "reasons": []
+      },
+      "observedToolContentBytes": 28782,
+      "malformedStreamLines": 0,
+      "seconds": 47.44140658399556,
+      "costUsd": 0.2807955,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 15753,
+        "cache_read_input_tokens": 34599,
+        "output_tokens": 4167,
+        "output_tokens_details": {
+          "thinking_tokens": 20
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 15753,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2797,
+            "cache_read_input_tokens": 14456,
+            "cache_creation_input_tokens": 2160,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 2160
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "961fbf63223e59fadb1a3a4a6b6acddacaffcc5dce686da0d92b1ed9c1aa15ca",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "b9e3f6ee4cdb8bc54d3108a1b8ad4d0128572287479f94fe027355cda7fcbe8d"
+      }
+    },
+    {
+      "label": "detekt_detekt-7625-source-1",
+      "case": "detekt_detekt-7625",
+      "arm": "source",
+      "repeat": 1,
+      "transitiveCase": true,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 4,
+      "oracleDirect": 1,
+      "oracleIndirect": 3,
+      "recallCeiling": 1.0,
+      "recall": 0.75,
+      "precision": 0.3,
+      "matchedOracleTargets": 3,
+      "matchedPredictions": 3,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 10,
+      "validPredictions": 10,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 7,
+      "perOracleTarget": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 1.0
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 1.0
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 1.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 13,
+        "requestedSource": 13,
+        "requestedProduct": 0,
+        "requestedByTool": {
+          "source_read": 6,
+          "source_search": 7
+        },
+        "processedSource": 12,
+        "processedProduct": 0,
+        "processedByTool": {
+          "source_read": 6,
+          "source_search": 6
+        },
+        "budgetRejected": 1,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": false,
+        "calls": 0,
+        "statuses": [],
+        "reasons": []
+      },
+      "observedToolContentBytes": 22224,
+      "malformedStreamLines": 0,
+      "seconds": 46.65627995799878,
+      "costUsd": 0.25279050000000003,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 13044,
+        "cache_read_input_tokens": 30969,
+        "output_tokens": 4203,
+        "output_tokens_details": {
+          "thinking_tokens": 20
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 13044,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2867,
+            "cache_read_input_tokens": 12190,
+            "cache_creation_input_tokens": 1717,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 1717
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "7ffcd4267bcffef7346ae31679c18ea46c440ecdb316a9a3003615414da72d2e",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "6ccf485dd4fe3efffb52b86eceb5c2b2d4dc3014474bd38ca4e21eac6cf19d50"
+      }
+    },
+    {
+      "label": "detekt_detekt-7625-mcp-0",
+      "case": "detekt_detekt-7625",
+      "arm": "mcp",
+      "repeat": 0,
+      "transitiveCase": true,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 4,
+      "oracleDirect": 1,
+      "oracleIndirect": 3,
+      "recallCeiling": 1.0,
+      "recall": 0.75,
+      "precision": 0.3,
+      "matchedOracleTargets": 3,
+      "matchedPredictions": 3,
+      "partialOracleTargets": 1,
+      "partialPredictions": 1,
+      "listedTargets": 10,
+      "validPredictions": 10,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 6,
+      "perOracleTarget": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.5
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 1.0
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 1.0
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 1.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 13,
+        "requestedSource": 12,
+        "requestedProduct": 1,
+        "requestedByTool": {
+          "freshness": 1,
+          "source_read": 6,
+          "source_search": 6
+        },
+        "processedSource": 11,
+        "processedProduct": 1,
+        "processedByTool": {
+          "freshness": 1,
+          "source_read": 6,
+          "source_search": 5
+        },
+        "budgetRejected": 1,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": true,
+        "calls": 1,
+        "statuses": [
+          "unverified"
+        ],
+        "reasons": [
+          [
+            "build-scope-mismatch",
+            "missing-build-witness",
+            "unwitnessed-class-root"
+          ]
+        ]
+      },
+      "observedToolContentBytes": 21903,
+      "malformedStreamLines": 0,
+      "seconds": 63.88191137497779,
+      "costUsd": 0.25857,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 12894,
+        "cache_read_input_tokens": 37768,
+        "output_tokens": 4358,
+        "output_tokens_details": {
+          "thinking_tokens": 26
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 12894,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3003,
+            "cache_read_input_tokens": 13330,
+            "cache_creation_input_tokens": 1686,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 1686
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "549391412285d0fc7f88d9f2366cec92dc2dbf9bcd8780b79c0d94554bcbf8c1",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "bd967097a4a6a389d75f5613ae2fbec232663943f626a318178005d9a1c9eb3a"
+      }
+    },
+    {
+      "label": "detekt_detekt-7625-mcp-1",
+      "case": "detekt_detekt-7625",
+      "arm": "mcp",
+      "repeat": 1,
+      "transitiveCase": true,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 4,
+      "oracleDirect": 1,
+      "oracleIndirect": 3,
+      "recallCeiling": 1.0,
+      "recall": 1.0,
+      "precision": 0.36363636363636365,
+      "matchedOracleTargets": 4,
+      "matchedPredictions": 4,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 11,
+      "validPredictions": 11,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 7,
+      "perOracleTarget": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 1.0
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V",
+          "relation": "indirect",
+          "kind": "test",
+          "credit": 1.0
+        },
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 1.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 14,
+        "requestedSource": 10,
+        "requestedProduct": 4,
+        "requestedByTool": {
+          "freshness": 1,
+          "query_symbol": 1,
+          "source_read": 6,
+          "source_search": 4,
+          "impact": 2
+        },
+        "processedSource": 9,
+        "processedProduct": 3,
+        "processedByTool": {
+          "freshness": 1,
+          "query_symbol": 1,
+          "source_read": 6,
+          "source_search": 3,
+          "impact": 1
+        },
+        "budgetRejected": 2,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": true,
+        "calls": 1,
+        "statuses": [
+          "unverified"
+        ],
+        "reasons": [
+          [
+            "build-scope-mismatch",
+            "missing-build-witness",
+            "unwitnessed-class-root"
+          ]
+        ]
+      },
+      "observedToolContentBytes": 47667,
+      "malformedStreamLines": 0,
+      "seconds": 67.43136233300902,
+      "costUsd": 0.42658299999999993,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 24261,
+        "cache_read_input_tokens": 62964,
+        "output_tokens": 6028,
+        "output_tokens_details": {
+          "thinking_tokens": 532
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 24261,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 4095,
+            "cache_read_input_tokens": 25499,
+            "cache_creation_input_tokens": 884,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 884
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "b2ce58ef4290bd3c4df5262c2aecc872b8aa250ad60181dbf10d22e18eb7a49c",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "0c815f6cb6d97cf9d625503aeb1e79d978bd466bdce00701a45a8d8bc3160a31"
+      }
+    },
+    {
+      "label": "pinterest_ktlint-2785-source-0",
+      "case": "pinterest_ktlint-2785",
+      "arm": "source",
+      "repeat": 0,
+      "transitiveCase": false,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 4,
+      "oracleDirect": 2,
+      "oracleIndirect": 2,
+      "recallCeiling": 1.0,
+      "recall": 0.25,
+      "precision": 0.16666666666666666,
+      "matchedOracleTargets": 1,
+      "matchedPredictions": 1,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 6,
+      "validPredictions": 6,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 5,
+      "perOracleTarget": [
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#access$getSUPPRESS_ANNOTATION_RULE_MAP$cp()Ljava/util/Map;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#createSuppressionHintFromAnnotations(Lorg/jetbrains/kotlin/psi/KtAnnotated;)Lcom/pinterest/ktlint/rule/engine/internal/SuppressionLocator$SuppressionHint;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator$Companion#getSUPPRESS_ANNOTATION_RULE_MAP()Ljava/util/Map;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 14,
+        "requestedSource": 14,
+        "requestedProduct": 0,
+        "requestedByTool": {
+          "source_read": 3,
+          "source_search": 10,
+          "source_list": 1
+        },
+        "processedSource": 12,
+        "processedProduct": 0,
+        "processedByTool": {
+          "source_read": 2,
+          "source_search": 9,
+          "source_list": 1
+        },
+        "budgetRejected": 2,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": false,
+        "calls": 0,
+        "statuses": [],
+        "reasons": []
+      },
+      "observedToolContentBytes": 21292,
+      "malformedStreamLines": 0,
+      "seconds": 45.158737416990334,
+      "costUsd": 0.24572549999999999,
+      "usage": {
+        "input_tokens": 12,
+        "cache_creation_input_tokens": 12848,
+        "cache_read_input_tokens": 36311,
+        "output_tokens": 3898,
+        "output_tokens_details": {
+          "thinking_tokens": 91
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 12848,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2126,
+            "cache_read_input_tokens": 13259,
+            "cache_creation_input_tokens": 452,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 452
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "f9a6c0e32193e0f6feb8063878f3411575ddf97f06f3e1baa6923352cd9efbae",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "85289a7af41853dbbd14f4928bc3a3cd6dff90c19677317428ab8ee6f7c2774b"
+      }
+    },
+    {
+      "label": "pinterest_ktlint-2785-source-1",
+      "case": "pinterest_ktlint-2785",
+      "arm": "source",
+      "repeat": 1,
+      "transitiveCase": false,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 4,
+      "oracleDirect": 2,
+      "oracleIndirect": 2,
+      "recallCeiling": 1.0,
+      "recall": 0.25,
+      "precision": 0.16666666666666666,
+      "matchedOracleTargets": 1,
+      "matchedPredictions": 1,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 6,
+      "validPredictions": 6,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 5,
+      "perOracleTarget": [
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#access$getSUPPRESS_ANNOTATION_RULE_MAP$cp()Ljava/util/Map;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#createSuppressionHintFromAnnotations(Lorg/jetbrains/kotlin/psi/KtAnnotated;)Lcom/pinterest/ktlint/rule/engine/internal/SuppressionLocator$SuppressionHint;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator$Companion#getSUPPRESS_ANNOTATION_RULE_MAP()Ljava/util/Map;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 13,
+        "requestedSource": 13,
+        "requestedProduct": 0,
+        "requestedByTool": {
+          "source_read": 3,
+          "source_search": 9,
+          "source_list": 1
+        },
+        "processedSource": 12,
+        "processedProduct": 0,
+        "processedByTool": {
+          "source_read": 3,
+          "source_search": 9
+        },
+        "budgetRejected": 1,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": false,
+        "calls": 0,
+        "statuses": [],
+        "reasons": []
+      },
+      "observedToolContentBytes": 20255,
+      "malformedStreamLines": 0,
+      "seconds": 42.32777804200305,
+      "costUsd": 0.23006700000000002,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 11815,
+        "cache_read_input_tokens": 28624,
+        "output_tokens": 3839,
+        "output_tokens_details": {
+          "thinking_tokens": 22
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 11815,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2329,
+            "cache_read_input_tokens": 11795,
+            "cache_creation_input_tokens": 883,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 883
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "458287516d1da7791d0ec52a792a861d2cb104dcd30fdb6098ef7abc149cc68e",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "1c5b979d14938700a3f5226ae0698f26559574ac65f6293c489abc9a03e11c5e"
+      }
+    },
+    {
+      "label": "pinterest_ktlint-2785-mcp-0",
+      "case": "pinterest_ktlint-2785",
+      "arm": "mcp",
+      "repeat": 0,
+      "transitiveCase": false,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 4,
+      "oracleDirect": 2,
+      "oracleIndirect": 2,
+      "recallCeiling": 1.0,
+      "recall": 0.0,
+      "precision": 0.0,
+      "matchedOracleTargets": 0,
+      "matchedPredictions": 0,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 6,
+      "validPredictions": 6,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 6,
+      "perOracleTarget": [
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#access$getSUPPRESS_ANNOTATION_RULE_MAP$cp()Ljava/util/Map;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#createSuppressionHintFromAnnotations(Lorg/jetbrains/kotlin/psi/KtAnnotated;)Lcom/pinterest/ktlint/rule/engine/internal/SuppressionLocator$SuppressionHint;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator$Companion#getSUPPRESS_ANNOTATION_RULE_MAP()Ljava/util/Map;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 14,
+        "requestedSource": 13,
+        "requestedProduct": 1,
+        "requestedByTool": {
+          "freshness": 1,
+          "source_read": 3,
+          "source_search": 9,
+          "source_list": 1
+        },
+        "processedSource": 11,
+        "processedProduct": 1,
+        "processedByTool": {
+          "freshness": 1,
+          "source_read": 2,
+          "source_search": 8,
+          "source_list": 1
+        },
+        "budgetRejected": 2,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": true,
+        "calls": 1,
+        "statuses": [
+          "unverified"
+        ],
+        "reasons": [
+          [
+            "build-scope-mismatch",
+            "missing-build-witness",
+            "unwitnessed-class-root"
+          ]
+        ]
+      },
+      "observedToolContentBytes": 20908,
+      "malformedStreamLines": 0,
+      "seconds": 49.1526352079818,
+      "costUsd": 0.2368575,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 12343,
+        "cache_read_input_tokens": 34095,
+        "output_tokens": 3790,
+        "output_tokens_details": {
+          "thinking_tokens": 21
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 12343,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2159,
+            "cache_read_input_tokens": 13829,
+            "cache_creation_input_tokens": 636,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 636
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "56ddb861571ac39b4d22dea1e36b2e45da96055e0be9436e4a126c121df1b457",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "4b65a3bdba7a4264dd039365dffec20eaf34d0991c7c3e6039cfb878d9ec3213"
+      }
+    },
+    {
+      "label": "pinterest_ktlint-2785-mcp-1",
+      "case": "pinterest_ktlint-2785",
+      "arm": "mcp",
+      "repeat": 1,
+      "transitiveCase": false,
+      "answerValid": true,
+      "answerInvalidReason": null,
+      "oracleSize": 4,
+      "oracleDirect": 2,
+      "oracleIndirect": 2,
+      "recallCeiling": 1.0,
+      "recall": 0.25,
+      "precision": 0.14285714285714285,
+      "matchedOracleTargets": 1,
+      "matchedPredictions": 1,
+      "partialOracleTargets": 0,
+      "partialPredictions": 0,
+      "listedTargets": 7,
+      "validPredictions": 7,
+      "malformedPredictions": 0,
+      "unmatchedPredictions": 6,
+      "perOracleTarget": [
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#access$getSUPPRESS_ANNOTATION_RULE_MAP$cp()Ljava/util/Map;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;",
+          "relation": "direct",
+          "kind": "caller",
+          "credit": 1.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#createSuppressionHintFromAnnotations(Lorg/jetbrains/kotlin/psi/KtAnnotated;)Lcom/pinterest/ktlint/rule/engine/internal/SuppressionLocator$SuppressionHint;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        },
+        {
+          "id": "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator$Companion#getSUPPRESS_ANNOTATION_RULE_MAP()Ljava/util/Map;",
+          "relation": "indirect",
+          "kind": "caller",
+          "credit": 0.0
+        }
+      ],
+      "toolCalls": {
+        "requestedTotal": 14,
+        "requestedSource": 13,
+        "requestedProduct": 1,
+        "requestedByTool": {
+          "freshness": 1,
+          "source_read": 4,
+          "source_search": 9
+        },
+        "processedSource": 11,
+        "processedProduct": 1,
+        "processedByTool": {
+          "freshness": 1,
+          "source_read": 3,
+          "source_search": 8
+        },
+        "budgetRejected": 2,
+        "traceAvailable": true,
+        "productTransportErrors": 0
+      },
+      "freshness": {
+        "observable": true,
+        "calls": 1,
+        "statuses": [
+          "unverified"
+        ],
+        "reasons": [
+          [
+            "build-scope-mismatch",
+            "missing-build-witness",
+            "unwitnessed-class-root"
+          ]
+        ]
+      },
+      "observedToolContentBytes": 29868,
+      "malformedStreamLines": 0,
+      "seconds": 48.88630841599661,
+      "costUsd": 0.287003,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 16120,
+        "cache_read_input_tokens": 37156,
+        "output_tokens": 4224,
+        "output_tokens_details": {
+          "thinking_tokens": 21
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 16120,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2835,
+            "cache_read_input_tokens": 16492,
+            "cache_creation_input_tokens": 1750,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 1750
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "exit": 0,
+      "timedOut": false,
+      "infrastructureErrors": [],
+      "toolBudgetExceeded": true,
+      "evidenceHashes": {
+        "stream": "43313bef9b555ff4b4efe7c75cb3d2e12a9ba3a6610dbfe8e3e4f87a88efb870",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tools": "6203715f003e57e7dc994279caec949876b20f43525228571178a7dff79ca791"
+      }
+    }
+  ],
+  "byCaseAndArm": [
+    {
+      "case": "alibaba__fastjson2-2097",
+      "arm": "source",
+      "trials": 2,
+      "oracleSize": 7,
+      "recallCeiling": 1.0,
+      "transitiveCase": true,
+      "recallValues": [
+        0.14285714285714285,
+        0.42857142857142855
+      ],
+      "recallMean": 0.2857142857142857,
+      "precisionValues": [
+        0.08333333333333333,
+        0.16666666666666666
+      ],
+      "precisionMean": 0.125,
+      "partialOracleTargets": [
+        0,
+        2
+      ],
+      "validAnswers": 2,
+      "invalidReasons": [],
+      "productCallsRequested": 0,
+      "productCallsProcessed": 0,
+      "sourceCallsRequested": 28,
+      "sourceCallsProcessed": 24,
+      "freshnessCalls": 0,
+      "freshnessStatuses": [],
+      "secondsMean": 79.89814677149116,
+      "costUsdTotal": 0.8304279999999999
+    },
+    {
+      "case": "alibaba__fastjson2-2097",
+      "arm": "mcp",
+      "trials": 2,
+      "oracleSize": 7,
+      "recallCeiling": 1.0,
+      "transitiveCase": true,
+      "recallValues": [
+        0.42857142857142855,
+        0.2857142857142857
+      ],
+      "recallMean": 0.3571428571428571,
+      "precisionValues": [
+        0.25,
+        0.18181818181818182
+      ],
+      "precisionMean": 0.2159090909090909,
+      "partialOracleTargets": [
+        0,
+        0
+      ],
+      "validAnswers": 2,
+      "invalidReasons": [],
+      "productCallsRequested": 4,
+      "productCallsProcessed": 4,
+      "sourceCallsRequested": 25,
+      "sourceCallsProcessed": 20,
+      "freshnessCalls": 2,
+      "freshnessStatuses": [
+        "unverified",
+        "unverified"
+      ],
+      "secondsMean": 80.59397387551144,
+      "costUsdTotal": 0.8348800000000001
+    },
+    {
+      "case": "fasterxml__jackson-core-1016",
+      "arm": "source",
+      "trials": 2,
+      "oracleSize": 32,
+      "recallCeiling": 0.375,
+      "transitiveCase": false,
+      "recallValues": [
+        0.0,
+        0.0625
+      ],
+      "recallMean": 0.03125,
+      "precisionValues": [
+        null,
+        0.18181818181818182
+      ],
+      "precisionMean": 0.18181818181818182,
+      "partialOracleTargets": [
+        0,
+        6
+      ],
+      "validAnswers": 1,
+      "invalidReasons": [
+        "invalid-json"
+      ],
+      "productCallsRequested": 0,
+      "productCallsProcessed": 0,
+      "sourceCallsRequested": 29,
+      "sourceCallsProcessed": 24,
+      "freshnessCalls": 0,
+      "freshnessStatuses": [],
+      "secondsMean": 54.957706958506606,
+      "costUsdTotal": 0.5381324999999999
+    },
+    {
+      "case": "fasterxml__jackson-core-1016",
+      "arm": "mcp",
+      "trials": 2,
+      "oracleSize": 32,
+      "recallCeiling": 0.375,
+      "transitiveCase": false,
+      "recallValues": [
+        0.0,
+        0.0
+      ],
+      "recallMean": 0.0,
+      "precisionValues": [
+        0.0,
+        0.0
+      ],
+      "precisionMean": 0.0,
+      "partialOracleTargets": [
+        8,
+        1
+      ],
+      "validAnswers": 2,
+      "invalidReasons": [],
+      "productCallsRequested": 2,
+      "productCallsProcessed": 2,
+      "sourceCallsRequested": 28,
+      "sourceCallsProcessed": 22,
+      "freshnessCalls": 2,
+      "freshnessStatuses": [
+        "unverified",
+        "unverified"
+      ],
+      "secondsMean": 57.20542487499188,
+      "costUsdTotal": 0.583024
+    },
+    {
+      "case": "detekt_detekt-7625",
+      "arm": "source",
+      "trials": 2,
+      "oracleSize": 4,
+      "recallCeiling": 1.0,
+      "transitiveCase": true,
+      "recallValues": [
+        0.75,
+        0.75
+      ],
+      "recallMean": 0.75,
+      "precisionValues": [
+        0.3,
+        0.3
+      ],
+      "precisionMean": 0.3,
+      "partialOracleTargets": [
+        0,
+        0
+      ],
+      "validAnswers": 2,
+      "invalidReasons": [],
+      "productCallsRequested": 0,
+      "productCallsProcessed": 0,
+      "sourceCallsRequested": 27,
+      "sourceCallsProcessed": 24,
+      "freshnessCalls": 0,
+      "freshnessStatuses": [],
+      "secondsMean": 47.04884327099717,
+      "costUsdTotal": 0.533586
+    },
+    {
+      "case": "detekt_detekt-7625",
+      "arm": "mcp",
+      "trials": 2,
+      "oracleSize": 4,
+      "recallCeiling": 1.0,
+      "transitiveCase": true,
+      "recallValues": [
+        0.75,
+        1.0
+      ],
+      "recallMean": 0.875,
+      "precisionValues": [
+        0.3,
+        0.36363636363636365
+      ],
+      "precisionMean": 0.3318181818181818,
+      "partialOracleTargets": [
+        1,
+        0
+      ],
+      "validAnswers": 2,
+      "invalidReasons": [],
+      "productCallsRequested": 5,
+      "productCallsProcessed": 4,
+      "sourceCallsRequested": 22,
+      "sourceCallsProcessed": 20,
+      "freshnessCalls": 2,
+      "freshnessStatuses": [
+        "unverified",
+        "unverified"
+      ],
+      "secondsMean": 65.6566368539934,
+      "costUsdTotal": 0.6851529999999999
+    },
+    {
+      "case": "pinterest_ktlint-2785",
+      "arm": "source",
+      "trials": 2,
+      "oracleSize": 4,
+      "recallCeiling": 1.0,
+      "transitiveCase": false,
+      "recallValues": [
+        0.25,
+        0.25
+      ],
+      "recallMean": 0.25,
+      "precisionValues": [
+        0.16666666666666666,
+        0.16666666666666666
+      ],
+      "precisionMean": 0.16666666666666666,
+      "partialOracleTargets": [
+        0,
+        0
+      ],
+      "validAnswers": 2,
+      "invalidReasons": [],
+      "productCallsRequested": 0,
+      "productCallsProcessed": 0,
+      "sourceCallsRequested": 27,
+      "sourceCallsProcessed": 24,
+      "freshnessCalls": 0,
+      "freshnessStatuses": [],
+      "secondsMean": 43.74325772949669,
+      "costUsdTotal": 0.4757925
+    },
+    {
+      "case": "pinterest_ktlint-2785",
+      "arm": "mcp",
+      "trials": 2,
+      "oracleSize": 4,
+      "recallCeiling": 1.0,
+      "transitiveCase": false,
+      "recallValues": [
+        0.0,
+        0.25
+      ],
+      "recallMean": 0.125,
+      "precisionValues": [
+        0.0,
+        0.14285714285714285
+      ],
+      "precisionMean": 0.07142857142857142,
+      "partialOracleTargets": [
+        0,
+        0
+      ],
+      "validAnswers": 2,
+      "invalidReasons": [],
+      "productCallsRequested": 2,
+      "productCallsProcessed": 2,
+      "sourceCallsRequested": 26,
+      "sourceCallsProcessed": 22,
+      "freshnessCalls": 2,
+      "freshnessStatuses": [
+        "unverified",
+        "unverified"
+      ],
+      "secondsMean": 49.019471811989206,
+      "costUsdTotal": 0.5238605000000001
+    }
+  ],
+  "byArm": [
+    {
+      "arm": "source",
+      "trials": 8,
+      "recallMeanAllCases": 0.3292410714285714,
+      "precisionMeanAllCases": 0.195021645021645,
+      "recallMeanExcludingJackson": 0.42857142857142855,
+      "precisionMeanExcludingJackson": 0.19722222222222222,
+      "note": "fasterxml__jackson-core-1016 has a structural recall ceiling of 0.375 and is also reported on its own row. The excluding-jackson mean is descriptive only, not a substitute cohort mean."
+    },
+    {
+      "arm": "mcp",
+      "trials": 8,
+      "recallMeanAllCases": 0.3392857142857143,
+      "precisionMeanAllCases": 0.15478896103896103,
+      "recallMeanExcludingJackson": 0.4523809523809524,
+      "precisionMeanExcludingJackson": 0.2063852813852814,
+      "note": "fasterxml__jackson-core-1016 has a structural recall ceiling of 0.375 and is also reported on its own row. The excluding-jackson mean is descriptive only, not a substitute cohort mean."
+    }
+  ],
+  "manualReviewPending": true,
+  "warning": "Recall/precision are measured against a frozen review anchor built from javap references, existing executed tests and original override declarations, not complete runtime impact. Tool-call counts are recorded, never scored, and never read as a causal effect."
+}

@@ -1,0 +1,47 @@
+{
+  "label": "detekt_detekt-7625-source-1",
+  "case": "detekt_detekt-7625",
+  "arm": "source",
+  "repeat": 1,
+  "subtype": "success",
+  "isError": false,
+  "totalCostUsd": 0.25279050000000003,
+  "durationMs": 45622,
+  "numTurns": 14,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 13044,
+    "cache_read_input_tokens": 30969,
+    "output_tokens": 4203,
+    "output_tokens_details": {
+      "thinking_tokens": 20
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13044,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2867,
+        "cache_read_input_tokens": 12190,
+        "cache_creation_input_tokens": 1717,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1717
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "finalText": "```json\n{\"targets\":[{\"file\":\"detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt\",\"symbol\":\"BaselineResultMappingSpec.`creates on top of an existing a baseline file without issues`\",\"kind\":\"test\",\"relation\":\"indirect\",\"reason\":\"Asserts exact file content including `<CurrentIssues></CurrentIssues>` (line 180); after the change an empty set writes `<CurrentIssues/>` via writeEmptyElement, so this assertion will fail and must be updated to the new expected output.\",\"evidence\":\"BaselineResultMappingSpec.kt:170 mapping.createOrUpdate(baselineFile, emptyList()); :180 `<CurrentIssues></CurrentIssues>` -> BaselineResultMapping.createOrUpdate:62 baselineFormat.write -> BaselineFormat.save\"},{\"file\":\"detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt\",\"symbol\":\"BaselineResultMappingSpec.`creates on top of an existing a baseline file with issues`\",\"kind\":\"test\",\"relation\":\"indirect\",\"reason\":\"Full-content assertion of the written baseline with non-empty sets; confirms the non-empty branch (tag(...)) output is unchanged, including indentation produced by IndentingXMLStreamWriter.\",\"evidence\":\"BaselineResultMappingSpec.kt:194 createOrUpdate(baselineFile, listOf(createIssue())); :196-209 hasContent(...)\"},{\"file\":\"detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt\",\"symbol\":\"BaselineResultMappingSpec.`doesn't create a baseline file without issues`\",\"kind\":\"test\",\"relation\":\"indirect\",\"reason\":\"Exercises createOrUpdate with empty issues and no pre-existing file; oldBaseline == new baseline so write is skipped — verifies the empty-element path is not reached here (no behavior change expected).\",\"evidence\":\"BaselineResultMappingSpec.kt:157 createOrUpdate(baselineFile, emptyList()); BaselineResultMapping.kt:56-63\"},{\"file\":\"detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt\",\"symbol\":\"BaselineResultMapping.createOrUpdate(Path, List<Issue>)\",\"kind\":\"caller\",\"relation\":\"direct\",\"reason\":\"Only production caller of BaselineFormat.write; produces baselines with empty currentIssues (when no issues remain) or empty manuallySuppressedIssues (new file), so it hits both new writeEmptyElement branches.\",\"evidence\":\"BaselineResultMapping.kt:58 val baselineFormat = BaselineFormat(); :62 baselineFormat.write(baselineFile, baseline)\"},{\"file\":\"detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt\",\"symbol\":\"BaselineResultMapping.transformIssues / onFinish (line 37)\",\"kind\":\"caller\",\"relation\":\"indirect\",\"reason\":\"Calls createOrUpdate when baseline creation is enabled; entry point from the ReportingExtension lifecycle (CLI/gradle --create-baseline).\",\"evidence\":\"BaselineResultMapping.kt:37 createOrUpdate(baselinePath, this); class BaselineResultMapping : ReportingExtension (line 12)\"},{\"file\":\"detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter.kt\",\"symbol\":\"IndentingXMLStreamWriter.writeEmptyElement(String) / onEmptyTag()\",\"kind\":\"override\",\"relation\":\"direct\",\"reason\":\"Newly exercised code path: writeEmptyElement was previously unused by BaselineFormat. onEmptyTag sets currentState = TAG and writes NL+indent but does not push to stateStack; verify the subsequent writeEndElement for SmellBaseline still emits the closing newline/indent correctly (onEndTag checks currentState === TAG).\",\"evidence\":\"IndentingXMLStreamWriter.kt:33-37 onEmptyTag(); :93-96 writeEmptyElement(localName); :24-31 onEndTag()\"},{\"file\":\"detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt\",\"symbol\":\"BaselineFormatSpec.`asserts that the saved and loaded baseline files are equal`\",\"kind\":\"test\",\"relation\":\"direct\",\"reason\":\"Round-trips write/read with non-empty sets; should still pass, but there is no existing test round-tripping empty sets through the new self-closing element path into BaselineHandler — consider adding one.\",\"evidence\":\"BaselineFormatSpec.kt:89-93 format.write(tempFile, savedBaseline); format.read(tempFile); isEqualTo(savedBaseline)\"},{\"file\":\"detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt\",\"symbol\":\"BaselineFormatSpec.`has a new line at the end of the written baseline file`\",\"kind\":\"test\",\"relation\":\"direct\",\"reason\":\"Checks trailing newline of written output; unaffected by non-empty savedBaseline but documents the format contract that empty-element output must also honor.\",\"evidence\":\"BaselineFormatSpec.kt:75-82 format.write(tempFile, savedBaseline); endsWith(\\\">\\\\n\\\")\"},{\"file\":\"detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt\",\"symbol\":\"BaselineFormatSpec.`reads and writes baselines`\",\"kind\":\"test\",\"relation\":\"direct\",\"reason\":\"Uses BaselineProvider.load() (ServiceLoader registration) and calls write; note it re-reads the original path rather than tempFile, so it does not actually validate written output.\",\"evidence\":\"BaselineFormatSpec.kt:25-31 provider.write(tempFile, referenceBaseline); provider.read(path)\"},{\"file\":\"detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/DefaultBaseline.kt\",\"symbol\":\"DefaultBaseline.load(Path)\",\"kind\":\"caller\",\"relation\":\"indirect\",\"reason\":\"Reads baselines via BaselineFormat.read/BaselineHandler; files now written with `<CurrentIssues/>` must still parse (SAX handles empty elements, but BaselineHandler behavior on empty elements should be confirmed).\",\"evidence\":\"DefaultBaseline.kt:24 return BaselineFormat().read(baselineFile); BaselineFormat.kt:33-35 BaselineHandler\"}],\"unknowns\":[\"Tool budget exhausted before inspecting BaselineHandler and the XMLStreamWriter.tag/document helper file, so read-side handling of self-closing elements is unverified.\",\"Did not search detekt-cli / detekt-gradle-plugin functional tests or baseline XML resource fixtures (e.g. resources asserting `<CurrentIssues></CurrentIssues>`) that may compare generated baseline content.\",\"BaselineProvider ServiceLoader registration file (META-INF/services) was not inspected; assumed unchanged.\",\"External consumers that diff generated baseline files (user repos/CI) will see a textual change from `<X></X>` to `<X/>`; not verifiable here.\"],\"summary\":\"The change alters serialized output only when a section is empty (self-closing element instead of open/close pair). The one existing test that will break is BaselineResultMappingSpec.`creates on top of an existing a baseline file without issues` (expects `<CurrentIssues></CurrentIssues>`). Review IndentingXMLStreamWriter.onEmptyTag/onEndTag interplay for indentation correctness and confirm BaselineHandler parses empty elements; consider adding a write/read round-trip test with empty sets.\"}\n```",
+  "streamSha256": "7ffcd4267bcffef7346ae31679c18ea46c440ecdb316a9a3003615414da72d2e",
+  "toolsSha256": "6ccf485dd4fe3efffb52b86eceb5c2b2d4dc3014474bd38ca4e21eac6cf19d50"
+}

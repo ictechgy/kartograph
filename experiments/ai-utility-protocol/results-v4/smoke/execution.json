@@ -1,0 +1,9 @@
+{
+  "status": "completed",
+  "mode": "smoke",
+  "manifestSha256": "157bab5de74fca551db9e7fcd5a4542da7b759290ceff584a18b58f20ff86943",
+  "startedAt": 1789540528.283893,
+  "trials": 1,
+  "completedAt": 1789540608.768646,
+  "fatalInfrastructure": null
+}

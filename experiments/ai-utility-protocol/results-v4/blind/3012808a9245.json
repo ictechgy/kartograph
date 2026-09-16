@@ -1,0 +1,110 @@
+{
+  "case": "alibaba__fastjson2-2097",
+  "answer": {
+    "targets": [
+      {
+        "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+        "symbol": "ObjectReaderImplList.createInstance(long)",
+        "kind": "caller",
+        "relation": "direct",
+        "reason": "Consumes the changed instanceClass (stored as instanceType). Arrays$ArrayList is not ArrayList/LinkedList/HashSet/etc., so it falls into the reflective branch: BeanUtils.hasPublicDefaultConstructor -> getDefaultConstructor(instanceType,false) returns null (Arrays$ArrayList only has an (E[]) ctor), then constructor.setAccessible(true) at line 339 NPEs, or if it reached newInstance() it throws and the AbstractList superclass fallback also fails (abstract). Non-JSONB readObject and createInstance(Collection) route here.",
+        "evidence": "ObjectReaderImplList.java L311-368: `if (instanceType == ArrayList.class) ... if (constructor == null && !BeanUtils.hasPublicDefaultConstructor(instanceType)) { constructor = BeanUtils.getDefaultConstructor(instanceType, false); constructor.setAccessible(true); }`; BeanUtils.java L395-402 returns null when no 0-arg ctor."
+      },
+      {
+        "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+        "symbol": "ObjectReaderImplList.readObject(JSONReader, Type, Object, long)",
+        "kind": "caller",
+        "relation": "indirect",
+        "reason": "Text-JSON path calls createInstance(features) at L553 for CLASS_ARRAYS_LIST readers; previously produced an ArrayList then builder Arrays.asList(...). With the change this path likely throws before parsing.",
+        "evidence": "L549-554: `list = (Collection) createInstance(context.getFeatures() | features);`"
+      },
+      {
+        "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+        "symbol": "ObjectReaderImplList.createInstance(Collection)",
+        "kind": "caller",
+        "relation": "indirect",
+        "reason": "Used by JSON.to/JSONArray.to conversions; delegates to createInstance(0L) when instanceType != ArrayList.class, so Arrays$ArrayList now hits the reflective failure path.",
+        "evidence": "L249-253: `if (instanceType == ArrayList.class) list = new ArrayList(...) else list = (Collection) createInstance(0L);`"
+      },
+      {
+        "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+        "symbol": "ObjectReaderImplList.readJSONBObject(JSONReader, Type, Object, long)",
+        "kind": "caller",
+        "relation": "direct",
+        "reason": "Intended beneficiary: listType = this.instanceType now equals CLASS_ARRAYS_LIST, activating the fixed-size Object[] + Arrays.asList branch at L429 (previously only reached via autotype objectReader.instanceType). Also note builder is then NOT applied in that branch (returns early), and reference resolution via addResolveTask on a fixed-size list should be verified.",
+        "evidence": "L379 `Class listType = this.instanceType;` L429-450 `if (listType == CLASS_ARRAYS_LIST) { Object[] array = new Object[entryCnt]; List list = Arrays.asList(array); ... return list; }`"
+      },
+      {
+        "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+        "symbol": "ObjectReaderImplList.ObjectReaderImplList(Type, Class, Class, Type, Function) [instanceTypeHash]",
+        "kind": "caller",
+        "relation": "direct",
+        "reason": "instanceTypeHash is now computed from java.util.Arrays$ArrayList instead of java.util.ArrayList; any autotype/hash comparisons using instanceTypeHash change value.",
+        "evidence": "L216: `this.instanceTypeHash = Fnv.hashCode64(TypeUtils.getTypeName(instanceType));`"
+      },
+      {
+        "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderBaseModule.java",
+        "symbol": "ObjectReaderBaseModule.getObjectReader (CLASS_ARRAYS_LIST branch, ~L1853-1866)",
+        "kind": "registration",
+        "relation": "indirect",
+        "reason": "Registration point that routes Arrays$ArrayList to ObjectReaderImplList.of(type, null, 0); every JSON.parseObject(str, Arrays$ArrayList) / autotype '@type':'java.util.Arrays$ArrayList' resolution goes through here and gets the changed instanceClass.",
+        "evidence": "L1857 `|| type == ObjectReaderImplList.CLASS_ARRAYS_LIST` -> L1865 `return ObjectReaderImplList.of(type, null, 0);`"
+      },
+      {
+        "file": "core/src/main/java/com/alibaba/fastjson2/reader/FieldReaderObject.java",
+        "symbol": "FieldReaderObject.getObjectReader (L67, L86)",
+        "kind": "caller",
+        "relation": "indirect",
+        "reason": "Field readers for bean fields whose declared type is a Collection call ObjectReaderImplList.of(fieldType, fieldClass, features); fields declared as Arrays$ArrayList are rare, but autotype-dispatched readers from ObjectReaderBaseModule affect JSONB field reads.",
+        "evidence": "FieldReaderObject.java L67/L86: `return reader = ObjectReaderImplList.of(fieldType, fieldClass, features);`"
+      },
+      {
+        "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderProvider.java",
+        "symbol": "ObjectReaderProvider (L808) ObjectReaderImplList.of(objectType, rawClass, 0)",
+        "kind": "caller",
+        "relation": "indirect",
+        "reason": "Alternate provider path constructing list readers with explicit rawClass; if rawClass is Arrays$ArrayList it receives the new instanceClass.",
+        "evidence": "ObjectReaderProvider.java L808: `return ObjectReaderImplList.of(objectType, rawClass, 0);`"
+      },
+      {
+        "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplListStr.java",
+        "symbol": "ObjectReaderImplListStr.readJSONBObject / createInstance(long)",
+        "kind": "caller",
+        "relation": "indirect",
+        "reason": "Sibling reader already special-cases instanceType == CLASS_ARRAYS_LIST for JSONB (L88) but its createInstance(long) would call Arrays$ArrayList.newInstance() and throw. Not reached via of() for CLASS_ARRAYS_LIST because builder != null (L196), but worth confirming no other construction passes instanceType=CLASS_ARRAYS_LIST.",
+        "evidence": "ObjectReaderImplListStr.java L26-39, L88-95; ObjectReaderImplList.java L196-197 `if (itemType == String.class && builder == null) return new ObjectReaderImplListStr(...)`"
+      },
+      {
+        "file": "core/src/test/java/com/alibaba/fastjson2/dubbo/DubboTest6.java",
+        "symbol": "DubboTest6 (file-level; JSON text with \"@type\":\"java.util.Arrays$ArrayList#2\")",
+        "kind": "test",
+        "relation": "indirect",
+        "reason": "Existing test that deserializes an autotyped java.util.Arrays$ArrayList (with reference '#2'); exercises ObjectReaderBaseModule -> ObjectReaderImplList.of -> readObject/readJSONBObject for this class and reference handling on a fixed-size list.",
+        "evidence": "DubboTest6.java L59: `\"@type\":\"java.util.Arrays$ArrayList#2\"` (file-level evidence only; exact method not read)"
+      },
+      {
+        "file": "core/src/test/java/com/alibaba/fastjson2/issues_1000/Issue1421.java",
+        "symbol": "Issue1421 (file-level; synchronizedList(Arrays.asList(1,2,3)) round-trips)",
+        "kind": "test",
+        "relation": "indirect",
+        "reason": "Serializes wrappers around Arrays$ArrayList; if the round-trip writes/reads the inner Arrays$ArrayList type name (JSONB WriteClassName), it goes through the changed branch.",
+        "evidence": "Issue1421.java L15/L25: `Collections.synchronizedList(Arrays.asList(1, 2, 3))` (file-level evidence)"
+      },
+      {
+        "file": "core/src/test/java/com/alibaba/fastjson2/issues/Issue783.java",
+        "symbol": "Issue783 (file-level; bean.value = Arrays.asList(...) written with objectWriter)",
+        "kind": "test",
+        "relation": "indirect",
+        "reason": "Writes Arrays$ArrayList-typed field values; if the test round-trips via JSONB with class names it will resolve the Arrays$ArrayList reader.",
+        "evidence": "Issue783.java L113, L167 (file-level evidence)"
+      }
+    ],
+    "unknowns": [
+      "Tool budget exhausted before searching tests for direct `Arrays$ArrayList` / `Arrays.asList(...).getClass()` parse targets; test matches listed are file-level candidates, not confirmed callsites.",
+      "Did not read ObjectReaderImplList lines 1-59 or 620-639, nor BeanUtils.hasPublicDefaultConstructor, so whether the reflective path NPEs (constructor null -> setAccessible) or throws JSONException is inferred from L337-339 and getDefaultConstructor returning null.",
+      "External consumers (fastjson 1.x compat module, extension modules, Dubbo/Spring integrations) not searched.",
+      "Did not verify JSONB reference-resolution (addResolveTask) semantics on the fixed-size Arrays.asList list in the L429 branch."
+    ],
+    "summary": "The change makes ObjectReaderImplList for java.util.Arrays$ArrayList carry instanceType=Arrays$ArrayList. This enables the JSONB fixed-size branch (L429) but breaks the text-JSON and Collection-conversion paths: readObject (L553) and createInstance(Collection) (L252) call createInstance(long), which for non-ArrayList instanceType tries reflective default construction; Arrays$ArrayList has no no-arg constructor (BeanUtils.getDefaultConstructor returns null), so it will NPE at setAccessible or throw 'create list error'. Review createInstance(long) handling for CLASS_ARRAYS_LIST (e.g., special-case to ArrayList with builder) and run DubboTest6 plus any tests parsing into Arrays$ArrayList."
+  }
+}

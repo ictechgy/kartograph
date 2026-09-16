@@ -1,0 +1,9 @@
+{
+  "status": "completed",
+  "mode": "trials",
+  "manifestSha256": "eeacfe16e9871e4ed6ddde8d2e8a2916c32c5bc3ef643c45fa8329ecf7b63a44",
+  "startedAt": 1789540871.638624,
+  "trials": 16,
+  "completedAt": 1789541830.836957,
+  "fatalInfrastructure": null
+}
