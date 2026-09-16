@@ -16,8 +16,8 @@
 
 - `snapshot` 입력 fingerprint의 병렬 digest에서 (1) 계획 단계의 symlink 검사와 파일 열기 사이가 벌어져 그 사이 symlink로
   바뀐 파일을 따라갈 수 있던 문제를 열기·크기 읽기에 `NOFOLLOW_LINKS`를 적용해 막고, (2) 캡처가 interrupt되면 worker가 만든
-  임시 spool이 남을 수 있던 문제를 scope가 worker 종료를 기다린 뒤 닫도록 고치며, (3) 크기를 읽지 못한 JAR이 spool 예산을
-  차지하지 않아 총 상한(256 MiB)을 넘길 수 있던 문제를 상한 예약으로 막는다. 기록되는 fingerprint 값은 바뀌지 않는다.
+  임시 spool이 남을 수 있던 문제를 scope가 worker 종료를 기다린 뒤 닫도록 고치며, (3) 크기를 읽지 못한 JAR이 예산을
+  차지하지 않은 채 spool돼 총 상한(256 MiB)을 넘길 수 있던 문제를, 속성을 읽지 못한 JAR을 그 pass의 spool 대상에서 빼는 것으로 막는다. 기록되는 fingerprint 값은 바뀌지 않는다.
 - `impact`의 계약 확장이 dispatch 모델의 호출자→구현 후보 간선(`origin = dispatchModel`)을 변경 method의 override로 잘못
   따르던 문제를 고친다. 변경 method가 호출하는 인터페이스의 구현체가 영향 후보에 오르고, 실제 호출 사슬 대신 후보 경로가
   witness로 선택돼 `transitive` 호출자가 `structural`로 분류되던 사례가 있었다. 호출자 방향의 dispatch 후보 사용은 그대로다.

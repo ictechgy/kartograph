@@ -44,14 +44,17 @@ public class VerifiedCaptureScope private constructor(
         check(phase == Phase.BEFORE_CAPTURE || phase == Phase.AFTER_CAPTURE) {
             "verified capture inputs can only be read during capture passes"
         }
+        // 입력당 속성은 한 번만 읽고(정규 파일 여부·크기), JAR 판정·예약·스케줄링 힌트에 모두 쓴다.
+        val attributes = inputs.map { attributesOf(it.path) }
         // 첫 JAR의 spool 결정은 캐시 준비를 기다리므로, 그 앞의 입력은 먼저 digest해 준비와 겹치게 한다.
-        val firstJar = if (phase == Phase.BEFORE_CAPTURE) inputs.indexOfFirst { isEligibleJar(it, attributesOf(it.path)) } else -1
-        if (firstJar <= 0) return captureSegment(project, inputs)
-        return captureSegment(project, inputs.subList(0, firstJar)) + captureSegment(project, inputs.subList(firstJar, inputs.size))
+        val firstJar = if (phase == Phase.BEFORE_CAPTURE) inputs.indices.indexOfFirst { isEligibleJar(inputs[it], attributes[it]) } else -1
+        if (firstJar <= 0) return captureSegment(project, inputs, attributes)
+        return captureSegment(project, inputs.subList(0, firstJar), attributes.subList(0, firstJar)) +
+            captureSegment(project, inputs.subList(firstJar, inputs.size), attributes.subList(firstJar, inputs.size))
     }
 
-    private fun captureSegment(project: Path, inputs: List<CaptureInput>): List<InputFingerprint> {
-        val decisions = inputs.map(::reserveSpoolBudget)
+    private fun captureSegment(project: Path, inputs: List<CaptureInput>, attributes: List<BasicFileAttributes?>): List<InputFingerprint> {
+        val decisions = inputs.indices.map { reserveSpoolBudget(inputs[it], attributes[it]) }
         val requests = inputs.zip(decisions).map { (input, decision) ->
             ObservationRequest(input.path, input.role, input.externalSlot, decision.retainedMaximum, spoolDirectory, decision.sizeHint)
         }
@@ -76,22 +79,17 @@ public class VerifiedCaptureScope private constructor(
     }
 
     /**
-     * spool 여부와 상한을 입력 순서대로 정하고, 예상 크기만큼 예산을 먼저 차감한다. 크기는 입력당 한 번만 읽어
-     * 스케줄링 힌트로도 넘긴다. 크기를 못 읽으면 상한 전체를 예약해, 같은 묶음의 뒤 JAR가 그 예산을 겹쳐 쓰지 못하게 한다.
+     * spool 여부와 상한을 입력 순서대로 정하고, 관측한 크기만큼 예산을 먼저 차감한다.
+     * 속성을 읽지 못한 JAR은 이 pass의 spool 대상에서 빠진다(fingerprint는 그대로 읽고, header는 직접 읽기로 처리).
+     * 그래서 "크기를 모른 채 예약 0으로 spool"하는 경우가 없고, 같은 묶음의 뒤 JAR가 예산을 겹쳐 쓰지 못한다.
      */
-    private fun reserveSpoolBudget(input: CaptureInput): SpoolDecision {
-        val attributes = attributesOf(input.path)
-        val size = attributes?.takeIf { it.isRegularFile }?.size()
-        val captureSpool = isEligibleJar(input, attributes) && captureColdSpools() && (size == null || size <= maximumCacheableJarBytes)
+    private fun reserveSpoolBudget(input: CaptureInput, attributes: BasicFileAttributes?): SpoolDecision {
+        val size = attributes?.takeIf { it.isRegularFile }?.size() ?: 0
+        val captureSpool = isEligibleJar(input, attributes) && captureColdSpools() && size <= maximumCacheableJarBytes
         val retainedMaximum = if (captureSpool) minOf(MAX_RETAINED_JAR_BYTES, remainingSpoolBytes) else 0
-        val reserved = when {
-            retainedMaximum <= 0 -> 0
-            size == null -> retainedMaximum
-            size in 0..retainedMaximum -> size
-            else -> 0
-        }
+        val reserved = if (retainedMaximum > 0 && size in 0..retainedMaximum) size else 0
         remainingSpoolBytes -= reserved
-        return SpoolDecision(captureSpool, retainedMaximum, reserved, sizeHint = size ?: 0)
+        return SpoolDecision(captureSpool, retainedMaximum, reserved, sizeHint = size)
     }
 
     private fun isEligibleJar(input: CaptureInput, attributes: BasicFileAttributes?): Boolean =
@@ -121,8 +119,10 @@ public class VerifiedCaptureScope private constructor(
         val order = if (jobs.all { it.sizeHint == 0L }) jobs.indices.toList() else jobs.indices.sortedByDescending { jobs[it].sizeHint }
         val mapped = try {
             digestWorkers.map(order.map(jobs::get), chunkSize = null, digest)
-        } catch (interrupted: ClassIndexingException) {
-            throw ClassIndexingException("fingerprint capture was interrupted", interrupted)
+        } catch (error: ClassIndexingException) {
+            // pool은 호출 스레드 interrupt만 ClassIndexingException으로 보고한다. 그 경우에만 capture 문맥으로 다시 이름 붙인다.
+            if (error.cause is InterruptedException) throw ClassIndexingException("fingerprint capture was interrupted", error.cause)
+            throw error
         }
         val results = arrayOfNulls<Result<FileObservation>>(jobs.size)
         order.forEachIndexed { position, index -> results[index] = mapped[position] }

@@ -55,7 +55,7 @@ class ParallelCaptureTest {
         writeJar(jar, "example/Dependency")
         val cache = ClassIndexCache(root.resolve("cache"), "engine-a")
         val spoolDirectory = root.resolve("spools").createDirectories()
-        val linked = Files.createSymbolicLink(root.resolve("linked-classes"), classes)
+        val linked = symbolicLinkOrSkip(root.resolve("linked-classes"), classes)
         val inputs = listOf(
             CaptureInput(classes, "classes", "classes-0"),
             CaptureInput(jar, "classpath", "classpath-0"),
@@ -230,7 +230,7 @@ class ParallelCaptureTest {
         assertFailsWith<IOException> {
             ContentFingerprint.captureObservedAll(root, listOf(request), ConcurrentLinkedQueue()) { jobs, digest ->
                 Files.delete(rules)
-                Files.createSymbolicLink(rules, decoy)
+                symbolicLinkOrSkip(rules, decoy)
                 jobs.map(digest)
             }
         }
@@ -242,9 +242,10 @@ class ParallelCaptureTest {
         val budget = Files.size(jars[0])
         val cache = ClassIndexCache(root.resolve("cache"), "engine-a")
         val spoolDirectory = root.resolve("spools").createDirectories()
+        // maximumSpoolBytes는 scope 전체 예산(remainingSpoolBytes의 초기값)이다. JAR 하나 크기면 두 번째 JAR는 환급 없이는 spool되지 않는다.
         val scope = VerifiedCaptureScope.open(cache, maximumSpoolBytes = budget, spoolDirectory = spoolDirectory)
         try {
-            // 첫 묶음: spool 디렉터리를 쓰기 불가로 만들어 예약은 되지만 spool은 만들어지지 않게 한다.
+            // 첫 묶음: spool 디렉터리를 쓰기 불가로 만들면 JarSpoolWriter.open이 null을 돌려줘 예약은 되지만 spool은 만들어지지 않는다.
             Files.setPosixFilePermissions(spoolDirectory, PosixFilePermissions.fromString("r-x------"))
             Assumptions.assumeFalse(Files.isWritable(spoolDirectory), "directory permissions are not enforced for this user")
             scope.captureAll(root, listOf(CaptureInput(jars[0], "classpath", "classpath-0")))
@@ -259,6 +260,15 @@ class ParallelCaptureTest {
             scope.close()
         }
         assertEquals(0, spoolFiles(spoolDirectory))
+    }
+
+    /** symlink를 만들 수 없는 환경(권한 없는 Windows 등)에서는 테스트를 건너뛴다. */
+    private fun symbolicLinkOrSkip(link: Path, target: Path): Path = try {
+        Files.createSymbolicLink(link, target)
+    } catch (error: UnsupportedOperationException) {
+        Assumptions.abort<Path>("symbolic links are not supported here: ${error.message}")
+    } catch (error: IOException) {
+        Assumptions.abort<Path>("symbolic links cannot be created here: ${error.message}")
     }
 
     private fun assumeUnreadable(file: Path) {
