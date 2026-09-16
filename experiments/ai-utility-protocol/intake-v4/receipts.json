@@ -21,7 +21,7 @@
   ],
   "notes": [
     "stored가 null인 항목은 저장소에 복사하지 않고 해시만 남긴 원본이다.",
-    "detekt/ktlint의 expected_tests.json 두 건은 1 MiB를 넘어 curl --max-filesize 20000000 상한으로 전체를 받고 요약본만 저장소에 남겼다.",
+    "detekt/ktlint의 expected_tests.json 3건(detekt-7625·detekt-7871·ktlint-2785)은 1 MiB를 넘어 curl --max-filesize 20000000 상한으로 전체를 받고 요약본만 저장소에 남겼다.",
     "kotlin-task-index는 GitHub tree API 응답이라 바이트 재현이 보장되지 않는다. 해시는 이번 조회분에 한정한 기록이다.",
     "모델·제품 실행은 하지 않았다. 선택은 metadata만 보고 끝냈다."
   ],
