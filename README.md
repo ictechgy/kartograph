@@ -8,14 +8,14 @@ The name is **K**otlin + cartograph. Where cartograph maps iOS, kartograph maps 
 
 ## What it does
 
-kartograph builds a dependency graph from compiled Kotlin/Android code and explains why a declaration is reachable, retained, or unreachable.
+kartograph builds a dependency graph from compiled Kotlin/Android code and explains why a declaration is reachable, retained, or unreachable:
 
-- The evidence is what the compiler recorded, not text search.
+- The source of truth is what the compiler recorded, not text search.
 - Unused code, dependency cycles, layer rules, and architecture metrics all come from one graph.
-- Every verdict carries evidence. None of them approves a deletion.
+- Every verdict carries evidence. No verdict approves a deletion.
 - `query` and `skill` were built for agent consumers from day one.
 
-Android has one unfair advantage: "looks unused but must not be deleted" has been written down for over a decade as **ProGuard/R8 keep rules**. The retention knowledge the Swift side had to collect by hand already lives in this ecosystem.
+Android has one unfair advantage: "looks unused but must not be deleted" has been codified for over a decade as **ProGuard/R8 keep rules**. The retention knowledge the Swift side had to collect by hand already lives in this ecosystem.
 
 ## Status
 
@@ -23,11 +23,11 @@ The current source version is declared in [VERSION](VERSION). Released versions 
 
 Working today:
 
-- `impact` estimates the effect of a planned symbol edit, or of the files changed between two commits, using captured graphs. It keeps base/current paths, deletions, runtime evidence and uncertainty in one shape for people, agents and CI. See [change impact](docs/IMPACT.md) and the [scored public replays](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/change-impact/README.md).
+- `impact` checks the potential effect of a planned symbol edit, or of the files changed since a base commit, using captured graphs. It reports base/current paths, deletions, runtime evidence and uncertainty identically to people, agents and CI. See [change impact](docs/IMPACT.md) and the [scored public replays](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/change-impact/README.md).
 - `graph` renders compiled class roots as DOT or as a `code-graph` JSON exchange document. With `--include-paths --project` it also resolves project-relative source paths. The JSON records edge origins and external calls with their resolution status. Repeating `--classes` merges several module/variant outputs; when a JVM class appears in more than one root, the first root always wins.
 - `dead` reports unreachable class declarations from Android retention roots (manifest, XML, `@Keep`, keep rules, inheritance hierarchies, DI/serialization annotations, JNI and framework callbacks). It supports `--explain`, baselines, expiring `--suppress` entries, `--since`, and machine-readable reports (text/gradle/github-actions/sarif/json/markdown). JSON, SARIF and markdown findings carry a `confidence` tier (static / needs-runtime-review / unmeasured) derived from the unresolved runtime channels measured in the declaration's own source file. Recursive includes and consumer rules are supported.
 - `why <symbol>` answers in one step why a declaration is retained, reachable, or unreachable: retention evidence with file:line provenance, the representative path from a retention root, direct callers, a test-only marker, and a measured confidence tier for unreachable declarations. The answer is a reachability fact, not a deletion approval.
-- `query`/`bridges`/`skill` give agents one symbol's users, dependencies and reachability, plus Flutter/React Native bridge facts, instead of a full graph dump. `query` also counts unresolved runtime paths and conservative dispatch candidates.
+- `query`/`bridges`/`skill` give agents the users, dependencies and reachability of a single symbol, plus Flutter/React Native bridge facts, instead of a full graph dump. `query` also reports measured counts of unresolved runtime paths and conservative dispatch candidates.
 - `cycles`/`rules`/`metrics` analyze module/package cycles with weakest edges, fail-closed layer YAML, and Martin Ca/Ce/I/A/D metrics.
 - The Gradle plugin registers `kartographDead<Variant>` and `kartographGraph<Variant>` per Android variant over the AGP public Variant API.
 - The Gradle plugin's `kartographSnapshot` and `kartographSnapshot<Variant>` tasks capture JVM main/test and Android main/unit-test inputs automatically, together with compiler witnesses, for repeated impact queries. Android application variants also cover the generated `R.jar` through a `processResources` producer witness. See [automatic capture and toolchain configuration](docs/IMPACT.md#jvm-빌드에서-자동-캡처) and the [build provenance contract](docs/BUILD-PROVENANCE.md).
@@ -35,11 +35,11 @@ Working today:
 - The [MCP stdio server](docs/MCP.md) exposes `query_symbol`, `impact` and `freshness` over fixed local snapshots, using the same reports as the CLI.
 - Keep-rule parsing fails closed with file and line instead of silently dropping unsupported syntax. Errors and evidence never print absolute paths.
 
-Class loading, reflective construction, and known method/field access are connected through bounded intra-method value tracking; external dispatch uses conservative hierarchy candidates. `META-INF/services` registrations in class roots and in explicit CLI `--service-resources` inputs retain their providers. The Gradle plugin supplies the selected variant's Java resource source directories. In the external-call JSON, the matching API model and the resolution result are separate fields. Optional [compiler collectors](docs/COMPILER-EVIDENCE.md) add javac/Kotlin 2.4.10 constant references and javac Dagger 2.59 selected bindings to snapshots. They are built and connected explicitly, and their supported patterns and remaining gaps are documented. The primary graph and retention policy still apply. Callgraph precision remains an experiment.
+Class loading, reflective construction, and known method/field access are connected through bounded intra-method value tracking; external dispatch uses conservative hierarchy candidates. `META-INF/services` registrations in class roots and in explicit CLI `--service-resources` inputs retain their providers. The Gradle plugin supplies the selected variant's Java resource source directories. In the external-call JSON, the matching API model and the resolution result are separate fields. Optional [compiler collectors](docs/COMPILER-EVIDENCE.md) add javac/Kotlin 2.4.10 constant references and javac Dagger 2.59 selected bindings to snapshots. These collectors must be built and connected explicitly; their supported patterns and remaining gaps are documented. The primary graph and retention policy still apply. Callgraph precision remains an experiment.
 
 See [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) for what the graph cannot see, and [`docs/PHASE2-VALIDATION.md`](docs/PHASE2-VALIDATION.md) for measured retention behavior.
 
-The analyzer also tracks immutable arguments and String/Class return values through bounded project static helpers. In [five executed comparison fixtures](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/runtime-returns/README.md) this recovers three previously missed reflection paths while keeping every unused control distinct. The same report compares SearchDeadCode and current R8, including optimization controls and a remaining unknown-input failure. It does not establish overall accuracy or speed superiority. Static field values and reflective reads receive additional bounded tracking, with unknown assignments and analysis limits retained. Exact private/final instance helpers, including Kotlin object/companion methods, get the same bounded String/Class return tracking, which recovers the runtime targets of four more executed Java/Kotlin cases; overridable methods and unknown receiver state remain unresolved. The [expanded evaluation](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/impact-evaluation/README.md) records concrete pre-edit review benefits on Java/Kotlin, and also the AI repair result: 6/12 passes in each condition with no graph queries, so a general AI productivity gain is unproven.
+The analyzer also tracks immutable arguments and String/Class return values through bounded project static helpers. In [five executed comparison fixtures](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/runtime-returns/README.md) this recovers three previously missed reflection paths while keeping every unused control distinct. The same report compares SearchDeadCode and current R8, including optimization controls and a remaining unknown-input failure. It does not establish overall accuracy or speed superiority. Static field values and reflective reads receive additional bounded tracking, with unknown assignments and analysis limits retained. Exact private/final instance helpers, including Kotlin object/companion methods, get the same bounded String/Class return tracking. This recovers the runtime targets of four more executed Java/Kotlin cases; overridable methods and unknown receiver state remain unresolved. The [expanded evaluation](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/impact-evaluation/README.md) records concrete pre-edit review benefits on Java/Kotlin, and also the AI repair result: 6/12 passes in each condition with no graph queries. A general AI productivity gain remains unproven.
 
 ## Installation and compatibility
 
@@ -160,7 +160,7 @@ kartograph graph --classes path/to/normal/classes --classes path/to/generated/cl
   --generated-classes path/to/generated/classes --format json
 ```
 
-Nodes and edges remain; `synthesized` and `generatedInput` only mark their origin. Do not mark roots that mix generated and handwritten code. In Gradle, configure `kartograph.generatedClassRoots` or the variant task's `generatedClassRoots`; each marked root must also be a project class input of that task. Class names are never used to infer this origin.
+Nodes and edges remain, with `synthesized` and `generatedInput` marking their origin. Do not mark roots that mix generated and handwritten code. In Gradle, configure `kartograph.generatedClassRoots` or the variant task's `generatedClassRoots`; each marked root must also be a project class input of that task. Class names are not used to infer this origin.
 
 The extension applies to every variant. For variant-specific outputs, configure `generatedClassRoots` on the named variant tasks instead; a debug-only root at extension level cannot match the release task's inputs.
 
@@ -172,7 +172,7 @@ This mode conservatively retains `-keepclassmembers` targets together with their
 
 ## Development and verification
 
-To block **all newly introduced diagnostics** in a PR, follow the [PR gate guide](docs/PR-CHECK.md). The released `Scripts/check-pr.py` reads the base commit's baseline and also checks untouched files. `--since` is only a changed-files filter, so it differs from the PR gate, which must catch the blast radius of a caller deletion. Measurements on public samples (Hilt/Compose/KSP) and their remaining limits are in the [public validation record](docs/PUBLIC-VALIDATION.md).
+To block **all newly introduced diagnostics** in a PR, follow the [PR gate guide](docs/PR-CHECK.md). The released `Scripts/check-pr.py` reads the base commit's baseline and also checks untouched files. `--since` is a changed-files filter, so it differs from the PR gate, which must catch the blast radius of a caller deletion. Measurements on public samples (Hilt/Compose/KSP), and the limits that remain, are in the [public validation record](docs/PUBLIC-VALIDATION.md).
 
 The following development checks require a source checkout and JDK 17+.
 
