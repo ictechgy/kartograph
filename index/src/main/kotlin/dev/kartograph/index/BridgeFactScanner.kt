@@ -89,11 +89,23 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         var pendingReactModule: String? = null
         var reactScope: ReactScope? = null
         var pendingReactMethod = false
-        var hasExpoModuleImport = false
         var expoScope: ExpoScope? = null
+        var previousCode = ""
         var pendingExpoClass: PendingExpoClass? = null
         var inBlockComment = false
         var braceDepth = 0
+        // Expo 게이트는 주석·문자열 내용을 제거한 전체 파일 뷰에서 한 번 판정한다 —
+        // 문자열 리터럴 안의 import 텍스트로 게이트가 켜지지 않게 하기 위함이다.
+        val sourceLines = ProjectTraversal.readSourceLines(projectRoot, path)
+        var gateBlockComment = false
+        val gateView = buildString {
+            sourceLines.forEach { line ->
+                val stripped = stripComments(line, gateBlockComment)
+                gateBlockComment = stripped.inBlockComment
+                append(maskStringContents(stripped.code)).append('\n')
+            }
+        }
+        val hasExpoModuleImport = EXPO_MODULE_GATE.containsMatchIn(gateView)
         fun recordChannel(
             pending: PendingChannel,
             completed: CompletedCall,
@@ -125,7 +137,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                 stats.unscannedHandlers++
             }
         }
-        ProjectTraversal.readSourceLines(projectRoot, path).forEachIndexed { zeroBased, line ->
+        sourceLines.forEachIndexed { zeroBased, line ->
             val lineNumber = zeroBased + 1
             val stripped = stripComments(line, inBlockComment)
             inBlockComment = stripped.inBlockComment
@@ -241,7 +253,6 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             }
 
             // Expo Modules — `Module()` 서브클래스의 `ModuleDefinition { }` DSL만 스캔한다.
-            if (EXPO_MODULE_GATE.containsMatchIn(code)) hasExpoModuleImport = true
             if (!isJava) {
                 pendingExpoClass?.let { pending ->
                     val openingBrace = code.indexOf('{')
@@ -257,10 +268,13 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                     }
                 }
                 if (expoScope == null && pendingExpoClass == null) {
-                    val expoClass = if (hasExpoModuleImport) EXPO_MODULE_CLASS.find(code) else null
+                    // import가 있어도 FQN 슈퍼타입을 둘 다 시도한다 — 괄호 없는
+                    // `else null ?: fqn`은 `else (null ?: fqn)`로 파싱돼 FQN을 건너뛴다.
+                    val expoClass = (if (hasExpoModuleImport) EXPO_MODULE_CLASS.find(code) else null)
                         ?: EXPO_MODULE_CLASS_FQN.find(code)
                     if (expoClass != null &&
-                        !ABSTRACT_MODIFIER.containsMatchIn(code.substring(0, expoClass.range.first))
+                        !ABSTRACT_MODIFIER.containsMatchIn(code.substring(0, expoClass.range.first)) &&
+                        !ABSTRACT_AT_END.containsMatchIn(previousCode)
                     ) {
                         val className = expoClass.groupValues[1]
                         val openingBrace = code.indexOf('{', expoClass.range.last + 1)
@@ -287,7 +301,10 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             while (methodScopes.lastOrNull()?.let { braceDepth < it.depth } == true) methodScopes.removeLast()
             while (handlerScopes.lastOrNull()?.let { braceDepth < it.depth } == true) handlerScopes.removeLast()
             reactScope?.let { scope -> if (braceDepth < scope.depth) reactScope = null }
+            if (code.isNotBlank()) previousCode = code
         }
+        // 파일이 클래스 선언 중간에 끝나도 그동안 모은 DSL 증거는 버리지 않는다.
+        expoScope?.let { emitExpoModule(it, facts, relative) }
         // JNI 표식은 문자열이 마스킹된 전체 뷰에서 판정한다 — 문자열 안의
         // "System.loadLibrary(...)" 같은 텍스트를 선언으로 오인하지 않고,
         // 여러 줄 `native` 시그니처도 잡기 위함이다.
@@ -315,7 +332,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             val completed = pending.collector.consume("\n$code") ?: return
             pending.finish(completed.arguments.firstOrNull()?.literalOrDynamic(), scope)
             scope.pendingCall = null
-            index = code.length - completed.remainder.removePrefix("\n").length
+            index = code.length - completed.remainder.length
         }
         while (index < code.length) {
             val match = EXPO_DSL_TOKEN.find(code, index) ?: break
@@ -409,11 +426,28 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         mechanism: String? = null,
     ): BridgeFact = BridgeFact(
         kind, channel, method, dynamic,
-        BridgeLocation(path, line, source.substring(0, source.indexOf(token).coerceAtLeast(0))
-            .toByteArray(Charsets.UTF_8).size + 1),
+        BridgeLocation(path, line, tokenColumn(source, token)),
         target = target,
         mechanism = mechanism,
     )
+
+    /**
+     * 토큰의 바이트 컬럼을 찾는다. 첫 등장이 다른 식별자 안쪽이면
+     * (`AsyncFunction(` 안의 `Function(` 같은 경우) 다음 후보로 넘어간다.
+     * `.`는 허용한다 — `channel.setMethodCallHandler`처럼 멤버 호출이 정상 형태다.
+     */
+    private fun tokenColumn(source: String, token: String): Int {
+        var from = 0
+        while (true) {
+            val at = source.indexOf(token, from)
+            if (at < 0) return 1
+            val before = source.getOrNull(at - 1)
+            if (before == null || (!before.isLetterOrDigit() && before != '_')) {
+                return source.substring(0, at).toByteArray(Charsets.UTF_8).size + 1
+            }
+            from = at + 1
+        }
+    }
 
     private fun stripComments(line: String, startsInBlockComment: Boolean): StrippedLine {
         val result = StringBuilder(line.length)
@@ -488,13 +522,11 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         return delta
     }
 
+    // 문자열 리터럴 해석은 ChannelBridgeScanner의 것을 공유한다 — 이스케이프·raw string·
+    // 보간 판정이 Flutter 채널 경로와 Expo DSL 경로 사이에서 어긋나지 않게 하기 위함이다.
     private fun String.literalOrDynamic(): Channel {
-        val trimmed = trim()
-        return if (trimmed.length >= 2 && trimmed.first() == '"' && trimmed.last() == '"') {
-            Channel(trimmed.substring(1, trimmed.length - 1), false)
-        } else {
-            Channel(trimmed, true)
-        }
+        val (value, dynamic) = literalOrDynamicChannel(this)
+        return Channel(value, dynamic)
     }
 
     private data class Channel(val value: String?, val dynamic: Boolean)
@@ -646,14 +678,17 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                 "|\\bpackage\\s+expo\\.modules\\.kotlin\\.modules\\b",
         )
         // `Foo.Module()` 같은 중첩 타입이나 인자 위치의 `Module()`은 Expo 모듈이 아니다.
+        // 생성자 괄호 안의 `=`(기본 인자)는 슈퍼타입 목록이 아니므로 괄호째로 건너뛴다.
         val EXPO_MODULE_CLASS = Regex(
-            "\\bclass\\s+([A-Za-z_][A-Za-z0-9_]*)[^={;]*:[^={;]*(?<![\\w.])Module\\s*\\(",
+            "\\bclass\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s*\\([^;{}]*\\))?[^={;]*:[^={;]*(?<![\\w.])Module\\s*\\(",
         )
         val EXPO_MODULE_CLASS_FQN = Regex(
-            "\\bclass\\s+([A-Za-z_][A-Za-z0-9_]*)[^={;]*:[^={;]*" +
+            "\\bclass\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s*\\([^;{}]*\\))?[^={;]*:[^={;]*" +
                 "(?<![\\w.])expo\\.modules\\.kotlin\\.modules\\.Module\\s*\\(",
         )
         val ABSTRACT_MODIFIER = Regex("\\babstract\\b")
+        // `abstract`가 class 줄이 아니라 직전 줄에 오는 형태(`abstract\nclass X`)를 잡는다.
+        val ABSTRACT_AT_END = Regex("\\babstract\\s*$")
         // 문자열은 통째로 소비해 안의 `{`가 깊이를 오염시키지 않게 한다.
         val EXPO_DSL_TOKEN = Regex(
             "\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|\\{|\\}|" +

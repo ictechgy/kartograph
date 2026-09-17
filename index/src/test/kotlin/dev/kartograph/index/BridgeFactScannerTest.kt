@@ -1354,4 +1354,196 @@ class BridgeFactScannerTest {
         assertTrue(document.facts.none { it.mechanism == "expo" })
         assertTrue(document.limitations.any { it.startsWith("unscanned-expo-java:") })
     }
+
+    @Test
+    fun `expo scans a fully qualified Module supertype even when the import is present`(@TempDir project: Path) {
+        project.resolve("Mixed.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class FqnModule : expo.modules.kotlin.modules.Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Fqn")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scan()
+
+        assertEquals(listOf("Fqn"), document.facts.filter { it.kind == "module-export" }.map { it.channel })
+    }
+
+    @Test
+    fun `expo skips an abstract modifier on the line before the class`(@TempDir project: Path) {
+        project.resolve("Base.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            abstract
+            class BaseModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Base")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        assertTrue(BridgeFactScanner(project).scan().facts.isEmpty())
+    }
+
+    @Test
+    fun `expo ignores a Module default value inside the constructor`(@TempDir project: Path) {
+        project.resolve("Container.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class Container(val helper: Helper = Helper()) : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Container")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        // 생성자 기본 인자의 `=`가 슈퍼타입 탐색을 끊어서는 안 된다.
+        assertEquals(
+            listOf("Container"),
+            BridgeFactScanner(project).scan().facts.filter { it.kind == "module-export" }.map { it.channel },
+        )
+    }
+
+    @Test
+    fun `expo does not treat a Module-typed constructor default as the supertype`(@TempDir project: Path) {
+        project.resolve("Container.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class Container(val module: Module = Module()) : SomethingElse {
+              fun definition() = ModuleDefinition {
+                Name("Container")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        assertTrue(BridgeFactScanner(project).scan().facts.none { it.mechanism == "expo" })
+    }
+
+    @Test
+    fun `expo still emits facts when the class scope stays open at end of file`(@TempDir project: Path) {
+        project.resolve("Truncated.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class TruncatedModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Truncated")
+                Function("ping") { "pong" }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scan()
+
+        assertEquals(listOf("Truncated"), document.facts.filter { it.kind == "module-export" }.map { it.channel })
+        assertEquals(listOf("ping"), document.facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo resolves raw strings and escapes in Name literals`(@TempDir project: Path) {
+        project.resolve("Names.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class RawModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name(""" + "\"\"\"" + """RawName""" + "\"\"\"" + """)
+              }
+            }
+            class EscapedModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Esc\u0041ped")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scan()
+
+        assertEquals(
+            listOf("RawName", "EscAped"),
+            document.facts.filter { it.kind == "module-export" }.map { it.channel },
+        )
+    }
+
+    @Test
+    fun `expo keeps an interpolated Name as a dynamic expression`(@TempDir project: Path) {
+        project.resolve("Dynamic.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class DynModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("prefix" + "$" + "{suffix}")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scan()
+        val fact = document.facts.single { it.kind == "module-export" }
+
+        assertTrue(fact.dynamic)
+        assertTrue(fact.channel!!.contains("prefix"))
+    }
+
+    @Test
+    fun `expo points the column at the matching call token on a shared line`(@TempDir project: Path) {
+        val source = "  AsyncFunction(\"a\") { 1 }; Function(\"b\") { 2 }"
+        project.resolve("Cols.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class ColsModule : Module() {
+              override fun definition() = ModuleDefinition {
+            $source
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scan()
+        val second = document.facts.single { it.method == "b" }
+
+        assertEquals(source.indexOf("Function(", "AsyncFunction(".length) + 1, second.location.column)
+    }
+
+    @Test
+    fun `expo ignores import text that only appears inside a string literal`(@TempDir project: Path) {
+        project.resolve("Doc.kt").writeText(
+            """
+            val doc = "use import expo.modules.kotlin.modules.Module to declare modules"
+            class Lookalike : Module() {
+              fun definition() = ModuleDefinition {
+                Name("Nope")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        assertTrue(BridgeFactScanner(project).scan().facts.none { it.mechanism == "expo" })
+    }
+
+    @Test
+    fun `expo collects a function call whose arguments span lines`(@TempDir project: Path) {
+        project.resolve("Slow.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class SlowModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Slow")
+                Function(
+                  "acrossLines",
+                ) { "ok" }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scan()
+
+        assertEquals(listOf("acrossLines"), document.facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
 }
