@@ -14,10 +14,10 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
   Expo Modules 스캔(#67), 병렬 fingerprint(#61)와 그 리뷰 수정(#64), `impact` 결함 2건(#59), EventChannel(#60). **0.10.1 릴리스 후보 상태**다.
 - 2026-09-16~17에 머지된 PR: #59 impact 결함 → #60 EventChannel → #61 fingerprint 병렬화 → #62 단계 B 기각 기록 → #63 과제 종료 결론 →
   #64 3관점 리뷰 반영 → #65 JDK 17/21 재측정 → #66 README 퇴고 → #67 Expo Modules(다른 세션) → #68 HANDOFF 완료 절.
-- 열린 PR: #47 Dependabot `jvm` 2.4.10→2.4.20. 머지 전 `gradle/verification-metadata.xml` 체크섬 검토가 필요하다(`docs/AGENT-WORKFLOW.md` "의존성·배포 검증 유지").
+- 열린 PR: #47 Dependabot `jvm` 2.4.10→2.4.20(2026-09-17 `gh pr list --state open` 기준, 시작 시 재확인). 머지 전 `gradle/verification-metadata.xml` 체크섬 검토가 필요하다(`docs/AGENT-WORKFLOW.md` "의존성·배포 검증 유지").
 - 메인 체크아웃(`/Users/jinhongan/Desktop/kartograph`, 브랜치 `feat/adoption-competitiveness`)에는 다른 세션의 **미커밋 HANDOFF.md 편집(344줄, 9/16 21:02)**이 남아 있다.
   main의 HANDOFF(이 파일)와 다르므로 그 세션이 확인해 버리거나 병합해야 한다. 이 파일은 worktree에서 main 기준으로 갱신했다.
-- 근거·측정 산출물은 worktree `.claude/worktrees/perf-fingerprint-parallel/build/reports/` 아래에 있다(아래 완료 절). 이 worktree는 근거 보존용이며 브랜치는 정리했다.
+- 근거·측정 산출물은 worktree `/Users/jinhongan/Desktop/kartograph/.claude/worktrees/perf-fingerprint-parallel/build/reports/` 아래에 있다(아래 완료 절). 이 worktree는 근거 보존용이며 브랜치는 정리했다.
 
 ## 완료 — 한 클래스 변경 속도 과제 (2026-09-16~17, PR #61~#66)
 
@@ -58,9 +58,9 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 
 ## 다음 할 일 (순서대로)
 
-1. Dependabot #47(`jvm` 2.4.20): `./gradlew --write-verification-metadata sha256 ...`로 체크섬 후보를 만들어 좌표·출처를 검토한 뒤 머지한다. CI 실패 시 원인은 대개 verification-metadata 누락이다.
+1. Dependabot #47(`jvm` 2.4.20): `./gradlew --write-verification-metadata sha256 ...`로 체크섬 후보를 만들어 좌표·출처를 검토하고, GLM 리뷰·CI 통과 후 **사용자 승인을 받아** 머지한다. CI 실패 시 원인은 대개 verification-metadata 누락이다.
 2. 0.10.1 릴리스 여부를 정한다. Unreleased에 제품 변경(Expo, 병렬 fingerprint, impact 결함 수정)이 있고 검증 절차는 `docs/AGENT-WORKFLOW.md` 릴리스 절과 `Scripts/verify-release-readiness.sh`다.
-3. 메인 체크아웃의 미커밋 HANDOFF(344줄)를 이 파일과 대조해 정리한다.
+3. 메인 체크아웃의 미커밋 HANDOFF(344줄)는 다른 세션의 작업물이므로 직접 수정하지 않는다. 이 파일과 대조해 빠진 내용이 있으면 사용자에게 보고하고, 버릴지 병합할지는 사용자가 정한다.
 4. 선택 과제(착수 전 사용자 합의): (a) cold/full 1.05~1.09의 병목으로 추정되는 spool 쓰기·header 파싱 시간 계측(설계 노트 §12 B3), (b) README 설치 절에 "JDK 21 이상에서 fingerprint가 빠르다" 한 줄 추가 여부, (c) Expo `requireOptionalNativeModule`의 선택적 부재 의미(#67 세션의 별개 이슈).
 5. 하지 않기로 한 것: self 15% 목표를 위한 단계 C(전역 분석 재사용). 근거는 `docs/ONE-CLASS-CHANGE-DESIGN.md` §11.
 
