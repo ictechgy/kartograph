@@ -16,6 +16,21 @@
 - 남은 것: GLM 리뷰 반영 후 머지(사용자 승인). isthmus 쪽 계약·조인은 PR #77로 이미 머지됨.
 - 별개 이슈(이 작업 밖): `requireOptionalNativeModule`의 선택적 부재 의미.
 
+## 완료 — 한 클래스 변경 속도 과제 (2026-09-16~17, PR #61~#66)
+
+- 결론은 `docs/ONE-CLASS-CHANGE-DESIGN.md` §9~§13에 있다. **self(392 class) 15% 내부 목표는 미달**(0.82~0.86 밴드, 고정비 구조)이며
+  기록을 그대로 두고 과제를 닫았다. nia(227 JAR)는 fingerprint 병렬화(#61)로 full 2.56→1.84 s, warm 2.13→1.40 s.
+- 단계 B(C1-only JIT, #62)는 nia 11~17% 악화로 기각. 단계 C(전역 분석 재사용)는 캐시 on/off 동일 계약 위험 대비 이득이 작아 착수하지 않음(#63).
+- 3관점 리뷰(보안·구조·성능) 반영(#64): symlink 검사/열기 원자화(`NOFOLLOW_LINKS`), interrupt 후 spool 정리 동기화, 크기 미상 JAR spool 제외, stat 통합.
+- **JDK 21 이상에서 fingerprint가 크게 빠르다**(#65): Apple Silicon JDK 17 빌드에는 SHA-256 intrinsic이 없다. 같은 바이너리로 nia full 1.92→1.41 s.
+  벤치 러너는 과거 기록 비교를 위해 JDK 17 고정을 유지한다. `docs/INDEX-CACHE.md`에 권고를 적었다.
+- README 영문·한글 퇴고(#66). 사실·링크·명령은 그대로.
+- 근거 원본(캡처 JSON은 sha256 대조 후 gzip): worktree `.claude/worktrees/perf-fingerprint-parallel/build/reports/` 아래
+  `benchmark-20260916-parallel/`(305 MB), `benchmark-20260916-stage-b/`(102 MB), `benchmark-20260917-jdk21/`(204 MB), 각 README 참조.
+  nia 고정 입력(Gradle transform 캐시)이 두 번 사라져 `build/tools/gradle-9.6.1`(151 MB)로 복원했다. 다시 사라지면
+  `benchmark-20260916/README.md`의 절차대로 그 배포본을 쓴다.
+- 후속이 있다면: cold/full(1.05~1.09)의 병목은 digest가 아니라 spool 쓰기·header 파싱으로 보이며 미측정이다(설계 노트 §12 성능 리뷰 B3).
+
 ## 목표
 
 Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물에서 만들고, 그 위에서 미사용 코드 · 순환 · 레이어 규칙 · 지표를 근거와 함께 답하는 CLI. [cartograph](../cartograph)(Swift)의 자매. 자세한 것은 `docs/PRD.md`.
