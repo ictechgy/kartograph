@@ -211,7 +211,8 @@ JDK 17(Homebrew·Temurin 모두)은 단일 스레드 589~607 ms·4 worker 288 ms
 | self | one-class/full | 0.821 / 0.842 | 0.830 / 0.842 |
 | self | full / warm 벽시계 | 801/685 · 808/646 ms | 775/597 · 798/687 ms |
 
-- nia는 코드 변경 없이 full 27%·warm 33% 빨라진다. 줄어든 것은 fingerprint(611→190 ms)뿐이며 SHA-256 intrinsic 효과다.
+- nia는 코드 변경 없이 full 27%·warm 33~36% 빨라진다. 주된 원인은 fingerprint(611→190 ms, 약 420 ms)이며 SHA-256 intrinsic 효과로 본다(`sha-jdks.log`와 일치). 벽시계 감소분 중 나머지 약 90 ms는 JIT·GC 차이로 추정하며 분리 측정하지 않았다.
+- §12는 "100 ms 아래"를 예상했으나 실측은 190~200 ms다. spike는 digest만 쟀고 제품 경로에는 파일 열기·spool 결정·identity 해석이 더해지므로 예측이 낙관적이었다.
 - self는 두 JDK가 같다. fingerprint 60 ms대는 syscall 지배적이라 intrinsic과 무관하고, §11의 결론(작은 입력의 비율은 고정비 구조라 판정 불가)은 그대로다.
 - 실행 중 load가 4~6까지 올라 1차 JDK 17의 self warm 0.866 미달과 2차 JDK 21의 nia one-class 최소 0.447(1회)이 섞였다. 지우지 않고 보존한다.
 - 조치: 제품은 사용자 JDK를 고르지 못하므로 `INDEX-CACHE.md`에 "JDK 21 이상에서 fingerprint가 크게 빠르다"를 기록한다. 러너의 JDK 17 고정은 과거 기록과의 비교를 위해 유지한다.

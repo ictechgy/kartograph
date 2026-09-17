@@ -134,9 +134,12 @@ computed twice per capture. On Apple Silicon the JDK 17 builds tested
 do. On the same Now in Android input and the same CLI build, JDK 21 reduced the
 changed-capture fingerprint from about 0.61 s to about 0.19 s, the full capture
 from 1.9 s to 1.4 s and the warm capture from 1.4 s to 0.95 s across two
-seven-run comparisons; the small kartograph input did not change. Prefer JDK 21
-or later for large dependency classpaths. The measurements above and the
-one-class ratios were taken on JDK 17.
+seven-run comparisons; the small kartograph input did not change because its
+fingerprint of a few hundred small class files is bound by file-system calls,
+not hashing. Prefer JDK 21 or later for large dependency classpaths. The
+one-class and warm/cold ratios recorded elsewhere in this document were taken on
+JDK 17; only the comparison in this paragraph alternated JDK 17 and JDK 21 on
+the same binary.
 
 Default-heap peak resident memory on the same Android input was about 765 MB for
 full capture, 746 MB for cold cache population and 667 MB for warm capture.
