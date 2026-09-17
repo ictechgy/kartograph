@@ -128,6 +128,19 @@ was not attempted because it would risk the cache-on/off equality contract for
 an estimated upper bound of about 0.18 s (about 0.1 s for the part that closes
 per class). Design record: `ONE-CLASS-CHANGE-DESIGN.md`.
 
+The input fingerprint is SHA-256 over every class root and dependency JAR,
+computed twice per capture. On Apple Silicon the JDK 17 builds tested
+(Homebrew and Temurin 17.0.20) have no SHA-256 intrinsic, while JDK 21 and later
+do. On the same Now in Android input and the same CLI build, JDK 21 reduced the
+changed-capture fingerprint from about 0.61 s to about 0.19 s, the full capture
+from 1.9 s to 1.4 s and the warm capture from 1.4 s to 0.95 s across two
+seven-run comparisons; the small kartograph input did not change because its
+fingerprint of a few hundred small class files is bound by file-system calls,
+not hashing. Prefer JDK 21 or later for large dependency classpaths. The
+one-class and warm/cold ratios recorded elsewhere in this document were taken on
+JDK 17; only the comparison in this paragraph alternated JDK 17 and JDK 21 on
+the same binary.
+
 Default-heap peak resident memory on the same Android input was about 765 MB for
 full capture, 746 MB for cold cache population and 667 MB for warm capture.
 All three modes also completed with `-Xmx512m` and produced the same snapshot.
