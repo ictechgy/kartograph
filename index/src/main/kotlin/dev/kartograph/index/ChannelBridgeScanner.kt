@@ -257,18 +257,6 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
         return -1
     }
 
-    private fun closingQuote(source: String, opening: Int): Int {
-        var escaped = false
-        for (index in opening + 1 until source.length) {
-            when (val c = source[index]) {
-                '\\' -> escaped = !escaped
-                '"' -> if (!escaped) return index
-                else -> escaped = false
-            }
-        }
-        return -1
-    }
-
     private fun callArguments(source: String, open: Int, end: Int): List<String> {
         if (end <= open + 1) return emptyList()
         val values = mutableListOf<String>()
@@ -311,56 +299,6 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
     private fun List<String>.firstNamed(name: String): String? = firstOrNull { argument ->
         argument.substringBefore('=', "").trim() == name
     }?.substringAfter('=', "")?.trim()
-
-    private fun interpolationIndex(value: String, raw: Boolean): Int {
-        var index = 0
-        while (index < value.length) {
-            if (!raw && value[index] == '\\') { index += 2; continue }
-            if (value[index] == '$') {
-                if (value.isDollarLiteral(index)) { index += 6; continue }
-                val next = value.getOrNull(index + 1)
-                if (next == '{' || next == '_' || next?.isLetter() == true) return index
-            }
-            index++
-        }
-        return -1
-    }
-
-    private fun String.isDollarLiteral(index: Int): Boolean =
-        index + 5 < length && this[index] == '$' && this[index + 1] == '{' && this[index + 2] == '\'' &&
-            this[index + 3] == '$' && this[index + 4] == '\'' && this[index + 5] == '}'
-
-    private fun decodeRawLiteral(value: String): String = buildString {
-        var index = 0
-        while (index < value.length) {
-            if (value.isDollarLiteral(index)) { append('$'); index += 6 } else { append(value[index]); index++ }
-        }
-    }
-
-    private fun decodeLiteral(value: String): String = buildString {
-        var index = 0
-        while (index < value.length) {
-            if (value.isDollarLiteral(index)) { append('$'); index += 6; continue }
-            when (val c = value[index]) {
-                '\\' -> when (val escaped = value.getOrNull(index + 1)) {
-                    null -> { append('\\'); index++ }
-                    'u' -> {
-                        val digits = value.substring(index + 2, (index + 6).coerceAtMost(value.length))
-                        if (digits.length == 4 && digits.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) {
-                            append(digits.toInt(16).toChar()); index += 6
-                        } else { append('u'); index += 2 }
-                    }
-                    else -> { append(when (escaped) { 'n' -> '\n'; 'r' -> '\r'; 't' -> '\t'; '\\' -> '\\'; '"' -> '"'; '\'' -> '\''; else -> escaped }); index += 2 }
-                }
-                else -> { append(c); index++ }
-            }
-        }
-    }
-
-    private fun String.isQuotedOrInterpolated(): Boolean = trim().let {
-        if (it.startsWith("\"\"\"")) it.length >= 6 && it.indexOf("\"\"\"", 3) == it.length - 3
-        else it.length >= 2 && it.first() == '"' && closingQuote(it, 0) == it.lastIndex
-    }
 
     private data class Channel(val value: String?, val dynamic: Boolean, val prefix: String?)
     private data class Binding(val name: String, val scope: List<Int>, var channel: Channel)
@@ -596,3 +534,81 @@ private fun braceDelta(text: String): Int = text.count { it == '{' } - text.coun
 
 private val KOTLIN_HEADER_START = Regex("\\bfun\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(")
 private val JAVA_DECLARATION = Regex("\\b(?:public\\s+|private\\s+|protected\\s+|static\\s+|final\\s+|synchronized\\s+|native\\s+|abstract\\s+)*(?:[A-Za-z_][A-Za-z0-9_<>.?\\[\\]]*\\s+)([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^)]*\\)\\s*\\{")
+
+// 문자열 리터럴 해석 — ChannelBridgeScanner와 BridgeFactScanner(Expo DSL)가 공유한다.
+// 따옴표 종류·보간·이스케이프를 한 곳에서 판정해 두 스캐너의 결과가 어긋나지 않게 한다.
+
+internal fun closingQuote(source: String, opening: Int): Int {
+    var escaped = false
+    for (index in opening + 1 until source.length) {
+        when (val c = source[index]) {
+            '\\' -> escaped = !escaped
+            '"' -> if (!escaped) return index
+            else -> escaped = false
+        }
+    }
+    return -1
+}
+
+internal fun interpolationIndex(value: String, raw: Boolean): Int {
+    var index = 0
+    while (index < value.length) {
+        if (!raw && value[index] == '\\') { index += 2; continue }
+        if (value[index] == '$') {
+            if (value.isDollarLiteral(index)) { index += 6; continue }
+            val next = value.getOrNull(index + 1)
+            if (next == '{' || next == '_' || next?.isLetter() == true) return index
+        }
+        index++
+    }
+    return -1
+}
+
+internal fun String.isDollarLiteral(index: Int): Boolean =
+    index + 5 < length && this[index] == '$' && this[index + 1] == '{' && this[index + 2] == '\'' &&
+        this[index + 3] == '$' && this[index + 4] == '\'' && this[index + 5] == '}'
+
+internal fun decodeRawLiteral(value: String): String = buildString {
+    var index = 0
+    while (index < value.length) {
+        if (value.isDollarLiteral(index)) { append('$'); index += 6 } else { append(value[index]); index++ }
+    }
+}
+
+internal fun decodeLiteral(value: String): String = buildString {
+    var index = 0
+    while (index < value.length) {
+        if (value.isDollarLiteral(index)) { append('$'); index += 6; continue }
+        when (val c = value[index]) {
+            '\\' -> when (val escaped = value.getOrNull(index + 1)) {
+                null -> { append('\\'); index++ }
+                'u' -> {
+                    val digits = value.substring(index + 2, (index + 6).coerceAtMost(value.length))
+                    if (digits.length == 4 && digits.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) {
+                        append(digits.toInt(16).toChar()); index += 6
+                    } else { append('u'); index += 2 }
+                }
+                else -> { append(when (escaped) { 'n' -> '\n'; 'r' -> '\r'; 't' -> '\t'; '\\' -> '\\'; '"' -> '"'; '\'' -> '\''; else -> escaped }); index += 2 }
+            }
+            else -> { append(c); index++ }
+        }
+    }
+}
+
+internal fun String.isQuotedOrInterpolated(): Boolean = trim().let {
+    if (it.startsWith("\"\"\"")) it.length >= 6 && it.indexOf("\"\"\"", 3) == it.length - 3
+    else it.length >= 2 && it.first() == '"' && closingQuote(it, 0) == it.lastIndex
+}
+
+/**
+ * 따옴표로 감싼 문자열 리터럴을 값으로 푼다.
+ * 리터럴이 아니거나 `$` 보간이 있으면 원문을 dynamic으로 돌려준다.
+ */
+internal fun literalOrDynamicChannel(expression: String): Pair<String, Boolean> {
+    val raw = expression.trim()
+    if (!raw.isQuotedOrInterpolated()) return raw to true
+    val triple = raw.startsWith("\"\"\"") && raw.endsWith("\"\"\"")
+    val body = if (triple) raw.substring(3, raw.length - 3) else raw.substring(1, raw.length - 1)
+    return if (interpolationIndex(body, triple) >= 0) raw to true
+    else (if (triple) decodeRawLiteral(body) else decodeLiteral(body)) to false
+}

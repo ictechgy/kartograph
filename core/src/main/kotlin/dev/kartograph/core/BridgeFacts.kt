@@ -29,6 +29,11 @@ public data class BridgeFact(
     val target: String,
     /** 동적 보조 채널 표현식에서 AST로 확인한 비어 있지 않은 literal prefix다. */
     val channelPrefix: String? = null,
+    /**
+     * `react-native` 이름 경계 사실(`module-export`·`component-export`)의 해석 경로다.
+     * `core`는 생략하고 Expo Modules 선언만 `expo`를 싣는다. 메서드 사실에는 쓰지 않는다.
+     */
+    val mechanism: String? = null,
 )
 
 /** 프로젝트 상대 파일과 1부터 시작하는 위치다. */

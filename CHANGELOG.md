@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- `bridges`가 Expo Modules DSL을 인식한다. `import expo.modules.kotlin.modules.Module`이 있는 Kotlin
+  파일에서 `class X : Module()` 선언을 모듈로 보고 `ModuleDefinition { }` 본문의 `Name(…)`·`View(…)`·
+  `Function`/`AsyncFunction`을 읽는다. `module-export`·`component-export`에는 `"mechanism": "expo"`를
+  싣고 메서드 사실에는 싣지 않는다. `Name`이 없으면 런타임 규칙과 같은 클래스명 폴백을 쓰고, 정의
+  본문이 스캔 범위 밖이면 클래스명을 `dynamic` 근거로 남긴다. 컴포넌트 이름 경계는 뷰 클래스가 아니라
+  모듈 이름이다(`requireNativeViewManager(moduleName)`). Java 파일은 receiver DSL을 쓸 수 없어
+  import만 보이면 `unscanned-expo-java:`로 알린다.
+
 ### Changed
 
 - `snapshot`의 입력 fingerprint가 파일 digest를 최대 4개 worker에서 병렬로 계산한다. digest 값·입력 순서·before/after 검증

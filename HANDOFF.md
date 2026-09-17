@@ -2,7 +2,19 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-05
+마지막 갱신: 2026-09-17
+
+## 진행 중 — Expo Modules 지원 (feat/expo-mechanism, PR #67)
+
+- `import expo.modules.kotlin.modules.Module` + `class X : Module()`를 Expo 모듈로 스캔.
+  `ModuleDefinition { }` 본문의 `Name`/`Function` 계열/`View`를 사실로 낸다.
+- `module-export`·`component-export`에만 `"mechanism": "expo"`. 메서드 사실에는 없음.
+  컴포넌트 채널은 뷰 클래스가 아니라 모듈 이름(Expo JS 계약).
+- 이름 미확정 시 dynamic + 표현식 원문 보존. Java 파일은 `unscanned-expo-java:` limitation.
+- 검증: `./gradlew test :koverVerify` 통과, 신규 테스트 10개. isthmus `check`로
+  expo↔expo 조인·불일치 진단 end-to-end 확인.
+- 남은 것: GLM 리뷰 반영 후 머지(사용자 승인). isthmus 쪽 계약·조인은 PR #77로 이미 머지됨.
+- 별개 이슈(이 작업 밖): `requireOptionalNativeModule`의 선택적 부재 의미.
 
 ## 목표
 

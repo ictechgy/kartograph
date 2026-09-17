@@ -37,6 +37,14 @@ build 이후 수정된 source를 센다. 관측된 항목이 없으면 배열은
 
 `kartograph bridges --project <root>`은 isthmus `bridge-facts` version 1을 출력한다. Kotlin 수신 측에서
 Flutter `MethodChannel` 등록·method handler와 React Native `@ReactModule`·`@ReactMethod`를 수집한다.
+`import expo.modules.kotlin.modules.Module`이 있는 파일의 `class X : Module()`는 Expo 모듈로 읽어
+`ModuleDefinition { }`의 `Name(…)`·`Function`/`AsyncFunction`·`View(…)`를 모은다. `module-export`·
+`component-export`에는 `"mechanism": "expo"`를 싣고 `method-handle`에는 싣지 않는다. 모듈 이름은
+`Name(…)`가 이기고 없으면 `javaClass.simpleName`과 같은 클래스명 폴백이다. `View`의 이름 경계는 뷰
+클래스가 아니라 모듈 이름이다. 정의 본문이 스캔 범위 밖이면 클래스명을 `dynamic`으로 남긴다.
+`abstract` 클래스는 인스턴스화할 수 없어 모듈로 읽지 않는다. 여러 줄 `"""` raw string이나 보간 안의
+중첩 따옴표 안에 있는 `{`/`}`는 줄 단위 깊이 추적을 어긋나게 할 수 있다(Flutter 경로와 같은 기존 한계) —
+해당 파일의 Expo 사실은 dynamic으로 남거나 누락될 수 있다.
 문서의 `project`는 현재 입력 root의 canonical POSIX 절대경로이고 모든 위치는 project-relative다. build, test source set,
 `node_modules`, worktree 복제본은 제외한다.
 
