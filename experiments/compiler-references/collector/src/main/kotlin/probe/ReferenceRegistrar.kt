@@ -29,7 +29,7 @@ import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
 
-/** Kotlin 2.4.10 전용 비교 실험이며 배포 plugin에 포함하지 않는다. 전체 재컴파일만 검사한다. */
+/** 루트와 같은 Kotlin 버전에 고정하는 비교 실험이며 배포 plugin에 포함하지 않는다. 전체 재컴파일만 검사한다. */
 class ReferenceRegistrar : CompilerPluginRegistrar() {
     override val supportsK2 = true
     override val pluginId = "kartograph.reference-experiment"
