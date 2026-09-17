@@ -64,7 +64,8 @@ metadata와 generated identity는 graph snapshot 없이는 증명하지 않는�
 `kartograph bridges --project <root> --target flutter --events`는 같은 스캐너를
 `EventChannel`·`setStreamHandler` 표면에 적용해 `transport: event-channel` v2 문서의
 `stream-handle` fact를 출력한다. `--messages`와 `--events`는 별도 문서이며 동시에 쓸 수 없다.
-EventChannel에는 Kotlin 송신 측 개념이 없으므로 send 계열 limitation을 만들지 않는다.
+Kotlin 측 `EventSink.success`·`error` 같은 이벤트 방출 호출은 교환 계약에 kind가 없어
+스캔·계수하지 않는다 — 등록된 스트림 핸들러 경계만 사실로 낸다.
 
 동적 channel, 귀속하지 못한 handler, inline lambda가 아닌 handler, source scan으로 JVM USR을 만들 수 없는
 handler는 fact를 버리거나 성공으로 가장하지 않고 각각 limitation으로 센다. 현재 source scanner는

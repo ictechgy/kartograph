@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-17 (main 18c0c05, `VERSION` 0.10.0)
+마지막 갱신: 2026-09-17 (기준 `origin/main` 7b210c9, `VERSION` 0.10.0; 로컬 문서 통합)
 
 ## 목표
 
@@ -13,11 +13,11 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - 0.10.0은 공개됐고(GitHub Release·Plugin Portal, 독립 설치 검증 완료), main에는 `CHANGELOG.md` Unreleased가 쌓여 있다:
   Expo Modules 스캔(#67), 병렬 fingerprint(#61)와 그 리뷰 수정(#64), `impact` 결함 2건(#59), EventChannel(#60). **0.10.1 릴리스 후보 상태**다.
 - 2026-09-16~17에 머지된 PR: #59 impact 결함 → #60 EventChannel → #61 fingerprint 병렬화 → #62 단계 B 기각 기록 → #63 과제 종료 결론 →
-  #64 3관점 리뷰 반영 → #65 JDK 17/21 재측정 → #66 README 퇴고 → #67 Expo Modules(다른 세션) → #68 HANDOFF 완료 절.
-- 열린 PR: #47 Dependabot `jvm` 2.4.10→2.4.20(2026-09-17 `gh pr list --state open` 기준, 시작 시 재확인). 머지 전 `gradle/verification-metadata.xml` 체크섬 검토가 필요하다(`docs/AGENT-WORKFLOW.md` "의존성·배포 검증 유지").
-- 메인 체크아웃(`/Users/jinhongan/Desktop/kartograph`, 브랜치 `feat/adoption-competitiveness`)에는 다른 세션의 **미커밋 HANDOFF.md 편집(344줄, 9/16 21:02)**이 남아 있다.
-  main의 HANDOFF(이 파일)와 다르므로 그 세션이 확인해 버리거나 병합해야 한다. 이 파일은 worktree에서 main 기준으로 갱신했다.
-- 근거·측정 산출물은 worktree `/Users/jinhongan/Desktop/kartograph/.claude/worktrees/perf-fingerprint-parallel/build/reports/` 아래에 있다(아래 완료 절). 이 worktree는 근거 보존용이며 브랜치는 정리했다.
+  #64 3관점 리뷰 반영 → #65 JDK 17/21 재측정 → #66 README 퇴고 → #67 Expo Modules(다른 세션) → #68 HANDOFF 완료 절 → #69 HANDOFF 갱신.
+- 열린 PR: #47 Dependabot `jvm` 2.4.10→2.4.20(2026-09-17 재조회). 다음 착수 시 상태를 재확인하고 `gradle/verification-metadata.xml` 체크섬을 검토한다. Kotlin metadata 라이브러리 갱신과 JVM 플러그인 갱신은 별개다.
+- 사용자 요청으로 `origin/main` 7b210c9에서 `docs/integrate-local-handoff`를 만들고 로컬 문서 변경을 통합했다. `AGENTS.md`의 산출물 정리·근거 보존 규칙과 `docs/PHASE4-AGENT.md`의 EventSink 미스캔 설명을 유지했다. 이 문서 통합의 리뷰·PR·머지는 승인됐으며 실제 완료 여부는 해당 PR 상태로 확인한다.
+- 기존 344줄 HANDOFF와 로컬 문서 2개의 원문은 stash `96a029edea8810d6c5a8d01efad2334f18686d44`(`preserve-local-docs-before-integration-20260917`)에 보존했다. 필요한 원문은 `git show 96a029e:HANDOFF.md`로 확인한다. 최신 문서 위에 stash 전체를 적용해 과거 상태로 되돌리지 않는다.
+- 근거·측정 산출물은 `.claude/worktrees/perf-fingerprint-parallel/build/reports/`에 있다. 등록된 보조 worktree 3개는 모두 보존했다. 추가 제품 코드 반영은 필요하지 않았다(아래 점검 기록).
 
 ## 완료 — 한 클래스 변경 속도 과제 (2026-09-16~17, PR #61~#66)
 
@@ -60,13 +60,13 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 
 1. Dependabot #47(`jvm` 2.4.20): `./gradlew --write-verification-metadata sha256 ...`로 체크섬 후보를 만들어 좌표·출처를 검토하고, GLM 리뷰·CI 통과 후 **사용자 승인을 받아** 머지한다. CI 실패 시 원인은 대개 verification-metadata 누락이다.
 2. 0.10.1 릴리스 여부를 정한다. Unreleased에 제품 변경(Expo, 병렬 fingerprint, impact 결함 수정)이 있고 검증 절차는 `docs/AGENT-WORKFLOW.md` 릴리스 절과 `Scripts/verify-release-readiness.sh`다.
-3. 메인 체크아웃의 미커밋 HANDOFF(344줄)는 다른 세션의 작업물이므로 직접 수정하지 않는다. 이 파일과 대조해 빠진 내용이 있으면 사용자에게 보고하고, 버릴지 병합할지는 사용자가 정한다.
+3. `docs/integrate-local-handoff` PR의 실제 머지 상태를 확인한다. 완료된 통합은 반복하지 않고 원본 stash와 보존 worktree는 유지한다. 로컬 근거나 `.claude/` 전체를 stage하지 않는다.
 4. 선택 과제(착수 전 사용자 합의): (a) cold/full 1.05~1.09의 병목으로 추정되는 spool 쓰기·header 파싱 시간 계측(설계 노트 §12 B3), (b) README 설치 절에 "JDK 21 이상에서 fingerprint가 빠르다" 한 줄 추가 여부, (c) Expo `requireOptionalNativeModule`의 선택적 부재 의미(#67 세션의 별개 이슈).
 5. 하지 않기로 한 것: self 15% 목표를 위한 단계 C(전역 분석 재사용). 근거는 `docs/ONE-CLASS-CHANGE-DESIGN.md` §11.
 
 ## 재개 프롬프트
 
-`/Users/jinhongan/Desktop/kartograph`에서 HANDOFF.md와 적용 AGENTS.md를 읽어줘. main 18c0c05까지 PR #59~#68이 머지됐으니 반복하지 말고, 메인 체크아웃의 미커밋 HANDOFF.md는 손대지 말고 알려만 줘. 이번 세션은 "다음 할 일" 1번(Dependabot #47의 verification-metadata 검토 후 머지)부터 시작하고, 2번(0.10.1 릴리스 여부)은 나와 합의한 뒤 진행해. PR마다 GLM 리뷰(packet-ask)와 CI를 확인하고, 머지는 승인받고 해. 측정이 필요하면 worktree `.claude/worktrees/perf-fingerprint-parallel/build/reports/`의 README와 러너 사본을 쓰고, nia 입력 256개가 있는지 먼저 확인해.
+저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 `git status --short --branch`를 확인해줘. 기준 main 7b210c9까지 PR #59~#69는 반영됐고, 한 클래스 변경 속도 과제는 미달 기록을 유지한 채 종료됐으니 반복하지 마. `docs/integrate-local-handoff` PR 상태를 확인해 완료된 통합은 반복하지 말고 원본 stash와 등록된 보존 worktree는 유지해. 새 작업은 나와 범위를 합의하고, Dependabot #47은 원격 상태·verification-metadata부터 확인해. PR·외부 리뷰·머지·릴리스는 각각 승인 범위를 지켜줘. 측정 근거와 복원 방법은 아래 기록을 참고해.
 
 ## 0.1.x 구현 이력
 
@@ -195,3 +195,5 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
   `build/intermediates/built_in_kotlinc/<variant>/compile<Variant>Kotlin/classes`
 - 도그푸딩 대상과 특징은 익명화된 `docs/PLAN.md` 0.1 표에 있다
 - Android의 보존 규칙 지식은 이미 keep 규칙으로 존재한다. Phase 2에서 손으로 쓰기 전에 `proguard-rules.pro` · consumer rules · AGP 기본 규칙을 먼저 파싱한다(`AGENTS.md`)
+- 2026-09-17: `feat/event-channel-ffi` 브랜치 4커밋은 PR #60(squash `e0974c3`)으로 main에 이미 반영됐다. battery_plus 실측(`dev.fluttercommunity.plus/battery` 스트림 경계 방출)과 `./gradlew --no-daemon :index:test` 통과가 그 검증이다. JNI/native interop 파일은 `unscanned-ffi-interop` limitation으로 보고된다.
+- 문서 통합 검증: `BridgeFactScannerTest` 전체를 `--offline` JDK 17로 실행해 통과했고, sink 호출을 limitation으로 세지 않는 기존 테스트 `events keeps dynamic names and proven prefixes without flagging sink calls`가 이를 고정한다.
