@@ -75,12 +75,11 @@ internal object FreshnessCommand {
     }
 
     fun capture(project: Path, files: List<Pair<String, Path>>, context: List<String>, witnessPaths: List<Path>,
-        scope: dev.kartograph.index.VerifiedCaptureScope? = null): SnapshotProvenance {
+        scope: dev.kartograph.index.VerifiedCaptureScope): SnapshotProvenance {
         // 파일과 witness를 한 묶음으로 넘겨 digest를 병렬화한다. provenance 순서(파일, 옵션, witness)는 그대로다.
         val requested = files.mapIndexed { index, (role, path) -> CaptureInput(path, role, "$role-$index") } +
             witnessPaths.mapIndexed { index, path -> CaptureInput(path, "witness", "witness-$index") }
-        val captured = scope?.captureAll(project, requested)
-            ?: requested.map { ContentFingerprint.capture(project, it.path, it.role, it.externalSlot) }
+        val captured = scope.captureAll(project, requested)
         val inputs = captured.take(files.size) +
             InputFingerprint("options", "snapshot-options", ContentFingerprint.values(context)) +
             captured.drop(files.size)

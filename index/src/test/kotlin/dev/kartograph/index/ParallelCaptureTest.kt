@@ -6,6 +6,7 @@ import java.nio.ByteBuffer
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import java.util.HexFormat
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.jar.JarEntry
@@ -26,11 +27,12 @@ class ParallelCaptureTest {
     @Test
     fun `batch capture matches sequential capture and preserves input order`(@TempDir root: Path) {
         val inputs = sampleInputs(root)
-        val sequentialScope = VerifiedCaptureScope.open(null)
-        val sequential = try {
-            inputs.map { sequentialScope.capture(root, it.path, it.role, it.externalSlot) }
+        // capture()는 captureAll에 위임하므로 perInput은 "입력 하나씩" 경로다. 순차 기준선은 direct(ContentFingerprint.capture)다.
+        val perInputScope = VerifiedCaptureScope.open(null)
+        val perInput = try {
+            inputs.map { perInputScope.capture(root, it.path, it.role, it.externalSlot) }
         } finally {
-            sequentialScope.close()
+            perInputScope.close()
         }
         val direct = inputs.map { ContentFingerprint.capture(root, it.path, it.role, it.externalSlot) }
 
@@ -41,7 +43,7 @@ class ParallelCaptureTest {
             batchScope.close()
         }
 
-        assertEquals(sequential, batch)
+        assertEquals(perInput, batch)
         assertEquals(direct, batch)
         assertEquals(inputs.map { it.role }, batch.map(InputFingerprint::role))
     }
@@ -53,17 +55,19 @@ class ParallelCaptureTest {
         writeJar(jar, "example/Dependency")
         val cache = ClassIndexCache(root.resolve("cache"), "engine-a")
         val spoolDirectory = root.resolve("spools").createDirectories()
+        val linked = symbolicLinkOrSkip(root.resolve("linked-classes"), classes)
         val inputs = listOf(
             CaptureInput(classes, "classes", "classes-0"),
             CaptureInput(jar, "classpath", "classpath-0"),
-            CaptureInput(root.resolve("missing-classes"), "classes", "classes-1"),
-            CaptureInput(root.resolve("missing-jar.jar"), "classpath", "classpath-1"),
+            CaptureInput(linked, "classes", "classes-1"),
+            CaptureInput(root.resolve("missing-classes"), "classes", "classes-2"),
         )
         val scope = VerifiedCaptureScope.open(cache, spoolDirectory = spoolDirectory)
 
         val error = assertFailsWith<IllegalArgumentException> { scope.captureAll(root, inputs) }
 
-        assertEquals("fingerprint input is missing", error.message)
+        // index 2(symlink)와 index 3(missing)은 메시지가 다르므로 입력 순서상 첫 계획 오류가 보고됨을 구분해 확인한다.
+        assertEquals("symbolic fingerprint inputs are not supported", error.message)
         assertEquals(0, spoolFiles(spoolDirectory))
         scope.close()
         assertEquals(0, spoolFiles(spoolDirectory))
@@ -180,8 +184,7 @@ class ParallelCaptureTest {
             Thread.interrupted()
             scope.close()
         }
-        val deadline = System.nanoTime() + 2_000_000_000L
-        while (spoolFiles(spoolDirectory) != 0 && System.nanoTime() < deadline) Thread.sleep(10)
+        // close()가 worker 종료를 기다린 뒤 registry를 비우므로 폴링 없이 즉시 0이어야 한다.
         assertEquals(0, spoolFiles(spoolDirectory))
     }
 
@@ -202,12 +205,7 @@ class ParallelCaptureTest {
         }
         val inputs = listOf(CaptureInput(classes, "classes", "classes-0")) +
             (jars + listOf(jars[2])).mapIndexed { index, jar -> CaptureInput(jar, "classpath", "classpath-$index") }
-        val sequentialScope = VerifiedCaptureScope.open(null)
-        val sequential = try {
-            inputs.map { sequentialScope.capture(root, it.path, it.role, it.externalSlot) }
-        } finally {
-            sequentialScope.close()
-        }
+        val direct = inputs.map { ContentFingerprint.capture(root, it.path, it.role, it.externalSlot) }
         val batchScope = VerifiedCaptureScope.open(null)
         val batch = try {
             batchScope.captureAll(root, inputs)
@@ -215,9 +213,62 @@ class ParallelCaptureTest {
             batchScope.close()
         }
 
-        assertEquals(sequential, batch)
+        assertEquals(direct, batch)
         assertEquals(batch[3], batch[7])
         assertEquals(7, batch.map(InputFingerprint::sha256).toSet().size)
+    }
+
+    @Test
+    fun `file replaced by a symlink after planning is rejected at digest time`(@TempDir root: Path) {
+        val rules = root.resolve("rules.pro")
+        Files.writeString(rules, "-keep class example.App")
+        val decoy = root.resolve("decoy.pro")
+        Files.writeString(decoy, "-keep class example.Decoy")
+        val request = ObservationRequest(rules, "keepRules", "keepRules-0", maximumSpoolBytes = 0, spoolDirectory = null, sizeHint = 0)
+
+        // 계획(symlink 검사)은 통과시킨 뒤 digest 직전에 파일을 symlink로 바꾼다. O_NOFOLLOW 열기가 이를 거부해야 한다.
+        assertFailsWith<IOException> {
+            ContentFingerprint.captureObservedAll(root, listOf(request), ConcurrentLinkedQueue()) { jobs, digest ->
+                Files.delete(rules)
+                symbolicLinkOrSkip(rules, decoy)
+                jobs.map(digest)
+            }
+        }
+    }
+
+    @Test
+    fun `spool failure returns its reservation only after the batch`(@TempDir root: Path) {
+        val jars = (0 until 2).map { index -> root.resolve("dependency-$index.jar").also { writeJar(it, "example/Dependency$index") } }
+        val budget = Files.size(jars[0])
+        val cache = ClassIndexCache(root.resolve("cache"), "engine-a")
+        val spoolDirectory = root.resolve("spools").createDirectories()
+        // maximumSpoolBytes는 scope 전체 예산(remainingSpoolBytes의 초기값)이다. JAR 하나 크기면 두 번째 JAR는 환급 없이는 spool되지 않는다.
+        val scope = VerifiedCaptureScope.open(cache, maximumSpoolBytes = budget, spoolDirectory = spoolDirectory)
+        try {
+            // 첫 묶음: spool 디렉터리를 쓰기 불가로 만들면 JarSpoolWriter.open이 null을 돌려줘 예약은 되지만 spool은 만들어지지 않는다.
+            Files.setPosixFilePermissions(spoolDirectory, PosixFilePermissions.fromString("r-x------"))
+            Assumptions.assumeFalse(Files.isWritable(spoolDirectory), "directory permissions are not enforced for this user")
+            scope.captureAll(root, listOf(CaptureInput(jars[0], "classpath", "classpath-0")))
+            assertEquals(0, spoolFiles(spoolDirectory))
+
+            // 다음 묶음: 정산으로 예산이 돌아와 있어야 두 번째 JAR이 spool된다.
+            Files.setPosixFilePermissions(spoolDirectory, PosixFilePermissions.fromString("rwx------"))
+            scope.captureAll(root, listOf(CaptureInput(jars[1], "classpath", "classpath-1")))
+            assertEquals(1, spoolFiles(spoolDirectory))
+        } finally {
+            Files.setPosixFilePermissions(spoolDirectory, PosixFilePermissions.fromString("rwx------"))
+            scope.close()
+        }
+        assertEquals(0, spoolFiles(spoolDirectory))
+    }
+
+    /** symlink를 만들 수 없는 환경(권한 없는 Windows 등)에서는 테스트를 건너뛴다. */
+    private fun symbolicLinkOrSkip(link: Path, target: Path): Path = try {
+        Files.createSymbolicLink(link, target)
+    } catch (error: UnsupportedOperationException) {
+        Assumptions.abort<Path>("symbolic links are not supported here: ${error.message}")
+    } catch (error: IOException) {
+        Assumptions.abort<Path>("symbolic links cannot be created here: ${error.message}")
     }
 
     private fun assumeUnreadable(file: Path) {

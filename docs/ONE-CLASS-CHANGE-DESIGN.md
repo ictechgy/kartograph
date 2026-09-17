@@ -71,11 +71,13 @@ AppCDS는 같은 JDK 빌드에서만 유효한 아카이브가 필요해 배포 
 **결정성.**
 - 파일 다이제스트는 서로 독립이고, 결합은 기존과 같은 순서로 주 스레드에서 하므로 결과 값은 순차 구현과 바이트 단위로 동일하다. 계약 테스트: 같은 입력에 대해 순차/병렬 `SnapshotProvenance` 동일, 캐시 on/off snapshot 바이트 동일(기존 테스트 유지).
 - 오류 우선순위: 계획 단계(입력 존재·symlink·역할 검사)는 모든 입력에 대해 digest보다 먼저 입력 순서대로 실행되므로, 계획 오류가 있으면 파일을 읽지 않고 그 중 첫 입력의 오류를 보고한다. 계획이 모두 통과하면 digest 오류 중 작업 순서상 첫 것을 보고한다. 이미 제출된 digest 작업은 취소하지 않고 끝까지 실행한 뒤 spool을 닫는다(순차 구현과 달리 "같은 입력의 읽기 오류가 뒤 입력의 계획 오류보다 먼저" 보고되지 않는다). 메시지(원시 경로 비노출)는 그대로다.
-- interrupt: 호출 스레드가 interrupt되면 worker가 이미 만든 spool을 별도 기록으로 닫고 `ClassIndexingException`으로 보고한다. worker 쪽 interrupt(`ClosedByInterruptException`)도 IO 실패가 아닌 중단으로 보고한다.
+- interrupt: 호출 스레드가 interrupt되면 `ClassIndexingException("fingerprint capture was interrupted")`으로 보고한다. worker가 만든 spool은 scope가 소유한 기록에 남고, `close()`가 worker 종료(`awaitTermination`)를 기다린 뒤 그 기록으로 닫으므로 `close()` 반환 직후 잔여물이 없다. worker 쪽 interrupt(`ClosedByInterruptException`)도 IO 실패가 아닌 중단으로 보고한다.
+- symlink: 계획 단계의 symlink 검사와 실제 열기 사이에 파일이 바뀔 수 있으므로(계획 후 JAR을 먼저 digest하면 class 파일은 수백 ms 뒤에 열린다), 열기와 크기 읽기는 `NOFOLLOW_LINKS`로 링크를 따라가지 않는다. 그 사이 symlink로 바뀐 파일은 digest에서 실패한다. 상위 디렉터리가 symlink로 바뀌는 경우는 이 방어 범위 밖이다.
+- 크기 관측: 입력당 `readAttributes` 한 번으로 정규 파일 여부·크기를 읽어 spool 대상 판정·예약·스케줄링 힌트에 모두 쓴다. 속성을 읽지 못한 JAR은 그 pass의 spool 대상에서 빠지므로(fingerprint는 그대로 읽고 header는 직접 읽기), "크기를 모른 채 예약 0으로 spool"하는 경우가 없어 같은 묶음의 뒤 JAR가 예산을 겹쳐 쓰지 못한다. 순차 구현은 정규 파일 검사와 크기 읽기가 별도 syscall이라 그 사이 실패 시 예약 0으로 spool했는데, 그 좁은 창이 사라진 것이 유일한 동작 차이다. 디렉터리 멤버는 크기를 재지 않는다.
 - 순서·역할 검증(`verifyInputs`)은 `initialInputs`를 입력 순서대로 채우므로 변하지 않는다.
 
 **spool 예산.** cold population의 `remainingSpoolBytes`·`eligibleJars`는 현재 순차 캡처 순서에 의존한다. 병렬화 후에는 주 스레드가 입력 순서대로 `Files.size` 기준으로 예산을 **선할당**하고, 실제 spool 크기로 사후 정산한다.
-차이는 spool 쓰기가 중간에 실패한 경우 후속 JAR에 예산이 되돌아가지 않는 것뿐이며, spool은 최적화이지 검증이 아니므로(`INDEX-CACHE.md`) 정확성에 영향이 없다. 이 경우를 테스트로 고정한다.
+차이는 spool 쓰기가 중간에 실패한 경우 후속 JAR에 예산이 되돌아가지 않는 것뿐이며, spool은 최적화이지 검증이 아니므로(`INDEX-CACHE.md`) 정확성에 영향이 없다. 정산은 묶음이 끝난 뒤 이루어지므로 다음 묶음은 돌아온 예산을 쓴다(`spool failure returns its reservation only after the batch` 테스트).
 
 **메모리.** worker당 64 KiB 버퍼와 `MessageDigest` 하나. spool 상한(JAR 128 MiB, 총 256 MiB)은 그대로다.
 
@@ -177,3 +179,19 @@ dead·impact 판정의 정확성을 걸 만한 이득이 아니다.
 `hierarchyParsedJars = 0`, 그리고 전역 분석(assembly+hierarchy+runtime+dispatch)의 changed/full 비율. 15% 벽시계 목표는 폐기가 아니라 "이 입력에서는 판정 불가"로 기록한다.
 
 근거: `build/reports/benchmark-20260916-parallel/`(단계 A, 6회 실행), `build/reports/benchmark-20260916-stage-b/`(단계 B), `build/reports/one-class-design-20260916/`(단계별 집계·spike).
+
+## 12. 머지 후 3관점 리뷰 반영 (2026-09-17)
+
+보안·구조·성능 관점의 읽기 전용 리뷰(에이전트 3종)와 GLM 리뷰를 종합해 "결함"과 "minimal change"로 분류된 항목을 한 PR로 반영했다.
+단일 소유자·2-pass 재구성 같은 큰 리팩토링은 과제가 종료된 영역이라 하지 않았다.
+
+- 결함: symlink 검사/열기 분리(열기에 `NOFOLLOW_LINKS`), interrupt 후 spool 정리 비동기(scope 소유 registry + `awaitTermination`), 크기 미상 JAR의 예산 0 spool(속성을 못 읽은 JAR은 spool 대상에서 제외), 도달 불가한 `FreshnessCommand` 순차 fallback 제거, interrupt 메시지 통일.
+- 비용: 정렬 comparator가 비교마다 `Files.size`·`relativize`를 재계산하던 것을 키 선계산으로 바꾸고, JAR당 최대 4회이던 stat을 입력당 `readAttributes` 1회로 합쳤으며(디렉터리·witness 같은 비-JAR 입력도 1회 읽는다), `project.toRealPath()`를 배치당 1회로 줄였다.
+- 구조: `FileDigestJob.standalone`(정책 힌트)을 관측 크기 `sizeHint`로 바꿔 스케줄러가 파일 시스템을 읽지 않게 했다. `CaptureInput`의 `data`를 뺐고, `IndexWorkPool.map`의 묶음 크기는 nullable(무묶음)로 바꿨다. `captureSegment`를 예약·기록으로 나눴다.
+- 테스트: 계획 오류 두 개를 구분(symlink vs missing), 계획 후 symlink 교체 거부, spool 실패 시 묶음 뒤 예산 환급, interrupt 잔여 0을 폴링 없이 단언.
+
+**가장 큰 남은 지렛대는 코드가 아니라 JDK다.** 이 호스트(Apple M4 Pro, `FEAT_SHA256=1`)에서 같은 227개 JAR 209 MB를 digest하면
+JDK 17(Homebrew·Temurin 모두)은 단일 스레드 589~607 ms·4 worker 288 ms인데, JDK 21·26은 **단일 92 ms·4 worker 43 ms**다
+(aarch64 SHA-256 intrinsic이 JDK 21부터 켜짐, `build/reports/benchmark-20260916-stage-b/sha-jdks.log`).
+지금까지의 모든 벤치마크는 러너에 고정된 JDK 17로 쟀으므로, JDK 21에서는 nia의 fingerprint가 캡처당 약 620 ms에서 100 ms 아래로 내려간다.
+§11의 결론을 바꾸지는 않지만(self 비율은 고정비 구조라 여전히 판정 불가), 절대 시간 개선의 다음 단계는 "JDK 21 기준 재측정"이다.
