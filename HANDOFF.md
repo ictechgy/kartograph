@@ -2,19 +2,22 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-17
+마지막 갱신: 2026-09-17 (main 18c0c05, `VERSION` 0.10.0)
 
-## 진행 중 — Expo Modules 지원 (feat/expo-mechanism, PR #67)
+## 목표
 
-- `import expo.modules.kotlin.modules.Module` + `class X : Module()`를 Expo 모듈로 스캔.
-  `ModuleDefinition { }` 본문의 `Name`/`Function` 계열/`View`를 사실로 낸다.
-- `module-export`·`component-export`에만 `"mechanism": "expo"`. 메서드 사실에는 없음.
-  컴포넌트 채널은 뷰 클래스가 아니라 모듈 이름(Expo JS 계약).
-- 이름 미확정 시 dynamic + 표현식 원문 보존. Java 파일은 `unscanned-expo-java:` limitation.
-- 검증: `./gradlew test :koverVerify` 통과, 신규 테스트 10개. isthmus `check`로
-  expo↔expo 조인·불일치 진단 end-to-end 확인.
-- 남은 것: GLM 리뷰 반영 후 머지(사용자 승인). isthmus 쪽 계약·조인은 PR #77로 이미 머지됨.
-- 별개 이슈(이 작업 밖): `requireOptionalNativeModule`의 선택적 부재 의미.
+Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물에서 만들고, 그 위에서 미사용 코드·순환·레이어 규칙·지표·변경 영향을 근거와 함께 답하는 CLI와 Gradle plugin. [cartograph](../cartograph)(Swift)의 자매. 제품 범위는 `docs/PRD.md`.
+
+## 현재 상태
+
+- 0.10.0은 공개됐고(GitHub Release·Plugin Portal, 독립 설치 검증 완료), main에는 `CHANGELOG.md` Unreleased가 쌓여 있다:
+  Expo Modules 스캔(#67), 병렬 fingerprint(#61)와 그 리뷰 수정(#64), `impact` 결함 2건(#59), EventChannel(#60). **0.10.1 릴리스 후보 상태**다.
+- 2026-09-16~17에 머지된 PR: #59 impact 결함 → #60 EventChannel → #61 fingerprint 병렬화 → #62 단계 B 기각 기록 → #63 과제 종료 결론 →
+  #64 3관점 리뷰 반영 → #65 JDK 17/21 재측정 → #66 README 퇴고 → #67 Expo Modules(다른 세션) → #68 HANDOFF 완료 절.
+- 열린 PR: #47 Dependabot `jvm` 2.4.10→2.4.20. 머지 전 `gradle/verification-metadata.xml` 체크섬 검토가 필요하다(`docs/AGENT-WORKFLOW.md` "의존성·배포 검증 유지").
+- 메인 체크아웃(`/Users/jinhongan/Desktop/kartograph`, 브랜치 `feat/adoption-competitiveness`)에는 다른 세션의 **미커밋 HANDOFF.md 편집(344줄, 9/16 21:02)**이 남아 있다.
+  main의 HANDOFF(이 파일)와 다르므로 그 세션이 확인해 버리거나 병합해야 한다. 이 파일은 worktree에서 main 기준으로 갱신했다.
+- 근거·측정 산출물은 worktree `.claude/worktrees/perf-fingerprint-parallel/build/reports/` 아래에 있다(아래 완료 절). 이 worktree는 근거 보존용이며 브랜치는 정리했다.
 
 ## 완료 — 한 클래스 변경 속도 과제 (2026-09-16~17, PR #61~#66)
 
@@ -33,19 +36,37 @@
   `build/reports/benchmark-20260916/README.md` "입력 복원" 절에 있고, 그때 쓴 배포본은 worktree의 `build/tools/gradle-9.6.1`(151 MB)에 남겨 두었다.
 - 후속이 있다면: cold/full(1.05~1.09)의 병목은 digest가 아니라 spool 쓰기·header 파싱으로 보이며 미측정이다(설계 노트 §12 성능 리뷰 B3).
 
-## 목표
+## 효과가 있었던 방식
 
-Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물에서 만들고, 그 위에서 미사용 코드 · 순환 · 레이어 규칙 · 지표를 근거와 함께 답하는 CLI. [cartograph](../cartograph)(Swift)의 자매. 자세한 것은 `docs/PRD.md`.
+- **측정으로 가설을 먼저 기각한다.** 기존 벤치 stderr의 `--timings`를 집계하자 "전역 분석이 지배적"이라는 인계 가설이 nia에서 틀렸고(fingerprint 62%), 설계가 그 자리에서 바뀌었다. 재실행 없이 집계만으로 충분했다.
+- 같은 러너·같은 입력·7회 중앙값을 고정하고 기준선/후보를 **번갈아** 실행해 순서 편향을 상쇄한다. 미달·실패 실행도 지우지 않는다. 그 덕에 1차의 self warm 미달이 부하 노이즈였음을 2차로 가릴 수 있었다.
+- 병렬화는 "값 동일"을 타입으로 강제한다: 계획(파일 단위 작업) → digest → 입력 순서 결합. 독립 구현으로 golden digest를 테스트에 박아 두면 리뷰어가 값 불변을 스스로 검증한다.
+- 리뷰는 관점을 나눠 받는다(보안·구조·성능 에이전트 + GLM). 지적은 코드로 재확인해 결함/취향으로 갈라 PR 코멘트 표로 남긴다. GLM 질문에 "지켜야 할 불변식 목록"을 넣으면 공격 지점이 정확해진다.
+- 작은 파일 수백 개에는 stat을 더하지 않는다(멤버당 `Files.size` 하나가 self full을 +18 ms). 큰 독립 파일(JAR)만 크기순으로 먼저 배정한다.
+- DECISION/설계 문서에는 소스나 심볼 이름 대신 집계값과 재현 조건만 남긴다(공개 저장소, 도그푸딩 대상은 비공개).
 
-## 현재 상태 — 0.2.0 릴리스 작업
+## 효과가 없었거나 주의할 것
 
-- 0.1.1은 공개됐다. private member opt-in PR #3은 main에 merge됐다.
-- 작업 branch: `feat/pr-adoption-v0.2.0`. VERSION은 0.2.0이며 태그/배포 결과는 GitHub Releases에서 확인한다.
-- `Scripts/check-pr.py`는 기준 commit baseline과 전체 그래프로 새 진단을 검사한다. PR baseline 확장을
-  무시하고 untouched 파일의 새 미사용도 보고한다. Python/Git/javac/실제 배포 CLI 회귀 검증이 CI에 있다.
-- nowinandroid에서 확인한 Hilt/Dagger 생성 marker·nested class와 Hilt component 보존을 추가했다.
-- 공개 검증과 **아직 남은** protobuf/annotation-value/container 보고 한계는 `docs/PUBLIC-VALIDATION.md`에 있다.
-- 아래는 0.1.x 구현 이력이다. 과거 커버리지·PR 상태를 현재 배포 상태로 해석하지 않는다.
+- **C1-only JIT(`-XX:TieredStopAtLevel=1`)는 기각**: nia 실행시간 +11~17%(SHA-256 루프가 C2 없이 느려짐), self는 비율이 오히려 악화. 캐시 stat/버퍼 튜닝·JSON 임시 문자열 감소도 과거에 효과 없었다(`build/reports/product-limits-20260914/`).
+- Apple Silicon **JDK 17 빌드에는 SHA-256 intrinsic이 없다**(Homebrew·Temurin 모두). 벤치 러너는 과거 비교를 위해 JDK 17 고정이라 절대값은 JDK 21보다 느리다. `sysctl hw.optional.arm.FEAT_SHA256=1`인데도 그렇다.
+- nia 고정 입력(`~/.gradle/caches/9.6.1/transforms`)은 **두 번 사라졌다**. 벤치 전에 256개 경로 존재를 먼저 확인하고, 없으면 Gradle 9.6.1로 재해석한다(완료 절의 경로).
+- 이 호스트는 상시 부하(Chrome·devin·VM)로 load < 2를 거의 못 맞춘다. 대기는 10분까지만 하고, 부하 조건임을 로그에 남기며, 비교는 같은 조건의 교대 실행 안에서만 한다.
+- 호스트 메모리가 부족하면 시스템이 Gradle을 강제 종료한다. `--max-workers=2`로 재실행했다.
+- Kotlin에서 `Path`는 `Iterable<Path>`라 `jars + jars[2]`가 경로 요소를 이어 붙인다(`listOf(jars[2])`로). `sortedByDescending { Files.size(..) }`는 비교마다 stat을 부른다(키 선계산).
+- worktree 격리 훅은 `git -C`·복합 명령·heredoc을 거부한다. 편집·커밋 메시지·PR 본문은 파일로 만들어 단순 명령으로 실행한다.
+- 로컬 표본 5개 중 4개는 의존성 다운로드 없이는 빌드되지 않는다. cartograph에서 배운 것(`../cartograph/HANDOFF.md`)도 그대로 적용된다: mtime을 신선도로 쓰지 말 것, 가지치기 목록 두 벌 만들지 말 것, 테스트를 일부러 부숴 볼 것.
+
+## 다음 할 일 (순서대로)
+
+1. Dependabot #47(`jvm` 2.4.20): `./gradlew --write-verification-metadata sha256 ...`로 체크섬 후보를 만들어 좌표·출처를 검토한 뒤 머지한다. CI 실패 시 원인은 대개 verification-metadata 누락이다.
+2. 0.10.1 릴리스 여부를 정한다. Unreleased에 제품 변경(Expo, 병렬 fingerprint, impact 결함 수정)이 있고 검증 절차는 `docs/AGENT-WORKFLOW.md` 릴리스 절과 `Scripts/verify-release-readiness.sh`다.
+3. 메인 체크아웃의 미커밋 HANDOFF(344줄)를 이 파일과 대조해 정리한다.
+4. 선택 과제(착수 전 사용자 합의): (a) cold/full 1.05~1.09의 병목으로 추정되는 spool 쓰기·header 파싱 시간 계측(설계 노트 §12 B3), (b) README 설치 절에 "JDK 21 이상에서 fingerprint가 빠르다" 한 줄 추가 여부, (c) Expo `requireOptionalNativeModule`의 선택적 부재 의미(#67 세션의 별개 이슈).
+5. 하지 않기로 한 것: self 15% 목표를 위한 단계 C(전역 분석 재사용). 근거는 `docs/ONE-CLASS-CHANGE-DESIGN.md` §11.
+
+## 재개 프롬프트
+
+`/Users/jinhongan/Desktop/kartograph`에서 HANDOFF.md와 적용 AGENTS.md를 읽어줘. main 18c0c05까지 PR #59~#68이 머지됐으니 반복하지 말고, 메인 체크아웃의 미커밋 HANDOFF.md는 손대지 말고 알려만 줘. 이번 세션은 "다음 할 일" 1번(Dependabot #47의 verification-metadata 검토 후 머지)부터 시작하고, 2번(0.10.1 릴리스 여부)은 나와 합의한 뒤 진행해. PR마다 GLM 리뷰(packet-ask)와 CI를 확인하고, 머지는 승인받고 해. 측정이 필요하면 worktree `.claude/worktrees/perf-fingerprint-parallel/build/reports/`의 README와 러너 사본을 쓰고, nia 입력 256개가 있는지 먼저 확인해.
 
 ## 0.1.x 구현 이력
 
@@ -166,22 +187,6 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - JDK 17 clean test/coverage와 JDK 21 clean test, CLI/agent/corpus/plugin fixture가 통과했다. release verifier는
   두 clean build의 ZIP/TAR/plugin JAR/POM 해시 일치와 압축 해제 CLI 계약을 확인했다
 - 작업 브랜치: `fix/v0.1.1-max-review`
-
-## 다음 할 일 (순서대로)
-
-1. 0.2.0의 최종 GLM 후속 리뷰, JDK/fixture/release/self-analysis 검증 결과와 PR CI를 확인한다
-2. 승인된 공개 PR merge와 v0.2.0 tag/Release/Plugin Portal 제출을 완료하고 공개 설치 가능 여부를 별도로 확인한다
-3. 다음 정확도 증분: protobuf 생성 출처, annotation 값·parameter 참조, nested type의 source container를 코퍼스부터 확장한다
-
-## 효과가 있었던 방식
-
-- **DECISION 문서에 소스나 심볼 이름을 적지 않고 집계값과 재현 조건만 남긴다** — 공개 저장소이고 도그푸딩 대상은 개인 프로젝트다. 이 원칙은 그 세션이 세웠고 옳다
-- 오프라인 빌드가 되는 local sample C부터 측정을 시작해 기준값을 확보한 것
-
-## 효과가 없었거나 주의할 것
-
-- 로컬 표본 5개 중 4개가 **의존성 다운로드 없이는 빌드되지 않는다.** 오프라인 세션이면 Phase 0이 여기서 막힌다
-- cartograph에서 배운 것(`../cartograph/HANDOFF.md` "효과가 없었거나 틀렸던 것") 중 여기 그대로 적용되는 것: 스토어/산출물 루트의 mtime을 신선도로 쓰지 말 것 · 가지치기 목록 두 벌 만들지 말 것 · 테스트가 실제로 무는지 일부러 부숴 볼 것
 
 ## 알아 두면 시간이 절약되는 것
 
