@@ -51,6 +51,13 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             if (stats.unscannedHandlers > 0) add(
                 "unscanned-method-handlers: ${stats.unscannedHandlers} handler callback(s) are not inline lambdas",
             )
+            val dynamicExpo = filtered.count { it.mechanism == "expo" && it.dynamic }
+            if (dynamicExpo > 0) add(
+                "dynamic-expo-names: $dynamicExpo Expo boundary fact(s) use a non-literal module name",
+            )
+            if (stats.expoJavaSources > 0) add(
+                "unscanned-expo-java: ${stats.expoJavaSources} Java source file(s) import Expo Modules; the Kotlin DSL cannot be scanned there",
+            )
             if (counts.size > 1) add(
                 "mixed-targets: facts come from more than one bridge " +
                     counts.toSortedMap().entries.joinToString(prefix = "(", postfix = ")") { "${it.key} ${it.value}" },
@@ -82,6 +89,9 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         var pendingReactModule: String? = null
         var reactScope: ReactScope? = null
         var pendingReactMethod = false
+        var hasExpoModuleImport = false
+        var expoScope: ExpoScope? = null
+        var pendingExpoClass: PendingExpoClass? = null
         var inBlockComment = false
         var braceDepth = 0
         fun recordChannel(
@@ -230,7 +240,50 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                 }
             }
 
+            // Expo Modules — `Module()` 서브클래스의 `ModuleDefinition { }` DSL만 스캔한다.
+            if (EXPO_MODULE_GATE.containsMatchIn(code)) hasExpoModuleImport = true
+            if (!isJava) {
+                pendingExpoClass?.let { pending ->
+                    val openingBrace = code.indexOf('{')
+                    if (openingBrace >= 0) {
+                        expoScope = ExpoScope(
+                            pending.className, pending.line, pending.source,
+                            braceDepth + braceDelta(code.substring(0, openingBrace + 1)),
+                        )
+                        pendingExpoClass = null
+                    } else if (CLASS_DECLARATION.containsMatchIn(code) || FUNCTION.containsMatchIn(code)) {
+                        // 다음 선언이 먼저 나오면 비정상 입력으로 버린다.
+                        pendingExpoClass = null
+                    }
+                }
+                if (expoScope == null && pendingExpoClass == null) {
+                    val expoClass = if (hasExpoModuleImport) EXPO_MODULE_CLASS.find(code) else null
+                        ?: EXPO_MODULE_CLASS_FQN.find(code)
+                    if (expoClass != null &&
+                        !ABSTRACT_MODIFIER.containsMatchIn(code.substring(0, expoClass.range.first))
+                    ) {
+                        val className = expoClass.groupValues[1]
+                        val openingBrace = code.indexOf('{', expoClass.range.last + 1)
+                        if (openingBrace >= 0) {
+                            expoScope = ExpoScope(
+                                className, lineNumber, line,
+                                braceDepth + braceDelta(code.substring(0, openingBrace + 1)),
+                            )
+                        } else {
+                            pendingExpoClass = PendingExpoClass(className, lineNumber, line)
+                        }
+                    }
+                }
+                expoScope?.let { scope -> scanExpoDslLine(code, braceDepth, lineNumber, line, scope) }
+            }
+
             braceDepth += braceDelta(code)
+            expoScope?.let { scope ->
+                if (braceDepth < scope.depth) {
+                    emitExpoModule(scope, facts, relative)
+                    expoScope = null
+                }
+            }
             while (methodScopes.lastOrNull()?.let { braceDepth < it.depth } == true) methodScopes.removeLast()
             while (handlerScopes.lastOrNull()?.let { braceDepth < it.depth } == true) handlerScopes.removeLast()
             reactScope?.let { scope -> if (braceDepth < scope.depth) reactScope = null }
@@ -242,6 +295,105 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         if (JNI_INTEROP_PATTERN.containsMatchIn(maskedSource) ||
             (isJava && JAVA_NATIVE_METHOD_PATTERN.containsMatchIn(maskedSource))
         ) stats.jniInteropSources++
+        // Java에서는 receiver DSL을 쓸 수 없어 Expo 모듈 선언이 사실상 나타나지 않는다.
+        // import만 보인 경우를 한계로 남긴다.
+        if (isJava && hasExpoModuleImport) stats.expoJavaSources++
+    }
+
+    /**
+     * Expo `ModuleDefinition { … }` 본문의 최상위 문장만 읽는다.
+     *
+     * `Name`·`View`·`Function` 계열은 흔한 이름이라 `ModuleDefinition` 바로 뒤의 `{`로 열리는
+     * 블록의 직접 깊이에서만 인정한다. `Function("f") { … }` 처럼 더 깊은 클로저 안의 동명
+     * 호출은 세지 않는다. 문자열 리터럴은 토큰으로 소비해 안의 `{`가 깊이를 바꾸지 않게 한다.
+     * 호출 인자가 줄을 넘어가면 괄호가 닫힐 때까지 다음 줄을 이어 읽는다.
+     */
+    private fun scanExpoDslLine(code: String, depthAtStart: Int, lineNumber: Int, source: String, scope: ExpoScope) {
+        var depth = depthAtStart
+        var index = 0
+        scope.pendingCall?.let { pending ->
+            val completed = pending.collector.consume("\n$code") ?: return
+            pending.finish(completed.arguments.firstOrNull()?.literalOrDynamic(), scope)
+            scope.pendingCall = null
+            index = code.length - completed.remainder.removePrefix("\n").length
+        }
+        while (index < code.length) {
+            val match = EXPO_DSL_TOKEN.find(code, index) ?: break
+            index = match.range.last + 1
+            val token = match.value
+            when {
+                token == "{" -> {
+                    depth++
+                    if (scope.expectDefinitionBrace) {
+                        scope.expectDefinitionBrace = false
+                        scope.sawDefinitionBlock = true
+                        scope.definitionDepth = depth
+                    }
+                }
+                token == "}" -> {
+                    if (scope.expectDefinitionBrace) scope.expectDefinitionBrace = false
+                    depth--
+                    if (scope.definitionDepth?.let { depth < it } == true) scope.definitionDepth = null
+                }
+                token.first() == '"' || token.first() == '\'' -> Unit
+                token == "ModuleDefinition" -> {
+                    if (scope.definitionDepth == null) scope.expectDefinitionBrace = true
+                }
+                scope.expectDefinitionBrace -> {
+                    // `ModuleDefinition` 뒤 `{`가 아닌 다른 호출이 오면 DSL 블록이 아니다.
+                    scope.expectDefinitionBrace = false
+                }
+                scope.definitionDepth?.let { depth == it } == true -> when {
+                    token.startsWith("View") -> {
+                        if (scope.firstView == null) scope.firstView = ViewSite(lineNumber, source)
+                    }
+                    else -> {
+                        // `Name`·`Function` 계열 — 첫 인자가 JS 측 이름이다.
+                        val call = PendingExpoCall(
+                            CallArguments(), isName = token.startsWith("Name"),
+                            line = lineNumber, source = source, token = token,
+                        )
+                        val completed = call.collector.consume(code.substring(index))
+                        if (completed == null) {
+                            scope.pendingCall = call
+                            return
+                        }
+                        call.finish(completed.arguments.firstOrNull()?.literalOrDynamic(), scope)
+                        index = code.length - completed.remainder.length
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 닫힌 Expo 클래스 스코프를 이름 경계·메서드 사실로 내린다.
+     *
+     * 모듈 이름은 `Name(…)`의 마지막 호출이 이기고 없으면 Kotlin `javaClass.simpleName`과
+     * 같은 클래스명 폴백이다. 정의 블록이 스캔 범위를 벗어나면 이름을 추측하지 않고
+     * dynamic으로 남긴다. `View`가 하나라도 있으면 JS `requireNativeViewManager(모듈이름)`의
+     * 대상이 되므로 component-export를 첫 `View` 자리에 하나만 낸다.
+     */
+    private fun emitExpoModule(scope: ExpoScope, facts: MutableList<BridgeFact>, relative: String) {
+        val name = scope.resolvedName()
+        facts += fact(
+            "module-export", name.value, null, name.dynamic,
+            relative, scope.classLine, scope.classSource, scope.className, "react-native",
+            mechanism = "expo",
+        )
+        scope.firstView?.let { view ->
+            facts += fact(
+                "component-export", name.value, null, name.dynamic,
+                relative, view.line, view.source, "View(", "react-native",
+                mechanism = "expo",
+            )
+        }
+        scope.methods.forEach { method ->
+            facts += fact(
+                "method-handle", name.value, method.method, name.dynamic || method.dynamic,
+                relative, method.line, method.source, method.token, "react-native",
+            )
+        }
     }
 
     private fun fact(
@@ -254,11 +406,13 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         source: String,
         token: String,
         target: String,
+        mechanism: String? = null,
     ): BridgeFact = BridgeFact(
         kind, channel, method, dynamic,
         BridgeLocation(path, line, source.substring(0, source.indexOf(token).coerceAtLeast(0))
             .toByteArray(Charsets.UTF_8).size + 1),
         target = target,
+        mechanism = mechanism,
     )
 
     private fun stripComments(line: String, startsInBlockComment: Boolean): StrippedLine {
@@ -355,9 +509,74 @@ public class BridgeFactScanner(private val projectRoot: Path) {
 
     private data class ReactScope(val channel: String, val depth: Int)
 
+    private data class PendingExpoClass(val className: String, val line: Int, val source: String)
+
+    private data class ExpoScope(
+        val className: String,
+        val classLine: Int,
+        val classSource: String,
+        val depth: Int,
+        var sawDefinitionBlock: Boolean = false,
+        var expectDefinitionBrace: Boolean = false,
+        var definitionDepth: Int? = null,
+        var nameLiteral: String? = null,
+        var nameIsDynamic: Boolean = false,
+        var firstView: ViewSite? = null,
+        var pendingCall: PendingExpoCall? = null,
+        val methods: MutableList<PendingExpoMethod> = mutableListOf(),
+    ) {
+        /**
+         * `Name(…)` → 클래스명 폴백 순으로 모듈 이름을 결정한다.
+         * 정의 블록이 스캔 범위 밖이면 이름을 추측하지 않고 클래스명을 dynamic 근거로 남긴다
+         * (`channel`은 비워둘 수 없으므로 표현식·클래스명 원문을 실는다).
+         */
+        fun resolvedName(): Channel = when {
+            !sawDefinitionBlock -> Channel(className, true)
+            nameLiteral != null -> Channel(nameLiteral, nameIsDynamic)
+            else -> Channel(className, false)
+        }
+    }
+
+    private data class ViewSite(val line: Int, val source: String)
+
+    private data class PendingExpoCall(
+        val collector: CallArguments,
+        val isName: Boolean,
+        val line: Int,
+        val source: String,
+        val token: String,
+    ) {
+        /** 첫 인자를 모듈명 후보 또는 메서드 사실로 기록한다. 인자가 비면 기록하지 않는다. */
+        fun finish(argument: Channel?, scope: ExpoScope) {
+            val name = argument ?: return
+            if (name.value.isNullOrEmpty()) return
+            if (isName) {
+                scope.nameLiteral = name.value
+                scope.nameIsDynamic = name.dynamic
+            } else {
+                scope.methods += PendingExpoMethod(
+                    method = name.value, dynamic = name.dynamic,
+                    line = line, source = source, token = token,
+                )
+            }
+        }
+    }
+
+    private data class PendingExpoMethod(
+        val method: String?,
+        val dynamic: Boolean,
+        val line: Int,
+        val source: String,
+        val token: String,
+    )
+
     private data class StrippedLine(val code: String, val inBlockComment: Boolean)
 
-    private data class ScanStats(var unscannedHandlers: Int = 0, var jniInteropSources: Int = 0)
+    private data class ScanStats(
+        var unscannedHandlers: Int = 0,
+        var jniInteropSources: Int = 0,
+        var expoJavaSources: Int = 0,
+    )
 
     private class CallArguments {
         private val arguments = mutableListOf<String>()
@@ -421,6 +640,27 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         val REACT_METHOD = Regex("@ReactMethod\\b")
         val FUNCTION = Regex("\\bfun\\s+([A-Za-z_][A-Za-z0-9_]*)")
         val CLASS_DECLARATION = Regex("\\b(?:class|object)\\s+[A-Za-z_][A-Za-z0-9_]*")
+        // `expo.modules.kotlin.modules` 패키지 자체에 선언된 서브클래스도 import 없이 Module을 본다.
+        val EXPO_MODULE_GATE = Regex(
+            "\\bimport\\s+expo\\.modules\\.kotlin\\.modules\\.(?:Module|\\*)\\b" +
+                "|\\bpackage\\s+expo\\.modules\\.kotlin\\.modules\\b",
+        )
+        // `Foo.Module()` 같은 중첩 타입이나 인자 위치의 `Module()`은 Expo 모듈이 아니다.
+        val EXPO_MODULE_CLASS = Regex(
+            "\\bclass\\s+([A-Za-z_][A-Za-z0-9_]*)[^={;]*:[^={;]*(?<![\\w.])Module\\s*\\(",
+        )
+        val EXPO_MODULE_CLASS_FQN = Regex(
+            "\\bclass\\s+([A-Za-z_][A-Za-z0-9_]*)[^={;]*:[^={;]*" +
+                "(?<![\\w.])expo\\.modules\\.kotlin\\.modules\\.Module\\s*\\(",
+        )
+        val ABSTRACT_MODIFIER = Regex("\\babstract\\b")
+        // 문자열은 통째로 소비해 안의 `{`가 깊이를 오염시키지 않게 한다.
+        val EXPO_DSL_TOKEN = Regex(
+            "\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|\\{|\\}|" +
+                "(?<![\\w.])ModuleDefinition\\b|" +
+                "(?<![\\w.])(?:Name|View)\\s*\\(|" +
+                "(?<![\\w.])(?:Function|AsyncFunction)\\s*(?:<[^>]*>)?\\s*\\(",
+        )
     }
 }
 

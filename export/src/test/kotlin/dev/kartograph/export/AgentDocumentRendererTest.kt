@@ -100,4 +100,26 @@ class AgentDocumentRendererTest {
         assertContains(json, "\"symbol\": {\"qualifiedName\": \"Plugin.register\"}")
         assertFalse(json.contains("\"usr\": null"))
     }
+
+    @Test
+    fun `bridge JSON serializes mechanism only when present`() {
+        val document = BridgeFactsDocument(
+            generatedAt = "2026-09-04T00:00:00Z",
+            target = "react-native",
+            project = "/project",
+            facts = listOf(
+                BridgeFact("module-export", "Sensor", dynamic = false,
+                    location = BridgeLocation("Sensor.kt", 3, 7), target = "react-native",
+                    mechanism = "expo"),
+                BridgeFact("method-handle", "Sensor", method = "ping", dynamic = false,
+                    location = BridgeLocation("Sensor.kt", 6, 5), target = "react-native"),
+            ),
+            limitations = emptyList(),
+        )
+
+        val json = AgentDocumentRenderer.bridges(document)
+
+        assertContains(json, "\"mechanism\": \"expo\"")
+        assertEquals(1, Regex("\"mechanism\"").findAll(json).count())
+    }
 }

@@ -105,6 +105,7 @@ public object AgentDocumentRenderer {
         put("location", sortedMapOf("column" to location.column, "line" to location.line, "path" to location.path))
         if (method != null) put("method", method)
         if (channelPrefix != null) put("channelPrefix", channelPrefix)
+        if (mechanism != null) put("mechanism", mechanism)
         symbol?.let { value ->
             put(
                 "symbol",

@@ -1092,4 +1092,266 @@ class BridgeFactScannerTest {
                 .any { it.startsWith("$label: 2") },
         )
     }
+
+    @Test
+    fun `expo module emits mechanism on name boundaries and methods without it`(@TempDir project: Path) {
+        project.resolve("Sensor.kt").writeText(
+            """
+            package app
+            import expo.modules.kotlin.modules.Module
+            class SensorModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Sensor")
+                Function("ping") { "pong" }
+                AsyncFunction("fetch") { url: String -> url }
+                View(SensorView::class) {
+                  Prop("tint") { _: SensorView, _: String -> }
+                }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scan(generatedAt = "2026-09-04T00:00:00Z")
+
+        assertEquals("react-native", document.target)
+        val byKind = document.facts.groupBy { it.kind }
+        assertEquals(listOf("Sensor"), byKind["module-export"]?.map { it.channel })
+        assertEquals(listOf("Sensor"), byKind["component-export"]?.map { it.channel })
+        assertEquals(listOf("ping", "fetch"), byKind["method-handle"]?.map { it.method })
+        assertTrue(byKind["module-export"]!!.all { it.mechanism == "expo" })
+        assertTrue(byKind["component-export"]!!.all { it.mechanism == "expo" })
+        assertTrue(byKind["method-handle"]!!.all { it.mechanism == null && !it.dynamic })
+        // component-export는 첫 View 호출 자리를 가리킨다.
+        assertTrue(document.facts.single { it.kind == "component-export" }.location.line >
+            document.facts.single { it.kind == "module-export" }.location.line)
+    }
+
+    @Test
+    fun `expo module falls back to the class name when Name is absent`(@TempDir project: Path) {
+        project.resolve("Sensor.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class SensorModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Function("ping") { "pong" }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals("SensorModule", facts.single { it.kind == "module-export" }.channel)
+    }
+
+    @Test
+    fun `expo module name stays dynamic when the definition block is not visible`(@TempDir project: Path) {
+        project.resolve("Sensor.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class SensorModule : Module() {
+              override fun definition() = buildDefinition()
+            }
+            """.trimIndent(),
+        )
+
+        val fact = BridgeFactScanner(project).scan().facts.single { it.kind == "module-export" }
+
+        assertTrue(fact.dynamic)
+        // channel은 비워둘 수 없으므로 클래스명을 근거로 남긴다.
+        assertEquals("SensorModule", fact.channel)
+        assertEquals("expo", fact.mechanism)
+    }
+
+    @Test
+    fun `expo module name stays dynamic for a non-literal Name argument`(@TempDir project: Path) {
+        project.resolve("Sensor.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class SensorModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name(BuildConfig.MODULE_NAME)
+                Function("ping") { "pong" }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scan()
+
+        val export = document.facts.single { it.kind == "module-export" }
+        assertTrue(export.dynamic)
+        assertEquals("BuildConfig.MODULE_NAME", export.channel)
+        assertTrue(document.limitations.any { it.startsWith("dynamic-expo-names:") })
+        // 메서드 이름은 리터럴이면 이름 경계가 dynamic이어도 그대로 둔다.
+        val method = document.facts.single { it.kind == "method-handle" }
+        assertEquals("ping", method.method)
+        assertEquals("BuildConfig.MODULE_NAME", method.channel)
+    }
+
+    @Test
+    fun `expo scanning requires the modules import and a real Module supertype`(@TempDir project: Path) {
+        project.resolve("Lookalike.kt").writeText(
+            """
+            class Lookalike : Module() {
+              fun definition() = ModuleDefinition {
+                Name("NotExpo")
+                Function("ping") { "pong" }
+              }
+            }
+            """.trimIndent(),
+        )
+        project.resolve("Nested.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class Nested : Outer.Module() {
+              override fun definition() = ModuleDefinition { Name("Nested") }
+            }
+            abstract class AbstractModule : Module() {
+              override fun definition() = ModuleDefinition { Name("Abstract") }
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scan()
+
+        assertTrue(document.facts.isEmpty())
+        assertEquals(null, document.target)
+    }
+
+    @Test
+    fun `expo DSL ignores same-named calls outside the definition block`(@TempDir project: Path) {
+        project.resolve("Sensor.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class SensorModule : Module() {
+              private fun helper() {
+                Name("NotAModuleName")
+                View(Other::class)
+                Function("notAMethod") { }
+              }
+              override fun definition() = ModuleDefinition {
+                Name("Sensor")
+                Function("ping") { "pong" }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals("Sensor", facts.single { it.kind == "module-export" }.channel)
+        assertEquals(listOf("ping"), facts.filter { it.kind == "method-handle" }.map { it.method })
+        assertTrue(facts.none { it.kind == "component-export" })
+    }
+
+    @Test
+    fun `expo DSL ignores calls nested inside function lambdas`(@TempDir project: Path) {
+        project.resolve("Sensor.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class SensorModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Function("outer") {
+                  Function("inner") { }
+                  Name("Inner")
+                }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals("SensorModule", facts.single { it.kind == "module-export" }.channel)
+        assertEquals(listOf("outer"), facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo supports a class brace or definition brace on the next line`(@TempDir project: Path) {
+        project.resolve("Sensor.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class SensorModule : Module()
+            {
+              override fun definition(): ModuleDefinitionData = ModuleDefinition
+              {
+                Name("Sensor")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals("Sensor", facts.single { it.kind == "module-export" }.channel)
+    }
+
+    @Test
+    fun `expo scans a fully qualified Module supertype without the import`(@TempDir project: Path) {
+        project.resolve("Sensor.kt").writeText(
+            """
+            class SensorModule : expo.modules.kotlin.modules.Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Sensor")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals("Sensor", facts.single { it.kind == "module-export" }.channel)
+    }
+
+    @Test
+    fun `expo scans multiple modules in one file and keeps dynamic method names honest`(@TempDir project: Path) {
+        project.resolve("Modules.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class AlphaModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Function(methodName()) { }
+              }
+            }
+            class BetaModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Beta")
+                View(BetaView::class)
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(listOf("Beta"), facts.filter { it.kind == "component-export" }.map { it.channel })
+        val method = facts.single { it.kind == "method-handle" }
+        // method는 비워둘 수 없으므로 표현식 원문을 dynamic 근거로 남긴다.
+        assertEquals("methodName()", method.method)
+        assertTrue(method.dynamic)
+        assertEquals(null, method.mechanism)
+        // Name이 없는 정의 블록은 클래스명 폴백이고, 명시 Name은 그 값을 쓴다.
+        assertEquals(
+            listOf("AlphaModule", "Beta"),
+            facts.filter { it.kind == "module-export" }.map { it.channel },
+        )
+    }
+
+    @Test
+    fun `expo reports Java sources that import the Kotlin-only module DSL`(@TempDir project: Path) {
+        project.resolve("Legacy.java").writeText(
+            """
+            import expo.modules.kotlin.modules.Module;
+            class Legacy extends Module {
+            }
+            """.trimIndent(),
+        )
+
+        val document = BridgeFactScanner(project).scan()
+
+        assertTrue(document.facts.none { it.mechanism == "expo" })
+        assertTrue(document.limitations.any { it.startsWith("unscanned-expo-java:") })
+    }
 }
