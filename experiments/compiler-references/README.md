@@ -6,7 +6,8 @@
 
 ## 재현
 
-JDK 17과 저장소의 Kotlin 2.4.10 빌드 의존성이 준비된 환경에서 루트 기준으로 실행한다.
+JDK 17과 저장소의 Kotlin 빌드 의존성이 준비된 환경에서 루트 기준으로 실행한다. collector는
+offline 실행이라 루트 빌드가 데운 캐시를 쓰므로 `collector/build.gradle.kts`의 버전은 루트 plugin과 같아야 한다.
 
 ```sh
 python3 experiments/compiler-references/run.py
@@ -19,7 +20,8 @@ JDK의 `JavacTask`/`Trees` API로 의미 해석 후, bytecode 생성 전에 참�
 
 ## 결과와 결정
 
-2026-09-08, JDK 17 / Kotlin 2.4.10, 단일 JVM fixture 전체 컴파일에서 검증했다.
+2026-09-08, JDK 17 / Kotlin 2.4.10, 단일 JVM fixture 전체 컴파일에서 검증했다. 2026-09-18에
+Kotlin 2.4.20으로 동일 결과(참조 4·거부 5·대조 통과)를 재검증했다.
 
 | 입력 / 관측 단계 | 실제 상수 사용처 4개 중 연결한 간선 |
 | --- | ---: |
@@ -46,7 +48,7 @@ source revision 불일치, class 내용 불일치, 그래프 불일치, 없는 �
 - 보강은 sidecar의 source/class SHA256, variant, 그래프 SHA256이 현재 입력과 모두 일치하고 두 선언이 실제
   그래프에 존재할 때만 `compilerReference` 간선을 추가한다. 이 지문은 변조 인증이나 artifact 서명이 아니다.
 - 보강 결과는 실험용 JSON이다. 제품 `query`/`dead` 입력을 확대하거나 상수 보존 정책을 해제하지 않는다.
-- Kotlin compiler extension API는 2.4.10에 고정한다. Android variant 자동 연결, KMP, source/bytecode 이름의
+- Kotlin compiler extension API는 루트와 같은 버전에 고정한다. Android variant 자동 연결, KMP, source/bytecode 이름의
   일반적 매핑, 증분·병렬·실패한 컴파일의 sidecar 수명주기는 검증하지 않았다.
 - source revision은 이 fixture의 source 내용 집합 지문이다. 전체 Git commit이나 의존성 잠금 파일을 대신하지
   않으며, 제품화에는 빌드 variant·compiler/plugin·classpath 지문까지 갖춘 입력 계약이 필요하다.
