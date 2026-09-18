@@ -6,6 +6,17 @@
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-09-18
+
+### Fixed
+
+- `bridges`의 Expo Modules DSL 스캔이 세 가지 호출 형태를 놓치던 공백을 메운다.
+  중첩 제네릭 인자(`AsyncFunction<List<String>>`), 완전 정규화된 `ModuleDefinition`
+  래퍼(`expo.modules.kotlin.modules.ModuleDefinition { }`), 수신자 한정 호출
+  (`this.AsyncFunction`)이 모두 스캔에서 투명해 사실과 limitation 없이 사라졌다.
+  제네릭 절의 탐욕 일치가 호출 앵커를 잘못 고정할 수 있어 지연 일치로 바꾸고
+  `View<T>` 제네릭 형태도 함께 인식한다.
+
 ## [0.10.1] - 2026-09-18
 
 ### Added
@@ -328,7 +339,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/ictechgy/kartograph/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/ictechgy/kartograph/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/ictechgy/kartograph/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/ictechgy/kartograph/compare/v0.8.0...v0.9.0
