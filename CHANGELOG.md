@@ -10,12 +10,14 @@
 
 ### Fixed
 
-- `bridges`의 Expo Modules DSL 스캔이 세 가지 호출 형태를 놓치던 공백을 메운다.
+- `bridges`의 Expo Modules DSL 스캔이 세 가지 형태를 놓치던 공백을 메운다.
   중첩 제네릭 인자(`AsyncFunction<List<String>>`), 완전 정규화된 `ModuleDefinition`
   래퍼(`expo.modules.kotlin.modules.ModuleDefinition { }`), 수신자 한정 호출
   (`this.AsyncFunction`)이 모두 스캔에서 투명해 사실과 limitation 없이 사라졌다.
-  제네릭 절의 탐욕 일치가 호출 앵커를 잘못 고정할 수 있어 지연 일치로 바꾸고
-  `View<T>` 제네릭 형태도 함께 인식한다.
+  제네릭 절은 탐욕 일치가 비교식 안의 `>`를 호출 앵커로 잘못 고정할 수 있어
+  지연 일치로 바꿨고, `View<T>` 제네릭 형태를 새로 인식한다.
+  0.10.1에서 인식되던 Expo 사실의 출력은 그대로다 — `expo-haptics@14.1.4`
+  재스캔에서 module-export·method-handle 4건이 동일하게 나옴을 확인했다.
 
 ## [0.10.1] - 2026-09-18
 
