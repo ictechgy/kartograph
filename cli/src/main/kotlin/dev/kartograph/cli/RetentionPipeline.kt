@@ -1,10 +1,12 @@
 package dev.kartograph.cli
 
 import dev.kartograph.analysis.DefaultRetention
+import dev.kartograph.analysis.KeepRuleRetention
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.analysis.ReachabilityResult
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.Finding
+import dev.kartograph.core.KeepRule
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.RetentionReason
@@ -36,6 +38,7 @@ internal data class RetentionAnalysisResult(
     val graph: CodeGraph,
     val reachability: ReachabilityResult,
     val unresolvedChannelsBySource: Map<String, Int>,
+    val unmatchedKeepRules: List<KeepRule>,
 )
 
 /** dead와 why가 같은 그래프·같은 근거를 만들게 하는 공통 조립 단계다. */
@@ -52,10 +55,12 @@ internal object RetentionPipeline {
             addAll(AndroidManifestScanner(inputs.projectRoot).scan(inputs.manifest, inputs.namespace))
             addAll(AndroidXmlScanner(inputs.projectRoot).scan(inputs.resources))
         }
+        val keepRules = KeepRuleScanner(inputs.projectRoot, inputs.includePrivateMembers)
+            .scan(inputs.keepRules)
         val evidence = DefaultRetention.find(
             graph,
             inputEvidence,
-            KeepRuleScanner(inputs.projectRoot, inputs.includePrivateMembers).scan(inputs.keepRules),
+            keepRules,
             indexed.hierarchy,
             includePrivateMembers = inputs.includePrivateMembers,
         )
@@ -63,6 +68,7 @@ internal object RetentionPipeline {
             graph,
             ReachabilityAnalyzer.analyze(graph, evidence),
             RuntimeLimitationScanner.sourceChannelCounts(indexed),
+            KeepRuleRetention.unmatched(keepRules, evidence),
         )
     }
 

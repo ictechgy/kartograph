@@ -80,6 +80,63 @@ class AdoptionReportTest {
     }
 
     @Test
+    fun `unmatched keep rules render as input diagnostics across report formats`() {
+        val rules = listOf(
+            dev.kartograph.core.KeepRule(
+                declarationKind = dev.kartograph.core.KeepDeclarationKind.CLASS,
+                classNamePattern = "dev.absent.**",
+                location = SourceLocation("proguard-rules.pro", 12),
+            ),
+            dev.kartograph.core.KeepRule(
+                declarationKind = dev.kartograph.core.KeepDeclarationKind.CLASS,
+                classNamePattern = "dev.other.Ghost",
+                location = SourceLocation("consumer-rules.pro", 4),
+            ),
+        )
+        val message = "matched no declarations in the indexed graph"
+        val noLimitations = emptyList<AnalysisLimitation>()
+
+        val text = AdoptionReporter.render(ReportFormat.TEXT, emptyList(), noLimitations, 0, unmatchedKeepRules = rules)
+        assertContains(text, "unmatched-keep-rule\tconsumer-rules.pro:4\t")
+        assertContains(text, "keep rule class dev.other.Ghost $message")
+        kotlin.test.assertTrue(text.indexOf("consumer-rules.pro") < text.indexOf("proguard-rules.pro"))
+
+        val gradle = AdoptionReporter.render(ReportFormat.GRADLE, emptyList(), noLimitations, 0, unmatchedKeepRules = rules)
+        assertContains(gradle, "proguard-rules.pro:12: keep rule class dev.absent.** $message")
+
+        val github = AdoptionReporter.render(ReportFormat.GITHUB_ACTIONS, emptyList(), noLimitations, 0, unmatchedKeepRules = rules)
+        assertContains(github, "::notice file=proguard-rules.pro,line=12,title=kartograph unmatched keep rule::")
+
+        val json = AdoptionReporter.render(ReportFormat.JSON, emptyList(), noLimitations, 0, unmatchedKeepRules = rules)
+        assertContains(json, "\"unmatchedKeepRules\"")
+        assertContains(json, "\"path\": \"proguard-rules.pro\"")
+        assertContains(json, "\"line\": 12")
+
+        val sarif = AdoptionReporter.render(ReportFormat.SARIF, emptyList(), noLimitations, 0, unmatchedKeepRules = rules)
+        assertContains(sarif, "\"unmatchedKeepRule\"")
+        assertContains(sarif, "proguard-rules.pro:12")
+
+        val markdown = AdoptionReporter.render(ReportFormat.MARKDOWN, emptyList(), noLimitations, 0, unmatchedKeepRules = rules)
+        assertContains(markdown, "## Unmatched keep rules")
+        assertContains(markdown, "`proguard-rules.pro:12`")
+        assertContains(markdown, "outside the indexed inputs")
+    }
+
+    @Test
+    fun `empty unmatched keep rules keep report formats stable`() {
+        val noLimitations = emptyList<AnalysisLimitation>()
+
+        val text = AdoptionReporter.render(ReportFormat.TEXT, emptyList(), noLimitations, 0)
+        assertFalse(text.contains("unmatched-keep-rule"))
+
+        val json = AdoptionReporter.render(ReportFormat.JSON, emptyList(), noLimitations, 0)
+        assertContains(json, "\"unmatchedKeepRules\": []")
+
+        val markdown = AdoptionReporter.render(ReportFormat.MARKDOWN, emptyList(), noLimitations, 0)
+        assertFalse(markdown.contains("## Unmatched keep rules"))
+    }
+
+    @Test
     fun `test-only findings are annotated across report formats without changing plain findings`() {
         val testOnly = Finding(NodeId("class:t/OnlyTestUsed"), SourceLocation("src/T.kt", 5), testOnly = true)
         val plain = Finding(NodeId("class:p/Unused"), SourceLocation("src/P.kt", 2))
