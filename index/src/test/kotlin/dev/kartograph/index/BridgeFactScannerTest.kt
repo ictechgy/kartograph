@@ -1658,4 +1658,116 @@ class BridgeFactScannerTest {
         assertEquals("Fake", facts.single { it.kind == "module-export" }.channel)
         assertTrue(facts.none { it.kind == "method-handle" })
     }
+
+    @Test
+    fun `expo resolves this qualified Name and View calls`(@TempDir project: Path) {
+        project.resolve("Self.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class SelfModule : Module() {
+              override fun definition() = ModuleDefinition {
+                this.Name("Self")
+                this.View(SensorView::class)
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals("Self", facts.single { it.kind == "module-export" }.channel)
+        assertEquals("Self", facts.single { it.kind == "component-export" }.channel)
+    }
+
+    @Test
+    fun `expo scans generic calls qualified by this`(@TempDir project: Path) {
+        project.resolve("Both.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class BothModule : Module() {
+              override fun definition() = ModuleDefinition {
+                this.AsyncFunction<List<String>>("both") { emptyList() }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(listOf("both"), facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo scans plain Function calls with generic types`(@TempDir project: Path) {
+        project.resolve("Sync.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class SyncModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Function<Pair<String, Int>>("paired") { Pair("a", 1) }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(listOf("paired"), facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo ignores a generic type reference without a call paren`(@TempDir project: Path) {
+        project.resolve("Ref.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class RefModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Ref")
+                val ref: AsyncFunction<List<String>> = placeholder()
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertTrue(facts.none { it.kind == "method-handle" })
+    }
+
+    @Test
+    fun `expo anchors the call paren before comparisons inside arguments`(@TempDir project: Path) {
+        project.resolve("Anchor.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class AnchorModule : Module() {
+              override fun definition() = ModuleDefinition {
+                AsyncFunction<Unit>("first", flag = y > (z)) { }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(listOf("first"), facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo scans an FQN ModuleDefinition whose brace is on the next line`(@TempDir project: Path) {
+        project.resolve("FqnBrace.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class FqnBraceModule : Module() {
+              override fun definition() = expo.modules.kotlin.modules.ModuleDefinition
+              {
+                Name("FqnBrace")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals("FqnBrace", facts.single { it.kind == "module-export" }.channel)
+    }
 }
