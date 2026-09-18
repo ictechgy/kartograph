@@ -74,7 +74,7 @@ public object AdoptionReporter {
             append("${location}warning: ${finding.unreachableMessage()} [kartograph.dead]\n")
         }
         unmatchedKeepRules.forEach { rule ->
-            append("${rule.location.toPlainTextLocation()}: ${rule.unmatchedMessage()}\n")
+            append("${rule.location.toPlainTextLocation()}: ${rule.unmatchedMessage()} [kartograph.keep-rule]\n")
         }
         limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
             append("kartograph limitation ${limitation.name}: ${limitation.description}\n")
@@ -203,7 +203,10 @@ public object AdoptionReporter {
         unmatchedKeepRules.forEachIndexed { index, rule ->
             if (sortedLimitations.isNotEmpty() || index > 0) append(',')
             append("{\"descriptor\": {\"id\": \"unmatchedKeepRule\"}, \"level\": \"note\", ")
-            append("\"message\": {\"text\": \"")
+            append("\"locations\": [{\"physicalLocation\": {\"artifactLocation\": {\"uri\": \"")
+            append(jsonEscape(uriReference(rule.location.path))).append("\"}, \"region\": {\"startColumn\": ")
+            append(rule.location.column ?: 1).append(", \"startLine\": ").append(rule.location.line ?: 1).append("}}}]")
+            append(", \"message\": {\"text\": \"")
             append(jsonEscape("${rule.location.toPlainTextLocation()}: ${rule.unmatchedMessage()}"))
             append("\"}}")
         }
@@ -276,7 +279,9 @@ public object AdoptionReporter {
             append("\n## Unmatched keep rules\n\n")
             unmatchedKeepRules.forEach { rule ->
                 append("- `").append(markdownCell(rule.location.toPlainTextLocation()))
-                append("` — ").append(rule.unmatchedMessage()).append('\n')
+                append("` — keep rule ").append(rule.declarationKind.name.lowercase())
+                append(" `").append(markdownCell(rule.classNamePattern))
+                append("` matched no declarations in the indexed graph\n")
             }
             append("\nUnmatched rules may target declarations outside the indexed inputs; ")
             append("an unmatched rule is not proof that it can be removed.\n")

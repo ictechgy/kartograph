@@ -102,7 +102,7 @@ class AdoptionReportTest {
         kotlin.test.assertTrue(text.indexOf("consumer-rules.pro") < text.indexOf("proguard-rules.pro"))
 
         val gradle = AdoptionReporter.render(ReportFormat.GRADLE, emptyList(), noLimitations, 0, unmatchedKeepRules = rules)
-        assertContains(gradle, "proguard-rules.pro:12: keep rule class dev.absent.** $message")
+        assertContains(gradle, "proguard-rules.pro:12: keep rule class dev.absent.** $message [kartograph.keep-rule]")
 
         val github = AdoptionReporter.render(ReportFormat.GITHUB_ACTIONS, emptyList(), noLimitations, 0, unmatchedKeepRules = rules)
         assertContains(github, "::notice file=proguard-rules.pro,line=12,title=kartograph unmatched keep rule::")
@@ -115,10 +115,13 @@ class AdoptionReportTest {
         val sarif = AdoptionReporter.render(ReportFormat.SARIF, emptyList(), noLimitations, 0, unmatchedKeepRules = rules)
         assertContains(sarif, "\"unmatchedKeepRule\"")
         assertContains(sarif, "proguard-rules.pro:12")
+        assertContains(sarif, "\"uri\": \"proguard-rules.pro\"")
+        assertContains(sarif, "\"startLine\": 12")
 
         val markdown = AdoptionReporter.render(ReportFormat.MARKDOWN, emptyList(), noLimitations, 0, unmatchedKeepRules = rules)
         assertContains(markdown, "## Unmatched keep rules")
         assertContains(markdown, "`proguard-rules.pro:12`")
+        assertContains(markdown, "`dev.absent.**`")
         assertContains(markdown, "outside the indexed inputs")
     }
 
