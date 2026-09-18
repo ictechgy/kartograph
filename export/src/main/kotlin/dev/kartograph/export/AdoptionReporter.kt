@@ -39,13 +39,15 @@ public object AdoptionReporter {
         val sortedRules = unmatchedKeepRules.sortedWith(
             compareBy({ it.location.path }, { it.location.line ?: 0 }),
         )
+        // 호출자의 컬렉션 종류와 무관하게 enum 선언 순서로 고정해 결정적 출력을 만든다.
+        val sortedHints = inputHints.distinct().sortedBy { hint -> hint.ordinal }
         return when (format) {
-            ReportFormat.TEXT -> text(findings, limitations, sortedRules, inputHints)
-            ReportFormat.GRADLE -> gradle(findings, limitations, sortedRules, inputHints)
-            ReportFormat.GITHUB_ACTIONS -> github(findings, limitations, sortedRules, inputHints)
-            ReportFormat.JSON -> json(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules, inputHints)
-            ReportFormat.SARIF -> sarif(findings, limitations, confidence, sortedRules, inputHints)
-            ReportFormat.MARKDOWN -> markdown(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules, inputHints)
+            ReportFormat.TEXT -> text(findings, limitations, sortedRules, sortedHints)
+            ReportFormat.GRADLE -> gradle(findings, limitations, sortedRules, sortedHints)
+            ReportFormat.GITHUB_ACTIONS -> github(findings, limitations, sortedRules, sortedHints)
+            ReportFormat.JSON -> json(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules, sortedHints)
+            ReportFormat.SARIF -> sarif(findings, limitations, confidence, sortedRules, sortedHints)
+            ReportFormat.MARKDOWN -> markdown(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules, sortedHints)
         }
     }
 

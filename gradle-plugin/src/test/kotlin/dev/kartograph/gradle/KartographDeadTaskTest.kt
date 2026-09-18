@@ -94,6 +94,8 @@ class KartographDeadTaskTest {
         val report = projectRoot.resolve("build/reports/kartograph/debug.txt").readText()
         assertFalse(report.contains("unreachable\t"))
         assertContains(report, "limitation\tREFLECTION_STRINGS")
+        // baseline이 finding을 모두 억제했으므로 누락 입력 hint도 나오지 않는다.
+        assertFalse(report.contains("input-hint\t"))
     }
 
     @Test
