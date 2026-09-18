@@ -117,6 +117,19 @@ class KartographDeadTaskTest {
     }
 
     @Test
+    fun `reports keep rules that matched no declarations`(@TempDir projectRoot: Path) {
+        val rules = projectRoot.resolve("rules.pro")
+        rules.writeText("-keep class absent.Ghost\n")
+        val task = configuredTask(projectRoot, strict = false, extraKeepRules = listOf(rules))
+
+        task.analyze()
+
+        val report = projectRoot.resolve("build/reports/kartograph/debug.txt").readText()
+        assertContains(report, "unmatched-keep-rule\trules.pro:1")
+        assertContains(report, "keep rule class absent.Ghost matched no declarations")
+    }
+
+    @Test
     fun `still fails on a missing keep rule outside the build directory`(@TempDir projectRoot: Path) {
         // 소스 트리의 누락은 생성물 스킵과 무관하게 기존대로 실패한다.
         val task = configuredTask(projectRoot, strict = false, extraKeepRules = listOf(projectRoot.resolve("missing.pro")))

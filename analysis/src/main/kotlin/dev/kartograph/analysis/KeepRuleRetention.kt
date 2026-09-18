@@ -35,6 +35,19 @@ public object KeepRuleRetention {
         }.distinct()
     }
 
+    /**
+     * 보존 근거를 하나도 만들지 않은 규칙을 스캔 순서대로 반환한다.
+     * find가 매칭된 규칙의 위치를 근거에 그대로 싣기 때문에 근거 부재는 매칭 부재와 동치다.
+     * 불완전한 상속 판정은 find 단계에서 이미 실패하므로 미해결 규칙이 unmatched로 분류되지 않는다.
+     */
+    public fun unmatched(rules: Iterable<KeepRule>, evidence: Iterable<RetentionEvidence>): List<KeepRule> {
+        val matchedLocations = evidence.asSequence()
+            .filter { item -> item.reason == RetentionReason.KEEP_RULE }
+            .mapNotNull { item -> item.location }
+            .toSet()
+        return rules.filter { rule -> rule.location !in matchedLocations }
+    }
+
     private data class CompiledKeepRule(
         val source: KeepRule,
         val classNamePattern: Regex = source.classNamePattern.toJvmNameRegex(),

@@ -54,6 +54,10 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   SOURCE-retention으로 정보가 사라졌으면 경로를 복원하지 못한다. 직접 `@Preview`와 그 반복 컨테이너는 같은
   보수적 owner 정책을 사용한다.
 - manifest/resource/keep rule 또는 dependency classpath를 전달하지 않으면 그 입력이 만드는 도달성을 볼 수 없다.
+- `unmatched-keep-rule` 진단은 규칙이 색인된 그래프에서 보존 근거를 하나도 만들지 않았다는 측정만 담는다.
+  규칙이 그래프에 없는 dependency class나 downstream consumer만 겨냥할 수 있고, `-keepnames`·`allowshrinking`처럼
+  root를 만들지 않는 지시자는 이 검사 대상이 아니다. unmatched는 규칙 삭제 승인이 아니며
+  strict·종료 코드·finding 개수에도 영향을 주지 않는다.
 - manifest `meta-data`의 class-like `android:name`/`android:value`는 보수적으로 보존한다. class 위치에
   unresolved placeholder가 남은 source manifest는 추측하지 않고 실패하므로 가능하면 merged manifest를 쓴다.
   점으로 구분된 일반 metadata 문자열도 존재하지 않는 class root가 될 수 있고, 실제 class 이름과 우연히

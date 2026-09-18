@@ -2,10 +2,12 @@ package dev.kartograph.gradle
 
 import dev.kartograph.analysis.DefaultRetention
 import dev.kartograph.analysis.DeadFindings
+import dev.kartograph.analysis.KeepRuleRetention
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.core.AnalysisLimitation
 import dev.kartograph.core.Finding
 import dev.kartograph.core.GraphNode
+import dev.kartograph.core.KeepRule
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.export.AdoptionReporter
 import dev.kartograph.export.BaselineCodec
@@ -135,20 +137,20 @@ public abstract class KartographDeadTask : DefaultTask() {
             generatedClassRoots.files.sorted().map(java.io.File::toPath))
         val graph = indexed.graph
         val hierarchy = indexed.hierarchy
-        val evidence = retentionEvidence(projectRoot, graph, hierarchy)
-        val result = ReachabilityAnalyzer.analyze(graph, evidence)
+        val retention = retentionEvidence(projectRoot, graph, hierarchy)
+        val result = ReachabilityAnalyzer.analyze(graph, retention.evidence)
         val allFindings = DeadFindings.collect(graph, result, includePrivateMembers.get())
         if (baselineWriteFile.isPresent) {
             val path = baselineWriteFile.get().asFile.toPath()
             path.parent?.let { parent -> Files.createDirectories(parent) }
             Files.writeString(path, BaselineCodec.render(allFindings))
-            writeReport(allFindings, 0)
+            writeReport(allFindings, 0, retention.unmatchedKeepRules)
             logger.lifecycle("kartograph ${variantName.get()}: captured ${allFindings.size} unreachable declarations")
             return
         }
         val baseline = baselineFile.orNull?.asFile?.toPath()?.let { path -> BaselineCodec.parse(Files.readString(path)) }.orEmpty()
         val findings = allFindings.filterNot { finding -> finding.fingerprint in baseline }
-        writeReport(findings, allFindings.size - findings.size)
+        writeReport(findings, allFindings.size - findings.size, retention.unmatchedKeepRules)
         logger.lifecycle("kartograph ${variantName.get()}: ${findings.size} unreachable declarations")
         if (strict.get() && findings.isNotEmpty()) {
             throw GradleException("kartograph found ${findings.size} unreachable declarations; see the task report")
@@ -159,7 +161,7 @@ public abstract class KartographDeadTask : DefaultTask() {
         projectRoot: Path,
         graph: dev.kartograph.core.CodeGraph,
         hierarchy: dev.kartograph.core.ClassHierarchy,
-    ): List<RetentionEvidence> {
+    ): RetentionOutcome {
         val inputEvidence = buildList {
             addAll(AndroidManifestScanner(projectRoot).scan(manifest.get().asFile.toPath(), namespace.get()))
             resourceDirectories.files.filter(java.io.File::isDirectory).sorted().forEach { resourceRoot ->
@@ -168,8 +170,9 @@ public abstract class KartographDeadTask : DefaultTask() {
         }
         val keepRules = KeepRuleScanner(projectRoot, includePrivateMembers.get())
             .scan(existingRuleFiles(keepRuleFiles.files.sorted().map(java.io.File::toPath)))
-        return DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,
+        val evidence = DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,
             includePrivateMembers = includePrivateMembers.get())
+        return RetentionOutcome(evidence, KeepRuleRetention.unmatched(keepRules, evidence))
     }
 
     /**
@@ -184,13 +187,28 @@ public abstract class KartographDeadTask : DefaultTask() {
         return existing
     }
 
-    private fun writeReport(findings: List<Finding>, suppressedCount: Int) {
+    private fun writeReport(
+        findings: List<Finding>,
+        suppressedCount: Int,
+        unmatchedKeepRules: List<KeepRule>,
+    ) {
         val report = reportFile.get().asFile.toPath()
         Files.createDirectories(requireNotNull(report.parent))
         val format = ReportFormat.fromOption(reportFormat.get())
             ?: throw GradleException("invalid kartograph report format: ${reportFormat.get()}")
-        val content = AdoptionReporter.render(format, findings, AnalysisLimitation.entries, suppressedCount)
+        val content = AdoptionReporter.render(
+            format,
+            findings,
+            AnalysisLimitation.entries,
+            suppressedCount,
+            unmatchedKeepRules = unmatchedKeepRules,
+        )
         Files.writeString(report, content)
     }
+
+    private data class RetentionOutcome(
+        val evidence: List<RetentionEvidence>,
+        val unmatchedKeepRules: List<KeepRule>,
+    )
 
 }
