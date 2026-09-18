@@ -1546,4 +1546,228 @@ class BridgeFactScannerTest {
 
         assertEquals(listOf("acrossLines"), document.facts.filter { it.kind == "method-handle" }.map { it.method })
     }
+
+    @Test
+    fun `expo scans async functions with nested generic types`(@TempDir project: Path) {
+        project.resolve("Generic.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class GenericModule : Module() {
+              override fun definition() = ModuleDefinition {
+                AsyncFunction<List<String>>("nested") { emptyList() }
+                AsyncFunction<Map<String, Int>>("mapped") { emptyMap() }
+                AsyncFunction<Unit>("plain") { }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(
+            listOf("nested", "mapped", "plain"),
+            facts.filter { it.kind == "method-handle" }.map { it.method },
+        )
+    }
+
+    @Test
+    fun `expo scans DSL calls with member chains and explicit this receivers`(@TempDir project: Path) {
+        project.resolve("Chain.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class ChainModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Chain")
+                AsyncFunction("chained") { 1 }.let { it }
+                this.Function("qualified") { 2 }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(
+            listOf("chained", "qualified"),
+            facts.filter { it.kind == "method-handle" }.map { it.method },
+        )
+    }
+
+    @Test
+    fun `expo ignores DSL calls qualified by a receiver other than this`(@TempDir project: Path) {
+        project.resolve("Other.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class OtherModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Other")
+                helper.Function("hidden") { 1 }
+                AsyncFunction("visible") { 2 }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(listOf("visible"), facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo scans a fully qualified ModuleDefinition call`(@TempDir project: Path) {
+        project.resolve("Fqn.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class FqnModule : Module() {
+              override fun definition() = expo.modules.kotlin.modules.ModuleDefinition {
+                Name("Fqn")
+                AsyncFunction("found") { 1 }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        val export = facts.single { it.kind == "module-export" }
+        assertEquals("Fqn", export.channel)
+        assertTrue(!export.dynamic)
+        assertEquals(listOf("found"), facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo ignores a member call spelled like ModuleDefinition`(@TempDir project: Path) {
+        project.resolve("Fake.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class FakeModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Fake")
+              }
+              fun helper() {
+                other.ModuleDefinition {
+                  AsyncFunction("hidden") { 1 }
+                }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals("Fake", facts.single { it.kind == "module-export" }.channel)
+        assertTrue(facts.none { it.kind == "method-handle" })
+    }
+
+    @Test
+    fun `expo resolves this qualified Name and View calls`(@TempDir project: Path) {
+        project.resolve("Self.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class SelfModule : Module() {
+              override fun definition() = ModuleDefinition {
+                this.Name("Self")
+                this.View(SensorView::class)
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals("Self", facts.single { it.kind == "module-export" }.channel)
+        assertEquals("Self", facts.single { it.kind == "component-export" }.channel)
+    }
+
+    @Test
+    fun `expo scans generic calls qualified by this`(@TempDir project: Path) {
+        project.resolve("Both.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class BothModule : Module() {
+              override fun definition() = ModuleDefinition {
+                this.AsyncFunction<List<String>>("both") { emptyList() }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(listOf("both"), facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo scans plain Function calls with generic types`(@TempDir project: Path) {
+        project.resolve("Sync.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class SyncModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Function<Pair<String, Int>>("paired") { Pair("a", 1) }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(listOf("paired"), facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo ignores a generic type reference without a call paren`(@TempDir project: Path) {
+        project.resolve("Ref.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class RefModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Ref")
+                val ref: AsyncFunction<List<String>> = placeholder()
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertTrue(facts.none { it.kind == "method-handle" })
+    }
+
+    @Test
+    fun `expo anchors the call paren before comparisons inside arguments`(@TempDir project: Path) {
+        project.resolve("Anchor.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class AnchorModule : Module() {
+              override fun definition() = ModuleDefinition {
+                AsyncFunction<Unit>("first", flag = y > (z)) { }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(listOf("first"), facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo scans an FQN ModuleDefinition whose brace is on the next line`(@TempDir project: Path) {
+        project.resolve("FqnBrace.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class FqnBraceModule : Module() {
+              override fun definition() = expo.modules.kotlin.modules.ModuleDefinition
+              {
+                Name("FqnBrace")
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals("FqnBrace", facts.single { it.kind == "module-export" }.channel)
+    }
 }
