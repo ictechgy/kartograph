@@ -353,7 +353,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                     if (scope.definitionDepth?.let { depth < it } == true) scope.definitionDepth = null
                 }
                 token.first() == '"' || token.first() == '\'' -> Unit
-                token == "ModuleDefinition" -> {
+                token.endsWith("ModuleDefinition") -> {
                     if (scope.definitionDepth == null) scope.expectDefinitionBrace = true
                 }
                 scope.expectDefinitionBrace -> {
@@ -361,13 +361,15 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                     scope.expectDefinitionBrace = false
                 }
                 scope.definitionDepth?.let { depth == it } == true -> when {
-                    token.startsWith("View") -> {
+                    // `this.` 한정을 벗긴 뒤 이름으로 구분한다.
+                    token.removePrefix("this.").startsWith("View") -> {
                         if (scope.firstView == null) scope.firstView = ViewSite(lineNumber, source)
                     }
                     else -> {
                         // `Name`·`Function` 계열 — 첫 인자가 JS 측 이름이다.
                         val call = PendingExpoCall(
-                            CallArguments(), isName = token.startsWith("Name"),
+                            CallArguments(),
+                            isName = token.removePrefix("this.").startsWith("Name"),
                             line = lineNumber, source = source, token = token,
                         )
                         val completed = call.collector.consume(code.substring(index))
@@ -690,11 +692,15 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         // `abstract`가 class 줄이 아니라 직전 줄에 오는 형태(`abstract\nclass X`)를 잡는다.
         val ABSTRACT_AT_END = Regex("\\babstract\\s*$")
         // 문자열은 통째로 소비해 안의 `{`가 깊이를 오염시키지 않게 한다.
+        // 제네릭 절은 `[^{}]*`로 읽는다 — `<List<String>>`처럼 `>`가 중첩돼도
+        // 호출 `(` 직전의 `>`까지 소비하고, 뒤에 `(`가 없으면 호출이 아니라 버린다.
+        // `this.`는 빌더 수신자의 명시 한정이라 허용하고 다른 수신자 한정은 거부한다.
+        // `ModuleDefinition`은 최상위 함수라 `expo.modules.kotlin.modules.` FQN만 허용한다.
         val EXPO_DSL_TOKEN = Regex(
             "\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|\\{|\\}|" +
-                "(?<![\\w.])ModuleDefinition\\b|" +
-                "(?<![\\w.])(?:Name|View)\\s*\\(|" +
-                "(?<![\\w.])(?:Function|AsyncFunction)\\s*(?:<[^>]*>)?\\s*\\(",
+                "(?<![\\w.])(?:expo\\.modules\\.kotlin\\.modules\\.)?ModuleDefinition\\b|" +
+                "(?<![\\w.])(?:this\\.)?(?:Name|View)\\s*\\(|" +
+                "(?<![\\w.])(?:this\\.)?(?:Function|AsyncFunction)\\s*(?:<[^{}]*>)?\\s*\\(",
         )
     }
 }

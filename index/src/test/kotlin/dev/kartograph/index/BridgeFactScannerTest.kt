@@ -1546,4 +1546,116 @@ class BridgeFactScannerTest {
 
         assertEquals(listOf("acrossLines"), document.facts.filter { it.kind == "method-handle" }.map { it.method })
     }
+
+    @Test
+    fun `expo scans async functions with nested generic types`(@TempDir project: Path) {
+        project.resolve("Generic.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class GenericModule : Module() {
+              override fun definition() = ModuleDefinition {
+                AsyncFunction<List<String>>("nested") { emptyList() }
+                AsyncFunction<Map<String, Int>>("mapped") { emptyMap() }
+                AsyncFunction<Unit>("plain") { }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(
+            listOf("nested", "mapped", "plain"),
+            facts.filter { it.kind == "method-handle" }.map { it.method },
+        )
+    }
+
+    @Test
+    fun `expo scans DSL calls with member chains and explicit this receivers`(@TempDir project: Path) {
+        project.resolve("Chain.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class ChainModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Chain")
+                AsyncFunction("chained") { 1 }.let { it }
+                this.Function("qualified") { 2 }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(
+            listOf("chained", "qualified"),
+            facts.filter { it.kind == "method-handle" }.map { it.method },
+        )
+    }
+
+    @Test
+    fun `expo ignores DSL calls qualified by a receiver other than this`(@TempDir project: Path) {
+        project.resolve("Other.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class OtherModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Other")
+                helper.Function("hidden") { 1 }
+                AsyncFunction("visible") { 2 }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals(listOf("visible"), facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo scans a fully qualified ModuleDefinition call`(@TempDir project: Path) {
+        project.resolve("Fqn.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class FqnModule : Module() {
+              override fun definition() = expo.modules.kotlin.modules.ModuleDefinition {
+                Name("Fqn")
+                AsyncFunction("found") { 1 }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        val export = facts.single { it.kind == "module-export" }
+        assertEquals("Fqn", export.channel)
+        assertTrue(!export.dynamic)
+        assertEquals(listOf("found"), facts.filter { it.kind == "method-handle" }.map { it.method })
+    }
+
+    @Test
+    fun `expo ignores a member call spelled like ModuleDefinition`(@TempDir project: Path) {
+        project.resolve("Fake.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            class FakeModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("Fake")
+              }
+              fun helper() {
+                other.ModuleDefinition {
+                  AsyncFunction("hidden") { 1 }
+                }
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val facts = BridgeFactScanner(project).scan().facts
+
+        assertEquals("Fake", facts.single { it.kind == "module-export" }.channel)
+        assertTrue(facts.none { it.kind == "method-handle" })
+    }
 }
