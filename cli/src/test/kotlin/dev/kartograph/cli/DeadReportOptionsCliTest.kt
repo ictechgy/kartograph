@@ -66,6 +66,33 @@ class DeadReportOptionsCliTest {
     }
 
     @Test
+    fun `dead reports keep rules that matched no graph declarations`(@TempDir projectRoot: Path) {
+        val classRoot = compileSamplePair(projectRoot)
+        projectRoot.resolve("rules.pro").writeText(
+            "-keep class sample.Clean\n-keep class absent.Ghost\n",
+        )
+        val arguments = deadArguments(
+            projectRoot,
+            "<manifest />",
+            "--classes",
+            classRoot.toString(),
+            "--keep-rules",
+            "rules.pro",
+            "--report-format",
+            "json",
+        )
+
+        val execution = execute(*arguments)
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        assertContains(execution.output, "\"unmatchedKeepRules\"")
+        assertContains(execution.output, "\"path\": \"rules.pro\"")
+        assertContains(execution.output, "\"line\": 2")
+        assertContains(execution.output, "keep rule class absent.Ghost matched no declarations in the indexed graph")
+        assertFalse(execution.output.contains("keep rule class sample.Clean matched no declarations"))
+    }
+
+    @Test
     fun `dead suppress hides findings until the expires date`(@TempDir projectRoot: Path) {
         val classRoot = compileSamplePair(projectRoot)
         val suppressFile = projectRoot.resolve("suppress.json")

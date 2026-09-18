@@ -440,6 +440,64 @@ class KeepRuleRetentionTest {
         assertEquals(listOf(owner.id, constructor.id), KeepRuleRetention.find(graph, listOf(keepRule)).map { it.nodeId })
     }
 
+    @Test
+    fun `unmatched reports only rules that produced no retention evidence`() {
+        val graph = graph(
+            node("dev/app/Kept"),
+            node("dev/app/Other"),
+        )
+        val matched = rule(KeepDeclarationKind.CLASS, "dev.app.Kept", line = 3)
+        val unmatched = rule(KeepDeclarationKind.CLASS, "dev.absent.Ghost", line = 9)
+
+        val evidence = KeepRuleRetention.find(graph, listOf(matched, unmatched))
+
+        assertEquals(listOf(unmatched), KeepRuleRetention.unmatched(listOf(matched, unmatched), evidence))
+    }
+
+    @Test
+    fun `unmatched treats conditional rule without matching members as unmatched`() {
+        val owner = node("dev/app/Controller")
+        val method = GraphNode(
+            id = NodeId("method:dev/app/Controller#run()V"),
+            name = "run",
+            kind = NodeKind.METHOD,
+            jvmSignature = "dev/app/Controller#run()V",
+        )
+        val graph = CodeGraph(
+            listOf(owner, method),
+            listOf(GraphEdge(owner.id, method.id, EdgeKind.MEMBER)),
+        )
+        val conditional = KeepRule(
+            declarationKind = KeepDeclarationKind.CLASS,
+            classNamePattern = "dev.app.Controller",
+            location = SourceLocation("rules.pro", 14),
+            memberConditions = listOf(
+                KeepMemberCondition(KeepMemberKind.METHODS, namePattern = "missing"),
+            ),
+        )
+
+        val evidence = KeepRuleRetention.find(graph, listOf(conditional))
+
+        assertEquals(emptyList(), evidence)
+        assertEquals(listOf(conditional), KeepRuleRetention.unmatched(listOf(conditional), evidence))
+    }
+
+    @Test
+    fun `unmatched ignores evidence locations from non keep rule reasons`() {
+        val graph = graph(node("dev/app/Kept"))
+        val keepRule = rule(KeepDeclarationKind.CLASS, "dev.app.Kept", line = 5)
+        val foreignEvidence = dev.kartograph.core.RetentionEvidence(
+            NodeId("class:dev/app/Kept"),
+            RetentionReason.KEEP_ANNOTATION,
+            keepRule.location,
+        )
+
+        assertEquals(
+            listOf(keepRule),
+            KeepRuleRetention.unmatched(listOf(keepRule), listOf(foreignEvidence)),
+        )
+    }
+
     private fun graph(vararg nodes: GraphNode): CodeGraph = CodeGraph(nodes.asList(), emptyList())
 
     private fun node(

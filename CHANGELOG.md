@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- `dead`가 보존 근거를 하나도 만들지 않은 keep rule을 `unmatched-keep-rule` 입력 진단으로 보고한다.
+  CLI와 Gradle plugin의 text/gradle/github-actions/sarif/json/markdown 보고에 규칙의 파일·줄 근거를 싣고,
+  JSON은 `unmatchedKeepRules` 필드로 노출한다. `-keepnames`·`allowshrinking`처럼 root를 만들지 않는
+  지시자는 대상이 아니며, unmatched는 규칙 삭제 승인이 아니다.
+
 ## [0.10.1] - 2026-09-18
 
 ### Added

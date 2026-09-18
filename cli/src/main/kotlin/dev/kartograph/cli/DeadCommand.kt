@@ -142,6 +142,7 @@ internal object DeadCommand {
                 scoped.size - findings.size,
                 confidence,
                 expiredSuppressions,
+                analysis.unmatchedKeepRules,
             ),
         )
         return if (options.strict && findings.isNotEmpty()) ExitStatus.FINDINGS.code else ExitStatus.SUCCESS.code

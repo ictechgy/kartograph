@@ -3,7 +3,9 @@ package dev.kartograph.export
 import dev.kartograph.core.AnalysisLimitation
 import dev.kartograph.core.Finding
 import dev.kartograph.core.KartographVersion
+import dev.kartograph.core.KeepRule
 import dev.kartograph.core.NodeId
+import dev.kartograph.core.SourceLocation
 import java.net.URI
 
 /** Phase 3에서 지원하는 진단 출력 형식이다. */
@@ -30,20 +32,33 @@ public object AdoptionReporter {
         suppressedCount: Int,
         confidence: Map<NodeId, FindingConfidence> = emptyMap(),
         expiredSuppressions: Int = 0,
-    ): String = when (format) {
-        ReportFormat.TEXT -> text(findings, limitations)
-        ReportFormat.GRADLE -> gradle(findings, limitations)
-        ReportFormat.GITHUB_ACTIONS -> github(findings, limitations)
-        ReportFormat.JSON -> json(findings, limitations, suppressedCount, confidence, expiredSuppressions)
-        ReportFormat.SARIF -> sarif(findings, limitations, confidence)
-        ReportFormat.MARKDOWN -> markdown(findings, limitations, suppressedCount, confidence, expiredSuppressions)
+        unmatchedKeepRules: Collection<KeepRule> = emptyList(),
+    ): String {
+        val sortedRules = unmatchedKeepRules.sortedWith(
+            compareBy({ it.location.path }, { it.location.line ?: 0 }),
+        )
+        return when (format) {
+            ReportFormat.TEXT -> text(findings, limitations, sortedRules)
+            ReportFormat.GRADLE -> gradle(findings, limitations, sortedRules)
+            ReportFormat.GITHUB_ACTIONS -> github(findings, limitations, sortedRules)
+            ReportFormat.JSON -> json(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules)
+            ReportFormat.SARIF -> sarif(findings, limitations, confidence, sortedRules)
+            ReportFormat.MARKDOWN -> markdown(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules)
+        }
     }
 
-    private fun text(findings: Collection<Finding>, limitations: Collection<AnalysisLimitation>): String = buildString {
+    private fun text(
+        findings: Collection<Finding>,
+        limitations: Collection<AnalysisLimitation>,
+        unmatchedKeepRules: List<KeepRule>,
+    ): String = buildString {
         findings.sorted().forEach { finding ->
             append("unreachable\t${finding.nodeId}\t${finding.location.toPlainTextLocation()}")
             if (finding.testOnly) append("\ttest-only")
             append('\n')
+        }
+        unmatchedKeepRules.forEach { rule ->
+            append("unmatched-keep-rule\t${rule.location.toPlainTextLocation()}\t${rule.unmatchedMessage()}\n")
         }
         limitations.sortedBy(AnalysisLimitation::name)
             .forEach { append("limitation\t${it.name}\t${it.description}\n") }
@@ -52,10 +67,14 @@ public object AdoptionReporter {
     private fun gradle(
         findings: Collection<Finding>,
         limitations: Collection<AnalysisLimitation>,
+        unmatchedKeepRules: List<KeepRule>,
     ): String = buildString {
         findings.sorted().forEach { finding ->
             val location = finding.location.toPlainTextLocation().takeUnless { it == "-" }?.plus(": ").orEmpty()
             append("${location}warning: ${finding.unreachableMessage()} [kartograph.dead]\n")
+        }
+        unmatchedKeepRules.forEach { rule ->
+            append("${rule.location.toPlainTextLocation()}: ${rule.unmatchedMessage()} [kartograph.keep-rule]\n")
         }
         limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
             append("kartograph limitation ${limitation.name}: ${limitation.description}\n")
@@ -65,6 +84,7 @@ public object AdoptionReporter {
     private fun github(
         findings: Collection<Finding>,
         limitations: Collection<AnalysisLimitation>,
+        unmatchedKeepRules: List<KeepRule>,
     ): String = buildString {
         findings.sorted().forEach { finding ->
             val properties = buildList {
@@ -78,6 +98,16 @@ public object AdoptionReporter {
             append("::warning ${properties.joinToString(",")}::")
             append(githubMessage(finding.unreachableMessage())).append('\n')
         }
+        unmatchedKeepRules.forEach { rule ->
+            val properties = buildList {
+                add("file=${githubProperty(rule.location.path)}")
+                rule.location.line?.let { add("line=$it") }
+                rule.location.column?.let { add("col=$it") }
+                add("title=kartograph unmatched keep rule")
+            }
+            append("::notice ${properties.joinToString(",")}::")
+            append(githubMessage(rule.unmatchedMessage())).append('\n')
+        }
         limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
             append("::notice title=kartograph limitation ${limitation.name}::")
             append(githubMessage(limitation.description)).append('\n')
@@ -90,6 +120,7 @@ public object AdoptionReporter {
         suppressedCount: Int,
         confidence: Map<NodeId, FindingConfidence>,
         expiredSuppressions: Int,
+        unmatchedKeepRules: List<KeepRule>,
     ): String = buildString {
         append("{\n  \"command\": \"dead\",\n  \"diagnostics\": [")
         val sorted = findings.sorted()
@@ -99,7 +130,7 @@ public object AdoptionReporter {
             append('\n')
             sorted.forEachIndexed { index, finding ->
                 append("    {\n      \"location\": ")
-                appendLocation(finding)
+                appendLocation(finding.location)
                 append(",\n      \"message\": \"").append(jsonEscape(finding.unreachableMessage()))
                 append("\",\n      \"nodeId\": \"").append(jsonEscape(finding.nodeId.toString()))
                 append("\",\n      \"ruleId\": \"dead\",\n      \"state\": \"unreachable\"")
@@ -109,6 +140,21 @@ public object AdoptionReporter {
                 }
                 append("\n    }")
                 if (index != sorted.lastIndex) append(',')
+                append('\n')
+            }
+            append("  ]")
+        }
+        append(",\n  \"unmatchedKeepRules\": [")
+        if (unmatchedKeepRules.isEmpty()) {
+            append("]")
+        } else {
+            append('\n')
+            unmatchedKeepRules.forEachIndexed { index, rule ->
+                append("    {\"location\": ")
+                appendLocation(rule.location)
+                append(", \"message\": \"").append(jsonEscape(rule.unmatchedMessage()))
+                append("\"}")
+                if (index != unmatchedKeepRules.lastIndex) append(',')
                 append('\n')
             }
             append("  ]")
@@ -132,8 +178,7 @@ public object AdoptionReporter {
         append(jsonEscape(KartographVersion.current)).append("\"\n}\n")
     }
 
-    private fun StringBuilder.appendLocation(finding: Finding) {
-        val location = finding.location
+    private fun StringBuilder.appendLocation(location: SourceLocation?) {
         if (location == null) append("null") else {
             append("{\"column\": ${location.column ?: 1}, \"line\": ${location.line ?: 1}, \"path\": \"")
             append(jsonEscape(location.path)).append("\"}")
@@ -144,6 +189,7 @@ public object AdoptionReporter {
         findings: Collection<Finding>,
         limitations: Collection<AnalysisLimitation>,
         confidence: Map<NodeId, FindingConfidence>,
+        unmatchedKeepRules: List<KeepRule>,
     ): String = buildString {
         append("{\n  \"${'$'}schema\": \"https://json.schemastore.org/sarif-2.1.0.json\",\n  \"runs\": [\n    {\n")
         append("      \"invocations\": [{\"executionSuccessful\": true, \"toolExecutionNotifications\": [")
@@ -153,6 +199,16 @@ public object AdoptionReporter {
             append("{\"descriptor\": {\"id\": \"").append(jsonEscape(limitation.name))
             append("\"}, \"level\": \"note\", \"message\": {\"text\": \"")
             append(jsonEscape(limitation.description)).append("\"}}")
+        }
+        unmatchedKeepRules.forEachIndexed { index, rule ->
+            if (sortedLimitations.isNotEmpty() || index > 0) append(',')
+            append("{\"descriptor\": {\"id\": \"unmatchedKeepRule\"}, \"level\": \"note\", ")
+            append("\"locations\": [{\"physicalLocation\": {\"artifactLocation\": {\"uri\": \"")
+            append(jsonEscape(uriReference(rule.location.path))).append("\"}, \"region\": {\"startColumn\": ")
+            append(rule.location.column ?: 1).append(", \"startLine\": ").append(rule.location.line ?: 1).append("}}}]")
+            append(", \"message\": {\"text\": \"")
+            append(jsonEscape("${rule.location.toPlainTextLocation()}: ${rule.unmatchedMessage()}"))
+            append("\"}}")
         }
         append("]}],\n")
         append("      \"results\": [")
@@ -198,6 +254,7 @@ public object AdoptionReporter {
         suppressedCount: Int,
         confidence: Map<NodeId, FindingConfidence>,
         expiredSuppressions: Int,
+        unmatchedKeepRules: List<KeepRule>,
     ): String = buildString {
         append("## kartograph dead findings\n\n")
         if (findings.isEmpty()) {
@@ -218,6 +275,17 @@ public object AdoptionReporter {
         append(suppressedCount).append(" suppressed by baseline or suppress entries")
         if (expiredSuppressions > 0) append("; ").append(expiredSuppressions).append(" suppression(s) expired")
         append(". Findings are reachability facts, not deletion approvals.\n")
+        if (unmatchedKeepRules.isNotEmpty()) {
+            append("\n## Unmatched keep rules\n\n")
+            unmatchedKeepRules.forEach { rule ->
+                append("- `").append(markdownCell(rule.location.toPlainTextLocation()))
+                append("` — keep rule ").append(rule.declarationKind.name.lowercase())
+                append(" `").append(markdownCell(rule.classNamePattern))
+                append("` matched no declarations in the indexed graph\n")
+            }
+            append("\nUnmatched rules may target declarations outside the indexed inputs; ")
+            append("an unmatched rule is not proof that it can be removed.\n")
+        }
         append("\n## Limitations\n\n")
         limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
             append("- ").append(limitation.name).append(" — ").append(limitation.description).append('\n')
@@ -233,4 +301,8 @@ public object AdoptionReporter {
     // test-only finding은 production graph에서는 도달 불가하나 test가 참조한다는 사실을 메시지에 덧붙인다.
     private fun Finding.unreachableMessage(): String =
         "$nodeId is unreachable" + if (testOnly) " (used only by tests)" else ""
+
+    // 규칙이 무용하다는 판정이 아니라 색인된 그래프 입력에서 매칭이 없었다는 측정 사실만 담는다.
+    private fun KeepRule.unmatchedMessage(): String =
+        "keep rule ${declarationKind.name.lowercase()} $classNamePattern matched no declarations in the indexed graph"
 }
