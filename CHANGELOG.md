@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `dead`가 누락된 보존 입력을 `input-hint` 진단으로 보고한다. keep/consumer rule이나 dependency classpath
+  입력이 전달되지 않았거나 manifest가 component 보존 근거를 만들지 못한 채 finding이 보고되면
+  text/gradle/github-actions/sarif/json/markdown 형식에 측정 사실과 과소계측 가능성을 함께 싣는다.
+  JSON은 `inputHints`(id·message)로 노출한다. hint는 finding이 아니므로 strict 판정·baseline·종료 코드에
+  관여하지 않고, finding이 0건이면 보고하지 않는다. Gradle plugin의 report도 같은 신호를 공유한다.
+
 ## [0.10.2] - 2026-09-18
 
 ### Added

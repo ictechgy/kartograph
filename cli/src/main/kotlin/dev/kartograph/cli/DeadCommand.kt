@@ -143,6 +143,7 @@ internal object DeadCommand {
                 confidence,
                 expiredSuppressions,
                 analysis.unmatchedKeepRules,
+                inputHints = analysis.inputHints.takeIf { findings.isNotEmpty() }.orEmpty(),
             ),
         )
         return if (options.strict && findings.isNotEmpty()) ExitStatus.FINDINGS.code else ExitStatus.SUCCESS.code

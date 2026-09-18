@@ -25,6 +25,28 @@ class KartographDeadTaskTest {
     }
 
     @Test
+    fun `reports missing input hints alongside findings`(@TempDir projectRoot: Path) {
+        val task = configuredTask(projectRoot, strict = false, retainTestClass = false)
+
+        task.analyze()
+
+        val report = projectRoot.resolve("build/reports/kartograph/debug.txt").readText()
+        assertContains(report, "input-hint\tmissing-keep-rules\t")
+        assertContains(report, "input-hint\tmissing-classpath\t")
+        assertContains(report, "input-hint\tmanifest-without-components\t")
+    }
+
+    @Test
+    fun `input hints stay out of a report without findings`(@TempDir projectRoot: Path) {
+        val task = configuredTask(projectRoot, strict = true)
+        task.generatedClassRoots.from(task.projectDirectories.get().map { it.asFile })
+
+        task.analyze()
+
+        assertFalse(projectRoot.resolve("build/reports/kartograph/debug.txt").readText().contains("input-hint\t"))
+    }
+
+    @Test
     fun `writes a report from configured variant inputs`(@TempDir projectRoot: Path) {
         val task = configuredTask(projectRoot, strict = false)
 

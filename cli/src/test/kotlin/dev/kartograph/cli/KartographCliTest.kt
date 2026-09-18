@@ -1101,6 +1101,50 @@ class KartographCliTest {
         kotlin.test.assertFalse(result.output.contains("class:Used\t"))
     }
 
+    @Test
+    fun `dead reports missing input hints only when findings are reported`(@TempDir root: Path) {
+        val classes = root.resolve("classes").createDirectories()
+        val source = root.resolve("HintEntry.java")
+        source.writeText(
+            "package dev.kartograph.cli;\n" +
+                "public class HintEntry { public static void entry() { new HintUsed(); } }\n" +
+                "class HintUsed {}\n" +
+                "class HintDead {}\n",
+        )
+        check(requireNotNull(ToolProvider.getSystemJavaCompiler()).run(
+            null, null, null, "-d", classes.toString(), source.toString(),
+        ) == 0)
+        root.resolve("rules.pro").writeText("-keep class dev.kartograph.cli.HintEntry { *; }\n")
+        val componentManifest = """
+            <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application><activity android:name=".HintEntry" /></application>
+            </manifest>
+        """.trimIndent()
+
+        val stub = deadArguments(root, "<manifest />")
+        stub[2] = classes.toString()
+        val stubResult = execute(*stub)
+        assertEquals(ExitStatus.SUCCESS.code, stubResult.status)
+        assertContains(stubResult.output, "unreachable\tclass:dev/kartograph/cli/HintDead")
+        assertContains(stubResult.output, "input-hint\tmissing-keep-rules\t")
+        assertContains(stubResult.output, "input-hint\tmissing-classpath\t")
+        assertContains(stubResult.output, "input-hint\tmanifest-without-components\t")
+
+        val configured = deadArguments(root, componentManifest, "--keep-rules", "rules.pro")
+        configured[2] = classes.toString()
+        val configuredResult = execute(*configured)
+        assertEquals(ExitStatus.SUCCESS.code, configuredResult.status)
+        assertContains(configuredResult.output, "unreachable\tclass:dev/kartograph/cli/HintDead")
+        assertContains(configuredResult.output, "input-hint\tmissing-classpath\t")
+        kotlin.test.assertFalse(configuredResult.output.contains("input-hint\tmissing-keep-rules"))
+        kotlin.test.assertFalse(configuredResult.output.contains("input-hint\tmanifest-without-components"))
+
+        root.resolve("rules.pro").writeText("-keep class dev.kartograph.cli.** { *; }\n")
+        val retained = execute(*configured)
+        assertEquals(ExitStatus.SUCCESS.code, retained.status)
+        kotlin.test.assertFalse(retained.output.contains("input-hint\t"))
+    }
+
     private fun execute(vararg arguments: String): Execution {
         val output = ByteArrayOutputStream()
         val error = ByteArrayOutputStream()
