@@ -6,8 +6,13 @@
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-18
+
 ### Added
 
+- `bridges --target flutter --events`가 Flutter EventChannel의 `setStreamHandler`에서 stream-handle 사실을
+  별도 v2 문서(`transport: event-channel`)로 보낸다. `--messages`와는 별도 문서라 동시 사용은 usage 오류다.
+  송신 개념이 없는 EventChannel에는 send 계열 limitation을 만들지 않는다.
 - `bridges`가 Expo Modules DSL을 인식한다. `import expo.modules.kotlin.modules.Module`이 있는 Kotlin
   파일에서 `class X : Module()` 선언을 모듈로 보고 `ModuleDefinition { }` 본문의 `Name(…)`·`View(…)`·
   `Function`/`AsyncFunction`을 읽는다. `module-export`·`component-export`에는 `"mechanism": "expo"`를
@@ -24,6 +29,9 @@
 
 ### Fixed
 
+- `bridges`가 `setMethodCallHandler`/`setStreamHandler`/`send` 수신자의 `!!`·`?.`을 인식한다.
+  nullable 필드의 `channel!!.setXxx` 패턴을 놓쳐 경계가 비던 사례를 고친다. JNI/native interop
+  파일은 정적 채널 키로 귀속할 수 없어 fact 대신 파일 수준 `unscanned-ffi-interop` limitation으로 보고한다.
 - `snapshot` 입력 fingerprint의 병렬 digest에서 (1) 계획 단계의 symlink 검사와 파일 열기 사이가 벌어져 그 사이 symlink로
   바뀐 파일을 따라갈 수 있던 문제를 열기·크기 읽기에 `NOFOLLOW_LINKS`를 적용해 막고, (2) 캡처가 interrupt되면 worker가 만든
   임시 spool이 남을 수 있던 문제를 scope가 worker 종료를 기다린 뒤 닫도록 고치며, (3) 크기를 읽지 못한 JAR이 예산을
@@ -320,7 +328,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/ictechgy/kartograph/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/ictechgy/kartograph/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/ictechgy/kartograph/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/ictechgy/kartograph/compare/v0.7.0...v0.8.0

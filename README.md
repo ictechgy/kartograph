@@ -51,7 +51,7 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.10.0"
+    id("io.github.ictechgy.kartograph") version "0.10.1"
 }
 ```
 
@@ -139,7 +139,7 @@ AGP does not expose dependency consumer rules as a merged file through the publi
 
 ### Saved graph queries and generated inputs
 
-These features are included in the 0.10.0 binaries.
+These features are included in the 0.10.1 binaries.
 Use `snapshot` to capture the graph, retention evidence, baseline state, and measured limitations once.
 Pass the same manifest/resource/namespace/keep/consumer/classpath inputs and the same private-member option as the live query.
 
