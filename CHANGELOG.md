@@ -17,11 +17,12 @@
   근거를 선택 입력으로 받는다. 관측된 class의 finding은 JSON·SARIF·markdown `confidence`가
   `runtime-observed`로 표시된다. 커버리지를 수집·실행하지 않고 class 단위로만 판정하며, finding·strict·
   종료 코드·baseline은 바뀌지 않는다.
-- `dependencies` 명령이 선언 의존성 목록(TSV: coordinate·scope·artifact)과 classfile 참조(호출·field·
-  type·annotation·상속·descriptor)를 대조해 참조가 없는 dependency를 `unused-dependency`로 text/JSON에
-  보고한다. `--strict`는 finding이 있으면 exit 1이고, processor·runtime-only scope는 판정하지 않고
-  개수만 알린다. artifact는 project-relative 경로를 그대로, 절대경로는 파일 이름만 출력하며,
-  판정은 dependency 삭제 승인이 아니다.
+- `dependencies` 명령이 선언 의존성 목록(TSV: coordinate·scope·artifact)과 classfile 참조를 대조해
+  참조가 없는 dependency를 `unused-dependency`로 text/JSON에 보고한다. 참조는 descriptor·annotation
+  (type-use 포함)·invokedynamic(handle descriptor 포함)·LDC/ConstantDynamic·지역 변수·module
+  uses/provides까지 독립 스캐너로 모은다. `--strict`는 finding이 있으면 exit 1이고, processor·
+  runtime-only와 test root 없는 test scope는 판정하지 않고 개수만 알린다. artifact는 project-relative
+  경로를 그대로, 절대경로는 파일 이름만 출력하며, 판정은 dependency 삭제 승인이 아니다.
 
 ## [0.10.2] - 2026-09-18
 

@@ -177,8 +177,9 @@ internal object DependenciesCommand {
             [--strict] [--report-format text|json]
 
         <file> is a TSV list: coordinate<TAB>scope<TAB>artifact. Blank lines and # comments are allowed,
-        artifact paths resolve against --project. api/implementation/compileOnly/testImplementation/
-        testCompileOnly entries are judged; processor and runtime-only scopes are counted but not judged.
+        artifact paths resolve against --project. api/implementation/compileOnly entries are judged;
+        testImplementation/testCompileOnly entries are judged only with --test-classes. Processor,
+        runtime-only and unjudged test scopes are counted but not judged.
 
         This command measures bytecode references only. A dependency reported unused may still be used
         through reflection, resources, annotation processors or class roots that were not supplied;

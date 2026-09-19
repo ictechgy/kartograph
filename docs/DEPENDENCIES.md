@@ -36,9 +36,10 @@ androidx.annotation:annotation:1.9.1	compileOnly	libs/annotation-1.9.1.jar
 
 ## 판정
 
-artifact의 class 중 앱 bytecode가 하나도 참조하지 않으면 unused다. 참조는 classfile 간선 전체
-(호출·field 접근·type 참조·annotation·상속·method/field descriptor)에서 모은다. classfile이 없는
-artifact는 판정하지 않고 개수만 보고한다. 출력의 artifact는 project-relative 경로를 그대로 쓰고
+artifact의 class 중 앱 bytecode가 하나도 참조하지 않으면 unused다. 참조는 classfile에서 직접 모은다 —
+descriptor(호출·field·선언), annotation(type-use 포함)과 그 값, invokedynamic descriptor·handle(descriptor
+포함)·인자, LDC와 ConstantDynamic, type 참조, 상속, try-catch, 지역 변수, record/nest/permitted,
+module uses/provides. classfile이 없는 artifact는 판정하지 않고 개수만 보고한다. 출력의 artifact는 project-relative 경로를 그대로 쓰고
 절대경로는 파일 이름만 남기며, 한계 목록은 모든 형식에 함께 실린다.
 
 ## 한계

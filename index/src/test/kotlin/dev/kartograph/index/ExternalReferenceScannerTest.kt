@@ -35,7 +35,8 @@ class ExternalReferenceScannerTest {
             "lib/LocalType", "lib/LocalAnnotationType", "lib/MultiType", "lib/LiteralType",
             "lib/LambdaType", "lib/BootstrapOwner", "lib/IndyArgType",
             "lib/DynamicType", "lib/DynamicArgType",
-            "lib/NestType", "lib/PermittedType", "lib/RecordType",
+            "lib/NestType", "lib/NestHostType", "lib/PermittedType", "lib/RecordType",
+            "lib/HandleOwner", "lib/HandleDescType", "lib/LdcHandleOwner", "lib/LdcHandleDescType",
         )
         assertTrue(expected.all(referenced::contains), "missing references: ${expected - referenced}")
     }
@@ -71,6 +72,63 @@ class ExternalReferenceScannerTest {
         assertContains(referenced, "com/example/lib/Api")
     }
 
+    @Test
+    fun `javac method reference type only in the handle descriptor is collected`(@TempDir root: Path) {
+        val libClasses = root.resolve("lib-classes").createDirectories()
+        compileJava(
+            listOf(
+                source(root, "lib-src", "com/example/lib/Parent.java", "package com.example.lib; public class Parent {}\n"),
+                source(
+                    root, "lib-src", "com/example/lib/Api.java",
+                    "package com.example.lib; public class Api { public static void consume(Parent parent) {} }\n",
+                ),
+            ),
+            libClasses,
+        )
+        val appClasses = root.resolve("app-classes").createDirectories()
+        compileJava(
+            listOf(
+                source(
+                    root, "app-src", "com/example/app/App.java",
+                    "package com.example.app;\n" +
+                        "import com.example.lib.Api;\n" +
+                        "import com.example.lib.Parent;\n" +
+                        "import java.util.function.Consumer;\n" +
+                        "public class App { public static void main(String[] args) { Consumer<Parent> consumer = Api::consume; consumer.accept(null); } }\n",
+                ),
+            ),
+            appClasses,
+            classpath = listOf(libClasses),
+        )
+
+        val referenced = ExternalReferenceScanner().scan(listOf(appClasses))
+
+        // Parent는 generic erasure로 사라지고 method handle descriptor에만 남는다.
+        assertContains(referenced, "com/example/lib/Parent")
+        assertContains(referenced, "com/example/lib/Api")
+    }
+
+    @Test
+    fun `module descriptors contribute uses provides and main class`(@TempDir root: Path) {
+        val classes = root.resolve("classes").createDirectories()
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V17, Opcodes.ACC_MODULE, "module-info", null, null, null)
+        val module = writer.visitModule("app.module", 0, null)
+        module.visitUse("lib/ServiceType")
+        module.visitProvide("lib/ServiceType", "lib/ProviderType")
+        module.visitMainClass("lib/MainType")
+        module.visitEnd()
+        writer.visitEnd()
+        classes.resolve("module-info.class").writeBytes(writer.toByteArray())
+
+        val referenced = ExternalReferenceScanner().scan(listOf(classes))
+
+        assertTrue(
+            setOf("lib/ServiceType", "lib/ProviderType", "lib/MainType").all(referenced::contains),
+            "missing references: $referenced",
+        )
+    }
+
     private fun source(root: Path, directory: String, relative: String, content: String): Path =
         root.resolve(directory).resolve(relative).also { path ->
             path.parent.createDirectories()
@@ -98,6 +156,7 @@ class ExternalReferenceScannerTest {
         writer.visitTypeAnnotation(
             TypeReference.newTypeReference(TypeReference.CLASS_EXTENDS).value, null, "Llib/TypeAnnotation;", true,
         ).visitEnd()
+        writer.visitNestHost("lib/NestHostType")
         writer.visitNestMember("lib/NestType")
         writer.visitPermittedSubclass("lib/PermittedType")
 
@@ -146,10 +205,17 @@ class ExternalReferenceScannerTest {
             "(Ljava/lang/invoke/MethodHandles\$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;",
             false,
         )
-        method.visitInvokeDynamicInsn("lambda", "()Llib/LambdaType;", bootstrap, Type.getObjectType("lib/IndyArgType"))
+        method.visitInvokeDynamicInsn(
+            "lambda", "()Llib/LambdaType;", bootstrap, Type.getObjectType("lib/IndyArgType"),
+            Handle(Opcodes.H_INVOKESTATIC, "lib/HandleOwner", "call", "(Llib/HandleDescType;)V", false),
+        )
         method.visitInsn(Opcodes.POP)
         method.visitLdcInsn(
             ConstantDynamic("constant", "Llib/DynamicType;", bootstrap, Type.getObjectType("lib/DynamicArgType")),
+        )
+        method.visitInsn(Opcodes.POP)
+        method.visitLdcInsn(
+            Handle(Opcodes.H_INVOKESTATIC, "lib/LdcHandleOwner", "call", "(Llib/LdcHandleDescType;)V", false),
         )
         method.visitInsn(Opcodes.POP)
         method.visitLabel(end)

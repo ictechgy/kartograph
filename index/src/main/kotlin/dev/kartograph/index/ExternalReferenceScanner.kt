@@ -15,6 +15,7 @@ import org.objectweb.asm.FieldVisitor
 import org.objectweb.asm.Handle
 import org.objectweb.asm.Label
 import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.ModuleVisitor
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.RecordComponentVisitor
 import org.objectweb.asm.Type
@@ -48,6 +49,9 @@ public class ExternalReferenceScanner {
         }
         files.flatMapTo(sortedSetOf()) { file -> scanBytes(Files.readAllBytes(file)) }
     } catch (error: IOException) {
+        throw ClassIndexingException("class root cannot be read", error)
+    } catch (error: java.io.UncheckedIOException) {
+        // Files.walk는 읽을 수 없는 하위 디렉터리에서 원시 경로를 담은 unchecked 예외를 낸다.
         throw ClassIndexingException("class root cannot be read", error)
     }
 
@@ -114,6 +118,10 @@ internal class ReferenceVisitor : ClassVisitor(Opcodes.ASM9) {
         visible: Boolean,
     ): AnnotationVisitor = addAnnotation(descriptor)
 
+    override fun visitNestHost(nestHost: String) {
+        add(nestHost)
+    }
+
     override fun visitNestMember(nestMember: String) {
         add(nestMember)
     }
@@ -121,6 +129,22 @@ internal class ReferenceVisitor : ClassVisitor(Opcodes.ASM9) {
     override fun visitPermittedSubclass(permittedSubclass: String) {
         add(permittedSubclass)
     }
+
+    override fun visitModule(name: String, access: Int, version: String?): ModuleVisitor =
+        object : ModuleVisitor(Opcodes.ASM9) {
+            override fun visitMainClass(mainClass: String?) {
+                add(mainClass)
+            }
+
+            override fun visitUse(service: String) {
+                add(service)
+            }
+
+            override fun visitProvide(service: String, providers: Array<out String>) {
+                add(service)
+                providers.forEach(::add)
+            }
+        }
 
     override fun visitRecordComponent(name: String, descriptor: String, signature: String?): RecordComponentVisitor {
         addDescriptor(descriptor)
@@ -275,6 +299,7 @@ internal class ReferenceVisitor : ClassVisitor(Opcodes.ASM9) {
 
             private fun addHandle(handle: Handle) {
                 add(handle.owner)
+                addDescriptor(handle.desc)
             }
 
             private fun addDynamic(dynamic: ConstantDynamic) {
