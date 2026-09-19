@@ -52,7 +52,7 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.10.2"
+    id("io.github.ictechgy.kartograph") version "0.11.0"
 }
 ```
 
@@ -212,9 +212,9 @@ A finding, including `unreachable`, is a fact about the input graph you supplied
 
 kartograph is MIT licensed. Copyright and license texts of the dependencies bundled in distributions ship together in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and [`LICENSES/`](LICENSES/).
 
-## External bridge evidence in development
+## External bridge evidence
 
-`dead --external-retentions <file>` reads v0 documents from a development isthmus
+`dead --external-retentions <file>` reads v0 documents from isthmus 0.8.0+
 `retentions --for kartograph`. Every actual JVM node ID must exist in the indexed graph; malformed
 or unmatched input fails without partial application. The called member's containing-type chain is retained. The normal opt-in private-member
 entry policy still applies; the owner expansion itself does not select sibling methods. `dead --explain` shows EXTERNAL_BRIDGE with the

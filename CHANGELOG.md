@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-20
+
 ### Added
 
 - Accept isthmus external-retentions v0 in `dead --external-retentions`, retain exact JVM nodes and
@@ -372,7 +374,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/ictechgy/kartograph/compare/v0.10.2...v0.11.0
 [0.10.2]: https://github.com/ictechgy/kartograph/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/ictechgy/kartograph/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/ictechgy/kartograph/compare/v0.9.0...v0.10.0
