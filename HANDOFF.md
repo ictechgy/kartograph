@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-19 (기준 `origin/main` 4c12ce6, `VERSION` 0.10.2)
+마지막 갱신: 2026-09-19 (기준 `origin/main` 3a5d142, `VERSION` 0.10.2)
 
 ## 목표
 
@@ -15,12 +15,12 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
   (GitHub Release draft=false 확인). `CHANGELOG.md` Unreleased에는 이후 머지된 #75의 `input-hint` 항목이 있다.
 - 2026-09-16~18에 머지된 PR: #59 impact 결함 → #60 EventChannel → #61 fingerprint 병렬화 → #62 단계 B 기각 기록 → #63 과제 종료 결론 →
   #64 3관점 리뷰 반영 → #65 JDK 17/21 재측정 → #66 README 퇴고 → #67 Expo Modules(다른 세션) → #68 HANDOFF 완료 절 → #69 HANDOFF 갱신 → #70 로컬 문서 통합(squash `9e377fd`) →
-  #47 Dependabot `jvm` 2.4.20(squash `5d8e491`) → #71 release 0.10.1(squash `0ea604a`) → #73 unmatched keep rule 진단(squash `18c502d`) → #74 release 0.10.2(squash `ecaa2be`) → #75 누락 입력 input-hint 진단(squash `b7ea7f6`) → #76 HANDOFF 갱신(squash `bedb714`) → #77 런타임 근거 confidence(squash `4c12ce6`).
+  #47 Dependabot `jvm` 2.4.20(squash `5d8e491`) → #71 release 0.10.1(squash `0ea604a`) → #73 unmatched keep rule 진단(squash `18c502d`) → #74 release 0.10.2(squash `ecaa2be`) → #75 누락 입력 input-hint 진단(squash `b7ea7f6`) → #76 HANDOFF 갱신(squash `bedb714`) → #77 런타임 근거 confidence(squash `4c12ce6`) → #78 HANDOFF 갱신(squash `a3f33ce`) → #79 미사용 선언 의존성(squash `3a5d142`).
 - 2026-09-19 **PRD 개정**: "런타임 커버리지 통합 금지(정적 사실만)" 조항을 "JaCoCo/Kover를 실행·결합해 수집하지 않는다.
   사용자가 제공한 class-list·JaCoCo/Kover XML은 `dead`의 `runtime-observed` confidence 표시용 선택 입력으로만 받는다"로 바꿨다(PR #77).
   finding·strict·종료 코드는 그대로이고, 손상된 근거 입력은 도구 실패로 거부한다.
 - 2026-09-19 외부 리뷰 인프라: `packet-review`가 provider(glm·qwen)·effort·파일 수와 무관하게 `packet-ask exited 125`로 실패했다.
-  단일 파일 최소 packet도 동일했고, 한 번은 `hourly packet-review limit reached (6)`이었다. #75·#77은 내부 독립 리뷰 + CI로 검증했다.
+  단일 파일 최소 packet도 동일했고, 한 번은 `hourly packet-review limit reached (6)`이었다. #75·#77·#79는 내부 독립 리뷰 + CI로 검증했다.
   같은 시각 `chore/release-0.10.2`·`fix/expo-dsl-scan-gaps` 원격 브랜치를 삭제했고(합의 완료), #75·#77의 작업 브랜치도 머지 후 삭제했다.
 - 열린 PR: 없음(2026-09-19, #75 머지 후 기준). PR #72(Expo DSL 중첩 제네릭·FQN·this. 스캔, `fix/expo-dsl-scan-gaps`의 작업)가 squash `81cb6eb`로 머지됐고, 이전 세션 작업 `feat/unmatched-keep-rule-diagnostics`는 worktree·원격 모두 정리했다.
   메인 체크아웃은 `main`으로 전환했고 오래된 브랜치를 대대적으로 정리했다(사용자 승인): 로컬 35개·원격 47개를 삭제했다
@@ -166,13 +166,35 @@ C4·S7(소) → S1(소) → C5(소~중) → C2(중, 재측정 가치 최대) →
 - 남은 한계: class 단위 판정이라 method 단위 실행·실행 횟수·호출 경로를 증명하지 않고, LCOV·method 단위 매핑은 후속이다.
   Gradle plugin은 기존대로 confidence를 전달하지 않는다(입력 배선은 필요해지면 별도 합의).
 
+## 완료 — P1.1-1 미사용 선언 의존성 (2026-09-19, PR #79)
+
+- `kartograph dependencies`가 선언 목록(TSV: coordinate·scope·artifact)과 classfile 참조를 대조해 참조가
+  없는 dependency를 `unused-dependency`로 text/JSON에 보고한다. 빌드·커버리지·processor를 실행하지 않는다.
+- 참조는 `index.ExternalReferenceScanner`가 그래프 없이 classfile을 직접 읽어 모은다: descriptor(호출·field·
+  선언), annotation(type-use 포함)과 값, invokedynamic descriptor·handle(descriptor 포함)·인자,
+  LDC/ConstantDynamic, type 참조·상속, try-catch, 지역 변수, record/nest(host 포함)/permitted,
+  module uses/provides/main class. generic signature 전용 타입은 bytecode에 남지 않아 제외한다.
+- 판정은 `analysis.DependencyFindings` 순수 함수. `api`·`implementation`·`compileOnly`를 판정하고
+  `testImplementation`·`testCompileOnly`는 `--test-classes`가 있을 때만 판정한다. processor·runtime-only와
+  test root 없는 test scope는 skip으로 세고 limitation으로 알린다. class 없는 artifact도 개수만 보고한다.
+- 입력/출력: `export.DependencyListCodec`(fail-closed TSV)과 `DependencyReporter`(text/json). artifact는
+  project-relative 경로를 그대로, 절대경로는 파일 이름만 출력한다. `--strict`는 finding이 있으면 exit 1.
+- 검증: `:index`·`:analysis`·`:export`·`:cli` 테스트(신규 `ExternalReferenceScannerTest`가 ASM 합성과
+  javac lambda·method reference를 모두 고정), `Scripts/verify-cli-contract.sh`, smoke gate, 자체 도그푸딩,
+  CI 4 job pass(`test` 25m19s, run 35430987941). 내부 독립 리뷰 2회에서 blocker 3건(invokedynamic/descriptor·
+  type annotation 누락, 모든 인덱싱 비용, method handle descriptor 오탐)과 major 4건(test scope 오탐,
+  nest host, SOURCE-retention 한계, 인덱싱 비용)을 `8c7a820`·`00c8f92`에서 반영했다.
+- 남은 것(P1.1-2 후속): api/impl 오배치·undeclared(전이) 판정, Gradle plugin 자동 배선, sarif/gradle/
+  github-actions/markdown 형식과 baseline/suppress, processor scope의 생성 코드 귀속, module-info 외
+  JPMS 세부.
+
 ## 다음 할 일 (순서대로)
 
 1. 경쟁 툴 대비 개선 시퀀스(사용자가 전체 진행을 승인, PR 단위·각각 머지 승인 필요):
    - ~~P1.3 무력 keep rule 진단~~ → PR #73으로 완료. `dead`가 보존 근거 0건인 root 생성 keep rule을 `unmatched-keep-rule`로 전 형식에 보고(JSON `unmatchedKeepRules`). 판정은 `KeepRuleRetention.unmatched`(근거 위치 파생), 비-root 지시자는 파서가 KeepRule로 만들지 않아 대상 아님. 삭제 승인 아님·strict 비개입.
    - ~~P1.4 누락 입력 힌트~~ → PR #75로 완료(위 완료 절 참조).
    - ~~P1.2 런타임 근거 인제스트~~ → PR #77로 최소 슬라이스 완료(위 완료 절 참조). LCOV·method 단위 매핑은 후속 후보.
-   - P1.1 선언 의존성 분석: classpath header + bytecode 참조로 unused 의존성·api/impl 오배치·미사용 kapt(DAAGP 가치를 class-그래프 정확도로). 다음 착수 대상이다.
+   - ~~P1.1-1 선언 의존성 분석(미사용)~~ → PR #79로 완료(위 완료 절 참조). P1.1-2로 api/impl 오배치·undeclared·Gradle plugin·전 형식·processor 귀속이 남아 있고 다음 착수 대상이다.
    - 그 뒤 P2(`impact` affected-modules 출력·경로 질의·dead cluster root·rules 확장·cycle 최소 절단)와 P3(res·HTML 리포트·dex/AAB 입력·CLI 자동발견)는 재합의 대상. 경쟁 툴 대비 갭 분석 원본은 이 세션 대화와 PR 본문에 있다.
    - 위 "경쟁 조사 — codegraph 대비 개선점" 섹션의 C1~C5·S1~S7은 별도 조사의 **끼워 넣기 후보**다(권장 순서는 그 섹션 말미). 이 시퀀스와 교체가 아니라 병행 후보로 보고 착수는 합의가 필요하다.
 2. 선택 과제(착수 전 사용자 합의): (a) cold/full 1.05~1.09의 병목으로 추정되는 spool 쓰기·header 파싱 시간 계측(설계 노트 §12 B3), (b) README 설치 절에 "JDK 21 이상에서 fingerprint가 빠르다" 한 줄 추가 여부, (c) Expo `requireOptionalNativeModule`의 선택적 부재 의미(#67 세션의 별개 이슈).
@@ -180,7 +202,7 @@ C4·S7(소) → S1(소) → C5(소~중) → C2(중, 재측정 가치 최대) →
 
 ## 재개 프롬프트
 
-저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 `git status --short --branch`를 확인해줘. 기준 main 4c12ce6까지 PR #59~#77이 반영됐고 0.10.1·0.10.2가 공개됐어. 한 클래스 변경 속도 과제는 미달 기록을 유지한 채 종료됐으니 반복하지 마. 경쟁 툴 개선 시퀀스는 P1.3(미매칭 keep rule 진단)·P1.4(누락 입력 input-hint)·P1.2(런타임 근거 confidence, PRD 개정 포함)까지 완료됐고 다음은 P1.1(선언 의존성 분석)이야. "경쟁 조사 — codegraph 대비 개선점" 섹션의 C/S 항목은 별도 조사의 끼워 넣기 후보로, 착수 전에 어느 쪽을 먼저 할지 나와 합의해. 외부 GLM 리뷰(packet-review)는 2026-09-19에 provider·파일 수와 무관하게 `packet-ask exited 125`로 실패했으니 재개 시 상태를 다시 확인하고, 계속 불가하면 내부 독립 리뷰 + CI로 대체할지 나와 합의해. 원본 stash와 등록된 보존 worktree는 유지하고, 미추적 사용자 파일을 함부로 정리하지 마. 새 작업은 나와 범위를 합의하고, PR마다 리뷰와 CI를 확인하고 머지는 승인받고 해. 측정 근거와 복원 방법은 아래 기록을 참고해.
+저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 `git status --short --branch`를 확인해줘. 기준 main 3a5d142까지 PR #59~#79가 반영됐고 0.10.1·0.10.2가 공개됐어. 한 클래스 변경 속도 과제는 미달 기록을 유지한 채 종료됐으니 반복하지 마. 경쟁 툴 개선 시퀀스는 P1.3(미매칭 keep rule 진단)·P1.4(누락 입력 input-hint)·P1.2(런타임 근거 confidence, PRD 개정 포함)·P1.1-1(미사용 선언 의존성)까지 완료됐고 다음은 P1.1-2(api/impl 오배치·undeclared·Gradle plugin·전 형식·processor 귀속)야. "경쟁 조사 — codegraph 대비 개선점" 섹션의 C/S 항목은 별도 조사의 끼워 넣기 후보로, 착수 전에 어느 쪽을 먼저 할지 나와 합의해. 외부 GLM 리뷰(packet-review)는 2026-09-19에 provider·파일 수와 무관하게 `packet-ask exited 125`로 실패했으니 재개 시 상태를 다시 확인하고, 계속 불가하면 내부 독립 리뷰 + CI로 대체할지 나와 합의해. 원본 stash와 등록된 보존 worktree는 유지하고, 미추적 사용자 파일을 함부로 정리하지 마. 새 작업은 나와 범위를 합의하고, PR마다 리뷰와 CI를 확인하고 머지는 승인받고 해. 측정 근거와 복원 방법은 아래 기록을 참고해.
 
 ## 0.1.x 구현 이력
 
