@@ -7,6 +7,8 @@ import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.ExternalCall
+import dev.kartograph.core.ExternalBridgeCaller
+import dev.kartograph.core.ExternalBridgeEvidence
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.InvocationKind
@@ -26,6 +28,23 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
 class QuerySnapshotCodecTest {
+    @Test
+    fun `snapshot preserves bridge callers and rejects unmatched external identities`() {
+        val node = GraphNode(NodeId("method:Camera#read()V"), "read", NodeKind.METHOD)
+        val caller = ExternalBridgeCaller("dart", "lib/camera.dart", 7)
+        val evidence = RetentionEvidence(node.id, RetentionReason.EXTERNAL_BRIDGE, SourceLocation(caller.path, 7),
+            ExternalBridgeEvidence("camera", "read", caller))
+        val snapshot = QuerySnapshot(CodeGraph(listOf(node), emptyList()), listOf(evidence), emptyList())
+        for (compact in listOf(false, true)) {
+            val encoded = QuerySnapshotCodec.render(snapshot, compact)
+            assertEquals(listOf(evidence), QuerySnapshotCodec.parse(encoded).retention)
+            val retentionObject = encoded.substringAfter("\"retention\": [")
+            assertEquals(true, retentionObject.startsWith("{\"externalBridge\":"))
+            val unmatched = snapshot.copy(retention = listOf(evidence.copy(nodeId = NodeId("method:Absent#read()V"))))
+            assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.parse(QuerySnapshotCodec.render(unmatched, compact)) }
+        }
+    }
+
     @Test
     fun `refuses unrepresentable source locations instead of silently dropping them`() {
         val node = GraphNode(NodeId("class:A"), "A", NodeKind.CLASS)

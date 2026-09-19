@@ -18,6 +18,10 @@ public class BridgeFactScanner(private val projectRoot: Path) {
     public fun scanEvents(generatedAt: String? = null, graph: CodeGraph? = null): BridgeFactsDocument =
         ChannelBridgeScanner(projectRoot, EVENT_CHANNEL_SPEC).scan(generatedAt, graph)
 
+    /** 코어 RN 전역 이벤트 방출을 별도의 v2 문서로 내보낸다. */
+    public fun scanReactNativeEvents(generatedAt: String? = null, graph: CodeGraph? = null): BridgeFactsDocument =
+        ReactNativeEventScanner(projectRoot).scan(generatedAt, graph)
+
     /**
      * 프로젝트 상대 근거와 조인 불가능한 사실의 한계를 bridge-facts v1 문서로 만든다.
      * generatedAt을 생략하면 최신 source 수정 시각을 snapshot 시각으로 사용한다(빈 입력은 Unix epoch).

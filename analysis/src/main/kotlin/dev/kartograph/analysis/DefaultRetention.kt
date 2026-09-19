@@ -27,7 +27,7 @@ public object DefaultRetention {
             addAll(AndroidEntryPointRetention.find(graph, classHierarchy))
             addAll(InlineConstantRetention.find(graph))
         }
-        val runtimeEvidence = RuntimeRetentionExpansion.expand(graph, evidence)
+        val runtimeEvidence = RuntimeRetentionExpansion.expand(graph, ExternalBridgeRetention.expand(graph, evidence))
         return if (includePrivateMembers) PrivateMemberRetention.expand(graph, runtimeEvidence) else runtimeEvidence
     }
 }

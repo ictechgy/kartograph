@@ -495,7 +495,7 @@ private fun maskDeclarationStrings(source: String): String = buildString(source.
     }
 }
 
-private fun maskDeclarationComments(source: String): String = buildString(source.length) {
+internal fun maskDeclarationComments(source: String): String = buildString(source.length) {
     var block = false
     var line = false
     var quote = false

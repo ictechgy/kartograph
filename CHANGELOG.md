@@ -8,6 +8,12 @@
 
 ### Added
 
+- Accept isthmus external-retentions v0 in `dead --external-retentions`, retain exact JVM nodes and
+  their owning types, and preserve original bridge caller evidence in `--explain` and snapshots.
+  Unmatched IDs and malformed documents fail without partial application.
+- Export core React Native global event emissions with `bridges --rn-events`, using a separate
+  v2 transport. Dynamic names and unsupported emitter bindings remain explicit limitations.
+
 - `dead`가 누락된 보존 입력을 `input-hint` 진단으로 보고한다. keep/consumer rule이나 dependency classpath
   입력이 전달되지 않았거나 manifest가 component 보존 근거를 만들지 못한 채 finding이 보고되면
   text/gradle/github-actions/sarif/json/markdown 형식에 측정 사실과 과소계측 가능성을 함께 싣는다.

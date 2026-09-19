@@ -75,6 +75,7 @@ public object QuerySnapshotCodec {
         "retention" to snapshot.retention.distinct().sortedWith(compareBy({ it.nodeId }, { it.reason.name },
             { it.location?.path.orEmpty() }, { it.location?.line ?: 0 }, { it.location?.column ?: 0 })).map { item ->
             sortedMapOf("nodeId" to item.nodeId.value, "reason" to item.reason.name.lowerCamel(), "location" to locationValue(item.location))
+                .let { value -> item.externalBridge?.let { (value + ("externalBridge" to ExternalRetentionCodec.evidenceValue(it))).toSortedMap() } ?: value }
         },
         "graph" to sortedMapOf(
             "nodes" to snapshot.graph.nodeIds.map { snapshot.graph.nodes.getValue(it).toValue().let { value -> encoding?.node(value) ?: value } },
@@ -154,7 +155,11 @@ public object QuerySnapshotCodec {
         }
         val retention = list(document["retention"]).map { raw ->
             val item = objectValue(raw)
-            RetentionEvidence(NodeId(string(item["nodeId"])), enumValue(item["reason"]), location(item["location"]))
+            RetentionEvidence(NodeId(string(item["nodeId"])), enumValue(item["reason"]), location(item["location"]),
+                item["externalBridge"]?.let { ExternalRetentionCodec.evidence(objectValue(it)) })
+        }
+        require(retention.all { it.reason != RetentionReason.EXTERNAL_BRIDGE || it.nodeId in ids }) {
+            "query snapshot contains unmatched external bridge identities; recapture the snapshot"
         }
         val suppressed = strings(document["suppressed"]).map(::NodeId).toSet()
         require(suppressed.all(ids::contains)) { "query snapshot contains invalid baseline references" }
