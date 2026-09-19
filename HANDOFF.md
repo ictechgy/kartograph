@@ -2,13 +2,46 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-19 (기준 `origin/main` aa51968, `VERSION` 0.10.2)
+마지막 갱신: 2026-09-20 (main / origin/main `37f0053`, PR #82 머지; `VERSION` 0.10.2, 브리지 확장은 미발행)
 
 ## 목표
 
 Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물에서 만들고, 그 위에서 미사용 코드·순환·레이어 규칙·지표·변경 영향을 근거와 함께 답하는 CLI와 Gradle plugin. [cartograph](../cartograph)(Swift)의 자매. 제품 범위는 `docs/PRD.md`.
 
 ## 현재 상태
+
+### 자매 브리지 확장 머지 완료 — 2026-09-20
+
+- [PR #82](https://github.com/ictechgy/kartograph/pull/82)을 squash merge했다(`37f0053`).
+  로컬·원격 main이 같고 머지 트리는 검토·CI를 통과한 PR head와 일치한다.
+  이 HANDOFF는 해당 머지의 인계 기록이다. 기존 `.claude/`와
+  `HANDOFF.cartograph-notes.md`는 사용자 미추적 파일로 보존했다.
+- `dead --external-retentions <path>`가 isthmus external-retentions v0를 실제 JVM ID에
+  적용한다. EXTERNAL_BRIDGE 근거·원본 caller 위치를 explain과 query snapshot v1/v2에
+  보존하고, MEMBER 관계의 소유 타입까지 같은 근거를 전달한다. 잘못된 입력·빈 ID·그래프에
+  없는 ID는 부분 적용 없이 실패한다. 관련 없는 형제 메서드를 함께 보존하지 않는다.
+- `bridges --rn-events`는 명시적인 RCTDeviceEventEmitter 요청 뒤 emit을 v2
+  `react-native-event`로 낸다. 완전 수식 이름은 import 없이 인식하며, 잘못 닫힌 인자는
+  동적으로 남긴다. 실제 심볼 연결은 `snapshot --include-paths`와 유일한 소스 경로 해석이
+  필요하다. package/디렉터리 불일치와 build witness·신선도 공백을 추측으로 해소하지 않는다.
+- [CI run 35453722844](https://github.com/ictechgy/kartograph/actions/runs/35453722844)의
+  test·JDK 17/21·최소 AGP 조합 4잡 모두 통과했다. 전체 tests/Kover·CLI/agent·compiler/
+  precision·Android corpus·Gradle plugin·metadata 게이트가 포함된다. 앞선 JDK 21 로컬
+  검증은 760 tests, 실패·오류·skip 0, corpus 44 retained/4 reportable, 6모듈 자기 분석
+  7,173 nodes·총 5.46초였다. 실제 Kotlin snapshot→bridges→isthmus retention→dead/explain과
+  JS/Swift/Kotlin RN 이벤트 조인도 검증했다.
+- GLM packet-ask 초기 `42a71c2772aa`, 수정분 `3d7e8434c741` 리뷰를 완료했고
+  [반영·기각 근거](https://github.com/ictechgy/kartograph/pull/82#issuecomment-5743320316)를
+  PR에 남겼다. 아래 과거 packet-review 실패는 현재 차단 상태가 아니다.
+- 동반 머지: isthmus [#96](https://github.com/ictechgy/isthmus/pull/96), cartograph
+  [#123](https://github.com/ictechgy/cartograph/pull/123), dartograph
+  [#127](https://github.com/ictechgy/dartograph/pull/127).
+  [교환 계약](../isthmus/docs/GRAPH-EXCHANGE.md)과 [전체 인계](../isthmus/HANDOFF.md)를 참조한다.
+  이전 임시 로그가 현재도 존재한다고 가정하지 말고 PR/CI와 남아 있는 저장소 기록을 확인한다.
+- 이번 구현·검증·머지는 완료했다. 새 태그/발행은 하지 않았으며 기존 0.10.2 발행본과
+  이 main의 추가 기능을 구분한다. RN 엔진/앱 전체 실행 검증은 아니다.
+
+### 이전 기준 — 2026-09-19 (PR #80까지의 이력)
 
 - **0.10.1·0.10.2를 공개했다(2026-09-18)**: 0.10.1은 tag `v0.10.1` → release workflow 전체 게이트 성공(run 35290692293) →
   GitHub Release 6 asset과 Plugin Portal 발행을 확인했다. 0.10.2는 별도 세션이 PR #74(squash `ecaa2be`)로 준비·머지하고 tag `v0.10.2`를 발행했다
@@ -192,6 +225,9 @@ C4·S7(소) → S1(소) → C5(소~중) → C2(중, 재측정 가치 최대) →
 
 ## 다음 할 일 (순서대로)
 
+자매 브리지 확장 PR #82와 동반 세 PR은 머지 완료다. 이번 작업의 미해결 구현·리뷰는 없고
+발행은 별도다. 아래 기존 후속 후보는 현재 사용자 요청과 이미 승인된 범위에 맞춰 선택한다.
+
 1. 경쟁 툴 대비 개선 시퀀스(사용자가 전체 진행을 승인, PR 단위·각각 머지 승인 필요):
    - ~~P1.3 무력 keep rule 진단~~ → PR #73으로 완료. `dead`가 보존 근거 0건인 root 생성 keep rule을 `unmatched-keep-rule`로 전 형식에 보고(JSON `unmatchedKeepRules`). 판정은 `KeepRuleRetention.unmatched`(근거 위치 파생), 비-root 지시자는 파서가 KeepRule로 만들지 않아 대상 아님. 삭제 승인 아님·strict 비개입.
    - ~~P1.4 누락 입력 힌트~~ → PR #75로 완료(위 완료 절 참조).
@@ -204,7 +240,14 @@ C4·S7(소) → S1(소) → C5(소~중) → C2(중, 재측정 가치 최대) →
 
 ## 재개 프롬프트
 
-저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 `git status --short --branch`를 확인해줘. 기준 main aa51968까지 PR #59~#80이 반영됐고 0.10.1·0.10.2가 공개됐어. 한 클래스 변경 속도 과제는 미달 기록을 유지한 채 종료됐으니 반복하지 마. 경쟁 툴 개선 시퀀스는 P1.3(미매칭 keep rule 진단)·P1.4(누락 입력 input-hint)·P1.2(런타임 근거 confidence, PRD 개정 포함)·P1.1-1(미사용 선언 의존성)까지 완료됐고 다음은 P1.1-2(api/impl 오배치·undeclared·Gradle plugin·전 형식·processor 귀속)야. "경쟁 조사 — codegraph 대비 개선점" 섹션의 C/S 항목은 별도 조사의 끼워 넣기 후보로, 착수 전에 어느 쪽을 먼저 할지 나와 합의해. 외부 GLM 리뷰(packet-review)는 2026-09-19에 provider·파일 수와 무관하게 `packet-ask exited 125`로 실패했으니 재개 시 상태를 다시 확인하고, 계속 불가하면 내부 독립 리뷰 + CI로 대체할지 나와 합의해. 원본 stash와 등록된 보존 worktree는 유지하고, 미추적 사용자 파일을 함부로 정리하지 마. 새 작업은 나와 범위를 합의하고, PR마다 리뷰와 CI를 확인하고 머지는 승인받고 해. 측정 근거와 복원 방법은 아래 기록을 참고해.
+저장소 루트에서 HANDOFF.md의 현재 상태와 적용 AGENTS.md를 읽고 실제 branch/status를 확인해줘.
+현재 main은 `37f0053`(PR #82)이고 external-retentions·RN 이벤트 추출이 GLM·CI를 거쳐 머지됐어.
+새 발행은 하지 않았으므로 기존 0.10.2와 main을 구분해. 이전 packet-review 실패는 현재 차단이
+아니며 #82의 packet-ask GLM 반영·기각 기록은 PR 코멘트에 있어. 이번 브리지 작업은 완료됐고,
+기존 다음 후보는 P1.1-2(api/impl 오배치·undeclared·Gradle plugin·전 형식·processor 귀속)야.
+한 클래스 속도 과제의 미달 결론과 과거 근거는 유지하고 완료된 작업을 반복하지 마.
+이 HANDOFF 수정·미추적 사용자 파일·원본 stash·등록된 worktree를 보존하고, 새 작업은 최신
+사용자 요청과 승인 범위를 따라 진행해. 과거 기록을 새 실행 권한으로 삼지 마.
 
 ## 0.1.x 구현 이력
 
