@@ -323,6 +323,20 @@ class AdoptionReportTest {
     }
 
     @Test
+    fun `runtime-observed confidence renders in machine and review formats`() {
+        val confidence = mapOf(findings.first().nodeId to FindingConfidence.RUNTIME_OBSERVED)
+
+        val json = AdoptionReporter.render(ReportFormat.JSON, findings, emptyList(), 0, confidence)
+        assertContains(json, "\"confidence\": \"runtime-observed\"")
+
+        val sarif = AdoptionReporter.render(ReportFormat.SARIF, findings, emptyList(), 0, confidence)
+        assertContains(sarif, "\"properties\": {\"confidence\": \"runtime-observed\"}")
+
+        val markdown = AdoptionReporter.render(ReportFormat.MARKDOWN, findings, emptyList(), 0, confidence)
+        assertContains(markdown, "| `src/Z file.kt:7:2` | `class:z/Unused` | runtime-observed |")
+    }
+
+    @Test
     fun `report format options resolve exactly`() {
         assertEquals(ReportFormat.MARKDOWN, ReportFormat.fromOption("markdown"))
         assertEquals(null, ReportFormat.fromOption("md"))
