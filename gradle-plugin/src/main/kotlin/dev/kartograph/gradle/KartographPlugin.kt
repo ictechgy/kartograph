@@ -9,6 +9,7 @@ public class KartographPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val extension = project.extensions.create("kartograph", KartographExtension::class.java)
         extension.strict.convention(false)
+        extension.dependencyIncludeTests.convention(false)
         extension.includePrivateMembers.convention(false)
         extension.reportFormat.convention("gradle")
         extension.includeSourcePaths.convention(false)
@@ -26,8 +27,9 @@ public class KartographPlugin : Plugin<Project> {
         project.pluginManager.withPlugin("com.android.application") { AndroidTasks.configureAndroid(project, extension) }
         project.pluginManager.withPlugin("com.android.library") { AndroidTasks.configureAndroid(project, extension) }
         project.afterEvaluate {
-            if (extension.snapshotsEnabled.get() && project.pluginManager.hasPlugin("java")) {
-                JvmSnapshotTasks.register(project, extension)
+            if (project.pluginManager.hasPlugin("java")) {
+                DependencyTasks.registerJvm(project, extension)
+                if (extension.snapshotsEnabled.get()) JvmSnapshotTasks.register(project, extension)
             }
         }
     }

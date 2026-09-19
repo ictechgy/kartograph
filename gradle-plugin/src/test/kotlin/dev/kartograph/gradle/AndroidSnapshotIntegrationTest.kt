@@ -58,6 +58,8 @@ class AndroidSnapshotIntegrationTest {
             }
             kartograph {
                 snapshotsEnabled = true
+                dependencyIncludeTests = true
+                reportFormat = "json"
                 includeSourcePaths = true
                 snapshotKotlinToolchain = javaToolchains.launcherFor {
                     languageVersion = JavaLanguageVersion.of(${Runtime.version().feature()})
@@ -78,10 +80,13 @@ class AndroidSnapshotIntegrationTest {
         write(root, "src/test/kotlin/p/KotlinCheck.kt", "package p; class KotlinCheck { fun check() = Entry().value() }")
         fun build() = GradleRunner.create().withProjectDir(root.toFile())
             .withDebug(inProcess)
-            .withArguments(listOf("kartographSnapshotDebug", "--stacktrace") +
+            .withArguments(listOf("kartographSnapshotDebug", "kartographDependenciesDebug", "--stacktrace") +
                 if (inProcess) emptyList() else listOf("--configuration-cache")).build()
         val result = build()
         assertEquals(null, result.task(":testDebugUnitTest"))
+        val dependencyText = Files.readString(root.resolve("build/reports/kartograph/debug-dependencies.txt"))
+        assertTrue(dependencyText.contains("\"command\": \"dependencies\""))
+        assertFalse(dependencyText.contains("test class roots were not supplied"))
         val file = root.resolve("build/reports/kartograph/debug-snapshot.json")
         val text = Files.readString(file)
         val snapshot = QuerySnapshotCodec.parse(text)

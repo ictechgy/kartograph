@@ -5,6 +5,7 @@ public enum class DependencyScope(public val option: String) {
     API("api"),
     IMPLEMENTATION("implementation"),
     COMPILE_ONLY("compileOnly"),
+    COMPILE_ONLY_API("compileOnlyApi"),
     RUNTIME_ONLY("runtimeOnly"),
     ANNOTATION_PROCESSOR("annotationProcessor"),
     KAPT("kapt"),

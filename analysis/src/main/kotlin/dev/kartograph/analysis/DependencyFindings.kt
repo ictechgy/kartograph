@@ -16,6 +16,8 @@ public data class DependencyAnalysisResult(
     val analyzedCount: Int,
     val skippedCount: Int,
     val withoutClassCount: Int,
+    val advice: List<DependencyAdvice> = emptyList(),
+    val ambiguousClassCount: Int = 0,
 )
 
 /** 선언 의존성과 classfile 참조를 대조해 unused 후보를 파생한다. */
@@ -25,6 +27,7 @@ public object DependencyFindings {
         DependencyScope.API,
         DependencyScope.IMPLEMENTATION,
         DependencyScope.COMPILE_ONLY,
+        DependencyScope.COMPILE_ONLY_API,
         DependencyScope.TEST_IMPLEMENTATION,
         DependencyScope.TEST_COMPILE_ONLY,
     )

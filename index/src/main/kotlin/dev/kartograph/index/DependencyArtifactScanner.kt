@@ -16,7 +16,8 @@ public class DependencyArtifactScanner {
     public fun scan(artifact: Path): Set<String> = when {
         artifact.isDirectory() -> scanDirectory(artifact)
         artifact.isRegularFile() && artifact.fileName.toString().endsWith(".jar", ignoreCase = true) -> scanJar(artifact)
-        else -> throw ClassIndexingException("dependency artifact must be a class directory or JAR")
+        artifact.isRegularFile() && artifact.fileName.toString().endsWith(".aar", ignoreCase = true) -> scanAar(artifact)
+        else -> throw ClassIndexingException("dependency artifact must be a class directory, JAR or AAR")
     }
 
     private fun scanDirectory(root: Path): Set<String> = try {
@@ -41,6 +42,39 @@ public class DependencyArtifactScanner {
         }
     } catch (error: IOException) {
         throw ClassIndexingException("dependency artifact JAR cannot be read", error)
+    }
+
+    private fun scanAar(aar: Path): Set<String> = try {
+        JarFile(aar.toFile(), false).use { archive ->
+            val names = sortedSetOf<String>()
+            archive.entries().asSequence().filter { entry ->
+                !entry.isDirectory && (entry.name == "classes.jar" || (entry.name.startsWith("libs/") && entry.name.endsWith(".jar")))
+            }.forEach { entry ->
+                val temporary = Files.createTempFile("kartograph-dependency-", ".jar")
+                try {
+                    archive.getInputStream(entry).use { input ->
+                        Files.newOutputStream(temporary).use { output ->
+                            val buffer = ByteArray(8192)
+                            var total = 0L
+                            var count = input.read(buffer)
+                            while (count >= 0) {
+                                total += count
+                                if (total > 256L * 1024 * 1024) throw ClassIndexingException("embedded dependency JAR exceeds 256 MiB")
+                                output.write(buffer, 0, count)
+                                count = input.read(buffer)
+                            }
+                        }
+                    }
+                    // JarFile은 중앙 디렉터리까지 검증한다. 잘린 내부 ZIP을 빈 artifact로 취급하지 않는다.
+                    names += scanJar(temporary)
+                } finally {
+                    Files.deleteIfExists(temporary)
+                }
+            }
+            names
+        }
+    } catch (error: IOException) {
+        throw ClassIndexingException("dependency artifact AAR cannot be read", error)
     }
 
     // multi-release 변형과 module/package 기술자는 일반 참조 대상이 아니므로 base entry만 센다.

@@ -20,6 +20,24 @@ import org.objectweb.asm.TypeReference
 
 class ExternalReferenceScannerTest {
     @Test
+    fun `generic signature types remain dependency uses after descriptor erasure`(@TempDir root: Path) {
+        val library = root.resolve("library").createDirectories()
+        compileJava(listOf(source(root, "lib-src", "lib/GenericOnly.java",
+            "package lib; public class GenericOnly {}")), library)
+        val app = root.resolve("classes").createDirectories()
+        compileJava(listOf(source(root, "app-src", "app/Api.java", """
+            package app;
+            public class Api {
+              public java.util.List<lib.GenericOnly> values;
+              private String ignored = "lib.Decoy";
+            }
+        """.trimIndent())), app, listOf(library))
+        val referenced = ExternalReferenceScanner().scan(listOf(app))
+        assertContains(referenced, "lib/GenericOnly")
+        assertTrue("lib/Decoy" !in referenced)
+    }
+
+    @Test
     fun `scanner collects descriptors indy type annotations and constants`(@TempDir root: Path) {
         val classes = root.resolve("classes").createDirectories()
         classes.resolve("app/App.class").also { it.parent.createDirectories() }.writeBytes(referencingClass())

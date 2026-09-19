@@ -1,12 +1,12 @@
 package dev.kartograph.cli
 
-import dev.kartograph.analysis.DependencyFindings
+import dev.kartograph.analysis.DependencyConfigurationAnalysis
+import dev.kartograph.analysis.DependencyLimitations
 import dev.kartograph.export.DependencyListCodec
 import dev.kartograph.export.DependencyReporter
 import dev.kartograph.export.ReportFormat
 import dev.kartograph.index.ClassIndexingException
-import dev.kartograph.index.DependencyArtifactScanner
-import dev.kartograph.index.ExternalReferenceScanner
+import dev.kartograph.index.DependencyInputScanner
 import java.io.IOException
 import java.io.PrintStream
 import java.nio.file.Files
@@ -45,47 +45,13 @@ internal object DependenciesCommand {
 
     private fun execute(options: DependenciesOptions, output: PrintStream, error: PrintStream): Int {
         val declared = DependencyListCodec.parse(Files.readString(options.dependenciesFile))
-        if (declared.isEmpty()) {
-            return toolFailure(error, "dependency list is empty")
-        }
-        val includeTestScopes = options.testClassRoots.isNotEmpty()
-        val judgedScopes = DependencyFindings.judgedScopes(includeTestScopes)
-        val referencedClasses = ExternalReferenceScanner().scan(options.classRoots + options.testClassRoots)
-        val scanner = DependencyArtifactScanner()
-        val artifactClasses = linkedMapOf<String, Set<String>>()
-        declared.forEach { dependency ->
-            if (dependency.scope !in judgedScopes || dependency.artifact in artifactClasses) return@forEach
-            val resolved = try {
-                resolveProjectPath(options.projectRoot, dependency.artifact)
-            } catch (pathError: InvalidPathException) {
-                return toolFailure(error, "dependency artifact for ${dependency.coordinate} has an invalid path")
-            }
-            if (!Files.isDirectory(resolved) && !Files.isRegularFile(resolved)) {
-                return toolFailure(error, "dependency artifact for ${dependency.coordinate} does not exist")
-            }
-            val classes = try {
-                scanner.scan(resolved)
-            } catch (scanError: ClassIndexingException) {
-                return toolFailure(error, "dependency artifact for ${dependency.coordinate} cannot be read")
-            }
-            artifactClasses[dependency.artifact] = classes
-        }
-        val result = DependencyFindings.find(declared, referencedClasses, artifactClasses, includeTestScopes)
-        val limitations = buildList {
-            add("only references from the supplied class roots are measured; reflection strings, runtime class loading, SOURCE-retention annotations, annotation processors and resource-driven use are not resolved")
-            add("generic type arguments that appear only in signatures are erased from bytecode descriptors")
-            if (!includeTestScopes) {
-                add("test class roots were not supplied; test scopes are counted but not judged")
-            }
-            if (result.skippedCount > 0) {
-                add("${result.skippedCount} declared dependencies use processor, runtime-only, or unjudged test scopes and were not judged")
-            }
-            if (result.withoutClassCount > 0) {
-                add("${result.withoutClassCount} declared artifacts contained no class files and were not judged")
-            }
-        }
+        val resolved = options.resolvedFile?.let { DependencyListCodec.parse(Files.readString(it)) }
+        if (declared.isEmpty() && resolved == null) return toolFailure(error, "dependency list is empty")
+        val inputs = DependencyInputScanner.scan(options.projectRoot, options.classRoots, options.testClassRoots, declared, resolved)
+        val result = DependencyConfigurationAnalysis.analyze(declared, inputs.main, inputs.test, inputs.artifactClasses, resolved, apiAdvice = options.library)
+        val limitations = DependencyLimitations.describe(inputs.main, inputs.test, result, resolved != null)
         output.print(DependencyReporter.render(options.reportFormat, result, limitations))
-        return if (options.strict && result.findings.isNotEmpty()) ExitStatus.FINDINGS.code else ExitStatus.SUCCESS.code
+        return if (options.strict && (result.findings.isNotEmpty() || result.advice.isNotEmpty())) ExitStatus.FINDINGS.code else ExitStatus.SUCCESS.code
     }
 
     private fun parseOptions(arguments: List<String>, error: PrintStream): DependenciesOptions? {
@@ -93,7 +59,9 @@ internal object DependenciesCommand {
         val testClassRoots = mutableListOf<Path>()
         var projectRoot: Path? = null
         var dependenciesValue: String? = null
+        var resolvedValue: String? = null
         var strict = false
+        var library = false
         var reportFormat = ReportFormat.TEXT
         var index = 0
         while (index < arguments.size) {
@@ -103,12 +71,14 @@ internal object DependenciesCommand {
                 index++
                 continue
             }
+            if (option == "--library") { library = true; index++; continue }
             val value = valueAfter(arguments, index, option, error) ?: return null
             when (option) {
                 "--classes" -> classRoots.add(Path.of(value))
                 "--test-classes" -> testClassRoots.add(Path.of(value))
                 "--project" -> projectRoot = Path.of(value).toAbsolutePath().normalize()
                 "--dependencies" -> dependenciesValue = value
+                "--resolved-dependencies" -> resolvedValue = value
                 "--report-format" -> reportFormat = ReportFormat.fromOption(value) ?: run {
                     error.println("error: invalid report format: $value")
                     return null
@@ -120,16 +90,14 @@ internal object DependenciesCommand {
             }
             index += 2
         }
-        if (reportFormat != ReportFormat.TEXT && reportFormat != ReportFormat.JSON) {
-            error.println("error: dependencies supports text and json report formats")
-            return null
-        }
         val project = projectRoot ?: return missingOption(error, "--project")
         return DependenciesOptions(
             classRoots = classRoots.takeIf(List<Path>::isNotEmpty) ?: return missingOption(error, "--classes"),
             testClassRoots = testClassRoots,
             projectRoot = project,
             dependenciesFile = resolveProjectPath(project, dependenciesValue ?: return missingOption(error, "--dependencies")),
+            resolvedFile = resolvedValue?.let { resolveProjectPath(project, it) },
+            library = library,
             strict = strict,
             reportFormat = reportFormat,
         )
@@ -164,24 +132,31 @@ internal object DependenciesCommand {
         val testClassRoots: List<Path>,
         val projectRoot: Path,
         val dependenciesFile: Path,
+        val resolvedFile: Path?,
+        val library: Boolean,
         val strict: Boolean,
         val reportFormat: ReportFormat,
     )
 
     private val HELP = """
-        Find declared dependencies that the indexed bytecode never references.
+        Review unused dependencies, API exposure and undeclared transitive dependency uses.
 
         Usage:
           kartograph dependencies --classes <directory> [--classes <directory>]... --project <directory> \
             --dependencies <file> [--test-classes <directory-or-jar>]... \
-            [--strict] [--report-format text|json]
+            [--resolved-dependencies <file>] [--library] [--strict] [--report-format text|json|sarif|gradle|github-actions|markdown]
 
         <file> is a TSV list: coordinate<TAB>scope<TAB>artifact. Blank lines and # comments are allowed,
-        artifact paths resolve against --project. api/implementation/compileOnly entries are judged;
+        artifact paths resolve against --project. --resolved-dependencies uses the same TSV shape for the
+        resolved compile classpath; without it, undeclared transitive dependencies are not checked.
+        api/implementation/compileOnly/compileOnlyApi entries are judged;
         testImplementation/testCompileOnly entries are judged only with --test-classes. Processor,
         runtime-only and unjudged test scopes are counted but not judged.
 
-        This command measures bytecode references only. A dependency reported unused may still be used
+        --library enables api/implementation placement advice for a library; application mode does not
+        infer a consumer API. JVM signatures and Kotlin metadata separate main and test uses.
+        Missing identities and ambiguous class ownership remain limitations.
+        This command measures compiled references only. A dependency reported unused may still be used
         through reflection, resources, annotation processors or class roots that were not supplied;
         it is not proof that the dependency can be removed.
     """.trimIndent() + "\n"
