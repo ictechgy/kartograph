@@ -70,6 +70,18 @@ JSON·SARIF·markdown 보고의 finding은 같은 소스 파일(파일 이름)�
 kartograph dead ... --report-format json | python3 Scripts/render-dead-comment.py > comment.md
 ```
 
+## Input hints
+
+`dead` 보고는 finding이 있을 때 누락된 보존 입력을 `input-hint` 진단으로 함께 싣는다.
+
+- `missing-keep-rules` — keep/consumer rule 입력이 하나도 전달되지 않았다.
+- `missing-classpath` — dependency classpath 입력이 전달되지 않았다.
+- `manifest-without-components` — 전달된 manifest가 component 보존 근거를 만들지 못했다.
+
+힌트는 finding이 아니므로 strict 실패·종료 코드·baseline 지문에 관여하지 않고, finding이 0건이면
+보고하지 않는다. JSON은 `inputHints` 배열(`id`·`message`)로 노출하며, Gradle plugin report도 같은
+신호를 공유한다. 문구는 보존 판정을 대신하지 않으며 과소계측 가능성만 알린다.
+
 ## Reports
 
 `--report-format`은 `text`, `gradle`, `github-actions`, `sarif`, `json`, `markdown`을 지원한다. 모든 형식은 finding을

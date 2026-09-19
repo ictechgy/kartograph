@@ -140,6 +140,92 @@ class AdoptionReportTest {
     }
 
     @Test
+    fun `input hints render as measured signals across report formats`() {
+        val hints = listOf(dev.kartograph.core.InputHint.MISSING_KEEP_RULES, dev.kartograph.core.InputHint.MISSING_CLASSPATH)
+        val noLimitations = emptyList<AnalysisLimitation>()
+
+        val text = AdoptionReporter.render(ReportFormat.TEXT, emptyList(), noLimitations, 0, inputHints = hints)
+        assertContains(text, "input-hint\tmissing-keep-rules\t")
+        assertContains(text, "input-hint\tmissing-classpath\t")
+        kotlin.test.assertTrue(text.indexOf("missing-keep-rules") < text.indexOf("missing-classpath"))
+
+        val gradle = AdoptionReporter.render(ReportFormat.GRADLE, emptyList(), noLimitations, 0, inputHints = hints)
+        assertContains(gradle, "kartograph input-hint missing-keep-rules: no keep or consumer rule inputs")
+
+        val github = AdoptionReporter.render(ReportFormat.GITHUB_ACTIONS, emptyList(), noLimitations, 0, inputHints = hints)
+        assertContains(github, "::notice title=kartograph input hint missing-keep-rules::")
+
+        val json = AdoptionReporter.render(ReportFormat.JSON, emptyList(), noLimitations, 0, inputHints = hints)
+        assertContains(json, "\"inputHints\"")
+        assertContains(json, "\"id\": \"missing-keep-rules\"")
+        assertContains(json, "\"message\": \"no dependency classpath inputs were supplied")
+
+        val sarif = AdoptionReporter.render(ReportFormat.SARIF, emptyList(), noLimitations, 0, inputHints = hints)
+        assertContains(sarif, "\"descriptor\": {\"id\": \"missing-keep-rules\"}")
+        assertContains(sarif, "\"level\": \"note\"")
+
+        val markdown = AdoptionReporter.render(ReportFormat.MARKDOWN, emptyList(), noLimitations, 0, inputHints = hints)
+        assertContains(markdown, "## Input hints")
+        assertContains(markdown, "`missing-keep-rules`")
+        assertContains(markdown, "do not fail strict mode")
+    }
+
+    @Test
+    fun `sarif notifications stay well formed when limitations unmatched rules and hints combine`() {
+        val rule = dev.kartograph.core.KeepRule(
+            declarationKind = dev.kartograph.core.KeepDeclarationKind.CLASS,
+            classNamePattern = "dev.absent.**",
+            location = SourceLocation("proguard-rules.pro", 12),
+        )
+        val hints = listOf(dev.kartograph.core.InputHint.MANIFEST_WITHOUT_COMPONENTS, dev.kartograph.core.InputHint.MISSING_KEEP_RULES)
+
+        val sarif = AdoptionReporter.render(
+            ReportFormat.SARIF,
+            emptyList(),
+            AnalysisLimitation.entries,
+            0,
+            unmatchedKeepRules = listOf(rule),
+            inputHints = hints,
+        )
+
+        assertContains(sarif, "}},{\"descriptor\": {\"id\": \"unmatchedKeepRule\"")
+        assertContains(sarif, "}},{\"descriptor\": {\"id\": \"missing-keep-rules\"")
+        assertContains(sarif, "}},{\"descriptor\": {\"id\": \"manifest-without-components\"")
+        kotlin.test.assertTrue(
+            sarif.indexOf("\"id\": \"unmatchedKeepRule\"") < sarif.indexOf("\"id\": \"missing-keep-rules\""),
+        )
+        // hints는 호출 순서와 무관하게 enum 선언 순서로 고정된다.
+        kotlin.test.assertTrue(
+            sarif.indexOf("\"id\": \"missing-keep-rules\"") < sarif.indexOf("\"id\": \"manifest-without-components\""),
+        )
+        assertFalse(sarif.contains("}{"))
+        assertFalse(sarif.contains(",,"))
+    }
+
+    @Test
+    fun `empty input hints keep report formats stable`() {
+        val noLimitations = emptyList<AnalysisLimitation>()
+
+        val text = AdoptionReporter.render(ReportFormat.TEXT, emptyList(), noLimitations, 0)
+        assertFalse(text.contains("input-hint"))
+
+        val gradle = AdoptionReporter.render(ReportFormat.GRADLE, emptyList(), noLimitations, 0)
+        assertFalse(gradle.contains("input-hint"))
+
+        val github = AdoptionReporter.render(ReportFormat.GITHUB_ACTIONS, emptyList(), noLimitations, 0)
+        assertFalse(github.contains("input hint"))
+
+        val json = AdoptionReporter.render(ReportFormat.JSON, emptyList(), noLimitations, 0)
+        assertContains(json, "\"inputHints\": []")
+
+        val sarif = AdoptionReporter.render(ReportFormat.SARIF, emptyList(), noLimitations, 0)
+        assertFalse(sarif.contains("missing-keep-rules"))
+
+        val markdown = AdoptionReporter.render(ReportFormat.MARKDOWN, emptyList(), noLimitations, 0)
+        assertFalse(markdown.contains("## Input hints"))
+    }
+
+    @Test
     fun `test-only findings are annotated across report formats without changing plain findings`() {
         val testOnly = Finding(NodeId("class:t/OnlyTestUsed"), SourceLocation("src/T.kt", 5), testOnly = true)
         val plain = Finding(NodeId("class:p/Unused"), SourceLocation("src/P.kt", 2))

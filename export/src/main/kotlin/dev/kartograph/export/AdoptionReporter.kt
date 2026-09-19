@@ -2,6 +2,7 @@ package dev.kartograph.export
 
 import dev.kartograph.core.AnalysisLimitation
 import dev.kartograph.core.Finding
+import dev.kartograph.core.InputHint
 import dev.kartograph.core.KartographVersion
 import dev.kartograph.core.KeepRule
 import dev.kartograph.core.NodeId
@@ -33,17 +34,20 @@ public object AdoptionReporter {
         confidence: Map<NodeId, FindingConfidence> = emptyMap(),
         expiredSuppressions: Int = 0,
         unmatchedKeepRules: Collection<KeepRule> = emptyList(),
+        inputHints: Collection<InputHint> = emptyList(),
     ): String {
         val sortedRules = unmatchedKeepRules.sortedWith(
             compareBy({ it.location.path }, { it.location.line ?: 0 }),
         )
+        // 호출자의 컬렉션 종류와 무관하게 enum 선언 순서로 고정해 결정적 출력을 만든다.
+        val sortedHints = inputHints.distinct().sortedBy { hint -> hint.ordinal }
         return when (format) {
-            ReportFormat.TEXT -> text(findings, limitations, sortedRules)
-            ReportFormat.GRADLE -> gradle(findings, limitations, sortedRules)
-            ReportFormat.GITHUB_ACTIONS -> github(findings, limitations, sortedRules)
-            ReportFormat.JSON -> json(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules)
-            ReportFormat.SARIF -> sarif(findings, limitations, confidence, sortedRules)
-            ReportFormat.MARKDOWN -> markdown(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules)
+            ReportFormat.TEXT -> text(findings, limitations, sortedRules, sortedHints)
+            ReportFormat.GRADLE -> gradle(findings, limitations, sortedRules, sortedHints)
+            ReportFormat.GITHUB_ACTIONS -> github(findings, limitations, sortedRules, sortedHints)
+            ReportFormat.JSON -> json(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules, sortedHints)
+            ReportFormat.SARIF -> sarif(findings, limitations, confidence, sortedRules, sortedHints)
+            ReportFormat.MARKDOWN -> markdown(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules, sortedHints)
         }
     }
 
@@ -51,6 +55,7 @@ public object AdoptionReporter {
         findings: Collection<Finding>,
         limitations: Collection<AnalysisLimitation>,
         unmatchedKeepRules: List<KeepRule>,
+        inputHints: Collection<InputHint>,
     ): String = buildString {
         findings.sorted().forEach { finding ->
             append("unreachable\t${finding.nodeId}\t${finding.location.toPlainTextLocation()}")
@@ -60,6 +65,9 @@ public object AdoptionReporter {
         unmatchedKeepRules.forEach { rule ->
             append("unmatched-keep-rule\t${rule.location.toPlainTextLocation()}\t${rule.unmatchedMessage()}\n")
         }
+        inputHints.forEach { hint ->
+            append("input-hint\t${hint.id}\t${hint.description}\n")
+        }
         limitations.sortedBy(AnalysisLimitation::name)
             .forEach { append("limitation\t${it.name}\t${it.description}\n") }
     }
@@ -68,6 +76,7 @@ public object AdoptionReporter {
         findings: Collection<Finding>,
         limitations: Collection<AnalysisLimitation>,
         unmatchedKeepRules: List<KeepRule>,
+        inputHints: Collection<InputHint>,
     ): String = buildString {
         findings.sorted().forEach { finding ->
             val location = finding.location.toPlainTextLocation().takeUnless { it == "-" }?.plus(": ").orEmpty()
@@ -75,6 +84,9 @@ public object AdoptionReporter {
         }
         unmatchedKeepRules.forEach { rule ->
             append("${rule.location.toPlainTextLocation()}: ${rule.unmatchedMessage()} [kartograph.keep-rule]\n")
+        }
+        inputHints.forEach { hint ->
+            append("kartograph input-hint ${hint.id}: ${hint.description}\n")
         }
         limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
             append("kartograph limitation ${limitation.name}: ${limitation.description}\n")
@@ -85,6 +97,7 @@ public object AdoptionReporter {
         findings: Collection<Finding>,
         limitations: Collection<AnalysisLimitation>,
         unmatchedKeepRules: List<KeepRule>,
+        inputHints: Collection<InputHint>,
     ): String = buildString {
         findings.sorted().forEach { finding ->
             val properties = buildList {
@@ -108,6 +121,10 @@ public object AdoptionReporter {
             append("::notice ${properties.joinToString(",")}::")
             append(githubMessage(rule.unmatchedMessage())).append('\n')
         }
+        inputHints.forEach { hint ->
+            append("::notice title=kartograph input hint ${hint.id}::")
+            append(githubMessage(hint.description)).append('\n')
+        }
         limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
             append("::notice title=kartograph limitation ${limitation.name}::")
             append(githubMessage(limitation.description)).append('\n')
@@ -121,6 +138,7 @@ public object AdoptionReporter {
         confidence: Map<NodeId, FindingConfidence>,
         expiredSuppressions: Int,
         unmatchedKeepRules: List<KeepRule>,
+        inputHints: Collection<InputHint>,
     ): String = buildString {
         append("{\n  \"command\": \"dead\",\n  \"diagnostics\": [")
         val sorted = findings.sorted()
@@ -159,6 +177,19 @@ public object AdoptionReporter {
             }
             append("  ]")
         }
+        append(",\n  \"inputHints\": [")
+        if (inputHints.isEmpty()) {
+            append("]")
+        } else {
+            append('\n')
+            inputHints.forEachIndexed { index, hint ->
+                append("    {\"id\": \"").append(jsonEscape(hint.id))
+                append("\", \"message\": \"").append(jsonEscape(hint.description)).append("\"}")
+                if (index != inputHints.size - 1) append(',')
+                append('\n')
+            }
+            append("  ]")
+        }
         append(",\n  \"limitations\": [")
         val descriptions = limitations.map(AnalysisLimitation::description).sorted()
         if (descriptions.isEmpty()) {
@@ -190,6 +221,7 @@ public object AdoptionReporter {
         limitations: Collection<AnalysisLimitation>,
         confidence: Map<NodeId, FindingConfidence>,
         unmatchedKeepRules: List<KeepRule>,
+        inputHints: Collection<InputHint>,
     ): String = buildString {
         append("{\n  \"${'$'}schema\": \"https://json.schemastore.org/sarif-2.1.0.json\",\n  \"runs\": [\n    {\n")
         append("      \"invocations\": [{\"executionSuccessful\": true, \"toolExecutionNotifications\": [")
@@ -209,6 +241,12 @@ public object AdoptionReporter {
             append(", \"message\": {\"text\": \"")
             append(jsonEscape("${rule.location.toPlainTextLocation()}: ${rule.unmatchedMessage()}"))
             append("\"}}")
+        }
+        inputHints.forEachIndexed { index, hint ->
+            if (sortedLimitations.isNotEmpty() || unmatchedKeepRules.isNotEmpty() || index > 0) append(',')
+            append("{\"descriptor\": {\"id\": \"").append(jsonEscape(hint.id))
+            append("\"}, \"level\": \"note\", \"message\": {\"text\": \"")
+            append(jsonEscape(hint.description)).append("\"}}")
         }
         append("]}],\n")
         append("      \"results\": [")
@@ -255,6 +293,7 @@ public object AdoptionReporter {
         confidence: Map<NodeId, FindingConfidence>,
         expiredSuppressions: Int,
         unmatchedKeepRules: List<KeepRule>,
+        inputHints: Collection<InputHint>,
     ): String = buildString {
         append("## kartograph dead findings\n\n")
         if (findings.isEmpty()) {
@@ -285,6 +324,14 @@ public object AdoptionReporter {
             }
             append("\nUnmatched rules may target declarations outside the indexed inputs; ")
             append("an unmatched rule is not proof that it can be removed.\n")
+        }
+        if (inputHints.isNotEmpty()) {
+            append("\n## Input hints\n\n")
+            inputHints.forEach { hint ->
+                append("- `").append(markdownCell(hint.id)).append("` — ").append(markdownCell(hint.description)).append('\n')
+            }
+            append("\nMissing inputs can under-measure reachability; hints are not findings ")
+            append("and do not fail strict mode.\n")
         }
         append("\n## Limitations\n\n")
         limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
