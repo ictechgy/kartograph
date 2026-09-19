@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-19 (기준 `origin/main` 3a5d142, `VERSION` 0.10.2)
+마지막 갱신: 2026-09-19 (기준 `origin/main` aa51968, `VERSION` 0.10.2)
 
 ## 목표
 
@@ -12,17 +12,17 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 
 - **0.10.1·0.10.2를 공개했다(2026-09-18)**: 0.10.1은 tag `v0.10.1` → release workflow 전체 게이트 성공(run 35290692293) →
   GitHub Release 6 asset과 Plugin Portal 발행을 확인했다. 0.10.2는 별도 세션이 PR #74(squash `ecaa2be`)로 준비·머지하고 tag `v0.10.2`를 발행했다
-  (GitHub Release draft=false 확인). `CHANGELOG.md` Unreleased에는 이후 머지된 #75의 `input-hint` 항목이 있다.
+  (GitHub Release draft=false 확인). `CHANGELOG.md` Unreleased에는 이후 머지된 #75 `input-hint`·#77 런타임 근거·#79 `dependencies` 항목이 있다.
 - 2026-09-16~18에 머지된 PR: #59 impact 결함 → #60 EventChannel → #61 fingerprint 병렬화 → #62 단계 B 기각 기록 → #63 과제 종료 결론 →
   #64 3관점 리뷰 반영 → #65 JDK 17/21 재측정 → #66 README 퇴고 → #67 Expo Modules(다른 세션) → #68 HANDOFF 완료 절 → #69 HANDOFF 갱신 → #70 로컬 문서 통합(squash `9e377fd`) →
-  #47 Dependabot `jvm` 2.4.20(squash `5d8e491`) → #71 release 0.10.1(squash `0ea604a`) → #73 unmatched keep rule 진단(squash `18c502d`) → #74 release 0.10.2(squash `ecaa2be`) → #75 누락 입력 input-hint 진단(squash `b7ea7f6`) → #76 HANDOFF 갱신(squash `bedb714`) → #77 런타임 근거 confidence(squash `4c12ce6`) → #78 HANDOFF 갱신(squash `a3f33ce`) → #79 미사용 선언 의존성(squash `3a5d142`).
+  #47 Dependabot `jvm` 2.4.20(squash `5d8e491`) → #71 release 0.10.1(squash `0ea604a`) → #73 unmatched keep rule 진단(squash `18c502d`) → #74 release 0.10.2(squash `ecaa2be`) → #75 누락 입력 input-hint 진단(squash `b7ea7f6`) → #76 HANDOFF 갱신(squash `bedb714`) → #77 런타임 근거 confidence(squash `4c12ce6`) → #78 HANDOFF 갱신(squash `a3f33ce`) → #79 미사용 선언 의존성(squash `3a5d142`) → #80 HANDOFF 갱신(squash `aa51968`).
 - 2026-09-19 **PRD 개정**: "런타임 커버리지 통합 금지(정적 사실만)" 조항을 "JaCoCo/Kover를 실행·결합해 수집하지 않는다.
   사용자가 제공한 class-list·JaCoCo/Kover XML은 `dead`의 `runtime-observed` confidence 표시용 선택 입력으로만 받는다"로 바꿨다(PR #77).
   finding·strict·종료 코드는 그대로이고, 손상된 근거 입력은 도구 실패로 거부한다.
 - 2026-09-19 외부 리뷰 인프라: `packet-review`가 provider(glm·qwen)·effort·파일 수와 무관하게 `packet-ask exited 125`로 실패했다.
   단일 파일 최소 packet도 동일했고, 한 번은 `hourly packet-review limit reached (6)`이었다. #75·#77·#79는 내부 독립 리뷰 + CI로 검증했다.
-  같은 시각 `chore/release-0.10.2`·`fix/expo-dsl-scan-gaps` 원격 브랜치를 삭제했고(합의 완료), #75·#77의 작업 브랜치도 머지 후 삭제했다.
-- 열린 PR: 없음(2026-09-19, #75 머지 후 기준). PR #72(Expo DSL 중첩 제네릭·FQN·this. 스캔, `fix/expo-dsl-scan-gaps`의 작업)가 squash `81cb6eb`로 머지됐고, 이전 세션 작업 `feat/unmatched-keep-rule-diagnostics`는 worktree·원격 모두 정리했다.
+  같은 시각 `chore/release-0.10.2`·`fix/expo-dsl-scan-gaps` 원격 브랜치를 삭제했고(합의 완료), #75·#77·#79의 작업 브랜치도 머지 후 삭제했다.
+- 열린 PR: 없음(2026-09-19, #80 머지 후 기준). PR #72(Expo DSL 중첩 제네릭·FQN·this. 스캔, `fix/expo-dsl-scan-gaps`의 작업)가 squash `81cb6eb`로 머지됐고, 이전 세션 작업 `feat/unmatched-keep-rule-diagnostics`는 worktree·원격 모두 정리했다.
   메인 체크아웃은 `main`으로 전환했고 오래된 브랜치를 대대적으로 정리했다(사용자 승인): 로컬 35개·원격 47개를 삭제했다
   (ancestor 또는 머지된 PR의 head 일치로 검증). `phase0/1/2`·`feat/adoption-competitiveness`는 재작성 전 이력·squash 전 변형으로
   내용이 main에 더 나은 형태로 포함됨을 diff로 확인 후 삭제(머지하면 Expo 스캔·KGP 2.4.20 회귀). 잔여 `pr/21`·`pr/46` ref도 제거.
@@ -55,6 +55,7 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - 같은 러너·같은 입력·7회 중앙값을 고정하고 기준선/후보를 **번갈아** 실행해 순서 편향을 상쇄한다. 미달·실패 실행도 지우지 않는다. 그 덕에 1차의 self warm 미달이 부하 노이즈였음을 2차로 가릴 수 있었다.
 - 병렬화는 "값 동일"을 타입으로 강제한다: 계획(파일 단위 작업) → digest → 입력 순서 결합. 독립 구현으로 golden digest를 테스트에 박아 두면 리뷰어가 값 불변을 스스로 검증한다.
 - 리뷰는 관점을 나눠 받는다(보안·구조·성능 에이전트 + GLM). 지적은 코드로 재확인해 결함/취향으로 갈라 PR 코멘트 표로 남긴다. GLM 질문에 "지켜야 할 불변식 목록"을 넣으면 공격 지점이 정확해진다.
+- **외부 리뷰가 막히면 같은 불변식으로 내부 독립 리뷰를 돌린다.** GLM이 `packet-ask exited 125`로 불가했던 #77·#79는 서브에이전트 리뷰로 대체했고, 실제 javac 재현으로 blocker(invokedynamic·method handle descriptor 참조 누락, test scope 오탐)를 찾아냈다. 수정 후에는 같은 리뷰어에게 잔여 지적만 한 번 더 확인받는다.
 - 작은 파일 수백 개에는 stat을 더하지 않는다(멤버당 `Files.size` 하나가 self full을 +18 ms). 큰 독립 파일(JAR)만 크기순으로 먼저 배정한다.
 - DECISION/설계 문서에는 소스나 심볼 이름 대신 집계값과 재현 조건만 남긴다(공개 저장소, 도그푸딩 대상은 비공개).
 
@@ -65,7 +66,8 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - nia 고정 입력(`~/.gradle/caches/9.6.1/transforms`)은 **두 번 사라졌다**. 벤치 전에 256개 경로 존재를 먼저 확인하고, 없으면 Gradle 9.6.1로 재해석한다(완료 절의 경로).
 - 이 호스트는 상시 부하(Chrome·devin·VM)로 load < 2를 거의 못 맞춘다. 대기는 10분까지만 하고, 부하 조건임을 로그에 남기며, 비교는 같은 조건의 교대 실행 안에서만 한다.
 - 호스트 메모리가 부족하면 시스템이 Gradle을 강제 종료한다. `--max-workers=2`로 재실행했다.
-- Kotlin에서 `Path`는 `Iterable<Path>`라 `jars + jars[2]`가 경로 요소를 이어 붙인다(`listOf(jars[2])`로). `sortedByDescending { Files.size(..) }`는 비교마다 stat을 부른다(키 선계산).
+- Kotlin에서 `Path`는 `Iterable<Path>`라 `jars + jars[2]`가 경로 요소를 이어 붙인다(`listOf(jars[2])`로). `sortedByDescending { Files.size(..) }`는 비교마다 stat을 부른다(키 선계산). 같은 이유로 `val paths = mutableListOf<Path>()`에 `paths += Path.of(x)`는 `plus`로 해석돼 val 재할당 컴파일 오류가 난다(`paths.add(...)`로).
+- **bytecode 참조를 그래프 간선에서 파생하면 누락된다.** `CodeGraph`는 외부 간선을 버리고, 남는 간선도 invokedynamic descriptor·method handle descriptor·type-use annotation·module uses/provides처럼 attribute에만 있는 참조를 담지 않는다. 참조 수집은 classfile 방문자(descriptor·annotation·indy·LDC/ConstantDynamic·지역 변수)에서 직접 해야 하며, 그래프 경로에 얹으면 모든 인덱싱에 비용이 붙는다(P1.1-1에서 독립 스캐너로 정착).
 - worktree 격리 훅은 `git -C`·복합 명령·heredoc을 거부한다. 편집·커밋 메시지·PR 본문은 파일로 만들어 단순 명령으로 실행한다.
 - 로컬 표본 5개 중 4개는 의존성 다운로드 없이는 빌드되지 않는다. cartograph에서 배운 것(`../cartograph/HANDOFF.md`)도 그대로 적용된다: mtime을 신선도로 쓰지 말 것, 가지치기 목록 두 벌 만들지 말 것, 테스트를 일부러 부숴 볼 것.
 - **`--write-verification-metadata`를 캐시가 있는 홈에서 재생성하면** constraint-only artifact(BOM POM)를 기록하지 못한다. #47에서 빈 `--gradle-user-home` 재생성으로 누락 2건(junit-bom, coroutines-bom POM)을 복원했고,
@@ -202,7 +204,7 @@ C4·S7(소) → S1(소) → C5(소~중) → C2(중, 재측정 가치 최대) →
 
 ## 재개 프롬프트
 
-저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 `git status --short --branch`를 확인해줘. 기준 main 3a5d142까지 PR #59~#79가 반영됐고 0.10.1·0.10.2가 공개됐어. 한 클래스 변경 속도 과제는 미달 기록을 유지한 채 종료됐으니 반복하지 마. 경쟁 툴 개선 시퀀스는 P1.3(미매칭 keep rule 진단)·P1.4(누락 입력 input-hint)·P1.2(런타임 근거 confidence, PRD 개정 포함)·P1.1-1(미사용 선언 의존성)까지 완료됐고 다음은 P1.1-2(api/impl 오배치·undeclared·Gradle plugin·전 형식·processor 귀속)야. "경쟁 조사 — codegraph 대비 개선점" 섹션의 C/S 항목은 별도 조사의 끼워 넣기 후보로, 착수 전에 어느 쪽을 먼저 할지 나와 합의해. 외부 GLM 리뷰(packet-review)는 2026-09-19에 provider·파일 수와 무관하게 `packet-ask exited 125`로 실패했으니 재개 시 상태를 다시 확인하고, 계속 불가하면 내부 독립 리뷰 + CI로 대체할지 나와 합의해. 원본 stash와 등록된 보존 worktree는 유지하고, 미추적 사용자 파일을 함부로 정리하지 마. 새 작업은 나와 범위를 합의하고, PR마다 리뷰와 CI를 확인하고 머지는 승인받고 해. 측정 근거와 복원 방법은 아래 기록을 참고해.
+저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 `git status --short --branch`를 확인해줘. 기준 main aa51968까지 PR #59~#80이 반영됐고 0.10.1·0.10.2가 공개됐어. 한 클래스 변경 속도 과제는 미달 기록을 유지한 채 종료됐으니 반복하지 마. 경쟁 툴 개선 시퀀스는 P1.3(미매칭 keep rule 진단)·P1.4(누락 입력 input-hint)·P1.2(런타임 근거 confidence, PRD 개정 포함)·P1.1-1(미사용 선언 의존성)까지 완료됐고 다음은 P1.1-2(api/impl 오배치·undeclared·Gradle plugin·전 형식·processor 귀속)야. "경쟁 조사 — codegraph 대비 개선점" 섹션의 C/S 항목은 별도 조사의 끼워 넣기 후보로, 착수 전에 어느 쪽을 먼저 할지 나와 합의해. 외부 GLM 리뷰(packet-review)는 2026-09-19에 provider·파일 수와 무관하게 `packet-ask exited 125`로 실패했으니 재개 시 상태를 다시 확인하고, 계속 불가하면 내부 독립 리뷰 + CI로 대체할지 나와 합의해. 원본 stash와 등록된 보존 worktree는 유지하고, 미추적 사용자 파일을 함부로 정리하지 마. 새 작업은 나와 범위를 합의하고, PR마다 리뷰와 CI를 확인하고 머지는 승인받고 해. 측정 근거와 복원 방법은 아래 기록을 참고해.
 
 ## 0.1.x 구현 이력
 
