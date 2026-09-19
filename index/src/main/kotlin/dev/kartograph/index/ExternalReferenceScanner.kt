@@ -24,7 +24,7 @@ import org.objectweb.asm.TypePath
 /**
  * class root의 classfile에서 참조하는 모든 class internal 이름을 모은다.
  * 그래프를 만들지 않고 descriptor·annotation(type-use 포함)·invokedynamic·LDC·지역 변수까지 읽으며,
- * generic signature에만 있는 타입은 bytecode에 남지 않아 포함하지 않는다.
+ * descriptor에서 지워진 제네릭 타입은 classfile Signature에서 함께 읽는다.
  */
 public class ExternalReferenceScanner {
     /** 입력 root를 순서대로 읽고 중복 없는 참조 class 이름을 정렬해 반환한다. */
@@ -105,6 +105,7 @@ internal class ReferenceVisitor : ClassVisitor(Opcodes.ASM9) {
         superName: String?,
         interfaces: Array<out String>,
     ) {
+        referenced += signatureClassNames(signature)
         add(superName)
         interfaces.forEach(::add)
     }
@@ -148,6 +149,7 @@ internal class ReferenceVisitor : ClassVisitor(Opcodes.ASM9) {
 
     override fun visitRecordComponent(name: String, descriptor: String, signature: String?): RecordComponentVisitor {
         addDescriptor(descriptor)
+        referenced += signatureClassNames(signature, typeOnly = true)
         return object : RecordComponentVisitor(Opcodes.ASM9) {
             override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor =
                 addAnnotation(annotationDescriptor)
@@ -169,6 +171,7 @@ internal class ReferenceVisitor : ClassVisitor(Opcodes.ASM9) {
         value: Any?,
     ): FieldVisitor {
         addDescriptor(descriptor)
+        referenced += signatureClassNames(signature, typeOnly = true)
         return object : FieldVisitor(Opcodes.ASM9) {
             override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor =
                 addAnnotation(annotationDescriptor)
@@ -190,6 +193,7 @@ internal class ReferenceVisitor : ClassVisitor(Opcodes.ASM9) {
         exceptions: Array<out String>?,
     ): MethodVisitor {
         addDescriptor(descriptor)
+        referenced += signatureClassNames(signature)
         exceptions.orEmpty().forEach(::add)
         return object : MethodVisitor(Opcodes.ASM9) {
             override fun visitAnnotationDefault(): AnnotationVisitor = ReferenceAnnotationVisitor(referenced)
@@ -233,6 +237,7 @@ internal class ReferenceVisitor : ClassVisitor(Opcodes.ASM9) {
                 vararg bootstrapMethodArguments: Any,
             ) {
                 addDescriptor(descriptor)
+                referenced += signatureClassNames(signature, typeOnly = true)
                 addHandle(bootstrapMethodHandle)
                 bootstrapMethodArguments.forEach(::addConstant)
             }

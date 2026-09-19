@@ -118,11 +118,49 @@ class DependenciesCommandTest {
         root.resolve("dependencies.tsv").writeText("")
         assertEquals(ExitStatus.FAILURE.code, execute(*base).status)
 
-        assertEquals(ExitStatus.USAGE.code, execute(*base, "--report-format", "sarif").status)
+        assertEquals(ExitStatus.USAGE.code, execute(*base, "--report-format", "xml").status)
         assertEquals(ExitStatus.USAGE.code, execute("dependencies", "--unknown").status)
         assertEquals(ExitStatus.USAGE.code, execute("dependencies").status)
         assertEquals(ExitStatus.SUCCESS.code, execute("dependencies", "--help").status)
         assertContains(execute("dependencies", "--help").output, "coordinate<TAB>scope<TAB>artifact")
+    }
+
+    @Test
+    fun `resolved transitive uses and ABI scope advice roundtrip through every CLI report`(@TempDir root: Path) {
+        val library = root.resolve("library").createDirectories()
+        compileJava(listOf(source(root, "lib-src", "lib/Exported.java", "package lib; public class Exported {}"),
+            source(root, "lib-src", "lib/Transit.java", "package lib; public class Transit {}")), library)
+        val exported = root.resolve("exported/lib").createDirectories()
+        java.nio.file.Files.copy(library.resolve("lib/Exported.class"), exported.resolve("Exported.class"))
+        val transitive = root.resolve("transitive/lib").createDirectories()
+        java.nio.file.Files.copy(library.resolve("lib/Transit.class"), transitive.resolve("Transit.class"))
+        val app = root.resolve("app").createDirectories()
+        compileJava(listOf(source(root, "src", "Api.java", """
+            public class Api {
+              public java.util.List<lib.Exported> exposed;
+              public String run() { return new lib.Transit().toString(); }
+            }
+        """.trimIndent())), app, listOf(library))
+        root.resolve("declared.tsv").writeText("example:exported:1\timplementation\texported\n")
+        root.resolve("resolved.tsv").writeText("example:exported:1\timplementation\texported\nexample:transit:1\timplementation\ttransitive\n")
+        val args = arrayOf("dependencies", "--classes", app.toString(), "--project", root.toString(),
+            "--dependencies", "declared.tsv", "--resolved-dependencies", "resolved.tsv", "--library")
+        for (format in listOf("text", "json", "sarif", "gradle", "github-actions", "markdown")) {
+            val result = execute(*args, "--strict", "--report-format", format)
+            assertEquals(1, result.status, result.error)
+            assertContains(result.output, "dependency-scope-mismatch")
+            assertContains(result.output, "undeclared-dependency")
+        }
+        val document = dev.kartograph.export.McpJsonCodec.parse(execute(*args, "--report-format", "json").output) as Map<*, *>
+        val diagnostics = document["diagnostics"] as List<*>
+        assertEquals(2, diagnostics.size)
+        assertEquals(setOf("api", "implementation"), diagnostics.map { (it as Map<*, *>)["suggestedScope"] }.toSet())
+        root.resolve("declared.tsv").writeText("")
+        assertEquals(1, execute(*args, "--strict").status)
+        root.resolve("resolved.tsv").writeText("broken")
+        val invalid = execute(*args)
+        assertEquals(2, invalid.status)
+        assertEquals("", invalid.output)
     }
 
     private fun source(root: Path, directory: String, relative: String, content: String): Path =

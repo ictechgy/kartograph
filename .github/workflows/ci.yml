@@ -152,6 +152,13 @@ jobs:
         run: |
           export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
           bash Scripts/verify-agp-8-fixture.sh
+      - name: Verify dependency advice on minimum Gradle and AGP
+        shell: bash
+        run: |
+          ./gradlew --no-daemon :gradle-plugin:jar
+          plugin_jar="gradle-plugin/build/libs/kartograph-gradle-plugin-$(tr -d '[:space:]' < VERSION).jar"
+          python3 Scripts/verify-dependency-fixture.py --gradle "$(command -v gradle)" --plugin-jar "$plugin_jar" --output build/reports/dependency-min-jvm
+          python3 Scripts/verify-dependency-fixture.py --gradle "$(command -v gradle)" --plugin-jar "$plugin_jar" --android --output build/reports/dependency-min-android
       - name: Verify application R.jar resource witness on minimum AGP and Gradle
         shell: bash
         run: |

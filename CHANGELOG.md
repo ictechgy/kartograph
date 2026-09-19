@@ -6,6 +6,23 @@
 
 ## [Unreleased]
 
+### Added
+
+- `dependencies --library`는 JVM Signature·Kotlin metadata·inline 본문으로 `api`/`implementation`
+  배치를 검토하고, `--resolved-dependencies`는 실제 compile classpath에서 미선언 전이 의존성의
+  소유자와 참조 타입을 보고한다. main/test 사용을 분리하고 모든 6개 보고 형식에 같은 근거·한계를
+  유지한다. 모호한 소유권·미해석 API의 부재를 삭제나 scope 축소 근거로 삼지 않는다.
+- Gradle의 `kartographDependencies` 및 Android `kartographDependencies<Variant>`가 public
+  provider/Artifact API로 컴파일 출력을 연결한다. 선택적 test 컴파일, configuration cache,
+  class/scope 입력 변경에 따른 무효화와 report를 쓴 뒤 strict 실패를 지원한다. 빌드 파일 자동
+  수정·processor별 생성 코드 귀속은 제공하지 않는다.
+
+### Fixed
+
+- dependency 참조 스캐너가 descriptor에서 지워진 제네릭 타입을 classfile Signature에서 복원해
+  실제 컴파일 의존성이 미사용으로 보고되는 경우를 막는다. AAR의 class/embedded JAR를 읽고,
+  손상된 내부 ZIP과 과도하게 깊은 Signature는 부분 판정 없이 거부한다.
+
 ## [0.11.0] - 2026-09-20
 
 ### Added

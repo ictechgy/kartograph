@@ -1,6 +1,7 @@
 package dev.kartograph.export
 
 import dev.kartograph.analysis.DependencyAnalysisResult
+import dev.kartograph.analysis.DependencyAdvice
 import dev.kartograph.analysis.UnusedDependency
 import dev.kartograph.core.DependencyScope
 import java.nio.file.Path
@@ -8,7 +9,6 @@ import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
 class DependencyReporterTest {
@@ -82,8 +82,41 @@ class DependencyReporterTest {
     }
 
     @Test
-    fun `unsupported formats fail closed`() {
-        assertFailsWith<IllegalArgumentException> { DependencyReporter.render(ReportFormat.SARIF, result, emptyList()) }
-        assertFailsWith<IllegalArgumentException> { DependencyReporter.render(ReportFormat.MARKDOWN, result, emptyList()) }
+    fun `all report formats preserve configuration advice evidence and limitations`() {
+        val advice = DependencyAdvice("example:api:1", DependencyScope.IMPLEMENTATION, "libs/api.jar",
+            "dependency-scope-mismatch", DependencyScope.API, listOf("example/Exposed"))
+        val resolved = DependencyAdvice("example:transitive:1", null, "/private/cache/transitive.jar",
+            "undeclared-dependency", DependencyScope.IMPLEMENTATION, listOf("example/Transitive"))
+        val combined = result.copy(advice = listOf(advice, resolved))
+        for (format in ReportFormat.entries) {
+            val text = DependencyReporter.render(format, combined, listOf("scope remains limited"))
+            assertContains(text, "example:api:1")
+            assertContains(text, "example:transitive:1")
+            assertContains(text, "scope remains limited")
+            assertFalse(text.contains("/private/cache"))
+        }
+        val json = DependencyReporter.render(ReportFormat.JSON, combined, emptyList())
+        assertContains(json, "\"suggestedScope\": \"api\"")
+        assertContains(json, "\"evidenceClasses\": [\"example/Exposed\"]")
+        val sarif = DependencyReporter.render(ReportFormat.SARIF, combined, listOf("kept gap"))
+        assertContains(sarif, "\"version\": \"2.1.0\"")
+        assertContains(sarif, "toolExecutionNotifications")
+        assertFalse(sarif.contains("physicalLocation"))
+        val parsed = McpJsonCodec.parse(sarif) as Map<*, *>
+        assertEquals("2.1.0", parsed["version"])
+        val run = (parsed["runs"] as List<*>).single() as Map<*, *>
+        assertEquals(3, (run["results"] as List<*>).size)
+    }
+
+    @Test
+    fun `CI and markdown escaping does not turn input into a new annotation or table row`() {
+        val hostile = result.copy(findings = listOf(UnusedDependency("lib:%0A\n::error title=x::x|[link]",
+            DependencyScope.API, "folder/<name>.jar")))
+        val github = DependencyReporter.render(ReportFormat.GITHUB_ACTIONS, hostile, listOf("line1\nline2"))
+        assertContains(github, "%250A%0A::error")
+        assertEquals(2, github.lineSequence().filter(String::isNotBlank).count())
+        val markdown = DependencyReporter.render(ReportFormat.MARKDOWN, hostile, emptyList())
+        assertContains(markdown, "\\|\\[link\\]")
+        assertContains(markdown, "&lt;name&gt;")
     }
 }

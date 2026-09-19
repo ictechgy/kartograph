@@ -7,6 +7,8 @@ import org.gradle.api.provider.Property
 
 /** variant task들이 공유할 사용자 지정 보존 입력과 strict 정책이다. */
 public abstract class KartographExtension {
+    /** 의존성 분석에서 test 컴파일 결과도 명시적으로 수집하며 테스트 실행은 연결하지 않는다. */
+    public abstract val dependencyIncludeTests: Property<Boolean>
     /** 컴파일 입력과 main/test snapshot의 자동 수집을 명시적으로 활성화한다. */
     public abstract val snapshotsEnabled: Property<Boolean>
 

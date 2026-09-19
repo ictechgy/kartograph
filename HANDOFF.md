@@ -2,13 +2,34 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-20 (main / origin/main `37f0053`, PR #82 머지; `VERSION` 0.10.2, 브리지 확장은 미발행)
+마지막 갱신: 2026-09-20 (0.11.0 발행 완료; P1.1-2 개발 소스 추가, 실제 branch/status를 먼저 확인)
 
 ## 목표
 
 Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물에서 만들고, 그 위에서 미사용 코드·순환·레이어 규칙·지표·변경 영향을 근거와 함께 답하는 CLI와 Gradle plugin. [cartograph](../cartograph)(Swift)의 자매. 제품 범위는 `docs/PRD.md`.
 
 ## 현재 상태
+
+### 0.11.0 발행과 P1.1-2 후속
+
+- 브리지 확장을 포함한 0.11.0은 [PR #84](https://github.com/ictechgy/kartograph/pull/84),
+  tag `v0.11.0`(`14f0673`)으로 발행됐다. [릴리스 run 35459154848](https://github.com/ictechgy/kartograph/actions/runs/35459154848)이 성공했고,
+  GitHub CLI 아카이브·Plugin Portal marker/JAR를 확인했다. 독립 다운로드 CLI는 0.11.0이며
+  Portal JAR SHA256 `d51510d6bee5f5075ba8cfece3829d84546a8e3c8c8405ba4cf01eaf24752398`가 GitHub asset과 일치했다.
+- P1.1-2 개발 소스는 `dependencies --library`의 api/implementation 배치 조언,
+  `--resolved-dependencies` 전이 소유권, main/test 구분, 여섯 보고 형식과
+  JVM/Android dependency task를 추가한다. [사용법·관찰 범위](docs/DEPENDENCIES.md)를 따른다.
+  0.11.0 발행본에는 이 후속 기능이 없으며 다음 릴리스 대상이다.
+- 실제 javac/Kotlin metadata 회귀와 Gradle configuration cache·strict·입력 변경 검증을 추가했다.
+  최종 완료 근거는 해당 변경의 PR/CI와 실제 Git 상태로 확인한다. processor별 생성 코드 귀속,
+  baseline/suppress는 이번 핵심 범위와 구분된 후속이다. 불완전한 API·alias·클래스 소유권은
+  한계로 남기며 부재를 삭제나 scope 축소의 근거로 삼지 않는다.
+- Gradle JVM 경로와 Android API를 별도 클래스로 분리한다. 그렇지 않으면 configuration-cache
+  lambda 역직렬화가 JVM 프로젝트에서 AGP `Variant`를 로드해 실패한다(실제 회귀로 확인).
+- 이전 HANDOFF 동기화는 [PR #83](https://github.com/ictechgy/kartograph/pull/83)으로 머지됐다.
+  `.claude/`·`HANDOFF.cartograph-notes.md`는 기존 사용자 파일이며 유지한다.
+
+아래는 이전 브리지 머지·검증의 기록이다. 당시의 미발행 상태는 위 0.11.0 발행으로 해소됐다.
 
 ### 자매 브리지 확장 머지 완료 — 2026-09-20
 
@@ -225,8 +246,8 @@ C4·S7(소) → S1(소) → C5(소~중) → C2(중, 재측정 가치 최대) →
 
 ## 다음 할 일 (순서대로)
 
-자매 브리지 확장 PR #82와 동반 세 PR은 머지 완료다. 이번 작업의 미해결 구현·리뷰는 없고
-발행은 별도다. 아래 기존 후속 후보는 현재 사용자 요청과 이미 승인된 범위에 맞춰 선택한다.
+자매 브리지 확장은 0.11.0으로 발행됐다. P1.1-2 핵심 개발 소스는 위 현재 상태를 따른다.
+아래 과거 후속 순서를 새 실행 지시로 삼지 않고 현재 사용자 요청과 승인 범위로 작업을 선택한다.
 
 1. 경쟁 툴 대비 개선 시퀀스(사용자가 전체 진행을 승인, PR 단위·각각 머지 승인 필요):
    - ~~P1.3 무력 keep rule 진단~~ → PR #73으로 완료. `dead`가 보존 근거 0건인 root 생성 keep rule을 `unmatched-keep-rule`로 전 형식에 보고(JSON `unmatchedKeepRules`). 판정은 `KeepRuleRetention.unmatched`(근거 위치 파생), 비-root 지시자는 파서가 KeepRule로 만들지 않아 대상 아님. 삭제 승인 아님·strict 비개입.
@@ -240,14 +261,14 @@ C4·S7(소) → S1(소) → C5(소~중) → C2(중, 재측정 가치 최대) →
 
 ## 재개 프롬프트
 
-저장소 루트에서 HANDOFF.md의 현재 상태와 적용 AGENTS.md를 읽고 실제 branch/status를 확인해줘.
-현재 main은 `37f0053`(PR #82)이고 external-retentions·RN 이벤트 추출이 GLM·CI를 거쳐 머지됐어.
-새 발행은 하지 않았으므로 기존 0.10.2와 main을 구분해. 이전 packet-review 실패는 현재 차단이
-아니며 #82의 packet-ask GLM 반영·기각 기록은 PR 코멘트에 있어. 이번 브리지 작업은 완료됐고,
-기존 다음 후보는 P1.1-2(api/impl 오배치·undeclared·Gradle plugin·전 형식·processor 귀속)야.
-한 클래스 속도 과제의 미달 결론과 과거 근거는 유지하고 완료된 작업을 반복하지 마.
-이 HANDOFF 수정·미추적 사용자 파일·원본 stash·등록된 worktree를 보존하고, 새 작업은 최신
-사용자 요청과 승인 범위를 따라 진행해. 과거 기록을 새 실행 권한으로 삼지 마.
+현재 상태와 적용 AGENTS.md를 읽고 실제 Git branch/status를 확인해줘. 마지막 발행은
+0.11.0(tag v0.11.0, 14f0673)이고 GitHub·Portal·CLI 버전/해시를 대조했어. P1.1-2의
+API/implementation·전이 의존성·Gradle 연동·보고 형식은 개발 소스의 후속이니 발행본과
+구분해. `docs/DEPENDENCIES.md`의 관찰 범위·한계를 유지하고, processor별 귀속·자동 수정·
+삭제 안전성으로 범위를 넓히지 마. 완료/남은 검사는 실제 PR·CI·작업 기록으로 확인하고
+이미 끝난 브리지 구현과 검증을 반복하지 마. 미추적 사용자 파일과 기존 원본·worktree를
+보존하고, 과거 인계 기록을 새 실행 권한으로 삼지 마.
+
 
 ## 0.1.x 구현 이력
 
