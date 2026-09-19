@@ -6,10 +6,12 @@ import dev.kartograph.analysis.KeepRuleRetention
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.analysis.ReachabilityResult
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.Finding
 import dev.kartograph.core.InputHint
 import dev.kartograph.core.KeepRule
 import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.RetentionReason
 import dev.kartograph.export.FindingConfidence
@@ -109,14 +111,32 @@ internal object RetentionPipeline {
      */
     fun confidenceOf(
         finding: Finding,
+        graph: CodeGraph,
         channelsBySource: Map<String, Int>,
         observedClasses: Set<String>,
     ): FindingConfidence {
-        if (ownerClassOf(finding.nodeId) in observedClasses) return FindingConfidence.RUNTIME_OBSERVED
+        if (ownerClassOf(finding.nodeId, graph) in observedClasses) return FindingConfidence.RUNTIME_OBSERVED
         return confidenceOf(finding.location, channelsBySource)
     }
 
-    private fun ownerClassOf(nodeId: NodeId): String = nodeId.value.substringAfter(':').substringBefore('#')
+    // JVMS class 이름에는 '#'이 올 수 있으므로 문자열 분해 대신 type 여부와 MEMBER 간선으로 소유 class를 찾는다.
+    private fun ownerClassOf(nodeId: NodeId, graph: CodeGraph): String? {
+        val node = graph.node(nodeId) ?: return null
+        val ownerId = if (node.kind in TYPE_KINDS) {
+            node.id
+        } else {
+            graph.incomingEdgesTo(nodeId).firstOrNull { edge -> edge.kind == EdgeKind.MEMBER }?.source
+        }
+        return ownerId?.value?.removePrefix("class:")
+    }
+
+    private val TYPE_KINDS = setOf(
+        NodeKind.CLASS,
+        NodeKind.INTERFACE,
+        NodeKind.OBJECT,
+        NodeKind.ENUM,
+        NodeKind.ANNOTATION_CLASS,
+    )
 
     // test→production cross edge를 보존하려면 production과 test root를 함께 index해야 한다.
     // 따로 index하면 combined 조립 시 dangling 제거로 test→production 간선이 유실된다.

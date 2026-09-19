@@ -1199,10 +1199,11 @@ class KartographCliTest {
 
         val promoted = execute(*arguments, "--runtime-classes", "runtime-classes.txt", "--coverage", "coverage.xml")
         assertEquals(ExitStatus.SUCCESS.code, promoted.status)
-        assertEquals(
-            plain.output.lines().filter { it.contains("\"nodeId\"") }.sorted(),
-            promoted.output.lines().filter { it.contains("\"nodeId\"") }.sorted(),
-        )
+        // confidence 줄만 달라지고 finding·message·state·limitation·suppressedCount는 그대로여야 한다.
+        val withoutConfidence = { text: String ->
+            text.lines().filterNot { line -> line.trimStart().startsWith("\"confidence\"") }
+        }
+        assertEquals(withoutConfidence(plain.output), withoutConfidence(promoted.output))
         assertContains(promoted.output, findingConfidence("class:dev/kartograph/cli/RuntimeObserved", "runtime-observed"))
         assertContains(promoted.output, findingConfidence("class:dev/kartograph/cli/RuntimeCovered", "runtime-observed"))
         assertContains(promoted.output, findingConfidence("class:dev/kartograph/cli/RuntimeUnobserved", "static"))

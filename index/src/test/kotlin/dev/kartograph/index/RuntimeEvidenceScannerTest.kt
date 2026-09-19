@@ -99,6 +99,24 @@ class RuntimeEvidenceScannerTest {
         }
         assertContains(emptyError.message.orEmpty(), "invalid or uses a prohibited external entity")
         assertFalse(emptyError.message.orEmpty().contains(root.toString()))
+
+        val invalidName = root.resolve("invalid-name.xml")
+        invalidName.writeText("<report><class name=\"a..b\"><counter type=\"LINE\" covered=\"1\"/></class></report>")
+        assertContains(
+            assertFailsWith<RuntimeEvidenceScanningException> {
+                RuntimeEvidenceScanner().scan(emptyList(), listOf(invalidName))
+            }.message.orEmpty(),
+            "invalid class name",
+        )
+
+        val entity = root.resolve("entity.xml")
+        entity.writeText("<!DOCTYPE report [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><report name=\"&xxe;\"/>")
+        assertContains(
+            assertFailsWith<RuntimeEvidenceScanningException> {
+                RuntimeEvidenceScanner().scan(emptyList(), listOf(entity))
+            }.message.orEmpty(),
+            "invalid or uses a prohibited external entity",
+        )
     }
 
     @Test
@@ -110,6 +128,17 @@ class RuntimeEvidenceScannerTest {
         }
         assertContains(error.message.orEmpty(), "invalid class name at line 2")
         assertFalse(error.message.orEmpty().contains(root.toString()))
+
+        listOf("a..b", ".Foo", "Foo.").forEach { invalid ->
+            val file = root.resolve("invalid-${invalid.hashCode()}.txt")
+            file.writeText("$invalid\ncom.example.Good\n")
+            assertContains(
+                assertFailsWith<RuntimeEvidenceScanningException> {
+                    RuntimeEvidenceScanner().scan(listOf(file), emptyList())
+                }.message.orEmpty(),
+                "invalid class name at line 1",
+            )
+        }
 
         assertContains(
             assertFailsWith<RuntimeEvidenceScanningException> {

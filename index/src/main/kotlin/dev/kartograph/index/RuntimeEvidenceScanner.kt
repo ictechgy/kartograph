@@ -32,20 +32,24 @@ public class RuntimeEvidenceScanner {
             throw RuntimeEvidenceScanningException("runtime class list cannot be read", error)
         }
         return lines.mapIndexedNotNull { index, rawLine ->
-            val line = rawLine.trim()
+            val line = rawLine.removePrefix("\uFEFF").trim()
             if (line.isEmpty() || line.startsWith('#')) null else normalizeClassName(line, index + 1)
         }
     }
 
     private fun normalizeClassName(value: String, lineNumber: Int): String {
-        val candidate = value.removeSuffix(".class")
-        if (candidate.isEmpty() || candidate.startsWith('/') || candidate.endsWith('/') ||
-            candidate.contains("//") || candidate.any(Char::isWhitespace) || '#' in candidate
-        ) {
+        val candidate = value.removeSuffix(".class").replace('.', '/')
+        if (!isValidInternalName(candidate)) {
             throw RuntimeEvidenceScanningException("runtime class list has an invalid class name at line $lineNumber")
         }
-        return candidate.replace('.', '/')
+        return candidate
     }
+
+    // 정규화 후 빈 segment·공백을 거부해 `a..b`·`.Foo`·`Foo.` 같은 반쪽 입력이 통과하지 않게 한다.
+    private fun isValidInternalName(candidate: String): Boolean =
+        candidate.isNotEmpty() &&
+            candidate.split('/').none(String::isEmpty) &&
+            candidate.none(Char::isWhitespace)
 
     private fun readCoverageReport(report: Path): List<String> {
         if (!report.isRegularFile()) {
@@ -101,11 +105,11 @@ public class RuntimeEvidenceScanner {
     }
 
     private fun XMLStreamReader.classNameAt(): String {
-        val name = getAttributeValue(null, "name")
-        if (name.isNullOrBlank()) {
-            throw RuntimeEvidenceScanningException("runtime coverage report has a class without a name")
+        val candidate = getAttributeValue(null, "name")?.replace('.', '/')
+        if (candidate == null || !isValidInternalName(candidate)) {
+            throw RuntimeEvidenceScanningException("runtime coverage report has an invalid class name")
         }
-        return name.replace('.', '/')
+        return candidate
     }
 
     private fun XMLStreamReader.coveredCount(): Long {

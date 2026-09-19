@@ -141,7 +141,9 @@ internal object DeadCommand {
             RuntimeEvidenceScanner().scan(options.runtimeClasses, options.coverageReports)
         }
         val confidence = findings.associate { finding ->
-            finding.nodeId to RetentionPipeline.confidenceOf(finding, analysis.unresolvedChannelsBySource, observedClasses)
+            finding.nodeId to RetentionPipeline.confidenceOf(
+                finding, graph, analysis.unresolvedChannelsBySource, observedClasses,
+            )
         }
         output.print(
             AdoptionReporter.render(
@@ -374,9 +376,10 @@ internal object DeadCommand {
         --generated-classes marks a supplied class root as generated-only; its declarations remain in the graph.
         --suppress hides fingerprinted findings until the entry's ISO expires date (inclusive); expired
         entries stop suppressing and machine formats report the count. Fingerprints are the baseline values.
-        --runtime-classes (one class name per line) and --coverage (JaCoCo/Kover XML) accept user-supplied
-        runtime evidence and mark findings whose class was observed as "runtime-observed" confidence.
+        --runtime-classes (one class name per line; nested classes use "$") and --coverage (JaCoCo/Kover XML) accept
+        user-supplied runtime evidence and mark findings whose class was observed as "runtime-observed" confidence.
         Findings, strict results and exit codes are unchanged; coverage is not collected or executed here.
+        These options cannot be combined with --explain or --write-baseline.
         markdown renders a human-readable findings table for review descriptions.
     """.trimIndent() + "\n"
 
