@@ -163,6 +163,16 @@ DI 어노테이션 보존은 지원되는 어노테이션을 진입점으로 삼
 보존하고 weight는 각 출처 안에서만 합친다. 출처 없는 기존 JSON 간선은 `bytecode`를 뜻한다. `resolvedTargets`와
 `projectCandidates`는 실행 대상의 확정이 아니며 query의 `dispatch-candidates`가 이런 호출 개수도 함께 알린다.
 
+## 선언 의존성 분석
+
+`dependencies`는 전달한 class root의 classfile 참조만 측정한다. reflection 문자열, runtime class loading,
+SOURCE-retention annotation, annotation processor가 만든 코드, resource 기반 사용은 해석하지 않으므로 unused
+finding이 dependency 삭제 승인이 아니다. signature에만 있는 generic type 인자는 bytecode descriptor에서
+지워져 보이지 않는다. test root를 주지 않으면 test scope는 판정하지 않지만, main scope dependency가 test에서만
+쓰이면 unused로 보일 수 있다. 같은 class 이름이 앱과 dependency에 겹치면 사용됨으로 기울 수 있다.
+processor·runtime-only scope는 판정하지 않고 개수만 알린다. artifact는 project-relative 경로를 그대로,
+절대경로는 파일 이름만 출력하며, baseline·suppress·confidence 같은 `dead` 보조 장치는 아직 없다.
+
 ## 라이브러리 runtime 모델
 
 JDK API 모델은 owner·이름·descriptor·static 여부를 확인하고 해당 호출이 있을 때만 적용한다. 호출이 없는

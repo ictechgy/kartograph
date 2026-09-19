@@ -764,7 +764,7 @@ private val RUNTIME_CALLBACK_MEMBER_KINDS = setOf(NodeKind.CONSTRUCTOR, NodeKind
 
 private fun Int.isSynthetic(): Boolean = this and Opcodes.ACC_SYNTHETIC != 0
 
-private fun descriptorClassNames(descriptor: String): Set<String> = buildSet {
+internal fun descriptorClassNames(descriptor: String): Set<String> = buildSet {
     if (descriptor.startsWith('(')) {
         Type.getArgumentTypes(descriptor).forEach { type -> addDescriptorType(type) }
         addDescriptorType(Type.getReturnType(descriptor))

@@ -63,6 +63,7 @@ counts in the assessment; default retention still applies. See
 - `result.truncated` is an object with `usedBy`, `dependsOn`, and `members` booleans, not a single boolean. When a relevant flag is true, increase the supported limit/depth or narrow the query; do not treat omitted neighbors as absent.
 - `result.reachability.suppressedByBaseline` means the fingerprint is suppressed. It does not establish who reviewed it or grant permission to change/delete the symbol.
 - `reachability.state = unreachable` means no configured root reaches the declaration in this compiled graph: evidence for review and never deletion approval. Check reflection, JNI, resources, runtime registration, variants, generated code and cross-language callers as relevant. Empty query limitations are not a completeness guarantee.
+- A `dependencies` `unused-dependency` finding means the supplied class roots never reference any class in that declared artifact. It does not measure reflection strings, resources, annotation processors, unsupplied roots or test-only usage, so it is a review candidate, not a removal approval.
 
 ## Change impact preflight
 
