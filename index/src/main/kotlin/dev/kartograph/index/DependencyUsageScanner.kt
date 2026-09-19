@@ -81,7 +81,11 @@ public class DependencyUsageScanner {
             override fun visitAnnotation(descriptor: String, visible: Boolean) =
                 if (descriptor == "Lkotlin/Metadata;") MetadataAnnotationValues().also { metadata = it } else null
         }, ClassReader.SKIP_CODE or ClassReader.SKIP_DEBUG or ClassReader.SKIP_FRAMES)
-        val kotlin = metadata?.toMetadata()?.let { KotlinDependencyAbi.read(it, node.name) }
+        val publishedMembers = node.methods.filter { method ->
+            (method.visibleAnnotations.orEmpty() + method.invisibleAnnotations.orEmpty()).any { it.desc == "Lkotlin/PublishedApi;" }
+        }.mapTo(mutableSetOf()) { it.name + it.desc }
+        val publishedClass = (node.visibleAnnotations.orEmpty() + node.invisibleAnnotations.orEmpty()).any { it.desc == "Lkotlin/PublishedApi;" }
+        val kotlin = metadata?.toMetadata()?.let { KotlinDependencyAbi.read(it, node.name, publishedMembers, publishedClass) }
         val inner = node.innerClasses.firstOrNull { it.name == node.name }
         val access = inner?.access ?: node.access
         val visible = node.outerMethod == null && notPrivate(access) && (kotlin?.visible ?: true)

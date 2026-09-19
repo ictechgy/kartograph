@@ -46,7 +46,7 @@ class DependencyUsageScannerTest {
     @Test
     fun `Kotlin metadata separates internal members and preserves inline and typealias API types`(@TempDir root: Path) {
         val prefix = "dev/kartograph/index/fixture/"
-        listOf("DependencyAbiPublic", "DependencyAbiInternal", "DependencyAbiFixturesKt").forEach { name ->
+        listOf("DependencyAbiPublic", "DependencyAbiInternal", "DependencyAbiFixturesKt", "DependencyAbiPublishedClass").forEach { name ->
             val file = root.resolve(prefix + name + ".class")
             file.parent.createDirectories()
             javaClass.classLoader.getResourceAsStream(prefix + name + ".class")!!.use { file.writeBytes(it.readBytes()) }
@@ -54,6 +54,9 @@ class DependencyUsageScannerTest {
         val usage = DependencyUsageScanner().scan(listOf(root))
         assertContains(usage.apiClasses, prefix + "AbiExposedType")
         assertContains(usage.apiClasses, prefix + "AbiInlineType")
+        assertContains(usage.apiClasses, prefix + "AbiPublishedInlineType")
+        assertContains(usage.apiClasses, prefix + "AbiPublishedPropertyType")
+        assertContains(usage.apiClasses, prefix + "AbiPublishedClassType")
         assertContains(usage.apiClasses, prefix + "AbiAliasType")
         for (type in listOf("AbiAliasAnnotation", "AbiAnnotationType", "AbiAnnotationExtra", "AbiNestedAnnotation", "AbiNestedAnnotationType", "AbiAnnotationChoice")) {
             assertContains(usage.apiClasses, prefix + type)

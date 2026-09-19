@@ -61,10 +61,14 @@ internal object DependencyTasks {
     fun requests(project: Project, prefixes: List<String>, testPrefixes: List<String> = emptyList()): ListProperty<String> {
         val result = project.objects.listProperty(String::class.java).convention(emptyList())
         for (scope in DependencyScope.entries) {
-            val names = if (scope.option.startsWith("test")) {
-                testPrefixes.map { it + scope.option.removePrefix("test") }.toSet()
-            } else prefixes.map { prefix -> if (prefix.isEmpty()) scope.option else prefix + scope.option.replaceFirstChar(Char::titlecase) }.toSet()
+            val names = when {
+                scope == DependencyScope.KAPT || scope == DependencyScope.KSP ->
+                    (prefixes + testPrefixes).map { scope.option + it.replaceFirstChar(Char::titlecase) }.toSet()
+                scope.option.startsWith("test") -> testPrefixes.map { it + scope.option.removePrefix("test") }.toSet()
+                else -> prefixes.map { prefix -> if (prefix.isEmpty()) scope.option else prefix + scope.option.replaceFirstChar(Char::titlecase) }.toSet()
+            }
             project.configurations.matching { it.name in names }.all { configuration ->
+                // DependencySet.all은 predicate가 아니라 현재·이후 추가되는 선언을 관찰하는 Action이다.
                 configuration.allDependencies.all { dependency ->
                     when (dependency) {
                         is ProjectDependency -> result.add("${scope.option}\tproject:${projectPath(dependency)}")

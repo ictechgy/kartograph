@@ -39,6 +39,18 @@ class DependencyTaskIntegrationTest {
         assertFalse(Files.exists(root.resolve("build/reports/kartograph/jvm-dependencies.txt")))
     }
 
+    @Test
+    fun `variant processor bucket names and later-added declarations are observed without resolution`(@TempDir root: Path) {
+        val project = org.gradle.testfixtures.ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        val requests = DependencyTasks.requests(project, listOf("", "debug"), listOf("test", "debugUnitTest"))
+        project.configurations.create("kaptDebug")
+        project.configurations.create("kspDebugUnitTest")
+        project.dependencies.add("kaptDebug", "example:processor:1")
+        project.dependencies.add("kspDebugUnitTest", "example:symbols:1")
+        assertContains(requests.get(), "kapt\tmodule:example:processor")
+        assertContains(requests.get(), "ksp\tmodule:example:symbols")
+    }
+
     private fun exercise(root: Path, inProcess: Boolean) {
         val modules = listOf("exported", "transit", "middle", "body", "unused", "testlib", "consumer")
         root.resolve("settings.gradle").writeText("rootProject.name='dependency-fixture'\ninclude " + modules.joinToString(",") { "'$it'" } + "\n")

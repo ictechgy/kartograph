@@ -21,9 +21,10 @@ import kotlin.metadata.jvm.fieldSignature
 import kotlin.metadata.jvm.getterSignature
 import kotlin.metadata.jvm.setterSignature
 import kotlin.metadata.jvm.signature
+import kotlin.metadata.jvm.syntheticMethodForAnnotations
 
 /** JVM public으로 내려간 Kotlin internal 선언과 실제 공개 Kotlin 타입을 분리한다. */
-internal class KotlinDependencyAbi private constructor() {
+internal class KotlinDependencyAbi private constructor(private val publishedMembers: Set<String>, private val publishedClass: Boolean) {
     var visible: Boolean = true
     var complete: Boolean = true
     val methods = mutableMapOf<String, Boolean>()
@@ -57,7 +58,7 @@ internal class KotlinDependencyAbi private constructor() {
     }
 
     private fun function(function: KmFunction) {
-        val public = exposed(function.visibility)
+        val public = exposed(function.visibility) || function.signature?.let { it.name + it.descriptor in publishedMembers } == true
         function.signature?.let { signature ->
             val key = signature.name + signature.descriptor
             methods[key] = public
@@ -76,15 +77,18 @@ internal class KotlinDependencyAbi private constructor() {
     }
 
     private fun property(property: KmProperty) {
-        val public = exposed(property.visibility)
+        val published = property.annotations.any { it.className == "kotlin/PublishedApi" } ||
+            property.syntheticMethodForAnnotations?.let { it.name + it.descriptor in publishedMembers } == true
+        val public = exposed(property.visibility) || published
+        fun accessor(visibility: Visibility): Boolean = exposed(visibility) || (published && visibility == Visibility.INTERNAL)
         property.fieldSignature?.let { fields[it.name + ":" + it.descriptor] = public }
         property.getterSignature?.let {
-            methods[it.name + it.descriptor] = public && exposed(property.getter.visibility)
-            if (public && exposed(property.getter.visibility) && property.getter.isInline) inlineMethods += it.name + it.descriptor
+            methods[it.name + it.descriptor] = public && accessor(property.getter.visibility)
+            if (public && accessor(property.getter.visibility) && property.getter.isInline) inlineMethods += it.name + it.descriptor
         }
         property.setterSignature?.let {
-            methods[it.name + it.descriptor] = public && property.setter?.let { setter -> exposed(setter.visibility) } == true
-            if (public && property.setter?.let { setter -> exposed(setter.visibility) && setter.isInline } == true) inlineMethods += it.name + it.descriptor
+            methods[it.name + it.descriptor] = public && property.setter?.let { setter -> accessor(setter.visibility) } == true
+            if (public && property.setter?.let { setter -> accessor(setter.visibility) && setter.isInline } == true) inlineMethods += it.name + it.descriptor
         }
         val referenced = mutableSetOf<String>()
         types(property.returnType, referenced)
@@ -99,7 +103,7 @@ internal class KotlinDependencyAbi private constructor() {
     }
 
     private fun constructor(constructor: KmConstructor) {
-        val public = exposed(constructor.visibility)
+        val public = exposed(constructor.visibility) || constructor.signature?.let { it.name + it.descriptor in publishedMembers } == true
         constructor.signature?.let { methods[it.name + it.descriptor] = public }
         val referenced = mutableSetOf<String>()
         constructor.valueParameters.forEach { types(it.type, referenced); types(it.varargElementType, referenced) }
@@ -144,13 +148,13 @@ internal class KotlinDependencyAbi private constructor() {
     companion object {
         private fun exposed(visibility: Visibility): Boolean = visibility == Visibility.PUBLIC || visibility == Visibility.PROTECTED
 
-        fun read(annotation: Metadata, owner: String): KotlinDependencyAbi = KotlinDependencyAbi().apply {
+        fun read(annotation: Metadata, owner: String, publishedMembers: Set<String>, publishedClass: Boolean): KotlinDependencyAbi = KotlinDependencyAbi(publishedMembers, publishedClass).apply {
             if (annotation.metadataVersion.firstOrNull()?.let { it > 2 || (it == 2 && annotation.metadataVersion.getOrElse(1) { 0 } > 4) } == true) complete = false
             try {
                 when (val value = KotlinClassMetadata.readLenient(annotation)) {
                     is KotlinClassMetadata.Class -> {
                         val klass = value.kmClass
-                        visible = exposed(klass.visibility)
+                        visible = exposed(klass.visibility) || publishedClass
                         declaredAliases += klass.typeAliases.map { "${klass.name}.${it.name}" }
                         legacyContexts(klass).forEach { types(it, allTypes); if (visible) types(it, apiTypes) }
                         klass.annotations.forEach { this.annotation(it, allTypes); if (visible) this.annotation(it, apiTypes) }

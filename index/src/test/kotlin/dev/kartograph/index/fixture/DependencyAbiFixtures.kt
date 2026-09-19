@@ -47,3 +47,17 @@ internal fun createsFileFacade(): Int = 1
 public class DependencyAbiAliasUser {
     public fun exposeAlias(value: PublicDependencyAlias): PublicDependencyAlias = value
 }
+
+public class AbiPublishedInlineType
+@PublishedApi
+internal inline fun publishedInlineHelper(): String = AbiPublishedInlineType().toString()
+
+public class AbiPublishedPropertyType
+public class AbiPublishedClassType
+@PublishedApi
+internal inline val publishedInlineProperty: String
+    get() = AbiPublishedPropertyType().toString()
+@PublishedApi
+internal class DependencyAbiPublishedClass {
+    public fun exposed(): AbiPublishedClassType? = null
+}
