@@ -13,7 +13,7 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 ### 자매 브리지 확장 머지 완료 — 2026-09-20
 
 - [PR #82](https://github.com/ictechgy/kartograph/pull/82)을 squash merge했다(`37f0053`).
-  로컬·원격 main이 같고 머지 트리는 검토·CI를 통과한 PR head와 일치한다.
+  로컬·원격 main이 같고 머지 트리의 내용 해시는 검토·CI를 통과한 PR head의 tree 해시와 일치한다.
   이 HANDOFF는 해당 머지의 인계 기록이다. 기존 `.claude/`와
   `HANDOFF.cartograph-notes.md`는 사용자 미추적 파일로 보존했다.
 - `dead --external-retentions <path>`가 isthmus external-retentions v0를 실제 JVM ID에
@@ -36,7 +36,7 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - 동반 머지: isthmus [#96](https://github.com/ictechgy/isthmus/pull/96), cartograph
   [#123](https://github.com/ictechgy/cartograph/pull/123), dartograph
   [#127](https://github.com/ictechgy/dartograph/pull/127).
-  [교환 계약](../isthmus/docs/GRAPH-EXCHANGE.md)과 [전체 인계](../isthmus/HANDOFF.md)를 참조한다.
+  [교환 계약](https://github.com/ictechgy/isthmus/blob/main/docs/GRAPH-EXCHANGE.md)과 [전체 인계](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)를 참조한다.
   이전 임시 로그가 현재도 존재한다고 가정하지 말고 PR/CI와 남아 있는 저장소 기록을 확인한다.
 - 이번 구현·검증·머지는 완료했다. 새 태그/발행은 하지 않았으며 기존 0.10.2 발행본과
   이 main의 추가 기능을 구분한다. RN 엔진/앱 전체 실행 검증은 아니다.
