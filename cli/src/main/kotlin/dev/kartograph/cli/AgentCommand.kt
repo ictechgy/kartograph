@@ -331,7 +331,7 @@ internal object AgentCommand {
             output.print(BRIDGES_HELP)
             return ExitStatus.SUCCESS.code
         }
-        val options = parsePaths(arguments, setOf("--project", "--format", "--target", "--graph-file", "--messages", "--events"), error)
+        val options = parsePaths(arguments, setOf("--project", "--format", "--target", "--graph-file", "--messages", "--events", "--rn-events"), error)
             ?: return ExitStatus.USAGE.code
         val project = try {
             options.single("--project")?.let(Path::of)?.toAbsolutePath()?.normalize()
@@ -340,10 +340,13 @@ internal object AgentCommand {
             return usage(error, "invalid path")
         }
         if (options.single("--format")?.let { it != "json" } == true) return usage(error, "invalid bridges format")
-        if (options.single("--target")?.let { it != "flutter" } == true) return usage(error, "bridges currently supports only --target flutter")
+        val rnEvents = options.values("--rn-events").isNotEmpty()
+        val requiredTarget = if (rnEvents) "react-native" else "flutter"
+        if (options.single("--target")?.let { it != requiredTarget } == true) return usage(error, "invalid bridges target for the selected transport")
         val messages = options.values("--messages").isNotEmpty()
         val events = options.values("--events").isNotEmpty()
         if (messages && events) return usage(error, "--messages and --events are separate documents and cannot be combined")
+        if (rnEvents && (messages || events)) return usage(error, "--rn-events requires a separate event document")
         if (!Files.isDirectory(project)) {
             error.println("error: project root does not exist")
             return ExitStatus.FAILURE.code
@@ -354,6 +357,7 @@ internal object AgentCommand {
             val graph = snapshot?.takeUnless { freshness?.status == "stale" }?.graph
             val scanner = BridgeFactScanner(project)
             val scanned = when {
+                rnEvents -> scanner.scanReactNativeEvents(graph = graph)
                 messages -> scanner.scanMessages(graph = graph)
                 events -> scanner.scanEvents(graph = graph)
                 else -> scanner.scan(graph = graph, targetFilter = options.single("--target"))
@@ -379,7 +383,7 @@ internal object AgentCommand {
                 error.println("error: unknown option: $option")
                 return null
             }
-            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings", "--messages", "--events")) {
+            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings", "--messages", "--events", "--rn-events")) {
                 values.getOrPut(option) { mutableListOf() } += "true"
                 index++
                 continue
@@ -458,10 +462,13 @@ internal object AgentCommand {
           kartograph bridges --project <directory> [--format json] [--target flutter]
           kartograph bridges --project <directory> --target flutter --messages [--graph-file <snapshot>]
           kartograph bridges --project <directory> --target flutter --events [--graph-file <snapshot>]
+          kartograph bridges --project <directory> --rn-events [--target react-native] [--graph-file <snapshot>]
 
         --messages emits opt-in bridge-facts v2 for Kotlin/JVM BasicMessageChannel native handlers.
         --events emits opt-in bridge-facts v2 for Kotlin/JVM EventChannel stream handlers and cannot
         be combined with --messages.
+        --rn-events emits core React Native global event emissions in a separate v2 document. It cannot
+        be combined with Flutter channel flags. Expo module events and emitter aliases are not resolved.
         --graph-file may attach a compiler snapshot JVM symbol at the observed or enclosing source location.
         Static literals only; dynamic channel names and unattributed handlers are reported as limitations.
         generatedAt is the newest scanned source modification time (Unix epoch for an empty source tree).

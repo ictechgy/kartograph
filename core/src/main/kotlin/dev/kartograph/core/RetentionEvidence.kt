@@ -15,6 +15,7 @@ public enum class RetentionReason(public val description: String) {
     INLINE_CONSTANT("compile-time constant declaration or owner; inlined use sites may be absent"),
     EXTERNAL_MEMBER_ENTRY("conservatively treated as a possible entry point in private-member analysis"),
     SERVICE_PROVIDER("declared in META-INF/services for external runtime discovery"),
+    EXTERNAL_BRIDGE("called through an observed cross-language bridge"),
 }
 
 /** 보존되는 정점과 복원 가능한 경우 판정을 재현할 파일·줄 근거를 함께 운반한다. */
@@ -22,4 +23,17 @@ public data class RetentionEvidence(
     val nodeId: NodeId,
     val reason: RetentionReason,
     val location: SourceLocation?,
+    val externalBridge: ExternalBridgeEvidence? = null,
+)
+
+/** 네이티브 선언 보존을 요구한 다른 언어의 원본 호출 위치다. */
+public data class ExternalBridgeCaller(val platform: String, val path: String, val line: Int)
+
+/** 외부 보존 파일에서 검증한 채널과 호출 근거를 설명 단계까지 운반한다. */
+public data class ExternalBridgeEvidence(
+    val channel: String,
+    val method: String?,
+    val caller: ExternalBridgeCaller,
+    val callers: List<ExternalBridgeCaller> = listOf(caller),
+    val callersOmitted: Long = 0,
 )

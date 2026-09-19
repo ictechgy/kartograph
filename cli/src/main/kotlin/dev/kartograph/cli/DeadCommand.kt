@@ -11,6 +11,7 @@ import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.RetentionReason
 import dev.kartograph.export.AdoptionReporter
 import dev.kartograph.export.BaselineCodec
+import dev.kartograph.export.ExternalRetentionCodec
 import dev.kartograph.export.ReportFormat
 import dev.kartograph.export.SuppressCodec
 import dev.kartograph.export.toPlainTextLocation
@@ -99,6 +100,12 @@ internal object DeadCommand {
                 classpath = options.classpath,
                 serviceResources = options.serviceResources,
                 includePrivateMembers = options.includePrivateMembers,
+                externalRetentions = options.externalRetentions?.let { path ->
+                    require(Files.size(path) <= 16 * 1024 * 1024) {
+                        "external retention input is too large; narrow the inputs"
+                    }
+                    ExternalRetentionCodec.parse(Files.readString(path))
+                }.orEmpty(),
             ),
         )
         val graph = analysis.graph
@@ -203,6 +210,7 @@ internal object DeadCommand {
         var baselineValue: String? = null
         var writeBaselineValue: String? = null
         var suppressValue: String? = null
+        var externalRetentionsValue: String? = null
         var since: String? = null
         var reportFormat = ReportFormat.TEXT
         var index = 0
@@ -236,6 +244,7 @@ internal object DeadCommand {
                 "--baseline" -> baselineValue = value
                 "--write-baseline" -> writeBaselineValue = value
                 "--suppress" -> suppressValue = value
+                "--external-retentions" -> externalRetentionsValue = value
                 "--since" -> since = value
                 "--report-format" -> reportFormat = ReportFormat.fromOption(value) ?: run {
                     error.println("error: invalid report format: $value")
@@ -285,6 +294,7 @@ internal object DeadCommand {
             baseline = baselineValue?.let { value -> resolveProjectPath(project, value) },
             writeBaseline = writeBaselineValue?.let { value -> resolveProjectPath(project, value) },
             suppress = suppressValue?.let { value -> resolveProjectPath(project, value) },
+            externalRetentions = externalRetentionsValue?.let { value -> resolveProjectPath(project, value) },
             since = since,
             reportFormat = reportFormat,
         )
@@ -321,7 +331,12 @@ internal object DeadCommand {
     }
 
     private fun RetentionEvidence.explanation(): String =
-        "retained\t$nodeId\t${reason.name}\t${location.toPlainTextLocation()}\t${reason.description}"
+        "retained\t$nodeId\t${reason.name}\t${location.toPlainTextLocation()}\t${reason.description}" +
+            (externalBridge?.let { bridge ->
+                "; channel " + bridge.channel + (bridge.method?.let { "; method " + it } ?: "") +
+                    "; callers " + bridge.callers.joinToString(", ") { it.platform + ":" + it.path + ":" + it.line } +
+                    (if (bridge.callersOmitted > 0) "; callers omitted " + bridge.callersOmitted else "")
+            } ?: "")
 
     private data class DeadOptions(
         val classRoots: List<Path>,
@@ -342,6 +357,7 @@ internal object DeadCommand {
         val baseline: Path?,
         val writeBaseline: Path?,
         val suppress: Path?,
+        val externalRetentions: Path?,
         val since: String?,
         val reportFormat: ReportFormat,
     )
@@ -368,6 +384,7 @@ internal object DeadCommand {
             [--include-private-members]
             [--generated-classes <directory-or-jar>]...
             [--baseline <file>] [--suppress <file>] [--since <git-ref>]
+            [--external-retentions <file>]
             [--runtime-classes <file>]... [--coverage <file>]...
             [--report-format text|gradle|github-actions|sarif|json|markdown]
 
@@ -381,6 +398,8 @@ internal object DeadCommand {
         Findings, strict results and exit codes are unchanged; coverage is not collected or executed here.
         These options cannot be combined with --explain or --write-baseline.
         markdown renders a human-readable findings table for review descriptions.
+        --external-retentions reads isthmus external-retentions v0 using exact JVM identifiers and preserves
+        Dart/JS caller evidence in --explain. Unmatched identifiers fail; use facts from the same indexed build.
     """.trimIndent() + "\n"
 
 }

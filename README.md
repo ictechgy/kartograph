@@ -211,3 +211,19 @@ A finding, including `unreachable`, is a fact about the input graph you supplied
 ## License
 
 kartograph is MIT licensed. Copyright and license texts of the dependencies bundled in distributions ship together in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and [`LICENSES/`](LICENSES/).
+
+## External bridge evidence in development
+
+`dead --external-retentions <file>` reads v0 documents from a development isthmus
+`retentions --for kartograph`. Every actual JVM node ID must exist in the indexed graph; malformed
+or unmatched input fails without partial application. The called member's containing-type chain is retained. The normal opt-in private-member
+entry policy still applies; the owner expansion itself does not select sibling methods. `dead --explain` shows EXTERNAL_BRIDGE with the
+original Dart/JS caller locations, channel, method and omitted caller count. Supply the normal
+required dead arguments as well.
+
+`bridges --rn-events [--target react-native]` exports explicit
+`getJSModule(...RCTDeviceEventEmitter::class.java).emit(...)` calls (Java `.class` is also supported)
+in a separate v2 `react-native-event` document. `--graph-file` can attach actual JVM identities.
+Capture snapshots with `snapshot --include-paths` so bridge source paths can match indexed methods.
+Expo/codegen events and emitter variables/wrappers are not resolved. This flag is separate from
+Flutter `--events` and `--messages`. Both extensions require development builds and are not yet released.

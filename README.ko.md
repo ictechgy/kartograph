@@ -212,3 +212,18 @@ kartograph의 finding과 `unreachable`은 주어진 입력 그래프에 대한 �
 ## 라이선스
 
 kartograph는 MIT 라이선스다. 배포본에 내장된 의존성의 저작권과 라이선스 전문은 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)와 [`LICENSES/`](LICENSES/)에 함께 들어 있다.
+
+## 개발 중인 외부 브리지 근거
+
+`dead --external-retentions <file>`은 isthmus 개발 빌드의 `retentions --for kartograph`
+출력(v0)을 읽습니다. 실제 JVM 정점 식별자가 현재 그래프에 정확히 있어야 하며, 누락·손상
+문서는 부분 적용하지 않고 실패합니다. 호출된 멤버의 소유 타입과 바깥 소유 타입도 보존합니다. 소유 관계 확장은 형제 메서드를
+선택하지 않으며, opt-in private 분석의 기존 진입점 정책은 그대로 적용합니다. `dead --explain`은 EXTERNAL_BRIDGE 사유와 원본 Dart/JS 호출
+위치·채널·메서드·생략된 호출 수를 보여 줍니다. 평소 dead 필수 인자는 그대로 필요합니다.
+
+`bridges --rn-events [--target react-native]`는 명시적인
+`getJSModule(...RCTDeviceEventEmitter::class.java).emit(...)`(Java의 `.class`도 지원)을
+별도 v2 `react-native-event` 문서로 냅니다. `--graph-file`로 실제 JVM 식별자를 붙일 수
+있습니다. `snapshot --include-paths`로 소스 경로가 있는 스냅샷을 만들어야 브리지 위치와
+인덱스 메서드를 대조할 수 있습니다. Expo·codegen 이벤트·emitter 변수/래퍼는 해석하지 않습니다. Flutter의
+`--events`·`--messages`와 함께 사용할 수 없습니다. 두 기능 모두 발행 전 개발 기능입니다.

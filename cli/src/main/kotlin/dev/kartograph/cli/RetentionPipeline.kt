@@ -35,6 +35,7 @@ internal data class RetentionInputs(
     val classpath: List<Path>,
     val serviceResources: List<Path>,
     val includePrivateMembers: Boolean,
+    val externalRetentions: List<RetentionEvidence> = emptyList(),
 )
 
 /** 보존 분석 결과와 소스 파일별로 측정한 미해결 runtime 채널 관측을 함께 운반한다. */
@@ -56,10 +57,14 @@ internal object RetentionPipeline {
             inputs.generatedClassRoots,
         )
         val graph = indexed.graph
+        require(inputs.externalRetentions.all { graph.contains(it.nodeId) }) {
+            "external retention identifiers are absent from the indexed graph; regenerate facts and retentions from the same build"
+        }
         val manifestEvidence = AndroidManifestScanner(inputs.projectRoot).scan(inputs.manifest, inputs.namespace)
         val inputEvidence = buildList {
             addAll(manifestEvidence)
             addAll(AndroidXmlScanner(inputs.projectRoot).scan(inputs.resources))
+            addAll(inputs.externalRetentions)
         }
         val keepRules = KeepRuleScanner(inputs.projectRoot, inputs.includePrivateMembers)
             .scan(inputs.keepRules)
