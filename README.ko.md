@@ -52,7 +52,7 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.10.2"
+    id("io.github.ictechgy.kartograph") version "0.11.0"
 }
 ```
 
@@ -213,9 +213,9 @@ kartograph의 finding과 `unreachable`은 주어진 입력 그래프에 대한 �
 
 kartograph는 MIT 라이선스다. 배포본에 내장된 의존성의 저작권과 라이선스 전문은 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)와 [`LICENSES/`](LICENSES/)에 함께 들어 있다.
 
-## 개발 중인 외부 브리지 근거
+## 외부 브리지 근거
 
-`dead --external-retentions <file>`은 isthmus 개발 빌드의 `retentions --for kartograph`
+`dead --external-retentions <file>`은 isthmus 0.8.0 이상의 `retentions --for kartograph`
 출력(v0)을 읽습니다. 실제 JVM 정점 식별자가 현재 그래프에 정확히 있어야 하며, 누락·손상
 문서는 부분 적용하지 않고 실패합니다. 호출된 멤버의 소유 타입과 바깥 소유 타입도 보존합니다. 소유 관계 확장은 형제 메서드를
 선택하지 않으며, opt-in private 분석의 기존 진입점 정책은 그대로 적용합니다. `dead --explain`은 EXTERNAL_BRIDGE 사유와 원본 Dart/JS 호출
