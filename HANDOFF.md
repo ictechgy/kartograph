@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-17 (기준 `origin/main` 7b210c9, `VERSION` 0.10.0; 로컬 문서 통합)
+마지막 갱신: 2026-09-19 (기준 `origin/main` b7ea7f6, `VERSION` 0.10.2)
 
 ## 목표
 
@@ -10,12 +10,22 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 
 ## 현재 상태
 
-- 0.10.0은 공개됐고(GitHub Release·Plugin Portal, 독립 설치 검증 완료), main에는 `CHANGELOG.md` Unreleased가 쌓여 있다:
-  Expo Modules 스캔(#67), 병렬 fingerprint(#61)와 그 리뷰 수정(#64), `impact` 결함 2건(#59), EventChannel(#60). **0.10.1 릴리스 후보 상태**다.
-- 2026-09-16~17에 머지된 PR: #59 impact 결함 → #60 EventChannel → #61 fingerprint 병렬화 → #62 단계 B 기각 기록 → #63 과제 종료 결론 →
-  #64 3관점 리뷰 반영 → #65 JDK 17/21 재측정 → #66 README 퇴고 → #67 Expo Modules(다른 세션) → #68 HANDOFF 완료 절 → #69 HANDOFF 갱신.
-- 열린 PR: #47 Dependabot `jvm` 2.4.10→2.4.20(2026-09-17 재조회). 다음 착수 시 상태를 재확인하고 `gradle/verification-metadata.xml` 체크섬을 검토한다. Kotlin metadata 라이브러리 갱신과 JVM 플러그인 갱신은 별개다.
-- 사용자 요청으로 `origin/main` 7b210c9에서 `docs/integrate-local-handoff`를 만들고 로컬 문서 변경을 통합했다. `AGENTS.md`의 산출물 정리·근거 보존 규칙과 `docs/PHASE4-AGENT.md`의 EventSink 미스캔 설명을 유지했다. 이 문서 통합의 리뷰·PR·머지는 승인됐으며 실제 완료 여부는 해당 PR 상태로 확인한다.
+- **0.10.1·0.10.2를 공개했다(2026-09-18)**: 0.10.1은 tag `v0.10.1` → release workflow 전체 게이트 성공(run 35290692293) →
+  GitHub Release 6 asset과 Plugin Portal 발행을 확인했다. 0.10.2는 별도 세션이 PR #74(squash `ecaa2be`)로 준비·머지하고 tag `v0.10.2`를 발행했다
+  (GitHub Release draft=false 확인). `CHANGELOG.md` Unreleased에는 이후 머지된 #75의 `input-hint` 항목이 있다.
+- 2026-09-16~18에 머지된 PR: #59 impact 결함 → #60 EventChannel → #61 fingerprint 병렬화 → #62 단계 B 기각 기록 → #63 과제 종료 결론 →
+  #64 3관점 리뷰 반영 → #65 JDK 17/21 재측정 → #66 README 퇴고 → #67 Expo Modules(다른 세션) → #68 HANDOFF 완료 절 → #69 HANDOFF 갱신 → #70 로컬 문서 통합(squash `9e377fd`) →
+  #47 Dependabot `jvm` 2.4.20(squash `5d8e491`) → #71 release 0.10.1(squash `0ea604a`) → #73 unmatched keep rule 진단(squash `18c502d`) → #74 release 0.10.2(squash `ecaa2be`) → #75 누락 입력 input-hint 진단(squash `b7ea7f6`).
+- 2026-09-19 외부 리뷰 인프라: `packet-review`가 provider(glm·qwen)·effort·파일 수와 무관하게 `packet-ask exited 125`로 실패했다.
+  단일 파일 최소 packet도 동일해 슈퍼바이저 측 문제로 보인다. #75는 내부 독립 리뷰(blocker 0, major 1 수정)로 대체하고 CI로 검증했다.
+  같은 시각 `chore/release-0.10.2`·`fix/expo-dsl-scan-gaps` 원격 브랜치를 삭제했고(합의 완료), PR #75의 `feat/missing-input-hints`도 머지 후 삭제했다.
+- 열린 PR: 없음(2026-09-19, #75 머지 후 기준). PR #72(Expo DSL 중첩 제네릭·FQN·this. 스캔, `fix/expo-dsl-scan-gaps`의 작업)가 squash `81cb6eb`로 머지됐고, 이전 세션 작업 `feat/unmatched-keep-rule-diagnostics`는 worktree·원격 모두 정리했다.
+  메인 체크아웃은 `main`으로 전환했고 오래된 브랜치를 대대적으로 정리했다(사용자 승인): 로컬 35개·원격 47개를 삭제했다
+  (ancestor 또는 머지된 PR의 head 일치로 검증). `phase0/1/2`·`feat/adoption-competitiveness`는 재작성 전 이력·squash 전 변형으로
+  내용이 main에 더 나은 형태로 포함됨을 diff로 확인 후 삭제(머지하면 Expo 스캔·KGP 2.4.20 회귀). 잔여 `pr/21`·`pr/46` ref도 제거.
+  보존: worktree 체크아웃 2개(`feat/expanded-impact-evaluation`, `docs/handoff-session-20260917`와 그 원격), 스냅샷 마커 `public-main`.
+  원격 `fix/expo-dsl-scan-gaps`(#72)와 `chore/release-0.10.2`(#74)는 2026-09-19 사용자 합의 후 삭제했고, 임시 worktree `/private/tmp/kartograph-rel-0.10.2`는 그전에 이미 제거됐다.
+- 문서 통합은 PR #70으로 완료됐다: `AGENTS.md` 산출물 정리·근거 보존 규칙, `docs/PHASE4-AGENT.md` EventSink 미스캔 설명, HANDOFF 통합. 검증: `git diff --check`, GLM medium 리뷰 blocker/major 0, CI 4 job pass(`test` 26m43s 포함, run 35227567984).
 - 기존 344줄 HANDOFF와 로컬 문서 2개의 원문은 stash `96a029edea8810d6c5a8d01efad2334f18686d44`(`preserve-local-docs-before-integration-20260917`)에 보존했다. 필요한 원문은 `git show 96a029e:HANDOFF.md`로 확인한다. 최신 문서 위에 stash 전체를 적용해 과거 상태로 되돌리지 않는다.
 - 근거·측정 산출물은 `.claude/worktrees/perf-fingerprint-parallel/build/reports/`에 있다. 등록된 보조 worktree 3개는 모두 보존했다. 추가 제품 코드 반영은 필요하지 않았다(아래 점검 기록).
 
@@ -55,18 +65,101 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
 - Kotlin에서 `Path`는 `Iterable<Path>`라 `jars + jars[2]`가 경로 요소를 이어 붙인다(`listOf(jars[2])`로). `sortedByDescending { Files.size(..) }`는 비교마다 stat을 부른다(키 선계산).
 - worktree 격리 훅은 `git -C`·복합 명령·heredoc을 거부한다. 편집·커밋 메시지·PR 본문은 파일로 만들어 단순 명령으로 실행한다.
 - 로컬 표본 5개 중 4개는 의존성 다운로드 없이는 빌드되지 않는다. cartograph에서 배운 것(`../cartograph/HANDOFF.md`)도 그대로 적용된다: mtime을 신선도로 쓰지 말 것, 가지치기 목록 두 벌 만들지 말 것, 테스트를 일부러 부숴 볼 것.
+- **`--write-verification-metadata`를 캐시가 있는 홈에서 재생성하면** constraint-only artifact(BOM POM)를 기록하지 못한다. #47에서 빈 `--gradle-user-home` 재생성으로 누락 2건(junit-bom, coroutines-bom POM)을 복원했고,
+  별도 빈 홈의 verify-only가 단독 완전성을 증명했다. 새 artifact는 upstream에서 재다운로드해 sha256을 대조한다. plugin marker POM은 포털 생성본이라 Central 파일과 내용이 다를 수 있다(둘 다 같은 좌표를 가리키면 정상).
+  `--update-verification-metadata`는 Gradle 9.6.1에 없는 옵션이다(GLM 제안이었으나 부재 확인).
+- `experiments/compiler-references/collector`는 `--offline` 빌드라 root Gradle 캐시의 artifact에 의존한다. root KGP bump 때 같은 버전으로 맞추지 않으면 offline 해석이 깨진다(#47 CI 실패 원인).
+  반면 `compiler-collectors/`·`gradle-plugin` fixture의 2.4.10 pin은 별도 빌드와 자체 metadata를 쓰는 의도된 호환성 고정이라 유지한다.
+
+## 경쟁 조사 — codegraph 대비 개선점 (2026-09-18)
+
+조사 대상: [colbymchenry/codegraph](https://github.com/colbymchenry/codegraph) v1.6.0 (스타 71,337, tree-sitter+Rust 커널,
+SQLite+FTS5, MCP 단일 툴 `codegraph_explore`, 파일 감시 자동 동기화, `codegraph install`로 9개 에이전트
+배선, 텔레메트리 기본 on, 호스팅 유료 플랫폼 예고). 판정: **경쟁이 아니라 보완 관계**. 자매 저장소
+(cartograph·dartograph·isthmus)에도 같은 날짜의 동일 섹션이 있고, "공통" 항목은 네 곳에서 겹친다.
+"다음 할 일" 순서는 그대로 두고, 아래는 끼워 넣을 **후보**다.
+
+### 한 줄 진단
+분석 품질은 카테고리 최상위권(SootUp/WALA가 놓친 reflection 경로를 유일하게 복원, 0.10–0.20초 vs
+1.84–3.48초)인데 **그 품질이 사람에게도 에이전트에게도 도달하지 않는다.** 자체 실험이 증명한다 —
+AI 수리 24회에서 그래프 질의 **0회**, v4 MCP 8회에서 제품 호출 13회(그중 8회가 `freshness` 1회씩).
+도구가 진 게 아니라 **호출되지 않았다.** 개선은 정확도가 아니라 도달률에 집중한다.
+
+### 실측 사실
+- `gh repo view`: 스타 1, 이슈 전체 기간 0건, Discussions 비활성, CONTRIBUTING·이슈 템플릿 없음, PR당 CI 20–26분.
+- `McpTools.kt:177-187`: MCP 툴 3개(`query_symbol`/`impact`/`freshness`). `why`는 CLI 전용(`docs/MCP.md` 표 3행).
+- `notFound`/`ambiguous`가 exit 64(AGENTS.md 종료코드 계약). v4에서 `freshness` 8/8 `unverified`.
+- export 경로에 소스 snippet 방출 없음(`index/ProjectTraversal.kt`만 스캔용으로 읽음).
+- README: 이미지 0개, 데모 0개. "Portal에 올라오면 설치 가능" 문구는 stale — **0.4.1~0.10.1 실제 게시 확인**.
+- nia 캡처 1.4초 vs codegraph Swift 27k파일 ~100초 / Linux 70k파일 12분 — 이미 훨씬 빠른데 팔지 않는다.
+- codegraph의 Kotlin: okhttp 교차파일 96.2%, Compose `@Composable`→자식 호출도 잡힘. 그러나 자체 문서상
+  Hilt/Dagger·Room·XML·manifest·Navigation·ViewBinding 언급 없음, `build/` 기본 제외(생성 코드 그래프 밖),
+  Kotlin 파싱 에러율 4.7–8.5%, *"Kotlin emits zero `instantiates` refs, ever"*, 보조 생성자 노드 없음,
+  구조분해 우변 호출 소실, Compose recomposition·coroutines/Flow는 명시적 프런티어.
+
+### 공통 (네 저장소 동일)
+| # | 부족한 점 | 근거 | 제안 | 난이도 |
+|---|---|---|---|---|
+| C1 | 배선이 전부 수동 | Release zip 수동 다운로드+SHA256, MCP JSON 수동, `kartograph skill`은 `.claude/skills`만. codegraph는 `install`(배선, 9개 에이전트·11개 타깃 파일, AGENTS.md 마커 블록 — 서브에이전트·non-MCP 하네스가 MCP 초기화 지시를 못 받기 때문)과 `init`(프로젝트 인덱싱)을 분리 | `kartograph install`(에이전트 배선 + AGENTS.md 마커 블록) / `kartograph init`(플러그인 확인 → `kartographSnapshot` → 검증 질의 1회) 2단 분리 | 중 |
+| C2 | MCP 툴 3개로 쪼개짐, 지연 로딩 미우회 | codegraph는 8개 정의 후 `DEFAULT_MCP_TOOLS = new Set(['explore'])` 1개 노출 + `_meta: { 'anthropic/alwaysLoad': true }`. v4 저조 호출률은 지연 로딩 탓일 수 있음(추측, 검증 가능) | `kartograph_explore` 단일 툴(판정+근거+경로+영향 후보), 기존 3툴 env opt-in, 등록 스니펫에 `alwaysLoad` | 중 |
+| C3 | 근거에 소스 원문 없음 | 모든 출력이 `file:line`까지. 에이전트는 Read를 또 부름 | `--with-source` opt-in(기본 off): 근거 줄 ±N, project-relative 경로. 절대경로 금지 계약 유지 | 중 |
+| C4 | 검증된 강점이 묻힘 | callgraph-precision(SootUp/WALA 대조)이 한 줄 링크, 본문은 "remains an experiment"로 자기 비하. 첫 화면이 방어 문장 | 상단에 30초 데모 + 엔진 대조표 + 5분 시작. 한계는 전용 섹션으로 이동(삭제 금지). 고칠 것은 문장이 아니라 **순서** | 소 |
+| C5 | 에러가 이탈을 가르침 | codegraph AGENTS.md *"Errors teach abandonment"* / *"Adapt the tool to the agent"*. kartograph는 첫 두 호출이 "실패 + 쓰지 말라는 경고"(exit 64, 8/8 unverified, SKILL.md가 호출 전에 경고) | `notFound`를 exit 0 + `suggestions`. 손으로 뜬 snapshot은 `unverified` 대신 `no-witness (CLI capture)` 중립 상태 + "그래프 사실은 유효" 명시. MCP `isError` 최소화 | 소~중 |
+
+### kartograph 고유
+| # | 부족한 점 | 근거 | 제안 | 난이도 |
+|---|---|---|---|---|
+| S1 | `why`가 MCP에 없음 | 0.10.0 `why <symbol>`이 가장 에이전트다운 응답(상태+근거+대표 경로+caller+test-only+confidence)인데 CLI 전용 | MCP 노출 또는 C2 단일 툴의 기본 응답 형태로 채택 | 소 |
+| S2 | AI 효용 실험의 과제가 틀림 | "6/12 동일"은 과제 부적합(버그 고치기라 영향 조사 불필요). 같은 문서에 진짜 우위 존재: detekt #7718에서 이름 검색이 못 찾은 테스트 2개를 `render → toResults → toResult` 경로로 발견, `--sort review`로 7,485개 중 599·600번째 → 3·4번째 | v5 사전등록 과제를 **"이 변경으로 깨질 기존 테스트를 지목하라"**로 교체. oracle은 보유한 실제 실패 테스트. 오염 통제는 양 아암 CLI 차단(PATH+PreToolUse 훅) | 중 |
+| S3 | keep 규칙을 읽기만 하고 감사하지 않음 | AGP 9.3.0+ `analyzeReleaseR8Config`가 unused/identical/subsumed 규칙을 보고하나 **HTML 전용, JSON 없음** | `rules --keep-audit`: 미매치·중복·포섭 규칙을 SARIF/JSON/markdown. include 재귀·consumer rules·fail-closed 파서가 이미 있어 재료 완비 | 중 |
+| S4 | 자동 동기화·데몬 없음 (기존 계획에서 명시적 연기) | `docs/IMPACT-PLAN.md:15`, `docs/MCP.md` "서버 재시작". CLI는 호출마다 snapshot 재읽기 2.6–3.6초 | 소스가 아니라 **빌드 산출물 감시**: `kartograph serve --watch <class-roots>` → 증분 재캡처(0.10.1 warm 0.79×) → 그래프 핫스왑 | 대 |
+| S5 | 로컬 뷰어 없음 | 출력이 DOT·JSON·SARIF·markdown뿐. 122MB impact / 20,699 후보를 사람이 못 읽음. codegraph `ui`는 127.0.0.1 Svelte 3열, 네트워크 0, "never presents a guess as a fact" | `kartograph ui --graph-file snapshot.json` 정적 로컬 뷰어. `why` 근거 경로·confidence·stale 배너 렌더. 스크린샷 하나가 C4도 해결 | 중 |
+| S6 | 응답이 에이전트 예산 대비 크고 느림 (부분 기존) | `impact --all` 122MB/3.6초, 필터 348KB/2.75초, MCP 16KiB 한도와 충돌해 3단계 축소 재시도(`experiments/impact-navigation`) | 기본 응답을 "답 1줄 + 근거 3개 + 다음 질의 제안"으로, 전체는 명시 요청 시. `--sort review`가 옳은 방향 | 중 |
+| S7 | README stale·채택 퍼널 부재 | Portal 문구, 이슈 0, 템플릿 없음 | 문구 정정, Discussions 활성화, "오탐 신고" 템플릿, S2/S3 결과를 Android Weekly·Kotlin Slack에 투고, PR용 fast CI 잡 분리 | 소 |
+
+### 지킬 것 (따라가면 안 되는 것)
+1. **컴파일된 진실 원천을 tree-sitter류로 내리지 않는다.** 빌드 필요는 비용이자 **유일한 해자**다.
+   README 한 줄로 쓸 수 있다: "tree-sitter 인덱서는 `@Inject`가 무엇으로 바인딩되는지, manifest가
+   무엇을 살려두는지, keep 규칙이 무엇을 보존하는지 답하지 못한다. kartograph는 컴파일러가 기록한 것만 답한다."
+2. **"삭제 승인 아님" 계약과 계량된 limitations.** 단일 툴로 합치고 소스를 실어도 `unreachable`을 허가로
+   바꾸거나 unknown을 요약에서 빼지 않는다. 참고로 codegraph도 *"partial coverage is WORSE than none"*,
+   *"silent beats wrong"* 규율을 지킨다 — 두 프로젝트는 철학이 같고 원천만 다르다. 차이는 정직함의 **배치**다.
+
+### 권장 착수 순서
+C4·S7(소) → S1(소) → C5(소~중) → C2(중, 재측정 가치 최대) → C1(중) → S2(중) → S3(중) → C3 → S5 → S4(대).
+
+## 완료 — P1.4 누락 입력 힌트 (2026-09-19, PR #75)
+
+- `dead`가 finding을 보고할 때만 세 조건을 `input-hint`로 전 형식에 싣는다: keep/consumer rule 입력 없음(`missing-keep-rules`),
+  dependency classpath 없음(`missing-classpath`), manifest가 component 보존 근거 0건(`manifest-without-components`).
+- 판정은 `core.InputHint` + `analysis.InputHints.detect`(keepRuleInputs/classpathInputs/manifestEvidenceCount) 한 곳이고,
+  CLI `RetentionPipeline`·`DeadCommand`와 Gradle plugin `KartographDeadTask`가 같은 함수를 쓴다. reporter는 호출 컬렉션과
+  무관하게 distinct + enum 순서로 정렬해 결정적 출력을 보장한다.
+- hint는 finding이 아니다: strict 실패·종료 코드(0/1/2/64)·baseline 지문·suppressedCount에 비개입. finding이 0건이면
+  (baseline·suppress로 전부 억제된 경우 포함) 출력하지 않고, `--write-baseline`·`--explain`·`why`·`query` 계약은 그대로다.
+- JSON은 `"inputHints": [{"id", "message"}]`(빈 배열 포함, `unmatchedKeepRules` 뒤), 나머지는 text `input-hint` 행,
+  gradle·github-actions notice, SARIF note, markdown `## Input hints` 섹션.
+- 검증: `:analysis:test`·`:export:test`·`:cli:test`·`:gradle-plugin:test`(SDK 필요한 Android 통합 4건 제외 로컬),
+  `Scripts/verify-cli-contract.sh`, self-analysis smoke gate(6.65s), CI 4 job pass 2회(`test` 24m37s, run 35371109623,
+  koverVerify·fixture corpus·SDK 통합 포함). 자체 독립 리뷰 major 1(SARIF comma 조합 테스트)·minor 4를 반영했다(`da2b55d`).
+- plugin은 실제 빌드에서 `platformClasspath`가 항상 차므로 `missing-classpath`는 CLI에서 주로 발화하고 plugin report는
+  keep rule·manifest 조건에 주로 반응한다(의도된 동작, 테스트는 빈 classpath 구성으로 조건을 고정).
 
 ## 다음 할 일 (순서대로)
 
-1. Dependabot #47(`jvm` 2.4.20): `./gradlew --write-verification-metadata sha256 ...`로 체크섬 후보를 만들어 좌표·출처를 검토하고, GLM 리뷰·CI 통과 후 **사용자 승인을 받아** 머지한다. CI 실패 시 원인은 대개 verification-metadata 누락이다.
-2. 0.10.1 릴리스 여부를 정한다. Unreleased에 제품 변경(Expo, 병렬 fingerprint, impact 결함 수정)이 있고 검증 절차는 `docs/AGENT-WORKFLOW.md` 릴리스 절과 `Scripts/verify-release-readiness.sh`다.
-3. `docs/integrate-local-handoff` PR의 실제 머지 상태를 확인한다. 완료된 통합은 반복하지 않고 원본 stash와 보존 worktree는 유지한다. 로컬 근거나 `.claude/` 전체를 stage하지 않는다.
-4. 선택 과제(착수 전 사용자 합의): (a) cold/full 1.05~1.09의 병목으로 추정되는 spool 쓰기·header 파싱 시간 계측(설계 노트 §12 B3), (b) README 설치 절에 "JDK 21 이상에서 fingerprint가 빠르다" 한 줄 추가 여부, (c) Expo `requireOptionalNativeModule`의 선택적 부재 의미(#67 세션의 별개 이슈).
-5. 하지 않기로 한 것: self 15% 목표를 위한 단계 C(전역 분석 재사용). 근거는 `docs/ONE-CLASS-CHANGE-DESIGN.md` §11.
+1. 경쟁 툴 대비 개선 시퀀스(사용자가 전체 진행을 승인, PR 단위·각각 머지 승인 필요):
+   - ~~P1.3 무력 keep rule 진단~~ → PR #73으로 완료. `dead`가 보존 근거 0건인 root 생성 keep rule을 `unmatched-keep-rule`로 전 형식에 보고(JSON `unmatchedKeepRules`). 판정은 `KeepRuleRetention.unmatched`(근거 위치 파생), 비-root 지시자는 파서가 KeepRule로 만들지 않아 대상 아님. 삭제 승인 아님·strict 비개입.
+   - ~~P1.4 누락 입력 힌트~~ → PR #75로 완료(위 완료 절 참조). 다음 착수 대상은 P1.2다.
+   - P1.2 런타임 근거 인제스트: JaCoCo/Kover/LCOV·class-list 입력으로 `dead` finding의 confidence 승격. `externalCalls`·confidence 설계가 상정함.
+   - P1.1 선언 의존성 분석: classpath header + bytecode 참조로 unused 의존성·api/impl 오배치·미사용 kapt(DAAGP 가치를 class-그래프 정확도로).
+   - 그 뒤 P2(`impact` affected-modules 출력·경로 질의·dead cluster root·rules 확장·cycle 최소 절단)와 P3(res·HTML 리포트·dex/AAB 입력·CLI 자동발견)는 재합의 대상. 경쟁 툴 대비 갭 분석 원본은 이 세션 대화와 PR 본문에 있다.
+   - 위 "경쟁 조사 — codegraph 대비 개선점" 섹션의 C1~C5·S1~S7은 별도 조사의 **끼워 넣기 후보**다(권장 순서는 그 섹션 말미). 이 시퀀스와 교체가 아니라 병행 후보로 보고 착수는 합의가 필요하다.
+2. 선택 과제(착수 전 사용자 합의): (a) cold/full 1.05~1.09의 병목으로 추정되는 spool 쓰기·header 파싱 시간 계측(설계 노트 §12 B3), (b) README 설치 절에 "JDK 21 이상에서 fingerprint가 빠르다" 한 줄 추가 여부, (c) Expo `requireOptionalNativeModule`의 선택적 부재 의미(#67 세션의 별개 이슈).
+3. 하지 않기로 한 것: self 15% 목표를 위한 단계 C(전역 분석 재사용). 근거는 `docs/ONE-CLASS-CHANGE-DESIGN.md` §11.
 
 ## 재개 프롬프트
 
-저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 `git status --short --branch`를 확인해줘. 기준 main 7b210c9까지 PR #59~#69는 반영됐고, 한 클래스 변경 속도 과제는 미달 기록을 유지한 채 종료됐으니 반복하지 마. `docs/integrate-local-handoff` PR 상태를 확인해 완료된 통합은 반복하지 말고 원본 stash와 등록된 보존 worktree는 유지해. 새 작업은 나와 범위를 합의하고, Dependabot #47은 원격 상태·verification-metadata부터 확인해. PR·외부 리뷰·머지·릴리스는 각각 승인 범위를 지켜줘. 측정 근거와 복원 방법은 아래 기록을 참고해.
+저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 `git status --short --branch`를 확인해줘. 기준 main b7ea7f6까지 PR #59~#75가 반영됐고 0.10.1·0.10.2가 공개됐어. 한 클래스 변경 속도 과제는 미달 기록을 유지한 채 종료됐으니 반복하지 마. 경쟁 툴 개선 시퀀스는 P1.3(미매칭 keep rule 진단)·P1.4(누락 입력 input-hint)까지 완료됐고 다음은 P1.2(런타임 근거 인제스트)야. "경쟁 조사 — codegraph 대비 개선점" 섹션의 C/S 항목은 별도 조사의 끼워 넣기 후보로, 착수 전에 어느 쪽을 먼저 할지 나와 합의해. 외부 GLM 리뷰(packet-review)는 2026-09-19에 provider·파일 수와 무관하게 `packet-ask exited 125`로 실패했으니 재개 시 상태를 다시 확인하고, 계속 불가하면 내부 독립 리뷰 + CI로 대체할지 나와 합의해. 원본 stash와 등록된 보존 worktree는 유지하고, 미추적 사용자 파일을 함부로 정리하지 마. 새 작업은 나와 범위를 합의하고, PR마다 리뷰와 CI를 확인하고 머지는 승인받고 해. 측정 근거와 복원 방법은 아래 기록을 참고해.
 
 ## 0.1.x 구현 이력
 
