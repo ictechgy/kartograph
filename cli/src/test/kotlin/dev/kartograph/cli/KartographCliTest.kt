@@ -106,7 +106,13 @@ class KartographCliTest {
     @Test
     fun `baseline and explain reject ignored report options`(@TempDir root: Path) {
         val args = deadArguments(root, "<manifest />")
-        for (extra in listOf(arrayOf("--since", "missing"), arrayOf("--baseline", "missing.json"), arrayOf("--strict"))) {
+        for (extra in listOf(
+            arrayOf("--since", "missing"),
+            arrayOf("--baseline", "missing.json"),
+            arrayOf("--strict"),
+            arrayOf("--runtime-classes", "missing.txt"),
+            arrayOf("--coverage", "missing.xml"),
+        )) {
             assertEquals(ExitStatus.USAGE.code,
                 execute("baseline", "--write", "out.json", *args.drop(1).toTypedArray(), *extra).status)
             assertEquals(ExitStatus.USAGE.code,
@@ -1153,6 +1159,66 @@ class KartographCliTest {
         kotlin.test.assertFalse(suppressed.output.contains("unreachable\t"))
         kotlin.test.assertFalse(suppressed.output.contains("input-hint\t"))
     }
+
+    @Test
+    fun `dead promotes confidence from supplied runtime evidence without changing findings`(@TempDir root: Path) {
+        val classes = root.resolve("classes").createDirectories()
+        val source = root.resolve("RuntimeEntry.java")
+        source.writeText(
+            "package dev.kartograph.cli;\n" +
+                "public class RuntimeEntry { public static void main(String[] args) { new RuntimeUsed(); } }\n" +
+                "class RuntimeUsed {}\n" +
+                "class RuntimeObserved {}\n" +
+                "class RuntimeCovered {}\n" +
+                "class RuntimeUnobserved {}\n",
+        )
+        check(requireNotNull(ToolProvider.getSystemJavaCompiler()).run(
+            null, null, null, "-g", "-d", classes.toString(), source.toString(),
+        ) == 0)
+        root.resolve("rules.pro").writeText("-keep class dev.kartograph.cli.RuntimeEntry { *; }\n")
+        root.resolve("runtime-classes.txt").writeText("# loaded during the smoke run\ndev.kartograph.cli.RuntimeObserved\n")
+        root.resolve("coverage.xml").writeText(
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <report name="sample">
+              <package name="dev/kartograph/cli">
+                <class name="dev/kartograph/cli/RuntimeCovered" sourcefilename="RuntimeEntry.java">
+                  <counter type="LINE" missed="0" covered="1"/>
+                </class>
+              </package>
+            </report>
+            """.trimIndent() + "\n",
+        )
+        val arguments = deadArguments(root, "<manifest />", "--keep-rules", "rules.pro", "--report-format", "json")
+        arguments[2] = classes.toString()
+
+        val plain = execute(*arguments)
+        assertEquals(ExitStatus.SUCCESS.code, plain.status)
+        assertContains(plain.output, findingConfidence("class:dev/kartograph/cli/RuntimeObserved", "static"))
+        assertContains(plain.output, findingConfidence("class:dev/kartograph/cli/RuntimeCovered", "static"))
+
+        val promoted = execute(*arguments, "--runtime-classes", "runtime-classes.txt", "--coverage", "coverage.xml")
+        assertEquals(ExitStatus.SUCCESS.code, promoted.status)
+        assertEquals(
+            plain.output.lines().filter { it.contains("\"nodeId\"") }.sorted(),
+            promoted.output.lines().filter { it.contains("\"nodeId\"") }.sorted(),
+        )
+        assertContains(promoted.output, findingConfidence("class:dev/kartograph/cli/RuntimeObserved", "runtime-observed"))
+        assertContains(promoted.output, findingConfidence("class:dev/kartograph/cli/RuntimeCovered", "runtime-observed"))
+        assertContains(promoted.output, findingConfidence("class:dev/kartograph/cli/RuntimeUnobserved", "static"))
+        // runtime 근거는 finding·strict 판정을 바꾸지 않는다.
+        assertEquals(ExitStatus.FINDINGS.code,
+            execute(*arguments, "--strict", "--runtime-classes", "runtime-classes.txt", "--coverage", "coverage.xml").status)
+
+        val malformed = root.resolve("malformed.xml").apply { writeText("<coverage/>") }
+        val failure = execute(*arguments, "--coverage", malformed.fileName.toString())
+        assertEquals(ExitStatus.FAILURE.code, failure.status)
+        assertContains(failure.error, "not a JaCoCo/Kover XML report")
+        assertTrue(!failure.error.contains(root.toString()))
+    }
+
+    private fun findingConfidence(nodeId: String, confidence: String): String =
+        "\"nodeId\": \"$nodeId\",\n      \"ruleId\": \"dead\",\n      \"state\": \"unreachable\",\n      \"confidence\": \"$confidence\""
 
     private fun execute(vararg arguments: String): Execution {
         val output = ByteArrayOutputStream()

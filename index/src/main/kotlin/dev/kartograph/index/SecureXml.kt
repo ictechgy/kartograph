@@ -61,7 +61,7 @@ internal fun xmlValueLocation(sourcePath: String, sourceLines: List<String>, val
     return SourceLocation(sourcePath, line = valueLine?.plus(1) ?: endLine)
 }
 
-private fun secureXmlInputFactory(): XMLInputFactory = XMLInputFactory.newFactory().apply {
+internal fun secureXmlInputFactory(): XMLInputFactory = XMLInputFactory.newFactory().apply {
     setProperty(XMLInputFactory.SUPPORT_DTD, false)
     setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false)
     setProperty(XMLInputFactory.IS_REPLACING_ENTITY_REFERENCES, false)

@@ -50,7 +50,9 @@ R8의 보존 설명은 서로 다른 사실을 제공한다. kartograph는 컴�
 
 - **삭제 판정.** `deletable: true` 같은 필드는 영원히 없다
 - **자동 삭제.** 리포트만 낸다
-- **런타임 커버리지 통합.** JaCoCo/Kover 와의 결합은 다른 도구의 일이다. 정적 사실만 낸다
+- **런타임 커버리지 수집·실행.** JaCoCo/Kover를 실행하거나 결합해 커버리지를 수집하지 않는다. 사용자가 제공한
+  class-list·JaCoCo/Kover XML은 `dead` finding의 `runtime-observed` confidence 표시를 위한 선택 입력으로만 받고,
+  finding·strict 판정·종료 코드에는 관여하지 않는다
 - **IDE 플러그인.** CLI 와 Gradle 플러그인까지만
 - **Java 전용 프로젝트를 위한 특별 대우.** 원천이 바이트코드면 Java 는 자연히 포함되고, 아니면 v0.1 범위 밖이다
 

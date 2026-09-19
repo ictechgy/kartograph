@@ -18,6 +18,8 @@ import dev.kartograph.index.AndroidResourceScanningException
 import dev.kartograph.index.ClassHierarchyIndexingException
 import dev.kartograph.index.ClassIndexingException
 import dev.kartograph.index.KeepRuleScanningException
+import dev.kartograph.index.RuntimeEvidenceScanner
+import dev.kartograph.index.RuntimeEvidenceScanningException
 import dev.kartograph.index.SourcePathIndex
 import java.io.PrintStream
 import java.nio.file.Files
@@ -72,6 +74,8 @@ internal object DeadCommand {
             toolFailure(error, hierarchyError.message ?: "dependency hierarchy is incomplete")
         } catch (indexingError: ClassHierarchyIndexingException) {
             toolFailure(error, indexingError.message ?: "dependency hierarchy indexing failed")
+        } catch (scanningError: RuntimeEvidenceScanningException) {
+            toolFailure(error, scanningError.message ?: "runtime evidence scanning failed")
         } catch (changedFilesError: ChangedFilesException) {
             toolFailure(error, changedFilesError.message ?: "changed files unavailable")
         } catch (fileError: java.io.IOException) {
@@ -131,8 +135,13 @@ internal object DeadCommand {
         } ?: allFindings
         val fingerprints = options.baseline?.let { path -> BaselineCodec.parse(Files.readString(path)) }.orEmpty()
         val findings = scoped.filterNot { it.fingerprint in fingerprints || it.fingerprint in activeSuppressions }
+        val observedClasses = if (options.runtimeClasses.isEmpty() && options.coverageReports.isEmpty()) {
+            emptySet()
+        } else {
+            RuntimeEvidenceScanner().scan(options.runtimeClasses, options.coverageReports)
+        }
         val confidence = findings.associate { finding ->
-            finding.nodeId to RetentionPipeline.confidenceOf(finding.location, analysis.unresolvedChannelsBySource)
+            finding.nodeId to RetentionPipeline.confidenceOf(finding, analysis.unresolvedChannelsBySource, observedClasses)
         }
         output.print(
             AdoptionReporter.render(
@@ -185,6 +194,8 @@ internal object DeadCommand {
         val keepRulePaths = mutableListOf<String>()
         val classpathPaths = mutableListOf<String>()
         val servicePaths = mutableListOf<String>()
+        val runtimeClassPaths = mutableListOf<String>()
+        val coveragePaths = mutableListOf<String>()
         var strict = false
         var includePrivateMembers = false
         var baselineValue: String? = null
@@ -218,6 +229,8 @@ internal object DeadCommand {
                 "--keep-rules" -> keepRulePaths += value
                 "--classpath" -> classpathPaths += value
                 "--service-resources" -> servicePaths += value
+                "--runtime-classes" -> runtimeClassPaths += value
+                "--coverage" -> coveragePaths += value
                 "--baseline" -> baselineValue = value
                 "--write-baseline" -> writeBaselineValue = value
                 "--suppress" -> suppressValue = value
@@ -240,8 +253,10 @@ internal object DeadCommand {
             else -> null
         }
         if (exclusiveMode != null) {
-            val ignored = setOf("--baseline", "--since", "--strict", "--report-format", "--suppress") +
-                if (explainNodeId != null) setOf("--write-baseline", "--test-classes") else emptySet()
+            val ignored = setOf(
+                "--baseline", "--since", "--strict", "--report-format", "--suppress",
+                "--runtime-classes", "--coverage",
+            ) + if (explainNodeId != null) setOf("--write-baseline", "--test-classes") else emptySet()
             val conflict = arguments.firstOrNull { it in ignored }
             if (conflict != null) {
                 error.println("error: $conflict cannot be combined with $exclusiveMode")
@@ -260,6 +275,8 @@ internal object DeadCommand {
             keepRules = keepRulePaths.map { value -> resolveProjectPath(project, value) },
             classpath = classpathPaths.map { value -> resolveProjectPath(project, value) },
             serviceResources = servicePaths.map { value -> resolveProjectPath(project, value) },
+            runtimeClasses = runtimeClassPaths.map { value -> resolveProjectPath(project, value) },
+            coverageReports = coveragePaths.map { value -> resolveProjectPath(project, value) },
             strict = strict,
             includePrivateMembers = includePrivateMembers,
             explainNodeId = explainNodeId,
@@ -315,6 +332,8 @@ internal object DeadCommand {
         val keepRules: List<Path>,
         val classpath: List<Path>,
         val serviceResources: List<Path>,
+        val runtimeClasses: List<Path>,
+        val coverageReports: List<Path>,
         val strict: Boolean,
         val includePrivateMembers: Boolean,
         val explainNodeId: NodeId?,
@@ -347,6 +366,7 @@ internal object DeadCommand {
             [--include-private-members]
             [--generated-classes <directory-or-jar>]...
             [--baseline <file>] [--suppress <file>] [--since <git-ref>]
+            [--runtime-classes <file>]... [--coverage <file>]...
             [--report-format text|gradle|github-actions|sarif|json|markdown]
 
         This command reports graph reachability. It does not say that a declaration is safe to delete.
@@ -354,6 +374,9 @@ internal object DeadCommand {
         --generated-classes marks a supplied class root as generated-only; its declarations remain in the graph.
         --suppress hides fingerprinted findings until the entry's ISO expires date (inclusive); expired
         entries stop suppressing and machine formats report the count. Fingerprints are the baseline values.
+        --runtime-classes (one class name per line) and --coverage (JaCoCo/Kover XML) accept user-supplied
+        runtime evidence and mark findings whose class was observed as "runtime-observed" confidence.
+        Findings, strict results and exit codes are unchanged; coverage is not collected or executed here.
         markdown renders a human-readable findings table for review descriptions.
     """.trimIndent() + "\n"
 

@@ -13,6 +13,10 @@
   text/gradle/github-actions/sarif/json/markdown 형식에 측정 사실과 과소계측 가능성을 함께 싣는다.
   JSON은 `inputHints`(id·message)로 노출한다. hint는 finding이 아니므로 strict 판정·baseline·종료 코드에
   관여하지 않고, finding이 0건이면 보고하지 않는다. Gradle plugin의 report도 같은 신호를 공유한다.
+- `dead`가 `--runtime-classes`(줄 단위 class 목록)와 `--coverage`(JaCoCo/Kover XML)로 사용자가 제공한 런타임
+  근거를 선택 입력으로 받는다. 관측된 class의 finding은 JSON·SARIF·markdown `confidence`가
+  `runtime-observed`로 표시된다. 커버리지를 수집·실행하지 않고 class 단위로만 판정하며, finding·strict·
+  종료 코드·baseline은 바뀌지 않는다.
 
 ## [0.10.2] - 2026-09-18
 

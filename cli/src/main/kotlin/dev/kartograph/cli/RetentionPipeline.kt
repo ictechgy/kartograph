@@ -103,6 +103,21 @@ internal object RetentionPipeline {
         return if (channels > 0) FindingConfidence.REVIEW else FindingConfidence.STATIC
     }
 
+    /**
+     * 제공된 런타임 근거에서 소유 class가 관측되면 위치·runtime 채널과 무관하게 runtime-observed로 승격한다.
+     * finding 자체나 strict 판정은 바꾸지 않는다.
+     */
+    fun confidenceOf(
+        finding: Finding,
+        channelsBySource: Map<String, Int>,
+        observedClasses: Set<String>,
+    ): FindingConfidence {
+        if (ownerClassOf(finding.nodeId) in observedClasses) return FindingConfidence.RUNTIME_OBSERVED
+        return confidenceOf(finding.location, channelsBySource)
+    }
+
+    private fun ownerClassOf(nodeId: NodeId): String = nodeId.value.substringAfter(':').substringBefore('#')
+
     // test→production cross edge를 보존하려면 production과 test root를 함께 index해야 한다.
     // 따로 index하면 combined 조립 시 dangling 제거로 test→production 간선이 유실된다.
     private fun testReachableNodeIds(graph: CodeGraph, classRoots: List<Path>, testClassRoots: List<Path>): Set<NodeId> {

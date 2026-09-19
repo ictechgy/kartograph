@@ -133,6 +133,10 @@ virtual 호출, 해석된 프로젝트 밖 runtime 대상, 값 분석 한도, �
 notFound 응답에도 동일하게 포함한다. 이 관측은 아직 연결하지 못한 관계를 드러내는 것이며 실제 실행 횟수가 아니다.
 상수 field도 `INLINE_CONSTANT`로 보존하지만 원래 호출자 간선을 복원했다는 뜻은 아니다.
 
+`dead`의 `runtime-observed` confidence는 사용자가 제공한 class-list/JaCoCo·Kover XML에서 그 class가 관측됐다는
+사실만 뜻한다. 커버리지를 수집하거나 실행하지 않고 class 단위로만 판정하며, 실제 실행 횟수·호출 경로·method
+단위 실행이나 특정 테스트와의 대응을 증명하지 않는다. finding·strict 판정·종료 코드·baseline을 바꾸지 않는다.
+
 외부 virtual/interface 호출은 전달된 classpath header와 프로젝트 상속 관계로 가능한 구현을 연결한다.
 이는 실제 receiver를 증명하는 points-to 분석이 아니므로 여러 구현과 상속 메서드를 보수적으로 연결할 수 있다.
 `externalCalls.resolution`과 간선 `origin`은 미해결 호출, 후보 dispatch, runtime 모델을 구분한다.

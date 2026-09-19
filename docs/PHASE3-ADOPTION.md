@@ -55,7 +55,13 @@ JSON·SARIF·markdown 보고의 finding은 같은 소스 파일(파일 이름)�
 
 - `static` — 같은 소스에서 측정된 채널이 0개다.
 - `needs-runtime-review` — 같은 소스에서 하나 이상이 측정됐다.
+- `runtime-observed` — 제공된 런타임 근거에서 이 선언의 class가 실행 또는 로드됐다. 정적 도달성과 실제 실행의
+  차이를 알리는 가장 강한 검토 신호다.
 - `unmeasured` — 소스 위치나 대응 관측이 없어 측정하지 못했다.
+
+`dead --runtime-classes <file>`(줄 단위 class 이름, `#` 주석 허용)과 `--coverage <file>`(JaCoCo/Kover XML)는
+사용자가 제공한 런타임 근거를 읽는다. 커버리지를 수집·실행하지 않고 class 단위로만 판정하며, 근거가 없으면
+기존 등급 규칙을 그대로 쓴다. 이 입력은 finding·strict·종료 코드·baseline에 관여하지 않는다.
 
 등급은 같은 컴파일 단위의 관측이라는 좁은 근거만 말하며, 전역 분석 한계는 모든 형식에 계속 함께
 보고된다. 등급은 삭제 판정이 아니다. text/gradle/github-actions 형식은 바뀌지 않고, 등급을 전달하지
