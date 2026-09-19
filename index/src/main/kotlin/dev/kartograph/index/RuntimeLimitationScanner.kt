@@ -18,15 +18,10 @@ public class IndexedClasses internal constructor(
     public val declarationsByRoot: List<Set<NodeId>> = emptyList(),
     public val selectedRootByNode: Map<NodeId, Int> = emptyMap(),
     public val statistics: IndexingStatistics = IndexingStatistics(),
-    /** CodeGraph가 외부 간선을 제거하기 전에 원시 classfile 사실에서 모은 참조 class 이름이다. */
-    public val referencedClasses: Set<String> = emptySet(),
 ) {
     /** 1회 파싱한 그래프에 dependency header를 보강하며 관측값과 호출 위치는 재사용한다. */
     public fun withHierarchy(hierarchy: ClassHierarchy): IndexedClasses =
-        IndexedClasses(
-            ExternalDispatchIndexer.enrich(graph, hierarchy), observations, hierarchy,
-            declarationsByRoot, selectedRootByNode, statistics, referencedClasses,
-        )
+        IndexedClasses(ExternalDispatchIndexer.enrich(graph, hierarchy), observations, hierarchy, declarationsByRoot, selectedRootByNode, statistics)
 }
 
 /** 한 인덱싱 실행에서 관측한 캐시 수명주기와 주요 phase 시간이다. */

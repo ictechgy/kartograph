@@ -31,6 +31,11 @@ class DependenciesCommandTest {
             listOf(source(root, "unused-src", "com/example/unused/UnusedHelper.java", "package com.example.unused; public class UnusedHelper {}\n")),
             unusedClasses,
         )
+        val testClasses = root.resolve("test-classes").createDirectories()
+        compileJava(
+            listOf(source(root, "test-src", "com/example/test/TestHelper.java", "package com.example.test; public class TestHelper {}\n")),
+            testClasses,
+        )
         val appClasses = root.resolve("app-classes").createDirectories()
         compileJava(
             listOf(
@@ -51,7 +56,8 @@ class DependenciesCommandTest {
                 "com.example:used:1.0\timplementation\tused-classes\n" +
                 "com.example:signature:1.0\tcompileOnly\tsignature-classes\n" +
                 "com.example:unused:1.0\timplementation\tunused-classes\n" +
-                "com.example:processor:1.0\tkapt\tunused-classes\n",
+                "com.example:processor:1.0\tkapt\tunused-classes\n" +
+                "com.example:test:1.0\ttestImplementation\ttest-classes\n",
         )
         val arguments = arrayOf(
             "dependencies", "--classes", appClasses.toString(), "--project", root.toString(),
@@ -63,8 +69,10 @@ class DependenciesCommandTest {
         assertContains(text.output, "unused-dependency\tcom.example:unused:1.0\timplementation\tunused-classes")
         assertFalse(text.output.contains("unused-dependency\tcom.example:used:1.0"))
         assertFalse(text.output.contains("unused-dependency\tcom.example:signature:1.0"))
-        assertContains(text.output, "limitation\t1 declared dependencies use processor or runtime-only scopes and were not judged")
-        assertContains(text.output, "limitation\ttest class roots were not supplied; usage from tests is not measured")
+        // test root가 없으면 test scope는 finding이 아니라 skip이다.
+        assertFalse(text.output.contains("unused-dependency\tcom.example:test:1.0"))
+        assertContains(text.output, "limitation\t2 declared dependencies use processor, runtime-only, or unjudged test scopes and were not judged")
+        assertContains(text.output, "limitation\ttest class roots were not supplied; test scopes are counted but not judged")
 
         val json = execute(*arguments, "--report-format", "json")
         assertEquals(ExitStatus.SUCCESS.code, json.status)
@@ -72,13 +80,15 @@ class DependenciesCommandTest {
         assertContains(json.output, "\"coordinate\": \"com.example:unused:1.0\"")
         assertContains(json.output, "\"state\": \"unused\"")
         assertContains(json.output, "\"analyzedDependencies\": 3")
-        assertContains(json.output, "\"skippedDependencies\": 1")
+        assertContains(json.output, "\"skippedDependencies\": 2")
 
         assertEquals(ExitStatus.FINDINGS.code, execute(*arguments, "--strict").status)
 
         val withTests = execute(*arguments, "--test-classes", appClasses.toString())
         assertEquals(ExitStatus.SUCCESS.code, withTests.status)
         assertFalse(withTests.output.contains("test class roots were not supplied"))
+        assertContains(withTests.output, "unused-dependency\tcom.example:test:1.0\ttestImplementation\ttest-classes")
+        assertEquals(ExitStatus.FINDINGS.code, execute(*arguments, "--test-classes", appClasses.toString(), "--strict").status)
     }
 
     @Test

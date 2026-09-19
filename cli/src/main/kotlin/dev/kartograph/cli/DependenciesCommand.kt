@@ -4,9 +4,9 @@ import dev.kartograph.analysis.DependencyFindings
 import dev.kartograph.export.DependencyListCodec
 import dev.kartograph.export.DependencyReporter
 import dev.kartograph.export.ReportFormat
-import dev.kartograph.index.ClassFileIndexer
 import dev.kartograph.index.ClassIndexingException
 import dev.kartograph.index.DependencyArtifactScanner
+import dev.kartograph.index.ExternalReferenceScanner
 import java.io.IOException
 import java.io.PrintStream
 import java.nio.file.Files
@@ -48,12 +48,18 @@ internal object DependenciesCommand {
         if (declared.isEmpty()) {
             return toolFailure(error, "dependency list is empty")
         }
-        val indexed = ClassFileIndexer().indexWithObservations(options.classRoots + options.testClassRoots)
+        val includeTestScopes = options.testClassRoots.isNotEmpty()
+        val judgedScopes = DependencyFindings.judgedScopes(includeTestScopes)
+        val referencedClasses = ExternalReferenceScanner().scan(options.classRoots + options.testClassRoots)
         val scanner = DependencyArtifactScanner()
         val artifactClasses = linkedMapOf<String, Set<String>>()
         declared.forEach { dependency ->
-            if (dependency.artifact in artifactClasses) return@forEach
-            val resolved = resolveProjectPath(options.projectRoot, dependency.artifact)
+            if (dependency.scope !in judgedScopes || dependency.artifact in artifactClasses) return@forEach
+            val resolved = try {
+                resolveProjectPath(options.projectRoot, dependency.artifact)
+            } catch (pathError: InvalidPathException) {
+                return toolFailure(error, "dependency artifact for ${dependency.coordinate} has an invalid path")
+            }
             if (!Files.isDirectory(resolved) && !Files.isRegularFile(resolved)) {
                 return toolFailure(error, "dependency artifact for ${dependency.coordinate} does not exist")
             }
@@ -64,15 +70,15 @@ internal object DependenciesCommand {
             }
             artifactClasses[dependency.artifact] = classes
         }
-        val result = DependencyFindings.find(declared, indexed.referencedClasses, artifactClasses)
+        val result = DependencyFindings.find(declared, referencedClasses, artifactClasses, includeTestScopes)
         val limitations = buildList {
-            add("only references from the supplied class roots are measured; reflection strings, runtime class loading, annotation processors and resource-driven use are not resolved")
+            add("only references from the supplied class roots are measured; reflection strings, runtime class loading, SOURCE-retention annotations, annotation processors and resource-driven use are not resolved")
             add("generic type arguments that appear only in signatures are erased from bytecode descriptors")
-            if (options.testClassRoots.isEmpty()) {
-                add("test class roots were not supplied; usage from tests is not measured")
+            if (!includeTestScopes) {
+                add("test class roots were not supplied; test scopes are counted but not judged")
             }
             if (result.skippedCount > 0) {
-                add("${result.skippedCount} declared dependencies use processor or runtime-only scopes and were not judged")
+                add("${result.skippedCount} declared dependencies use processor, runtime-only, or unjudged test scopes and were not judged")
             }
             if (result.withoutClassCount > 0) {
                 add("${result.withoutClassCount} declared artifacts contained no class files and were not judged")

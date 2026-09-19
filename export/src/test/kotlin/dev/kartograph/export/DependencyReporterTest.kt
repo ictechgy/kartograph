@@ -74,6 +74,11 @@ class DependencyReporterTest {
         assertContains(text, "lib.jar")
         assertFalse(json.contains("/Users/private"))
         assertContains(json, "\"artifact\": \"lib.jar\"")
+
+        val windows = UnusedDependency("com.example:lib:1.0", DependencyScope.API, "C:\\libs\\lib.jar")
+        val windowsText = DependencyReporter.render(ReportFormat.TEXT, result.copy(findings = listOf(windows)), emptyList())
+        assertFalse(windowsText.contains("C:\\libs"))
+        assertContains(windowsText, "lib.jar")
     }
 
     @Test

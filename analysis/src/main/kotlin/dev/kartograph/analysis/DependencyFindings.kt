@@ -29,18 +29,26 @@ public object DependencyFindings {
         DependencyScope.TEST_COMPILE_ONLY,
     )
 
+    /** test class root를 주지 않으면 test scope를 판정하지 않는다(보수적 skip). */
+    public fun judgedScopes(includeTestScopes: Boolean): Set<DependencyScope> =
+        if (includeTestScopes) ANALYZED_SCOPES else ANALYZED_SCOPES - TEST_SCOPES
+
+    private val TEST_SCOPES = setOf(DependencyScope.TEST_IMPLEMENTATION, DependencyScope.TEST_COMPILE_ONLY)
+
     /** artifact의 class 중 참조가 하나도 없으면 unused로 보고하고, 판정 불가 입력은 따로 센다. */
     public fun find(
         declared: Iterable<DeclaredDependency>,
         referencedClasses: Set<String>,
         artifactClasses: Map<String, Set<String>>,
+        includeTestScopes: Boolean = true,
     ): DependencyAnalysisResult {
+        val judged = judgedScopes(includeTestScopes)
         var analyzed = 0
         var skipped = 0
         var withoutClasses = 0
         val findings = mutableListOf<UnusedDependency>()
         declared.distinct().forEach { dependency ->
-            if (dependency.scope !in ANALYZED_SCOPES) {
+            if (dependency.scope !in judged) {
                 skipped++
                 return@forEach
             }

@@ -9,19 +9,22 @@ import dev.kartograph.core.DependencyScope
  */
 public object DependencyListCodec {
     /** 좌표·scope·artifact 순으로 정렬해 같은 입력에 같은 문서를 만든다. */
-    public fun render(dependencies: Collection<DeclaredDependency>): String =
-        dependencies.distinct()
+    public fun render(dependencies: Collection<DeclaredDependency>): String {
+        val sorted = dependencies.distinct()
             .sortedWith(compareBy({ it.coordinate }, { it.scope.option }, { it.artifact }))
-            .joinToString(separator = "\n", postfix = "\n") { dependency ->
-                "${dependency.coordinate}\t${dependency.scope.option}\t${dependency.artifact}"
-            }
+        if (sorted.isEmpty()) return ""
+        return sorted.joinToString(separator = "\n", postfix = "\n") { dependency ->
+            "${dependency.coordinate}\t${dependency.scope.option}\t${dependency.artifact}"
+        }
+    }
 
     public fun parse(content: String): List<DeclaredDependency> {
         val dependencies = mutableListOf<DeclaredDependency>()
         content.split('\n').forEachIndexed { index, rawLine ->
-            val line = rawLine.removeSuffix("\r").trim()
-            if (line.isEmpty() || line.startsWith('#')) return@forEachIndexed
-            val fields = rawLine.removeSuffix("\r").split('\t')
+            val line = rawLine.removeSuffix("\r")
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith('#')) return@forEachIndexed
+            val fields = line.split('\t')
             val lineNumber = index + 1
             require(fields.size == 3) { "dependency list has a malformed line at line $lineNumber" }
             val coordinate = fields[0].trim()

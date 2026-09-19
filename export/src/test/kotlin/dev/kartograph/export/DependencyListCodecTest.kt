@@ -53,6 +53,15 @@ class DependencyListCodecTest {
     }
 
     @Test
+    fun `empty render stays empty and indented comments are ignored`() {
+        assertEquals("", DependencyListCodec.render(emptyList()))
+        assertEquals(
+            listOf(DeclaredDependency("a:b:1", DependencyScope.API, "libs/a.jar")),
+            DependencyListCodec.parse("   # indented comment\n  a:b:1\tapi\tlibs/a.jar\n"),
+        )
+    }
+
+    @Test
     fun `parse deduplicates exact entries and render sorts deterministically`() {
         val dependency = DeclaredDependency("com.example:lib:1.0", DependencyScope.IMPLEMENTATION, "libs/lib.jar")
 

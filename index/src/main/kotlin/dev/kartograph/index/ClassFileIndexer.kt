@@ -164,10 +164,6 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
         val classFacts = factsByClass.values.map { facts ->
             if (facts.internalName in generatedSiblingNames) facts.asSynthesized() else facts
         }
-        // CodeGraph는 dangling 외부 간선을 버리므로 참조 class는 원시 간선에서 먼저 모은다.
-        val referencedClasses = classFacts.flatMapTo(sortedSetOf()) { facts ->
-            facts.edges.flatMap { edge -> referencedClassCandidates(edge.target) }
-        }
         val assemblyStart = System.nanoTime()
         val graph = CodeGraph(
             nodes = classFacts.flatMap(ClassFacts::nodes),
@@ -192,10 +188,8 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
         runtimeNanos = System.nanoTime() - runtimeStart
         val selectedRootByNode = classFacts.flatMap { facts -> facts.nodes.map { it.id to rootByClass.getValue(facts.internalName) } }.toMap()
         val dispatchStart = System.nanoTime()
-        val dispatched = IndexedClasses(
-            modeled, observations, hierarchy, declarationsByRoot.toList(), selectedRootByNode,
-            referencedClasses = referencedClasses,
-        ).withHierarchy(hierarchy)
+        val dispatched = IndexedClasses(modeled, observations, hierarchy, declarationsByRoot.toList(), selectedRootByNode)
+            .withHierarchy(hierarchy)
         val dispatchNanos = System.nanoTime() - dispatchStart
         val statistics = IndexingStatistics(classFiles, cacheHits, cacheMisses, parsedClasses, invalidEntries, writeFailures,
             readNanos, cacheReadNanos, parseNanos, assemblyNanos, hierarchyNanos, runtimeNanos, cacheWriteNanos,
@@ -204,10 +198,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
             hierarchyIndexer.statistics.hierarchyParsedJars, hierarchyIndexer.statistics.hierarchyInvalidEntries,
             hierarchyIndexer.statistics.hierarchyWriteFailures, hierarchyIndexer.statistics.hierarchyUnavailableEntries,
             dispatchNanos)
-        return IndexedClasses(
-            dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot,
-            selectedRootByNode, statistics, referencedClasses,
-        )
+        return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics)
     }
 
     private fun readRoot(root: Path, readMany: (List<() -> ClassInput>) -> List<ClassFacts>): List<ClassFacts> = when {
@@ -773,7 +764,7 @@ private val RUNTIME_CALLBACK_MEMBER_KINDS = setOf(NodeKind.CONSTRUCTOR, NodeKind
 
 private fun Int.isSynthetic(): Boolean = this and Opcodes.ACC_SYNTHETIC != 0
 
-private fun descriptorClassNames(descriptor: String): Set<String> = buildSet {
+internal fun descriptorClassNames(descriptor: String): Set<String> = buildSet {
     if (descriptor.startsWith('(')) {
         Type.getArgumentTypes(descriptor).forEach { type -> addDescriptorType(type) }
         addDescriptorType(Type.getReturnType(descriptor))

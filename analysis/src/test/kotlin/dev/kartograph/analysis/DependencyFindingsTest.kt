@@ -52,6 +52,23 @@ class DependencyFindingsTest {
     }
 
     @Test
+    fun `test scopes are skipped when test roots were not supplied`() {
+        val testDependency = DeclaredDependency("com.example:test:1.0", DependencyScope.TEST_IMPLEMENTATION, "libs/test.jar")
+
+        val result = DependencyFindings.find(
+            listOf(testDependency),
+            referencedClasses = emptySet(),
+            artifactClasses = mapOf("libs/test.jar" to setOf("com/example/test/Api")),
+            includeTestScopes = false,
+        )
+
+        assertEquals(emptyList(), result.findings)
+        assertEquals(0, result.analyzedCount)
+        assertEquals(1, result.skippedCount)
+        assertEquals(0, result.withoutClassCount)
+    }
+
+    @Test
     fun `artifacts without class files are counted instead of judged`() {
         val empty = DeclaredDependency("com.example:empty:1.0", DependencyScope.API, "libs/empty.jar")
 

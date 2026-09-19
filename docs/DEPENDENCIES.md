@@ -29,8 +29,8 @@ androidx.annotation:annotation:1.9.1	compileOnly	libs/annotation-1.9.1.jar
 - 빈 줄과 `#` 주석을 허용하고, 같은 항목이 중복되면 한 번만 판정한다.
 - scope: `api`, `implementation`, `compileOnly`, `runtimeOnly`, `annotationProcessor`, `kapt`, `ksp`,
   `testImplementation`, `testCompileOnly`, `testRuntimeOnly`.
-- `api`·`implementation`·`compileOnly`·`testImplementation`·`testCompileOnly`만 판정한다.
-  `runtimeOnly`와 processor scope는 세기만 하고 판정하지 않는다.
+- `api`·`implementation`·`compileOnly`는 판정한다. `testImplementation`·`testCompileOnly`는
+  `--test-classes`를 준 경우에만 판정한다. `runtimeOnly`와 processor scope는 세기만 하고 판정하지 않는다.
 - 알 수 없는 scope·빈 필드·잘못된 열 수·빈 목록은 부분 적용 없이 exit 2로 실패한다.
 - artifact가 없거나 class directory/JAR이 아니면 exit 2다. 오류에는 절대경로를 싣지 않는다.
 
@@ -43,10 +43,11 @@ artifact는 판정하지 않고 개수만 보고한다. 출력의 artifact는 pr
 
 ## 한계
 
-- 전달한 class root의 참조만 측정한다. reflection 문자열, runtime class loading, annotation processor가
-  만든 코드, resource 기반 사용은 해석하지 않는다.
+- 전달한 class root의 참조만 측정한다. reflection 문자열, runtime class loading, SOURCE-retention
+  annotation, annotation processor가 만든 코드, resource 기반 사용은 해석하지 않는다.
 - signature에만 있는 generic type 인자는 bytecode descriptor에서 지워져 보이지 않는다.
-- test root를 주지 않으면 test만 쓰는 dependency가 unused로 보일 수 있다.
+- test root를 주지 않으면 test scope는 판정하지 않는다. 주더라도 main scope dependency가 test에서만
+  쓰이면 unused로 보일 수 있다.
 - 같은 class 이름이 앱과 dependency에 겹치면 그 dependency를 사용됨으로 볼 수 있다(과소 보고).
 - baseline·suppress·confidence 같은 `dead` 보조 장치는 아직 없다.
 
