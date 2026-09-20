@@ -71,7 +71,7 @@ Java의 non-private/compiler-visible 선언을 ABI 후보로 본다. 의미 기�
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") // 이 기능을 포함하는 개발 배포본
+    id("io.github.ictechgy.kartograph") version "0.12.0"
 }
 kartograph {
     reportFormat.set("json")
