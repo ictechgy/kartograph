@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-20 (0.11.0 발행 완료; P1.1-2 개발 소스 추가, 실제 branch/status를 먼저 확인)
+마지막 갱신: 2026-09-20 (네 저장소 호환 릴리스 검증 완료; P1.1-2 PR #85 머지, 0.11.0 미포함)
 
 ## 목표
 
@@ -20,8 +20,18 @@ Kotlin/Android 코드베이스의 의존성 그래프를 컴파일러 산출물�
   `--resolved-dependencies` 전이 소유권, main/test 구분, 여섯 보고 형식과
   JVM/Android dependency task를 추가한다. [사용법·관찰 범위](docs/DEPENDENCIES.md)를 따른다.
   0.11.0 발행본에는 이 후속 기능이 없으며 다음 릴리스 대상이다.
+- [PR #85](https://github.com/ictechgy/kartograph/pull/85)는 `e1e38a3`으로 머지됐다.
+  [최종 CI 35465066320](https://github.com/ictechgy/kartograph/actions/runs/35465066320)의
+  test·JDK 17/21·최소 AGP 4잡이 모두 성공했다. 로컬 783 tests(실패·오류·skip 0), Kover,
+  CLI/agent, Android corpus 44 retained/4 reportable을 통과했다. 자기 분석은 7,624 nodes,
+  dead/private/cycles/rules 0, 총 3.82초였다. 이 수치는 성능 개선 측정이 아니다.
+- 사용자가 isthmus npm 0.8.0을 발행했다. registry 아카이브와 검증 후보의 바이트 동일성,
+  별도 npm 설치의 CLI 계약·cold-cache 검사를 확인해 네 저장소 호환 세트 검증을 마쳤다.
+  같은 아카이브로 검증한 실제 Kotlin 컴파일→snapshot→bridges→retention→dead/explain
+  근거를 재사용한다. 지원되는 when(call.method)와 합성 Flutter API stub의 하네스이며
+  앱 전체 런타임 검증은 아니다. [전체 인계](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)를 참조한다.
 - 실제 javac/Kotlin metadata 회귀와 Gradle configuration cache·strict·입력 변경 검증을 추가했다.
-  최종 완료 근거는 해당 변경의 PR/CI와 실제 Git 상태로 확인한다. processor별 생성 코드 귀속,
+  최종 완료 근거는 위 PR/CI와 실제 Git 상태로 확인한다. processor별 생성 코드 귀속,
   baseline/suppress는 이번 핵심 범위와 구분된 후속이다. 불완전한 API·alias·클래스 소유권은
   한계로 남기며 부재를 삭제나 scope 축소의 근거로 삼지 않는다.
 - Gradle JVM 경로와 Android API를 별도 클래스로 분리한다. 그렇지 않으면 configuration-cache
