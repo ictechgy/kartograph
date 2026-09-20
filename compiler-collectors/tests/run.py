@@ -304,9 +304,12 @@ def main() -> None:
         work = Path(temporary)
         staging_classes = work / "stage-test-classes"
         run([javac, "-cp", args.collector, "-d", staging_classes,
-             HERE / "java/dev/kartograph/collectors/DaggerEvidenceFilesTest.java"], work)
+             HERE / "java/dev/kartograph/collectors/DaggerEvidenceFilesTest.java",
+             HERE / "java/dev/kartograph/collectors/ProcessorOutputSessionTest.java"], work)
         run([java, "-cp", os.pathsep.join([str(staging_classes), str(args.collector)]),
              "dev.kartograph.collectors.DaggerEvidenceFilesTest", work / "stages"], work)
+        run([java, "-cp", os.pathsep.join([str(args.collector), str(staging_classes)]),
+             "dev.kartograph.collectors.ProcessorOutputSessionTest", work / "output-session"], work)
         java_test(javac, args.collector, work)
         kotlin_test(java, args.collector, args.kotlin_classpath, work)
         dagger_test(javac, java, args.collector, dagger_classpath, work)
