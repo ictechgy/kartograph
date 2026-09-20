@@ -6,6 +6,33 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-20
+
+### Added
+
+- `dependencies --baseline`·`--suppress`·`--write-baseline`과 Gradle의 dependencyBaseline/
+  dependencySuppress·baselineOutput을 제공한다. 좌표·버전·scope·제안·클래스 근거를 정확히
+  지문화하고 UTC 만료일과 입력 변경을 검사한다. capture는 필터 전 관찰을 저장하며,
+  Gradle의 capture 설정은 strict를 비활성화하지 않는다. 잘못된 입력은 덮어쓰지 않는다.
+- 선택적 소스 빌드 collector `javac-processors`가 JSR-269 Filer의 source 생성/close와
+  실제 processor artifact를 관찰한다. 완료된 compiler/generated-source receipt와 일치한
+  근거만 snapshot의 `processorGenerations`에 보존한다. 캐시·변조·실패·processing 비활성화
+  경계를 검증하며, 귀속만으로 참조 간선·reachability·dependency unused 판정을 바꾸지 않는다.
+  KAPT/KSP·직접 filesystem·class/resource 출력은 범위 밖이다.
+
+### Changed
+
+- 모든 `bridges` transport의 `generatedAt`을 문서 추출 시각으로 통일하고, 읽은 source의
+  최신 filesystem mtime은 선택적 `sourceModifiedAt`에 기록한다. 빈 입력은 mtime을 생략한다.
+  0.12.0 이하의 기본 generatedAt은 source mtime이었다. 두 시각 모두 compiler freshness
+  또는 앱 실행 완전성을 증명하지 않는다.
+- 새 processor 사용 문서를 CLI ZIP/TAR에 포함하고 선택적 collector의 소스 빌드 범위를 명시한다.
+
+### Fixed
+
+- compiler collector의 프로젝트·source 경로 별칭을 정규화해 macOS의 반복 javac 빌드에서
+  같은 `/var`·`/private/var` 입력을 서로 다른 프로젝트 경계로 오인하지 않는다.
+
 ## [0.12.0] - 2026-09-20
 
 ### Added

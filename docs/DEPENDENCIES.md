@@ -71,7 +71,7 @@ Java의 non-private/compiler-visible 선언을 ABI 후보로 본다. 의미 기�
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.12.0"
+    id("io.github.ictechgy.kartograph") version "0.13.0"
 }
 kartograph {
     reportFormat.set("json")
@@ -115,7 +115,7 @@ Gradle extension은 `dependencyBaseline`과 `dependencySuppress` 파일을 받�
 만료를 다시 평가한다. baseline/suppress는 검토 이력이며 dependency 제거 승인이 아니다.
 Gradle의 baselineOutput은 보고와 함께 capture를 쓰며 strict를 비활성화하지 않는다.
 CLI의 명시적 --write-baseline은 capture 후 정상 종료하되, 함께 지정한 입력 파일은 먼저 검증한다.
-이 기능은 개발 소스에 구현됐으며 발행된 0.12.0에는 포함되지 않는다.
+baseline/suppress는 0.13.0부터 제공하며 0.12.0에는 포함되지 않는다.
 
 ## 한계와 후속
 

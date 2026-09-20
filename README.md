@@ -30,7 +30,8 @@ Working today:
 - `query`/`bridges`/`skill` give agents the users, dependencies and reachability of a single symbol, plus Flutter/React Native bridge facts, instead of a full graph dump. `query` also reports measured counts of unresolved runtime paths and conservative dispatch candidates. React Native coverage spans core `@ReactModule`/`@ReactMethod` and Expo Modules (`class X : Module()` with `ModuleDefinition { Name(...) / Function(...) / View(...) }`); Expo `module-export`/`component-export` facts carry `"mechanism": "expo"` so isthmus keeps Expo and core resolution paths separate.
 - `dependencies` compares a declared dependency list (TSV: coordinate, scope, artifact) with bytecode references from the supplied class roots and reports `unused-dependency` findings. It does not run the build or collect coverage; processor and runtime-only scopes are counted but not judged. See [declared dependencies](docs/DEPENDENCIES.md). Version 0.12.0 adds `--library`
   API/implementation advice, `--resolved-dependencies` ownership checks, all six report formats,
-  and JVM/Android `kartographDependencies` tasks.
+  and JVM/Android `kartographDependencies` tasks. Version 0.13.0 adds exact baselines, expiring suppressions, and capture of all observed diagnostics before filtering.
+- Optional [processor source attribution](docs/PROCESSOR-GENERATION.md) records actual JSR-269 Filer outputs and their generating artifact through completed compiler receipts. The collector is built separately from the tagged source; attribution does not change reachability or dependency-unused decisions.
 - `cycles`/`rules`/`metrics` analyze module/package cycles with weakest edges, fail-closed layer YAML, and Martin Ca/Ce/I/A/D metrics.
 - The Gradle plugin registers `kartographDead<Variant>` and `kartographGraph<Variant>` per Android variant over the AGP public Variant API.
 - The Gradle plugin's `kartographSnapshot` and `kartographSnapshot<Variant>` tasks capture JVM main/test and Android main/unit-test inputs automatically, together with compiler witnesses, for repeated impact queries. Android application variants also cover the generated `R.jar` through a `processResources` producer witness. See [automatic capture and toolchain configuration](docs/IMPACT.md#jvm-빌드에서-자동-캡처) and the [build provenance contract](docs/BUILD-PROVENANCE.md).
@@ -54,7 +55,7 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.12.0"
+    id("io.github.ictechgy.kartograph") version "0.13.0"
 }
 ```
 
@@ -228,4 +229,4 @@ required dead arguments as well.
 in a separate v2 `react-native-event` document. `--graph-file` can attach actual JVM identities.
 Capture snapshots with `snapshot --include-paths` so bridge source paths can match indexed methods.
 Expo/codegen events and emitter variables/wrappers are not resolved. This flag is separate from
-Flutter `--events` and `--messages`. Both extensions require development builds and are not yet released.
+Flutter `--events` and `--messages`. Both extensions are available from 0.11.0. In 0.13.0, bridge `generatedAt` records extraction time and optional `sourceModifiedAt` separately records observed source mtime; neither proves compiler freshness.
