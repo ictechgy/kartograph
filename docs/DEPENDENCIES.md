@@ -89,11 +89,37 @@ kartograph {
 - 선언 scope·선택된 artifact·class 바이트는 task 입력이다. configuration cache와
   up-to-date 검사를 사용하며 입력이 바뀌면 다시 분석한다. report를 쓴 뒤 strict 실패를 낸다.
 - 알 수 없는 선언 scope나 선택 classpath에 artifact가 없는 플랫폼/processor 선언은
-  판정하지 않고 계수·한계를 남긴다. processor별 생성 코드 귀속은 별도 후속이다.
+  판정하지 않고 계수·한계를 남긴다. [processor source 귀속](PROCESSOR-GENERATION.md)은
+  opt-in compiler snapshot 근거로 제공하며 dependency unused 판정을 바꾸지 않는다.
+
+## Baseline과 기한 있는 억제
+
+```bash
+kartograph dependencies --classes build/classes/java/main --project . \
+  --dependencies dependencies.tsv --write-baseline dependency-baseline.json
+kartograph dependencies --classes build/classes/java/main --project . \
+  --dependencies dependencies.tsv --baseline dependency-baseline.json \
+  --suppress dependency-suppress.json --strict --report-format json
+```
+
+공통 baseline JSON의 정확한 `dependencies-v1|...` 지문을 사용한다. JSON/SARIF에 지문을
+내보내며, 좌표·버전·선언 scope·제안 scope·관찰한 클래스가 바뀌면 다시 검토해야 한다.
+artifact cache 절대경로와 클래스 목록 순서는 지문에 영향을 주지 않는다. 임시 억제는
+공통 suppress 형식의 `fingerprint`, 비어 있지 않은 `reason`, `expires`가 필요하다.
+만료일은 해당 UTC 날짜까지 유효하다. strict는 필터 뒤 진단만 세며, 억제·만료 수와
+원래 분석 한계를 보고서에 남긴다. capture는 기존 필터 적용 전 모든 관찰을 저장한다.
+
+Gradle extension은 `dependencyBaseline`과 `dependencySuppress` 파일을 받는다.
+선택적으로 `tasks.withType<KartographDependenciesTask>().configureEach { baselineOutput.set(...) }`
+로 전체 관찰을 저장할 수 있다. 파일 내용과 UTC 날짜는 task 입력이며 날짜가 바뀌면
+만료를 다시 평가한다. baseline/suppress는 검토 이력이며 dependency 제거 승인이 아니다.
+Gradle의 baselineOutput은 보고와 함께 capture를 쓰며 strict를 비활성화하지 않는다.
+CLI의 명시적 --write-baseline은 capture 후 정상 종료하되, 함께 지정한 입력 파일은 먼저 검증한다.
+이 기능은 개발 소스에 구현됐으며 발행된 0.12.0에는 포함되지 않는다.
 
 ## 한계와 후속
 
 reflection 문자열·리소스 기반 사용·SOURCE-retention annotation·processor별 귀속은 완전하게
 복원하지 않는다. 외부 typealias metadata, 일부 internal/inline 생성 타입과 Java module의
 exports/reexports도 추가 근거가 필요하다. signature 중첩은 512단계까지 지원한다.
-이 관찰 범위의 부재를 dependency 제거 안전성으로 읽지 않는다. baseline/suppress는 후속이다.
+이 관찰 범위의 부재를 dependency 제거 안전성으로 읽지 않는다.

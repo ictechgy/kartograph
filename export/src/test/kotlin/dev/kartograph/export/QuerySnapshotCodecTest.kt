@@ -29,6 +29,21 @@ import kotlin.test.assertFalse
 
 class QuerySnapshotCodecTest {
     @Test
+    fun `snapshot roundtrips processor attribution in both encodings without changing graph reachability`() {
+        val source = dev.kartograph.core.CompilerEvidenceSource("build/generated/Created.java", "a".repeat(64))
+        val generation = dev.kartograph.core.ProcessorGeneration("sample.Processor", "b".repeat(64), listOf(source))
+        val snapshot = QuerySnapshot(CodeGraph(emptyList(), emptyList()), emptyList(), emptyList(), processorGenerations = listOf(generation))
+        for (compact in listOf(false, true)) {
+            val text = QuerySnapshotCodec.render(snapshot, compact)
+            assertEquals(listOf(generation), QuerySnapshotCodec.parse(text).processorGenerations)
+            assertEquals(emptyMap(), QuerySnapshotCodec.parse(text).graph.nodes)
+            assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.parse(text.replace("build/generated/Created.java", "../Created.java")) }
+        }
+        assertEquals(emptyList(), QuerySnapshotCodec.parse(QuerySnapshotCodec.render(snapshot.copy(processorGenerations = emptyList()))
+            .replace("\"processorGenerations\": [],", "")).processorGenerations)
+    }
+
+    @Test
     fun `snapshot preserves bridge callers and rejects unmatched external identities`() {
         val node = GraphNode(NodeId("method:Camera#read()V"), "read", NodeKind.METHOD)
         val caller = ExternalBridgeCaller("dart", "lib/camera.dart", 7)

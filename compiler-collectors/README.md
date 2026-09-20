@@ -4,7 +4,7 @@ This is a standalone optional build for compiler-produced impact evidence. The
 collector jar is not an analyzer runtime dependency and has no dependency on
 Kartograph `core`, `index`, `export`, or CLI modules.
 
-The jar contains three separately selected collectors:
+The jar contains four separately selected collectors:
 
 - `javac-constants`: a `javac` plugin that records resolved references to
   compile-time constant fields.
@@ -16,6 +16,11 @@ The jar contains three separately selected collectors:
 - `dagger-bindings`: a Dagger 2.59 `BindingGraphPlugin` that records only
   compiler-selected dependency edges. Unselected `@Provides` bindings and
   missing-binding graphs are not published as complete evidence.
+- `javac-processors`: records source files created and closed through the selected
+  JSR-269 processor's Filer, with the generating processor artifact fingerprint.
+  It uses the separate v2 evidence envelope and preserves attribution in snapshot
+  `processorGenerations`; it does not alter reachability or dependency findings.
+  See [setup and limits](../docs/PROCESSOR-GENERATION.md).
 
 ## Build and run
 

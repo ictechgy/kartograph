@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from processor_outputs import exercise as processor_outputs_test
 
 
 HERE = Path(__file__).resolve().parent
@@ -309,7 +310,8 @@ def main() -> None:
         java_test(javac, args.collector, work)
         kotlin_test(java, args.collector, args.kotlin_classpath, work)
         dagger_test(javac, java, args.collector, dagger_classpath, work)
-    print("compiler collectors verified: javac constants, Kotlin JVM identities, Dagger selected bindings, failures rejected")
+        processor_outputs_test(javac, args.collector, work, run, encoded, sha256, content_fingerprint, dagger_classpath)
+    print("compiler collectors verified: javac constants, Kotlin JVM identities, Dagger selected bindings, processor source attribution, failures rejected")
 
 
 if __name__ == "__main__":

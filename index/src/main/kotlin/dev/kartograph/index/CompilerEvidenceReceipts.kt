@@ -24,11 +24,18 @@ public object CompilerEvidenceReceipts {
             val before = ContentFingerprint.hash(file)
             val document = CompilerEvidenceReader.read(file)
             require(document.inputToken == token) { "compiler evidence belongs to a different compilation" }
-            require(document.collector in if (compiler == "javac") setOf("javac-constants", "dagger-bindings") else setOf("kotlin-constants")) {
+            require(document.collector in if (compiler == "javac") setOf("javac-constants", "dagger-bindings", "javac-processors") else setOf("kotlin-constants")) {
                 "compiler evidence collector does not match the compiler"
             }
             require(inputs.any { it.role in setOf("processor", "compiler") && it.sha256 == document.artifactSha256 }) {
                 "compiler evidence collector artifact is not a declared compiler input"
+            }
+            document.processorGeneration?.let { generation ->
+                require(inputs.any { it.role == "processor" && it.sha256 == generation.artifactSha256 }) { "generating processor is not a declared compiler input" }
+                generation.sources.forEach { source ->
+                    val path = root.resolve(source.path).toRealPath()
+                    require(generated.any { path.startsWith(it) }) { "processor output is outside declared generated source roots" }
+                }
             }
             document.sources.forEach { source ->
                 val path = root.resolve(source.path).toRealPath()

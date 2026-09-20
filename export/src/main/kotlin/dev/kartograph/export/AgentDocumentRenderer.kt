@@ -37,6 +37,7 @@ public object AgentDocumentRenderer {
         put("facts", document.facts.map { it.toJsonValue() })
         put("format", document.format)
         put("generatedAt", document.generatedAt)
+        document.sourceModifiedAt?.let { put("sourceModifiedAt", it) }
         put("limitations", document.limitations.sorted())
         put("platform", document.platform)
         put("project", document.project)

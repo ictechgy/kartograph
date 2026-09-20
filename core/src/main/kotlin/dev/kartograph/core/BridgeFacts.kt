@@ -13,6 +13,8 @@ public data class BridgeFactsDocument(
     val limitations: List<String>,
     /** v2 보조 채널(BasicMessageChannel·EventChannel) 문서에서만 쓰는 transport 식별자다. */
     val transport: String? = null,
+    /** 읽은 소스의 최신 filesystem mtime이다. compiler snapshot 신선도는 별도 근거가 필요하다. */
+    val sourceModifiedAt: String? = null,
 )
 
 /** 교환 문서의 생산 도구 식별자다. */

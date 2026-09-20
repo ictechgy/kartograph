@@ -1,13 +1,18 @@
 package dev.kartograph.export
 
 import dev.kartograph.analysis.DependencyAnalysisResult
+import dev.kartograph.analysis.DependencyReview
 import dev.kartograph.core.KartographVersion
 
 /** 같은 의존성 진단과 관찰 한계를 사람·CI·machine 형식으로 손실 없이 전달한다. */
 public object DependencyReporter {
     public fun render(format: ReportFormat, result: DependencyAnalysisResult, limitations: Collection<String>): String {
         val diagnostics = diagnostics(result)
-        val gaps = limitations.distinct().sorted()
+        val gaps = (limitations + buildList {
+            if (result.baselineSuppressedCount > 0 || result.suppressionCount > 0 || result.expiredSuppressionCount > 0) {
+                add("dependency-review: ${result.baselineSuppressedCount} baselined; ${result.suppressionCount} temporarily suppressed; ${result.expiredSuppressionCount} expired suppression entries; filtering is not removal approval")
+            }
+        }).distinct().sorted()
         return when (format) {
             ReportFormat.TEXT -> buildString {
                 diagnostics.forEach { item ->
@@ -22,6 +27,8 @@ public object DependencyReporter {
                 "limitations" to gaps, "analyzedDependencies" to result.analyzedCount,
                 "skippedDependencies" to result.skippedCount, "withoutClassArtifacts" to result.withoutClassCount,
                 "ambiguousClassOwnership" to result.ambiguousClassCount,
+                "baselineSuppressed" to result.baselineSuppressedCount, "suppressed" to result.suppressionCount,
+                "expiredSuppressions" to result.expiredSuppressionCount,
                 "tool" to "kartograph", "version" to KartographVersion.current,
             )) + "\n"
             ReportFormat.GRADLE -> buildString {
@@ -44,6 +51,7 @@ public object DependencyReporter {
 
     private fun jsonDiagnostic(item: Item): Map<String, Any> = sortedMapOf<String, Any>(
         "ruleId" to item.rule, "coordinate" to item.coordinate, "artifact" to item.artifact,
+        "fingerprint" to fingerprint(item),
         "state" to when (item.rule) { "unused-dependency" -> "unused"; "undeclared-dependency" -> "undeclared"; else -> "scope-mismatch" },
     ).apply {
         item.scope?.let { put("scope", it) }
@@ -56,6 +64,8 @@ public object DependencyReporter {
         "undeclared-dependency" -> "undeclared-dependency: ${item.coordinate}; observed use requires a direct declaration (${item.suggested ?: "API scope unresolved"})"
         else -> "dependency-scope-mismatch: ${item.coordinate}; review ${item.scope} -> ${item.suggested} using the observed ABI references"
     }
+
+    private fun fingerprint(item: Item): String = DependencyReview.fingerprint(item.rule, item.coordinate, item.scope, item.suggested, item.evidence)
 
     private fun markdown(items: List<Item>, gaps: List<String>): String = buildString {
         append("# Dependency analysis\n\n")
@@ -78,6 +88,7 @@ public object DependencyReporter {
             )),
             "results" to items.map { item -> sortedMapOf(
                 "ruleId" to item.rule, "level" to "warning", "message" to mapOf("text" to message(item)),
+                "partialFingerprints" to mapOf("kartograph/dependencies/v1" to fingerprint(item)),
                 // 선언 위치를 모르는 상황에서 artifact 경로를 build 파일 위치로 위장하지 않는다.
                 "properties" to jsonDiagnostic(item),
             ) },

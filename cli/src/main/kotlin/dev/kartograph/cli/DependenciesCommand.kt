@@ -2,6 +2,9 @@ package dev.kartograph.cli
 
 import dev.kartograph.analysis.DependencyConfigurationAnalysis
 import dev.kartograph.analysis.DependencyLimitations
+import dev.kartograph.analysis.DependencyReview
+import dev.kartograph.export.BaselineCodec
+import dev.kartograph.export.SuppressCodec
 import dev.kartograph.export.DependencyListCodec
 import dev.kartograph.export.DependencyReporter
 import dev.kartograph.export.ReportFormat
@@ -37,7 +40,7 @@ internal object DependenciesCommand {
         } catch (indexingError: ClassIndexingException) {
             toolFailure(error, indexingError.message ?: "class indexing failed")
         } catch (fileError: IOException) {
-            toolFailure(error, "unable to read the dependency list")
+            toolFailure(error, "unable to read or write dependency review inputs")
         } catch (listError: IllegalArgumentException) {
             toolFailure(error, listError.message ?: "invalid dependency list")
         }
@@ -48,8 +51,20 @@ internal object DependenciesCommand {
         val resolved = options.resolvedFile?.let { DependencyListCodec.parse(Files.readString(it)) }
         if (declared.isEmpty() && resolved == null) return toolFailure(error, "dependency list is empty")
         val inputs = DependencyInputScanner.scan(options.projectRoot, options.classRoots, options.testClassRoots, declared, resolved)
-        val result = DependencyConfigurationAnalysis.analyze(declared, inputs.main, inputs.test, inputs.artifactClasses, resolved, apiAdvice = options.library)
-        val limitations = DependencyLimitations.describe(inputs.main, inputs.test, result, resolved != null)
+        val observed = DependencyConfigurationAnalysis.analyze(declared, inputs.main, inputs.test, inputs.artifactClasses, resolved, apiAdvice = options.library)
+        val baseline = options.baseline?.let { BaselineCodec.parse(Files.readString(it)) }.orEmpty()
+        val suppressions = options.suppress?.let { SuppressCodec.parse(Files.readString(it)) }.orEmpty()
+        if (options.writeBaseline != null) {
+            options.writeBaseline.parent?.let(Files::createDirectories)
+            Files.writeString(options.writeBaseline, BaselineCodec.renderFingerprints(DependencyReview.fingerprints(observed)))
+            output.println("baseline\twritten\t${DependencyReview.fingerprints(observed).size}")
+            return ExitStatus.SUCCESS.code
+        }
+        val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+        val result = DependencyReview.apply(observed, baseline,
+            suppressions.filter { it.expires >= today }.mapTo(mutableSetOf()) { it.fingerprint },
+            suppressions.count { it.expires < today })
+        val limitations = DependencyLimitations.describe(inputs.main, inputs.test, observed, resolved != null)
         output.print(DependencyReporter.render(options.reportFormat, result, limitations))
         return if (options.strict && (result.findings.isNotEmpty() || result.advice.isNotEmpty())) ExitStatus.FINDINGS.code else ExitStatus.SUCCESS.code
     }
@@ -60,6 +75,9 @@ internal object DependenciesCommand {
         var projectRoot: Path? = null
         var dependenciesValue: String? = null
         var resolvedValue: String? = null
+        var baselineValue: String? = null
+        var suppressValue: String? = null
+        var writeBaselineValue: String? = null
         var strict = false
         var library = false
         var reportFormat = ReportFormat.TEXT
@@ -79,6 +97,9 @@ internal object DependenciesCommand {
                 "--project" -> projectRoot = Path.of(value).toAbsolutePath().normalize()
                 "--dependencies" -> dependenciesValue = value
                 "--resolved-dependencies" -> resolvedValue = value
+                "--baseline" -> baselineValue = value
+                "--suppress" -> suppressValue = value
+                "--write-baseline" -> writeBaselineValue = value
                 "--report-format" -> reportFormat = ReportFormat.fromOption(value) ?: run {
                     error.println("error: invalid report format: $value")
                     return null
@@ -97,6 +118,9 @@ internal object DependenciesCommand {
             projectRoot = project,
             dependenciesFile = resolveProjectPath(project, dependenciesValue ?: return missingOption(error, "--dependencies")),
             resolvedFile = resolvedValue?.let { resolveProjectPath(project, it) },
+            baseline = baselineValue?.let { resolveProjectPath(project, it) },
+            suppress = suppressValue?.let { resolveProjectPath(project, it) },
+            writeBaseline = writeBaselineValue?.let { resolveProjectPath(project, it) },
             library = library,
             strict = strict,
             reportFormat = reportFormat,
@@ -133,6 +157,9 @@ internal object DependenciesCommand {
         val projectRoot: Path,
         val dependenciesFile: Path,
         val resolvedFile: Path?,
+        val baseline: Path?,
+        val suppress: Path?,
+        val writeBaseline: Path?,
         val library: Boolean,
         val strict: Boolean,
         val reportFormat: ReportFormat,
@@ -144,7 +171,8 @@ internal object DependenciesCommand {
         Usage:
           kartograph dependencies --classes <directory> [--classes <directory>]... --project <directory> \
             --dependencies <file> [--test-classes <directory-or-jar>]... \
-            [--resolved-dependencies <file>] [--library] [--strict] [--report-format text|json|sarif|gradle|github-actions|markdown]
+            [--resolved-dependencies <file>] [--library] [--strict] [--report-format text|json|sarif|gradle|github-actions|markdown] \
+            [--baseline <file>] [--suppress <file>] [--write-baseline <file>]
 
         <file> is a TSV list: coordinate<TAB>scope<TAB>artifact. Blank lines and # comments are allowed,
         artifact paths resolve against --project. --resolved-dependencies uses the same TSV shape for the
@@ -156,6 +184,10 @@ internal object DependenciesCommand {
         --library enables api/implementation placement advice for a library; application mode does not
         infer a consumer API. JVM signatures and Kotlin metadata separate main and test uses.
         Missing identities and ambiguous class ownership remain limitations.
+        --write-baseline captures every observed diagnostic before filtering and exits successfully.
+        --baseline matches exact dependency fingerprints; --suppress uses the shared reason/expiry JSON
+        format. Expiry is inclusive through the named UTC date. --strict counts only active diagnostics.
+        Changed coordinates, versions, scopes or evidence classes require review again.
         This command measures compiled references only. A dependency reported unused may still be used
         through reflection, resources, annotation processors or class roots that were not supplied;
         it is not proof that the dependency can be removed.

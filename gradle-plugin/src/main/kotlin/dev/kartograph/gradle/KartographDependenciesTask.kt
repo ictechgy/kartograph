@@ -2,6 +2,9 @@ package dev.kartograph.gradle
 
 import dev.kartograph.analysis.DependencyConfigurationAnalysis
 import dev.kartograph.analysis.DependencyLimitations
+import dev.kartograph.analysis.DependencyReview
+import dev.kartograph.export.BaselineCodec
+import dev.kartograph.export.SuppressCodec
 import dev.kartograph.core.DependencyScope
 import dev.kartograph.export.DependencyListCodec
 import dev.kartograph.export.DependencyReporter
@@ -19,6 +22,10 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
@@ -41,6 +48,15 @@ public abstract class KartographDependenciesTask : DefaultTask() {
     @get:Input public abstract val reportFormat: Property<String>
     @get:Internal public abstract val projectDirectory: DirectoryProperty
     @get:OutputFile public abstract val reportFile: RegularFileProperty
+    @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    public abstract val baselineFile: RegularFileProperty
+    @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    public abstract val suppressFile: RegularFileProperty
+    /** 지정한 출력 파일에 필터 적용 전의 모든 관찰 지문을 저장한다. */
+    @get:Optional @get:OutputFile public abstract val baselineOutput: RegularFileProperty
+    /** 날짜가 바뀌면 configuration cache 재사용 시에도 만료를 다시 평가한다. */
+    @get:Input public val suppressionDate: String
+        get() = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
 
     init {
         declarations.convention(emptyList())
@@ -74,9 +90,19 @@ public abstract class KartographDependenciesTask : DefaultTask() {
             if (path !in tracked) throw GradleException("Dependency artifacts must be declared task inputs")
         }
         val inputs = DependencyInputScanner.scan(projectRoot, main, tests, declared, classpath)
-        val result = DependencyConfigurationAnalysis.analyze(declared, inputs.main, inputs.test, inputs.artifactClasses,
+        val observed = DependencyConfigurationAnalysis.analyze(declared, inputs.main, inputs.test, inputs.artifactClasses,
             classpath, apiAdvice = library.get())
-        val gaps = DependencyLimitations.describe(inputs.main, inputs.test, result, resolvedProvided = true) + inputLimitations.get()
+        val baseline = baselineFile.orNull?.asFile?.let { BaselineCodec.parse(it.readText()) }.orEmpty()
+        val suppressions = suppressFile.orNull?.asFile?.let { SuppressCodec.parse(it.readText()) }.orEmpty()
+        baselineOutput.orNull?.asFile?.let { target ->
+            target.parentFile.mkdirs()
+            target.writeText(BaselineCodec.renderFingerprints(DependencyReview.fingerprints(observed)))
+        }
+        val today = java.time.LocalDate.parse(suppressionDate)
+        val result = DependencyReview.apply(observed, baseline,
+            suppressions.filter { it.expires >= today }.mapTo(mutableSetOf()) { it.fingerprint },
+            suppressions.count { it.expires < today })
+        val gaps = DependencyLimitations.describe(inputs.main, inputs.test, observed, resolvedProvided = true) + inputLimitations.get()
         val file = reportFile.get().asFile
         file.parentFile.mkdirs()
         file.writeText(DependencyReporter.render(format, result, gaps))

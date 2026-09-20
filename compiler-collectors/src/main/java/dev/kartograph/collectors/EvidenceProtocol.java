@@ -26,7 +26,7 @@ public final class EvidenceProtocol {
     public static final String FORMAT = "kartograph-compiler-evidence";
     public static final String VERSION = "1";
     private static final Pattern FINGERPRINT = Pattern.compile("[0-9a-f]{64}");
-    private static final Pattern COLLECTOR = Pattern.compile("javac-constants|kotlin-constants|dagger-bindings");
+    private static final Pattern COLLECTOR = Pattern.compile("javac-constants|kotlin-constants|dagger-bindings|javac-processors");
     private static final Pattern SAFE_VERSION = Pattern.compile("[A-Za-z0-9._+\\-]{1,128}");
     private static final String ROOT_OPTION = "root";
     private static final String OUTPUT_OPTION = "output";
@@ -40,6 +40,8 @@ public final class EvidenceProtocol {
             Objects.requireNonNull(root, "root");
             Objects.requireNonNull(output, "output");
             Objects.requireNonNull(token, "token");
+            try { root = root.toRealPath(); }
+            catch (IOException error) { throw new IllegalArgumentException("compiler project root is unavailable", error); }
             if (!COLLECTOR.matcher(collector).matches()) throw new IllegalArgumentException("unsupported compiler evidence collector");
         }
 
@@ -60,6 +62,16 @@ public final class EvidenceProtocol {
         public Edge {
             if (source.isBlank() || target.isBlank() || !(kind.equals("constant") || kind.equals("binding"))) {
                 throw new IllegalArgumentException("invalid compiler evidence edge");
+            }
+        }
+    }
+
+    /** 명시적으로 선택된 processor 하나의 실제 source 생성 관찰이다. */
+    public record Generation(String processor, String artifact, Collection<Source> sources) {
+        public Generation {
+            if (processor.length() > 1024 || !processor.matches("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*") ||
+                !FINGERPRINT.matcher(artifact).matches() || sources.size() > 100_000) {
+                throw new IllegalArgumentException("invalid processor generation evidence");
             }
         }
     }
@@ -141,9 +153,9 @@ public final class EvidenceProtocol {
     /** 실제 compiler unit 파일만 호출자가 넘겨야 한다. filesystem walk로 source coverage를 만들지 않는다. */
     public static Source source(Path root, Path file) {
         try {
-            Path normalizedRoot = root.toAbsolutePath().normalize();
-            Path normalizedFile = file.toAbsolutePath().normalize();
-            requireRegular(normalizedFile);
+            Path normalizedRoot = root.toRealPath();
+            requireRegular(file);
+            Path normalizedFile = file.toRealPath();
             if (!normalizedFile.startsWith(normalizedRoot)) throw new IllegalArgumentException("compiler source is outside project root");
             String relative = normalizedRoot.relativize(normalizedFile).toString().replace('\\', '/');
             return new Source(relative, rawSha256(normalizedFile));
@@ -161,6 +173,12 @@ public final class EvidenceProtocol {
         int unmapped,
         Collection<Edge> edgeValues
     ) {
+        write(options, compiler, artifact, sourceValues, unmapped, edgeValues, null);
+    }
+
+    public static void write(Options options, String compiler, String artifact, Collection<Source> sourceValues,
+        int unmapped, Collection<Edge> edgeValues, Generation generation) {
+        if (options.collector().equals("javac-processors") != (generation != null)) throw new IllegalArgumentException("processor evidence identity is missing or misplaced");
         if (!SAFE_VERSION.matcher(compiler).matches() || !FINGERPRINT.matcher(artifact).matches()) {
             throw new IllegalArgumentException("invalid compiler evidence identity");
         }
@@ -173,13 +191,22 @@ public final class EvidenceProtocol {
         }
         TreeSet<Edge> edges = new TreeSet<>(Comparator.comparing(Edge::source).thenComparing(Edge::target).thenComparing(Edge::kind));
         edges.addAll(edgeValues);
-        if (6L + sources.size() + edges.size() > 200_000) throw new IllegalArgumentException("compiler evidence exceeds the row limit");
+        if (8L + sources.size() + edges.size() + (generation == null ? 0 : generation.sources().size()) > 200_000) throw new IllegalArgumentException("compiler evidence exceeds the row limit");
         StringBuilder document = new StringBuilder();
-        document.append("format\t").append(FORMAT).append('\t').append(VERSION).append('\n');
+        document.append("format\t").append(FORMAT).append('\t').append(generation == null ? VERSION : "2").append('\n');
         document.append("collector\t").append(options.collector()).append('\n');
         document.append("compiler\t").append(compiler).append('\n');
         document.append("token\t").append(token).append('\n');
         document.append("artifact\t").append(artifact).append('\n');
+        if (generation != null) {
+            document.append("processor\t").append(encode(generation.processor())).append('\n');
+            document.append("processorArtifact\t").append(generation.artifact()).append('\n');
+            for (Source source : generation.sources().stream().sorted(Comparator.comparing(Source::path)).toList()) {
+                if (!source.equals(sources.get(source.path()))) throw new IllegalArgumentException("generated source was not observed by compiler");
+                document.append("generated\t").append(encode(source.path())).append('\t').append(source.sha256()).append('\n');
+                if (document.length() > 16 * 1024 * 1024) throw new IllegalArgumentException("compiler evidence exceeds the byte limit");
+            }
+        }
         for (Source source : sources.values()) {
             document.append("source\t").append(encode(source.path())).append('\t').append(source.sha256()).append('\n');
             if (document.length() > 16 * 1024 * 1024) throw new IllegalArgumentException("compiler evidence exceeds the byte limit");

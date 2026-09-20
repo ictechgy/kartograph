@@ -37,6 +37,8 @@ internal object DependencyTasks {
             task.strict.set(extension.strict)
             task.library.set(library)
             task.reportFormat.set(extension.reportFormat)
+            task.baselineFile.set(extension.dependencyBaseline)
+            task.suppressFile.set(extension.dependencySuppress)
             task.reportFile.set(project.layout.buildDirectory.file("reports/kartograph/$variant-dependencies.txt"))
         }
 

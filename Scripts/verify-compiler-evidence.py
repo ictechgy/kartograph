@@ -76,7 +76,7 @@ class Runner:
 
 def fixture(project: Path, kind: str, plugin: Path, collector: Path, dagger: list[Path]) -> tuple[Path, str]:
     kotlin = kind == "kotlin"
-    filename = {"java": "JavaConstants.java", "kotlin": "KotlinConstants.kt", "dagger": "DaggerBindings.java"}[kind]
+    filename = {"java": "JavaConstants.java", "kotlin": "KotlinConstants.kt", "dagger": "DaggerBindings.java", "processors": "DaggerBindings.java"}[kind]
     source_root = "src/main/kotlin" if kotlin else "src/main/java"
     source = project / source_root / filename
     source.parent.mkdir(parents=True)
@@ -90,8 +90,8 @@ def fixture(project: Path, kind: str, plugin: Path, collector: Path, dagger: lis
     kotlin_dependency = "classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10'" if kotlin else ""
     language_plugin = "org.jetbrains.kotlin.jvm" if kotlin else "java"
     compiler_name = "compileKotlin" if kotlin else "compileJava"
-    processor_paths = [collector, *dagger] if kind == "dagger" else [collector]
-    dependencies = "dependencies { implementation files(" + ",".join(map(quoted, dagger)) + ") }" if kind == "dagger" else ""
+    processor_paths = [collector, *dagger] if kind in ("dagger", "processors") else [collector]
+    dependencies = "dependencies { implementation files(" + ",".join(map(quoted, dagger)) + ") }" if kind in ("dagger", "processors") else ""
     configure = """
         pluginClasspath.from(files(COLLECTOR))
         compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
@@ -101,9 +101,11 @@ def fixture(project: Path, kind: str, plugin: Path, collector: Path, dagger: lis
     """.replace("COLLECTOR", quoted(collector)) if kotlin else """
         options.annotationProcessorPath=files(PROCESSORS)
         options.compilerArgs.add('-Xplugin:KartographEvidence collector=KIND root='+rootUri+' output='+outputUri+' token='+tokenUri)
-    """.replace("PROCESSORS", ",".join(map(quoted, processor_paths))).replace("KIND", "dagger-bindings" if kind == "dagger" else "javac-constants")
-    if kind == "dagger":
+    """.replace("PROCESSORS", ",".join(map(quoted, processor_paths))).replace("KIND", {"dagger": "dagger-bindings", "processors": "javac-processors"}.get(kind, "javac-constants"))
+    if kind in ("dagger", "processors"):
         configure += "options.compilerArgs.addAll('-Akartograph.evidence.root='+rootUri,'-Akartograph.evidence.output='+outputUri,'-Akartograph.evidence.token='+tokenUri)\n"
+    if kind == "processors":
+        configure += "options.compilerArgs.addAll('-processor','dev.kartograph.collectors.RecordingProcessor','-Akartograph.processor=dagger.internal.codegen.ComponentProcessor')\n"
     register = """
         dev.kartograph.gradle.KotlinCompilerWitnesses.INSTANCE.kotlinCompile(project, compiler, 'sample:main',
             files(SOURCES), files('build.gradle','settings.gradle'), launcher,
@@ -199,6 +201,7 @@ def main() -> int:
     parser.add_argument("--collector", type=Path, default=ROOT / "compiler-collectors/build/libs/kartograph-compiler-collectors.jar")
     parser.add_argument("--dagger-jars", type=Path, default=ROOT / "experiments/dagger-bindings/build/fixture-dependencies")
     parser.add_argument("--report-dir", type=Path, default=ROOT / "build/reports/compiler-evidence-integration")
+    parser.add_argument("--cases", nargs="+", choices=("java", "kotlin", "dagger", "processors"), default=["java", "kotlin", "dagger", "processors"])
     args = parser.parse_args()
     version = (ROOT / "VERSION").read_text().strip()
     plugin = (args.plugin or ROOT / f"gradle-plugin/build/libs/kartograph-gradle-plugin-{version}.jar").resolve()
@@ -212,7 +215,7 @@ def main() -> int:
     gradle = ROOT / "gradlew"
     with tempfile.TemporaryDirectory(prefix="kartograph-evidence-") as temporary:
         work = Path(temporary)
-        for kind in ("java", "kotlin", "dagger"):
+        for kind in dict.fromkeys(args.cases):
             project = work / (kind + " project")
             source, compiler = fixture(project, kind, plugin, collector, dagger)
             common = [gradle, "--no-daemon", "--build-cache"]
@@ -247,16 +250,32 @@ def main() -> int:
             if wrong["status"] != "stale": raise CheckFailure(kind + ": scope mismatch was not rejected")
             graph = json.loads(document.read_text())["graph"]
             references = [edge for edge in graph["edges"] if edge.get("origin") == "compilerReference"]
-            expected = {"java": 1, "kotlin": 6, "dagger": 3}[kind]
+            expected = {"java": 1, "kotlin": 6, "dagger": 3, "processors": 0}[kind]
             if len(references) != expected: raise CheckFailure(kind + ": unexpected compiler reference count")
             if any("UNUSED" in edge["target"] or "$Unused#" in edge["target"] for edge in references):
                 raise CheckFailure(kind + ": unused control became a selected compiler reference")
             # 배포 CLI의 실제 영향 질의가 각 collector의 참조를 탐색해야 한다.
-            symbol = references[0]["target"]
-            affected = impact(runner, kind + "-impact", binary, project, document, symbol)
-            if not any(row["usr"] == references[0]["source"] for row in affected["affected"]):
-                raise CheckFailure(kind + ": compiler reference is missing from impact traversal")
-            results[kind] = {"references": references, "matched": True, "affected": affected["observedAffected"],
+            affected_count = 0
+            if references:
+                symbol = references[0]["target"]
+                affected = impact(runner, kind + "-impact", binary, project, document, symbol)
+                if not any(row["usr"] == references[0]["source"] for row in affected["affected"]):
+                    raise CheckFailure(kind + ": compiler reference is missing from impact traversal")
+                affected_count = affected["observedAffected"]
+            generations = json.loads(document.read_text()).get("processorGenerations", [])
+            if kind == "processors":
+                expected_processor = next(path for path in dagger if path.name == "dagger-compiler-2.59.jar")
+                if len(generations) != 1 or generations[0]["processor"] != "dagger.internal.codegen.ComponentProcessor" or generations[0]["artifactSha256"] != fingerprint(expected_processor):
+                    raise CheckFailure("processor identity does not match the generating artifact")
+                generated = generations[0]["sources"]
+                receipts = [row for row in witness["compilerEvidence"] if row["role"] == "compilerGeneratedSource"]
+                if not generated or {row["path"] for row in generated} != {row["path"] for row in receipts}:
+                    raise CheckFailure("processor source inventory differs from completed generated receipts")
+                if any(row["sha256"] != digest(project / row["path"]) or "Other.java" in row["path"] for row in generated):
+                    raise CheckFailure("processor attribution changed source bytes or included a handwritten control")
+            elif generations:
+                raise CheckFailure("unselected processor attribution was synthesized")
+            results[kind] = {"references": references, "matched": True, "affected": affected_count, "processorGenerations": generations,
                              "generatedSourceReceipts": sum(item["role"] == "compilerGeneratedSource" for item in witness["compilerEvidence"])}
             evidence = next(project / item["path"] for item in witness["compilerEvidence"] if item["role"] == "compilerEvidence")
             saved = evidence.read_bytes(); evidence.write_bytes(saved + b"\n")
@@ -282,14 +301,14 @@ def main() -> int:
                 source.unlink(); other.unlink()
                 runner.run("java-source-deletion", common + ["--configuration-cache", compiler], project)
                 if witness_path.exists(): raise CheckFailure("source deletion left a success witness")
-            if kind == "dagger":
-                runtime = runner.run("dagger-runtime", [Path(os.environ["JAVA_HOME"]) / "bin/java", "-cp", os.pathsep.join([str(project / witness["outputs"][0]["path"]), *map(str, dagger)]), "fixture.DaggerBindings"], project)
+            if kind in ("dagger", "processors"):
+                runtime = runner.run(kind + "-runtime", [Path(os.environ["JAVA_HOME"]) / "bin/java", "-cp", os.pathsep.join([str(project / witness["outputs"][0]["path"]), *map(str, dagger)]), "fixture.DaggerBindings"], project)
                 if runtime.strip() != "selected": raise CheckFailure("Dagger runtime did not select the expected service")
                 source.write_text(source.read_text().replace('@Named("selected") Service service()', '@Named("missing") Service service()'))
-                runner.run("dagger-missing-binding", common + ["--configuration-cache", compiler], project, 1)
+                runner.run(kind + "-missing-binding", common + ["--configuration-cache", compiler], project, 1)
                 if (project / f"build/kartograph/witnesses/{compiler}/witness.json").exists():
                     raise CheckFailure("missing binding left a success witness")
-                verify(runner, "dagger-failed-build-snapshot", binary, project, document, bindings, 1)
+                verify(runner, kind + "-failed-build-snapshot", binary, project, document, bindings, 1)
     result = {"status": "passed", "version": version, "collectorSha256": digest(collector), "pluginSha256": digest(plugin), "cases": results, "steps": runner.steps}
     (reports / "results.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"status": "passed", "references": {key: len(value["references"]) for key, value in results.items()}}))

@@ -7,6 +7,7 @@ import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.InputFingerprint
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.SnapshotProvenance
+import dev.kartograph.core.ProcessorGeneration
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -25,6 +26,7 @@ public data class CompilerEvidenceResult(
     val outsideGraphReferences: Int = 0,
     val shadowedReferences: Int = 0,
     val unmappedReferences: Int = 0,
+    val processorGenerations: List<ProcessorGeneration> = emptyList(),
 )
 
 /** 명시적으로 요청하고 성공한 compiler 증거에 묶인 참조만 그래프에 추가한다. */
@@ -47,6 +49,7 @@ public object CompilerEvidenceIndexer {
         var shadowed = 0
         var unmapped = 0
         val seen = mutableSetOf<Path>()
+        val generations = mutableListOf<ProcessorGeneration>()
         for (file in explicit) {
             require(!Files.isSymbolicLink(file)) { "symbolic compiler evidence inputs are not supported" }
             if (!seen.add(file.toRealPath())) continue
@@ -62,6 +65,17 @@ public object CompilerEvidenceIndexer {
             require(claims.all { witness -> witness.inputs.any { input ->
                 input.role in setOf("processor", "compiler") && input.sha256 == document.artifactSha256
             } }) { "compiler evidence collector is not a recorded compiler input" }
+            document.processorGeneration?.let { generation ->
+                require(claims.all { witness -> witness.inputs.any { it.role == "processor" && it.sha256 == generation.artifactSha256 } }) {
+                    "generating processor is not a recorded compiler input"
+                }
+                generation.sources.forEach { source ->
+                    require(claims.any { witness -> witness.compilerEvidence.any {
+                        it.role == "compilerGeneratedSource" && locate(it) == root.resolve(source.path).toRealPath()
+                    } }) { "processor output is missing a completed generated source receipt" }
+                }
+                generations += generation
+            }
             val claimRoots = claims.flatMap { witness -> witness.outputs.map(::locate) }.toSet()
             val positions = physicalRoots.indices.filter { physicalRoots[it] in claimRoots }.toSet()
             require(positions.isNotEmpty()) { "compiler evidence output is outside the selected class roots" }
@@ -95,7 +109,7 @@ public object CompilerEvidenceIndexer {
         }
         val graph = indexed.graph
         return CompilerEvidenceResult(CodeGraph(graph.nodes.values, graph.edges + references.sorted(), graph.externalCalls, graph.serviceProviders),
-            outside, shadowed, unmapped)
+            outside, shadowed, unmapped, generations.distinct().sortedWith(compareBy({ it.processor }, { it.artifactSha256 })))
     }
 
     /** compiler가 읽은 원본의 원시 SHA-256을 비교한다. 원문은 결과로 내보내지 않는다. */

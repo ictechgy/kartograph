@@ -246,7 +246,7 @@ internal object AgentCommand {
                     val captured = try {
                         QuerySnapshotCodec.render(QuerySnapshot(capturedGraph, evidence, limitations + paths?.limitations.orEmpty(), suppressed,
                             options.values("--include-private-members").isNotEmpty(), revision = options.single("--revision"),
-                            scope = options.single("--scope"), provenance = provenance),
+                            scope = options.single("--scope"), provenance = provenance, processorGenerations = compilerFacts.processorGenerations),
                             compact = options.values("--compact").isNotEmpty(), maximumBytes = selectedLimit.maximumBytes)
                     } catch (_: QuerySnapshotSizeException) {
                         renderNanos = System.nanoTime() - renderStarted

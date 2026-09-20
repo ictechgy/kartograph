@@ -86,10 +86,11 @@ class KartographCliTest {
         val first = execute("bridges", "--project", project.toString())
         val second = execute("bridges", "--project", project.toString())
         assertEquals(ExitStatus.SUCCESS.code, first.status)
-        assertEquals(first.output, second.output)
+        fun content(value: String): String = value.replace(Regex("\"generatedAt\": \"[^\"]+\""), "\"generatedAt\": \"<extraction-time>\"")
+        assertEquals(content(first.output), content(second.output))
         val alias = root.resolve("alias")
         Files.createSymbolicLink(alias, project)
-        assertEquals(first.output, execute("bridges", "--project", alias.toString()).output)
+        assertEquals(content(first.output), content(execute("bridges", "--project", alias.toString()).output))
     }
 
     @Test
