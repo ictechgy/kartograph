@@ -341,10 +341,18 @@ internal object AgentCommand {
         }
         if (options.single("--format")?.let { it != "json" } == true) return usage(error, "invalid bridges format")
         val rnEvents = options.values("--rn-events").isNotEmpty()
-        val requiredTarget = if (rnEvents) "react-native" else "flutter"
-        if (options.single("--target")?.let { it != requiredTarget } == true) return usage(error, "invalid bridges target for the selected transport")
         val messages = options.values("--messages").isNotEmpty()
         val events = options.values("--events").isNotEmpty()
+        val target = options.single("--target")
+        if (target != null && target !in setOf("flutter", "react-native")) return usage(error, "invalid bridges target")
+        val requiredTarget = when {
+            rnEvents -> "react-native"
+            messages || events -> "flutter"
+            else -> null
+        }
+        if (target != null && requiredTarget != null && target != requiredTarget) {
+            return usage(error, "invalid bridges target for the selected transport")
+        }
         if (messages && events) return usage(error, "--messages and --events are separate documents and cannot be combined")
         if (rnEvents && (messages || events)) return usage(error, "--rn-events requires a separate event document")
         if (!Files.isDirectory(project)) {

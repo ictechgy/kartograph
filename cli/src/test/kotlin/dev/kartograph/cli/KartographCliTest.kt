@@ -541,6 +541,62 @@ class KartographCliTest {
     }
 
     @Test
+    fun `bridges filters regular Flutter and React Native sources independently`(@TempDir root: Path) {
+        root.resolve("FlutterPlugin.kt").writeText(
+            "val channel = MethodChannel(messenger, \"camera\")\nchannel.setMethodCallHandler(handler)\n",
+        )
+        root.resolve("NativePlugin.kt").writeText(
+            """
+            import expo.modules.kotlin.modules.Module
+            import expo.modules.kotlin.modules.ModuleDefinition
+            class HapticsModule : Module() {
+              override fun definition() = ModuleDefinition {
+                Name("ExpoHaptics")
+                AsyncFunction("selectionAsync") { }
+              }
+            }
+            """.trimIndent(),
+        )
+        val reactNative = execute("bridges", "--project", root.toString(), "--target", "react-native")
+        assertEquals(ExitStatus.SUCCESS.code, reactNative.status)
+        assertContains(reactNative.output, "\"kind\": \"module-export\"")
+        assertContains(reactNative.output, "\"method\": \"selectionAsync\"")
+        assertTrue(!reactNative.output.contains("\"channel\": \"camera\""))
+        val flutter = execute("bridges", "--project", root.toString(), "--target", "flutter")
+        assertEquals(ExitStatus.SUCCESS.code, flutter.status)
+        assertContains(flutter.output, "\"channel\": \"camera\"")
+        assertTrue(!flutter.output.contains("\"channel\": \"ExpoHaptics\""))
+    }
+
+    @Test
+    fun `bridges validates target against the selected event transport`(@TempDir root: Path) {
+        for (options in listOf(
+            arrayOf("--target", "unknown"),
+            arrayOf("--target", "react-native", "--messages"),
+            arrayOf("--target", "react-native", "--events"),
+            arrayOf("--target", "flutter", "--rn-events"),
+            arrayOf("--rn-events", "--messages"),
+            arrayOf("--rn-events", "--events"),
+        )) {
+            val result = execute("bridges", "--project", root.toString(), *options)
+            assertEquals(ExitStatus.USAGE.code, result.status)
+            assertEquals("", result.output)
+        }
+        root.resolve("Events.kt").writeText(
+            """
+            import com.facebook.react.modules.core.DeviceEventManagerModule
+            fun notify() {
+              context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit("ready", null)
+            }
+            """.trimIndent(),
+        )
+        val result = execute("bridges", "--project", root.toString(), "--target", "react-native", "--rn-events")
+        assertEquals(ExitStatus.SUCCESS.code, result.status)
+        assertContains(result.output, "\"transport\": \"react-native-event\"")
+        assertContains(result.output, "\"kind\": \"event-emit\"")
+    }
+
+    @Test
     fun `bridges emits graph exchange JSON`(@TempDir projectRoot: Path) {
         projectRoot.resolve("Plugin.kt").writeText(
             "val channel = MethodChannel(messenger, \"camera\")\nchannel.setMethodCallHandler(handler)\n",

@@ -21,6 +21,9 @@
 
 ### Fixed
 
+- `bridges --target react-native`의 일반 RN/Expo 수신 측 스캔을 복원한다. 0.11.0의 RN 이벤트
+  옵션 검증이 일반 v1 필터까지 Flutter로 제한해 정상 명령을 코드 64로 거부하던 회귀를 고쳤다.
+  Basic/EventChannel·RN 이벤트 문서의 target 구분과 잘못된 옵션 거부는 유지한다.
 - dependency 참조 스캐너가 descriptor에서 지워진 제네릭 타입을 classfile Signature에서 복원해
   실제 컴파일 의존성이 미사용으로 보고되는 경우를 막는다. AAR의 class/embedded JAR를 읽고,
   손상된 내부 ZIP과 과도하게 깊은 Signature는 부분 판정 없이 거부한다.
