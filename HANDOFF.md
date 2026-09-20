@@ -7,10 +7,12 @@
 
 ## 현재 상태
 
-- 발행본은 **0.12.0**이다. [PR87](https://github.com/ictechgy/kartograph/pull/87)과
+- 현재 소스 버전은 **0.13.0**이다. [새 릴리스](https://github.com/ictechgy/kartograph/releases/tag/v0.13.0)와
+  [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.13.0)은 발행 후 독립 설치 근거와 함께 확인한다.
+  이전 **0.12.0**의 [PR87](https://github.com/ictechgy/kartograph/pull/87)과
   [릴리스](https://github.com/ictechgy/kartograph/releases/tag/v0.12.0)에 P1.1-2·RN target 필터 수정이
-  포함됐다. GitHub·Plugin Portal·독립 설치 검증은 이전 원장에 있다. 이번 후속은 새로 발행하지 않았다.
-- 개발 소스의 `dependencies`는 `--baseline`, `--suppress`, `--write-baseline`을 지원한다.
+  포함됐다. 이전 버전의 GitHub·Plugin Portal·독립 설치 검증은 과거 원장에 있다.
+- 0.13.0의 `dependencies`는 `--baseline`, `--suppress`, `--write-baseline`을 지원한다.
   좌표·버전·scope·제안·클래스 근거를 정확히 지문화하고, Gradle은 dependencyBaseline/
   dependencySuppress와 task baselineOutput을 제공한다. capture는 필터 전 관찰을 저장하며,
   UTC 만료일·파일 변경을 task 입력으로 확인한다. CLI·Gradle strict는 필터 뒤 진단만 센다.
@@ -32,6 +34,7 @@
 
 ## 다음 범위 선택
 
-새 발행은 버전·패키지·설치 확인을 별도로 진행한다. processor KAPT/KSP/직접 출력 확대와
+0.13.0 발행 작업은 자매 isthmus의 로컬 `.git/release-followups-20260920/`에 기록한다.
+GitHub·Portal·설치 성공을 각각 확인하며 버전 파일만으로 발행을 단정하지 않는다. processor KAPT/KSP/직접 출력 확대와
 runtime LCOV·method 매핑은 현재 증거의 경계를 넘어서는 후속이다. 기존 baseline/suppress·
 JSR-269 source 귀속을 과거 목록 때문에 다시 구현하지 않는다. P2/P3·성능 후보는 실제 근거로 선택한다.

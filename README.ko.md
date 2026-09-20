@@ -31,6 +31,8 @@ Android에는 한 가지 유리한 점이 있다. "안 쓰는 것처럼 보이�
 - `dependencies`는 선언 목록(TSV: coordinate, scope, artifact)과 전달한 class root의 bytecode 참조를 대조해 `unused-dependency`를 보고한다. 빌드나 커버리지를 실행하지 않고, processor·runtime-only scope는 세기만 한다. [선언 의존성 분석](docs/DEPENDENCIES.md) 참고. 0.12.0에는 `--library` API/implementation
   배치 조언, `--resolved-dependencies` 소유권 검사, 6개 보고 형식과 JVM/Android
   `kartographDependencies` task가 추가됐다.
+- 0.13.0은 dependency baseline/suppress와 필터 전 전체 관찰 capture를 제공합니다.
+- 선택적 [processor source 귀속](docs/PROCESSOR-GENERATION.md)은 실제 JSR-269 Filer 출력과 generating artifact를 완료된 compiler receipt에 연결합니다. collector는 태그 소스에서 별도로 빌드하며 귀속이 reachability나 dependency unused 판정을 바꾸지는 않습니다.
 - `cycles`/`rules`/`metrics`는 module/package 순환과 weakest edge, fail-closed layer YAML, Martin Ca/Ce/I/A/D 지표를 분석한다.
 - Gradle plugin은 AGP public Variant API 위에서 Android variant마다 `kartographDead<Variant>`와 `kartographGraph<Variant>` task를 등록한다.
 - Gradle plugin의 `kartographSnapshot`과 `kartographSnapshot<Variant>` task는 JVM main/test와 Android main/unit-test 입력을 compiler witness와 함께 자동 캡처한다. Android application variant에서는 생성된 `R.jar`도 `processResources` producer witness로 함께 캡처한다. 반복 영향 질의는 [자동 캡처와 toolchain 설정](docs/IMPACT.md#jvm-빌드에서-자동-캡처)과 [build provenance 계약](docs/BUILD-PROVENANCE.md)을 참고한다.
@@ -54,7 +56,7 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.12.0"
+    id("io.github.ictechgy.kartograph") version "0.13.0"
 }
 ```
 
@@ -228,4 +230,4 @@ kartograph는 MIT 라이선스다. 배포본에 내장된 의존성의 저작권
 별도 v2 `react-native-event` 문서로 냅니다. `--graph-file`로 실제 JVM 식별자를 붙일 수
 있습니다. `snapshot --include-paths`로 소스 경로가 있는 스냅샷을 만들어야 브리지 위치와
 인덱스 메서드를 대조할 수 있습니다. Expo·codegen 이벤트·emitter 변수/래퍼는 해석하지 않습니다. Flutter의
-`--events`·`--messages`와 함께 사용할 수 없습니다. 두 기능 모두 발행 전 개발 기능입니다.
+`--events`·`--messages`와 함께 사용할 수 없습니다. 두 기능은 0.11.0부터 제공됩니다. 0.13.0의 generatedAt은 추출 시각이며 source mtime은 선택적 sourceModifiedAt으로 분리합니다. 어느 시각도 compiler freshness를 증명하지 않습니다.

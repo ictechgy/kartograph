@@ -1,10 +1,14 @@
 # Processor source generation evidence
 
-개발 소스의 `javac-processors` collector는 명시한 JSR-269 processor 하나를 실행하면서
+0.13.0의 `javac-processors` collector는 명시한 JSR-269 processor 하나를 실행하면서
 `Filer.createSourceFile`과 출력의 정상 close를 관찰한다. 파일 이름·`_Factory` suffix나
-`@Generated` 문자열로 processor를 추측하지 않는다. 현재 배포된 0.12.0에는 포함되지 않는다.
+`@Generated` 문자열로 processor를 추측하지 않는다. 0.12.0에는 포함되지 않는다.
 
 ## 수집과 확인
+
+collector JAR는 선택적 소스 빌드 산출물이며 CLI ZIP/TAR나 Portal plugin의 runtime에
+포함되지 않는다. [v0.13.0 소스](https://github.com/ictechgy/kartograph/tree/v0.13.0)를
+checkout한 저장소 루트에서 JDK 17로 빌드한다.
 
 ```bash
 ./gradlew --no-daemon -p compiler-collectors integrationTest
@@ -22,7 +26,7 @@
 -Akartograph.evidence.token=<token-file>
 ```
 
-[기존 compiler witness 절차](../compiler-collectors/README.md)에 따라
+[기존 compiler witness 절차](https://github.com/ictechgy/kartograph/blob/v0.13.0/compiler-collectors/README.md)에 따라
 `CompilerWitnesses.javaCompile(..., compilerEvidence = true)`를 등록한다. 수집기 출력만으로
 빌드 성공을 주장하지 않는다. 완료 receipt는 generating processor artifact가 실제 compiler
 입력에 포함되는지, source가 선언된 generated source root 안인지, 원본 bytes와 token이

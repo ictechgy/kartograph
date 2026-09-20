@@ -37,6 +37,7 @@ distributions {
             }
             val releaseDocumentation = listOf(
                 "DEPENDENCIES.md",
+                "PROCESSOR-GENERATION.md",
                 "DECISION-truth-source.md",
                 "LIMITATIONS.md",
                 "PHASE2-VALIDATION.md",
