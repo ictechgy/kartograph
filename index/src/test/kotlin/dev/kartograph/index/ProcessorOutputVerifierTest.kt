@@ -11,8 +11,24 @@ import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 
 class ProcessorOutputVerifierTest {
+    @Test fun `configuration aliases are rejected before importing duplicate observations`() = fixture { root, _, _ ->
+        val path = root.resolve("config.json"); Files.writeString(path, "{}")
+        val alias = root.resolve("alias.json"); Files.createSymbolicLink(alias, path.fileName)
+        assertEquals(listOf(path), ProcessorOutputVerifier.configurationPaths(listOf(path)))
+        assertFailsWith<IllegalArgumentException> { ProcessorOutputVerifier.configurationPaths(listOf(path, alias)) }
+    }
+    @Test fun `missing and invalid local paths do not leak their values`() = fixture { root, config, receipt ->
+        for (missing in listOf(root.resolve("private-artifact.jar").toString(), "private\u0000artifact.jar")) {
+            val failure = assertFailsWith<IllegalArgumentException> {
+                ProcessorOutputVerifier.verify(root, "app:main", config.copy(collectorJar = missing), receipt)
+            }
+            assertFalse(failure.message.orEmpty().contains("private"))
+            assertEquals(null, failure.cause)
+        }
+    }
     @Test fun `completed observations preserve kinds without attributing graph edges`() = fixture { root, config, receipt ->
         assertEquals(receipt.observation, ProcessorOutputVerifier.verify(root, "app:main", config, receipt))
         assertEquals(setOf("source", "class", "resource", "file"), receipt.observation.outputs.map { it.kind }.toSet())

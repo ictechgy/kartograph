@@ -8,9 +8,8 @@ import java.nio.file.Path
 /** CLI는 로컬 JSON만 읽고 processor runner 명령을 실행하지 않는다. */
 internal class ProcessorOutputFiles(private val project: Path, paths: List<Path>) {
     private var capturedCharacters = 0L
-    private val entries = paths.also {
-        require(it.size <= 256 && it.distinct().size == it.size) { "processor config list is duplicate or too large" }
-    }.map { path ->
+    private val selectedPaths = ProcessorOutputVerifier.configurationPaths(paths)
+    private val entries = selectedPaths.map { path ->
         val text = SnapshotFiles.readText(path.toString(), 1024 * 1024)
         val config = ProcessorOutputCodec.configuration(text)
         ProcessorOutputVerifier.trackedFiles(project, config)
@@ -21,7 +20,7 @@ internal class ProcessorOutputFiles(private val project: Path, paths: List<Path>
     }
     val trackedFiles: List<Pair<String, Path>>
     init {
-        trackedFiles = paths.map { "processorConfig" to it } + entries.flatMap { entry ->
+        trackedFiles = selectedPaths.map { "processorConfig" to it } + entries.flatMap { entry ->
             ProcessorOutputVerifier.trackedFiles(project, entry.config, entry.receipt).map { "processorEvidence" to it }
         }
     }

@@ -145,8 +145,9 @@ def observations(config: dict, root: Path, token: str) -> dict:
     if not path.is_file() or path.stat().st_size > 16 * 1024 * 1024:
         raise EvidenceError('missing or oversized processor observations')
     rows = path.read_text(encoding='utf-8').splitlines()
-    if not rows or rows[0] != 'format\tkartograph-processor-outputs\t1' or len(rows) > 100_007:
+    if not rows or rows[0] != 'format\tkartograph-processor-outputs\t1' or len(rows) > 100_006:
         raise EvidenceError('invalid processor observation format')
+    declared_roots = {locate(root, parent) for parent in config['outputRoots']}
     headers, outputs = {}, []
     for row in rows[1:]:
         fields = row.split('\t')
@@ -155,7 +156,7 @@ def observations(config: dict, root: Path, token: str) -> dict:
             if (kind, observation) not in {('source', 'api'), ('class', 'api'), ('resource', 'api'), ('file', 'callback-scope')} or not re.fullmatch('[0-9a-f]{64}', sha):
                 raise EvidenceError('invalid processor output row')
             name = portable(decode(name)); output = locate(root, name)
-            if not any(output.is_relative_to(locate(root, parent)) for parent in config['outputRoots']):
+            if output not in declared_roots and not any(parent in declared_roots for parent in output.parents):
                 raise EvidenceError('output outside declared generated roots')
             if not output.is_file() or digest(output) != sha:
                 raise EvidenceError('processor output changed')
