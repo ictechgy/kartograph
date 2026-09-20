@@ -99,7 +99,7 @@ python3 compiler-collectors/processor_output_witness.py verify --config /path/to
 
 설정에는 `project`, `scope`, `kind`, `processor`, `collectorJar`, `processorJar`, 프로젝트 상대
 `inputs`/`outputRoots`, 서로 다른 `token`/`observations`/`receipt`, 실행할 `command` 인자 배열을
-지정한다. control 파일은 output roots 밖에 둔다. 실제 설정 예와 생성기 코드는
+지정한다. control 파일은 output roots·명시된 입력·processor artifact 밖에 둔다. 실제 설정 예와 생성기 코드는
 [`tests/output_attribution.py`](../compiler-collectors/tests/output_attribution.py)에 있다.
 fixture는 `--rerun-tasks --no-build-cache --no-configuration-cache`로 전체 재실행하며, 이 새 runner에
 Gradle cache 복원 지원을 주장하지 않는다. 관찰 범위는 설정에 명시한 입력이다. 이 runner는 모든 compiler의

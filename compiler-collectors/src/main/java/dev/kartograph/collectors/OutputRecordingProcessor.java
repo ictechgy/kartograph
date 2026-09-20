@@ -54,7 +54,9 @@ public final class OutputRecordingProcessor implements Processor {
     }
     @Override public Set<String> getSupportedAnnotationTypes() { return delegate == null ? Set.of("*") : delegate.getSupportedAnnotationTypes(); }
     @Override public SourceVersion getSupportedSourceVersion() { return delegate == null ? SourceVersion.latestSupported() : delegate.getSupportedSourceVersion(); }
-    @Override public Iterable<? extends Completion> getCompletions(Element e, AnnotationMirror a, ExecutableElement m, String text) { return delegate.getCompletions(e, a, m, text); }
+    @Override public Iterable<? extends Completion> getCompletions(Element e, AnnotationMirror a, ExecutableElement m, String text) {
+        return delegate == null ? java.util.List.of() : delegate.getCompletions(e, a, m, text);
+    }
     private final class RecordingFiler implements Filer {
         private final Filer filer;
         RecordingFiler(Filer filer) { this.filer = filer; }

@@ -80,8 +80,9 @@ public final class ProcessorOutputSession {
         catch (IOException error) { throw new IllegalArgumentException("processor output path is unavailable", error); }
         if (!path.startsWith(options.root()) || directRoot != null && path.startsWith(directRoot))
             throw new IllegalArgumentException("API output must be inside project and outside the direct-write scope");
-        if (!unclosed.add(path) || outputs.containsKey(options.root().relativize(path).toString().replace('\\', '/')))
+        if (unclosed.contains(path) || outputs.containsKey(options.root().relativize(path).toString().replace('\\', '/')))
             throw new IllegalArgumentException("processor output was opened twice");
+        unclosed.add(path);
         bounded();
     }
     private void closed(Path path, String outputKind) {

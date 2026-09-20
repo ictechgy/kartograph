@@ -11,6 +11,25 @@ witness = importlib.util.module_from_spec(spec); spec.loader.exec_module(witness
 
 
 class OutputWitnessTests(unittest.TestCase):
+    def test_controls_cannot_overwrite_or_self_include_declared_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); (root / 'src').mkdir(); source = root / 'src/Input.java'; source.write_text('class Input {}')
+            artifact = root / 'fixture.jar'; artifact.write_bytes(b'fixture-input')
+            base = {'project': str(root), 'scope': 'fixture:main', 'kind': 'javac', 'processor': 'fixture.Processor',
+                    'inputs': ['src'], 'outputRoots': ['generated'], 'collectorJar': str(artifact), 'processorJar': str(artifact),
+                    'token': '.evidence/token', 'observations': '.evidence/outputs.tsv', 'receipt': '.evidence/receipt.json',
+                    'command': [sys.executable, '-c', 'raise SystemExit(99)']}
+            config = root / 'config.json'
+            for key in ('token', 'observations', 'receipt'):
+                for path in ('src/Input.java', 'src/new-receipt.json', 'fixture.jar'):
+                    with self.subTest(control=key, path=path):
+                        config.write_text(json.dumps({**base, key: path}))
+                        with self.assertRaises(witness.EvidenceError):
+                            witness.record(config, root / 'logs')
+                        self.assertEqual(source.read_text(), 'class Input {}')
+                        self.assertEqual(artifact.read_bytes(), b'fixture-input')
+                        self.assertFalse((root / 'logs').exists())
+
     def test_file_cannot_impersonate_directory_inventory(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'input'; path.mkdir()

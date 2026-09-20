@@ -41,6 +41,7 @@ def main():
     parser.add_argument('--reports', type=Path, default=ROOT / 'build/reports/output-attribution')
     args = parser.parse_args()
     reports = args.reports.resolve(); reports.mkdir(parents=True, exist_ok=True)
+    (reports / 'results.json').unlink(missing_ok=True)
     collector = args.collector.resolve()
     gradle = ROOT.parent / 'gradlew'
     scratch = Path(tempfile.mkdtemp(prefix='kartograph-processor-outputs-')).resolve()
@@ -55,6 +56,9 @@ def main():
     (processor / 'build.gradle').write_text("plugins { id 'org.jetbrains.kotlin.jvm' version '2.4.10' }\nrepositories { mavenCentral() }\nkotlin { jvmToolchain(17) }\ndependencies { compileOnly 'com.google.devtools.ksp:symbol-processing-api:2.3.12' }\n")
     command([gradle, '--no-daemon', 'jar'], processor, reports / 'processor-build.log')
     processor_jar = processor / 'build/libs/processor-fixture.jar'
+    saved_artifacts = reports / 'processor-artifacts'; saved_artifacts.mkdir(exist_ok=True)
+    shutil.copyfile(collector, saved_artifacts / 'collector.jar')
+    shutil.copyfile(processor_jar, saved_artifacts / 'processor.jar')
     selector = scratch / 'selector.jar'
     with zipfile.ZipFile(selector, 'w') as archive:
         archive.writestr('META-INF/services/javax.annotation.processing.Processor', 'dev.kartograph.collectors.OutputRecordingProcessor\n')
@@ -108,15 +112,25 @@ def main():
         assert witness.verify(config_file)['status'] == 'matched'
         shutil.copyfile(project / config['receipt'], reports / (kind + '-receipt.json'))
         # 뒤의 실패 빌드가 생성물을 덮어쓰기 전에 성공한 원본 bytes를 보존한다.
+        saved_project = reports / (kind + '-success')
         for row in outputs:
-            saved = reports / (kind + '-success') / row['path']; saved.parent.mkdir(parents=True, exist_ok=True)
+            saved = saved_project / row['path']; saved.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(project / row['path'], saved)
             assert witness.digest(saved) == row['sha256']
+        for name in [*config['inputs'], config['observations'], config['receipt']]:
+            saved = saved_project / name; saved.parent.mkdir(parents=True, exist_ok=True)
+            if (project / name).is_dir(): shutil.copytree(project / name, saved, dirs_exist_ok=True)
+            else: shutil.copyfile(project / name, saved)
+        archived_config = reports / (kind + '-success-config-local.json')
+        archived_config.write_text(json.dumps({**config, 'project': str(saved_project),
+            'collectorJar': str(saved_artifacts / 'collector.jar'), 'processorJar': str(saved_artifacts / 'processor.jar')}))
+        assert witness.verify(archived_config)['status'] == 'matched'
         for mode in ('unclosed', 'broken'):
             config['command'].append('-PfixtureMode=' + mode); config_file.write_text(json.dumps(config))
             rejected(lambda: witness.record(config_file, reports / (kind + '-' + mode)))
             assert not (project / config['receipt']).exists()
             config['command'].pop()
+        assert witness.verify(archived_config)['status'] == 'matched'
         results.append({'kind': kind, 'outputs': 4, 'sourceClassResourceDirect': True, 'handwrittenExcluded': True,
                         'staleControls': ['source', 'output', 'raw', 'scope'], 'failedBuildControls': ['unclosed', 'broken']})
         print(json.dumps(results[-1]), flush=True)

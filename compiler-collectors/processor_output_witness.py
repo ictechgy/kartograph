@@ -81,6 +81,11 @@ def configuration(path: Path) -> tuple[dict, Path]:
         raise EvidenceError('explicit inputs, outputs and command are required')
     for key in ('token', 'observations', 'receipt'):
         locate(root, config[key])
+    declared_inputs = [locate(root, name) for name in config['inputs']]
+    declared_inputs += [Path(config[key]).resolve() for key in ('collectorJar', 'processorJar')]
+    for path in declared_inputs:
+        if any(locate(root, config[key]).is_relative_to(path) for key in ('token', 'observations', 'receipt')):
+            raise EvidenceError('control files must be outside declared inputs and processor artifacts')
     for name in config['outputRoots']:
         if any(locate(root, config[key]).is_relative_to(locate(root, name)) for key in ('token', 'observations', 'receipt')):
             raise EvidenceError('control files must be outside generated output roots')
