@@ -36,6 +36,7 @@ distributions {
                 into("LICENSES")
             }
             val releaseDocumentation = listOf(
+                "DEPENDENCIES.md",
                 "DECISION-truth-source.md",
                 "LIMITATIONS.md",
                 "PHASE2-VALIDATION.md",

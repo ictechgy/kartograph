@@ -88,6 +88,17 @@ Scripts/verify-cli-contract.sh "$TAR_BINARY"
 KARTOGRAPH_BINARY="$TAR_BINARY" KARTOGRAPH_PR_SCRIPT="$TEMPORARY_DIRECTORY/kartograph-$VERSION/Scripts/check-pr.py" \
     python3 -m unittest discover -s Scripts/tests -v
 [[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/docs/LIMITATIONS.md" ]]
+python3 - "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+root = Path(sys.argv[1])
+for readme in ("README.md", "README.ko.md"):
+    for target in re.findall(r'\]\((docs/[^)#]+\.md)(?:#[^)]*)?\)', (root / readme).read_text()):
+        if ".." in Path(target).parts or not (root / target).is_file():
+            raise SystemExit("release README documentation is missing: " + target)
+PY
 [[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/Skills/kartograph/SKILL.md" ]]
 [[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/THIRD_PARTY_NOTICES.md" ]]
 [[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/LICENSES/Apache-2.0.txt" ]]
