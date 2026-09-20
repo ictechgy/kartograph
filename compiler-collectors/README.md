@@ -22,13 +22,14 @@ The jar contains four separately selected collectors:
   `processorGenerations`; it does not alter reachability or dependency findings.
   See [setup and limits](../docs/PROCESSOR-GENERATION.md).
 
-Development sources also contain `OutputRecordingProcessor` (javac/KAPT) and
+The optional distribution also contains `OutputRecordingProcessor` (javac/KAPT) and
 `RecordingSymbolProcessorProvider` (KSP 2.3.12). These produce a separate output
 sidecar for source, class and resource API outputs, plus byte changes in an
 explicit callback-scoped direct-write directory. `processor_output_witness.py`
-binds that sidecar to a successful configured command and declared inputs; it
-does not inject these observations into a graph or replace compiler witnesses.
-See the [output workflow](../docs/PROCESSOR-GENERATION.md#개발-collector-kaptksp와-여러-출력-종류).
+binds that sidecar to a successful configured command and declared inputs. The
+v2 receipt can be imported as snapshot `processorOutputs` metadata without
+changing graph edges or replacing compiler witnesses.
+See the [output workflow](../docs/PROCESSOR-GENERATION.md#output-collector-kaptksp와-여러-출력-종류).
 
 ## Build and run
 
@@ -42,11 +43,23 @@ The first run resolves fixed compiler dependencies using the checked-in SHA-256
 verification metadata. Add `--offline` after those inputs are cached. The build
 version comes from the repository `VERSION` file.
 
+`./gradlew --no-daemon -p compiler-collectors distZip` builds the optional
+`build/distributions/kartograph-compiler-collectors-<version>.zip`. It contains the
+collector JAR, standalone Python runner, Gradle cache adapter, versioned installation guide and license
+notices. It does not bundle compiler or processor dependencies. The release
+readiness gate checks this ZIP in both reproducibility builds and runs an
+independent javac consumer against the extracted JAR and runner. The ZIP is a
+separate GitHub release asset covered by `SHA256SUMS`; it is not added to the
+Gradle plugin runtime.
+
 The build publishes `build/libs/kartograph-compiler-collectors.jar` and runs
 the real Java, Kotlin, and Dagger fixtures in `tests/run.py`.
 It also runs `tests/output_attribution.py` for real javac/KAPT/KSP output and
-failure controls. The latter forces full builds with caches disabled and does
-not claim coverage of asynchronous or concurrent writers.
+failure controls. The latter restores the native javac/KAPT/KSP task from the
+Gradle build cache, reuses configuration cache and validates restored output
+bytes. Set `KARTOGRAPH_SNAPSHOT_CLI` to a built CLI launcher to additionally check
+snapshot metadata, unchanged graph/retention and rejection of changed outputs.
+It does not claim coverage of asynchronous or concurrent writers.
 
 For product verification, register the real Gradle compiler with
 `compilerEvidence = true` and use `CompilerWitnesses.inputTokenFile` and

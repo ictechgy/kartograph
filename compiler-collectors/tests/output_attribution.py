@@ -38,7 +38,8 @@ def rejected(action):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--collector', type=Path, default=ROOT / 'build/libs/kartograph-compiler-collectors.jar')
-    parser.add_argument('--reports', type=Path, default=ROOT / 'build/reports/output-attribution')
+    parser.add_argument('--reports', type=Path, default=os.environ.get('KARTOGRAPH_OUTPUT_REPORTS', ROOT / 'build/reports/output-attribution'))
+    parser.add_argument('--snapshot-cli', type=Path, default=os.environ.get('KARTOGRAPH_SNAPSHOT_CLI'))
     args = parser.parse_args()
     reports = args.reports.resolve(); reports.mkdir(parents=True, exist_ok=True)
     (reports / 'results.json').unlink(missing_ok=True)
@@ -84,19 +85,56 @@ def main():
             method = 'kapt' if kind == 'kapt' else 'ksp'
             setup = 'dependencies { ' + method + ' files(' + files + ') }\n'
             arguments = ';'.join('arg(' + quote(key) + ',' + quote(value) + ')' for key, value in values.items()) + ";arg('fixture.mode',providers.gradleProperty('fixtureMode').getOrElse('normal'))"
-            setup += 'kapt { includeCompileClasspath=false; correctErrorTypes=true; useBuildCache=false; arguments { ' + arguments + ' } }\n' if kind == 'kapt' else 'ksp { ' + arguments + ' }\n'
+            setup += 'kapt { includeCompileClasspath=false; correctErrorTypes=true; useBuildCache=true; arguments { ' + arguments + ' } }\n' if kind == 'kapt' else 'ksp { ' + arguments + ' }\n'
+        cache_task = {'javac': 'compileJava', 'kapt': 'kaptKotlin', 'ksp': 'kspKotlin'}[kind]
+        shutil.copyfile(ROOT / 'processor_output_cache.gradle', project / 'processor-output-cache.gradle')
+        setup += "apply from: 'processor-output-cache.gradle'\nregisterProcessorOutputCache(" + quote(cache_task) + ", file('witness-config-local.json'))\n"
         (project / 'build.gradle').write_text('plugins { ' + plugins + " }\nrepositories { mavenCentral() }\njava { toolchain { languageVersion=JavaLanguageVersion.of(17) } }\n" + setup)
         (project / 'gradle.properties').write_text('kapt.incremental.apt=false\nksp.incremental=false\n')
         config = {'project': str(project), 'scope': 'fixture:main', 'kind': kind, 'processor': values['kartograph.processor'],
-                  'collectorJar': str(collector), 'processorJar': str(processor_jar), 'inputs': ['src', 'build.gradle', 'settings.gradle', 'gradle.properties'],
+                  'collectorJar': str(collector), 'processorJar': str(processor_jar), 'inputs': ['src', 'build.gradle', 'settings.gradle', 'gradle.properties', 'processor-output-cache.gradle'],
                   'outputRoots': ['build', 'direct'], 'token': '.evidence/token.pending', 'observations': '.evidence/outputs.tsv', 'receipt': '.evidence/receipt.json',
-                  'command': [str(gradle), '--no-daemon', '--no-build-cache', '--no-configuration-cache', '--rerun-tasks', 'classes']}
+                  'cacheOutputs': ['direct/direct.txt'],
+                  'command': [str(gradle), '--no-daemon', '--build-cache', '--configuration-cache', 'classes']}
         config_file = project / 'witness-config-local.json'; config_file.write_text(json.dumps(config))
         value = witness.record(config_file, reports / kind)
         assert witness.verify(config_file)['status'] == 'matched'
+        assert value['version'] == 2
         outputs = value['observation']['outputs']
         assert {(row['kind'], row['observation']) for row in outputs} == {('source', 'api'), ('class', 'api'), ('resource', 'api'), ('file', 'callback-scope')}
         assert len(outputs) == 4 and all('Handwritten' not in row['path'] for row in outputs)
+        direct = next(row for row in outputs if row['observation'] == 'callback-scope')
+        assert config['cacheOutputs'] == [direct['path']]
+        # 실제 native task cache에서 raw와 4종 출력을 함께 복원해야 한다.
+        for row in outputs:
+            (project / row['path']).unlink()
+        restored = witness.record(config_file, reports / (kind + '-cache-restored'))
+        assert restored == value
+        cache_log = (reports / (kind + '-cache-restored/build.stdout')).read_text()
+        assert f':{cache_task} FROM-CACHE' in cache_log
+        assert 'Reusing configuration cache.' in cache_log or 'Configuration cache entry reused.' in cache_log
+        assert (project / 'direct/Handwritten.txt').read_text() == 'unchanged handwritten control'
+        if args.snapshot_cli:
+            roots = [path for path in [project / 'build/classes/java/main', project / 'build/classes/kotlin/main',
+                                      project / 'build/tmp/kapt3/classes/main', project / 'build/generated/ksp/main/classes'] if path.is_dir()]
+            binary_output = next(row for row in outputs if row['kind'] == 'class')
+            roots.append((project / binary_output['path']).parent.parent)
+            snapshot_command = [str(args.snapshot_cli.resolve()), 'snapshot', '--project', str(project), '--scope', config['scope']]
+            for path in dict.fromkeys(roots): snapshot_command += ['--classes', str(path)]
+            baseline = subprocess.run(snapshot_command, capture_output=True, text=True, timeout=120)
+            assert baseline.returncode == 0, 'baseline snapshot failed'
+            captured = subprocess.run(snapshot_command + ['--processor-output-config', str(config_file)], capture_output=True, text=True, timeout=120)
+            assert captured.returncode == 0, 'processor output snapshot failed'
+            document = json.loads(captured.stdout)
+            assert document['graph'] == json.loads(baseline.stdout)['graph']
+            assert document['retention'] == json.loads(baseline.stdout)['retention']
+            assert document['processorOutputs'][0]['outputs'] == outputs
+            assert document['processorOutputs'][0]['scope'] == config['scope']
+            (reports / (kind + '-snapshot.json')).write_text(captured.stdout)
+            changed = project / outputs[0]['path']; original_output = changed.read_bytes(); changed.write_bytes(b'stale')
+            stale = subprocess.run(snapshot_command + ['--processor-output-config', str(config_file)], capture_output=True, text=True, timeout=120)
+            assert stale.returncode == 2 and not stale.stdout
+            changed.write_bytes(original_output)
         binary = next(row for row in outputs if row['kind'] == 'class')
         assert (project / binary['path']).read_bytes()[:4] == b'\xca\xfe\xba\xbe'
         resource = next(row for row in outputs if row['kind'] == 'resource')
@@ -132,7 +170,9 @@ def main():
             config['command'].pop()
         assert witness.verify(archived_config)['status'] == 'matched'
         results.append({'kind': kind, 'outputs': 4, 'sourceClassResourceDirect': True, 'handwrittenExcluded': True,
-                        'staleControls': ['source', 'output', 'raw', 'scope'], 'failedBuildControls': ['unclosed', 'broken']})
+                        'staleControls': ['source', 'output', 'raw', 'scope'], 'failedBuildControls': ['unclosed', 'broken'],
+                        'nativeTaskRestoredFromCache': cache_task, 'configurationCacheReused': True,
+                        'snapshotMetadataVerified': args.snapshot_cli is not None})
         print(json.dumps(results[-1]), flush=True)
     (reports / 'results.json').write_text(json.dumps({'cases': results}, indent=2) + '\n')
 

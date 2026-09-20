@@ -85,6 +85,10 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val compilerInputFiles: ConfigurableFileCollection
 
+    /** 별도 runner의 출력 관찰을 붙이는 명시적 로컬 설정이다. */
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val processorOutputConfigs: ConfigurableFileCollection
+
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val keepRuleFiles: ConfigurableFileCollection
 
@@ -126,6 +130,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         snapshotMaxMiB.convention(QuerySnapshotCodec.DEFAULT_MAX_MIB)
         indexCacheEnabled.convention(false)
         indexCacheDirectory.convention(buildDirectory.dir("kartograph/index-cache"))
+        // 설정 안의 동적 파일 집합은 action에서 전후 확인한다. 같은 설정 파일만 보고
+        // snapshot을 UP-TO-DATE로 재사용하지 않는다. native compiler cache는 그대로 둔다.
+        outputs.upToDateWhen { (it as KartographSnapshotTask).processorOutputConfigs.isEmpty }
     }
 
     /** 입력 집합이 같아도 root 순서에 따라 중복 JVM 선언의 선택이 달라진다. */
@@ -145,6 +152,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     public fun captureSnapshot() {
         val snapshotMaximumBytes = QuerySnapshotCodec.maximumBytes(snapshotMaxMiB.get())
         val project = projectDirectory.get().asFile.toPath()
+        val processorOutputs = ProcessorOutputInputs(project, processorOutputConfigs.files.map { it.toPath() })
         val witnessPaths = buildWitnessFiles.files.filter { it.isFile }.map { it.toPath() }
         val witnesses = witnessPaths.map { path ->
             require(Files.size(path) <= QuerySnapshotCodec.MAX_BYTES) { "build witness is too large" }
@@ -179,6 +187,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val missingGeneratedRules = generatedRules - existingGeneratedRules.toSet()
         val rules = scanner.scan(keepRuleFiles.files.map { it.toPath() } + existingGeneratedRules)
         val files = roots.map { "classes" to it } + classpath.map { "classpath" to it } +
+            processorOutputs.files +
             resources.map { "service-resources" to it } + generated.map { "generated-classes" to it } +
             sourceDirectories.files.map { "source-watch" to it.toPath() } +
             resourceDirectories.files.map { "directory-watch" to it.toPath() } +
@@ -245,11 +254,13 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val located = if (paths == null) graph else CodeGraph(graph.nodes.values.map { node ->
                 paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
             }, graph.edges, graph.externalCalls, graph.serviceProviders)
+            val outputObservations = processorOutputs.verify(scope.get())
             val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, selectedSources) +
+                (if (outputObservations.isEmpty()) emptyList() else listOf("processor-output-observations: declared-input successful-command metadata; not full compiler coverage or graph attribution")) +
                 paths?.limitations.orEmpty() + if (missingGeneratedRules.isEmpty()) emptyList() else
                     listOf("missing-generated-keep-files: ${missingGeneratedRules.size}"),
                 suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
-                scope = scope.get(), provenance = before)
+                scope = scope.get(), provenance = before, processorOutputs = outputObservations)
             val content = QuerySnapshotCodec.render(snapshot, compact = true, maximumBytes = snapshotMaximumBytes)
             SnapshotOutput(content, indexed, before)
         }

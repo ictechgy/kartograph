@@ -26,14 +26,15 @@ internal object SnapshotFiles {
     fun read(path: String, maximumBytes: Int = QuerySnapshotCodec.MAX_BYTES): QuerySnapshot =
         QuerySnapshotCodec.parse(readText(path, maximumBytes), maximumBytes)
 
-    fun readText(value: String, maximum: Int): String {
+    fun readText(value: String, maximum: Int, followLinks: Boolean = true): String {
         require(maximum > 0)
         val path = Path.of(value)
         require(Files.isRegularFile(path))
         val observedSize = Files.size(path)
         require(observedSize in 0..maximum.toLong())
         val bytes = ByteArray(observedSize.toInt())
-        Files.newInputStream(path).use { input ->
+        val links = if (followLinks) emptyArray() else arrayOf(java.nio.file.LinkOption.NOFOLLOW_LINKS)
+        Files.newInputStream(path, *links).use { input ->
             require(input.readNBytes(bytes, 0, bytes.size) == bytes.size && input.read() == -1)
         }
         return Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)

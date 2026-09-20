@@ -45,6 +45,8 @@ jobs:
           Scripts/verify-fixture-corpus.sh
           Scripts/verify-gradle-plugin-fixture.sh
           python3 -m unittest discover -s Scripts/tests -v
+      - name: Verify optional compiler collectors
+        run: KARTOGRAPH_SNAPSHOT_CLI="$PWD/cli/build/install/kartograph/bin/kartograph" ./gradlew --no-daemon -p compiler-collectors integrationTest
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
         with:
           gradle-version: '8.10.2'
@@ -56,6 +58,19 @@ jobs:
           bash Scripts/verify-agp-8-app-snapshot.sh
       - name: Verify release artifacts without publishing
         run: Scripts/verify-release-readiness.sh
+      - name: Preserve release readiness evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release-readiness
+          path: |
+            build/reports/release-readiness/*.sha256
+            build/reports/release-readiness/**/*.log
+            build/reports/release-readiness/**/build.stdout
+            build/reports/release-readiness/**/build.stderr
+            build/reports/release-readiness/**/verification.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -68,6 +83,7 @@ jobs:
             "cli/build/distributions/kartograph-$RELEASE_VERSION.zip" \
             "cli/build/distributions/kartograph-$RELEASE_VERSION.tar" \
             "gradle-plugin/build/libs/kartograph-gradle-plugin-$RELEASE_VERSION.jar" \
+            "compiler-collectors/build/distributions/kartograph-compiler-collectors-$RELEASE_VERSION.zip" \
             "build/release/kartograph-$RELEASE_VERSION.cdx.json" \
             "build/release/kartograph-gradle-plugin-$RELEASE_VERSION.cdx.json" \
             "build/release/SHA256SUMS"

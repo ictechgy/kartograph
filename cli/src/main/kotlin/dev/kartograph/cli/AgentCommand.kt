@@ -135,7 +135,7 @@ internal object AgentCommand {
             setOf(
                 "--classes", "--project", "--manifest", "--resources", "--namespace",
                 "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes",
-            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings", "--compiler-evidence", "--input", "--index-cache", "--snapshot-max-mib"),
+            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings", "--compiler-evidence", "--processor-output-config", "--input", "--index-cache", "--snapshot-max-mib"),
             error,
         )
             ?: return ExitStatus.USAGE.code
@@ -170,6 +170,8 @@ internal object AgentCommand {
             return usage(error, "--compiler-evidence requires --scope and completed --build-witness inputs")
         if (options.values("--input").isNotEmpty() && options.values("--compiler-evidence").isEmpty())
             return usage(error, "--input requires --compiler-evidence on snapshot")
+        if (options.values("--processor-output-config").isNotEmpty() && options.single("--scope") == null)
+            return usage(error, "--processor-output-config requires --scope")
         val externalInputs = try { FreshnessCommand.inputBindings(options.values("--input")) }
             catch (_: IllegalArgumentException) { return usage(error, "invalid --input binding") }
         return try {
@@ -178,7 +180,9 @@ internal object AgentCommand {
             val keepRules = keepScanner.scan(options.values("--keep-rules").map { resolveProjectPath(project, it) })
             val generatedRoots = options.values("--generated-classes").map(Path::of)
             val compilerEvidence = options.values("--compiler-evidence").map { resolveProjectPath(project, it) }
+            val processorOutputs = ProcessorOutputFiles(project, options.values("--processor-output-config").map { resolveProjectPath(project, it) })
             val fingerprintFiles = classRoots.map { "classes" to it } + classpath.map { "classpath" to it } +
+                processorOutputs.trackedFiles +
                 compilerEvidence.map { "compilerEvidence" to it } +
                 generatedRoots.map { "generated-classes" to it } +
                 listOf("--manifest", "--resources", "--service-resources", "--baseline", "--source-root", "--build-input").flatMap { option ->
@@ -232,6 +236,7 @@ internal object AgentCommand {
                     .filter { node -> Finding(node.id, node.location).fingerprint in baseline }
                     .mapTo(mutableSetOf()) { node -> node.id }
                 val limitations = RuntimeLimitationScanner.scan(indexed, project) + buildList {
+                    if (options.values("--processor-output-config").isNotEmpty()) add("processor-output-observations: declared-input successful-command metadata; not full compiler coverage or graph attribution")
                     if (compilerFacts.unmappedReferences > 0) add("compiler-evidence-unmapped-references: ${compilerFacts.unmappedReferences}")
                     if (compilerFacts.outsideGraphReferences > 0) add("compiler-evidence-outside-graph: ${compilerFacts.outsideGraphReferences}")
                     if (compilerFacts.shadowedReferences > 0) add("compiler-evidence-shadowed-references: ${compilerFacts.shadowedReferences}")
@@ -246,7 +251,8 @@ internal object AgentCommand {
                     val captured = try {
                         QuerySnapshotCodec.render(QuerySnapshot(capturedGraph, evidence, limitations + paths?.limitations.orEmpty(), suppressed,
                             options.values("--include-private-members").isNotEmpty(), revision = options.single("--revision"),
-                            scope = options.single("--scope"), provenance = provenance, processorGenerations = compilerFacts.processorGenerations),
+                            scope = options.single("--scope"), provenance = provenance, processorGenerations = compilerFacts.processorGenerations,
+                            processorOutputs = processorOutputs.verify(options.single("--scope"))),
                             compact = options.values("--compact").isNotEmpty(), maximumBytes = selectedLimit.maximumBytes)
                     } catch (_: QuerySnapshotSizeException) {
                         renderNanos = System.nanoTime() - renderStarted
@@ -457,6 +463,7 @@ internal object AgentCommand {
         --timings reports fingerprint, index/cache phases and render time to stderr.
         verify-snapshot reports comparison time. Cache and timing settings do not change snapshot facts.
         --compiler-evidence <file> attaches explicitly selected compiler facts with completed build receipts.
+        --processor-output-config <file> attaches verified v2 javac/KAPT/KSP output receipts as metadata (requires --scope).
         It requires --scope, --build-witness and --input bindings for every external witness input.
         These labels are caller assertions; the source freshness checks still apply.
         A snapshot records its input state; it does not prove that current sources or runtime behavior match.

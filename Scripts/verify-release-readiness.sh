@@ -18,6 +18,7 @@ build_artifacts() {
         :cli:distZip :cli:distTar \
         :gradle-plugin:jar :gradle-plugin:generatePomFileForPluginMavenPublication \
         :gradle-plugin:validatePlugins :cli:runtimeSbom :gradle-plugin:runtimeSbom
+    ./gradlew --no-daemon -p compiler-collectors clean distZip
     python3 Scripts/prepare-release-metadata.py
 }
 
@@ -26,6 +27,7 @@ artifact_paths() {
         "cli/build/distributions/kartograph-$VERSION.zip" \
         "cli/build/distributions/kartograph-$VERSION.tar" \
         "gradle-plugin/build/libs/kartograph-gradle-plugin-$VERSION.jar" \
+        "compiler-collectors/build/distributions/kartograph-compiler-collectors-$VERSION.zip" \
         "gradle-plugin/build/publications/pluginMaven/pom-default.xml" \
         "build/release/kartograph-$VERSION.cdx.json" \
         "build/release/kartograph-gradle-plugin-$VERSION.cdx.json" \
@@ -46,7 +48,15 @@ build_artifacts
 hash_artifacts > "$TEMPORARY_DIRECTORY/first.sha256"
 build_artifacts
 hash_artifacts > "$TEMPORARY_DIRECTORY/second.sha256"
+
+REPORT_DIRECTORY="build/reports/release-readiness"
+mkdir -p "$REPORT_DIRECTORY"
+cp "$TEMPORARY_DIRECTORY/first.sha256" "$TEMPORARY_DIRECTORY/second.sha256" "$REPORT_DIRECTORY/"
 diff -u "$TEMPORARY_DIRECTORY/first.sha256" "$TEMPORARY_DIRECTORY/second.sha256"
+
+python3 Scripts/verify-collector-installation.py \
+    --archive "compiler-collectors/build/distributions/kartograph-compiler-collectors-$VERSION.zip" \
+    --version "$VERSION" --evidence "$REPORT_DIRECTORY/collector-installation"
 
 # 게시되는 POM이 출처와 라이선스를 알리는지 확인한다.
 POM="gradle-plugin/build/publications/pluginMaven/pom-default.xml"
@@ -110,11 +120,7 @@ if grep -R -E -n '(/Users/|~/Desktop|[A-Za-z]:\\Users\\)' \
 fi
 
 # 배포본 문서가 이전 release를 설치하라고 지시하면(버전 하드코딩) 사용자는 이 릴리스에 없는 구버전을 받게 된다.
-if grep -R -E -n "version \"[0-9]+\.[0-9]+\.[0-9]+\"|kartograph-[0-9]+\.[0-9]+\.[0-9]+\.(zip|tar)" \
-    "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION" --include='*.md' \
-    | grep -v -F "$VERSION"; then
-    echo "release 문서가 이 릴리스가 아닌 버전의 설치를 지시합니다" >&2
-    exit 1
-fi
+python3 Scripts/verify-release-documentation.py \
+    --root "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION" --version "$VERSION"
 
 echo "release readiness 통과: $VERSION"

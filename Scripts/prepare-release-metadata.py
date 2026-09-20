@@ -17,6 +17,7 @@ def prepare(root: Path) -> Path:
         root / f"cli/build/distributions/kartograph-{version}.zip",
         root / f"cli/build/distributions/kartograph-{version}.tar",
         root / f"gradle-plugin/build/libs/kartograph-gradle-plugin-{version}.jar",
+        root / f"compiler-collectors/build/distributions/kartograph-compiler-collectors-{version}.zip",
     ]
     for module, name in [("cli", "kartograph"), ("gradle-plugin", "kartograph-gradle-plugin")]:
         source = root / f"{module}/build/reports/sbom/{name}-{version}.cdx.json"

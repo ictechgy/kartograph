@@ -11,6 +11,16 @@ witness = importlib.util.module_from_spec(spec); spec.loader.exec_module(witness
 
 
 class OutputWitnessTests(unittest.TestCase):
+    def test_output_count_limit_matches_snapshot_contract_before_reading_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            headers = 'format\tkartograph-processor-outputs\t1\nkind\tksp\nprocessor\tZml4dHVyZS5Qcm92aWRlcg\n'
+            headers += ''.join(name + '\t' + 'a' * 64 + '\n' for name in ['token', 'processorArtifact', 'collectorArtifact'])
+            row = 'output\tresource\tapi\tZg\t' + 'a' * 64 + '\n'
+            (root / 'raw.tsv').write_text(headers + row * 100_001)
+            with self.assertRaisesRegex(witness.EvidenceError, 'invalid processor observation format'):
+                witness.observations({'observations': 'raw.tsv', 'outputRoots': ['generated']}, root, 'a' * 64)
+
     def test_controls_cannot_overwrite_or_self_include_declared_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve(); (root / 'src').mkdir(); source = root / 'src/Input.java'; source.write_text('class Input {}')

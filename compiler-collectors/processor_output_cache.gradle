@@ -1,0 +1,42 @@
+import groovy.json.JsonSlurper
+import org.gradle.api.tasks.PathSensitivity
+
+// 적용하는 프로젝트가 소유한 processor task를 명시적으로 선택한다.
+// native task의 기존 출력 선언에 raw sidecar와 명시한 직접 쓰기 파일만 더한다.
+ext.registerProcessorOutputCache = { String taskName, File configFile ->
+    def config = new JsonSlurper().parse(configFile)
+    def projectRoot = project.layout.projectDirectory.asFile.canonicalFile.toPath()
+    if (new File(config.project).canonicalFile.toPath() != projectRoot) {
+        throw new GradleException('processor cache configuration belongs to another project')
+    }
+    def local = { String name ->
+        if (!name || name.startsWith('/') || name.contains('\\') || name.contains(':') ||
+            name.split('/', -1).any { it in ['', '.', '..'] }) {
+            throw new GradleException('invalid processor cache path')
+        }
+        def resolved = projectRoot.resolve(name)
+        if (!resolved.toFile().canonicalFile.toPath().startsWith(projectRoot)) {
+            throw new GradleException('processor cache path escapes project')
+        }
+        resolved.toFile()
+    }
+    def extraOutputs = (config.cacheOutputs ?: []).collect { local(it) }
+    def outputRoots = config.outputRoots.collect { local(it).toPath() }
+    def declaredInputs = config.inputs.collect { local(it) } + [new File(config.collectorJar), new File(config.processorJar)]
+    if (extraOutputs.any { file -> !outputRoots.any { file.toPath().startsWith(it) } ||
+            declaredInputs.any { input -> file.canonicalFile.toPath().startsWith(input.canonicalFile.toPath()) || input.canonicalFile.toPath().startsWith(file.canonicalFile.toPath()) } }) {
+        throw new GradleException('processor cache output escapes declared roots or overlaps inputs')
+    }
+    def token = providers.fileContents(layout.projectDirectory.file(config.token)).asText
+    def raw = local(config.observations)
+    // KAPT/KSP가 프로젝트 평가 뒤 task를 등록하는 버전도 지원한다.
+    tasks.configureEach { task ->
+        if (task.name == taskName) {
+            task.inputs.files(declaredInputs).withPropertyName('kartographProcessorBytes').withPathSensitivity(PathSensitivity.RELATIVE)
+            task.inputs.property('kartographProcessorToken', token)
+            task.inputs.property('kartographProcessorOutputPaths', [config.observations] + (config.cacheOutputs ?: []))
+            task.outputs.file(raw).withPropertyName('kartographProcessorObservations')
+            extraOutputs.eachWithIndex { file, index -> task.outputs.file(file).withPropertyName("kartographProcessorDirect${index}") }
+        }
+    }
+}
