@@ -10,6 +10,10 @@ import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.nio.file.InvalidPathException
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.security.MessageDigest
+import java.util.HexFormat
 import java.util.Base64
 
 /** 명시된 입력·raw 관찰·생성 bytes를 다시 읽어 완료 receipt와 대조한다. 명령은 실행하지 않는다. */
@@ -48,7 +52,10 @@ public object ProcessorOutputVerifier {
         require(receipt.configurationSha256 == contract && receipt.inputs == current && receipt.token == token) { "processor receipt inputs or configuration are stale" }
         val raw = locate(root, config.observations)
         require(Files.isRegularFile(raw, NOFOLLOW_LINKS) && Files.size(raw) <= 16L * 1024 * 1024) { "processor raw evidence is missing or oversized" }
-        val rows = Files.readAllLines(raw)
+        val bytes = Files.newInputStream(raw, NOFOLLOW_LINKS).use { it.readNBytes(16 * 1024 * 1024 + 1) }
+        require(bytes.size <= 16 * 1024 * 1024) { "processor raw evidence is oversized" }
+        val text = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
+        val rows = text.reader().buffered().use { it.lineSequence().take(100_007).toList() }
         require(rows.size <= 100_006 && rows.firstOrNull() == "format\tkartograph-processor-outputs\t1") { "invalid processor observation format" }
         val headers = linkedMapOf<String, String>()
         val outputs = mutableListOf<ProcessorOutput>()
@@ -59,7 +66,8 @@ public object ProcessorOutputVerifier {
                 val output = ProcessorOutput(decode(parts[3]), parts[1], parts[2], parts[4])
                 val path = locate(root, output.path)
                 require(generateSequence(path) { it.parent }.any { it in outputRoots }) { "processor output escapes declared roots" }
-                require(Files.isRegularFile(path, NOFOLLOW_LINKS) && CompilerEvidenceIndexer.sourceHash(path) == output.sha256) { "processor output changed" }
+                require(Files.isRegularFile(path, NOFOLLOW_LINKS) && ContentFingerprint.hash(path) ==
+                    ContentFingerprint.values(listOf("file", output.sha256))) { "processor output changed" }
                 outputs += output
             } else {
                 require(parts.size == 2 && parts[0] in setOf("kind", "token", "processor", "processorArtifact", "collectorArtifact") && parts[0] !in headers) { "unknown or duplicate processor observation row" }
@@ -71,7 +79,7 @@ public object ProcessorOutputVerifier {
         require(headers == mapOf("kind" to config.kind, "token" to token, "processor" to encode(config.processor),
             "processorArtifact" to processorArtifact, "collectorArtifact" to collectorArtifact)) { "processor invocation identity mismatch" }
         val observed = ProcessorOutputs(scope, config.kind, config.processor, processorArtifact, collectorArtifact,
-            outputs.sortedBy { it.path }, CompilerEvidenceIndexer.sourceHash(raw))
+            outputs.sortedBy { it.path }, HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)))
         require(observed == receipt.observation.copy(outputs = receipt.observation.outputs.sortedBy { it.path })) { "processor receipt observations changed" }
         observed
     }

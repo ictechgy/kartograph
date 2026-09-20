@@ -29,7 +29,7 @@ internal class ProcessorOutputInputs(private val project: Path, paths: List<Path
     }
     private fun read(path: Path, maximum: Int): String = try {
         require(Files.isRegularFile(path) && Files.size(path) <= maximum) { "processor evidence is unavailable or too large" }
-        val bytes = Files.newInputStream(path).use { it.readNBytes(maximum + 1) }
+        val bytes = Files.newInputStream(path, java.nio.file.LinkOption.NOFOLLOW_LINKS).use { it.readNBytes(maximum + 1) }
         require(bytes.size <= maximum) { "processor evidence is too large" }
         Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
             .decode(ByteBuffer.wrap(bytes)).toString()

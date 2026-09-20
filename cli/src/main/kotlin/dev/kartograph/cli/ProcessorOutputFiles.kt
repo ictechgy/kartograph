@@ -10,10 +10,10 @@ internal class ProcessorOutputFiles(private val project: Path, paths: List<Path>
     private var capturedCharacters = 0L
     private val selectedPaths = ProcessorOutputVerifier.configurationPaths(paths)
     private val entries = selectedPaths.map { path ->
-        val text = SnapshotFiles.readText(path.toString(), 1024 * 1024)
+        val text = SnapshotFiles.readText(path.toString(), 1024 * 1024, followLinks = false)
         val config = ProcessorOutputCodec.configuration(text)
         ProcessorOutputVerifier.trackedFiles(project, config)
-        val receiptText = SnapshotFiles.readText(project.resolve(config.receipt).toString(), 32 * 1024 * 1024)
+        val receiptText = SnapshotFiles.readText(project.resolve(config.receipt).toString(), 32 * 1024 * 1024, followLinks = false)
         capturedCharacters += text.length.toLong() + receiptText.length
         require(capturedCharacters <= 64L * 1024 * 1024) { "processor evidence exceeds total limit" }
         Entry(path, text, config, receiptText, ProcessorOutputCodec.receipt(receiptText))
@@ -25,8 +25,8 @@ internal class ProcessorOutputFiles(private val project: Path, paths: List<Path>
         }
     }
     fun verify(scope: String?): List<ProcessorOutputs> = entries.map { entry ->
-        require(SnapshotFiles.readText(entry.path.toString(), 1024 * 1024) == entry.text &&
-            SnapshotFiles.readText(project.resolve(entry.config.receipt).toString(), 32 * 1024 * 1024) == entry.receiptText) { "processor configuration or receipt changed during capture" }
+        require(SnapshotFiles.readText(entry.path.toString(), 1024 * 1024, followLinks = false) == entry.text &&
+            SnapshotFiles.readText(project.resolve(entry.config.receipt).toString(), 32 * 1024 * 1024, followLinks = false) == entry.receiptText) { "processor configuration or receipt changed during capture" }
         ProcessorOutputVerifier.verify(project, requireNotNull(scope), entry.config, entry.receipt)
     }
     private data class Entry(val path: Path, val text: String, val config: dev.kartograph.core.ProcessorOutputConfiguration,
