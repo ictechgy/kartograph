@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-20
+
 ### Added
 
 - `dependencies --library`는 JVM Signature·Kotlin metadata·inline 본문으로 `api`/`implementation`

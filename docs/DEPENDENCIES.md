@@ -1,8 +1,8 @@
 # 선언 의존성 분석
 
-이 문서는 개발 소스의 P1.1-2 기능을 설명한다. 발행된 0.11.0의 `dependencies`는
-미사용 의존성의 text/JSON 보고까지 지원한다. 아래 `--library`, 전이 의존성 검사,
-추가 보고 형식과 Gradle dependency task는 다음 릴리스 대상이다.
+이 문서는 0.12.0의 P1.1-2 기능을 설명한다. 0.11.0의 `dependencies`는 미사용 의존성의
+text/JSON 보고까지 지원한다. `--library`, 전이 의존성 검사, 추가 보고 형식과
+Gradle dependency task는 0.12.0부터 사용할 수 있다.
 
 `kartograph dependencies`는 선언 목록·해석된 compile classpath·컴파일 참조를 대조한다.
 분석 대상 코드를 실행하거나 빌드 파일을 수정하지 않으며, 발견은 의존성 삭제 승인이 아니다.
