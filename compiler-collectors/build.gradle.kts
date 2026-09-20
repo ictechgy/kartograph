@@ -1,5 +1,6 @@
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.bundling.Jar
+import org.gradle.api.tasks.bundling.Zip
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.File
 
@@ -42,6 +43,31 @@ tasks.withType<Jar>().configureEach {
     archiveFileName.set("kartograph-compiler-collectors.jar")
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
+    from(listOf(file("../LICENSE"), file("../THIRD_PARTY_NOTICES.md"))) { into("META-INF/kartograph") }
+    from(file("../LICENSES")) { into("META-INF/licenses") }
+    manifest {
+        attributes("Implementation-Title" to "kartograph compiler collectors", "Implementation-Version" to project.version)
+    }
+}
+
+val collectorVersion = version.toString()
+tasks.register<Zip>("distZip") {
+    dependsOn(tasks.named("jar"))
+    archiveBaseName.set("kartograph-compiler-collectors")
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+    into("kartograph-compiler-collectors-$collectorVersion") {
+        from(tasks.named<Jar>("jar").flatMap { it.archiveFile }) { into("lib") }
+        from("processor_output_witness.py", "processor_output_cache.gradle")
+        from("INSTALL.md") {
+            rename { "README.md" }
+            filter { it.replace("@VERSION@", collectorVersion) }
+        }
+        from(file("../VERSION"), file("../LICENSE"), file("../THIRD_PARTY_NOTICES.md"))
+        from(file("../LICENSES")) { into("LICENSES") }
+    }
 }
 
 val outputWitnessTest = tasks.register<Exec>("outputWitnessTest") {

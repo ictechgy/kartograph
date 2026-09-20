@@ -20,6 +20,7 @@ class ReleaseMetadataTest(unittest.TestCase):
                 "cli/build/distributions/kartograph-1.2.3.zip",
                 "cli/build/distributions/kartograph-1.2.3.tar",
                 "gradle-plugin/build/libs/kartograph-gradle-plugin-1.2.3.jar",
+                "compiler-collectors/build/distributions/kartograph-compiler-collectors-1.2.3.zip",
                 "cli/build/reports/sbom/kartograph-1.2.3.cdx.json",
                 "gradle-plugin/build/reports/sbom/kartograph-gradle-plugin-1.2.3.cdx.json",
             ]

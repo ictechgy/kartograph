@@ -6,6 +6,27 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-21
+
+### Added
+
+- `snapshot --processor-output-config`와 Gradle snapshot task의 `processorOutputConfigs`가
+  javac/KAPT/KSP의 완료된 v2 output receipt를 입력·artifact·scope·raw·출력 bytes와 대조하고
+  `processorOutputs`에 보존한다. API 생성과 callback 중 직접 쓰기를 구분하며, 그래프 간선·
+  synthesized·보존·의존성 판정은 바꾸지 않는다. source-only `processorGenerations`와 별도다.
+- 선택적 Gradle adapter가 native processor task의 출력에 raw sidecar와 명시한 직접 쓰기 파일을
+  추가한다. 실제 javac17/KAPT2.4.10/KSP2.3.12의 build cache 복원과 configuration cache 재사용,
+  4종 출력·stale·실패 빌드를 검증한다. 모든 compiler 입력의 완전성을 주장하지 않는다.
+- 버전·라이선스·collector JAR·runner·cache adapter를 포함한 별도 collector ZIP을
+  GitHub release 산출물과 SHA256SUMS에 추가한다. CLI/plugin runtime 의존성은 늘리지 않는다.
+  두 번의 재현 빌드와 압축 해제한 독립 javac 소비 프로젝트로 설치 계약을 검사한다.
+
+### Changed
+
+- standalone runner의 새 receipt는 제품과 같은 content fingerprint를 쓰는 v2다. 성공 뒤에는
+  후속 Gradle 작업이 cache key를 재사용할 수 있게 token을 보존한다. token은 성공 증거가 아니다.
+  기존 v1 receipt의 독립 `verify`는 유지하며 snapshot에 연결하려면 v2로 다시 수집한다.
+
 ## [0.13.0] - 2026-09-20
 
 ### Added

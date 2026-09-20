@@ -69,14 +69,22 @@ jobs:
         run: python3 experiments/dagger-bindings/run.py
       - name: Verify compiler collectors and product evidence lifecycle
         run: |
-          ./gradlew --no-daemon -p compiler-collectors integrationTest
+          KARTOGRAPH_SNAPSHOT_CLI="$PWD/cli/build/install/kartograph/bin/kartograph" ./gradlew --no-daemon -p compiler-collectors integrationTest distZip
+          python3 Scripts/verify-collector-installation.py \
+            --archive "compiler-collectors/build/distributions/kartograph-compiler-collectors-$(cat VERSION).zip" \
+            --version "$(cat VERSION)" --evidence build/reports/collector-installation
           python3 Scripts/verify-compiler-evidence.py
       - name: Preserve compiler evidence validation
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: compiler-evidence-validation
-          path: build/reports/compiler-evidence-integration/
+          path: |
+            build/reports/compiler-evidence-integration/
+            build/reports/collector-installation/*.log
+            build/reports/collector-installation/**/build.stdout
+            build/reports/collector-installation/**/build.stderr
+            build/reports/collector-installation/verification.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Compare callgraph precision

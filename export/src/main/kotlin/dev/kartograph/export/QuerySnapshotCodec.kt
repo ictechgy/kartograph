@@ -31,10 +31,12 @@ public data class QuerySnapshot(
     val scope: String? = null,
     val provenance: dev.kartograph.core.SnapshotProvenance? = null,
     val processorGenerations: List<dev.kartograph.core.ProcessorGeneration> = emptyList(),
+    val processorOutputs: List<dev.kartograph.core.ProcessorOutputs> = emptyList(),
 ) {
     init {
         require(revision == null || Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) { "snapshot revision must be a full commit hash" }
         require(scope == null || (scope.length <= 200 && Regex("[A-Za-z0-9_.:-]+").matches(scope))) { "snapshot scope must be a portable project and variant label" }
+        require(processorOutputs.size <= 256 && processorOutputs.all { it.scope == scope }) { "processor outputs require the matching snapshot scope" }
     }
 }
 
@@ -70,6 +72,7 @@ public object QuerySnapshotCodec {
         "toolVersion" to snapshot.toolVersion,
         "revision" to snapshot.revision, "scope" to snapshot.scope,
         "provenance" to snapshot.provenance?.let(BuildWitnessCodec::provenanceValue),
+        "processorOutputs" to snapshot.processorOutputs.sortedWith(compareBy({ it.kind }, { it.processor }, { it.processorArtifact }, { it.rawSha256 })).map(ProcessorOutputCodec::value),
         "processorGenerations" to snapshot.processorGenerations.sortedWith(compareBy({ it.processor }, { it.artifactSha256 })).map { generation ->
             sortedMapOf("processor" to generation.processor, "artifactSha256" to generation.artifactSha256,
                 "sources" to generation.sources.sortedBy { it.path }.map { sortedMapOf("path" to it.path, "sha256" to it.sha256) })
@@ -178,7 +181,8 @@ public object QuerySnapshotCodec {
                     list(generation["sources"]).map { source -> objectValue(source).let {
                         dev.kartograph.core.CompilerEvidenceSource(string(it["path"]), string(it["sha256"]))
                     } })
-            } }.orEmpty())
+            } }.orEmpty(),
+            document["processorOutputs"]?.let { values -> list(values).map { ProcessorOutputCodec.observation(it) } }.orEmpty())
     }
 
     /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */

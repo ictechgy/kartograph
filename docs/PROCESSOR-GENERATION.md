@@ -6,9 +6,10 @@
 
 ## 수집과 확인
 
-collector JAR는 선택적 소스 빌드 산출물이며 CLI ZIP/TAR나 Portal plugin의 runtime에
-포함되지 않는다. [v0.13.0 소스](https://github.com/ictechgy/kartograph/tree/v0.13.0)를
-checkout한 저장소 루트에서 JDK 17로 빌드한다.
+0.14.0의 collector JAR·runner·cache adapter는 별도
+[collector ZIP](https://github.com/ictechgy/kartograph/releases/tag/v0.14.0)으로 배포하며,
+CLI ZIP/TAR나 Portal plugin runtime에 포함하지 않는다. 소스로 빌드하려면
+[v0.14.0 소스](https://github.com/ictechgy/kartograph/tree/v0.14.0)를 checkout하고 JDK 17로 실행한다.
 
 ```bash
 ./gradlew --no-daemon -p compiler-collectors integrationTest
@@ -57,7 +58,7 @@ checkout한 저장소 루트에서 JDK 17로 빌드한다.
 annotation processing을 끄거나 adapter가 한 번도 실행되지 않으면 원시 근거를 만들지 않고
 설정 진단을 남긴다. Gradle의 완료 witness 검증도 누락된 근거를 성공으로 수락하지 않는다.
 
-## 개발 collector: KAPT/KSP와 여러 출력 종류
+## Output collector: KAPT/KSP와 여러 출력 종류
 
 선택적 collector 소스에는 `OutputRecordingProcessor`(javac/KAPT)와
 `RecordingSymbolProcessorProvider`(KSP2.3.12)가 추가됐다. 기존 v2 source-only 형식을
@@ -89,7 +90,7 @@ Filer/CodeGenerator 출력의 `observation=api`와 구분한다. 기존의 그�
 raw 파일만으로 빌드 성공을 주장하지 않는다. 함께 제공되는
 [`processor_output_witness.py`](../compiler-collectors/processor_output_witness.py)는 승인된 로컬
 명령을 실행하고 코드 0, 명시된 입력의 전후 지문, collector/processor artifact, token,
-출력 root·바이트를 확인한 뒤 별도 `kartograph-processor-output-witness` v1 receipt를 쓴다.
+출력 root·바이트를 확인한 뒤 별도 `kartograph-processor-output-witness` v2 receipt를 쓴다.
 실패한 재실행은 기존 receipt를 먼저 없애며 미닫힌 출력·변조·실패 빌드를 수락하지 않는다.
 
 ```bash
@@ -101,13 +102,58 @@ python3 compiler-collectors/processor_output_witness.py verify --config /path/to
 `inputs`/`outputRoots`, 서로 다른 `token`/`observations`/`receipt`, 실행할 `command` 인자 배열을
 지정한다. control 파일은 output roots·명시된 입력·processor artifact 밖에 둔다. 실제 설정 예와 생성기 코드는
 [`tests/output_attribution.py`](../compiler-collectors/tests/output_attribution.py)에 있다.
-fixture는 `--rerun-tasks --no-build-cache --no-configuration-cache`로 전체 재실행하며, 이 새 runner에
-Gradle cache 복원 지원을 주장하지 않는다. 관찰 범위는 설정에 명시한 입력이다. 이 runner는 모든 compiler의
-숨은 입력·전이 의존성이나 생산자 인증을 보장하지 않으며 기존 Gradle compiler witness를 대체하지 않는다.
-기존 compiler witness 역시 생산자 인증은 제공하지 않는다. 새 receipt는 snapshot 그래프·간선·
-`synthesized`·dependency unused 판정에 연결하지 않은 별도 생성 관찰이다.
+관찰 범위는 설정에 명시한 입력이다. 이 runner는 모든 compiler의 숨은 입력·전이 의존성이나
+생산자 인증을 보장하지 않으며 기존 Gradle compiler witness를 대체하지 않는다.
+기존 compiler witness 역시 생산자 인증은 제공하지 않는다.
+
+### Snapshot 연동과 receipt 버전
+
+```bash
+kartograph snapshot --project /project --classes /project/build/classes/kotlin/main \
+  --scope app:main --processor-output-config /path/to/local-config.json > snapshot.json
+```
+
+Gradle snapshot task에는 `processorOutputConfigs.from('local-config.json')`를 지정한다.
+기존 compiler witness 검증은 유지한다. 두 경로 모두 config의 command를 실행하지 않고,
+project·scope·입력·artifact·token·raw·관찰된 모든 출력의 bytes를 재검증한다. snapshot을
+생성하는 동안 입력이 바뀌면 실패한다. CLI는 잘못된 receipt에 코드 2를 반환하고 부분 snapshot을 쓰지 않는다.
+
+v1/v2 snapshot의 선택적 `processorOutputs`는 processor kind/identity, collector와 processor
+artifact 지문, raw 지문, scope, 출력의 상대 path·kind·observation·raw SHA-256을 보존한다.
+`processorGenerations`와 별도이며 그래프 간선·`synthesized`·reachability·dependency unused
+판정을 바꾸지 않는다. 필드가 없는 이전 snapshot은 빈 목록으로 읽는다. local command와
+artifact 절대경로는 snapshot에 쓰지 않는다. provenance는 설정·receipt·raw·명시한 입력과
+관찰된 출력 파일을 추적한다. 출력 root 전체나 미관찰 파일의 완전성을 주장하지 않는다.
+
+runner의 새 v2 receipt는 제품의 길이 구분 content fingerprint를 사용한다. 기존 개발 runner의
+v1 receipt는 독립 `verify`에서 계속 확인하지만 snapshot 연결에는 v2 재수집이 필요하다.
+성공한 v2 실행은 후속 Gradle dependency가 같은 입력을 재사용하도록 token 파일을 유지한다.
+token은 완료 증거가 아니며 실패한 재실행은 token과 이전 receipt를 없앤다.
+
+### Gradle cache 복원
+
+collector ZIP의 `processor_output_cache.gradle`을 적용한 뒤 선택한 native task를 등록한다.
+
+```groovy
+apply from: '/path/to/processor_output_cache.gradle'
+registerProcessorOutputCache('kspKotlin', file('local-config.json'))
+// KAPT는 kaptKotlin, javac는 compileJava를 선택한다.
+```
+
+설정의 `inputs`에 적용한 adapter와 build 설정을 포함하고, `cacheOutputs`에는 callback 직접
+쓰기로 생성할 **파일**의 프로젝트 상대경로를 지정한다(예: `["direct/direct.txt"]`). adapter는
+native task의 기존 출력 선언을 유지한 채 raw sidecar와 이 파일만 더한다. 다른 task의 출력이나
+손작성 파일을 cacheOutputs에 넣지 않는다. `--build-cache --configuration-cache`로 실행하고,
+KAPT의 `useBuildCache=true`와 각 compiler의 전체 processing 설정을 사용한다.
+
+runner가 raw를 지운 뒤 native task가 FROM-CACHE로 복원하더라도, 현재 입력 token과 source·
+class·resource·직접 쓰기 bytes가 일치해야 receipt를 완료한다. raw가 cache에 없거나 task가
+실행되지 않은 상태를 빈 성공으로 취급하지 않는다. Gradle의 입력 선언과 별도로 명시한 runner
+입력만 검증하므로 전체 compiler input closure나 다른 Gradle 버전의 cache 호환성을 보장하지 않는다.
 
 `./gradlew --no-daemon -p compiler-collectors outputAttributionTest`는 실제 javac17,
 KAPT/Kotlin2.4.10, KSP2.3.12에서 각 4종류 출력을 확인한다. source/class/resource 바이트와
 손작성 파일 제외, 입력/출력/raw/scope stale, 미닫힌 출력·깨진 생성 소스의 빌드 실패를 대조한다.
-이 검사는 `integrationTest`에도 포함된다. 개발 소스 변경이며 0.13.0 배포 JAR에는 포함되지 않는다.
+이 검사는 `integrationTest`에도 포함되며 native task build cache·configuration cache 대조를 수행한다.
+`KARTOGRAPH_SNAPSHOT_CLI`를 설치된 CLI 경로로 지정하면 snapshot metadata와 그래프·보존 불변,
+변조된 출력 거부까지 검사한다. 0.14.0의 선택적 collector에 포함되며 0.13.0에는 포함되지 않는다.

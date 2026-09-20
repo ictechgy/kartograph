@@ -28,6 +28,14 @@ def encoded_hash(value) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def content_values(values: list[str]) -> str:
+    value = hashlib.sha256()
+    for item in values:
+        part = item.encode('utf-8')
+        value.update(len(part).to_bytes(4, 'big')); value.update(part)
+    return value.hexdigest()
+
+
 def artifact(path: Path) -> str:
     value = hashlib.sha256()
     for part in [b'file', digest(path).encode()]:
@@ -48,15 +56,17 @@ def locate(root: Path, value: str) -> Path:
     return path
 
 
-def inventory(path: Path) -> str:
+def inventory(path: Path, version: int = 2) -> str:
     if path.is_symlink():
         raise EvidenceError('symbolic input')
     if path.is_file():
-        return encoded_hash(['file', digest(path)])
+        return encoded_hash(['file', digest(path)]) if version == 1 else artifact(path)
     if not path.is_dir():
         raise EvidenceError('missing input')
     files = []
-    for child in sorted(path.rglob('*')):
+    # JVM String 순서와 같은 UTF-16 code-unit 정렬을 사용한다.
+    children = sorted(path.rglob('*')) if version == 1 else sorted(path.rglob('*'), key=lambda p: p.relative_to(path).as_posix().encode('utf-16-be'))
+    for child in children:
         if child.is_symlink():
             raise EvidenceError('symbolic input')
         if child.is_file():
@@ -65,7 +75,9 @@ def inventory(path: Path) -> str:
             raise EvidenceError('unsupported input type')
         if len(files) > 100_000:
             raise EvidenceError('input inventory exceeds limit')
-    return encoded_hash(['directory', files])
+    if version == 1:
+        return encoded_hash(['directory', files])
+    return content_values(['directory'] + [part for pair in files for part in pair])
 
 
 def configuration(path: Path) -> tuple[dict, Path]:
@@ -79,6 +91,8 @@ def configuration(path: Path) -> tuple[dict, Path]:
         raise EvidenceError('invalid processor identity')
     if not config['inputs'] or not config['outputRoots'] or not config['command'] or not all(isinstance(v, str) and v for v in config['command']):
         raise EvidenceError('explicit inputs, outputs and command are required')
+    if len(config['inputs']) > 100_000 or len(config['outputRoots']) > 100_000 or len(config['command']) > 10_000 or len(set(config['inputs'])) != len(config['inputs']) or any(name in ('external/collectorJar', 'external/processorJar') for name in config['inputs']):
+        raise EvidenceError('invalid or oversized input configuration')
     for key in ('token', 'observations', 'receipt'):
         locate(root, config[key])
     declared_inputs = [locate(root, name) for name in config['inputs']]
@@ -94,16 +108,26 @@ def configuration(path: Path) -> tuple[dict, Path]:
     return config, root
 
 
-def inputs(config: dict, root: Path) -> list[dict]:
-    result = [{'path': portable(name), 'sha256': inventory(locate(root, name))} for name in config['inputs']]
+def inputs(config: dict, root: Path, version: int = 2) -> list[dict]:
+    result = [{'path': portable(name), 'sha256': inventory(locate(root, name), version)} for name in config['inputs']]
     for key in ('collectorJar', 'processorJar'):
-        result.append({'path': 'external/' + key, 'sha256': inventory(Path(config[key]).resolve(strict=True))})
+        result.append({'path': 'external/' + key, 'sha256': inventory(Path(config[key]).resolve(strict=True), version)})
     return result
 
 
-def contract(config: dict) -> str:
+def contract(config: dict, version: int = 2) -> str:
     # 명령은 실행 승인된 로컬 설정이다. 원시 옵션·절대경로는 receipt에 기록하지 않는다.
-    return encoded_hash({key: config[key] for key in ('scope', 'kind', 'processor', 'inputs', 'outputRoots', 'command', 'token', 'observations', 'receipt')})
+    if version == 1:
+        return encoded_hash({key: config[key] for key in ('scope', 'kind', 'processor', 'inputs', 'outputRoots', 'command', 'token', 'observations', 'receipt')})
+    return content_values(['processor-output-config-v2', config['scope'], config['kind'], config['processor'],
+                           str(len(config['inputs'])), *config['inputs'], str(len(config['outputRoots'])), *config['outputRoots'],
+                           str(len(config['command'])), *config['command'], config['token'], config['observations'], config['receipt']])
+
+
+def input_token(config: dict, current: list[dict], version: int = 2) -> str:
+    if version == 1:
+        return encoded_hash([contract(config, version), current])
+    return content_values([contract(config)] + [part for item in current for part in [item['path'], item['sha256']]])
 
 
 def decode(value: str) -> str:
@@ -154,9 +178,10 @@ def record(path: Path, logs: Path) -> dict:
     receipt.unlink(missing_ok=True)
     locate(root, config['observations']).unlink(missing_ok=True)
     before = inputs(config, root)
-    token = encoded_hash([contract(config), before])
+    token = input_token(config, before)
     pending = locate(root, config['token']); pending.parent.mkdir(parents=True, exist_ok=True); pending.write_text(token)
     logs.mkdir(parents=True, exist_ok=True)
+    completed = False
     try:
         with (logs / 'build.stdout').open('wb') as stdout, (logs / 'build.stderr').open('wb') as stderr:
             result = subprocess.run(config['command'], cwd=root, stdout=stdout, stderr=stderr, timeout=600)
@@ -165,13 +190,17 @@ def record(path: Path, logs: Path) -> dict:
         if inputs(config, root) != before or pending.read_text() != token:
             raise EvidenceError('processor inputs changed during the build')
         observed = observations(config, root, token)
-        value = {'format': 'kartograph-processor-output-witness', 'version': 1, 'scope': config['scope'], 'token': token,
+        value = {'format': 'kartograph-processor-output-witness', 'version': 2, 'scope': config['scope'], 'token': token,
                  'configurationSha256': contract(config), 'inputs': before, 'observation': observed, 'buildExit': 0}
         receipt.parent.mkdir(parents=True, exist_ok=True)
         receipt.write_text(json.dumps(value, sort_keys=True, indent=2) + '\n')
+        completed = True
         return value
     finally:
-        pending.unlink(missing_ok=True)
+        # v2 성공 뒤에는 stable task input을 유지해 후속 snapshot의 compiler dependency가
+        # 같은 cache key를 사용하게 한다. token 자체는 완료/성공 증거가 아니다.
+        if not completed:
+            pending.unlink(missing_ok=True)
 
 
 def verify(path: Path) -> dict:
@@ -180,9 +209,12 @@ def verify(path: Path) -> dict:
     if not receipt.is_file() or receipt.stat().st_size > 32 * 1024 * 1024:
         raise EvidenceError('missing or oversized completed receipt')
     value = json.loads(receipt.read_text())
-    current = inputs(config, root)
-    token = encoded_hash([contract(config), current])
-    if value.get('format') != 'kartograph-processor-output-witness' or value.get('version') != 1 or value.get('buildExit') != 0 or value.get('scope') != config['scope'] or value.get('configurationSha256') != contract(config) or value.get('inputs') != current or value.get('token') != token:
+    version = value.get('version')
+    if type(version) is not int or version not in (1, 2):
+        raise EvidenceError('unsupported completed receipt version')
+    current = inputs(config, root, version)
+    token = input_token(config, current, version)
+    if value.get('format') != 'kartograph-processor-output-witness' or type(value.get('buildExit')) is not int or value['buildExit'] != 0 or value.get('scope') != config['scope'] or value.get('configurationSha256') != contract(config, version) or value.get('inputs') != current or value.get('token') != token:
         raise EvidenceError('completed processor receipt is stale')
     if observations(config, root, token) != value.get('observation'):
         raise EvidenceError('completed processor observations changed')
