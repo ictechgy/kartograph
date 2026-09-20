@@ -163,6 +163,51 @@ class DependenciesCommandTest {
         assertEquals("", invalid.output)
     }
 
+    @Test
+    fun `dependency baseline and expiring suppressions keep strict and failure contracts`(@TempDir root: Path) {
+        val library = root.resolve("library").createDirectories()
+        compileJava(listOf(source(root, "lib-src", "Lib.java", "public class Lib {}")), library)
+        val app = root.resolve("app").createDirectories()
+        compileJava(listOf(source(root, "src", "App.java", "public class App {}")), app)
+        root.resolve("declared.tsv").writeText("example:lib:1\timplementation\tlibrary\n")
+        val args = arrayOf("dependencies", "--classes", app.toString(), "--project", root.toString(),
+            "--dependencies", "declared.tsv", "--report-format", "json", "--strict")
+        assertEquals(1, execute(*args).status)
+        val document = dev.kartograph.export.McpJsonCodec.parse(execute(*args).output) as Map<*, *>
+        val fingerprint = ((document["diagnostics"] as List<*>).single() as Map<*, *>)["fingerprint"] as String
+        assertEquals(0, execute(*args, "--write-baseline", "review/baseline.json").status)
+        assertEquals(setOf(fingerprint), dev.kartograph.export.BaselineCodec.parse(java.nio.file.Files.readString(root.resolve("review/baseline.json"))))
+        val baselined = execute(*args, "--baseline", "review/baseline.json")
+        assertEquals(0, baselined.status)
+        assertContains(baselined.output, "\"baselineSuppressed\": 1")
+        // capture에 기존 필터를 지정해도 아직 관찰되는 지문을 잃지 않는다.
+        assertEquals(0, execute(*args, "--baseline", "review/baseline.json", "--write-baseline", "copy.json").status)
+        assertEquals(java.nio.file.Files.readString(root.resolve("review/baseline.json")), java.nio.file.Files.readString(root.resolve("copy.json")))
+        val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+        fun suppression(expires: java.time.LocalDate) = root.resolve("suppress.json").writeText(dev.kartograph.export.SuppressCodec.render(listOf(
+            dev.kartograph.export.SuppressionEntry(fingerprint, "Reviewed reflective use", expires))))
+        suppression(today)
+        val active = execute(*args, "--suppress", "suppress.json")
+        assertEquals(0, active.status)
+        assertContains(active.output, "\"suppressed\": 1")
+        suppression(today.minusDays(1))
+        val expired = execute(*args, "--suppress", "suppress.json")
+        assertEquals(1, expired.status)
+        assertContains(expired.output, "\"expiredSuppressions\": 1")
+        root.resolve("declared.tsv").writeText("example:lib:2\timplementation\tlibrary\n")
+        assertEquals(1, execute(*args, "--baseline", "review/baseline.json").status)
+        root.resolve("suppress.json").writeText("{bad}")
+        assertEquals(2, execute(*args, "--suppress", "suppress.json").status)
+        root.resolve("copy.json").writeText("{bad}")
+        assertEquals(2, execute(*args, "--baseline", "copy.json").status)
+        assertEquals(2, execute(*args, "--baseline", "copy.json", "--write-baseline", "copy.json").status)
+        assertEquals("{bad}", java.nio.file.Files.readString(root.resolve("copy.json")))
+        assertEquals(2, execute(*args, "--suppress", "suppress.json", "--write-baseline", "not-created.json").status)
+        assertFalse(java.nio.file.Files.exists(root.resolve("not-created.json")))
+        assertEquals(2, execute(*args, "--baseline", "missing.json").status)
+        assertEquals(64, execute(*args, "--write-baseline").status)
+    }
+
     private fun source(root: Path, directory: String, relative: String, content: String): Path =
         root.resolve(directory).resolve(relative).also { path ->
             path.parent.createDirectories()

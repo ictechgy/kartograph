@@ -5,6 +5,7 @@ import dev.kartograph.core.CompilerEvidenceSource
 import dev.kartograph.core.CompilerReference
 import dev.kartograph.core.CompilerReferenceKind
 import dev.kartograph.core.NodeId
+import dev.kartograph.core.ProcessorGeneration
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
@@ -29,10 +30,12 @@ public object CompilerEvidenceReader {
         require(text.length <= MAX_BYTES && text.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "compiler evidence exceeds the byte limit" }
         val rows = text.lineSequence().filter(String::isNotEmpty).take(MAX_ROWS + 1).toList()
         require(rows.size <= MAX_ROWS) { "compiler evidence exceeds the row limit" }
-        require(rows.firstOrNull() == "format\tkartograph-compiler-evidence\t1") { "unsupported compiler evidence format" }
+        val version = rows.firstOrNull()?.substringAfter("format\tkartograph-compiler-evidence\t", "")
+        require(version in setOf("1", "2")) { "unsupported compiler evidence format" }
         val headers = mutableMapOf<String, String>()
         val sources = mutableListOf<CompilerEvidenceSource>()
         val references = mutableListOf<CompilerReference>()
+        val generated = mutableListOf<CompilerEvidenceSource>()
         for (row in rows.drop(1)) {
             val fields = row.split('\t')
             when (fields[0]) {
@@ -43,6 +46,14 @@ public object CompilerEvidenceReader {
                 "source" -> {
                     require(fields.size == 3) { "invalid compiler source inventory row" }
                     sources += CompilerEvidenceSource(decode(fields[1]), fields[2])
+                }
+                "processor", "processorArtifact" -> {
+                    require(version == "2" && fields.size == 2 && fields[0] !in headers) { "invalid processor evidence header" }
+                    headers[fields[0]] = if (fields[0] == "processor") decode(fields[1]) else fields[1]
+                }
+                "generated" -> {
+                    require(version == "2" && fields.size == 3) { "invalid processor output row" }
+                    generated += CompilerEvidenceSource(decode(fields[1]), fields[2])
                 }
                 "edge" -> {
                     require(fields.size == 4) { "invalid compiler reference row" }
@@ -56,12 +67,16 @@ public object CompilerEvidenceReader {
                 else -> throw IllegalArgumentException("unsupported compiler evidence row")
             }
         }
-        require(headers.keys == setOf("collector", "compiler", "token", "artifact", "unmapped")) { "incomplete compiler evidence headers" }
+        val processorFormat = version == "2"
+        require((headers["collector"] == "javac-processors") == processorFormat) { "compiler evidence version does not match collector" }
+        require(headers.keys == setOf("collector", "compiler", "token", "artifact", "unmapped") +
+            if (processorFormat) setOf("processor", "processorArtifact") else emptySet()) { "incomplete compiler evidence headers" }
         val unmapped = headers.getValue("unmapped").toIntOrNull()
             ?: throw IllegalArgumentException("invalid unmapped compiler reference count")
         return CompilerEvidence(headers.getValue("collector"), headers.getValue("compiler"), headers.getValue("token"),
             headers.getValue("artifact"), sources.sortedBy { it.path }, unmapped,
-            references.distinct().sortedWith(compareBy({ it.source }, { it.target }, { it.kind.name })))
+            references.distinct().sortedWith(compareBy({ it.source }, { it.target }, { it.kind.name })),
+            if (processorFormat) ProcessorGeneration(headers.getValue("processor"), headers.getValue("processorArtifact"), generated.sortedBy { it.path }) else null)
     }
 
     private fun decode(value: String): String {

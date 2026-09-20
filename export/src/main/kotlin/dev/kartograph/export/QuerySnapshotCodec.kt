@@ -30,6 +30,7 @@ public data class QuerySnapshot(
     val revision: String? = null,
     val scope: String? = null,
     val provenance: dev.kartograph.core.SnapshotProvenance? = null,
+    val processorGenerations: List<dev.kartograph.core.ProcessorGeneration> = emptyList(),
 ) {
     init {
         require(revision == null || Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) { "snapshot revision must be a full commit hash" }
@@ -69,6 +70,10 @@ public object QuerySnapshotCodec {
         "toolVersion" to snapshot.toolVersion,
         "revision" to snapshot.revision, "scope" to snapshot.scope,
         "provenance" to snapshot.provenance?.let(BuildWitnessCodec::provenanceValue),
+        "processorGenerations" to snapshot.processorGenerations.sortedWith(compareBy({ it.processor }, { it.artifactSha256 })).map { generation ->
+            sortedMapOf("processor" to generation.processor, "artifactSha256" to generation.artifactSha256,
+                "sources" to generation.sources.sortedBy { it.path }.map { sortedMapOf("path" to it.path, "sha256" to it.sha256) })
+        },
         "includePrivateMembers" to snapshot.includePrivateMembers,
         "limitations" to snapshot.limitations.distinct().sorted(),
         "suppressed" to snapshot.suppressed.map { it.value }.sorted(),
@@ -166,7 +171,14 @@ public object QuerySnapshotCodec {
         return QuerySnapshot(CodeGraph(nodes, edges, calls, providers), retention, strings(document["limitations"]), suppressed,
             boolean(document["includePrivateMembers"]), string(document["toolVersion"]),
             optionalString(document["revision"]), optionalString(document["scope"]),
-            document["provenance"]?.let(BuildWitnessCodec::provenance))
+            document["provenance"]?.let(BuildWitnessCodec::provenance),
+            document["processorGenerations"]?.let { values -> list(values).map { raw ->
+                val generation = objectValue(raw)
+                dev.kartograph.core.ProcessorGeneration(string(generation["processor"]), string(generation["artifactSha256"]),
+                    list(generation["sources"]).map { source -> objectValue(source).let {
+                        dev.kartograph.core.CompilerEvidenceSource(string(it["path"]), string(it["sha256"]))
+                    } })
+            } }.orEmpty())
     }
 
     /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */

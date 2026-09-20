@@ -18,6 +18,50 @@ import org.junit.jupiter.api.io.TempDir
 
 class CompilerEvidenceImportTest {
     @Test
+    fun `processor attribution requires recorded processor and completed generated source receipts`(@TempDir root: Path) {
+        val original = fixture(root)
+        val generated = Files.createDirectories(root.resolve("generated")).resolve("Created.java")
+        Files.writeString(generated, "class Created {}")
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", original.classes.toString(), generated.toString()))
+        val processor = Files.writeString(root.resolve("processor.jar"), "unit generating processor")
+        val old = original.context.provenance.witnesses.single()
+        val processorInput = ContentFingerprint.capture(root, processor, "processor", "generator")
+        val inputs = old.inputs + processorInput
+        val token = CompilerEvidenceToken.create(old.scope, old.compiler, old.artifact, inputs)
+        val processorHeaders = "processor\t${encode("example.Processor")}\nprocessorArtifact\t${processorInput.sha256}\n"
+        val generatedRow = "${encode("generated/Created.java")}\t${CompilerEvidenceIndexer.sourceHash(generated)}\n"
+        val text = Files.readString(original.document).lineSequence().filterNot { it.startsWith("edge\t") }.joinToString("\n")
+            .replace("evidence\t1", "evidence\t2").replace("javac-constants", "javac-processors")
+            .replace(old.evidenceToken!!, token) + processorHeaders + "source\t" + generatedRow + "generated\t" + generatedRow
+        Files.writeString(original.document, text)
+        fun receipts(generatedRoots: List<Path>) = CompilerEvidenceReceipts.validate(root, "javac", token, inputs,
+            listOf(original.document), setOf(root.resolve("src/Entry.java")), listOf(root.resolve("src")), generatedRoots, "compileJava")
+        assertFailsWith<IllegalArgumentException> { receipts(emptyList()) }
+        val outputs = listOf(ContentFingerprint.capture(root, original.classes, "classes", "classes"))
+        val completed = old.copy(inputs = inputs, outputs = outputs, compilerEvidence = receipts(listOf(generated.parent)), evidenceToken = token)
+        fun context(witness: BuildWitness) = original.context.copy(provenance = original.context.provenance.copy(
+            inputs = outputs + original.context.provenance.inputs.filter { it.role != "classes" }, witnesses = listOf(witness)))
+        val indexed = ClassFileIndexer().indexWithObservations(listOf(original.classes))
+        fun enrich(witness: BuildWitness) = CompilerEvidenceIndexer.enrich(indexed, listOf(original.classes), listOf(original.document), context(witness))
+        val observed = enrich(completed)
+        assertEquals("example.Processor", observed.processorGenerations.single().processor)
+        assertEquals("generated/Created.java", observed.processorGenerations.single().sources.single().path)
+        assertEquals(indexed.graph.nodes, observed.graph.nodes)
+        assertEquals(indexed.graph.edges, observed.graph.edges)
+        assertContains(assertFailsWith<IllegalArgumentException> {
+            enrich(completed.copy(compilerEvidence = completed.compilerEvidence.filter { it.role != "compilerGeneratedSource" }))
+        }.message.orEmpty(), "generated source receipt")
+        Files.writeString(original.document, text.replace(processorInput.sha256, "d".repeat(64)))
+        val replaced = completed.copy(compilerEvidence = completed.compilerEvidence.map {
+            if (it.role == "compilerEvidence") ContentFingerprint.capture(root, original.document, it.role, "evidence") else it })
+        assertContains(assertFailsWith<IllegalArgumentException> { enrich(replaced) }.message.orEmpty(), "generating processor")
+        assertContains(assertFailsWith<IllegalArgumentException> { receipts(listOf(generated.parent)) }.message.orEmpty(), "generating processor")
+        Files.writeString(original.document, text)
+        Files.writeString(generated, "class Created { int changed; }")
+        assertContains(assertFailsWith<IllegalArgumentException> { enrich(completed) }.message.orEmpty(), "matched build inputs")
+    }
+
+    @Test
     fun `receipted references enrich the real compiled graph and keep unused controls`(@TempDir root: Path) {
         val fixture = fixture(root)
         val source = JvmNodeId.methodId("Entry", "read", "()I")

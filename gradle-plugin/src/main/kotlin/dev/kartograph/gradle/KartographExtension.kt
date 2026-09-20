@@ -9,6 +9,10 @@ import org.gradle.api.provider.Property
 public abstract class KartographExtension {
     /** 의존성 분석에서 test 컴파일 결과도 명시적으로 수집하며 테스트 실행은 연결하지 않는다. */
     public abstract val dependencyIncludeTests: Property<Boolean>
+    /** dependency 진단만의 정확한 지문 baseline이다. dead baseline과 독립적으로 지정한다. */
+    public abstract val dependencyBaseline: RegularFileProperty
+    /** 사유와 UTC 만료일을 가진 dependency 임시 억제 파일이다. */
+    public abstract val dependencySuppress: RegularFileProperty
     /** 컴파일 입력과 main/test snapshot의 자동 수집을 명시적으로 활성화한다. */
     public abstract val snapshotsEnabled: Property<Boolean>
 

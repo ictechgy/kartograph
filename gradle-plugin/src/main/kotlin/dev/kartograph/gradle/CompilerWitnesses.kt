@@ -286,6 +286,10 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
                 require(pathValue.isNotEmpty() && pathValue.split(File.pathSeparator).all { File(it).canonicalFile in paths }) {
                     "compiler argument file inputs must be declared to Gradle ($argument)"
                 }
+            } else if (argument == "-processor" && compilerEvidence) {
+                require(arguments.getOrNull(index++) == "dev.kartograph.collectors.RecordingProcessor") {
+                    "compiler evidence supports only the explicit recording processor adapter"
+                }
             } else require(argument in setOf("-parameters", "-Werror", "-Xlint", "-g", "-proc:none", "-proc:full", "--enable-preview", "-XDstringConcat=inline") ||
                 argument.startsWith("-Xlint:") || argument.startsWith("-g:") || argument.startsWith("-A") || argument.startsWith("-Xdiags:") ||
                 compilerEvidence && argument.startsWith("-Xplugin:KartographEvidence ")) {

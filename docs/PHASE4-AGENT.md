@@ -80,8 +80,12 @@ unreachable을 삭제 승인으로 해석하지 않고 limitations, truncation, 
 
 ## 재현성과 파일 경계
 
-`bridges.generatedAt`은 검사한 source들의 최신 수정 시각을 UTC로 기록한 snapshot 시각이다.
-source가 없으면 Unix epoch이며 wall clock을 사용하지 않아 같은 파일·시각 입력은 같은 JSON을 낸다.
+`bridges.generatedAt`은 문서를 추출한 wall clock 시각이다. 검사한 source들의 최신 filesystem
+mtime은 선택적 `sourceModifiedAt`에 따로 기록하고, 빈 source 입력에서는 이 필드를 생략한다.
+두 시각은 UTC 밀리초로 정규화한다. `generatedAt`을 제외한 동일 입력의 내용은 결정적이다.
+0.12.0 이하에서는 기본 `generatedAt`이 source mtime(빈 입력은 Unix epoch)이었다.
+archive의 오래된 mtime이나 현재 추출 시각은 compiler snapshot의 신선도를 증명하지 않는다.
+빌드 일치는 별도의 [provenance 검증](BUILD-PROVENANCE.md)으로 확인한다.
 프로젝트 내부의 source 파일 링크는 실제 대상도 허용 경계 안일 때만 읽고, 디렉터리 링크는 순회하지 않는다.
 프로젝트 밖 또는 실제 대상을 해석할 수 없는 source 링크는 부분 보고 없이 실패한다.
 경로 인덱스는 이런 실패에서 전체를 미확정으로 돌려 유일 후보를 잘못 단언하지 않는다. `skill`은 프로젝트 루트 alias를 허용하지만

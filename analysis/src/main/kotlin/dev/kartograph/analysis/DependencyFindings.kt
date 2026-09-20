@@ -18,6 +18,9 @@ public data class DependencyAnalysisResult(
     val withoutClassCount: Int,
     val advice: List<DependencyAdvice> = emptyList(),
     val ambiguousClassCount: Int = 0,
+    val baselineSuppressedCount: Int = 0,
+    val suppressionCount: Int = 0,
+    val expiredSuppressionCount: Int = 0,
 )
 
 /** 선언 의존성과 classfile 참조를 대조해 unused 후보를 파생한다. */

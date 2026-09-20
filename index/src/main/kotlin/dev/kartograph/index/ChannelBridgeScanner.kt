@@ -53,9 +53,10 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
         if (stats.jniInteropSources > 0) {
             limitations += "unscanned-ffi-interop: ${stats.jniInteropSources} Kotlin/Java source file(s) declare JNI/native interop outside channel join coverage"
         }
-        val newest = files.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() } ?: Instant.EPOCH
+        val newest = files.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() }
         return BridgeFactsDocument(
-            generatedAt = generatedAt ?: newest.toString(),
+            generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
+            sourceModifiedAt = newest?.let(::bridgeTimestamp),
             project = projectRoot.toRealPath().toString().replace('\\', '/'),
             target = withSymbols.firstOrNull()?.let { "flutter" },
             facts = withSymbols,

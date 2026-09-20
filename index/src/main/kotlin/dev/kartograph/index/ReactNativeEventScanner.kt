@@ -21,7 +21,8 @@ internal class ReactNativeEventScanner(private val projectRoot: Path) {
         return BridgeFactsDocument(
             version = 2, transport = "react-native-event", project = root.toString(),
             target = if (facts.isEmpty()) null else "react-native", facts = facts,
-            generatedAt = generatedAt ?: (files.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() } ?: Instant.EPOCH).toString(),
+            generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
+            sourceModifiedAt = files.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() }?.let(::bridgeTimestamp),
             limitations = buildList {
                 add("rn-event-scan-scope: only getJSModule(RCTDeviceEventEmitter).emit calls are scanned; Expo, codegen, wrappers and emitter variables are not resolved")
                 if (missing > 0) add("missing-event-usrs: " + missing + " native event emissions lack JVM identities")

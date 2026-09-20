@@ -24,7 +24,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
 
     /**
      * 프로젝트 상대 근거와 조인 불가능한 사실의 한계를 bridge-facts v1 문서로 만든다.
-     * generatedAt을 생략하면 최신 source 수정 시각을 snapshot 시각으로 사용한다(빈 입력은 Unix epoch).
+     * generatedAt은 추출 시각이며 최신 source 수정 시각은 sourceModifiedAt에 별도로 보존한다.
      */
     public fun scan(generatedAt: String? = null, graph: CodeGraph? = null, targetFilter: String? = null): BridgeFactsDocument {
         val facts = mutableListOf<BridgeFact>()
@@ -70,8 +70,8 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             if (targetFilter != null && omitted > 0) add("target-filter: omitted $omitted fact(s) outside --target $targetFilter")
         }
         return BridgeFactsDocument(
-            generatedAt = generatedAt ?: (sources.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() }
-                ?: Instant.EPOCH).toString(),
+            generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
+            sourceModifiedAt = sources.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() }?.let(::bridgeTimestamp),
             target = target,
             project = projectRoot.toRealPath().toString().replace('\\', '/'),
             facts = withSymbols,

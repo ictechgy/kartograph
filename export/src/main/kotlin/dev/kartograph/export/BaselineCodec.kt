@@ -6,7 +6,12 @@ import dev.kartograph.core.Finding
 public object BaselineCodec {
     /** 위치의 줄 변화에 흔들리지 않는 지문을 정렬·중복 제거해 baseline JSON으로 만든다. */
     public fun render(findings: Collection<Finding>): String {
-        val values = findings.map(Finding::fingerprint).distinct().sorted()
+        return renderFingerprints(findings.map(Finding::fingerprint))
+    }
+
+    /** dead와 dependency 진단의 서로 다른 namespace 지문을 같은 baseline 형식으로 교환한다. */
+    public fun renderFingerprints(fingerprints: Collection<String>): String {
+        val values = fingerprints.distinct().sorted()
         return buildString {
             append("{\n  \"fingerprints\": [")
             if (values.isEmpty()) {

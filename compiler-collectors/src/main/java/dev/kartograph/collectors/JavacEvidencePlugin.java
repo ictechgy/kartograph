@@ -102,6 +102,7 @@ final class JavacEvidenceSession implements TaskListener {
         this.initialToken = EvidenceProtocol.readToken(options);
         this.artifact = EvidenceProtocol.artifactFingerprint(JavacEvidencePlugin.class);
         if (options.collector().equals("dagger-bindings")) DaggerEvidenceFiles.begin(options, initialToken, artifact);
+        if (options.collector().equals("javac-processors")) ProcessorEvidenceFiles.begin(options, artifact);
     }
 
     EvidenceProtocol.Options options() { return options; }
@@ -159,6 +160,7 @@ final class JavacEvidenceSession implements TaskListener {
                 try { complete(); }
                 finally {
                     if (options.collector().equals("dagger-bindings")) DaggerEvidenceFiles.cleanup(options);
+                    if (options.collector().equals("javac-processors")) ProcessorEvidenceFiles.cleanup(options);
                     JavacEvidencePlugin.clear(this);
                 }
             }
@@ -196,14 +198,14 @@ final class JavacEvidenceSession implements TaskListener {
                 fail("javac compiler unit is not a file");
                 return null;
             }
-            Path file = Path.of(uri).toAbsolutePath().normalize();
+            Path file = Path.of(uri).toRealPath();
             Path root = options.root().toAbsolutePath().normalize();
             if (!file.startsWith(root)) {
                 fail("javac compiler unit is outside the project root");
                 return null;
             }
             return root.relativize(file).toString().replace('\\', '/');
-        } catch (RuntimeException error) {
+        } catch (RuntimeException | java.io.IOException error) {
             fail("javac compiler unit path is unavailable");
             return null;
         }
@@ -344,6 +346,13 @@ final class JavacEvidenceSession implements TaskListener {
             }
             if (options.collector().equals("javac-constants")) {
                 EvidenceProtocol.write(options, Runtime.version().toString(), artifact, sources.values(), unmapped, edges);
+            } else if (options.collector().equals("javac-processors")) {
+                if (!ProcessorEvidenceFiles.hasStage(options)) {
+                    fail("recording processor did not publish a round; select RecordingProcessor and enable annotation processing");
+                    return;
+                }
+                var generation = ProcessorEvidenceFiles.read(options, artifact);
+                EvidenceProtocol.write(options, Runtime.version().toString(), artifact, sources.values(), 0, java.util.List.of(), generation);
             } else {
                 DaggerEvidenceFiles.Stage staged = DaggerEvidenceFiles.read(options, artifact);
                 if (staged.incomplete()) { fail("Dagger did not publish a complete binding graph"); return; }

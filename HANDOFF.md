@@ -2,43 +2,36 @@
 
 마지막 갱신: 2026-09-20
 
-현재 재개 정보만 담는다. 규칙은 [AGENTS.md](AGENTS.md), 이전 원문·측정·처분은
-[HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 보존한다. 과거 Next Steps·미발행 표기는 당시 기록이다.
+현재 재개 정보다. 규칙은 [AGENTS.md](AGENTS.md), 이전 발행·측정은
+[HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 보존한다. 과거 Next Steps는 현재 권한이 아니다.
 
 ## 현재 상태
 
-- `VERSION`은 **0.12.0**이다. [릴리스 PR #87](https://github.com/ictechgy/kartograph/pull/87)은
-  P1.1-2와 일반 RN target 필터 회귀 수정을 포함한다. GitHub 발행·Portal 제출/확인·독립
-  설치 검증 결과는 이 PR의 최종 기록과 [v0.12.0 릴리스](https://github.com/ictechgy/kartograph/releases/tag/v0.12.0)를 따른다.
-  버전 파일만으로 외부 발행 성공을 단정하지 않는다.
-- P1.1-2는 `dependencies --library`의 API/implementation 배치 조언,
-  `--resolved-dependencies`의 미선언 전이 의존성, main/test 구분, 여섯 보고 형식과
-  JVM/Android dependency task다. [사용법·관찰 범위](docs/DEPENDENCIES.md)를 따른다.
-- 0.11.0의 일반 `bridges --target react-native`는 RN 이벤트 target 검증 때문에 코드 64로
-  실패했다. 공개 expo-haptics14.1.4에서 재현했고, v1 필터와 v2 transport 검증을 분리했다.
-  RN/Flutter 분리·잘못된 조합 회귀를 포함한 **785 tests**, Kover·installDist·validatePlugins가
-  통과했다. 공개 Kotlin 수신 측 4개 메서드도 다시 확인했다.
-- 수정 후 두 번의 clean build와 ZIP/TAR/JAR/POM/SBOM 재현성, ZIP/TAR CLI·PR 계약을
-  확인했다. 문서만 바뀐 후속의 런타임 입력은 해시로 대조하며, 최종 PR CI는 원격에서 확인한다.
-- 0.11.0에 포함된 external-retentions v0·원본 caller 유지·RN 전역 이벤트 추출은 유지한다.
-  소스 전용 스캔의 ID 누락은 한계이며, 실제 JVM ID 없이 보존에 성공시키지 않는다.
-  JS/네이티브 이벤트 하네스를 앱 전체 런타임 검증으로 표현하지 않는다.
-- `.claude/`와 `HANDOFF.cartograph-notes.md`는 기존 사용자 미추적 파일이다.
-  자매 코퍼스·발행 검증은 [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)를 따른다.
+- 발행본은 **0.12.0**이다. [PR87](https://github.com/ictechgy/kartograph/pull/87)과
+  [릴리스](https://github.com/ictechgy/kartograph/releases/tag/v0.12.0)에 P1.1-2·RN target 필터 수정이
+  포함됐다. GitHub·Plugin Portal·독립 설치 검증은 이전 원장에 있다. 이번 후속은 새로 발행하지 않았다.
+- 개발 소스의 `dependencies`는 `--baseline`, `--suppress`, `--write-baseline`을 지원한다.
+  좌표·버전·scope·제안·클래스 근거를 정확히 지문화하고, Gradle은 dependencyBaseline/
+  dependencySuppress와 task baselineOutput을 제공한다. capture는 필터 전 관찰을 저장하며,
+  UTC 만료일·파일 변경을 task 입력으로 확인한다. CLI·Gradle strict는 필터 뒤 진단만 센다.
+  [사용법](docs/DEPENDENCIES.md)을 따른다. 억제는 제거 승인이 아니다.
+- `bridges`의 generatedAt은 추출 시각으로 수정했고 최신 source mtime은 optional
+  sourceModifiedAt에 보존한다. v1·Basic·Event·RN 모두 UTC 밀리초 형식을 사용한다.
+  0.12.0 이하의 기본 generatedAt이 source mtime이었던 사실과 compiler freshness 한계를 구분한다.
+- [processor source 귀속](docs/PROCESSOR-GENERATION.md)은 실제 JSR-269 Filer 생성/close와
+  processor artifact를 관찰한다. javac-processors v2 raw evidence는 완료된 compiler/generated-source
+  receipt와 일치할 때만 snapshot.processorGenerations로 들어간다. 생성기 이름 추측·자동 보존·
+  dependency unused 판정 변경은 없다. 실제 generic processor·Dagger2.59와 실패 경로를 검사한다.
+  KAPT/KSP·class/resource·직접 filesystem 쓰기는 이 범위 밖이다.
+- source mtime·basename·빈 결과로 완전성을 추론하지 않는다. 공개 RN Sound.kt의 컴파일
+  JVM ID·retention·원본 JS explain과 실제 Flutter macOS/Android 실행 근거는
+  [isthmus 인계](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)에 있다.
+- 최종 제품 검사·compiler/Gradle 연동·GLM 처분·머지는 각 PR 기록으로 확인한다.
+  로컬 후속 근거는 자매 isthmus의 `.git/remaining-all-20260920/`에 있으며 필수 설치 경로가 아니다.
+- `.claude/`와 `HANDOFF.cartograph-notes.md`는 기존 사용자 미추적 파일로 보존한다.
 
-## 다음 할 일
+## 다음 범위 선택
 
-이번 릴리스·검증 작업 이후의 선택 후보는 아래와 같다. 과거 P1.1-2 핵심 구현을 재개발하지 않는다.
-
-- dependency baseline/suppress와 processor별 생성 코드 귀속.
-- runtime 근거의 LCOV·method 단위 매핑. 현재 class 단위 관찰과 구분한다.
-- P2/P3·경쟁 조사 후보는 과거 원장과 현재 코드를 대조한 뒤 범위를 선택한다.
-  spool/header 성능 병목은 미측정이며, 보류한 전역 분석 재사용을 근거 없이 재개하지 않는다.
-
-## 재개 프롬프트
-
-HANDOFF.md와 적용 AGENTS.md를 읽고 실제 branch/status를 확인해줘. 현재 버전은
-0.12.0이며 PR #87에 P1.1-2와 RN target 필터 회귀 수정이 있어. 최종 CI·GitHub/Portal
-발행·설치 여부는 PR/릴리스 기록으로 확인해. HANDOFF-HISTORY.md의 옛 Next Steps를
-현재 실행 권한으로 삼지 말고, 최신 사용자 요청과 사용자 파일을 보존해. 자동 수정이나
-삭제 안전성·processor 귀속으로 범위를 넓히지 마.
+새 발행은 버전·패키지·설치 확인을 별도로 진행한다. processor KAPT/KSP/직접 출력 확대와
+runtime LCOV·method 매핑은 현재 증거의 경계를 넘어서는 후속이다. 기존 baseline/suppress·
+JSR-269 source 귀속을 과거 목록 때문에 다시 구현하지 않는다. P2/P3·성능 후보는 실제 근거로 선택한다.

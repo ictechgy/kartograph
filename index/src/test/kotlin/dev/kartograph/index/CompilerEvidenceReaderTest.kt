@@ -60,4 +60,25 @@ class CompilerEvidenceReaderTest {
     }
 
     private fun encode(value: String): String = Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray(Charsets.UTF_8))
+
+    @Test
+    fun `processor output format preserves exact identity and rejects unsupported or unobserved claims`() {
+        val source = "source\t${encode("generated/Created.java")}\t${"c".repeat(64)}\n"
+        val generated = "generated\t${encode("generated/Created.java")}\t${"c".repeat(64)}\n"
+        val processor = "processor\t${encode("sample.RealProcessor")}\nprocessorArtifact\t${"d".repeat(64)}\n"
+        val base = header.replace("evidence\t1", "evidence\t2").replace("javac-constants", "javac-processors")
+        val valid = base + processor + source + generated
+        val parsed = CompilerEvidenceReader.parse(valid).processorGeneration!!
+        assertEquals("sample.RealProcessor", parsed.processor)
+        assertEquals("d".repeat(64), parsed.artifactSha256)
+        assertEquals("generated/Created.java", parsed.sources.single().path)
+        assertEquals(emptyList(), CompilerEvidenceReader.parse(base + processor).processorGeneration!!.sources)
+        for (invalid in listOf(base, base + processor + generated, valid + generated,
+            valid.replace("evidence\t2", "evidence\t1"), valid.replace("evidence\t2", "evidence\t3"),
+            valid.replace("javac-processors", "kotlin-constants"), valid + processor,
+            valid.replace(encode("sample.RealProcessor"), encode("bad processor")), valid.replace("d".repeat(64), "invalid"),
+            valid + "edge\tYQ\tYg\tconstant\n", valid.replace("unmapped\t0", "unmapped\t1"))) {
+            assertFailsWith<IllegalArgumentException> { CompilerEvidenceReader.parse(invalid) }
+        }
+    }
 }

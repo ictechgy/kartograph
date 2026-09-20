@@ -44,6 +44,12 @@ public final class DaggerEvidencePlugin implements BindingGraphPlugin {
     private boolean incomplete;
 
     @Override public void init(DaggerProcessingEnv processingEnv, Map<String, String> options) {
+        // Filer 관찰 모드는 binding SPI와 별도 선택이며, 같은 javac 요청을 확인한 뒤 비활성화한다.
+        if (options.containsKey("kartograph.processor")) {
+            var paired = EvidenceProtocol.fromDaggerOptions(options).withCollector("javac-processors");
+            ProcessorEvidenceFiles.requireRequest(paired, EvidenceProtocol.artifactFingerprint(DaggerEvidencePlugin.class));
+            return;
+        }
         if (processingEnv.backend() != DaggerProcessingEnv.Backend.JAVAC) {
             throw new IllegalArgumentException("Dagger compiler evidence requires the Javac backend");
         }
@@ -64,7 +70,7 @@ public final class DaggerEvidencePlugin implements BindingGraphPlugin {
     @Override public String pluginName() { return "KartographDaggerEvidence"; }
 
     @Override public Set<String> supportedOptions() {
-        return Set.of("kartograph.evidence.root", "kartograph.evidence.output", "kartograph.evidence.token");
+        return Set.of("kartograph.evidence.root", "kartograph.evidence.output", "kartograph.evidence.token", "kartograph.processor");
     }
 
     @Override public void visitGraph(BindingGraph graph, dagger.spi.model.DiagnosticReporter reporter) {
