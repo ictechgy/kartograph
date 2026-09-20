@@ -22,6 +22,14 @@ The jar contains four separately selected collectors:
   `processorGenerations`; it does not alter reachability or dependency findings.
   See [setup and limits](../docs/PROCESSOR-GENERATION.md).
 
+Development sources also contain `OutputRecordingProcessor` (javac/KAPT) and
+`RecordingSymbolProcessorProvider` (KSP 2.3.12). These produce a separate output
+sidecar for source, class and resource API outputs, plus byte changes in an
+explicit callback-scoped direct-write directory. `processor_output_witness.py`
+binds that sidecar to a successful configured command and declared inputs; it
+does not inject these observations into a graph or replace compiler witnesses.
+See the [output workflow](../docs/PROCESSOR-GENERATION.md#개발-collector-kaptksp와-여러-출력-종류).
+
 ## Build and run
 
 Set `JAVA_HOME` to JDK 17 and run from the repository root:
@@ -36,6 +44,9 @@ version comes from the repository `VERSION` file.
 
 The build publishes `build/libs/kartograph-compiler-collectors.jar` and runs
 the real Java, Kotlin, and Dagger fixtures in `tests/run.py`.
+It also runs `tests/output_attribution.py` for real javac/KAPT/KSP output and
+failure controls. The latter forces full builds with caches disabled and does
+not claim coverage of asynchronous or concurrent writers.
 
 For product verification, register the real Gradle compiler with
 `compilerEvidence = true` and use `CompilerWitnesses.inputTokenFile` and

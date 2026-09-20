@@ -18,6 +18,7 @@ configurations.create("daggerRuntime")
 dependencies {
     compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.10")
     compileOnly("com.google.dagger:dagger-spi:2.59")
+    compileOnly("com.google.devtools.ksp:symbol-processing-api:2.3.12")
 
     add("kotlinCompilerRuntime", "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.10")
     add("kotlinCompilerRuntime", "org.jetbrains.kotlin:kotlin-stdlib:2.4.10")
@@ -43,7 +44,18 @@ tasks.withType<Jar>().configureEach {
     isReproducibleFileOrder = true
 }
 
+val outputWitnessTest = tasks.register<Exec>("outputWitnessTest") {
+    commandLine("python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_output_witness.py", "-v")
+}
+
+val outputAttributionTest = tasks.register<Exec>("outputAttributionTest") {
+    dependsOn(tasks.named("jar"))
+    dependsOn(outputWitnessTest)
+    commandLine("python3", layout.projectDirectory.file("tests/output_attribution.py").asFile.absolutePath)
+}
+
 val integrationTest = tasks.register<Exec>("integrationTest") {
+    dependsOn(outputAttributionTest)
     dependsOn(tasks.named("jar"))
     doFirst {
         val collector = tasks.named<Jar>("jar").get().archiveFile.get().asFile
