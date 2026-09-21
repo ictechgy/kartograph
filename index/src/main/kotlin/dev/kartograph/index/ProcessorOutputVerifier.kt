@@ -29,13 +29,13 @@ public object ProcessorOutputVerifier {
     public fun trackedFiles(project: Path, config: ProcessorOutputConfiguration, receipt: ProcessorOutputReceipt? = null): List<Path> = readable {
         val root = project.toRealPath()
         require(Path.of(config.project).toRealPath() == root) { "processor configuration belongs to a different project" }
-        val controls = listOf(config.token, config.observations, config.receipt).map { locate(root, it) }
+        val controls = listOfNotNull(config.token, config.observations, config.receipt, config.compilerInputs, config.compilerInputs?.plus(".pending")).map { locate(root, it) }
         val inputs = config.inputs.map { locate(root, it) } + listOf(Path.of(config.collectorJar).toRealPath(), Path.of(config.processorJar).toRealPath())
         val outputs = config.outputRoots.map { locate(root, it) }
         require(controls.none { control -> (inputs + outputs).any { control.startsWith(it) } }) { "processor controls overlap inputs or output roots" }
         // output root 전체를 추적하면 그 안에 쓰는 snapshot 자신까지 hash하게 된다.
         // receipt가 실제로 관찰한 출력 파일만 추적하며 미관찰 파일의 완전성은 주장하지 않는다.
-        (inputs + controls.drop(1) + receipt?.observation?.outputs.orEmpty().map { locate(root, it.path) }).distinct()
+        (inputs + controls.drop(1).filter { it != config.compilerInputs?.let { name -> locate(root, name + ".pending") } } + receipt?.observation?.outputs.orEmpty().map { locate(root, it.path) }).distinct()
     }
 
     /** stale·partial·다른 scope의 기록은 부분 관찰로 내보내지 않는다. */
@@ -79,7 +79,8 @@ public object ProcessorOutputVerifier {
         require(headers == mapOf("kind" to config.kind, "token" to token, "processor" to encode(config.processor),
             "processorArtifact" to processorArtifact, "collectorArtifact" to collectorArtifact)) { "processor invocation identity mismatch" }
         val observed = ProcessorOutputs(scope, config.kind, config.processor, processorArtifact, collectorArtifact,
-            outputs.sortedBy { it.path }, HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)))
+            outputs.sortedBy { it.path }, HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)),
+            ProcessorCompilerInputVerifier.verify(root, config, token, receipt.observation.compilerInputs))
         require(observed == receipt.observation.copy(outputs = receipt.observation.outputs.sortedBy { it.path })) { "processor receipt observations changed" }
         observed
     }

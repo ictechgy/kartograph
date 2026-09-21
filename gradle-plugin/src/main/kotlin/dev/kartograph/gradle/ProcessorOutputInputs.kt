@@ -21,7 +21,8 @@ internal class ProcessorOutputInputs(private val project: Path, paths: List<Path
         Entry(path, text, config, receiptText, ProcessorOutputCodec.receipt(receiptText))
     }
     val files: List<Pair<String, Path>> = selectedPaths.map { "processorConfig" to it } + entries.flatMap { entry ->
-        ProcessorOutputVerifier.trackedFiles(project, entry.config, entry.receipt).map { "processorEvidence" to it }
+        ProcessorOutputVerifier.trackedFiles(project, entry.config, entry.receipt).map { "processorEvidence" to it } +
+            dev.kartograph.index.ProcessorCompilerInputVerifier.trackedFiles(project, entry.config)
     }
     fun verify(scope: String) = entries.map { entry ->
         require(read(entry.path, 1024 * 1024) == entry.text && read(project.resolve(entry.config.receipt), 32 * 1024 * 1024) == entry.receiptText) { "processor configuration or receipt changed during capture" }

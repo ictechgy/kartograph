@@ -1,4 +1,6 @@
-# Processor source generation evidence
+# Processor generation evidence
+
+발행된 0.14.0의 v2 기능과 아래 [개발 소스의 v3 확장](#개발-소스-v3-task-입력과-jvm-선언-귀속)을 구분한다.
 
 0.13.0의 `javac-processors` collector는 명시한 JSR-269 processor 하나를 실행하면서
 `Filer.createSourceFile`과 출력의 정상 close를 관찰한다. 파일 이름·`_Factory` suffix나
@@ -157,3 +159,46 @@ KAPT/Kotlin2.4.10, KSP2.3.12에서 각 4종류 출력을 확인한다. source/cl
 이 검사는 `integrationTest`에도 포함되며 native task build cache·configuration cache 대조를 수행한다.
 `KARTOGRAPH_SNAPSHOT_CLI`를 설치된 CLI 경로로 지정하면 snapshot metadata와 그래프·보존 불변,
 변조된 출력 거부까지 검사한다. 0.14.0의 선택적 collector에 포함되며 0.13.0에는 포함되지 않는다.
+
+## 개발 소스: v3 task 입력과 JVM 선언 귀속
+
+이 절은 아직 발행하지 않은 개발 소스의 기능이다. 기존 0.14.0 ZIP·Portal plugin은 v2까지
+지원하며, v3를 사용하려면 같은 개발 revision의 collector runner/cache adapter와 CLI/plugin을 구축한다.
+기존 설정에 다음 선택 필드만 추가하고, 위의 `registerProcessorOutputCache`로 실제 native task를 선택한다.
+
+```json
+"compilerInputs": ".evidence/compiler-inputs.tsv"
+```
+
+adapter는 선택한 task의 `TaskInputs.files` 전체와 `TaskInputs.properties`를 실행 전후에
+관찰한다. nested implementation은 식별자와 구현 artifact bytes를 포함하고, 지원하지 않는
+속성 형태·실행 중 바뀐 입력은 실패한다. 읽기 전용 verify는 당시 속성 지문을 대조하며
+Gradle 속성을 다시 평가하지 않으므로 환경만 바뀐 새 빌드 의도는 재수집해야 한다. KSP 2.3.12는 library를 ABI `output.bin`으로
+노출하므로 `KspGradleConfig`의 원본 libraries·processor classpath·source roots도 함께 읽는다.
+상위 task 전체·프로세스의 숨은 파일/환경 접근·생산자 인증은 포함하지 않는다.
+
+완료된 v3 receipt의 `observation.compilerInputs`는 `coverage: "gradle-declared-task-inputs"`,
+`complete: false`, task identity, `project/<프로젝트 상대경로>`·`external/compiler-input-N` 지문, 속성 지문과 `inventorySha256`을
+보존한다. slot은 해당 receipt 안에서 해석한다. 로컬 TSV에는 실제 binding이 있으므로 공개
+artifact에 올리지 않는다. snapshot에는 절대 binding·원시 옵션 값을 쓰지 않는다.
+`inventorySha256`은 scope·task·token·속성·파일 kind/identity/hash를 길이 구분해 지문화하며
+로컬 binding은 제외한다. 원본 TSV와 원시 입력을 보존하고 같은 bytes를 다른 위치에 보관할 때
+binding만 재연결할 수 있다. 변경한 binding도 현재 파일의 bytes·kind·프로젝트 경계로 다시 검증한다.
+
+Gradle이 입력을 ABI로 정규화해 이전 task 산출물을 FROM-CACHE로 복원해도 runner는 현재
+원본 bytes와 대조한다. 불일치하면 receipt를 완료하지 않는다. 필요한 경우 명시한 실행 명령에
+`--rerun-tasks`를 추가해 다시 수집한다. 검증 명령이 자동으로 compiler를 재실행하지 않는다.
+실패한 실행은 이전 receipt와 입력 관찰 완료 파일을 없애며, v1/v2 독립 verify와 v2 snapshot
+입력은 계속 지원한다. v3 receipt를 v2 CLI로 가져오는 것은 지원하지 않는다.
+
+현재 bytes가 확인된 v3 API `class` 출력만 `processorOutputs[].declarations`로 연결한다.
+ASM의 정확한 JVM class ID, 원래 선택된 class root의 동일 bytes, 그래프의 MEMBER 관계를 사용한다.
+동명 class가 앞선 root의 다른 bytes로 가려지면 귀속하지 않고 미매핑 수를 남긴다. 생성 source와
+최종 class의 관계는 basename으로 추측하지 않으며 resource·callback 직접 쓰기도 JVM 선언으로
+바꾸지 않는다. 그래프 간선·retention·synthesized·dependency 판정과 기존 compiler witness 계약은 유지한다.
+
+실제 javac17/KAPT2.4.10/KSP2.3.12에서 각각 4종 출력과 15/16/21개 입력 관찰을 검증했다.
+native FROM-CACHE·configuration cache, 수동 목록 밖의 classpath 변경과 정규화 cache 거부,
+출력/raw/scope/속성 변경, 미닫힘·깨진 생성 source를 대조한다. 설치한 개발 CLI를
+`KARTOGRAPH_SNAPSHOT_CLI`로 지정한 `outputAttributionTest`는 JVM 귀속과 기존 graph/retention
+불변도 검사한다. 이 수치는 고정 fixture 관찰이며 모든 Gradle/compiler 버전의 완전성이 아니다.
