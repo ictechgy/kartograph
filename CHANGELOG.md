@@ -6,11 +6,25 @@
 
 ## [Unreleased]
 
+### Added
+
+- 선택적 `compilerInputs` 설정으로 javac/KAPT/KSP task의 선언 파일·값 속성과 구현 artifact를
+  실행 전후에 대조하는 v3 processor receipt를 추가했다. KSP의 ABI 요약과 별도로 원본 library도
+  추적하고, 정규화된 cache가 복원한 옛 JAR bytes·실패 빌드의 완료 기록은 거부한다.
+- snapshot의 processor 출력에 실제 class bytes·JVM ID·선택된 class root가 일치하는 선언 귀속을
+  보존한다. source basename·resource로 선언을 추측하거나 호출 간선·보존·synthesized를 바꾸지 않는다.
+  공개 metadata는 `coverage: gradle-declared-task-inputs`, `complete: false`로 관찰 범위를 명시한다.
+
 ### Fixed
 
 - JVM snapshot이 Java 소스가 없는 의존 프로젝트의 정상적인 빈 class 출력을 누락된 필수 입력으로
   거부하던 문제를 수정했다. Gradle이 선언한 프로젝트 class 디렉터리만 부재까지 추적하며, 같은 내용의
   빈 외부 출력도 위치 식별자로 구분한다. 임의 라이브러리 누락은 계속 실패하고 출력 파일이 생기거나 바뀌면 stale이 된다.
+
+### Verified
+
+- 보존된 Now in Android 산출물을 복원해 `RealAgpRJarCliTest` 2개를 skip 없이 재실행했다.
+  실제 R.jar root의 witness 누락 거부·추가 후 matched·bytes 변조 시 stale 계약을 유지한다.
 
 ## [0.14.0] - 2026-09-21
 

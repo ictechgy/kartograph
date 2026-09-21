@@ -21,7 +21,8 @@ internal class ProcessorOutputFiles(private val project: Path, paths: List<Path>
     val trackedFiles: List<Pair<String, Path>>
     init {
         trackedFiles = selectedPaths.map { "processorConfig" to it } + entries.flatMap { entry ->
-            ProcessorOutputVerifier.trackedFiles(project, entry.config, entry.receipt).map { "processorEvidence" to it }
+            ProcessorOutputVerifier.trackedFiles(project, entry.config, entry.receipt).map { "processorEvidence" to it } +
+                dev.kartograph.index.ProcessorCompilerInputVerifier.trackedFiles(project, entry.config)
         }
     }
     fun verify(scope: String?): List<ProcessorOutputs> = entries.map { entry ->

@@ -37,6 +37,12 @@ public data class QuerySnapshot(
         require(revision == null || Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) { "snapshot revision must be a full commit hash" }
         require(scope == null || (scope.length <= 200 && Regex("[A-Za-z0-9_.:-]+").matches(scope))) { "snapshot scope must be a portable project and variant label" }
         require(processorOutputs.size <= 256 && processorOutputs.all { it.scope == scope }) { "processor outputs require the matching snapshot scope" }
+        if (processorOutputs.any { it.declarations.isNotEmpty() }) {
+            val members = graph.edges.filter { it.kind == dev.kartograph.core.EdgeKind.MEMBER }.groupBy({ it.source }, { it.target })
+                .mapValues { it.value.toSet() }
+            require(processorOutputs.all { output -> output.declarations.all { declaration -> declaration.owner in graph.nodes &&
+                declaration.symbols.all { it == declaration.owner || it in members[declaration.owner].orEmpty() } } }) { "processor declarations are outside their snapshot class" }
+        }
     }
 }
 

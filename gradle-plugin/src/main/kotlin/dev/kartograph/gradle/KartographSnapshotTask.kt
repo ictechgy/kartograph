@@ -254,9 +254,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val located = if (paths == null) graph else CodeGraph(graph.nodes.values.map { node ->
                 paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
             }, graph.edges, graph.externalCalls, graph.serviceProviders)
-            val outputObservations = processorOutputs.verify(scope.get())
+            val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, roots, processorOutputs.verify(scope.get()))
             val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, selectedSources) +
-                (if (outputObservations.isEmpty()) emptyList() else listOf("processor-output-observations: declared-input successful-command metadata; not full compiler coverage or graph attribution")) +
+                dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) +
                 paths?.limitations.orEmpty() + if (missingGeneratedRules.isEmpty()) emptyList() else
                     listOf("missing-generated-keep-files: ${missingGeneratedRules.size}"),
                 suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,

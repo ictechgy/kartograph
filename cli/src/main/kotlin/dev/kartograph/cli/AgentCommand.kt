@@ -235,8 +235,8 @@ internal object AgentCommand {
                 val suppressed = graph.nodes.values
                     .filter { node -> Finding(node.id, node.location).fingerprint in baseline }
                     .mapTo(mutableSetOf()) { node -> node.id }
-                val limitations = RuntimeLimitationScanner.scan(indexed, project) + buildList {
-                    if (options.values("--processor-output-config").isNotEmpty()) add("processor-output-observations: declared-input successful-command metadata; not full compiler coverage or graph attribution")
+                val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, classRoots, processorOutputs.verify(options.single("--scope")))
+                val limitations = RuntimeLimitationScanner.scan(indexed, project) + dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) + buildList {
                     if (compilerFacts.unmappedReferences > 0) add("compiler-evidence-unmapped-references: ${compilerFacts.unmappedReferences}")
                     if (compilerFacts.outsideGraphReferences > 0) add("compiler-evidence-outside-graph: ${compilerFacts.outsideGraphReferences}")
                     if (compilerFacts.shadowedReferences > 0) add("compiler-evidence-shadowed-references: ${compilerFacts.shadowedReferences}")
@@ -252,7 +252,7 @@ internal object AgentCommand {
                         QuerySnapshotCodec.render(QuerySnapshot(capturedGraph, evidence, limitations + paths?.limitations.orEmpty(), suppressed,
                             options.values("--include-private-members").isNotEmpty(), revision = options.single("--revision"),
                             scope = options.single("--scope"), provenance = provenance, processorGenerations = compilerFacts.processorGenerations,
-                            processorOutputs = processorOutputs.verify(options.single("--scope"))),
+                            processorOutputs = outputObservations),
                             compact = options.values("--compact").isNotEmpty(), maximumBytes = selectedLimit.maximumBytes)
                     } catch (_: QuerySnapshotSizeException) {
                         renderNanos = System.nanoTime() - renderStarted
