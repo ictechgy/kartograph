@@ -192,7 +192,9 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
         val projectPath = project.toPath()
         val fingerprints = files.mapIndexed { index, (role, file) ->
             try {
-                ContentFingerprint.capture(projectPath, file.toPath(), role, "$artifact-$role-$index")
+                val slot = if (role == "directory-watch") CompilerDirectoryInput.slot(projectPath, file.toPath())
+                    else "$artifact-$role-$index"
+                ContentFingerprint.capture(projectPath, file.toPath(), role, slot)
             } catch (error: IllegalArgumentException) {
                 throw IllegalArgumentException("compiler witness input failed ($artifact, $role)", error)
             }
