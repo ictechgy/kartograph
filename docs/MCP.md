@@ -4,6 +4,31 @@ kartograph는 로컬 snapshot을 읽는 MCP stdio 서버를 제공한다. 분석
 그래프·보존·도달성·영향 탐색과 보고서는 CLI와 공유한다. 서버가 코드를 빌드하거나
 수정하지 않으므로, 먼저 의도한 variant와 테스트 출력을 캡처한다.
 
+## 첫 조사 준비
+
+반복 조사에는 snapshot을 한 번 로드하는 MCP 세션을 사용한다. CLI saved query는 호출마다
+JVM 시작과 snapshot 읽기를 수행하므로, 여러 심볼을 조사하는 비용을 MCP 호출 지연과 구분한다.
+
+1. [JVM 자동 캡처](IMPACT.md#jvm-빌드에서-자동-캡처) 또는
+   [Android variant 자동 캡처](IMPACT.md#android-variant-자동-캡처)의 plugin 설정을 적용한다.
+   다중 모듈에서는 분석할 모듈의 task 경로를 사용한다. `./gradlew :app:tasks --all`로 제공되는
+   `kartographSnapshot` 계열 task를 확인하고, Android는 의도한 variant를 선택한다.
+2. JVM은 `./gradlew :app:kartographSnapshot`, Android debug는
+   `./gradlew :app:kartographSnapshotDebug`로 캡처한다. 실제 task 이름은 1에서 확인한다.
+   이 작업은 필요한 컴파일을 수행하지만 테스트를 실행하지 않는다.
+3. 해당 모듈의 snapshot과 input bindings로 `verify-snapshot`을 실행한다. 예를 들어 JVM `:app`은
+   아래처럼 모듈 디렉터리를 `--project`로 지정한다. snapshot scope도 이 모듈·variant와 같아야 한다.
+
+```sh
+kartograph verify-snapshot --graph-file app/build/reports/kartograph/jvm-snapshot.json \
+  --project app --input-bindings app/build/kartograph/jvm-input-bindings.json
+```
+
+`matched`를 확인한 뒤 같은 세 경로로 MCP를 시작한다. 아래 서버 예시는 단일 모듈 루트 기준이다.
+기존 수동 snapshot도 조사할 수 있지만 compiler witness가 없으면 현재 빌드와의 일치를 주장할 수 없다.
+
+## 서버 연결
+
 ```sh
 kartograph mcp --graph-file build/reports/kartograph/jvm-snapshot.json \
   --project . --input-bindings build/kartograph/jvm-input-bindings.json
@@ -54,6 +79,36 @@ Snapshot 파일의 기본 읽기 한도는 각각 64 MiB다. 큰 그래프에는
 이미 실행 중인 서버의 그래프는 바뀌지 않는다. 새 snapshot을 사용하려면 서버를
 재시작한다. 질의 중 파일이 교체되어 서로 다른 그래프의 신선도와 결과가 섞이는
 일을 피하기 위한 경계다.
+
+## 신선도 결과에 따른 다음 행동
+
+| 관측 | 확인·복구 |
+|---|---|
+| `matched` | 기록된 입력이 일치한다. 해당 snapshot의 질의를 진행하고 런타임·variant 한계는 유지한다. |
+| `project-not-configured` | snapshot을 만든 모듈을 `--project`로 지정해 서버를 재시작한다. |
+| `missing-external-input` | 같은 checkout·capture가 생성한 input bindings를 연결한다. 다른 기계의 절대경로 파일을 그대로 재사용하지 않는다. |
+| `changed-*`, `unavailable-*` | 입력 변경·누락을 확인하고 필요한 컴파일·캡처를 다시 수행한 뒤 검증·서버 재시작을 한다. |
+| `missing-build-witness`, `unwitnessed-class-root`, `missing-witness-file` | 성공한 compiler task 근거를 포함해 다시 캡처한다. 지원되지 않는 입력은 사유를 보존하며 수동 라벨로 검증을 대신하지 않는다. |
+| `build-scope-mismatch`, `snapshot-scope-mismatch` | 선택한 모듈·variant·witness·scope를 일치시켜 다시 캡처한다. |
+| `legacy-snapshot`, `invalid-compiler-evidence-token` | 지원되는 현재 capture 경로로 새 snapshot을 만든다. 기존 기록을 수정해 일치한 것처럼 만들지 않는다. |
+
+`unverified`는 저장된 그래프를 읽을 수 없다는 뜻은 아니다. 과거 capture의 조사 후보로 사용하고,
+현재 source에 대한 결론에는 부족한 증거를 명시한다. 조사 권한만 있을 때 빌드·캡처를 임의로 수행하지 않는다.
+같은 입력에 `freshness`를 반복 호출해도 누락된 witness가 생기지 않는다.
+
+## 적은 호출로 조사 범위 좁히기
+
+변경 전 조사에서는 확인된 변경 심볼로 `impact`를 먼저 요청하고, 경로를 더 확인할 후보에
+`query_symbol`을 사용한다. 광범위한 파일과 메서드를 함께 보내면 합집합이 되어 범위가 넓어진다.
+정확한 overload를 모르면 `suggestions`를 읽고 선택한 USR과 미선택 후보를 구분한다.
+이 순서는 사용 안내이며 도구 호출을 강제하거나 AI 효용 향상을 측정한 결과가 아니다.
+
+응답의 source 파일 이름만으로 패키지·모듈 경로를 만들어 내지 않는다. `Issue1676.java` 같은 basename은
+여러 source root에 존재할 수 있다. 정확한 경로가 없으면 파일명 수준 근거로 남기고 source 검색으로 확인한다.
+요약의 후보 개수를 실제 메서드 identity로 대신하지 않는다. 최종 답변에서는 변경 선언 자체, 직접·간접 호출자,
+테스트 검토 후보를 구분하고, 관측하지 않은 테스트 실패를 실행 결과처럼 단정하지 않는다.
+
+## 질의 범위와 출력 한도
 
 기본 페이지는 query 10개, impact 5개이며 최대 요청은 100개다. Impact의 기본 depth는
 2, 경로 간선 예산은 100이다. 필요한 범위에 맞춰 스키마의 한도 안에서 늘릴 수 있다.

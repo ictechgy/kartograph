@@ -1,0 +1,71 @@
+{
+  "scope": "New minimal Java :app consumer; verified downloaded 0.14.0 plugin JAR and CLI; offline Gradle 9.6.1/JDK17; existing global dependency caches. This is a documented-path smoke, not a cold Portal installation or general onboarding benchmark.",
+  "taskDiscovered": ":app:kartographSnapshot",
+  "freshnessSequence": [
+    "matched",
+    "stale",
+    "matched"
+  ],
+  "staleExit": 1,
+  "configurationCacheReused": true,
+  "savedQuery": "found",
+  "moduleScopedMcpFreshness": "matched",
+  "moduleScopedMcpQuery": "found",
+  "mcpExit": 0,
+  "commands": [
+    {
+      "purpose": "discover module task",
+      "command": "gradle :app:tasks --all"
+    },
+    {
+      "purpose": "capture/refresh",
+      "command": "gradle --offline --no-daemon --configuration-cache :app:kartographSnapshot"
+    },
+    {
+      "purpose": "verify matching module",
+      "command": "kartograph verify-snapshot --graph-file app/build/reports/kartograph/jvm-snapshot.json --project app --input-bindings app/build/kartograph/jvm-input-bindings.json"
+    }
+  ],
+  "measurements": [
+    {
+      "label": "onboarding-capture-initial",
+      "exit": 0,
+      "seconds": 4.238987415999873
+    },
+    {
+      "label": "onboarding-verify-initial",
+      "exit": 0,
+      "seconds": 0.4696133329998702
+    },
+    {
+      "label": "onboarding-verify-stale",
+      "exit": 1,
+      "seconds": 0.44975200000044424
+    },
+    {
+      "label": "onboarding-capture-refresh",
+      "exit": 0,
+      "seconds": 3.796749291999731
+    },
+    {
+      "label": "onboarding-verify-refreshed",
+      "exit": 0,
+      "seconds": 0.4604481659916928
+    },
+    {
+      "label": "onboarding-query",
+      "exit": 0,
+      "seconds": 0.0913426249899203
+    }
+  ],
+  "evidenceSha256": {
+    "onboarding-tasks.log": "38806b546fc0b7efbba1fae7ffecdd6303752036ed18ea5417558782ae75c1a7",
+    "onboarding-capture-initial.log": "f95bbf22d3dd130a2d449261730dcaa3b94436bfd7be4d316f8a9d360f7ed67f",
+    "onboarding-verify-initial.log": "c2fa6ea57a91481ca0aea56b7c2a4e7fd66958feec8cd1ac6844cd6d34316962",
+    "onboarding-verify-stale.log": "3d110ae0c8ba1ca5d262a2d799ed2d4f39bd84a2a6617bacc40fffa0a36ff803",
+    "onboarding-capture-refresh.log": "e22eb1c68c2dbec8de3baf111dee6623d9306095b3bb9423aba55ece1cfae747",
+    "onboarding-verify-refreshed.log": "19e5f1e55acf3bc75bce3378dc3f0784a257ff608b55af315719645d39f9d265",
+    "onboarding-query.log": "cafa2bf873e1034a7368f3304f4ad02a6a7b4706ff69dbcb659035b454cbab0b",
+    "onboarding-mcp.json": "e97d90f92973c4331f9cce98a6355abad9e8090a27324cf031d82636eec08a35"
+  }
+}

@@ -1,0 +1,176 @@
+{
+  "status": "completed-for-measurement-and-answer-specificity-audit",
+  "notCompleted": [
+    "Exhaustive behavioral adjudication of all 147 predictions",
+    "Independent human or fully blinded review",
+    "New matched-input efficacy cohort"
+  ],
+  "reviewer": "Primary coding agent, with condition-masked GLM medium packet review; primary knows published aggregate results",
+  "originalFrozenArtifactsUnchanged": true,
+  "answers": [
+    {
+      "id": "0778dbd56e60",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;"
+      ],
+      "fullCreditCount": 1,
+      "disposition": "Qualify the sole-consumer criticism: compiler accessor/getter references are distinct compiled declarations; the source-level expression is in findRuleSuppressionIds. This alone does not refute a logical source-consumer claim."
+    },
+    {
+      "id": "1d4d39df1210",
+      "reviewed": true,
+      "frozenCreditedIdentities": [],
+      "fullCreditCount": 0,
+      "disposition": "Packet observations checked against original answer and frozen oracle; no change to score. Unchecked behavior and non-oracle targets remain unadjudicated."
+    },
+    {
+      "id": "3012808a9245",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+        "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+        "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+      ],
+      "fullCreditCount": 3,
+      "disposition": "Confirmed: item 7 receives full credit for two distinct overloads under the frozen matcher. Preserve old score; require one-to-one identity credit in a new evaluation."
+    },
+    {
+      "id": "3edee05b109d",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;",
+        "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForBytes(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;"
+      ],
+      "fullCreditCount": 2,
+      "disposition": "Reject reviewer count 3: original answer has 11 targets; only asyncForBytes (item 8) and createNonBlockingByteArrayParser (item 11) receive frozen full credit. It does not list the ByteBuffer override. Review also misnumbers items."
+    },
+    {
+      "id": "42e798a8d084",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V",
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V",
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V"
+      ],
+      "fullCreditCount": 4,
+      "disposition": "Packet observations checked against original answer and frozen oracle; no change to score. Unchecked behavior and non-oracle targets remain unadjudicated."
+    },
+    {
+      "id": "5be0347a9a15",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+        "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+        "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+      ],
+      "fullCreditCount": 3,
+      "disposition": "Keep the exact JSONReader overload match at item 8 (3 frozen matches total). Quoted evidence mentions two call edges, but that does not make the explicit USR ambiguous or warrant changing its grade."
+    },
+    {
+      "id": "81f2d1dbe1fd",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+        "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+      ],
+      "fullCreditCount": 2,
+      "disposition": "Additional source check: item 11 names a path absent at the pinned revision (HTTP 404 and complete Git tree). Two same-basename files exist elsewhere; neither can be selected from basename alone."
+    },
+    {
+      "id": "84fe91ffabef",
+      "reviewed": true,
+      "frozenCreditedIdentities": [],
+      "fullCreditCount": 0,
+      "disposition": "Null is the published strict decoder result for an invalid-JSON response, not proof the provider returned no text. Retain frozen recall zero and undefined precision."
+    },
+    {
+      "id": "866466f3f04e",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V",
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V",
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V"
+      ],
+      "fullCreditCount": 3,
+      "disposition": "Packet observations checked against original answer and frozen oracle; no change to score. Unchecked behavior and non-oracle targets remain unadjudicated."
+    },
+    {
+      "id": "89d07d94972e",
+      "reviewed": true,
+      "frozenCreditedIdentities": [],
+      "fullCreditCount": 0,
+      "disposition": "Packet observations checked against original answer and frozen oracle; no change to score. Unchecked behavior and non-oracle targets remain unadjudicated."
+    },
+    {
+      "id": "aa59036509f8",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V",
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V",
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V"
+      ],
+      "fullCreditCount": 3,
+      "disposition": "Packet observations checked against original answer and frozen oracle; no change to score. Unchecked behavior and non-oracle targets remain unadjudicated."
+    },
+    {
+      "id": "d03628ddd394",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+      ],
+      "fullCreditCount": 1,
+      "disposition": "Packet observations checked against original answer and frozen oracle; no change to score. Unchecked behavior and non-oracle targets remain unadjudicated."
+    },
+    {
+      "id": "dac24228ae3f",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;"
+      ],
+      "fullCreditCount": 1,
+      "disposition": "Same source-vs-compiled qualification for sole-consumer. Reviewer item numbering is inconsistent; do not turn its prose into numeric metrics."
+    },
+    {
+      "id": "def06d674b6b",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;"
+      ],
+      "fullCreditCount": 1,
+      "disposition": "Same source-vs-compiled qualification for sole-consumer; non-oracle targets remain unadjudicated."
+    },
+    {
+      "id": "f632019f2bcf",
+      "reviewed": true,
+      "frozenCreditedIdentities": [],
+      "fullCreditCount": 0,
+      "disposition": "Packet observations checked against original answer and frozen oracle; no change to score. Unchecked behavior and non-oracle targets remain unadjudicated."
+    },
+    {
+      "id": "f805a7b01155",
+      "reviewed": true,
+      "frozenCreditedIdentities": [
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V",
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V",
+        "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V"
+      ],
+      "fullCreditCount": 3,
+      "disposition": "Packet observations checked against original answer and frozen oracle; no change to score. Unchecked behavior and non-oracle targets remain unadjudicated."
+    }
+  ],
+  "crossCuttingDispositions": [
+    "Reject GLM detekt overlap range 0..4: frozen matching shows 3..4 across its four answers.",
+    "Do not classify non-oracle claims as false or unsupported solely because the oracle omits them. The original BaselineResultMappingSpec has a literal XML assertion at lines 163..183, a relevant review lead; no new test execution was performed.",
+    "Listing a changed declaration is not automatically an invalid caller (recursion could exist). Separate changed declarations and observed caller paths in future tasks instead of blanket penalties.",
+    "Observed file-level and overload ambiguity is a measurement limit, not a current product regression.",
+    "GLM item numbering and counts are advisory; authoritative counts come from the original answers and frozen grader."
+  ],
+  "sourceCheck": {
+    "uniquePredictedPaths": 43,
+    "retrievedAtPinnedRevision": 42,
+    "missingPathCount": 1,
+    "scope": "File existence for all predicted paths; targeted source reads for disputed claims, not exhaustive line/behavior validation."
+  }
+}

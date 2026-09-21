@@ -1,0 +1,87 @@
+{
+  "baselineCommit": "ca2fc7d6be30bf1c63d93737eedadeb980423168",
+  "method": "SHA256 of each audit input equals git show of the immutable baseline blob",
+  "allMatched": true,
+  "files": [
+    {
+      "path": "oracle-v4.json",
+      "sha256": "c05648e7916af7a0ad039cba4bfcf77caa9d5e8779c8fe7d8248679e77a276fb"
+    },
+    {
+      "path": "grade_v4.py",
+      "sha256": "7068d437ba02433d6e5d36b485fc4b7baca23716470f1c150002c284d84cd19e"
+    },
+    {
+      "path": "results-v4/results-v4.json",
+      "sha256": "df7c1d7eff32e6db39fbb3ba22cd661b28a24c938d90131cef64eb9051de0200"
+    },
+    {
+      "path": "results-v4/blind/0778dbd56e60.json",
+      "sha256": "5852f89b46ef906c4661ba7159e68af05a1d1e19e6ce3ca4490e01193f70dd46"
+    },
+    {
+      "path": "results-v4/blind/1d4d39df1210.json",
+      "sha256": "78054b172de5d7fb94ba2b69bb7cbf2af67bb74189b92524facc8eb5670f2b61"
+    },
+    {
+      "path": "results-v4/blind/3012808a9245.json",
+      "sha256": "cb3b6153e7b04d0a714638740714485910ec1b691ae14e2b8438a7195875e91e"
+    },
+    {
+      "path": "results-v4/blind/3edee05b109d.json",
+      "sha256": "952d4b998fa65d50bbafe440fe6d1224ad8d7211743676d2aad9442cf6642cb5"
+    },
+    {
+      "path": "results-v4/blind/42e798a8d084.json",
+      "sha256": "2bfd89fbcb9b6ed552a77add4ff92a7f21110b77e7a94e3b95d26fd6c4876514"
+    },
+    {
+      "path": "results-v4/blind/5be0347a9a15.json",
+      "sha256": "900cd0420683400c31a8dc02d69fbed314ce7b50bbbd40af64f9e599f272d761"
+    },
+    {
+      "path": "results-v4/blind/81f2d1dbe1fd.json",
+      "sha256": "8b578ceda700f8e0d0f1ac0a633605ed133893c16e7bcfc23aaefe2144d3ba68"
+    },
+    {
+      "path": "results-v4/blind/84fe91ffabef.json",
+      "sha256": "ab14eb2e493e76421fde7d19b1343771ba7cd65e3266c66892524ac63a7bd34a"
+    },
+    {
+      "path": "results-v4/blind/866466f3f04e.json",
+      "sha256": "49de65f9fde10e6c01909bbf17e6e6e6446a5bff98266d5850944f218f6e58b7"
+    },
+    {
+      "path": "results-v4/blind/89d07d94972e.json",
+      "sha256": "89cfd1d371f76e887e880906ab8e048deb5dfeb9d9becddbb1a768012268d657"
+    },
+    {
+      "path": "results-v4/blind/aa59036509f8.json",
+      "sha256": "833bff089fb8c2ebb4c936fe44a1270042bcad1254dc70e20186750d89b05658"
+    },
+    {
+      "path": "results-v4/blind/d03628ddd394.json",
+      "sha256": "0cd51d81d30bfe82bff763ee5331a20e46146d11dd22e819137f9f1fa25acc84"
+    },
+    {
+      "path": "results-v4/blind/dac24228ae3f.json",
+      "sha256": "db6fd222884f058fe650e10c4ff68b3bc60c1caef50342b7d594028aa36c25f9"
+    },
+    {
+      "path": "results-v4/blind/def06d674b6b.json",
+      "sha256": "98f94e04a64b68d3e6d488f1d4d72d215e56f069474abf4d8eae0d7c5fd0042a"
+    },
+    {
+      "path": "results-v4/blind/f632019f2bcf.json",
+      "sha256": "a4c2a736b25d3f4e6d2c39f11cf35fb5ee0b1b15def8d75f2d9824c67c0fb8ef"
+    },
+    {
+      "path": "results-v4/blind/f805a7b01155.json",
+      "sha256": "8ff9249b78cec31f139244174ebaf328991708ee04f0d10a6b6900497627bea3"
+    }
+  ],
+  "negativeControl": {
+    "outputOverFrozenOracleExit": 2,
+    "oracleUnchanged": true
+  }
+}
