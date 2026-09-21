@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-22
+
 ### Added
 
 - 선택적 `compilerInputs` 설정으로 javac/KAPT/KSP task의 선언 파일·값 속성과 구현 artifact를

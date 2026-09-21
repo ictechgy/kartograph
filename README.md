@@ -55,7 +55,7 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.14.0"
+    id("io.github.ictechgy.kartograph") version "0.15.0"
 }
 ```
 
