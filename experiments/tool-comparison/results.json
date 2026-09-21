@@ -1,0 +1,108 @@
+{
+  "scan": {
+    "kartograph": {
+      "seconds": [
+        1.0441944999911357,
+        1.0617429580015596,
+        1.054211334005231
+      ],
+      "medianSeconds": 1.054211334005231,
+      "stdoutBytes": 11082
+    },
+    "searchdeadcode": {
+      "seconds": [
+        0.30997216700052377,
+        0.3092788749927422,
+        0.3267146669968497
+      ],
+      "medianSeconds": 0.30997216700052377,
+      "stdoutBytes": 39672
+    }
+  },
+  "saved-MainActivityViewModel": {
+    "kartograph": {
+      "seconds": [
+        0.37473024999781046,
+        0.38750920801248867,
+        0.390980625001248
+      ],
+      "medianSeconds": 0.38750920801248867,
+      "stdoutBytes": 11628
+    },
+    "searchdeadcode": {
+      "seconds": [
+        0.007104375006747432,
+        0.006051124990335666,
+        0.006927207999979146
+      ],
+      "medianSeconds": 0.006927207999979146,
+      "stdoutBytes": 258
+    }
+  },
+  "saved-NewsResourceDao": {
+    "kartograph": {
+      "seconds": [
+        0.37726816699432675,
+        0.37731924999388866,
+        0.37102154101012275
+      ],
+      "medianSeconds": 0.37726816699432675,
+      "stdoutBytes": 10793
+    },
+    "searchdeadcode": {
+      "seconds": [
+        0.006972333008889109,
+        0.006287749987677671,
+        0.007013833004748449
+      ],
+      "medianSeconds": 0.006972333008889109,
+      "stdoutBytes": 1041
+    }
+  },
+  "saved-ListToMapMigration": {
+    "kartograph": {
+      "seconds": [
+        0.38253391699981876,
+        0.38671962499211077,
+        0.3752916250086855
+      ],
+      "medianSeconds": 0.38253391699981876,
+      "stdoutBytes": 10569
+    },
+    "searchdeadcode": {
+      "seconds": [
+        0.0068149160069879144,
+        0.005883332996745594,
+        0.006919999999809079
+      ],
+      "medianSeconds": 0.0068149160069879144,
+      "stdoutBytes": 38
+    }
+  },
+  "mcpStartupSeconds": 0.3626468749862397,
+  "mcp-MainActivityViewModel": {
+    "seconds": [
+      0.029015291991527192,
+      0.01130116700369399,
+      0.007674207998206839
+    ],
+    "medianSeconds": 0.01130116700369399
+  },
+  "mcp-NewsResourceDao": {
+    "seconds": [
+      0.007044790996587835,
+      0.006365583001752384,
+      0.0059422909980639815
+    ],
+    "medianSeconds": 0.006365583001752384
+  },
+  "mcp-ListToMapMigration": {
+    "seconds": [
+      0.0063045840070117265,
+      0.005169208001461811,
+      0.0047910419962136075
+    ],
+    "medianSeconds": 0.005169208001461811
+  },
+  "freshness": "unverified"
+}

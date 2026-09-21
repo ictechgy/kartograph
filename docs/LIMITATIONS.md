@@ -165,13 +165,18 @@ DI 어노테이션 보존은 지원되는 어노테이션을 진입점으로 삼
 
 ## 선언 의존성 분석
 
-`dependencies`는 전달한 class root의 classfile 참조만 측정한다. reflection 문자열, runtime class loading,
-SOURCE-retention annotation, annotation processor가 만든 코드, resource 기반 사용은 해석하지 않으므로 unused
-finding이 dependency 삭제 승인이 아니다. signature에만 있는 generic type 인자는 bytecode descriptor에서
-지워져 보이지 않는다. test root를 주지 않으면 test scope는 판정하지 않지만, main scope dependency가 test에서만
-쓰이면 unused로 보일 수 있다. 같은 class 이름이 앱과 dependency에 겹치면 사용됨으로 기울 수 있다.
-processor·runtime-only scope는 판정하지 않고 개수만 알린다. artifact는 project-relative 경로를 그대로,
-절대경로는 파일 이름만 출력하며, baseline·suppress·confidence 같은 `dead` 보조 장치는 아직 없다.
+`dependencies`는 전달한 class root의 JVM descriptor·Signature·annotation·명령 참조와 Kotlin metadata의
+타입·가시성·inline 본문을 사용한다. descriptor에서 지워진 generic type 인자도 Signature에 남으면 복원한다.
+reflection 문자열, runtime class loading, SOURCE-retention annotation, resource 기반 사용과 processor별
+생성물 귀속은 완전하게 해석하지 않으므로 unused finding이 dependency 삭제 승인이 아니다. 제공된 생성 class의
+참조는 읽지만, compiler snapshot의 processor 출력 근거가 dependency unused 판정을 바꾸지는 않는다.
+test root를 주지 않으면 test scope는 판정하지 않지만, main scope dependency가 test에서만 쓰이면 unused로
+보일 수 있다. 동명 class가 여러 component 또는 프로젝트 출력에 겹치면 소유자를 추측하지 않는다.
+metadata·typealias 소유자·internal 공개 경로·Java module API 등을 복원하지 못하면 부재에 근거한 unused와
+scope 축소를 보류한다. processor·runtime-only scope와 class가 없는 artifact는 판정하지 않고 개수·한계를 알린다.
+artifact는 project-relative 경로를 그대로, 절대경로는 파일 이름만 출력한다. baseline과 기한 있는 suppress는
+0.13.0부터 제공하며, `dead`의 runtime-observed confidence와는 별개다. 지원 scope·ABI 기준·억제 계약은
+[선언 의존성 분석](DEPENDENCIES.md)을 따른다.
 
 ## 라이브러리 runtime 모델
 

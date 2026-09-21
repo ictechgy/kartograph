@@ -303,13 +303,18 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             }
         }
         val candidates = (compilerInputFiles.files + dependencyClasspath.files + classRoots.files + sourceFiles.files + buildInputFiles.files)
-            .filter { it.exists() }.map { it.canonicalFile.toPath() }.distinct()
-        val hashes = mutableMapOf<Pair<Path, Boolean>, String>()
+            .map { it.canonicalFile.toPath() }.distinct()
+        val hashes = mutableMapOf<Pair<Path, String>, String>()
         provenance.witnesses.flatMap { it.inputs + it.outputs + it.compilerEvidence }
             .filter { it.path.startsWith("external/") && it.role !in setOf("options", "buildConfig") }.forEach { input ->
-                val matches = candidates.filter { path ->
-                    hashes.getOrPut(path to (input.role == "sources")) {
-                        ContentFingerprint.hash(path, input.role == "sources")
+                val located = if (input.role == "directory-watch" && CompilerDirectoryInput.hasIdentity(input.path)) {
+                    candidates.filter { path ->
+                        input.path == "external/${CompilerDirectoryInput.slot(projectDirectory.get().asFile.toPath(), path)}"
+                    }
+                } else candidates.filter { if (input.role == "directory-watch") Files.isDirectory(it) else Files.exists(it) }
+                val matches = located.filter { path ->
+                    hashes.getOrPut(path to input.role) {
+                        ContentFingerprint.hashInput(path, input.role)
                     } == input.sha256
                 }
                 require(matches.size == 1) { "compiler input binding is missing or ambiguous; check selected compiler inputs" }

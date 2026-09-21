@@ -1,0 +1,28 @@
+{
+  "trials": 16,
+  "manifestSha256": "06c865d2fc110dc5a47e9f0b3a3905c2d51662ebcecae82b839efe2943a8203d",
+  "evidenceFiles": 112,
+  "allRecordedEvidenceHashesMatched": true,
+  "rawRoot": "common Git directory ai-utility-v5-20260921/trials-final",
+  "sourceResultsCommittedWithoutRepair": true,
+  "requestedProductTools": {
+    "freshness": 7,
+    "impact": 6,
+    "query_symbol": 3
+  },
+  "processedProductTools": {
+    "freshness": 7,
+    "impact": 6,
+    "query_symbol": 3
+  },
+  "agentFreshnessChecks": {
+    "matched": 7,
+    "stale": 0,
+    "unverified": 0
+  },
+  "modelStageCostUsd": 5.3727505,
+  "separateSyntheticSmokeCostUsd": 0.2743815,
+  "rawAssistantModels": [
+    "claude-opus-5"
+  ]
+}

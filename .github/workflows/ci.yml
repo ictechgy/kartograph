@@ -15,7 +15,8 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # collector 설치·compiler 증거·Android fixture를 순차 검증하면 기존 30분 예산을 넘을 수 있다.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
