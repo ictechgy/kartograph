@@ -1,6 +1,6 @@
 # Processor generation evidence
 
-발행된 0.14.0의 v2 기능과 아래 [개발 소스의 v3 확장](#개발-소스-v3-task-입력과-jvm-선언-귀속)을 구분한다.
+0.14.0의 v2 기능과 0.15.0의 [v3 확장](#v3-task-입력과-jvm-선언-귀속)을 구분한다.
 
 0.13.0의 `javac-processors` collector는 명시한 JSR-269 processor 하나를 실행하면서
 `Filer.createSourceFile`과 출력의 정상 close를 관찰한다. 파일 이름·`_Factory` suffix나
@@ -8,10 +8,10 @@
 
 ## 수집과 확인
 
-0.14.0의 collector JAR·runner·cache adapter는 별도
-[collector ZIP](https://github.com/ictechgy/kartograph/releases/tag/v0.14.0)으로 배포하며,
+0.15.0의 collector JAR·runner·cache adapter는 별도
+[collector ZIP](https://github.com/ictechgy/kartograph/releases/tag/v0.15.0)으로 배포하며,
 CLI ZIP/TAR나 Portal plugin runtime에 포함하지 않는다. 소스로 빌드하려면
-[v0.14.0 소스](https://github.com/ictechgy/kartograph/tree/v0.14.0)를 checkout하고 JDK 17로 실행한다.
+[v0.15.0 소스](https://github.com/ictechgy/kartograph/tree/v0.15.0)를 checkout하고 JDK 17로 실행한다.
 
 ```bash
 ./gradlew --no-daemon -p compiler-collectors integrationTest
@@ -160,10 +160,12 @@ KAPT/Kotlin2.4.10, KSP2.3.12에서 각 4종류 출력을 확인한다. source/cl
 `KARTOGRAPH_SNAPSHOT_CLI`를 설치된 CLI 경로로 지정하면 snapshot metadata와 그래프·보존 불변,
 변조된 출력 거부까지 검사한다. 0.14.0의 선택적 collector에 포함되며 0.13.0에는 포함되지 않는다.
 
-## 개발 소스: v3 task 입력과 JVM 선언 귀속
+<a id="개발-소스-v3-task-입력과-jvm-선언-귀속"></a>
 
-이 절은 아직 발행하지 않은 개발 소스의 기능이다. 기존 0.14.0 ZIP·Portal plugin은 v2까지
-지원하며, v3를 사용하려면 같은 개발 revision의 collector runner/cache adapter와 CLI/plugin을 구축한다.
+## v3 task 입력과 JVM 선언 귀속
+
+이 절의 기능은 0.15.0부터 제공한다. 기존 0.14.0 ZIP·Portal plugin은 v2까지
+지원하며, v3를 사용하려면 0.15.0의 collector runner/cache adapter와 CLI/plugin을 함께 설치한다.
 기존 설정에 다음 선택 필드만 추가하고, 위의 `registerProcessorOutputCache`로 실제 native task를 선택한다.
 
 ```json
@@ -199,6 +201,6 @@ ASM의 정확한 JVM class ID, 원래 선택된 class root의 동일 bytes, 그�
 
 실제 javac17/KAPT2.4.10/KSP2.3.12에서 각각 4종 출력과 15/16/21개 입력 관찰을 검증했다.
 native FROM-CACHE·configuration cache, 수동 목록 밖의 classpath 변경과 정규화 cache 거부,
-출력/raw/scope/속성 변경, 미닫힘·깨진 생성 source를 대조한다. 설치한 개발 CLI를
+출력/raw/scope/속성 변경, 미닫힘·깨진 생성 source를 대조한다. 설치한 0.15.0 CLI를
 `KARTOGRAPH_SNAPSHOT_CLI`로 지정한 `outputAttributionTest`는 JVM 귀속과 기존 graph/retention
 불변도 검사한다. 이 수치는 고정 fixture 관찰이며 모든 Gradle/compiler 버전의 완전성이 아니다.
