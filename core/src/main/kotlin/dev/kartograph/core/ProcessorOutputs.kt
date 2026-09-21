@@ -16,6 +16,8 @@ public data class ProcessorOutputs(
     val scope: String, val kind: String, val processor: String,
     val processorArtifact: String, val collectorArtifact: String,
     val outputs: List<ProcessorOutput>, val rawSha256: String,
+    val compilerInputs: ProcessorCompilerInputs? = null,
+    val declarations: List<ProcessorDeclaration> = emptyList(),
 ) {
     init {
         require(Regex("[A-Za-z0-9_.:-]{1,200}").matches(scope) && kind in setOf("javac", "kapt", "ksp")) { "invalid processor scope" }
@@ -23,6 +25,9 @@ public data class ProcessorOutputs(
         InputFingerprint("collector", "collector.jar", collectorArtifact)
         InputFingerprint("observations", "outputs.tsv", rawSha256)
         require(outputs.size <= 100_000 && outputs.map { it.path }.distinct().size == outputs.size) { "invalid processor output inventory" }
+        require(declarations.size <= 100_000 && declarations.map { it.output }.distinct().size == declarations.size) { "invalid processor declaration inventory" }
+        require(declarations.all { declaration -> outputs.any { it.path == declaration.output && it.kind == "class" && it.observation == "api" } }) { "processor declarations require observed class outputs" }
+        require(declarations.isEmpty() || compilerInputs != null) { "processor declarations require compiler input evidence" }
     }
 }
 
@@ -45,13 +50,15 @@ public data class ProcessorOutputConfiguration(
     val collectorJar: String, val processorJar: String,
     val inputs: List<String>, val outputRoots: List<String>, val command: List<String>,
     val token: String, val observations: String, val receipt: String,
+    val compilerInputs: String? = null,
 ) {
     init {
         require(inputs.isNotEmpty() && outputRoots.isNotEmpty() && command.isNotEmpty() && command.all { it.isNotEmpty() }) { "processor configuration requires explicit inputs, outputs and command" }
         require(inputs.size <= 100_000 && outputRoots.size <= 100_000 && command.size <= 10_000) { "processor configuration exceeds limits" }
         require(inputs.distinct().size == inputs.size && inputs.none { it in setOf("external/collectorJar", "external/processorJar") }) { "duplicate processor configuration inputs" }
-        require(setOf(token, observations, receipt).size == 3) { "processor control paths must be distinct" }
-        (inputs + outputRoots + listOf(token, observations, receipt)).forEach {
+        val controls = listOfNotNull(token, observations, receipt, compilerInputs, compilerInputs?.plus(".pending"))
+        require(controls.distinct().size == controls.size) { "processor control paths must be distinct" }
+        (inputs + outputRoots + controls).forEach {
             InputFingerprint("path", it, "0".repeat(64))
             require(it.split('/').none { part -> part == "." }) { "invalid processor configuration path" }
         }
@@ -60,5 +67,32 @@ public data class ProcessorOutputConfiguration(
     /** 리스트 길이를 포함해 배열 경계를 보존하는 v2 content fingerprint 입력이다. */
     public fun contractValues(): List<String> = listOf("processor-output-config-v2", scope, kind, processor) +
         listOf(inputs.size.toString()) + inputs + listOf(outputRoots.size.toString()) + outputRoots +
-        listOf(command.size.toString()) + command + listOf(token, observations, receipt)
+        listOf(command.size.toString()) + command + listOf(token, observations, receipt) +
+        (compilerInputs?.let { listOf("gradle-declared-inputs-v1", it) } ?: emptyList())
+}
+
+/** 선택한 Gradle task가 선언한 파일 전체와 값 속성의 지문이다. 숨은 프로세스 IO를 뜻하지 않는다. */
+public data class ProcessorCompilerInputs(
+    val task: String, val files: List<InputFingerprint>, val propertiesSha256: String, val inventorySha256: String,
+) {
+    init {
+        require(Regex("(:[A-Za-z0-9_.-]+)+").matches(task) && task.length <= 1024) { "invalid compiler task identity" }
+        require(files.size <= 100_000 && files.map { it.path }.distinct().size == files.size) { "invalid compiler task input inventory" }
+        require(files.all { it.role in setOf("processorCompilerInput", "file-watch") }) { "invalid compiler task input role" }
+        require(files.all { it.path.split('/').none { part -> part == "." } &&
+            (it.path.startsWith("project/") || Regex("external/compiler-input-[0-9]+").matches(it.path)) }) { "invalid compiler task input identity" }
+        InputFingerprint("properties", "properties", propertiesSha256)
+        InputFingerprint("observations", "compiler-inputs.tsv", inventorySha256)
+    }
+}
+
+/** 바이트가 동일한 실제 JVM class의 선언 귀속이다. 호출·보존 관계를 추가하지 않는다. */
+public data class ProcessorDeclaration(val output: String, val owner: NodeId, val symbols: List<NodeId>) {
+    init {
+        InputFingerprint("processorOutput", output, "0".repeat(64))
+        require(symbols.isNotEmpty() && symbols.size <= 100_000 && symbols.distinct().size == symbols.size && owner in symbols) { "invalid processor declaration symbols" }
+        require(owner.value.startsWith("class:") && symbols.all { it == owner ||
+            it.value.startsWith("method:" + owner.value.removePrefix("class:") + "#") ||
+            it.value.startsWith("field:" + owner.value.removePrefix("class:") + "#") }) { "processor symbols belong to another class" }
+    }
 }

@@ -93,17 +93,20 @@ def configuration(path: Path) -> tuple[dict, Path]:
         raise EvidenceError('explicit inputs, outputs and command are required')
     if len(config['inputs']) > 100_000 or len(config['outputRoots']) > 100_000 or len(config['command']) > 10_000 or len(set(config['inputs'])) != len(config['inputs']) or any(name in ('external/collectorJar', 'external/processorJar') for name in config['inputs']):
         raise EvidenceError('invalid or oversized input configuration')
-    for key in ('token', 'observations', 'receipt'):
-        locate(root, config[key])
+    controls = [config[key] for key in ('token', 'observations', 'receipt')]
+    if config.get('compilerInputs') is not None:
+        controls += [config['compilerInputs'], config['compilerInputs'] + '.pending']
+    for name in controls:
+        locate(root, name)
     declared_inputs = [locate(root, name) for name in config['inputs']]
     declared_inputs += [Path(config[key]).resolve() for key in ('collectorJar', 'processorJar')]
     for path in declared_inputs:
-        if any(locate(root, config[key]).is_relative_to(path) for key in ('token', 'observations', 'receipt')):
+        if any(locate(root, name).is_relative_to(path) for name in controls):
             raise EvidenceError('control files must be outside declared inputs and processor artifacts')
     for name in config['outputRoots']:
-        if any(locate(root, config[key]).is_relative_to(locate(root, name)) for key in ('token', 'observations', 'receipt')):
+        if any(locate(root, control).is_relative_to(locate(root, name)) for control in controls):
             raise EvidenceError('control files must be outside generated output roots')
-    if len(set(config[k] for k in ('token', 'observations', 'receipt'))) != 3:
+    if len(set(controls)) != len(controls):
         raise EvidenceError('control paths must be distinct')
     return config, root
 
@@ -121,7 +124,8 @@ def contract(config: dict, version: int = 2) -> str:
         return encoded_hash({key: config[key] for key in ('scope', 'kind', 'processor', 'inputs', 'outputRoots', 'command', 'token', 'observations', 'receipt')})
     return content_values(['processor-output-config-v2', config['scope'], config['kind'], config['processor'],
                            str(len(config['inputs'])), *config['inputs'], str(len(config['outputRoots'])), *config['outputRoots'],
-                           str(len(config['command'])), *config['command'], config['token'], config['observations'], config['receipt']])
+                           str(len(config['command'])), *config['command'], config['token'], config['observations'], config['receipt']] +
+                          (['gradle-declared-inputs-v1', config['compilerInputs']] if config.get('compilerInputs') is not None else []))
 
 
 def input_token(config: dict, current: list[dict], version: int = 2) -> str:
@@ -173,11 +177,71 @@ def observations(config: dict, root: Path, token: str) -> dict:
             'rawSha256': digest(path), 'processorArtifact': expected['processorArtifact'], 'collectorArtifact': expected['collectorArtifact']}
 
 
+def compiler_inputs(config: dict, root: Path, token: str) -> dict:
+    """로컬 binding은 공개 receipt에서 제외하고 Gradle이 관찰한 입력 bytes를 다시 확인한다."""
+    path = locate(root, config['compilerInputs'])
+    if not path.is_file() or path.stat().st_size > 32 * 1024 * 1024:
+        raise EvidenceError('missing or oversized compiler input observations')
+    rows = path.read_text(encoding='utf-8').splitlines()
+    if not rows or rows[0] != 'format\tkartograph-processor-compiler-inputs\t1' or len(rows) > 100_005:
+        raise EvidenceError('invalid compiler input observations')
+    headers, files, observed_values = {}, [], []
+    for row in rows[1:]:
+        fields = row.split('\t')
+        if len(fields) == 5 and fields[0] == 'file':
+            identity, binding, kind, fingerprint = decode(fields[1]), Path(decode(fields[2])), fields[3], fields[4]
+            portable(identity)
+            if not binding.is_absolute() or binding.is_symlink() or binding.resolve() != binding or kind not in ('file', 'directory', 'missing'):
+                raise EvidenceError('invalid compiler input binding')
+            controls = [config.get(key) for key in ('token', 'observations', 'receipt', 'compilerInputs')]
+            if any(locate(root, control).is_relative_to(binding) for control in controls if control is not None):
+                raise EvidenceError('compiler controls overlap task inputs')
+            if identity.startswith('external/'):
+                if not re.fullmatch(r'external/compiler-input-\d+', identity) or binding.resolve().is_relative_to(root):
+                    raise EvidenceError('invalid external compiler input identity')
+            elif not identity.startswith('project/') or locate(root, identity[len('project/'):]) != binding:
+                raise EvidenceError('compiler input identity does not match its binding')
+            if kind == 'missing':
+                if binding.exists():
+                    raise EvidenceError('previously absent compiler input appeared')
+                current = content_values(['missing-file'])
+            else:
+                if (kind == 'file') != binding.is_file() or (kind == 'directory') != binding.is_dir():
+                    raise EvidenceError('compiler input kind changed')
+                current = inventory(binding)
+            if current != fingerprint:
+                raise EvidenceError('compiler task input bytes changed')
+            files.append({'role': 'file-watch' if kind == 'missing' else 'processorCompilerInput', 'path': identity, 'sha256': current})
+            observed_values += [identity, kind, current]
+        elif len(fields) == 2 and fields[0] in ('scope', 'task', 'token', 'propertiesSha256') and fields[0] not in headers:
+            headers[fields[0]] = fields[1]
+        else:
+            raise EvidenceError('unknown or duplicate compiler input observation')
+    if set(headers) != {'scope', 'task', 'token', 'propertiesSha256'} or headers['scope'] != config['scope'] or headers['token'] != token or not re.fullmatch(r'(:[A-Za-z0-9_.-]+)+', headers['task']) or not re.fullmatch(r'[0-9a-f]{64}', headers['propertiesSha256']) or not files or len({v['path'] for v in files}) != len(files):
+        raise EvidenceError('compiler input invocation mismatch')
+    # bindings는 로컬 재연결 정보다. 동일 bytes를 보존한 아카이브로 옮겨도 관찰 지문은 유지한다.
+    fingerprint = content_values(['gradle-declared-inputs-v1', config['scope'], headers['task'], token,
+                                  headers['propertiesSha256'], str(len(files))] + observed_values)
+    return {'coverage': 'gradle-declared-task-inputs', 'complete': False, 'task': headers['task'], 'files': files,
+            'propertiesSha256': headers['propertiesSha256'], 'inventorySha256': fingerprint}
+
+
 def record(path: Path, logs: Path) -> dict:
     config, root = configuration(path)
+    if config.get('compilerInputs') is not None:
+        for name in [config['compilerInputs'], config['compilerInputs'] + '.pending']:
+            selected = locate(root, name)
+            if selected.exists():
+                if not selected.is_file(): raise EvidenceError('compiler control path is occupied')
+                with selected.open('rb') as stream:
+                    if stream.readline(64) != b'format\tkartograph-processor-compiler-inputs\t1\n':
+                        raise EvidenceError('compiler control path contains unrelated input data')
     receipt = locate(root, config['receipt'])
     receipt.unlink(missing_ok=True)
     locate(root, config['observations']).unlink(missing_ok=True)
+    if config.get('compilerInputs') is not None:
+        locate(root, config['compilerInputs']).unlink(missing_ok=True)
+        locate(root, config['compilerInputs'] + '.pending').unlink(missing_ok=True)
     before = inputs(config, root)
     token = input_token(config, before)
     pending = locate(root, config['token']); pending.parent.mkdir(parents=True, exist_ok=True); pending.write_text(token)
@@ -191,7 +255,9 @@ def record(path: Path, logs: Path) -> dict:
         if inputs(config, root) != before or pending.read_text() != token:
             raise EvidenceError('processor inputs changed during the build')
         observed = observations(config, root, token)
-        value = {'format': 'kartograph-processor-output-witness', 'version': 2, 'scope': config['scope'], 'token': token,
+        if config.get('compilerInputs') is not None:
+            observed['compilerInputs'] = compiler_inputs(config, root, token)
+        value = {'format': 'kartograph-processor-output-witness', 'version': 3 if config.get('compilerInputs') is not None else 2, 'scope': config['scope'], 'token': token,
                  'configurationSha256': contract(config), 'inputs': before, 'observation': observed, 'buildExit': 0}
         receipt.parent.mkdir(parents=True, exist_ok=True)
         receipt.write_text(json.dumps(value, sort_keys=True, indent=2) + '\n')
@@ -202,6 +268,9 @@ def record(path: Path, logs: Path) -> dict:
         # 같은 cache key를 사용하게 한다. token 자체는 완료/성공 증거가 아니다.
         if not completed:
             pending.unlink(missing_ok=True)
+            if config.get('compilerInputs') is not None:
+                locate(root, config['compilerInputs']).unlink(missing_ok=True)
+                locate(root, config['compilerInputs'] + '.pending').unlink(missing_ok=True)
 
 
 def verify(path: Path) -> dict:
@@ -211,13 +280,16 @@ def verify(path: Path) -> dict:
         raise EvidenceError('missing or oversized completed receipt')
     value = json.loads(receipt.read_text())
     version = value.get('version')
-    if type(version) is not int or version not in (1, 2):
+    if type(version) is not int or version not in (1, 2, 3) or (version == 3) != (config.get('compilerInputs') is not None):
         raise EvidenceError('unsupported completed receipt version')
     current = inputs(config, root, version)
     token = input_token(config, current, version)
     if value.get('format') != 'kartograph-processor-output-witness' or type(value.get('buildExit')) is not int or value['buildExit'] != 0 or value.get('scope') != config['scope'] or value.get('configurationSha256') != contract(config, version) or value.get('inputs') != current or value.get('token') != token:
         raise EvidenceError('completed processor receipt is stale')
-    if observations(config, root, token) != value.get('observation'):
+    observed = observations(config, root, token)
+    if version == 3:
+        observed['compilerInputs'] = compiler_inputs(config, root, token)
+    if observed != value.get('observation'):
         raise EvidenceError('completed processor observations changed')
     return {'status': 'matched', 'scope': config['scope'], 'kind': config['kind'], 'outputs': len(value['observation']['outputs'])}
 
