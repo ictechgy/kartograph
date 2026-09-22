@@ -54,7 +54,7 @@ class McpServerTest {
             assertEquals(-32600L, code(c.request("tools/list")))
             c.initialize("2026-07-28")
             val tools = ((c.request("tools/list")["result"] as Map<*, *>)["tools"] as List<*>).map { (it as Map<*, *>)["name"] }
-            assertEquals(listOf("query_symbol", "impact", "freshness"), tools)
+            assertEquals(listOf("discover_symbols", "query_symbol", "impact", "freshness"), tools)
             c.raw("""{"jsonrpc":"2.0","id":123456789012345678901234567890,"method":"ping"}""")
             assertEquals(java.math.BigInteger("123456789012345678901234567890"), c.receive()["id"])
             assertEquals("ID\ntext", c.request("ping", "ID\ntext")["id"])

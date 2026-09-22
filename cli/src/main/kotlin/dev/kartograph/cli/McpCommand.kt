@@ -61,10 +61,11 @@ internal object McpCommand {
         Snapshots are loaded once at the selected bound (default 64 MiB, maximum 128 MiB);
         restart to use a new generation.
         No project default. freshness without --project reports unverified.
-        Tools: query_symbol, impact, freshness. Requests cannot select filesystem inputs or run builds.
+        Tools: discover_symbols, query_symbol, impact, freshness. Requests cannot select filesystem inputs or run builds.
         UTF-8 newline frames: 256 KiB max; responses: 1 MiB max. Narrow selectors or page if oversized.
         Tool text content: 16 KiB max. Check response.effective for adapted page/path limits.
         Missing source-style selectors may include suggestions with exact USRs; overloads are not guessed.
+        Use discover_symbols with one symbol or file selector to page recovery candidates via nextOffset.
         One tool call at a time; concurrent calls are rejected. Cancellation suppresses the response;
         work may finish internally. EOF exits promptly and abandons pending responses.
         No HTTP, tasks, progress, or MCP 2026-07-28 discovery support.
