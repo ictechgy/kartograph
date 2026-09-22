@@ -41,6 +41,10 @@ coverage가 관측됐지만, caller 차이 하나는 source의 동치 함수 타
    음성 대조 오선택0이었다. callback의 source 호출 coverage80%는 같은 caller의 `Function2` 표기 미대응이므로 발견 우위로
    해석하지 않는다. 기존 원문·점수는 유지했다. 작은 합성 과제의 천장 효과가 있어 공개 프로젝트의 실제 효용은 별도 문제다.
    다음 대규모 비교도 [준비 조건](../experiments/ai-utility-protocol/NEXT-PROTOCOL.md)을 지키며 기존 답변을 사후 수리하지 않는다.
+   [v8 실제 모듈 평가](../experiments/ai-utility-v8/README.md)도 detekt180파일·ktlint207파일의 전체 해당 모듈에서
+   16회를 완료했다. 사례별 결과가 달랐고 MCP의 실제 impact3회는 모두 notFound여서 graph 경로 활용 효과는 확인하지 못했다.
+   사후 정확한 USR 대조는 동작했으며 기존 점수는 보존했다. 다음은 큰 표본 추가에 앞서 selector 복구·scope/페이지 안내를
+   실제 agent 흐름에서 검증하는 과제다. 다른 모듈 구현까지 포함한 전체 저장소 분석이나 자연 발생 PR 표본이라고 주장하지 않는다.
 2. **첫 사용과 갱신:** 깨끗한 별도 소비 프로젝트에서 설치부터 첫 유효 질의까지, 한 파일 변경부터 새 matched snapshot까지의
    시간·명령 수·실패 복구를 측정한다. 기존 warm 질의 측정은 이 검사를 대신하지 않는다.
 3. **추가 분석 근거:** processor/resource 귀속, 선택적 호출 정밀도, method/test runtime 대응은 각각 독립된 입력·실패 코퍼스와

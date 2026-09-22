@@ -1,0 +1,189 @@
+{
+  "status": "passed",
+  "trials": 16,
+  "evidenceFiles": 112,
+  "rawStructuredRegradeMatches": true,
+  "frozenToolHashesMatch": true,
+  "allCurrentInputsMatched": true,
+  "protectedPriorExperimentFilesUnchanged": 105,
+  "caseAudits": [
+    {
+      "case": "detekt-line-content",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    }
+  ],
+  "manifestSha256": "d539bf1b19d16b9525939b23895d880848eacc0e2ecc35f7bb00ab3bd33868e6",
+  "resultsSha256": "e4cc207808f196af5b146cab742cd149d872135849bdd915381a14e4fc51e0e0"
+}
