@@ -1,0 +1,55 @@
+{
+  "status": "resolved-before-model-execution",
+  "reviewer": "GLM via packet-ask",
+  "blockers": 0,
+  "originalReviewSeconds": 506.731,
+  "items": [
+    {
+      "id": "D1",
+      "disposition": "fixed",
+      "evidence": "Changed-grader regression failed before toolHashes verification and passes after; frozen grader changes are rejected before regrading."
+    },
+    {
+      "id": "V1",
+      "disposition": "verified",
+      "evidence": "Frozen proxy_trace_errors emits proxy-trace-unavailable; missing-trace controller regression passes."
+    },
+    {
+      "id": "V2",
+      "disposition": "verified",
+      "evidence": "Frozen v6 actual 16 runs have exactly seven recorded files; v7 controller-to-report raw roundtrip passes."
+    },
+    {
+      "id": "V3",
+      "disposition": "retained",
+      "evidence": "Fresh changed checkout cannot reuse old JUnit XML; missing/skip/error/unmapped tests abort qualification. All four actual modules produced complete assertion-only results."
+    },
+    {
+      "id": "negative-aliases",
+      "disposition": "fixed",
+      "evidence": "Added negative-control unique-source check with red/green regression; all15 controls pass source/USR parity."
+    },
+    {
+      "id": "git-version",
+      "disposition": "recorded-locally",
+      "evidence": "Fixture content, full base SHA and tool/source hashes define reproduction; git version retained in local preparation audit."
+    },
+    {
+      "id": "C1",
+      "disposition": "documented",
+      "evidence": "Static call and dynamic behavior denominators remain separate; dispatch oracle1 and behavior3 are not interchangeable."
+    },
+    {
+      "id": "C2",
+      "disposition": "documented",
+      "evidence": "Precision meaning and README explicitly include controls that do not reach the changed method."
+    }
+  ],
+  "additionalChecks": [
+    "V5 Java overload/Kotlin extension/property/generated identity tests applied to new Inventory",
+    "CI now runs the v7 regression suite",
+    "Frozen tooling includes v6 report helper and all authored fixture sources"
+  ],
+  "testsPassed": 56,
+  "actualModelTrialsStarted": false
+}

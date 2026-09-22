@@ -47,6 +47,8 @@ jobs:
         run: Scripts/verify-cli-contract.sh
       - name: Verify PR gate against real Git and compiler outputs
         run: python3 -m unittest discover -s Scripts/tests -v
+      - name: Verify caller and behavior evaluation contracts
+        run: python3 -m unittest discover -s experiments/ai-utility-v7 -p 'test*.py' -v
       - name: Verify automatic Gradle snapshots and CI impact
         run: python3 Scripts/verify-gradle-impact-ci.py
       - name: Preserve Gradle impact CI evidence

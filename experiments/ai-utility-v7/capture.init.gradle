@@ -1,0 +1,19 @@
+initscript {
+    dependencies { classpath files(System.getProperty('evaluation.plugin')) }
+}
+gradle.beforeProject { consumer ->
+    if (consumer.path != ':') {
+        consumer.pluginManager.apply(dev.kartograph.gradle.KartographPlugin)
+        def extension = consumer.extensions.getByName('kartograph')
+        extension.snapshotsEnabled.set(true)
+        extension.includeSourcePaths.set(true)
+        extension.snapshotMaxMiB.set(128)
+        extension.snapshotBuildInputs.from(System.getProperty('evaluation.capture'))
+        consumer.pluginManager.withPlugin('java') {
+            def toolchains = consumer.extensions.getByType(org.gradle.jvm.toolchain.JavaToolchainService)
+            extension.snapshotKotlinToolchain.set(toolchains.launcherFor {
+                languageVersion.set(org.gradle.jvm.toolchain.JavaLanguageVersion.of(17))
+            })
+        }
+    }
+}

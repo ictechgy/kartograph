@@ -1,0 +1,197 @@
+{
+  "status": "passed-before-models",
+  "cases": [
+    {
+      "case": "threshold",
+      "count": 6,
+      "checks": [
+        {
+          "id": "method:example/Gate#allow(I)Z",
+          "uniqueSourceAliasCount": 6
+        },
+        {
+          "id": "method:example/GateTest#eighteenth birthday()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/GateTest#portal birthday message()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/GateTest#preview birthday label()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/Portal#access(I)Ljava/lang/String;",
+          "uniqueSourceAliasCount": 9
+        },
+        {
+          "id": "method:example/Preview#label(I)Ljava/lang/String;",
+          "uniqueSourceAliasCount": 9
+        }
+      ],
+      "oracleSha256": "663cbb0d303cf3b00d74ee9faf0a1054bb77d2f58777f39f8fd1d07cb7624f98",
+      "negativeControlChecks": [
+        {
+          "id": "method:example/GateTest#member code()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/GateTest#nineteenth birthday()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/GateTest#portal younger message()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/GateTest#younger applicant()V",
+          "uniqueSourceAliasCount": 12
+        }
+      ]
+    },
+    {
+      "case": "nulls",
+      "count": 6,
+      "checks": [
+        {
+          "id": "method:example/Audit#tag(Ljava/lang/String;)Ljava/lang/String;",
+          "uniqueSourceAliasCount": 9
+        },
+        {
+          "id": "method:example/Greeting#render(Ljava/lang/String;)Ljava/lang/String;",
+          "uniqueSourceAliasCount": 6
+        },
+        {
+          "id": "method:example/GreetingTest#audit of unnamed visitor()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/GreetingTest#unnamed visitor()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/GreetingTest#welcome of unnamed visitor()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/Welcome#message(Ljava/lang/String;)Ljava/lang/String;",
+          "uniqueSourceAliasCount": 9
+        }
+      ],
+      "oracleSha256": "3bc9d6027fb60f1e79c17bd3e57b7a541d38fd7ba277e4a4b3eca01b7e561e37",
+      "negativeControlChecks": [
+        {
+          "id": "method:example/GreetingTest#audit of named visitor()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/GreetingTest#empty visitor name()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/GreetingTest#named visitor()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/GreetingTest#numbered member()V",
+          "uniqueSourceAliasCount": 12
+        }
+      ]
+    },
+    {
+      "case": "callback",
+      "count": 8,
+      "checks": [
+        {
+          "id": "method:example/Invoice#total(I)Ljava/lang/String;",
+          "uniqueSourceAliasCount": 9
+        },
+        {
+          "id": "method:example/InvoiceTest#invoice total()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/InvoiceTest#receipt text()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/InvoiceTest#zero amount()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/Receipt#text(I)Ljava/lang/String;",
+          "uniqueSourceAliasCount": 9
+        },
+        {
+          "id": "method:example/Relay#dispatch(ILkotlin/jvm/functions/Function2;)Ljava/lang/String;",
+          "uniqueSourceAliasCount": 15
+        },
+        {
+          "id": "method:example/Report#currency(I)Ljava/lang/String;",
+          "uniqueSourceAliasCount": 9
+        },
+        {
+          "id": "method:example/Report#positive(I)Ljava/lang/String;",
+          "uniqueSourceAliasCount": 9
+        }
+      ],
+      "oracleSha256": "e7513ebac87fa694475c961fd1f0d08a6a0f821ae824d25fd9119de4746e7d61",
+      "negativeControlChecks": [
+        {
+          "id": "method:example/InvoiceTest#currency label()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/InvoiceTest#negative amount()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/InvoiceTest#positive amount()V",
+          "uniqueSourceAliasCount": 12
+        }
+      ]
+    },
+    {
+      "case": "dispatch",
+      "count": 4,
+      "checks": [
+        {
+          "id": "method:example/RouterTest#strict direct check()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/RouterTest#strict portal at zero()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/RouterTest#strict zero()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/StrictCheck#check(I)Z",
+          "uniqueSourceAliasCount": 9
+        }
+      ],
+      "oracleSha256": "9c6973d8161a8d0d6542de55dc28d3361d064d3feae69ae686c75724ecd932cd",
+      "negativeControlChecks": [
+        {
+          "id": "method:example/RouterTest#loose portal at zero()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/RouterTest#loose zero()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/RouterTest#strict negative()V",
+          "uniqueSourceAliasCount": 12
+        },
+        {
+          "id": "method:example/RouterTest#strict positive()V",
+          "uniqueSourceAliasCount": 12
+        }
+      ]
+    }
+  ]
+}

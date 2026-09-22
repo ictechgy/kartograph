@@ -1,0 +1,32 @@
+{
+  "status": "all-four-controls-qualified-before-models",
+  "population": "authored Kotlin controls, not a public-project sample",
+  "primary": [
+    {
+      "id": "threshold",
+      "repository": "authored Kotlin caller/behavior controls",
+      "base": "3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8",
+      "module": "threshold"
+    },
+    {
+      "id": "nulls",
+      "repository": "authored Kotlin caller/behavior controls",
+      "base": "3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8",
+      "module": "nulls"
+    },
+    {
+      "id": "callback",
+      "repository": "authored Kotlin caller/behavior controls",
+      "base": "3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8",
+      "module": "callback"
+    },
+    {
+      "id": "dispatch",
+      "repository": "authored Kotlin caller/behavior controls",
+      "base": "3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8",
+      "module": "dispatch"
+    }
+  ],
+  "repeatsPerArm": 2,
+  "plannedTrials": 16
+}

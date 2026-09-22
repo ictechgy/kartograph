@@ -1,0 +1,139 @@
+{
+  "status": "qualified-before-models",
+  "cases": [
+    {
+      "case": "threshold",
+      "changed": [
+        "method:example/Rules#qualifies(I)Z"
+      ],
+      "direct": [
+        "method:example/Gate#allow(I)Z",
+        "method:example/Preview#label(I)Ljava/lang/String;"
+      ],
+      "indirect": [
+        "method:example/Portal#access(I)Ljava/lang/String;"
+      ],
+      "behaviorPositive": [
+        "method:example/GateTest#eighteenth birthday()V",
+        "method:example/GateTest#portal birthday message()V",
+        "method:example/GateTest#preview birthday label()V"
+      ],
+      "behaviorNegative": [
+        "method:example/GateTest#member code()V",
+        "method:example/GateTest#nineteenth birthday()V",
+        "method:example/GateTest#portal younger message()V",
+        "method:example/GateTest#younger applicant()V"
+      ],
+      "evidence": {
+        "declarationsSha256": "2a33376a5d3bb6ee8fda75323a740bc865d4c3d098d38bf84ff4b9f343bfbc0e",
+        "patchSha256": "6ff09868cc07d9f3c1d0f20bb7db0a7fb89cc88be4f061caccc587d756361bd8",
+        "baselineJUnit": {
+          "TEST-example.GateTest.xml": "4c74c0b2412028bc0c4c368617d02f2b42b459e40c74005685798ff288a90ac5"
+        },
+        "changedJUnit": {
+          "TEST-example.GateTest.xml": "ae32680b97d96d8f6b5163800ea4708e1042efc9dd77566050a21fdcac3ec43f"
+        }
+      }
+    },
+    {
+      "case": "nulls",
+      "changed": [
+        "method:example/Catalog#label(Ljava/lang/String;)Ljava/lang/String;"
+      ],
+      "direct": [
+        "method:example/Audit#tag(Ljava/lang/String;)Ljava/lang/String;",
+        "method:example/Greeting#render(Ljava/lang/String;)Ljava/lang/String;"
+      ],
+      "indirect": [
+        "method:example/Welcome#message(Ljava/lang/String;)Ljava/lang/String;"
+      ],
+      "behaviorPositive": [
+        "method:example/GreetingTest#audit of unnamed visitor()V",
+        "method:example/GreetingTest#unnamed visitor()V",
+        "method:example/GreetingTest#welcome of unnamed visitor()V"
+      ],
+      "behaviorNegative": [
+        "method:example/GreetingTest#audit of named visitor()V",
+        "method:example/GreetingTest#empty visitor name()V",
+        "method:example/GreetingTest#named visitor()V",
+        "method:example/GreetingTest#numbered member()V"
+      ],
+      "evidence": {
+        "declarationsSha256": "2940ad22aa82522cdd5956e0e4c10fb9171f819feb6d54f1bc8058ec9f4f8ec9",
+        "patchSha256": "005b41ee185cde03034f73e04a6eb108fc11eb53c4aecb32261b03f09de06b37",
+        "baselineJUnit": {
+          "TEST-example.GreetingTest.xml": "8f2a0256926c9053112444a124d091fabfeb24ea767d62f215396764b98b7762"
+        },
+        "changedJUnit": {
+          "TEST-example.GreetingTest.xml": "ca259e31fb08100a467063deba6ae457e125f9a4a056963cb09c0f5338123c9c"
+        }
+      }
+    },
+    {
+      "case": "callback",
+      "changed": [
+        "method:example/Formatter#format(ILkotlin/jvm/functions/Function2;)Ljava/lang/String;"
+      ],
+      "direct": [
+        "method:example/Invoice#total(I)Ljava/lang/String;",
+        "method:example/Relay#dispatch(ILkotlin/jvm/functions/Function2;)Ljava/lang/String;",
+        "method:example/Report#currency(I)Ljava/lang/String;"
+      ],
+      "indirect": [
+        "method:example/Receipt#text(I)Ljava/lang/String;",
+        "method:example/Report#positive(I)Ljava/lang/String;"
+      ],
+      "behaviorPositive": [
+        "method:example/InvoiceTest#invoice total()V",
+        "method:example/InvoiceTest#receipt text()V",
+        "method:example/InvoiceTest#zero amount()V"
+      ],
+      "behaviorNegative": [
+        "method:example/InvoiceTest#currency label()V",
+        "method:example/InvoiceTest#negative amount()V",
+        "method:example/InvoiceTest#positive amount()V"
+      ],
+      "evidence": {
+        "declarationsSha256": "c0287688fb991438c43608a4de2111f82b9e43e25235900011d49ba22e37f56e",
+        "patchSha256": "f98308da7fdba675f6d1b76d3d62f99cf8d1b32ba00ab02af14793e87419dae3",
+        "baselineJUnit": {
+          "TEST-example.InvoiceTest.xml": "ed109f59c41a5fe1d34986abe7fb1adc1c1df449ec9486b35c757e2927a95438"
+        },
+        "changedJUnit": {
+          "TEST-example.InvoiceTest.xml": "1e48cce19855cc4e125b47b0d8527005d8c42e64c17f8b630e4dfcc8bf75676d"
+        }
+      }
+    },
+    {
+      "case": "dispatch",
+      "changed": [
+        "method:example/StrictPolicy#evaluate(I)Z"
+      ],
+      "direct": [
+        "method:example/StrictCheck#check(I)Z"
+      ],
+      "indirect": [],
+      "behaviorPositive": [
+        "method:example/RouterTest#strict direct check()V",
+        "method:example/RouterTest#strict portal at zero()V",
+        "method:example/RouterTest#strict zero()V"
+      ],
+      "behaviorNegative": [
+        "method:example/RouterTest#loose portal at zero()V",
+        "method:example/RouterTest#loose zero()V",
+        "method:example/RouterTest#strict negative()V",
+        "method:example/RouterTest#strict positive()V"
+      ],
+      "evidence": {
+        "declarationsSha256": "cae9d6bf37ddf808ed0649265a1d7cd549556df23a80f7cb347348dddfaf6c35",
+        "patchSha256": "a44ef0b79fe950f198039b8f3a95b77f6304d330409525a6c3a06a51938c3e6f",
+        "baselineJUnit": {
+          "TEST-example.RouterTest.xml": "0a304a949292f526e58063cca3cd212d98ef7d056cbca4febeacae1523f64ddd"
+        },
+        "changedJUnit": {
+          "TEST-example.RouterTest.xml": "c80efca5851a6ea431c2bc78f51cae6e24a69249e6b93049d754527ee46f39f3"
+        }
+      }
+    }
+  ]
+}
