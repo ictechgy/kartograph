@@ -1,0 +1,426 @@
+{
+  "format": "kartograph-ai-utility-v7-manifest",
+  "model": "claude-opus-5[1m]",
+  "providerCliVersion": "2.1.278 (Claude Code)",
+  "effort": "low",
+  "maxTools": 12,
+  "maxPredictions": 64,
+  "wallSeconds": 900,
+  "maxBudgetUsd": 3,
+  "outputChannel": "structured_output",
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "targets": {
+        "type": "array",
+        "maxItems": 64,
+        "items": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "symbol": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "test",
+                "caller",
+                "override"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "evidence": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file",
+            "symbol",
+            "kind",
+            "reason",
+            "evidence"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "unknowns": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "targets",
+      "unknowns",
+      "summary"
+    ],
+    "additionalProperties": false
+  },
+  "schedule": [
+    {
+      "case": "threshold",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "threshold",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "threshold",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "threshold",
+      "arm": "source",
+      "repeat": 1
+    },
+    {
+      "case": "nulls",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "nulls",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "nulls",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "nulls",
+      "arm": "source",
+      "repeat": 1
+    },
+    {
+      "case": "callback",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "callback",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "callback",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "callback",
+      "arm": "source",
+      "repeat": 1
+    },
+    {
+      "case": "dispatch",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "dispatch",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "dispatch",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "dispatch",
+      "arm": "source",
+      "repeat": 1
+    }
+  ],
+  "scoring": "separate typed static caller recall and observed assertion-change recall/negative controls; no combined utility claim",
+  "protocolCommit": "0a0749c8fc90ec5dcfb91b7e7c744c04c2952b0f",
+  "manifestSha256": "4b600a793467c451a86755a385400ad6ddbddb6aa6fcc4ad1022ab1a776cbf51",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python": "3.14.7"
+  },
+  "tooling": [
+    {
+      "path": "experiments/ai-utility-v7/run.py",
+      "sha256": "277a09c5f0dce02d56e625a4c4db63396dcef84e40bf3bbb33c3bf5342a64367"
+    },
+    {
+      "path": "experiments/ai-utility-v6/structured.py",
+      "sha256": "130f39703fed35dab8042de03d09702020a430272c5b89d05e8d2fc75bf0e336"
+    },
+    {
+      "path": "experiments/ai-utility-v6/output-schema.json",
+      "sha256": "17eb4ae0dba9fdc0750320e1466e39a558876754e526b24b8fd9e477d5710224"
+    },
+    {
+      "path": "experiments/ai-utility-v7/grade.py",
+      "sha256": "a5207eed951586963ec9958062c8941ec2ab4d661ad5907e50a4bb5c38ee2a09"
+    },
+    {
+      "path": "experiments/ai-utility-v7/assemble.py",
+      "sha256": "2fbd1db2198e2bb5e4616db5a257eb9e8441d6c8bac0eefb558c1ee3dbb7346e"
+    },
+    {
+      "path": "experiments/ai-utility-v7/report.py",
+      "sha256": "26b9f621425e31b60afe44eced2353a49d4b68e1473206838e8530d78a6fab06"
+    },
+    {
+      "path": "experiments/ai-utility-v7/PROTOCOL.md",
+      "sha256": "f7e28aa4c7affda54e16c13e81a529bdf3f5cf7839c158e1ff99dec1e999be1a"
+    },
+    {
+      "path": "experiments/ai-utility-v7/changes.json",
+      "sha256": "ea0267b2c41c5e8d6c23e4968d9b2c1363c88c925c1a8e7842cdd2f592a24f1e"
+    },
+    {
+      "path": "experiments/ai-utility-v7/prepare.py",
+      "sha256": "d2465a9a27a34b7b12b2fd87febb0ef8af2237521ce0ccc222913d647c706a8a"
+    },
+    {
+      "path": "experiments/ai-utility-v7/capture.init.gradle",
+      "sha256": "00de28e9ab75caea937df80fb4f9b82609a5ed9325f09dcf0b209e9967c20313"
+    },
+    {
+      "path": "experiments/ai-utility-v6/assemble.py",
+      "sha256": "92298152cb04ba2578267f8cef6d16d14eaa6926f534df9e83fb2e5d9d056e6f"
+    },
+    {
+      "path": "experiments/ai-utility-v6/report.py",
+      "sha256": "b0995a9fffd46d599344b20511664fcd21b173368016c23784184c744af9e512"
+    },
+    {
+      "path": "experiments/ai-utility-v7/cohort.json",
+      "sha256": "a45b5b150d093509081fe060bbf3823c2504289e6d2e31916c31a8011c78f38e"
+    },
+    {
+      "path": "experiments/ai-utility-v5/grade.py",
+      "sha256": "656d748c0a7332afc86eee2fa820fcf1994a7cf206c96a2dc655f9b57262f0bb"
+    },
+    {
+      "path": "experiments/ai-utility-v5/collect.py",
+      "sha256": "3dfbd675430be50f584665699ee14e71a0388111f14f87fdeeb3f9d82bef1c12"
+    },
+    {
+      "path": "experiments/ai-utility-v5/SourceDeclarations.java",
+      "sha256": "25b8d4703d39d9d1394956bbc28c92a68199734d9ca70cdfef0bb14039d1abdc"
+    },
+    {
+      "path": "experiments/preflight-evaluation/run.py",
+      "sha256": "2e0aa7e0da030e8385ffc24a34148df10a6e83b08880ace47c3e0a0aefd325e8"
+    },
+    {
+      "path": "experiments/preflight-evaluation/session_mcp.py",
+      "sha256": "de69eda02427aa501f0885e47e33096d384290bd5fa98f58c9f3ec8066d6d820"
+    },
+    {
+      "path": "distribution/2.1.278",
+      "sha256": "bd245662fb8a0e321b3bf133e930371d6563c387527885f30b2613aef3ba14d6"
+    },
+    {
+      "path": "distribution/kartograph",
+      "sha256": "5bc771d6f3c5702fbba236c8df50242d304fea13171b1d839ef1cb61ce486dc0"
+    },
+    {
+      "path": "distribution/kartograph-gradle-plugin-0.15.0.jar",
+      "sha256": "3823aab8d2c1dc992aebf03f404a513f4c5e23bde7576b56882b696b337f246a"
+    },
+    {
+      "path": "distribution/analysis-0.15.0.jar",
+      "sha256": "00e4d661686d062c61695cfdee5b42e695f2cf2ba7ca6efed3036352d10dfb27"
+    },
+    {
+      "path": "distribution/annotations-13.0.jar",
+      "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+    },
+    {
+      "path": "distribution/asm-9.10.1.jar",
+      "sha256": "ed825d10ab1399c8c0cb669e688cf0c8c82629b4c8399b58352b68e92ca10fcb"
+    },
+    {
+      "path": "distribution/asm-analysis-9.10.1.jar",
+      "sha256": "dede75a21306b65974ecd8f87114ff6970f09fb794157a4ca09ab25c888c2bfc"
+    },
+    {
+      "path": "distribution/asm-tree-9.10.1.jar",
+      "sha256": "3dfb0d5b6a106cd40b5b250e39935fbf2f927f4477546a5369a3ac609cf0506b"
+    },
+    {
+      "path": "distribution/cli-0.15.0.jar",
+      "sha256": "43b283188a256db6fc938d3820a4d04e16a285e6b02f810a2b1e09f166663fc1"
+    },
+    {
+      "path": "distribution/core-0.15.0.jar",
+      "sha256": "cc9499e3e7b56fb209a9d6c8d3ea3e7d9434ec30c0a1d6791c371935e6c366b9"
+    },
+    {
+      "path": "distribution/export-0.15.0.jar",
+      "sha256": "00eb3deeaf87aa221e26c868dcb193e36e2820f0495e3bb21155a39e1e628b1b"
+    },
+    {
+      "path": "distribution/index-0.15.0.jar",
+      "sha256": "57ca5e587aea155609f1b7fa0bc2d0f0e41387e7bf474242c91e1f03ff729498"
+    },
+    {
+      "path": "distribution/kotlin-metadata-jvm-2.4.20.jar",
+      "sha256": "98d9b1847908adfde7a8b2d4cc35708d7ddccae0698cec56bcb506bcf9392595"
+    },
+    {
+      "path": "distribution/kotlin-stdlib-2.4.20.jar",
+      "sha256": "2226de463d309d4a5500a481320b3dea515a6981dcae1def531fbc158884e25f"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/build.gradle.kts",
+      "sha256": "2e7cb2b67a2389992719d3a4683f6853b69219a0c590c39b363138ea7a607ad2"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/callback/src/main/kotlin/example/Formatter.kt",
+      "sha256": "9301b424d77d8328b68993b75ec5a30e9291681eb903fc18c65b08087aee2549"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/callback/src/main/kotlin/example/Invoice.kt",
+      "sha256": "b07fa1f67343825440a1c709a1f9fdc275d293de09d23648bf5486c88c01f0e4"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/callback/src/test/kotlin/example/InvoiceTest.kt",
+      "sha256": "3d8ad9514b4edbcdd59f7cb3738c252e03d6cf895a055a2becd4da2169caa58d"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/dispatch/src/main/kotlin/example/Policy.kt",
+      "sha256": "46f18bf2ce9bfff3eb28a056010111acb1da5d6076d187fc9b77aa94f52f7d59"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/dispatch/src/main/kotlin/example/Router.kt",
+      "sha256": "6317f40642ced678bc6b8462c2ea6c5e9ac69662805b7f8ef32a3524cae75472"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/dispatch/src/test/kotlin/example/RouterTest.kt",
+      "sha256": "a5571772ce58afa93f2722fe053c94f5684c673d11928910f4e6515fee96f177"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/nulls/src/main/kotlin/example/Catalog.kt",
+      "sha256": "b049535d2ca66e137b36e35ff83dd01b77904a3a34cfa75f1fcc03a566883314"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/nulls/src/main/kotlin/example/Greeting.kt",
+      "sha256": "0afa6434c66f00c98df0d2e4fcec297ecce7a3aaecd0400773d12682af5f4eee"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/nulls/src/test/kotlin/example/GreetingTest.kt",
+      "sha256": "b3e15877ab4dea4724257e3076aced7ccefd8d5471dddbfad0514eaaa1dbd93a"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/settings.gradle.kts",
+      "sha256": "0d0cd72c208ad12cf5a0135726bac0230d4f73250e581d1f76b1ace52bebabf3"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/threshold/src/main/kotlin/example/Gate.kt",
+      "sha256": "d7d0a0a6bdcfb582e9b5655fb94ca879b557e91e31c98e1f43090bedaba3fb1a"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/threshold/src/main/kotlin/example/Rules.kt",
+      "sha256": "18a7995f7f1085ce312de57c852a59d529fc18e16501fe33edc55ed5e9dda093"
+    },
+    {
+      "path": "experiments/ai-utility-v7/fixtures/threshold/src/test/kotlin/example/GateTest.kt",
+      "sha256": "b3187ac56d3a0836f4fd187da3867b9847ddeba521f14bdd9bf5256e14226bbb"
+    }
+  ],
+  "cases": [
+    {
+      "id": "threshold",
+      "repository": "authored Kotlin caller/behavior controls",
+      "base": "3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8",
+      "module": "threshold",
+      "scope": ":threshold:jvm",
+      "snapshotSha256": "53d3bd089a275c96d3d58d6fea0fda888f0173a9648cb15f84863927592d6dcd",
+      "bindingsSha256": "bc59af286b62898f02be9c4c2dc1ffc0c32f55c13463ce07ed9a62a0c1436748",
+      "inventorySha256": "663cbb0d303cf3b00d74ee9faf0a1054bb77d2f58777f39f8fd1d07cb7624f98",
+      "patchSha256": "6ff09868cc07d9f3c1d0f20bb7db0a7fb89cc88be4f061caccc587d756361bd8",
+      "promptSha256": "a41e392c1827bec6d8619c96127f032b4d63025c2037c922317f0b9326d44559",
+      "oracleSize": 6,
+      "primaryOracleSize": 6,
+      "source": {
+        "src/main/kotlin/example/Gate.kt": "d7d0a0a6bdcfb582e9b5655fb94ca879b557e91e31c98e1f43090bedaba3fb1a",
+        "src/main/kotlin/example/Rules.kt": "18a7995f7f1085ce312de57c852a59d529fc18e16501fe33edc55ed5e9dda093",
+        "src/test/kotlin/example/GateTest.kt": "b3187ac56d3a0836f4fd187da3867b9847ddeba521f14bdd9bf5256e14226bbb"
+      },
+      "prompt": "Review the proposed production change in the threshold module at base 3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8.\nThis is a controlled Kotlin/JVM module. Sources and compiled graph describe the UNCHANGED baseline; the patch below is not applied. Answer paths are module-relative.\nIdentify (1) production caller methods worth reviewing because of direct or indirect calls to the changed method, and (2) EXISTING test methods whose CURRENT ASSERTIONS you expect to FAIL if exactly this patch is applied. Use kind=caller (or override) for production methods and kind=test only for predicted assertion failures. Do not list every test in the same suite. A call path alone does not establish that an assertion changes: inspect inputs, overloads, branches, callbacks and receiver implementations. Put uncertain test leads in unknowns. No test execution or patch-result evidence is available to you.\nUse exact JVM USRs or source signatures with owner and parameter types, preserve backtick test names and overloads. Examples: p.Writer.write(String), TestClass.`test name`(), method:p/Writer#write(Ljava/lang/String;)V. Do not invent hybrid selectors. List each declaration once, at most 64 targets. Give source lines or graph paths and reasoning for each target.\nYou have 12 shared information-tool calls. Source/graph tools are optional as useful; no arbitrary file or execution tools. Do not edit, run tests/builds, claim complete runtime safety, or treat static candidates as confirmed dynamic receivers.\nUse StructuredOutput with this shape:\n{\"targets\":[{\"file\":\"module-relative source path\",\"symbol\":\"exact USR or source signature\",\"kind\":\"test|caller|override\",\"reason\":\"why this production caller needs review or this assertion changes\",\"evidence\":\"observed source or graph path\"}],\"unknowns\":[\"uncertainty\"],\"summary\":\"short conclusion\"}\n<proposed-production-change>\ndiff --git a/threshold/src/main/kotlin/example/Rules.kt b/threshold/src/main/kotlin/example/Rules.kt\nindex e4aec80..de106c8 100644\n--- a/threshold/src/main/kotlin/example/Rules.kt\n+++ b/threshold/src/main/kotlin/example/Rules.kt\n@@ -1,6 +1,6 @@\n package example\n \n class Rules {\n-    fun qualifies(age: Int): Boolean = age >= 18\n+    fun qualifies(age: Int): Boolean = age > 18\n     fun qualifies(code: String): Boolean = code == \"adult\"\n }\n\n</proposed-production-change>\n"
+    },
+    {
+      "id": "nulls",
+      "repository": "authored Kotlin caller/behavior controls",
+      "base": "3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8",
+      "module": "nulls",
+      "scope": ":nulls:jvm",
+      "snapshotSha256": "5bf81eea130915c892553a3a012c807df119fb48858734f833a0357a21495f64",
+      "bindingsSha256": "bc59af286b62898f02be9c4c2dc1ffc0c32f55c13463ce07ed9a62a0c1436748",
+      "inventorySha256": "3bc9d6027fb60f1e79c17bd3e57b7a541d38fd7ba277e4a4b3eca01b7e561e37",
+      "patchSha256": "005b41ee185cde03034f73e04a6eb108fc11eb53c4aecb32261b03f09de06b37",
+      "promptSha256": "6e6d2ef7f9ce6a2f257f091707469af4f0fd3dc2f8b1b22a785134d6ec688927",
+      "oracleSize": 6,
+      "primaryOracleSize": 6,
+      "source": {
+        "src/main/kotlin/example/Catalog.kt": "b049535d2ca66e137b36e35ff83dd01b77904a3a34cfa75f1fcc03a566883314",
+        "src/main/kotlin/example/Greeting.kt": "0afa6434c66f00c98df0d2e4fcec297ecce7a3aaecd0400773d12682af5f4eee",
+        "src/test/kotlin/example/GreetingTest.kt": "b3e15877ab4dea4724257e3076aced7ccefd8d5471dddbfad0514eaaa1dbd93a"
+      },
+      "prompt": "Review the proposed production change in the nulls module at base 3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8.\nThis is a controlled Kotlin/JVM module. Sources and compiled graph describe the UNCHANGED baseline; the patch below is not applied. Answer paths are module-relative.\nIdentify (1) production caller methods worth reviewing because of direct or indirect calls to the changed method, and (2) EXISTING test methods whose CURRENT ASSERTIONS you expect to FAIL if exactly this patch is applied. Use kind=caller (or override) for production methods and kind=test only for predicted assertion failures. Do not list every test in the same suite. A call path alone does not establish that an assertion changes: inspect inputs, overloads, branches, callbacks and receiver implementations. Put uncertain test leads in unknowns. No test execution or patch-result evidence is available to you.\nUse exact JVM USRs or source signatures with owner and parameter types, preserve backtick test names and overloads. Examples: p.Writer.write(String), TestClass.`test name`(), method:p/Writer#write(Ljava/lang/String;)V. Do not invent hybrid selectors. List each declaration once, at most 64 targets. Give source lines or graph paths and reasoning for each target.\nYou have 12 shared information-tool calls. Source/graph tools are optional as useful; no arbitrary file or execution tools. Do not edit, run tests/builds, claim complete runtime safety, or treat static candidates as confirmed dynamic receivers.\nUse StructuredOutput with this shape:\n{\"targets\":[{\"file\":\"module-relative source path\",\"symbol\":\"exact USR or source signature\",\"kind\":\"test|caller|override\",\"reason\":\"why this production caller needs review or this assertion changes\",\"evidence\":\"observed source or graph path\"}],\"unknowns\":[\"uncertainty\"],\"summary\":\"short conclusion\"}\n<proposed-production-change>\ndiff --git a/nulls/src/main/kotlin/example/Catalog.kt b/nulls/src/main/kotlin/example/Catalog.kt\nindex 178a08d..c43c224 100644\n--- a/nulls/src/main/kotlin/example/Catalog.kt\n+++ b/nulls/src/main/kotlin/example/Catalog.kt\n@@ -1,6 +1,6 @@\n package example\n \n class Catalog {\n-    fun label(name: String?): String = name ?: \"guest\"\n+    fun label(name: String?): String = name ?: \"anonymous\"\n     fun label(number: Int): String = \"member-$number\"\n }\n\n</proposed-production-change>\n"
+    },
+    {
+      "id": "callback",
+      "repository": "authored Kotlin caller/behavior controls",
+      "base": "3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8",
+      "module": "callback",
+      "scope": ":callback:jvm",
+      "snapshotSha256": "382167900df7a2be885c0798778129a99ba6cb4abc40620d06ff380f6e81a4f4",
+      "bindingsSha256": "bc59af286b62898f02be9c4c2dc1ffc0c32f55c13463ce07ed9a62a0c1436748",
+      "inventorySha256": "e7513ebac87fa694475c961fd1f0d08a6a0f821ae824d25fd9119de4746e7d61",
+      "patchSha256": "f98308da7fdba675f6d1b76d3d62f99cf8d1b32ba00ab02af14793e87419dae3",
+      "promptSha256": "5821110ad0773b60fd7ab4deb5b3746a3c01ccea847b502aebf1b1376b52713c",
+      "oracleSize": 8,
+      "primaryOracleSize": 8,
+      "source": {
+        "src/main/kotlin/example/Formatter.kt": "9301b424d77d8328b68993b75ec5a30e9291681eb903fc18c65b08087aee2549",
+        "src/main/kotlin/example/Invoice.kt": "b07fa1f67343825440a1c709a1f9fdc275d293de09d23648bf5486c88c01f0e4",
+        "src/test/kotlin/example/InvoiceTest.kt": "3d8ad9514b4edbcdd59f7cb3738c252e03d6cf895a055a2becd4da2169caa58d"
+      },
+      "prompt": "Review the proposed production change in the callback module at base 3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8.\nThis is a controlled Kotlin/JVM module. Sources and compiled graph describe the UNCHANGED baseline; the patch below is not applied. Answer paths are module-relative.\nIdentify (1) production caller methods worth reviewing because of direct or indirect calls to the changed method, and (2) EXISTING test methods whose CURRENT ASSERTIONS you expect to FAIL if exactly this patch is applied. Use kind=caller (or override) for production methods and kind=test only for predicted assertion failures. Do not list every test in the same suite. A call path alone does not establish that an assertion changes: inspect inputs, overloads, branches, callbacks and receiver implementations. Put uncertain test leads in unknowns. No test execution or patch-result evidence is available to you.\nUse exact JVM USRs or source signatures with owner and parameter types, preserve backtick test names and overloads. Examples: p.Writer.write(String), TestClass.`test name`(), method:p/Writer#write(Ljava/lang/String;)V. Do not invent hybrid selectors. List each declaration once, at most 64 targets. Give source lines or graph paths and reasoning for each target.\nYou have 12 shared information-tool calls. Source/graph tools are optional as useful; no arbitrary file or execution tools. Do not edit, run tests/builds, claim complete runtime safety, or treat static candidates as confirmed dynamic receivers.\nUse StructuredOutput with this shape:\n{\"targets\":[{\"file\":\"module-relative source path\",\"symbol\":\"exact USR or source signature\",\"kind\":\"test|caller|override\",\"reason\":\"why this production caller needs review or this assertion changes\",\"evidence\":\"observed source or graph path\"}],\"unknowns\":[\"uncertainty\"],\"summary\":\"short conclusion\"}\n<proposed-production-change>\ndiff --git a/callback/src/main/kotlin/example/Formatter.kt b/callback/src/main/kotlin/example/Formatter.kt\nindex df963ca..590e911 100644\n--- a/callback/src/main/kotlin/example/Formatter.kt\n+++ b/callback/src/main/kotlin/example/Formatter.kt\n@@ -1,5 +1,5 @@\n package example\n \n class Formatter {\n-    fun format(value: Int, render: (amount: Int, currency: String) -> String): String = render(value, \"USD\")\n+    fun format(value: Int, render: (amount: Int, currency: String) -> String): String = render(value + 1, \"USD\")\n }\n\n</proposed-production-change>\n"
+    },
+    {
+      "id": "dispatch",
+      "repository": "authored Kotlin caller/behavior controls",
+      "base": "3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8",
+      "module": "dispatch",
+      "scope": ":dispatch:jvm",
+      "snapshotSha256": "5fda4a183d1b94ca210be51a0dea63a6980a9c2aa0b68fbbd2871d179adce5b6",
+      "bindingsSha256": "bc59af286b62898f02be9c4c2dc1ffc0c32f55c13463ce07ed9a62a0c1436748",
+      "inventorySha256": "9c6973d8161a8d0d6542de55dc28d3361d064d3feae69ae686c75724ecd932cd",
+      "patchSha256": "a44ef0b79fe950f198039b8f3a95b77f6304d330409525a6c3a06a51938c3e6f",
+      "promptSha256": "45be51a6aa0a6d2c57c04082f4781265c3c232cf56794d3d1c362321f702a539",
+      "oracleSize": 4,
+      "primaryOracleSize": 4,
+      "source": {
+        "src/main/kotlin/example/Policy.kt": "46f18bf2ce9bfff3eb28a056010111acb1da5d6076d187fc9b77aa94f52f7d59",
+        "src/main/kotlin/example/Router.kt": "6317f40642ced678bc6b8462c2ea6c5e9ac69662805b7f8ef32a3524cae75472",
+        "src/test/kotlin/example/RouterTest.kt": "a5571772ce58afa93f2722fe053c94f5684c673d11928910f4e6515fee96f177"
+      },
+      "prompt": "Review the proposed production change in the dispatch module at base 3c4ef0e52c23bc85b0448cfc8e06dfeb1ff4b0c8.\nThis is a controlled Kotlin/JVM module. Sources and compiled graph describe the UNCHANGED baseline; the patch below is not applied. Answer paths are module-relative.\nIdentify (1) production caller methods worth reviewing because of direct or indirect calls to the changed method, and (2) EXISTING test methods whose CURRENT ASSERTIONS you expect to FAIL if exactly this patch is applied. Use kind=caller (or override) for production methods and kind=test only for predicted assertion failures. Do not list every test in the same suite. A call path alone does not establish that an assertion changes: inspect inputs, overloads, branches, callbacks and receiver implementations. Put uncertain test leads in unknowns. No test execution or patch-result evidence is available to you.\nUse exact JVM USRs or source signatures with owner and parameter types, preserve backtick test names and overloads. Examples: p.Writer.write(String), TestClass.`test name`(), method:p/Writer#write(Ljava/lang/String;)V. Do not invent hybrid selectors. List each declaration once, at most 64 targets. Give source lines or graph paths and reasoning for each target.\nYou have 12 shared information-tool calls. Source/graph tools are optional as useful; no arbitrary file or execution tools. Do not edit, run tests/builds, claim complete runtime safety, or treat static candidates as confirmed dynamic receivers.\nUse StructuredOutput with this shape:\n{\"targets\":[{\"file\":\"module-relative source path\",\"symbol\":\"exact USR or source signature\",\"kind\":\"test|caller|override\",\"reason\":\"why this production caller needs review or this assertion changes\",\"evidence\":\"observed source or graph path\"}],\"unknowns\":[\"uncertainty\"],\"summary\":\"short conclusion\"}\n<proposed-production-change>\ndiff --git a/dispatch/src/main/kotlin/example/Policy.kt b/dispatch/src/main/kotlin/example/Policy.kt\nindex 92996b2..8a8fa5f 100644\n--- a/dispatch/src/main/kotlin/example/Policy.kt\n+++ b/dispatch/src/main/kotlin/example/Policy.kt\n@@ -3,7 +3,7 @@ package example\n interface Policy { fun evaluate(value: Int): Boolean }\n \n class StrictPolicy : Policy {\n-    override fun evaluate(value: Int): Boolean = value >= 0\n+    override fun evaluate(value: Int): Boolean = value > 0\n }\n \n class LoosePolicy : Policy {\n\n</proposed-production-change>\n"
+    }
+  ]
+}
