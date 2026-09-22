@@ -6,6 +6,27 @@
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-23
+
+### Added
+
+- MCP `discover_symbols`로 심볼 또는 파일의 실제 USR 후보를 페이지 조회한다. 응답 크기에 따라
+  페이지를 줄여도 다음 offset과 전체 후보 수를 유지하며, current/base 존재 시점을 표시한다.
+
+### Fixed
+
+- Kotlin `package.function` 표기가 실패하면 FILE_FACADE metadata에 근거한 후보를 제공한다.
+  모듈 snapshot에 저장소 기준 파일 경로를 보낸 경우에는 정확한 경로 우선·경로 구성 요소 suffix로
+  실제 선언 후보를 제안한다. 오버로드와 여러 파일 중 하나를 자동 선택하지 않는다.
+- 파일 전체 impact가 16 KiB를 넘으면 discovery 후 선택한 USR만 재조회하도록 안내한다.
+  원래 query/impact 문서의 `notFound`·`ambiguous`·한계와 분석 결과는 유지한다.
+
+### Verified
+
+- v8 공개 detekt/ktlint snapshot의 실패 선택자 3개를 후보 조회와 정확한 USR 재조회로 복구했다.
+  이는 저장된 그래프의 선택자 검증이며 AI 효용 개선이나 현재 빌드 신선도 증명이 아니다.
+  기존 실험 원문·점수는 변경하지 않았다.
+
 ## [0.15.0] - 2026-09-22
 
 ### Added
@@ -468,7 +489,12 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/ictechgy/kartograph/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/ictechgy/kartograph/compare/v0.14.0...v0.15.0
+[0.14.0]: https://github.com/ictechgy/kartograph/compare/v0.13.0...v0.14.0
+[0.13.0]: https://github.com/ictechgy/kartograph/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/ictechgy/kartograph/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/ictechgy/kartograph/compare/v0.10.2...v0.11.0
 [0.10.2]: https://github.com/ictechgy/kartograph/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/ictechgy/kartograph/compare/v0.10.0...v0.10.1

@@ -37,7 +37,7 @@ Android에는 한 가지 유리한 점이 있다. "안 쓰는 것처럼 보이�
 - Gradle plugin은 AGP public Variant API 위에서 Android variant마다 `kartographDead<Variant>`와 `kartographGraph<Variant>` task를 등록한다.
 - Gradle plugin의 `kartographSnapshot`과 `kartographSnapshot<Variant>` task는 JVM main/test와 Android main/unit-test 입력을 compiler witness와 함께 자동 캡처한다. Android application variant에서는 생성된 `R.jar`도 `processResources` producer witness로 함께 캡처한다. 반복 영향 질의는 [자동 캡처와 toolchain 설정](docs/IMPACT.md#jvm-빌드에서-자동-캡처)과 [build provenance 계약](docs/BUILD-PROVENANCE.md)을 참고한다.
 - 선택적 [증분 파싱](docs/INDEX-CACHE.md)은 바뀌지 않은 class 사실과 dependency JAR header를 재사용한다. 현재 입력 검사와 전체 분석은 캡처할 때마다 다시 수행한다.
-- [MCP stdio 서버](docs/MCP.md)는 고정된 로컬 snapshot 위에서 `query_symbol`·`impact`·`freshness`를 제공하며, CLI와 같은 보고서를 쓴다.
+- [MCP stdio 서버](docs/MCP.md)는 고정된 로컬 snapshot 위에서 `query_symbol`·`impact`·`freshness`를 제공하며, CLI와 같은 보고서를 쓴다. `discover_symbols`로 정확한 선택자를 복구한다.
 - keep 규칙 파싱은 지원하지 않는 문법을 조용히 버리지 않고 파일·줄을 밝히며 실패한다(fail-closed). 근거와 오류 메시지에는 절대경로를 출력하지 않는다.
 
 class 로딩, reflection 생성자, 알려진 method/field 접근은 메서드 안에서만 값을 추적해 연결하고, 외부 dispatch는 보수적인 상속 후보로 연결한다. class root와 CLI `--service-resources`에 있는 `META-INF/services` 등록은 provider를 보존한다. Gradle plugin은 선택한 variant의 Java resource 소스 디렉터리를 넘긴다. 외부 호출 JSON의 API 모델 ID와 해석 결과는 별개 필드다. 선택적 [compiler collector](docs/COMPILER-EVIDENCE.md)는 javac/Kotlin 2.4.10 상수 참조와 javac Dagger 2.59 선택 binding을 snapshot에 더한다. collector는 따로 빌드해서 명시적으로 연결해야 하며, 지원하는 패턴과 남은 한계는 문서에 있다. 주 그래프와 보존 정책은 그대로 적용된다. callgraph 정밀도 보강은 아직 실험이다.
@@ -56,7 +56,7 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.15.0"
+    id("io.github.ictechgy.kartograph") version "0.16.0"
 }
 ```
 

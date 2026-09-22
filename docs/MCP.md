@@ -135,7 +135,7 @@ Kotlin 최상위 함수의 `package.function` 표기는 그래프의 `FILE_FACAD
 저장된 그래프에 없는 source 이름(`@JvmName` 등으로 JVM 이름과 다른 경우)은 복원하지 않는다.
 모듈 기준 snapshot에 저장소 기준 파일 경로를 보낸 경우에도 `suggestions`에서 실제 위치와 USR을 확인한다.
 
-후보가 잘렸거나 파일 전체 impact가 너무 크면 `discover_symbols`에 `symbol` 또는 `file` 중
+0.16.0부터 후보가 잘렸거나 파일 전체 impact가 너무 크면 `discover_symbols`에 `symbol` 또는 `file` 중
 정확히 하나를 보낸다. 예를 들어 `{"file":"module/src/main/kotlin/p/Value.kt","limit":10}`으로
 선언을 확인하고, 반환된 `nextOffset`을 다음 요청의 `offset`으로 전달한다. `total`, `returned`,
 `truncated`, `hasNext`를 함께 읽는다. 마지막 offset 페이지도 전체 후보보다 작으면 `truncated`다.
