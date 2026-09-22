@@ -127,19 +127,36 @@ Snapshot 파일의 기본 읽기 한도는 각각 64 MiB다. 큰 그래프에는
 `C.m` 또는 `p.C.m(int)` 같은 표기가 `notFound`가 되면 wrapper의 `suggestions`에서
 실제 후보 USR을 확인해 다시 질의한다. 괄호 안 타입을 해석해 overload를 선택하는 기능은
 아니다. 원래 `notFound`·`ambiguous`는 유지하며 후보 수·반환 수·잘림을 알린다.
-후보의 `presentIn`은 current/base 중 존재하는 시점을 표시한다. 두 시점 모두에 있으면 위치는
-current 기준이며, base에만 있는 후보는 current 전용 `query_symbol`로 찾을 수 없다.
+후보의 `presentIn`은 current/base 중 존재하는 시점을 표시한다. 위치는 선택자에 맞는 current 우선,
+다음 base 순서이며, base에만 있는 후보는 current 전용 `query_symbol`로 찾을 수 없다.
 이 경우 base/current를 함께 조사하는 `impact`에서 해당 USR을 사용한다.
+Kotlin 최상위 함수의 `package.function` 표기는 그래프의 `FILE_FACADE` metadata 근거로
+후보를 찾는다. `Kt` 접미사만으로 파일 클래스를 추측하지 않으며 원래 query/impact 판정은 유지한다.
+저장된 그래프에 없는 source 이름(`@JvmName` 등으로 JVM 이름과 다른 경우)은 복원하지 않는다.
+모듈 기준 snapshot에 저장소 기준 파일 경로를 보낸 경우에도 `suggestions`에서 실제 위치와 USR을 확인한다.
+
+후보가 잘렸거나 파일 전체 impact가 너무 크면 `discover_symbols`에 `symbol` 또는 `file` 중
+정확히 하나를 보낸다. 예를 들어 `{"file":"module/src/main/kotlin/p/Value.kt","limit":10}`으로
+선언을 확인하고, 반환된 `nextOffset`을 다음 요청의 `offset`으로 전달한다. `total`, `returned`,
+`truncated`, `hasNext`를 함께 읽는다. 마지막 offset 페이지도 전체 후보보다 작으면 `truncated`다.
+파일은 정확한 그래프 경로를 우선하고 없으면 경로 구성 요소 단위 suffix가 맞는 모든 파일을 제안한다.
+파일명만 같아도 여러 후보가 생길 수 있다.
+파일을 읽거나 경로를 자동 교정하지 않는다. 원래 입력에 맞는 선언을 소스와 대조한 뒤
+선택한 USR만 `impact.symbols` 또는 `query_symbol.symbol`로 재시도한다.
+이 discovery 문서는 선언 목록이며 영향 분석 결과나 현재 빌드 신선도 증명이 아니다.
+
 복구 후보가 크면 서버의 `suggestionLimit`을 10 → 3 → 0으로 줄인다. 마지막 단계도 요청별
 전체 후보 수·반환 수 0·잘림을 남기며, `response.effective`에 실제 한도를 알린다.
 같은 요청의 후보 탐색은 한 번만 수행한다. 원래 질의 문서 자체가 너무 크면 명시적으로 실패한다.
 
 도구 text 내용은 **16 KiB**로 제한한다. 큰 결과에는 최대 세 번의 결정적인 시도로 페이지·
 경로·요약 출력 예산을 줄인다. `response.requested`와 `response.effective`, `adapted`, `attempts`에
-이를 명시하며, `document`는 실제 적용한 한도의 원래 CLI 보고서다. 선택·depth·방문 한도는
+이를 명시하며, query/impact의 `document`는 실제 적용한 한도의 원래 CLI 보고서다. 선택·depth·방문 한도는
 유지하고 원래 navigation·truncation·경로 생략 정보를 보존한다. 적용된 페이지를 기준으로
 다음 offset을 조사한다. 최소 페이지에도 필수 내용을 담을 수 없으면 좁은 심볼을 요청하도록
-오류를 반환한다. JSON이나 근거를 조용히 잘라서 보내지 않는다.
+`discover_symbols`로 선택 범위를 좁히도록 오류를 반환한다. Discovery 자체도 페이지를
+최소 1개까지 줄이며 적용된 한도를 기록한다. 한 후보조차 한도에 들어오지 않으면 명시적으로
+실패한다. JSON이나 근거를 조용히 잘라서 보내지 않는다.
 
 프로토콜은 **MCP 2025-11-25 stdio**다. `initialize`로 연결하며 도구 capability만
 제공한다. 현재의 2026-07-28 프로토콜이나 HTTP 서버를 구현했다고 주장하지 않는다.

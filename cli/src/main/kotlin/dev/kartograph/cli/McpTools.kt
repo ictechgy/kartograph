@@ -26,6 +26,28 @@ internal class McpTools(
         fun number(key: String, default: Int) = (arguments[key] as? Number)?.toInt() ?: default
         fun strings(key: String) = (arguments[key] as? List<*>)?.map { it as String }.orEmpty()
         return when (name) {
+            "discover_symbols" -> {
+                require(("symbol" in arguments) != ("file" in arguments)) { "Provide exactly one symbol or file selector" }
+                val file = arguments["file"] as? String
+                require(file == null || ImpactCommand.portable(file)) { "File must be a portable project-relative graph selector" }
+                val requested = (file ?: arguments.getValue("symbol")) as String
+                val requestedLimit = number("limit", SUGGESTION_LIMIT)
+                val offset = number("offset", 0)
+                val graphs = listOfNotNull(current.graph, base?.graph)
+                val page = if (file != null) SymbolDiscovery.inFile(graphs, requested, requestedLimit, offset)
+                    else SymbolDiscovery.suggest(graphs, requested, requestedLimit, offset)
+                listOf(requestedLimit, minOf(requestedLimit, 3), 1).forEachIndexed { index, limit ->
+                    val returned = minOf(page.returned, limit)
+                    val hasNext = offset + returned < page.total
+                    val document = suggestionJson(page, limit) + mapOf(
+                        "format" to "kartograph-symbol-discovery", "version" to 1,
+                        "selector" to if (file != null) "file" else "symbol", "offset" to offset,
+                        "hasNext" to hasNext, "nextOffset" to if (hasNext) offset + returned else null)
+                    bounded(document, emptyList(), 0, mapOf("limit" to requestedLimit, "offset" to offset),
+                        mapOf("limit" to limit, "offset" to offset), index + 1)?.let { return it }
+                }
+                tooLarge(name)
+            }
             "query_symbol" -> {
                 val symbol = arguments.getValue("symbol") as String
                 val depth = number("depth", 2)
@@ -92,7 +114,11 @@ internal class McpTools(
                         val unresolved = (document as? Map<*, *>)?.get("unresolved") as? List<*>
                         val unresolvedSymbols = unresolved.orEmpty().mapNotNull { (it as? Map<*, *>)?.get("requested") as? String }
                             .filter { it in symbols }
-                        suggestions(unresolvedSymbols, listOfNotNull(current.graph, base?.graph)).also { recovery = it }
+                        val graphs = listOfNotNull(current.graph, base?.graph)
+                        val unresolvedFiles = unresolved.orEmpty().mapNotNull { (it as? Map<*, *>)?.get("requested") as? String }
+                            .filter { it in files }.distinct().sorted()
+                        (suggestions(unresolvedSymbols, graphs) + unresolvedFiles.map { SymbolDiscovery.inFile(graphs, it, SUGGESTION_LIMIT) }
+                            .filter { it.total > 0 }).also { recovery = it }
                     }
                     bounded(document, pages, suggestionLimit, requested, effective, index + 1)?.let { return it }
                 }
@@ -146,8 +172,9 @@ internal class McpTools(
         } })
 
     private fun tooLarge(tool: String): Map<String, Any?> = error(when (tool) {
-        "impact" -> "Interactive result exceeds 16 KiB after bounded page, path, summary and suggestion reduction. Use fewer exact USRs; files and symbols are union selectors. CLI impact without --summary-limit provides the full summary."
-        "query_symbol" -> "Interactive result exceeds 16 KiB after bounded page and suggestion reduction. Select a smaller scope with an exact USR or inspect the full saved query with the CLI."
+        "impact" -> "Interactive result exceeds 16 KiB after bounded page, path, summary and suggestion reduction. Call discover_symbols with one file or symbol selector, follow nextOffset, then retry impact with selected exact USRs only; files and symbols are union selectors. CLI impact without --summary-limit provides the full summary."
+        "query_symbol" -> "Interactive result exceeds 16 KiB after bounded page and suggestion reduction. Call discover_symbols with the symbol selector to page exact USRs, or inspect the full saved query with the CLI."
+        "discover_symbols" -> "A discovery candidate exceeds 16 KiB even at limit 1; inspect the full saved graph with the CLI."
         else -> "Freshness evidence exceeds 16 KiB; use CLI verify-snapshot to inspect all reasons."
     })
 
@@ -174,9 +201,11 @@ internal class McpTools(
             "inputSchema" to mapOf("type" to "object", "properties" to properties, "required" to required, "additionalProperties" to false),
             "annotations" to mapOf("readOnlyHint" to true, "destructiveHint" to false, "idempotentHint" to true, "openWorldHint" to false))
         val definitions = listOf(
-            tool("query_symbol", "Inspect before editing. Select with exact USR (method:p/C#m(I)V) or qualified source name (p.C.m); source-looking p.C.m(int) is discovery-only and preserves every overload. Missing/ambiguous results include exact recovery candidates. Captured graph only; call freshness separately.",
+            tool("discover_symbols", "Recover exact USRs before querying. Provide exactly one symbol (including Kotlin package.function or Owner.method(types)) or file graph selector. File paths match exactly first, otherwise by path-segment suffix; all candidate files and overloads remain explicit. Follow nextOffset, choose USRs using source evidence, then call query_symbol or impact. Does not resolve ambiguity or read source files. Captured current/base graphs only; call freshness separately.",
+                mapOf("symbol" to string(), "file" to string(), "limit" to integer(1, 100, SUGGESTION_LIMIT), "offset" to integer(0, Int.MAX_VALUE, 0))),
+            tool("query_symbol", "Inspect before editing. Select with exact USR (method:p/C#m(I)V) or qualified source name (p.C.m); source-looking p.C.m(int) is discovery-only and preserves every overload. Missing/ambiguous results include exact recovery candidates; use discover_symbols to page them. Captured graph only; call freshness separately.",
                 mapOf("symbol" to string(), "depth" to integer(1, 10, 2), "limit" to integer(1, 100, QUERY_DEFAULT_LIMIT)), listOf("symbol")),
-            tool("impact", "Inspect potential callers for exact USRs, qualified symbols, or portable changed files (for example src/main/A.kt). Files and symbols are union selectors. Follow navigation and exact recovery candidates; omissions and unknowns remain explicit. Does not prove safe edits or skipped tests.",
+            tool("impact", "Inspect potential callers for exact USRs, qualified symbols, or portable changed files (for example src/main/A.kt relative to the captured module). Files and symbols are union selectors. On missing selectors or oversized results, use discover_symbols to page exact USRs, then retry only the selected USRs. Follow navigation; omissions and unknowns remain explicit. Does not prove safe edits or skipped tests.",
                 mapOf("symbols" to array(), "files" to array(), "depth" to integer(1, 100, IMPACT_DEFAULT_DEPTH), "limit" to integer(1, 100, IMPACT_DEFAULT_LIMIT),
                     "offset" to integer(0, 100_000, 0), "visitLimit" to integer(1, 100_000, 100_000), "pathLimit" to integer(1, 100_000, IMPACT_DEFAULT_PATH_LIMIT),
                     "summaryLimit" to integer(1, 100, IMPACT_DEFAULT_SUMMARY_LIMIT),

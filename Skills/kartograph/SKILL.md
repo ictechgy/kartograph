@@ -17,7 +17,12 @@ loaded when the server started; they do not check live inputs. Call `freshness` 
 `stale`/`unverified` reasons, and restart the server after an authorized recapture. Request paths in `impact.files` are graph
 selectors, not file reads. Use the advertised limits and pagination; an oversized tool result is incomplete evidence.
 The CLI workflow below remains available when MCP is not connected. See `docs/MCP.md` for startup configuration.
-If a source-style method selector is missing, use the real USRs in `suggestions` to resolve overloads explicitly.
+If a source-style method or file selector is missing, inspect the real USRs and locations in `suggestions`.
+Use `discover_symbols` with exactly one `symbol` or `file` selector to page candidates with `nextOffset`.
+Kotlin `package.function` discovery requires captured file-facade metadata. File discovery tries exact graph paths
+first, then path-segment suffixes; multiple matching files and overloads remain candidates to check against source.
+If file impact exceeds the content budget, discover its declarations and retry `impact` with only the selected USRs.
+Discovery does not automatically resolve a missing/ambiguous selector or establish that unselected declarations are safe.
 Read `response.effective` when a page/path budget was adapted to the 16 KiB content limit; follow the returned
 navigation and retain path omissions. `impact.files` and `impact.symbols` select a union, so use a narrow selector
 when investigating one method.

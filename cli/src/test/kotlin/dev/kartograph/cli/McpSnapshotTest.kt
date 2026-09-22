@@ -274,7 +274,7 @@ class McpSnapshotTest {
             val result = c.call("query_symbol", mapOf("symbol" to "Target"))
             assertEquals(true, result["isError"])
             assertFalse(result.containsKey("structuredContent"))
-            assertContains(result.toString(), "smaller")
+            assertContains(result.toString(), "discover_symbols")
             assertEquals("unverified", document(c.call("freshness"))["status"])
         }
     }
