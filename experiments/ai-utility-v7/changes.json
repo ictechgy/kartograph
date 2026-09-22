@@ -1,0 +1,6 @@
+{
+  "threshold": {"file": "src/main/kotlin/example/Rules.kt", "before": "age >= 18", "after": "age > 18", "changed": "method:example/Rules#qualifies(I)Z"},
+  "nulls": {"file": "src/main/kotlin/example/Catalog.kt", "before": "name ?: \"guest\"", "after": "name ?: \"anonymous\"", "changed": "method:example/Catalog#label(Ljava/lang/String;)Ljava/lang/String;"},
+  "callback": {"file": "src/main/kotlin/example/Formatter.kt", "before": "render(value, \"USD\")", "after": "render(value + 1, \"USD\")", "changed": "method:example/Formatter#format(ILkotlin/jvm/functions/Function2;)Ljava/lang/String;"},
+  "dispatch": {"file": "src/main/kotlin/example/Policy.kt", "before": "value >= 0", "after": "value > 0", "changed": "method:example/StrictPolicy#evaluate(I)Z"}
+}

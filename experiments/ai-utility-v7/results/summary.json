@@ -1,0 +1,52 @@
+{
+  "status": "completed",
+  "trials": 16,
+  "validResponses": 16,
+  "infrastructureErrors": 0,
+  "selectiveRestarts": 0,
+  "modelStageSeconds": 345.17623166598787,
+  "modelCostUsd": 1.7533455,
+  "costMeaning": "CLI estimate, not billed cost; excludes preparation and external review",
+  "arms": {
+    "source": {
+      "trials": 8,
+      "predictionStatuses": {
+        "in-oracle": 46,
+        "unresolved": 2,
+        "outside-oracle-unadjudicated": 4
+      },
+      "negativeControlsSelected": 0,
+      "kindMismatches": 0,
+      "seconds": 156.72504274998937,
+      "costUsd": 0.6039525,
+      "informationTools": 43,
+      "productProcessed": {}
+    },
+    "mcp": {
+      "trials": 8,
+      "predictionStatuses": {
+        "in-oracle": 48,
+        "outside-oracle-unadjudicated": 3,
+        "unresolved": 1
+      },
+      "negativeControlsSelected": 0,
+      "kindMismatches": 0,
+      "seconds": 188.4511889159985,
+      "costUsd": 1.1493929999999999,
+      "informationTools": 40,
+      "productProcessed": {
+        "freshness": 4,
+        "impact": 7,
+        "query_symbol": 2
+      }
+    }
+  },
+  "interpretation": "Behavior predictions tie on all four small controls. Callback exact-ID coverage difference reflects unaccepted source signatures despite naming the same caller; no general caller-discovery or productivity advantage.",
+  "preparation": {
+    "nativeBuildAndTestSeconds": 44.47693104199425,
+    "scope": "Two warm Gradle commands including baseline capture and changed test execution; excludes independent oracle parsing, installation and review.",
+    "evaluatedModelSmokeRuns": 0,
+    "smokeBasis": "Reuse of unchanged v6 structured output/provider smoke plus v7 controller integration regressions; no real-case trial was used for calibration."
+  },
+  "reportSha256": "29262e4dc95c77a9dbfb8fb5449b77f57015f1af1414bb9569da86cf55b98994"
+}

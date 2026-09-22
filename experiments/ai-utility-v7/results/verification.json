@@ -1,0 +1,189 @@
+{
+  "status": "passed",
+  "trials": 16,
+  "evidenceFiles": 112,
+  "rawStructuredRegradeMatches": true,
+  "frozenToolHashesMatch": true,
+  "allCurrentInputsMatched": true,
+  "protectedV5V6FilesUnchanged": 61,
+  "caseAudits": [
+    {
+      "case": "threshold",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "threshold",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "threshold",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "threshold",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "nulls",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "nulls",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "nulls",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "nulls",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "callback",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "callback",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "callback",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "callback",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "dispatch",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "dispatch",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "dispatch",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "dispatch",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    }
+  ],
+  "manifestSha256": "4b600a793467c451a86755a385400ad6ddbddb6aa6fcc4ad1022ab1a776cbf51",
+  "resultsSha256": "3f07426b6aef2586676909678bf298ee88e0b9f5d6602de47c8fcb16af8baa3f"
+}
