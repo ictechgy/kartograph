@@ -1,0 +1,268 @@
+{
+  "format": "kartograph-ai-utility-v6-manifest",
+  "protocolCommit": "9c124fb17686aa9fd372face2ef6992c31c700e2",
+  "manifestSha256": "41bcfc072c50ce227603c6a71c6c8d8aead420cc5e7828092175d9bd8cbec87d",
+  "model": "claude-opus-5[1m]",
+  "providerCliVersion": "2.1.278 (Claude Code)",
+  "effort": "low",
+  "maxTools": 12,
+  "maxPredictions": 64,
+  "wallSeconds": 900,
+  "maxBudgetUsd": 3,
+  "outputChannel": "structured_output",
+  "schemaSha256": "17eb4ae0dba9fdc0750320e1466e39a558876754e526b24b8fd9e477d5710224",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64"
+  },
+  "tooling": [
+    {
+      "path": "distribution/run.py",
+      "sha256": "47bcff2fb5ed38bc53d1fbac0c3ccf09b0d4de3a46e5072e91b7c213c36552e8"
+    },
+    {
+      "path": "distribution/structured.py",
+      "sha256": "130f39703fed35dab8042de03d09702020a430272c5b89d05e8d2fc75bf0e336"
+    },
+    {
+      "path": "distribution/output-schema.json",
+      "sha256": "17eb4ae0dba9fdc0750320e1466e39a558876754e526b24b8fd9e477d5710224"
+    },
+    {
+      "path": "distribution/assemble.py",
+      "sha256": "92298152cb04ba2578267f8cef6d16d14eaa6926f534df9e83fb2e5d9d056e6f"
+    },
+    {
+      "path": "distribution/report.py",
+      "sha256": "b0995a9fffd46d599344b20511664fcd21b173368016c23784184c744af9e512"
+    },
+    {
+      "path": "distribution/PROTOCOL.md",
+      "sha256": "c4f4a336087241a0f85c2ce08c93e910fbba0220b167feac1f887b1d3ceebeff"
+    },
+    {
+      "path": "distribution/INTAKE.md",
+      "sha256": "fe1e84647a3f29a8c46d96a979349ec319f9d391651d5c05384633356309099a"
+    },
+    {
+      "path": "distribution/cohort.json",
+      "sha256": "e001e44fc941e8cd43628a48f5e47ee4ee8a1ca83541f5ef392ae60018698308"
+    },
+    {
+      "path": "distribution/grade.py",
+      "sha256": "656d748c0a7332afc86eee2fa820fcf1994a7cf206c96a2dc655f9b57262f0bb"
+    },
+    {
+      "path": "distribution/collect.py",
+      "sha256": "3dfbd675430be50f584665699ee14e71a0388111f14f87fdeeb3f9d82bef1c12"
+    },
+    {
+      "path": "distribution/SourceDeclarations.java",
+      "sha256": "25b8d4703d39d9d1394956bbc28c92a68199734d9ca70cdfef0bb14039d1abdc"
+    },
+    {
+      "path": "distribution/run.py",
+      "sha256": "2e0aa7e0da030e8385ffc24a34148df10a6e83b08880ace47c3e0a0aefd325e8"
+    },
+    {
+      "path": "distribution/session_mcp.py",
+      "sha256": "de69eda02427aa501f0885e47e33096d384290bd5fa98f58c9f3ec8066d6d820"
+    },
+    {
+      "path": "distribution/2.1.278",
+      "sha256": "bd245662fb8a0e321b3bf133e930371d6563c387527885f30b2613aef3ba14d6"
+    },
+    {
+      "path": "distribution/kartograph",
+      "sha256": "5bc771d6f3c5702fbba236c8df50242d304fea13171b1d839ef1cb61ce486dc0"
+    },
+    {
+      "path": "distribution/kartograph-gradle-plugin-0.15.0.jar",
+      "sha256": "3823aab8d2c1dc992aebf03f404a513f4c5e23bde7576b56882b696b337f246a"
+    },
+    {
+      "path": "distribution/analysis-0.15.0.jar",
+      "sha256": "00e4d661686d062c61695cfdee5b42e695f2cf2ba7ca6efed3036352d10dfb27"
+    },
+    {
+      "path": "distribution/annotations-13.0.jar",
+      "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+    },
+    {
+      "path": "distribution/asm-9.10.1.jar",
+      "sha256": "ed825d10ab1399c8c0cb669e688cf0c8c82629b4c8399b58352b68e92ca10fcb"
+    },
+    {
+      "path": "distribution/asm-analysis-9.10.1.jar",
+      "sha256": "dede75a21306b65974ecd8f87114ff6970f09fb794157a4ca09ab25c888c2bfc"
+    },
+    {
+      "path": "distribution/asm-tree-9.10.1.jar",
+      "sha256": "3dfb0d5b6a106cd40b5b250e39935fbf2f927f4477546a5369a3ac609cf0506b"
+    },
+    {
+      "path": "distribution/cli-0.15.0.jar",
+      "sha256": "43b283188a256db6fc938d3820a4d04e16a285e6b02f810a2b1e09f166663fc1"
+    },
+    {
+      "path": "distribution/core-0.15.0.jar",
+      "sha256": "cc9499e3e7b56fb209a9d6c8d3ea3e7d9434ec30c0a1d6791c371935e6c366b9"
+    },
+    {
+      "path": "distribution/export-0.15.0.jar",
+      "sha256": "00eb3deeaf87aa221e26c868dcb193e36e2820f0495e3bb21155a39e1e628b1b"
+    },
+    {
+      "path": "distribution/index-0.15.0.jar",
+      "sha256": "57ca5e587aea155609f1b7fa0bc2d0f0e41387e7bf474242c91e1f03ff729498"
+    },
+    {
+      "path": "distribution/kotlin-metadata-jvm-2.4.20.jar",
+      "sha256": "98d9b1847908adfde7a8b2d4cc35708d7ddccae0698cec56bcb506bcf9392595"
+    },
+    {
+      "path": "distribution/kotlin-stdlib-2.4.20.jar",
+      "sha256": "2226de463d309d4a5500a481320b3dea515a6981dcae1def531fbc158884e25f"
+    }
+  ],
+  "cases": [
+    {
+      "id": "detekt_detekt-6443",
+      "repository": "detekt/detekt",
+      "base": "5672df8d0e358c2293d7c46796984e2afb79532d",
+      "module": "detekt-rules-errorprone",
+      "scope": ":detekt-rules-errorprone:jvm",
+      "snapshotSha256": "4c7f3dbd939bec70811c133504d5c7ecc2dacac059ac8ef28c86dcbcda4678f3",
+      "bindingsSha256": "1ec5fa0c0a87441bdea099eaeb4e8c246c03eae86f95b2caca81d86d5922aea2",
+      "inventorySha256": "290b5c25ee8ed3287932c1cbdd2f730cb81583edb8690c7c76551d6faa585c26",
+      "patchSha256": "b33f7a7c1c3bf9e38c13e07e93e605239b171c996b01aa957e6cfcf6c2345c63",
+      "promptSha256": "507f259da1c85141ea7b3cdd3f83f3a0af278a2a0e77801e2433c855f54585e5",
+      "oracleSize": 27,
+      "primaryOracleSize": 27
+    },
+    {
+      "id": "detekt_detekt-6352",
+      "repository": "detekt/detekt",
+      "base": "432121310b409f45eab04bd91096dac830b728ba",
+      "module": "detekt-rules-errorprone",
+      "scope": ":detekt-rules-errorprone:jvm",
+      "snapshotSha256": "b373ab124a9a23b12f7749bb2e2cfcaec0ea98f9c7b54241892bafd8dfc71772",
+      "bindingsSha256": "1744e8806dff28e17171ae19967189745a6a2a00b2a5db74a8483b6daa6e7926",
+      "inventorySha256": "c2cec383f85c3aa211c36dcdf5e61fc9855b37854710c6cbcf874fe36577483a",
+      "patchSha256": "9ee0acc041a7196ba5dec92a43fe66023e99218b34e5c7cb6b07b26951a04a06",
+      "promptSha256": "3c26cecf72f9f5acb63e09d0058327f7d55e7a799a95e27aeab518e3b78ab0eb",
+      "oracleSize": 9,
+      "primaryOracleSize": 9
+    },
+    {
+      "id": "pinterest_ktlint-2617",
+      "repository": "pinterest/ktlint",
+      "base": "41ae540f2146fd6e1678f925197ffd9e9c245865",
+      "module": "ktlint-ruleset-standard",
+      "scope": ":ktlint-ruleset-standard:jvm",
+      "snapshotSha256": "09ad090558f7d5dc44bff2c1ebf5e31952000b51dab68f1b3f34073d50e3b42c",
+      "bindingsSha256": "b244523fa67791e9dea95a413af95c3220d1e34172ee8a6099b9eaacee03e5fe",
+      "inventorySha256": "9605b1cbc6179dcadb6a856a7a9166277db5b373955e8672df40d80f8b3c6d68",
+      "patchSha256": "2a81729c691e8457209c7d5cd2c5cf37dea12a19b1b6a802418a44b053b3052b",
+      "promptSha256": "cd9ddf86a0ffd41ec94a43850f4fefa187ae96800cbfc1a568771dc1b8649e97",
+      "oracleSize": 14,
+      "primaryOracleSize": 14
+    },
+    {
+      "id": "pinterest_ktlint-2554",
+      "repository": "pinterest/ktlint",
+      "base": "8eb0a585772612fc0fcd8376b02bc648941f128b",
+      "module": "ktlint-ruleset-standard",
+      "scope": ":ktlint-ruleset-standard:jvm",
+      "snapshotSha256": "9025f166c462fb38a2f6dab0d0f3d604a0d7ea96a78ce2fb604175509430ca88",
+      "bindingsSha256": "9cfc554ea5ee5c098be71df3f0b3984f61f3988025b99042cd9a223fb4dc7cf7",
+      "inventorySha256": "b922572564f49a86e3df537774eba36cd8a9954e39c74b3048b36410866b0f5e",
+      "patchSha256": "24f0dc70937b4810cc6d16f7faad0b82958a970d4e947f0ff1ac78afc18926ab",
+      "promptSha256": "7f951c872cb7f2b67b94578637ea86b0c8ba2044a7f7c4281a707c64aaa3deb3",
+      "oracleSize": 31,
+      "primaryOracleSize": 31
+    }
+  ],
+  "schedule": [
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "source",
+      "repeat": 1
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "source",
+      "repeat": 1
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "source",
+      "repeat": 1
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "source",
+      "repeat": 1
+    }
+  ]
+}

@@ -52,5 +52,25 @@
     "bytes": 1267745,
     "sha256": "d48fccf7ede94a5dca1b7ad0e5d0eb72a97c0c69dc607265625a0c0705660351",
     "stored": "pinterest_ktlint-2617/expected_tests.json"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/pinterest_ktlint-2555/environment/prepare.sh",
+    "bytes": 352,
+    "sha256": "f14d677a9a8131211f2770dce4138e5c0443b13dfcfdb87d2e607024f71a1abf"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/pinterest_ktlint-2555/tests/expected_tests.json",
+    "bytes": 907454,
+    "sha256": "c5daaf5e8d8d7694ff40094c11e2a5722ccd6d6347949f5f8aaf16a1003464cf"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/pinterest_ktlint-2554/environment/prepare.sh",
+    "bytes": 352,
+    "sha256": "f14d677a9a8131211f2770dce4138e5c0443b13dfcfdb87d2e607024f71a1abf"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Kotlin/kotlin-swe-bench/b9025d86f7ae634901396766bd61f6d4ae6d2165/tasks/pinterest_ktlint-2554/tests/expected_tests.json",
+    "bytes": 1240239,
+    "sha256": "3bd11cf71511f1e131e4281e567ab72eeb22c6ca783d30f37b4e67c414fed115"
   }
 ]
