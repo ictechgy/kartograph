@@ -1,0 +1,105 @@
+{
+  "status": "post-run-readback",
+  "reviewer": "Codex primary agent; source/identity readback, not a blinded human review",
+  "case": "pinterest_ktlint-2554",
+  "caller": "method:com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundCurlyRule#beforeVisitChildNodes(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;ZLkotlin/jvm/functions/Function3;)V",
+  "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundCurlyRule.kt",
+  "sourceDeclaration": {
+    "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundCurlyRule.kt",
+    "package": "com.pinterest.ktlint.ruleset.standard.rules",
+    "name": "beforeVisitChildNodes",
+    "owners": [
+      "SpacingAroundCurlyRule"
+    ],
+    "types": [
+      "ASTNode",
+      "Boolean",
+      "(offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> Unit"
+    ],
+    "namedParameters": [
+      "node: ASTNode",
+      "autoCorrect: Boolean",
+      "emit: (offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> Unit"
+    ],
+    "receiver": null,
+    "local": false,
+    "suspend": false,
+    "startLine": 71,
+    "endLine": 166
+  },
+  "canonicalSourceSignature": "SpacingAroundCurlyRule.beforeVisitChildNodes(ASTNode, Boolean, (offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> Unit)",
+  "validUnlabeledFunctionTypeSignature": "SpacingAroundCurlyRule.beforeVisitChildNodes(ASTNode, Boolean, (Int, String, Boolean) -> Unit)",
+  "officialLanguageReference": "https://kotlinlang.org/docs/lambdas.html#function-types",
+  "sourceExcerpt": [
+    {
+      "line": 71,
+      "text": "    override fun beforeVisitChildNodes("
+    },
+    {
+      "line": 72,
+      "text": "        node: ASTNode,"
+    },
+    {
+      "line": 73,
+      "text": "        autoCorrect: Boolean,"
+    },
+    {
+      "line": 74,
+      "text": "        emit: (offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> Unit,"
+    },
+    {
+      "line": 75,
+      "text": "    ) {"
+    },
+    {
+      "line": 76,
+      "text": "        if (node.isLeaf() && !node.isPartOfString()) {"
+    },
+    {
+      "line": 131,
+      "text": "                spacingAfter = nextLeaf == null || nextLeaf is PsiWhiteSpace || shouldNotToBeSeparatedBySpace(nextLeaf)"
+    },
+    {
+      "line": 134,
+      "text": "                    ?.takeIf { shouldNotToBeSeparatedBySpace(it.nextLeaf()) }"
+    }
+  ],
+  "responses": [
+    {
+      "arm": "source",
+      "repeat": 0,
+      "originalSymbol": "SpacingAroundCurlyRule.beforeVisitChildNodes(ASTNode, Boolean, (Int, String, Boolean) -> Unit)",
+      "originalResolution": "unresolved",
+      "referencesSameCaller": true,
+      "primaryScoreUnchanged": true
+    },
+    {
+      "arm": "mcp",
+      "repeat": 0,
+      "originalSymbol": "method:com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundCurlyRule#beforeVisitChildNodes(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;ZLkotlin/jvm/functions/Function3;)V",
+      "originalResolution": "resolved",
+      "referencesSameCaller": true,
+      "primaryScoreUnchanged": true
+    },
+    {
+      "arm": "mcp",
+      "repeat": 1,
+      "originalSymbol": "method:com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundCurlyRule#beforeVisitChildNodes(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;ZLkotlin/jvm/functions/Function3;)V",
+      "originalResolution": "resolved",
+      "referencesSameCaller": true,
+      "primaryScoreUnchanged": true
+    },
+    {
+      "arm": "source",
+      "repeat": 1,
+      "originalSymbol": "com.pinterest.ktlint.ruleset.standard.rules.SpacingAroundCurlyRule.beforeVisitChildNodes(ASTNode, Boolean, (Int, String, Boolean) -> Unit)",
+      "originalResolution": "unresolved",
+      "referencesSameCaller": true,
+      "primaryScoreUnchanged": true
+    }
+  ],
+  "interpretation": "Both arms explicitly identify this caller in both repetitions. The frozen source matcher does not recognize omitted optional parameter names inside a function type. Its 0-vs-1 call score is not evidence of discovery superiority.",
+  "scope": "Two source predictions inside the primary oracle were inspected. Other unresolved predictions were not automatically reclassified. No answers, aliases, oracle, or primary scores were changed.",
+  "strictReportSha256": "b5de288a5f0b46f87de4f10c3b0cdf623aff831c621c120faaa65e51f56e7a21",
+  "strictReportPathFromExperimentRoot": "results/report.json"
+}

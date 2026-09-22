@@ -1,0 +1,189 @@
+{
+  "status": "passed",
+  "trials": 16,
+  "evidenceFiles": 112,
+  "rawStructuredRegradeMatches": true,
+  "frozenToolHashesMatch": true,
+  "allCurrentInputsMatched": true,
+  "protectedV5FilesUnchanged": 29,
+  "caseAudits": [
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "rawRegradeMatches": true,
+      "structuredObjectMatchesToolInput": true,
+      "assistantModels": [
+        "claude-opus-5"
+      ]
+    }
+  ],
+  "manifestSha256": "41bcfc072c50ce227603c6a71c6c8d8aead420cc5e7828092175d9bd8cbec87d",
+  "resultsSha256": "da7a349bcc8eb84f0fd3d67ba9a92983d17bb29c037eaaf5568b9ced64b7aeed"
+}

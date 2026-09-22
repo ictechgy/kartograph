@@ -1,0 +1,24 @@
+{
+  "status": "no-blockers",
+  "scope": "Completed result arithmetic, denominators and interpretation; no primary rescoring.",
+  "reviewer": "GLM via packet-ask",
+  "suggestions": [
+    {
+      "id": 1,
+      "disposition": "Added summary predictionResolutionByArm; outside-oracle counts were already in each report trial."
+    },
+    {
+      "id": 2,
+      "disposition": "Named results/report.json as the strict report hash target."
+    },
+    {
+      "id": 3,
+      "disposition": "Normalized all 16 spacing in summary text."
+    },
+    {
+      "id": 4,
+      "disposition": "Added all16 trial target counts to summary."
+    }
+  ],
+  "primaryReportChanged": false
+}
