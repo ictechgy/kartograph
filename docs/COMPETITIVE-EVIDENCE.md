@@ -36,9 +36,11 @@
 coverage가 관측됐지만, caller 차이 하나는 source의 동치 함수 타입 표기를 매칭하지 못한 결과였다.
 두 조건 모두 해당 caller를 지목했으므로 발견 우위로 확대하지 않는다. 기존 v5와 v6의 원문·고정 점수는 유지했다.
 
-1. **source 표기와 정답 계약:** 구조화 출력의 유효성·실패 경로 검증은 v6에서 완료했다. 다음 비교는 함수 타입의
-   선택적 매개변수 이름 등 동치 source 표기와 실제 호출·행동 근거를 사전에 검증하고
-   [준비 조건](../experiments/ai-utility-protocol/NEXT-PROTOCOL.md)에 따라 별도 고정한다. 기존 응답을 사후 수리·재채점하지 않는다.
+1. **source 표기와 정답 계약:** [v7 통제 평가](../experiments/ai-utility-v7/README.md)에서 선택적 함수 타입 인자 이름의
+   대응을 보완하고 호출·실제 assertion 변경을 분리했다. 새 Kotlin 통제4개·16회를 완료했으며 양쪽 모두 동작 예측100%·
+   음성 대조 오선택0이었다. callback의 source 호출 coverage80%는 같은 caller의 `Function2` 표기 미대응이므로 발견 우위로
+   해석하지 않는다. 기존 원문·점수는 유지했다. 작은 합성 과제의 천장 효과가 있어 공개 프로젝트의 실제 효용은 별도 문제다.
+   다음 대규모 비교도 [준비 조건](../experiments/ai-utility-protocol/NEXT-PROTOCOL.md)을 지키며 기존 답변을 사후 수리하지 않는다.
 2. **첫 사용과 갱신:** 깨끗한 별도 소비 프로젝트에서 설치부터 첫 유효 질의까지, 한 파일 변경부터 새 matched snapshot까지의
    시간·명령 수·실패 복구를 측정한다. 기존 warm 질의 측정은 이 검사를 대신하지 않는다.
 3. **추가 분석 근거:** processor/resource 귀속, 선택적 호출 정밀도, method/test runtime 대응은 각각 독립된 입력·실패 코퍼스와

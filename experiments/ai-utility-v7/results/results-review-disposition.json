@@ -1,0 +1,30 @@
+{
+  "status": "no-blockers",
+  "reviewer": "GLM via packet-ask",
+  "reviewSeconds": 57.918,
+  "scope": "Completed result arithmetic, interpretation, frozen-tool hash check, negative-source symmetry and CI regression wiring",
+  "items": [
+    {
+      "id": "preparation-naming",
+      "disposition": "clarified",
+      "reason": "README names the qualification preparationSeconds and summary nativeBuildAndTestSeconds fields as the same two-Gradle-command scope."
+    },
+    {
+      "id": "identity-test-pairing",
+      "disposition": "already documented",
+      "reason": "Existing Korean comment explicitly pairs new Inventory with v5 base.grade only for identity contracts; typed metrics have separate v7 tests."
+    },
+    {
+      "id": "resolved-candidate",
+      "disposition": "no change",
+      "reason": "Only resolved unique in-oracle/outside-oracle rows reach candidates[0]; ambiguity regressions already cover skipping. Frozen runtime source remains unchanged."
+    },
+    {
+      "id": "review-arithmetic-typo",
+      "disposition": "corrected in interpretation of review",
+      "reason": "Reviewer wrote 6*6+7*2+4*2=46; the correct source count is 6*4+7*2+4*2=46. Original report/summary numbers46 are correct and independently recomputed from raw records."
+    }
+  ],
+  "frozenReportChanged": false,
+  "originalAnswersChanged": false
+}

@@ -1,0 +1,836 @@
+{
+  "status": "completed",
+  "trials": 16,
+  "cases": [
+    {
+      "case": "threshold",
+      "staticCallers": 3,
+      "behaviorPositive": 3,
+      "behaviorNegative": 4,
+      "arms": {
+        "source": {
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            1.0,
+            1.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 21.91248160449686,
+          "totalCostUsd": 0.162113,
+          "knownCostUsd": 0.162113,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        },
+        "mcp": {
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            1.0,
+            1.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 23.572945062500366,
+          "totalCostUsd": 0.3289295,
+          "knownCostUsd": 0.3289295,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        }
+      }
+    },
+    {
+      "case": "nulls",
+      "staticCallers": 3,
+      "behaviorPositive": 3,
+      "behaviorNegative": 4,
+      "arms": {
+        "source": {
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            1.0,
+            1.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 18.547346437997476,
+          "totalCostUsd": 0.1358335,
+          "knownCostUsd": 0.1358335,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        },
+        "mcp": {
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            1.0,
+            1.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 24.27908041650153,
+          "totalCostUsd": 0.2877775,
+          "knownCostUsd": 0.2877775,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        }
+      }
+    },
+    {
+      "case": "callback",
+      "staticCallers": 5,
+      "behaviorPositive": 3,
+      "behaviorNegative": 3,
+      "arms": {
+        "source": {
+          "callCoverage": [
+            0.8,
+            0.8
+          ],
+          "behaviorCoverage": [
+            1.0,
+            1.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 21.93345581200265,
+          "totalCostUsd": 0.1564935,
+          "knownCostUsd": 0.1564935,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        },
+        "mcp": {
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            1.0,
+            1.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 24.53175433299839,
+          "totalCostUsd": 0.3077685,
+          "knownCostUsd": 0.3077685,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        }
+      }
+    },
+    {
+      "case": "dispatch",
+      "staticCallers": 1,
+      "behaviorPositive": 3,
+      "behaviorNegative": 4,
+      "arms": {
+        "source": {
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            1.0,
+            1.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 15.9692375204977,
+          "totalCostUsd": 0.1495125,
+          "knownCostUsd": 0.1495125,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        },
+        "mcp": {
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            1.0,
+            1.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 21.841814645998966,
+          "totalCostUsd": 0.2249175,
+          "knownCostUsd": 0.2249175,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        }
+      }
+    }
+  ],
+  "trialDetails": [
+    {
+      "case": "threshold",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 6
+      },
+      "predictionCount": 6,
+      "seconds": 17.523995249997824,
+      "costUsd": 0.0854515,
+      "informationToolRequests": 5,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "threshold",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 6
+      },
+      "predictionCount": 6,
+      "seconds": 21.626455208999687,
+      "costUsd": 0.1753525,
+      "informationToolRequests": 5,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {
+          "freshness": 1,
+          "impact": 1
+        },
+        "processed": {
+          "freshness": 1,
+          "impact": 1
+        },
+        "agentFreshness": [
+          "matched"
+        ],
+        "responses": [
+          {
+            "tool": "freshness",
+            "status": "matched",
+            "isError": false
+          },
+          {
+            "tool": "impact",
+            "status": "partial",
+            "isError": false
+          }
+        ]
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "threshold",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 6
+      },
+      "predictionCount": 6,
+      "seconds": 25.519434916001046,
+      "costUsd": 0.153577,
+      "informationToolRequests": 7,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {
+          "freshness": 1,
+          "query_symbol": 1,
+          "impact": 1
+        },
+        "processed": {
+          "freshness": 1,
+          "query_symbol": 1,
+          "impact": 1
+        },
+        "agentFreshness": [
+          "matched"
+        ],
+        "responses": [
+          {
+            "tool": "freshness",
+            "status": "matched",
+            "isError": false
+          },
+          {
+            "tool": "query_symbol",
+            "status": "notFound",
+            "isError": false
+          },
+          {
+            "tool": "impact",
+            "status": "partial",
+            "isError": false
+          }
+        ]
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "threshold",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 6
+      },
+      "predictionCount": 6,
+      "seconds": 26.300967958995898,
+      "costUsd": 0.0766615,
+      "informationToolRequests": 6,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "nulls",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 6
+      },
+      "predictionCount": 6,
+      "seconds": 19.514913084,
+      "costUsd": 0.068632,
+      "informationToolRequests": 5,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "nulls",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 6
+      },
+      "predictionCount": 6,
+      "seconds": 29.961808583000675,
+      "costUsd": 0.14412,
+      "informationToolRequests": 4,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {
+          "impact": 1
+        },
+        "processed": {
+          "impact": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "impact",
+            "status": "partial",
+            "isError": false
+          }
+        ]
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "nulls",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 6
+      },
+      "predictionCount": 6,
+      "seconds": 18.596352250002383,
+      "costUsd": 0.14365750000000002,
+      "informationToolRequests": 4,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {
+          "impact": 1
+        },
+        "processed": {
+          "impact": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "impact",
+            "status": "partial",
+            "isError": false
+          }
+        ]
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "nulls",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 6
+      },
+      "predictionCount": 6,
+      "seconds": 17.57977979199495,
+      "costUsd": 0.0672015,
+      "informationToolRequests": 4,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "callback",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 0.8,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 7,
+        "unresolved": 1
+      },
+      "predictionCount": 8,
+      "seconds": 19.005242166000244,
+      "costUsd": 0.07918,
+      "informationToolRequests": 6,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "callback",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 8
+      },
+      "predictionCount": 8,
+      "seconds": 22.07248491599603,
+      "costUsd": 0.15471200000000002,
+      "informationToolRequests": 4,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {
+          "impact": 1
+        },
+        "processed": {
+          "impact": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "impact",
+            "status": "partial",
+            "isError": false
+          }
+        ]
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "callback",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 8
+      },
+      "predictionCount": 8,
+      "seconds": 26.99102375000075,
+      "costUsd": 0.15305649999999998,
+      "informationToolRequests": 4,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {
+          "impact": 1
+        },
+        "processed": {
+          "impact": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "impact",
+            "status": "partial",
+            "isError": false
+          }
+        ]
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "callback",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 0.8,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 7,
+        "unresolved": 1
+      },
+      "predictionCount": 8,
+      "seconds": 24.861669458005053,
+      "costUsd": 0.07731350000000001,
+      "informationToolRequests": 5,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "dispatch",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 2,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 4,
+        "outside-oracle-unadjudicated": 2
+      },
+      "predictionCount": 6,
+      "seconds": 15.124556707996817,
+      "costUsd": 0.070281,
+      "informationToolRequests": 5,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "dispatch",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 1,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 4,
+        "outside-oracle-unadjudicated": 1,
+        "unresolved": 1
+      },
+      "predictionCount": 6,
+      "seconds": 17.30115549999755,
+      "costUsd": 0.089835,
+      "informationToolRequests": 6,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {
+          "freshness": 1,
+          "query_symbol": 1
+        },
+        "processed": {
+          "freshness": 1,
+          "query_symbol": 1
+        },
+        "agentFreshness": [
+          "matched"
+        ],
+        "responses": [
+          {
+            "tool": "freshness",
+            "status": "matched",
+            "isError": false
+          },
+          {
+            "tool": "query_symbol",
+            "status": "found",
+            "isError": false
+          }
+        ]
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "dispatch",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 2,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 4,
+        "outside-oracle-unadjudicated": 2
+      },
+      "predictionCount": 6,
+      "seconds": 26.382473792000383,
+      "costUsd": 0.1350825,
+      "informationToolRequests": 6,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {
+          "freshness": 1,
+          "impact": 1
+        },
+        "processed": {
+          "freshness": 1,
+          "impact": 1
+        },
+        "agentFreshness": [
+          "matched"
+        ],
+        "responses": [
+          {
+            "tool": "freshness",
+            "status": "matched",
+            "isError": false
+          },
+          {
+            "tool": "impact",
+            "status": "partial",
+            "isError": false
+          }
+        ]
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "dispatch",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 2,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "outside-oracle-unadjudicated": 2,
+        "in-oracle": 4
+      },
+      "predictionCount": 6,
+      "seconds": 16.813918332998583,
+      "costUsd": 0.0792315,
+      "informationToolRequests": 7,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    }
+  ],
+  "interpretation": "Synthetic fixed-patch controls; caller recall and assertion changes are separate. No general productivity or reasoning-quality claim.",
+  "modelStageSeconds": 345.17623166598787,
+  "modelCostUsd": 1.7533455,
+  "knownModelCostUsd": 1.7533455,
+  "missingCostTrials": 0,
+  "responseValidityByArm": {
+    "source": {
+      "total": 8,
+      "valid": 8
+    },
+    "mcp": {
+      "total": 8,
+      "valid": 8
+    }
+  },
+  "infrastructureErrors": [],
+  "manifestSha256": "4b600a793467c451a86755a385400ad6ddbddb6aa6fcc4ad1022ab1a776cbf51",
+  "resultsSha256": "3f07426b6aef2586676909678bf298ee88e0b9f5d6602de47c8fcb16af8baa3f"
+}

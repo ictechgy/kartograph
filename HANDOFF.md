@@ -5,10 +5,29 @@
 현재 재개 정보다. 규칙은 [AGENTS.md](AGENTS.md), 이전 발행·측정은
 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 보존한다. 과거 Next Steps는 현재 권한이 아니다.
 
-## 최신 상태 — v6 구조화 출력 실험 완료
+## 최신 상태 — v7 표기 대응·호출/동작 평가 완료
 
-- 이 검토 branch는 `experiment/ai-utility-v6-20260922`다. 제품 기준은 발행된 0.15.0이며 새 제품 릴리스가 아니다.
-  실험 자료는 로컬 커밋으로 보존했고 원격 push/PR/머지는 하지 않았다.
+- 사용자 요청의 v6 원격 통합은 [PR96](https://github.com/ictechgy/kartograph/pull/96)·`4e9f64b`로 완료했다.
+  네 CI 검사 성공, merge tree는 검증 head `f94a1e8`과 같다. 제품은 발행된 **0.15.0**이며 이번 실험은 새 제품 릴리스가 아니다.
+- [v7 결과](experiments/ai-utility-v7/README.md): 새 Kotlin 통제4개·16회 전부 완료. 양쪽 구조화 응답8/8 유효,
+  인프라 오류0. baseline 테스트27개, 변경 후 assertion 실패12·통과15, 독립 production 호출 anchor12를 고정했다.
+- 양쪽 모두 동작 예측100%·음성 대조 오선택0이다. callback 호출 coverage source80%/MCP100%는 같은 caller의
+  `Function2` 표기 미대응이다. source2개·MCP1개의 미대응을 원문 대조했고 사후 재채점하지 않았다.
+  작은 합성 사례의 천장 효과이며 일반 효용·caller 발견 우위를 주장하지 않는다.
+- 프로토콜 `0a0749c`, 실행 전 동결 `4f62a5f`. 모델 단계345.18초·CLI 비용 추정1.7533455USD.
+  원문112개·반환 객체/출력 tool input·재채점이 일치한다. v5/v6 61개 파일은 불변이다.
+- 선택적 함수 타입 인자 이름 대응·typed scoring·실패 거부·raw 검증 회귀56개가 통과했고 CI에 추가했다.
+  GLM 사전/결과 검토의 차단사항은 없고 보완·외부 리뷰 산식 오타 처분을 결과와 함께 보존했다.
+- 작업 branch는 `experiment/ai-utility-v7-20260922`다. 원격 상태는 해당 PR의 정확한 head/CI와 merge tree로 확인한다.
+  로컬 정본 `.git/ai-utility-v7-20260922/FINAL.json`, 원문 `trials-final/`·`native-1/`, 복원 `cleanup.json`을 따른다.
+  다른 checkout에 이 원장이 있다고 가정하지 않는다. 이미 완료된 frozen run은 재시작하지 않는다.
+- 원본 native 입력을 약343KB archive로 보존하고 2,164개 member를 실제 복원·해시 대조했다. 복원 snapshot4개 matched,
+  원문183개·v5/v6 hashes 유지, 정리 후 report byte-identical이다. native base/changed 경로는 현재 archive 상태다.
+  중복 parser는 v6 보존 archive의 동일6개 member를 확인하고 정리했다. 기존 전역 cache/도구/worktree는 유지했다.
+
+## v6 완료 기록 — PR96 통합
+
+- v6 branch는 `experiment/ai-utility-v6-20260922`이며 PR96으로 main에 통합했다. 제품 기준은 발행된 0.15.0이다.
 - [v6 결과](experiments/ai-utility-v6/README.md): 새 공개 표본4개·16회 전부 완료, source8/8·MCP8/8 구조화 응답 유효,
   인프라 오류0. 원문112개 해시·원문 재채점·반환 객체와 원문 tool input·v5 보존29개를 대조했다.
 - 모델 단계966.58초, CLI 비용 추정4.736082USD. 준비·smoke·리뷰는 별도다. 기존 테스트79개와 회귀32개 통과.
@@ -20,8 +39,7 @@
   실제 복원 snapshot6개 matched·원문 근거180개 해시를 확인하고 task cache를 정리했다. 원본 native 경로는 제거됐다.
   복원은 같은 원장의 `native-cleanup.json`·`native-archive-manifest.json`, 최종 상태는 `FINAL.json`을 따른다.
   다른 checkout에 이 로컬 원장이 있다고 가정하지 않는다. 완료한 frozen 실행을 재시작하지 않는다.
-- 필수 실험 작업은 완료됐다. 다음 후보는 동치 source 표기와 호출·행동 oracle을 사전 검증하는 별도 프로토콜이다.
-  원격 반영을 요청받으면 이 branch의 diff와 기존 검증 근거를 사용한다.
+- 당시 후속 후보였던 동치 source 표기와 호출·행동 oracle은 위 v7의 새 프로토콜로 수행했다.
 
 아래는 2026-09-20 당시 기록이다. 현재 제품/실험 상태와 과거 Next Steps를 혼동하지 않는다.
 

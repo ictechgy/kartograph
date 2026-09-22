@@ -1,0 +1,136 @@
+{
+  "scope": "All three unresolved predictions inspected after the complete fixed schedule; no aliases, inputs or scores changed.",
+  "observed": [
+    {
+      "case": "callback",
+      "arm": "source",
+      "repeat": 0,
+      "originalPrediction": {
+        "file": "src/main/kotlin/example/Invoice.kt",
+        "symbol": "example.Relay.dispatch(Int, Function2<Int,String,String>)",
+        "kind": "caller",
+        "reason": "Forwards caller-supplied lambda to Formatter.format; the lambda now receives value+1.",
+        "evidence": "Invoice.kt:8 Formatter().format(value, emit)"
+      },
+      "frozenResolution": "unresolved",
+      "actualDeclaration": "method:example/Relay#dispatch(ILkotlin/jvm/functions/Function2;)Ljava/lang/String;",
+      "sourceSignature": {
+        "file": "src/main/kotlin/example/Invoice.kt",
+        "package": "example",
+        "name": "dispatch",
+        "owners": [
+          "Relay"
+        ],
+        "types": [
+          "Int",
+          "(amount: Int, currency: String) -> String"
+        ],
+        "namedParameters": [
+          "value: Int",
+          "emit: (amount: Int, currency: String) -> String"
+        ],
+        "receiver": null,
+        "local": false,
+        "suspend": false,
+        "startLine": 8,
+        "endLine": 8
+      },
+      "sourceLines": [
+        {
+          "line": 8,
+          "text": "    fun dispatch(value: Int, emit: (amount: Int, currency: String) -> String): String = Formatter().format(value, emit)"
+        }
+      ],
+      "interpretation": "The response names the actual Relay.dispatch caller and exact forwarding line. Function2<Int,String,String> is not the preregistered source declaration syntax; no new equivalence is inferred after execution.",
+      "originalScoreChanged": false
+    },
+    {
+      "case": "callback",
+      "arm": "source",
+      "repeat": 1,
+      "originalPrediction": {
+        "file": "src/main/kotlin/example/Invoice.kt",
+        "symbol": "example.Relay.dispatch(Int, Function2)",
+        "kind": "caller",
+        "reason": "Passes caller-supplied callback straight to Formatter.format; all callers receive amount+1.",
+        "evidence": "Invoice.kt:8 Formatter().format(value, emit)"
+      },
+      "frozenResolution": "unresolved",
+      "actualDeclaration": "method:example/Relay#dispatch(ILkotlin/jvm/functions/Function2;)Ljava/lang/String;",
+      "sourceSignature": {
+        "file": "src/main/kotlin/example/Invoice.kt",
+        "package": "example",
+        "name": "dispatch",
+        "owners": [
+          "Relay"
+        ],
+        "types": [
+          "Int",
+          "(amount: Int, currency: String) -> String"
+        ],
+        "namedParameters": [
+          "value: Int",
+          "emit: (amount: Int, currency: String) -> String"
+        ],
+        "receiver": null,
+        "local": false,
+        "suspend": false,
+        "startLine": 8,
+        "endLine": 8
+      },
+      "sourceLines": [
+        {
+          "line": 8,
+          "text": "    fun dispatch(value: Int, emit: (amount: Int, currency: String) -> String): String = Formatter().format(value, emit)"
+        }
+      ],
+      "interpretation": "The response names the actual Relay.dispatch caller and exact forwarding line, but bare Function2 omits parameter/return type arguments and is not an accepted source signature. It is not silently normalized.",
+      "originalScoreChanged": false
+    },
+    {
+      "case": "dispatch",
+      "arm": "mcp",
+      "repeat": 0,
+      "originalPrediction": {
+        "file": "src/main/kotlin/example/Router.kt",
+        "symbol": "method:example/Portal#enter(Lexample/Policy;I)Z",
+        "kind": "caller",
+        "reason": "Indirect via Router.admit; returns \"closed\" instead of \"open\" for StrictPolicy at 0.",
+        "evidence": "Router.kt:8 `Router().admit(policy, value)`"
+      },
+      "frozenResolution": "unresolved",
+      "actualDeclaration": "method:example/Portal#enter(Lexample/Policy;I)Ljava/lang/String;",
+      "sourceSignature": {
+        "file": "src/main/kotlin/example/Router.kt",
+        "package": "example",
+        "name": "enter",
+        "owners": [
+          "Portal"
+        ],
+        "types": [
+          "Policy",
+          "Int"
+        ],
+        "namedParameters": [
+          "policy: Policy",
+          "value: Int"
+        ],
+        "receiver": null,
+        "local": false,
+        "suspend": false,
+        "startLine": 8,
+        "endLine": 8
+      },
+      "sourceLines": [
+        {
+          "line": 8,
+          "text": "    fun enter(policy: Policy, value: Int): String = if (Router().admit(policy, value)) \"open\" else \"closed\""
+        }
+      ],
+      "interpretation": "The response names Portal.enter but supplies a JVM USR with boolean return Z; the actual method returns String. This is an invalid descriptor, not a hidden caller discovery.",
+      "originalScoreChanged": false
+    }
+  ],
+  "reportSha256": "29262e4dc95c77a9dbfb8fb5449b77f57015f1af1414bb9569da86cf55b98994",
+  "conclusion": "Both arms explicitly identify every inspected caller and every observed assertion failure. Callback exact-identifier coverage differs because of source Function2 forms; no caller-discovery advantage is established. One MCP response also has a wrong JVM return descriptor outside the static oracle."
+}
