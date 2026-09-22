@@ -1,0 +1,7 @@
+{
+  "providerCalls": 0,
+  "guard": "frozen source changed",
+  "sameMtimeByteChangeRejected": true,
+  "cliStatusWhileChanged": "stale",
+  "restored": "matched"
+}

@@ -1,11 +1,31 @@
 # HANDOFF
 
-마지막 갱신: 2026-09-20
+마지막 갱신: 2026-09-22
 
 현재 재개 정보다. 규칙은 [AGENTS.md](AGENTS.md), 이전 발행·측정은
 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 보존한다. 과거 Next Steps는 현재 권한이 아니다.
 
-## 현재 상태
+## 최신 상태 — v6 구조화 출력 실험 완료
+
+- 이 검토 branch는 `experiment/ai-utility-v6-20260922`다. 제품 기준은 발행된 0.15.0이며 새 제품 릴리스가 아니다.
+  실험 자료는 로컬 커밋으로 보존했고 원격 push/PR/머지는 하지 않았다.
+- [v6 결과](experiments/ai-utility-v6/README.md): 새 공개 표본4개·16회 전부 완료, source8/8·MCP8/8 구조화 응답 유효,
+  인프라 오류0. 원문112개 해시·원문 재채점·반환 객체와 원문 tool input·v5 보존29개를 대조했다.
+- 모델 단계966.58초, CLI 비용 추정4.736082USD. 준비·smoke·리뷰는 별도다. 기존 테스트79개와 회귀32개 통과.
+- 점수상 caller 차이는 source의 동치 함수 타입 표기를 고정 매칭기가 놓친 결과였다. 원문에서는 양쪽이 모두 지목했다.
+  기존 원문·점수는 그대로 두고 [대조 기록](experiments/ai-utility-v6/results/source-signature-readback.json)을 분리했다.
+  suite anchor79개·caller2개의 작은 표본이므로 일반 AI 효용 우위를 확정하지 않는다.
+- 프로토콜 `9c124fb`, 실행 전 고정 `0e9f423`, 결과 `38bdd1d`다. GLM 코드/결과 검토의 의견 처분도 완료했다.
+- 원본은 공통 Git 디렉터리의 `ai-utility-v6-20260922/archives/native-inputs.tar.gz`에 보존했다. 26,222개 member와
+  실제 복원 snapshot6개 matched·원문 근거180개 해시를 확인하고 task cache를 정리했다. 원본 native 경로는 제거됐다.
+  복원은 같은 원장의 `native-cleanup.json`·`native-archive-manifest.json`, 최종 상태는 `FINAL.json`을 따른다.
+  다른 checkout에 이 로컬 원장이 있다고 가정하지 않는다. 완료한 frozen 실행을 재시작하지 않는다.
+- 필수 실험 작업은 완료됐다. 다음 후보는 동치 source 표기와 호출·행동 oracle을 사전 검증하는 별도 프로토콜이다.
+  원격 반영을 요청받으면 이 branch의 diff와 기존 검증 근거를 사용한다.
+
+아래는 2026-09-20 당시 기록이다. 현재 제품/실험 상태와 과거 Next Steps를 혼동하지 않는다.
+
+## 2026-09-20 당시 상태
 
 - 현재 소스 버전은 **0.13.0**이다. [새 릴리스](https://github.com/ictechgy/kartograph/releases/tag/v0.13.0)와
   [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.13.0)은 발행 후 독립 설치 근거와 함께 확인한다.

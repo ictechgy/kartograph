@@ -1,0 +1,62 @@
+{
+  "status": "resolved-before-real-case-model-execution",
+  "provider": "GLM via packet-ask",
+  "response": "local original preserved",
+  "blockers": [
+    {
+      "id": "B1",
+      "disposition": "fixed",
+      "evidence": "Multi-file/new-file diff regressions failed before resetting parser state and passed after; all four single-file case oracles reassembled byte-identically."
+    },
+    {
+      "id": "B2",
+      "disposition": "fixed",
+      "evidence": "No v5 structured.py existed, but sys.path pollution also broke combined test discovery. Explicit file imports now bind the grader and schema helper; injected ambient module and full discovery regressions pass."
+    }
+  ],
+  "optional": [
+    {
+      "id": 1,
+      "disposition": "rejected",
+      "reason": "The existing method==tools/call guard already excludes handshake frames. A dedicated trace test confirms requested/processed counts and one freshness response."
+    },
+    {
+      "id": 2,
+      "disposition": "verified",
+      "reason": "Actual 0.15.0 MCP query/impact and freshness responses have structuredContent.document; freshness probe is matched."
+    },
+    {
+      "id": 3,
+      "disposition": "applied",
+      "reason": "CLI budget argument now reads the pinned manifest value."
+    },
+    {
+      "id": 4,
+      "disposition": "applied",
+      "reason": "UTF-8 prompt size checked against existing 2MiB bound before launch."
+    },
+    {
+      "id": 5,
+      "disposition": "bounded and documented",
+      "reason": "Ambiguous custom parameterized display names caused pre-model exclusion of ktlint2715; all79 accepted test methods map uniquely."
+    },
+    {
+      "id": 6,
+      "disposition": "scope verified",
+      "reason": "All selected modules use src/test and compiled JVM main/test roots. No jvmTest population claim."
+    },
+    {
+      "id": 7,
+      "disposition": "applied",
+      "reason": "Post-trial failures are labeled verification-failed, retain exception type, and receive zero credit; timeouts are not called byte changes."
+    },
+    {
+      "id": 8,
+      "disposition": "applied",
+      "reason": "Added source-arm product-tool leak and failed-MCP-state regressions, plus absent trace accounting."
+    }
+  ],
+  "testsPassed": 32,
+  "v5Modified": false,
+  "actualCaseModelTrialsStarted": false
+}
