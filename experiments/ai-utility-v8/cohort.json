@@ -1,0 +1,43 @@
+{
+  "status": "all-four-qualified-before-models",
+  "primary": [
+    {
+      "id": "detekt-line-content",
+      "repository": "detekt/detekt",
+      "base": "046263730eb5368cb344489ac36543294e8e87bd",
+      "module": "detekt-rules-style",
+      "java": "17",
+      "compiledTrackedSourceFiles": 180,
+      "nonblankSourceLines": 36269
+    },
+    {
+      "id": "detekt-trimming-methods",
+      "repository": "detekt/detekt",
+      "base": "046263730eb5368cb344489ac36543294e8e87bd",
+      "module": "detekt-rules-style",
+      "java": "17",
+      "compiledTrackedSourceFiles": 180,
+      "nonblankSourceLines": 36269
+    },
+    {
+      "id": "ktlint-disabled-max-length",
+      "repository": "ktlint/ktlint",
+      "base": "b44a53f414d81cdf5816a26c182ba2738e3c9670",
+      "module": "ktlint-ruleset-standard",
+      "java": "21",
+      "compiledTrackedSourceFiles": 207,
+      "nonblankSourceLines": 54253
+    },
+    {
+      "id": "ktlint-import-subpackages",
+      "repository": "ktlint/ktlint",
+      "base": "b44a53f414d81cdf5816a26c182ba2738e3c9670",
+      "module": "ktlint-ruleset-standard",
+      "java": "21",
+      "compiledTrackedSourceFiles": 207,
+      "nonblankSourceLines": 54253
+    }
+  ],
+  "repeatsPerArm": 2,
+  "plannedTrials": 16
+}

@@ -1,0 +1,132 @@
+{
+  "status": "qualified-before-models",
+  "cases": [
+    {
+      "id": "detekt-line-content",
+      "repository": "detekt/detekt",
+      "base": "046263730eb5368cb344489ac36543294e8e87bd",
+      "module": "detekt-rules-style",
+      "java": "17",
+      "compiledTrackedSourceFiles": 180,
+      "nonblankSourceLines": 36269,
+      "callers": 2,
+      "behaviorPositive": 4,
+      "behaviorNegative": 1847,
+      "primary": 6,
+      "native": {
+        "baseline": {
+          "tests": 3649,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "changed": {
+          "tests": 3649,
+          "failures": 4,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      "outsideScope": [],
+      "oracleSha256": "947c7eeb6ea070ca4db6550214490bfa11addc84bc11350a52c28ab89a78f879"
+    },
+    {
+      "id": "detekt-trimming-methods",
+      "repository": "detekt/detekt",
+      "base": "046263730eb5368cb344489ac36543294e8e87bd",
+      "module": "detekt-rules-style",
+      "java": "17",
+      "compiledTrackedSourceFiles": 180,
+      "nonblankSourceLines": 36269,
+      "callers": 2,
+      "behaviorPositive": 2,
+      "behaviorNegative": 1849,
+      "primary": 4,
+      "native": {
+        "baseline": {
+          "tests": 3649,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "changed": {
+          "tests": 3649,
+          "failures": 2,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      "outsideScope": [],
+      "oracleSha256": "e08053c672c817e339d96a609802516197f88ba67b929084f3781e3d4817188b"
+    },
+    {
+      "id": "ktlint-disabled-max-length",
+      "repository": "ktlint/ktlint",
+      "base": "b44a53f414d81cdf5816a26c182ba2738e3c9670",
+      "module": "ktlint-ruleset-standard",
+      "java": "21",
+      "compiledTrackedSourceFiles": 207,
+      "nonblankSourceLines": 54253,
+      "callers": 14,
+      "behaviorPositive": 2,
+      "behaviorNegative": 1802,
+      "primary": 16,
+      "native": {
+        "baseline": {
+          "tests": 2264,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 11
+        },
+        "changed": {
+          "tests": 2264,
+          "failures": 2,
+          "errors": 0,
+          "skipped": 11
+        }
+      },
+      "outsideScope": [
+        "method:com/pinterest/ktlint/test/RuleSetProviderTest#checkAllRulesInPackageAreProvidedByRuleSetProvider()V"
+      ],
+      "oracleSha256": "7e56315845a89f653cbb304ae41e77892af10d2c301e42355019b23bd607911d"
+    },
+    {
+      "id": "ktlint-import-subpackages",
+      "repository": "ktlint/ktlint",
+      "base": "b44a53f414d81cdf5816a26c182ba2738e3c9670",
+      "module": "ktlint-ruleset-standard",
+      "java": "21",
+      "compiledTrackedSourceFiles": 207,
+      "nonblankSourceLines": 54253,
+      "callers": 4,
+      "behaviorPositive": 13,
+      "behaviorNegative": 1791,
+      "primary": 17,
+      "native": {
+        "baseline": {
+          "tests": 2264,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 11
+        },
+        "changed": {
+          "tests": 2264,
+          "failures": 13,
+          "errors": 0,
+          "skipped": 11
+        }
+      },
+      "outsideScope": [
+        "method:com/pinterest/ktlint/test/RuleSetProviderTest#checkAllRulesInPackageAreProvidedByRuleSetProvider()V"
+      ],
+      "oracleSha256": "59878a398e754399a25f1dc44a337ec7ae73235de619ddcc583a297cb9330107"
+    }
+  ],
+  "matchedBaselineSnapshots": 2,
+  "productGraphUsedForOracle": false,
+  "observerMethodMapping": "native MethodSource/JVM descriptors, not display-name inference",
+  "notes": [
+    "The unchanged external inherited test is still executed and reported outside source scope.",
+    "Disabled invocations remain explicit; no old experiment rescoring."
+  ]
+}

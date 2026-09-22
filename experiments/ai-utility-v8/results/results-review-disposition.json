@@ -1,0 +1,26 @@
+{
+  "status": "no-blockers",
+  "reviewer": "GLM via packet-ask",
+  "reviewSeconds": 68.73,
+  "scope": "Completed result arithmetic, interpretation and all unresolved/selector readbacks",
+  "items": [
+    {
+      "id": 1,
+      "disposition": "clarified",
+      "evidence": "Disabled-rule50% is one of two positive methods missed, not a selector mismatch."
+    },
+    {
+      "id": 2,
+      "disposition": "corrected reviewer arithmetic and clarified",
+      "evidence": "Reviewer suggested production outside-oracle sum8; original report totals5+5=10. State outside-oracle13 is production10 plus negative-control tests3. Other unadjudicated test predictions0. Original report numbers were correct and unchanged."
+    },
+    {
+      "id": 3,
+      "disposition": "clarified exact denominator",
+      "evidence": "Precision null means zero adjudicated test predictions (positive+negative), not merely zero positives. Zero positives with selected negatives gives0.0."
+    }
+  ],
+  "primaryReportChanged": false,
+  "originalAnswersChanged": false,
+  "modelReruns": 0
+}

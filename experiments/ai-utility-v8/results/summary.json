@@ -1,0 +1,56 @@
+{
+  "status": "completed",
+  "trials": 16,
+  "validResponses": 16,
+  "infrastructureErrors": 0,
+  "selectiveRestarts": 0,
+  "modelStageSeconds": 612.606344790016,
+  "modelCostUsd": 3.5699644999999998,
+  "costMeaning": "CLI estimate; not billed/all-task cost. Preparation, diagnostics and external reviews excluded.",
+  "arms": {
+    "source": {
+      "trials": 8,
+      "predictionStatuses": {
+        "outside-oracle-unadjudicated": 7,
+        "unresolved": 9,
+        "in-oracle": 58
+      },
+      "negativeControlsSelected": 2,
+      "kindMismatches": 0,
+      "seconds": 296.7749863330173,
+      "costUsd": 1.7021325,
+      "informationToolRequests": 51,
+      "productProcessed": {},
+      "productionOutsideOracle": 5,
+      "testOutsideControls": 0
+    },
+    "mcp": {
+      "trials": 8,
+      "predictionStatuses": {
+        "in-oracle": 65,
+        "outside-oracle-unadjudicated": 6,
+        "unresolved": 9
+      },
+      "negativeControlsSelected": 1,
+      "kindMismatches": 0,
+      "seconds": 315.8313584569987,
+      "costUsd": 1.867832,
+      "informationToolRequests": 55,
+      "productProcessed": {
+        "impact": 3
+      },
+      "productionOutsideOracle": 5,
+      "testOutsideControls": 0
+    }
+  },
+  "interpretation": "No consistent utility advantage. All three attempted product impact requests returned notFound, so differences cannot be attributed to consumed impact paths. Strict scores, nested-owner naming limitations, actual omissions and false assertion-failure predictions remain separate.",
+  "readback": {
+    "unresolvedTotal": 18,
+    "omittedNestedOwner": 16,
+    "misnamedDeclaration": 2,
+    "primaryRescored": false,
+    "postRunCanonicalUsrControls": 3,
+    "postRunControlsAreNotModelTrials": true
+  },
+  "reportSha256": "f8e6210e06dfb4a212709cbfbc30ef610f8e1233e97881cd7bd64193bb0f7cfe"
+}

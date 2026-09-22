@@ -5,6 +5,32 @@
 현재 재개 정보다. 규칙은 [AGENTS.md](AGENTS.md), 이전 발행·측정은
 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 보존한다. 과거 Next Steps는 현재 권한이 아니다.
 
+## 최신 상태 — v8 실제 공개 모듈 효용 검증 완료
+
+- 사용자 요청대로 실제 detekt style180파일·ktlint standard207파일에서 네 제안 변경을 사전 고정해 16회를 완료했다.
+  [v8 결과](experiments/ai-utility-v8/README.md)를 따른다. 단일 제공 모듈의 실험이며 자연 발생 PR/무작위 대표 표본이 아니다.
+- source8/8·MCP8/8 구조화 응답 유효, 인프라 오류0·선택적 재시작0. 원문112개·반환 객체/출력 tool input·재채점이 일치했다.
+  모델612.61초·CLI 비용 추정3.5699645USD. 이전 v5/v6/v7 105개 파일은 불변이다.
+- 실제 product impact3회는 모두 notFound였다. 유효한 변경 대상 경로를 받지 못했으므로 MCP 조건의 일부 높은 점수를
+  graph 경로 효과로 해석하지 않는다. 별도 사후 정확한 USR 진단은 found1/partial2였으며 모델 재실행·가점은 없다.
+  파일 경로만 바로잡은 한 진단은16KiB 한도에 걸렸고 단일 함수 USR로 좁혀야 했다.
+- 미대응18개는 nested owner 누락16·잘못된 선언 이름2였다. line-content의 caller0점은 별도의 downstream visit를 선택한
+  결과이고 원래 visitKtFile caller와 구분했다. 양쪽 모두 FunctionLiteralRuleTest의 disabled-rule 회귀를 놓쳤다.
+  import 사례의 음성 대조 오선택은 source2/MCP1이었다. 일관된 효용/일반 생산성 우위를 확인하지 못했다.
+- 원본 전체 test 실행: detekt3649 pass, ktlint2253 pass·11 skip. 조건별 정적 caller22·assertion 변경method21을 독립 고정했다.
+  스코프 밖 상속 test1개는 계속 실행·보존하고 primary에서 분리한다. source/USR7,332개의 사례별 선언 쌍을 검증했다.
+- 준비 중 observer.jar 입력 분류 오류·실제 test 이름 끝 공백 손실을 v8 adapter/collector에서만 수정했다.
+  baseline 빌드 후 tracked 변경·shadowed owner를 거부하는 검사를 추가했다. 발행0.15.0 제품 바이너리는 그대로다.
+- 회귀40개·실제 JUnit observer 실패 경로가 통과했다. GLM 사전 지적은 처리했고 결과 리뷰는 차단사항0이다.
+  원본 리뷰·산식 오독의 교정·선택적 의견 처분을 보존한다. CI에도 v8 unit/native observer 검사·원시 증거 업로드를 추가했다.
+- protocol `9f36bf7`, freeze `eaecea7`; manifest SHA256
+  `d539bf1b19d16b9525939b23895d880848eacc0e2ecc35f7bb00ab3bd33868e6`.
+  branch `experiment/ai-utility-v8-20260922`; 원격 반영 상태는 해당 PR의 정확한 head/CI와 merge tree로 확인한다.
+- 로컬 원장 `.git/ai-utility-v8-20260922/FINAL.json`, 모델 원문 `trials-final/`, 고정 oracle `oracles-final/`.
+  native 준비는 archive 상태다. 약75.10MB/38,043개 member 실제 복원·두 snapshot matched·준비 artifact2,028개를 확인했다.
+  정리 후 report byte-identical. 복원은 `cleanup.json`과 parser의 v6 archive 참조를 따른다. 다른 checkout에 로컬 원장을 가정하지 않는다.
+  완료된 모델 run은 재시작하지 않는다. 구체적인 후속 후보는 selector 복구·scope/페이지 안내를 실제 agent 흐름에서 검증하는 일이다.
+
 ## 최신 상태 — v7 표기 대응·호출/동작 평가 완료
 
 - 사용자 요청의 v6 원격 통합은 [PR96](https://github.com/ictechgy/kartograph/pull/96)·`4e9f64b`로 완료했다.

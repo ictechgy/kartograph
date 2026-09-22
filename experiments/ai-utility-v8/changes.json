@@ -1,0 +1,50 @@
+[
+  {
+    "id": "detekt-line-content",
+    "repository": "detekt/detekt",
+    "source": "detekt",
+    "base": "046263730eb5368cb344489ac36543294e8e87bd",
+    "module": "detekt-rules-style",
+    "java": "17",
+    "file": "src/main/kotlin/io/gitlab/arturbosch/detekt/rules/style/KtFileContent.kt",
+    "before": "KtFileContent(this, text.splitToSequence(\"\\n\"))",
+    "after": "KtFileContent(this, text.splitToSequence(\"\\n\").map { it.trimEnd() })",
+    "function": "toFileContent"
+  },
+  {
+    "id": "detekt-trimming-methods",
+    "repository": "detekt/detekt",
+    "source": "detekt",
+    "base": "046263730eb5368cb344489ac36543294e8e87bd",
+    "module": "detekt-rules-style",
+    "java": "17",
+    "file": "src/main/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrimMultilineRawString.kt",
+    "before": "return nextCall in trimmingMethods",
+    "after": "return nextCall == trimmingMethods.firstOrNull()",
+    "function": "isTrimmed"
+  },
+  {
+    "id": "ktlint-disabled-max-length",
+    "repository": "ktlint/ktlint",
+    "source": "ktlint",
+    "base": "b44a53f414d81cdf5816a26c182ba2738e3c9670",
+    "module": "ktlint-ruleset-standard",
+    "java": "21",
+    "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/MaxLineLengthRule.kt",
+    "before": "    } else {\n        Int.MAX_VALUE\n    }",
+    "after": "    } else {\n        this[MAX_LINE_LENGTH_PROPERTY]\n    }",
+    "function": "maxLineLength"
+  },
+  {
+    "id": "ktlint-import-subpackages",
+    "repository": "ktlint/ktlint",
+    "source": "ktlint",
+    "base": "b44a53f414d81cdf5816a26c182ba2738e3c9670",
+    "module": "ktlint-ruleset-standard",
+    "java": "21",
+    "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/internal/importordering/PatternEntry.kt",
+    "before": "if (withSubpackages && otherPackageName[packageName.length] == '.')",
+    "after": "if (!withSubpackages && otherPackageName[packageName.length] == '.')",
+    "function": "matchesPackageName"
+  }
+]

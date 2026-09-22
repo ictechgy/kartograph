@@ -1,0 +1,51 @@
+initscript {
+    dependencies { classpath files(System.getProperty('evaluation.plugin')) }
+}
+
+gradle.beforeProject { consumer ->
+    if (consumer.path == System.getProperty('evaluation.module')) {
+        if (System.getProperty('evaluation.capture.enabled', 'true') == 'true') {
+            consumer.pluginManager.apply(dev.kartograph.gradle.KartographPlugin)
+            def extension = consumer.extensions.getByName('kartograph')
+            extension.snapshotsEnabled.set(true)
+            extension.includeSourcePaths.set(true)
+            extension.includePrivateMembers.set(true)
+            extension.snapshotMaxMiB.set(128)
+            // observer는 Test runtime의 도구이며 compiler runtime 입력으로 분류하지 않는다. 별도 해시로 고정한다.
+            extension.snapshotBuildInputs.from(System.getProperty('evaluation.capture'))
+            consumer.pluginManager.withPlugin('java') {
+                def toolchains = consumer.extensions.getByType(org.gradle.jvm.toolchain.JavaToolchainService)
+                extension.snapshotKotlinToolchain.set(toolchains.launcherFor {
+                    languageVersion.set(org.gradle.jvm.toolchain.JavaLanguageVersion.of(Integer.parseInt(System.getProperty('evaluation.java'))))
+                })
+            }
+        }
+        consumer.afterEvaluate {
+            consumer.tasks.withType(org.gradle.api.tasks.testing.Test).configureEach { test ->
+                test.maxParallelForks = 1
+                test.maxHeapSize = '2g'
+                test.classpath += consumer.files(System.getProperty('evaluation.observer.jar'))
+                test.systemProperty('evaluation.observer.output', System.getProperty('evaluation.observer.output'))
+                test.systemProperty('junit.jupiter.execution.parallel.enabled', 'false')
+                test.outputs.upToDateWhen { false }
+                test.doFirst {
+                    def output = new File(System.getProperty('evaluation.observer.output'))
+                    if (output.exists()) throw new GradleException('Observer output already exists; preserve the prior attempt')
+                    if (!output.mkdirs()) throw new GradleException('Could not create observer output')
+                }
+            }
+            consumer.tasks.register('evaluationSources') { task ->
+                task.doLast {
+                    def files = []
+                    def kotlin = consumer.extensions.getByName('kotlin')
+                    ['main', 'test'].each { sourceSet ->
+                        files.addAll(kotlin.sourceSets.getByName(sourceSet).kotlin.files.collect {
+                            consumer.projectDir.toPath().toAbsolutePath().normalize().relativize(it.toPath().toAbsolutePath().normalize()).toString()
+                        })
+                    }
+                    new File(System.getProperty('evaluation.sources')).text = groovy.json.JsonOutput.toJson(files.unique().sort())
+                }
+            }
+        }
+    }
+}

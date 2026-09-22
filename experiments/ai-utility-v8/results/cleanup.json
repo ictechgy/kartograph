@@ -1,0 +1,56 @@
+{
+  "status": "complete",
+  "archive": "archives/native-and-preparation.tar.gz",
+  "archiveSha256": "0d12f752184fc55eff796f5d392f501030481f90c47d3bcc321065b146ebe9ab",
+  "archiveBytes": 75099836,
+  "archiveMembers": 38043,
+  "actualRestoredSnapshots": [
+    {
+      "module": "detekt-rules-style",
+      "cases": [
+        "detekt-line-content",
+        "detekt-trimming-methods"
+      ],
+      "status": "matched"
+    },
+    {
+      "module": "ktlint-ruleset-standard",
+      "cases": [
+        "ktlint-disabled-max-length",
+        "ktlint-import-subpackages"
+      ],
+      "status": "matched"
+    }
+  ],
+  "preparationArtifactsVerified": 2028,
+  "preservedLiveEvidenceFiles": 195,
+  "priorExperimentFilesUnchanged": 105,
+  "parserDuplicateFiles": 6,
+  "allocatedBeforeBytes": 717238272,
+  "allocatedAfterBytes": 166703104,
+  "liveNativeInputs": false,
+  "removed": [
+    "sources",
+    "baseline-detekt-1",
+    "baseline-detekt-2",
+    "baseline-ktlint-1",
+    "detekt-line-content-changed-1",
+    "detekt-trimming-methods-changed-1",
+    "ktlint-disabled-max-length-changed-1",
+    "ktlint-import-subpackages-changed-1",
+    "inventory-detekt",
+    "inventory-detekt-v2",
+    "inventory-ktlint",
+    "observer-red",
+    "observer-green",
+    "observer-final",
+    "observer-ci-control",
+    "observer-ci-control-dependencies",
+    "observer-tools",
+    "source-parser",
+    "restore-check"
+  ],
+  "restoration": "Extract archive to an empty folder, rewrite only copied binding paths for archived native roots, and verify the two restored baseline snapshots. Original manifests/bindings remain immutable.",
+  "parserRestoration": "Same six parser files are retained in the v6 native archive; see parser-restoration-reference-local.json.",
+  "prerequisites": "Existing JDKs, global dependency cache, released0.15.0 CLI/plugin and frozen worktree runtime sources are retained."
+}

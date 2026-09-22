@@ -1,0 +1,29 @@
+{
+  "status": "passed-before-models",
+  "cases": [
+    {
+      "case": "detekt-line-content",
+      "primary": 6,
+      "negative": 1847,
+      "pairedIdentityChecks": 1853
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "primary": 4,
+      "negative": 1849,
+      "pairedIdentityChecks": 1853
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "primary": 16,
+      "negative": 1802,
+      "pairedIdentityChecks": 1818
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "primary": 17,
+      "negative": 1791,
+      "pairedIdentityChecks": 1808
+    }
+  ]
+}

@@ -49,6 +49,22 @@ jobs:
         run: python3 -m unittest discover -s Scripts/tests -v
       - name: Verify caller and behavior evaluation contracts
         run: python3 -m unittest discover -s experiments/ai-utility-v7 -p 'test*.py' -v
+      - name: Verify real-module evaluation and native JUnit evidence
+        run: |
+          python3 -m unittest discover -s experiments/ai-utility-v8 -p 'test*.py' -v
+          python3 experiments/ai-utility-v8/verify_observer.py --jdk "$JAVA_HOME" --download-junit --output build/reports/ai-utility-v8-observer
+      - name: Preserve native JUnit observer evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ai-utility-v8-observer
+          path: |
+            build/reports/ai-utility-v8-observer/verification.json
+            build/reports/ai-utility-v8-observer/base/*.json*
+            build/reports/ai-utility-v8-observer/changed/*.json*
+            build/reports/ai-utility-v8-observer/failed-sink.*
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Verify automatic Gradle snapshots and CI impact
         run: python3 Scripts/verify-gradle-impact-ci.py
       - name: Preserve Gradle impact CI evidence
