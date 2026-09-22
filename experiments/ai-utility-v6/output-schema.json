@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "targets": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "properties": {
+          "file": {"type": "string"},
+          "symbol": {"type": "string"},
+          "kind": {"type": "string", "enum": ["test", "caller", "override"]},
+          "reason": {"type": "string"},
+          "evidence": {"type": "string"}
+        },
+        "required": ["file", "symbol", "kind", "reason", "evidence"],
+        "additionalProperties": false
+      }
+    },
+    "unknowns": {"type": "array", "items": {"type": "string"}},
+    "summary": {"type": "string"}
+  },
+  "required": ["targets", "unknowns", "summary"],
+  "additionalProperties": false
+}

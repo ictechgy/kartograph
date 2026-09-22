@@ -1,0 +1,26 @@
+[
+  {
+    "case": "detekt_detekt-6443",
+    "primary": 27,
+    "sourceSignatureCoverage": 1,
+    "jvmIdentityCoverage": 1
+  },
+  {
+    "case": "detekt_detekt-6352",
+    "primary": 9,
+    "sourceSignatureCoverage": 1,
+    "jvmIdentityCoverage": 1
+  },
+  {
+    "case": "pinterest_ktlint-2617",
+    "primary": 14,
+    "sourceSignatureCoverage": 1,
+    "jvmIdentityCoverage": 1
+  },
+  {
+    "case": "pinterest_ktlint-2554",
+    "primary": 31,
+    "sourceSignatureCoverage": 1,
+    "jvmIdentityCoverage": 1
+  }
+]
