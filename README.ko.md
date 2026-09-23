@@ -1,5 +1,7 @@
 # kartograph
 
+<img src="icon.png" alt="kartograph의 새 마스코트" width="112" height="112" align="right">
+
 Kotlin/Android 코드베이스의 의존성 그래프를 만들고 질의하는 도구다. cartograph(Swift)의 자매 프로젝트로, 설계와 교환 계약을 공유한다.
 
 > [English](README.md)

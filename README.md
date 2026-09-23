@@ -1,5 +1,7 @@
 # kartograph
 
+<img src="icon.png" alt="kartograph's bird mascot" width="112" height="112" align="right">
+
 Queryable dependency graphs for Kotlin/Android codebases. A sister project of cartograph (Swift) that shares its design and exchange contracts.
 
 > [한국어](README.ko.md)
