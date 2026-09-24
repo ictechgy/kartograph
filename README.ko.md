@@ -112,6 +112,8 @@ kartograph query UserService --classes path/to/classes --project . --depth 2 --l
 kartograph bridges --project . --format json
 # Kotlin/JVM Flutter BasicMessageChannel 사실(v2)을 선택적으로 생성한다.
 kartograph bridges --project . --target flutter --messages --graph-file build/reports/kartograph/main-graph.json
+# isthmus용 persistence 관계 사용: Room/JDBC/Exposed/jOOQ, SQL 모양 리터럴, SQLDelight .sq/.sqm.
+kartograph schema --project . --format json
 kartograph skill --project .
 ```
 
@@ -233,3 +235,13 @@ kartograph는 MIT 라이선스다. 배포본에 내장된 의존성의 저작권
 있습니다. `snapshot --include-paths`로 소스 경로가 있는 스냅샷을 만들어야 브리지 위치와
 인덱스 메서드를 대조할 수 있습니다. Expo·codegen 이벤트·emitter 변수/래퍼는 해석하지 않습니다. Flutter의
 `--events`·`--messages`와 함께 사용할 수 없습니다. 두 기능은 0.11.0부터 제공됩니다. 0.13.0의 generatedAt은 추출 시각이며 source mtime은 선택적 sourceModifiedAt으로 분리합니다. 어느 시각도 compiler freshness를 증명하지 않습니다.
+
+`schema --project <dir> [--format json] [--graph-file <snapshot>]`는 isthmus용으로
+`"target": "persistence"`인 `bridge-facts` 문서를 냅니다. Kotlin·Java 소스에서 Room
+어노테이션(`@Entity`, `@DatabaseView`, `@Query`, `@ColumnInfo`, `@ForeignKey`, DAO 작업
+어노테이션), `java.sql`/`javax.sql` import가 있는 파일의 JDBC 호출 인자, Exposed `Table`
+객체와 DSL 수신자, jOOQ plain-SQL 호출, SQL 모양 문자열 리터럴, SQLDelight `.sq`/`.sqm`
+파일을 스캔합니다. 그 밖의 프레임워크(JPA 파생 쿼리, Spring Data, Ktorm, jdbi)는 지원을
+주장하지 않고 JPA/Spring Data import는 limitation으로 남깁니다. 동적·미해석 근거는
+`dynamic` 사실과 계량된 limitation으로 보존하고, 빈 스캔은 `"target": null`을 냅니다.
+`--graph-file`은 스냅샷이 fresh일 때만 JVM 심볼 식별자를 붙입니다.
