@@ -137,7 +137,7 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
                 is Event.Handler -> if (!event.isNull) {
                     val channel = event.receiver?.let { channelFor(it, scope) }
                         ?: previousChainedConstructor(events, event.offset, code)?.directHandler
-                    val location = location(relative, source, event.offset)
+                    val location = sourceLocation(relative, source, event.offset)
                     facts += BridgeFact(spec.factKind, channel?.value, dynamic = channel?.dynamic ?: true,
                         location = location, target = "flutter", channelPrefix = channel?.prefix)
                 }
@@ -174,53 +174,6 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
     private fun isPrefix(prefix: List<Int>, value: List<Int>): Boolean =
         prefix.size <= value.size && prefix.indices.all { prefix[it] == value[it] }
 
-    private fun location(path: String, source: String, offset: Int): BridgeLocation {
-        val line = source.substring(0, offset.coerceIn(0, source.length)).count { it == '\n' } + 1
-        val lineStart = source.lastIndexOf('\n', (offset - 1).coerceAtLeast(0)) + 1
-        val column = source.substring(lineStart, offset.coerceIn(lineStart, source.length))
-            .toByteArray(Charsets.UTF_8).size + 1
-        return BridgeLocation(path, line, column)
-    }
-
-    private fun stripComments(source: String): String {
-        val out = StringBuilder(source.length)
-        var block = false
-        var quote: Char? = null
-        var rawQuote = false
-        var escaped = false
-        var index = 0
-        while (index < source.length) {
-            val c = source[index]
-            val next = source.getOrNull(index + 1)
-            if (block) {
-                if (c == '*' && next == '/') { out.append("  "); block = false; index += 2 }
-                else { out.append(if (c == '\n') '\n' else ' '); index++ }
-                continue
-            }
-            if (rawQuote && source.startsWith("\"\"\"", index)) {
-                out.append("\"\"\""); rawQuote = false; index += 3; continue
-            }
-            if (rawQuote) { out.append(source[index]); index++; continue }
-            if (quote == null && source.startsWith("\"\"\"", index)) {
-                out.append("\"\"\""); rawQuote = true; index += 3; continue
-            }
-            when {
-                quote != null -> {
-                    out.append(c)
-                    when { escaped -> escaped = false; c == '\\' -> escaped = true; c == quote -> quote = null }
-                    index++
-                }
-                c == '"' -> { quote = c; out.append(c); index++ }
-                c == '/' && next == '*' -> { out.append("  "); block = true; index += 2 }
-                c == '/' && next == '/' -> {
-                    while (index < source.length && source[index] != '\n') { out.append(' '); index++ }
-                }
-                else -> { out.append(c); index++ }
-            }
-        }
-        return out.toString()
-    }
-
     private fun scopePath(source: String, end: Int): List<Int> {
         val stack = mutableListOf(0)
         var nextScope = 1
@@ -237,51 +190,6 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
         return stack.toList()
     }
 
-    private fun balancedEnd(source: String, open: Int): Int {
-        if (open < 0 || source.getOrNull(open) != '(') return -1
-        var depth = 0
-        var quote = false
-        var rawQuote = false
-        var escaped = false
-        var index = open
-        while (index < source.length) {
-            if (rawQuote) {
-                if (source.startsWith("\"\"\"", index)) { rawQuote = false; index += 3 } else index++
-                continue
-            }
-            if (!quote && source.startsWith("\"\"\"", index)) { rawQuote = true; index += 3; continue }
-            val c = source[index]
-            if (quote) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == '"' -> quote = false }; index++; continue }
-            when (c) { '"' -> quote = true; '(' -> depth++; ')' -> { depth--; if (depth == 0) return index } }
-            index++
-        }
-        return -1
-    }
-
-    private fun callArguments(source: String, open: Int, end: Int): List<String> {
-        if (end <= open + 1) return emptyList()
-        val values = mutableListOf<String>()
-        var start = open + 1
-        var depth = 0
-        var quote = false
-        var rawQuote = false
-        var escaped = false
-        var index = start
-        while (index < end) {
-            if (rawQuote) {
-                if (source.startsWith("\"\"\"", index)) { rawQuote = false; index += 3 } else index++
-                continue
-            }
-            if (!quote && source.startsWith("\"\"\"", index)) { rawQuote = true; index += 3; continue }
-            val c = source[index]
-            if (quote) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == '"' -> quote = false }; index++; continue }
-            when (c) { '"' -> quote = true; '(' -> depth++; ')' -> depth--; ',' -> if (depth == 0) { values += source.substring(start, index).trim(); start = index + 1 } }
-            index++
-        }
-        values += source.substring(start, end).trim()
-        return values
-    }
-
     private fun resolveChannel(expression: String?): Channel = when {
         expression == null -> Channel(null, true, null)
         expression.isQuotedOrInterpolated() -> {
@@ -296,10 +204,6 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
         }
         else -> Channel(expression.trim(), true, null)
     }
-
-    private fun List<String>.firstNamed(name: String): String? = firstOrNull { argument ->
-        argument.substringBefore('=', "").trim() == name
-    }?.substringAfter('=', "")?.trim()
 
     private data class Channel(val value: String?, val dynamic: Boolean, val prefix: String?)
     private data class Binding(val name: String, val scope: List<Int>, var channel: Channel)
@@ -330,27 +234,29 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
  */
 internal fun maskStringContents(source: String): String {
     val out = StringBuilder(source.length)
-    var quote = false
+    var quote: Char? = null
     var rawQuote = false
     var escaped = false
     var index = 0
     while (index < source.length) {
-        if (!quote && source.startsWith("\"\"\"", index)) {
-            rawQuote = true; quote = true; out.append("   "); index += 3; continue
+        if (quote == null && source.startsWith("\"\"\"", index)) {
+            rawQuote = true; quote = '"'; out.append("   "); index += 3; continue
         }
         if (rawQuote && source.startsWith("\"\"\"", index)) {
-            rawQuote = false; quote = false; out.append("   "); index += 3; continue
+            rawQuote = false; quote = null; out.append("   "); index += 3; continue
         }
         val c = source[index]
         when {
             rawQuote && c == '\n' -> out.append('\n')
             rawQuote -> out.append(' ')
-            !quote && c == '"' -> { quote = true; out.append(c) }
-            quote && escaped -> { escaped = false; out.append(' ') }
-            quote && c == '\\' -> { escaped = true; out.append(' ') }
-            quote && c == '"' -> { quote = false; out.append(c) }
-            quote && c == '\n' -> out.append('\n')
-            quote -> out.append(' ')
+            // 문자 리터럴 `'`도 인용으로 본다 — `'"'` 안의 `"`가
+            // 문자열을 열어 나머지 파일을 마스킹하지 않게 한다.
+            quote == null && (c == '"' || c == '\'') -> { quote = c; out.append(c) }
+            quote != null && escaped -> { escaped = false; out.append(' ') }
+            quote != null && c == '\\' -> { escaped = true; out.append(' ') }
+            quote != null && c == quote -> { quote = null; out.append(c) }
+            quote != null && c == '\n' -> out.append('\n')
+            quote != null -> out.append(' ')
             else -> out.append(c)
         }
         index++
@@ -612,4 +518,108 @@ internal fun literalOrDynamicChannel(expression: String): Pair<String, Boolean> 
     val body = if (triple) raw.substring(3, raw.length - 3) else raw.substring(1, raw.length - 1)
     return if (interpolationIndex(body, triple) >= 0) raw to true
     else (if (triple) decodeRawLiteral(body) else decodeLiteral(body)) to false
+}
+
+// 문자열을 거스르지 않고 주석만 공백으로 지우는 전체 파일 뷰다 — channel과
+// schema 스캐너가 같은 어휘 경계를 공유해 결과가 어긋나지 않게 한다.
+internal fun stripComments(source: String): String {
+    val out = StringBuilder(source.length)
+    var block = false
+    var quote: Char? = null
+    var rawQuote = false
+    var escaped = false
+    var index = 0
+    while (index < source.length) {
+        val c = source[index]
+        val next = source.getOrNull(index + 1)
+        if (block) {
+            if (c == '*' && next == '/') { out.append("  "); block = false; index += 2 }
+            else { out.append(if (c == '\n') '\n' else ' '); index++ }
+            continue
+        }
+        if (rawQuote && source.startsWith("\"\"\"", index)) {
+            out.append("\"\"\""); rawQuote = false; index += 3; continue
+        }
+        if (rawQuote) { out.append(source[index]); index++; continue }
+        if (quote == null && source.startsWith("\"\"\"", index)) {
+            out.append("\"\"\""); rawQuote = true; index += 3; continue
+        }
+        when {
+            quote != null -> {
+                out.append(c)
+                when { escaped -> escaped = false; c == '\\' -> escaped = true; c == quote -> quote = null }
+                index++
+            }
+            c == '"' || c == '\'' -> { quote = c; out.append(c); index++ }
+            c == '/' && next == '*' -> { out.append("  "); block = true; index += 2 }
+            c == '/' && next == '/' -> {
+                while (index < source.length && source[index] != '\n') { out.append(' '); index++ }
+            }
+            else -> { out.append(c); index++ }
+        }
+    }
+    return out.toString()
+}
+
+/** `(` 위치부터 짝이 맞는 `)`의 위치를 돌려준다 — 닫히지 않으면 -1. */
+internal fun balancedEnd(source: String, open: Int): Int {
+    if (open < 0 || source.getOrNull(open) != '(') return -1
+    var depth = 0
+    var quote: Char? = null
+    var rawQuote = false
+    var escaped = false
+    var index = open
+    while (index < source.length) {
+        if (rawQuote) {
+            if (source.startsWith("\"\"\"", index)) { rawQuote = false; index += 3 } else index++
+            continue
+        }
+        if (quote == null && source.startsWith("\"\"\"", index)) { rawQuote = true; index += 3; continue }
+        val c = source[index]
+        // 문자 리터럴 `'`도 인용이다 — `')'` 같은 리터럴이 괄호 균형을 깨지 않게 한다.
+        if (quote != null) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == quote -> quote = null }; index++; continue }
+        when (c) { '"', '\'' -> quote = c; '(' -> depth++; ')' -> { depth--; if (depth == 0) return index } }
+        index++
+    }
+    return -1
+}
+
+/** `(`, `)` 사이의 최상위 인자 목록을 쉼표로 나눈다 — 문자열·중첩 괄호는 건너뛴다. */
+internal fun callArguments(source: String, open: Int, end: Int): List<String> {
+    if (end <= open + 1) return emptyList()
+    val values = mutableListOf<String>()
+    var start = open + 1
+    var depth = 0
+    var quote: Char? = null
+    var rawQuote = false
+    var escaped = false
+    var index = start
+    while (index < end) {
+        if (rawQuote) {
+            if (source.startsWith("\"\"\"", index)) { rawQuote = false; index += 3 } else index++
+            continue
+        }
+        if (quote == null && source.startsWith("\"\"\"", index)) { rawQuote = true; index += 3; continue }
+        val c = source[index]
+        if (quote != null) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == quote -> quote = null }; index++; continue }
+        when (c) { '"', '\'' -> quote = c; '(' -> depth++; ')' -> depth--; ',' -> if (depth == 0) { values += source.substring(start, index).trim(); start = index + 1 } }
+        index++
+    }
+    values += source.substring(start, end).trim()
+    return values
+}
+
+/** `name = value` 형태의 명명 인자 값을 찾는다 — `name == value` 같은 비교 식은 인자가 아니므로 없으면 null. */
+internal fun List<String>.firstNamed(name: String): String? = firstOrNull { argument ->
+    argument.substringBefore('=', "").trim() == name &&
+        !argument.substringAfter('=', "").startsWith('=')
+}?.substringAfter('=', "")?.trim()
+
+/** source 오프셋을 프로젝트 상대 경로의 1기반 줄·UTF-8 바이트 열 위치로 변환한다. */
+internal fun sourceLocation(path: String, source: String, offset: Int): BridgeLocation {
+    val line = source.substring(0, offset.coerceIn(0, source.length)).count { it == '\n' } + 1
+    val lineStart = source.lastIndexOf('\n', (offset - 1).coerceAtLeast(0)) + 1
+    val column = source.substring(lineStart, offset.coerceIn(lineStart, source.length))
+        .toByteArray(Charsets.UTF_8).size + 1
+    return BridgeLocation(path, line, column)
 }

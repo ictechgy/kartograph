@@ -205,6 +205,7 @@ class KartographCliTest {
         val cases = mapOf(
             "query" to "kartograph query",
             "bridges" to "kartograph bridges",
+            "schema" to "kartograph schema",
             "skill" to "kartograph skill",
             "cycles" to "kartograph cycles",
             "rules" to "kartograph rules",
@@ -610,6 +611,41 @@ class KartographCliTest {
         assertContains(execution.output, "\"kind\": \"channel-register\"")
         assertContains(execution.output, "\"project\": \"${projectRoot.toRealPath().toString().replace('\\', '/')}\"")
         kotlin.test.assertFalse(execution.output.contains(projectRoot.resolve("Plugin.kt").toString()))
+    }
+
+    @Test
+    fun `schema emits persistence bridge-facts JSON and validates options`(@TempDir projectRoot: Path) {
+        projectRoot.resolve("Dao.kt").writeText(
+            """
+            import androidx.room.Query
+            interface Dao { @Query("SELECT * FROM users") fun all(): List<Any> }
+            """.trimIndent(),
+        )
+
+        val execution = execute("schema", "--project", projectRoot.toString(), "--format", "json")
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        assertContains(execution.output, "\"format\": \"bridge-facts\"")
+        assertContains(execution.output, "\"platform\": \"kotlin\"")
+        assertContains(execution.output, "\"target\": \"persistence\"")
+        assertContains(execution.output, "\"kind\": \"relation-use\"")
+        assertContains(execution.output, "\"channel\": \"users\"")
+        kotlin.test.assertFalse(execution.output.contains(projectRoot.resolve("Dao.kt").toString()))
+
+        assertEquals(ExitStatus.USAGE.code, execute("schema", "--format", "json").status)
+        assertEquals(ExitStatus.USAGE.code, execute("schema", "--project", projectRoot.toString(), "--format", "text").status)
+        assertEquals(ExitStatus.FAILURE.code, execute("schema", "--project", projectRoot.resolve("missing").toString()).status)
+        assertEquals(ExitStatus.USAGE.code, execute("schema", "--project", projectRoot.toString(), "--target", "x").status)
+    }
+
+    @Test
+    fun `schema on sources without persistence emits null target`(@TempDir projectRoot: Path) {
+        projectRoot.resolve("Plain.kt").writeText("class Plain\n")
+
+        val execution = execute("schema", "--project", projectRoot.toString())
+
+        assertEquals(ExitStatus.SUCCESS.code, execution.status)
+        assertContains(execution.output, "\"target\": null")
+        assertContains(execution.output, "\"facts\": []")
     }
 
     @Test

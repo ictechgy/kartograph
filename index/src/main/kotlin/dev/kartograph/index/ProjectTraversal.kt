@@ -28,7 +28,12 @@ internal object ProjectTraversal {
     }
 
     /** 실제 프로젝트 경계 안의 source만 방문하고 제외 디렉터리는 열거하지 않는다. */
-    fun walkSources(projectRoot: Path, includeTests: Boolean = false, visit: (Path) -> Unit) {
+    fun walkSources(
+        projectRoot: Path,
+        includeTests: Boolean = false,
+        extensions: Set<String> = setOf("kt", "java"),
+        visit: (Path) -> Unit,
+    ) {
         val root = projectRoot.toRealPath()
         fun pruned(path: Path): Boolean = if (includeTests) isPruned(root, path) else isPrunedSource(root, path)
         Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
@@ -36,7 +41,7 @@ internal object ProjectTraversal {
                 if (pruned(dir)) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
 
             override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                if (file.fileName.toString().substringAfterLast('.', "") !in setOf("kt", "java") || pruned(file)) {
+                if (file.fileName.toString().substringAfterLast('.', "") !in extensions || pruned(file)) {
                     return FileVisitResult.CONTINUE
                 }
                 val realFile = file.toRealPath()

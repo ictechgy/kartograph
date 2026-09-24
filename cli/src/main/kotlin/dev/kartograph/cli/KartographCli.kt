@@ -43,6 +43,7 @@ internal object KartographCli {
         "mcp" -> McpCommand.run(arguments.drop(1), input, output, error)
         "impact" -> ImpactCommand.run(arguments.drop(1), output, error)
         "bridges" -> AgentCommand.bridges(arguments.drop(1), output, error)
+        "schema" -> AgentCommand.schema(arguments.drop(1), output, error)
         "skill" -> AgentCommand.skill(arguments.drop(1), output, error)
         "dependencies" -> DependenciesCommand.run(arguments.drop(1), output, error)
         "cycles" -> ArchitectureCommand.cycles(arguments.drop(1), output, error)
@@ -225,6 +226,7 @@ internal object KartographCli {
           kartograph impact <symbol> --graph-file <snapshot.json> [--base-graph <snapshot.json>] [--snapshot-max-mib <1..128>] [options]
           kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>] [--snapshot-max-mib <1..128>]
           kartograph bridges --project <directory> [--format json]
+          kartograph schema --project <directory> [--format json] [--graph-file <snapshot>]
           kartograph mcp --graph-file <snapshot.json> [--snapshot-max-mib <1..128>] [options]
           kartograph skill
           kartograph dependencies --classes <directory> --project <directory> --dependencies <file> [options]

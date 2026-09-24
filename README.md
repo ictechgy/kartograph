@@ -111,6 +111,8 @@ kartograph query UserService --classes path/to/classes --project . --depth 2 --l
 kartograph bridges --project . --format json
 # Opt-in Flutter BasicMessageChannel facts for Kotlin/JVM sources.
 kartograph bridges --project . --target flutter --messages --graph-file build/reports/kartograph/main-graph.json
+# Persistence relation uses for isthmus: Room/JDBC/Exposed/jOOQ, SQL-shaped literals, SQLDelight .sq/.sqm.
+kartograph schema --project . --format json
 kartograph skill --project .
 ```
 
@@ -232,3 +234,14 @@ in a separate v2 `react-native-event` document. `--graph-file` can attach actual
 Capture snapshots with `snapshot --include-paths` so bridge source paths can match indexed methods.
 Expo/codegen events and emitter variables/wrappers are not resolved. This flag is separate from
 Flutter `--events` and `--messages`. Both extensions are available from 0.11.0. In 0.13.0, bridge `generatedAt` records extraction time and optional `sourceModifiedAt` separately records observed source mtime; neither proves compiler freshness.
+
+`schema --project <dir> [--format json] [--graph-file <snapshot>]` emits a `bridge-facts`
+document with `"target": "persistence"` for isthmus. It scans Kotlin and Java sources for
+Room annotations (`@Entity`, `@DatabaseView`, `@Query`, `@ColumnInfo`, `@ForeignKey`, and the
+DAO operation annotations), JDBC call arguments when a `java.sql`/`javax.sql` import gates the
+file, Exposed `Table` objects and DSL receivers, jOOQ plain-SQL calls, SQL-shaped string
+literals, and SQLDelight `.sq`/`.sqm` files. Other frameworks (JPA derived queries, Spring Data,
+Ktorm, jdbi) are not claimed; JPA/Spring Data imports surface as a limitation. Dynamic or
+unresolved evidence stays visible as `dynamic` facts and measured limitations; an empty scan
+emits `"target": null`. `--graph-file` attaches JVM symbol identities only when the snapshot is
+fresh.

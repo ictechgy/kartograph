@@ -21,6 +21,7 @@ import dev.kartograph.index.ClassHierarchyIndexer
 import dev.kartograph.index.KeepRuleScanner
 import dev.kartograph.index.KeepRuleScanningException
 import dev.kartograph.index.RuntimeLimitationScanner
+import dev.kartograph.index.SchemaFactScanner
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
@@ -388,6 +389,41 @@ internal object AgentCommand {
         }
     }
 
+    fun schema(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
+        if (arguments == listOf("--help") || arguments == listOf("-h")) {
+            output.print(SCHEMA_HELP)
+            return ExitStatus.SUCCESS.code
+        }
+        val options = parsePaths(arguments, setOf("--project", "--format", "--graph-file"), error)
+            ?: return ExitStatus.USAGE.code
+        val project = try {
+            options.single("--project")?.let(Path::of)?.toAbsolutePath()?.normalize()
+                ?: return usage(error, "missing required --project path")
+        } catch (_: InvalidPathException) {
+            return usage(error, "invalid path")
+        }
+        if (options.single("--format")?.let { it != "json" } == true) return usage(error, "invalid schema format")
+        if (!Files.isDirectory(project)) {
+            error.println("error: project root does not exist")
+            return ExitStatus.FAILURE.code
+        }
+        return try {
+            val snapshot = options.single("--graph-file")?.let { SnapshotFiles.read(it) }
+            val freshness = snapshot?.let { SavedSnapshotOperations.freshness(it, project, null, emptyMap()) }
+            val graph = snapshot?.takeUnless { freshness?.status == "stale" }?.graph
+            val scanned = SchemaFactScanner(project).scan(graph = graph)
+            val document = snapshot?.let {
+                val evidence = "graph-file-freshness-${freshness!!.status}: " + freshness.reasons.joinToString(";")
+                scanned.copy(limitations = (scanned.limitations + it.limitations + evidence).distinct().sorted())
+            } ?: scanned
+            output.print(AgentDocumentRenderer.bridges(document))
+            ExitStatus.SUCCESS.code
+        } catch (_: Exception) {
+            error.println("error: unable to scan schema facts; check the project inputs")
+            return ExitStatus.FAILURE.code
+        }
+    }
+
     private fun parsePaths(arguments: List<String>, allowed: Set<String>, error: PrintStream): ParsedOptions? {
         val values = mutableMapOf<String, MutableList<String>>()
         var index = 0
@@ -487,6 +523,22 @@ internal object AgentCommand {
         --graph-file may attach a compiler snapshot JVM symbol at the observed or enclosing source location.
         Static literals only; dynamic channel names and unattributed handlers are reported as limitations.
         generatedAt is the newest scanned source modification time (Unix epoch for an empty source tree).
+    """.trimIndent() + "\n"
+
+    private val SCHEMA_HELP = """
+        Scan project sources for database relation uses and emit a bridge-facts persistence document.
+
+        Usage:
+          kartograph schema --project <directory> [--format json] [--graph-file <snapshot>]
+
+        Covers Room annotations (@Entity, @DatabaseView, @Query, @ColumnInfo, @ForeignKey, DAO
+        operation annotations), JDBC call arguments, Exposed Table objects and DSL receivers,
+        jOOQ plain-SQL methods, SQL-shaped string literals, and SQLDelight .sq/.sqm files.
+        Other frameworks are not claimed; JPA/Spring Data imports are reported as a limitation.
+        Dynamic or unresolved evidence stays in the document as dynamic facts and limitations.
+        Facts carry the persistence target; an empty scan emits target=null.
+        generatedAt is the scan time; the newest scanned source modification time is kept
+        separately in sourceModifiedAt.
     """.trimIndent() + "\n"
 
     private val SKILL_HELP = """
