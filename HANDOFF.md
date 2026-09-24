@@ -6,8 +6,9 @@
 
 - `feature/schema-facts` 브랜치에서 `kartograph schema` 명령을 구현했다 — Room·JDBC·Exposed·jOOQ·SQL 리터럴·SQLDelight `.sq`/`.sqm`을 읽어 isthmus persistence 계약(`platform: "kotlin"`, `relation-use`) 문서를 낸다.
 - 신규: `index/.../SchemaFactScanner.kt`(선언 패스→사실 패스), `index/.../SqlRelations.kt`(rustograph `source/schema.rs`의 SQL 렉서 포트 — 문장 경계·GRANT/ON 게이트·플레이스홀더 미해석 계수 포함). 공유 헬퍼는 `ChannelBridgeScanner.kt`에서 internal로 승격. `ProjectTraversal.walkSources`에 `extensions` 파라미터 추가.
-- `named-arg` 판정은 선두 `name =` 패턴만 본다 — SQL 문자열 안의 `=`로 오인해 인자를 버리던 초기 결함을 테스트로 고정했다.
-- 검증: `:index:test`·`:cli:test` 통과, `/tmp` fixture → `isthmus check` end-to-end로 kotlin 문서 조인 확인. 잔여: 커밋·PR·GLM 리뷰, isthmus 문서 표의 kartograph 행.
+- `named-arg` 판정은 선두 `name =` 패턴만 본다 — SQL 문자열 안의 `=`로 오인해 인자를 버리던 초기 결함을 테스트로 고정했다. `==` 비교 식은 `(?!=)` lookahead로 걸러진다.
+- PR [#102](https://github.com/ictechgy/kartograph/pull/102) 생성(`feature/schema-facts`). GLM 리뷰 1회 통과 후 `ab803db`에서 수정 완료: `.sq` 라벨이 문장 머리를 삼키던 문제, 산문 리터럴 오탐(게이트 없는 리터럴은 strict 모드 — 대문자 키워드만 발화), `'"'` 문자 리터럴이 뷰를 깨던 문제, 중첩 클래스 멤버 오귀속, 무인자 호출의 허위 동적 사실, `@field:` use-site 타깃, 미해석 피연산자 개수 계수, Exposed 미선언 대상의 동적 근거 보존.
+- 검증: `:index:test`(413)·`:cli:test` 통과, CLI 계약·agent surface·자기 분석 스모크 게이트 통과, `/tmp` fixture → `isthmus check` end-to-end로 kotlin 문서 조인 확인. isthmus 측은 `feature/kotlin-persistence-producer` 브랜치의 PR #111에 kotlin 수용 테스트와 `hasPersistenceDomain` target 판정 수정이 있다.
 - 아래는 0.16.0 배포·정리 완료 상태다.
 
 - Kotlin/JVM 컴파일 그래프를 질의하는 CLI·Gradle plugin. 작업 규칙은 [AGENTS.md](AGENTS.md), 제품 범위는 [PRD](docs/PRD.md).
