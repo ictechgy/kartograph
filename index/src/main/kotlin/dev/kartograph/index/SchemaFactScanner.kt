@@ -127,6 +127,7 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         var unresolvedExposed = 0
         var unresolvedEntities = 0
         var unattributedColumns = 0
+        var skippedSqlLiterals = 0
         var jpaSources = 0
         var sqlDelightFiles = 0
     }
@@ -284,9 +285,9 @@ public class SchemaFactScanner(private val projectRoot: Path) {
                 val end = balancedEnd(file.code, open)
                 if (end <= open) return@forEach
                 consumed += open..end
-                // 인자가 아예 없는 호출(`selectCount()`)에는 관계 피연산자가 없다 — 동적 사실도 내지 않는다.
+                // 인자가 아예 없는 호출(`selectCount()`, `selectCount( )`)에는 관계 피연산자가 없다 — 동적 사실도 내지 않는다.
                 val args = callArguments(file.code, open, end)
-                if (args.isEmpty()) return@forEach
+                if (args.all { it.isBlank() }) return@forEach
                 val expr = args.firstOrNull()?.takeUnless { it.isNamedArgument() }
                 val location = sourceLocation(file.relative, file.source, match.range.first)
                 val (value, dynamic) = expr?.let(::literalOrDynamicChannel) ?: (null to true)
@@ -551,9 +552,9 @@ public class SchemaFactScanner(private val projectRoot: Path) {
             val end = balancedEnd(file.code, open)
             if (end <= open) return@forEach
             consumed += open..end
-            // 인자 없는 호출(`stmt.execute()`)은 이미 준비된 문을 실행하는 것 — 관계 피연산자가 없다.
+            // 인자 없는 호출(`stmt.execute()`, `execute( )`)은 이미 준비된 문을 실행하는 것 — 관계 피연산자가 없다.
             val args = callArguments(file.code, open, end)
-            if (args.isEmpty()) return@forEach
+            if (args.all { it.isBlank() }) return@forEach
             val expr = args.firstOrNull()?.takeUnless { it.isNamedArgument() }
             emitSqlExpression(expr, sourceLocation(file.relative, file.source, match.range.first), entities, facts, stats)
         }
@@ -631,14 +632,22 @@ public class SchemaFactScanner(private val projectRoot: Path) {
                         target = "persistence",
                         channelPrefix = safeText(prefix).takeIf { it.isNotEmpty() },
                     )
+                } else if (looksLikeSql(prefix)) {
+                    stats.skippedSqlLiterals++
                 }
             } else {
                 val decoded = if (raw) decodeRawLiteral(body) else decodeLiteral(body)
                 if (looksLikeSql(decoded, strict = true)) {
+                    // 게이트 없는 리터럴은 네이티브 SQL이다 — 엔티티명 번역은
+                    // Room/JPQL `@Query` 경로에서만 의미가 있어 여기선 끈다.
                     emitSql(
                         decoded, location, entities, facts, stats,
-                        strict = true, translateEntities = file.room || file.jpa,
+                        strict = true, translateEntities = false,
                     )
+                } else if (looksLikeSql(decoded)) {
+                    // SQL 동사를 가졌지만 대문자 형태가 아닌 리터럴 — 산문일 가능성이
+                    // 커 관계를 만들지 않지만, 버린 개수는 limitation으로 남긴다.
+                    stats.skippedSqlLiterals++
                 }
             }
         }
@@ -834,6 +843,9 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         )
         if (stats.unattributedColumns > 0) add(
             "unattributed-column-info: ${stats.unattributedColumns} column attribute(s) had no enclosing entity declaration",
+        )
+        if (stats.skippedSqlLiterals > 0) add(
+            "skipped-sql-literals: ${stats.skippedSqlLiterals} ungated literal(s) contained SQL verbs but not the uppercase form required for heuristic scanning; not counted",
         )
         if (stats.jpaSources > 0) add(
             "jpa-persistence-sources: ${stats.jpaSources} source file(s) use JPA/Spring Data persistence; literal SQL and entity bindings are covered but named and derived queries are not",

@@ -456,4 +456,60 @@ class SchemaFactScannerTest {
         // 컬럼명이 식별자면 읽히지 않지만 테이블 귀속은 확실하다 — 동적 근거로 남긴다.
         assertTrue(doc.facts.any { it.channel == "users" && it.dynamic })
     }
+
+    @Test
+    fun `whitespace-only argument call emits nothing`() {
+        project.resolve("Repo.kt").writeText(
+            """
+            import java.sql.Statement
+            fun f(stmt: Statement) { stmt.execute( ) }
+            """.trimIndent(),
+        )
+        val doc = scan()
+        assertTrue(doc.facts.isEmpty())
+        assertTrue(doc.limitations.none { it.startsWith("unjoined-dynamic-relations:") })
+    }
+
+    @Test
+    fun `apostrophes in comments do not corrupt the view`() {
+        project.resolve("UserDao.kt").writeText(
+            """
+            import androidx.room.Entity
+            // user's record — don't confuse with a string
+            @Entity(tableName = "users")
+            data class User(val id: Long)
+            /* it's fine */
+            """.trimIndent(),
+        )
+        val doc = scan()
+        assertTrue(doc.facts.any { it.channel == "users" && !it.dynamic })
+    }
+
+    @Test
+    fun `lowercase sql literal is counted as skipped not fabricated`() {
+        project.resolve("Q.kt").writeText(
+            """
+            val q = "select * from users"
+            """.trimIndent(),
+        )
+        val doc = scan()
+        assertTrue(doc.facts.none { it.channel == "users" })
+        assertTrue(doc.limitations.any { it.startsWith("skipped-sql-literals:") })
+    }
+
+    @Test
+    fun `native literal in room file keeps literal relation name`() {
+        project.resolve("Repo.kt").writeText(
+            """
+            import androidx.room.Entity
+            @Entity(tableName = "users")
+            data class User(val id: Long)
+            val q = "SELECT * FROM User"
+            """.trimIndent(),
+        )
+        val doc = scan()
+        // 게이트 없는 리터럴은 네이티브 SQL이다 — 엔티티명 번역을 적용하지
+        // 않으므로 리터럴의 User가 users로 고쳐 쓰이지 않는다.
+        assertTrue(doc.facts.any { it.channel == "User" && !it.dynamic })
+    }
 }
