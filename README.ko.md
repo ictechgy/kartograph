@@ -58,7 +58,7 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.16.0"
+    id("io.github.ictechgy.kartograph") version "0.17.0"
 }
 ```
 
@@ -236,7 +236,7 @@ kartograph는 MIT 라이선스다. 배포본에 내장된 의존성의 저작권
 인덱스 메서드를 대조할 수 있습니다. Expo·codegen 이벤트·emitter 변수/래퍼는 해석하지 않습니다. Flutter의
 `--events`·`--messages`와 함께 사용할 수 없습니다. 두 기능은 0.11.0부터 제공됩니다. 0.13.0의 generatedAt은 추출 시각이며 source mtime은 선택적 sourceModifiedAt으로 분리합니다. 어느 시각도 compiler freshness를 증명하지 않습니다.
 
-`schema --project <dir> [--format json] [--graph-file <snapshot>]`는 isthmus용으로
+`schema --project <dir> [--format json] [--graph-file <snapshot>]`(0.17.0부터 제공)는 isthmus용으로
 `"target": "persistence"`인 `bridge-facts` 문서를 냅니다. Kotlin·Java 소스에서 Room
 어노테이션(`@Entity`, `@DatabaseView`, `@Query`, `@ColumnInfo`, `@ForeignKey`, DAO 작업
 어노테이션), `java.sql`/`javax.sql` import가 있는 파일의 JDBC 호출 인자, Exposed `Table`

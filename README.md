@@ -57,7 +57,7 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.16.0"
+    id("io.github.ictechgy.kartograph") version "0.17.0"
 }
 ```
 
@@ -235,7 +235,7 @@ Capture snapshots with `snapshot --include-paths` so bridge source paths can mat
 Expo/codegen events and emitter variables/wrappers are not resolved. This flag is separate from
 Flutter `--events` and `--messages`. Both extensions are available from 0.11.0. In 0.13.0, bridge `generatedAt` records extraction time and optional `sourceModifiedAt` separately records observed source mtime; neither proves compiler freshness.
 
-`schema --project <dir> [--format json] [--graph-file <snapshot>]` emits a `bridge-facts`
+`schema --project <dir> [--format json] [--graph-file <snapshot>]` (available from 0.17.0) emits a `bridge-facts`
 document with `"target": "persistence"` for isthmus. It scans Kotlin and Java sources for
 Room annotations (`@Entity`, `@DatabaseView`, `@Query`, `@ColumnInfo`, `@ForeignKey`, and the
 DAO operation annotations), JDBC call arguments when a `java.sql`/`javax.sql` import gates the

@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-24
+
+### Added
+
+- `schema --project <dir> [--format json] [--graph-file <snapshot>]`가 isthmus용
+  `"target": "persistence"` `bridge-facts` 문서로 DB 관계 참조(`relation-use`)를 낸다.
+  Room 어노테이션, `java.sql`/`javax.sql` import가 있는 파일의 JDBC 호출 인자, Exposed `Table`·DSL,
+  jOOQ plain-SQL, SQL 모양 문자열 리터럴, SQLDelight `.sq`/`.sqm`을 스캔한다.
+- 동적·미해석 근거는 `dynamic` 사실과 계량된 limitation으로 보존한다. 게이트 없는 리터럴은
+  대문자 SQL 키워드만 인정하고 건너뛴 리터럴 수를 `skipped-sql-literals`로 알린다.
+  JPA 파생 쿼리·Spring Data·Ktorm·jdbi는 지원을 주장하지 않으며 빈 스캔은 `"target": null`이다.
+  `--graph-file`은 snapshot이 fresh일 때만 JVM 심볼 식별자를 붙인다.
+
 ## [0.16.0] - 2026-09-23
 
 ### Added
@@ -489,7 +502,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/ictechgy/kartograph/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/ictechgy/kartograph/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/ictechgy/kartograph/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/ictechgy/kartograph/compare/v0.13.0...v0.14.0
