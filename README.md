@@ -57,7 +57,7 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.16.0"
+    id("io.github.ictechgy.kartograph") version "0.17.0"
 }
 ```
 
@@ -244,4 +244,4 @@ literals, and SQLDelight `.sq`/`.sqm` files. Other frameworks (JPA derived queri
 Ktorm, jdbi) are not claimed; JPA/Spring Data imports surface as a limitation. Dynamic or
 unresolved evidence stays visible as `dynamic` facts and measured limitations; an empty scan
 emits `"target": null`. `--graph-file` attaches JVM symbol identities only when the snapshot is
-fresh.
+fresh. Available from 0.17.0.

@@ -58,7 +58,7 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.16.0"
+    id("io.github.ictechgy.kartograph") version "0.17.0"
 }
 ```
 
@@ -244,4 +244,4 @@ kartograph는 MIT 라이선스다. 배포본에 내장된 의존성의 저작권
 파일을 스캔합니다. 그 밖의 프레임워크(JPA 파생 쿼리, Spring Data, Ktorm, jdbi)는 지원을
 주장하지 않고 JPA/Spring Data import는 limitation으로 남깁니다. 동적·미해석 근거는
 `dynamic` 사실과 계량된 limitation으로 보존하고, 빈 스캔은 `"target": null`을 냅니다.
-`--graph-file`은 스냅샷이 fresh일 때만 JVM 심볼 식별자를 붙입니다.
+`--graph-file`은 스냅샷이 fresh일 때만 JVM 심볼 식별자를 붙입니다. 0.17.0부터 제공됩니다.
