@@ -1,4 +1,6 @@
-# HANDOFF
+# HANDOFF HISTORY
+
+> 정리 전의 과거 기록이다. 현재 상태는 [HANDOFF.md](HANDOFF.md)를 따른다. 과거의 “최신”, “다음 작업”, 경로는 현재 상태나 실행 승인이 아니다.
 
 > 2026-09-20까지의 과거 기록이다. 현재 재개 정보는 [HANDOFF.md](HANDOFF.md)를 따른다.
 
@@ -461,3 +463,376 @@ HANDOFF.md와 적용 AGENTS.md를 읽고 실제 branch/status를 확인해줘. �
 발행·설치 여부는 PR/릴리스 기록으로 확인해. HANDOFF-HISTORY.md의 옛 Next Steps를
 현재 실행 권한으로 삼지 말고, 최신 사용자 요청과 사용자 파일을 보존해. 자동 수정이나
 삭제 안전성·processor 귀속으로 범위를 넓히지 마.
+
+
+---
+
+## 2026-09-23 정리 직전 인수인계
+
+> 아래 원문에서 보존하던 완료 worktree 6개와 대형 자료 일부는 이후 압축 보존 상태로 바뀌었다. 현재 복원 안내는 HANDOFF와 `.git/cleanup-handoff-20260923/README.md`를 따른다.
+
+마지막 갱신: 2026-09-23
+
+현재 재개 정보다. 규칙은 [AGENTS.md](AGENTS.md), 이전 발행·측정은
+[HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 보존한다. 과거 Next Steps는 현재 권한이 아니다.
+
+<!-- release-0.16.0-20260923:start -->
+## 최신 재개 상태 — 0.16.0 배포·독립 설치 검증 완료
+
+- 사용자 `ci 보고 배포까지 ㄱㄱ`를 완료했다. [PR100](https://github.com/ictechgy/kartograph/pull/100)은
+  `b7165489379b7916b0fa30ddded22aeb576ca696`로 머지됐고 root main도 동기화했다.
+  검증 head `cf89e0417badfad2ac22ce46736975b00cde1fda`와 merge tree가 같다. annotated `v0.16.0`
+  tag object는 `b8080adcacf955d212c785566f2c22e7c5c40093`, target은 같은 merge다.
+- [GitHub Release](https://github.com/ictechgy/kartograph/releases/tag/v0.16.0)와
+  [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.16.0)에 정식 게시됐다.
+  Portal 페이지HTTP200과 비어 있는 Gradle dependency cache의 독립 설치를 확인했다.
+- 선택자 main CI35775646499, 릴리스 PR CI35776752442, 새 main CI35780185751,
+  [Release35780283974](https://github.com/ictechgy/kartograph/actions/runs/35780283974)의 필수 job 모두 성공했다.
+  로컬 readiness는 두 clean 빌드8개 artifact hash 동일·ZIP/TAR 각각142개 Python/PR도우미 테스트·CLI/doc·collector 설치 통과.
+  GLM low 차단사항0; PR 댓글5783091887에 검토 disposition을 기록했다.
+- 공개7개 asset의 GitHub digest·크기·SHA256SUMS가 일치했다. ZIP/TAR 버전0.16.0·runtime library 동일성,
+  배포 CLI/agent 계약·collector4종 출력/stale/실패 제어를 확인했다. 실제 배포본의 MCP handshake0.16.0·4개 도구와
+  v8 실패 선택자3개의 정확한 USR 복구/재조회도 통과했다. 원래 missing 문서와 canonical 보고서는 유지됐고,
+  AI 모델 재실행·과거 점수 수정·보존 snapshot의 현재 source 신선도 주장은 없다.
+- Portal 소비 프로젝트는 strict ABI advice·baseline·expiry·configuration cache·snapshot freshness·빈 의존 프로젝트·
+  임의 library 누락 거부를 통과했다. Portal JAR은 GitHub asset과 동일하며 SHA256은
+  `022f92c45ec6d6f79a9331639179921ac5e904a1ad8df1cdba3e012452f1db6c`다.
+- 정본 `.git/release-0.16.0-20260923/FINAL.json`, 원본 로그/응답/receipt·검증 요약을 보존했다.
+  원본7개 asset은 `downloads-0.16.0/`, 사용 가능한 배포 CLI는 그 아래 `cli-zip/kartograph-0.16.0/bin/kartograph`다.
+  원본 v8 archive와0.15.0 CLI도 보존했다. 재조회는 원장의 `restore-replay-inputs.py` 후 `verify-published-selectors.py`;
+  새 실행은 timestamp 디렉터리로 분리하고, 원래 검증 코드는 `verify-published-selectors-original.py`에 보존했다.
+- 검증 원본239개는 약9.30MB archive로 실제 복원·SHA256 대조했고, 작업 소유 cache/중복본 약67.6MB를 정리했다.
+  `archive-manifest-local.json`·`cleanup-final.json`·`README.md`에 복원 경로가 있다. Portal 필요 JAR과 원본 binding을 보존하고
+  `.preserved.json` binding으로 두 snapshot을 정리 후에도 `matched` 확인했다. 등록 worktree `../kartograph-release-0.16.0-20260923`,
+  사용자 HANDOFF/메모·다른 worktree·전역 도구/cache를 보존했다.
+- 요청한 CI 확인·배포·설치 검증의 필수 작업은 남지 않았다. 후속 AI 사용성 평가는 별도 과제이며,
+  기존 frozen proxy는3-tool 계약이므로 새 평가에서4-tool protocol을 따로 고정해야 한다.
+
+<!-- release-0.16.0-20260923:end -->
+
+<!-- selector-recovery-20260923:start -->
+## 최신 재개 상태 — 선택자 복구 구현·검증·통합 완료
+
+- 사용자 `선택자 복구 ㄱㄱ`를 완료했다. [PR99](https://github.com/ictechgy/kartograph/pull/99)는
+  `0291ac0bfeaade01051101526676f01990315b70`로 머지됐고 root main도 동기화했다.
+  검증 head `3360b734800cbf2654582dfce9378fb6832da72e`와 merge tree가 같으며
+  [PR CI35772160406](https://github.com/ictechgy/kartograph/actions/runs/35772160406)의 네 검사 모두 성공했다.
+  [머지 후 main CI35775646499](https://github.com/ictechgy/kartograph/actions/runs/35775646499)도 네 검사 모두 성공했다.
+- FILE_FACADE metadata 기반 `package.function` 후보, 정확한 경로 우선/suffix 기반 파일 후보,
+  새 `discover_symbols`의 offset/nextOffset 페이지로 정확한 USR을 고른다. 원래 query/impact notFound·ambiguous와 분석 문서는 그대로다.
+  16 KiB 파일 impact 오류도 discovery→단일 USR 재조회로 복구한다. 파일/오버로드를 자동 선택하지 않는다.
+- v8 원본 snapshot 해시 확인 후 실패 요청3개 모두 복구했다. 파일 선언15개/2페이지, 함수 후보 각1개.
+  정확한 USR 결과는 배포0.15.0과 같고 원래 missing 문서도 유지된다. AI 모델 재실행·과거 점수 변경·현재 빌드 신선도 주장은 없다.
+- 로컬 전체 `test :koverVerify :cli:installDist`: 825 pass/0 fail, 외부 Now in Android 산출물이 필요한 기존2개 skip.
+  CLI·agent 계약, 자기 분석6root(4.500초/15초), focused MCP/analysis 회귀 통과. GLM low 차단사항0, PR 댓글5782425225에 disposition.
+  원격 JDK17/21·최소AGP·전체 제품·compiler collector·runtime/Android/plugin 회귀도 통과했다.
+- 로컬 원장 `.git/selector-recovery-20260923/FINAL.json`, 원본 before/after 응답, 테스트/GLM/CI 로그를 보존했다.
+  TestKit 임시 캐시 약1.43GB와 복원 snapshot 복제본을 정리했다. 검증 자료299개는 `local-verification.tar.gz`로 실제 복원·해시 대조했다.
+  원본 v8 archive/다른 worktree/전역 cache는 보존했다. 재현은 원장의 `restore-replay-inputs.py`, `README.md`를 따른다.
+  새 실행은 timestamp 디렉터리로 기록해 기존 원문을 덮어쓰지 않는다. 과거 실험105개 파일도 해시 일치다.
+- 등록 worktree `../kartograph-selector-recovery-20260923`의 검증된 설치CLI와 branch `fix/selector-recovery-20260923`을 보존했다.
+  root의 기존 사용자 HANDOFF 본문·note 파일을 유지했다. 요청한 구현·필수 검증·머지는 끝났으며 새 릴리스는 발행하지 않았다(VERSION0.15.0).
+  후속 AI 사용성 검증은 별도 과제다. 기존 frozen preflight proxy는3-tool 계약이므로 새 평가에서4-tool protocol을 별도 고정해야 한다.
+
+<!-- selector-recovery-20260923:end -->
+
+<!-- ai-utility-v8-20260922:start -->
+## 최신 재개 상태 — v8 실제 공개 모듈 평가·통합·검증 완료
+
+- 사용자 요청의 실제 대형 프로젝트 AI 효용 검증을 완료했다. [PR98](https://github.com/ictechgy/kartograph/pull/98)은
+  `dfd331b`로 머지됐고 root main도 동기화했다. 검증 head `1ebcb97`와 merge tree가 같으며
+  [PR CI](https://github.com/ictechgy/kartograph/actions/runs/35724349175)와
+  [main CI](https://github.com/ictechgy/kartograph/actions/runs/35727786894)의 네 검사 모두 성공했다.
+  기존 사용자 HANDOFF 내용·note 파일·다른 worktree·전역 cache/도구를 보존했다.
+- [v8 결과](experiments/ai-utility-v8/README.md): detekt style180파일/36,269줄·ktlint standard207파일/54,253줄,
+  사전 제안 변경4개·전체16회 유효·인프라 오류0·선택적 재시작0. 원문112개·출력 tool input·재채점이 일치했다.
+  모델612.61초·CLI 추정3.5699645USD. 기존 v5/v6/v7 105개 파일은 main과 보존 worktree 모두 byte-identical이다.
+- 기존 test task 전체: detekt3649 pass, ktlint2253 pass·11 skip. 조건별 static caller22·assertion 변경method21의
+  독립 oracle, source/USR7,332 사례별 선언 쌍을 확인했다. 모듈 밖 상속test1개는 계속 실행·보존하고 source primary 밖으로 분리했다.
+- 일관된 추가 효용은 확인하지 못했다. 실제 제품 impact3회 모두 notFound여서 유효한 변경 대상/영향 경로를 받지 못했다.
+  따라서 일부 높은 MCP-condition 점수를 graph 사용 효과로 해석하지 않는다. 별도 정확한 USR 진단은 found1/partial2였고,
+  파일 경로만 고친 한 진단은16KiB 한도에 걸려 단일 함수 USR이 필요했다. 이 진단은 모델 재실행/재채점이 아니다.
+- 미대응18개는 nested owner 누락16·잘못된 선언 이름2다. 다른 downstream 소비자 선택과 caller 누락도 구분했다.
+  양쪽 모두 FunctionLiteralRuleTest의 disabled-rule 회귀를 놓쳤고 import 음성 오선택은source2/MCP1이었다.
+  자연 발생 PR/무작위 대표 표본/전체 다중 모듈 분석/일반 생산성 개선으로 확대하지 않는다.
+- 회귀40개와 실제 JUnit observer의 parameterized/nested/dynamic/skip/기록 실패 제어가 로컬·원격에서 통과했다.
+  CI native proof ZIP의 GitHub digest·journal seal도 검증했다. GLM 사전 B1 baseline dirty-state 거부를 수정했고,
+  결과 리뷰 차단사항0·리뷰 집계 오독(production outside=10)을 교정해 파일과 PR 댓글에 남겼다. 제품은 발행0.15.0 그대로다.
+- protocol `9f36bf7`, freeze `eaecea7`, result head `1ebcb97`; manifest SHA256
+  `d539bf1b19d16b9525939b23895d880848eacc0e2ecc35f7bb00ab3bd33868e6`.
+  로컬 정본 `.git/ai-utility-v8-20260922/FINAL.json`, 원문 `trials-final/`, 고정 oracle `oracles-final/`.
+- native 준비는 archive 상태다. 약75.10MB/38,043 member를 실제 복원·해시 대조하고 snapshot2 matched·준비2,028개를
+  확인한 뒤 정리했다. 원장 배정717.24MB→166.70MB, 정리 후 report byte-identical. 복원은 `cleanup.json`과
+  `native-archive-manifest.json`, parser는 `parser-restoration-reference-local.json`의 v6 archive 동일6개 파일을 따른다.
+  live 검증기 `verify-results.py`에는 먼저 원본 입력 복원이 필요하다. 다른 checkout에 로컬 원장을 가정하지 않는다.
+- 등록 worktree `ai-utility-v8-20260922/`는 고정 실행 도구 경로를 보존한다. 완료된 model run은 재시작하지 않는다.
+  요청한 평가·통합·검증의 필수 작업은 남지 않았다. 구체적 후속 후보는 selector 복구·scope/페이지 안내를 실제 agent 흐름에서 검증하는 일이다.
+
+<!-- ai-utility-v8-20260922:end -->
+
+<!-- ai-utility-v7-20260922:start -->
+## 최신 재개 상태 — 요청한 3단계 통합·평가 완료
+
+- 사용자 `3번까지 ㄱㄱ`의 v6 원격 통합, 새 함수 타입 표기 대응, 호출·동작 평가를 완료했다.
+  [v6 PR96](https://github.com/ictechgy/kartograph/pull/96)은 `4e9f64b`,
+  [v7 PR97](https://github.com/ictechgy/kartograph/pull/97)은 `78c5998`로 머지됐다.
+  원본 main도 `78c5998`로 동기화했고 기존 사용자 HANDOFF 내용·note 파일·worktree를 보존했다.
+- 두 PR의 네 CI 검사 모두 성공했고 각 merge tree는 검증 head와 같다. v6 main CI도 성공했다.
+  v7 PR CI `35694890570`와 [머지 후 main CI](https://github.com/ictechgy/kartograph/actions/runs/35697485860)도
+  네 검사 모두 성공했다. 현재 main `78c5998`에서 전체 테스트·coverage·새 회귀56개·JDK17/21·최소 AGP와
+  compiler/Android/plugin 계약을 확인했다. main CI는 2026-09-22 16:32 KST에 완료됐고 남은 필수 검증은 없다.
+  원격 완료 응답은 `.git/ai-utility-v7-20260922/main-ci-completed.json`에 보존했다.
+- [v7 결과](experiments/ai-utility-v7/README.md): 새 Kotlin 통제4개·16회 모두 유효, 인프라 오류0, 선택적 재시작0.
+  모델345.18초·CLI 추정1.7533455USD. baseline 테스트27 통과, 변경 후 assertion 실패12·통과15,
+  독립 static caller12. 양쪽 동작 예측100%·음성 대조 오선택0이다.
+- callback source80%/MCP100%는 같은 caller를 Function2로 쓴 source 표기 미대응이다. source2·MCP1 미대응을
+  모두 원문 대조했고 점수·aliases는 수정하지 않았다. 작은 합성 표본의 천장 효과이며 일반 효용·caller 발견 우위를 주장하지 않는다.
+- 평가용 매칭기에서 함수 타입의 선택적 인자 이름을 대응한다. 임의 typealias/Function2 축약·잘못된 descriptor를
+  자동 수리하지 않으며 제품 query 문법은 바꾸지 않았다. 제품 발행 버전은 **0.15.0**이다.
+- 프로토콜 `0a0749c`, 실행 전 동결 `4f62a5f`, 결과 head `8797dd1`을 보존했다. manifest SHA256은
+  `4b600a793467c451a86755a385400ad6ddbddb6aa6fcc4ad1022ab1a776cbf51`이다. 완료 run을 재시작하지 않는다.
+- 원문112개·출력 tool input·원문 재채점이 일치한다. GLM 사전/결과 검토 차단사항0이며 보완과 리뷰 산식 오타의
+  처분을 파일·PR 코멘트에 남겼다. v5/v6 61개 파일은 현재 main과 보존 worktree 모두 byte-identical이다.
+- 로컬 정본 `.git/ai-utility-v7-20260922/FINAL.json`, 원문 `trials-final/`·`native-1/`.
+  native base/changed는 archive 상태다. 약343KB·2,164개 member 실제 복원·snapshot4 matched 뒤 정리했고
+  원문183개 hashes를 보존했다. 정리 후 report도 byte-identical하게 재생성했다.
+  복원은 `cleanup.json`, parser는 `parser-restoration-reference-local.json`의 v6 archive 동일6개 member를 따른다.
+- 등록 worktree `ai-utility-v7-20260922/`와 `ai-utility-v6-20260922/`는 고정 실행 도구 경로를 보존한다.
+  다른 checkout에 로컬 원장이 있다고 가정하지 않는다. 전역 cache·기존 도구·다른 worktree는 유지했다.
+  요청된 작업의 추가 구현은 남지 않았다. 이후 범위는 새 요청으로 정한다.
+
+<!-- ai-utility-v7-20260922:end -->
+
+<!-- ai-utility-v6-20260922:start -->
+## 최신 재개 상태 — v6 구조화 출력 실험·검증·정리 완료
+
+- 사용자 요청대로 새 공개 표본4개에서 source/MCP 각2회·총16회를 전부 실행했다. source8/8·MCP8/8 구조화 응답 유효,
+  인프라 오류0·선택적 재시작0. [결과 문서](ai-utility-v6-20260922/experiments/ai-utility-v6/README.md)를 따른다.
+- 작업은 **로컬 검토 branch** `experiment/ai-utility-v6-20260922`에 있다. 등록 worktree는
+  `ai-utility-v6-20260922/`이며 HEAD `f94a1e8`이다. protocol `9c124fb`·실행 전 고정 `0e9f423`·결과 `38bdd1d`를 보존했다.
+  이후 PR96으로 원격 통합했다. main의 제품 코드·VERSION 0.15.0은 이 실험으로 바꾸지 않았다.
+- 실제 schema 성공·invalid schema 거부·budget 종료·source/MCP toy·같은 mtime byte 변경 거부를 검증했다.
+  회귀32개·기존 native 테스트79개 통과, 원문112개 해시·원문 재채점·반환 객체/원문 tool input이 일치했다.
+  v5의29개 파일도 그대로다. GLM 코드 검토의 두 차단사항은 회귀로 수정했고 결과 해석 검토에는 차단사항이 없었다.
+- 최종 표본은 detekt6443·6352, ktlint2617·2554이며 oracle27·9·14·31개다. suite anchor79개·직접 caller2개다.
+  일부 MCP 조건의 고정 식별자 매칭 coverage가 더 높았지만, ktlint2554의 source도 두 번 모두 같은 caller를 지목했다.
+  함수 타입의 선택적 매개변수 이름 생략을 매칭기가 놓친 차이를 발견 우위로 읽지 않는다.
+  원문·aliases·oracle·점수는 수정하지 않고 source-signature-readback을 분리했다. 일반 AI 효용 우위는 확정하지 않는다.
+- 모델 단계966.58초·CLI 비용 추정4.736082USD다. 준비/별도 smoke/리뷰는 제외했다.
+  실제 제품 요청은 freshness2·query_symbol3·impact4였고 모두 처리됐다. 요청한 freshness는 둘 다 matched였다.
+- 준비 실패4건을 보존했다. ktlint의 Java21 build logic은 JDK21 launch로, detekt6352의 capture는 원래 Gradle8.2.1
+  실패 두 번 뒤 Gradle8.3 제어 실행으로 matched였다. production/test source는 바꾸지 않았다.
+  ktlint2715는 parameterized 표시명8개가 모호해 oracle 자격에서 제외했고,2555는 f2p0으로 metadata 제외했다.
+- 작업용 cache 정리로 배정 용량은 약9.33GB→0.62GB다. 원본 native 입력은 약556MB 아카이브로 보존했다.
+  26,222개 member와 실제 복원 snapshot6개(최종4·제외1·toy1) matched를 확인한 뒤 원본 native 디렉터리를 정리했다.
+  원문 근거180개 해시는 유지된다. 기존 사용자 파일·다른 worktree·전역 cache·기존 설치 도구는 보존했다.
+- 정본은 `.git/ai-utility-v6-20260922/FINAL.json`이다. 복원은 `native-cleanup.json`·`native-archive-manifest.json`을 따른다.
+  기존 raw manifest의 절대 경로는 바꾸지 않았다. 완료 후 검토 worktree를 옮긴 기록은 `worktree-relocation-local.json`이며
+  고정된 코드13개 파일의 bytes가 같다. 원본 입력은 archive 상태이므로 current 검증 전에 복원해야 한다.
+  이 로컬 원장을 다른 checkout에 가정하지 않고 완료된 frozen 실행을 다시 시작하지 않는다.
+
+### 다음 후보
+
+필수 실험 작업은 끝났다. 다음은 함수 타입 등 동치 source 표기와 호출·행동 oracle을 사전 검증하는 별도 프로토콜이다.
+원격 반영을 요청받으면 위 로컬 branch와 이미 확보한 검증·GLM 근거를 사용한다.
+
+<!-- ai-utility-v6-20260922:end -->
+
+<!-- release-0.15.0-20260922:start -->
+## 최신 재개 상태 — 0.15.0 발행·독립 설치·정리 완료
+
+- 사용자 승인으로 [PR #95](https://github.com/ictechgy/kartograph/pull/95)를
+  `8ffcec174dfecf597944440a940898ecc9e1685a`로 머지하고 `v0.15.0`을 발행했다.
+  검증 head `54b9f64`와 merge tree는 동일하다. 원본 main도 fast-forward했고 기존 사용자 변경을 보존했다.
+- **현재 소스·최신 발행 버전은 0.15.0**이다. PR93의 선택적 v3 compiler 입력·JVM 선언 귀속과
+  PR94의 빈 의존 프로젝트 출력 수정이 포함된다. [GitHub Release](https://github.com/ictechgy/kartograph/releases/tag/v0.15.0),
+  [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.15.0) 공개와 독립 설치를 확인했다.
+- [PR CI](https://github.com/ictechgy/kartograph/actions/runs/35634758597)·
+  [main CI](https://github.com/ictechgy/kartograph/actions/runs/35638096364)의 네 검사가 모두 성공했고,
+  [Release workflow](https://github.com/ictechgy/kartograph/actions/runs/35638152200)도 성공했다.
+  8종 재현 해시·배포물 계약·GLM 리뷰 처분을 완료했다. Linux의 macOS 전용 Python 2개 skip은
+  로컬 ZIP/TAR 검사에서 각각 142개 전체 통과한 근거와 구분해 보존한다.
+- 내려받은 GitHub 7개 asset의 API digest·SHA256SUMS가 일치했고 ZIP/TAR CLI는 모두 0.15.0이다.
+  배포 collector의 독립 javac 검사와 실제 javac/KAPT/KSP 4종 출력·15/16/21개 선언 입력,
+  native FROM-CACHE·configuration cache·실패 거부·snapshot 귀속을 확인했다.
+  전체 compiler 환경의 완전성이나 source/resource의 JVM 귀속을 주장하지 않는다.
+- 빈 dependency cache의 Portal 설치는 strict·baseline·만료·cache·freshness 및 PR94 빈 의존 프로젝트
+  대조를 포함한 17단계를 통과했다. 해석된 plugin JAR는 GitHub asset과 같고, 임의 라이브러리 누락은 계속 거부한다.
+- 첫 로컬 readiness의 `.git` 아래 TMPDIR 거부와 재실행의 기존 증거 디렉터리 거부는 실행 환경 문제였다.
+  원본 로그를 보존하고 임시 경로를 바로잡아 설치 검증을 완료했다. 태그 workflow에서는 원래 readiness 전체가 통과했다.
+- 이번 worktree·재생성 cache/중복 배포본 약 93MB(allocated)를 정리했다. 원본 로컬 빌드·fixture는
+  약 38MB 아카이브로 보존하고 실제 복원·해시를 대조했다. 보존 427개 파일과 collector receipt 4개,
+  Portal snapshot 2개는 정리 후에도 각각 해시 일치·`matched`다. 사용자 파일·기존 worktree·SDK·전역 cache는 유지했다.
+- 정본은 `.git/release-0.15.0-20260922/FINAL.json`이다. 복원은 `archive-manifest-local.json`과
+  `cleanup-final-local.json`을 따른다. 소스는 `refs/archive/release-0.15.0-20260922`로 복구할 수 있다.
+  Portal cache 입력의 동일 bytes는 `portal-preserved-inputs/`, 새 로컬 binding은 각 소비 프로젝트의
+  `build/kartograph/jvm-input-bindings-preserved-local.json`에 있다. 원래 binding도 기록으로 보존했다.
+  기존 사용자 HANDOFF는 같은 원장의 `HANDOFF.before.md`에 있다. 이 로컬 경로를 다른 checkout에 가정하지 않는다.
+
+### 다음 작업
+
+필수 릴리스 작업은 남아 있지 않다. 다음 후보는 기존 v5 원문·채점을 보존한 별도의 구조화 출력 검증 프로토콜이다.
+아래 0.14.0·PR94 기록의 미발행/릴리스 다음 단계는 당시 상태이며 이번 0.15.0 발행으로 완료됐다.
+
+<!-- release-0.15.0-20260922:end -->
+
+<!-- competitive-integration-20260921:start -->
+## 최신 재개 상태 — PR94 통합·검증·정리 완료
+
+- [PR #94](https://github.com/ictechgy/kartograph/pull/94)는 `4b3188d95e8de328c546810736a7ecd63a173fd4`로
+  머지됐고 원본 main도 동기화했다. 검증 head `39a537d`와 merge의 tree는 동일하다.
+  [PR CI](https://github.com/ictechgy/kartograph/actions/runs/35576685058)와
+  [머지 후 main CI](https://github.com/ictechgy/kartograph/actions/runs/35579474938)의
+  test·JDK17·JDK21·최소 AGP 네 검사가 **모두 성공**했다.
+- Java 소스가 없는 의존 프로젝트의 정상적인 빈 class 출력을 JVM snapshot이 거부하던 문제를 수정했다.
+  공개 Gradle artifact metadata로 선언된 프로젝트 출력만 부재까지 추적하고, 빈 외부 출력은 위치 식별자로
+  구분한다. 임의 라이브러리 누락은 계속 실패하며 출력 변경은 stale로 판정한다. PR93의 processor 귀속도 유지했다.
+- 로컬 **815개 통과·선택적 NIA 2개 skipped**, coverage 90%·plugin validation·CLI/agent 계약,
+  실험 회귀 29개·자기 분석 4.334s가 통과했다. GLM 제품·CI 리뷰의 의견 처분도 끝났다.
+  이전 main의 실제 30분 초과 취소를 확인해 `test` job 한도만 45분으로 늘렸고 검증 명령·판정 기준은 유지했다.
+- [경쟁 비교·사용 안내](docs/COMPETITIVE-EVIDENCE.md)와 [v5 평가](experiments/ai-utility-v5/README.md)를
+  통합했다. 새 공개 모듈 4개에서 matched 입력으로 16회를 완료했으나 AI 효용 우위는 확인하지 못했다.
+  JSON 형식 실패 5건과 원문·점수를 보존했고, 고정 v5 파일 29개는 통합 전과 동일하다.
+- 소스 VERSION과 최신 발행 버전은 **0.14.0**이다. **PR93·PR94는 미발행 개발 변경**이며,
+  기존 0.14.0 배포물에 포함되지 않는다. 이번 통합에서 새 태그·릴리스를 만들지 않았다.
+- 완료 worktree `competitive-evidence-20260921`과 재생성 산출물 약 1.44GB를 정리했다.
+  검증 근거 1,396개는 약 20MB 아카이브로 보존하고 실제 복원·해시 일치를 확인했다.
+  CI 산출물 ZIP 3개도 GitHub digest와 대조했다. 사용자 변경·다른 담당자 worktree·전역 cache는 유지했다.
+- 로컬 정본은 `.git/competitive-integration-20260921/FINAL.json`이며, 이후 확정된 main CI 성공은
+  같은 원장의 `main-ci-completed.json`에 있다. 정리·복원은 `cleanup.json`, `build-archive-manifest.json`,
+  `build-restoration.json`을 따른다. 원래 branch는 `refs/archive/competitive-integration-20260921`로
+  복구할 수 있고 당시 로컬 HANDOFF는 `HANDOFF.final.md`·`HANDOFF.final.patch`에 보존했다.
+  v5 원본 실험 근거는 `.git/ai-utility-v5-20260921/`에 있다. 이 로컬 경로를 다른 checkout에 가정하지 않는다.
+
+### 다음 작업
+
+1. PR93·PR94를 포함할 **새 버전을 정하고 릴리스 readiness·발행·독립 설치를 검증**한다.
+   현재 0.14.0의 발행·설치 완료와 구분하며 새 배포를 완료한 것으로 표시하지 않는다.
+2. JSON 형식 실패를 줄이는 **구조화 출력 검증을 새 프로토콜로 진행**한다.
+   기존 v5 원문·채점은 수정하지 않고 일부 성공 사례만 재실행하지 않는다.
+
+아래 PR93·PR91 기록과 2026-09-20 목록은 당시 근거다. 완료된 snapshot/cache·실기기·collector 발행 작업을
+과거 목록 때문에 다시 시작하지 않는다. 이번 인계 갱신은 위 후속 작업의 구현·발행을 시작한 것이 아니다.
+<!-- competitive-integration-20260921:end -->
+
+<!-- compiler-input-attribution-20260921:start -->
+## 2026-09-21 compiler 입력·선언 귀속 후속 완료
+
+- [PR #93](https://github.com/ictechgy/kartograph/pull/93)은 `183a6c7`로 머지됐다. 검증한 `61ac7f2`와
+  tree가 같고 [원격 CI 4개](https://github.com/ictechgy/kartograph/actions/runs/35557251475)가 모두 통과했다.
+- 선택적 v3 receipt는 Gradle 선언 입력·속성·nested implementation artifact와 KSP 원본 libraries를
+  대조한다. `project/`와 외부 slot을 구분하며, 잘못된 control 경로가 원래 입력을 지우지 않도록 검증한다.
+  API class bytes·JVM ID·선택 root·MEMBER 관계가 일치할 때만 선언 귀속을 보존한다. 그래프/보존 판정은 유지한다.
+- 실제 javac/KAPT/KSP 4종 출력·15/16/21 입력·native FROM-CACHE/configuration cache와 ABI 정규화 뒤
+  JAR bytes 변경 거부를 통과했다. source/resource/직접 callback 쓰기의 JVM 귀속, 숨은 IO·환경 완전성은 주장하지 않는다.
+- 제품 813개/0 skip, coverage, Python142, Android44 retained/4 reportable, CLI/agent, JDK17/21 plugin fixture,
+  자기 분석4.423s/15s가 통과했다. NIA 보존 17roots+R.jar의700파일을 복원해 기존2테스트도 skip 없이 통과했다.
+- VERSION **0.14.0**은 유지하며 이번 변경은 **개발 소스**다. 기존0.14.0 배포물에는 v3가 없고 새 태그/배포는 하지 않았다.
+  검증·리뷰·복원 원장은 `.git/compiler-input-attribution-20260921/`에 있다.
+- 완료된 TestKit cache 11,560개 항목을 원본 bytes/link와 대조한 623,003,074-byte 아카이브로
+  보존한 뒤 생성물 경로를 정리했다. 복원은 같은 원장의 `testkit-cache-cleanup.json`을 따른다.
+  정리 후 javac/KAPT/KSP 보존 receipt는 모두 `matched`였다. SDK·전역 cache·worktree는 유지했다.
+
+<!-- compiler-input-attribution-20260921:end -->
+
+<!-- processor-integration-20260921:start -->
+## 2026-09-21 추가 확장 완료
+
+- [PR #91](https://github.com/ictechgy/kartograph/pull/91)은 `ca2fc7d6be30bf1c63d93737eedadeb980423168`로
+  머지됐다. 검사한 `a084a09`와 merge의 tree가 같고 최종 CI test/JDK17/JDK21/최소 AGP가 모두 통과했다.
+- **0.14.0**의 [GitHub release](https://github.com/ictechgy/kartograph/releases/tag/v0.14.0)와
+  [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.14.0) 발행·독립 설치를
+  확인했다. [릴리스 workflow](https://github.com/ictechgy/kartograph/actions/runs/35526574145)는 성공했다.
+  CLI ZIP/TAR·plugin JAR·collector ZIP·SBOM 2종·SHA256SUMS의 7개 다운로드 digest와 manifest가 일치했다.
+  Portal cold 설치의 JAR도 GitHub JAR와 같고 strict/baseline/expiry/config-cache·freshness 대조를 통과했다.
+- CLI `snapshot --processor-output-config`와 Gradle snapshot task의 `processorOutputConfigs`는
+  완료된 v2 output receipt를 현재 입력·artifact·scope·raw·출력 bytes와 대조해 `processorOutputs`에
+  보존한다. 기존 source-only `processorGenerations`·compiler witness를 유지하고 그래프 간선·보존·
+  synthesized·dependency 판정은 바꾸지 않는다. API 출력과 callback 중 직접 쓰기를 구분한다.
+- 실제 javac17/KAPT2.4.10/KSP2.3.12 각각 source/class/resource/file 4종과 native FROM-CACHE,
+  configuration cache, snapshot, stale/실패 대조를 통과했다. 다운로드한 collector·runner·adapter·CLI로도
+  세 경로를 다시 확인했다. standalone v1 receipt의 독립 verify는 유지하며 snapshot에는 v2 재수집이 필요하다.
+  성공 뒤 남는 token은 cache 입력이며 성공 증거가 아니다. 전체 compiler 입력·생산자 인증은 주장하지 않는다.
+- 로컬 제품 802개·coverage gate·CLI/plugin 계약, Python142개, Android fixture44 retained/4 reportable,
+  자기 분석4.544s를 통과했다. 선택적 NIA2개는 보존 빌드 산출물 부재로 skip했다. 해당 공개 산출물을
+  `build/reports/android-tool-comparison-20260911/work/nowinandroid`에 복원하고 JDK17에서
+  `./gradlew --no-daemon :cli:test --tests dev.kartograph.cli.RealAgpRJarCliTest`로 실행할 수 있다.
+- 자매 [isthmus PR #105](https://github.com/ictechgy/isthmus/pull/105)도 `697185d`로 머지·CI 완료됐다.
+  iPhone 실기기 iOS27 release와 RN0.81.4/Hermes 새 아키텍처 release 26checks(전용 Android emulator),
+  실제 무음 미디어·구독 해제·checkpoint 이후 lifecycle과 앱/AVD 정리를 확인했다.
+  [공개 근거](https://github.com/ictechgy/isthmus/blob/main/experiments/real-corpus/results/runtime-native-development-results.json)를 따른다.
+  iOS RN·모든 lifecycle·가청 출력·정적 producer 완전성은 검증 범위 밖이다. isthmus npm0.9.0은 새로 발행하지 않았다.
+- 개발 검증·GLM 처분은 `.git/processor-integration-20260921/`, 발행·설치 검증은
+  `.git/processor-snapshot-release-20260921/`에 보존한다. 첫 Portal 검증의 fixture task 조회 시점 오류와
+  한 로컬 TestKit configuration-cache 재시도 실패/복구도 기록했으며 정상 결과로 덮어쓰지 않았다.
+- 통합 작업 캐시22개(6,586,929 logical bytes)를 복원 가능한 휴지통으로 옮겼고 보존22764개 파일의
+  bytes와 세 processor receipt의 matched 상태가 유지됐다. SDK·전역 cache·worktree·원본은 유지한다.
+  복원은 `.git/processor-integration-20260921/cleanup-final.json`의 to를 비어 있는 from으로 옮긴다.
+  발행 담당자의 정리 원장과 구분하며 다른 checkout에 이 로컬 경로가 있다고 가정하지 않는다.
+
+- 발행 정본은 kartograph `.git/processor-snapshot-release-20260921/FINAL.json`이다. 발행 담당자의
+  별도 정리는 소유 디렉터리 23개(427,441,025 logical / 437,784,576 allocated bytes)를 제거했다.
+  원본 native fixture 395개는 무손실 아카이브로 보존했고 최종 보존 근거 532개 해시를 재확인했다.
+  설치 receipt 4개와 Portal freshness도 정리 후 `matched`다. 원본 TAR는 유지하고 중복 추출본만
+  정리했다. 복원/보존 경로는 같은 원장의 `FINAL-CLEANUP-local.json`·`final-preservation-plan-local.json`을
+  따른다. 위 통합 작업의 휴지통 이동 22개와 별도이며 남은 필수 발행 작업은 없다.
+
+아래 2026-09-20 내용은 이전 기록이며 당시의 세 추가 후보는 이번 작업에서 처리했다.
+<!-- processor-integration-20260921:end -->
+
+## 2026-09-20 완료 상태
+
+- 선택적 output collector 확장은 [PR #90](https://github.com/ictechgy/kartograph/pull/90)에서
+  `5add226`으로 머지됐다. 최종 CI의 test·JDK17/21 compatibility·최소 AGP 검사와 GLM 지적 반영이
+  완료됐고 merge tree는 검사한 head `f6c93f8`과 같다. 자매 isthmus
+  [PR #104](https://github.com/ictechgy/isthmus/pull/104) (`a356f49`)도 머지·CI 완료됐다.
+- 현재 소스 버전은 **0.13.0**이다. [새 릴리스](https://github.com/ictechgy/kartograph/releases/tag/v0.13.0)와
+  [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.13.0)의 발행·독립 설치 확인은 앞선 발행 원장에 있다.
+  #90의 새 output collector는 개발 소스이며 새 릴리스로 발행하지 않았다.
+  이전 **0.12.0**의 [PR87](https://github.com/ictechgy/kartograph/pull/87)과
+  [릴리스](https://github.com/ictechgy/kartograph/releases/tag/v0.12.0)에 P1.1-2·RN target 필터 수정이
+  포함됐다. 이전 버전의 GitHub·Plugin Portal·독립 설치 검증은 과거 원장에 있다.
+- 0.13.0의 `dependencies`는 `--baseline`, `--suppress`, `--write-baseline`을 지원한다.
+  좌표·버전·scope·제안·클래스 근거를 정확히 지문화하고, Gradle은 dependencyBaseline/
+  dependencySuppress와 task baselineOutput을 제공한다. capture는 필터 전 관찰을 저장하며,
+  UTC 만료일·파일 변경을 task 입력으로 확인한다. CLI·Gradle strict는 필터 뒤 진단만 센다.
+  [사용법](docs/DEPENDENCIES.md)을 따른다. 억제는 제거 승인이 아니다.
+- `bridges`의 generatedAt은 추출 시각으로 수정했고 최신 source mtime은 optional
+  sourceModifiedAt에 보존한다. v1·Basic·Event·RN 모두 UTC 밀리초 형식을 사용한다.
+  0.12.0 이하의 기본 generatedAt이 source mtime이었던 사실과 compiler freshness 한계를 구분한다.
+- [processor source 귀속](docs/PROCESSOR-GENERATION.md)은 실제 JSR-269 Filer 생성/close와
+  processor artifact를 관찰한다. javac-processors v2 raw evidence는 완료된 compiler/generated-source
+  receipt와 일치할 때만 snapshot.processorGenerations로 들어간다. 생성기 이름 추측·자동 보존·
+  dependency unused 판정 변경은 없다. 실제 generic processor·Dagger2.59와 실패 경로를 검사한다.
+  0.13.0의 snapshot 연동 범위는 source-only로 유지한다. 개발 collector의 별도 output sidecar/
+  runner는 javac/KAPT/KSP source·class·resource 및 지정 디렉터리 callback 중 직접 byte 변경을
+  구분한다. 실제 3가지 처리 경로에서 각 4종 출력과 stale/미닫힘/깨진 source 실패 대조를 통과했다.
+  직접 쓰기 관찰은 API 호출 귀속이나 다른 writer 신원의 증명이 아니다. 캐시·전체 compiler 입력·
+  그래프 연동을 주장하지 않으며 [정확한 실행 범위](docs/PROCESSOR-GENERATION.md)를 따른다.
+- source mtime·basename·빈 결과로 완전성을 추론하지 않는다. 공개 RN Sound.kt의 컴파일
+  JVM ID·retention·원본 JS explain과 실제 Flutter macOS/Android 실행 근거는
+  [isthmus 인계](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)에 있다.
+- 실제 javac17/KAPT2.4.10/KSP2.3.12에서 각 4종 출력, 손작성 파일 제외, source/output/raw/scope stale,
+  미닫힘·깨진 생성 source의 빌드 실패를 확인했다. 입력/control 중첩, 초기화 전 조회, canonical URI와
+  중복 open 상태도 회귀 검증했다. 기존 collector와 제품 evidence lifecycle 검사도 통과했다.
+- 최종 원장은 자매 isthmus의 `.git/evidence-runtime-expansion-20260920/FINAL.json`이다.
+  `processor-final-evidence/`에는 성공한 raw/source/class/resource/direct 출력과 실제 JAR·입력을
+  보존했으며 세 `*-success-config-local.json` 모두 보존본에서 `matched`였다.
+  캐시 디렉터리 32개를 휴지통으로 옮긴 뒤 근거 파일 1,580개의 해시가 유지됐다. 복원은 같은 원장의
+  `cleanup-final.json`에서 `from`이 비어 있을 때만 `to`를 되돌린다. SDK·설치 도구는 보존했다.
+  다른 checkout에 이 로컬 경로가 있다고 가정하지 말고 공개 PR·검증 스크립트를 함께 사용한다.
+- `.claude/`와 `HANDOFF.cartograph-notes.md`는 기존 사용자 미추적 파일로 보존한다.
+
+## 2026-09-20 당시 다음 범위 선택 (이후 완료)
+
+당시 추가 후보였던 다음 세 가지는 위 PR91·0.14.0 발행·isthmus 검증에서 처리했다.
+
+1. 새 KAPT/KSP output receipt의 snapshot 연동과 Gradle cache 복원.
+2. 자매 isthmus의 iPhone 실기기·iOS release, RN Fabric/TurboModules·lifecycle·실제 미디어 재생 검증.
+3. 새 선택적 collector의 릴리스와 설치본 검증.
+
+현재 인계 갱신은 후속 구현·발행을 시작한 것이 아니다. 0.13.0 발행 원시는 자매 isthmus의
+`.git/release-followups-20260920/`에 있다. 기존 baseline/suppress·JSR-269 source 귀속·새 출력 수집을
+과거 목록 때문에 다시 구현하지 않는다. runtime LCOV·method 매핑과 P2/P3·성능 후보도 별도 선택 범위다.
+
+- cartograph의 테스트 영향·기계적 수정·public 검토 안내 공유는 [HANDOFF-cartograph-skills-20260921.md](HANDOFF-cartograph-skills-20260921.md)에 있다. 제품/스키마 변경 지시가 아닌 자매 알림이다.
