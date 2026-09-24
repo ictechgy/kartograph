@@ -332,4 +332,128 @@ class SchemaFactScannerTest {
         assertTrue(doc.facts.any { it.channel == "owners" && it.method == "id" })
         assertTrue(doc.facts.any { it.channel == "pets" && it.method == "owner_id" })
     }
+
+    @Test
+    fun `sqldelight label does not swallow update relation`() {
+        project.resolve("UserQueries.sq").writeText(
+            """
+            selectAll:
+            SELECT * FROM users;
+            markAdult:
+            UPDATE users SET adult = 1;
+            """.trimIndent(),
+        )
+        val doc = scan()
+        // 라벨 다음의 UPDATE도 관계를 낸다 — 라벨이 문장 머리를 차지하면 안 된다.
+        assertEquals(2, doc.facts.count { it.channel == "users" && !it.dynamic })
+    }
+
+    @Test
+    fun `prose literal does not fabricate relations`() {
+        project.resolve("Help.kt").writeText(
+            """
+            val help = "Select an option from the menu below"
+            val lower = "select * from users"
+            """.trimIndent(),
+        )
+        val doc = scan()
+        // 게이트 없는 리터럴은 strict 모드다 — 혼합·소문자 키워드는 산문으로 본다.
+        assertTrue(doc.facts.isEmpty())
+    }
+
+    @Test
+    fun `char literal does not corrupt the masked view`() {
+        project.resolve("User.kt").writeText(
+            """
+            import androidx.room.Entity
+            val quote: Char = '"'
+            @Entity(tableName = "users")
+            data class User(val id: Long)
+            """.trimIndent(),
+        )
+        val doc = scan()
+        // `'"'`가 문자열로 오인되면 뒤의 선언이 통째로 사라진다 — 살아 있어야 한다.
+        assertTrue(doc.facts.any { it.channel == "users" && it.method == "id" })
+    }
+
+    @Test
+    fun `no-arg gated call emits nothing`() {
+        project.resolve("Repo.kt").writeText(
+            """
+            import java.sql.Statement
+            class Repo(private val stmt: Statement) {
+                fun run() { stmt.execute() }
+            }
+            """.trimIndent(),
+        )
+        val doc = scan()
+        assertTrue(doc.facts.isEmpty())
+        assertNull(doc.target)
+        // 무인자 호출은 관계 피연산자가 없다 — 동적 사실도 limitation도 안 나온다.
+        assertTrue(doc.limitations.none { it.startsWith("unjoined-dynamic-relations") })
+    }
+
+    @Test
+    fun `comparison expression argument is not a named argument`() {
+        project.resolve("Repo.kt").writeText(
+            """
+            import java.sql.Connection
+            class Repo(private val conn: Connection) {
+                fun run() { conn.execute(id == 1) }
+            }
+            """.trimIndent(),
+        )
+        val doc = scan()
+        // `id == 1`은 named argument가 아니다 — 식이 버려지지 않고 동적 근거로 남는다.
+        assertTrue(doc.facts.any { it.dynamic })
+    }
+
+    @Test
+    fun `use-site targeted column info is read`() {
+        project.resolve("User.kt").writeText(
+            """
+            import androidx.room.Entity
+            import androidx.room.ColumnInfo
+            @Entity(tableName = "users")
+            class User {
+                @field:ColumnInfo(name = "email_addr")
+                val email: String? = null
+            }
+            """.trimIndent(),
+        )
+        val doc = scan()
+        assertTrue(doc.facts.any { it.channel == "users" && it.method == "email_addr" })
+    }
+
+    @Test
+    fun `nested class constructor properties are not outer columns`() {
+        project.resolve("Outer.kt").writeText(
+            """
+            import androidx.room.Entity
+            @Entity(tableName = "t")
+            data class Outer(val a: Long) {
+                data class Inner(val b: Long)
+            }
+            """.trimIndent(),
+        )
+        val doc = scan()
+        val methods = doc.facts.filter { it.channel == "t" }.map { it.method }
+        assertTrue("a" in methods)
+        assertTrue("b" !in methods)
+    }
+
+    @Test
+    fun `dynamic exposed column name stays dynamic on its table`() {
+        project.resolve("Tables.kt").writeText(
+            """
+            import org.jetbrains.exposed.sql.Table
+            object Users : Table("users") {
+                val label = varchar(columnName, 50)
+            }
+            """.trimIndent(),
+        )
+        val doc = scan()
+        // 컬럼명이 식별자면 읽히지 않지만 테이블 귀속은 확실하다 — 동적 근거로 남긴다.
+        assertTrue(doc.facts.any { it.channel == "users" && it.dynamic })
+    }
 }

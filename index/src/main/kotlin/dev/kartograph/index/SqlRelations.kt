@@ -71,14 +71,15 @@ internal fun lexSql(text: String): List<SqlToken> {
  * SQL 문을 여는 강한 동사 표다 — 관계 키워드와 겹치는 update·truncate는
  * 뺀다(문장 머리 규칙이 따로 있다). WITH는 SELECT를 동반하므로 없다.
  */
-internal fun looksLikeSql(text: String): Boolean {
+internal fun looksLikeSql(text: String, strict: Boolean = false): Boolean {
     var head = true
     for (t in lexSql(text)) {
         if (!isNameToken(t)) continue
-        if (isSqlVerb(t.text)) return true
+        if (isSqlVerb(t.text) && (!strict || t.text == t.text.uppercase())) return true
         if (head) {
             head = false
-            if (t.text.equals("update", true) || t.text.equals("truncate", true)) return true
+            val headVerb = t.text.equals("update", true) || t.text.equals("truncate", true)
+            if (headVerb && (!strict || t.text == t.text.uppercase())) return true
         }
     }
     return false
@@ -89,10 +90,10 @@ internal fun looksLikeSql(text: String): Boolean {
  * 한정 이름(`schema.table`)은 그대로 두고, 이름 자체에 점이 있는 인용
  * 식별자("a.b")는 한 세그먼트로 읽는다 — escape는 기록 시에 한다.
  * [SqlRelation.keyword]는 관계를 연 키워드 토큰의 원문 위치다.
- * 두 번째 반환은 관계 자리의 피연산자를 읽지 못했음을 뜻한다 —
+ * 두 번째 반환은 관계 자리의 피연산자를 읽지 못한 횟수다 —
  * `FROM {}` 같은 플레이스홀더를 사실 없이 조용히 넘기지 않기 위해서다.
  */
-internal fun sqlRelations(text: String): Pair<List<SqlRelation>, Boolean> {
+internal fun sqlRelations(text: String, strict: Boolean = false): Pair<List<SqlRelation>, Int> {
     val tokens = lexSql(text)
     val out = mutableListOf<SqlRelation>()
     // 같은 키워드의 피연산자 목록 안에서만 중복을 막는다(`FROM a, a`).
@@ -100,33 +101,49 @@ internal fun sqlRelations(text: String): Pair<List<SqlRelation>, Boolean> {
     // `INSERT INTO t`는 각각 사실이어야 한다.
     val seen = mutableSetOf<String>()
     val consumed = BooleanArray(tokens.size) // 이름·별칭·수식어로 소비된 토큰
-    var unresolved = false
+    var unresolved = 0
+    // strict 모드는 게이트 없이 스캔하는 문자열 리터럴용이다 — 관계 키워드와
+    // 동사가 모두 대문자일 때만 발화해 "Select an option from the menu" 같은
+    // 산문이 관계 사실을 만들지 않게 한다.
+    // `this.text`를 명시한다 — 무한정 `text`는 외부 파라미터(sql 문장)로 해석된다.
+    fun SqlToken.upperOk(): Boolean = !strict || this.text == this.text.uppercase()
     // `;`로 갈리는 각 문장의 머리 식별자 위치와 그 문장의 동사다 —
     // update·truncate는 문장 머리에서만 관계 키워드로 열고, `on`은
     // grant·revoke 문 안에서만 연다. 다중 문장 리터럴의 뒤 문장도
-    // 같은 규칙을 받는다.
+    // 같은 규칙을 받는다. 문장 머리의 `ident :`는 SQLDelight 라벨이다 —
+    // 라벨은 머리를 차지하지 않고 다음 식별자가 머리가 된다.
     val stmtHead = BooleanArray(tokens.size)
     val stmtVerb = arrayOfNulls<String>(tokens.size)
     run {
         var pending = true
         var verb: String? = null
-        tokens.forEachIndexed { i, t ->
+        var i = 0
+        while (i < tokens.size) {
+            val t = tokens[i]
             if (!t.quoted && t.text == ";") {
                 pending = true
                 verb = null
-                return@forEachIndexed
+                i++
+                continue
             }
             if (isNameToken(t) && pending) {
+                if (tokens.getOrNull(i + 1)?.let { !it.quoted && it.text == ":" } == true &&
+                    tokens.getOrNull(i + 2)?.let { !it.quoted && it.text == ":" } != true
+                ) {
+                    i += 2 // 라벨은 머리가 아니다 — 계속 pending 상태로 둔다.
+                    continue
+                }
                 stmtHead[i] = true
-                verb = t.text.lowercase()
+                verb = t.text.lowercase().takeIf { t.upperOk() }
                 pending = false
             }
             stmtVerb[i] = verb
+            i++
         }
     }
     for (i in tokens.indices) {
         val tok = tokens[i]
-        if (consumed[i] || tok.quoted || !isRelationKeyword(tok.text)) continue
+        if (consumed[i] || tok.quoted || !isRelationKeyword(tok.text) || !tok.upperOk()) continue
         val word = tok.text.lowercase()
         val grantStmt = stmtVerb[i] == "grant" || stmtVerb[i] == "revoke"
         // 같은 문장(`;`로 갈리는 세그먼트) 안만 본다 — 뒤 세그먼트의
@@ -135,7 +152,7 @@ internal fun sqlRelations(text: String): Pair<List<SqlRelation>, Boolean> {
             tokens.subList(0, end).asReversed().asSequence().takeWhile { it.text != ";" }
         fun segmentAfterHas(start: Int, w: String): Boolean =
             tokens.subList(start, tokens.size).asSequence().takeWhile { it.text != ";" }
-                .any { !it.quoted && it.text.equals(w, true) }
+                .any { !it.quoted && it.text.equals(w, true) && it.upperOk() }
         val fires = when (word) {
             // 산문 속 "update the .."·upsert의 `DO UPDATE SET`을 막기 위해
             // update는 문장 머리이고 같은 문장에 SET이 있을 때만 연다.
@@ -147,20 +164,24 @@ internal fun sqlRelations(text: String): Pair<List<SqlRelation>, Boolean> {
             // 단, 문장이 "merge"로 시작하는 산문은 SQL `MERGE INTO`와 어휘가
             // 같아 구분 못 한다 — 남은 오탐 여지로 둔다.
             "into" -> segmentBefore(i).any {
-                !it.quoted && it.text.lowercase() in setOf("insert", "select", "merge", "replace")
+                !it.quoted && it.upperOk() &&
+                    it.text.lowercase() in setOf("insert", "select", "merge", "replace")
             }
             // table은 직전 식별자가 DDL 동사일 때만 키워드다 — 산문의
             // "the table"이나 다른 절의 단어는 읽지 않는다.
-            "table" -> tableKeywordContext(tokens, i)
+            "table" -> tableKeywordContext(tokens, i, strict)
             // on은 `GRANT .. ON t`·`REVOKE .. ON t`의 관계 자리다 — 권한
             // 단어(SELECT 등)가 앞서야 "grant access on .." 같은 산문을
             // 막는다. `CREATE INDEX/TRIGGER .. ON t`의 on도 관계 자리다.
             "on" -> {
-                val grantOn = grantStmt && segmentBefore(i).any { !it.quoted && isGrantPriv(it.text) }
+                val grantOn = grantStmt && segmentBefore(i).any {
+                    !it.quoted && it.upperOk() && isGrantPriv(it.text)
+                }
                 val createOn = stmtVerb[i] == "create" && segmentBefore(i).any {
                     // `rule`은 제외 — CREATE RULE의 ON은 이벤트
                     // 자리(`ON INSERT TO t`)라 관계가 아니다.
-                    !it.quoted && it.text.lowercase() in setOf("index", "trigger", "policy")
+                    !it.quoted && it.upperOk() &&
+                        it.text.lowercase() in setOf("index", "trigger", "policy")
                 }
                 grantOn || createOn
             }
@@ -213,7 +234,7 @@ internal fun sqlRelations(text: String): Pair<List<SqlRelation>, Boolean> {
                         if (!t.quoted && t.text == "(") {
                             val next = skipParens(tokens, k)
                             if (next == null) {
-                                unresolved = true // 닫히지 않은 괄호.
+                                unresolved++ // 닫히지 않은 괄호.
                                 break
                             }
                             k = next
@@ -224,7 +245,7 @@ internal fun sqlRelations(text: String): Pair<List<SqlRelation>, Boolean> {
                             // 플레이스홀더 피연산자(`ON SEQUENCE {s}`)는
                             // 읽히지 않은 근거다 — 미해석으로 센다.
                             if (!t.quoted && t.text in setOf("{", "}", "$", "?", ":", "@")) {
-                                unresolved = true
+                                unresolved++
                             }
                             break
                         }
@@ -234,7 +255,7 @@ internal fun sqlRelations(text: String): Pair<List<SqlRelation>, Boolean> {
             }
         }
         if (j >= tokens.size) {
-            unresolved = true // 이름이 없는 키워드 — "SELECT ... FROM" 꼴.
+            unresolved++ // 이름이 없는 키워드 — "SELECT ... FROM" 꼴.
             continue
         }
         // GRANT/REVOKE의 ON은 형태 검증을 거친다 — name (, name)* 뒤에
@@ -252,7 +273,7 @@ internal fun sqlRelations(text: String): Pair<List<SqlRelation>, Boolean> {
             val operandEnd = if (!tokens[j].quoted && tokens[j].text == "(") {
                 val next = skipParens(tokens, j)
                 if (next == null) {
-                    unresolved = true // 닫히지 않은 괄호.
+                    unresolved++ // 닫히지 않은 괄호.
                     break
                 }
                 next
@@ -264,7 +285,7 @@ internal fun sqlRelations(text: String): Pair<List<SqlRelation>, Boolean> {
                     // 읽히지 않는 피연산자만 미해석으로 센다.
                     val clauseNext = tokens.getOrNull(j)
                         ?.let { isNameToken(it) && isClauseWord(it.text) } == true
-                    if (!clauseNext) unresolved = true
+                    if (!clauseNext) unresolved++
                     break
                 }
                 val (name, next) = read
@@ -326,9 +347,10 @@ private fun isGrantPriv(word: String): Boolean =
     )
 
 /** `table` 토큰이 관계 키워드로 발화하는 문맥인지 본다 — 직전 비인용 식별자가 DDL 동사일 때만이다. */
-private fun tableKeywordContext(tokens: List<SqlToken>, i: Int): Boolean {
+private fun tableKeywordContext(tokens: List<SqlToken>, i: Int, strict: Boolean): Boolean {
     for (k in i - 1 downTo 0) {
         if (!isNameToken(tokens[k])) continue
+        if (strict && tokens[k].text != tokens[k].text.uppercase()) return false
         return tokens[k].text.lowercase() in setOf(
             "alter", "drop", "create", "truncate", "rename", "lock", "unlock",
             "describe", "desc", "analyze", "vacuum",
@@ -371,6 +393,9 @@ private fun isClauseWord(word: String): Boolean =
         "truncate", "with", "for", "in", "is", "case", "when", "then", "else", "end",
         "distinct", "asc", "desc", "if", "exists", "only", "between", "like", "to",
         "grant", "revoke", "option", "cascade", "restrict", "privileges",
+        // 산문 관사다 — "select an option from the menu" 같은 문장이
+        // 관계명을 만들지 않게 한다(`a`는 실제 별칭·이름으로 흔해 제외한다).
+        "the", "an",
     )
 
 /** `ident(.ident)*` 한정 이름을 읽어 (이름, 다음 위치)를 돌려준다. */

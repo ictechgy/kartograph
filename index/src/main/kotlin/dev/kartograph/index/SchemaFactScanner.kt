@@ -246,7 +246,7 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         }
         file.exposedDecls.forEach { decl ->
             facts += relationFact(decl.channel, sourceLocation(file.relative, file.source, decl.offset))
-            decl.decl?.let { scanExposedColumns(file, it, decl.channel, exposedTables, facts, consumed) }
+            decl.decl?.let { scanExposedColumns(file, it, decl.channel, exposedTables, facts, stats, consumed) }
         }
         if (file.room || file.jpa) {
             QUERY_ANNOTATION.findAll(file.masked).forEach { match ->
@@ -255,9 +255,10 @@ public class SchemaFactScanner(private val projectRoot: Path) {
                 val location = sourceLocation(file.relative, file.source, match.range.first)
                 when (match.groupValues[1]) {
                     "Query" -> {
+                        // Room·JPQL은 쿼리 안의 엔티티명을 테이블명으로 해석한다.
                         val expr = args.values.firstNamed("value")
                             ?: args.values.firstOrNull()?.takeUnless { it.isNamedArgument() }
-                        emitSqlExpression(expr, location, entities, facts, stats)
+                        emitSqlExpression(expr, location, entities, facts, stats, translateEntities = true)
                     }
                     "RawQuery" -> {
                         // 관측 쿼리는 호출 시점에 도착한다 — 항상 동적 사실이다.
@@ -283,7 +284,10 @@ public class SchemaFactScanner(private val projectRoot: Path) {
                 val end = balancedEnd(file.code, open)
                 if (end <= open) return@forEach
                 consumed += open..end
-                val expr = callArguments(file.code, open, end).firstOrNull()?.takeUnless { it.isNamedArgument() }
+                // 인자가 아예 없는 호출(`selectCount()`)에는 관계 피연산자가 없다 — 동적 사실도 내지 않는다.
+                val args = callArguments(file.code, open, end)
+                if (args.isEmpty()) return@forEach
+                val expr = args.firstOrNull()?.takeUnless { it.isNamedArgument() }
                 val location = sourceLocation(file.relative, file.source, match.range.first)
                 val (value, dynamic) = expr?.let(::literalOrDynamicChannel) ?: (null to true)
                 if (value != null && !dynamic) {
@@ -296,7 +300,7 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         }
         if (file.exposed) {
             scanExposedUses(file, exposedTables, facts, stats)
-            scanSchemaUtils(file, exposedTables, facts)
+            scanSchemaUtils(file, exposedTables, facts, stats)
         }
         scanSqlLiterals(file, entities, facts, stats, consumed)
     }
@@ -310,8 +314,8 @@ public class SchemaFactScanner(private val projectRoot: Path) {
                 sourceLocation(file.relative, file.source, relation.keyword),
             )
         }
-        if (unresolved) {
-            stats.unjoinedDynamic++
+        if (unresolved > 0) {
+            stats.unjoinedDynamic += unresolved
             facts += dynamicFact("<sql file>", sourceLocation(file.relative, file.source, 0))
         }
     }
@@ -396,14 +400,19 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         }
     }
 
-    /** 위치가 선언의 직속 멤버 구간(헤더 괄호 안·몸체 깊이 0)인지 본다 — 중첩 블록의 지역 변수를 걸러낸다. */
-    private fun memberAt(file: SourceFile, decl: TypeDecl, offset: Int): Boolean =
-        when {
+    /** 위치가 선언의 직속 멤버 구간(헤더 괄호 안·몸체 깊이 0)인지 본다 — 중첩 블록의 지역 변수와 중첩 선언의 멤버를 걸러낸다. */
+    private fun memberAt(file: SourceFile, decl: TypeDecl, offset: Int): Boolean {
+        // 중첩 class·object의 멤버는 바깥 선언의 컬럼이 아니다.
+        if (file.typeDecls.any { other -> other !== decl && other.start > decl.start && offset in declRange(other) }) {
+            return false
+        }
+        return when {
             offset in decl.start..decl.headerEnd -> true
             decl.bodyStart >= 0 && offset in decl.bodyStart..decl.bodyEnd ->
                 braceDepth(file.masked, decl.bodyStart + 1, offset) == 0
             else -> false
         }
+    }
 
     /** 어노테이션 귀속에 쓰는 선언 전체 범위다 — 몸체 없는 선언은 헤더 끝까지다. */
     private fun declRange(decl: TypeDecl): IntRange = decl.start..maxOf(decl.headerEnd, decl.bodyEnd)
@@ -415,6 +424,7 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         channel: String,
         exposedTables: Map<String, String>,
         facts: MutableList<BridgeFact>,
+        stats: ScanStats,
         consumed: MutableList<IntRange>,
     ) {
         if (decl.bodyStart < 0) return
@@ -430,12 +440,24 @@ public class SchemaFactScanner(private val projectRoot: Path) {
             val location = sourceLocation(file.relative, file.source, match.range.first)
             if (value != null && !dynamic) {
                 facts += relationFact(channel, location, method = value)
+            } else {
+                // 컬럼명을 못 읽어도 테이블 귀속은 확실하다 — 동적 근거로 남긴다.
+                stats.unjoinedDynamic++
+                facts += dynamicFact(args.firstOrNull(), location, channel)
             }
             // reference("col", OtherTable)의 테이블 인자는 부모 관계 참조다.
             if (match.groupValues[1] in REFERENCE_FACTORIES) {
                 args.drop(1).forEach { arg ->
                     IDENTIFIER.find(arg.trim().substringAfterLast('='))?.groupValues?.get(1)
-                        ?.let { parent -> exposedTables[parent]?.let { facts += relationFact(it, location) } }
+                        ?.let { parent ->
+                            val target = exposedTables[parent]
+                            if (target != null) {
+                                facts += relationFact(target, location)
+                            } else {
+                                stats.unresolvedExposed++
+                                facts += dynamicFact(parent, location)
+                            }
+                        }
                 }
             }
         }
@@ -466,8 +488,20 @@ public class SchemaFactScanner(private val projectRoot: Path) {
                 if (open != null && file.masked.substring(match.range.last + 1, open).isBlank()) {
                     val end = balancedEnd(file.code, open)
                     if (end > open) {
+                        // 같은 호출 안에서 같은 수신자는 한 번만 센다 — 조건식의
+                        // `Users.id` 같은 참조가 수신자 사실을 중복으로 만들지 않게 한다.
+                        val seenReceivers = mutableSetOf(receiver)
                         EXPOSED_RECEIVER.findAll(file.code.substring(open + 1, end)).forEach { inner ->
-                            exposedTables[inner.groupValues[1]]?.let { facts += relationFact(it, location) }
+                            val innerName = inner.groupValues[1]
+                            if (!seenReceivers.add(innerName)) return@forEach
+                            val target = exposedTables[innerName]
+                            if (target != null) {
+                                facts += relationFact(target, location)
+                            } else {
+                                // 선언을 못 찾은 대문자 수신자는 다른 모듈의 Table일 수 있다 — 근거를 남긴다.
+                                stats.unresolvedExposed++
+                                facts += dynamicFact(innerName, location)
+                            }
                         }
                     }
                 }
@@ -476,14 +510,28 @@ public class SchemaFactScanner(private val projectRoot: Path) {
     }
 
     /** `SchemaUtils.create(Users)` 같은 DDL 호출의 테이블 인자를 읽는다. */
-    private fun scanSchemaUtils(file: SourceFile, exposedTables: Map<String, String>, facts: MutableList<BridgeFact>) {
+    private fun scanSchemaUtils(
+        file: SourceFile,
+        exposedTables: Map<String, String>,
+        facts: MutableList<BridgeFact>,
+        stats: ScanStats,
+    ) {
         SCHEMA_UTILS.findAll(file.masked).forEach { match ->
             val open = match.range.last
             val end = balancedEnd(file.code, open)
             if (end <= open) return@forEach
             val location = sourceLocation(file.relative, file.source, match.range.first)
+            val seenReceivers = mutableSetOf<String>()
             EXPOSED_RECEIVER.findAll(file.code.substring(open + 1, end)).forEach { inner ->
-                exposedTables[inner.groupValues[1]]?.let { facts += relationFact(it, location) }
+                val innerName = inner.groupValues[1]
+                if (!seenReceivers.add(innerName)) return@forEach
+                val target = exposedTables[innerName]
+                if (target != null) {
+                    facts += relationFact(target, location)
+                } else {
+                    stats.unresolvedExposed++
+                    facts += dynamicFact(innerName, location)
+                }
             }
         }
     }
@@ -503,7 +551,10 @@ public class SchemaFactScanner(private val projectRoot: Path) {
             val end = balancedEnd(file.code, open)
             if (end <= open) return@forEach
             consumed += open..end
-            val expr = callArguments(file.code, open, end).firstOrNull()?.takeUnless { it.isNamedArgument() }
+            // 인자 없는 호출(`stmt.execute()`)은 이미 준비된 문을 실행하는 것 — 관계 피연산자가 없다.
+            val args = callArguments(file.code, open, end)
+            if (args.isEmpty()) return@forEach
+            val expr = args.firstOrNull()?.takeUnless { it.isNamedArgument() }
             emitSqlExpression(expr, sourceLocation(file.relative, file.source, match.range.first), entities, facts, stats)
         }
     }
@@ -515,28 +566,39 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         entities: Map<String, String>,
         facts: MutableList<BridgeFact>,
         stats: ScanStats,
+        translateEntities: Boolean = false,
     ) {
         val (value, dynamic) = expression?.let(::literalOrDynamicChannel) ?: (null to true)
         if (value != null && !dynamic) {
-            emitSql(value, location, entities, facts, stats)
+            emitSql(value, location, entities, facts, stats, translateEntities = translateEntities)
         } else {
             stats.unjoinedDynamic++
             facts += dynamicFact(expression, location)
         }
     }
 
-    /** 디코딩된 SQL 문자열에서 관계를 읽는다 — 엔티티명은 선언된 테이블명으로 번역한다(JPQL). */
+    /**
+     * 디코딩된 SQL 문자열에서 관계를 읽는다.
+     * [translateEntities]는 Room `@Query`·JPQL처럼 엔티티명이 테이블명으로 해석되는
+     * 문맥에서만 켠다 — JDBC의 `"FROM Region"`은 진짜 테이블 이름일 수 있다.
+     * [strict]는 게이트 없는 리터럴용이다 — 소문자 키워드는 산문으로 보고 발화하지 않는다.
+     */
     private fun emitSql(
         sql: String,
         location: BridgeLocation,
         entities: Map<String, String>,
         facts: MutableList<BridgeFact>,
         stats: ScanStats,
+        strict: Boolean = false,
+        translateEntities: Boolean = false,
     ) {
-        val (relations, unresolved) = sqlRelations(sql)
-        relations.forEach { facts += relationFact(entities[it.name] ?: it.name, location) }
-        if (unresolved) {
-            stats.unjoinedDynamic++
+        val (relations, unresolved) = sqlRelations(sql, strict)
+        relations.forEach { relation ->
+            val name = if (translateEntities) entities[relation.name] ?: relation.name else relation.name
+            facts += relationFact(name, location)
+        }
+        if (unresolved > 0) {
+            stats.unjoinedDynamic += unresolved
             facts += dynamicFact(sql, location)
         }
     }
@@ -558,7 +620,8 @@ public class SchemaFactScanner(private val projectRoot: Path) {
                 val prefix = if (raw) decodeRawLiteral(body.substring(0, interpolation))
                 else decodeLiteral(body.substring(0, interpolation))
                 // 보간된 SQL은 관계가 문자열 바깥에 있다 — 접두어가 SQL 모양일 때만 동적 근거로 남긴다.
-                if (looksLikeSql(prefix)) {
+                // 게이트 없는 리터럴이라 strict 판정이다 — 산문 속 소문자 키워드는 발화하지 않는다.
+                if (looksLikeSql(prefix, strict = true)) {
                     stats.unjoinedDynamic++
                     facts += BridgeFact(
                         kind = "relation-use",
@@ -571,7 +634,12 @@ public class SchemaFactScanner(private val projectRoot: Path) {
                 }
             } else {
                 val decoded = if (raw) decodeRawLiteral(body) else decodeLiteral(body)
-                if (looksLikeSql(decoded)) emitSql(decoded, location, entities, facts, stats)
+                if (looksLikeSql(decoded, strict = true)) {
+                    emitSql(
+                        decoded, location, entities, facts, stats,
+                        strict = true, translateEntities = file.room || file.jpa,
+                    )
+                }
             }
         }
     }
@@ -785,19 +853,22 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         val EXPOSED_GATE = Regex("\\bimport\\s+org\\.jetbrains\\.exposed\\b")
         val JOOQ_GATE = Regex("\\bimport\\s+org\\.jooq\\b")
 
+        // Kotlin use-site 타깃(`@field:Name`)도 같은 어노테이션이다 — `ident:` 접두를 허용한다.
+        val USE_SITE = "(?:[A-Za-z_][A-Za-z0-9_]*\\s*:\\s*)?"
         val TYPE_DECL = Regex("\\b(?:class|object)\\s+([A-Za-z_][A-Za-z0-9_]*)")
-        val ENTITY_ANNOTATION = Regex("@(Entity|DatabaseView)\\b")
-        val TABLE_ANNOTATION = Regex("@Table\\b")
-        val QUERY_ANNOTATION = Regex("@(Query|RawQuery|Insert|Update|Delete|Upsert)\\b")
-        val COLUMN_INFO = Regex("@ColumnInfo\\b")
-        val FOREIGN_KEY = Regex("@ForeignKey\\b")
+        val ENTITY_ANNOTATION = Regex("@${USE_SITE}(Entity|DatabaseView)\\b")
+        val TABLE_ANNOTATION = Regex("@${USE_SITE}Table\\b")
+        val QUERY_ANNOTATION = Regex("@${USE_SITE}(Query|RawQuery|Insert|Update|Delete|Upsert)\\b")
+        val COLUMN_INFO = Regex("@${USE_SITE}ColumnInfo\\b")
+        val FOREIGN_KEY = Regex("@${USE_SITE}ForeignKey\\b")
         val PROPERTY_DECL = Regex("\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*:")
         val JAVA_FIELD = Regex("\\b[A-Za-z_][A-Za-z0-9_.<>\\[\\],?]*\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?:=[^;]*)?;")
         val KOTLIN_FUN = Regex("\\bfun\\s+(?:[A-Za-z_][A-Za-z0-9_]*\\s*\\.\\s*)?[A-Za-z_][A-Za-z0-9_]*\\s*\\(")
         val JAVA_METHOD = Regex("\\b[A-Za-z_][A-Za-z0-9_.<>\\[\\]]*\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\(")
         val CLASS_LITERAL = Regex("([A-Za-z_][A-Za-z0-9_.]*)\\s*(?:::class|\\.class)")
         val IDENTIFIER = Regex("([A-Za-z_][A-Za-z0-9_]*)")
-        val NAMED_ARGUMENT = Regex("^[A-Za-z_][A-Za-z0-9_.]*\\s*=")
+        // `=` 뒤에 `=`가 이어지면 비교 식(`flag == x`)이라 명명 인자가 아니다.
+        val NAMED_ARGUMENT = Regex("^[A-Za-z_][A-Za-z0-9_.]*\\s*=(?!=)")
         val STRING_ITEM = Regex("\"(?:[^\"\\\\]|\\\\.)*\"")
         val ANNOTATION_TOKEN = Regex("@[A-Za-z_][A-Za-z0-9_.]*\\s*(?:\\([^()]*\\))?")
         val WHITESPACE = Regex("\\s+")

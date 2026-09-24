@@ -234,27 +234,29 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
  */
 internal fun maskStringContents(source: String): String {
     val out = StringBuilder(source.length)
-    var quote = false
+    var quote: Char? = null
     var rawQuote = false
     var escaped = false
     var index = 0
     while (index < source.length) {
-        if (!quote && source.startsWith("\"\"\"", index)) {
-            rawQuote = true; quote = true; out.append("   "); index += 3; continue
+        if (quote == null && source.startsWith("\"\"\"", index)) {
+            rawQuote = true; quote = '"'; out.append("   "); index += 3; continue
         }
         if (rawQuote && source.startsWith("\"\"\"", index)) {
-            rawQuote = false; quote = false; out.append("   "); index += 3; continue
+            rawQuote = false; quote = null; out.append("   "); index += 3; continue
         }
         val c = source[index]
         when {
             rawQuote && c == '\n' -> out.append('\n')
             rawQuote -> out.append(' ')
-            !quote && c == '"' -> { quote = true; out.append(c) }
-            quote && escaped -> { escaped = false; out.append(' ') }
-            quote && c == '\\' -> { escaped = true; out.append(' ') }
-            quote && c == '"' -> { quote = false; out.append(c) }
-            quote && c == '\n' -> out.append('\n')
-            quote -> out.append(' ')
+            // 문자 리터럴 `'`도 인용으로 본다 — `'"'` 안의 `"`가
+            // 문자열을 열어 나머지 파일을 마스킹하지 않게 한다.
+            quote == null && (c == '"' || c == '\'') -> { quote = c; out.append(c) }
+            quote != null && escaped -> { escaped = false; out.append(' ') }
+            quote != null && c == '\\' -> { escaped = true; out.append(' ') }
+            quote != null && c == quote -> { quote = null; out.append(c) }
+            quote != null && c == '\n' -> out.append('\n')
+            quote != null -> out.append(' ')
             else -> out.append(c)
         }
         index++
@@ -548,7 +550,7 @@ internal fun stripComments(source: String): String {
                 when { escaped -> escaped = false; c == '\\' -> escaped = true; c == quote -> quote = null }
                 index++
             }
-            c == '"' -> { quote = c; out.append(c); index++ }
+            c == '"' || c == '\'' -> { quote = c; out.append(c); index++ }
             c == '/' && next == '*' -> { out.append("  "); block = true; index += 2 }
             c == '/' && next == '/' -> {
                 while (index < source.length && source[index] != '\n') { out.append(' '); index++ }
@@ -563,7 +565,7 @@ internal fun stripComments(source: String): String {
 internal fun balancedEnd(source: String, open: Int): Int {
     if (open < 0 || source.getOrNull(open) != '(') return -1
     var depth = 0
-    var quote = false
+    var quote: Char? = null
     var rawQuote = false
     var escaped = false
     var index = open
@@ -572,10 +574,11 @@ internal fun balancedEnd(source: String, open: Int): Int {
             if (source.startsWith("\"\"\"", index)) { rawQuote = false; index += 3 } else index++
             continue
         }
-        if (!quote && source.startsWith("\"\"\"", index)) { rawQuote = true; index += 3; continue }
+        if (quote == null && source.startsWith("\"\"\"", index)) { rawQuote = true; index += 3; continue }
         val c = source[index]
-        if (quote) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == '"' -> quote = false }; index++; continue }
-        when (c) { '"' -> quote = true; '(' -> depth++; ')' -> { depth--; if (depth == 0) return index } }
+        // 문자 리터럴 `'`도 인용이다 — `')'` 같은 리터럴이 괄호 균형을 깨지 않게 한다.
+        if (quote != null) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == quote -> quote = null }; index++; continue }
+        when (c) { '"', '\'' -> quote = c; '(' -> depth++; ')' -> { depth--; if (depth == 0) return index } }
         index++
     }
     return -1
@@ -587,7 +590,7 @@ internal fun callArguments(source: String, open: Int, end: Int): List<String> {
     val values = mutableListOf<String>()
     var start = open + 1
     var depth = 0
-    var quote = false
+    var quote: Char? = null
     var rawQuote = false
     var escaped = false
     var index = start
@@ -596,19 +599,20 @@ internal fun callArguments(source: String, open: Int, end: Int): List<String> {
             if (source.startsWith("\"\"\"", index)) { rawQuote = false; index += 3 } else index++
             continue
         }
-        if (!quote && source.startsWith("\"\"\"", index)) { rawQuote = true; index += 3; continue }
+        if (quote == null && source.startsWith("\"\"\"", index)) { rawQuote = true; index += 3; continue }
         val c = source[index]
-        if (quote) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == '"' -> quote = false }; index++; continue }
-        when (c) { '"' -> quote = true; '(' -> depth++; ')' -> depth--; ',' -> if (depth == 0) { values += source.substring(start, index).trim(); start = index + 1 } }
+        if (quote != null) { when { escaped -> escaped = false; c == '\\' -> escaped = true; c == quote -> quote = null }; index++; continue }
+        when (c) { '"', '\'' -> quote = c; '(' -> depth++; ')' -> depth--; ',' -> if (depth == 0) { values += source.substring(start, index).trim(); start = index + 1 } }
         index++
     }
     values += source.substring(start, end).trim()
     return values
 }
 
-/** `name = value` 형태의 명명 인자 값을 찾는다 — 없으면 null. */
+/** `name = value` 형태의 명명 인자 값을 찾는다 — `name == value` 같은 비교 식은 인자가 아니므로 없으면 null. */
 internal fun List<String>.firstNamed(name: String): String? = firstOrNull { argument ->
-    argument.substringBefore('=', "").trim() == name
+    argument.substringBefore('=', "").trim() == name &&
+        !argument.substringAfter('=', "").startsWith('=')
 }?.substringAfter('=', "")?.trim()
 
 /** source 오프셋을 프로젝트 상대 경로의 1기반 줄·UTF-8 바이트 열 위치로 변환한다. */
