@@ -31,3 +31,7 @@ local.properties
 .env.*
 *.pem
 *-service-account*.json
+
+# 자매 저장소 공유 메모(로컬 전용)
+HANDOFF-cartograph-skills-*.md
+HANDOFF.cartograph-notes.md
