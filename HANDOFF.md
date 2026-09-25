@@ -1,6 +1,51 @@
 # HANDOFF
 
-마지막 갱신: 2026-09-25 — 0.17.0(schema) 배포 완료
+마지막 갱신: 2026-09-25 — 변경 내용 기반 impact 설계 완료(spec 검토 대기), 0.17.0 배포 완료
+
+## 진행 중: 변경 내용 기반 impact 진입점
+
+- **목표:** v8에서 agent가 정확한 선택자를 만들지 못해 MCP impact 3회가 모두 `notFound`로 끝난 문제를 푼다. agent가 가진 "수정한 파일+줄"(`changes` 또는 unified `diff`)을 받아 변경 선언을 찾고 기존 impact로 잇는다. AI 효용 개선은 주장하지 않고, 이후 새 평가로 판단한다.
+- **브랜치:** `feature/change-based-impact` (로컬만, push 안 함). spec 커밋은 `cd984c7`이다: [docs/superpowers/specs/2026-09-25-change-based-impact-design.md](docs/superpowers/specs/2026-09-25-change-based-impact-design.md).
+- **사용자가 확정한 결정:**
+  1. 입력은 AI가 파일+줄 범위나 diff 텍스트를 넘긴다. MCP는 계속 git과 소스를 읽지 않는다.
+  2. 줄 범위는 **혼합(C)** 방식이다. bytecode LineNumberTable을 기준으로 삼고(SMAP으로 inline 줄 제외), 소스 어휘 분석은 시그니처와 어노테이션까지 **넓히는 데만** 쓴다. 출처(`bytecode`/`source-extended`/`source-only`)를 기록한다.
+  3. 새 MCP 도구는 만들지 않고 기존 `impact`에 `changes`/`diff`를 추가한다. CLI에는 `--diff`/`--changes-from`을 추가한다.
+  4. 줄 범위는 `GraphNode`/query 스키마에 넣지 않고 snapshot 선택 필드 `sourceRanges`에 둔다.
+  5. 해석하지 못한 줄은 파일 전체로 부풀리지 않고 `unmappedLines`/`rangesUnavailable`로 명시한다.
+- **탐색에서 확인한 사실:**
+  - 그래프에는 메서드 **시작 줄만** 있다(`ClassFileIndexer`의 `firstLine`).
+  - 선언 범위 어휘 분석은 `ChannelBridgeScanner.enclosingDeclaration`에 이미 있다.
+  - MCP `impact`는 `files`를 받지만 경로 suffix 매칭은 `discover_symbols`(`McpTools.kt`)에만 있다.
+  - 변경 파일 Git 수집은 `ChangedFiles.kt`에 있다.
+- **다음 단계:**
+  1. 사용자가 spec을 승인하면 `superpowers:writing-plans`로 구현 계획을 쓰고, 실행 방식을 사용자가 고르게 한다.
+  2. **PR 1 (실험, 제품 코드 없음):** `experiments/source-ranges/`에 A(bytecode만)와 C(혼합)의 prototype을 만들고 줄 → 선언 정답률을 비교한다. 정답 세트는 v8 detekt/ktlint 실제 변경 4건과 사례 fixture다. A가 동등하면 A로 단순화한다. 결과를 사용자에게 보고한 뒤 다음으로 넘어간다.
+  3. **PR 2:** 범위 캡처와 `sourceRanges`. 예전 CLI가 새 키를 거부하는지 먼저 확인한다.
+  4. **PR 3:** 해석, MCP/CLI, 문서, 스킬. 끝나면 v8 notFound 입력 3건을 diff 형태로 다시 조회해 확인한다.
+- **남은 위험:** 프로퍼티 초기화 줄에서 생성자와 프로퍼티 중 어느 쪽이 선택될지, 소스 휴리스틱의 오판(문자열 안 중괄호, DSL, 여러 줄 식 본문)
+
+### 경쟁 도구 비교 요약 (2026-09-25, 대화 결과만 있고 별도 문서는 없음)
+
+- **차별점:** bytecode 원천, keep 규칙의 파일·줄 근거, base/current impact, 측정된 한계, bridge·schema 사실을 한 도구에서 모두 하는 경우는 찾지 못했다.
+- **약점:** 도구를 쓴 결과가 행동으로 이어지는 계층이 약하다. 가장 큰 약점은 AI 효용이 아직 증명되지 않았다는 점이다.
+- **PRD 범위 안의 보강 우선순위:**
+  1. 변경 기반 진입점 (현재 작업)
+  2. impact를 실행 가능한 테스트 목록(Gradle `--tests`)으로 출력하고 androidTest를 연결
+  3. 첫 사용과 갱신 비용 측정
+  4. R8 Configuration Analyzer(AGP 9.3.0+, 원문 확인)와 겹치는 영역을 "규칙 → 심볼·영향"으로 차별화하고, `usage.txt`를 선택 입력으로 받는 것 검토
+  5. impact PR 코멘트
+  6. 그래프 내보내기(Neo4j/SQLite)
+- **범위 결정이 필요한 것** (PRD의 "하지 않는 것"과 충돌): IDE 표시, 자동 수정·삭제(유지 권장), 운영 환경 runtime 수집
+- **원문 확인:** R8 Configuration Analyzer와 SearchDeadCode(★14)는 원문으로 확인했다. 나머지 도구의 star 수와 버전은 에이전트 조사 값이라 다시 확인해야 한다.
+
+### 효과가 있었던 것과 없었던 것
+
+- **효과 있음:** 릴리스 전에 PR head와 merge tree가 같은지 대조하고 배포본을 재빌드해 비교했다. README가 바뀌면 CLI ZIP/TAR 해시도 바뀐다는 것을 이렇게 확인했다. 브랜치는 "PR head = 브랜치 끝" 기준으로 정리했다.
+- **효과 없음 / 주의:**
+  - `packet-ask --diff HEAD~1`은 **작업 트리를 포함**한다. 미커밋 파일까지 전송되므로 커밋 범위를 명시하거나 작업 트리를 비운 뒤 실행한다.
+  - `gh pr checks --watch`를 PR 생성 직후에 실행하면 "검사 없음"으로 끝난다. run ID를 조회한 뒤 `gh run watch`를 쓴다.
+  - zsh에서는 `set -- $var` 방식의 단어 분리가 되지 않으므로 bash로 실행한다.
+  - `./gradlew clean`을 해도 `build/reports`의 보존 worktree는 남는 것을 확인했다. 그래도 root `build/`를 직접 지우지 않는다.
 
 ## 현재 상태
 
@@ -35,6 +80,7 @@
 
 - 완료·clean·머지 tree 일치를 확인한 worktree **6개를 제거**했다. 각 HEAD와 branch, `refs/archive/cleanup-20260923/*` 및 실행 산출물을 보존했다.
 - 2026-09-23 기준 Git worktree는 main과 아래 사용자 변경 worktree만 남았다. Orca 관리 목록에는 main만 남았다.
+- 2026-09-25 추가: 2026-09-17 stash(`preserve-local-docs-before-integration`)는 내용이 main에 이미 있어 `refs/archive/cleanup-20260925/stash-preserve-local-docs-20260917`로 보존한 뒤 비웠다. 중복 배포본(`cli/build/distributions`, `compiler-collectors/build/distributions`, `build/release`)은 지웠고, readiness 근거는 `.git/release-0.17.0-20260925/release-readiness-local.tar.gz`로 옮겼다. 원장은 `.git/cleanup-branches-20260925/FINAL.json`이다.
 - 2026-09-25: 머지 완료 브랜치(PR head = 브랜치 끝, 또는 main에 포함)를 로컬 21개·원격 24개 삭제했다(고유 26개 = 양쪽 19 + 원격 전용 5 + 로컬 전용 2). 끝 커밋은 `refs/archive/cleanup-20260925/*`에 보존했다. 남은 것은 main과 열린 dependabot PR #92 브랜치다. 복원은 `git branch <name> refs/archive/cleanup-20260925/<name>`으로 하고, 원장은 `.git/cleanup-branches-20260925/FINAL.json`이다. worktree 복원 스크립트는 `cleanup-20260923` archive ref를 쓰므로 영향이 없다.
 - 대형 과거 자료560개를348개 gzip blob으로 묶고, 프로젝트 cache261개도 압축 보존했다. 모든 payload와 worktree 파일13,278개를 실제 복원·해시 대조했다.
 - 보존 archive를 포함한 배정 용량은 약 **3.8 GiB 감소**했다. SDK·설치 도구·전역 cache·원본 연구 입력·사용자 메모를 보존했다.
@@ -69,4 +115,4 @@ python3 .git/cleanup-handoff-20260923/restore-caches.py --list
 
 ## 재개 프롬프트
 
-`/Users/jinhongan/Desktop/kartograph`에서 HANDOFF.md와 AGENTS.md를 읽고, 0.16.0 배포·정리가 완료된 상태에서 새 요청 범위만 진행해줘. 과거 원문 검증이 필요하면 정리 원장의 복원 안내부터 확인해줘.
+`/Users/jinhongan/Desktop/kartograph`에서 HANDOFF.md와 AGENTS.md를 읽고 `feature/change-based-impact` 브랜치로 전환해줘. spec(`docs/superpowers/specs/2026-09-25-change-based-impact-design.md`)이 사용자 검토를 기다리고 있으니, 승인되면 writing-plans로 구현 계획을 쓰고 PR 1(A/C 비교 실험)부터 진행해줘. 0.17.0 배포와 정리는 완료된 상태다.
