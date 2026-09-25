@@ -47,14 +47,18 @@ MCP impact(changes | diff)   /   CLI impact --diff <file> | --changes-from <json
 
 줄 범위는 `GraphNode`, `SourceLocation`, `SymbolQueryDocument`에 넣지 않고 query snapshot의 선택 필드
 `sourceRanges`에 둔다. graph JSON·query 스키마·cartograph와 공유하는 계약이 바뀌지 않는다. v1과 compact v2 모두
-같은 필드를 선택적으로 싣고 snapshot 버전은 올리지 않는다. 필드가 없는 snapshot과, 예전 CLI가 새 snapshot을 읽는
-경우의 실제 동작은 구현 단계의 호환 테스트로 확인한다. 예전 CLI가 알 수 없는 키를 거부하면 이 결정을 다시 검토한다.
+같은 필드를 선택적으로 싣는다. snapshot 버전을 올리지 않는 것이 기본안이지만, PR 2의 첫 작업으로 예전 CLI가 알 수 없는
+키를 어떻게 처리하는지 확인한 뒤 확정한다. 거부한다면 버전 정책을 다시 정한다. 필드가 없는 snapshot은 계속 읽는다.
 
 ### 도구 표면 결정
 
 새 MCP 도구를 만들지 않고 기존 `impact`의 입력을 넓힌다. v8에서 모델은 제공된 도구 중 일부만 호출했다
 (`query_symbol`·`freshness`는 호출하지 않았다). 도구 수를 늘리기보다 이미 선택되는 도구에서 선택자 작성 단계를 없앤다.
 CLI는 같은 해석 코드를 `SavedSnapshotOperations`에서 공유한다.
+
+base snapshot은 새 입력이 아니다. MCP 서버는 이미 `mcp --base-graph`로 base를 함께 읽고, 기존 impact는 current와
+base를 함께 조사해 current에서 삭제된 선언도 base에서 유지한다. 옛 쪽 줄에서 선택한 USR은 이 기존 경로로 조사한다.
+서버나 CLI에 base가 없으면 옛 쪽 줄이 있는 파일은 `baseRequired`다.
 
 ## 입력
 
@@ -64,22 +68,33 @@ CLI는 같은 해석 코드를 `SavedSnapshotOperations`에서 공유한다.
   - 줄은 1부터 세며 `start ≤ end`다. `side` 기본값은 `new`이고 `old`는 base snapshot이 필요하다.
   - 상한: 파일 256개, 파일당 구간 1000개. 초과는 사용 오류다.
 - `diff: "<unified diff>"` (상한 512 KiB, UTF-8)
-  - `diff --git`, `---`/`+++`, `@@ -a,b +c,d @@` 헤더를 읽는다. 실제로 바뀐 줄(`+`/`-`)만 쓰고 문맥 줄은 쓰지 않는다.
-  - `+` 줄은 새 경로로 current에서, `-` 줄은 옛 경로로 base에서 해석한다. rename과 `/dev/null`(추가·삭제 파일)을 처리한다.
-  - `a/`·`b/` 접두는 제거한다. CRLF를 허용한다. binary·mode만 바뀐 항목은 `skipped`로 기록한다.
-  - 경로는 `ImpactCommand.portable` 규칙을 통과해야 한다. 절대경로·`..`는 거부한다.
-- CLI: `impact --diff <file|->`, `impact --changes-from <json>`. 두 옵션은 `--graph-file`이 필요하고 옛 쪽 줄이 있으면
-  `--base-graph`가 필요하다.
+  - `diff --git`, `---`/`+++`, `@@ -a[,b] +c[,d] @@` 헤더를 읽는다. 줄 수(`,b`/`,d`)가 생략되면 1이다. 실제로 바뀐 줄
+    (`+`/`-`)만 쓰고 문맥 줄과 `\ No newline at end of file` 표시는 쓰지 않는다.
+  - `+` 줄은 새 경로로 current에서, `-` 줄은 옛 경로로 base에서 해석한다. `/dev/null`(추가·삭제 파일)을 처리한다.
+  - rename·copy는 옛 경로와 새 경로를 각각 해석한다. hunk가 없는 순수 rename은 줄 변경이 없으므로 `skipped`(사유
+    `rename-only`)다. Kotlin file facade 이름이 바뀌는 영향은 파일 선택자(`files`)로 조사하라고 안내한다.
+  - `a/`·`b/` 접두는 제거한다. CRLF를 허용한다. binary·mode만 바뀐 항목은 `skipped`(사유 `binary`/`mode-only`)다.
+  - git이 따옴표와 escape로 인코딩한 경로(공백·비ASCII)는 해석하지 않고 `invalidPath`로 둔다. 이 경우 `changes`로 다시
+    보내라고 안내한다.
+  - 경로는 `ImpactCommand.portable` 규칙을 통과해야 한다. 절대경로·`..`는 해당 파일만 `invalidPath`이고 요청 전체를
+    실패시키지 않는다.
+- CLI: `impact --diff <file|->`, `impact --changes-from <json>`. 두 옵션은 함께 쓸 수 없고(사용 오류 64), `--graph-file`이
+  필요하며, 옛 쪽 줄이 있으면 `--base-graph`가 필요하다. `symbols`·`files`와는 합집합이다.
 
 ## 해석 규칙
 
 - **파일:** snapshot 경로와 정확히 일치하는 것을 먼저 찾는다. 없으면 경로 구성 요소 suffix가 **유일하게** 맞는 파일을 쓴다.
   여러 개면 `ambiguous`로 후보만 보여 주고 그 파일에서는 아무것도 선택하지 않는다.
-- **줄 → 선언:** 바뀐 줄마다 범위가 겹치는 선언 중 가장 안쪽(가장 좁은 범위)이면서 synthesized가 아닌 선언을 고른다.
-  람다·inline 복제 같은 synthesized 메서드는 그것을 감싸는 실제 선언으로 올라간다. 동률이면 모두 선택하고 USR로 정렬한다.
+- **줄 → 선언:** 바뀐 줄을 포함하는 구간을 가진 선언이 후보다. 후보 사이의 "가장 안쪽"은 각 선언의 **전체 폭**(모든
+  구간의 첫 줄부터 마지막 줄까지)이 가장 작은 것이다. 구간이 흩어진 생성자·`<clinit>`은 전체 폭이 크므로 같은 줄을 덮는
+  프로퍼티나 메서드보다 뒤로 밀린다. 그 가운데 synthesized가 아닌 선언을 고른다. 람다·inline 복제·`$default` 브리지 같은
+  synthesized 메서드는 감싸는 실제 선언으로 올라간다. 동률이면 모두 선택하고 USR로 정렬한다.
 - **미대응 줄:** 어느 선언에도 속하지 않는 줄(import, 주석, 빈 줄, 파일 머리)은 `unmappedLines`로 알리고 선택하지 않는다.
 - **클래스 머리 줄:** 클래스 선언 자체가 선택된다. 후보가 클 수 있으며 기존 잘림·페이지 안내를 따른다.
 - **범위 없는 snapshot:** 해당 파일은 `rangesUnavailable`이며 `source-ranges-unavailable` 한계와 재캡처 안내를 낸다.
+- **전체 상태:** `skipped` 파일은 판정에서 뺀다. 남은 파일이 모두 `matched`이면 `complete`, 하나라도 선택이 있고 다른 파일이
+  `matched`가 아니면 `partial`, 선택이 하나도 없으면 `unresolved`다. `matched` 파일 안의 `unmappedLines`는 상태를 바꾸지
+  않고 그대로 보고한다.
 
 ## 출력
 
@@ -91,16 +106,19 @@ CLI는 같은 해석 코드를 `SavedSnapshotOperations`에서 공유한다.
   "files": [{
     "input": "detekt-rules/src/main/kotlin/p/Foo.kt",
     "side": "new",
-    "status": "matched | ambiguous | notFound | rangesUnavailable | baseRequired | skipped",
+    "status": "matched",
     "graphPath": "src/main/kotlin/p/Foo.kt",
     "selected": [{"usr": "...", "name": "visitKtFile", "kind": "method",
-                  "range": [[40, 58]], "origin": "bytecode | source-extended | source-only", "lines": [[44, 45]]}],
-    "unmappedLines": [[3, 3]],
+                  "range": [[40, 58]], "origin": "source-extended", "lines": [[44, 45]]}],
+    "unmappedLines": [[60, 61]],
     "candidates": []
   }],
   "truncated": false
 }
 ```
+
+- 파일 `status`: `matched`, `ambiguous`, `notFound`, `rangesUnavailable`, `baseRequired`, `invalidPath`, `skipped`(`reason` 포함).
+- `origin`: `bytecode`, `source-extended`, `source-only`. `range`는 구간 배열이며 생성자처럼 여러 구간일 수 있다.
 
 - 일부만 해석되면 해석된 선언으로 impact를 실행하고 `partial`로 표시한다.
 - 하나도 해석되지 않으면 기존의 알 수 없는 선택자와 같게 처리한다(CLI 종료 코드 64). `changeResolution`을 함께 내서
@@ -112,11 +130,16 @@ CLI는 같은 해석 코드를 `SavedSnapshotOperations`에서 공유한다.
 
 ### bytecode 범위 (기준 근거)
 
-- 일반 메서드: LineNumberTable의 최소~최대 줄. Kotlin은 `SourceDebugExtension` SMAP의 첫 파일 구간(예: `1#1,50`)
-  밖의 줄을 inline 호출에서 온 줄로 보고 제외한다. SMAP이 없으면(Java) 표의 줄을 모두 쓴다.
+- 일반 메서드: LineNumberTable의 최소~최대 줄. LineNumberTable의 줄은 SMAP 기준으로 출력 줄이다. Kotlin class에
+  `SourceDebugExtension` SMAP이 있으면 `*F`에서 class 자신의 source(`SourceFile`과 같은 파일)의 fileID를 찾고, `*L`의
+  LineInfo(`입력시작#fileID,반복:출력시작,증분`) 중 그 fileID인 항목들이 덮는 **출력 줄 구간의 합집합**에 드는 줄만 쓴다.
+  나머지는 inline 호출에서 온 줄로 보고 제외한다. 자신의 파일 항목이 여러 LineInfo로 나뉘어도 합집합으로 다룬다.
+  SMAP이 없거나(Java) 해석할 수 없으면 표의 줄을 모두 쓰고, 해석 실패는 `source-range-conflicts`와 별도로 계수한다.
 - 생성자와 `<clinit>`: 프로퍼티 초기화 식과 `init` 블록이 흩어져 있으므로 최소~최대로 합치지 않고 실제 줄 구간만 저장한다.
-- 본문이 없는 선언(abstract, interface, native, 필드)은 bytecode 범위가 없다.
-- 클래스 범위는 소스 선언이 없을 때 멤버 범위의 합이다.
+- 본문이 없는 선언(abstract 메서드, 본문 없는 interface 메서드, native, 필드)은 bytecode 범위가 없다. 본문이 있는
+  interface 메서드는 JVM default 방식이면 interface에, `DefaultImpls` 방식이면 synthesized `DefaultImpls` class의
+  메서드에 줄이 있다. 후자는 이름과 파일로 interface 선언에 연결해 그 범위로 기록한다.
+- 클래스 범위는 소스 스캔으로 클래스 선언을 찾지 못한 경우에만 멤버 범위의 합집합이다.
 
 ### 소스 확장
 
@@ -130,9 +153,10 @@ CLI는 같은 해석 코드를 `SavedSnapshotOperations`에서 공유한다.
 
 - 같은 파일이다.
 - 이름이 같다. `getX`/`setX`/`isX` ↔ 프로퍼티 `x`, `<init>` ↔ `constructor`/클래스 이름을 같은 이름으로 본다.
-- bytecode 첫 줄을 포함하는 소스 선언 중 가장 좁다.
+- bytecode 첫 줄을 포함하는 소스 선언 중 가장 좁다. 오버로드와 보조 생성자는 이름이 같으므로, 어휘 분석이 선언마다
+  겹치지 않는 범위를 만들 때만 구분된다. 두 정점이 같은 소스 선언에 대응하면 확장하지 않는다.
 
-범위는 넓히기만 한다. 최종 범위는 bytecode 범위와 소스 범위의 합이다. 소스 범위가 bytecode 첫 줄을 포함하지 않으면
+범위는 넓히기만 한다. 최종 범위는 bytecode 구간과 소스 범위의 합집합이다. 소스 범위가 bytecode 첫 줄을 포함하지 않으면
 소스 쪽을 버린다. 같은 크기의 후보가 여럿이면 확장하지 않는다. bytecode 범위가 없는 선언은 bytecode로 확정된 클래스
 범위 안에서 이름이 유일할 때만 `source-only`로 기록한다. `build/` 아래 생성 소스는 기존 경로 인덱스와 같이 제외한다.
 
