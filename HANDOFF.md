@@ -35,6 +35,7 @@
 
 - 완료·clean·머지 tree 일치를 확인한 worktree **6개를 제거**했다. 각 HEAD와 branch, `refs/archive/cleanup-20260923/*` 및 실행 산출물을 보존했다.
 - Git에는 main과 아래 사용자 변경 worktree만 남았다. Orca 관리 목록에는 main만 남았다.
+- 2026-09-25: 머지 완료 브랜치(PR head = 브랜치 끝, 또는 main에 포함)를 로컬 21개·원격 24개 삭제했다. 끝 커밋 26개는 `refs/archive/cleanup-20260925/*`에 보존했다. 남은 것은 main과 열린 dependabot PR #92 브랜치다. 복원은 `git branch <name> refs/archive/cleanup-20260925/<name>`으로 하고, 원장은 `.git/cleanup-branches-20260925/FINAL.json`이다. worktree 복원 스크립트는 `cleanup-20260923` archive ref를 쓰므로 영향이 없다.
 - 대형 과거 자료560개를348개 gzip blob으로 묶고, 프로젝트 cache261개도 압축 보존했다. 모든 payload와 worktree 파일13,278개를 실제 복원·해시 대조했다.
 - 보존 archive를 포함한 배정 용량은 약 **3.8 GiB 감소**했다. SDK·설치 도구·전역 cache·원본 연구 입력·사용자 메모를 보존했다.
 - 원장/복원 목록: `.git/cleanup-handoff-20260923/README.md`, `FINAL.json`, `artifact-archive-manifest.json`, `worktree-archives.json`.
