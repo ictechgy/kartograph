@@ -101,8 +101,9 @@ public object TraversalEdges {
  * - candidate: 그 밖의 계층 후보다.
  */
 private class DispatchClassifier(private val graph: CodeGraph, private val enclosuresCaptured: Boolean) {
+    // 닫힌 세계의 전칭 범위는 그래프의 모든 class 정점이다. jvmSignature가 빠진 정점도 빠뜨리지 않도록 id에서 이름을 얻는다.
     private val types: Map<String, GraphNode> = graph.nodes.values
-        .filter { it.kind in TYPE_KINDS && it.jvmSignature != null }.associateBy { requireNotNull(it.jvmSignature) }
+        .filter { it.id.value.startsWith("class:") }.associateBy { it.id.value.removePrefix("class:") }
     private val localClasses: Set<String> = graph.enclosures.map { it.localClass.value.removePrefix("class:") }.toSet()
     private val callsByCaller: Map<NodeId, List<ExternalCall>> = graph.externalCalls.groupBy { it.caller }
     private val directSubtypes: Map<String, List<String>> by lazy {
@@ -111,9 +112,10 @@ private class DispatchClassifier(private val graph: CodeGraph, private val enclo
     private val subtypeCache = mutableMapOf<String, Set<String>>()
     private val boundCache = mutableMapOf<Pair<String, String>, NodeId?>()
 
+    // dispatch 모델 간선은 종류와 무관하게 dispatch로 판정한다. 모델 간선이 direct로 부풀지 않게 한다.
     fun tierOf(edge: GraphEdge): TraversalEdgeTier = when {
-        edge.kind != EdgeKind.OVERRIDE -> if (edge.origin == EdgeOrigin.RUNTIME_MODEL) TraversalEdgeTier.BOUND else TraversalEdgeTier.DIRECT
         edge.origin == EdgeOrigin.DISPATCH_MODEL -> modeledDispatchTier(edge)
+        edge.kind != EdgeKind.OVERRIDE -> if (edge.origin == EdgeOrigin.RUNTIME_MODEL) TraversalEdgeTier.BOUND else TraversalEdgeTier.DIRECT
         else -> declaredDispatchTier(edge)
     }
 
@@ -144,7 +146,7 @@ private class DispatchClassifier(private val graph: CodeGraph, private val enclo
     private fun singleTarget(owner: String, signature: String): NodeId? = boundCache.getOrPut(owner to signature) {
         if (owner !in types) return@getOrPut null
         val concrete = (subtypesOf(owner) + owner).mapNotNull(types::get).filter(::isConcrete)
-        val resolved = concrete.map { resolve(requireNotNull(it.jvmSignature), signature) }.distinct()
+        val resolved = concrete.map { resolve(it.id.value.removePrefix("class:"), signature) }.distinct()
         resolved.singleOrNull()
     }
 
@@ -174,7 +176,6 @@ private class DispatchClassifier(private val graph: CodeGraph, private val enclo
     }
 
     private companion object {
-        val TYPE_KINDS = setOf(NodeKind.CLASS, NodeKind.INTERFACE, NodeKind.OBJECT, NodeKind.ENUM, NodeKind.ANNOTATION_CLASS)
         val CONCRETE_KINDS = setOf(NodeKind.CLASS, NodeKind.OBJECT, NodeKind.ENUM)
         val METHOD_KINDS = setOf(NodeKind.METHOD, NodeKind.FUNCTION)
         val FUNCTIONAL_OWNERS = Regex("kotlin/jvm/functions/.+|kotlin/Function|kotlin/jvm/internal/FunctionBase|kotlin/reflect/K(Suspend)?Function\\d*|" +

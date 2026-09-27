@@ -93,6 +93,24 @@ class RouteSymbolDiagnosticsTest {
     }
 
     @Test
+    fun `a stale snapshot is reported as stale rather than missing`() {
+        // 리뷰 지적 재현 시도: stale snapshot은 신원 부착에서 빠지지만 진단에는 snapshot 그래프를 그대로 쓴다.
+        writeClient()
+        val classes = project.resolve("classes").createDirectories()
+        classes.resolve("A.class").writeText("changed")
+        val node = GraphNode(NodeId("method:dev/example/net/Client#load()V"), "load", NodeKind.METHOD,
+            jvmSignature = "dev/example/net/Client#load()V", location = SourceLocation(sourcePath, 5))
+        val provenance = dev.kartograph.core.SnapshotProvenance(listOf(dev.kartograph.core.InputFingerprint("classes", "classes", "0".repeat(64))), emptyList())
+        val file = Files.createTempFile(project.parent, "stale", ".json")
+        Files.writeString(file, QuerySnapshotCodec.render(QuerySnapshot(CodeGraph(listOf(node), emptyList()), emptyList(), emptyList(),
+            provenance = provenance)))
+        val (limitations, facts) = limitations("--graph-file", file.toString())
+        assertTrue(limitations.any { it.startsWith("graph-file-freshness-stale") }, limitations.toString())
+        assertNull((facts.single()["symbol"] as Map<*, *>?)?.get("usr"))
+        assertContains(limitations.single { it.startsWith("missing-route-usrs:") }, "snapshot is stale")
+    }
+
+    @Test
     fun `root mismatch diagnosis handles bare and unrelated paths`() {
         assertContains(RouteSymbolDiagnostics.rootMismatch(listOf("a/B.kt"), setOf("B.kt"))!!, "--include-paths")
         assertContains(RouteSymbolDiagnostics.rootMismatch(listOf("a/B.kt"), setOf("x/C.kt"))!!, "none of the route-call files")

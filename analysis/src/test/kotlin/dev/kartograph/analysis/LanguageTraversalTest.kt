@@ -76,6 +76,30 @@ class LanguageTraversalTest {
     }
 
     @Test
+    fun `bound quantifies over class nodes without jvm signatures`() {
+        // 리뷰 지적 재현: jvmSignature가 빠진 하위 class가 전칭 범위에서 빠지면 단일 구현으로 잘못 판정된다.
+        val base = dispatchGraph()
+        val sub = GraphNode(NodeId("class:app/SingleSub"), "SingleSub", NodeKind.CLASS, supertypes = setOf("app/SingleImpl"))
+        val override = GraphNode(NodeId("method:app/SingleSub#load()V"), "load", NodeKind.METHOD)
+        val graph = CodeGraph(base.nodes.values + sub + override, base.edges, base.externalCalls, enclosures = base.enclosures)
+        val tier = TraversalEdges.build(graph).single {
+            it.source.value == "method:app/Single#load()V" && it.target.value == "method:app/SingleImpl#load()V"
+        }.tier
+        assertEquals(TraversalEdgeTier.CANDIDATE, tier)
+    }
+
+    @Test
+    fun `dispatch model edges are dispatch tiers whatever their kind`() {
+        val caller = NodeId("method:app/A#run()V")
+        val target = NodeId("method:app/B#run()V")
+        val graph = CodeGraph(listOf(GraphNode(caller, "run", NodeKind.METHOD), GraphNode(target, "run", NodeKind.METHOD)),
+            listOf(GraphEdge(caller, target, EdgeKind.CALL, origin = EdgeOrigin.DISPATCH_MODEL)),
+            listOf(ExternalCall(caller, "ext/Service", "run", "()V", InvocationKind.INTERFACE, resolvedTargets = listOf(target),
+                resolution = CallResolution.PROJECT_CANDIDATES)))
+        assertEquals(TraversalEdgeTier.CANDIDATE, TraversalEdges.build(graph).single().tier)
+    }
+
+    @Test
     fun `unresolved calls count unresolved dispatch reflective lookups and unmodeled bootstraps`() {
         val caller = NodeId("method:app/A#run()V")
         fun call(kind: InvocationKind, resolution: CallResolution, model: String? = null, owner: String = "ext/T") =

@@ -44,5 +44,14 @@ class LexicalEnclosureIndexTest {
         kotlin.test.assertEquals(cold, warm)
     }
 
+    @Test
+    fun `kotlin function type calls are owned by kotlin jvm functions interfaces`() {
+        // 리뷰 지적 반박 근거: Kotlin 함수 타입 호출의 JVM owner는 kotlin/jvm/functions/FunctionN이며 kotlin/FunctionN이 아니다.
+        val graph = ClassFileIndexer().index(listOf(classesRoot))
+        val owners = graph.externalCalls.filter { it.caller.value.startsWith("method:") && "LambdaEnclosureFixture" in it.caller.value &&
+            it.name == "invoke" }.map { it.owner }.toSet()
+        kotlin.test.assertEquals(setOf("kotlin/jvm/functions/Function0"), owners)
+    }
+
     private fun internalName(value: Any): String = value::class.java.name.replace('.', '/')
 }
