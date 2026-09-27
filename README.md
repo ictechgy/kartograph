@@ -270,5 +270,11 @@ Facts left without a JVM identity are counted by `missing-route-usrs:`, which na
 declaration, a shortest-path witness, per-root lower-bound `evidence` (`direct`, `bound`, `candidate`) and
 `unresolvedCalls`. Lambda and anonymous-class bodies belong to their enclosing declaration through captured
 `EnclosingMethod` facts, so `FunctionN`/SAM `invoke` fan-out is not followed by default
-(`--dispatch direct|bound|candidates|all`, default `candidates`). The default `impact` output is unchanged. See
+(`--dispatch direct|bound|candidates|all`, default `candidates`). `revision` is `--revision <rev>` when given,
+else the snapshot's revision label, else the git `HEAD` only when the project directory has no uncommitted or
+untracked changes (omitted otherwise, so isthmus never treats an analysis of edited sources as current).
+`graphRevision` is `sha256:` over the graph content — node ids and kinds, edges with their kinds and origins,
+evidence tiers and lexical enclosures, locations excluded — so reverse and forward documents from one snapshot agree.
+Roots and `--revision` containing control characters (C0, DEL, C1, U+2028, U+2029) are rejected with exit 64 because
+isthmus rejects such ids. The default `impact` output is unchanged. See
 [change impact](docs/IMPACT.md#isthmus-trace용-순회-문서-language-traversal-v1).

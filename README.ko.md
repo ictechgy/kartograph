@@ -268,5 +268,10 @@ JVM 신원을 붙이지 못한 사실은 `missing-route-usrs:`로 세고, source
 v1 문서를 냅니다. 여러 root를 한 번에 순회해 선언마다 닿는 모든 root, 최단 경로 목격, root별 하한 근거
 등급(`direct`·`bound`·`candidate`), `unresolvedCalls`를 싣습니다. 람다·익명 class 본문은 캡처한 `EnclosingMethod`
 사실로 감싼 선언에 속하므로 `FunctionN`/SAM `invoke` fan-out은 기본으로 따르지 않습니다
-(`--dispatch direct|bound|candidates|all`, 기본 `candidates`). 기본 `impact` 출력은 바뀌지 않습니다.
+(`--dispatch direct|bound|candidates|all`, 기본 `candidates`). `revision`은 `--revision <rev>`를 주면 그 값, 없으면
+snapshot의 revision 라벨, 그것도 없으면 프로젝트 디렉터리에 커밋하지 않은 변경·추적되지 않은 파일이 없을 때만 git
+`HEAD`입니다(아니면 생략해 isthmus가 고친 소스의 분석을 최신으로 보지 않게 합니다). `graphRevision`은 그래프 내용
+(정점 id·종류, 간선 종류·출처, 근거 등급, 어휘적 소속, 위치 제외)의 `sha256:` 해시라 한 snapshot의 역방향·정방향 문서가
+같은 값을 냅니다. 제어 문자(C0·DEL·C1·U+2028·U+2029)가 든 root와 `--revision`은 isthmus가 거부하므로 종료 코드
+64로 막습니다. 기본 `impact` 출력은 바뀌지 않습니다.
 [변경 영향](docs/IMPACT.md#isthmus-trace용-순회-문서-language-traversal-v1)을 참고하세요.

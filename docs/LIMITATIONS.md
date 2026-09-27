@@ -120,6 +120,8 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   `FunctionN`/SAM 콜백 fan-out을 따르지 않고 람다 본문을 `EnclosingMethod` 소속으로만 잇는다. 필드에 저장했다가
   다른 곳에서 호출하는 콜백의 호출 측은 `--dispatch all`에서만 보인다. `unresolvedCalls`는 kartograph가 관측한
   미해석 dispatch·미해석 reflection 모델·모델 없는 invokedynamic만 세며 모든 런타임 경로를 안다고 주장하지 않는다.
+  `revision`을 git `HEAD`에서 자동으로 채울 때는 저장한 snapshot을 지금 작업 트리에서 캡처했다고 가정한다. 다른
+  커밋에서 캡처한 snapshot은 `snapshot --revision` 라벨이나 `--revision`으로 revision을 명시한다.
   어휘적 소속 사실(`graph.enclosures`)이 없는 옛 snapshot은 람다 후보를 `candidate`로 따라가므로 결과가 넓다.
 - `routes --graph-file`이 사실에 JVM 신원을 붙이지 못하면 `missing-route-usrs:`로 수를 세고, source 경로가 공통 접두사만큼
   어긋나면 snapshot과 routes의 `--project` 불일치(`project-root-mismatch:`)를 밝힌다. 경로 비교로 찾지 못하는 원인은
