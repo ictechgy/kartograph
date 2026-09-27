@@ -44,7 +44,7 @@ expect_output() {
 }
 
 TEMPORARY_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/kartograph-cli-contract.XXXXXX")"
-trap 'rm -f "$TEMPORARY_DIRECTORY/Probe.java" "$TEMPORARY_DIRECTORY/classes/Probe.class" "$TEMPORARY_DIRECTORY/AndroidManifest.xml"; rmdir "$TEMPORARY_DIRECTORY/classes" "$TEMPORARY_DIRECTORY/empty" "$TEMPORARY_DIRECTORY/res" "$TEMPORARY_DIRECTORY"' EXIT
+trap 'rm -f "$TEMPORARY_DIRECTORY/Probe.java" "$TEMPORARY_DIRECTORY/classes/Probe.class" "$TEMPORARY_DIRECTORY/AndroidManifest.xml" "$TEMPORARY_DIRECTORY/graph.json"; rmdir "$TEMPORARY_DIRECTORY/classes" "$TEMPORARY_DIRECTORY/empty" "$TEMPORARY_DIRECTORY/res" "$TEMPORARY_DIRECTORY"' EXIT
 mkdir "$TEMPORARY_DIRECTORY/classes" "$TEMPORARY_DIRECTORY/empty" "$TEMPORARY_DIRECTORY/res"
 printf 'public class Probe {}\n' > "$TEMPORARY_DIRECTORY/Probe.java"
 printf '<manifest />\n' > "$TEMPORARY_DIRECTORY/AndroidManifest.xml"
@@ -89,6 +89,11 @@ expect_status 64 "routes role 누락" routes --project "$TEMPORARY_DIRECTORY"
 expect_status 64 "routes 미지원 server role" routes --role server --project "$TEMPORARY_DIRECTORY"
 expect_status 64 "language-traversal project 누락" impact --format language-traversal method:A#run --graph-file missing.json
 expect_status 64 "language-traversal에 impact 전용 옵션" impact --format language-traversal method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --base-graph missing.json
+# isthmus가 거부하는 제어 문자(C0·DEL·C1·U+2028·U+2029)는 snapshot을 읽기 전에 사용 오류다. bash 3.2도 \x 이스케이프는 읽는다.
+expect_status 64 "language-traversal revision의 C0 제어 문자" impact --format language-traversal method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --revision $'bad\x01rev'
+expect_status 64 "language-traversal revision의 C1 제어 문자" reach method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --revision $'bad\xc2\x85rev'
+expect_status 64 "language-traversal root의 U+2028" reach $'method:A#run\xe2\x80\xa8' --graph-file missing.json --project "$TEMPORARY_DIRECTORY"
+expect_status 64 "language-traversal 빈 revision" reach method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --revision ''
 
 echo "종료 코드 2 — 도구 실패"
 expect_status 2 "빈 class root graph" graph --classes "$TEMPORARY_DIRECTORY/empty"
@@ -122,6 +127,9 @@ expect_output "kartograph reach" "도움말에 정방향 순회 명령" --help
 expect_output "digraph kartograph" "graph의 DOT 문서" graph --classes "$TEMPORARY_DIRECTORY/classes"
 expect_output '"format": "code-graph"' "graph의 교환 JSON 문서" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json
 expect_output '"limitations"' "graph JSON의 한계 필드" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json
+"$BINARY" snapshot --classes "$TEMPORARY_DIRECTORY/classes" --project "$TEMPORARY_DIRECTORY" > "$TEMPORARY_DIRECTORY/graph.json" 2>/dev/null
+expect_output '"graphRevision": "sha256:' "language-traversal의 그래프 내용 해시" reach class:Probe --graph-file "$TEMPORARY_DIRECTORY/graph.json" --project "$TEMPORARY_DIRECTORY" --generated-at 2026-09-27T00:00:00Z
+expect_output '"revision": "given-rev"' "language-traversal의 --revision 값" reach class:Probe --graph-file "$TEMPORARY_DIRECTORY/graph.json" --project "$TEMPORARY_DIRECTORY" --revision given-rev
 expect_output '"roles": \["client"\]' "routes의 http 클라이언트 문서" routes --role client --project "$TEMPORARY_DIRECTORY" empty
 
 echo

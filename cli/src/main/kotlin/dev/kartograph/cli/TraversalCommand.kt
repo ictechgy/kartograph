@@ -9,7 +9,6 @@ import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.time.Instant
 import java.time.format.DateTimeFormatterBuilder
 import java.time.format.DateTimeParseException
@@ -81,7 +80,9 @@ internal object TraversalCommand {
             ?: if ("--dispatch" in values) return null.also { usage(error, "dispatch must be direct, bound, candidates or all") } else TraversalDispatch.CANDIDATES
         val generatedAt = timestamp(values["--generated-at"]?.single()) ?: return null.also { usage(error, "--generated-at must be an ISO-8601 instant") }
         val revision = values["--revision"]?.single()
-        if (revision != null && !Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) return null.also { usage(error, "revision must be a full commit hash") }
+        if (revision != null && !LanguageTraversalCodec.isExchangeText(revision)) {
+            return null.also { usage(error, "--revision must be non-empty without control characters (C0, DEL, C1, U+2028, U+2029); isthmus rejects such revisions") }
+        }
         val roots = rootRequests(positional + values["--symbol"].orEmpty(), values["--roots-from"]?.single(), error) ?: return null
         return Options(graphFile, roots, project, depth, dispatch, generatedAt, revision, limit.maximumBytes, limit.maximumMiB, maxReached)
     }
@@ -112,7 +113,9 @@ internal object TraversalCommand {
         }
         val roots = (direct + fromFile).distinct()
         if (roots.isEmpty()) return null.also { usage(error, "provide root symbols, --symbol or --roots-from") }
-        if (roots.any { it.isBlank() || it.any(Char::isISOControl) }) return null.also { usage(error, "invalid symbol") }
+        if (!roots.all(LanguageTraversalCodec::isExchangeText)) {
+            return null.also { usage(error, "invalid symbol: roots must be non-empty without control characters (C0, DEL, C1, U+2028, U+2029); pass the symbol.usr from routes or bridge facts") }
+        }
         if (roots.size > LanguageTraversal.MAX_ROOTS) return null.also { usage(error, "at most 10000 roots are supported") }
         return roots
     }
@@ -124,27 +127,19 @@ internal object TraversalCommand {
             error.println("error: unable to read the traversal snapshot; use a valid UTF-8 snapshot (${options.maximumMiB} MiB max)")
             return 2
         }
-        if (options.revision != null && snapshot.revision != options.revision) {
-            error.println("error: snapshot revision does not match the requested commit; rebuild and recapture")
+        if (options.revision != null && snapshot.revision != null && snapshot.revision != options.revision) {
+            error.println("error: --revision does not match the snapshot's revision label; pass the captured commit or recapture the snapshot")
             return 2
         }
         val traversal = LanguageTraversal.traverse(snapshot.graph, options.roots, direction, options.dispatch, options.depth,
             options.maxReached, snapshot.enclosuresCaptured)
         val limitations = traversal.limitations + snapshot.limitations +
             "saved-graph: traversal uses captured inputs; revision and scope labels do not prove build freshness"
-        val metadata = LanguageTraversalMetadata(options.generatedAt, options.project, snapshot.revision, sha256(options.graphFile))
+        val revision = options.revision ?: snapshot.revision ?: GitRevision.cleanHead(Path.of(options.project))
+        val metadata = LanguageTraversalMetadata(options.generatedAt, options.project, revision,
+            LanguageTraversalCodec.graphRevision(snapshot.graph, snapshot.enclosuresCaptured))
         output.print(LanguageTraversalCodec.render(traversal.copy(limitations = limitations), metadata))
         return if (traversal.rootNotFound) 64 else 0
-    }
-
-    /** snapshot 파일 바이트의 소문자 hex SHA-256이다. isthmus는 같은 플랫폼 분석끼리 비교만 한다. */
-    private fun sha256(file: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        Files.newInputStream(Path.of(file)).use { input ->
-            val buffer = ByteArray(64 * 1024)
-            while (true) { val read = input.read(buffer); if (read < 0) break; digest.update(buffer, 0, read) }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun command(direction: TraversalDirection): String = if (direction == TraversalDirection.DEPENDENTS) "impact" else "reach"
@@ -173,7 +168,9 @@ internal object TraversalCommand {
           --depth <n>              listed depth, 1..128 (default 128)
           --max-reached <n>        reached cap, 1..100000 (default 100000)
           --generated-at <instant> fixed ISO-8601 generatedAt for byte-stable output
-          --revision <hash>        require the snapshot to carry this commit label
+          --revision <rev>         source revision to record; must equal the snapshot's revision label when it has one.
+                                   Default: the snapshot's label, else the git HEAD when the project directory has no
+                                   uncommitted or untracked changes, else omitted
           --snapshot-max-mib <n>   snapshot read maximum in MiB, 1..128 (default 64)
 
         Dispatch modes (each includes the previous):

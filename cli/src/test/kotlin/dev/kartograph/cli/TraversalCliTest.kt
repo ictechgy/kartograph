@@ -16,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
@@ -159,6 +160,88 @@ class TraversalCliTest {
         assertContains(current.output, "\"format\": \"kartograph-impact\"")
     }
 
+    private fun git(root: Path, vararg arguments: String): String {
+        val process = ProcessBuilder(listOf("git", "-C", root.toString(), "-c", "user.name=Fixture", "-c", "user.email=fixture@example.com",
+            "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null") + arguments).redirectErrorStream(true).start()
+        val output = process.inputStream.readAllBytes().toString(Charsets.UTF_8)
+        assertEquals(0, process.waitFor(), output)
+        return output.trim()
+    }
+
+    private fun traverse(graph: Path, root: Path, vararg extra: String): Execution = run("impact", "method:p/Http#get()V",
+        "--format", "language-traversal", "--graph-file", graph.toString(), "--project", root.toString(),
+        "--generated-at", "2026-09-27T00:00:00Z", *extra)
+
+    @Test
+    fun `revision comes from the option or the snapshot label and conflicting labels fail`(@TempDir root: Path) {
+        val graph = capture(root)
+        assertFalse("revision" in document(traverse(graph, root)), "no repository and no label leaves revision unknown")
+        val given = traverse(graph, root, "--revision", "release-1.2")
+        assertEquals(0, given.status, given.error)
+        assertEquals("release-1.2", document(given)["revision"])
+        val label = "0123456789abcdef0123456789abcdef01234567"
+        val labeled = root.resolve("labeled.json").also {
+            val snapshot = run("snapshot", "--classes", root.resolve("classes").toString(), "--project", root.toString(),
+                "--include-paths", "--revision", label)
+            assertEquals(0, snapshot.status, snapshot.error)
+            Files.writeString(it, snapshot.output)
+        }
+        assertEquals(label, document(traverse(labeled, root))["revision"])
+        assertEquals(label, document(traverse(labeled, root, "--revision", label))["revision"])
+        val conflict = traverse(labeled, root, "--revision", "release-1.2")
+        assertEquals(2, conflict.status)
+        assertContains(conflict.error, "does not match the snapshot's revision label")
+    }
+
+    @Test
+    fun `a clean git HEAD becomes the revision and a dirty project omits it`(@TempDir root: Path) {
+        val graph = capture(root)
+        Files.writeString(root.resolve(".gitignore"), "classes/\n*.json\n")
+        git(root, "init", "-q")
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", "fixture")
+        val head = git(root, "rev-parse", "HEAD")
+        val clean = traverse(graph, root)
+        assertEquals(0, clean.status, clean.error)
+        assertEquals(head, document(clean)["revision"])
+        assertEquals("pinned", document(traverse(graph, root, "--revision", "pinned"))["revision"], "--revision wins over HEAD")
+        Files.writeString(root.resolve("notes.txt"), "untracked")
+        assertFalse("revision" in document(traverse(graph, root)), "an untracked file makes HEAD unreliable")
+        Files.delete(root.resolve("notes.txt"))
+        root.resolve("src/p/Http.java").toFile().appendText("\n// edited\n")
+        assertFalse("revision" in document(traverse(graph, root)), "an uncommitted edit makes HEAD unreliable")
+        git(root, "checkout", "-q", "--", "src/p/Http.java")
+        assertEquals(head, document(traverse(graph, root))["revision"])
+        val nested = Files.createDirectories(root.resolve("sub"))
+        Files.writeString(nested.resolve("Keep.txt"), "tracked")
+        git(root, "add", "sub/Keep.txt")
+        git(root, "commit", "-q", "-m", "sub")
+        root.resolve("src/p/Http.java").toFile().appendText("\n// outside sub\n")
+        assertEquals(git(root, "rev-parse", "HEAD"), document(traverse(graph, nested))["revision"],
+            "changes outside the project directory do not affect its revision")
+    }
+
+    @Test
+    fun `graph revision is shared by both directions and ignores snapshot layout`(@TempDir root: Path) {
+        val graph = capture(root)
+        val reverse = document(traverse(graph, root))["graphRevision"] as String
+        assertTrue(Regex("sha256:[0-9a-f]{64}").matches(reverse), reverse)
+        val forward = run("reach", "method:p/Main#main([Ljava/lang/String;)V", "--graph-file", graph.toString(), "--project", root.toString())
+        assertEquals(0, forward.status, forward.error)
+        assertEquals(reverse, document(forward)["graphRevision"])
+        listOf(listOf("--compact"), emptyList()).forEach { layout ->
+            val other = run("snapshot", "--classes", root.resolve("classes").toString(), "--project", root.toString(), *layout.toTypedArray())
+            assertEquals(0, other.status, other.error)
+            val file = root.resolve("layout.json").also { Files.writeString(it, other.output) }
+            assertNotEquals(Files.readString(graph), other.output)
+            assertEquals(reverse, document(traverse(file, root))["graphRevision"], "layout $layout")
+        }
+        val legacy = root.resolve("legacy.json").also {
+            Files.writeString(it, Files.readString(graph).replace(Regex(", \"enclosures\": \\[[^\\]]*\\]"), ""))
+        }
+        assertNotEquals(reverse, document(traverse(legacy, root))["graphRevision"], "legacy snapshots traverse a different graph")
+    }
+
     @Test
     fun `traversal usage errors return 64`(@TempDir root: Path) {
         val graph = root.resolve("graph.json").also { Files.writeString(it, QuerySnapshotCodec.render(QuerySnapshot(
@@ -172,6 +255,12 @@ class TraversalCliTest {
             arrayOf(*base, *project, "--dispatch", "maybe") to "dispatch must be",
             arrayOf(*base, *project, "--depth", "129") to "depth must be 1..128",
             arrayOf(*base, *project, "--generated-at", "yesterday") to "--generated-at",
+            arrayOf(*base, *project, "--revision", "") to "--revision must be non-empty",
+            arrayOf(*base, *project, "--revision", "abc\u0001") to "--revision must be non-empty",
+            arrayOf(*base, *project, "--revision", "abc\u0085") to "--revision must be non-empty",
+            arrayOf(*base, *project, "--revision", "abc\u2028") to "--revision must be non-empty",
+            arrayOf(*base, *project, "--symbol", "method:p/B#run()V\u2029") to "invalid symbol",
+            arrayOf(*base, *project, "--symbol", "method:p/B#run()V\u007f") to "invalid symbol",
             arrayOf("impact", "method:p/A#run()V", "--format", "text", "--graph-file", graph.toString()) to "invalid impact format",
             arrayOf("reach", "method:p/A#run()V", "--format", "json", "--graph-file", graph.toString(), *project) to "supports only",
         ).forEach { (arguments, message) ->
