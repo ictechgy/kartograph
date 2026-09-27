@@ -649,4 +649,117 @@ class RouteCallScannerTest {
         assertNull(hostless.route?.authority)
         assertTrue(document.facts.none { fact -> listOfNotNull(fact.channel, fact.channelPrefix).any { "pass" in it || "@" in it } })
     }
+
+    @Test
+    fun `request method assignments are unconditional only on the connection's own block or scope function`() {
+        write(
+            "src/main/kotlin/dev/example/net/Methods.kt",
+            """
+            package dev.example.net
+            import java.net.URL
+            import java.net.HttpURLConnection
+            class Methods(private val upload: Boolean, private val mode: Int) {
+                fun sameBlock() {
+                    if (upload) {
+                        val c = URL("https://api.example.com/v1/same").openConnection() as HttpURLConnection
+                        c.requestMethod = "POST"
+                        c.connect()
+                    }
+                }
+                fun nestedIf() {
+                    val c = URL("https://api.example.com/v1/nested").openConnection() as HttpURLConnection
+                    if (upload) {
+                        c.requestMethod = "POST"
+                    }
+                }
+                fun nestedWhen() {
+                    val c = URL("https://api.example.com/v1/when").openConnection() as HttpURLConnection
+                    when (mode) {
+                        1 -> c.requestMethod = "PUT"
+                    }
+                }
+                fun conditionalRun() {
+                    val c = URL("https://api.example.com/v1/run").openConnection() as HttpURLConnection
+                    if (upload) c.run {
+                        requestMethod = "PATCH"
+                    }
+                }
+                fun otherObject(other: HttpURLConnection) {
+                    val c = URL("https://api.example.com/v1/other").openConnection() as HttpURLConnection
+                    other.requestMethod = "DELETE"
+                    c.connect()
+                }
+            }
+            """,
+        )
+        val document = scan()
+
+        assertEquals("POST", document.at(7).method)
+        assertEquals(true, document.at(13).route?.methodDynamic)
+        assertEquals(true, document.at(19).route?.methodDynamic)
+        assertEquals(true, document.at(25).route?.methodDynamic)
+        assertEquals("GET", document.at(31).method)
+    }
+
+    @Test
+    fun `same line scope functions prove the request method`() {
+        write(
+            "src/main/kotlin/dev/example/net/Scoped.kt",
+            """
+            package dev.example.net
+            import java.net.URL
+            import java.net.HttpURLConnection
+            class Scoped {
+                fun applied() {
+                    val c = URL("https://api.example.com/v1/applied").openConnection().apply { (this as HttpURLConnection).requestMethod = "X" }
+                }
+                fun chained() {
+                    val c = (URL("https://api.example.com/v1/chained").openConnection() as HttpURLConnection).apply { requestMethod = "POST" }
+                }
+                fun withBlock() {
+                    val c = URL("https://api.example.com/v1/with").openConnection() as HttpURLConnection
+                    with(c) { requestMethod = "DELETE" }
+                }
+                fun alsoBlock() {
+                    URL("https://api.example.com/v1/also").openConnection().also { (it as HttpURLConnection).connect() }
+                }
+            }
+            """,
+        )
+        val document = scan()
+
+        assertEquals(true, document.at(6).route?.methodDynamic)
+        assertEquals("POST", document.at(9).method)
+        assertEquals("DELETE", document.at(12).method)
+        assertEquals("GET", document.at(16).method)
+    }
+
+    @Test
+    fun `a url assigned across a line break still reaches its request`() {
+        write(
+            "src/main/kotlin/dev/example/net/Wrapped.kt",
+            """
+            package dev.example.net
+            import java.net.URL
+            import java.net.HttpURLConnection
+            class Wrapped {
+                fun read(): String {
+                    val url =
+                        URL("https://api.example.com/v1/items")
+                    return url.readText()
+                }
+                fun open() {
+                    val connection =
+                        URL("https://api.example.com/v1/open").openConnection() as HttpURLConnection
+                    connection.requestMethod = "PUT"
+                }
+            }
+            """,
+        )
+        val document = scan()
+
+        assertEquals("/v1/items", document.at(7).channel)
+        assertEquals("GET", document.at(7).method)
+        assertEquals("PUT", document.at(12).method)
+    }
 }

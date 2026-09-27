@@ -359,11 +359,11 @@ private class RouteFileScan(
     /**
      * URL 식이 실제 요청으로 이어지는지와 그 동사를 정한다.
      *
-     * @return 동사(`null`은 methodDynamic을 뜻하는 빈 문자열 대신 [METHOD_DYNAMIC]), 요청을 못 찾으면 null
+     * @return 동사(증명하지 못하면 [METHOD_DYNAMIC]), 요청을 못 찾으면 null
      */
     private fun urlRequest(start: Int, close: Int): String? {
         val chained = REQUEST_CHAIN.find(file.masked.substring(close + 1).take(128))
-        val (action, actionOffset) = if (chained != null) chained.groupValues[1] to close + 1 + chained.range.first
+        val (action, actionOffset) = if (chained != null) chained.groupValues[1] to close + 1 + chained.groups[1]!!.range.first
         else variableRequest(start, close) ?: return null
         if (action != "openConnection") return "GET"
         return connectionMethod(actionOffset) ?: METHOD_DYNAMIC
@@ -375,37 +375,55 @@ private class RouteFileScan(
         val after = file.masked.substring(close + 1).trimStart()
         // `f(URL(x))`처럼 URL 값 자체가 인자일 때만이다 — `require(URL(x).protocol == …)`는 넘기지 않는다.
         if ((before.endsWith('(') || before.endsWith(',')) && (after.startsWith(',') || after.startsWith(')'))) return true
-        val lineStart = file.masked.lastIndexOf('\n', start) + 1
-        val name = ASSIGNED_NAME.find(file.masked.substring(lineStart, start))?.groupValues?.get(1) ?: return false
+        val name = assignedName(start) ?: return false
         val end = file.enclosingFunction(start)?.end ?: return false
         return Regex("[(,]\\s*${Regex.escape(name)}\\s*[,)]").containsMatchIn(file.masked.substring(close, end.coerceAtMost(file.masked.length)))
     }
 
-    /** `val url = URL(...)` 뒤의 `url.openConnection()` 같은 요청을 같은 함수에서 찾는다. */
+    /** `val url = URL(...)` 뒤의 `url.openConnection()` 같은 요청을 같은 함수에서 찾는다. 반환 위치는 동작 이름이다. */
     private fun variableRequest(start: Int, close: Int): Pair<String, Int>? {
-        val lineStart = file.masked.lastIndexOf('\n', start) + 1
-        val name = ASSIGNED_NAME.find(file.masked.substring(lineStart, start))?.groupValues?.get(1) ?: return null
+        val name = assignedName(start) ?: return null
         val function = file.enclosingFunction(start) ?: return null
         val pattern = Regex("\\b${Regex.escape(name)}\\s*(?:\\?|!!)?\\s*\\.\\s*(openConnection|openStream|readText|readBytes)\\s*\\(")
         val found = pattern.find(file.masked.substring(0, function.end.coerceAtMost(file.masked.length)), close) ?: return null
-        return found.groupValues[1] to found.range.first
+        return found.groupValues[1] to found.groups[1]!!.range.first
+    }
+
+    /** [offset]의 식을 대입받는 변수 이름이다(`val url =`, `URL url =`). 줄바꿈 뒤로 이어진 대입도 따라간다. */
+    private fun assignedName(offset: Int): String? =
+        ASSIGNED_NAME.find(file.masked.substring(statementStart(offset), offset))?.groupValues?.get(1)
+
+    /**
+     * [offset]을 담은 문장이 시작하는 위치다. 앞 줄이 대입 `=`로 끝나면(`val url =` 줄바꿈 뒤 식) 그 줄부터다.
+     */
+    private fun statementStart(offset: Int): Int {
+        var lineStart = file.masked.lastIndexOf('\n', offset - 1) + 1
+        while (lineStart > 0) {
+            val previous = file.masked.substring(0, lineStart).trimEnd()
+            if (!previous.endsWith('=') || previous.length >= 2 && previous[previous.length - 2] in "=!<>") break
+            lineStart = file.masked.lastIndexOf('\n', previous.length - 1) + 1
+        }
+        return lineStart
     }
 
     /**
-     * 연결 객체의 `requestMethod`/`setRequestMethod`와 `doOutput`으로 동사를 정한다. 조건부 대입이나
-     * 서로 다른 값이면 증명하지 못한 것으로 null을 돌려준다. 대입이 없으면 라이브러리 기본값 GET이다.
+     * 연결 객체의 `requestMethod`/`setRequestMethod`와 `doOutput`으로 동사를 정한다. 다른 객체의 대입은
+     * 무시하고, 이 연결의 대입이 하나라도 조건부이거나 값이 서로 다르면 증명하지 못한 것(null)이다.
+     * 이 연결의 대입이 없으면 라이브러리 기본값 GET이다.
      */
     private fun connectionMethod(actionOffset: Int): String? {
-        val function = file.enclosingFunction(actionOffset)
-        val statementStart = file.masked.lastIndexOf('\n', actionOffset) + 1
-        val end = function?.end ?: file.masked.length
+        val statement = statementStart(actionOffset)
+        val connection = CONNECTION_NAME.find(file.masked.substring(statement, actionOffset))?.groupValues?.get(1)
+        val end = file.enclosingFunction(actionOffset)?.end ?: file.masked.length
         val region = file.masked.substring(0, end.coerceAtMost(file.masked.length))
-        val assignments = METHOD_ASSIGNMENT.findAll(region, actionOffset).toList()
+        fun ours(match: MatchResult) = belongsToConnection(match.range.first, connection)
+        fun proven(match: MatchResult) = unconditional(statement, actionOffset, match.range.first, connection)
+        val assignments = METHOD_ASSIGNMENT.findAll(region, actionOffset).filter(::ours).toList()
         if (assignments.isEmpty()) {
-            val output = DO_OUTPUT.findAll(region, actionOffset).toList()
+            val output = DO_OUTPUT.findAll(region, actionOffset).filter(::ours).toList()
             return when {
                 output.isEmpty() -> "GET"
-                output.all { unconditional(statementStart, it.range.first) } -> "POST"
+                output.all(::proven) -> "POST"
                 else -> null
             }
         }
@@ -415,26 +433,49 @@ private class RouteFileScan(
             resolver.literalValue(file.code.substring(valueStart, valueEnd.coerceAtLeast(valueStart)).trim(), valueStart)
         }
         val verb = values.distinct().singleOrNull()?.takeIf { it in RouteUrlRules.VERBS } ?: return null
-        return verb.takeIf { assignments.size > 1 || unconditional(statementStart, assignments.single().range.first) }
+        return verb.takeIf { assignments.all(::proven) }
     }
 
-    /** 대입이 연결 문장과 같은 블록이거나 그 문장에 이어진 `apply`/`with`/`run`/`also`/`use` 블록 안인지 본다. */
-    private fun unconditional(statementStart: Int, offset: Int): Boolean {
-        // `if (flag) connection.requestMethod = …`처럼 같은 줄 앞에 조건이 있으면 조건부다.
-        val linePrefix = file.masked.substring(file.masked.lastIndexOf('\n', offset - 1) + 1, offset).trim()
-        if (linePrefix.isNotEmpty() && !STATEMENT_RECEIVER.matches(linePrefix)) return false
+    /** 대입의 수신자가 다른 이름의 객체면(`other.requestMethod`) 이 연결의 대입이 아니다. */
+    private fun belongsToConnection(offset: Int, connection: String?): Boolean {
+        val receiver = RECEIVER_BEFORE.find(file.masked.substring((offset - 128).coerceAtLeast(0), offset))?.groupValues?.get(1)
+            ?: return true
+        return receiver == connection || receiver == "it" || receiver == "this"
+    }
+
+    /**
+     * 대입이 연결 문장과 같은 블록에 있거나, 연결에 곧바로 이어진 범위 함수 블록 안에 있는지 본다.
+     *
+     * 범위 함수는 연결 문장에 사슬로 붙은 것(`….openConnection().apply {`)이나 연결 변수에 대한 독립 문장
+     * (`c.apply {`·`with(c) {`)만 인정한다. 같은 줄의 조건(`if (x) c.requestMethod = …`)이나 연결을
+     * 감싸지 않는 중첩 `if`/`when` 블록은 조건부다.
+     */
+    private fun unconditional(statement: Int, actionOffset: Int, offset: Int, connection: String?): Boolean {
         val opens = ArrayDeque<Int>()
-        for (index in statementStart until offset) {
+        for (index in statement until offset) {
             when (file.masked[index]) {
                 '{' -> opens.addLast(index)
                 '}' -> if (opens.removeLastOrNull() == null) return false
             }
         }
+        val localStart = maxOf(file.masked.lastIndexOf('\n', offset - 1), file.masked.lastIndexOf(';', offset - 1), opens.lastOrNull() ?: -1) + 1
+        val local = file.masked.substring(localStart, offset).replace(QUALIFIER_NOISE, "")
+        val ownReceiver = connection != null && local == "$connection."
         return when (opens.size) {
-            0 -> true
-            1 -> SCOPE_FUNCTION.containsMatchIn(file.masked.substring(statementStart, opens.single()))
+            0 -> ownReceiver
+            1 -> (ownReceiver || local in SCOPE_RECEIVERS) && scopedOnConnection(statement, actionOffset, opens.single(), connection)
             else -> false
         }
+    }
+
+    /** [brace] 블록이 연결에 대한 범위 함수 블록인지 본다. */
+    private fun scopedOnConnection(statement: Int, actionOffset: Int, brace: Int, connection: String?): Boolean {
+        if (brace > actionOffset && CHAINED_SCOPE.matches(file.masked.substring(actionOffset, brace))) return true
+        if (connection == null) return false
+        val header = file.masked.substring(statement, brace)
+        val segment = header.substring(maxOf(header.lastIndexOf('\n'), header.lastIndexOf(';')) + 1)
+        val name = Regex.escape(connection)
+        return Regex("^\\s*(?:$name\\s*(?:\\?|!!)?\\s*\\.\\s*(?:apply|run|also|use|let)|with\\s*\\(\\s*$name\\s*\\))\\s*$").matches(segment)
     }
 
     // ---- Retrofit ----
@@ -576,9 +617,11 @@ private class RouteFileScan(
         val REQUEST_CHAIN = Regex("^\\s*(?:\\?|!!)?\\s*\\.\\s*(openConnection|openStream|readText|readBytes)\\s*\\(")
         val ASSIGNED_NAME = Regex("(?:\\b(?:val|var)\\s+|\\bURL\\s+)([A-Za-z_]\\w*)\\s*(?::\\s*[\\w.?]+\\s*)?=\\s*(?:new\\s+)?$")
         val METHOD_ASSIGNMENT = Regex("(?:\\brequestMethod\\s*=(?!=)|\\bsetRequestMethod\\s*\\()")
-        val STATEMENT_RECEIVER = Regex("^[A-Za-z_]\\w*\\s*(?:\\?|!!)?\\s*\\.$")
+        val CONNECTION_NAME = Regex("^\\s*(?:(?:val|var)\\s+|[A-Za-z_][\\w.<>]*\\s+)([A-Za-z_]\\w*)\\s*(?::\\s*[\\w.?<>]+\\s*)?=(?!=)")
+        val RECEIVER_BEFORE = Regex("([A-Za-z_]\\w*)\\s*(?:\\?|!!)?\\s*\\.\\s*$")
+        val CHAINED_SCOPE = Regex("^openConnection\\s*\\(\\s*\\)(?:\\s*as\\??\\s*[\\w.]+)?\\s*\\)?\\s*(?:\\?|!!)?\\s*\\.\\s*(?:apply|run|also|use|let)\\s*$")
+        val SCOPE_RECEIVERS = setOf("", "this.", "it.")
         val DO_OUTPUT = Regex("\\bdoOutput\\s*=\\s*true\\b|\\bsetDoOutput\\s*\\(\\s*true\\s*\\)")
-        val SCOPE_FUNCTION = Regex("\\b(?:apply|run|also|use|with\\s*\\([^)]*\\))\\s*\\{?\\s*$|\\b(?:apply|run|also|use)\\s*$")
         val RETROFIT = Regex("@(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|HTTP)\\b")
         val RETROFIT_LEADING_ANNOTATIONS = Regex("^(?:\\s*@[A-Za-z_][\\w.]*(?:\\s*\\([^()]*\\))?)*")
         val KOTLIN_SIGNATURE = Regex("\\bfun\\s+(?:<[^>]*>\\s*)?([A-Za-z_]\\w*)\\s*\\(")
