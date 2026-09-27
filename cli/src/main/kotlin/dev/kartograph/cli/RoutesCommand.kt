@@ -2,6 +2,7 @@ package dev.kartograph.cli
 
 import dev.kartograph.core.HttpWrapperDeclaration
 import dev.kartograph.export.AgentDocumentRenderer
+import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.export.HttpWrappersCodec
 import dev.kartograph.index.RouteCallScanner
 import java.io.IOException
@@ -18,7 +19,7 @@ import java.nio.file.Path
  */
 internal object RoutesCommand {
     /** 값을 받는 옵션이다. */
-    private val VALUE_OPTIONS = setOf("--role", "--project", "--format", "--wrappers", "--service", "--graph-file")
+    private val VALUE_OPTIONS = setOf("--role", "--project", "--format", "--wrappers", "--service", "--graph-file", "--input-bindings")
 
     /** 값 없이 켜는 옵션이다. */
     private val FLAG_OPTIONS = setOf("--include-tests")
@@ -36,6 +37,7 @@ internal object RoutesCommand {
         if (role == "server") return usage(error, "--role server is not supported yet; route declarations are not scanned")
         if (role != "client") return usage(error, "invalid routes role: use --role client")
         if (options.single("--format")?.let { it != "json" } == true) return usage(error, "invalid routes format")
+        if (options.flag("--input-bindings") && !options.flag("--graph-file")) return usage(error, "--input-bindings requires --graph-file")
         val service = options.single("--service")
         if (service != null && (service.isBlank() || service.any(Char::isISOControl))) return usage(error, "invalid --service value")
         val project = try {
@@ -74,7 +76,11 @@ internal object RoutesCommand {
         error: PrintStream,
     ): Int = try {
         val snapshot = options.single("--graph-file")?.let { SnapshotFiles.read(it) }
-        val freshness = snapshot?.let { SavedSnapshotOperations.freshness(it, project, null, emptyMap()) }
+        // plugin·merge가 만든 로컬 연결이 있어야 project 밖 입력(의존성 JAR, 옮긴 build 디렉터리)의 신선도를 확인한다.
+        val bindings = options.single("--input-bindings")?.let { path ->
+            ExternalInputBindingsCodec.parse(SnapshotFiles.readText(path, 1024 * 1024)).mapValues { Path.of(it.value) }
+        }.orEmpty()
+        val freshness = snapshot?.let { SavedSnapshotOperations.freshness(it, project, null, bindings) }
         val graph = snapshot?.takeUnless { freshness?.status == "stale" }?.graph
         val scanned = RouteCallScanner(project, roots, wrappers, options.flag("--include-tests"), service).scan(graph = graph)
         val missing = RouteSymbolDiagnostics.missingUsrs(scanned.facts, snapshot?.graph, stale = snapshot != null && graph == null)
@@ -167,7 +173,7 @@ internal object RoutesCommand {
 
         Usage:
           kartograph routes --role client --project <directory> [--format json] [--wrappers <http-wrappers.json>] \
-            [--include-tests] [--service <name>] [--graph-file <snapshot>] [<source-root>...]
+            [--include-tests] [--service <name>] [--graph-file <snapshot>] [--input-bindings <file>] [<source-root>...]
 
         Emits "target": "http", "roles": ["client"] and one route-call fact per call site: the HTTP method
         (or methodDynamic), the canonical path template (or a dynamic fact with a proven channelPrefix),
@@ -183,7 +189,9 @@ internal object RoutesCommand {
         scanned. Test source sets (src/test, src/androidTest, src/*Test, ...) are excluded unless
         --include-tests is given, which marks those facts testSource. --role server is not supported yet.
         Literal URLs lose userinfo, query and fragment, and high-entropy or webhook segments are masked.
-        --graph-file attaches JVM symbol identities only when the snapshot is fresh. Facts left without an identity
+        --graph-file attaches JVM symbol identities unless the snapshot is stale. --input-bindings passes the local bindings
+        written with the snapshot (Gradle plugin or `snapshot merge`) so inputs outside --project can be verified; without it
+        such inputs report graph-file-freshness-unverified (missing-external-input). Facts left without an identity
         are counted by missing-route-usrs, which names a snapshot/routes --project root mismatch when the source paths
         show one; capture the snapshot and run routes with the same --project.
     """.trimIndent() + "\n"

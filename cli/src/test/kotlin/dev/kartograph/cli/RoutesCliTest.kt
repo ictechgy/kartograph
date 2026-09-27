@@ -162,6 +162,29 @@ class RoutesCliTest {
     }
 
     @Test
+    fun `input bindings reconnect snapshot inputs outside the project for freshness`(@TempDir outside: Path) {
+        writeProject()
+        val source = outside.resolve("Library.java").also { it.writeText("public class Library {}") }
+        val classes = outside.resolve("classes").createDirectories()
+        assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", classes.toString(), source.toString()))
+        val capture = execute("snapshot", "--project", project.toString(), "--classes", classes.toString())
+        assertEquals(0, capture.status, capture.error)
+        val snapshot = write("snapshot.json", capture.output)
+        val slot = dev.kartograph.export.QuerySnapshotCodec.parse(capture.output).provenance!!.inputs.single { it.role == "classes" }.path
+        val bindings = write("bindings.json", dev.kartograph.export.ExternalInputBindingsCodec.render(mapOf(slot to classes.toString())))
+        val unbound = execute("routes", "--role", "client", "--project", project.toString(), "--graph-file", snapshot.toString())
+        assertContains(unbound.output, "graph-file-freshness-unverified: missing-external-input")
+        val bound = execute("routes", "--role", "client", "--project", project.toString(), "--graph-file", snapshot.toString(),
+            "--input-bindings", bindings.toString())
+        assertEquals(0, bound.status, bound.error)
+        assertFalse(bound.output.contains("missing-external-input"))
+        assertContains(bound.output, "missing-build-witness")
+        assertEquals(2, execute("routes", "--role", "client", "--project", project.toString(), "--graph-file", snapshot.toString(),
+            "--input-bindings", project.resolve("missing.json").toString()).status)
+        assertEquals(64, execute("routes", "--role", "client", "--project", project.toString(), "--input-bindings", bindings.toString()).status)
+    }
+
+    @Test
     fun `routes help prints usage`() {
         listOf("--help", "-h").forEach { flag ->
             val execution = execute("routes", flag)
