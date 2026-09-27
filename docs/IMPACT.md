@@ -195,6 +195,63 @@ capture는 `changed-classes`로 실패하며 이전 snapshot을 덮어쓰지 않
 snapshot 바이트도 처음과 같다. witness가 없는 R.jar를
 `unwitnessed-class-root`로 거부하는 계약은 `AppModuleRJarCliTest`·`RealAgpRJarCliTest`가 CLI 수준에서 고정한다.
 
+#### 여러 모듈과 저장소 밖 build 디렉터리
+
+여러 모듈 Android 앱(AGP 9, Compose)에 저장소 밖 init script로 plugin을 적용했을 때 드러난 실패를 다음처럼 다룬다.
+재현은 `AndroidMultiModuleSnapshotIntegrationTest`(합성 3모듈, build 디렉터리 이동, Java 전용 unit test, 같은 바이트
+외부 JAR)와 `IdenticalExternalInputSnapshotTest`가 고정한다.
+
+- **build 디렉터리를 project 밖으로 옮겨도 된다.** 별도 opt-in 없이 각 project가 선언한 `layout.buildDirectory`를
+  그 project의 build 출력으로 본다. merged manifest와 생성 resource XML의 근거 위치는 관례 배치와 같은
+  `build/<build 디렉터리 기준 경로>`로 기록해 절대 경로를 남기지 않고, 옮긴 capture와 기본 배치 capture의 근거가
+  같게 한다. build 디렉터리 밖이면서 project 밖인 XML은 계속 거부한다. class·witness 입력은 기존처럼 `external/`
+  슬롯과 `build/kartograph/<variant>-input-bindings.json`(옮긴 build 디렉터리 안)으로 다시 연결한다.
+- **같은 바이트의 외부 입력.** AndroidX KMP 분할 artifact는 항목 없는 stub JAR를 여러 transform 위치에 만든다.
+  내용이 같은 일반 파일은 신선도 판정이 같으므로 compiler가 선언한 입력을 먼저, snapshot 전용 classpath를 나중에
+  두고 결정적으로 고른다. 같은 내용의 입력이 여럿이면 서로 다른 파일에 짝짓는다. 비어 있는 서로 다른 출력처럼
+  내용이 같은 **디렉터리**는 바꿔 연결하지 않고 task·입력 슬롯·후보(project 상대 경로 또는 `<external>/` 뒤 두 이름)를
+  밝혀 거부한다. 후보가 없으면 task와 입력 슬롯, 후보 수를 알린다.
+- **Java만 있는 unit test.** Kotlin unit-test 출력은 NO-SOURCE로 생기지 않지만 javac classpath에는 들어간다.
+  같은 variant compiler의 선언 출력은 부재까지 추적하는 watch로 기록하므로 capture가 `fingerprint input is missing`으로
+  멈추지 않는다. 나중에 그 디렉터리에 class가 생기면 이전 snapshot은 stale이다.
+- **unit-test component 제외.** 기본값은 기존 계약대로 포함(`snapshotIncludeUnitTests = true`)이다. test 정점이 있어야
+  `impact`가 테스트 검토 후보(`testStatus`)를 보여 주기 때문이다. `routes`는 스캔 단계에서 test source를 기본 제외하므로
+  snapshot에 test가 있어도 route 사실이 늘지 않는다. production 그래프만 필요하거나 test compile 입력이 지원되지 않으면
+  `snapshotIncludeUnitTests.set(false)` 또는 `-Pkartograph.snapshotIncludeUnitTests=false`로 끈다. 끄면 test compiler
+  witness를 등록하지 않고 snapshot에 `unit-test-components-excluded:` limitation을 남긴다. androidTest는 원래 캡처하지 않는다.
+
+모듈별 snapshot은 `kartograph snapshot merge`로 하나로 합친다. 모듈 snapshot 그래프에는 다른 모듈로 가는 참조·상속
+간선이 없으므로 문서끼리 합치지 않고, 각 구성원의 검증된 class root·classpath를 함께 다시 인덱싱한다. 결과 그래프는
+같은 class root를 `snapshot --classes`에 모두 준 것과 같고, JVM USR은 모듈과 무관해 그대로다.
+
+```sh
+./gradlew kartographSnapshotDebug
+kartograph snapshot merge --project . --include-paths \
+  --module app --graph-file app/build/reports/kartograph/debug-snapshot.json \
+    --input-bindings app/build/kartograph/debug-input-bindings.json \
+  --module core/network --graph-file core/network/build/reports/kartograph/debug-snapshot.json \
+    --input-bindings core/network/build/kartograph/debug-input-bindings.json \
+  --input-bindings-output build/kartograph/aggregate-input-bindings.json > aggregate-snapshot.json
+kartograph verify-snapshot --graph-file aggregate-snapshot.json --project . \
+  --input-bindings build/kartograph/aggregate-input-bindings.json
+kartograph routes --role client --project . --graph-file aggregate-snapshot.json \
+  --input-bindings build/kartograph/aggregate-input-bindings.json
+```
+
+- 구성원은 capture 당시와 같은 바이트여야 한다. stale이거나 외부 입력을 찾을 수 없는(`missing-external-input`) 구성원은
+  거부한다. witness 없는 수동 capture처럼 `unverified`인 구성원은 합치되 `aggregate-member-unverified:`로 남긴다.
+- provenance는 해시를 바꾸지 않고 경로만 `--project` 기준으로 옮겨 합치며, 구성원 scope 목록(`memberScopes`)을 싣는다.
+  신선도 검사는 witness scope가 이 목록 안에 있을 때만 받는다. `--scope`를 생략하면 `aggregate:<variant>`다.
+- 구성원 외부 슬롯은 `external/member-<n>/...`로 구분하며 `--input-bindings-output` 파일에 연결을 쓴다. 외부 입력이
+  있으면 이 옵션은 필수이고, 파일에는 절대 경로가 있으므로 공개하지 않는다.
+- 보존 근거는 구성원별 결과를 합친다. 모듈 경계를 넘는 keep rule·manifest는 다시 평가하지 않으며
+  `aggregate-retention:` limitation으로 알린다. processor 관측이나 compiler-evidence witness가 있는 구성원은 아직 합치지 않는다.
+
+`routes`는 `--input-bindings`로 snapshot과 함께 만든 로컬 연결을 받는다. 없으면 project 밖 입력(의존성 JAR, 옮긴 build
+디렉터리)이 있는 snapshot은 `graph-file-freshness-unverified: missing-external-input`이다. plugin capture와 그 병합본은
+연결을 주면 `matched`까지 확인된다. `snapshot --classes`로 만든 수동 capture는 compiler witness가 없으므로 연결을 줘도
+`missing-build-witness`로 `unverified`에 머문다. 이는 증거 부족을 밝히는 결과이며, 검증이 필요하면 plugin 경로를 쓴다.
+
 library 두 번째 조합에서는 KGP가 Gradle 8.14.4 이상으로 업그레이드하도록 권고한다. 경고를 억제하지 않고 검증했다.
 Toolchain 연결은 기존 Kotlin bytecode target을 보존한다. JDK 21로 JVM target 17 코드를 컴파일하는 조합도 검증했다.
 

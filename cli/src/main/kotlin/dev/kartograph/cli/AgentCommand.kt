@@ -123,6 +123,8 @@ internal object AgentCommand {
     }
 
     fun snapshot(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
+        // 모듈별 snapshot 병합은 live 입력 capture와 옵션이 달라 별도 명령으로 처리한다.
+        if (arguments.firstOrNull() == "merge") return SnapshotMergeCommand.run(arguments.drop(1), output, error)
         if (arguments == listOf("--help") || arguments == listOf("-h")) {
             output.print(SNAPSHOT_HELP)
             return ExitStatus.SUCCESS.code
@@ -486,6 +488,7 @@ internal object AgentCommand {
         Usage:
           kartograph snapshot --classes <directory-or-jar> [--classes <path>]... --project <directory> [options]
 
+        Merge per-module snapshots with `kartograph snapshot merge` (see `kartograph snapshot merge --help`).
         Accepts the live-input options of query except --depth and --limit. Writes a deterministic JSON
         snapshot to stdout. Query it with `kartograph query <symbol> --graph-file <snapshot.json>`.
         --include-paths resolves source locations for `impact --file` and records unresolved path counts.

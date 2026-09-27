@@ -16,6 +16,15 @@ public abstract class KartographExtension {
     /** 컴파일 입력과 main/test snapshot의 자동 수집을 명시적으로 활성화한다. */
     public abstract val snapshotsEnabled: Property<Boolean>
 
+    /**
+     * Android variant snapshot에 unit-test component(`src/test`)를 함께 캡처할지 선택한다. 기본값은 `true`다.
+     *
+     * 기존 계약대로 test 정점을 유지해 `impact`가 테스트 검토 후보(`testStatus`)를 보여 준다. test compile 입력이
+     * 지원되지 않거나 production 그래프만 필요하면 `false`로 끈다. 끄면 snapshot limitation에 제외 사실을 남긴다.
+     * androidTest(instrumented) component는 원래 캡처하지 않는다. Gradle property `kartograph.snapshotIncludeUnitTests`로도 지정한다.
+     */
+    public abstract val snapshotIncludeUnitTests: Property<Boolean>
+
     /** snapshot의 class 파싱 결과만 재사용하며 전체 분석·신선도 검사는 매번 수행한다. */
     public abstract val snapshotIndexCacheEnabled: Property<Boolean>
 

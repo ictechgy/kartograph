@@ -224,6 +224,7 @@ internal object KartographCli {
           kartograph why <symbol> --classes <directory> --project <directory> [options]
           kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
           kartograph snapshot --classes <directory-or-jar> --project <directory> [--snapshot-max-mib <1..128>] [options]
+          kartograph snapshot merge --project <root> --module <dir> --graph-file <snapshot.json> [--input-bindings <file>]... [options]
           kartograph verify-snapshot --graph-file <snapshot.json> --project <directory> [--snapshot-max-mib <1..128>] [options]
           kartograph impact <symbol> --graph-file <snapshot.json> [--base-graph <snapshot.json>] [--snapshot-max-mib <1..128>] [options]
           kartograph impact <usr>... --format language-traversal --graph-file <snapshot.json> --project <directory> [--dispatch <mode>]

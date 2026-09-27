@@ -112,6 +112,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val androidResourceDirectories: ConfigurableFileCollection
 
+    /** adapter가 캡처 범위에서 의도적으로 뺀 입력(예: unit-test component)을 snapshot limitation으로 알린다. */
+    @get:Input public abstract val captureLimitations: ListProperty<String>
+
     @get:Input public abstract val scope: Property<String>
     @get:Input @get:Optional public abstract val revision: Property<String>
     @get:Input public abstract val includeSourcePaths: Property<Boolean>
@@ -129,6 +132,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     init {
         snapshotMaxMiB.convention(QuerySnapshotCodec.DEFAULT_MAX_MIB)
         indexCacheEnabled.convention(false)
+        captureLimitations.convention(emptyList())
         indexCacheDirectory.convention(buildDirectory.dir("kartograph/index-cache"))
         // 설정 안의 동적 파일 집합은 action에서 전후 확인한다. 같은 설정 파일만 보고
         // snapshot을 UP-TO-DATE로 재사용하지 않는다. native compiler cache는 그대로 둔다.
@@ -239,10 +243,11 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val entryPoints = buildList {
                 manifestFile.orNull?.asFile?.toPath()?.let { manifest ->
                     require(namespace.isPresent) { "snapshot manifest requires its Android namespace" }
-                    addAll(AndroidManifestScanner(project).scan(manifest, namespace.get()))
+                    // build 디렉터리를 project 밖으로 옮겨도 merged manifest는 같은 project의 build 출력이다.
+                    addAll(AndroidManifestScanner(project, buildDirectory.get().asFile.toPath()).scan(manifest, namespace.get()))
                 }
                 androidResourceDirectories.files.filter { it.isDirectory }.forEach { directory ->
-                    addAll(AndroidXmlScanner(project).scan(directory.toPath()))
+                    addAll(AndroidXmlScanner(project, buildDirectory.get().asFile.toPath()).scan(directory.toPath()))
                 }
             }
             val retention = DefaultRetention.find(graph, entryPoints, rules, indexed.hierarchy,
@@ -257,7 +262,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, roots, processorOutputs.verify(scope.get()))
             val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, selectedSources) +
                 dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) +
-                paths?.limitations.orEmpty() + if (missingGeneratedRules.isEmpty()) emptyList() else
+                paths?.limitations.orEmpty() + captureLimitations.get() + if (missingGeneratedRules.isEmpty()) emptyList() else
                     listOf("missing-generated-keep-files: ${missingGeneratedRules.size}"),
                 suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
                 scope = scope.get(), provenance = before, processorOutputs = outputObservations)
@@ -302,23 +307,25 @@ public abstract class KartographSnapshotTask : DefaultTask() {
                 }
             }
         }
-        val candidates = (compilerInputFiles.files + dependencyClasspath.files + classRoots.files + sourceFiles.files + buildInputFiles.files)
-            .map { it.canonicalFile.toPath() }.distinct()
-        val hashes = mutableMapOf<Pair<Path, String>, String>()
-        provenance.witnesses.flatMap { it.inputs + it.outputs + it.compilerEvidence }
-            .filter { it.path.startsWith("external/") && it.role !in setOf("options", "buildConfig") }.forEach { input ->
-                val located = if (input.role == "directory-watch" && CompilerDirectoryInput.hasIdentity(input.path)) {
-                    candidates.filter { path ->
-                        input.path == "external/${CompilerDirectoryInput.slot(projectDirectory.get().asFile.toPath(), path)}"
-                    }
-                } else candidates.filter { if (input.role == "directory-watch") Files.isDirectory(it) else Files.exists(it) }
-                val matches = located.filter { path ->
-                    hashes.getOrPut(path to input.role) {
-                        ContentFingerprint.hashInput(path, input.role)
-                    } == input.sha256
+        // compiler가 선언한 입력을 snapshot 전용 classpath보다 먼저 둔다. 같은 바이트의 JAR가 여러 위치에 있어도 compiler 쪽을 고른다.
+        val project = projectDirectory.get().asFile.toPath()
+        // resource producer witness는 res 디렉터리와 merged manifest를 기록한다. build 디렉터리가 project 밖이면 이들도 external이다.
+        val resourceInputs = androidResourceDirectories.files + listOfNotNull(manifestFile.orNull?.asFile)
+        val groups = listOf(compilerInputFiles.files, sourceFiles.files, buildInputFiles.files, resourceInputs, classRoots.files,
+            dependencyClasspath.files).map { group -> group.map { it.canonicalFile.toPath() } }
+        val binder = CompilerInputBinder(project, groups)
+        val candidates = groups.flatten().distinct()
+        provenance.witnesses.forEach { witness ->
+            val taken = mutableSetOf<Path>()
+            (witness.inputs + witness.outputs + witness.compilerEvidence)
+                .filter { it.path.startsWith("external/") && it.role !in setOf("options", "buildConfig") }.forEach { input ->
+                    val located = if (CompilerDirectoryInput.hasIdentity(input.path)) {
+                        candidates.filter { path -> input.path == "external/${CompilerDirectoryInput.slot(project, path)}" }
+                    } else null
+                    val selected = binder.bind(witness, input, located, taken)
+                    taken.add(selected)
+                    bindings[input.path] = selected
                 }
-                require(matches.size == 1) { "compiler input binding is missing or ambiguous; check selected compiler inputs" }
-                bindings[input.path] = matches.single()
-            }
+        }
     }
 }

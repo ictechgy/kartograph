@@ -46,6 +46,20 @@ class AndroidXmlScannerTest {
     }
 
     @Test
+    fun `records generated resources under a relocated build directory with the conventional build prefix`(@TempDir root: Path) {
+        val projectRoot = root.resolve("repo/feature").createDirectories()
+        val buildRoot = root.resolve("outside/feature")
+        val resourceRoot = buildRoot.resolve("generated/res/debug")
+        resourceRoot.resolve("layout").createDirectories()
+        resourceRoot.resolve("layout/generated.xml").writeText("<dev.fixture.GeneratedView />")
+
+        val reference = AndroidXmlScanner(projectRoot, buildRoot).scan(resourceRoot).single()
+
+        assertEquals("build/generated/res/debug/layout/generated.xml", assertNotNull(reference.location).path)
+        assertFailsWith<AndroidResourceScanningException> { AndroidXmlScanner(projectRoot).scan(resourceRoot) }
+    }
+
+    @Test
     fun `rejects external XML entities without exposing their path or content`(@TempDir projectRoot: Path) {
         val secret = projectRoot.parent.resolve("outside-secret.txt")
         secret.writeText("not-for-xml")

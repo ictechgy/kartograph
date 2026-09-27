@@ -169,11 +169,13 @@ public abstract class KartographDeadTask : DefaultTask() {
         graph: dev.kartograph.core.CodeGraph,
         hierarchy: dev.kartograph.core.ClassHierarchy,
     ): RetentionOutcome {
-        val manifestEvidence = AndroidManifestScanner(projectRoot).scan(manifest.get().asFile.toPath(), namespace.get())
+        // project 밖으로 옮긴 build 디렉터리의 merged manifest·생성 resource도 같은 project의 build 출력으로 읽는다.
+        val buildRoot = buildDirectory.get().asFile.toPath()
+        val manifestEvidence = AndroidManifestScanner(projectRoot, buildRoot).scan(manifest.get().asFile.toPath(), namespace.get())
         val inputEvidence = buildList {
             addAll(manifestEvidence)
             resourceDirectories.files.filter(java.io.File::isDirectory).sorted().forEach { resourceRoot ->
-                addAll(AndroidXmlScanner(projectRoot).scan(resourceRoot.toPath()))
+                addAll(AndroidXmlScanner(projectRoot, buildRoot).scan(resourceRoot.toPath()))
             }
         }
         val ruleFiles = existingRuleFiles(keepRuleFiles.files.sorted().map(java.io.File::toPath))

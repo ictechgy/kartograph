@@ -71,8 +71,11 @@ internal object ResourceProcessWitnesses {
             // external slot 식별자에 ':'를 넣지 않는다(InputFingerprint 이동성 계약).
             val slotBase = taskIdentity.removePrefix(":").replace(':', '-')
             val fingerprints = files.mapIndexed { index, (role, file) ->
+                // "sources" 역할의 res 디렉터리는 .java/.kt만 해시하므로 서로 같은 값이 된다. build 디렉터리가 project 밖이면
+                // 내용으로는 다시 연결할 수 없어 위치 기반 불투명 식별자를 slot으로 쓴다(경로 원문은 남기지 않는다).
+                val slot = if (file.isDirectory) CompilerDirectoryInput.slot(projectPath, file.toPath()) else "$slotBase-$role-$index"
                 try {
-                    ContentFingerprint.capture(projectPath, file.toPath(), role, "$slotBase-$role-$index")
+                    ContentFingerprint.capture(projectPath, file.toPath(), role, slot)
                 } catch (error: IllegalArgumentException) {
                     // 절대경로는 노출하지 않고 role·파일명과 원인 메시지를 함께 남긴다.
                     throw IllegalArgumentException(

@@ -17,7 +17,9 @@ import org.gradle.jvm.toolchain.JavaLauncher
 /** 선택한 Android main/unit-test artifacts와 compiler provider를 같은 snapshot scope로 연결한다. */
 internal object AndroidSnapshotTasks {
     fun register(project: Project, extension: KartographExtension, variant: Variant) {
-        val unitTest = variant.nestedComponents.filterIsInstance<UnitTest>().singleOrNull()
+        // unit-test 제외는 opt-out이다. 제외하면 test compiler witness도 등록하지 않아 test 입력이 capture를 막지 않는다.
+        val includeUnitTests = extension.snapshotIncludeUnitTests.get()
+        val unitTest = variant.nestedComponents.filterIsInstance<UnitTest>().singleOrNull()?.takeIf { includeUnitTests }
         val components = listOfNotNull(variant, unitTest)
         val scope = "${project.path}:${variant.name}"
         val roots = components.associate { component -> component.name to project.files(component.sources.java?.all, component.sources.kotlin?.all) }
@@ -27,7 +29,9 @@ internal object AndroidSnapshotTasks {
         val task = project.tasks.register("kartographSnapshot${variant.name.replaceFirstChar(Char::titlecase)}",
             KartographAndroidSnapshotTask::class.java) { snapshot ->
             snapshot.group = "verification"
-            snapshot.description = "Captures compiled Android ${variant.name} main and unit-test inputs for impact queries."
+            snapshot.description = if (includeUnitTests) "Captures compiled Android ${variant.name} main and unit-test inputs for impact queries."
+                else "Captures compiled Android ${variant.name} main inputs for impact queries."
+            if (!includeUnitTests) snapshot.captureLimitations.add(UNIT_TESTS_EXCLUDED)
             snapshot.scope.set(scope)
             snapshot.revision.set(extension.snapshotRevision)
             snapshot.projectDirectory.set(project.layout.projectDirectory)
@@ -80,7 +84,11 @@ internal object AndroidSnapshotTasks {
         unitTest?.artifacts?.forScope(ScopedArtifacts.Scope.ALL)?.use(task)
             ?.toGet(ScopedArtifact.CLASSES, KartographAndroidSnapshotTask::testClasspathJars, KartographAndroidSnapshotTask::testClasspathDirectories)
 
-        val optionalOutputs = project.files()
+        // 같은 variant compiler의 선언 출력은 NO-SOURCE로 생성되지 않을 수 있다(예: Java만 있는 unit test의 Kotlin 출력).
+        // javac classpath에 들어간 이 디렉터리는 부재까지 추적하는 watch로 기록한다. JVM 경로와 같이 provider로 감싸
+        // compiler 간 build dependency를 되먹이지 않는다.
+        val declaredClassOutputs = project.objects.fileCollection()
+        val optionalOutputs = project.files(project.providers.provider { declaredClassOutputs.files })
         // AGP application의 processResources 산출 R.jar를 resource producer witness로 덮는다(후보 A).
         if (variant is com.android.build.api.variant.ApplicationVariant) {
             val processTaskName = "process${variant.name.replaceFirstChar(Char::titlecase)}Resources"
@@ -128,6 +136,8 @@ internal object AndroidSnapshotTasks {
             input.identity.set(compiler.path)
             input.primarySources.from(compiler.source)
             input.classDirectories.from(compiler.destinationDirectory)
+            // 출력 property를 map하면 producer 완료 전 조회가 되어 configuration cache가 거부한다. 위치만 읽는다.
+            declaredClassOutputs.from(project.provider { compiler.destinationDirectory.get().asFile })
             input.witnessFiles.from(witness)
             compilerInputs.from(additionalInputs, compiler.classpath, compiler.javaCompiler.map { it.metadata.installationPath.file("lib/modules") })
         }
@@ -140,6 +150,7 @@ internal object AndroidSnapshotTasks {
                 })
                 kotlin.values.forEach { compilation ->
                     val compiler = compilation.compiler
+                    declaredClassOutputs.from(compiler.map { KotlinCompilerWitnesses.destination(it) })
                     val witness = KotlinCompilerWitnesses.automaticCompile(project, compiler, scope,
                         compilation.roots.filter { it.isDirectory }, buildInputs, runtime, optionalOutputs, jdk)
                     attach(project, task, compiler, witness, "kotlin", compiler.map {
@@ -155,6 +166,10 @@ internal object AndroidSnapshotTasks {
             }
         }
     }
+
+    /** unit-test 제외 사실이다. impact의 테스트 검토 후보가 비어 있는 이유를 결과에서 알 수 있게 한다. */
+    const val UNIT_TESTS_EXCLUDED: String =
+        "unit-test-components-excluded: snapshotIncludeUnitTests=false; test declarations and test review candidates are absent"
 
     private fun attach(project: Project, snapshot: TaskProvider<KartographAndroidSnapshotTask>, compiler: TaskProvider<out Task>,
         witness: Provider<RegularFile>, kind: String, sources: Provider<out FileCollection>, destination: Provider<*>) {

@@ -37,7 +37,7 @@ Android에는 한 가지 유리한 점이 있다. "안 쓰는 것처럼 보이�
 - 선택적 [processor source 귀속](docs/PROCESSOR-GENERATION.md)은 실제 JSR-269 Filer 출력과 generating artifact를 완료된 compiler receipt에 연결합니다. collector는 태그 소스에서 별도로 빌드하며 귀속이 reachability나 dependency unused 판정을 바꾸지는 않습니다.
 - `cycles`/`rules`/`metrics`는 module/package 순환과 weakest edge, fail-closed layer YAML, Martin Ca/Ce/I/A/D 지표를 분석한다.
 - Gradle plugin은 AGP public Variant API 위에서 Android variant마다 `kartographDead<Variant>`와 `kartographGraph<Variant>` task를 등록한다.
-- Gradle plugin의 `kartographSnapshot`과 `kartographSnapshot<Variant>` task는 JVM main/test와 Android main/unit-test 입력을 compiler witness와 함께 자동 캡처한다. Android application variant에서는 생성된 `R.jar`도 `processResources` producer witness로 함께 캡처한다. 반복 영향 질의는 [자동 캡처와 toolchain 설정](docs/IMPACT.md#jvm-빌드에서-자동-캡처)과 [build provenance 계약](docs/BUILD-PROVENANCE.md)을 참고한다.
+- Gradle plugin의 `kartographSnapshot`과 `kartographSnapshot<Variant>` task는 JVM main/test와 Android main/unit-test 입력을 compiler witness와 함께 자동 캡처한다. Android application variant에서는 생성된 `R.jar`도 `processResources` producer witness로 함께 캡처한다. 반복 영향 질의는 [자동 캡처와 toolchain 설정](docs/IMPACT.md#jvm-빌드에서-자동-캡처)과 [build provenance 계약](docs/BUILD-PROVENANCE.md)을 참고한다. build 디렉터리는 저장소 밖에 둘 수 있고, `kartograph snapshot merge`가 모듈별 snapshot을 `routes`·`impact`용 검증 가능한 snapshot 하나로 합친다([여러 모듈 캡처](docs/IMPACT.md#여러-모듈과-저장소-밖-build-디렉터리)).
 - 선택적 [증분 파싱](docs/INDEX-CACHE.md)은 바뀌지 않은 class 사실과 dependency JAR header를 재사용한다. 현재 입력 검사와 전체 분석은 캡처할 때마다 다시 수행한다.
 - [MCP stdio 서버](docs/MCP.md)는 고정된 로컬 snapshot 위에서 `query_symbol`·`impact`·`freshness`를 제공하며, CLI와 같은 보고서를 쓴다. `discover_symbols`로 정확한 선택자를 복구한다.
 - keep 규칙 파싱은 지원하지 않는 문법을 조용히 버리지 않고 파일·줄을 밝히며 실패한다(fail-closed). 근거와 오류 메시지에는 절대경로를 출력하지 않는다.

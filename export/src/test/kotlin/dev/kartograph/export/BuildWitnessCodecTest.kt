@@ -40,6 +40,19 @@ class BuildWitnessCodecTest {
     }
 
     @Test
+    fun `aggregate member scopes round trip and single captures keep their existing bytes`() {
+        val single = SnapshotProvenance(witness.outputs, listOf(witness))
+        val singleText = QuerySnapshotCodec.render(QuerySnapshot(CodeGraph(emptyList(), emptyList()), emptyList(), emptyList(), provenance = single))
+        kotlin.test.assertFalse(singleText.contains("memberScopes"))
+        val aggregate = single.copy(memberScopes = listOf(":b:debug", ":a:debug"))
+        val snapshot = QuerySnapshot(CodeGraph(emptyList(), emptyList()), emptyList(), emptyList(), provenance = aggregate)
+        for (compact in listOf(false, true)) assertEquals(listOf(":a:debug", ":b:debug"),
+            QuerySnapshotCodec.parse(QuerySnapshotCodec.render(snapshot, compact)).provenance!!.memberScopes)
+        assertFailsWith<IllegalArgumentException> { single.copy(memberScopes = listOf(":a:debug", ":a:debug")) }
+        assertFailsWith<IllegalArgumentException> { single.copy(memberScopes = listOf("bad scope")) }
+    }
+
+    @Test
     fun `malformed witnesses cannot supply paths or partial compiler evidence`() {
         val text = BuildWitnessCodec.render(witness)
         assertFailsWith<IllegalArgumentException> { BuildWitnessCodec.parse(text.replace("\"version\": 1", "\"version\": 9")) }

@@ -148,6 +148,10 @@ slots. Bind each slot to a local file/directory with repeated
 not serialized into public snapshots. Automatic Gradle capture writes a separate local
 binding file; pass it with `--input-bindings` and keep it out of public artifacts.
 Missing bindings are `unverified`; proven byte changes are `stale`.
+`kartograph snapshot merge` combines per-module captures: it rebases their input identities onto the
+merge `--project` without changing digests, prefixes each member's external slots with `member-<n>/`, and
+records the member scopes as `provenance.memberScopes`. Comparison then accepts a witness only when its
+scope is one of those members; a single capture keeps the rule that every witness matches the snapshot scope.
 Moving an equivalent checkout
 preserves project-relative identities and content digests. The document includes
 compiler kind, compiler task artifact identity and project/variant scope; changed

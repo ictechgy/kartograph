@@ -5,12 +5,20 @@ import dev.kartograph.core.RetentionReason
 import java.nio.file.Path
 import javax.xml.stream.XMLStreamReader
 
-/** Android manifest의 component class 참조를 파일·줄 근거와 함께 읽는다. */
-public class AndroidManifestScanner(private val projectRoot: Path) {
+/**
+ * Android manifest의 component class 참조를 파일·줄 근거와 함께 읽는다.
+ *
+ * @property projectRoot 근거 위치의 기준 디렉터리
+ * @property buildRoot project 밖으로 옮긴 선언된 build 디렉터리다. 그 아래 merged manifest는 `build/...`로 기록한다
+ */
+public class AndroidManifestScanner @JvmOverloads constructor(
+    private val projectRoot: Path,
+    private val buildRoot: Path? = null,
+) {
     /** relative, bare, fully qualified component name을 JVM class ID로 정규화한다. */
     public fun scan(manifest: Path, namespace: String): List<RetentionEvidence> {
         require(namespace.isNotBlank()) { "Android namespace must not be blank" }
-        val sourcePath = projectRelativePath(projectRoot, manifest)
+        val sourcePath = projectRelativePath(projectRoot, manifest, buildRoot)
         val sourceLines = xmlSourceLines(manifest)
         return readXml(manifest) { reader ->
             when (reader.localName) {

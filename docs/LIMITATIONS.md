@@ -126,6 +126,9 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 - `routes --graph-file`이 사실에 JVM 신원을 붙이지 못하면 `missing-route-usrs:`로 수를 세고, source 경로가 공통 접두사만큼
   어긋나면 snapshot과 routes의 `--project` 불일치(`project-root-mismatch:`)를 밝힌다. 경로 비교로 찾지 못하는 원인은
   일반 문구로만 남는다.
+- `snapshot merge`는 구성원 class root를 다시 인덱싱하지만 보존 근거는 구성원별 결과를 합친다. 한 모듈의 keep rule·manifest가
+  다른 모듈 선언을 보존하는 관계는 다시 평가하지 않으며 `aggregate-retention:`으로 알린다. processor 관측과 compiler-evidence
+  witness가 있는 구성원은 아직 합치지 않는다.
 - package/module architecture는 JVM 이름과 입력 root를 기준으로 하며 Gradle dependency resolution model 자체는 아니다.
 - Java와 Kotlin bytecode를 함께 읽지만 reflection configuration, runtime class loading과 외부 서비스 설정은 별도 입력이다.
 
