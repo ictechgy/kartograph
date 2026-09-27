@@ -5,6 +5,7 @@ import dev.kartograph.analysis.ImpactPathStatus
 import dev.kartograph.analysis.ImpactRelation
 import dev.kartograph.analysis.ImpactSort
 import dev.kartograph.analysis.ImpactTestStatus
+import dev.kartograph.analysis.TraversalDirection
 import dev.kartograph.core.NodeKind
 import dev.kartograph.export.ImpactReportCodec
 import java.io.PrintStream
@@ -13,6 +14,12 @@ import java.io.PrintStream
 internal object ImpactCommand {
     fun run(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
         if (arguments == listOf("--help") || arguments == listOf("-h")) { output.print(HELP); return 0 }
+        // 새 교환 형식은 별도 생산자가 맡는다. 기본 kartograph-impact v1 경로와 출력은 그대로 둔다.
+        val formatIndex = arguments.indexOf("--format")
+        val format = if (formatIndex >= 0) arguments.getOrNull(formatIndex + 1) else null
+        if (format == "language-traversal") return TraversalCommand.run(arguments, TraversalDirection.DEPENDENTS, output, error)
+        if (formatIndex >= 0 && format != "json") return usage(error, "invalid impact format: use json or language-traversal")
+        if (formatIndex >= 0) return run(arguments.filterIndexed { index, _ -> index != formatIndex && index != formatIndex + 1 }, output, error)
         val values = mutableMapOf<String, MutableList<String>>()
         val symbols = mutableListOf<String>()
         var all = false
@@ -172,6 +179,8 @@ internal object ImpactCommand {
           --revision <hash>        require the current snapshot to carry this commit label
           --base-revision <hash>   require the base snapshot to carry this commit label
           --snapshot-max-mib <n>  current/base snapshot read maximum in MiB, 1..128 (default 64)
+          --format <format>        json (default, kartograph-impact v1) or language-traversal (isthmus trace input;
+                                   see `kartograph impact --format language-traversal --help`)
 
         Capture matching project/variant inputs with `snapshot --include-paths` after building.
         Paths retain edge kinds, origins and the revision they came from. Summary counts are computed before

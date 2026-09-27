@@ -42,6 +42,7 @@ internal object KartographCli {
         "verify-snapshot" -> FreshnessCommand.run(arguments.drop(1), output, error)
         "mcp" -> McpCommand.run(arguments.drop(1), input, output, error)
         "impact" -> ImpactCommand.run(arguments.drop(1), output, error)
+        "reach" -> TraversalCommand.run(arguments.drop(1), dev.kartograph.analysis.TraversalDirection.DEPENDENCIES, output, error)
         "bridges" -> AgentCommand.bridges(arguments.drop(1), output, error)
         "schema" -> AgentCommand.schema(arguments.drop(1), output, error)
         "routes" -> RoutesCommand.run(arguments.drop(1), output, error)
@@ -225,6 +226,8 @@ internal object KartographCli {
           kartograph snapshot --classes <directory-or-jar> --project <directory> [--snapshot-max-mib <1..128>] [options]
           kartograph verify-snapshot --graph-file <snapshot.json> --project <directory> [--snapshot-max-mib <1..128>] [options]
           kartograph impact <symbol> --graph-file <snapshot.json> [--base-graph <snapshot.json>] [--snapshot-max-mib <1..128>] [options]
+          kartograph impact <usr>... --format language-traversal --graph-file <snapshot.json> --project <directory> [--dispatch <mode>]
+          kartograph reach <usr>... --graph-file <snapshot.json> --project <directory> [--dispatch <mode>]
           kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>] [--snapshot-max-mib <1..128>]
           kartograph bridges --project <directory> [--format json]
           kartograph schema --project <directory> [--format json] [--graph-file <snapshot>]
