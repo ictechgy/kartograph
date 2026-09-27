@@ -72,7 +72,11 @@ distributions {
 
 apply(from = rootProject.file("gradle/runtime-sbom.gradle"))
 
-sourceSets.test { resources.srcDir(rootProject.file("fixtures/runtime-corpus")) }
+sourceSets.test {
+    resources.srcDir(rootProject.file("fixtures/runtime-corpus"))
+    // isthmus 공유 적합성 벡터와 lock 파일이다. 테스트가 sha256을 대조한 뒤 생산자 케이스를 실행한다.
+    resources.srcDir(rootProject.file("fixtures/isthmus-conformance"))
+}
 
 // compiler 코퍼스가 플랫폼별 캐시 경로를 추측하지 않고 실제 검증된 test 의존성을 사용한다.
 tasks.register<Copy>("runtimeCorpusDependencies") {

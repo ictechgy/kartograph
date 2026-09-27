@@ -113,6 +113,8 @@ kartograph bridges --project . --format json
 kartograph bridges --project . --target flutter --messages --graph-file build/reports/kartograph/main-graph.json
 # Persistence relation uses for isthmus: Room/JDBC/Exposed/jOOQ, SQL-shaped literals, SQLDelight .sq/.sqm.
 kartograph schema --project . --format json
+# Client HTTP route calls for isthmus: declared wrappers, java.net.URL requests, Retrofit annotations.
+kartograph routes --role client --project . --wrappers http-wrappers.json app/src/main
 kartograph skill --project .
 ```
 
@@ -245,3 +247,16 @@ Ktorm, jdbi) are not claimed; JPA/Spring Data imports surface as a limitation. D
 unresolved evidence stays visible as `dynamic` facts and measured limitations; an empty scan
 emits `"target": null`. `--graph-file` attaches JVM symbol identities only when the snapshot is
 fresh.
+
+`routes --role client --project <dir> [--wrappers <http-wrappers.json>] [--include-tests] [--service <name>] [<source-root>...]`
+(unreleased) emits a `bridge-facts` document with `"target": "http"` and `"roles": ["client"]` for the
+isthmus http domain. Each `route-call` fact carries the HTTP method (or `methodDynamic`), the canonical
+path template (or a `dynamic` fact with a proven `channelPrefix`), `pathAnchor`, and the location of the
+call expression. It recognizes calls of wrappers declared in an isthmus `http-wrappers` v1 file (only
+`"language": "kotlin"` entries), `java.net.URL` requests opened in the same function with a provable path
+and method, and Retrofit verb annotations (`@Url` is dynamic). String resolution covers literals, same-file
+constants, Kotlin templates whose interpolation fills a whole segment, and query tails (a literal `?`, or a
+trailing local proven to start with `?`). Literal URLs lose userinfo, query and fragment, and high-entropy
+or webhook segments are masked. Test source sets are excluded unless `--include-tests` marks those facts
+`testSource`. Other clients (OkHttp, Ktor, …), stale wrapper declarations, and undeclared sinks surface as
+limitations instead of guessed facts. `--role server` is not supported yet.

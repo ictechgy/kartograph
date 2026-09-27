@@ -61,6 +61,7 @@ expect_status 0 "dead --help" dead --help
 expect_status 0 "baseline --help" baseline --help
 expect_status 0 "query --help" query --help
 expect_status 0 "bridges --help" bridges --help
+expect_status 0 "routes --help" routes --help
 expect_status 0 "skill --help" skill --help
 expect_status 0 "cycles --help" cycles --help
 expect_status 0 "rules --help" rules --help
@@ -68,6 +69,7 @@ expect_status 0 "metrics --help" metrics --help
 expect_status 0 "정상 class root graph" graph --classes "$TEMPORARY_DIRECTORY/classes"
 expect_status 0 "정상 class root graph JSON" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json --include-paths --project .
 expect_status 0 "정상 class root metrics" metrics --classes "$TEMPORARY_DIRECTORY/classes"
+expect_status 0 "빈 source root routes" routes --role client --project "$TEMPORARY_DIRECTORY" empty
 
 echo "종료 코드 64 — 사용 오류"
 expect_status 64 "알 수 없는 옵션" --no-such-option
@@ -82,6 +84,8 @@ expect_status 64 "baseline write 경로 누락" baseline
 expect_status 64 "잘못된 report 형식" dead --report-format yaml
 expect_status 64 "cycles class root 누락" cycles
 expect_status 64 "rules config 누락" rules --classes "$TEMPORARY_DIRECTORY"
+expect_status 64 "routes role 누락" routes --project "$TEMPORARY_DIRECTORY"
+expect_status 64 "routes 미지원 server role" routes --role server --project "$TEMPORARY_DIRECTORY"
 
 echo "종료 코드 2 — 도구 실패"
 expect_status 2 "빈 class root graph" graph --classes "$TEMPORARY_DIRECTORY/empty"
@@ -91,6 +95,7 @@ expect_status 2 "빈 class root dead strict" dead --classes "$TEMPORARY_DIRECTOR
     --project "$TEMPORARY_DIRECTORY" --manifest AndroidManifest.xml --resources res --namespace app --strict
 expect_status 2 "없는 class root" graph --classes "$TEMPORARY_DIRECTORY/missing"
 expect_status 2 "없는 project root" graph --classes "$TEMPORARY_DIRECTORY" --format json --include-paths --project "$TEMPORARY_DIRECTORY/missing"
+expect_status 2 "없는 routes 선언 파일" routes --role client --project "$TEMPORARY_DIRECTORY" --wrappers missing.json
 
 # 예기치 못한 실패가 strict finding 코드(1)로 새지 않는지 확인한다. root는 권한 검사를 우회하므로 건너뛴다.
 if [[ "$(id -u)" != "0" ]]; then
@@ -112,6 +117,7 @@ expect_output "kartograph cycles" "도움말에 architecture 명령" --help
 expect_output "digraph kartograph" "graph의 DOT 문서" graph --classes "$TEMPORARY_DIRECTORY/classes"
 expect_output '"format": "code-graph"' "graph의 교환 JSON 문서" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json
 expect_output '"limitations"' "graph JSON의 한계 필드" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json
+expect_output '"roles": \["client"\]' "routes의 http 클라이언트 문서" routes --role client --project "$TEMPORARY_DIRECTORY" empty
 
 echo
 if [[ "$FAILURES" -eq 0 ]]; then

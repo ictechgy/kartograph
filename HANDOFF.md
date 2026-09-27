@@ -2,6 +2,14 @@
 
 마지막 갱신: 2026-09-25 — 변경 내용 기반 impact 설계 완료(spec 검토 대기), 0.17.0 배포 완료
 
+## 진행 중: http route-call 생산자 (`kartograph routes`)
+
+- **브랜치:** `feature/http-route-calls` (로컬만, push·PR 안 함). isthmus 소비자 계약은 isthmus `feature/http-domain-core`의 `docs/GRAPH-EXCHANGE.md` http 절·`docs/HTTP-WRAPPERS.md`다(아직 isthmus main에 없음).
+- **구현:** `routes --role client`가 `"target": "http"`, `"roles": ["client"]` 문서를 낸다. `index/.../RouteUrlRules.kt`(url-compose·http-template 순수 규칙), `RouteSourceModel.kt`(패키지·import·선언 범위·상수·경로 식 해석), `RouteCallScanner.kt`(래퍼·`java.net.URL`·Retrofit), `export/.../HttpWrappersCodec.kt`, `cli/.../RoutesCommand.kt`.
+- **적합성 벡터:** `fixtures/isthmus-conformance/`에 `http-template.json`·`url-compose.json`과 `conformance.lock`(isthmus 커밋·sha256)을 벤더링했다. `RouteConformanceTest`가 sha256 대조 뒤 모든 생산자 케이스를 돌린다. isthmus가 벡터를 바꾸면 다시 복사하고 lock을 갱신한다.
+- **검증:** 합성 문서를 isthmus `check`로 조인해 수용을 확인했다. 비공개 도그푸딩 앱은 읽기 전용으로만 대조했고 결과는 공개 기록에 싣지 않는다(오라클 정의 지점 전부 일치, 줄 차이는 계약의 호출 시작 줄 규칙 때문).
+- **남은 범위:** `--role server`(route-decl), 파일 밖 상수, 수신자 타입 추론 없는 멤버 호출, OkHttp·Ktor 직접 호출, Java 명명 인자 없음 전제, `@file:JvmName` facade.
+
 ## 진행 중: 변경 내용 기반 impact 진입점
 
 - **목표:** v8에서 agent가 정확한 선택자를 만들지 못해 MCP impact 3회가 모두 `notFound`로 끝난 문제를 푼다. agent가 가진 "수정한 파일+줄"(`changes` 또는 unified `diff`)을 받아 변경 선언을 찾고 기존 impact로 잇는다. AI 효용 개선은 주장하지 않고, 이후 새 평가로 판단한다.

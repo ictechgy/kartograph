@@ -114,6 +114,8 @@ kartograph bridges --project . --format json
 kartograph bridges --project . --target flutter --messages --graph-file build/reports/kartograph/main-graph.json
 # isthmus용 persistence 관계 사용: Room/JDBC/Exposed/jOOQ, SQL 모양 리터럴, SQLDelight .sq/.sqm.
 kartograph schema --project . --format json
+# isthmus용 클라이언트 HTTP route 호출: 선언된 래퍼, java.net.URL 요청, Retrofit 어노테이션.
+kartograph routes --role client --project . --wrappers http-wrappers.json app/src/main
 kartograph skill --project .
 ```
 
@@ -245,3 +247,15 @@ kartograph는 MIT 라이선스다. 배포본에 내장된 의존성의 저작권
 주장하지 않고 JPA/Spring Data import는 limitation으로 남깁니다. 동적·미해석 근거는
 `dynamic` 사실과 계량된 limitation으로 보존하고, 빈 스캔은 `"target": null`을 냅니다.
 `--graph-file`은 스냅샷이 fresh일 때만 JVM 심볼 식별자를 붙입니다.
+
+`routes --role client --project <dir> [--wrappers <http-wrappers.json>] [--include-tests] [--service <name>] [<source-root>...]`
+(미출시)는 isthmus http 도메인용으로 `"target": "http"`, `"roles": ["client"]`인 `bridge-facts` 문서를
+냅니다. `route-call` 사실마다 HTTP 동사(또는 `methodDynamic`), 정규 경로 템플릿(또는 증명된
+`channelPrefix`를 단 `dynamic` 사실), `pathAnchor`, 호출식 위치를 싣습니다. isthmus `http-wrappers` v1
+파일에 선언한 래퍼 호출(`"language": "kotlin"` 항목만), 같은 함수에서 여는 `java.net.URL` 요청 중
+경로와 동사를 증명할 수 있는 것, Retrofit 동사 어노테이션(`@Url`은 dynamic)을 인식합니다. 문자열은
+리터럴, 같은 파일 상수, 세그먼트 전체를 채우는 Kotlin 템플릿 보간, query 꼬리(리터럴 `?` 또는 `?`로
+시작함을 증명한 끝 지역 변수)까지 해석합니다. 리터럴 URL의 userinfo·query·fragment는 떼고 고엔트로피·
+웹훅 세그먼트는 가립니다. 테스트 소스 세트는 `--include-tests`가 없으면 제외하고, 주면 `testSource`로
+표시합니다. 그 밖의 클라이언트(OkHttp, Ktor 등), 낡은 래퍼 선언, 선언되지 않은 싱크는 추측한 사실 대신
+limitation으로 남깁니다. `--role server`는 아직 지원하지 않습니다.

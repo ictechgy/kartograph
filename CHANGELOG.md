@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- `routes --role client --project <dir> [--wrappers <http-wrappers.json>] [--include-tests] [<source-root>...]`가
+  isthmus http 도메인용 `"target": "http"`, `"roles": ["client"]` `bridge-facts` 문서로 클라이언트 HTTP
+  호출(`route-call`)을 낸다. isthmus `http-wrappers` v1로 선언한 래퍼(생성자 위치 인자, 기본 동사,
+  순서가 바뀐 명명 인자, `methodEnum`·`.name`), 경로·동사를 증명한 `java.net.URL` 요청, Retrofit 동사
+  어노테이션을 읽는다.
+- 경로 해석은 isthmus `url-compose`·`http-template` 공유 벡터를 따른다. 같은 파일 상수, 세그먼트 전체
+  보간(`{}`), query 꼬리와 `?`로 시작함을 증명한 끝 지역 변수 제거, userinfo·query·fragment 제거와
+  고엔트로피·웹훅 세그먼트 마스킹을 적용한다. 벡터는 `fixtures/isthmus-conformance/`에 lock과 함께
+  벤더링하고 테스트가 sha256 대조 뒤 모든 생산자 케이스를 실행한다.
+- 테스트 소스 세트는 기본 제외(`sourceSets.tests: "excluded"`)이며 `--include-tests`는 `testSource`를
+  단다. 낡은 선언(`http-wrapper-unresolved:`), 선언되지 않은 싱크(`http-wrapper-undeclared:`), 모델링하지
+  않은 클라이언트(`route-call-coverage:`), 미상 base 뒤 상대 경로(`ambiguous-base-join:`)는 추측한 사실
+  대신 limitation으로 계수한다. `--role server`는 아직 사용 오류다.
+
 ## [0.17.0] - 2026-09-24
 
 ### Added
