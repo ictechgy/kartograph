@@ -17,7 +17,9 @@ import org.gradle.jvm.toolchain.JavaLauncher
 /** 선택한 Android main/unit-test artifacts와 compiler provider를 같은 snapshot scope로 연결한다. */
 internal object AndroidSnapshotTasks {
     fun register(project: Project, extension: KartographExtension, variant: Variant) {
-        val unitTest = variant.nestedComponents.filterIsInstance<UnitTest>().singleOrNull()
+        // unit-test 제외는 opt-out이다. 제외하면 test compiler witness도 등록하지 않아 test 입력이 capture를 막지 않는다.
+        val includeUnitTests = extension.snapshotIncludeUnitTests.get()
+        val unitTest = variant.nestedComponents.filterIsInstance<UnitTest>().singleOrNull()?.takeIf { includeUnitTests }
         val components = listOfNotNull(variant, unitTest)
         val scope = "${project.path}:${variant.name}"
         val roots = components.associate { component -> component.name to project.files(component.sources.java?.all, component.sources.kotlin?.all) }
@@ -27,7 +29,9 @@ internal object AndroidSnapshotTasks {
         val task = project.tasks.register("kartographSnapshot${variant.name.replaceFirstChar(Char::titlecase)}",
             KartographAndroidSnapshotTask::class.java) { snapshot ->
             snapshot.group = "verification"
-            snapshot.description = "Captures compiled Android ${variant.name} main and unit-test inputs for impact queries."
+            snapshot.description = if (includeUnitTests) "Captures compiled Android ${variant.name} main and unit-test inputs for impact queries."
+                else "Captures compiled Android ${variant.name} main inputs for impact queries."
+            if (!includeUnitTests) snapshot.captureLimitations.add(UNIT_TESTS_EXCLUDED)
             snapshot.scope.set(scope)
             snapshot.revision.set(extension.snapshotRevision)
             snapshot.projectDirectory.set(project.layout.projectDirectory)
@@ -162,6 +166,10 @@ internal object AndroidSnapshotTasks {
             }
         }
     }
+
+    /** unit-test 제외 사실이다. impact의 테스트 검토 후보가 비어 있는 이유를 결과에서 알 수 있게 한다. */
+    const val UNIT_TESTS_EXCLUDED: String =
+        "unit-test-components-excluded: snapshotIncludeUnitTests=false; test declarations and test review candidates are absent"
 
     private fun attach(project: Project, snapshot: TaskProvider<KartographAndroidSnapshotTask>, compiler: TaskProvider<out Task>,
         witness: Provider<RegularFile>, kind: String, sources: Provider<out FileCollection>, destination: Provider<*>) {

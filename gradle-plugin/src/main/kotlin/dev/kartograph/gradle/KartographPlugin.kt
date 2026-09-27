@@ -15,13 +15,8 @@ public class KartographPlugin : Plugin<Project> {
         extension.includeSourcePaths.convention(false)
         extension.snapshotsEnabled.convention(false)
         extension.snapshotMaxMiB.convention(QuerySnapshotCodec.DEFAULT_MAX_MIB)
-        extension.snapshotIndexCacheEnabled.convention(project.providers.gradleProperty("kartograph.indexCache").map { value ->
-            when (value) {
-                "true" -> true
-                "false" -> false
-                else -> throw IllegalArgumentException("kartograph.indexCache must be true or false")
-            }
-        }.orElse(false))
+        extension.snapshotIndexCacheEnabled.convention(booleanProperty(project, "kartograph.indexCache").orElse(false))
+        extension.snapshotIncludeUnitTests.convention(booleanProperty(project, "kartograph.snapshotIncludeUnitTests").orElse(true))
         extension.snapshotIndexCacheDirectory.convention(project.layout.buildDirectory.dir("kartograph/index-cache"))
         extension.snapshotRevision.convention(project.providers.gradleProperty("kartograph.revision"))
         project.pluginManager.withPlugin("com.android.application") { AndroidTasks.configureAndroid(project, extension) }
@@ -34,4 +29,12 @@ public class KartographPlugin : Plugin<Project> {
         }
     }
 
+    /** `true`/`false`만 받는 Gradle property다. 오타를 기본값으로 조용히 바꾸지 않고 설정 오류로 알린다. */
+    private fun booleanProperty(project: Project, name: String) = project.providers.gradleProperty(name).map { value ->
+        when (value) {
+            "true" -> true
+            "false" -> false
+            else -> throw IllegalArgumentException("$name must be true or false")
+        }
+    }
 }

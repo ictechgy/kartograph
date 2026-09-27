@@ -49,6 +49,16 @@ class AndroidMultiModuleSnapshotIntegrationTest {
         assertTrue(network.provenance!!.witnesses.any { it.artifact == ":core:network:compileDebugUnitTestJavaWithJavac" })
         val alerts = snapshot(root, "feature/alerts")
         assertTrue(NodeId("class:sample/alerts/AlertsModelCheck") in alerts.graph.nodes)
+
+        // unit-test component를 끄면 test 정점과 witness가 빠지고 그 사실을 limitation으로 남긴다.
+        runner(repository, "kartographSnapshotDebug", "-Pkartograph.snapshotIncludeUnitTests=false").build()
+        val production = snapshot(root, "core/network")
+        assertFalse(NodeId("class:sample/network/ApiCheck") in production.graph.nodes)
+        assertTrue(NodeId("class:sample/network/Api") in production.graph.nodes)
+        assertFalse(production.provenance!!.witnesses.any { it.artifact.contains("UnitTest") })
+        assertTrue(production.limitations.contains(AndroidSnapshotTasks.UNIT_TESTS_EXCLUDED))
+        assertEquals("matched", ProvenanceVerifier.verify(production.provenance, repository.resolve("core/network"), production.scope,
+            bindings(root, "core/network")).status)
     }
 
     private fun runner(repository: Path, vararg arguments: String): GradleRunner = GradleRunner.create()

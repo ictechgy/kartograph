@@ -112,6 +112,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val androidResourceDirectories: ConfigurableFileCollection
 
+    /** adapter가 캡처 범위에서 의도적으로 뺀 입력(예: unit-test component)을 snapshot limitation으로 알린다. */
+    @get:Input public abstract val captureLimitations: ListProperty<String>
+
     @get:Input public abstract val scope: Property<String>
     @get:Input @get:Optional public abstract val revision: Property<String>
     @get:Input public abstract val includeSourcePaths: Property<Boolean>
@@ -129,6 +132,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     init {
         snapshotMaxMiB.convention(QuerySnapshotCodec.DEFAULT_MAX_MIB)
         indexCacheEnabled.convention(false)
+        captureLimitations.convention(emptyList())
         indexCacheDirectory.convention(buildDirectory.dir("kartograph/index-cache"))
         // 설정 안의 동적 파일 집합은 action에서 전후 확인한다. 같은 설정 파일만 보고
         // snapshot을 UP-TO-DATE로 재사용하지 않는다. native compiler cache는 그대로 둔다.
@@ -258,7 +262,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, roots, processorOutputs.verify(scope.get()))
             val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, selectedSources) +
                 dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) +
-                paths?.limitations.orEmpty() + if (missingGeneratedRules.isEmpty()) emptyList() else
+                paths?.limitations.orEmpty() + captureLimitations.get() + if (missingGeneratedRules.isEmpty()) emptyList() else
                     listOf("missing-generated-keep-files: ${missingGeneratedRules.size}"),
                 suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
                 scope = scope.get(), provenance = before, processorOutputs = outputObservations)
