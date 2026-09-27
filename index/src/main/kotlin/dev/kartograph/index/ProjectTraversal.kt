@@ -17,11 +17,16 @@ import java.nio.file.attribute.BasicFileAttributes
  * 아니어서 탐색 비용만 지배하므로 함께 제외한다(`docs/RESEARCH.md`의 가지치기 실측 참조).
  */
 internal object ProjectTraversal {
-    /** 열거 뒤 바뀐 링크도 읽기 직전에 다시 검사하고 최종 파일 링크를 따라 열지 않는다. */
-    fun readSourceLines(projectRoot: Path, source: Path): List<String> {
+    /**
+     * 열거 뒤 바뀐 링크도 읽기 직전에 다시 검사하고 최종 파일 링크를 따라 열지 않는다.
+     *
+     * @param includeTests 참이면 test source set도 읽는다(`routes --include-tests`). 가지치기 디렉터리는 여전히 거부한다
+     */
+    fun readSourceLines(projectRoot: Path, source: Path, includeTests: Boolean = false): List<String> {
         val root = projectRoot.toRealPath()
         val realSource = source.toRealPath()
-        if (!realSource.startsWith(root) || isPrunedSource(root, realSource)) {
+        val pruned = if (includeTests) isPruned(root, realSource) else isPrunedSource(root, realSource)
+        if (!realSource.startsWith(root) || pruned) {
             throw IOException("source file is outside the allowed project sources")
         }
         return Files.newInputStream(realSource, LinkOption.NOFOLLOW_LINKS).bufferedReader().use { it.readLines() }
