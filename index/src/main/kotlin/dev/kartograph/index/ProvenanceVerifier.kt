@@ -35,7 +35,9 @@ public object ProvenanceVerifier {
             reasons.distinct().sorted(),
         )
         if (provenance.witnesses.isEmpty()) reasons += "missing-build-witness"
-        if (scope == null || provenance.witnesses.any { it.scope != scope }) reasons += "build-scope-mismatch"
+        // aggregate snapshot은 명시된 구성 scope의 witness만 받는다. 단일 capture는 snapshot scope와 같아야 한다.
+        val allowedScopes = provenance.memberScopes.ifEmpty { listOfNotNull(scope) }.toSet()
+        if (scope == null || provenance.witnesses.any { it.scope !in allowedScopes }) reasons += "build-scope-mismatch"
         val classes = provenance.inputs.filter { it.role == "classes" }
         val outputs = provenance.witnesses.flatMap { it.outputs }
         if (classes.isEmpty() || classes.any { selected -> outputs.none { output ->

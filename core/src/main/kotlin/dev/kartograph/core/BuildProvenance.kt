@@ -35,5 +35,20 @@ public data class BuildWitness(
     }
 }
 
-/** 그래프 생성 시 관찰한 입력과 컴파일 증거를 함께 고정한다. null provenance는 이전 미검증 문서다. */
-public data class SnapshotProvenance(val inputs: List<InputFingerprint>, val witnesses: List<BuildWitness>)
+/**
+ * 그래프 생성 시 관찰한 입력과 컴파일 증거를 함께 고정한다. null provenance는 이전 미검증 문서다.
+ *
+ * @property memberScopes 여러 모듈 capture를 합친 aggregate snapshot의 구성 scope다. 비어 있으면 단일 capture이며
+ *   모든 witness가 snapshot scope와 같아야 한다. 값이 있으면 witness scope가 이 목록 안에 있어야 한다.
+ *   합친 문서에서도 다른 모듈·variant의 증거를 섞지 않도록 명시적인 구성원 목록으로 검사한다.
+ */
+public data class SnapshotProvenance(
+    val inputs: List<InputFingerprint>,
+    val witnesses: List<BuildWitness>,
+    val memberScopes: List<String> = emptyList(),
+) {
+    init {
+        require(memberScopes.all { it.isNotEmpty() && it.length <= 200 && Regex("[A-Za-z0-9_.:-]+").matches(it) } &&
+            memberScopes.distinct().size == memberScopes.size) { "invalid aggregate member scopes" }
+    }
+}

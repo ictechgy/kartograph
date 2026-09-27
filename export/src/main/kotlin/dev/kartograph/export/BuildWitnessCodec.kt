@@ -15,14 +15,16 @@ public object BuildWitnessCodec {
         return witness(SnapshotJsonParser(text).parse())
     }
 
-    internal fun provenanceValue(value: SnapshotProvenance): Any = sortedMapOf(
+    // 단일 capture 문서는 기존과 바이트가 같도록 aggregate 구성원이 있을 때만 memberScopes를 쓴다.
+    internal fun provenanceValue(value: SnapshotProvenance): Any = sortedMapOf<String, Any>(
         "version" to 1, "inputs" to value.inputs.map(::inputValue), "witnesses" to value.witnesses.map(::witnessValue),
-    )
+    ).also { map -> if (value.memberScopes.isNotEmpty()) map["memberScopes"] = value.memberScopes.sorted() }
 
     internal fun provenance(value: Any): SnapshotProvenance {
         val map = obj(value)
         require(map["version"] == 1L) { "unsupported provenance version" }
-        return SnapshotProvenance(list(map["inputs"]).map(::input), list(map["witnesses"]).map(::witness))
+        return SnapshotProvenance(list(map["inputs"]).map(::input), list(map["witnesses"]).map(::witness),
+            map["memberScopes"]?.let { scopes -> list(scopes).map(::str) }.orEmpty())
     }
 
     private fun inputValue(input: InputFingerprint): Any = sortedMapOf("role" to input.role, "path" to input.path, "sha256" to input.sha256)
