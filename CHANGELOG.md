@@ -29,6 +29,14 @@
 - `--dispatch direct|bound|candidates|all`(기본 `candidates`)로 따를 dispatch 간선을 고른다. 구현이 하나로 정해지는
   프로젝트 수신 타입의 dispatch는 `bound`, 그 밖의 계층 후보는 `candidate`이며, `FunctionN`/SAM `invoke`에서 모든
   람다·익명 class 본문으로 퍼지는 후보는 기본에서 빼고 `lambda-dispatch-excluded:`로 계수한다.
+- `language-traversal` 문서가 `revision`과 `graphRevision`을 cartograph와 같은 규칙으로 싣는다. `revision`은
+  `--revision <rev>`(임의의 revision 문자열), snapshot의 commit 라벨, 프로젝트 디렉터리에 커밋하지 않은 변경·추적되지
+  않은 파일이 없을 때의 git `HEAD` 순이며 작업 트리가 더러우면 뺀다. 고친 소스 위에서 `HEAD`를 실으면 isthmus가 낡은
+  분석을 최신으로 보기 때문이다. git은 CLI 계층만 부른다. `graphRevision`은 snapshot 파일 바이트 해시 대신 정점
+  id·종류, 간선 종류·출처, 순회 근거 등급, 어휘적 소속과 그 캡처 여부, 잇지 못한 호출 수의 `sha256:` 내용 해시라서
+  같은 snapshot의 `impact --format language-traversal`과 `reach`가, snapshot 표기(`--compact`·`--include-paths`)와
+  무관하게 같은 값을 낸다. root와 `--revision`에 isthmus가 거부하는 제어 문자(C0·DEL·C1·U+2028·U+2029)나 짝 없는
+  서러게이트가 있으면 문서를 만들기 전에 종료 코드 64로 거부한다.
 - `snapshot`이 classfile `EnclosingMethod`를 `graph.enclosures`로 싣는다. 순회는 람다·익명 객체·suspend 람다 본문을
   감싼 선언의 일부(`contains`, `direct`)로 잇는다. 이 필드가 없는 옛 snapshot은 `lexical-enclosures-unavailable:`로 알린다.
 

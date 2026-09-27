@@ -320,7 +320,20 @@ kartograph reach <usr>... --graph-file graph.json --project .
   사실의 `symbol.usr`를 문서 순서대로 중복 없이 root로 쓴다. 해석하지 못한 root는 원문을 id로 두고 `symbol` 없이 싣고
   `root-not-found:`와 `truncationReasons: ["root-not-found"]`를 단다(종료 코드 64, 문서는 출력한다).
 - **`project`**: `--project`의 realpath다. isthmus는 모든 문서의 project가 같아야 조인하므로 `routes`와 같은 root를 준다.
-  `graphRevision`은 snapshot 파일 바이트의 SHA-256, `revision`은 snapshot의 commit 라벨이다.
+  `--generated-at`을 주면 같은 입력에서 바이트가 같은 문서를 낸다.
+- **`revision`**: `--revision <rev>`를 주면 그 값이다. 없으면 snapshot의 commit 라벨(`snapshot --revision`)이고, 그것도
+  없으면 `--project` 디렉터리 아래에 커밋하지 않은 변경·추적되지 않은 파일이 없을 때만 git `HEAD`다. 작업 트리가
+  더럽거나 저장소가 아니면 싣지 않는다 — 고친 소스 위에서 `HEAD`를 실으면 isthmus가 낡은 분석을 최신으로 본다.
+  snapshot에 라벨이 있는데 `--revision`이 다르면 도구 실패(2)다. git은 CLI만 부르고 분석·렌더링은 부르지 않는다.
+  저장한 snapshot을 읽으므로 `HEAD` 자동 감지는 snapshot을 지금 작업 트리에서 캡처했다고 가정한다. 다른 커밋에서
+  캡처했다면 `snapshot --revision`으로 라벨을 남긴다.
+- **`graphRevision`**: 순회한 그래프 내용의 `sha256:` 해시다. 정점 id·종류, 간선의 양 끝·종류·출처, 순회 간선의 근거 등급,
+  어휘적 소속(`graph.enclosures`)과 그 캡처 여부, 정점별 잇지 못한 호출 수를 정렬해 담고 위치·이름·weight는 넣지 않는다.
+  방향과 무관하므로 같은 snapshot 위의 `impact --format language-traversal`과 `reach` 문서가 같은 값을 내고, `--compact`나
+  `--include-paths` 같은 snapshot 표기 차이에도 같다. isthmus는 같은 플랫폼 문서끼리 이 값이 다르면 다른 그래프에서
+  나온 분석으로 본다.
+- **제어 문자**: root와 `--revision`에 C0(U+0000–U+001F)·DEL·C1(U+0080–U+009F)·U+2028·U+2029나 짝 없는 서러게이트가
+  있으면 문서를 만들기 전에 사용 오류(64)다. isthmus는 그런 id·revision이 든 문서를 통째로 거부한다.
 - **roots·depth·via**: `reached[].roots`는 그 정점에 닿는 모든(자기 제외) root의 오름차순 인덱스다. 64개를 넘으면
   작은 64개만 싣고 `rootsTruncated: true`를 단다. 다른 root에서 닿은 root도 자기 인덱스 없이 싣는다. depth는 가장
   가까운(자기 제외) root까지의 간선 수(1..128)이고 via는 그 최단 경로의 직전 정점(동률이면 usr가 작은 쪽)이다.
@@ -393,6 +406,9 @@ snapshot 밖 class는 모델링하지 않으며 `bound-dispatch-closed-world:` �
 - snapshot은 선택 필드 `graph.enclosures`를 v1·compact v2 모두 같은 평문 모양으로 싣는다. 옛 reader는 모르는 graph
   키를 읽지 않는다. 새 reader는 이 키가 없는 옛 snapshot을 "소속 사실 미캡처"로 구분한다.
 - class 인덱스 캐시 형식이 5로 올라 옛 캐시 항목은 한 번 다시 파싱된다.
+- `language-traversal`의 `--revision`은 이제 임의의 revision 문자열을 받는다(전에는 snapshot 라벨과 같은 전체 commit
+  hash만 받고 라벨이 없는 snapshot이면 실패했다). `graphRevision`은 snapshot 파일 바이트의 hex 해시에서 `sha256:` 그래프
+  내용 해시로 바뀌었다. 기본 `impact`의 `--revision`·`--base-revision`은 그대로 전체 commit hash다.
 - `language-traversal` 전용 옵션(`--dispatch`·`--project`·`--roots-from`·`--generated-at`·`--max-reached`)은 기본
   형식에서 받지 않고, 기본 형식 전용 옵션(`--base-graph`·`--file`·`--limit`·필터 등)은 새 형식에서 사용 오류(64)다.
 
