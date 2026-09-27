@@ -62,7 +62,7 @@ internal object ExternalDispatchIndexer {
             targets.forEach { derived += GraphEdge(call.caller, it, EdgeKind.OVERRIDE, origin = EdgeOrigin.DISPATCH_MODEL) }
             call.copy(resolvedTargets = targets, resolution = resolution)
         }
-        return CodeGraph(graph.nodes.values, graph.edges.filter { it.origin != EdgeOrigin.DISPATCH_MODEL } + derived, calls, graph.serviceProviders)
+        return CodeGraph(graph.nodes.values, graph.edges.filter { it.origin != EdgeOrigin.DISPATCH_MODEL } + derived, calls, graph.serviceProviders, graph.enclosures)
     }
 
     private val TYPE_KINDS = setOf(NodeKind.CLASS, NodeKind.INTERFACE, NodeKind.OBJECT, NodeKind.ENUM, NodeKind.ANNOTATION_CLASS)

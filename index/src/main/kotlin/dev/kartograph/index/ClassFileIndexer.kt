@@ -10,6 +10,7 @@ import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.GeneratedSiblingNaming
 import dev.kartograph.core.JvmModifier
+import dev.kartograph.core.LexicalEnclosure
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeKind
@@ -173,6 +174,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
                 enclosingContainerEdges(classFacts),
             externalCalls = classFacts.flatMap(ClassFacts::calls),
             serviceProviders = ServiceProviderScanner.scan(roots + serviceResources),
+            enclosures = lexicalEnclosures(classFacts),
         )
         assemblyNanos = System.nanoTime() - assemblyStart
         val hierarchyStart = System.nanoTime()
@@ -288,6 +290,8 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
 internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private lateinit var internalName: String
     private var enclosingClass: String? = null
+    // EnclosingMethod 속성의 감싼 메서드(초기화 문맥이면 class)다. 지역·익명 class에만 있다.
+    private var enclosingDeclaration: NodeId? = null
     private var classAccess: Int = 0
     private var innerClassAccess: Int? = null
     private var sourceFile: String? = null
@@ -336,6 +340,8 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
 
     override fun visitOuterClass(owner: String, name: String?, descriptor: String?) {
         enclosingClass = owner
+        enclosingDeclaration = if (name != null && descriptor != null) JvmNodeId.methodId(owner, name, descriptor)
+            else JvmNodeId.classId(owner)
     }
 
     override fun visitAnnotation(descriptor: String, visible: Boolean): AnnotationVisitor? {
@@ -586,7 +592,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         val facts = ClassFacts(internalName, nodes, edges, enclosingClass,
             ClassRuntimeObservation(sourceLocation()?.path, FileTime.fromMillis(0),
                 nativeMethods, reflectionCalls, dynamicRegistrations), calls, fieldWriteMethods = fieldWriteMethods,
-            constantStringFields = constantStringFields)
+            constantStringFields = constantStringFields, enclosingDeclaration = enclosingDeclaration)
         val metadata = metadataValues?.toMetadata() ?: return facts
         return KotlinMetadataEnricher.enrich(facts, metadata)
     }
@@ -653,6 +659,8 @@ internal data class ClassFacts(
     val fieldWriteMethods: Set<NodeId> = emptySet(),
     val fieldMethods: List<MethodNode> = emptyList(),
     val constantStringFields: Map<NodeId, String> = emptyMap(),
+    /** classfile `EnclosingMethod`가 가리킨 감싼 선언이다. 이름 붙은 중첩 class·최상위 class는 null이다. */
+    val enclosingDeclaration: NodeId? = null,
 ) {
     // 내부 입력 상수가 디버그·예외 문자열에 섞이지 않게 한다.
     override fun toString(): String = "class-facts"
@@ -705,6 +713,21 @@ private fun frameworkCallbackEdges(classFacts: List<ClassFacts>): List<GraphEdge
         val classId = JvmNodeId.classId(facts.internalName)
         facts.nodes.filter(GraphNode::isRuntimeCallbackMember)
             .map { member -> GraphEdge(classId, member.id, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL) }
+    }
+}
+
+/**
+ * 지역·익명 class의 `EnclosingMethod`를 어휘적 소속 사실로 모은다.
+ * 감싼 메서드 정점이 그래프에 없으면(분석 입력 밖·생략된 멤버) 소유 class로 넓혀 소속을 잃지 않는다.
+ * 넓힌 결과도 없으면 CodeGraph가 버린다. 이름의 `$`는 해석하지 않는다.
+ */
+private fun lexicalEnclosures(classFacts: List<ClassFacts>): List<LexicalEnclosure> {
+    val declared = classFacts.flatMapTo(mutableSetOf()) { facts -> facts.nodes.map(GraphNode::id) }
+    return classFacts.mapNotNull { facts ->
+        val enclosing = facts.enclosingDeclaration ?: return@mapNotNull null
+        val resolved = if (enclosing in declared || !enclosing.value.startsWith("method:")) enclosing
+            else JvmNodeId.classId(enclosing.value.removePrefix("method:").substringBefore('#'))
+        LexicalEnclosure(JvmNodeId.classId(facts.internalName), resolved)
     }
 }
 

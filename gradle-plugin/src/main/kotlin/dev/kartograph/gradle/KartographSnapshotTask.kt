@@ -253,7 +253,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val paths = if (includeSourcePaths.get()) SourcePathIndex.resolve(graph, project, selectedSources) else null
             val located = if (paths == null) graph else CodeGraph(graph.nodes.values.map { node ->
                 paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
-            }, graph.edges, graph.externalCalls, graph.serviceProviders)
+            }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures)
             val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, roots, processorOutputs.verify(scope.get()))
             val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, selectedSources) +
                 dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) +

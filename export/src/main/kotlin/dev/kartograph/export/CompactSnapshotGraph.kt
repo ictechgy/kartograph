@@ -61,7 +61,8 @@ internal class CompactSnapshotGraph(private val positions: Map<String, Int>) {
                     else -> decode(key, row[i])
                 } }.toMap()
             }
-            return mapOf("nodes" to nodes, "edges" to edges, "externalCalls" to calls, "serviceProviders" to graph["serviceProviders"])
+            return mapOf("nodes" to nodes, "edges" to edges, "externalCalls" to calls, "serviceProviders" to graph["serviceProviders"],
+                "enclosures" to graph["enclosures"])
         }
 
         private fun array(value: Any?): List<*> = value as? List<*> ?: throw IllegalArgumentException("invalid compact array")

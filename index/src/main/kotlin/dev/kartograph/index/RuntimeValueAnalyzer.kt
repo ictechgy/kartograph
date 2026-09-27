@@ -184,7 +184,7 @@ internal object RuntimeValueAnalyzer {
                 call.copy(resolvedTargets = targets, resolution = CallResolution.RUNTIME_MODEL, model = model?.id)
             } ?: call.copy(model = model?.id)
         }
-        return CodeGraph(graph.nodes.values, graph.edges + derived, calls, graph.serviceProviders) to observations
+        return CodeGraph(graph.nodes.values, graph.edges + derived, calls, graph.serviceProviders, graph.enclosures) to observations
     }
 
     private val CLASS_LOADERS = setOf("java/lang/ClassLoader", "java/net/URLClassLoader", "java/security/SecureClassLoader")

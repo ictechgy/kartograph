@@ -10,6 +10,7 @@ import dev.kartograph.core.GraphNode
 import dev.kartograph.core.InvocationKind
 import dev.kartograph.core.JvmModifier
 import dev.kartograph.core.KartographVersion
+import dev.kartograph.core.LexicalEnclosure
 import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
@@ -32,6 +33,11 @@ public data class QuerySnapshot(
     val provenance: dev.kartograph.core.SnapshotProvenance? = null,
     val processorGenerations: List<dev.kartograph.core.ProcessorGeneration> = emptyList(),
     val processorOutputs: List<dev.kartograph.core.ProcessorOutputs> = emptyList(),
+    /**
+     * 문서가 `graph.enclosures`(지역·익명 class의 어휘적 소속)를 실었는지다. 이 필드가 생기기 전 버전이 캡처한
+     * snapshot은 거짓이며, 소속 사실이 0건인 새 snapshot과 구별하려고 둔다. 렌더링에는 쓰지 않는다.
+     */
+    val enclosuresCaptured: Boolean = true,
 ) {
     init {
         require(revision == null || Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) { "snapshot revision must be a full commit hash" }
@@ -108,6 +114,10 @@ public object QuerySnapshotCodec {
             "serviceProviders" to snapshot.graph.serviceProviders.map { item -> sortedMapOf(
                 "service" to item.service, "provider" to item.provider.value, "location" to locationValue(item.location),
             ) },
+            // 옛 reader는 모르는 graph 키를 읽지 않으므로 선택 필드로 더한다. compact 문서도 같은 평문 모양을 쓴다.
+            "enclosures" to snapshot.graph.enclosures.map { item ->
+                sortedMapOf("localClass" to item.localClass.value, "enclosing" to item.enclosing.value)
+            },
         ).let { graph -> if (encoding == null) graph else graph + ("stringTable" to encoding.table) },
         ).filterValues { it != null }) + "\n"
     }
@@ -167,6 +177,13 @@ public object QuerySnapshotCodec {
             ServiceProviderRegistration(string(item["service"]), NodeId(string(item["provider"])),
                 location(item["location"]) ?: invalid())
         }
+        val enclosures = graph["enclosures"]?.let { values -> list(values).map { raw ->
+            val item = objectValue(raw)
+            LexicalEnclosure(NodeId(string(item["localClass"])), NodeId(string(item["enclosing"])))
+        } }
+        require(enclosures.orEmpty().all { it.localClass in ids && it.enclosing in ids }) {
+            "query snapshot contains invalid lexical enclosures"
+        }
         val retention = list(document["retention"]).map { raw ->
             val item = objectValue(raw)
             RetentionEvidence(NodeId(string(item["nodeId"])), enumValue(item["reason"]), location(item["location"]),
@@ -177,7 +194,7 @@ public object QuerySnapshotCodec {
         }
         val suppressed = strings(document["suppressed"]).map(::NodeId).toSet()
         require(suppressed.all(ids::contains)) { "query snapshot contains invalid baseline references" }
-        return QuerySnapshot(CodeGraph(nodes, edges, calls, providers), retention, strings(document["limitations"]), suppressed,
+        return QuerySnapshot(CodeGraph(nodes, edges, calls, providers, enclosures.orEmpty()), retention, strings(document["limitations"]), suppressed,
             boolean(document["includePrivateMembers"]), string(document["toolVersion"]),
             optionalString(document["revision"]), optionalString(document["scope"]),
             document["provenance"]?.let(BuildWitnessCodec::provenance),
@@ -188,7 +205,8 @@ public object QuerySnapshotCodec {
                         dev.kartograph.core.CompilerEvidenceSource(string(it["path"]), string(it["sha256"]))
                     } })
             } }.orEmpty(),
-            document["processorOutputs"]?.let { values -> list(values).map { ProcessorOutputCodec.observation(it) } }.orEmpty())
+            document["processorOutputs"]?.let { values -> list(values).map { ProcessorOutputCodec.observation(it) } }.orEmpty(),
+            enclosuresCaptured = enclosures != null)
     }
 
     /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */
