@@ -145,15 +145,17 @@ public class RouteCallScanner(
         parent == "src" && (name == "test" || name.endsWith("Test") || TEST_SOURCE_SET.matches(name))
     }
 
+    // 코덱이 owner 모양을 검증하지만 API로 직접 넘긴 선언도 스캔 전체를 죽이지 않게 빈 조각을 견딘다.
     private fun conventionalPackage(declaration: HttpWrapperDeclaration): String {
         val segments = declaration.owner.split('.')
-        return if (isConventionalClass(declaration)) segments.takeWhile { it.first().isLowerCase() }.joinToString(".")
+        return if (isConventionalClass(declaration)) segments.takeWhile { it.firstOrNull()?.isLowerCase() == true }.joinToString(".")
         else declaration.owner
     }
 
-    private fun isConventionalClass(declaration: HttpWrapperDeclaration): Boolean =
-        declaration.kind == "constructor" || declaration.owner.substringAfterLast('.').first().isUpperCase() &&
-            !declaration.owner.substringAfterLast('.').endsWith("Kt")
+    private fun isConventionalClass(declaration: HttpWrapperDeclaration): Boolean {
+        val simple = declaration.owner.substringAfterLast('.')
+        return declaration.kind == "constructor" || simple.firstOrNull()?.isUpperCase() == true && !simple.endsWith("Kt")
+    }
 
     private companion object {
         /** 이 스캐너가 모델링하지 않는 HTTP 클라이언트 import 접두사다. */
@@ -242,6 +244,8 @@ private class RouteFileScan(
     private fun wrapperCalls(wrapper: ResolvedWrapper): List<Pair<Int, Int>> {
         val decl = wrapper.declaration
         val name = if (decl.kind == "constructor") wrapper.ownerSimple else decl.name
+        // 빈 이름·식별자가 아닌 이름은 호출 regex를 "모든 `(`"로 넓힌다 — 호출을 찾지 않고 미해석으로 남긴다.
+        if (!IDENTIFIER.matches(name)) return emptyList()
         val importAliases = if (decl.kind == "constructor") listOfNotNull(file.visibleNameOf(decl.owner))
         else file.imports.filter { !wrapper.isMember && it.path == "${wrapper.ownerPackage}.${decl.name}" }.mapNotNull { it.alias }
         val aliases = (listOf(name) + importAliases).distinct()
@@ -327,7 +331,7 @@ private class RouteFileScan(
         resolver.literalValue(trimmed, offset)?.let { return ArgumentValue.Literal(it) }
         ENUM_NAME.matchEntire(trimmed)?.let { return ArgumentValue.Literal(it.groupValues[1]) }
         ENUM_CASE.matchEntire(trimmed)?.let { return ArgumentValue.EnumCase(it.groupValues[1]) }
-        if (IDENTIFIER.matches(trimmed) && file.imports.any { it.path.endsWith(".$trimmed") && it.path.split('.').dropLast(1).lastOrNull()?.first()?.isUpperCase() == true }) {
+        if (IDENTIFIER.matches(trimmed) && file.imports.any { it.path.endsWith(".$trimmed") && it.path.split('.').dropLast(1).lastOrNull()?.firstOrNull()?.isUpperCase() == true }) {
             return ArgumentValue.EnumCase(trimmed)
         }
         return ArgumentValue.Opaque

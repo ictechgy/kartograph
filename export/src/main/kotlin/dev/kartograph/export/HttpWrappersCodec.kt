@@ -52,6 +52,14 @@ public object HttpWrappersCodec {
         require(!(language == "kotlin" && kind == "constructor" && name != "<init>")) {
             failure("$where.name must be \"<init>\" for a kotlin constructor")
         }
+        // Kotlin 심볼은 점으로 이은 식별자다. `com.`·`.`처럼 빈 조각이 있는 이름은 어떤 선언과도 맞지 않는다.
+        // 다른 언어(JS 모듈 경로 `@scope/pkg` 등)는 자기 생산자의 심볼 규칙을 따르므로 여기서 좁히지 않는다.
+        require(language != "kotlin" || KOTLIN_QUALIFIED.matches(owner)) {
+            failure("$where.owner must be a dotted kotlin name such as com.example.Api")
+        }
+        require(language != "kotlin" || kind == "constructor" || KOTLIN_IDENTIFIER.matches(name)) {
+            failure("$where.name must be a kotlin identifier")
+        }
         val methodArg = entry["methodArg"]?.let { argument(it, "$where.methodArg") }
         val pathArg = argument(entry["pathArg"] ?: throw IllegalArgumentException(failure("$where.pathArg is required")), "$where.pathArg")
         val defaultMethod = entry["defaultMethod"]?.let { choice(it, VERBS, "$where.defaultMethod") }
@@ -124,6 +132,8 @@ public object HttpWrappersCodec {
         "pathAnchor", "service",
     )
     private val ARGUMENT_FIELDS = setOf("index", "label")
+    private val KOTLIN_IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
+    private val KOTLIN_QUALIFIED = Regex("[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*")
     private val LANGUAGES = setOf("swift", "kotlin", "dart", "js")
     private val KINDS = setOf("constructor", "function")
     private val ANCHORS = setOf("root", "base")

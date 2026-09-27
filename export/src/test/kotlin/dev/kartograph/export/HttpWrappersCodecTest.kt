@@ -48,6 +48,10 @@ class HttpWrappersCodecTest {
             wrap(entry.replace("\"function\"", "\"method\"")) to "wrappers[0].kind",
             wrap(entry.replace("\"kotlin\"", "\"rust\"")) to "wrappers[0].language",
             wrap(entry.replace("\"a.B\"", "\"\"")) to "wrappers[0].owner",
+            wrap(entry.replace("\"a.B\"", "\"com.\"")) to "wrappers[0].owner must be a dotted kotlin name",
+            wrap(entry.replace("\"a.B\"", "\".\"")) to "wrappers[0].owner must be a dotted kotlin name",
+            wrap(entry.replace("\"a.B\"", "\"a..B\"")) to "wrappers[0].owner must be a dotted kotlin name",
+            wrap(entry.replace("\"send\"", "\"send(\"")) to "wrappers[0].name must be a kotlin identifier",
             wrap(entry.replace(", \"defaultMethod\": \"GET\"", "")) to "needs methodArg or defaultMethod",
             wrap(entry.replace("\"GET\"", "\"get\"")) to "wrappers[0].defaultMethod",
             wrap(entry.replace("\"root\"", "\"host\"")) to "wrappers[0].pathAnchor",
@@ -74,4 +78,12 @@ class HttpWrappersCodecTest {
     }
 
     private fun wrap(entries: String): String = """{"format": "http-wrappers", "version": 1, "wrappers": [$entries]}"""
+
+    @Test
+    fun `non kotlin owners keep their own symbol rules`() {
+        val js = """{"format": "http-wrappers", "version": 1, "wrappers": [
+            {"language": "js", "kind": "function", "owner": "@scope/api-client", "name": "request",
+             "pathArg": {"label": "url"}, "defaultMethod": "GET", "pathAnchor": "base"}]}"""
+        assertEquals("@scope/api-client", HttpWrappersCodec.parse(js).single().owner)
+    }
 }

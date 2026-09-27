@@ -762,4 +762,14 @@ class RouteCallScannerTest {
         assertEquals("GET", document.at(7).method)
         assertEquals("PUT", document.at(12).method)
     }
+
+    @Test
+    fun `malformed owners never crash the scan`() {
+        write("src/main/kotlin/dev/example/Plain.kt", "package dev.example\nfun plain() = 1")
+        val broken = listOf("com.", ".", "", "..x").map { owner -> sendWrapper(owner = owner) } +
+            listOf("com.", ".").map { owner -> endpointWrapper().copy(owner = owner) }
+        val document = scan(broken)
+        assertTrue(document.facts.isEmpty())
+        assertTrue(document.limitations.any { it.startsWith("http-wrapper-unresolved:") })
+    }
 }
