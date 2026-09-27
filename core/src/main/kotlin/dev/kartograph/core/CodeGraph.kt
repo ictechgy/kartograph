@@ -10,6 +10,8 @@ public class CodeGraph(
     externalCalls: Iterable<ExternalCall> = emptyList(),
     serviceProviders: Iterable<ServiceProviderRegistration> = emptyList(),
     enclosures: Iterable<LexicalEnclosure> = emptyList(),
+    callbackArguments: Iterable<CallbackArgument> = emptyList(),
+    parameterUses: Iterable<ParameterUse> = emptyList(),
 ) {
     public val nodes: Map<NodeId, GraphNode> = buildMap {
         nodes.forEach { node -> putIfAbsent(node.id, node) }
@@ -30,6 +32,20 @@ public class CodeGraph(
      */
     public val enclosures: List<LexicalEnclosure> = enclosures
         .filter { it.localClass in this.nodes && it.enclosing in this.nodes && it.localClass != it.enclosing }
+        .distinct().sorted()
+
+    /**
+     * 람다 값이 호출 인자로 넘어간 관측 사실이다. 넘긴 메서드와 람다 정점이 그래프에 있는 것만 남긴다.
+     * 호출 대상은 가상 호출의 선언 owner일 수 있어 정점 존재를 요구하지 않는다. 일반 간선이 아니므로 도달성·dead·
+     * 기존 impact 결과에는 쓰이지 않는다.
+     */
+    public val callbackArguments: List<CallbackArgument> = callbackArguments
+        .filter { it.caller in this.nodes && it.lambda in this.nodes }
+        .distinct().sorted()
+
+    /** 콜백일 수 있는 파라미터의 관측된 쓰임이다. 파라미터를 가진 메서드가 그래프에 있는 것만 남긴다. */
+    public val parameterUses: List<ParameterUse> = parameterUses
+        .filter { it.method in this.nodes }
         .distinct().sorted()
 
     public val edges: List<GraphEdge> = edges

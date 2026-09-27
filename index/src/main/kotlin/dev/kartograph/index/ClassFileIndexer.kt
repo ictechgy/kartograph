@@ -11,6 +11,8 @@ import dev.kartograph.core.GraphNode
 import dev.kartograph.core.GeneratedSiblingNaming
 import dev.kartograph.core.JvmModifier
 import dev.kartograph.core.LexicalEnclosure
+import dev.kartograph.core.CallbackArgument
+import dev.kartograph.core.ParameterUse
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeKind
@@ -166,6 +168,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
             if (facts.internalName in generatedSiblingNames) facts.asSynthesized() else facts
         }
         val assemblyStart = System.nanoTime()
+        val enclosures = lexicalEnclosures(classFacts)
         val graph = CodeGraph(
             nodes = classFacts.flatMap(ClassFacts::nodes),
             edges = classFacts.flatMap(ClassFacts::edges) +
@@ -174,7 +177,9 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
                 enclosingContainerEdges(classFacts),
             externalCalls = classFacts.flatMap(ClassFacts::calls),
             serviceProviders = ServiceProviderScanner.scan(roots + serviceResources),
-            enclosures = lexicalEnclosures(classFacts),
+            enclosures = enclosures,
+            callbackArguments = localCallbackArguments(classFacts, enclosures),
+            parameterUses = classFacts.flatMap(ClassFacts::parameterUses),
         )
         assemblyNanos = System.nanoTime() - assemblyStart
         val hierarchyStart = System.nanoTime()
@@ -269,16 +274,16 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
                 (node.id.value.endsWith(")Ljava/lang/String;") || node.id.value.endsWith(")Ljava/lang/Class;"))
         }.mapTo(mutableSetOf(), GraphNode::id)
         val writes = facts.fieldWriteMethods
-        if (methods.isEmpty() && returns.isEmpty() && writes.isEmpty()) return facts
-        val bodies = mutableMapOf<NodeId, MethodNode>()
+        // 콜백 값 흐름은 모든 본문을 보므로 본문 전체를 한 번 읽고, runtime 분석용 본문은 그중 필요한 것만 보관한다.
+        val bodies = linkedMapOf<NodeId, MethodNode>()
         reader.accept(object : ClassVisitor(Opcodes.ASM9) {
-            override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<out String>?): MethodVisitor? {
-                val id = JvmNodeId.methodId(facts.internalName, name, descriptor)
-                return if (id in methods || id in returns || id in writes) MethodNode(Opcodes.ASM9, access, name, descriptor, signature, exceptions)
-                    .also { bodies[id] = it } else null
-            }
+            override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<out String>?): MethodVisitor =
+                MethodNode(Opcodes.ASM9, access, name, descriptor, signature, exceptions).also { bodies[JvmNodeId.methodId(facts.internalName, name, descriptor)] = it }
         }, ClassReader.SKIP_FRAMES)
-        return facts.copy(runtimeMethods = bodies.filterKeys(methods::contains).values.toList(),
+        val callbacks = CallbackFactScanner.scan(facts.internalName, bodies.values.toList())
+        val withCallbacks = facts.copy(callbackArguments = callbacks.arguments, parameterUses = callbacks.uses)
+        if (methods.isEmpty() && returns.isEmpty() && writes.isEmpty()) return withCallbacks
+        return withCallbacks.copy(runtimeMethods = bodies.filterKeys(methods::contains).values.toList(),
             returnMethods = bodies.filterKeys(returns::contains).values.toList(),
             fieldMethods = bodies.filterKeys { it in writes || it in methods }.values.toList())
     }
@@ -661,6 +666,10 @@ internal data class ClassFacts(
     val constantStringFields: Map<NodeId, String> = emptyMap(),
     /** classfile `EnclosingMethod`가 가리킨 감싼 선언이다. 이름 붙은 중첩 class·최상위 class는 null이다. */
     val enclosingDeclaration: NodeId? = null,
+    /** 이 class 본문에서 람다 값이 호출 인자로 넘어간 관측 사실이다. 지역 class 여부는 조립 단계에서 거른다. */
+    val callbackArguments: List<CallbackArgument> = emptyList(),
+    /** 이 class 메서드의 콜백일 수 있는 파라미터 쓰임이다. */
+    val parameterUses: List<ParameterUse> = emptyList(),
 ) {
     // 내부 입력 상수가 디버그·예외 문자열에 섞이지 않게 한다.
     override fun toString(): String = "class-facts"
@@ -728,6 +737,17 @@ private fun lexicalEnclosures(classFacts: List<ClassFacts>): List<LexicalEnclosu
         val resolved = if (enclosing in declared || !enclosing.value.startsWith("method:")) enclosing
             else JvmNodeId.classId(enclosing.value.removePrefix("method:").substringBefore('#'))
         LexicalEnclosure(JvmNodeId.classId(facts.internalName), resolved)
+    }
+}
+
+/**
+ * 람다로 넘어간 값 중 지역·익명 class 인스턴스와 invokedynamic 람다만 남긴다. `new Foo()`처럼 이름 붙은 class의
+ * 객체를 넘긴 호출은 콜백 전달이 아니므로 버린다. 지역 class 여부는 이름이 아니라 `EnclosingMethod` 사실로 판단한다.
+ */
+private fun localCallbackArguments(classFacts: List<ClassFacts>, enclosures: List<LexicalEnclosure>): List<CallbackArgument> {
+    val localClasses = enclosures.mapTo(mutableSetOf(), LexicalEnclosure::localClass)
+    return classFacts.flatMap(ClassFacts::callbackArguments).filter { argument ->
+        argument.lambda.value.startsWith("method:") || argument.lambda in localClasses
     }
 }
 

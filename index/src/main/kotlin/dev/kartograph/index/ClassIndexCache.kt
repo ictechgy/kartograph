@@ -60,7 +60,8 @@ internal object CacheIdentity {
     private val types = listOf(
         ClassFileIndexer::class.java, FactsVisitor::class.java, ClassFacts::class.java,
         ClassRuntimeObservation::class.java, ClassFactsCodec::class.java,
-        KotlinMetadataEnricher::class.java, RuntimeValueAnalyzer::class.java, JvmNodeId::class.java,
+        KotlinMetadataEnricher::class.java, RuntimeValueAnalyzer::class.java, JvmNodeId::class.java, CallbackFactScanner::class.java,
+        CallbackArgument::class.java, ParameterUse::class.java, ParameterUseKind::class.java,
         CodeGraph::class.java, GraphNode::class.java, GraphEdge::class.java, ExternalCall::class.java,
         NodeKind::class.java, NodeAttribute::class.java, JvmModifier::class.java,
         EdgeKind::class.java, EdgeOrigin::class.java, InvocationKind::class.java, CallResolution::class.java,
@@ -122,7 +123,7 @@ internal class CacheFormatException(cause: Throwable? = null) : IOException("inv
 /** 제한된 ClassFacts 포맷. 선택된 고유 메서드 본문은 ASM classfile 한 벌로 보관한다. */
 internal object ClassFactsCodec {
     private const val MAGIC = 0x4b584332
-    private const val VERSION = 5
+    private const val VERSION = 6
     private const val MAX_METHOD_BYTES = 4 * 1024 * 1024
     private const val MAX_LIST_ITEMS = 1_000_000
     private const val MAX_STRING_BYTES = 65_535
@@ -156,6 +157,8 @@ internal object ClassFactsCodec {
         writeList(f.constantStringFields.entries) { writeString(it.key.value); writeString(it.value) }
         writeBodies(f)
         writeNullable(f.enclosingDeclaration?.value)
+        writeList(f.callbackArguments) { writeCallbackArgument(it) }
+        writeList(f.parameterUses) { writeParameterUse(it) }
     }
 
     private fun DataInputStream.readFacts(): ClassFacts {
@@ -164,8 +167,26 @@ internal object ClassFactsCodec {
         val writes = readSet { NodeId(readString()) }; val constants = readMap { NodeId(readString()) to readString() }
         val bodies = readBodies(name)
         val enclosingDeclaration = readNullable()?.let(::NodeId)
+        val callbackArguments = readList { readCallbackArgument() }
+        val parameterUses = readList { readParameterUse() }
         return ClassFacts(name, nodes, edges, enclosing, runtime, calls, bodies.runtime, bodies.returns, writes, bodies.fields, constants,
-            enclosingDeclaration)
+            enclosingDeclaration, callbackArguments, parameterUses)
+    }
+
+    private fun DataOutputStream.writeCallbackArgument(a: CallbackArgument) {
+        writeString(a.caller.value); writeString(a.callee.value); writeEnum(a.invocation); writeInt(a.argument); writeString(a.lambda.value); writeNullable(a.samMethod)
+    }
+    private fun DataInputStream.readCallbackArgument() =
+        CallbackArgument(NodeId(readString()), NodeId(readString()), readEnum<InvocationKind>(), readInt(), NodeId(readString()), readNullable())
+    private fun DataOutputStream.writeParameterUse(u: ParameterUse) {
+        writeString(u.method.value); writeInt(u.parameter); writeEnum(u.kind); writeNullable(u.target?.value)
+        writeBoolean(u.invocation != null); u.invocation?.let { writeEnum(it) }; writeInt(u.position ?: -1)
+    }
+    private fun DataInputStream.readParameterUse(): ParameterUse {
+        val method = NodeId(readString()); val parameter = readInt(); val kind = readEnum<ParameterUseKind>(); val target = readNullable()?.let(::NodeId)
+        val invocation = if (readBoolean()) readEnum<InvocationKind>() else null
+        val position = readInt().let { if (it == -1) null else it }
+        return ParameterUse(method, parameter, kind, target, invocation, position)
     }
 
     private fun DataOutputStream.writeBodies(f: ClassFacts) {

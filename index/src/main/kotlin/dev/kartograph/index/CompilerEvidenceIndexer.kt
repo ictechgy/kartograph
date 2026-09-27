@@ -109,7 +109,7 @@ public object CompilerEvidenceIndexer {
         }
         val graph = indexed.graph
         return CompilerEvidenceResult(CodeGraph(graph.nodes.values, graph.edges + references.sorted(), graph.externalCalls, graph.serviceProviders,
-            graph.enclosures),
+            graph.enclosures, graph.callbackArguments, graph.parameterUses),
             outside, shadowed, unmapped, generations.distinct().sortedWith(compareBy({ it.processor }, { it.artifactSha256 })))
     }
 
