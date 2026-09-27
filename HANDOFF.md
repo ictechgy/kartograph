@@ -2,6 +2,19 @@
 
 마지막 갱신: 2026-09-25 — 변경 내용 기반 impact 설계 완료(spec 검토 대기), 0.17.0 배포 완료
 
+## 진행 중: isthmus trace용 `language-traversal` 생산자
+
+- **브랜치:** `feature/language-traversal` (로컬만, push·PR 안 함). 계약은 isthmus origin/main의 `docs/LANGUAGE-TRAVERSAL.md`다.
+- **구현:** `impact --format language-traversal`(역방향)·`reach`(정방향)는 `cli/.../TraversalCommand.kt`, 순회는
+  `analysis/.../LanguageTraversal.kt`(다중 출발 top-2 BFS + 등급별 SCC 비트 전파), 간선 등급은 `analysis/.../TraversalEdges.kt`,
+  렌더링은 `export/.../LanguageTraversalCodec.kt`다. snapshot은 `graph.enclosures`(classfile `EnclosingMethod`)를 싣고
+  class 인덱스 캐시는 v5다. `routes`의 `missing-route-usrs:`는 `cli/.../RouteSymbolDiagnostics.kt`다.
+- **결정:** 기본 `--dispatch candidates`는 `FunctionN`/SAM 콜백 fan-out을 빼고 람다 본문을 `contains`로 잇는다. 단일 구체
+  프로젝트 구현으로 해석되는 dispatch만 `bound`다. 근거는 [IMPACT](docs/IMPACT.md#isthmus-trace용-순회-문서-language-traversal-v1).
+- **검증:** 무작위 그래프 600개에서 root별 전수 BFS와 대조한다(`LanguageTraversalTest`). 비공개 도그푸딩 앱은 읽기 전용으로
+  대조했고 결과는 공개 기록에 싣지 않는다. 기본 `impact` 출력이 이전 배포본과 바이트 단위로 같은지 실제 snapshot으로 확인했다.
+- **남은 범위:** 람다를 인자로 받아 호출하는 쪽(콜백 호출자)의 정밀 귀속(인자 흐름 필요), 정방향 `reach`의 실제 서버 검증.
+
 ## 진행 중: http route-call 생산자 (`kartograph routes`)
 
 - **브랜치:** `feature/http-route-calls` (로컬만, push·PR 안 함). isthmus 소비자 계약은 isthmus `feature/http-domain-core`의 `docs/GRAPH-EXCHANGE.md` http 절·`docs/HTTP-WRAPPERS.md`다(아직 isthmus main에 없음).
