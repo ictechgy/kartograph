@@ -256,9 +256,11 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val suppressed = graph.nodes.values.filter { Finding(it.id, it.location).fingerprint in baseline }
                 .mapTo(mutableSetOf()) { it.id }
             val paths = if (includeSourcePaths.get()) SourcePathIndex.resolve(graph, project, selectedSources) else null
+            // 경로만 옮기는 재조립이다. 콜백 사실 세 목록을 빠뜨리면 캡처 표식은 참인데 사실이 비어 콜백 간선이 사라진다.
             val located = if (paths == null) graph else CodeGraph(graph.nodes.values.map { node ->
                 paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
-            }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures)
+            }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures,
+                graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes)
             val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, roots, processorOutputs.verify(scope.get()))
             val snapshot = QuerySnapshot(located, retention, RuntimeLimitationScanner.scan(indexed, selectedSources) +
                 dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) +
