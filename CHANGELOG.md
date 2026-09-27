@@ -47,6 +47,24 @@
   없을 때도 이유를 적는다. 전에는 usr가 조용히 0건이 됐다.
 - class 인덱스 캐시 형식을 5로 올렸다. 옛 캐시 항목은 한 번 다시 파싱된다.
 
+### Gradle plugin 다중 모듈 snapshot (Fixed·Added)
+
+- Fixed: build 디렉터리를 project 밖으로 옮긴 Android 모듈의 snapshot이 `Android XML is outside the project root`로
+  실패하던 문제를 고쳤다. 선언된 build 디렉터리 아래 merged manifest·생성 resource는 `build/...` 근거 위치로 기록하고,
+  resource producer witness의 외부 디렉터리는 위치 기반 불투명 슬롯으로 다시 연결한다. `kartographDead<Variant>`도 같다.
+- Fixed: 같은 바이트의 외부 JAR(AndroidX stub JAR 등)가 여러 위치에 있으면 `compiler input binding is missing or ambiguous`로
+  실패하던 문제를 고쳤다. compiler 선언 입력을 우선해 결정적으로 고르고, 내용이 같은 디렉터리만 task·입력·후보를 밝혀 거부한다.
+- Fixed: Java만 있는 Android unit test에서 생성되지 않은 Kotlin unit-test 출력 때문에 javac witness가
+  `fingerprint input is missing`으로 거부되던 문제를 고쳤다. 같은 variant compiler 출력은 부재까지 추적한다.
+- Added: `kartograph snapshot merge`가 모듈별 snapshot을 구성원 class root 재인덱싱으로 하나로 합친다. provenance는 경로만
+  옮겨 `memberScopes`와 함께 싣고 `--input-bindings-output`에 로컬 연결을 써서 합친 snapshot도 다시 검증할 수 있다.
+- Added: `routes --input-bindings`로 project 밖 입력이 있는 snapshot의 신선도를 확인한다.
+- Added: Android `snapshotIncludeUnitTests`(기본 `true`, `-Pkartograph.snapshotIncludeUnitTests`)로 unit-test component를
+  snapshot에서 뺄 수 있다. 빼면 `unit-test-components-excluded:` limitation을 남긴다.
+- Compatibility: 단일 capture 문서는 바이트가 같다. `memberScopes`는 병합본에만 쓰며, 이 필드를 모르는 옛 버전은
+  병합본을 `build-scope-mismatch`로 검증하지 않는다(fail-closed). resource witness의 외부 디렉터리 슬롯 이름이 바뀌어
+  `processResources`가 한 번 다시 실행될 수 있다.
+
 ### Compatibility
 
 - `impact`의 기본 출력(`kartograph-impact` v1)은 바뀌지 않는다. `graph.enclosures`는 간선이 아닌 선택 필드라 도달성·dead·
