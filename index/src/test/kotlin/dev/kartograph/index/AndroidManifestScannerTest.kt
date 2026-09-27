@@ -148,6 +148,27 @@ class AndroidManifestScannerTest {
     }
 
     @Test
+    fun `records a merged manifest under a relocated build directory with the conventional build prefix`(@TempDir root: Path) {
+        val projectRoot = Files.createDirectories(root.resolve("repo/app"))
+        val buildRoot = Files.createDirectories(root.resolve("outside/app/intermediates/merged_manifest"))
+        val manifest = buildRoot.resolve("AndroidManifest.xml")
+        manifest.writeText(
+            """<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><activity android:name=".Main" /></application></manifest>""",
+        )
+
+        val reference = AndroidManifestScanner(projectRoot, root.resolve("outside/app")).scan(manifest, "dev.fixture").single()
+
+        assertEquals("build/intermediates/merged_manifest/AndroidManifest.xml", assertNotNull(reference.location).path)
+        kotlin.test.assertFalse(reference.location.toString().contains(root.toString()))
+        // build 디렉터리 밖의 파일은 여전히 거부하고 경로를 드러내지 않는다.
+        val stray = root.resolve("stray.xml").also { it.writeText("<manifest />") }
+        val error = kotlin.test.assertFailsWith<AndroidResourceScanningException> {
+            AndroidManifestScanner(projectRoot, root.resolve("outside/app")).scan(stray, "dev.fixture")
+        }
+        kotlin.test.assertFalse(error.message.orEmpty().contains(root.toString()))
+    }
+
+    @Test
     fun `points to the class value inside a multiline component tag`(@TempDir projectRoot: Path) {
         val manifest = projectRoot.resolve("AndroidManifest.xml")
         manifest.writeText(

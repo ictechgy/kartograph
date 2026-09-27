@@ -80,7 +80,11 @@ internal object AndroidSnapshotTasks {
         unitTest?.artifacts?.forScope(ScopedArtifacts.Scope.ALL)?.use(task)
             ?.toGet(ScopedArtifact.CLASSES, KartographAndroidSnapshotTask::testClasspathJars, KartographAndroidSnapshotTask::testClasspathDirectories)
 
-        val optionalOutputs = project.files()
+        // 같은 variant compiler의 선언 출력은 NO-SOURCE로 생성되지 않을 수 있다(예: Java만 있는 unit test의 Kotlin 출력).
+        // javac classpath에 들어간 이 디렉터리는 부재까지 추적하는 watch로 기록한다. JVM 경로와 같이 provider로 감싸
+        // compiler 간 build dependency를 되먹이지 않는다.
+        val declaredClassOutputs = project.objects.fileCollection()
+        val optionalOutputs = project.files(project.providers.provider { declaredClassOutputs.files })
         // AGP application의 processResources 산출 R.jar를 resource producer witness로 덮는다(후보 A).
         if (variant is com.android.build.api.variant.ApplicationVariant) {
             val processTaskName = "process${variant.name.replaceFirstChar(Char::titlecase)}Resources"
@@ -128,6 +132,8 @@ internal object AndroidSnapshotTasks {
             input.identity.set(compiler.path)
             input.primarySources.from(compiler.source)
             input.classDirectories.from(compiler.destinationDirectory)
+            // 출력 property를 map하면 producer 완료 전 조회가 되어 configuration cache가 거부한다. 위치만 읽는다.
+            declaredClassOutputs.from(project.provider { compiler.destinationDirectory.get().asFile })
             input.witnessFiles.from(witness)
             compilerInputs.from(additionalInputs, compiler.classpath, compiler.javaCompiler.map { it.metadata.installationPath.file("lib/modules") })
         }
@@ -140,6 +146,7 @@ internal object AndroidSnapshotTasks {
                 })
                 kotlin.values.forEach { compilation ->
                     val compiler = compilation.compiler
+                    declaredClassOutputs.from(compiler.map { KotlinCompilerWitnesses.destination(it) })
                     val witness = KotlinCompilerWitnesses.automaticCompile(project, compiler, scope,
                         compilation.roots.filter { it.isDirectory }, buildInputs, runtime, optionalOutputs, jdk)
                     attach(project, task, compiler, witness, "kotlin", compiler.map {

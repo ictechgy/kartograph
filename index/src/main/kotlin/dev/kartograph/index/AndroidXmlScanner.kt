@@ -8,8 +8,16 @@ import java.nio.file.Path
 import kotlin.io.path.isDirectory
 import javax.xml.stream.XMLStreamReader
 
-/** Android resource XML의 custom view와 component class 참조를 읽는다. */
-public class AndroidXmlScanner(private val projectRoot: Path) {
+/**
+ * Android resource XML의 custom view와 component class 참조를 읽는다.
+ *
+ * @property projectRoot 근거 위치의 기준 디렉터리
+ * @property buildRoot project 밖으로 옮긴 선언된 build 디렉터리다. 그 아래 생성 resource는 `build/...`로 기록한다
+ */
+public class AndroidXmlScanner @JvmOverloads constructor(
+    private val projectRoot: Path,
+    private val buildRoot: Path? = null,
+) {
     /** resource root 아래 XML을 정렬 탐색해 JVM class ID와 파일·줄 근거를 반환한다. */
     public fun scan(resourceRoot: Path): List<RetentionEvidence> {
         if (!resourceRoot.isDirectory()) {
@@ -19,7 +27,7 @@ public class AndroidXmlScanner(private val projectRoot: Path) {
     }
 
     private fun scanFile(xmlFile: Path): List<RetentionEvidence> {
-        val sourcePath = projectRelativePath(projectRoot, xmlFile)
+        val sourcePath = projectRelativePath(projectRoot, xmlFile, buildRoot)
         val sourceLines = xmlSourceLines(xmlFile)
         return readXml(xmlFile) { reader ->
             val className = reader.referencedClassName() ?: return@readXml null
