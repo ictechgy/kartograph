@@ -77,10 +77,11 @@ internal object RoutesCommand {
         val freshness = snapshot?.let { SavedSnapshotOperations.freshness(it, project, null, emptyMap()) }
         val graph = snapshot?.takeUnless { freshness?.status == "stale" }?.graph
         val scanned = RouteCallScanner(project, roots, wrappers, options.flag("--include-tests"), service).scan(graph = graph)
+        val missing = RouteSymbolDiagnostics.missingUsrs(scanned.facts, snapshot?.graph, stale = snapshot != null && graph == null)
         val document = snapshot?.let {
             val evidence = "graph-file-freshness-${freshness!!.status}: " + freshness.reasons.joinToString(";")
-            scanned.copy(limitations = (scanned.limitations + it.limitations + evidence).distinct().sorted())
-        } ?: scanned
+            scanned.copy(limitations = (scanned.limitations + it.limitations + evidence + listOfNotNull(missing)).distinct().sorted())
+        } ?: scanned.copy(limitations = (scanned.limitations + listOfNotNull(missing)).distinct().sorted())
         output.print(AgentDocumentRenderer.bridges(document))
         ExitStatus.SUCCESS.code
     } catch (_: Exception) {
@@ -182,6 +183,8 @@ internal object RoutesCommand {
         scanned. Test source sets (src/test, src/androidTest, src/*Test, ...) are excluded unless
         --include-tests is given, which marks those facts testSource. --role server is not supported yet.
         Literal URLs lose userinfo, query and fragment, and high-entropy or webhook segments are masked.
-        --graph-file attaches JVM symbol identities only when the snapshot is fresh.
+        --graph-file attaches JVM symbol identities only when the snapshot is fresh. Facts left without an identity
+        are counted by missing-route-usrs, which names a snapshot/routes --project root mismatch when the source paths
+        show one; capture the snapshot and run routes with the same --project.
     """.trimIndent() + "\n"
 }
