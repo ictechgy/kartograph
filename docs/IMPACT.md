@@ -249,7 +249,8 @@ kartograph routes --role client --project . --graph-file aggregate-snapshot.json
 
 `routes`는 `--input-bindings`로 snapshot과 함께 만든 로컬 연결을 받는다. 없으면 project 밖 입력(의존성 JAR, 옮긴 build
 디렉터리)이 있는 snapshot은 `graph-file-freshness-unverified: missing-external-input`이다. plugin capture와 그 병합본은
-연결을 주면 `matched`까지 확인된다. `snapshot --classes`로 만든 수동 capture는 compiler witness가 없으므로 연결을 줘도
+연결을 주면 `matched`까지 확인된다. matched는 한계가 아니므로 문서에 싣지 않고, unverified·stale만
+`graph-file-freshness-<status>: <reasons>`로 싣는다(`bridges`·`schema`·`language-traversal`도 같다). `snapshot --classes`로 만든 수동 capture는 compiler witness가 없으므로 연결을 줘도
 `missing-build-witness`로 `unverified`에 머문다. 이는 증거 부족을 밝히는 결과이며, 검증이 필요하면 plugin 경로를 쓴다.
 
 library 두 번째 조합에서는 KGP가 Gradle 8.14.4 이상으로 업그레이드하도록 권고한다. 경고를 억제하지 않고 검증했다.
@@ -400,6 +401,9 @@ kartograph reach <usr>... --graph-file graph.json --project .
   테스트는 무작위 그래프에서 root별 전수 BFS 결과와 대조한다. roots·evidence는 depth 상한과 무관한 실제 도달
   관계이며, depth 상한은 목록에 싣는 정점만 자른다(잘리면 `truncated`, `truncationReasons: ["depth"]`).
   도달 정점이 `--max-reached`(기본·최대 100,000)를 넘으면 (depth, usr) 앞부분만 싣고 `reached-limit`로 알린다.
+- **신선도**: `routes`와 같이 snapshot provenance를 현재 입력과 대조한다. `--input-bindings`로 plugin·`snapshot merge`가
+  쓴 로컬 연결을 주면 project 밖 입력(의존성 JAR, 옮긴 build 디렉터리)도 확인한다. `matched`면 한계를 싣지 않고, 아니면
+  `graph-file-freshness-unverified:`·`graph-file-freshness-stale:`로 원인을 싣는다. stale이어도 문서는 낸다.
 
 ### 람다의 어휘적 소속과 간선 등급
 
@@ -530,6 +534,7 @@ L 본문)을 만든다. 라이브러리에 넘긴 경우 그 코드가 어느 �
 - `language-traversal`의 `--revision`은 이제 임의의 revision 문자열을 받는다(전에는 snapshot 라벨과 같은 전체 commit
   hash만 받고 라벨이 없는 snapshot이면 실패했다). `graphRevision`은 snapshot 파일 바이트의 hex 해시에서 `sha256:` 그래프
   내용 해시로 바뀌었다. 기본 `impact`의 `--revision`·`--base-revision`은 그대로 전체 commit hash다.
+- `language-traversal`은 `saved-graph:` 한계 대신 실제 신선도 결과를 싣는다.
 - `language-traversal` 전용 옵션(`--dispatch`·`--project`·`--roots-from`·`--generated-at`·`--max-reached`)은 기본
   형식에서 받지 않고, 기본 형식 전용 옵션(`--base-graph`·`--file`·`--limit`·필터 등)은 새 형식에서 사용 오류(64)다.
 

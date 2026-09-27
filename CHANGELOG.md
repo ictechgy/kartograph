@@ -88,6 +88,13 @@
   조용히 사라졌다. 이 snapshot을 `snapshot merge`로 합친 결과도 한 번에 캡처한 CLI snapshot과 같은 사실을 싣는다.
 - 호환성: 새 필드는 간선이 아닌 선택 필드라 도달성·dead·query·기본 `impact` 출력은 그대로다.
 
+### 테스트 소스와 신선도 (language-traversal·routes)
+
+- Added: `impact --format language-traversal`과 `reach`가 `routes`처럼 snapshot 입력의 신선도를 확인하고
+  `--input-bindings`로 project 밖 입력을 다시 연결한다. 전에는 항상 `saved-graph:` 한계에 머물렀다.
+- Fixed: `routes`·`bridges`·`schema`가 신선도가 확인된 snapshot에도 사유가 빈 `graph-file-freshness-matched: `를 한계로
+  냈다. matched는 한계가 아니므로 싣지 않고 unverified·stale만 원인과 함께 싣는다.
+
 ## [0.17.0] - 2026-09-24
 
 ### Added

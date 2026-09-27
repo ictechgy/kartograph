@@ -85,8 +85,8 @@ internal object RoutesCommand {
         val scanned = RouteCallScanner(project, roots, wrappers, options.flag("--include-tests"), service).scan(graph = graph)
         val missing = RouteSymbolDiagnostics.missingUsrs(scanned.facts, snapshot?.graph, stale = snapshot != null && graph == null)
         val document = snapshot?.let {
-            val evidence = "graph-file-freshness-${freshness!!.status}: " + freshness.reasons.joinToString(";")
-            scanned.copy(limitations = (scanned.limitations + it.limitations + evidence + listOfNotNull(missing)).distinct().sorted())
+            val evidence = SavedSnapshotOperations.freshnessLimitation(freshness!!)
+            scanned.copy(limitations = (scanned.limitations + it.limitations + listOfNotNull(evidence, missing)).distinct().sorted())
         } ?: scanned.copy(limitations = (scanned.limitations + listOfNotNull(missing)).distinct().sorted())
         output.print(AgentDocumentRenderer.bridges(document))
         ExitStatus.SUCCESS.code

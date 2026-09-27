@@ -50,6 +50,13 @@ internal object SavedSnapshotOperations {
             buildMap { put("current", current); base?.let { put("base", it) } }, summaryLimit), if (report.unresolved.isEmpty()) 0 else 64)
     }
 
+    /**
+     * 신선도 결과를 문서 한계 문구로 바꾼다. matched는 확인된 사실이지 한계가 아니므로 null이다. unverified·stale은
+     * 원인을 `;`로 이어 `graph-file-freshness-<status>: <reasons>`로 낸다.
+     */
+    fun freshnessLimitation(result: ProvenanceVerifier.Result): String? =
+        if (result.status == "matched") null else "graph-file-freshness-${result.status}: " + result.reasons.joinToString(";")
+
     fun freshness(snapshot: QuerySnapshot, project: Path?, expectedScope: String?, external: Map<String, Path>): ProvenanceVerifier.Result {
         val result = if (project == null) ProvenanceVerifier.Result("unverified", listOf("project-not-configured: restart with --project to verify live inputs"))
             else ProvenanceVerifier.verify(snapshot.provenance, project, snapshot.scope, external)
