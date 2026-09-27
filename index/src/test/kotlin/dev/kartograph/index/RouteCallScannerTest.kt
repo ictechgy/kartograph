@@ -616,4 +616,37 @@ class RouteCallScannerTest {
         assertEquals(once.facts, twice.facts)
         assertEquals(once.limitations, twice.limitations)
     }
+
+    // ---- 리뷰 지적 회귀 ----
+
+    @Test
+    fun `scheme relative urls never leak userinfo into channels or prefixes`() {
+        write(
+            "src/main/kotlin/dev/example/net/Relative.kt",
+            """
+            package dev.example.net
+            import java.net.URL
+            class Relative(private val protocol: String, private val host: String) {
+                fun data(): String = URL("${'$'}protocol//user:pass@example.com/data?k=v").readText()
+                fun file(name: String): String = URL("${'$'}protocol//user:pass@example.com/files/${'$'}{name}.json").readText()
+                fun hostless(): String = URL("${'$'}protocol//user:pass@${'$'}host/v1/items").readText()
+            }
+            """,
+        )
+        val document = scan()
+
+        val data = document.at(4)
+        assertEquals("/data", data.channel)
+        assertEquals("root", data.route?.pathAnchor)
+        assertEquals("example.com", data.route?.authority)
+        assertEquals(true, data.route?.queryTailStripped)
+        val file = document.at(5)
+        assertTrue(file.dynamic)
+        assertEquals("/files/", file.channelPrefix)
+        val hostless = document.at(6)
+        assertEquals("/v1/items", hostless.channel)
+        assertEquals("base", hostless.route?.pathAnchor)
+        assertNull(hostless.route?.authority)
+        assertTrue(document.facts.none { fact -> listOfNotNull(fact.channel, fact.channelPrefix).any { "pass" in it || "@" in it } })
+    }
 }

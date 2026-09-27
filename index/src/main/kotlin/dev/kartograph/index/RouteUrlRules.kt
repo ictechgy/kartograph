@@ -115,6 +115,11 @@ public object RouteUrlRules {
             return locate(mergeLiterals(listOf(UrlPart.Literal(mode.base)) + parts), JoinMode.Concat(null))
         }
         if (first is UrlPart.Literal && SCHEME.containsMatchIn(first.text)) return locateAbsolute(parts)
+        // `//host/path`는 network-path 참조다 — `//` 뒤는 경로 세그먼트가 아니라 authority(userinfo 포함)다.
+        if (first is UrlPart.Literal && first.text.startsWith("//")) return locateAbsolute(parts)
+        // `"${'$'}scheme//user@host/x"`처럼 앞 보간이 scheme이고 뒤가 `//`면 같은 authority 규칙을 쓴다.
+        val second = parts.getOrNull(1)
+        if (first !is UrlPart.Literal && second is UrlPart.Literal && second.text.startsWith("//")) return locateAbsolute(parts.drop(1))
         if (first !is UrlPart.Literal) return locateAfterBase(parts.drop(1), mode)
         val rooted = first.text.startsWith('/')
         val anchor = when (mode) {
@@ -143,12 +148,12 @@ public object RouteUrlRules {
     }
 
     /**
-     * 전체 URL 리터럴에서 scheme·userinfo를 떼고 host를 authority로 옮긴다(`compose.strip`).
-     * host가 보간으로 끊기면 host가 동적이라 base 앵커다.
+     * 전체 URL 리터럴(`scheme://…`)이나 network-path 참조(`//…`)에서 scheme·userinfo를 떼고 host를
+     * authority로 옮긴다(`compose.strip`). host가 보간으로 끊기면 host가 동적이라 base 앵커다.
      */
     private fun locateAbsolute(parts: List<UrlPart>): Located {
         val literal = (parts.first() as UrlPart.Literal).text
-        val afterScheme = literal.substring(literal.indexOf("://") + 3)
+        val afterScheme = if (literal.startsWith("//")) literal.substring(2) else literal.substring(literal.indexOf("://") + 3)
         val authorityEnd = afterScheme.indexOfFirst { it == '/' || it == '?' || it == '#' }
         if (authorityEnd < 0 && parts.size > 1) return locateAfterDynamicHost(parts.drop(1))
         val rawAuthority = if (authorityEnd < 0) afterScheme else afterScheme.substring(0, authorityEnd)

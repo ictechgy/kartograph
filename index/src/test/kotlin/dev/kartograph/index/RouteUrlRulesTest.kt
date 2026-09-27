@@ -126,4 +126,20 @@ class RouteUrlRulesTest {
         assertEquals("GET", RouteUrlRules.bindMethod(spec, "GET", enum, emptyList()))
         assertEquals("DELETE", RouteUrlRules.bindMethod(null, "DELETE", enum, emptyList()))
     }
+
+    @Test
+    fun `network path references split authority and drop userinfo`() {
+        val literal = RouteUrlRules.compose(listOf(literal("//user:pw@CDN.example.com/x?y=1")), JoinMode.PathOnly)
+        assertEquals("/x", literal.template)
+        assertEquals("cdn.example.com", literal.authority)
+        assertEquals("root", literal.pathAnchor)
+
+        val scheme = RouteUrlRules.compose(listOf(value("scheme"), literal("//user:pw@example.com")), JoinMode.Concat(null))
+        assertEquals("/", scheme.template)
+        assertEquals("example.com", scheme.authority)
+
+        val prefix = RouteUrlRules.compose(listOf(value("scheme"), literal("//user:pw@example.com/a"), value("b")), JoinMode.Declared("root"))
+        assertTrue(prefix.dynamic)
+        assertEquals("/a", prefix.channelPrefix)
+    }
 }
