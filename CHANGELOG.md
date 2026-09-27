@@ -70,6 +70,21 @@
 - `impact`의 기본 출력(`kartograph-impact` v1)은 바뀌지 않는다. `graph.enclosures`는 간선이 아닌 선택 필드라 도달성·dead·
   query·기존 impact 결과에 영향이 없고, 옛 reader는 이 키를 읽지 않는다.
 
+### Callback flow (language-traversal)
+
+- `snapshot`이 bytecode 값 흐름으로 관측한 콜백 사실 `graph.callbackArguments`(한 메서드에서 만든 람다·지역 class가
+  호출 인자로 그대로 넘어간 사실)와 `graph.parameterUses`(함수형 파라미터의 실행·전달·캡처·필드·반환 쓰임)를 싣는다.
+  Compose `ComposableLambdaKt` 래퍼는 감싼 람다와 같은 값으로 본다.
+- `impact --format language-traversal`이 받은 람다를 실행하거나 수정 없이 넘기는 함수(최대 8단계)를 람다 본문에
+  `callback` 관계로 잇는다. 값이 빠져나가지 않고 실행 지점이 모두 프로젝트 안이면 `bound`, 라이브러리 코드에 넘기거나
+  필드·반환 등으로 빠져나가면 `candidate`다. 이 간선으로 닿은 함수는 그 호출 문맥에서만 목록에 싣고 다른 호출자로
+  퍼뜨리지 않아, 공통 UI 함수를 통해 무관한 화면이 들어오지 않는다. 실행 지점 없이 빠져나간 흐름은
+  `callback-flow-unresolved:`에 이유별로, 콜백 사실이 없는 옛 snapshot은 `callback-facts-unavailable:`로 알린다.
+  `reach`(정방향)는 콜백 간선을 따르지 않는다.
+- class 인덱스 캐시 형식을 6으로 올렸다. `graphRevision`이 콜백 간선과 콜백 사실 캡처 여부를 담아 이전 버전과 값이 다르다.
+- 호환성: 새 필드는 간선이 아닌 선택 필드라 도달성·dead·query·기본 `impact` 출력은 그대로다. Gradle plugin의
+  `includeSourcePaths` snapshot은 아직 콜백 사실을 빈 목록으로 싣는다.
+
 ## [0.17.0] - 2026-09-24
 
 ### Added

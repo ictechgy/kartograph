@@ -421,12 +421,62 @@ Kotlin 람다 class·익명 객체·suspend 람다·SAM 변환 class는 `Functio
 | `bound` | override(dispatch) 중 수신 정적 타입이 프로젝트 타입이고, 그 타입과 모든 프로젝트 하위 타입의 구체 class가 메서드를 같은 프로젝트 구현 하나로 해석하는 것. `runtimeModel` 간선 | 닫힌 세계 가정에서 대상이 하나다 |
 | `candidate` | 그 밖의 override: 구현이 둘 이상인 인터페이스, `java/lang/Object#toString`처럼 외부 소유 가상 호출의 계층 후보 | 가능성만 있다 |
 | lambda(따로 제외) | 대상이 지역·익명 class의 멤버이거나 호출 지점이 Kotlin 함수 타입·`java/util/function`·`Runnable`·`Callable` 호출뿐인 dispatch | candidate와 같은 등급이지만 `contains`가 같은 본문을 정확히 잇는다 |
+| `bound`/`candidate`(`callback`) | 받은 람다를 실행하거나 그대로 넘기는 함수 → 람다 본문. 아래 [콜백 흐름](#콜백-흐름-callback) | 호출 문맥 안에서만 참이라 닿은 함수를 더 퍼뜨리지 않는다 |
 
 `bound`의 닫힌 세계 가정은 분석한 class가 프로젝트 타입의 구현을 모두 담는다는 것이다. 수신 타입이 외부
 타입이면 라이브러리 객체도 올 수 있으므로 `bound`가 될 수 없다. 구체 하위 타입 하나라도 프로젝트 class 사슬 안에서
 메서드를 찾지 못하면(외부 상위 class 상속, 인터페이스 default 메서드) 보수적으로 `candidate`다. 런타임 proxy·mock·
 snapshot 밖 class는 모델링하지 않으며 `bound-dispatch-closed-world:` 한계로 알린다. 이 규칙은 dispatch 모델 간선과
 상위 선언 → 구현 override 간선에 똑같이 적용한다.
+
+### 콜백 흐름 (`callback`)
+
+어휘적 소속만으로는 람다를 **실행하는** 쪽이 빠진다. 화면 F가 route 호출을 담은 람다 L을 공통 UI 함수 G(`onClick`)에
+넘기면 L 본문의 변경은 F에는 닿지만 G에는 닿지 않는다. lambda fan-out(`--dispatch all`)을 따르면 G에 닿는 대신 G를
+부르는 모든 화면으로 퍼진다. 그래서 `snapshot`이 bytecode 값 흐름 사실 두 가지를 더 싣고, 역방향 순회가 이를 호출
+문맥 안에서만 잇는다.
+
+- `graph.callbackArguments`: F 안에서 만든 람다(invokedynamic 구현 메서드, 또는 `EnclosingMethod`가 있는 지역·익명
+  class)가 호출 지점 G(...)의 인자 i로 그대로 넘어간 사실이다. 지역 변수 복사·`checkcast`·분기 합류를 따라가며, 분기에서
+  다른 값과 합쳐져도 L일 수 있으면 기록한다. Compose 컴파일러의 `ComposableLambdaKt.*(… block …)` 래퍼는 `block`과
+  같은 값으로 본다(래퍼의 `invoke`가 같은 인자로 `block`을 부른다).
+- `graph.parameterUses`: 함수형 타입(또는 SAM 호출 대상) 파라미터의 쓰임이다. 수신 객체 호출, 다른 호출의 인자,
+  invokedynamic 캡처, 필드·반환·배열 저장, 모델 없는 bootstrap을 남긴다. `declared` 행은 그 파라미터의 쓰임을
+  빠짐없이 기록했다는 표식이며, 표식이 없는 파라미터로 넘어간 값은 "쓰이지 않음"이 아니라 "모름"으로 다룬다.
+
+G의 파라미터 i에서 출발해 값을 수정 없이 넘겨받은 프로젝트 메서드(정적·특수 호출, 닫힌 세계에서 구현이 하나인 가상
+호출, invokedynamic 캡처의 구현 메서드)를 최대 8단계까지 따라간다. 그 경로에서 L의 함수형 메서드를 부르는 곳과
+라이브러리 코드에 값을 넘기는 곳이 실행 지점이다. 실행 지점으로 이어지는 경로 위의 메서드마다 `callback` 간선(메서드 →
+L 본문)을 만든다. 라이브러리에 넘긴 경우 그 코드가 어느 함수형 메서드를 부를지 모르므로 지역 class의 모든 인스턴스
+메서드로 잇는다.
+
+| 등급 | 조건 |
+|---|---|
+| `bound` | 값이 한 번도 빠져나가지 않았고 실행 지점이 모두 프로젝트 안의 호출이다. 닫힌 세계에서 L을 실행하는 곳은 이 경로뿐이다 |
+| `candidate` | 실행 지점은 찾았지만 값이 라이브러리 코드로 넘어가거나(예: Compose `Button(onClick = …)`), 필드·반환·배열로 빠져나가거나, 가상 호출 구현을 하나로 정하지 못하거나, 쓰임 기록이 없는 파라미터로 넘어가거나, 깊이를 넘거나, `Object`가 아닌 다른 메서드를 부르거나, 새 실행 지점이 있는 람다가 캡처했다 |
+| (간선 없음) | 실행 지점 없이 빠져나갔다. 흐름 수를 이유별로 `callback-flow-unresolved:`에 싣는다 |
+
+- **호출 문맥**: `callback` 간선은 F가 G를 부른 그 호출에서만 참이다. 역방향 순회는 이 간선으로 닿은 G를 목록에 싣지만
+  G의 다른 호출자(다른 람다를 넘기는 화면)로 퍼뜨리지 않는다. 계산은 콜백 간선의 호출자마다 그림자 정점을 두고, 그림자에서는
+  콜백 간선만 나가게 한 뒤 출력에서 본 정점과 합친다. 그래서 G가 받은 람다를 다시 다른 람다에 넘기는 경우처럼 콜백 간선끼리는
+  이어진다. F와 그 호출자는 L의 어휘적 소속으로 이미 닿는다. 한 정점은 한 줄이며 일반 경로와 콜백 경로 중 가까운 쪽의
+  depth·via를 쓰고, root·evidence는 두 경로를 합친다. 콜백 경로의 `relationships`는 `callback`이다. 무작위 그래프에서
+  (정점, 그림자 여부) 상태 공간의 root별 전수 BFS와 대조해 검증한다.
+- **정방향**(`reach`)은 콜백 간선을 따르지 않는다. F에서 L 본문으로 가는 길은 어휘적 소속이 잇고, G에서 출발하면 어느
+  람다를 받았는지 문맥이 없다.
+- **inline 함수**는 람다 본문이 호출한 함수 안으로 복사되므로 전달 사실이 없고 본문의 호출은 F의 `direct` 간선이다. inline
+  함수 자체는 호출되지 않아 목록에 없다. `crossinline` 람다가 만드는 class는 `EnclosingMethod`로 F에 속한다.
+- **Compose**: `@Composable` 람다는 `rememberComposableLambda`로 감싼 값을 추적한다. 재구성 람다(`updateScope`)처럼
+  파라미터를 캡처한 람다가 같은 함수로 값을 되돌려 넘기기만 하면 실행 지점이 늘지 않으므로 등급을 낮추지 않는다.
+  `Composer.changed`·`changedInstance`는 다음 구성에서 비교할 값으로만 쓰므로 쓰임에서 뺀다. 객체를 돌려주지 않는
+  검사 호출(`Intrinsics.checkNotNull*`·`areEqual`, `Objects.equals`·`hashCode`·`isNull`·`nonNull`)도 같다. 대부분의
+  UI 함수는 콜백을 Material 컴포넌트에 넘기므로 `candidate`다. 캡처 없는 composable 람다를 `ComposableSingletons`의
+  필드에 올려 둔 경우는 값이 필드를 거치므로 추적하지 않는다.
+- **추적하지 않는 것**: 필드에 저장한 뒤 다른 곳에서 부르는 콜백의 실행 측(생성자 인자로 넘긴 람다, class 기반 클로저의
+  캡처 포함), 중단 지점 너머로 continuation 필드에 넣는 suspend 함수의 콜백(필드로 빠져나간 것으로 본다), 객체를
+  반환하는 라이브러리 호출을 거친 별칭, 구현이 둘 이상인 인터페이스 메서드로 넘긴 람다. 이런 흐름은 `candidate`이거나
+  `callback-flow-unresolved:`에 남는다. `--dispatch all`은 여전히 모든 lambda fan-out을 따른다.
+- 콜백 사실이 없는 옛 snapshot은 `callback-facts-unavailable:`로 알리고 콜백 간선 없이 순회한다(이 기능 전과 같다).
 
 ### `--dispatch`와 기본값
 
@@ -440,8 +490,10 @@ snapshot 밖 class는 모델링하지 않으며 `bound-dispatch-closed-world:` �
 기본값은 `candidates`다. trace가 쓸모 있으려면 인터페이스 뒤의 호출자(저장소·use case 계층)를 놓치지 않아야 하고,
 정직하려면 그런 hop을 `candidate`로 표시해 isthmus가 `candidate-dispatch` gap을 남기게 해야 한다. lambda fan-out은
 같은 본문을 `contains`가 정확히 잇고, 따라가면 무관한 화면까지 모든 root가 거의 같은 집합에 닿아 route별 구분이
-사라지므로 기본에서 뺀다. 빠진 간선 수는 `lambda-dispatch-excluded:`로 알린다. 제외로 잃는 것은 필드에 저장했다가 다른
-곳에서 호출하는 콜백처럼, 람다를 호출하는 쪽을 영향으로 보는 경로다. 필요하면 `--dispatch all`로 따른다.
+사라지므로 기본에서 뺀다. 빠진 간선 수는 `lambda-dispatch-excluded:`로 알린다. 람다를 받아 실행하는 쪽은
+[콜백 흐름](#콜백-흐름-callback)이 호출 문맥 안에서 잇는다(`bound` 콜백은 `--dispatch bound`부터, `candidate` 콜백은
+기본값부터 따른다). 제외로 여전히 잃는 것은 필드에 저장했다가 다른 곳에서 호출하는 콜백처럼 값 흐름으로 증명하지 못한
+실행 측이다. 필요하면 `--dispatch all`로 따른다.
 어휘적 소속 사실이 없는 옛 snapshot에서는 lambda 간선을 빼면 본문이 끊기므로 `candidate`로 따르고
 `lexical-enclosures-unavailable:`로 알린다. 새 snapshot을 캡처하면 정밀한 결과가 나온다.
 
@@ -462,7 +514,12 @@ snapshot 밖 class는 모델링하지 않으며 `bound-dispatch-closed-world:` �
   별도 사실이므로 도달성·dead·query·기존 impact 결과를 바꾸지 않는다.
 - snapshot은 선택 필드 `graph.enclosures`를 v1·compact v2 모두 같은 평문 모양으로 싣는다. 옛 reader는 모르는 graph
   키를 읽지 않는다. 새 reader는 이 키가 없는 옛 snapshot을 "소속 사실 미캡처"로 구분한다.
-- class 인덱스 캐시 형식이 5로 올라 옛 캐시 항목은 한 번 다시 파싱된다.
+- class 인덱스 캐시 형식이 5로 올라 옛 캐시 항목은 한 번 다시 파싱된다. 콜백 사실을 더하며 6으로 다시 올렸다.
+- snapshot은 선택 필드 `graph.callbackArguments`·`graph.parameterUses`도 v1·compact v2에 같은 평문 모양으로 싣는다.
+  옛 reader는 읽지 않고, 새 reader는 두 키가 없는 snapshot을 "콜백 사실 미캡처"로 구분한다. 역시 간선이 아니므로
+  도달성·dead·query·기본 impact 결과를 바꾸지 않는다.
+- `graphRevision`은 콜백 간선(순회 간선에 포함)과 콜백 사실 캡처 여부도 담는다. 같은 snapshot이라도 이 버전과 이전
+  버전의 값은 다르다.
 - `language-traversal`의 `--revision`은 이제 임의의 revision 문자열을 받는다(전에는 snapshot 라벨과 같은 전체 commit
   hash만 받고 라벨이 없는 snapshot이면 실패했다). `graphRevision`은 snapshot 파일 바이트의 hex 해시에서 `sha256:` 그래프
   내용 해시로 바뀌었다. 기본 `impact`의 `--revision`·`--base-revision`은 그대로 전체 commit hash다.
