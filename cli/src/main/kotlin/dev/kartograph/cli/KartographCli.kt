@@ -82,7 +82,7 @@ internal object KartographCli {
             return toolFailure(error, "project root does not exist; pass the directory that holds the source files")
         }
         return try {
-            output.print(renderGraph(ClassFileIndexer().indexWithObservations(options.classRoots,
+            output.print(renderGraph(ClassFileIndexer(callbackFacts = false).indexWithObservations(options.classRoots,
                 options.classpath.takeIf { it.isNotEmpty() }, options.serviceResources, options.generatedClassRoots).graph, options))
             ExitStatus.SUCCESS.code
         } catch (indexingError: ClassIndexingException) {

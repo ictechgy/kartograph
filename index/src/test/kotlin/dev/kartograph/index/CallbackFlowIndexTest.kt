@@ -117,5 +117,11 @@ class CallbackFlowIndexTest {
         assertEquals(cold.callbackArguments, warm.callbackArguments)
         assertEquals(cold.parameterUses, warm.parameterUses)
         assertEquals(graph.callbackArguments, cold.callbackArguments)
+        // 바로 분석하는 명령은 사실을 모으지 않는다. 캐시를 쓰면 항목 재사용을 위해 항상 모은다.
+        val skipped = ClassFileIndexer(callbackFacts = false).index(listOf(classesRoot))
+        assertTrue(skipped.callbackArguments.isEmpty() && skipped.parameterUses.isEmpty() && skipped.lambdaEscapes.isEmpty())
+        assertEquals(skipped.edges, graph.edges)
+        val cachedSkip = ClassFileIndexer(ClassIndexCache(directory.resolve("cache"), "callbacks"), callbackFacts = false).index(listOf(classesRoot))
+        assertEquals(cold.callbackArguments, cachedSkip.callbackArguments)
     }
 }

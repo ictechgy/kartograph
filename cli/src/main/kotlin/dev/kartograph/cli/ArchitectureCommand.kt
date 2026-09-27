@@ -138,7 +138,7 @@ internal object ArchitectureCommand {
             error.println("error: layer configuration does not exist")
             return ExitStatus.FAILURE.code
         }
-        return try { action(ClassFileIndexer().index(options.roots), options) } catch (problem: ClassIndexingException) {
+        return try { action(ClassFileIndexer(callbackFacts = false).index(options.roots), options) } catch (problem: ClassIndexingException) {
             error.println("error: ${problem.message ?: "unable to index compiled declarations"}")
             ExitStatus.FAILURE.code
         }

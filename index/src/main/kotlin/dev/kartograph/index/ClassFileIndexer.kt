@@ -38,8 +38,17 @@ import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 import org.objectweb.asm.tree.MethodNode
 
-/** class root의 JVM 산출물을 읽어 구조와 instruction 관계로 된 코드 그래프를 만든다. */
-public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
+/**
+ * class root의 JVM 산출물을 읽어 구조와 instruction 관계로 된 코드 그래프를 만든다.
+ *
+ * @param cache 선택적 class 파싱 캐시다
+ * @param callbackFacts 콜백 값 흐름 사실(`callbackArguments`·`parameterUses`·`lambdaEscapes`)을 모을지다. 이 사실은
+ *   snapshot의 역방향 순회만 쓰므로 dead·graph·architecture처럼 바로 분석하는 명령은 꺼서 본문 값 흐름 분석 비용을 아낀다.
+ *   캐시를 쓰면 항상 모은다 — 캐시 항목을 다른 명령이 재사용해도 사실을 잃지 않게 한다
+ */
+public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbackFacts: Boolean = true) {
+    private val collectCallbacks: Boolean = callbackFacts || cache != null
+
     /**
      * 각 root를 재귀 탐색하고 JVM class name이 같은 중복 산출물은 첫 번째 것만 사용한다.
      * class 하나라도 깨졌으면 불완전한 그래프를 반환하지 않는다.
@@ -276,14 +285,19 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
                 (node.id.value.endsWith(")Ljava/lang/String;") || node.id.value.endsWith(")Ljava/lang/Class;"))
         }.mapTo(mutableSetOf(), GraphNode::id)
         val writes = facts.fieldWriteMethods
-        // 콜백 값 흐름은 모든 본문을 보므로 본문 전체를 한 번 읽고, runtime 분석용 본문은 그중 필요한 것만 보관한다.
+        if (!collectCallbacks && methods.isEmpty() && returns.isEmpty() && writes.isEmpty()) return facts
+        // 콜백 값 흐름은 모든 본문을 보므로 그때는 본문 전체를 한 번 읽고, runtime 분석용 본문은 그중 필요한 것만 보관한다.
         val bodies = linkedMapOf<NodeId, MethodNode>()
         reader.accept(object : ClassVisitor(Opcodes.ASM9) {
-            override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<out String>?): MethodVisitor =
-                MethodNode(Opcodes.ASM9, access, name, descriptor, signature, exceptions).also { bodies[JvmNodeId.methodId(facts.internalName, name, descriptor)] = it }
+            override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<out String>?): MethodVisitor? {
+                val id = JvmNodeId.methodId(facts.internalName, name, descriptor)
+                if (!collectCallbacks && id !in methods && id !in returns && id !in writes) return null
+                return MethodNode(Opcodes.ASM9, access, name, descriptor, signature, exceptions).also { bodies[id] = it }
+            }
         }, ClassReader.SKIP_FRAMES)
-        val callbacks = CallbackFactScanner.scan(facts.internalName, bodies.values.toList())
-        val withCallbacks = facts.copy(callbackArguments = callbacks.arguments, parameterUses = callbacks.uses, lambdaEscapes = callbacks.escapes)
+        val withCallbacks = if (!collectCallbacks) facts else CallbackFactScanner.scan(facts.internalName, bodies.values.toList()).let { callbacks ->
+            facts.copy(callbackArguments = callbacks.arguments, parameterUses = callbacks.uses, lambdaEscapes = callbacks.escapes)
+        }
         if (methods.isEmpty() && returns.isEmpty() && writes.isEmpty()) return withCallbacks
         return withCallbacks.copy(runtimeMethods = bodies.filterKeys(methods::contains).values.toList(),
             returnMethods = bodies.filterKeys(returns::contains).values.toList(),

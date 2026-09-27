@@ -55,22 +55,35 @@ internal object CallbackFactScanner {
         return Facts(arguments, uses, escapes)
     }
 
-    /** 분석할 가치가 있는 본문인지 싸게 거른다. 값 흐름 분석은 이 조건을 만족하는 메서드에만 한다. */
-    fun isCandidate(method: MethodNode): Boolean {
+    /**
+     * 값 흐름 분석이 사실을 낼 수 있는 본문인지 싸게 거른다. 걸러진 메서드는 사실을 하나도 남기지 않으므로(쓰임 표식도
+     * 없음) analysis는 그 메서드를 "모름"으로 다룬다 — 일부 사실만 남는 일은 없다.
+     *
+     * - 파라미터 쪽: 함수형 타입 파라미터가 있거나, 본문이 함수형 타입 메서드를 부르거나, 파라미터 타입 자신의 인터페이스
+     *   메서드를 부른다(SAM 호출일 수 있다). [isCallbackParameter]가 기록할 수 있는 파라미터가 있는 경우와 같다.
+     * - 람다 쪽: invokedynamic 람다, 캡처 없는 람다 싱글턴 읽기, 같은 최상위 class 둥지의 class 생성이 있다. 지역·익명
+     *   class는 자신을 감싼 선언 안에서만 생성되므로 그 둥지 밖의 `new`는 람다가 아니다. 이름은 분석 대상을 줄이는 데만
+     *   쓰고, 지역 class 여부는 조립 단계가 `EnclosingMethod`로 정한다.
+     */
+    fun isCandidate(owner: String, method: MethodNode): Boolean {
         if (method.instructions.size() == 0) return false
-        if (Type.getArgumentTypes(method.desc).any { it.sort == Type.OBJECT }) return true
-        return method.instructions.any { insn -> insn.producesLambda() }
-    }
-
-    private fun AbstractInsnNode.producesLambda(): Boolean = when (this) {
-        is TypeInsnNode -> opcode == Opcodes.NEW
-        is FieldInsnNode -> isSingletonInstance()
-        is InvokeDynamicInsnNode -> isLambdaMetafactory()
-        else -> false
+        val parameters = Type.getArgumentTypes(method.desc).filter { it.sort == Type.OBJECT }.map { it.internalName }.toSet()
+        if (parameters.any(::isFunctionalOwner)) return true
+        val nest = owner.substringBefore('$') + "$"
+        return method.instructions.any { insn ->
+            when (insn) {
+                is MethodInsnNode -> parameters.isNotEmpty() && (isFunctionalOwner(insn.owner) ||
+                    (insn.opcode == Opcodes.INVOKEINTERFACE && insn.owner in parameters))
+                is TypeInsnNode -> insn.opcode == Opcodes.NEW && insn.desc.startsWith(nest)
+                is FieldInsnNode -> insn.isSingletonInstance()
+                is InvokeDynamicInsnNode -> insn.isLambdaMetafactory()
+                else -> false
+            }
+        }
     }
 
     private fun scanMethod(owner: String, method: MethodNode): Facts? {
-        if (!isCandidate(method)) return null
+        if (!isCandidate(owner, method)) return null
         val methodId = JvmNodeId.methodId(owner, method.name, method.desc)
         val interpreter = OriginInterpreter(method)
         val frames = try {
