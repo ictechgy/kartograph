@@ -1,6 +1,9 @@
 package dev.kartograph.analysis
 
 import dev.kartograph.core.CallResolution
+import dev.kartograph.core.CallbackArgument
+import dev.kartograph.core.ParameterUse
+import dev.kartograph.core.ParameterUseKind
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
@@ -83,6 +86,14 @@ class LanguageTraversalTest {
         val graph = graphOf(listOf("A", "B"), listOf("B" to "A"))
         val result = LanguageTraversal.traverse(graph, listOf(id("A")), TraversalDirection.DEPENDENTS, callbackFactsCaptured = false)
         assertTrue(result.limitations.any { it.startsWith("callback-facts-unavailable:") })
+        // 리뷰 지적(H4): 일부 키만 남은 snapshot의 사실로 콜백 간선을 만들지 않는다.
+        val body = NodeId(id("B"))
+        val partial = CodeGraph(graph.nodes.values + method("G"), graph.edges,
+            callbackArguments = listOf(CallbackArgument(NodeId(id("B")), NodeId(id("G")), InvocationKind.STATIC, 0, body, "run()V")),
+            parameterUses = listOf(ParameterUse(NodeId(id("G")), 0, ParameterUseKind.DECLARED),
+                ParameterUse(NodeId(id("G")), 0, ParameterUseKind.RECEIVER, NodeId("method:java/lang/Runnable#run()V"), InvocationKind.INTERFACE)))
+        assertTrue(TraversalEdges.build(partial).any { it.terminal })
+        assertTrue(TraversalEdges.build(partial, callbackFactsCaptured = false).none { it.terminal })
         val forward = LanguageTraversal.traverse(graph, listOf(id("A")), TraversalDirection.DEPENDENCIES, callbackFactsCaptured = false)
         assertTrue(forward.limitations.none { it.startsWith("callback-") })
     }

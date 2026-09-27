@@ -74,7 +74,7 @@ public object LanguageTraversalCodec {
      * @return `sha256:` 뒤에 소문자 hex 64자가 붙은 문자열이다
      */
     public fun graphRevision(graph: CodeGraph, enclosuresCaptured: Boolean, callbackFactsCaptured: Boolean = true): String {
-        val traversal = TraversalEdges.build(graph, enclosuresCaptured)
+        val traversal = TraversalEdges.build(graph, enclosuresCaptured, callbackFactsCaptured)
             .map { listOf(it.source.value, it.target.value, it.relationship, it.tier.name) + if (it.terminal) listOf("terminal") else emptyList() }
             .distinct().sortedWith(::compareRows)
         val unresolved = graph.externalCalls.filter { it.isUnresolvedTarget() }.groupingBy { it.caller.value }.eachCount()

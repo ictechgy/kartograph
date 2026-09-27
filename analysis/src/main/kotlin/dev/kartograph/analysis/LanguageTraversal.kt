@@ -101,7 +101,7 @@ public object LanguageTraversal {
         maxReached: Int = MAX_REACHED,
         enclosuresCaptured: Boolean = true,
         callbackFactsCaptured: Boolean = true,
-    ): LanguageTraversalResult = traverse(graph, TraversalEdges.assemble(graph, enclosuresCaptured), requested, direction, dispatch,
+    ): LanguageTraversalResult = traverse(graph, TraversalEdges.assemble(graph, enclosuresCaptured, callbackFactsCaptured), requested, direction, dispatch,
         maxDepth, maxReached, enclosuresCaptured, callbackFactsCaptured)
 
     /** 이미 만든 순회 간선으로 순회한다. 테스트가 임의의 콜백 간선으로 계산을 검증할 때 쓴다. */

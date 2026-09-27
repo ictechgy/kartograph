@@ -53,15 +53,17 @@ public object TraversalEdges {
      * @param enclosuresCaptured 그래프가 어휘적 소속 사실을 실었는지다. 거짓이면 람다 후보를 일반 후보로 되돌려
      *   소속 간선 없이 본문이 끊기는 일을 막는다
      */
-    public fun build(graph: CodeGraph, enclosuresCaptured: Boolean = true): List<TraversalEdge> = assemble(graph, enclosuresCaptured).edges
+    public fun build(graph: CodeGraph, enclosuresCaptured: Boolean = true, callbackFactsCaptured: Boolean = true): List<TraversalEdge> =
+        assemble(graph, enclosuresCaptured, callbackFactsCaptured).edges
 
     /** 간선과 콜백 흐름 집계를 함께 만든다. 콜백 간선은 [CallbackFlows]가 그래프의 콜백 관측 사실에서 만든다. */
-    internal fun assemble(graph: CodeGraph, enclosuresCaptured: Boolean = true): TraversalGraph {
+    internal fun assemble(graph: CodeGraph, enclosuresCaptured: Boolean = true, callbackFactsCaptured: Boolean = true): TraversalGraph {
         val classifier = DispatchClassifier(graph, enclosuresCaptured)
         val usage = graph.edges.filter { it.kind.impliesUsage && !isOwnerReference(it) }.map { edge ->
             TraversalEdge(edge.source, edge.target, relationshipOf(edge.kind), classifier.tierOf(edge))
         }
-        val callbacks = CallbackFlows(graph, classifier).analyze()
+        // 콜백 사실을 다 싣지 않은 snapshot(일부 키만 있는 경우 포함)은 빠져나감을 놓칠 수 있으므로 콜백 간선을 만들지 않는다.
+        val callbacks = if (callbackFactsCaptured) CallbackFlows(graph, classifier).analyze() else CallbackFlowResult(emptyList(), CallbackFlowSummary())
         return TraversalGraph(usage + containmentEdges(graph) + callbacks.edges, callbacks.summary)
     }
 

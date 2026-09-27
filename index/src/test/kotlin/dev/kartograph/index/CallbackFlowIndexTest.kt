@@ -65,7 +65,7 @@ class CallbackFlowIndexTest {
     @Test
     fun `functions that invoke a lambda argument are linked with bound evidence`() {
         val rows = reached()
-        listOf("direct", "forwardOuter", "forwardInner", "sam", "runnable", "restartable", "slot").forEach { name ->
+        listOf("direct", "forwardOuter", "forwardInner", "sam", "runnable", "restartable").forEach { name ->
             val row = rows[name] ?: error("$name must be reached through the callback flow")
             assertEquals(TraversalEvidence.BOUND, row.evidence, name)
         }
@@ -80,6 +80,8 @@ class CallbackFlowIndexTest {
         assertEquals(TraversalEvidence.CANDIDATE, rows.getValue("escapeField").evidence)
         assertEquals(TraversalEvidence.CANDIDATE, rows.getValue("handToLibrary").evidence)
         assertEquals(TraversalEvidence.CANDIDATE, rows.getValue("closureInvoke").evidence)
+        // 리뷰 지적(H2): Compose runtime이 재구성 때 감싼 람다를 다시 실행할 수 있어 bound가 아니다.
+        assertEquals(TraversalEvidence.CANDIDATE, rows.getValue("slot").evidence)
         assertFalse("escapeReturn" in rows, "a returned callback has no invocation to link")
         // 리뷰 지적 재현: 넘기는 쪽에서 같은 람다를 필드에 저장하면 실행자가 이 경로뿐이라고 할 수 없다.
         assertEquals(TraversalEvidence.CANDIDATE, rows.getValue("invokeStored").evidence)

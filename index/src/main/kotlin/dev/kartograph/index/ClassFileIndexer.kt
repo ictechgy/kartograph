@@ -749,16 +749,20 @@ private fun lexicalEnclosures(classFacts: List<ClassFacts>): List<LexicalEnclosu
  * 객체를 넘긴 호출은 콜백 전달이 아니므로 버린다. 지역 class 여부는 이름이 아니라 `EnclosingMethod` 사실로 판단한다.
  */
 private fun localCallbackArguments(classFacts: List<ClassFacts>, enclosures: List<LexicalEnclosure>): List<CallbackArgument> {
+    val isLambda = lambdaPredicate(enclosures)
+    return classFacts.flatMap(ClassFacts::callbackArguments).filter { isLambda(it.lambda) }
+}
+
+/** 두 람다 사실 목록이 같은 기준을 쓰도록 한 곳에 둔다. 한쪽만 걸러지면 빠져나감을 잃은 전달이 bound가 될 수 있다. */
+private fun lambdaPredicate(enclosures: List<LexicalEnclosure>): (NodeId) -> Boolean {
     val localClasses = enclosures.mapTo(mutableSetOf(), LexicalEnclosure::localClass)
-    return classFacts.flatMap(ClassFacts::callbackArguments).filter { argument ->
-        argument.lambda.value.startsWith("method:") || argument.lambda in localClasses
-    }
+    return { lambda -> lambda.value.startsWith("method:") || lambda in localClasses }
 }
 
 /** [localCallbackArguments]와 같은 기준으로 람다의 빠져나감 사실을 거른다. */
 private fun localLambdaEscapes(classFacts: List<ClassFacts>, enclosures: List<LexicalEnclosure>): List<LambdaEscape> {
-    val localClasses = enclosures.mapTo(mutableSetOf(), LexicalEnclosure::localClass)
-    return classFacts.flatMap(ClassFacts::lambdaEscapes).filter { it.lambda.value.startsWith("method:") || it.lambda in localClasses }
+    val isLambda = lambdaPredicate(enclosures)
+    return classFacts.flatMap(ClassFacts::lambdaEscapes).filter { isLambda(it.lambda) }
 }
 
 // 중첩 class의 사용 사실만으로는 바깥 container가 죽어 보이지 않게 실제 enclosing 관계를 참조로 연결한다.

@@ -33,7 +33,7 @@ import org.objectweb.asm.tree.analysis.Value
  *
  * Compose 컴파일러의 `ComposableLambdaKt.*(… block …)`만 라이브러리 모델로 둔다. 이 함수들은 `block`을 감싼
  * `ComposableLambda`를 돌려주고, 그 `invoke`는 같은 인자로 `block`의 `invoke`를 부른다. 그래서 반환값의 출처를
- * `block`의 출처로 잇는다.
+ * `block`의 출처로 잇는다. runtime이 재구성 때 다시 실행할 수 있으므로 `block`은 빠져나간 값으로도 기록한다.
  */
 internal object CallbackFactScanner {
     /** 한 class의 메서드 본문에서 관측한 사실이다. */
@@ -120,7 +120,7 @@ internal object CallbackFactScanner {
 
     private fun consume(insn: AbstractInsnNode, frame: Frame<OriginValue>, sink: Sink) {
         when (insn) {
-            is MethodInsnNode -> if (!isComposableLambdaWrapper(insn)) consumeCall(insn, frame, sink)
+            is MethodInsnNode -> if (isComposableLambdaWrapper(insn)) consumeWrapper(insn, frame, sink) else consumeCall(insn, frame, sink)
             is InvokeDynamicInsnNode -> consumeIndy(insn, frame, sink)
             is FieldInsnNode -> if (insn.opcode == Opcodes.PUTFIELD || insn.opcode == Opcodes.PUTSTATIC) {
                 sink.nonArgument(frame.top(0), ParameterUseKind.FIELD, JvmNodeId.fieldId(insn.owner, insn.name, insn.desc))
@@ -130,6 +130,16 @@ internal object CallbackFactScanner {
                 Opcodes.AASTORE -> sink.nonArgument(frame.top(0), ParameterUseKind.ARRAY)
             }
         }
+    }
+
+    /**
+     * Compose 래퍼는 반환값이 `block`과 같은 값이므로 출처를 넘긴다(인터프리터). 다만 runtime이 재구성 때 그 람다를 다시
+     * 실행할 수 있어 실행자가 프로젝트 밖에도 있다. 그래서 `block`의 출처를 [ParameterUseKind.OTHER]로도 남겨 bound를 막는다.
+     */
+    private fun consumeWrapper(insn: MethodInsnNode, frame: Frame<OriginValue>, sink: Sink) {
+        val arguments = Type.getArgumentTypes(insn.desc)
+        val block = arguments.indexOfFirst { it.descriptor == "Ljava/lang/Object;" }
+        sink.nonArgument(frame.top(arguments.size - 1 - block), ParameterUseKind.OTHER)
     }
 
     private fun consumeCall(insn: MethodInsnNode, frame: Frame<OriginValue>, sink: Sink) {
@@ -212,7 +222,7 @@ internal object CallbackFactScanner {
     private data class LambdaOrigin(val id: NodeId, val samMethod: String?) : Origin
 
     /** 크기와 출처 집합만 가진 분석 값이다. 기본 연산의 크기는 [BasicInterpreter]에 맡긴다. */
-    private data class OriginValue(private val width: Int, val origins: Set<Origin>) : Value {
+    private data class OriginValue(val width: Int, val origins: Set<Origin>) : Value {
         override fun getSize(): Int = width
 
         fun parameters(): List<Int> = origins.filterIsInstance<ParameterOrigin>().map { it.parameter }.sorted()

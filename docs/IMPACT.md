@@ -471,7 +471,8 @@ L 본문)을 만든다. 라이브러리에 넘긴 경우 그 코드가 어느 �
   람다를 받았는지 문맥이 없다.
 - **inline 함수**는 람다 본문이 호출한 함수 안으로 복사되므로 전달 사실이 없고 본문의 호출은 F의 `direct` 간선이다. inline
   함수 자체는 호출되지 않아 목록에 없다. `crossinline` 람다가 만드는 class는 `EnclosingMethod`로 F에 속한다.
-- **Compose**: `@Composable` 람다는 `rememberComposableLambda`로 감싼 값을 추적한다. 재구성 람다(`updateScope`)처럼
+- **Compose**: `@Composable` 람다는 `rememberComposableLambda`로 감싼 값을 추적한다. runtime이 재구성 때 감싼 람다를
+  다시 실행할 수 있으므로 이런 흐름은 `candidate`다. 재구성 람다(`updateScope`)처럼
   파라미터를 캡처한 람다가 같은 함수로 값을 되돌려 넘기기만 하면 실행 지점이 늘지 않으므로 등급을 낮추지 않는다.
   `Composer.changed`·`changedInstance`는 다음 구성에서 비교할 값으로만 쓰므로 쓰임에서 뺀다. 객체를 돌려주지 않는
   검사 호출(`Intrinsics.checkNotNull*`·`areEqual`, `Objects.equals`·`hashCode`·`isNull`·`nonNull`)도 같다. 대부분의
@@ -481,7 +482,8 @@ L 본문)을 만든다. 라이브러리에 넘긴 경우 그 코드가 어느 �
   캡처 포함), 중단 지점 너머로 continuation 필드에 넣는 suspend 함수의 콜백(필드로 빠져나간 것으로 본다), 객체를
   반환하는 라이브러리 호출을 거친 별칭, 구현이 둘 이상인 인터페이스 메서드로 넘긴 람다. 이런 흐름은 `candidate`이거나
   `callback-flow-unresolved:`에 남는다. `--dispatch all`은 여전히 모든 lambda fan-out을 따른다.
-- 콜백 사실이 없는 옛 snapshot은 `callback-facts-unavailable:`로 알리고 콜백 간선 없이 순회한다(이 기능 전과 같다).
+- 콜백 사실 세 목록 중 하나라도 없는 snapshot은 `callback-facts-unavailable:`로 알리고 콜백 간선 없이 순회한다(이 기능
+  전과 같다). 일부 사실만으로 흐름을 판정하면 빠져나감을 놓쳐 `bound`를 잘못 매길 수 있기 때문이다.
 
 ### `--dispatch`와 기본값
 
