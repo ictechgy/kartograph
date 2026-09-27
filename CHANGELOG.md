@@ -21,6 +21,28 @@
   단다. 낡은 선언(`http-wrapper-unresolved:`), 선언되지 않은 싱크(`http-wrapper-undeclared:`), 모델링하지
   않은 클라이언트(`route-call-coverage:`), 미상 base 뒤 상대 경로(`ambiguous-base-join:`)는 추측한 사실
   대신 limitation으로 계수한다. `--role server`는 아직 사용 오류다.
+- `impact --format language-traversal`이 isthmus `trace`용 `language-traversal` v1 역방향 문서를, 새 `reach`
+  명령이 정방향(`dependencies`) 문서를 낸다. 여러 root를 한 번에 순회해 정점마다 닿는 모든 root(`roots`, 최대 64개와
+  `rootsTruncated`), 최단 via 목격, root별 하한 근거 등급(`evidence`), 잇지 못한 호출(`unresolvedCalls`)을 싣는다.
+  `--roots-from`은 routes·schema의 bridge-facts 문서를 root 목록으로 받는다. 결과는 무작위 그래프에서 root별 전수
+  BFS와 대조해 검증한다.
+- `--dispatch direct|bound|candidates|all`(기본 `candidates`)로 따를 dispatch 간선을 고른다. 구현이 하나로 정해지는
+  프로젝트 수신 타입의 dispatch는 `bound`, 그 밖의 계층 후보는 `candidate`이며, `FunctionN`/SAM `invoke`에서 모든
+  람다·익명 class 본문으로 퍼지는 후보는 기본에서 빼고 `lambda-dispatch-excluded:`로 계수한다.
+- `snapshot`이 classfile `EnclosingMethod`를 `graph.enclosures`로 싣는다. 순회는 람다·익명 객체·suspend 람다 본문을
+  감싼 선언의 일부(`contains`, `direct`)로 잇는다. 이 필드가 없는 옛 snapshot은 `lexical-enclosures-unavailable:`로 알린다.
+
+### Changed
+
+- `routes`가 JVM 신원을 붙이지 못한 사실을 `missing-route-usrs:`로 센다. `--graph-file` snapshot의 source 경로가
+  공통 접두사만큼 어긋나면 snapshot과 routes의 `--project` 불일치를 접두사와 함께 밝히고, snapshot이 stale이거나
+  없을 때도 이유를 적는다. 전에는 usr가 조용히 0건이 됐다.
+- class 인덱스 캐시 형식을 5로 올렸다. 옛 캐시 항목은 한 번 다시 파싱된다.
+
+### Compatibility
+
+- `impact`의 기본 출력(`kartograph-impact` v1)은 바뀌지 않는다. `graph.enclosures`는 간선이 아닌 선택 필드라 도달성·dead·
+  query·기존 impact 결과에 영향이 없고, 옛 reader는 이 키를 읽지 않는다.
 
 ## [0.17.0] - 2026-09-24
 

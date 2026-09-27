@@ -115,6 +115,8 @@ kartograph bridges --project . --target flutter --messages --graph-file build/re
 kartograph schema --project . --format json
 # Client HTTP route calls for isthmus: declared wrappers, java.net.URL requests, Retrofit annotations.
 kartograph routes --role client --project . --wrappers http-wrappers.json app/src/main
+# Multi-root reverse traversal for isthmus trace, rooted at every route-call symbol (language-traversal v1).
+kartograph impact --format language-traversal --roots-from routes.json --graph-file graph.json --project .
 kartograph skill --project .
 ```
 
@@ -260,3 +262,13 @@ trailing local proven to start with `?`). Literal URLs lose userinfo, query and 
 or webhook segments are masked. Test source sets are excluded unless `--include-tests` marks those facts
 `testSource`. Other clients (OkHttp, Ktor, …), stale wrapper declarations, and undeclared sinks surface as
 limitations instead of guessed facts. `--role server` is not supported yet.
+Facts left without a JVM identity are counted by `missing-route-usrs:`, which names a snapshot/routes
+`--project` root mismatch when the source paths show one.
+
+`impact --format language-traversal` (reverse) and `reach` (forward) (unreleased) emit an isthmus
+`language-traversal` v1 document for `trace`: one pass over many roots, with every root that reaches each
+declaration, a shortest-path witness, per-root lower-bound `evidence` (`direct`, `bound`, `candidate`) and
+`unresolvedCalls`. Lambda and anonymous-class bodies belong to their enclosing declaration through captured
+`EnclosingMethod` facts, so `FunctionN`/SAM `invoke` fan-out is not followed by default
+(`--dispatch direct|bound|candidates|all`, default `candidates`). The default `impact` output is unchanged. See
+[change impact](docs/IMPACT.md#isthmus-trace용-순회-문서-language-traversal-v1).

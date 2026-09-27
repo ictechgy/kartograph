@@ -1,0 +1,186 @@
+package dev.kartograph.cli
+
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
+import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
+import dev.kartograph.export.McpJsonCodec
+import dev.kartograph.export.QuerySnapshot
+import dev.kartograph.export.QuerySnapshotCodec
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
+import java.nio.file.Files
+import java.nio.file.Path
+import javax.tools.ToolProvider
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import org.junit.jupiter.api.io.TempDir
+
+/** `impact --format language-traversal`과 `reach`의 교환 문서·옵션·호환 계약이다. */
+class TraversalCliTest {
+    private data class Execution(val status: Int, val output: String, val error: String)
+
+    private fun run(vararg arguments: String): Execution {
+        val output = ByteArrayOutputStream()
+        val error = ByteArrayOutputStream()
+        val status = KartographCli.run(arguments, PrintStream(output), PrintStream(error))
+        return Execution(status, output.toString(), error.toString())
+    }
+
+    /**
+     * 합성 Java 프로젝트다. Http.get(root)을 RealApi.call이 부르고, 화면 Screen.render 안의 익명 Runnable이
+     * Api.call(구현 하나)을 부른다. 공통 Ui.button은 Runnable.run으로 모든 익명 Runnable에 dispatch한다.
+     */
+    private fun capture(root: Path): Path {
+        val source = Files.createDirectories(root.resolve("src/p"))
+        mapOf(
+            "Api.java" to "package p; interface Api { void call(); }",
+            "RealApi.java" to "package p; class RealApi implements Api { public void call() { Http.get(); } }",
+            "Http.java" to "package p; class Http { static void get() {} }",
+            "Screen.java" to "package p; class Screen { void render(final Api api) { Runnable r = new Runnable() { public void run() { api.call(); } }; Ui.button(r); } }",
+            "Ui.java" to "package p; class Ui { static void button(Runnable r) { r.run(); } }",
+            "Other.java" to "package p; class Other { void show() { Ui.button(new Runnable() { public void run() {} }); } }",
+            "Main.java" to "package p; public class Main { public static void main(String[] a) { new Screen().render(new RealApi()); } }",
+        ).forEach { (name, text) -> source.resolve(name).toFile().writeText(text) }
+        val classes = Files.createDirectories(root.resolve("classes"))
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "-g", "-d", classes.toString(),
+            *source.toFile().listFiles()!!.map { it.path }.toTypedArray()))
+        val snapshot = run("snapshot", "--classes", classes.toString(), "--project", root.toString(), "--include-paths")
+        assertEquals(0, snapshot.status, snapshot.error)
+        return root.resolve("graph.json").also { Files.writeString(it, snapshot.output) }
+    }
+
+    private fun document(execution: Execution): Map<*, *> = McpJsonCodec.parse(execution.output) as Map<*, *>
+
+    private fun reached(document: Map<*, *>): Map<String, Map<*, *>> = (document["reached"] as List<*>).map { it as Map<*, *> }
+        .associateBy { ((it["symbol"] as Map<*, *>)["usr"] as String) }
+
+    @Test
+    fun `reverse traversal follows lexical containment and labels bound dispatch`(@TempDir root: Path) {
+        val graph = capture(root)
+        val execution = run("impact", "method:p/Http#get()V", "--format", "language-traversal", "--graph-file", graph.toString(),
+            "--project", root.toString(), "--generated-at", "2026-09-27T00:00:00Z")
+        assertEquals(0, execution.status, execution.error)
+        val document = document(execution)
+        assertEquals("language-traversal", document["format"])
+        assertEquals("dependents", document["direction"])
+        assertEquals("candidates", document["dispatch"])
+        assertEquals(root.toRealPath().toString(), document["project"])
+        assertEquals("2026-09-27T00:00:00.000Z", document["generatedAt"])
+        val rows = reached(document)
+        assertEquals("direct", rows.getValue("method:p/RealApi#call()V")["evidence"])
+        assertEquals("bound", rows.getValue("method:p/Api#call()V")["evidence"])
+        val render = rows.getValue("method:p/Screen#render(Lp/Api;)V")
+        assertEquals(listOf("contains"), render["relationships"])
+        assertEquals("bound", render["evidence"])
+        assertTrue("method:p/Main#main([Ljava/lang/String;)V" in rows)
+        assertFalse("method:p/Ui#button(Ljava/lang/Runnable;)V" in rows, "lambda fan-out must not be followed by default")
+        assertFalse("method:p/Other#show()V" in rows)
+        assertTrue((document["limitations"] as List<*>).any { (it as String).startsWith("lambda-dispatch-excluded:") })
+        val again = run("impact", "method:p/Http#get()V", "--format", "language-traversal", "--graph-file", graph.toString(),
+            "--project", root.toString(), "--generated-at", "2026-09-27T00:00:00Z")
+        assertEquals(execution.output, again.output)
+    }
+
+    @Test
+    fun `dispatch modes nest and all follows callback fan-out`(@TempDir root: Path) {
+        val graph = capture(root)
+        fun count(mode: String) = reached(document(run("impact", "method:p/Http#get()V", "--format", "language-traversal",
+            "--graph-file", graph.toString(), "--project", root.toString(), "--dispatch", mode))).keys
+        val direct = count("direct")
+        val bound = count("bound")
+        val candidates = count("candidates")
+        val all = count("all")
+        assertTrue(direct.containsAll(listOf("method:p/RealApi#call()V")) && "method:p/Api#call()V" !in direct)
+        assertTrue(bound.containsAll(direct) && candidates.containsAll(bound) && all.containsAll(candidates))
+        assertTrue("method:p/Other#show()V" in all)
+    }
+
+    @Test
+    fun `reach emits dependencies with multi-root attribution`(@TempDir root: Path) {
+        val graph = capture(root)
+        val execution = run("reach", "method:p/Main#main([Ljava/lang/String;)V", "--symbol", "method:p/Screen#render(Lp/Api;)V",
+            "--graph-file", graph.toString(), "--project", root.toString())
+        assertEquals(0, execution.status, execution.error)
+        val document = document(execution)
+        assertEquals("dependencies", document["direction"])
+        val rows = reached(document)
+        val render = rows.getValue("method:p/Screen#render(Lp/Api;)V")
+        assertEquals(listOf(0L), render["roots"], "a root reached from another root lists only the other root")
+        assertEquals(listOf(0L, 1L), rows.getValue("method:p/Http#get()V")["roots"])
+    }
+
+    @Test
+    fun `roots come from bridge facts and unknown roots stay listed`(@TempDir root: Path) {
+        val graph = capture(root)
+        val facts = root.resolve("routes.json").also { Files.writeString(it, """{"format": "bridge-facts", "facts": [
+            {"kind": "route-call", "symbol": {"qualifiedName": "p.Http.get", "usr": "method:p/Http#get()V"}},
+            {"kind": "route-call", "symbol": {"qualifiedName": "p.Gone.run", "usr": "method:p/Gone#run()V"}},
+            {"kind": "route-call"}]}""") }
+        val execution = run("impact", "--format", "language-traversal", "--roots-from", facts.toString(), "--graph-file", graph.toString(),
+            "--project", root.toString())
+        assertEquals(64, execution.status)
+        val document = document(execution)
+        val roots = (document["roots"] as List<*>).map { it as Map<*, *> }
+        assertEquals(listOf("method:p/Http#get()V", "method:p/Gone#run()V"), roots.map { it["id"] })
+        assertFalse("symbol" in roots[1])
+        assertEquals(true, document["truncated"])
+        assertEquals(listOf("root-not-found"), document["truncationReasons"])
+    }
+
+    @Test
+    fun `snapshots without enclosure facts fall back to candidate lambda edges`(@TempDir root: Path) {
+        val graph = capture(root)
+        val legacy = root.resolve("legacy.json").also {
+            Files.writeString(it, Files.readString(graph).replace(Regex(", \"enclosures\": \\[[^\\]]*\\]"), ""))
+        }
+        assertFalse(Files.readString(legacy).contains("\"enclosures\""))
+        val execution = run("impact", "method:p/Http#get()V", "--format", "language-traversal", "--graph-file", legacy.toString(),
+            "--project", root.toString())
+        assertEquals(0, execution.status, execution.error)
+        assertContains(execution.output, "lexical-enclosures-unavailable:")
+        assertTrue("method:p/Ui#button(Ljava/lang/Runnable;)V" in reached(document(execution)))
+    }
+
+    @Test
+    fun `default impact output is unchanged by enclosure facts`(@TempDir root: Path) {
+        val graph = capture(root)
+        val legacy = root.resolve("legacy.json").also {
+            Files.writeString(it, Files.readString(graph).replace(Regex(", \"enclosures\": \\[[^\\]]*\\]"), ""))
+        }
+        val current = run("impact", "method:p/Http#get()V", "--graph-file", graph.toString(), "--all")
+        val old = run("impact", "method:p/Http#get()V", "--graph-file", legacy.toString(), "--all")
+        assertEquals(0, current.status, current.error)
+        assertEquals(old.output, current.output)
+        assertEquals(current.output, run("impact", "method:p/Http#get()V", "--graph-file", graph.toString(), "--all", "--format", "json").output)
+        assertContains(current.output, "\"format\": \"kartograph-impact\"")
+    }
+
+    @Test
+    fun `traversal usage errors return 64`(@TempDir root: Path) {
+        val graph = root.resolve("graph.json").also { Files.writeString(it, QuerySnapshotCodec.render(QuerySnapshot(
+            CodeGraph(listOf(GraphNode(NodeId("method:p/A#run()V"), "run", NodeKind.METHOD)), emptyList()), emptyList(), emptyList()))) }
+        val base = arrayOf("impact", "method:p/A#run()V", "--format", "language-traversal", "--graph-file", graph.toString())
+        val project = arrayOf("--project", root.toString())
+        listOf(
+            arrayOf(*base) to "missing required --project",
+            arrayOf(*base, *project, "--base-graph", graph.toString()) to "not supported with --format language-traversal",
+            arrayOf(*base, *project, "--all") to "not supported with --format language-traversal",
+            arrayOf(*base, *project, "--dispatch", "maybe") to "dispatch must be",
+            arrayOf(*base, *project, "--depth", "129") to "depth must be 1..128",
+            arrayOf(*base, *project, "--generated-at", "yesterday") to "--generated-at",
+            arrayOf("impact", "method:p/A#run()V", "--format", "text", "--graph-file", graph.toString()) to "invalid impact format",
+            arrayOf("reach", "method:p/A#run()V", "--format", "json", "--graph-file", graph.toString(), *project) to "supports only",
+        ).forEach { (arguments, message) ->
+            val execution = run(*arguments)
+            assertEquals(64, execution.status, arguments.joinToString(" "))
+            assertContains(execution.error, message)
+        }
+        assertEquals(2, run("reach", "method:p/A#run()V", "--graph-file", root.resolve("absent.json").toString(), *project).status)
+        assertContains(run("reach", "--help").output, "Dispatch modes")
+        assertContains(run("--help").output, "kartograph reach")
+    }
+}

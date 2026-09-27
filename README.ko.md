@@ -116,6 +116,8 @@ kartograph bridges --project . --target flutter --messages --graph-file build/re
 kartograph schema --project . --format json
 # isthmus용 클라이언트 HTTP route 호출: 선언된 래퍼, java.net.URL 요청, Retrofit 어노테이션.
 kartograph routes --role client --project . --wrappers http-wrappers.json app/src/main
+# isthmus trace용 다중 root 역방향 순회(language-traversal v1). route-call을 감싼 심볼 전부가 root다.
+kartograph impact --format language-traversal --roots-from routes.json --graph-file graph.json --project .
 kartograph skill --project .
 ```
 
@@ -259,3 +261,12 @@ kartograph는 MIT 라이선스다. 배포본에 내장된 의존성의 저작권
 웹훅 세그먼트는 가립니다. 테스트 소스 세트는 `--include-tests`가 없으면 제외하고, 주면 `testSource`로
 표시합니다. 그 밖의 클라이언트(OkHttp, Ktor 등), 낡은 래퍼 선언, 선언되지 않은 싱크는 추측한 사실 대신
 limitation으로 남깁니다. `--role server`는 아직 지원하지 않습니다.
+JVM 신원을 붙이지 못한 사실은 `missing-route-usrs:`로 세고, source 경로에서 드러나면 snapshot과 routes의
+`--project` 불일치를 밝힙니다.
+
+`impact --format language-traversal`(역방향)과 `reach`(정방향)(미출시)는 isthmus `trace`용 `language-traversal`
+v1 문서를 냅니다. 여러 root를 한 번에 순회해 선언마다 닿는 모든 root, 최단 경로 목격, root별 하한 근거
+등급(`direct`·`bound`·`candidate`), `unresolvedCalls`를 싣습니다. 람다·익명 class 본문은 캡처한 `EnclosingMethod`
+사실로 감싼 선언에 속하므로 `FunctionN`/SAM `invoke` fan-out은 기본으로 따르지 않습니다
+(`--dispatch direct|bound|candidates|all`, 기본 `candidates`). 기본 `impact` 출력은 바뀌지 않습니다.
+[변경 영향](docs/IMPACT.md#isthmus-trace용-순회-문서-language-traversal-v1)을 참고하세요.

@@ -122,7 +122,7 @@ internal class CacheFormatException(cause: Throwable? = null) : IOException("inv
 /** 제한된 ClassFacts 포맷. 선택된 고유 메서드 본문은 ASM classfile 한 벌로 보관한다. */
 internal object ClassFactsCodec {
     private const val MAGIC = 0x4b584332
-    private const val VERSION = 4
+    private const val VERSION = 5
     private const val MAX_METHOD_BYTES = 4 * 1024 * 1024
     private const val MAX_LIST_ITEMS = 1_000_000
     private const val MAX_STRING_BYTES = 65_535
@@ -155,6 +155,7 @@ internal object ClassFactsCodec {
         writeList(f.fieldWriteMethods) { writeString(it.value) }
         writeList(f.constantStringFields.entries) { writeString(it.key.value); writeString(it.value) }
         writeBodies(f)
+        writeNullable(f.enclosingDeclaration?.value)
     }
 
     private fun DataInputStream.readFacts(): ClassFacts {
@@ -162,7 +163,9 @@ internal object ClassFactsCodec {
         val nodes = readList { readNode() }; val edges = readList { readEdge() }; val calls = readList { readCall() }
         val writes = readSet { NodeId(readString()) }; val constants = readMap { NodeId(readString()) to readString() }
         val bodies = readBodies(name)
-        return ClassFacts(name, nodes, edges, enclosing, runtime, calls, bodies.runtime, bodies.returns, writes, bodies.fields, constants)
+        val enclosingDeclaration = readNullable()?.let(::NodeId)
+        return ClassFacts(name, nodes, edges, enclosing, runtime, calls, bodies.runtime, bodies.returns, writes, bodies.fields, constants,
+            enclosingDeclaration)
     }
 
     private fun DataOutputStream.writeBodies(f: ClassFacts) {

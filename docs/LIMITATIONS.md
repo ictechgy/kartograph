@@ -115,6 +115,15 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   삭제/rename을 조사할 때는 같은 analyzer·입력 범위로 만든 base/current snapshot이 필요하다.
   보존만 됐다는 사실은 호출자 근거가 아니다. 범위가 큰 클래스/파일 변경은 많은 후보를 만들 수 있으며, 출력·깊이·방문·경로
   예산에 따른 잘림과 불명확한 파일 매핑을 보고한다. [영향 점검 계약](IMPACT.md)을 따른다.
+- `impact --format language-traversal`과 `reach`의 `bound` 등급은 분석한 class가 프로젝트 타입의 구현을 모두 담는다는
+  닫힌 세계 가정에 기댄다. 런타임 proxy·mock·snapshot 밖 class는 모델링하지 않는다. 기본 `--dispatch candidates`는
+  `FunctionN`/SAM 콜백 fan-out을 따르지 않고 람다 본문을 `EnclosingMethod` 소속으로만 잇는다. 필드에 저장했다가
+  다른 곳에서 호출하는 콜백의 호출 측은 `--dispatch all`에서만 보인다. `unresolvedCalls`는 kartograph가 관측한
+  미해석 dispatch·미해석 reflection 모델·모델 없는 invokedynamic만 세며 모든 런타임 경로를 안다고 주장하지 않는다.
+  어휘적 소속 사실(`graph.enclosures`)이 없는 옛 snapshot은 람다 후보를 `candidate`로 따라가므로 결과가 넓다.
+- `routes --graph-file`이 사실에 JVM 신원을 붙이지 못하면 `missing-route-usrs:`로 수를 세고, source 경로가 공통 접두사만큼
+  어긋나면 snapshot과 routes의 `--project` 불일치(`project-root-mismatch:`)를 밝힌다. 경로 비교로 찾지 못하는 원인은
+  일반 문구로만 남는다.
 - package/module architecture는 JVM 이름과 입력 root를 기준으로 하며 Gradle dependency resolution model 자체는 아니다.
 - Java와 Kotlin bytecode를 함께 읽지만 reflection configuration, runtime class loading과 외부 서비스 설정은 별도 입력이다.
 

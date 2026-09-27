@@ -300,6 +300,102 @@ snapshot freshness/runtime limitation은 페이지나 필터를 사용해도 보
 누락 경로의 `edgeKinds`는 중복 없는 관계 종류다. 전체 경로 대신 거리와 이 유한한 집합을 보존해 경로 예산을
 소진한 뒤 긴 경로를 계속 복제하지 않는다.
 
+## isthmus trace용 순회 문서 (`language-traversal` v1)
+
+`kartograph-impact` v1은 정점마다 via 하나만 싣기 때문에 root가 여럿이면 isthmus `trace`가 root 귀속을 via 사슬의
+대표 root 하나로만 복원한다(`roots-provenance-partial`). root마다 따로 돌리면 문서가 커져 trace 입력 상한을 넘는다.
+그래서 isthmus [`LANGUAGE-TRAVERSAL.md`](https://github.com/ictechgy/isthmus/blob/main/docs/LANGUAGE-TRAVERSAL.md)의
+다중 root 순회 형식을 따로 낸다. 기본 `impact` 출력은 바꾸지 않는다.
+
+```bash
+# route-call을 감싼 심볼 전부를 root로 한 번에 역방향 순회한다. routes 문서를 그대로 root 목록으로 쓴다.
+kartograph impact --format language-traversal --roots-from routes.json \
+  --graph-file graph.json --project . [--dispatch candidates] [--generated-at 2026-09-27T00:00:00Z]
+# 핸들러에서 정방향으로 순회한다(direction: dependencies).
+kartograph reach <usr>... --graph-file graph.json --project .
+```
+
+- **id**: root id와 `reached[].symbol.usr`는 snapshot의 JVM USR(`method:owner#name(desc)ret`)이며 `routes`·`schema`의
+  `symbol.usr`와 같은 문자열이다. `--roots-from`은 JSON 문자열 배열이나 bridge-facts 문서를 받는다. bridge-facts면
+  사실의 `symbol.usr`를 문서 순서대로 중복 없이 root로 쓴다. 해석하지 못한 root는 원문을 id로 두고 `symbol` 없이 싣고
+  `root-not-found:`와 `truncationReasons: ["root-not-found"]`를 단다(종료 코드 64, 문서는 출력한다).
+- **`project`**: `--project`의 realpath다. isthmus는 모든 문서의 project가 같아야 조인하므로 `routes`와 같은 root를 준다.
+  `graphRevision`은 snapshot 파일 바이트의 SHA-256, `revision`은 snapshot의 commit 라벨이다.
+- **roots·depth·via**: `reached[].roots`는 그 정점에 닿는 모든(자기 제외) root의 오름차순 인덱스다. 64개를 넘으면
+  작은 64개만 싣고 `rootsTruncated: true`를 단다. 다른 root에서 닿은 root도 자기 인덱스 없이 싣는다. depth는 가장
+  가까운(자기 제외) root까지의 간선 수(1..128)이고 via는 그 최단 경로의 직전 정점(동률이면 usr가 작은 쪽)이다.
+  `relationships`는 via와 그 정점 사이에서 따른 간선 종류다(`call`·`fieldAccess`·`reference`·`override`·`contains` 등).
+- **한 번에 계산한다**: 정점마다 가장 가까운 서로 다른 root 두 개를 기록하는 다중 출발 BFS로 depth·via를 구하고,
+  등급별 간선 부분 그래프를 강연결요소로 접어 root 비트 집합을 위상 순서로 전파해 roots·evidence를 구한다.
+  테스트는 무작위 그래프에서 root별 전수 BFS 결과와 대조한다. roots·evidence는 depth 상한과 무관한 실제 도달
+  관계이며, depth 상한은 목록에 싣는 정점만 자른다(잘리면 `truncated`, `truncationReasons: ["depth"]`).
+  도달 정점이 `--max-reached`(기본·최대 100,000)를 넘으면 (depth, usr) 앞부분만 싣고 `reached-limit`로 알린다.
+
+### 람다의 어휘적 소속과 간선 등급
+
+Kotlin 람다 class·익명 객체·suspend 람다·SAM 변환 class는 `FunctionN.invoke` 같은 외부 호출에 대해 dispatch
+모델(`origin = dispatchModel`)이 모든 프로젝트 `invoke` 구현을 후보로 잇는다. 이 후보 간선을 따라가면 람다 본문
+하나의 역방향 영향이 콜백을 받는 공통 함수(예: Compose 컴포넌트)를 거쳐 앱 대부분으로 퍼진다. 그래서 두 가지를 더했다.
+
+- **어휘적 소속**: `snapshot`이 classfile `EnclosingMethod`를 `graph.enclosures`(`localClass` → `enclosing`)로 싣는다.
+  순회는 이것을 `contains` 간선(감싼 선언 → 지역 class와 그 메서드·생성자)으로 쓴다. 람다 본문의 변경은 감싼 함수와
+  그 호출자에 닿고, 정방향이면 감싼 함수에서 본문의 호출 대상에 닿는다. 컴파일러가 기록한 관계라 `direct`다.
+  감싼 메서드가 그래프에 없거나 초기화 문맥이면 소유 class로 넓힌다. invokedynamic 람다는 본문이 같은 class의
+  합성 메서드이고 bootstrap 인자 handle이 이미 `call` 간선이므로 따로 다루지 않는다.
+- **간선 등급**: 모든 순회 간선에 등급을 매긴다. 문서의 `evidence`는 root마다 가장 강한 등급을 구한 뒤 그중 가장
+  약한 값이다(root별 하한).
+
+| 등급 | 간선 | 근거 |
+|---|---|---|
+| `direct` | bytecode·Kotlin metadata·compiler reference의 호출·필드 접근·참조·상속·어노테이션, `contains` | 컴파일러가 대상을 확정했다 |
+| `bound` | override(dispatch) 중 수신 정적 타입이 프로젝트 타입이고, 그 타입과 모든 프로젝트 하위 타입의 구체 class가 메서드를 같은 프로젝트 구현 하나로 해석하는 것. `runtimeModel` 간선 | 닫힌 세계 가정에서 대상이 하나다 |
+| `candidate` | 그 밖의 override: 구현이 둘 이상인 인터페이스, `java/lang/Object#toString`처럼 외부 소유 가상 호출의 계층 후보 | 가능성만 있다 |
+| lambda(따로 제외) | 대상이 지역·익명 class의 멤버이거나 호출 지점이 Kotlin 함수 타입·`java/util/function`·`Runnable`·`Callable` 호출뿐인 dispatch | candidate와 같은 등급이지만 `contains`가 같은 본문을 정확히 잇는다 |
+
+`bound`의 닫힌 세계 가정은 분석한 class가 프로젝트 타입의 구현을 모두 담는다는 것이다. 수신 타입이 외부
+타입이면 라이브러리 객체도 올 수 있으므로 `bound`가 될 수 없다. 구체 하위 타입 하나라도 프로젝트 class 사슬 안에서
+메서드를 찾지 못하면(외부 상위 class 상속, 인터페이스 default 메서드) 보수적으로 `candidate`다. 런타임 proxy·mock·
+snapshot 밖 class는 모델링하지 않으며 `bound-dispatch-closed-world:` 한계로 알린다. 이 규칙은 dispatch 모델 간선과
+상위 선언 → 구현 override 간선에 똑같이 적용한다.
+
+### `--dispatch`와 기본값
+
+| 값 | 따르는 간선 |
+|---|---|
+| `direct` | direct |
+| `bound` | direct + bound |
+| `candidates` (기본) | direct + bound + candidate |
+| `all` | direct + bound + candidate + lambda(`candidate`로 표시) |
+
+기본값은 `candidates`다. trace가 쓸모 있으려면 인터페이스 뒤의 호출자(저장소·use case 계층)를 놓치지 않아야 하고,
+정직하려면 그런 hop을 `candidate`로 표시해 isthmus가 `candidate-dispatch` gap을 남기게 해야 한다. lambda fan-out은
+같은 본문을 `contains`가 정확히 잇고, 따라가면 무관한 화면까지 모든 root가 거의 같은 집합에 닿아 route별 구분이
+사라지므로 기본에서 뺀다. 빠진 간선 수는 `lambda-dispatch-excluded:`로 알린다. 제외로 잃는 것은 필드에 저장했다가 다른
+곳에서 호출하는 콜백처럼, 람다를 호출하는 쪽을 영향으로 보는 경로다. 필요하면 `--dispatch all`로 따른다.
+어휘적 소속 사실이 없는 옛 snapshot에서는 lambda 간선을 빼면 본문이 끊기므로 `candidate`로 따르고
+`lexical-enclosures-unavailable:`로 알린다. 새 snapshot을 캡처하면 정밀한 결과가 나온다.
+
+### 잇지 못한 호출 (`unresolvedCalls`)
+
+문서는 항상 `dispatch`를 실으므로 모든 정점의 `evidence`와 잇지 못한 호출을 완전히 신고한다는 선언이다.
+정점 자신의 나가는 호출 지점 중 다음을 센다(0이면 생략).
+
+- 외부 소유 가상·인터페이스 호출 중 dispatch 해석이 `unresolved`로 끝난 것(`external-dispatch` 한계와 같은 집합)
+- reflection 같은 런타임 라이브러리 모델이 붙었지만 값이 해석되지 않은 호출
+- LambdaMetafactory·StringConcatFactory·ObjectMethods·SwitchBootstraps가 아닌 bootstrap의 invokedynamic
+
+라이브러리 메서드를 부르는 정적·특수 호출은 대상이 확정된 호출이라 세지 않는다. 이 값은 `--dispatch` 값과 무관하다.
+
+### 호환성
+
+- `impact`의 기본 출력(`--format json`, `kartograph-impact` v1)은 바이트 단위로 같다. `graph.enclosures`는 간선이 아니라
+  별도 사실이므로 도달성·dead·query·기존 impact 결과를 바꾸지 않는다.
+- snapshot은 선택 필드 `graph.enclosures`를 v1·compact v2 모두 같은 평문 모양으로 싣는다. 옛 reader는 모르는 graph
+  키를 읽지 않는다. 새 reader는 이 키가 없는 옛 snapshot을 "소속 사실 미캡처"로 구분한다.
+- class 인덱스 캐시 형식이 5로 올라 옛 캐시 항목은 한 번 다시 파싱된다.
+- `language-traversal` 전용 옵션(`--dispatch`·`--project`·`--roots-from`·`--generated-at`·`--max-reached`)은 기본
+  형식에서 받지 않고, 기본 형식 전용 옵션(`--base-graph`·`--file`·`--limit`·필터 등)은 새 형식에서 사용 오류(64)다.
+
 ## 현재 한계와 평가
 
 클래스 사용·상속·field 접근 등은 전부 잠재적 의존이다. 어떤 수정이 실제 동작을 바꾸는지는 이 관계만으로 결정되지 않는다.

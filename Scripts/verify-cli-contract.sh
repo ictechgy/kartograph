@@ -62,6 +62,7 @@ expect_status 0 "baseline --help" baseline --help
 expect_status 0 "query --help" query --help
 expect_status 0 "bridges --help" bridges --help
 expect_status 0 "routes --help" routes --help
+expect_status 0 "reach --help" reach --help
 expect_status 0 "skill --help" skill --help
 expect_status 0 "cycles --help" cycles --help
 expect_status 0 "rules --help" rules --help
@@ -86,6 +87,8 @@ expect_status 64 "cycles class root 누락" cycles
 expect_status 64 "rules config 누락" rules --classes "$TEMPORARY_DIRECTORY"
 expect_status 64 "routes role 누락" routes --project "$TEMPORARY_DIRECTORY"
 expect_status 64 "routes 미지원 server role" routes --role server --project "$TEMPORARY_DIRECTORY"
+expect_status 64 "language-traversal project 누락" impact --format language-traversal method:A#run --graph-file missing.json
+expect_status 64 "language-traversal에 impact 전용 옵션" impact --format language-traversal method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --base-graph missing.json
 
 echo "종료 코드 2 — 도구 실패"
 expect_status 2 "빈 class root graph" graph --classes "$TEMPORARY_DIRECTORY/empty"
@@ -96,6 +99,7 @@ expect_status 2 "빈 class root dead strict" dead --classes "$TEMPORARY_DIRECTOR
 expect_status 2 "없는 class root" graph --classes "$TEMPORARY_DIRECTORY/missing"
 expect_status 2 "없는 project root" graph --classes "$TEMPORARY_DIRECTORY" --format json --include-paths --project "$TEMPORARY_DIRECTORY/missing"
 expect_status 2 "없는 routes 선언 파일" routes --role client --project "$TEMPORARY_DIRECTORY" --wrappers missing.json
+expect_status 2 "없는 reach snapshot" reach method:A#run --graph-file "$TEMPORARY_DIRECTORY/missing.json" --project "$TEMPORARY_DIRECTORY"
 
 # 예기치 못한 실패가 strict finding 코드(1)로 새지 않는지 확인한다. root는 권한 검사를 우회하므로 건너뛴다.
 if [[ "$(id -u)" != "0" ]]; then
@@ -114,6 +118,7 @@ expect_output "kartograph" "도움말에 도구 이름" --help
 expect_output "Exit codes:" "도움말에 종료 코드 표" --help
 expect_output "kartograph baseline" "도움말에 baseline 명령" --help
 expect_output "kartograph cycles" "도움말에 architecture 명령" --help
+expect_output "kartograph reach" "도움말에 정방향 순회 명령" --help
 expect_output "digraph kartograph" "graph의 DOT 문서" graph --classes "$TEMPORARY_DIRECTORY/classes"
 expect_output '"format": "code-graph"' "graph의 교환 JSON 문서" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json
 expect_output '"limitations"' "graph JSON의 한계 필드" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json

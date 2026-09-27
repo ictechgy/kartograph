@@ -9,6 +9,7 @@ public class CodeGraph(
     edges: Iterable<GraphEdge>,
     externalCalls: Iterable<ExternalCall> = emptyList(),
     serviceProviders: Iterable<ServiceProviderRegistration> = emptyList(),
+    enclosures: Iterable<LexicalEnclosure> = emptyList(),
 ) {
     public val nodes: Map<NodeId, GraphNode> = buildMap {
         nodes.forEach { node -> putIfAbsent(node.id, node) }
@@ -22,6 +23,14 @@ public class CodeGraph(
 
     /** 프로젝트 밖 provider도 누락된 입력을 설명할 수 있도록 선언 사실은 보존한다. */
     public val serviceProviders: List<ServiceProviderRegistration> = serviceProviders.distinct().sorted()
+
+    /**
+     * 지역·익명 class의 어휘적 소속 사실이다. 양쪽 정점이 모두 그래프에 있는 것만 남긴다.
+     * 일반 간선이 아니므로 도달성·dead·기존 impact 결과에는 쓰이지 않는다.
+     */
+    public val enclosures: List<LexicalEnclosure> = enclosures
+        .filter { it.localClass in this.nodes && it.enclosing in this.nodes && it.localClass != it.enclosing }
+        .distinct().sorted()
 
     public val edges: List<GraphEdge> = edges
         .filter { edge -> edge.source in this.nodes && edge.target in this.nodes }
