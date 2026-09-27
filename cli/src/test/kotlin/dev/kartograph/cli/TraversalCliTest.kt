@@ -78,8 +78,13 @@ class TraversalCliTest {
         assertEquals(listOf("contains"), render["relationships"])
         assertEquals("bound", render["evidence"])
         assertTrue("method:p/Main#main([Ljava/lang/String;)V" in rows)
-        assertFalse("method:p/Ui#button(Ljava/lang/Runnable;)V" in rows, "lambda fan-out must not be followed by default")
-        assertFalse("method:p/Other#show()V" in rows)
+        // Ui.button은 Screen이 넘긴 익명 Runnable을 실행하므로 콜백 흐름으로 닿는다. fan-out이 아니므로 Ui.button을
+        // 부르는 다른 화면(Other.show)으로는 퍼지지 않는다.
+        val button = rows.getValue("method:p/Ui#button(Ljava/lang/Runnable;)V")
+        assertEquals(listOf("callback"), button["relationships"])
+        assertEquals("bound", button["evidence"])
+        assertFalse("method:p/Other#show()V" in rows, "callback callers must not spread to their other callers")
+        assertTrue((document["limitations"] as List<*>).any { (it as String).startsWith("callback-flow: 1 bound") })
         assertTrue((document["limitations"] as List<*>).any { (it as String).startsWith("lambda-dispatch-excluded:") })
         val again = run("impact", "method:p/Http#get()V", "--format", "language-traversal", "--graph-file", graph.toString(),
             "--project", root.toString(), "--generated-at", "2026-09-27T00:00:00Z")

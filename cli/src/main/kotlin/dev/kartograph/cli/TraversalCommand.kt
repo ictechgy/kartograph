@@ -132,12 +132,12 @@ internal object TraversalCommand {
             return 2
         }
         val traversal = LanguageTraversal.traverse(snapshot.graph, options.roots, direction, options.dispatch, options.depth,
-            options.maxReached, snapshot.enclosuresCaptured)
+            options.maxReached, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured)
         val limitations = traversal.limitations + snapshot.limitations +
             "saved-graph: traversal uses captured inputs; revision and scope labels do not prove build freshness"
         val revision = options.revision ?: snapshot.revision ?: GitRevision.cleanHead(Path.of(options.project))
         val metadata = LanguageTraversalMetadata(options.generatedAt, options.project, revision,
-            LanguageTraversalCodec.graphRevision(snapshot.graph, snapshot.enclosuresCaptured))
+            LanguageTraversalCodec.graphRevision(snapshot.graph, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured))
         output.print(LanguageTraversalCodec.render(traversal.copy(limitations = limitations), metadata))
         return if (traversal.rootNotFound) 64 else 0
     }

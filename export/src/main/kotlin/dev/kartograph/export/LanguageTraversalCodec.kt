@@ -70,11 +70,12 @@ public object LanguageTraversalCodec {
      *
      * @param graph 순회한 그래프다
      * @param enclosuresCaptured snapshot이 어휘적 소속 사실을 실었는지다. 거짓이면 람다 간선 처리가 달라지므로 넣는다
+     * @param callbackFactsCaptured snapshot이 콜백 값 흐름 관측을 실었는지다. 콜백 간선 유무와 한계 문구가 달라지므로 넣는다
      * @return `sha256:` 뒤에 소문자 hex 64자가 붙은 문자열이다
      */
-    public fun graphRevision(graph: CodeGraph, enclosuresCaptured: Boolean): String {
+    public fun graphRevision(graph: CodeGraph, enclosuresCaptured: Boolean, callbackFactsCaptured: Boolean = true): String {
         val traversal = TraversalEdges.build(graph, enclosuresCaptured)
-            .map { listOf(it.source.value, it.target.value, it.relationship, it.tier.name) }
+            .map { listOf(it.source.value, it.target.value, it.relationship, it.tier.name) + if (it.terminal) listOf("terminal") else emptyList() }
             .distinct().sortedWith(::compareRows)
         val unresolved = graph.externalCalls.filter { it.isUnresolvedTarget() }.groupingBy { it.caller.value }.eachCount()
             .toSortedMap().map { (caller, count) -> listOf(caller, count.toString()) }
@@ -83,6 +84,8 @@ public object LanguageTraversalCodec {
             "edges" to graph.edges.map { listOf(it.source.value, it.target.value, it.kind.name, it.origin.name) },
             "traversalEdges" to traversal, "enclosures" to graph.enclosures.map { listOf(it.localClass.value, it.enclosing.value) },
             "enclosuresCaptured" to enclosuresCaptured, "unresolvedCalls" to unresolved,
+            // 콜백 간선은 traversalEdges에 들어 있다. 옛 snapshot과 관측 0건을 구별하려고 캡처 여부만 따로 넣는다.
+            "callbackFactsCaptured" to callbackFactsCaptured,
         )
         val digest = MessageDigest.getInstance("SHA-256").digest(jsonValue(content).toByteArray(Charsets.UTF_8))
         return "sha256:" + digest.joinToString("") { "%02x".format(it) }
