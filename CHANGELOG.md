@@ -83,8 +83,10 @@
   `callback-flow-unresolved:`에 이유별로, 콜백 사실이 없는 옛 snapshot은 `callback-facts-unavailable:`로 알린다.
   `reach`(정방향)는 콜백 간선을 따르지 않는다.
 - class 인덱스 캐시 형식을 6으로 올렸다. `graphRevision`이 콜백 간선과 콜백 사실 캡처 여부를 담아 이전 버전과 값이 다르다.
-- 호환성: 새 필드는 간선이 아닌 선택 필드라 도달성·dead·query·기본 `impact` 출력은 그대로다. Gradle plugin의
-  `includeSourcePaths` snapshot은 아직 콜백 사실을 빈 목록으로 싣는다.
+- Gradle plugin `kartographSnapshot`(Android variant 포함)도 CLI `snapshot`과 같은 콜백 사실을 싣는다. 이전에는
+  `includeSourcePaths`를 켜면 source 경로를 붙이는 재조립에서 세 목록이 빠져, 캡처 표식은 참인데 사실이 비어 콜백 간선이
+  조용히 사라졌다. 이 snapshot을 `snapshot merge`로 합친 결과도 한 번에 캡처한 CLI snapshot과 같은 사실을 싣는다.
+- 호환성: 새 필드는 간선이 아닌 선택 필드라 도달성·dead·query·기본 `impact` 출력은 그대로다.
 
 ## [0.17.0] - 2026-09-24
 

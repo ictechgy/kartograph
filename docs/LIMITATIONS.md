@@ -123,9 +123,8 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   라이브러리 호출을 거친 별칭, 구현이 둘 이상인 인터페이스로 넘긴 람다, `ComposableSingletons` 필드의 composable 람다는
   추적하지 않으며 `callback-flow-unresolved:`로 수만 알린다. 이런 콜백의 호출 측은 `--dispatch all`에서만 보인다.
   라이브러리 코드에 넘긴 콜백(대부분의 Compose UI 함수)은 실행을 증명하지 못해 `candidate`다. 콜백 간선은 정방향
-  `reach`에서 따르지 않는다. Gradle plugin의 `kartographSnapshot`은 `includeSourcePaths`를 켜면 아직 콜백 사실을 빈
-  목록으로 싣는다. 그 snapshot에서는 콜백 간선이 없고 결과가 이 기능 전과 같다. CLI `snapshot`은 영향이 없다. `unresolvedCalls`는 kartograph가 관측한
-  미해석 dispatch·미해석 reflection 모델·모델 없는 invokedynamic만 세며 모든 런타임 경로를 안다고 주장하지 않는다.
+  `reach`에서 따르지 않는다. `unresolvedCalls`는 kartograph가 관측한 미해석 dispatch·미해석 reflection 모델·모델 없는
+  invokedynamic만 세며 모든 런타임 경로를 안다고 주장하지 않는다.
   `revision`을 git `HEAD`에서 자동으로 채울 때는 저장한 snapshot을 지금 작업 트리에서 캡처했다고 가정한다. 다른
   커밋에서 캡처한 snapshot은 `snapshot --revision` 라벨이나 `--revision`으로 revision을 명시한다.
   어휘적 소속 사실(`graph.enclosures`)이 없는 옛 snapshot은 람다 후보를 `candidate`로 따라가므로 결과가 넓다.

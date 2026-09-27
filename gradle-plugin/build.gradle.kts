@@ -40,6 +40,8 @@ dependencies {
     testImplementation(gradleTestKit())
     testImplementation(kotlin("test"))
     testImplementation(project(":index"))
+    // 콜백 사실 동등성 테스트가 실제 CLI를 별도 JVM으로 실행한다. 배포 JAR(embedded)에는 들어가지 않는다.
+    testRuntimeOnly(project(":cli"))
     testRuntimeOnly("com.android.tools.build:gradle-api:8.7.3")
 }
 
