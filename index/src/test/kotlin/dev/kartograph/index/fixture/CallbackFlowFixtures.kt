@@ -117,6 +117,18 @@ internal class CallbackFlowFixture {
 
     fun screenComposable() = slot(rememberComposableLambda(7, true, { _: Any?, _: Any? -> route("composable") }, null))
 
+    /** 넘겨받은 파라미터를 실행하기만 한다. 넘기는 쪽이 같은 람다를 필드에도 저장한다. */
+    fun invokeStored(onClick: () -> Unit) {
+        onClick()
+    }
+
+    /** 람다를 필드에 저장하고 [invokeStored]에도 넘긴다. 필드를 읽는 다른 곳도 실행할 수 있다. */
+    fun screenStored() {
+        val callback: () -> Unit = { route("stored") }
+        stored = callback
+        invokeStored(callback)
+    }
+
     /** 분기에서 람다와 다른 값이 합쳐진 인자도 람다일 수 있다. */
     fun screenMerged(flag: Boolean) {
         val callback: () -> Unit = if (flag) ({ route("merged") }) else ::referenced

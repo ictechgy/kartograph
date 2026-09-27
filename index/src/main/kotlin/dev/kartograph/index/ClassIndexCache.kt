@@ -61,7 +61,7 @@ internal object CacheIdentity {
         ClassFileIndexer::class.java, FactsVisitor::class.java, ClassFacts::class.java,
         ClassRuntimeObservation::class.java, ClassFactsCodec::class.java,
         KotlinMetadataEnricher::class.java, RuntimeValueAnalyzer::class.java, JvmNodeId::class.java, CallbackFactScanner::class.java,
-        CallbackArgument::class.java, ParameterUse::class.java, ParameterUseKind::class.java,
+        CallbackArgument::class.java, ParameterUse::class.java, ParameterUseKind::class.java, LambdaEscape::class.java,
         CodeGraph::class.java, GraphNode::class.java, GraphEdge::class.java, ExternalCall::class.java,
         NodeKind::class.java, NodeAttribute::class.java, JvmModifier::class.java,
         EdgeKind::class.java, EdgeOrigin::class.java, InvocationKind::class.java, CallResolution::class.java,
@@ -159,6 +159,7 @@ internal object ClassFactsCodec {
         writeNullable(f.enclosingDeclaration?.value)
         writeList(f.callbackArguments) { writeCallbackArgument(it) }
         writeList(f.parameterUses) { writeParameterUse(it) }
+        writeList(f.lambdaEscapes) { writeString(it.caller.value); writeString(it.lambda.value); writeEnum(it.kind) }
     }
 
     private fun DataInputStream.readFacts(): ClassFacts {
@@ -169,8 +170,9 @@ internal object ClassFactsCodec {
         val enclosingDeclaration = readNullable()?.let(::NodeId)
         val callbackArguments = readList { readCallbackArgument() }
         val parameterUses = readList { readParameterUse() }
+        val lambdaEscapes = readList { LambdaEscape(NodeId(readString()), NodeId(readString()), readEnum<ParameterUseKind>()) }
         return ClassFacts(name, nodes, edges, enclosing, runtime, calls, bodies.runtime, bodies.returns, writes, bodies.fields, constants,
-            enclosingDeclaration, callbackArguments, parameterUses)
+            enclosingDeclaration, callbackArguments, parameterUses, lambdaEscapes)
     }
 
     private fun DataOutputStream.writeCallbackArgument(a: CallbackArgument) {

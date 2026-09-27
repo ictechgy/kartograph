@@ -13,6 +13,7 @@ import dev.kartograph.core.KartographVersion
 import dev.kartograph.core.LexicalEnclosure
 import dev.kartograph.core.CallbackArgument
 import dev.kartograph.core.ParameterUse
+import dev.kartograph.core.LambdaEscape
 import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
@@ -41,7 +42,7 @@ public data class QuerySnapshot(
      */
     val enclosuresCaptured: Boolean = true,
     /**
-     * 문서가 `graph.callbackArguments`·`graph.parameterUses`(콜백 값 흐름 관측)를 실었는지다. 이 필드가 생기기 전
+     * 문서가 `graph.callbackArguments`·`graph.parameterUses`·`graph.lambdaEscapes`(콜백 값 흐름 관측)를 모두 실었는지다. 이 필드가 생기기 전
      * 버전의 snapshot은 거짓이며, 관측이 0건인 새 snapshot과 구별하려고 둔다. 렌더링에는 쓰지 않는다.
      */
     val callbackFactsCaptured: Boolean = true,
@@ -130,6 +131,9 @@ public object QuerySnapshotCodec {
                 "caller" to item.caller.value, "callee" to item.callee.value, "invocation" to item.invocation.name.lowerCamel(),
                 "argument" to item.argument, "lambda" to item.lambda.value, "samMethod" to item.samMethod,
             ).filterValues { it != null } },
+            "lambdaEscapes" to snapshot.graph.lambdaEscapes.map { item -> sortedMapOf(
+                "caller" to item.caller.value, "lambda" to item.lambda.value, "kind" to item.kind.name.lowerCamel(),
+            ) },
             "parameterUses" to snapshot.graph.parameterUses.map { item -> sortedMapOf<String, Any?>(
                 "method" to item.method.value, "parameter" to item.parameter, "kind" to item.kind.name.lowerCamel(),
                 "target" to item.target?.value, "invocation" to item.invocation?.name?.lowerCamel(), "position" to item.position,
@@ -211,7 +215,12 @@ public object QuerySnapshotCodec {
                 optionalString(item["target"])?.let(::NodeId), item["invocation"]?.let { enumValue<InvocationKind>(it) },
                 item["position"]?.let(::integer))
         } }
-        require(callbackArguments.orEmpty().all { it.caller in ids && it.lambda in ids } && parameterUses.orEmpty().all { it.method in ids }) {
+        val lambdaEscapes = graph["lambdaEscapes"]?.let { values -> list(values).map { raw ->
+            val item = objectValue(raw)
+            LambdaEscape(NodeId(string(item["caller"])), NodeId(string(item["lambda"])), enumValue(item["kind"]))
+        } }
+        require(callbackArguments.orEmpty().all { it.caller in ids && it.lambda in ids } && parameterUses.orEmpty().all { it.method in ids } &&
+            lambdaEscapes.orEmpty().all { it.caller in ids && it.lambda in ids }) {
             "query snapshot contains invalid callback facts"
         }
         val retention = list(document["retention"]).map { raw ->
@@ -224,7 +233,8 @@ public object QuerySnapshotCodec {
         }
         val suppressed = strings(document["suppressed"]).map(::NodeId).toSet()
         require(suppressed.all(ids::contains)) { "query snapshot contains invalid baseline references" }
-        return QuerySnapshot(CodeGraph(nodes, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty()), retention, strings(document["limitations"]), suppressed,
+        return QuerySnapshot(CodeGraph(nodes, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
+            lambdaEscapes.orEmpty()), retention, strings(document["limitations"]), suppressed,
             boolean(document["includePrivateMembers"]), string(document["toolVersion"]),
             optionalString(document["revision"]), optionalString(document["scope"]),
             document["provenance"]?.let(BuildWitnessCodec::provenance),
@@ -236,7 +246,7 @@ public object QuerySnapshotCodec {
                     } })
             } }.orEmpty(),
             document["processorOutputs"]?.let { values -> list(values).map { ProcessorOutputCodec.observation(it) } }.orEmpty(),
-            enclosuresCaptured = enclosures != null, callbackFactsCaptured = callbackArguments != null && parameterUses != null)
+            enclosuresCaptured = enclosures != null, callbackFactsCaptured = callbackArguments != null && parameterUses != null && lambdaEscapes != null)
     }
 
     /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */

@@ -13,6 +13,7 @@ import dev.kartograph.core.JvmModifier
 import dev.kartograph.core.LexicalEnclosure
 import dev.kartograph.core.CallbackArgument
 import dev.kartograph.core.ParameterUse
+import dev.kartograph.core.LambdaEscape
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeKind
@@ -180,6 +181,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
             enclosures = enclosures,
             callbackArguments = localCallbackArguments(classFacts, enclosures),
             parameterUses = classFacts.flatMap(ClassFacts::parameterUses),
+            lambdaEscapes = localLambdaEscapes(classFacts, enclosures),
         )
         assemblyNanos = System.nanoTime() - assemblyStart
         val hierarchyStart = System.nanoTime()
@@ -281,7 +283,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null) {
                 MethodNode(Opcodes.ASM9, access, name, descriptor, signature, exceptions).also { bodies[JvmNodeId.methodId(facts.internalName, name, descriptor)] = it }
         }, ClassReader.SKIP_FRAMES)
         val callbacks = CallbackFactScanner.scan(facts.internalName, bodies.values.toList())
-        val withCallbacks = facts.copy(callbackArguments = callbacks.arguments, parameterUses = callbacks.uses)
+        val withCallbacks = facts.copy(callbackArguments = callbacks.arguments, parameterUses = callbacks.uses, lambdaEscapes = callbacks.escapes)
         if (methods.isEmpty() && returns.isEmpty() && writes.isEmpty()) return withCallbacks
         return withCallbacks.copy(runtimeMethods = bodies.filterKeys(methods::contains).values.toList(),
             returnMethods = bodies.filterKeys(returns::contains).values.toList(),
@@ -670,6 +672,8 @@ internal data class ClassFacts(
     val callbackArguments: List<CallbackArgument> = emptyList(),
     /** 이 class 메서드의 콜백일 수 있는 파라미터 쓰임이다. */
     val parameterUses: List<ParameterUse> = emptyList(),
+    /** 이 class 본문에서 람다 값이 호출 인자가 아닌 방식으로 쓰인 관측 사실이다. */
+    val lambdaEscapes: List<LambdaEscape> = emptyList(),
 ) {
     // 내부 입력 상수가 디버그·예외 문자열에 섞이지 않게 한다.
     override fun toString(): String = "class-facts"
@@ -749,6 +753,12 @@ private fun localCallbackArguments(classFacts: List<ClassFacts>, enclosures: Lis
     return classFacts.flatMap(ClassFacts::callbackArguments).filter { argument ->
         argument.lambda.value.startsWith("method:") || argument.lambda in localClasses
     }
+}
+
+/** [localCallbackArguments]와 같은 기준으로 람다의 빠져나감 사실을 거른다. */
+private fun localLambdaEscapes(classFacts: List<ClassFacts>, enclosures: List<LexicalEnclosure>): List<LambdaEscape> {
+    val localClasses = enclosures.mapTo(mutableSetOf(), LexicalEnclosure::localClass)
+    return classFacts.flatMap(ClassFacts::lambdaEscapes).filter { it.lambda.value.startsWith("method:") || it.lambda in localClasses }
 }
 
 // 중첩 class의 사용 사실만으로는 바깥 container가 죽어 보이지 않게 실제 enclosing 관계를 참조로 연결한다.

@@ -2,6 +2,7 @@ package dev.kartograph.index
 
 import dev.kartograph.core.CallbackArgument
 import dev.kartograph.core.InvocationKind
+import dev.kartograph.core.LambdaEscape
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.ParameterUse
 import dev.kartograph.core.ParameterUseKind
@@ -36,7 +37,7 @@ import org.objectweb.asm.tree.analysis.Value
  */
 internal object CallbackFactScanner {
     /** 한 class의 메서드 본문에서 관측한 사실이다. */
-    data class Facts(val arguments: List<CallbackArgument>, val uses: List<ParameterUse>)
+    data class Facts(val arguments: List<CallbackArgument>, val uses: List<ParameterUse>, val escapes: List<LambdaEscape>)
 
     /** 합류 지점의 출처 집합 상한이다. 넘으면 그 메서드의 사실을 버린다(쓰임을 빠뜨린 채 완전하다고 표시하지 않는다). */
     private const val MAX_ORIGINS = 64
@@ -44,12 +45,14 @@ internal object CallbackFactScanner {
     fun scan(owner: String, methods: List<MethodNode>): Facts {
         val arguments = mutableListOf<CallbackArgument>()
         val uses = mutableListOf<ParameterUse>()
+        val escapes = mutableListOf<LambdaEscape>()
         methods.forEach { method ->
             val facts = scanMethod(owner, method) ?: return@forEach
             arguments += facts.arguments
             uses += facts.uses
+            escapes += facts.escapes
         }
-        return Facts(arguments, uses)
+        return Facts(arguments, uses, escapes)
     }
 
     /** 분석할 가치가 있는 본문인지 싸게 거른다. 값 흐름 분석은 이 조건을 만족하는 메서드에만 한다. */
@@ -76,16 +79,29 @@ internal object CallbackFactScanner {
             return null
         }
         if (interpreter.overflowed) return null
-        val arguments = mutableListOf<CallbackArgument>()
-        val uses = mutableListOf<ParameterUse>()
+        val sink = Sink(methodId)
         method.instructions.forEachIndexed { index, insn ->
             val frame = frames[index] ?: return@forEachIndexed
-            consume(methodId, insn, frame, arguments, uses)
+            consume(insn, frame, sink)
         }
+        val uses = sink.uses
         val parameters = Type.getArgumentTypes(method.desc)
         val recorded = parameters.indices.filter { parameter -> isCallbackParameter(parameters[parameter], uses.filter { it.parameter == parameter }) }
         val declared = recorded.map { ParameterUse(methodId, it, ParameterUseKind.DECLARED) }
-        return Facts(arguments, declared + uses.filter { it.parameter in recorded })
+        return Facts(sink.arguments, declared + uses.filter { it.parameter in recorded }, sink.escapes)
+    }
+
+    /** 한 메서드에서 모으는 사실이다. */
+    private class Sink(val method: NodeId) {
+        val arguments = mutableListOf<CallbackArgument>()
+        val uses = mutableListOf<ParameterUse>()
+        val escapes = mutableListOf<LambdaEscape>()
+
+        /** 호출 인자가 아닌 쓰임을 파라미터 쓰임과 람다 빠져나감으로 함께 남긴다. */
+        fun nonArgument(value: OriginValue, kind: ParameterUseKind, target: NodeId? = null, invocation: InvocationKind? = null) {
+            value.parameters().forEach { uses += ParameterUse(method, it, kind, target, invocation) }
+            value.lambdas().forEach { escapes += LambdaEscape(method, it.id, kind) }
+        }
     }
 
     /**
@@ -102,40 +118,41 @@ internal object CallbackFactScanner {
         }
     }
 
-    private fun consume(methodId: NodeId, insn: AbstractInsnNode, frame: Frame<OriginValue>, arguments: MutableList<CallbackArgument>, uses: MutableList<ParameterUse>) {
+    private fun consume(insn: AbstractInsnNode, frame: Frame<OriginValue>, sink: Sink) {
         when (insn) {
-            is MethodInsnNode -> if (!isComposableLambdaWrapper(insn)) consumeCall(methodId, insn, frame, arguments, uses)
-            is InvokeDynamicInsnNode -> consumeIndy(methodId, insn, frame, arguments, uses)
+            is MethodInsnNode -> if (!isComposableLambdaWrapper(insn)) consumeCall(insn, frame, sink)
+            is InvokeDynamicInsnNode -> consumeIndy(insn, frame, sink)
             is FieldInsnNode -> if (insn.opcode == Opcodes.PUTFIELD || insn.opcode == Opcodes.PUTSTATIC) {
-                frame.top(0).parameters().forEach { uses += ParameterUse(methodId, it, ParameterUseKind.FIELD, JvmNodeId.fieldId(insn.owner, insn.name, insn.desc)) }
+                sink.nonArgument(frame.top(0), ParameterUseKind.FIELD, JvmNodeId.fieldId(insn.owner, insn.name, insn.desc))
             }
             else -> when (insn.opcode) {
-                Opcodes.ARETURN -> frame.top(0).parameters().forEach { uses += ParameterUse(methodId, it, ParameterUseKind.RETURN) }
-                Opcodes.AASTORE -> frame.top(0).parameters().forEach { uses += ParameterUse(methodId, it, ParameterUseKind.ARRAY) }
+                Opcodes.ARETURN -> sink.nonArgument(frame.top(0), ParameterUseKind.RETURN)
+                Opcodes.AASTORE -> sink.nonArgument(frame.top(0), ParameterUseKind.ARRAY)
             }
         }
     }
 
-    private fun consumeCall(methodId: NodeId, insn: MethodInsnNode, frame: Frame<OriginValue>, arguments: MutableList<CallbackArgument>, uses: MutableList<ParameterUse>) {
+    private fun consumeCall(insn: MethodInsnNode, frame: Frame<OriginValue>, sink: Sink) {
         val target = JvmNodeId.methodId(insn.owner, insn.name, insn.desc)
         val kind = invocationKind(insn.opcode)
         val count = Type.getArgumentTypes(insn.desc).size
         repeat(count) { position ->
             val value = frame.top(count - 1 - position)
-            value.parameters().forEach { uses += ParameterUse(methodId, it, ParameterUseKind.ARGUMENT, target, kind, position) }
-            value.lambdas().forEach { arguments += CallbackArgument(methodId, target, kind, position, it.id, it.samMethod) }
+            value.parameters().forEach { sink.uses += ParameterUse(sink.method, it, ParameterUseKind.ARGUMENT, target, kind, position) }
+            value.lambdas().forEach { sink.arguments += CallbackArgument(sink.method, target, kind, position, it.id, it.samMethod) }
         }
+        // 생성자 호출의 수신 객체는 막 만든 값 자신이다(람다 class의 생성 포함). 쓰임이 아니다.
         if (insn.opcode != Opcodes.INVOKESTATIC && insn.name != "<init>") {
-            frame.top(count).parameters().forEach { uses += ParameterUse(methodId, it, ParameterUseKind.RECEIVER, target, kind) }
+            sink.nonArgument(frame.top(count), ParameterUseKind.RECEIVER, target, kind)
         }
     }
 
     /**
      * LambdaMetafactory 람다의 캡처 인자는 구현 메서드의 앞쪽 파라미터가 된다. 정적 구현이면 캡처 순서가 곧 파라미터
-     * 위치이고, 수신 객체를 묶는 메서드 참조면 첫 캡처가 수신 객체이므로 한 칸씩 당긴다. 수신 객체로 묶인 파라미터와
+     * 위치이고, 수신 객체를 묶는 메서드 참조면 첫 캡처가 수신 객체이므로 한 칸씩 당긴다. 수신 객체로 묶인 값과
      * 모델이 없는 bootstrap의 인자는 [ParameterUseKind.OTHER]로 남긴다.
      */
-    private fun consumeIndy(methodId: NodeId, insn: InvokeDynamicInsnNode, frame: Frame<OriginValue>, arguments: MutableList<CallbackArgument>, uses: MutableList<ParameterUse>) {
+    private fun consumeIndy(insn: InvokeDynamicInsnNode, frame: Frame<OriginValue>, sink: Sink) {
         val count = Type.getArgumentTypes(insn.desc).size
         val implementation = if (insn.isLambdaMetafactory()) insn.bsmArgs[1] as Handle else null
         val shift = if (implementation == null || implementation.tag == Opcodes.H_INVOKESTATIC || implementation.tag == Opcodes.H_NEWINVOKESPECIAL) 0 else 1
@@ -143,12 +160,12 @@ internal object CallbackFactScanner {
             val value = frame.top(count - 1 - capture)
             val position = capture - shift
             if (implementation == null || position < 0) {
-                value.parameters().forEach { uses += ParameterUse(methodId, it, ParameterUseKind.OTHER) }
+                sink.nonArgument(value, ParameterUseKind.OTHER)
                 return@repeat
             }
             val body = JvmNodeId.methodId(implementation.owner, implementation.name, implementation.desc)
-            value.parameters().forEach { uses += ParameterUse(methodId, it, ParameterUseKind.CAPTURE, body, InvocationKind.BOOTSTRAP, position) }
-            value.lambdas().forEach { arguments += CallbackArgument(methodId, body, InvocationKind.BOOTSTRAP, position, it.id, it.samMethod) }
+            value.parameters().forEach { sink.uses += ParameterUse(sink.method, it, ParameterUseKind.CAPTURE, body, InvocationKind.BOOTSTRAP, position) }
+            value.lambdas().forEach { sink.arguments += CallbackArgument(sink.method, body, InvocationKind.BOOTSTRAP, position, it.id, it.samMethod) }
         }
     }
 

@@ -74,7 +74,8 @@ class LanguageTraversalTest {
         assertTrue(result.limitations.any { it.startsWith("callback-flow: 1 bound") })
         val direct = LanguageTraversal.traverse(graph, assembled, listOf(id("Route")), TraversalDirection.DEPENDENTS, TraversalDispatch.DIRECT)
         assertEquals(setOf("Body"), direct.reached.map { it.node.name }.toSet())
-        assertTrue(direct.limitations.any { it.startsWith("dispatch-excluded: 1 ") })
+        assertTrue(direct.limitations.any { it.startsWith("callback-excluded: 1 ") })
+        assertTrue(direct.limitations.none { it.startsWith("dispatch-excluded:") })
     }
 
     @Test

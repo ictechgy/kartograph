@@ -84,7 +84,7 @@ class TraversalCliTest {
         assertEquals(listOf("callback"), button["relationships"])
         assertEquals("bound", button["evidence"])
         assertFalse("method:p/Other#show()V" in rows, "callback callers must not spread to their other callers")
-        assertTrue((document["limitations"] as List<*>).any { (it as String).startsWith("callback-flow: 1 bound") })
+        assertTrue((document["limitations"] as List<*>).any { (it as String).startsWith("callback-flow: 2 bound") })
         assertTrue((document["limitations"] as List<*>).any { (it as String).startsWith("lambda-dispatch-excluded:") })
         val again = run("impact", "method:p/Http#get()V", "--format", "language-traversal", "--graph-file", graph.toString(),
             "--project", root.toString(), "--generated-at", "2026-09-27T00:00:00Z")

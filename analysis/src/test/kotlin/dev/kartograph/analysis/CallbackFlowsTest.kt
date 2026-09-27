@@ -7,6 +7,7 @@ import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.InvocationKind
 import dev.kartograph.core.JvmModifier
+import dev.kartograph.core.LambdaEscape
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.ParameterUse
@@ -147,6 +148,54 @@ class CallbackFlowsTest {
         val adding = listOf(declared(section), ParameterUse(section, 0, ParameterUseKind.CAPTURE, later, InvocationKind.BOOTSTRAP, 0),
             declared(later), invokes(later))
         assertEquals(mapOf("section" to TraversalEdgeTier.CANDIDATE, "section\$lambda\$2" to TraversalEdgeTier.CANDIDATE), tiers(graph(section, adding)))
+    }
+
+    @Test
+    fun `a lambda that also escapes at its creation site is never bound`() {
+        // 리뷰 지적 재현(D1): F가 같은 람다를 필드에 저장하거나 라이브러리에 넘기면 G 밖에도 실행자가 있다.
+        val button = fn("button")
+        val uses = listOf(declared(button), invokes(button))
+        val clean = graph(button, uses)
+        assertEquals(TraversalEdgeTier.BOUND, flows(clean).edges.single().tier)
+        ParameterUseKind.entries.filter { it in setOf(ParameterUseKind.FIELD, ParameterUseKind.RETURN, ParameterUseKind.RECEIVER) }.forEach { kind ->
+            val escaped = CodeGraph(clean.nodes.values, clean.edges, callbackArguments = clean.callbackArguments, parameterUses = uses,
+                lambdaEscapes = listOf(LambdaEscape(screen, body, kind)))
+            assertEquals(TraversalEdgeTier.CANDIDATE, flows(escaped).edges.single().tier, kind.name)
+            assertEquals(CallbackFlowSummary(candidate = 1), flows(escaped).summary)
+        }
+        val library = NodeId("method:ext/Lib#keep(Lkotlin/jvm/functions/Function0;)V")
+        val handedOff = CodeGraph(clean.nodes.values, clean.edges, parameterUses = uses, callbackArguments = clean.callbackArguments +
+            CallbackArgument(screen, library, InvocationKind.STATIC, 0, body, sam))
+        assertEquals(TraversalEdgeTier.CANDIDATE, flows(handedOff).edges.single().tier)
+        // 비교만 하는 라이브러리 호출은 실행자를 늘리지 않는다.
+        val inspected = CodeGraph(clean.nodes.values, clean.edges, parameterUses = uses, callbackArguments = clean.callbackArguments +
+            CallbackArgument(screen, NodeId("method:kotlin/jvm/internal/Intrinsics#checkNotNull(Ljava/lang/Object;)V"), InvocationKind.STATIC, 0, body, sam))
+        assertEquals(TraversalEdgeTier.BOUND, flows(inspected).edges.single().tier)
+    }
+
+    @Test
+    fun `an edge reached by an escaping flow keeps candidate evidence`() {
+        // 리뷰 지적 재현(D2): 같은 람다가 필드에 저장하는 both와 깨끗한 plain을 거쳐 같은 consumer에 닿는다.
+        val both = fn("both"); val plain = fn("plain"); val consumer = fn("consumer")
+        val uses = listOf(declared(both), forwards(both, consumer), ParameterUse(both, 0, ParameterUseKind.FIELD, NodeId("field:app/Ui#saved:Lkotlin/jvm/functions/Function0;")),
+            declared(plain), forwards(plain, consumer), declared(consumer), invokes(consumer))
+        val base = graph(both, uses)
+        val graph = CodeGraph(base.nodes.values + GraphNode(plain, "plain", NodeKind.METHOD), base.edges, parameterUses = uses,
+            callbackArguments = base.callbackArguments + CallbackArgument(screen, plain, InvocationKind.STATIC, 0, body, sam))
+        val tiers = flows(graph).edges.associate { it.source to it.tier }
+        assertEquals(TraversalEdgeTier.CANDIDATE, tiers.getValue(consumer))
+        assertEquals(TraversalEdgeTier.CANDIDATE, tiers.getValue(plain))
+    }
+
+    @Test
+    fun `parameter uses without the fields their kind needs are rejected`() {
+        listOf(
+            { ParameterUse(fn("a"), 0, ParameterUseKind.ARGUMENT, invoke) },
+            { ParameterUse(fn("a"), 0, ParameterUseKind.RECEIVER) },
+            { ParameterUse(fn("a"), 0, ParameterUseKind.CAPTURE, invoke) },
+            { ParameterUse(fn("a"), 0, ParameterUseKind.FIELD) },
+            { LambdaEscape(screen, body, ParameterUseKind.ARGUMENT) },
+        ).forEach { factory -> kotlin.test.assertFailsWith<IllegalArgumentException> { factory() } }
     }
 
     @Test

@@ -12,6 +12,7 @@ public class CodeGraph(
     enclosures: Iterable<LexicalEnclosure> = emptyList(),
     callbackArguments: Iterable<CallbackArgument> = emptyList(),
     parameterUses: Iterable<ParameterUse> = emptyList(),
+    lambdaEscapes: Iterable<LambdaEscape> = emptyList(),
 ) {
     public val nodes: Map<NodeId, GraphNode> = buildMap {
         nodes.forEach { node -> putIfAbsent(node.id, node) }
@@ -46,6 +47,11 @@ public class CodeGraph(
     /** 콜백일 수 있는 파라미터의 관측된 쓰임이다. 파라미터를 가진 메서드가 그래프에 있는 것만 남긴다. */
     public val parameterUses: List<ParameterUse> = parameterUses
         .filter { it.method in this.nodes }
+        .distinct().sorted()
+
+    /** 람다 값이 호출 인자가 아닌 방식으로 쓰인 관측 사실이다. 만든 메서드와 람다 정점이 그래프에 있는 것만 남긴다. */
+    public val lambdaEscapes: List<LambdaEscape> = lambdaEscapes
+        .filter { it.caller in this.nodes && it.lambda in this.nodes }
         .distinct().sorted()
 
     public val edges: List<GraphEdge> = edges

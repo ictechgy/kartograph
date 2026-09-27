@@ -169,7 +169,7 @@ public object LanguageTraversal {
         if (lambda > 0 && TraversalEdgeTier.LAMBDA !in dispatch.tiers) add("lambda-dispatch-excluded: $lambda callback dispatch candidate edge(s) " +
             "into lambda or anonymous-class bodies (FunctionN/SAM invoke) were not followed; lexical containment links those bodies to " +
             "their enclosing declarations; use --dispatch all to follow them")
-        val excluded = edges.count { it.tier != TraversalEdgeTier.LAMBDA && it.tier !in dispatch.tiers }
+        val excluded = edges.count { !it.terminal && it.tier != TraversalEdgeTier.LAMBDA && it.tier !in dispatch.tiers }
         if (excluded > 0) add("dispatch-excluded: $excluded ${dispatch.label}-mode dispatch edge(s) of a weaker tier were not followed")
         if (!enclosuresCaptured) add("lexical-enclosures-unavailable: the snapshot predates enclosing-declaration facts; lambda dispatch " +
             "candidates are followed as candidate edges; recapture the snapshot with this kartograph version")
@@ -198,6 +198,8 @@ private fun callbackLimitations(
         return@buildList
     }
     val followed = edges.count { it.terminal && it.tier in dispatch.tiers }
+    val skipped = edges.count { it.terminal && it.tier !in dispatch.tiers }
+    if (skipped > 0) add("callback-excluded: $skipped ${dispatch.label}-mode callback edge(s) of a weaker tier were not followed")
     if (followed > 0) add("callback-flow: ${callbacks.bound} bound and ${callbacks.candidate} candidate lambda argument flow(s) link " +
         "functions that invoke or forward a lambda argument to its body; those functions are listed for that call context only and " +
         "are not expanded to their other callers")

@@ -249,7 +249,7 @@ internal object AgentCommand {
                     val capturedGraph = if (paths == null) graph else dev.kartograph.core.CodeGraph(graph.nodes.values.map { node ->
                         paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
                     }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures,
-            graph.callbackArguments, graph.parameterUses)
+            graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes)
                     val renderStarted = System.nanoTime()
                     val selectedLimit = requireNotNull(snapshotLimit)
                     val captured = try {

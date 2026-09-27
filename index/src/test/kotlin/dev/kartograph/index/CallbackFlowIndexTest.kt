@@ -81,6 +81,9 @@ class CallbackFlowIndexTest {
         assertEquals(TraversalEvidence.CANDIDATE, rows.getValue("handToLibrary").evidence)
         assertEquals(TraversalEvidence.CANDIDATE, rows.getValue("closureInvoke").evidence)
         assertFalse("escapeReturn" in rows, "a returned callback has no invocation to link")
+        // 리뷰 지적 재현: 넘기는 쪽에서 같은 람다를 필드에 저장하면 실행자가 이 경로뿐이라고 할 수 없다.
+        assertEquals(TraversalEvidence.CANDIDATE, rows.getValue("invokeStored").evidence)
+        assertTrue(graph.lambdaEscapes.any { it.caller == method("screenStored") && it.kind == ParameterUseKind.FIELD })
         assertFalse("keep" in rows, "keep only inspects the closure")
         val bound = reached(TraversalDispatch.BOUND)
         assertFalse("escapeField" in bound)

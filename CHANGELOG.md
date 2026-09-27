@@ -73,7 +73,8 @@
 ### Callback flow (language-traversal)
 
 - `snapshot`이 bytecode 값 흐름으로 관측한 콜백 사실 `graph.callbackArguments`(한 메서드에서 만든 람다·지역 class가
-  호출 인자로 그대로 넘어간 사실)와 `graph.parameterUses`(함수형 파라미터의 실행·전달·캡처·필드·반환 쓰임)를 싣는다.
+  호출 인자로 그대로 넘어간 사실), `graph.parameterUses`(함수형 파라미터의 실행·전달·캡처·필드·반환 쓰임),
+  `graph.lambdaEscapes`(만든 람다를 필드·반환·직접 실행 등 호출 인자 밖으로 쓴 사실)를 싣는다.
   Compose `ComposableLambdaKt` 래퍼는 감싼 람다와 같은 값으로 본다.
 - `impact --format language-traversal`이 받은 람다를 실행하거나 수정 없이 넘기는 함수(최대 8단계)를 람다 본문에
   `callback` 관계로 잇는다. 값이 빠져나가지 않고 실행 지점이 모두 프로젝트 안이면 `bound`, 라이브러리 코드에 넘기거나

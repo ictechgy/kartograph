@@ -50,32 +50,52 @@ internal class CallbackFlows(private val graph: CodeGraph, private val dispatch:
     private val members: Map<NodeId, List<NodeId>> = graph.edges.filter { it.kind == EdgeKind.MEMBER }.groupBy({ it.source }, { it.target })
 
     fun analyze(): CallbackFlowResult {
+        val escaped = graph.lambdaEscapes.mapTo(mutableSetOf()) { it.caller to it.lambda }
+        val flows = graph.callbackArguments.map { argument -> argument to start(argument) }
+        // 같은 메서드가 만든 같은 람다(코호트)의 쓰임을 모두 봐야 "실행자는 이 경로들뿐"이라고 할 수 있다. 필드·반환·직접 실행
+        // 같은 호출 인자 밖의 쓰임, 라이브러리·모호한 대상으로 넘긴 인자, candidate 흐름이 하나라도 있으면 코호트 전체가 candidate다.
+        val cohorts = flows.groupBy({ it.first.caller to it.first.lambda }, { it.second }).mapValues { (key, starts) ->
+            key !in escaped && starts.all { started -> started.flow?.let { it.tier == TraversalEdgeTier.BOUND } ?: started.boundSafe }
+        }
         val tiers = mutableMapOf<Pair<NodeId, NodeId>, TraversalEdgeTier>()
         var bound = 0; var candidate = 0; var unresolved = 0
         val reasons = sortedMapOf<String, Int>()
-        graph.callbackArguments.forEach { argument ->
-            // 라이브러리에 바로 넘긴 람다는 프로젝트 안에 실행자가 없으므로 흐름이 아니다. 구현을 하나로 못 정한 호출은 센다.
-            val callee = when (val resolved = resolve(argument.callee, argument.invocation)) {
-                is Callee.Project -> resolved.id
-                Callee.External -> return@forEach
-                Callee.Ambiguous -> { unresolved++; reasons.merge("dispatch", 1, Int::plus); return@forEach }
-            }
-            val flow = Flow(argument).apply { walk(callee to argument.argument) }
+        flows.forEach { (argument, started) ->
+            started.reason?.let { reason -> unresolved++; reasons.merge(reason, 1, Int::plus) }
+            val flow = started.flow ?: return@forEach
+            val tier = if (cohorts.getValue(argument.caller to argument.lambda)) TraversalEdgeTier.BOUND else TraversalEdgeTier.CANDIDATE
             val edges = flow.edges()
             when {
                 edges.isEmpty() -> if (flow.escapes.isNotEmpty()) {
                     unresolved++
                     flow.escapes.forEach { reasons.merge(it, 1, Int::plus) }
                 }
-                flow.tier == TraversalEdgeTier.BOUND -> bound++
+                tier == TraversalEdgeTier.BOUND -> bound++
                 else -> candidate++
             }
-            edges.forEach { edge -> tiers.merge(edge, flow.tier) { old, new -> if (new.ordinal < old.ordinal) new else old } }
+            // 여러 흐름이 같은 간선을 만들면 약한 등급이 이긴다. 한 흐름이라도 빠져나갔으면 그 간선은 bound가 아니다.
+            edges.forEach { edge -> tiers.merge(edge, tier) { old, new -> if (new.ordinal > old.ordinal) new else old } }
         }
         val edges = tiers.map { (edge, tier) -> TraversalEdge(edge.first, edge.second, CALLBACK, tier, terminal = true) }
             .sortedWith(compareBy({ it.source.value }, { it.target.value }))
         return CallbackFlowResult(edges, CallbackFlowSummary(bound, candidate, unresolved, reasons))
     }
+
+    /**
+     * 람다 전달 하나의 출발점이다. 프로젝트 대상이면 흐름을 따라간 [flow], 아니면 null이다. [boundSafe]는 흐름이 없는 전달이
+     * 코호트의 bound를 막지 않는지(검사 전용 라이브러리 호출), [reason]은 미해결로 셀 이유다.
+     */
+    private class Start(val flow: Flow?, val boundSafe: Boolean, val reason: String?)
+
+    private fun start(argument: CallbackArgument): Start = when (val resolved = resolve(argument.callee, argument.invocation)) {
+        is Callee.Project -> Start(Flow(argument).apply { walk(resolved.id to argument.argument) }, true, null)
+        // 라이브러리에 바로 넘긴 람다는 프로젝트 안에 실행자가 없으므로 흐름이 아니지만, 라이브러리가 실행할 수 있다.
+        Callee.External -> Start(null, isInspectionOnly(argument.callee), null)
+        Callee.Ambiguous -> Start(null, false, ambiguousReason(argument.invocation))
+    }
+
+    private fun ambiguousReason(invocation: InvocationKind): String =
+        if (invocation == InvocationKind.VIRTUAL || invocation == InvocationKind.INTERFACE) "dispatch" else "unresolved-callee"
 
     /** 호출 지점 대상의 해석 결과다. */
     private sealed interface Callee {
@@ -143,7 +163,7 @@ internal class CallbackFlows(private val graph: CodeGraph, private val dispatch:
                     when (val callee = resolve(target, requireNotNull(use.invocation))) {
                         is Callee.Project -> return (callee.id to requireNotNull(use.position)) to false
                         Callee.External -> handOff(pair)
-                        Callee.Ambiguous -> escapes += "dispatch"
+                        Callee.Ambiguous -> escapes += ambiguousReason(requireNotNull(use.invocation))
                     }
                 }
                 ParameterUseKind.CAPTURE -> if (target != null && graph.node(target) != null) return (target to requireNotNull(use.position)) to true

@@ -69,9 +69,42 @@ public data class ParameterUse(
 ) : Comparable<ParameterUse> {
     init {
         require(parameter >= 0 && (position == null || position >= 0)) { "parameter positions must not be negative" }
+        // 분석이 종류별로 기대는 필드를 사실 생성 시점에 강제한다. 손상된 snapshot이 순회 도중 실패하지 않게 한다.
+        require(when (kind) {
+            ParameterUseKind.RECEIVER -> target != null && invocation != null
+            ParameterUseKind.ARGUMENT -> target != null && invocation != null && position != null
+            ParameterUseKind.CAPTURE -> target != null && position != null
+            ParameterUseKind.FIELD -> target != null
+            else -> true
+        }) { "parameter use is missing fields required by its kind" }
     }
 
     override fun compareTo(other: ParameterUse): Int = compareValuesBy(this, other,
         { it.method.value }, { it.parameter }, { it.kind.name }, { it.target?.value.orEmpty() }, { it.invocation?.name.orEmpty() },
         { it.position ?: -1 })
+}
+
+/**
+ * 한 메서드가 만든 람다 값이 호출 인자가 아닌 방식으로 쓰인 관측 사실이다.
+ *
+ * 필드·배열 저장, 반환, 직접 실행(수신 객체), 모델 없는 invokedynamic 인자가 여기에 든다. 이런 쓰임이 있으면
+ * 그 람다를 실행하는 곳을 호출 인자 흐름만으로 모두 찾았다고 할 수 없다. analysis는 이 사실이 있는 람다의 콜백
+ * 흐름을 bound로 판정하지 않는다.
+ *
+ * @property caller 람다를 만든 메서드다
+ * @property lambda [CallbackArgument.lambda]와 같은 람다 정점이다
+ * @property kind [ParameterUseKind.FIELD]·[ParameterUseKind.RETURN]·[ParameterUseKind.ARRAY]·[ParameterUseKind.RECEIVER]·
+ *   [ParameterUseKind.OTHER] 중 하나다
+ */
+public data class LambdaEscape(val caller: NodeId, val lambda: NodeId, val kind: ParameterUseKind) : Comparable<LambdaEscape> {
+    init {
+        require(kind in ESCAPE_KINDS) { "lambda escape kind must describe a non-argument use" }
+    }
+
+    override fun compareTo(other: LambdaEscape): Int = compareValuesBy(this, other, { it.caller.value }, { it.lambda.value }, { it.kind.name })
+
+    private companion object {
+        val ESCAPE_KINDS = setOf(ParameterUseKind.FIELD, ParameterUseKind.RETURN, ParameterUseKind.ARRAY, ParameterUseKind.RECEIVER,
+            ParameterUseKind.OTHER)
+    }
 }
