@@ -9,6 +9,7 @@ import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
+import dev.kartograph.core.RouteCallEvidence
 import dev.kartograph.core.SourceLocation
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -121,5 +122,37 @@ class AgentDocumentRendererTest {
 
         assertContains(json, "\"mechanism\": \"expo\"")
         assertEquals(1, Regex("\"mechanism\"").findAll(json).count())
+    }
+
+    @Test
+    fun `http documents carry roles, source sets and only true route markers`() {
+        val document = BridgeFactsDocument(
+            generatedAt = "2026-09-04T00:00:00Z",
+            target = "http",
+            project = "/project",
+            facts = listOf(
+                BridgeFact("route-call", "/v1/items/{}", method = "GET", dynamic = false,
+                    location = BridgeLocation("Api.kt", 4, 9), target = "http",
+                    route = RouteCallEvidence("root", authority = "api.example.com", service = "mobile",
+                        queryTailStripped = true, maskedSegments = 1, testSource = true)),
+                BridgeFact("route-call", null, dynamic = true, location = BridgeLocation("Api.kt", 8, 5), target = "http",
+                    channelPrefix = "/files/", route = RouteCallEvidence("base", methodDynamic = true)),
+            ),
+            limitations = emptyList(),
+            roles = listOf("client"),
+            testSources = "included",
+            service = "mobile",
+        )
+
+        val json = AgentDocumentRenderer.bridges(document)
+
+        assertContains(json, "\"roles\": [\"client\"]")
+        assertContains(json, "\"sourceSets\": {\"tests\": \"included\"}")
+        assertContains(json, "\"authority\": \"api.example.com\", \"channel\": \"/v1/items/{}\"")
+        assertContains(json, "\"maskedSegments\": 1")
+        assertContains(json, "\"methodDynamic\": true, \"pathAnchor\": \"base\"")
+        assertEquals(1, Regex("\"queryTailStripped\"").findAll(json).count())
+        assertEquals(1, Regex("\"testSource\"").findAll(json).count())
+        assertFalse(json.contains("false, \"pathAnchor\""))
     }
 }

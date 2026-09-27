@@ -6,6 +6,7 @@ import dev.kartograph.analysis.SymbolQueryResult
 import dev.kartograph.analysis.SymbolQuerySubject
 import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
+import dev.kartograph.core.RouteCallEvidence
 import dev.kartograph.core.SourceLocation
 
 /** 에이전트 교환 문서를 결정적인 키 순서의 JSON으로 렌더링한다. */
@@ -41,6 +42,9 @@ public object AgentDocumentRenderer {
         put("limitations", document.limitations.sorted())
         put("platform", document.platform)
         put("project", document.project)
+        document.roles?.let { put("roles", it) }
+        document.service?.let { put("service", it) }
+        document.testSources?.let { put("sourceSets", sortedMapOf("tests" to it)) }
         put("target", document.target)
         put("tool", sortedMapOf("name" to document.tool.name, "version" to document.tool.version))
         put("version", document.version)
@@ -99,7 +103,7 @@ public object AgentDocumentRenderer {
         put("path", path)
     }.toSortedMap()
 
-    private fun BridgeFact.toJsonValue(): Map<String, Any?> = buildMap {
+    private fun BridgeFact.toJsonValue(): Map<String, Any?> = buildMap<String, Any?> {
         put("channel", channel)
         put("dynamic", dynamic)
         put("kind", kind)
@@ -107,6 +111,7 @@ public object AgentDocumentRenderer {
         if (method != null) put("method", method)
         if (channelPrefix != null) put("channelPrefix", channelPrefix)
         if (mechanism != null) put("mechanism", mechanism)
+        route?.let { putRouteEvidence(it) }
         symbol?.let { value ->
             put(
                 "symbol",
@@ -117,4 +122,15 @@ public object AgentDocumentRenderer {
             )
         }
     }.toSortedMap()
+
+    /** route-call 증거를 계약 필드 이름으로 싣는다 — 존재 자체가 증거인 표식은 참일 때만 싣는다. */
+    private fun MutableMap<String, Any?>.putRouteEvidence(route: RouteCallEvidence) {
+        put("pathAnchor", route.pathAnchor)
+        if (route.methodDynamic) put("methodDynamic", true)
+        route.authority?.let { put("authority", it) }
+        route.service?.let { put("service", it) }
+        if (route.queryTailStripped) put("queryTailStripped", true)
+        route.maskedSegments?.let { put("maskedSegments", it) }
+        if (route.testSource) put("testSource", true)
+    }
 }
