@@ -91,6 +91,9 @@ public object LanguageTraversal {
      * @param requested root 요청이다. 정확한 usr를 우선하고, 없으면 유일한 한정 이름·이름으로 해석한다
      * @param enclosuresCaptured snapshot이 어휘적 소속 사실을 실었는지다
      * @param callbackFactsCaptured snapshot이 콜백 값 흐름 관측을 실었는지다. 거짓이면 콜백 간선이 없다는 한계를 알린다
+     * @param rootGraph root 요청을 해석할 그래프다. [graph]가 [TestSourceScope]로 테스트 정점을 뺀 부분 그래프면 원래 그래프를
+     *   준다 — 테스트·production에 같은 이름이 있어 원래 그래프에서 모호한 요청이 부분 그래프에서 production 쪽으로 조용히
+     *   해석되지 않게 한다. 해석한 정점이 [graph]에 없으면 root-not-found다
      */
     public fun traverse(
         graph: CodeGraph,
@@ -101,8 +104,9 @@ public object LanguageTraversal {
         maxReached: Int = MAX_REACHED,
         enclosuresCaptured: Boolean = true,
         callbackFactsCaptured: Boolean = true,
+        rootGraph: CodeGraph = graph,
     ): LanguageTraversalResult = traverse(graph, TraversalEdges.assemble(graph, enclosuresCaptured, callbackFactsCaptured), requested, direction, dispatch,
-        maxDepth, maxReached, enclosuresCaptured, callbackFactsCaptured)
+        maxDepth, maxReached, enclosuresCaptured, callbackFactsCaptured, rootGraph)
 
     /** 이미 만든 순회 간선으로 순회한다. 테스트가 임의의 콜백 간선으로 계산을 검증할 때 쓴다. */
     internal fun traverse(
@@ -115,11 +119,12 @@ public object LanguageTraversal {
         maxReached: Int = MAX_REACHED,
         enclosuresCaptured: Boolean = true,
         callbackFactsCaptured: Boolean = true,
+        rootGraph: CodeGraph = graph,
     ): LanguageTraversalResult {
         require(maxDepth in 1..MAX_DEPTH && maxReached in 1..MAX_REACHED && requested.size <= MAX_ROOTS)
         val edges = assembled.edges
         val unresolved = graph.externalCalls.filter { it.isUnresolvedTarget() }.groupingBy { it.caller }.eachCount()
-        val roots = resolveRoots(graph, requested, unresolved)
+        val roots = resolveRoots(graph, rootGraph, requested, unresolved)
         val space = TraversalSpace(graph, edges, direction, dispatch)
         val computation = space.compute(roots.map { root -> root.node?.let { space.index.getValue(it.id) } ?: -1 }, maxDepth)
         val (reached, reachedTruncated) = cap(computation.rows.map { row -> row.toReached(space, roots, unresolved) }, roots, maxReached)
@@ -134,15 +139,22 @@ public object LanguageTraversal {
         val enclosuresCaptured: Boolean, val callbackFactsCaptured: Boolean, val callbacks: CallbackFlowSummary,
     )
 
-    /** 요청을 입력 순서대로 root로 해석한다. 같은 정점을 가리키는 뒤 요청은 버린다(root id는 유일해야 한다). */
-    private fun resolveRoots(graph: CodeGraph, requested: List<String>, unresolved: Map<NodeId, Int>): List<TraversalRoot> {
+    /**
+     * 요청을 입력 순서대로 root로 해석한다. 같은 정점을 가리키는 뒤 요청은 버린다(root id는 유일해야 한다).
+     * 해석은 [rootGraph]에서 하고, 순회할 [graph]에 없는 정점은 해석하지 못한 것으로 둔다.
+     */
+    private fun resolveRoots(graph: CodeGraph, rootGraph: CodeGraph, requested: List<String>, unresolved: Map<NodeId, Int>): List<TraversalRoot> {
         val seen = mutableSetOf<String>()
         return requested.mapNotNull { text ->
-            val node = graph.node(NodeId(text)) ?: graph.nodes.values.filter { it.qualifiedName == text || it.name == text }.singleOrNull()
+            val node = resolveRootNode(rootGraph, text)?.let { graph.node(it.id) }
             val id = node?.id?.value ?: text
             if (!seen.add(id)) null else TraversalRoot(id, node, node?.let { unresolved[it.id] } ?: 0)
         }
     }
+
+    /** root 요청 하나를 정점으로 해석한다. 정확한 usr를 우선하고, 없으면 유일한 한정 이름·이름이다. 못 하면 null이다. */
+    internal fun resolveRootNode(graph: CodeGraph, text: String): GraphNode? =
+        graph.node(NodeId(text)) ?: graph.nodes.values.filter { it.qualifiedName == text || it.name == text }.singleOrNull()
 
     /**
      * 도달 정점 상한을 (depth, usr) 순서로 적용한다. via가 잘린 정점을 가리키는 항목(순환 root 항목뿐)은 함께 뺀다.

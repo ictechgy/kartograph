@@ -19,7 +19,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
-/** language-traversal의 snapshot 신선도(`--input-bindings`) 계약이다. */
+/** language-traversal의 테스트 소스 제외(`--include-tests`)와 snapshot 신선도(`--input-bindings`) 계약이다. */
 class TraversalScopeCliTest {
     private data class Execution(val status: Int, val output: String, val error: String)
 
@@ -83,6 +83,40 @@ class TraversalScopeCliTest {
         "--graph-file", graph.toString(), "--project", root.toString(), "--generated-at", "2026-09-28T00:00:00Z", *extra)
 
     @Test
+    fun `test sources are excluded by default and bound dispatch counts production implementations`(@TempDir root: Path) {
+        val graph = capture(root)
+        val production = impact(graph, root, "method:p/Http#get()V")
+        assertEquals(0, production.status, production.error)
+        assertEquals(mapOf("method:p/RealClient#fetch()V" to "direct", "method:p/Client#fetch()V" to "bound",
+            "method:p/Screen#show(Lp/Client;)V" to "bound"), evidence(production))
+        assertTrue(limitations(production).any { it.startsWith("test-sources-excluded: 6 test-source declaration(s)") }, production.output)
+
+        val included = impact(graph, root, "method:p/Http#get()V", "--include-tests")
+        assertEquals(0, included.status, included.error)
+        val all = evidence(included)
+        assertEquals("candidate", all["method:p/Client#fetch()V"], "the test fake is a second implementation")
+        assertTrue("method:p/ScreenTest#run()V" in all && "method:p/FakeClient#fetch()V" in all)
+        assertTrue(limitations(included).none { it.startsWith("test-sources-") })
+
+        val forward = run("reach", "method:p/Screen#show(Lp/Client;)V", "--graph-file", graph.toString(), "--project", root.toString())
+        assertEquals(0, forward.status, forward.error)
+        assertEquals("bound", evidence(forward)["method:p/RealClient#fetch()V"])
+        assertFalse("method:p/FakeClient#fetch()V" in evidence(forward))
+        assertEquals(document(production)["graphRevision"], document(forward)["graphRevision"], "both directions traverse one graph")
+        assertTrue(document(production)["graphRevision"] != document(included)["graphRevision"], "including tests traverses another graph")
+    }
+
+    @Test
+    fun `a test-source root traverses test sources`(@TempDir root: Path) {
+        val graph = capture(root)
+        val execution = impact(graph, root, "method:p/FakeClient#fetch()V")
+        assertEquals(0, execution.status, execution.error)
+        assertEquals("candidate", evidence(execution)["method:p/Client#fetch()V"])
+        assertTrue("method:p/ScreenTest#run()V" in evidence(execution))
+        assertTrue(limitations(execution).any { it.startsWith("test-sources-included:") && it.endsWith("1 root(s) are test-source declarations") })
+    }
+
+    @Test
     fun `matched snapshots add no freshness limitation and changed inputs do`(@TempDir root: Path) {
         val graph = witnessed(root)
         val traversal = impact(graph, root, "method:p/Http#get()V")
@@ -121,6 +155,8 @@ class TraversalScopeCliTest {
         val missing = impact(graph, root, "method:p/Http#get()V", "--input-bindings", root.resolve("absent.json").toString())
         assertEquals(2, missing.status)
         assertContains(missing.error, "--input-bindings")
+        val duplicate = impact(graph, root, "method:p/Http#get()V", "--include-tests", "--include-tests")
+        assertEquals(64, duplicate.status)
         assertEquals(64, impact(graph, root, "method:p/Http#get()V", "--input-bindings").status)
     }
 }

@@ -405,6 +405,30 @@ kartograph reach <usr>... --graph-file graph.json --project .
   쓴 로컬 연결을 주면 project 밖 입력(의존성 JAR, 옮긴 build 디렉터리)도 확인한다. `matched`면 한계를 싣지 않고, 아니면
   `graph-file-freshness-unverified:`·`graph-file-freshness-stale:`로 원인을 싣는다. stale이어도 문서는 낸다.
 
+### 테스트 소스 (`--include-tests`)
+
+테스트 소스는 production과 따로 컴파일되는 별도 프로그램으로 본다. production 코드는 테스트 class를 참조·생성하지
+않으므로(main 컴파일 classpath에 test 출력이 없다) production 호출 지점의 dispatch 대상에 테스트 fake가 들어올 수 없고,
+테스트 정점을 거치는 경로는 production 실행 경로가 아니다. 그래서 기본 순회는 테스트 소스 정점을 뺀 부분 그래프에서 한다.
+`bound`의 닫힌 세계도 production 구현만 센다. 뺀 정점 수는 `test-sources-excluded:`로 알린다. `routes`가 테스트 소스를
+기본으로 빼는 것과 같은 경계다.
+
+- **판별**: 정점의 소스 위치가 `src/test`, `src/androidTest`, `src/test<Variant>`·`src/androidTest<Variant>`,
+  `src/<이름>Test`, `src/testFixtures` 아래면 테스트다(`routes`와 같은 규칙). 경로의 다른 `src/<이름>` 쌍이 production
+  source set(`src/main`, 또는 테스트가 아닌 이름 뒤의 `java`·`kotlin` 등)을 확정하면 production이다 — main 소스 안의
+  `…/src/test/…` 모양 패키지를 테스트로 오인하지 않는다. 위치가 없는 멤버는 소유 class, 중첩 class는
+  바깥 class의 위치를 따른다. 끝내 위치가 없으면 production으로 둔다 — 테스트를 production으로 잘못 두면 `bound`가
+  약해지고 목록이 늘 뿐 도달을 잃지 않는다. snapshot에는 정점별 source set·plugin component 표식이 없어 경로 규칙이 가장
+  직접적인 근거다. 관례 밖 디렉터리로 옮긴 source set, `build/generated/.../<variant>UnitTest`의 생성 테스트 코드, 테스트
+  도우미 모듈의 main source는 production으로 본다.
+- **가정 검증**: production 정점에서 테스트 정점으로 가는 dispatch가 아닌 간선(호출·필드 접근·참조·상속·어노테이션·
+  런타임 모델)이 하나라도 있으면 가정이 깨진 것이므로 테스트를 빼지 않고 전체 그래프를 순회한다. root가 테스트 선언이면
+  테스트 프로그램 문맥이므로 역시 전체 그래프다. 두 경우 모두 `test-sources-included:`로 이유를 밝히며 `bound`는 테스트
+  구현도 센다. 상위 선언 → 테스트 구현 override와 호출자 → 테스트 구현 후보는 dispatch 가능성이라 위반으로 세지 않는다.
+- **`--include-tests`**: 전체 그래프를 순회한다(이전 동작). 테스트 fake가 있으면 production 호출자도 `candidate`가 된다.
+- **`graphRevision`**: 실제로 순회한 그래프의 해시다. 같은 snapshot이라도 테스트를 빼면 `--include-tests`와 값이 다르고,
+  같은 설정의 `impact --format language-traversal`과 `reach`는 같은 값을 낸다.
+
 ### 람다의 어휘적 소속과 간선 등급
 
 Kotlin 람다 class·익명 객체·suspend 람다·SAM 변환 class는 `FunctionN.invoke` 같은 외부 호출에 대해 dispatch
@@ -535,6 +559,8 @@ L 본문)을 만든다. 라이브러리에 넘긴 경우 그 코드가 어느 �
   hash만 받고 라벨이 없는 snapshot이면 실패했다). `graphRevision`은 snapshot 파일 바이트의 hex 해시에서 `sha256:` 그래프
   내용 해시로 바뀌었다. 기본 `impact`의 `--revision`·`--base-revision`은 그대로 전체 commit hash다.
 - `language-traversal`은 `saved-graph:` 한계 대신 실제 신선도 결과를 싣는다.
+- `language-traversal`이 테스트 소스 선언을 기본으로 빼므로, unit test를 담은 snapshot에서는 이전 버전보다 도달 정점이
+  적고 `bound`가 늘 수 있다. 이전 결과는 `--include-tests`로 얻는다.
 - `language-traversal` 전용 옵션(`--dispatch`·`--project`·`--roots-from`·`--generated-at`·`--max-reached`)은 기본
   형식에서 받지 않고, 기본 형식 전용 옵션(`--base-graph`·`--file`·`--limit`·필터 등)은 새 형식에서 사용 오류(64)다.
 

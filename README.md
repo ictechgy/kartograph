@@ -279,6 +279,8 @@ Roots and `--revision` containing control characters (C0, DEL, C1, U+2028, U+202
 isthmus rejects such ids. Functions that invoke or forward a lambda argument (for example a UI section running an
 `onClick` callback) are linked to the lambda body as `callback` evidence (`bound` when every invocation is inside the
 project, `candidate` when the value reaches library code or escapes) and are listed only for that call context, never
-expanded to their other callers. Snapshot inputs are verified like `routes` (`--input-bindings` for inputs outside
-the project). The default `impact` output is unchanged. See
+expanded to their other callers. Test-source declarations (`src/test`, `src/androidTest`, ...) are a separate program:
+they are not traversed by default, so bound dispatch counts production implementations only (`--include-tests` restores
+them). Snapshot inputs are verified like `routes` (`--input-bindings` for inputs outside the project). The default
+`impact` output is unchanged. See
 [change impact](docs/IMPACT.md#isthmus-trace용-순회-문서-language-traversal-v1).
