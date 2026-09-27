@@ -117,8 +117,14 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   예산에 따른 잘림과 불명확한 파일 매핑을 보고한다. [영향 점검 계약](IMPACT.md)을 따른다.
 - `impact --format language-traversal`과 `reach`의 `bound` 등급은 분석한 class가 프로젝트 타입의 구현을 모두 담는다는
   닫힌 세계 가정에 기댄다. 런타임 proxy·mock·snapshot 밖 class는 모델링하지 않는다. 기본 `--dispatch candidates`는
-  `FunctionN`/SAM 콜백 fan-out을 따르지 않고 람다 본문을 `EnclosingMethod` 소속으로만 잇는다. 필드에 저장했다가
-  다른 곳에서 호출하는 콜백의 호출 측은 `--dispatch all`에서만 보인다. `unresolvedCalls`는 kartograph가 관측한
+  `FunctionN`/SAM 콜백 fan-out을 따르지 않고 람다 본문을 `EnclosingMethod` 소속으로만 잇는다. 받은 람다를 실행하거나
+  그대로 넘기는 함수는 bytecode 값 흐름으로 증명한 경우에만 `callback` 간선으로 잇는다(호출 문맥 안에서만 목록에 싣고
+  그 함수의 다른 호출자로 퍼뜨리지 않는다). 필드·생성자·class 기반 클로저·suspend continuation을 거친 콜백, 객체를 반환하는
+  라이브러리 호출을 거친 별칭, 구현이 둘 이상인 인터페이스로 넘긴 람다, `ComposableSingletons` 필드의 composable 람다는
+  추적하지 않으며 `callback-flow-unresolved:`로 수만 알린다. 이런 콜백의 호출 측은 `--dispatch all`에서만 보인다.
+  라이브러리 코드에 넘긴 콜백(대부분의 Compose UI 함수)은 실행을 증명하지 못해 `candidate`다. 콜백 간선은 정방향
+  `reach`에서 따르지 않는다. Gradle plugin의 `kartographSnapshot`은 `includeSourcePaths`를 켜면 아직 콜백 사실을 빈
+  목록으로 싣는다. 그 snapshot에서는 콜백 간선이 없고 결과가 이 기능 전과 같다. CLI `snapshot`은 영향이 없다. `unresolvedCalls`는 kartograph가 관측한
   미해석 dispatch·미해석 reflection 모델·모델 없는 invokedynamic만 세며 모든 런타임 경로를 안다고 주장하지 않는다.
   `revision`을 git `HEAD`에서 자동으로 채울 때는 저장한 snapshot을 지금 작업 트리에서 캡처했다고 가정한다. 다른
   커밋에서 캡처한 snapshot은 `snapshot --revision` 라벨이나 `--revision`으로 revision을 명시한다.

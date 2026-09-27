@@ -156,7 +156,7 @@ internal object SnapshotMergeCommand {
 
     private fun relocate(graph: CodeGraph, paths: Map<dev.kartograph.core.NodeId, String>): CodeGraph = CodeGraph(graph.nodes.values.map { node ->
         paths[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
-    }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures)
+    }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures, graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes)
 
     /** 구성원 scope가 같은 variant로 끝나면 `aggregate:<variant>`를 기본 label로 쓴다. */
     private fun defaultScope(members: List<AggregateMember>): String {

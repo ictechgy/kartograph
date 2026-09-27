@@ -50,7 +50,7 @@ internal data class RetentionAnalysisResult(
 /** dead와 why가 같은 그래프·같은 근거를 만들게 하는 공통 조립 단계다. */
 internal object RetentionPipeline {
     fun analyze(inputs: RetentionInputs): RetentionAnalysisResult {
-        val indexed = ClassFileIndexer().indexWithObservations(
+        val indexed = ClassFileIndexer(callbackFacts = false).indexWithObservations(
             inputs.classRoots,
             inputs.classpath,
             inputs.serviceResources,
@@ -146,7 +146,7 @@ internal object RetentionPipeline {
     // test→production cross edge를 보존하려면 production과 test root를 함께 index해야 한다.
     // 따로 index하면 combined 조립 시 dangling 제거로 test→production 간선이 유실된다.
     private fun testReachableNodeIds(graph: CodeGraph, classRoots: List<Path>, testClassRoots: List<Path>): Set<NodeId> {
-        val combined = ClassFileIndexer().index(classRoots + testClassRoots)
+        val combined = ClassFileIndexer(callbackFacts = false).index(classRoots + testClassRoots)
         // seed는 combined에만 있고 production graph에는 없는 노드, 즉 test 전용 노드다.
         // classRoots가 먼저 index되므로 production 노드는 항상 graph.nodes에 있어 seed에서 빠진다.
         // 같은 FQN이 production·test 양쪽에 있으면 첫 root(production) 사실이 우선해 test 사본 간선이 가려질 수 있고,

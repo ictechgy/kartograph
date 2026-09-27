@@ -11,6 +11,10 @@ import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.InvocationKind
 import dev.kartograph.core.LexicalEnclosure
+import dev.kartograph.core.CallbackArgument
+import dev.kartograph.core.ParameterUse
+import dev.kartograph.core.LambdaEscape
+import dev.kartograph.core.ParameterUseKind
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.SourceLocation
@@ -72,6 +76,41 @@ class LanguageTraversalCodecTest {
         val parsed = QuerySnapshotCodec.parse(legacy)
         assertFalse(parsed.enclosuresCaptured)
         assertTrue(parsed.graph.enclosures.isEmpty())
+    }
+
+    @Test
+    fun `snapshots round trip callback facts and mark legacy documents`() {
+        val caller = GraphNode(NodeId("method:p/A#run()V"), "run", NodeKind.METHOD)
+        val button = GraphNode(NodeId("method:p/Ui#button(Lkotlin/jvm/functions/Function0;)V"), "button", NodeKind.METHOD)
+        val body = GraphNode(NodeId("method:p/A#run\$lambda\$0()V"), "run\$lambda\$0", NodeKind.METHOD)
+        val argument = CallbackArgument(caller.id, button.id, InvocationKind.STATIC, 0, body.id, "invoke()Ljava/lang/Object;")
+        val uses = listOf(ParameterUse(button.id, 0, ParameterUseKind.DECLARED),
+            ParameterUse(button.id, 0, ParameterUseKind.RECEIVER, NodeId("method:kotlin/jvm/functions/Function0#invoke()Ljava/lang/Object;"),
+                InvocationKind.INTERFACE),
+            ParameterUse(button.id, 0, ParameterUseKind.ARGUMENT, NodeId("method:p/Ui#keep(Lkotlin/jvm/functions/Function0;)V"), InvocationKind.STATIC, 0))
+        val escape = LambdaEscape(caller.id, body.id, ParameterUseKind.FIELD)
+        val snapshot = QuerySnapshot(CodeGraph(listOf(caller, button, body), emptyList(), callbackArguments = listOf(argument), parameterUses = uses,
+            lambdaEscapes = listOf(escape)), emptyList(), emptyList())
+        listOf(false, true).forEach { compact ->
+            val parsed = QuerySnapshotCodec.parse(QuerySnapshotCodec.render(snapshot, compact))
+            assertEquals(listOf(argument), parsed.graph.callbackArguments)
+            assertEquals(uses.sorted(), parsed.graph.parameterUses)
+            assertEquals(listOf(escape), parsed.graph.lambdaEscapes)
+            assertTrue(parsed.callbackFactsCaptured)
+        }
+        // 옛 snapshot은 두 키가 없다. 문서를 구조로 읽어 키만 지운다.
+        val document = (McpJsonCodec.parse(QuerySnapshotCodec.render(snapshot)) as Map<*, *>).toMutableMap()
+        document["graph"] = (document["graph"] as Map<*, *>).filterKeys { it !in setOf("callbackArguments", "parameterUses", "lambdaEscapes") }
+        val legacy = jsonValue(document)
+        val parsed = QuerySnapshotCodec.parse(legacy)
+        assertFalse(parsed.callbackFactsCaptured)
+        assertTrue(parsed.graph.callbackArguments.isEmpty() && parsed.graph.parameterUses.isEmpty())
+        // 리뷰 지적 재현(D3): 종류에 필요한 필드가 빠진 쓰임은 순회 도중이 아니라 읽을 때 거부한다.
+        val broken = QuerySnapshotCodec.render(snapshot).replace("\"position\": 0, ", "")
+        kotlin.test.assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.parse(broken) }
+        val revision = LanguageTraversalCodec.graphRevision(snapshot.graph, true)
+        assertNotEquals(revision, LanguageTraversalCodec.graphRevision(snapshot.graph, true, callbackFactsCaptured = false))
+        assertNotEquals(revision, LanguageTraversalCodec.graphRevision(CodeGraph(listOf(caller, button, body), emptyList()), true))
     }
 
     /** graphRevision 대조용 작은 그래프다. B.run이 A.run을 부르고 람다 class L이 A.run 안에 있다. */

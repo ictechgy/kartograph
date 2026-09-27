@@ -27,14 +27,18 @@ public enum class TraversalEdgeTier { DIRECT, BOUND, CANDIDATE, LAMBDA }
 /**
  * 의존하는 정점([source])에서 의존 대상([target])으로 향하는 순회 간선이다.
  *
- * @property relationship 출력 `relationships`에 싣는 관계 이름(`call`·`reference`·`override`·`contains` 등)이다
+ * @property relationship 출력 `relationships`에 싣는 관계 이름(`call`·`reference`·`override`·`contains`·`callback` 등)이다
  * @property tier 이 간선이 기대는 근거 등급이다
+ * @property terminal 호출 문맥 안에서만 참인 콜백 간선이다. 역방향 순회에서 [source]를 목록에 싣되 그 정점에서 일반
+ *   간선으로 더 퍼지지 않는다(다른 호출자는 다른 람다를 넘긴다). 정방향 순회는 따르지 않는다 — 람다를 만든 함수에서
+ *   본문으로 가는 길은 어휘적 소속이 이미 잇는다
  */
 public data class TraversalEdge(
     val source: NodeId,
     val target: NodeId,
     val relationship: String,
     val tier: TraversalEdgeTier,
+    val terminal: Boolean = false,
 )
 
 /**
@@ -49,12 +53,18 @@ public object TraversalEdges {
      * @param enclosuresCaptured 그래프가 어휘적 소속 사실을 실었는지다. 거짓이면 람다 후보를 일반 후보로 되돌려
      *   소속 간선 없이 본문이 끊기는 일을 막는다
      */
-    public fun build(graph: CodeGraph, enclosuresCaptured: Boolean = true): List<TraversalEdge> {
+    public fun build(graph: CodeGraph, enclosuresCaptured: Boolean = true, callbackFactsCaptured: Boolean = true): List<TraversalEdge> =
+        assemble(graph, enclosuresCaptured, callbackFactsCaptured).edges
+
+    /** 간선과 콜백 흐름 집계를 함께 만든다. 콜백 간선은 [CallbackFlows]가 그래프의 콜백 관측 사실에서 만든다. */
+    internal fun assemble(graph: CodeGraph, enclosuresCaptured: Boolean = true, callbackFactsCaptured: Boolean = true): TraversalGraph {
         val classifier = DispatchClassifier(graph, enclosuresCaptured)
         val usage = graph.edges.filter { it.kind.impliesUsage && !isOwnerReference(it) }.map { edge ->
             TraversalEdge(edge.source, edge.target, relationshipOf(edge.kind), classifier.tierOf(edge))
         }
-        return usage + containmentEdges(graph)
+        // 콜백 사실을 다 싣지 않은 snapshot(일부 키만 있는 경우 포함)은 빠져나감을 놓칠 수 있으므로 콜백 간선을 만들지 않는다.
+        val callbacks = if (callbackFactsCaptured) CallbackFlows(graph, classifier).analyze() else CallbackFlowResult(emptyList(), CallbackFlowSummary())
+        return TraversalGraph(usage + containmentEdges(graph) + callbacks.edges, callbacks.summary)
     }
 
     /**
@@ -92,6 +102,9 @@ public object TraversalEdges {
     private val CALLABLE_KINDS = setOf(NodeKind.METHOD, NodeKind.FUNCTION, NodeKind.CONSTRUCTOR)
 }
 
+/** 순회 간선과 콜백 흐름 집계다. */
+internal data class TraversalGraph(val edges: List<TraversalEdge>, val callbacks: CallbackFlowSummary)
+
 /**
  * OVERRIDE(dispatch) 간선의 등급을 정한다.
  *
@@ -100,9 +113,9 @@ public object TraversalEdges {
  * - lambda: 대상이 지역·익명 class의 멤버이거나, 호출 지점이 Kotlin 함수 타입·JDK 함수형 인터페이스 호출뿐이다.
  * - candidate: 그 밖의 계층 후보다.
  */
-private class DispatchClassifier(private val graph: CodeGraph, private val enclosuresCaptured: Boolean) {
+internal class DispatchClassifier(private val graph: CodeGraph, private val enclosuresCaptured: Boolean) {
     // 닫힌 세계의 전칭 범위는 그래프의 모든 class 정점이다. jvmSignature가 빠진 정점도 빠뜨리지 않도록 id에서 이름을 얻는다.
-    private val types: Map<String, GraphNode> = graph.nodes.values
+    val types: Map<String, GraphNode> = graph.nodes.values
         .filter { it.id.value.startsWith("class:") }.associateBy { it.id.value.removePrefix("class:") }
     private val localClasses: Set<String> = graph.enclosures.map { it.localClass.value.removePrefix("class:") }.toSet()
     private val callsByCaller: Map<NodeId, List<ExternalCall>> = graph.externalCalls.groupBy { it.caller }
@@ -143,7 +156,7 @@ private class DispatchClassifier(private val graph: CodeGraph, private val enclo
      * 수신 정적 타입 [owner]의 모든 구체 프로젝트 하위 타입이 [signature]를 같은 프로젝트 메서드로 해석하면 그 메서드,
      * 아니면 null이다. 구체 타입이 없거나, 하나라도 프로젝트 밖으로 해석이 새면 null이다(보수적).
      */
-    private fun singleTarget(owner: String, signature: String): NodeId? = boundCache.getOrPut(owner to signature) {
+    fun singleTarget(owner: String, signature: String): NodeId? = boundCache.getOrPut(owner to signature) {
         if (owner !in types) return@getOrPut null
         val concrete = (subtypesOf(owner) + owner).mapNotNull(types::get).filter(::isConcrete)
         val resolved = concrete.map { resolve(it.id.value.removePrefix("class:"), signature) }.distinct()
@@ -151,7 +164,7 @@ private class DispatchClassifier(private val graph: CodeGraph, private val enclo
     }
 
     /** 프로젝트 class 사슬(인터페이스 제외)을 따라 처음 만나는 구체 인스턴스 메서드다. 사슬이 프로젝트 밖으로 나가면 null이다. */
-    private fun resolve(type: String, signature: String): NodeId? {
+    fun resolve(type: String, signature: String): NodeId? {
         var current: String? = type
         val seen = mutableSetOf<String>()
         while (current != null && seen.add(current)) {
@@ -162,7 +175,7 @@ private class DispatchClassifier(private val graph: CodeGraph, private val enclo
         return null
     }
 
-    private fun isVirtualBody(node: GraphNode): Boolean = node.kind in METHOD_KINDS &&
+    fun isVirtualBody(node: GraphNode): Boolean = node.kind in METHOD_KINDS &&
         JvmModifier.ABSTRACT !in node.jvmModifiers && JvmModifier.STATIC !in node.jvmModifiers && node.jvmVisibility != Visibility.PRIVATE
 
     private fun isConcrete(node: GraphNode): Boolean = node.kind in CONCRETE_KINDS && JvmModifier.ABSTRACT !in node.jvmModifiers
@@ -175,10 +188,10 @@ private class DispatchClassifier(private val graph: CodeGraph, private val enclo
         found
     }
 
-    private companion object {
-        val CONCRETE_KINDS = setOf(NodeKind.CLASS, NodeKind.OBJECT, NodeKind.ENUM)
-        val METHOD_KINDS = setOf(NodeKind.METHOD, NodeKind.FUNCTION)
-        val FUNCTIONAL_OWNERS = Regex("kotlin/jvm/functions/.+|kotlin/Function|kotlin/jvm/internal/FunctionBase|kotlin/reflect/K(Suspend)?Function\\d*|" +
+    companion object {
+        private val CONCRETE_KINDS = setOf(NodeKind.CLASS, NodeKind.OBJECT, NodeKind.ENUM)
+        private val METHOD_KINDS = setOf(NodeKind.METHOD, NodeKind.FUNCTION)
+        private val FUNCTIONAL_OWNERS = Regex("kotlin/jvm/functions/.+|kotlin/Function|kotlin/jvm/internal/FunctionBase|kotlin/reflect/K(Suspend)?Function\\d*|" +
             "java/util/function/.+|java/lang/Runnable|java/util/concurrent/Callable")
 
         fun isFunctionalOwner(owner: String): Boolean = FUNCTIONAL_OWNERS.matches(owner)

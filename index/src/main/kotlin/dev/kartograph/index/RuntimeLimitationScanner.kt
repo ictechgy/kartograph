@@ -72,7 +72,7 @@ internal data class ClassRuntimeObservation(
 public object RuntimeLimitationScanner {
     /** 단독 호출에서도 그래프와 관측값에 같은 class 선택 규칙을 적용한다. */
     public fun scan(classRoots: List<Path>, projectRoot: Path): List<String> =
-        scan(ClassFileIndexer().indexWithObservations(classRoots), projectRoot)
+        scan(ClassFileIndexer(callbackFacts = false).indexWithObservations(classRoots), projectRoot)
 
     /** 이미 인덱싱한 class를 다시 읽지 않고 source 신선도와 계량 한계를 반환한다. */
     public fun scan(indexed: IndexedClasses, projectRoot: Path): List<String> {

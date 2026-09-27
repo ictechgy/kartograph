@@ -1,6 +1,9 @@
 package dev.kartograph.analysis
 
 import dev.kartograph.core.CallResolution
+import dev.kartograph.core.CallbackArgument
+import dev.kartograph.core.ParameterUse
+import dev.kartograph.core.ParameterUseKind
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
@@ -33,6 +36,66 @@ class LanguageTraversalTest {
             val result = LanguageTraversal.traverse(graph, requested, direction, dispatch, maxDepth)
             assertMatchesOracle(graph, result, maxDepth, "seed $seed")
         }
+    }
+
+    @Test
+    fun `callback edges reach callers only in their call context on random graphs`() {
+        repeat(400) { seed ->
+            val random = Random(10_000 + seed)
+            val graph = randomGraph(random)
+            val names = graph.nodeIds.map { it.value }
+            val terminals = List(random.nextInt(0, names.size)) {
+                TraversalEdge(NodeId(names.random(random)), NodeId(names.random(random)), "callback",
+                    if (random.nextBoolean()) TraversalEdgeTier.BOUND else TraversalEdgeTier.CANDIDATE, terminal = true)
+            }
+            val assembled = TraversalGraph(TraversalEdges.build(graph) + terminals, CallbackFlowSummary())
+            val requested = List(random.nextInt(1, 6)) { names.random(random) }
+            val dispatch = TraversalDispatch.entries.random(random)
+            val maxDepth = if (random.nextBoolean()) LanguageTraversal.MAX_DEPTH else random.nextInt(1, 5)
+            val result = LanguageTraversal.traverse(graph, assembled, requested, TraversalDirection.DEPENDENTS, dispatch, maxDepth)
+            assertMatchesContextOracle(assembled.edges, graph, result, maxDepth, "seed $seed")
+            // 정방향은 콜백 간선을 따르지 않는다.
+            val forward = LanguageTraversal.traverse(graph, assembled, requested, TraversalDirection.DEPENDENCIES, dispatch, maxDepth)
+            assertEquals(LanguageTraversal.traverse(graph, requested, TraversalDirection.DEPENDENCIES, dispatch, maxDepth).reached,
+                forward.reached, "seed $seed forward")
+        }
+    }
+
+    @Test
+    fun `a callback caller is listed without spreading to its other callers`() {
+        // Screen이 만든 람다 Body를 Button이 실행한다. Other도 Button을 부르지만 다른 람다를 넘긴다.
+        val graph = graphOf(listOf("Route", "Body", "Screen", "Button", "Other"),
+            listOf("Body" to "Route", "Screen" to "Button", "Other" to "Button"))
+        val callback = TraversalEdge(NodeId(id("Button")), NodeId(id("Body")), "callback", TraversalEdgeTier.BOUND, terminal = true)
+        val assembled = TraversalGraph(TraversalEdges.build(graph) + callback, CallbackFlowSummary(bound = 1))
+        val result = LanguageTraversal.traverse(graph, assembled, listOf(id("Route")), TraversalDirection.DEPENDENTS)
+        val byName = result.reached.associateBy { it.node.name }
+        assertEquals(setOf("Body", "Button"), byName.keys)
+        assertEquals(TraversalEvidence.BOUND, byName.getValue("Button").evidence)
+        assertEquals(id("Body"), byName.getValue("Button").via)
+        assertEquals(listOf("callback"), byName.getValue("Button").relationships)
+        assertTrue(result.limitations.any { it.startsWith("callback-flow: 1 bound") })
+        val direct = LanguageTraversal.traverse(graph, assembled, listOf(id("Route")), TraversalDirection.DEPENDENTS, TraversalDispatch.DIRECT)
+        assertEquals(setOf("Body"), direct.reached.map { it.node.name }.toSet())
+        assertTrue(direct.limitations.any { it.startsWith("callback-excluded: 1 ") })
+        assertTrue(direct.limitations.none { it.startsWith("dispatch-excluded:") })
+    }
+
+    @Test
+    fun `legacy snapshots without callback facts say so`() {
+        val graph = graphOf(listOf("A", "B"), listOf("B" to "A"))
+        val result = LanguageTraversal.traverse(graph, listOf(id("A")), TraversalDirection.DEPENDENTS, callbackFactsCaptured = false)
+        assertTrue(result.limitations.any { it.startsWith("callback-facts-unavailable:") })
+        // 리뷰 지적(H4): 일부 키만 남은 snapshot의 사실로 콜백 간선을 만들지 않는다.
+        val body = NodeId(id("B"))
+        val partial = CodeGraph(graph.nodes.values + method("G"), graph.edges,
+            callbackArguments = listOf(CallbackArgument(NodeId(id("B")), NodeId(id("G")), InvocationKind.STATIC, 0, body, "run()V")),
+            parameterUses = listOf(ParameterUse(NodeId(id("G")), 0, ParameterUseKind.DECLARED),
+                ParameterUse(NodeId(id("G")), 0, ParameterUseKind.RECEIVER, NodeId("method:java/lang/Runnable#run()V"), InvocationKind.INTERFACE)))
+        assertTrue(TraversalEdges.build(partial).any { it.terminal })
+        assertTrue(TraversalEdges.build(partial, callbackFactsCaptured = false).none { it.terminal })
+        val forward = LanguageTraversal.traverse(graph, listOf(id("A")), TraversalDirection.DEPENDENCIES, callbackFactsCaptured = false)
+        assertTrue(forward.limitations.none { it.startsWith("callback-") })
     }
 
     @Test
@@ -164,6 +227,59 @@ class LanguageTraversalTest {
             assertEquals(depth, row.depth, "$context depth ${row.node.id}")
             assertEquals(TraversalEvidence.entries[evidence], row.evidence, "$context evidence ${row.node.id}")
             assertValidWitness(row, roots, full, edges.map { it.first to it.second }.toSet(), context)
+        }
+    }
+
+    /**
+     * 콜백 간선을 문맥 상태로 푼 전수 BFS다. 상태는 (정점, 그림자 여부)이며 일반 간선은 본 정점끼리만, 콜백 간선은
+     * 본 정점·그림자에서 그림자로만 잇는다. 그림자에서는 콜백 간선만 나간다.
+     */
+    private fun assertMatchesContextOracle(all: List<TraversalEdge>, graph: CodeGraph, result: LanguageTraversalResult, maxDepth: Int, context: String) {
+        val allowed = all.filter { it.tier in result.dispatch.tiers }
+        val regular = allowed.filter { !it.terminal }.map { Triple(it.target.value, it.source.value, level(it.tier)) }.filter { it.first != it.second }
+        val callbacks = allowed.filter { it.terminal && it.source != it.target }.map { Triple(it.target.value, it.source.value, level(it.tier)) }
+        fun next(state: Pair<String, Boolean>, maxLevel: Int): List<Pair<String, Boolean>> {
+            val (vertex, shadow) = state
+            val plain = if (shadow) emptyList() else regular.filter { it.first == vertex && it.third <= maxLevel }.map { it.second to false }
+            return plain + callbacks.filter { it.first == vertex && it.third <= maxLevel }.map { it.second to true }
+        }
+        fun distances(start: String, maxLevel: Int): Map<Pair<String, Boolean>, Int> {
+            val found = mutableMapOf((start to false) to 0)
+            val queue = ArrayDeque(listOf(start to false))
+            while (queue.isNotEmpty()) {
+                val current = queue.removeFirst()
+                next(current, maxLevel).forEach { if (it !in found) { found[it] = found.getValue(current) + 1; queue += it } }
+            }
+            return found
+        }
+        val roots = result.roots.map { it.node?.id?.value }
+        val levels = (0..2).map { level -> roots.map { root -> root?.let { distances(it, level) }.orEmpty() } }
+        val full = levels[2]
+        fun reaches(map: Map<Pair<String, Boolean>, Int>, vertex: String) = (vertex to false) in map || (vertex to true) in map
+        fun distance(map: Map<Pair<String, Boolean>, Int>, vertex: String) = listOfNotNull(map[vertex to false], map[vertex to true]).min()
+        val expected = graph.nodeIds.map { it.value }.mapNotNull { vertex ->
+            val reaching = roots.indices.filter { roots[it] != null && roots[it] != vertex && reaches(full[it], vertex) }
+            if (reaching.isEmpty()) return@mapNotNull null
+            val depth = reaching.minOf { distance(full[it], vertex) }
+            val evidence = reaching.maxOf { root -> (0..2).first { reaches(levels[it][root], vertex) } }
+            vertex to Triple(reaching, depth, evidence)
+        }.toMap()
+        val listed = expected.filterValues { it.second <= maxDepth }
+        assertEquals(listed.keys, result.reached.map { it.node.id.value }.toSet(), context)
+        assertEquals(expected.size > listed.size, result.depthTruncated, context)
+        for (row in result.reached) {
+            val vertex = row.node.id.value
+            val (reaching, depth, evidence) = listed.getValue(vertex)
+            assertEquals(reaching, row.roots, "$context roots $vertex")
+            assertEquals(depth, row.depth, "$context depth $vertex")
+            assertEquals(TraversalEvidence.entries[evidence], row.evidence, "$context evidence $vertex")
+            assertTrue(row.relationships.isNotEmpty(), "$context relationships $vertex")
+            if (row.via in roots && depth == 1) continue
+            val witnessed = reaching.any { root ->
+                listOf(false, true).any { from -> full[root][row.via to from] == depth - 1 &&
+                    next(row.via to from, 2).any { it.first == vertex && full[root][it] == depth } }
+            }
+            assertTrue(witnessed, "$context via ${row.via} -> $vertex")
         }
     }
 

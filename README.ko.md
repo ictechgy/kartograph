@@ -273,5 +273,7 @@ snapshot의 revision 라벨, 그것도 없으면 프로젝트 디렉터리에 �
 `HEAD`입니다(아니면 생략해 isthmus가 고친 소스의 분석을 최신으로 보지 않게 합니다). `graphRevision`은 그래프 내용
 (정점 id·종류, 간선 종류·출처, 근거 등급, 어휘적 소속, 위치 제외)의 `sha256:` 해시라 한 snapshot의 역방향·정방향 문서가
 같은 값을 냅니다. 제어 문자(C0·DEL·C1·U+2028·U+2029)가 든 root와 `--revision`은 isthmus가 거부하므로 종료 코드
-64로 막습니다. 기본 `impact` 출력은 바뀌지 않습니다.
+64로 막습니다. 받은 람다를 실행하거나 그대로 넘기는 함수(예: `onClick` 콜백을 실행하는 UI 섹션)는 람다 본문에
+`callback` 근거로 이어지며(실행이 모두 프로젝트 안이면 `bound`, 라이브러리 코드에 넘기거나 값이 빠져나가면 `candidate`),
+그 호출 문맥에서만 목록에 오르고 다른 호출자로 퍼지지 않습니다. 기본 `impact` 출력은 바뀌지 않습니다.
 [변경 영향](docs/IMPACT.md#isthmus-trace용-순회-문서-language-traversal-v1)을 참고하세요.

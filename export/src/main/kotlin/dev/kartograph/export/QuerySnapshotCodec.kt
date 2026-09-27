@@ -11,6 +11,9 @@ import dev.kartograph.core.InvocationKind
 import dev.kartograph.core.JvmModifier
 import dev.kartograph.core.KartographVersion
 import dev.kartograph.core.LexicalEnclosure
+import dev.kartograph.core.CallbackArgument
+import dev.kartograph.core.ParameterUse
+import dev.kartograph.core.LambdaEscape
 import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
@@ -38,6 +41,11 @@ public data class QuerySnapshot(
      * snapshot은 거짓이며, 소속 사실이 0건인 새 snapshot과 구별하려고 둔다. 렌더링에는 쓰지 않는다.
      */
     val enclosuresCaptured: Boolean = true,
+    /**
+     * 문서가 `graph.callbackArguments`·`graph.parameterUses`·`graph.lambdaEscapes`(콜백 값 흐름 관측)를 모두 실었는지다. 이 필드가 생기기 전
+     * 버전의 snapshot은 거짓이며, 관측이 0건인 새 snapshot과 구별하려고 둔다. 렌더링에는 쓰지 않는다.
+     */
+    val callbackFactsCaptured: Boolean = true,
 ) {
     init {
         require(revision == null || Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) { "snapshot revision must be a full commit hash" }
@@ -118,6 +126,18 @@ public object QuerySnapshotCodec {
             "enclosures" to snapshot.graph.enclosures.map { item ->
                 sortedMapOf("localClass" to item.localClass.value, "enclosing" to item.enclosing.value)
             },
+            // 콜백 값 흐름 관측도 같은 이유로 선택 필드이며 v1·compact v2가 같은 평문 모양을 쓴다.
+            "callbackArguments" to snapshot.graph.callbackArguments.map { item -> sortedMapOf<String, Any?>(
+                "caller" to item.caller.value, "callee" to item.callee.value, "invocation" to item.invocation.name.lowerCamel(),
+                "argument" to item.argument, "lambda" to item.lambda.value, "samMethod" to item.samMethod,
+            ).filterValues { it != null } },
+            "lambdaEscapes" to snapshot.graph.lambdaEscapes.map { item -> sortedMapOf(
+                "caller" to item.caller.value, "lambda" to item.lambda.value, "kind" to item.kind.name.lowerCamel(),
+            ) },
+            "parameterUses" to snapshot.graph.parameterUses.map { item -> sortedMapOf<String, Any?>(
+                "method" to item.method.value, "parameter" to item.parameter, "kind" to item.kind.name.lowerCamel(),
+                "target" to item.target?.value, "invocation" to item.invocation?.name?.lowerCamel(), "position" to item.position,
+            ).filterValues { it != null } },
         ).let { graph -> if (encoding == null) graph else graph + ("stringTable" to encoding.table) },
         ).filterValues { it != null }) + "\n"
     }
@@ -184,6 +204,25 @@ public object QuerySnapshotCodec {
         require(enclosures.orEmpty().all { it.localClass in ids && it.enclosing in ids }) {
             "query snapshot contains invalid lexical enclosures"
         }
+        val callbackArguments = graph["callbackArguments"]?.let { values -> list(values).map { raw ->
+            val item = objectValue(raw)
+            CallbackArgument(NodeId(string(item["caller"])), NodeId(string(item["callee"])), enumValue(item["invocation"]),
+                integer(item["argument"]), NodeId(string(item["lambda"])), optionalString(item["samMethod"]))
+        } }
+        val parameterUses = graph["parameterUses"]?.let { values -> list(values).map { raw ->
+            val item = objectValue(raw)
+            ParameterUse(NodeId(string(item["method"])), integer(item["parameter"]), enumValue(item["kind"]),
+                optionalString(item["target"])?.let(::NodeId), item["invocation"]?.let { enumValue<InvocationKind>(it) },
+                item["position"]?.let(::integer))
+        } }
+        val lambdaEscapes = graph["lambdaEscapes"]?.let { values -> list(values).map { raw ->
+            val item = objectValue(raw)
+            LambdaEscape(NodeId(string(item["caller"])), NodeId(string(item["lambda"])), enumValue(item["kind"]))
+        } }
+        require(callbackArguments.orEmpty().all { it.caller in ids && it.lambda in ids } && parameterUses.orEmpty().all { it.method in ids } &&
+            lambdaEscapes.orEmpty().all { it.caller in ids && it.lambda in ids }) {
+            "query snapshot contains invalid callback facts"
+        }
         val retention = list(document["retention"]).map { raw ->
             val item = objectValue(raw)
             RetentionEvidence(NodeId(string(item["nodeId"])), enumValue(item["reason"]), location(item["location"]),
@@ -194,7 +233,8 @@ public object QuerySnapshotCodec {
         }
         val suppressed = strings(document["suppressed"]).map(::NodeId).toSet()
         require(suppressed.all(ids::contains)) { "query snapshot contains invalid baseline references" }
-        return QuerySnapshot(CodeGraph(nodes, edges, calls, providers, enclosures.orEmpty()), retention, strings(document["limitations"]), suppressed,
+        return QuerySnapshot(CodeGraph(nodes, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
+            lambdaEscapes.orEmpty()), retention, strings(document["limitations"]), suppressed,
             boolean(document["includePrivateMembers"]), string(document["toolVersion"]),
             optionalString(document["revision"]), optionalString(document["scope"]),
             document["provenance"]?.let(BuildWitnessCodec::provenance),
@@ -206,7 +246,7 @@ public object QuerySnapshotCodec {
                     } })
             } }.orEmpty(),
             document["processorOutputs"]?.let { values -> list(values).map { ProcessorOutputCodec.observation(it) } }.orEmpty(),
-            enclosuresCaptured = enclosures != null)
+            enclosuresCaptured = enclosures != null, callbackFactsCaptured = callbackArguments != null && parameterUses != null && lambdaEscapes != null)
     }
 
     /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */
@@ -276,7 +316,8 @@ public object QuerySnapshotCodec {
     private fun invalid(): Nothing = throw IllegalArgumentException("query snapshot has invalid or missing fields")
     private val WINDOWS_DRIVE = Regex("^[A-Za-z]:")
     private val ENUM_NAMES = listOf(NodeKind.entries, Visibility.entries, JvmModifier.entries, NodeAttribute.entries,
-        EdgeKind.entries, EdgeOrigin.entries, InvocationKind.entries, CallResolution.entries, RetentionReason.entries)
+        EdgeKind.entries, EdgeOrigin.entries, InvocationKind.entries, CallResolution.entries, RetentionReason.entries,
+        dev.kartograph.core.ParameterUseKind.entries)
         .flatten().associate { it.name.lowerCamel() to it.name }
 }
 
