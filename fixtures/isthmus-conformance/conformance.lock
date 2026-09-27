@@ -1,0 +1,12 @@
+{
+  "files": {
+    "http-template.json": "14a4be20736bcf2bdc2f7ce29fe7e7a9ff206877c25c14c92875571d4e082ff5",
+    "url-compose.json": "5ba0c2a3ac2fcf2e44b9a3cb5f0616b85fbe78fd2a739bd5636a1b8a1152e73a"
+  },
+  "format": "isthmus-conformance-lock",
+  "isthmus": {
+    "commit": "fb7318418bcc73f0848ead203bacb954d4159e59",
+    "source": "conformance/ (isthmus feature/http-domain-core, not yet on main)"
+  },
+  "version": 1
+}
