@@ -41,6 +41,11 @@ class SnapshotMergeCliTest {
         val single = QuerySnapshotCodec.parse(direct.stdout)
         assertEquals(single.graph.nodeIds, snapshot.graph.nodeIds)
         assertEquals(single.graph.edges, snapshot.graph.edges)
+        // 다시 인덱싱한 콜백 사실도 경로를 옮기면서 잃지 않는다.
+        assertTrue(snapshot.graph.callbackArguments.isNotEmpty() && snapshot.callbackFactsCaptured)
+        assertEquals(single.graph.callbackArguments, snapshot.graph.callbackArguments)
+        assertEquals(single.graph.parameterUses, snapshot.graph.parameterUses)
+        assertEquals(single.graph.lambdaEscapes, snapshot.graph.lambdaEscapes)
 
         // 합친 로컬 연결로 외부 입력을 다시 찾는다. 수동 capture라 witness가 없다는 사실만 남는다.
         val output = root.resolve("merged.json").also { Files.writeString(it, merged.stdout) }
@@ -112,7 +117,8 @@ class SnapshotMergeCliTest {
         init {
             val api = write("core/src/core/Api.java", "package core; public class Api { public int load() { return 1; } }")
             val screen = write("app/src/app/Screen.java",
-                "package app; public class Screen { private final core.Api api = new core.Api(); public int render() { return api.load(); } }")
+                "package app; public class Screen { private final core.Api api = new core.Api(); public int render() { return api.load(); } " +
+                    "public void click() { run(() -> api.load()); } static void run(Runnable task) { task.run(); } }")
             compile(coreClasses, null, api)
             compile(appClasses, coreClasses, screen)
             Files.writeString(coreSnapshot, capture("core", "--classes", coreClasses.toString(), "--scope", ":core:jvm"))
