@@ -20,7 +20,7 @@
 - 테스트 소스 세트는 기본 제외(`sourceSets.tests: "excluded"`)이며 `--include-tests`는 `testSource`를
   단다. 낡은 선언(`http-wrapper-unresolved:`), 선언되지 않은 싱크(`http-wrapper-undeclared:`), 모델링하지
   않은 클라이언트(`route-call-coverage:`), 미상 base 뒤 상대 경로(`ambiguous-base-join:`)는 추측한 사실
-  대신 limitation으로 계수한다. `--role server`는 아직 사용 오류다.
+  대신 limitation으로 계수한다.
 - `impact --format language-traversal`이 isthmus `trace`용 `language-traversal` v1 역방향 문서를, 새 `reach`
   명령이 정방향(`dependencies`) 문서를 낸다. 여러 root를 한 번에 순회해 정점마다 닿는 모든 root(`roots`, 최대 64개와
   `rootsTruncated`), 최단 via 목격, root별 하한 근거 등급(`evidence`), 잇지 못한 호출(`unresolvedCalls`)을 싣는다.
@@ -46,6 +46,29 @@
   공통 접두사만큼 어긋나면 snapshot과 routes의 `--project` 불일치를 접두사와 함께 밝히고, snapshot이 stale이거나
   없을 때도 이유를 적는다. 전에는 usr가 조용히 0건이 됐다.
 - class 인덱스 캐시 형식을 5로 올렸다. 옛 캐시 항목은 한 번 다시 파싱된다.
+
+### Spring 서버 라우트 (Added)
+
+- `routes --role server --project <dir> [--graph-file <snapshot> [--input-bindings <file>]] [--service <name>] [--include-tests] [<source-root>...]`가
+  Spring MVC·WebFlux 어노테이션 controller를 isthmus http `route-decl` 사실로 낸다(`"roles": ["server"]`,
+  `"dispatch": "specificity"`). `@RequestMapping`·`@GetMapping` 계열·`@HttpExchange` 계열, 명시 `@AliasFor`로 병합한
+  사용자 합성·메타 어노테이션, 인터페이스·상위 class에서 물려받은 매핑, 클래스×메서드 경로 곱, 동사 합집합과 동사 없는
+  매핑의 `ANY`를 spring-webmvc 7.0.8 규칙대로 다룬다. 근거와 규칙표는 [Spring 서버 라우트](docs/SPRING-ROUTES.md)다.
+- 신선한 `--graph-file`이 있으면 snapshot provenance의 class root에서 바이트코드 어노테이션 값(컴파일러가 접은
+  Java·Kotlin 상수)을 읽고, `symbol.usr`는 snapshot에 있는 핸들러 메서드 JVM id(`impact`·`reach`와 같은 id)다. 위치는
+  소스의 어노테이션 토큰이며 소스만 있을 때는 프로젝트 안 상수 색인으로 값을 푼다. snapshot 형식은 바꾸지 않았다.
+- 저장소 안 Boot 설정의 기본 프로필로 `server.servlet.context-path`·`spring.webflux.base-path`와 `${key:default}`
+  플레이스홀더를 푼다(저장소 어디에도 없는 키의 기본값만 `configDefault`). 기본값이 아닌 `spring.mvc.servlet.path`,
+  `addPathPrefix`, 다른 프로필 재정의, 웹 스택 미상은 `unresolved-route-prefix:`와 `base` 앵커로 알린다.
+- `trailingSlash`(Boot 3 이상 `strict`, Boot 2 `optional`, 버전 미상은 생략과 `route-framework-version-unknown:`),
+  `narrowed`, 정규식 경로 변수의 `paramConstraints`(포함 관계를 증명한 모양만 `int`·`uuid`·`slug`), 끝 `/**`·`{*path}`의
+  접두사 decl 펼침(usr가 있을 때 `catchAllPrefix`)을 싣는다. 템플릿으로 옮길 수 없는 경로·풀지 못한 상수·플레이스홀더는
+  dynamic 사실과 `route-coverage:`로, 프레임워크 제공 경로(`/error`, 정적 리소스, actuator, Security, springdoc 등)는
+  `framework-provided-routes:`로, 함수형 라우터·view controller·서블릿 등록·JAX-RS·AntPathMatcher는 `route-coverage:`로 센다.
+- 검증: 공개 Spring Boot 앱 3개(spring-petclinic, spring-petclinic-kotlin, spring-petclinic-rest)와 합성 MVC·WebFlux 앱의
+  `/actuator/mappings` 대비 정밀도 100%(바이트코드·소스 모드 모두). 합성 앱 소스와 기록한 오라클을
+  `fixtures/spring-routes-corpus/`에 두고 `SpringRouteCorpusTest`가 대조한다. `missing-route-usrs:` 문구가 사실 종류
+  (`route-decl`·`route-call`)를 밝힌다.
 
 ### Gradle plugin 다중 모듈 snapshot (Fixed·Added)
 
