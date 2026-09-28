@@ -258,6 +258,7 @@ class TraversalCliTest {
             arrayOf(*base, *project, "--base-graph", graph.toString()) to "not supported with --format language-traversal",
             arrayOf(*base, *project, "--all") to "not supported with --format language-traversal",
             arrayOf(*base, *project, "--dispatch", "maybe") to "dispatch must be",
+            arrayOf(*base, *project, "--class-hops", "some") to "class-hops must be all or member-only",
             arrayOf(*base, *project, "--depth", "129") to "depth must be 1..128",
             arrayOf(*base, *project, "--generated-at", "yesterday") to "--generated-at",
             arrayOf(*base, *project, "--revision", "") to "--revision must be non-empty",
@@ -275,6 +276,70 @@ class TraversalCliTest {
         }
         assertEquals(2, run("reach", "method:p/A#run()V", "--graph-file", root.resolve("absent.json").toString(), *project).status)
         assertContains(run("reach", "--help").output, "Dispatch modes")
+        assertContains(run("reach", "--help").output, "Class hops")
         assertContains(run("--help").output, "kartograph reach")
+    }
+
+    /**
+     * ViewModel 모양의 합성 Java 프로젝트다. `androidx.lifecycle.ViewModel`은 콜백 모델만 켜는 빈 대역이다.
+     * JobsViewModel.load가 Http.get을 부르고, JobsScreen은 load를 부른다. Formatter·Holder·SpecialUser는 이름만 적고,
+     * Factory는 인스턴스를 만들며, SpecialViewModel은 상속한다.
+     */
+    private fun captureViewModel(root: Path): Path {
+        val sources = root.resolve("src")
+        mapOf(
+            "androidx/lifecycle/ViewModel.java" to "package androidx.lifecycle; public abstract class ViewModel { protected void onCleared() {} }",
+            "p/Http.java" to "package p; public class Http { public static void get() {} }",
+            "p/JobsViewModel.java" to "package p; public class JobsViewModel extends androidx.lifecycle.ViewModel { public void load() { Http.get(); } public void other() {} }",
+            "p/JobsScreen.java" to "package p; class JobsScreen { void render(JobsViewModel vm) { vm.load(); } }",
+            "p/Formatter.java" to "package p; class Formatter { static String label(JobsViewModel vm) { return \"jobs\"; } }",
+            "p/Printer.java" to "package p; class Printer { void print() { Formatter.label(null); } }",
+            "p/Holder.java" to "package p; class Holder { JobsViewModel vm; }",
+            "p/Factory.java" to "package p; class Factory { JobsViewModel create() { return new JobsViewModel(); } }",
+            "p/SpecialViewModel.java" to "package p; class SpecialViewModel extends JobsViewModel {}",
+            "p/SpecialUser.java" to "package p; class SpecialUser { void show(SpecialViewModel vm) {} }",
+        ).forEach { (name, text) -> sources.resolve(name).also { Files.createDirectories(it.parent) }.toFile().writeText(text) }
+        val classes = Files.createDirectories(root.resolve("classes"))
+        val files = sources.toFile().walkTopDown().filter { it.isFile }.map { it.path }.sorted().toList()
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "-g", "-d", classes.toString(), *files.toTypedArray()))
+        val snapshot = run("snapshot", "--classes", classes.toString(), "--project", root.toString(), "--include-paths")
+        assertEquals(0, snapshot.status, snapshot.error)
+        return root.resolve("graph.json").also { Files.writeString(it, snapshot.output) }
+    }
+
+    @Test
+    fun `member-only class hops drop type-reference spillover but keep screens factories and subclasses`(@TempDir root: Path) {
+        val graph = captureViewModel(root)
+        fun impact(vararg extra: String) = run("impact", "method:p/Http#get()V", "--format", "language-traversal", "--graph-file", graph.toString(),
+            "--project", root.toString(), "--generated-at", "2026-09-28T00:00:00Z", *extra).also { assertEquals(0, it.status, it.error) }
+        val wide = document(impact())
+        val narrowExecution = impact("--class-hops", "member-only")
+        val narrow = document(narrowExecution)
+        val kept = listOf("method:p/JobsViewModel#load()V", "method:p/JobsScreen#render(Lp/JobsViewModel;)V", "class:p/JobsViewModel",
+            "method:p/Factory#create()Lp/JobsViewModel;", "class:p/SpecialViewModel")
+        val spill = listOf("method:p/Formatter#label(Lp/JobsViewModel;)Ljava/lang/String;", "method:p/Printer#print()V",
+            "field:p/Holder#vm:Lp/JobsViewModel;", "method:p/SpecialUser#show(Lp/SpecialViewModel;)V")
+        assertTrue(reached(wide).keys.containsAll(kept + spill), reached(wide).keys.toString())
+        assertTrue(reached(narrow).keys.containsAll(kept), reached(narrow).keys.toString())
+        assertTrue(spill.none { it in reached(narrow) }, reached(narrow).keys.toString())
+        assertTrue(reached(wide).keys.containsAll(reached(narrow).keys))
+        assertEquals(wide["graphRevision"], narrow["graphRevision"], "the graph is the same; only the traversal is narrowed")
+        val limitations = narrow["limitations"] as List<*>
+        assertTrue(limitations.any { (it as String).startsWith("class-hops-narrowed: ") && !it.startsWith("class-hops-narrowed: 0 ") }, limitations.toString())
+        assertTrue((wide["limitations"] as List<*>).none { (it as String).startsWith("class-hops-narrowed:") })
+        assertEquals(narrowExecution.output, impact("--class-hops", "member-only").output, "narrow output is byte-stable")
+        assertEquals(impact().output, impact("--class-hops", "all").output, "all is the default")
+    }
+
+    @Test
+    fun `member-only reach stops at a named-only class but follows instantiation`(@TempDir root: Path) {
+        val graph = captureViewModel(root)
+        fun reach(symbol: String, vararg extra: String) = reached(document(run("reach", symbol, "--graph-file", graph.toString(),
+            "--project", root.toString(), *extra).also { assertEquals(0, it.status, it.error) })).keys
+        val label = "method:p/Formatter#label(Lp/JobsViewModel;)Ljava/lang/String;"
+        assertTrue("method:p/Http#get()V" in reach(label))
+        val narrow = reach(label, "--class-hops", "member-only")
+        assertTrue("class:p/JobsViewModel" in narrow && "method:p/Http#get()V" !in narrow, narrow.toString())
+        assertTrue("method:p/Http#get()V" in reach("method:p/Factory#create()Lp/JobsViewModel;", "--class-hops", "member-only"))
     }
 }

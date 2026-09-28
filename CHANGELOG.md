@@ -103,6 +103,14 @@
 - Fixed: `routes`·`bridges`·`schema`가 신선도가 확인된 snapshot에도 사유가 빈 `graph-file-freshness-matched: `를 한계로
   냈다. matched는 한계가 아니므로 싣지 않고 unverified·stale만 원인과 함께 싣는다.
 
+### Class hop 범위 (language-traversal)
+
+- Added: `impact --format language-traversal`과 `reach`에 `--class-hops all|member-only`(기본 `all`)를 더했다. 프레임워크
+  콜백 모델(`runtimeModel`, class → 모든 멤버)을 거꾸로 따르면 ViewModel 멤버 하나의 변경이 소유 class를 거쳐 그 타입을
+  시그니처·필드·캡처로 적은 모든 선언으로 퍼진다. `member-only`는 이름만 적은 참조와 콜백 모델을 같은 class 정점(상속 사슬
+  포함)에서 잇지 않는다. class는 목록에 남고, 인스턴스 생성·상속·어휘적 소속·콜백·런타임 모델 참조·멤버 호출은 계속
+  따른다. 따르지 않은 간선 수는 `class-hops-narrowed:`로 알린다. 기본값의 문서와 `graphRevision`은 그대로다.
+
 ## [0.17.0] - 2026-09-24
 
 ### Added

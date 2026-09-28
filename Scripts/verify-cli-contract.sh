@@ -94,6 +94,8 @@ expect_status 64 "language-traversal revision의 C0 제어 문자" impact --form
 expect_status 64 "language-traversal revision의 C1 제어 문자" reach method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --revision $'bad\xc2\x85rev'
 expect_status 64 "language-traversal root의 U+2028" reach $'method:A#run\xe2\x80\xa8' --graph-file missing.json --project "$TEMPORARY_DIRECTORY"
 expect_status 64 "language-traversal 빈 revision" reach method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --revision ''
+expect_status 64 "language-traversal 잘못된 class-hops 값" impact --format language-traversal method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --class-hops none
+expect_status 64 "기본 impact 형식에 class-hops" impact method:A#run --graph-file missing.json --class-hops member-only
 
 echo "종료 코드 2 — 도구 실패"
 expect_status 2 "빈 class root graph" graph --classes "$TEMPORARY_DIRECTORY/empty"
@@ -130,6 +132,7 @@ expect_output '"limitations"' "graph JSON의 한계 필드" graph --classes "$TE
 "$BINARY" snapshot --classes "$TEMPORARY_DIRECTORY/classes" --project "$TEMPORARY_DIRECTORY" > "$TEMPORARY_DIRECTORY/graph.json" 2>/dev/null
 expect_output '"graphRevision": "sha256:' "language-traversal의 그래프 내용 해시" reach class:Probe --graph-file "$TEMPORARY_DIRECTORY/graph.json" --project "$TEMPORARY_DIRECTORY" --generated-at 2026-09-27T00:00:00Z
 expect_output '"revision": "given-rev"' "language-traversal의 --revision 값" reach class:Probe --graph-file "$TEMPORARY_DIRECTORY/graph.json" --project "$TEMPORARY_DIRECTORY" --revision given-rev
+expect_output 'class-hops-narrowed: 0 ' "좁힌 class hop 모드의 한계 문구" reach class:Probe --graph-file "$TEMPORARY_DIRECTORY/graph.json" --project "$TEMPORARY_DIRECTORY" --class-hops member-only
 expect_output '"roles": \["client"\]' "routes의 http 클라이언트 문서" routes --role client --project "$TEMPORARY_DIRECTORY" empty
 
 echo
