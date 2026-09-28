@@ -21,6 +21,7 @@ import dev.kartograph.index.ClassHierarchyIndexer
 import dev.kartograph.index.KeepRuleScanner
 import dev.kartograph.index.KeepRuleScanningException
 import dev.kartograph.index.RuntimeLimitationScanner
+import dev.kartograph.index.JPA_NAMING_PROFILES
 import dev.kartograph.index.SchemaFactScanner
 import java.io.PrintStream
 import java.nio.file.Files
@@ -397,7 +398,7 @@ internal object AgentCommand {
             output.print(SCHEMA_HELP)
             return ExitStatus.SUCCESS.code
         }
-        val options = parsePaths(arguments, setOf("--project", "--format", "--graph-file"), error)
+        val options = parsePaths(arguments, setOf("--project", "--format", "--graph-file", "--jpa-naming"), error)
             ?: return ExitStatus.USAGE.code
         val project = try {
             options.single("--project")?.let(Path::of)?.toAbsolutePath()?.normalize()
@@ -406,6 +407,10 @@ internal object AgentCommand {
             return usage(error, "invalid path")
         }
         if (options.single("--format")?.let { it != "json" } == true) return usage(error, "invalid schema format")
+        val jpaNaming = options.single("--jpa-naming")
+        if (jpaNaming != null && jpaNaming !in JPA_NAMING_PROFILES) {
+            return usage(error, "invalid --jpa-naming; use one of ${JPA_NAMING_PROFILES.joinToString(", ")}")
+        }
         if (!Files.isDirectory(project)) {
             error.println("error: project root does not exist")
             return ExitStatus.FAILURE.code
@@ -414,7 +419,7 @@ internal object AgentCommand {
             val snapshot = options.single("--graph-file")?.let { SnapshotFiles.read(it) }
             val freshness = snapshot?.let { SavedSnapshotOperations.freshness(it, project, null, emptyMap()) }
             val graph = snapshot?.takeUnless { freshness?.status == "stale" }?.graph
-            val scanned = SchemaFactScanner(project).scan(graph = graph)
+            val scanned = SchemaFactScanner(project, jpaNaming).scan(graph = graph)
             val document = snapshot?.let {
                 val evidence = SavedSnapshotOperations.freshnessLimitation(freshness!!)
                 scanned.copy(limitations = (scanned.limitations + it.limitations + listOfNotNull(evidence)).distinct().sorted())
@@ -534,11 +539,18 @@ internal object AgentCommand {
 
         Usage:
           kartograph schema --project <directory> [--format json] [--graph-file <snapshot>]
+                            [--jpa-naming <spring-boot-3|spring-boot-4|hibernate-6|hibernate-7>]
 
         Covers Room annotations (@Entity, @DatabaseView, @Query, @ColumnInfo, @ForeignKey, DAO
-        operation annotations), JDBC call arguments, Exposed Table objects and DSL receivers,
-        jOOQ plain-SQL methods, SQL-shaped string literals, and SQLDelight .sq/.sqm files.
-        Other frameworks are not claimed; JPA/Spring Data imports are reported as a limitation.
+        operation annotations), JDBC call arguments, Spring JDBC template calls, Exposed Table
+        objects and DSL receivers, jOOQ plain-SQL methods, SQL-shaped string literals, SQLDelight
+        .sq/.sqm files, JPA entity mappings (tables, columns, joins, embeddables, inheritance,
+        element collections), Spring Data repository methods (inherited CRUD, derived queries,
+        @Query JPQL and native SQL, named queries) and EntityManager queries.
+        JPA names follow the Hibernate naming strategy detected from build and configuration
+        files (Spring Boot 3/4 or plain Hibernate 6/7); --jpa-naming fixes it. Names that differ
+        across the candidate strategies, or depend on a custom strategy, stay dynamic.
+        With --graph-file, repository call sites are attributed to the calling method's JVM id.
         Dynamic or unresolved evidence stays in the document as dynamic facts and limitations.
         Facts carry the persistence target; an empty scan emits target=null.
         generatedAt is the scan time; the newest scanned source modification time is kept
