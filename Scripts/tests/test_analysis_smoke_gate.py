@@ -77,11 +77,12 @@ class AnalysisSmokeGateTest(unittest.TestCase):
         self.assertEqual(len(data["runTotals"]), 3)
         for name, measurement in data["measurements"].items():
             self.assertEqual(len(measurement["samples"]), 3, name)
-            self.assertAlmostEqual(measurement["seconds"], sorted(measurement["samples"])[1], places=3, msg=name)
+            self.assertEqual(measurement["seconds"], sorted(measurement["samples"])[1], name)
+        # totalSeconds는 원시 중앙값의 합이라 명령별 반올림 오차(최대 0.5ms x 6)만큼 차이를 허용한다.
         self.assertAlmostEqual(
             data["totalSeconds"],
             sum(m["seconds"] for m in data["measurements"].values()),
-            places=3,
+            delta=0.005,
         )
 
     def test_smoke_gate_fails_when_budget_exceeded(self):

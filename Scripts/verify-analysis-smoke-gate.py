@@ -187,9 +187,11 @@ def summarize_measurements(samples, counters, contract_failures):
     for name, values in samples.items():
         runs_for_command = counters.get(name, [])
         last = runs_for_command[-1] if runs_for_command else {}
+        rounded_samples = [round(value, 3) for value in values]
         data = {
-            "seconds": round(statistics.median(values), 3),
-            "samples": [round(value, 3) for value in values],
+            # 표시용 중앙값은 반올림한 표본에서 구해 samples와 어긋나지 않게 한다(예산 판정은 원시값).
+            "seconds": round(statistics.median(rounded_samples), 3),
+            "samples": rounded_samples,
             "returncode": last.get("returncode"),
         }
         for field in COUNTER_FIELDS:
@@ -348,14 +350,16 @@ def verify_self_analysis(
                 return exit_code
 
         measurements = summarize_measurements(samples, counters, contract_failures)
-        total_time = sum(data["seconds"] for data in measurements.values())
+        # 예산은 반올림 전 원시 중앙값으로 판정해 경계값이 반올림으로 통과하지 않게 한다.
+        raw_medians = {name: statistics.median(values) for name, values in samples.items()}
+        total_time = sum(raw_medians.values())
         run_totals = [
             round(sum(samples[name][index] for name in samples), 3) for index in range(runs)
         ]
         budget_failures = [
-            f"'{name}' took {data['seconds']:.3f}s (median of {runs} runs), exceeding budget of {per_command_budget:.3f}s"
-            for name, data in measurements.items()
-            if data["seconds"] > per_command_budget
+            f"'{name}' took {median:.3f}s (median of {runs} runs), exceeding budget of {per_command_budget:.3f}s"
+            for name, median in raw_medians.items()
+            if median > per_command_budget
         ]
         if total_time > total_budget:
             budget_failures.append(
