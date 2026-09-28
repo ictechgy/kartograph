@@ -18,11 +18,13 @@ internal object RouteSymbolDiagnostics {
     fun missingUsrs(facts: List<BridgeFact>, graph: CodeGraph?, stale: Boolean): String? {
         val missing = facts.filter { it.symbol?.usr == null }
         if (missing.isEmpty()) return null
-        val prefix = "missing-route-usrs: ${missing.size} route-call fact(s) lack JVM symbol identities"
+        val kind = missing.first().kind
+        val prefix = "missing-route-usrs: ${missing.size} $kind fact(s) lack JVM symbol identities"
         if (graph == null) return "$prefix; no --graph-file snapshot was given, so only source facts are available"
         val paths = graph.nodes.values.mapNotNullTo(mutableSetOf()) { it.location?.path?.replace('\\', '/') }
-        val reason = rootMismatch(missing.map { it.location.path }.distinct(), paths)
+        val reason = rootMismatch(missing.map { it.location.path }.distinct(), paths, kind)
             ?: if (stale) "the --graph-file snapshot is stale for this project and was not used; rebuild and recapture it"
+            else if (kind == "route-decl") "no compiled handler method in the snapshot matched the source declaration"
             else "no compiled declaration in the snapshot matched the enclosing source declaration"
         return "$prefix; $reason"
     }
@@ -31,7 +33,7 @@ internal object RouteSymbolDiagnostics {
      * 사실 경로와 snapshot 노드 경로를 비교해 `--project` 불일치를 찾는다. snapshot 경로가 사실 경로에 공통 접두사를
      * 더하거나 뺀 모양이면 그 접두사를 밝힌다. 경로가 하나도 겹치지 않으면 그 사실만 알린다.
      */
-    internal fun rootMismatch(factPaths: List<String>, nodePaths: Set<String>): String? {
+    internal fun rootMismatch(factPaths: List<String>, nodePaths: Set<String>, factKind: String = "route-call"): String? {
         if (nodePaths.isNotEmpty() && nodePaths.none { '/' in it }) {
             return "project-root-mismatch: the snapshot has no project-relative source paths; capture it with --include-paths"
         }
@@ -41,7 +43,7 @@ internal object RouteSymbolDiagnostics {
         val (kind, value) = offsets.groupingBy { it }.eachCount().entries
             .sortedWith(compareByDescending<Map.Entry<Pair<String, String>, Int>> { it.value }.thenBy { it.key.first + it.key.second })
             .firstOrNull()?.key ?: return if (factPaths.none(nodePaths::contains)) "project-root-mismatch: none of the " +
-                "route-call files appear among the snapshot's source paths; capture the snapshot and run routes with the same --project" else null
+                "$factKind files appear among the snapshot's source paths; capture the snapshot and run routes with the same --project" else null
         return if (kind == PARENT) "project-root-mismatch: snapshot source paths start with \"$value\", so the snapshot was captured " +
             "with a parent --project; pass the same --project to snapshot and routes"
         else "project-root-mismatch: snapshot source paths omit \"$value\", so the snapshot was captured with the subdirectory " +

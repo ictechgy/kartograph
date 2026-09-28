@@ -116,6 +116,8 @@ kartograph bridges --project . --target flutter --messages --graph-file build/re
 kartograph schema --project . --format json
 # isthmus용 클라이언트 HTTP route 호출: 선언된 래퍼, java.net.URL 요청, Retrofit 어노테이션.
 kartograph routes --role client --project . --wrappers http-wrappers.json app/src/main
+# isthmus용 Spring MVC·WebFlux 라우트 선언. 신선한 snapshot이 바이트코드 값과 핸들러 usr를 준다.
+kartograph routes --role server --project . --service api --graph-file graph.json
 # isthmus trace용 다중 root 역방향 순회(language-traversal v1). route-call을 감싼 심볼 전부가 root다.
 kartograph impact --format language-traversal --roots-from routes.json --graph-file graph.json --project .
 kartograph skill --project .
@@ -276,9 +278,22 @@ access)을 빌드·설정 파일에서 감지한 Hibernate 명명 전략으로 �
 시작함을 증명한 끝 지역 변수)까지 해석합니다. 리터럴 URL의 userinfo·query·fragment는 떼고 고엔트로피·
 웹훅 세그먼트는 가립니다. 테스트 소스 세트는 `--include-tests`가 없으면 제외하고, 주면 `testSource`로
 표시합니다. 그 밖의 클라이언트(OkHttp, Ktor 등), 낡은 래퍼 선언, 선언되지 않은 싱크는 추측한 사실 대신
-limitation으로 남깁니다. `--role server`는 아직 지원하지 않습니다.
+limitation으로 남깁니다.
 JVM 신원을 붙이지 못한 사실은 `missing-route-usrs:`로 세고, source 경로에서 드러나면 snapshot과 routes의
 `--project` 불일치를 밝힙니다.
+
+`routes --role server --project <dir> [--graph-file <snapshot> [--input-bindings <file>]] [--service <name>] [--include-tests] [<source-root>...]`
+(미출시)는 `"roles": ["server"]`, `"dispatch": "specificity"` 문서에 Spring MVC·WebFlux 핸들러 매핑마다 `route-decl`
+사실을 냅니다. `@Controller` class의 `@RequestMapping`·`@GetMapping`…`@PatchMapping`·`@HttpExchange`/`@GetExchange`…,
+이들로 메타 어노테이션한 사용자 어노테이션(`@AliasFor`), 인터페이스·상위 class에서 물려받은 매핑, 클래스×메서드 경로,
+동사 없는 매핑의 `ANY`를 다룹니다. 신선한 `--graph-file`이 있으면 snapshot class root의 어노테이션 값(컴파일러가 이미
+접은 상수)을 쓰고 `symbol.usr`는 `impact`·`reach`와 같은 핸들러 JVM id입니다. 위치는 항상 소스의 어노테이션 토큰입니다.
+저장소 안 기본 프로필 설정으로 `server.servlet.context-path`·`spring.webflux.base-path`와 `${key:default}` 플레이스홀더를
+풉니다(기본값만 쓴 경우 `configDefault`). 사실에는 `trailingSlash`(Spring Boot 3 이상 `strict`, Boot 2 `optional`, 모르면
+생략), `narrowed`, 정규식 경로 변수의 `paramConstraints`, `/**`·`{*path}`의 catch-all 접두사 펼침을 싣습니다. 풀지 못한
+경로는 `dynamic`으로 남기고, 함수형 라우터, 프레임워크 제공 경로(`/error`, actuator, 정적 리소스 등), 다른 프로필, 확정하지
+못한 접두사는 서버 측 limitation으로 알립니다. 규칙과 Spring 소스 근거, actuator 오라클 결과(공개 Spring Boot 앱 3개와
+합성 MVC·WebFlux 앱 2개에서 정밀도 100%)는 [Spring 서버 라우트](docs/SPRING-ROUTES.md)에 있습니다.
 
 `impact --format language-traversal`(역방향)과 `reach`(정방향)(미출시)는 isthmus `trace`용 `language-traversal`
 v1 문서를 냅니다. 여러 root를 한 번에 순회해 선언마다 닿는 모든 root, 최단 경로 목격, root별 하한 근거

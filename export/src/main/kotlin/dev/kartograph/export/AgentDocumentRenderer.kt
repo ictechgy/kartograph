@@ -7,6 +7,7 @@ import dev.kartograph.analysis.SymbolQuerySubject
 import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
 import dev.kartograph.core.RouteCallEvidence
+import dev.kartograph.core.RouteDeclEvidence
 import dev.kartograph.core.SourceLocation
 
 /** 에이전트 교환 문서를 결정적인 키 순서의 JSON으로 렌더링한다. */
@@ -35,6 +36,7 @@ public object AgentDocumentRenderer {
 
     /** isthmus bridge-facts v1의 public 필드만 포함한 JSON을 만든다. */
     public fun bridges(document: BridgeFactsDocument): String = jsonValue(buildMap<String, Any?> {
+        document.dispatch?.let { put("dispatch", it) }
         put("facts", document.facts.map { it.toJsonValue() })
         put("format", document.format)
         put("generatedAt", document.generatedAt)
@@ -112,6 +114,7 @@ public object AgentDocumentRenderer {
         if (channelPrefix != null) put("channelPrefix", channelPrefix)
         if (mechanism != null) put("mechanism", mechanism)
         route?.let { putRouteEvidence(it) }
+        routeDecl?.let { putRouteDeclEvidence(it) }
         symbol?.let { value ->
             put(
                 "symbol",
@@ -131,6 +134,23 @@ public object AgentDocumentRenderer {
         route.service?.let { put("service", it) }
         if (route.queryTailStripped) put("queryTailStripped", true)
         route.maskedSegments?.let { put("maskedSegments", it) }
+        if (route.testSource) put("testSource", true)
+    }
+
+    /** route-decl 증거를 계약 필드 이름으로 싣는다 — 모르는 끝 슬래시는 생략하고, 표식은 참일 때만 싣는다. */
+    private fun MutableMap<String, Any?>.putRouteDeclEvidence(route: RouteDeclEvidence) {
+        put("pathAnchor", route.pathAnchor)
+        route.trailingSlash?.let { put("trailingSlash", it) }
+        if (route.narrowed) put("narrowed", true)
+        if (route.paramConstraints.isNotEmpty()) put("paramConstraints", route.paramConstraints.sortedBy { it.segment }.map { constraint ->
+            buildMap<String, Any?> {
+                put("kind", constraint.kind)
+                constraint.pattern?.let { put("pattern", it) }
+                put("segment", constraint.segment)
+            }.toSortedMap()
+        })
+        if (route.configDefault) put("configDefault", true)
+        if (route.catchAllPrefix) put("catchAllPrefix", true)
         if (route.testSource) put("testSource", true)
     }
 }

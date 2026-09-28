@@ -71,6 +71,7 @@ expect_status 0 "정상 class root graph" graph --classes "$TEMPORARY_DIRECTORY/
 expect_status 0 "정상 class root graph JSON" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json --include-paths --project .
 expect_status 0 "정상 class root metrics" metrics --classes "$TEMPORARY_DIRECTORY/classes"
 expect_status 0 "빈 source root routes" routes --role client --project "$TEMPORARY_DIRECTORY" empty
+expect_status 0 "빈 source root 서버 routes" routes --role server --project "$TEMPORARY_DIRECTORY" empty
 
 echo "종료 코드 64 — 사용 오류"
 expect_status 64 "알 수 없는 옵션" --no-such-option
@@ -86,7 +87,8 @@ expect_status 64 "잘못된 report 형식" dead --report-format yaml
 expect_status 64 "cycles class root 누락" cycles
 expect_status 64 "rules config 누락" rules --classes "$TEMPORARY_DIRECTORY"
 expect_status 64 "routes role 누락" routes --project "$TEMPORARY_DIRECTORY"
-expect_status 64 "routes 미지원 server role" routes --role server --project "$TEMPORARY_DIRECTORY"
+expect_status 64 "routes 잘못된 role" routes --role proxy --project "$TEMPORARY_DIRECTORY"
+expect_status 64 "서버 routes에 클라이언트 전용 --wrappers" routes --role server --project "$TEMPORARY_DIRECTORY" --wrappers missing.json
 expect_status 64 "language-traversal project 누락" impact --format language-traversal method:A#run --graph-file missing.json
 expect_status 64 "language-traversal에 impact 전용 옵션" impact --format language-traversal method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --base-graph missing.json
 # isthmus가 거부하는 제어 문자(C0·DEL·C1·U+2028·U+2029)는 snapshot을 읽기 전에 사용 오류다. bash 3.2도 \x 이스케이프는 읽는다.
@@ -106,6 +108,7 @@ expect_status 2 "빈 class root dead strict" dead --classes "$TEMPORARY_DIRECTOR
 expect_status 2 "없는 class root" graph --classes "$TEMPORARY_DIRECTORY/missing"
 expect_status 2 "없는 project root" graph --classes "$TEMPORARY_DIRECTORY" --format json --include-paths --project "$TEMPORARY_DIRECTORY/missing"
 expect_status 2 "없는 routes 선언 파일" routes --role client --project "$TEMPORARY_DIRECTORY" --wrappers missing.json
+expect_status 2 "없는 서버 routes snapshot" routes --role server --project "$TEMPORARY_DIRECTORY" --graph-file "$TEMPORARY_DIRECTORY/missing.json" empty
 expect_status 2 "없는 reach snapshot" reach method:A#run --graph-file "$TEMPORARY_DIRECTORY/missing.json" --project "$TEMPORARY_DIRECTORY"
 
 # 예기치 못한 실패가 strict finding 코드(1)로 새지 않는지 확인한다. root는 권한 검사를 우회하므로 건너뛴다.
@@ -134,6 +137,9 @@ expect_output '"graphRevision": "sha256:' "language-traversal의 그래프 내�
 expect_output '"revision": "given-rev"' "language-traversal의 --revision 값" reach class:Probe --graph-file "$TEMPORARY_DIRECTORY/graph.json" --project "$TEMPORARY_DIRECTORY" --revision given-rev
 expect_output 'class-hops-narrowed: 0 ' "좁힌 class hop 모드의 한계 문구" reach class:Probe --graph-file "$TEMPORARY_DIRECTORY/graph.json" --project "$TEMPORARY_DIRECTORY" --class-hops member-only
 expect_output '"roles": \["client"\]' "routes의 http 클라이언트 문서" routes --role client --project "$TEMPORARY_DIRECTORY" empty
+expect_output '"dispatch": "specificity"' "서버 routes의 디스패치 모델" routes --role server --project "$TEMPORARY_DIRECTORY" empty
+expect_output '"roles": \["server"\]' "서버 routes의 http 서버 문서" routes --role server --project "$TEMPORARY_DIRECTORY" empty
+expect_output "kartograph routes --role server" "도움말에 서버 routes 명령" --help
 
 echo
 if [[ "$FAILURES" -eq 0 ]]; then

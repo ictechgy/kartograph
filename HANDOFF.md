@@ -28,6 +28,18 @@
 - **검증:** 합성 문서를 isthmus `check`로 조인해 수용을 확인했다. 비공개 도그푸딩 앱은 읽기 전용으로만 대조했고 결과는 공개 기록에 싣지 않는다(오라클 정의 지점 전부 일치, 줄 차이는 계약의 호출 시작 줄 규칙 때문).
 - **남은 범위:** `--role server`(route-decl), 파일 밖 상수, 수신자 타입 추론 없는 멤버 호출, OkHttp·Ktor 직접 호출, Java 명명 인자 없음 전제, `@file:JvmName` facade.
 
+## 진행 중: Spring route-decl 생산자 (`routes --role server`, API 영향 Phase 4a)
+
+- **브랜치:** `feature/spring-routes`. 규칙·근거·오라클 결과는 [SPRING-ROUTES](docs/SPRING-ROUTES.md)다.
+- **구현:** `index/.../RouteDeclScanner.kt`(조립·사실), `SpringMappingResolver.kt`(핸들러·병합), `SpringPathPatterns.kt`(템플릿),
+  `SpringProjectConfig.kt`·`SpringConfigDocuments.kt`(Boot 설정·빌드 표지), `SpringBytecodeReader.kt`·`SpringSourceReader.kt`·
+  `SpringModelMerger.kt`(값·위치 원천), `SpringProjectSignals.kt`(모델링하지 않은 경로). CLI는 `RoutesCommand`가 snapshot
+  provenance의 class root를 넘긴다.
+- **검증:** 공개 앱 3개와 합성 앱 2개의 actuator 오라클 정밀도 100%. 합성 앱과 기록한 오라클은 `fixtures/spring-routes-corpus/`,
+  비교 스크립트는 `experiments/phase4-spring-routes/compare_mappings.py`.
+- **남은 범위:** 함수형 라우터 추출, isthmus http limitationScopes가 생기면 `framework-provided-routes:` 스코프 싣기(지금은 판정
+  가능 비율 0%), Spring 벡터(`framework.spring.*`)를 isthmus conformance에 제안, Phase 4b(JPA·`reach` 검증).
+
 ## 진행 중: 변경 내용 기반 impact 진입점
 
 - **목표:** v8에서 agent가 정확한 선택자를 만들지 못해 MCP impact 3회가 모두 `notFound`로 끝난 문제를 푼다. agent가 가진 "수정한 파일+줄"(`changes` 또는 unified `diff`)을 받아 변경 선언을 찾고 기존 impact로 잇는다. AI 효용 개선은 주장하지 않고, 이후 새 평가로 판단한다.

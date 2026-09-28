@@ -55,6 +55,7 @@ distributions {
                 "COMPILER-EVIDENCE.md",
                 "INDEX-CACHE.md",
                 "MCP.md",
+                "SPRING-ROUTES.md",
             )
             from(releaseDocumentation.map { document -> rootProject.file("docs/$document") }) {
                 into("docs")

@@ -233,6 +233,7 @@ internal object KartographCli {
           kartograph bridges --project <directory> [--format json]
           kartograph schema --project <directory> [--format json] [--graph-file <snapshot>]
           kartograph routes --role client --project <directory> [--wrappers <file>] [--include-tests] [<source-root>...]
+          kartograph routes --role server --project <directory> [--graph-file <snapshot>] [--service <name>] [--include-tests] [<source-root>...]
           kartograph mcp --graph-file <snapshot.json> [--snapshot-max-mib <1..128>] [options]
           kartograph skill
           kartograph dependencies --classes <directory> --project <directory> --dependencies <file> [options]

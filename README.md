@@ -115,6 +115,8 @@ kartograph bridges --project . --target flutter --messages --graph-file build/re
 kartograph schema --project . --format json
 # Client HTTP route calls for isthmus: declared wrappers, java.net.URL requests, Retrofit annotations.
 kartograph routes --role client --project . --wrappers http-wrappers.json app/src/main
+# Spring MVC/WebFlux route declarations for isthmus; a fresh snapshot supplies bytecode values and handler usrs.
+kartograph routes --role server --project . --service api --graph-file graph.json
 # Multi-root reverse traversal for isthmus trace, rooted at every route-call symbol (language-traversal v1).
 kartograph impact --format language-traversal --roots-from routes.json --graph-file graph.json --project .
 kartograph skill --project .
@@ -281,9 +283,24 @@ constants, Kotlin templates whose interpolation fills a whole segment, and query
 trailing local proven to start with `?`). Literal URLs lose userinfo, query and fragment, and high-entropy
 or webhook segments are masked. Test source sets are excluded unless `--include-tests` marks those facts
 `testSource`. Other clients (OkHttp, Ktor, …), stale wrapper declarations, and undeclared sinks surface as
-limitations instead of guessed facts. `--role server` is not supported yet.
+limitations instead of guessed facts.
 Facts left without a JVM identity are counted by `missing-route-usrs:`, which names a snapshot/routes
 `--project` root mismatch when the source paths show one.
+
+`routes --role server --project <dir> [--graph-file <snapshot> [--input-bindings <file>]] [--service <name>] [--include-tests] [<source-root>...]`
+(unreleased) emits `"roles": ["server"]` and `"dispatch": "specificity"` with one `route-decl` fact per Spring MVC or
+WebFlux handler mapping: `@RequestMapping`, `@GetMapping`…`@PatchMapping`, `@HttpExchange`/`@GetExchange`… on
+`@Controller` classes, custom annotations meta-annotated with them (`@AliasFor`), mappings inherited from interfaces and
+superclasses, class × method paths, and `ANY` for method-less mappings. With a fresh `--graph-file` the snapshot's class
+roots supply the annotation values (constants already folded by the compiler) and `symbol.usr` is the handler's JVM id,
+the same id space as `impact`/`reach`; sources always supply the annotation location. The in-repo default profile supplies
+`server.servlet.context-path` / `spring.webflux.base-path` and `${key:default}` placeholders (`configDefault` when only the
+default applies). Facts carry `trailingSlash` (`strict` for Spring Boot 3+, `optional` for Boot 2, omitted when unknown),
+`narrowed`, `paramConstraints` for regex path variables, and catch-all prefix expansion for `/**` and `{*path}`. Unresolved
+paths stay `dynamic`; functional routers, framework-provided routes (`/error`, actuator, static resources, ...), other
+profiles and unresolved prefixes are reported as server-side limitations. Rules, Spring sources and the actuator oracle
+results (100% precision on three public Spring Boot apps and two synthetic MVC/WebFlux apps) are in
+[Spring server routes](docs/SPRING-ROUTES.md).
 
 `impact --format language-traversal` (reverse) and `reach` (forward) (unreleased) emit an isthmus
 `language-traversal` v1 document for `trace`: one pass over many roots, with every root that reaches each

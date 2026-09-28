@@ -5,6 +5,7 @@ import dev.kartograph.export.AgentDocumentRenderer
 import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.export.HttpWrappersCodec
 import dev.kartograph.index.RouteCallScanner
+import dev.kartograph.index.RouteDeclScanner
 import java.io.IOException
 import java.io.PrintStream
 import java.nio.file.Files
@@ -12,10 +13,11 @@ import java.nio.file.InvalidPathException
 import java.nio.file.Path
 
 /**
- * `kartograph routes` — 클라이언트 HTTP 호출을 isthmus http 도메인의 `route-call` 문서로 낸다.
+ * `kartograph routes` — isthmus http 도메인 문서를 낸다.
  *
- * 이번 버전은 `--role client`만 지원한다. 서버 라우트 선언(`route-decl`)은 스캔하지 않으므로
- * `--role server`를 조용히 빈 문서로 받지 않고 사용 오류로 거부한다.
+ * `--role client`는 클라이언트 HTTP 호출을 `route-call`로, `--role server`는 Spring MVC·WebFlux 어노테이션
+ * controller를 `route-decl`로 낸다. 서버 역할은 snapshot이 신선하면 그 class root의 바이트코드 어노테이션을 값
+ * 원천으로 쓴다(상수가 접힌 값). 역할마다 다른 스캐너를 쓰지만 입력 검증·신선도·신원 진단은 공유한다.
  */
 internal object RoutesCommand {
     /** 값을 받는 옵션이다. */
@@ -33,9 +35,9 @@ internal object RoutesCommand {
             return ExitStatus.SUCCESS.code
         }
         val options = parse(arguments, error) ?: return ExitStatus.USAGE.code
-        val role = options.single("--role") ?: return usage(error, "missing required --role client")
-        if (role == "server") return usage(error, "--role server is not supported yet; route declarations are not scanned")
-        if (role != "client") return usage(error, "invalid routes role: use --role client")
+        val role = options.single("--role") ?: return usage(error, "missing required --role client|server")
+        if (role != "client" && role != "server") return usage(error, "invalid routes role: use --role client or --role server")
+        if (role == "server" && options.flag("--wrappers")) return usage(error, "--wrappers applies to --role client only")
         if (options.single("--format")?.let { it != "json" } == true) return usage(error, "invalid routes format")
         if (options.flag("--input-bindings") && !options.flag("--graph-file")) return usage(error, "--input-bindings requires --graph-file")
         val service = options.single("--service")
@@ -57,7 +59,7 @@ internal object RoutesCommand {
         }
         val conflicting = wrappers.any { it.language == "kotlin" && service != null && it.service != null && it.service != service }
         if (conflicting) return usage(error, "a kotlin wrapper service differs from --service; drop one of them")
-        return scan(project, roots, wrappers, options, service, output, error)
+        return scan(project, roots, wrappers, options, service, role, output, error)
     }
 
     /** 입력 검증 결과다. 실패는 원인에 맞는 종료 코드를 싣고 오류 문구는 이미 출력됐다. */
@@ -72,6 +74,7 @@ internal object RoutesCommand {
         wrappers: List<HttpWrapperDeclaration>,
         options: RoutesOptions,
         service: String?,
+        role: String,
         output: PrintStream,
         error: PrintStream,
     ): Int = try {
@@ -82,7 +85,11 @@ internal object RoutesCommand {
         }.orEmpty()
         val freshness = snapshot?.let { SavedSnapshotOperations.freshness(it, project, null, bindings) }
         val graph = snapshot?.takeUnless { freshness?.status == "stale" }?.graph
-        val scanned = RouteCallScanner(project, roots, wrappers, options.flag("--include-tests"), service).scan(graph = graph)
+        val includeTests = options.flag("--include-tests")
+        val scanned = if (role == "server") {
+            val classRoots = if (graph == null) emptyList() else snapshotClassRoots(snapshot, project, bindings)
+            RouteDeclScanner(project, roots, includeTests, service, classRoots).scan(graph = graph)
+        } else RouteCallScanner(project, roots, wrappers, includeTests, service).scan(graph = graph)
         val missing = RouteSymbolDiagnostics.missingUsrs(scanned.facts, snapshot?.graph, stale = snapshot != null && graph == null)
         val document = snapshot?.let {
             val evidence = SavedSnapshotOperations.freshnessLimitation(freshness!!)
@@ -91,8 +98,19 @@ internal object RoutesCommand {
         output.print(AgentDocumentRenderer.bridges(document))
         ExitStatus.SUCCESS.code
     } catch (_: Exception) {
-        failure(error, "unable to scan route calls; check the project inputs and source roots")
+        val subject = if (role == "server") "route declarations" else "route calls"
+        failure(error, "unable to scan $subject; check the project inputs and source roots")
     }
+
+    /**
+     * snapshot provenance의 class root 중 지금 있는 것이다. `external/` 슬롯은 `--input-bindings`로 연결한 것만 쓴다.
+     * 신선도가 stale이면 호출하지 않는다 — 바뀐 class로 값을 읽지 않기 위해서다.
+     */
+    private fun snapshotClassRoots(snapshot: dev.kartograph.export.QuerySnapshot, project: Path, bindings: Map<String, Path>): List<Path> =
+        snapshot.provenance?.inputs.orEmpty().filter { it.role == "classes" }.mapNotNull { input ->
+            val path = if (input.path.startsWith("external/")) bindings[input.path] else project.resolve(input.path)
+            path?.toAbsolutePath()?.normalize()?.takeIf { Files.exists(it) }
+        }.distinct()
 
     /** 위치 인자 source 루트를 `--project` 기준으로 풀고 프로젝트 안인지 확인한다. */
     private fun sourceRoots(project: Path, values: List<String>, error: PrintStream): Checked<List<Path>> {
@@ -169,11 +187,19 @@ internal object RoutesCommand {
     }
 
     val HELP = """
-        Scan project sources for client HTTP calls and emit a bridge-facts http document for isthmus.
+        Scan project sources for HTTP routes and emit a bridge-facts http document for isthmus.
 
         Usage:
           kartograph routes --role client --project <directory> [--format json] [--wrappers <http-wrappers.json>] \
             [--include-tests] [--service <name>] [--graph-file <snapshot>] [--input-bindings <file>] [<source-root>...]
+          kartograph routes --role server --project <directory> [--format json] [--include-tests] [--service <name>] \
+            [--graph-file <snapshot>] [--input-bindings <file>] [<source-root>...]
+
+        --role server emits "roles": ["server"], "dispatch": "specificity" and one route-decl fact per Spring MVC or
+        WebFlux handler mapping (@RequestMapping, @GetMapping..., @HttpExchange... and custom annotations meta-annotated
+        with them, class x method, with context-path or base-path from in-repo Spring Boot configuration). With a fresh
+        --graph-file the snapshot's class roots supply the annotation values (constants already folded by the compiler)
+        and the snapshot supplies symbol.usr; sources supply the annotation locations. See docs/SPRING-ROUTES.md.
 
         Emits "target": "http", "roles": ["client"] and one route-call fact per call site: the HTTP method
         (or methodDynamic), the canonical path template (or a dynamic fact with a proven channelPrefix),
@@ -187,7 +213,7 @@ internal object RoutesCommand {
 
         Source roots resolve from --project and must stay inside it; without them the whole project is
         scanned. Test source sets (src/test, src/androidTest, src/*Test, ...) are excluded unless
-        --include-tests is given, which marks those facts testSource. --role server is not supported yet.
+        --include-tests is given, which marks those facts testSource.
         Literal URLs lose userinfo, query and fragment, and high-entropy or webhook segments are masked.
         --graph-file attaches JVM symbol identities unless the snapshot is stale. --input-bindings passes the local bindings
         written with the snapshot (Gradle plugin or `snapshot merge`) so inputs outside --project can be verified; without it
