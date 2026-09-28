@@ -122,6 +122,9 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   그 함수의 다른 호출자로 퍼뜨리지 않는다). 필드·생성자·class 기반 클로저·suspend continuation을 거친 콜백, 객체를 반환하는
   라이브러리 호출을 거친 별칭, 구현이 둘 이상인 인터페이스로 넘긴 람다, `ComposableSingletons` 필드의 composable 람다는
   추적하지 않으며 `callback-flow-unresolved:`로 수만 알린다. 이런 콜백의 호출 측은 `--dispatch all`에서만 보인다.
+  테스트 소스 선언은 기본으로 순회하지 않으며 소스 경로 규칙(`src/test`·`src/androidTest`·`src/testFixtures` 등)으로만
+  가린다. 관례 밖 source set, 생성된 테스트 코드, main source에 둔 테스트 도우미 모듈은 production으로 남아 `bound`를
+  약하게 만들 수 있다. production이 테스트 선언을 참조하는 그래프는 전체를 순회한다(`test-sources-included:`).
   라이브러리 코드에 넘긴 콜백(대부분의 Compose UI 함수)은 실행을 증명하지 못해 `candidate`다. 콜백 간선은 정방향
   `reach`에서 따르지 않는다. `unresolvedCalls`는 kartograph가 관측한 미해석 dispatch·미해석 reflection 모델·모델 없는
   invokedynamic만 세며 모든 런타임 경로를 안다고 주장하지 않는다.

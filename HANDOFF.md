@@ -14,6 +14,11 @@
 - **검증:** 무작위 그래프 600개에서 root별 전수 BFS와 대조한다(`LanguageTraversalTest`). 비공개 도그푸딩 앱은 읽기 전용으로
   대조했고 결과는 공개 기록에 싣지 않는다. 기본 `impact` 출력이 이전 배포본과 바이트 단위로 같은지 실제 snapshot으로 확인했다.
 - **남은 범위:** 람다를 인자로 받아 호출하는 쪽(콜백 호출자)의 정밀 귀속(인자 흐름 필요), 정방향 `reach`의 실제 서버 검증.
+- **테스트 소스·신선도 (2026-09-28, `fix/test-sources-freshness`):** 순회는 테스트 소스 정점(`TestSourceSets` 경로 규칙,
+  routes와 공유)을 기본으로 빼고 production 부분 그래프에서 bound를 매긴다(`analysis/.../TestSourceScope.kt`). root가 테스트거나
+  production → 테스트 비-dispatch 간선이 있으면 전체 그래프로 되돌린다. 순회도 routes처럼 신선도를 확인하고(`--input-bindings`),
+  matched는 routes·bridges·schema·순회 모두 한계로 싣지 않는다. 비공개 E2E에서 unit test 포함 snapshot의 역방향 결과가 unit test
+  제외 snapshot 결과와 행 단위로 같아졌다(수치는 비공개 원장).
 
 ## 진행 중: http route-call 생산자 (`kartograph routes`)
 

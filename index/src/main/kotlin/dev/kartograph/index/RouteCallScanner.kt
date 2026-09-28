@@ -6,6 +6,7 @@ import dev.kartograph.core.BridgeSymbol
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.HttpWrapperDeclaration
 import dev.kartograph.core.RouteCallEvidence
+import dev.kartograph.core.TestSourceSets
 import dev.kartograph.index.RouteUrlRules.ArgumentValue
 import dev.kartograph.index.RouteUrlRules.CallArgument
 import dev.kartograph.index.RouteUrlRules.ComposedRoute
@@ -141,9 +142,7 @@ public class RouteCallScanner(
         file.types.any { typeFqn(file, it) == wrapper.declaration.owner } ||
             (!wrapper.isMember && file.packageName == wrapper.ownerPackage && file.functions.any { it.name == wrapper.declaration.name })
 
-    private fun isTestSource(relative: String): Boolean = relative.split('/').windowed(2).any { (parent, name) ->
-        parent == "src" && (name == "test" || name.endsWith("Test") || TEST_SOURCE_SET.matches(name))
-    }
+    private fun isTestSource(relative: String): Boolean = TestSourceSets.isTestSourcePath(relative)
 
     // 코덱이 owner 모양을 검증하지만 API로 직접 넘긴 선언도 스캔 전체를 죽이지 않게 빈 조각을 견딘다.
     private fun conventionalPackage(declaration: HttpWrapperDeclaration): String {
@@ -163,9 +162,6 @@ public class RouteCallScanner(
             "okhttp3.", "io.ktor.client", "com.android.volley", "java.net.http.", "org.springframework.web.client",
             "org.springframework.web.reactive.function.client", "feign.",
         )
-
-        /** `src/testDebug`·`src/androidTestRelease`·`src/testFixtures` 같은 변형 테스트 세트다. */
-        val TEST_SOURCE_SET = Regex("^(?:test|androidTest)[A-Z].*")
     }
 }
 

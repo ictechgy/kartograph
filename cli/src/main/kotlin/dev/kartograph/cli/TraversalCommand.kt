@@ -1,10 +1,13 @@
 package dev.kartograph.cli
 
 import dev.kartograph.analysis.LanguageTraversal
+import dev.kartograph.analysis.TestSourceScope
 import dev.kartograph.analysis.TraversalDirection
 import dev.kartograph.analysis.TraversalDispatch
+import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.export.LanguageTraversalCodec
 import dev.kartograph.export.LanguageTraversalMetadata
+import dev.kartograph.export.QuerySnapshot
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
@@ -22,8 +25,12 @@ import java.time.format.DateTimeParseException
 internal object TraversalCommand {
     private val VALUE_OPTIONS = setOf(
         "--graph-file", "--symbol", "--roots-from", "--project", "--depth", "--dispatch", "--generated-at",
-        "--revision", "--snapshot-max-mib", "--max-reached", "--format",
+        "--revision", "--snapshot-max-mib", "--max-reached", "--format", "--input-bindings",
     )
+
+    /** 값 없이 켜는 옵션이다. */
+    private val FLAG_OPTIONS = setOf("--include-tests")
+
     private val REPEATABLE = setOf("--symbol")
     private val timestampFormat = DateTimeFormatterBuilder().appendInstant(3).toFormatter()
 
@@ -41,6 +48,7 @@ internal object TraversalCommand {
     private data class Options(
         val graphFile: String, val roots: List<String>, val project: String, val depth: Int, val dispatch: TraversalDispatch,
         val generatedAt: String, val revision: String?, val maximumBytes: Int, val maximumMiB: Int, val maxReached: Int,
+        val includeTests: Boolean, val inputBindings: String?,
     )
 
     /** 사용 오류 문구를 파서 밖으로 전달한다. 입력 값을 문구에 넣지 않는다. */
@@ -53,6 +61,7 @@ internal object TraversalCommand {
         while (index < arguments.size) {
             val argument = arguments[index++]
             if (!argument.startsWith('-')) { positional += argument; continue }
+            if (argument in FLAG_OPTIONS) { values.getOrPut(argument) { mutableListOf() } += "true"; continue }
             if (argument !in VALUE_OPTIONS) throw TraversalUsageException(unsupported(argument))
             val value = arguments.getOrNull(index++)?.takeUnless { it.startsWith('-') }
                 ?: throw TraversalUsageException("missing value for $argument")
@@ -84,7 +93,8 @@ internal object TraversalCommand {
             return null.also { usage(error, "--revision must be non-empty without control characters (C0, DEL, C1, U+2028, U+2029); isthmus rejects such revisions") }
         }
         val roots = rootRequests(positional + values["--symbol"].orEmpty(), values["--roots-from"]?.single(), error) ?: return null
-        return Options(graphFile, roots, project, depth, dispatch, generatedAt, revision, limit.maximumBytes, limit.maximumMiB, maxReached)
+        return Options(graphFile, roots, project, depth, dispatch, generatedAt, revision, limit.maximumBytes, limit.maximumMiB, maxReached,
+            "--include-tests" in values, values["--input-bindings"]?.single())
     }
 
     /** isthmus는 모든 문서의 project가 같은 realpath 문자열이어야 조인한다. routes와 같은 규칙으로 만든다. */
@@ -131,15 +141,34 @@ internal object TraversalCommand {
             error.println("error: --revision does not match the snapshot's revision label; pass the captured commit or recapture the snapshot")
             return 2
         }
-        val traversal = LanguageTraversal.traverse(snapshot.graph, options.roots, direction, options.dispatch, options.depth,
-            options.maxReached, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured)
-        val limitations = traversal.limitations + snapshot.limitations +
-            "saved-graph: traversal uses captured inputs; revision and scope labels do not prove build freshness"
+        val freshness = try {
+            freshnessLimitation(snapshot, options)
+        } catch (_: Exception) {
+            error.println("error: unable to verify the traversal snapshot inputs; pass the local bindings file written with the snapshot " +
+                "(Gradle plugin or `snapshot merge`, 1 MiB max) to --input-bindings")
+            return 2
+        }
+        // 테스트 소스는 별도 프로그램이다. 기본 순회는 production 부분 그래프에서 하고 graphRevision도 그 그래프로 낸다.
+        val scope = TestSourceScope.select(snapshot.graph, options.roots, options.includeTests)
+        val traversal = LanguageTraversal.traverse(scope.graph, options.roots, direction, options.dispatch, options.depth,
+            options.maxReached, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured, rootGraph = snapshot.graph)
+        val limitations = traversal.limitations + scope.limitations + snapshot.limitations + listOfNotNull(freshness)
         val revision = options.revision ?: snapshot.revision ?: GitRevision.cleanHead(Path.of(options.project))
         val metadata = LanguageTraversalMetadata(options.generatedAt, options.project, revision,
-            LanguageTraversalCodec.graphRevision(snapshot.graph, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured))
+            LanguageTraversalCodec.graphRevision(scope.graph, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured))
         output.print(LanguageTraversalCodec.render(traversal.copy(limitations = limitations), metadata))
         return if (traversal.rootNotFound) 64 else 0
+    }
+
+    /**
+     * `routes`와 같은 신선도 검사다. `--input-bindings`가 있으면 project 밖 입력(의존성 JAR, 옮긴 build 디렉터리)도
+     * 확인한다. matched는 한계가 아니므로 null이다.
+     */
+    private fun freshnessLimitation(snapshot: QuerySnapshot, options: Options): String? {
+        val bindings = options.inputBindings?.let { path ->
+            ExternalInputBindingsCodec.parse(SnapshotFiles.readText(path, 1024 * 1024)).mapValues { Path.of(it.value) }
+        }.orEmpty()
+        return SavedSnapshotOperations.freshnessLimitation(SavedSnapshotOperations.freshness(snapshot, Path.of(options.project), null, bindings))
     }
 
     private fun command(direction: TraversalDirection): String = if (direction == TraversalDirection.DEPENDENTS) "impact" else "reach"
@@ -172,6 +201,9 @@ internal object TraversalCommand {
                                    Default: the snapshot's label, else the git HEAD when the project directory has no
                                    uncommitted or untracked changes, else omitted
           --snapshot-max-mib <n>   snapshot read maximum in MiB, 1..128 (default 64)
+          --include-tests          also traverse test-source declarations (src/test, src/androidTest, src/testFixtures, ...)
+          --input-bindings <file>  local input bindings written with the snapshot (Gradle plugin or `snapshot merge`) so
+                                   inputs outside --project can be verified, as in routes
 
         Dispatch modes (each includes the previous):
           direct      compiler-resolved calls, references, field accesses and lexical containment of lambda bodies
@@ -182,5 +214,11 @@ internal object TraversalCommand {
         and unresolvedCalls. Roots reached from other roots are listed without their own index.
         Unknown roots stay listed without a symbol with root-not-found and exit 64. Recapture snapshots with this version
         for lexical containment facts; older snapshots fall back to following lambda candidates.
+
+        Test sources are a separate program: by default, declarations under test source sets are not traversed and
+        bound dispatch counts production implementations only (test-sources-excluded). When a root is a test-source
+        declaration, or production declarations reference test-source ones, test sources are traversed
+        (test-sources-included). Snapshot inputs are verified like routes: matched adds no limitation; otherwise
+        graph-file-freshness-unverified or -stale names the reasons.
     """.trimIndent() + "\n"
 }

@@ -88,6 +88,21 @@
   조용히 사라졌다. 이 snapshot을 `snapshot merge`로 합친 결과도 한 번에 캡처한 CLI snapshot과 같은 사실을 싣는다.
 - 호환성: 새 필드는 간선이 아닌 선택 필드라 도달성·dead·query·기본 `impact` 출력은 그대로다.
 
+### 테스트 소스와 신선도 (language-traversal·routes)
+
+- Changed: `impact --format language-traversal`과 `reach`가 테스트 소스 선언을 기본으로 순회하지 않는다. 테스트 소스는
+  production과 따로 컴파일되는 별도 프로그램이고 production 코드는 테스트 class를 참조하지 않으므로, production 호출 지점의
+  `bound` 판정은 production 구현만 센다. 전에는 plugin snapshot이 unit test를 기본으로 담으면 `FakeClient : Client` 같은
+  테스트 fake가 두 번째 구현이 되어 `bound`가 `candidate`로 떨어지고 테스트 정점이 도달 목록을 채웠다. 테스트 정점은
+  소스 위치의 경로 규칙(`routes`의 기본 테스트 제외와 같은 `src/test`·`src/androidTest`·`src/test<Variant>`·`src/*Test`·
+  `src/testFixtures`)으로 가리고, 뺀 수를 `test-sources-excluded:`로 알린다. `--include-tests`는 전체 그래프를 순회한다.
+  root가 테스트 선언이거나 production 선언이 테스트 선언을 호출·참조·상속하면(가정 위반) 빼지 않고 `test-sources-included:`로
+  이유를 밝힌다. `graphRevision`은 실제로 순회한 그래프의 해시다.
+- Added: `impact --format language-traversal`과 `reach`가 `routes`처럼 snapshot 입력의 신선도를 확인하고
+  `--input-bindings`로 project 밖 입력을 다시 연결한다. 전에는 항상 `saved-graph:` 한계에 머물렀다.
+- Fixed: `routes`·`bridges`·`schema`가 신선도가 확인된 snapshot에도 사유가 빈 `graph-file-freshness-matched: `를 한계로
+  냈다. matched는 한계가 아니므로 싣지 않고 unverified·stale만 원인과 함께 싣는다.
+
 ## [0.17.0] - 2026-09-24
 
 ### Added

@@ -381,8 +381,8 @@ internal object AgentCommand {
                 else -> scanner.scan(graph = graph, targetFilter = options.single("--target"))
             }
             val document = snapshot?.let {
-                val evidence = "graph-file-freshness-${freshness!!.status}: " + freshness.reasons.joinToString(";")
-                scanned.copy(limitations = (scanned.limitations + it.limitations + evidence).distinct().sorted())
+                val evidence = SavedSnapshotOperations.freshnessLimitation(freshness!!)
+                scanned.copy(limitations = (scanned.limitations + it.limitations + listOfNotNull(evidence)).distinct().sorted())
             } ?: scanned
             output.print(AgentDocumentRenderer.bridges(document))
             ExitStatus.SUCCESS.code
@@ -416,8 +416,8 @@ internal object AgentCommand {
             val graph = snapshot?.takeUnless { freshness?.status == "stale" }?.graph
             val scanned = SchemaFactScanner(project).scan(graph = graph)
             val document = snapshot?.let {
-                val evidence = "graph-file-freshness-${freshness!!.status}: " + freshness.reasons.joinToString(";")
-                scanned.copy(limitations = (scanned.limitations + it.limitations + evidence).distinct().sorted())
+                val evidence = SavedSnapshotOperations.freshnessLimitation(freshness!!)
+                scanned.copy(limitations = (scanned.limitations + it.limitations + listOfNotNull(evidence)).distinct().sorted())
             } ?: scanned
             output.print(AgentDocumentRenderer.bridges(document))
             ExitStatus.SUCCESS.code
