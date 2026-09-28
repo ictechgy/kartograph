@@ -125,6 +125,9 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   테스트 소스 선언은 기본으로 순회하지 않으며 소스 경로 규칙(`src/test`·`src/androidTest`·`src/testFixtures` 등)으로만
   가린다. 관례 밖 source set, 생성된 테스트 코드, main source에 둔 테스트 도우미 모듈은 production으로 남아 `bound`를
   약하게 만들 수 있다. production이 테스트 선언을 참조하는 그래프는 전체를 순회한다(`test-sources-included:`).
+  `--class-hops member-only`는 멤버 변경이 콜백 모델로 소유 class에 오른 뒤 그 class를 이름만 적은 선언으로 퍼지지
+  않게 한다. 프레임워크가 class literal·reflection·DI로 class 전체를 얻어 쓰는 경로는 추적한 생성자 호출이 없으면 빠지며
+  `class-hops-narrowed:`로 따르지 않은 간선 수를 알린다. 기본 `all`은 이 경로를 모두 따른다.
   라이브러리 코드에 넘긴 콜백(대부분의 Compose UI 함수)은 실행을 증명하지 못해 `candidate`다. 콜백 간선은 정방향
   `reach`에서 따르지 않는다. `unresolvedCalls`는 kartograph가 관측한 미해석 dispatch·미해석 reflection 모델·모델 없는
   invokedynamic만 세며 모든 런타임 경로를 안다고 주장하지 않는다.

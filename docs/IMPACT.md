@@ -368,7 +368,7 @@ snapshot freshness/runtime limitation은 페이지나 필터를 사용해도 보
 ```bash
 # route-call을 감싼 심볼 전부를 root로 한 번에 역방향 순회한다. routes 문서를 그대로 root 목록으로 쓴다.
 kartograph impact --format language-traversal --roots-from routes.json \
-  --graph-file graph.json --project . [--dispatch candidates] [--generated-at 2026-09-27T00:00:00Z]
+  --graph-file graph.json --project . [--dispatch candidates] [--class-hops all] [--generated-at 2026-09-27T00:00:00Z]
 # 핸들러에서 정방향으로 순회한다(direction: dependencies).
 kartograph reach <usr>... --graph-file graph.json --project .
 ```
@@ -532,6 +532,44 @@ L 본문)을 만든다. 라이브러리에 넘긴 경우 그 코드가 어느 �
 어휘적 소속 사실이 없는 옛 snapshot에서는 lambda 간선을 빼면 본문이 끊기므로 `candidate`로 따르고
 `lexical-enclosures-unavailable:`로 알린다. 새 snapshot을 캡처하면 정밀한 결과가 나온다.
 
+### class 정점 hop (`--class-hops`)
+
+프레임워크 콜백 모델(`runtimeModel`)은 `androidx/lifecycle/ViewModel`·`ViewModelProvider$Factory`·`WebViewClient`
+같은 타입의 하위 class에서 비공개·정적이 아닌 모든 멤버로 `reference` 간선(class → 멤버)을 긋는다. 런타임이 그 class의
+인스턴스에서 멤버를 부른다는 가정이다. 역방향 순회는 이 간선을 거꾸로 따라 멤버 하나의 변경을 소유 class 정점에 올리고,
+class 정점은 다시 그 class를 가리키는 모든 `reference` 간선의 source로 퍼진다. 그런데 bytecode `reference`는 시그니처·
+필드 타입·cast·class literal·호출 소유자·중첩 class의 바깥 class 참조가 한 간선으로 합쳐져 있어, ViewModel 멤버 하나의
+변경이 그 ViewModel 타입을 파라미터나 캡처 필드로 적은 모든 화면 람다와 다른 멤버로 번진다.
+
+| 값 | 따르는 경로 |
+|---|---|
+| `all` (기본) | 모든 간선을 그대로 따른다. 그래프가 잇는 것은 놓치지 않는다 |
+| `member-only` | 아래 두 hop을 같은 class 정점(그 사이의 상속 hop 포함)에서 잇지 않는다 |
+
+- **이름만 적은 참조(type reference)**: class 정점을 가리키는 `reference` 간선 중 `runtimeModel` 출처가 아니고, 같은
+  source가 그 class의 생성자(`C.<init>`)를 부르지 않는 것이다.
+- **콜백 모델(owner callback)**: `runtimeModel` 출처의 class → 자기 멤버 `reference` 간선이다. 다른 class 멤버로 가는
+  런타임 모델 간선(reflection으로 해석한 메서드 등)은 아니다.
+- **역방향**(`impact --format language-traversal`): 멤버 → 소유 class hop으로 닿은 class는 목록에 싣되, 그 class에서
+  이름만 적은 참조의 source로는 가지 않는다. 그 class에서 계속 따르는 것은 인스턴스 생성(생성자를 부르는 선언의
+  참조), 상속(하위 class, 같은 좁힌 상태로), 어휘적 소속(`contains`), 콜백, 런타임 모델 참조다. 멤버 자체의 호출자,
+  override·dispatch(`--dispatch`에 따름)는 원래대로 멤버에서 따른다. class가 root이거나 다른 경로(상속으로 상위 class에서,
+  콜백 모델이 아닌 간선)로 닿으면 좁히지 않는다.
+- **정방향**(`reach`): 같은 두 hop 조합을 반대쪽에서 막는다. 이름만 적은 참조로 닿은 class(와 그 상위 class)는 목록에
+  싣되 콜백 모델 간선으로 멤버에 가지 않는다. 인스턴스를 만드는 선언은 class를 좁히지 않으므로 런타임 콜백까지 닿는다.
+  정방향에서 이 조합은 "타입을 적기만 한 코드가 그 class의 모든 런타임 콜백에 기댄다"는 과대 추정이므로 같은 규칙을 쓴다.
+- **놓칠 수 있는 것**: 프레임워크가 class 전체를 얻어 멤버를 부르는 경로 중 추적한 인스턴스 생성이 없는 것 —
+  `ViewModelProvider`·Hilt·reflection이 class literal로 만드는 ViewModel, DI 생성 코드 밖의 생성, 이름만 적은 선언이
+  런타임 콜백 결과(상태 필드 등)에 기대는 경우다. 역방향에서 그 class를 이름만 적은 선언이 실제로 바뀐 멤버를 부르면
+  호출 간선으로 닿으므로 잃지 않는다. 잃는 것은 다른 멤버만 부르거나 타입만 적은 선언이다.
+- **한계 문구**: `member-only`면 항상 `class-hops-narrowed: N ... from K class vertex(es) ...`를 싣는다(0이어도 싣는다 —
+  문서에 모드 필드가 없으므로 이 줄로 좁힌 결과임을 안다). N은 적어도 한 root가 좁힌 상태로만 닿은(본 class 정점에는
+  닿지 않은) class K개에서 따르지 않은 (class, 선언) 쌍의 수다. 같은 쌍을 다른 간선으로 잇는 경우는 세지 않는다.
+- **계산**: 콜백 그림자처럼 class마다 진입 그림자 정점을 두고, 진입 간선은 그림자로, 그림자에서는 막힌 간선을 뺀 나머지로
+  잇는다. 출력에서 그림자는 본 정점과 합친다. 무작위 그래프에서 (정점, 본·콜백 그림자·진입) 상태 공간의 root별 전수 BFS와
+  roots·depth·evidence·via·한계 수를 대조하고, `member-only` 결과가 `all`의 부분집합인지 확인한다.
+- `graphRevision`은 그래프 내용의 해시이므로 `--class-hops`와 무관하게 같다(`--dispatch`와 같다).
+
 ### 잇지 못한 호출 (`unresolvedCalls`)
 
 문서는 항상 `dispatch`를 실으므로 모든 정점의 `evidence`와 잇지 못한 호출을 완전히 신고한다는 선언이다.
@@ -561,6 +599,7 @@ L 본문)을 만든다. 라이브러리에 넘긴 경우 그 코드가 어느 �
 - `language-traversal`은 `saved-graph:` 한계 대신 실제 신선도 결과를 싣는다.
 - `language-traversal`이 테스트 소스 선언을 기본으로 빼므로, unit test를 담은 snapshot에서는 이전 버전보다 도달 정점이
   적고 `bound`가 늘 수 있다. 이전 결과는 `--include-tests`로 얻는다.
+- `--class-hops`의 기본값 `all`은 이전 순회와 바이트 단위로 같은 문서를 낸다. `member-only`는 명시했을 때만 쓴다.
 - `language-traversal` 전용 옵션(`--dispatch`·`--project`·`--roots-from`·`--generated-at`·`--max-reached`)은 기본
   형식에서 받지 않고, 기본 형식 전용 옵션(`--base-graph`·`--file`·`--limit`·필터 등)은 새 형식에서 사용 오류(64)다.
 
