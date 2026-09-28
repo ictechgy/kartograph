@@ -13,7 +13,11 @@ internal class SpringProjectSignals private constructor(
     private val servletFiles: Int,
     private val jaxRsFiles: Int,
     val pathPrefixConfigured: Boolean,
-    /** `SpringApplication.run(`·`runApplication<`/`runApplication(`을 부르는 소스 파일 경로다(앱 모듈 판정용). */
+    /**
+     * Spring Boot 앱을 실행하는 소스 파일 경로다(앱 모듈 판정용). `SpringApplication.run(`·`SpringApplicationBuilder(`·
+     * `runApplication`을 부르고 그 이름을 `org.springframework.boot`에서 가져온 파일만 센다 — 같은 이름의 프로젝트 도우미를
+     * 앱으로 오인하지 않게 한다.
+     */
     val applicationLaunchers: List<String>,
     val trailingSlashConfigured: Boolean,
     private val antMatcherConfigured: Boolean,
@@ -55,7 +59,7 @@ internal class SpringProjectSignals private constructor(
             servletFiles = files.count { SERVLET.containsMatchIn(it.masked) },
             jaxRsFiles = files.count { file -> file.imports.any { it.path.startsWith("jakarta.ws.rs.") || it.path.startsWith("javax.ws.rs.") } },
             pathPrefixConfigured = files.any { PATH_PREFIX.containsMatchIn(it.masked) },
-            applicationLaunchers = files.filter { !it.isTest && LAUNCHER.containsMatchIn(it.masked) }.map { it.relative },
+            applicationLaunchers = files.filter { !it.isTest && launchesBoot(it) }.map { it.relative },
             trailingSlashConfigured = files.any { TRAILING_SLASH.containsMatchIn(it.masked) },
             antMatcherConfigured = files.any { ANT_MATCHER.containsMatchIn(it.masked) },
         )
@@ -68,5 +72,12 @@ internal class SpringProjectSignals private constructor(
         private val TRAILING_SLASH = Regex("setUseTrailingSlashMatch\\s*\\(\\s*true|useTrailingSlashMatch\\s*=\\s*true|\\bUrlHandlerFilter\\b|setMatchOptionalTrailingSeparator\\s*\\(\\s*true")
         private val ANT_MATCHER = Regex("\\.\\s*setPathMatcher\\s*\\(")
         private val LAUNCHER = Regex("\\bSpringApplication\\s*\\.\\s*run\\s*\\(|\\brunApplication\\s*[<(]|\\bSpringApplicationBuilder\\s*\\(")
+        private val BOOT_LAUNCH_IMPORTS = setOf(
+            "org.springframework.boot.SpringApplication", "org.springframework.boot.runApplication",
+            "org.springframework.boot.builder.SpringApplicationBuilder", "org.springframework.boot.*",
+        )
+
+        private fun launchesBoot(file: RouteSourceFile): Boolean =
+            LAUNCHER.containsMatchIn(file.masked) && (file.imports.any { it.path in BOOT_LAUNCH_IMPORTS } || "org.springframework.boot." in file.masked)
     }
 }

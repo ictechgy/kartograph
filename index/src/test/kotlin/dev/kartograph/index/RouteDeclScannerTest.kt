@@ -616,4 +616,20 @@ class RouteDeclScannerTest {
         write("app/src/main/java/demo/A.java", "package demo;\n$javaImports\n@RestController public class A { @GetMapping(\"/a\") public String a() { return \"\"; } }")
         assertEquals(setOf("GET /a"), scan().keys())
     }
+
+    @Test
+    fun `project helpers named runApplication and config imports do not settle prefixes`() {
+        write("app/build.gradle.kts", "plugins { id(\"org.springframework.boot\") version \"3.3.0\" }\ndependencies { implementation(\"org.springframework.boot:spring-boot-starter-web\") }")
+        write("lib/build.gradle.kts", "")
+        write("app/src/main/resources/application.properties", "server.servlet.context-path=/app")
+        write("app/src/main/java/demo/App.java", "package demo;\nimport org.springframework.boot.SpringApplication;\npublic class App { public static void main(String[] a) { SpringApplication.run(App.class, a); } }")
+        write("lib/src/main/kotlin/demo/Jobs.kt", "package demo\nfun <T> runApplication(): Unit = Unit\nfun start() { runApplication<String>() }")
+        write("lib/src/main/resources/application.properties", "server.servlet.context-path=/lib")
+        write("lib/src/main/java/demo/Shared.java", "package demo;\n$javaImports\n@RestController public class Shared { @GetMapping(\"/shared\") public String a() { return \"\"; } }")
+        assertEquals(setOf("GET /app/shared"), scan().keys())
+
+        write("app/src/main/resources/application.properties", "spring.config.import=classpath:lib-defaults.properties")
+        val imported = scan()
+        assertEquals("base", imported.fact("GET /shared").routeDecl!!.pathAnchor)
+    }
 }

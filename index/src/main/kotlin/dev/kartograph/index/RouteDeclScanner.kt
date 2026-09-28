@@ -80,7 +80,10 @@ public class RouteDeclScanner(
         }
     }
 
-    /** `@SpringBootApplication`·`@SpringBootConfiguration` 타입이나 앱 실행 호출이 있는 모듈 루트다. 설정 후보를 앱 모듈로 좁힌다. */
+    /**
+     * `@SpringBootApplication` 타입이나 Boot 앱 실행 호출이 있는 모듈 루트다. 설정 후보를 앱 모듈로 좁힌다.
+     * `@SpringBootConfiguration`만 있는 모듈은 테스트 지원 모듈일 수 있어 세지 않는다.
+     */
     private fun applicationRoots(model: List<SpringType>, config: SpringProjectConfig, signals: SpringProjectSignals): Set<String> {
         val annotated = model.filter { type -> !type.isTest && type.annotations.any { it.type in APPLICATION_ANNOTATIONS } }.map { it.sourcePath }
         return (annotated + signals.applicationLaunchers).mapNotNullTo(sortedSetOf()) { path -> config.moduleOf(path)?.root }
@@ -90,9 +93,7 @@ public class RouteDeclScanner(
         source?.let { it.substring(0, offset.coerceIn(0, it.length)).count { character -> character == '\n' } + 1 }
 
     private companion object {
-        val APPLICATION_ANNOTATIONS = setOf(
-            "org.springframework.boot.autoconfigure.SpringBootApplication", "org.springframework.boot.SpringBootConfiguration",
-        )
+        val APPLICATION_ANNOTATIONS = setOf("org.springframework.boot.autoconfigure.SpringBootApplication")
     }
 }
 
@@ -308,10 +309,11 @@ internal class SpringRouteEmitter(
     private fun candidatePrefix(candidate: SpringModuleConfig, placeholders: SpringPlaceholders): Prefix {
         val candidates = listOf(candidate)
         if (candidate.unreadable) return unresolvedPrefix("an unreadable application configuration file")
-        // Boot 1.x 키다. 지금 규칙은 Boot 2 이상의 키만 풀므로 이 키가 보이면 접두사를 확정하지 않는다.
-        if (candidates.any { it.lookup(LEGACY_CONTEXT_PATH) != SpringModuleConfig.Lookup.Absent }) return unresolvedPrefix(LEGACY_CONTEXT_PATH)
         val stack = stack(candidate)
         if (stack == NO_WEB) return Prefix("", NO_WEB, false)
+        if (candidate.importsConfig) return unresolvedPrefix("spring.config.import")
+        // Boot 1.x 키다. 지금 규칙은 Boot 2 이상의 키만 풀므로 이 키가 보이면 접두사를 확정하지 않는다.
+        if (candidates.any { it.lookup(LEGACY_CONTEXT_PATH) != SpringModuleConfig.Lookup.Absent }) return unresolvedPrefix(LEGACY_CONTEXT_PATH)
         if (stack != "reactive") {
             val servletPath = prefixValue(SERVLET_PATH, candidates, placeholders) ?: return unresolvedPrefix(SERVLET_PATH)
             if (servletPath.text!!.isNotEmpty()) return unresolvedPrefix(SERVLET_PATH)

@@ -40,6 +40,12 @@ internal class SpringModuleConfig(
         data object Unknown : Lookup
     }
 
+    /**
+     * `spring.config.import`로 저장소 밖(라이브러리 JAR·config server 등) 설정을 가져온다. 가져온 문서는 읽지 않으므로 이 모듈에서
+     * 찾지 못한 키는 "없음"이 아니라 [Lookup.Unknown]이다.
+     */
+    val importsConfig: Boolean = IMPORT in effective || IMPORT in otherProfiles
+
     /** [key]를 relaxed binding으로 찾는다. */
     fun lookup(key: String): Lookup {
         if (unreadable) return Lookup.Unknown
@@ -49,6 +55,7 @@ internal class SpringModuleConfig(
         return when {
             value != null -> Lookup.Value(value, others.any { it != value })
             others.isNotEmpty() -> Lookup.OtherProfilesOnly
+            importsConfig -> Lookup.Unknown
             else -> Lookup.Absent
         }
     }
@@ -77,6 +84,7 @@ internal class SpringModuleConfig(
             return declared.split(',').map(String::trim).filter(String::isNotEmpty).toSet()
         }
 
+        private val IMPORT = SpringConfigDocuments.normalizeKey("spring.config.import")
         private val ACTIVE = SpringConfigDocuments.normalizeKey("spring.profiles.active")
         private val DEFAULT_PROFILE = SpringConfigDocuments.normalizeKey("spring.profiles.default")
         private val INCLUDE = SpringConfigDocuments.normalizeKey("spring.profiles.include")
