@@ -116,4 +116,15 @@ class RouteSymbolDiagnosticsTest {
         assertContains(RouteSymbolDiagnostics.rootMismatch(listOf("a/B.kt"), setOf("x/C.kt"))!!, "none of the route-call files")
         assertNull(RouteSymbolDiagnostics.rootMismatch(listOf("a/B.kt"), setOf("a/B.kt")))
     }
+
+    @Test
+    fun `route declarations name the handler lookup when the snapshot has no matching method`() {
+        val fact = dev.kartograph.core.BridgeFact("route-decl", "/a", "GET", false, dev.kartograph.core.BridgeLocation(sourcePath, 3, 5),
+            dev.kartograph.core.BridgeSymbol("dev.example.net.Client.other"), "http")
+        val node = GraphNode(NodeId("method:dev/example/net/Client#load()V"), "load", NodeKind.METHOD, location = SourceLocation(sourcePath, 5))
+        val message = RouteSymbolDiagnostics.missingUsrs(listOf(fact), CodeGraph(listOf(node), emptyList()), stale = false)!!
+        assertContains(message, "missing-route-usrs: 1 route-decl fact(s)")
+        assertContains(message, "no compiled handler method in the snapshot matched")
+        assertContains(RouteSymbolDiagnostics.rootMismatch(listOf("a/B.kt"), setOf("x/C.kt"), "route-decl")!!, "none of the route-decl files")
+    }
 }
