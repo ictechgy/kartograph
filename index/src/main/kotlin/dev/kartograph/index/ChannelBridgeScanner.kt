@@ -450,7 +450,8 @@ internal fun closingQuote(source: String, opening: Int): Int {
     for (index in opening + 1 until source.length) {
         when (val c = source[index]) {
             '\\' -> escaped = !escaped
-            '"' -> if (!escaped) return index
+            // 이스케이프된 따옴표 뒤에는 이스케이프 상태를 끝낸다 — `"\""`의 마지막 따옴표를 닫는 따옴표로 읽는다.
+            '"' -> if (!escaped) return index else escaped = false
             else -> escaped = false
         }
     }

@@ -76,6 +76,8 @@ sourceSets.test {
     resources.srcDir(rootProject.file("fixtures/runtime-corpus"))
     // isthmus 공유 적합성 벡터와 lock 파일이다. 테스트가 sha256을 대조한 뒤 생산자 케이스를 실행한다.
     resources.srcDir(rootProject.file("fixtures/isthmus-conformance"))
+    // JPA 명명 벡터(엔티티 소스와 Hibernate 실행 결과)다. 테스트가 소스를 임시 프로젝트로 복사해 스캔한다.
+    resources.srcDir(rootProject.file("fixtures/jpa-naming"))
 }
 
 // compiler 코퍼스가 플랫폼별 캐시 경로를 추측하지 않고 실제 검증된 test 의존성을 사용한다.

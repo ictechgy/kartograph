@@ -239,16 +239,36 @@ Capture snapshots with `snapshot --include-paths` so bridge source paths can mat
 Expo/codegen events and emitter variables/wrappers are not resolved. This flag is separate from
 Flutter `--events` and `--messages`. Both extensions are available from 0.11.0. In 0.13.0, bridge `generatedAt` records extraction time and optional `sourceModifiedAt` separately records observed source mtime; neither proves compiler freshness.
 
-`schema --project <dir> [--format json] [--graph-file <snapshot>]` (available from 0.17.0) emits a `bridge-facts`
-document with `"target": "persistence"` for isthmus. It scans Kotlin and Java sources for
+`schema --project <dir> [--format json] [--graph-file <snapshot>] [--jpa-naming <profile>]` (available from 0.17.0) emits a
+`bridge-facts` document with `"target": "persistence"` for isthmus. It scans Kotlin and Java sources for
 Room annotations (`@Entity`, `@DatabaseView`, `@Query`, `@ColumnInfo`, `@ForeignKey`, and the
 DAO operation annotations), JDBC call arguments when a `java.sql`/`javax.sql` import gates the
-file, Exposed `Table` objects and DSL receivers, jOOQ plain-SQL calls, SQL-shaped string
-literals, and SQLDelight `.sq`/`.sqm` files. Other frameworks (JPA derived queries, Spring Data,
-Ktorm, jdbi) are not claimed; JPA/Spring Data imports surface as a limitation. Dynamic or
-unresolved evidence stays visible as `dynamic` facts and measured limitations; an empty scan
-emits `"target": null`. `--graph-file` attaches JVM symbol identities only when the snapshot is
-fresh.
+file, Spring JDBC calls on receivers declared as `JdbcTemplate`/`NamedParameterJdbcTemplate`/`JdbcClient`
+(and their `*Operations` interfaces), Exposed `Table` objects and DSL receivers, jOOQ plain-SQL calls,
+SQL-shaped string literals, and SQLDelight `.sq`/`.sqm` files. Other frameworks (Ktorm, jdbi, Criteria
+string paths) are not claimed. Dynamic or unresolved evidence stays visible as `dynamic` facts and measured
+limitations; an empty scan emits `"target": null`. `--graph-file` attaches JVM symbol identities only when the
+snapshot is fresh.
+
+JPA and Spring Data (unreleased): entity mappings (`@Table(name, schema)`, `@Column`, `@JoinColumn(s)`,
+`@JoinTable`, `@Embedded`/`@Embeddable` with `@AttributeOverride(s)`, the three inheritance strategies with
+`@DiscriminatorColumn` and `@PrimaryKeyJoinColumn`, `@ElementCollection`/`@CollectionTable`/`@OrderColumn`,
+`@Transient`, `@MappedSuperclass`, Java getter property access) become table and column facts under the
+Hibernate naming strategy detected from build and configuration files: Spring Boot 3 (Hibernate 6
+`CamelCaseToUnderscoresNamingStrategy` + `SpringImplicitNamingStrategy`), Spring Boot 4 (Hibernate 7
+`PhysicalNamingStrategySnakeCaseImpl`, which also splits before digits and leaves quoted names alone), or plain
+Hibernate 6/7 defaults. `--jpa-naming spring-boot-3|spring-boot-4|hibernate-6|hibernate-7` fixes the profile.
+When the version is unknown, only names that differ across the candidate profiles become dynamic; a custom
+strategy (settings value, strategy class or `@Bean`) or globally quoted identifiers leave every JPA name dynamic.
+The rules are checked against real Hibernate 6 and 7 schema export in `fixtures/jpa-naming/vectors.json`
+([experiment](experiments/jpa-persistence/README.md)). Spring Data repositories (including generic base
+interfaces) contribute derived query names (Spring Data `PartTree` property paths), `@Query` JPQL (entity and
+alias paths resolved to tables and columns), native `@Query` SQL, named queries and inherited CRUD methods;
+`EntityManager` `createQuery`/`createNativeQuery`/`createNamedQuery`/`find` calls are read too. With
+`--graph-file`, every repository call site becomes facts located at the call and owned by the calling method's
+JVM id — the only identity a handler's forward `reach` is guaranteed to contain, because inherited CRUD methods
+have no project node. Unmodelled mappings, unresolved query paths and non-JPA repositories are counted as
+limitations instead of guessed.
 
 `routes --role client --project <dir> [--wrappers <http-wrappers.json>] [--include-tests] [--service <name>] [<source-root>...]`
 (unreleased) emits a `bridge-facts` document with `"target": "http"` and `"roles": ["client"]` for the

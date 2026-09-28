@@ -111,6 +111,37 @@
   포함)에서 잇지 않는다. class는 목록에 남고, 인스턴스 생성·상속·어휘적 소속·콜백·런타임 모델 참조·멤버 호출은 계속
   따른다. 따르지 않은 간선 수는 `class-hops-narrowed:`로 알린다. 기본값의 문서와 `graphRevision`은 그대로다.
 
+### JPA·Spring Data persistence (schema)
+
+- `schema`가 JPA 엔티티 매핑을 테이블·컬럼 사실로 낸다. `@Table(name, schema)`·`@Column`·`@JoinColumn(s)`·`@JoinTable`·
+  `@Embedded`/`@Embeddable`과 `@AttributeOverride(s)`·SINGLE_TABLE/JOINED/TABLE_PER_CLASS 상속과 `@DiscriminatorColumn`·
+  `@PrimaryKeyJoinColumn`·`@ElementCollection`/`@CollectionTable`/`@OrderColumn`·`@Transient`·`@MappedSuperclass`·Java getter
+  property access를 다룬다. 이전에는 JPA 프로퍼티 이름을 그대로 컬럼으로 냈으나 이제 Hibernate 명명 전략을 적용한다.
+- 명명 전략을 빌드·설정 파일에서 감지한다: Spring Boot 3(Hibernate 6 `CamelCaseToUnderscoresNamingStrategy` +
+  `SpringImplicitNamingStrategy`), Spring Boot 4(Hibernate 7 `PhysicalNamingStrategySnakeCaseImpl` — 숫자 경계와 인용 이름
+  처리가 다르다), 순수 Hibernate 6·7 기본값. `--jpa-naming <profile>`로 고정할 수 있다. 버전을 모르면 후보 사이에서 갈리는
+  이름만 dynamic이고, 사용자 정의 전략·전역 인용·검증하지 않은 Hibernate 5 세대(`javax.persistence`, Boot 2)는 근거와 함께
+  limitation(`jpa-naming-assumed:`·`jpa-naming-unresolved:`)으로 밝힌다.
+- 명명 벡터 `fixtures/jpa-naming/vectors.json`(합성 엔티티 → 실제 Hibernate 6.6.53·7.2.24·7.4.5 스키마 export)을 추가하고
+  `JpaNamingVectorTest`가 6개 케이스 × 31개 테이블의 완전 일치를 검사한다. 오라클은 네트워크가 필요해
+  `experiments/jpa-persistence/run.py`로 따로 돌린다(기본 CI 밖).
+- Spring Data 저장소(제네릭 기반 인터페이스·`@RepositoryDefinition` 포함)의 파생 질의 이름(Spring Data `PartTree` 규칙의
+  속성 경로), `@Query` JPQL(별칭·join·`IN(…)`·SpEL `#{#entityName}`), native `@Query`, `@NamedQuery`/`@NamedNativeQuery`,
+  상속 CRUD를 관계·컬럼 사실로 낸다. `EntityManager`의 `createQuery`/`createNativeQuery`/`createNamedQuery`/`find`/
+  `getReference`와 Spring JDBC 수신자(`JdbcTemplate` 계열·`JdbcClient`) 호출도 읽는다.
+- `--graph-file`이 있으면 저장소 호출 지점마다 사실을 내고 호출 명령을 담은 메서드의 JVM id를 `symbol.usr`로 싣는다
+  (스파이크 S3: javac·kotlinc는 상속 CRUD 호출도 사용자 저장소 owner의 `invokeinterface`로 기록하지만 프로젝트 정점이
+  없어 외부 호출로만 남는다). 저장소에 선언된 질의 메서드의 선언 사실은 인터페이스 메서드 id를 싣는다.
+- 모델링하지 않은 매핑·해석하지 못한 질의 경로·JPA가 아닌 저장소·타입을 모르는 EntityManager 작업은 dynamic 사실과
+  `jpa-unmodelled-mappings:`·`jpa-unresolved-query-paths:`·`unresolved-repository-methods:`·`non-jpa-repositories:`·
+  `untyped-entity-manager-operations:`·`repository-call-sites-need-snapshot:` limitation으로 남긴다. 기존
+  `jpa-persistence-sources:` limitation은 없어졌다.
+
+### Fixed (schema)
+
+- 문자열 리터럴 판정이 `"\""`처럼 이스케이프된 따옴표 바로 뒤의 닫는 따옴표를 놓쳐 리터럴을 동적 식으로 읽던 문제를
+  고쳤다(bridges·schema 공용 해석기).
+
 ## [0.17.0] - 2026-09-24
 
 ### Added

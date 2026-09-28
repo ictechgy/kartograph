@@ -13,15 +13,23 @@ import java.time.Instant
  * bridge-facts v1 문서로 만든다.
  *
  * 지원 표면은 증거가 있는 것으로 한정한다 — import로 게이트된 Room 어노테이션,
- * JDBC 호출 인자, Exposed Table 객체·DSL 수신자, jOOQ plain-SQL 메서드,
- * SQL 모양 문자열 리터럴, SQLDelight `.sq`/`.sqm` 파일. 그 밖의 프레임워크
- * (JPA Criteria·Spring Data 파생 쿼리·Ktorm·jdbi 등)는 지원한다고 주장하지
- * 않고 게이트가 관측되면 limitation으로만 센다.
+ * JDBC 호출 인자, Spring JDBC(JdbcTemplate 계열) 수신자 호출, Exposed Table 객체·DSL 수신자,
+ * jOOQ plain-SQL 메서드, SQL 모양 문자열 리터럴, SQLDelight `.sq`/`.sqm` 파일, 그리고
+ * JPA 엔티티 매핑·Spring Data 저장소·EntityManager 질의([JpaPersistenceScanner]). 그 밖의
+ * 프레임워크(JPA Criteria 문자열 경로·Ktorm·jdbi 등)는 지원한다고 주장하지 않는다.
+ *
+ * [jpaNaming]은 JPA 명명 전략 조합 id(`spring-boot-3` 등)다 — null이면 빌드·설정 파일에서 감지한다.
  *
  * 동적이거나 미해석인 근거는 버리지 않는다 — dynamic 사실과 limitation으로
  * 남겨 소비자가 불확실성을 판단하게 한다.
  */
-public class SchemaFactScanner(private val projectRoot: Path) {
+public class SchemaFactScanner(private val projectRoot: Path, private val jpaNaming: String? = null) {
+
+    init {
+        require(jpaNaming == null || JpaNamingProfile.fromId(jpaNaming) != null) {
+            "unknown JPA naming profile; use one of ${JPA_NAMING_PROFILES.joinToString(", ")}"
+        }
+    }
 
     /**
      * 프로젝트를 스캔해 persistence 사실 문서를 만든다.
@@ -40,17 +48,17 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         val entities = mutableMapOf<String, String>()
         val exposedTables = mutableMapOf<String, String>()
         sources.forEach { collectDeclarations(it, entities, exposedTables, stats) }
+        val jpa = scanJpa(root, jpaFiles(files, sources), graph)
         val facts = mutableListOf<BridgeFact>()
-        sources.forEach { scanFile(it, entities, exposedTables, facts, stats) }
-        val ordered = facts.sortedWith(
+        sources.forEach { scanFile(it, entities, exposedTables, facts, stats, jpa.consumed[it.relative].orEmpty()) }
+        // JPA 사실은 owner 규칙에 따라 스스로 symbol을 정했다 — 소스 범위 기반 부착은 나머지 사실에만 적용한다.
+        val attached = facts.map { graph?.let { snapshot -> attachSnapshotSymbol(it, snapshot, projectRoot) } ?: it }
+        val withSymbols = (attached + jpa.facts).distinct().sortedWith(
             compareBy(
                 { it.location.path }, { it.location.line }, { it.location.column },
-                { it.channel ?: "" }, { it.method.orEmpty() },
+                { it.channel ?: "" }, { it.method.orEmpty() }, { it.symbol?.usr.orEmpty() }, { it.dynamic },
             ),
         )
-        val withSymbols = ordered.map {
-            graph?.let { snapshot -> attachSnapshotSymbol(it, snapshot, projectRoot) } ?: it
-        }
         return BridgeFactsDocument(
             generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
             sourceModifiedAt = files.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() }
@@ -59,8 +67,30 @@ public class SchemaFactScanner(private val projectRoot: Path) {
             target = if (withSymbols.isEmpty()) null else "persistence",
             project = root.toString().replace('\\', '/'),
             facts = withSymbols,
-            limitations = limitations(stats).distinct().sorted(),
+            limitations = (limitations(stats) + jpa.limitations).distinct().sorted(),
         )
+    }
+
+    /**
+     * JPA 스캔 대상 파일이다 — import 게이트를 통과한 파일과, 그 파일들의 인터페이스를 상속하는 인터페이스를 선언한 파일
+     * (같은 패키지라 import가 없는 하위 저장소)이다.
+     */
+    private fun jpaFiles(files: List<Path>, sources: List<SourceFile>): List<Path> {
+        val gated = sources.indices.filter { sources[it].jpa || sources[it].entityManager }.toSet()
+        val interfaces = gated.flatMap { index -> INTERFACE_NAME.findAll(sources[index].masked).map { it.groupValues[1] } }.toSet()
+        if (interfaces.isEmpty()) return gated.sorted().map(files::get)
+        val extending = Regex("\\binterface\\s+\\w+[^{;]*?\\b(?:${interfaces.joinToString("|") { Regex.escape(it) }})\\b")
+        return files.indices.filter { it in gated || (!sources[it].isSqlDelight && extending.containsMatchIn(sources[it].masked)) }
+            .map(files::get)
+    }
+
+    /** JPA·Spring Data 표면을 스캔한다 — 게이트 파일이 없으면 명명 감지도 하지 않는다. */
+    private fun scanJpa(root: Path, files: List<Path>, graph: CodeGraph?): JpaPersistenceScanner.Result {
+        if (files.isEmpty()) return JpaPersistenceScanner.Result(emptyList(), emptyMap(), emptyList())
+        val parsed = files.map { JpaSourceFile(root, it) }
+        val legacyJavax = parsed.any { it.imports("javax.persistence") }
+        val naming = JpaNamingDetector(projectRoot).detect(jpaNaming, legacyJavax)
+        return JpaPersistenceScanner(projectRoot, parsed, naming).scan(graph)
     }
 
     /** 파일 하나의 스캔 컨텍스트다 — 원문·주석 제거 뷰·마스킹 뷰와 게이트를 한 번만 만든다. */
@@ -76,6 +106,8 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         val masked: String = maskStringContents(code)
         val room = ROOM_GATE.containsMatchIn(masked)
         val jpa = JPA_GATE.containsMatchIn(masked)
+        val entityManager = ENTITY_MANAGER_GATE.containsMatchIn(masked)
+        val springJdbc = SPRING_JDBC_GATE.containsMatchIn(masked)
         val jdbc = JDBC_GATE.containsMatchIn(masked)
         val exposed = EXPOSED_GATE.containsMatchIn(masked)
         val jooq = JOOQ_GATE.containsMatchIn(masked)
@@ -84,7 +116,6 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         val exposedDecls = mutableListOf<ExposedDecl>()
 
         init {
-            if (jpa) stats.jpaSources++
             if (isSqlDelight) stats.sqlDelightFiles++
         }
 
@@ -128,11 +159,10 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         var unresolvedEntities = 0
         var unattributedColumns = 0
         var skippedSqlLiterals = 0
-        var jpaSources = 0
         var sqlDelightFiles = 0
     }
 
-    /** 타입 선언 목록을 채우고 Room·JPA 엔티티와 Exposed 객체의 이름→채널 바인딩을 수집한다. */
+    /** 타입 선언 목록을 채우고 Room 엔티티와 Exposed 객체의 이름→채널 바인딩을 수집한다 — JPA 엔티티는 [JpaPersistenceScanner]가 맡는다. */
     private fun collectDeclarations(
         file: SourceFile,
         entities: MutableMap<String, String>,
@@ -145,7 +175,7 @@ public class SchemaFactScanner(private val projectRoot: Path) {
             val bound = declMatches.getOrNull(index + 1)?.range?.first ?: file.masked.length
             file.typeDecls += typeDecl(file, match.groupValues[1], match.range.first, match.range.last + 1, bound)
         }
-        if (file.room || file.jpa) {
+        if (file.room && !file.jpa) {
             ENTITY_ANNOTATION.findAll(file.masked).forEach { match ->
                 val args = file.annotationArgs(match.range.last + 1)
                 val tableArg = args.values.firstNamed("tableName")
@@ -167,16 +197,6 @@ public class SchemaFactScanner(private val projectRoot: Path) {
                     decl = decl,
                 )
                 if (decl != null && channel != null) entities[decl.name] = channel
-                if (file.jpa && decl != null) {
-                    // JPA는 @Table(name=..)가 테이블명의 정본이고 @Entity(name=..)는 JPQL 별칭이다.
-                    tableNameFor(file, decl.start)?.let { entities[decl.name] = escapeName(it) }
-                    args.values.firstNamed("name")?.let { expr ->
-                        val (entityName, entityDynamic) = literalOrDynamicChannel(expr)
-                        if (!entityDynamic && entityName != null && entities[decl.name] != null) {
-                            entities[entityName] = entities.getValue(decl.name)
-                        }
-                    }
-                }
             }
         }
         if (file.exposed) {
@@ -228,12 +248,13 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         exposedTables: Map<String, String>,
         facts: MutableList<BridgeFact>,
         stats: ScanStats,
+        preconsumed: List<IntRange> = emptyList(),
     ) {
         if (file.isSqlDelight) {
             scanSqlDelight(file, facts, stats)
             return
         }
-        val consumed = mutableListOf<IntRange>()
+        val consumed = preconsumed.toMutableList()
         // 선언된 엔티티 자체가 관계 사용이다 — 테이블명과 어노테이션 위치를 남긴다.
         file.entityDecls.forEach { entity ->
             facts += BridgeFact(
@@ -249,14 +270,14 @@ public class SchemaFactScanner(private val projectRoot: Path) {
             facts += relationFact(decl.channel, sourceLocation(file.relative, file.source, decl.offset))
             decl.decl?.let { scanExposedColumns(file, it, decl.channel, exposedTables, facts, stats, consumed) }
         }
-        if (file.room || file.jpa) {
+        if (file.room && !file.jpa) {
             QUERY_ANNOTATION.findAll(file.masked).forEach { match ->
                 val args = file.annotationArgs(match.range.last + 1)
                 args.range?.let(consumed::add)
                 val location = sourceLocation(file.relative, file.source, match.range.first)
                 when (match.groupValues[1]) {
                     "Query" -> {
-                        // Room·JPQL은 쿼리 안의 엔티티명을 테이블명으로 해석한다.
+                        // Room은 쿼리 안의 엔티티명을 테이블명으로 해석한다.
                         val expr = args.values.firstNamed("value")
                             ?: args.values.firstOrNull()?.takeUnless { it.isNamedArgument() }
                         emitSqlExpression(expr, location, entities, facts, stats, translateEntities = true)
@@ -278,6 +299,7 @@ public class SchemaFactScanner(private val projectRoot: Path) {
             }
         }
         if (file.jdbc) scanSqlCalls(file, JDBC_SQL_CALL, entities, facts, stats, consumed)
+        if (file.springJdbc) springJdbcCall(file)?.let { scanSqlCalls(file, it, entities, facts, stats, consumed) }
         if (file.jooq) {
             scanSqlCalls(file, JOOQ_SQL_CALL, entities, facts, stats, consumed)
             JOOQ_RELATION_CALL.findAll(file.masked).forEach { match ->
@@ -537,6 +559,16 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         }
     }
 
+    /**
+     * Spring JDBC 수신자(`JdbcTemplate`·`NamedParameterJdbcTemplate`·`JdbcOperations` 계열·`JdbcClient`) 호출 패턴이다.
+     * 파일 전체의 `update(`·`query(`를 다 읽지 않도록 그 타입으로 선언된 이름과 `getJdbcTemplate()`만 수신자로 본다.
+     */
+    private fun springJdbcCall(file: SourceFile): Regex? {
+        val receivers = (SPRING_JDBC_KOTLIN_RECEIVER.findAll(file.masked) + SPRING_JDBC_JAVA_RECEIVER.findAll(file.masked))
+            .map { Regex.escape(it.groupValues[1]) }.toSet() + SPRING_JDBC_GETTERS
+        return Regex("\\b(?:${receivers.joinToString("|")})\\s*(?:!!|\\?)?\\.\\s*($SPRING_JDBC_METHODS)\\s*\\(")
+    }
+
     /** JDBC·jOOQ처럼 첫 인자가 SQL 문인 호출을 스캔한다. */
     private fun scanSqlCalls(
         file: SourceFile,
@@ -687,28 +719,6 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         return IDENTIFIER.findAll(type).lastOrNull()?.groupValues?.get(1)
     }
 
-    /** 같은 선언 블록의 `@Table(name=..)` 값을 읽는다 — JPA 테이블명의 정본이다. */
-    private fun tableNameFor(file: SourceFile, declStart: Int): String? {
-        TABLE_ANNOTATION.findAll(file.masked).forEach { match ->
-            if (match.range.last > declStart) return@forEach
-            val between = file.masked.substring(match.range.last + 1, declStart)
-            // 어노테이션 인자와 선언 사이에는 다른 어노테이션과 한정어만 올 수 있다 —
-            // 다른 선언이 끼어 있으면 그 @Table은 이 선언의 것이 아니다.
-            if (!isAnnotationGap(between)) return@forEach
-            val args = file.annotationArgs(match.range.last + 1)
-            val expr = args.values.firstNamed("name")
-                ?: args.values.firstOrNull()?.takeUnless { it.isNamedArgument() }
-            val (value, dynamic) = expr?.let(::literalOrDynamicChannel) ?: (null to true)
-            if (value != null && !dynamic) return value
-        }
-        return null
-    }
-
-    /** 어노테이션과 선언 한정어만으로 이뤄진 간극인지 본다 — `class`·`fun`이 있으면 거짓이다. */
-    private fun isAnnotationGap(text: String): Boolean =
-        ANNOTATION_TOKEN.replace(text, " ").split(WHITESPACE)
-            .all { it.isBlank() || it in KOTLIN_MODIFIERS }
-
     /** `entity = X::class`·`X.class` 형태의 인자에서 타입 이름을 읽는다. */
     private fun entityNameArg(expression: String?): String? =
         expression?.trim()?.let { CLASS_LITERAL.matchEntire(it)?.groupValues?.get(1) }
@@ -847,9 +857,6 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         if (stats.skippedSqlLiterals > 0) add(
             "skipped-sql-literals: ${stats.skippedSqlLiterals} ungated literal(s) contained SQL verbs but not the uppercase form required for heuristic scanning; not counted",
         )
-        if (stats.jpaSources > 0) add(
-            "jpa-persistence-sources: ${stats.jpaSources} source file(s) use JPA/Spring Data persistence; literal SQL and entity bindings are covered but named and derived queries are not",
-        )
         if (stats.sqlDelightFiles > 0) add(
             "sqldelight-query-files: ${stats.sqlDelightFiles} .sq/.sqm file(s) were scanned as SQLDelight query sources",
         )
@@ -862,6 +869,15 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         val ROOM_GATE = Regex("\\bimport\\s+androidx\\.room")
         val JPA_GATE = Regex("\\bimport\\s+(?:javax|jakarta)\\.persistence\\b|\\bimport\\s+org\\.springframework\\.data\\b")
         val JDBC_GATE = Regex("\\bimport\\s+(?:java|javax)\\.sql\\b")
+        val INTERFACE_NAME = Regex("\\binterface\\s+([A-Za-z_][A-Za-z0-9_]*)")
+        val ENTITY_MANAGER_GATE = Regex("\\bimport\\s+(?:javax|jakarta)\\.persistence\\b")
+        val SPRING_JDBC_GATE = Regex("\\bimport\\s+org\\.springframework\\.jdbc\\b")
+        private const val SPRING_JDBC_TYPES = "JdbcTemplate|NamedParameterJdbcTemplate|JdbcOperations|NamedParameterJdbcOperations|JdbcClient"
+        val SPRING_JDBC_KOTLIN_RECEIVER = Regex("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*(?:[A-Za-z_.]*\\.)?(?:$SPRING_JDBC_TYPES)\\b")
+        val SPRING_JDBC_JAVA_RECEIVER = Regex("\\b(?:[A-Za-z_.]*\\.)?(?:$SPRING_JDBC_TYPES)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b")
+        val SPRING_JDBC_GETTERS = setOf("getJdbcTemplate\\(\\s*\\)", "getNamedParameterJdbcTemplate\\(\\s*\\)")
+        const val SPRING_JDBC_METHODS =
+            "query|queryForObject|queryForList|queryForMap|queryForRowSet|queryForStream|update|batchUpdate|execute|sql"
         val EXPOSED_GATE = Regex("\\bimport\\s+org\\.jetbrains\\.exposed\\b")
         val JOOQ_GATE = Regex("\\bimport\\s+org\\.jooq\\b")
 
@@ -869,7 +885,6 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         val USE_SITE = "(?:[A-Za-z_][A-Za-z0-9_]*\\s*:\\s*)?"
         val TYPE_DECL = Regex("\\b(?:class|object)\\s+([A-Za-z_][A-Za-z0-9_]*)")
         val ENTITY_ANNOTATION = Regex("@${USE_SITE}(Entity|DatabaseView)\\b")
-        val TABLE_ANNOTATION = Regex("@${USE_SITE}Table\\b")
         val QUERY_ANNOTATION = Regex("@${USE_SITE}(Query|RawQuery|Insert|Update|Delete|Upsert)\\b")
         val COLUMN_INFO = Regex("@${USE_SITE}ColumnInfo\\b")
         val FOREIGN_KEY = Regex("@${USE_SITE}ForeignKey\\b")
@@ -882,14 +897,6 @@ public class SchemaFactScanner(private val projectRoot: Path) {
         // `=` 뒤에 `=`가 이어지면 비교 식(`flag == x`)이라 명명 인자가 아니다.
         val NAMED_ARGUMENT = Regex("^[A-Za-z_][A-Za-z0-9_.]*\\s*=(?!=)")
         val STRING_ITEM = Regex("\"(?:[^\"\\\\]|\\\\.)*\"")
-        val ANNOTATION_TOKEN = Regex("@[A-Za-z_][A-Za-z0-9_.]*\\s*(?:\\([^()]*\\))?")
-        val WHITESPACE = Regex("\\s+")
-        val KOTLIN_MODIFIERS = setOf(
-            "data", "open", "abstract", "sealed", "inner", "enum", "value", "final",
-            "public", "private", "protected", "internal", "static", "const", "expect",
-            "actual", "lateinit", "override", "external", "constructor", "transient",
-            "volatile", "synchronized", "native", "strictfp", "default", "record",
-        )
 
         val EXPOSED_OBJECT = Regex(
             "\\b(?:object|class)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*:[^\\n{]*?\\b" +
@@ -935,3 +942,6 @@ private fun safeDynamicChannel(expression: String?): String =
 
 private fun safeText(value: String): String =
     value.replace(Regex("\\p{C}"), " ").trim().take(MAX_DYNAMIC_CHANNEL)
+
+/** `schema --jpa-naming`이 받는 JPA 명명 전략 조합 id다. */
+public val JPA_NAMING_PROFILES: List<String> = JpaNamingProfile.NAMED.keys.toList()

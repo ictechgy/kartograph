@@ -638,6 +638,28 @@ class KartographCliTest {
     }
 
     @Test
+    fun `schema jpa naming option fixes the profile and rejects unknown values`(@TempDir projectRoot: Path) {
+        projectRoot.resolve("Job.kt").writeText(
+            """
+            import jakarta.persistence.Entity
+            import jakarta.persistence.Id
+            @Entity class JobPost(@Id var id: Long = 0, var createdAt: Long = 0)
+            """.trimIndent(),
+        )
+
+        val boot = execute("schema", "--project", projectRoot.toString(), "--jpa-naming", "spring-boot-4")
+        assertEquals(ExitStatus.SUCCESS.code, boot.status)
+        assertContains(boot.output, "\"channel\": \"job_post\"")
+        assertContains(boot.output, "\"method\": \"created_at\"")
+        assertContains(boot.output, "spring-boot-4 from --jpa-naming")
+        val plain = execute("schema", "--project", projectRoot.toString(), "--jpa-naming", "hibernate-6")
+        assertContains(plain.output, "\"channel\": \"JobPost\"")
+        val invalid = execute("schema", "--project", projectRoot.toString(), "--jpa-naming", "spring-boot-2")
+        assertEquals(ExitStatus.USAGE.code, invalid.status)
+        assertContains(invalid.error, "spring-boot-3, spring-boot-4, hibernate-6, hibernate-7")
+    }
+
+    @Test
     fun `schema on sources without persistence emits null target`(@TempDir projectRoot: Path) {
         projectRoot.resolve("Plain.kt").writeText("class Plain\n")
 
