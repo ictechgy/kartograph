@@ -240,15 +240,31 @@ kartograph는 MIT 라이선스다. 배포본에 내장된 의존성의 저작권
 인덱스 메서드를 대조할 수 있습니다. Expo·codegen 이벤트·emitter 변수/래퍼는 해석하지 않습니다. Flutter의
 `--events`·`--messages`와 함께 사용할 수 없습니다. 두 기능은 0.11.0부터 제공됩니다. 0.13.0의 generatedAt은 추출 시각이며 source mtime은 선택적 sourceModifiedAt으로 분리합니다. 어느 시각도 compiler freshness를 증명하지 않습니다.
 
-`schema --project <dir> [--format json] [--graph-file <snapshot>]`(0.17.0부터 제공)는 isthmus용으로
-`"target": "persistence"`인 `bridge-facts` 문서를 냅니다. Kotlin·Java 소스에서 Room
+`schema --project <dir> [--format json] [--graph-file <snapshot>] [--jpa-naming <profile>]`(0.17.0부터 제공)는
+isthmus용으로 `"target": "persistence"`인 `bridge-facts` 문서를 냅니다. Kotlin·Java 소스에서 Room
 어노테이션(`@Entity`, `@DatabaseView`, `@Query`, `@ColumnInfo`, `@ForeignKey`, DAO 작업
-어노테이션), `java.sql`/`javax.sql` import가 있는 파일의 JDBC 호출 인자, Exposed `Table`
-객체와 DSL 수신자, jOOQ plain-SQL 호출, SQL 모양 문자열 리터럴, SQLDelight `.sq`/`.sqm`
-파일을 스캔합니다. 그 밖의 프레임워크(JPA 파생 쿼리, Spring Data, Ktorm, jdbi)는 지원을
-주장하지 않고 JPA/Spring Data import는 limitation으로 남깁니다. 동적·미해석 근거는
-`dynamic` 사실과 계량된 limitation으로 보존하고, 빈 스캔은 `"target": null`을 냅니다.
+어노테이션), `java.sql`/`javax.sql` import가 있는 파일의 JDBC 호출 인자, `JdbcTemplate`·
+`NamedParameterJdbcTemplate`·`JdbcClient`(와 `*Operations` 인터페이스)로 선언된 수신자의 Spring JDBC 호출,
+Exposed `Table` 객체와 DSL 수신자, jOOQ plain-SQL 호출, SQL 모양 문자열 리터럴, SQLDelight `.sq`/`.sqm`
+파일을 스캔합니다. 그 밖의 프레임워크(Ktorm, jdbi, Criteria 문자열 경로)는 지원을 주장하지 않습니다.
+동적·미해석 근거는 `dynamic` 사실과 계량된 limitation으로 보존하고, 빈 스캔은 `"target": null`을 냅니다.
 `--graph-file`은 스냅샷이 fresh일 때만 JVM 심볼 식별자를 붙입니다.
+
+JPA·Spring Data(미출시): 엔티티 매핑(`@Table(name, schema)`, `@Column`, `@JoinColumn(s)`, `@JoinTable`,
+`@AttributeOverride(s)`를 포함한 `@Embedded`/`@Embeddable`, `@DiscriminatorColumn`·`@PrimaryKeyJoinColumn`과 세 상속
+전략, `@ElementCollection`/`@CollectionTable`/`@OrderColumn`, `@Transient`, `@MappedSuperclass`, Java getter property
+access)을 빌드·설정 파일에서 감지한 Hibernate 명명 전략으로 테이블·컬럼 사실로 냅니다. Spring Boot 3(Hibernate 6
+`CamelCaseToUnderscoresNamingStrategy` + `SpringImplicitNamingStrategy`), Spring Boot 4(Hibernate 7
+`PhysicalNamingStrategySnakeCaseImpl` — 숫자 앞에서도 나누고 인용 이름은 그대로 둠), 순수 Hibernate 6·7 기본값을
+구분하며 `--jpa-naming spring-boot-3|spring-boot-4|hibernate-6|hibernate-7`로 고정할 수 있습니다. 버전을 모르면 후보
+조합 사이에서 갈리는 이름만 dynamic이 되고, 사용자 정의 전략(설정 값·전략 클래스·`@Bean`)이나 전역 인용 설정이면
+모든 JPA 이름이 dynamic입니다. 규칙은 실제 Hibernate 6·7 스키마 export로 만든 `fixtures/jpa-naming/vectors.json`과
+대조합니다([실험](experiments/jpa-persistence/README.md)). Spring Data 저장소(제네릭 기반 인터페이스 포함)의 파생 질의 이름
+(Spring Data `PartTree` 속성 경로), `@Query` JPQL(엔티티·별칭 경로를 테이블·컬럼으로 해석), native `@Query` SQL,
+이름 있는 질의, 상속 CRUD 메서드와 `EntityManager`의 `createQuery`/`createNativeQuery`/`createNamedQuery`/`find` 호출도
+읽습니다. `--graph-file`이 있으면 저장소 호출 지점마다 호출 위치의 사실을 내고 호출자 메서드의 JVM id를 owner로
+싣습니다 — 상속 CRUD 메서드에는 프로젝트 정점이 없어서, 핸들러의 정방향 `reach`가 확실히 포함하는 신원은 호출자뿐이기
+때문입니다. 모델링하지 않은 매핑, 해석하지 못한 질의 경로, JPA가 아닌 저장소는 추측하지 않고 limitation으로 셉니다.
 
 `routes --role client --project <dir> [--wrappers <http-wrappers.json>] [--include-tests] [--service <name>] [<source-root>...]`
 (미출시)는 isthmus http 도메인용으로 `"target": "http"`, `"roles": ["client"]`인 `bridge-facts` 문서를
