@@ -13,6 +13,8 @@ internal class SpringProjectSignals private constructor(
     private val servletFiles: Int,
     private val jaxRsFiles: Int,
     val pathPrefixConfigured: Boolean,
+    /** `SpringApplication.run(`·`runApplication<`/`runApplication(`을 부르는 소스 파일 경로다(앱 모듈 판정용). */
+    val applicationLaunchers: List<String>,
     val trailingSlashConfigured: Boolean,
     private val antMatcherConfigured: Boolean,
 ) {
@@ -53,6 +55,7 @@ internal class SpringProjectSignals private constructor(
             servletFiles = files.count { SERVLET.containsMatchIn(it.masked) },
             jaxRsFiles = files.count { file -> file.imports.any { it.path.startsWith("jakarta.ws.rs.") || it.path.startsWith("javax.ws.rs.") } },
             pathPrefixConfigured = files.any { PATH_PREFIX.containsMatchIn(it.masked) },
+            applicationLaunchers = files.filter { !it.isTest && LAUNCHER.containsMatchIn(it.masked) }.map { it.relative },
             trailingSlashConfigured = files.any { TRAILING_SLASH.containsMatchIn(it.masked) },
             antMatcherConfigured = files.any { ANT_MATCHER.containsMatchIn(it.masked) },
         )
@@ -64,5 +67,6 @@ internal class SpringProjectSignals private constructor(
         private val PATH_PREFIX = Regex("\\.\\s*(?:addPathPrefix|setPathPrefixes)\\s*\\(")
         private val TRAILING_SLASH = Regex("setUseTrailingSlashMatch\\s*\\(\\s*true|useTrailingSlashMatch\\s*=\\s*true|\\bUrlHandlerFilter\\b|setMatchOptionalTrailingSeparator\\s*\\(\\s*true")
         private val ANT_MATCHER = Regex("\\.\\s*setPathMatcher\\s*\\(")
+        private val LAUNCHER = Regex("\\bSpringApplication\\s*\\.\\s*run\\s*\\(|\\brunApplication\\s*[<(]|\\bSpringApplicationBuilder\\s*\\(")
     }
 }

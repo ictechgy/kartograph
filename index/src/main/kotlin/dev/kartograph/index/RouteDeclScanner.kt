@@ -46,7 +46,7 @@ public class RouteDeclScanner(
         val lines = files.associate { it.relative to it.source }
         val model = SpringModelMerger.merge(SpringBytecodeReader(classRoots).read(), sources) { path, offset -> lineOf(lines[path], offset) }
         val resolver = SpringMappingResolver(model, legacyTypeLevelHandlers = config.bootMajor?.let { it < 3 } == true)
-        val emitter = SpringRouteEmitter(config, signals, lines, graph, includeTests, applicationRoots(model, config))
+        val emitter = SpringRouteEmitter(config, signals, lines, graph, includeTests, applicationRoots(model, config, signals))
         val handlers = resolver.handlers()
         val facts = emitter.emit(handlers)
         return BridgeFactsDocument(
@@ -80,16 +80,19 @@ public class RouteDeclScanner(
         }
     }
 
-    /** `@SpringBootApplication` 타입이 있는 모듈 루트다. 설정 후보를 앱 모듈로 좁히는 데 쓴다. */
-    private fun applicationRoots(model: List<SpringType>, config: SpringProjectConfig): Set<String> =
-        model.filter { type -> type.annotations.any { it.type == SPRING_BOOT_APPLICATION } }
-            .mapNotNullTo(sortedSetOf()) { type -> config.moduleOf(type.sourcePath)?.root }
+    /** `@SpringBootApplication`·`@SpringBootConfiguration` 타입이나 앱 실행 호출이 있는 모듈 루트다. 설정 후보를 앱 모듈로 좁힌다. */
+    private fun applicationRoots(model: List<SpringType>, config: SpringProjectConfig, signals: SpringProjectSignals): Set<String> {
+        val annotated = model.filter { type -> !type.isTest && type.annotations.any { it.type in APPLICATION_ANNOTATIONS } }.map { it.sourcePath }
+        return (annotated + signals.applicationLaunchers).mapNotNullTo(sortedSetOf()) { path -> config.moduleOf(path)?.root }
+    }
 
     private fun lineOf(source: String?, offset: Int): Int? =
         source?.let { it.substring(0, offset.coerceIn(0, it.length)).count { character -> character == '\n' } + 1 }
 
     private companion object {
-        const val SPRING_BOOT_APPLICATION = "org.springframework.boot.autoconfigure.SpringBootApplication"
+        val APPLICATION_ANNOTATIONS = setOf(
+            "org.springframework.boot.autoconfigure.SpringBootApplication", "org.springframework.boot.SpringBootConfiguration",
+        )
     }
 }
 
@@ -113,6 +116,7 @@ internal class SpringRouteEmitter(
     private var unresolvedMethods = 0
     private var unresolvedPrefixes = sortedSetOf<String>()
     private var profilePrefixes = sortedSetOf<String>()
+    private var webDisabled = 0
 
     private val trailingSlash: String? = when {
         signals.trailingSlashConfigured -> null
@@ -182,6 +186,7 @@ internal class SpringRouteEmitter(
         val candidates = config.candidatesFor(handler.handlerType.sourcePath ?: handler.declaringType.sourcePath, applicationRoots)
         val placeholders = SpringPlaceholders(candidates)
         val prefix = prefix(candidates)
+        if (prefix.anchor == NO_WEB) { webDisabled++; return emptyList() }
         val typePaths = paths(handler.typeMapping)
         val methodPaths = paths(handler.methodMapping)
         if (typePaths == null || methodPaths == null) { dynamicPaths++; return listOf(Route(null, null, prefix.anchor)) }
@@ -306,6 +311,7 @@ internal class SpringRouteEmitter(
         // Boot 1.x 키다. 지금 규칙은 Boot 2 이상의 키만 풀므로 이 키가 보이면 접두사를 확정하지 않는다.
         if (candidates.any { it.lookup(LEGACY_CONTEXT_PATH) != SpringModuleConfig.Lookup.Absent }) return unresolvedPrefix(LEGACY_CONTEXT_PATH)
         val stack = stack(candidate)
+        if (stack == NO_WEB) return Prefix("", NO_WEB, false)
         if (stack != "reactive") {
             val servletPath = prefixValue(SERVLET_PATH, candidates, placeholders) ?: return unresolvedPrefix(SERVLET_PATH)
             if (servletPath.text!!.isNotEmpty()) return unresolvedPrefix(SERVLET_PATH)
@@ -357,6 +363,7 @@ internal class SpringRouteEmitter(
         when ((candidate.lookup(WEB_APPLICATION_TYPE) as? SpringModuleConfig.Lookup.Value)?.text?.trim()?.lowercase()) {
             "reactive" -> return "reactive"
             "servlet" -> return "servlet"
+            "none" -> return NO_WEB
         }
         val servlet = config.moduleMentions(candidate.root, SpringProjectConfig.SERVLET_MARKERS) == true
         val reactive = config.moduleMentions(candidate.root, SpringProjectConfig.REACTIVE_MARKERS) == true
@@ -377,7 +384,8 @@ internal class SpringRouteEmitter(
         if (unlocated > 0) add("route-coverage: $unlocated handler method(s) have no source location for their mapping annotation (generated or unscanned sources); their facts are omitted")
         if (unresolvedMethods > 0) add("route-coverage: $unresolvedMethods handler method(s) have request methods that could not be resolved; their facts are omitted")
         if (stats.multipleMappings > 0) add("route-coverage: ${stats.multipleMappings} declaration(s) carry more than one mapping annotation; only the first is used")
-        if (stats.unconfirmedControllers.isNotEmpty()) add("route-coverage: ${stats.unconfirmedControllers.size} class(es) declare mappings without a visible @Controller and inherit from types outside the scanned classes and sources; their facts are omitted")
+        if (stats.unconfirmedControllers.isNotEmpty()) add("route-coverage: ${stats.unconfirmedControllers.size} class(es) declare mappings without a visible @Controller (a library stereotype, an unscanned superclass or another registration may make them handlers); their facts are omitted")
+        if (webDisabled > 0) add("route-coverage: $webDisabled handler method(s) belong to application modules with spring.main.web-application-type=none; they serve no routes and no facts are emitted")
         if (stats.partiallyVisibleControllers.isNotEmpty()) add("route-coverage: ${stats.partiallyVisibleControllers.size} controller(s) inherit from types outside the scanned classes and sources; mappings declared there are not visible")
         if (unresolvedPrefixes.isNotEmpty()) add("unresolved-route-prefix: ${unresolvedPrefixes.joinToString(", ")} could not be resolved from in-repo configuration; affected facts use pathAnchor base")
         if (profilePrefixes.isNotEmpty()) add("unresolved-route-prefix: ${profilePrefixes.joinToString(", ")} differs in other profiles; templates use the default profile value")
@@ -389,6 +397,9 @@ internal class SpringRouteEmitter(
         const val SERVLET_PATH = "spring.mvc.servlet.path"
         const val LEGACY_CONTEXT_PATH = "server.context-path"
         const val WEB_APPLICATION_TYPE = "spring.main.web-application-type"
+
+        /** 웹 서버를 띄우지 않는 앱(`web-application-type=none`)의 접두사 표식이다. 사실을 내지 않는다. */
+        const val NO_WEB = "none"
         val NARROWING = listOf("params", "headers", "consumes", "produces", "version")
         val CONTROL = Regex("\\p{C}")
     }

@@ -580,5 +580,40 @@ class RouteDeclScannerTest {
         val document = scan()
         assertTrue(document.facts.isEmpty())
         assertTrue(document.limitations.any { it.startsWith("route-coverage: 1 class(es) declare mappings without a visible @Controller") }, document.limitations.toString())
+
+        write("src/main/java/demo/Maybe.java", "package demo;\n$javaImports\n@com.lib.ApiController public class Maybe { @GetMapping(\"/maybe\") public String m() { return \"\"; } }")
+        assertTrue(scan().limitations.any { it.startsWith("route-coverage: 1 class(es) declare mappings without a visible @Controller") })
+    }
+
+    @Test
+    fun `web application type none serves no routes`() {
+        boot()
+        write("src/main/resources/application.properties", "spring.main.web-application-type=none")
+        write("src/main/java/demo/A.java", "package demo;\n$javaImports\n@RestController public class A { @GetMapping(\"/a\") public String a() { return \"\"; } }")
+        val document = scan()
+        assertTrue(document.facts.isEmpty())
+        assertTrue(document.limitations.any { it.startsWith("route-coverage: 1 handler method(s) belong to application modules with spring.main.web-application-type=none") },
+            document.limitations.toString())
+    }
+
+    @Test
+    fun `library configuration never replaces the application prefix`() {
+        write("app/build.gradle.kts", "plugins { id(\"org.springframework.boot\") version \"3.3.0\" }\ndependencies { implementation(\"org.springframework.boot:spring-boot-starter-webflux\") }")
+        write("common/build.gradle.kts", "")
+        write("app/src/main/resources/application.yml", "spring.webflux.base-path: /api")
+        write("common/src/main/resources/application.yml", "logging.level.root: info")
+        write("app/src/main/kotlin/demo/App.kt", "package demo\nimport org.springframework.boot.runApplication\nclass App\nfun main() { runApplication<App>() }")
+        write("common/src/main/java/demo/Shared.java", "package demo;\n$javaImports\n@RestController public class Shared { @GetMapping(\"/shared\") public String a() { return \"\"; } }")
+        assertEquals(setOf("GET /api/shared"), scan().keys())
+    }
+
+    @Test
+    fun `wildcard imported boot application marks the module`() {
+        write("app/build.gradle.kts", "plugins { id(\"org.springframework.boot\") version \"3.3.0\" }\ndependencies { implementation(\"org.springframework.boot:spring-boot-starter-web\") }")
+        write("other/build.gradle.kts", "")
+        write("other/src/main/resources/application.properties", "server.servlet.context-path=/other")
+        write("app/src/main/java/demo/App.java", "package demo;\nimport org.springframework.boot.autoconfigure.*;\n@SpringBootApplication public class App {}")
+        write("app/src/main/java/demo/A.java", "package demo;\n$javaImports\n@RestController public class A { @GetMapping(\"/a\") public String a() { return \"\"; } }")
+        assertEquals(setOf("GET /a"), scan().keys())
     }
 }

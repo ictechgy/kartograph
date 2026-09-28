@@ -45,19 +45,19 @@ internal class SpringMappingResolver(types: Collection<SpringType>, private val 
         /** 상위 타입 일부가 모델 밖(라이브러리)이라 상속된 매핑을 볼 수 없는 controller다. */
         val partiallyVisibleControllers = sortedSetOf<String>()
 
-        /** 매핑을 선언했지만 `@Controller`가 보이지 않고 모델 밖 상위 타입이 있어 핸들러인지 정하지 못한 class다. */
+        /** 매핑을 선언했지만 `@Controller`가 보이지 않아 핸들러인지 정하지 못한 구체 class다(라이브러리 stereotype·상위 타입 등). */
         val unconfirmedControllers = sortedSetOf<String>()
     }
 
     val stats = Stats()
 
     /**
-     * 모든 핸들러를 찾는다. 결과는 controller 이름·메서드 이름 순서다. 핸들러가 아닌데 매핑을 선언하고 모델 밖 상위 타입을
-     * 가진 class는 그 상위 타입이 `@Controller`를 줄 수 있으므로 [Stats.unconfirmedControllers]로 센다.
+     * 모든 핸들러를 찾는다. 결과는 controller 이름·메서드 이름 순서다. 핸들러가 아닌데 매핑을 선언한 구체 class는
+     * 라이브러리 stereotype·모델 밖 상위 타입이 `@Controller`를 줄 수 있으므로 [Stats.unconfirmedControllers]로 센다.
      */
     fun handlers(): List<Handler> {
         val (handlerTypes, others) = types.values.filter(::isConcreteClass).partition(::isHandlerType)
-        others.filter { declaresMappings(it) && hasInvisibleSupertype(it, mutableSetOf()) }.forEach { stats.unconfirmedControllers += it.name }
+        others.filter(::declaresMappings).forEach { stats.unconfirmedControllers += it.name }
         return handlerTypes.sortedBy { it.name }.flatMap(::handlersOf)
     }
 

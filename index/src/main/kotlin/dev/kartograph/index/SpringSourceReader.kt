@@ -493,6 +493,7 @@ internal class SpringSourceReader(private val files: List<RouteSourceFile>) {
         val KNOWN_EXTERNAL_TYPES: Set<String> = SpringAnnotations.MAPPING_VERBS.keys + SpringAnnotations.EXCHANGE_VERBS.keys + setOf(
             SpringAnnotations.REQUEST_MAPPING, SpringAnnotations.HTTP_EXCHANGE, SpringAnnotations.CONTROLLER,
             SpringAnnotations.REST_CONTROLLER, SpringAnnotations.ALIAS_FOR, "org.springframework.web.bind.annotation.RequestMethod",
+            "org.springframework.boot.autoconfigure.SpringBootApplication", "org.springframework.boot.SpringBootConfiguration",
         )
     }
 }

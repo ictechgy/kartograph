@@ -209,6 +209,7 @@ class SpringProjectConfigTest {
     fun `build file comments are removed per file type`() {
         assertEquals("<a/>\n<b/>", SpringProjectConfig.withoutComments("pom.xml", "<a/><!-- <web/> -->\n<b/>"))
         assertEquals("x = 1\n", SpringProjectConfig.withoutComments("libs.versions.toml", "x = 1\n# web = 2"))
-        assertEquals("url(\"https://repo\")\nkeep", SpringProjectConfig.withoutComments("build.gradle", "url(\"https://repo\")\nkeep /* web */// web"))
+        val gradle = SpringProjectConfig.withoutComments("build.gradle", "include(\"**/*.java\")\nimplementation(\"web\")\n/* flux */ keep // flux")
+        assertTrue("implementation(\"web\")" in gradle && "**/*.java" in gradle && "keep" in gradle && "flux" !in gradle, gradle)
     }
 }

@@ -189,16 +189,18 @@ internal class SpringProjectConfig(
     private val buildTexts: Map<String, String>,
 ) {
     /**
-     * 소스 경로의 설정 후보다. 자기 모듈이 앱 모듈(`@SpringBootApplication`이 있는 모듈)이거나 설정이 있으면 그것이다.
-     * 아니면(라이브러리 모듈) 앱 모듈 전부, 앱 모듈을 모르면 설정이 있는 모든 모듈, 그것도 없으면 빈 자기 모듈이다.
-     * 후보가 여럿이면 호출자는 모든 후보가 같은 결과를 줄 때만 확정한다.
+     * 소스 경로의 설정 후보다. 자기 모듈이 앱 모듈(`@SpringBootApplication`·`SpringApplication.run`이 있는 모듈)이면 그것,
+     * 아니면(라이브러리 모듈) 앱 모듈 전부다 — 라이브러리 JAR의 `application.yml`은 앱의 것에 가려지므로 쓰지 않는다. 앱 모듈을
+     * 모르면 자기 설정, 그것도 없으면 설정이 있는 모든 모듈, 그것도 없으면 빈 자기 모듈이다. 후보가 여럿이면 호출자는 모든
+     * 후보가 같은 결과를 줄 때만 확정한다.
      *
      * @param applicationRoots `@SpringBootApplication` 선언이 있는 모듈 루트다
      */
     fun candidatesFor(sourcePath: String?, applicationRoots: Set<String> = emptySet()): List<SpringModuleConfig> {
         val own = moduleOf(sourcePath) ?: SpringModuleConfig.of("", emptyList())
-        if (own.root in applicationRoots || own.hasConfig) return listOf(own)
+        if (own.root in applicationRoots) return listOf(own)
         if (applicationRoots.isNotEmpty()) return modules.filter { it.root in applicationRoots }.ifEmpty { listOf(own) }
+        if (own.hasConfig) return listOf(own)
         return modules.filter { it.hasConfig }.ifEmpty { listOf(own) }
     }
 
@@ -255,19 +257,18 @@ internal class SpringProjectConfig(
         private fun relative(root: Path, path: Path): String = root.relativize(path).joinToString("/")
 
         /**
-         * 빌드 파일 주석을 지운다 — 주석 처리한 옛 의존성이 스택·버전 표지로 읽히지 않게 한다. Gradle은 `/* */`와 줄 앞이나
-         * 공백 뒤의 `//`(URL의 `://`는 남긴다), Maven은 `<!-- -->`, 버전 카탈로그·properties는 `#` 줄 주석이다.
+         * 빌드 파일 주석을 지운다 — 주석 처리한 옛 의존성이 스택·버전 표지로 읽히지 않게 한다. Gradle(Kotlin·Groovy DSL)은
+         * 문자열을 건너뛰는 [stripComments]로 지운다(ant 패턴 문자열 안의 슬래시·별표를 블록 주석 시작으로 읽지 않는다). Maven은 `<!-- -->`,
+         * 버전 카탈로그·properties는 `#` 줄 주석이다.
          */
         internal fun withoutComments(fileName: String, text: String): String = when {
             fileName.endsWith(".xml") -> XML_COMMENT.replace(text, "")
             fileName.endsWith(".toml") || fileName.endsWith(".properties") -> HASH_COMMENT.replace(text, "")
-            else -> LINE_COMMENT.replace(BLOCK_COMMENT.replace(text, ""), "")
+            else -> stripComments(text)
         }
 
         private val XML_COMMENT = Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL)
         private val HASH_COMMENT = Regex("(?m)^\\s*#.*$")
-        private val BLOCK_COMMENT = Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL)
-        private val LINE_COMMENT = Regex("(?m)(^|\\s)//.*$")
 
         /**
          * 테스트 전용 의존성을 뺀 빌드 파일 본문이다 — Gradle `test*`·`androidTest*` 구성 줄과 Maven `<scope>test</scope>`
