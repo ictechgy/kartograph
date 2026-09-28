@@ -632,4 +632,27 @@ class RouteDeclScannerTest {
         val imported = scan()
         assertEquals("base", imported.fact("GET /shared").routeDecl!!.pathAnchor)
     }
+
+    @Test
+    fun `imports make every local value provisional and boot names must be the launcher itself`() {
+        boot()
+        write("src/main/resources/application.properties", "spring.config.import=optional:configserver:\nserver.servlet.context-path=/api\nspring.main.web-application-type=none")
+        write("src/main/java/demo/A.java", "package demo;\n$javaImports\n@RestController public class A { @GetMapping(\"/a\") public String a() { return \"\"; } }")
+        val imported = scan()
+        assertEquals("base", imported.fact("GET /a").routeDecl!!.pathAnchor)
+        assertTrue(imported.limitations.any { it.startsWith("unresolved-route-prefix: spring.config.import") }, imported.limitations.toString())
+    }
+
+    @Test
+    fun `unrelated boot imports do not make a launcher and auto-configured configurations are applications`() {
+        write("app/build.gradle.kts", "plugins { id(\"org.springframework.boot\") version \"3.3.0\" }\ndependencies { implementation(\"org.springframework.boot:spring-boot-starter-web\") }")
+        write("lib/build.gradle.kts", "")
+        write("app/src/main/resources/application.properties", "server.servlet.context-path=/app")
+        write("app/src/main/java/demo/App.java", "package demo;\nimport org.springframework.boot.SpringBootConfiguration;\n" +
+            "import org.springframework.boot.autoconfigure.EnableAutoConfiguration;\n@SpringBootConfiguration @EnableAutoConfiguration public class App {}")
+        write("lib/src/main/kotlin/demo/Jobs.kt", "package demo\nimport org.springframework.boot.web.client.RestTemplateBuilder\nfun runApplication(args: Array<String>) = Unit\nfun start() { runApplication(emptyArray()) }")
+        write("lib/src/main/resources/application.properties", "server.servlet.context-path=/lib")
+        write("lib/src/main/java/demo/Shared.java", "package demo;\n$javaImports\n@RestController public class Shared { @GetMapping(\"/shared\") public String a() { return \"\"; } }")
+        assertEquals(setOf("GET /app/shared"), scan().keys())
+    }
 }

@@ -81,19 +81,26 @@ public class RouteDeclScanner(
     }
 
     /**
-     * `@SpringBootApplication` 타입이나 Boot 앱 실행 호출이 있는 모듈 루트다. 설정 후보를 앱 모듈로 좁힌다.
-     * `@SpringBootConfiguration`만 있는 모듈은 테스트 지원 모듈일 수 있어 세지 않는다.
+     * `@SpringBootApplication`(또는 `@SpringBootConfiguration` + `@EnableAutoConfiguration`) 타입이나 Boot 앱 실행 호출이 있는
+     * 모듈 루트다. 설정 후보를 앱 모듈로 좁힌다. `@SpringBootConfiguration`만 있는 모듈은 테스트 지원 모듈일 수 있어 세지 않는다.
      */
     private fun applicationRoots(model: List<SpringType>, config: SpringProjectConfig, signals: SpringProjectSignals): Set<String> {
-        val annotated = model.filter { type -> !type.isTest && type.annotations.any { it.type in APPLICATION_ANNOTATIONS } }.map { it.sourcePath }
+        val annotated = model.filter { type -> !type.isTest && isApplicationClass(type) }.map { it.sourcePath }
         return (annotated + signals.applicationLaunchers).mapNotNullTo(sortedSetOf()) { path -> config.moduleOf(path)?.root }
+    }
+
+    private fun isApplicationClass(type: SpringType): Boolean {
+        val names = type.annotations.mapTo(mutableSetOf()) { it.type }
+        return SPRING_BOOT_APPLICATION in names || (SPRING_BOOT_CONFIGURATION in names && ENABLE_AUTO_CONFIGURATION in names)
     }
 
     private fun lineOf(source: String?, offset: Int): Int? =
         source?.let { it.substring(0, offset.coerceIn(0, it.length)).count { character -> character == '\n' } + 1 }
 
     private companion object {
-        val APPLICATION_ANNOTATIONS = setOf("org.springframework.boot.autoconfigure.SpringBootApplication")
+        const val SPRING_BOOT_APPLICATION = "org.springframework.boot.autoconfigure.SpringBootApplication"
+        const val SPRING_BOOT_CONFIGURATION = "org.springframework.boot.SpringBootConfiguration"
+        const val ENABLE_AUTO_CONFIGURATION = "org.springframework.boot.autoconfigure.EnableAutoConfiguration"
     }
 }
 

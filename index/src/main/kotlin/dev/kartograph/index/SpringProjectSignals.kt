@@ -77,7 +77,12 @@ internal class SpringProjectSignals private constructor(
             "org.springframework.boot.builder.SpringApplicationBuilder", "org.springframework.boot.*",
         )
 
-        private fun launchesBoot(file: RouteSourceFile): Boolean =
-            LAUNCHER.containsMatchIn(file.masked) && (file.imports.any { it.path in BOOT_LAUNCH_IMPORTS } || "org.springframework.boot." in file.masked)
+        private val QUALIFIED_LAUNCHER = Regex(
+            "\\borg\\.springframework\\.boot\\.(?:SpringApplication\\s*\\.\\s*run\\s*\\(|runApplication\\s*[<(]|builder\\.SpringApplicationBuilder\\s*\\()",
+        )
+
+        /** 실행 이름을 Boot에서 가져왔거나(import) 패키지까지 적어 부르는 파일만 앱 실행 파일로 본다. */
+        private fun launchesBoot(file: RouteSourceFile): Boolean = QUALIFIED_LAUNCHER.containsMatchIn(file.masked) ||
+            LAUNCHER.containsMatchIn(file.masked) && file.imports.any { it.path in BOOT_LAUNCH_IMPORTS }
     }
 }

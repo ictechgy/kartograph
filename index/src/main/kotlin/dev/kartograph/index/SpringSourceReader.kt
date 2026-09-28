@@ -494,6 +494,7 @@ internal class SpringSourceReader(private val files: List<RouteSourceFile>) {
             SpringAnnotations.REQUEST_MAPPING, SpringAnnotations.HTTP_EXCHANGE, SpringAnnotations.CONTROLLER,
             SpringAnnotations.REST_CONTROLLER, SpringAnnotations.ALIAS_FOR, "org.springframework.web.bind.annotation.RequestMethod",
             "org.springframework.boot.autoconfigure.SpringBootApplication", "org.springframework.boot.SpringBootConfiguration",
+            "org.springframework.boot.autoconfigure.EnableAutoConfiguration",
         )
     }
 }

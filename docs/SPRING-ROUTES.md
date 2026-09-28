@@ -81,14 +81,14 @@ snapshot 형식은 바꾸지 않는다(어노테이션 값 보존은 계획상 c
   `default`)와 `spring.profiles.include`다. 다른 프로필(`application-<p>.*`, `spring.config.activate.on-profile`, 옛
   `spring.profiles`)이 접두사를 바꾸면 기본 프로필 값을 쓰고 `unresolved-route-prefix: … differs in other profiles`로
   알린다. 환경 변수·명령행·config server 재정의는 모델링하지 않는다.
-- `spring.config.import`가 있는 모듈은 가져온 설정을 읽지 않으므로 접두사를 확정하지 않고(`base`), 그 모듈에서 찾지 못한
-  키는 "없음"이 아니라 미상으로 본다(플레이스홀더 기본값을 쓰지 않는다).
+- `spring.config.import`가 있는 모듈은 가져온 설정을 읽지 않고, Boot에서는 가져온 문서가 가져온 쪽 값을 덮으므로 그 모듈의
+  모든 키를 미상으로 본다. 접두사는 `base`, 플레이스홀더 경로는 dynamic이고 `web-application-type`도 쓰지 않는다.
 - 플레이스홀더(`${key}`·`${key:default}`, 중첩 포함): 기본 프로필 값이 있으면 그 값(다른 프로필이 재정의하면 매핑이면
   `route-coverage:`, 접두사면 `unresolved-route-prefix:`), 저장소 어디에도 없으면 기본값 + `configDefault`, 다른 프로필에만
   있거나 기본값이 없으면 dynamic + `route-coverage:`. SpEL `#{…}`은 풀지 않는다.
-- 다중 모듈: 앱 모듈은 `@SpringBootApplication` 타입이 있거나, `org.springframework.boot`에서 가져온
-  `SpringApplication.run`·`SpringApplicationBuilder`·`runApplication`을 부르는 모듈이다(같은 이름의 프로젝트 도우미와
-  테스트 지원용 `@SpringBootConfiguration`은 세지 않는다). 소스 모듈이 앱 모듈이면 그 모듈 설정만 쓴다(설정이 없는 앱 모듈은 접두사가 없다). 라이브러리 모듈은
+- 다중 모듈: 앱 모듈은 `@SpringBootApplication`(또는 `@SpringBootConfiguration` + `@EnableAutoConfiguration`) 타입이 있거나,
+  `org.springframework.boot`에서 가져온(또는 패키지까지 적은) `SpringApplication.run`·`SpringApplicationBuilder`·`runApplication`을
+  부르는 모듈이다. 같은 이름의 프로젝트 도우미와 테스트 지원용 `@SpringBootConfiguration`만 있는 모듈은 세지 않는다. 소스 모듈이 앱 모듈이면 그 모듈 설정만 쓴다(설정이 없는 앱 모듈은 접두사가 없다). 라이브러리 모듈은
   자기 `application.yml`을 쓰지 않고(앱의 같은 이름 파일에 가려진다) 모든 앱 모듈을 후보로 보며, 모든 후보가 같은 접두사·같은
   플레이스홀더 값을 줄 때만 쓴다. 다르면 `base`와 `unresolved-route-prefix:`다. 앱 모듈을 찾지 못하면 자기 설정, 없으면 설정이
   있는 모든 모듈이 후보다.
