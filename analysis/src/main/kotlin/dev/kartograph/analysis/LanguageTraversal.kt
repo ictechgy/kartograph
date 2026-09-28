@@ -22,6 +22,20 @@ public enum class TraversalDispatch(public val label: String, internal val tiers
     ALL("all", TraversalEdgeTier.entries.toSet()),
 }
 
+/**
+ * class 정점을 거치는 경로의 범위다.
+ *
+ * - [ALL]: 모든 간선을 그대로 따른다(기본, 보수적).
+ * - [MEMBER_ONLY]: 이름만 적은 참조([TraversalClassRole.TYPE_REFERENCE])와 프레임워크 콜백 모델
+ *   ([TraversalClassRole.OWNER_CALLBACK])이 같은 class 정점(그 사이의 상속 hop 포함)에서 이어지는 경로를 따르지 않는다.
+ *   역방향이면 멤버 → 소유 class → 그 class를 시그니처·필드 타입 등으로만 적은 선언, 정방향이면 이름만 적은 선언 →
+ *   class → 런타임이 부르는 모든 멤버다. 그 class 정점 자체는 목록에 남고, 인스턴스 생성·상속·어휘적 소속·콜백·
+ *   런타임 모델 참조와 멤버 자체의 호출은 계속 따른다.
+ *
+ * @property label CLI `--class-hops` 값이다
+ */
+public enum class TraversalClassHops(public val label: String) { ALL("all"), MEMBER_ONLY("member-only") }
+
 /** 도달 정점의 근거 등급이다. `direct ⊂ bound ⊂ candidate`로 간선 집합이 포개진다. */
 public enum class TraversalEvidence { DIRECT, BOUND, CANDIDATE }
 
@@ -94,6 +108,7 @@ public object LanguageTraversal {
      * @param rootGraph root 요청을 해석할 그래프다. [graph]가 [TestSourceScope]로 테스트 정점을 뺀 부분 그래프면 원래 그래프를
      *   준다 — 테스트·production에 같은 이름이 있어 원래 그래프에서 모호한 요청이 부분 그래프에서 production 쪽으로 조용히
      *   해석되지 않게 한다. 해석한 정점이 [graph]에 없으면 root-not-found다
+     * @param classHops class 정점을 거치는 경로의 범위다. [TraversalClassHops.MEMBER_ONLY]면 `class-hops-narrowed:` 한계를 싣는다
      */
     public fun traverse(
         graph: CodeGraph,
@@ -105,8 +120,9 @@ public object LanguageTraversal {
         enclosuresCaptured: Boolean = true,
         callbackFactsCaptured: Boolean = true,
         rootGraph: CodeGraph = graph,
+        classHops: TraversalClassHops = TraversalClassHops.ALL,
     ): LanguageTraversalResult = traverse(graph, TraversalEdges.assemble(graph, enclosuresCaptured, callbackFactsCaptured), requested, direction, dispatch,
-        maxDepth, maxReached, enclosuresCaptured, callbackFactsCaptured, rootGraph)
+        maxDepth, maxReached, enclosuresCaptured, callbackFactsCaptured, rootGraph, classHops)
 
     /** 이미 만든 순회 간선으로 순회한다. 테스트가 임의의 콜백 간선으로 계산을 검증할 때 쓴다. */
     internal fun traverse(
@@ -120,16 +136,18 @@ public object LanguageTraversal {
         enclosuresCaptured: Boolean = true,
         callbackFactsCaptured: Boolean = true,
         rootGraph: CodeGraph = graph,
+        classHops: TraversalClassHops = TraversalClassHops.ALL,
     ): LanguageTraversalResult {
         require(maxDepth in 1..MAX_DEPTH && maxReached in 1..MAX_REACHED && requested.size <= MAX_ROOTS)
         val edges = assembled.edges
         val unresolved = graph.externalCalls.filter { it.isUnresolvedTarget() }.groupingBy { it.caller }.eachCount()
         val roots = resolveRoots(graph, rootGraph, requested, unresolved)
-        val space = TraversalSpace(graph, edges, direction, dispatch)
+        val space = TraversalSpace(graph, edges, direction, dispatch, classHops)
         val computation = space.compute(roots.map { root -> root.node?.let { space.index.getValue(it.id) } ?: -1 }, maxDepth)
         val (reached, reachedTruncated) = cap(computation.rows.map { row -> row.toReached(space, roots, unresolved) }, roots, maxReached)
         return LanguageTraversalResult(direction, dispatch, roots, reached, computation.depthTruncated, reachedTruncated,
-            limitations(Limits(edges, direction, dispatch, enclosuresCaptured, callbackFactsCaptured, assembled.callbacks), roots,
+            limitations(Limits(edges, direction, dispatch, enclosuresCaptured, callbackFactsCaptured, assembled.callbacks, classHops,
+                computation.narrowed), roots,
                 computation.depthTruncated, reachedTruncated, maxDepth, maxReached))
     }
 
@@ -137,6 +155,7 @@ public object LanguageTraversal {
     private data class Limits(
         val edges: List<TraversalEdge>, val direction: TraversalDirection, val dispatch: TraversalDispatch,
         val enclosuresCaptured: Boolean, val callbackFactsCaptured: Boolean, val callbacks: CallbackFlowSummary,
+        val classHops: TraversalClassHops, val narrowed: ClassHopsNarrowed,
     )
 
     /**
@@ -175,6 +194,7 @@ public object LanguageTraversal {
         limits: Limits, roots: List<TraversalRoot>, depthTruncated: Boolean, reachedTruncated: Boolean, maxDepth: Int, maxReached: Int,
     ): List<String> = buildList {
         val (all, direction, dispatch, enclosuresCaptured, callbackFactsCaptured, callbacks) = limits
+        if (limits.classHops == TraversalClassHops.MEMBER_ONLY) add(classHopsLimitation(direction, limits.narrowed))
         // 정방향 순회는 콜백 간선을 따르지 않으므로 제외 수에도 넣지 않는다.
         val edges = all.filter { !it.terminal || direction == TraversalDirection.DEPENDENTS }
         val lambda = edges.count { it.tier == TraversalEdgeTier.LAMBDA }
@@ -196,6 +216,33 @@ public object LanguageTraversal {
         if (reachedTruncated) add("reached-limit: more than $maxReached reachable declarations; the (depth, usr) prefix is listed")
     }
 }
+
+/**
+ * `--class-hops member-only`의 한계 문구다. 순회가 좁힌 경우 0건이어도 싣는다 — 문서에 모드 필드가 없으므로
+ * 소비자가 이 줄로 좁힌 결과임을 안다.
+ */
+private fun classHopsLimitation(direction: TraversalDirection, narrowed: ClassHopsNarrowed): String =
+    if (direction == TraversalDirection.DEPENDENTS) {
+        "class-hops-narrowed: ${narrowed.edges} type-reference edge(s) from ${narrowed.classes} class vertex(es) reached, for at least one " +
+            "root, only from a framework-callback member were not followed (--class-hops member-only); declarations that only name " +
+            "those classes (signatures, field types, casts, class literals, call owners, nested classes) are not listed unless reached " +
+            "otherwise; instantiation, inheritance, lexical containment, callbacks, runtime-modeled lookups and calls to the members " +
+            "themselves are still followed; a framework that obtains the class as a whole without a traced instantiation is missed; " +
+            "use --class-hops all for the conservative class-level spread"
+    } else {
+        "class-hops-narrowed: ${narrowed.edges} framework-callback member edge(s) from ${narrowed.classes} class vertex(es) reached, for " +
+            "at least one root, only through type references were not followed (--class-hops member-only); runtime callbacks of a " +
+            "class that is named but not instantiated along the path are not listed; use --class-hops all for the conservative " +
+            "class-level spread"
+    }
+
+/**
+ * `--class-hops member-only`가 따르지 않은 간선 집계다.
+ *
+ * @property edges 좁힌 class 정점에서 따르지 않은 (class, 선언) 쌍 수다. 같은 쌍을 다른 간선으로 잇는 경우는 세지 않는다
+ * @property classes 적어도 한 root에서 좁힌 상태로만 닿은 class 정점 중 따르지 않은 간선이 있는 것의 수다
+ */
+internal data class ClassHopsNarrowed(val edges: Int, val classes: Int)
 
 /**
  * 역방향 순회의 콜백 한계 문구다. 콜백 간선으로 닿은 함수는 그 호출 문맥에서만 영향을 받으므로 다른 호출자로 퍼뜨리지
@@ -226,36 +273,80 @@ private fun callbackLimitations(
  * 역방향 순회에서는 콜백 간선의 호출자 G마다 그림자 정점을 하나 더 둔다. 콜백 간선은 람다 본문(또는 그 그림자)에서
  * G의 그림자로만 이어지고, 그림자는 다른 콜백 간선으로만 나간다. 그래서 G는 람다 본문의 root·depth·evidence를 받아
  * 목록에 오르지만, G의 다른 호출자(다른 람다를 넘기는 화면)로는 퍼지지 않는다. 출력에서 그림자는 본 정점과 합친다.
+ *
+ * `--class-hops member-only`면 class 정점마다 진입 그림자를 하나 더 둔다([ClassHopRoles]). 진입 간선은 본 class 대신
+ * 진입 그림자로 가고, 진입 그림자는 막힌 간선을 뺀 나머지로 나간다. 상속 간선은 진입 상태를 이어 간다.
  */
-private class TraversalSpace(graph: CodeGraph, edges: List<TraversalEdge>, direction: TraversalDirection, dispatch: TraversalDispatch) {
+private class TraversalSpace(
+    graph: CodeGraph, edges: List<TraversalEdge>, direction: TraversalDirection, dispatch: TraversalDispatch, classHops: TraversalClassHops,
+) {
     val ids: List<NodeId> = graph.nodeIds
     val nodes: List<GraphNode> = ids.map(graph.nodes::getValue)
     val index: Map<NodeId, Int> = ids.withIndex().associate { it.value to it.index }
-    private val allowed = edges.filter { it.tier in dispatch.tiers && (!it.terminal || direction == TraversalDirection.DEPENDENTS) }
-    private val callbacks = allowed.filter { it.terminal && it.source != it.target }
-    private val shadowed: List<Int> = callbacks.map { index.getValue(it.source) }.distinct().sorted()
-    private val shadowIndex: Map<Int, Int> = shadowed.withIndex().associate { it.value to ids.size + it.index }
+    private val allowed = edges.filter { it.tier in dispatch.tiers && (!it.terminal || direction == TraversalDirection.DEPENDENTS) && it.source != it.target }
+    private val callbacks = allowed.filter { it.terminal }
+    private val regular = allowed.filter { !it.terminal }
+    private val roles = ClassHopRoles(direction, classHops)
+    private val callbackShadowed: List<Int> = callbacks.map { index.getValue(it.source) }.distinct().sorted()
+    private val entered: List<Int> = roles.enteredClasses(regular, ::endpoints).sorted()
+    private val shadowed: List<Int> = callbackShadowed + entered
+    private val callbackShadow: Map<Int, Int> = callbackShadowed.withIndex().associate { it.value to ids.size + it.index }
+    private val entryShadow: Map<Int, Int> = entered.withIndex().associate { it.value to ids.size + callbackShadowed.size + it.index }
 
-    /** 본 정점과 그림자 정점을 합친 수다. 그림자는 [NodeId] 순서 뒤에 붙는다. */
+    /** 본 정점과 그림자 정점을 합친 수다. 그림자는 [NodeId] 순서 뒤에 콜백 그림자, 진입 그림자 순으로 붙는다. */
     val vertexCount: Int = ids.size + shadowed.size
 
     /** 정점(본·그림자)의 본 정점 인덱스다. */
     val realOf: IntArray = IntArray(vertexCount) { if (it < ids.size) it else shadowed[it - ids.size] }
 
-    /** 본 정점의 그림자 인덱스다. 없으면 -1이다. */
-    fun shadowOf(vertex: Int): Int = shadowIndex[vertex] ?: -1
+    /** 본 정점의 그림자 인덱스들이다(콜백 그림자, 진입 그림자 순). */
+    fun shadowsOf(vertex: Int): List<Int> = listOfNotNull(callbackShadow[vertex], entryShadow[vertex])
+
+    /** 본 class 정점의 진입 그림자 인덱스다. 없으면 -1이다. */
+    fun entryShadowOf(vertex: Int): Int = entryShadow[vertex] ?: -1
 
     fun usrOf(vertex: Int): String = ids[realOf[vertex]].value
 
     /** 순회 방향 기준 (from, to, 관계, 등급 순위)다. 등급 순위는 evidence 단계(0 direct, 1 bound, 2 candidate)다. */
-    private val oriented: List<OrientedEdge> = allowed.filter { !it.terminal }.map { edge ->
-        val (from, to) = if (direction == TraversalDirection.DEPENDENTS) edge.target to edge.source else edge.source to edge.target
-        OrientedEdge(index.getValue(from), index.getValue(to), edge.relationship, levelOf(edge.tier))
-    }.plus(callbacks.flatMap { edge ->
+    private val oriented: List<OrientedEdge> = regular.flatMap(::orient).plus(callbacks.flatMap { edge ->
         val body = index.getValue(edge.target)
-        val caller = shadowIndex.getValue(index.getValue(edge.source))
-        listOfNotNull(body, shadowIndex[body]).map { from -> OrientedEdge(from, caller, edge.relationship, levelOf(edge.tier)) }
-    }).filter { it.from != it.to }
+        val caller = callbackShadow.getValue(index.getValue(edge.source))
+        listOfNotNull(body, callbackShadow[body], entryShadow[body]).map { from -> OrientedEdge(from, caller, edge.relationship, levelOf(edge.tier)) }
+    })
+
+    /** 진입 그림자에서 나가는 간선이 닿는 본 정점이다. */
+    private val shadowLinks: Map<Int, Set<Int>> = oriented.filter { it.from >= ids.size + callbackShadowed.size }
+        .groupBy({ it.from }, { realOf[it.to] }).mapValues { (_, targets) -> targets.toSet() }
+
+    /**
+     * 진입 그림자에서 막힌 간선 때문에 따르지 않은 (class, 선언) 쌍 수다. 같은 쌍을 그림자에서 다른 간선으로 잇는 경우는 뺀다.
+     * 키는 본 class 정점 인덱스다.
+     */
+    val blockedByClass: Map<Int, Int> = regular.filter { roles.roleOf(it) == HopRole.BLOCKED }
+        .map(::endpoints).filter { it.first in entryShadow }.groupBy({ it.first }, { it.second })
+        .mapValues { (from, targets) ->
+            val linked = shadowLinks[entryShadow.getValue(from)].orEmpty()
+            targets.toSet().count { it !in linked }
+        }.filterValues { it > 0 }
+
+    /** 순회 방향으로 놓은 본 정점 (from, to) 인덱스다. */
+    private fun endpoints(edge: TraversalEdge): Pair<Int, Int> {
+        val (from, to) = if (roles.direction == TraversalDirection.DEPENDENTS) edge.target to edge.source else edge.source to edge.target
+        return index.getValue(from) to index.getValue(to)
+    }
+
+    /** 일반 간선 하나를 본·진입 그림자 정점 사이의 간선으로 놓는다. */
+    private fun orient(edge: TraversalEdge): List<OrientedEdge> {
+        val (from, to) = endpoints(edge)
+        fun link(start: Int, end: Int) = OrientedEdge(start, end, edge.relationship, levelOf(edge.tier))
+        return when (roles.roleOf(edge)) {
+            HopRole.ENTRY -> listOfNotNull(from, entryShadow[from]).map { link(it, entryShadow.getValue(to)) }
+            HopRole.BLOCKED -> listOf(link(from, to))
+            null -> listOf(link(from, to)) + listOfNotNull(entryShadow[from]?.let { shadow ->
+                link(shadow, if (roles.carries(edge)) entryShadow.getValue(to) else to)
+            })
+        }
+    }
 
     /** 이 dispatch 방식이 쓰는 evidence 단계 수다. */
     val levels: Int = (oriented.maxOfOrNull { it.level } ?: 0) + 1
@@ -285,6 +376,48 @@ private class TraversalSpace(graph: CodeGraph, edges: List<TraversalEdge>, direc
             TraversalEdgeTier.BOUND -> 1
             TraversalEdgeTier.CANDIDATE, TraversalEdgeTier.LAMBDA -> 2
         }
+    }
+}
+
+/** 순회 방향에서 본 class hop 간선의 역할이다. 진입 간선은 class를 진입 상태로 만들고, 진입 상태의 class는 막힌 간선을 따르지 않는다. */
+private enum class HopRole { ENTRY, BLOCKED }
+
+/**
+ * `--class-hops member-only`가 막는 경로 `TYPE_REFERENCE ∘ 상속* ∘ OWNER_CALLBACK`(같은 class 정점에서 만나는 두 hop)을
+ * 순회 방향에 맞춰 진입·막힘 역할로 바꾼다.
+ *
+ * - 역방향: 멤버 → 소유 class(콜백 모델 간선을 거꾸로)가 진입, class → 이름만 적은 선언이 막힘이다.
+ * - 정방향: 이름만 적은 선언 → class가 진입, class → 콜백 멤버가 막힘이다.
+ * - 상속 간선은 진입 상태를 이어 간다(역방향은 하위 class로, 정방향은 상위 class로).
+ * [TraversalClassHops.ALL]이면 역할이 없어 그림자도 없다.
+ */
+private class ClassHopRoles(val direction: TraversalDirection, private val classHops: TraversalClassHops) {
+    /** 간선의 이 방향 역할이다. class hop 간선이 아니거나 좁히지 않으면 null이다. */
+    fun roleOf(edge: TraversalEdge): HopRole? {
+        if (classHops == TraversalClassHops.ALL) return null
+        val entry = if (direction == TraversalDirection.DEPENDENTS) TraversalClassRole.OWNER_CALLBACK else TraversalClassRole.TYPE_REFERENCE
+        return when (edge.classRole) {
+            null -> null
+            entry -> HopRole.ENTRY
+            else -> HopRole.BLOCKED
+        }
+    }
+
+    /** 진입 상태를 이어 가는 간선(상속)인지다. */
+    fun carries(edge: TraversalEdge): Boolean = edge.relationship == INHERITANCE
+
+    /** 진입 상태가 될 수 있는 class 정점이다. 진입 간선의 끝과, 거기서 상속 간선으로 이어지는 class의 닫힘이다. */
+    fun enteredClasses(regular: List<TraversalEdge>, orient: (TraversalEdge) -> Pair<Int, Int>): Set<Int> {
+        if (classHops == TraversalClassHops.ALL) return emptySet()
+        val found = regular.filter { roleOf(it) == HopRole.ENTRY }.mapTo(mutableSetOf()) { orient(it).second }
+        val inheritance = regular.filter { roleOf(it) == null && carries(it) }.map(orient).groupBy({ it.first }, { it.second })
+        val pending = ArrayDeque(found)
+        while (pending.isNotEmpty()) inheritance[pending.removeFirst()].orEmpty().forEach { if (found.add(it)) pending += it }
+        return found
+    }
+
+    private companion object {
+        const val INHERITANCE = "inheritance"
     }
 }
 
@@ -320,6 +453,10 @@ private class TraversalComputation private constructor(
     var depthTruncated = false
         private set
 
+    /** `--class-hops member-only`가 따르지 않은 간선 집계다. */
+    var narrowed = ClassHopsNarrowed(0, 0)
+        private set
+
     private fun execute() {
         nearestRoots()
         val reach = (0 until space.levels).map { level -> ReachSets.compute(space.adjacency(level), rootVertices, size) }
@@ -331,11 +468,23 @@ private class TraversalComputation private constructor(
             if (row == null) depthTruncated = true else rows += row
         }
         rows.sortWith(compareBy({ it.depth }, { space.ids[it.vertex].value }))
+        narrowed = narrowedHops(full)
+    }
+
+    /**
+     * 적어도 한 root가 진입 그림자에는 닿지만 본 class 정점에는 닿지 않는 class만 센다. 본 정점에 닿은 root는 막힌 간선도
+     * 본 정점에서 따르므로 잃는 것이 없다.
+     */
+    private fun narrowedHops(full: ReachSets): ClassHopsNarrowed {
+        val lost = space.blockedByClass.filterKeys { vertex ->
+            full.rootsOf(space.entryShadowOf(vertex)).apply { andNot(full.rootsOf(vertex)) }.isEmpty.not()
+        }
+        return ClassHopsNarrowed(lost.values.sum(), lost.size)
     }
 
     /** 본 정점과 그 그림자에 닿는 root의 합집합이다. */
     private fun rootsOf(sets: ReachSets, vertex: Int): BitSet = sets.rootsOf(vertex).also { roots ->
-        space.shadowOf(vertex).takeIf { it >= 0 }?.let { roots.or(sets.rootsOf(it)) }
+        space.shadowsOf(vertex).forEach { roots.or(sets.rootsOf(it)) }
     }
 
     /** 가장 가까운 서로 다른 root 두 개를 BFS 순서로 기록한다. 먼저 도착한 두 root가 가장 가까운 두 root다. */
@@ -364,7 +513,7 @@ private class TraversalComputation private constructor(
      */
     private fun row(vertex: Int, roots: BitSet, reach: List<ReachSets>): ReachedRow? {
         val own = rootOf[vertex]
-        val targets = listOf(vertex, space.shadowOf(vertex)).filter { it >= 0 }
+        val targets = listOf(vertex) + space.shadowsOf(vertex)
         val depth = targets.map { depthOf(it, vertex, own) }.filter { it >= 0 }.minOrNull() ?: return null
         if (depth !in 1..maxDepth) return null
         val level = reach.indexOfFirst { sets -> rootsOf(sets, vertex).let { reached -> roots.stream().allMatch(reached::get) } }

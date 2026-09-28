@@ -192,6 +192,93 @@ class LanguageTraversalTest {
         assertTrue(result.reachedTruncated)
     }
 
+    @Test
+    fun `member-only class hops match a state-space brute force on random graphs with classes`() {
+        repeat(500) { seed ->
+            val random = Random(20_000 + seed)
+            val graph = classGraph(random)
+            val names = graph.nodeIds.map { it.value }
+            val members = names.filter { !it.startsWith("class:") }
+            val terminals = List(random.nextInt(0, 4)) {
+                TraversalEdge(NodeId(members.random(random)), NodeId(names.random(random)), "callback",
+                    if (random.nextBoolean()) TraversalEdgeTier.BOUND else TraversalEdgeTier.CANDIDATE, terminal = true)
+            }
+            val assembled = TraversalGraph(TraversalEdges.build(graph) + terminals, CallbackFlowSummary())
+            val requested = List(random.nextInt(1, 5)) { names.random(random) }
+            val direction = TraversalDirection.entries.random(random)
+            val dispatch = TraversalDispatch.entries.random(random)
+            val classHops = TraversalClassHops.entries.random(random)
+            val maxDepth = if (random.nextBoolean()) LanguageTraversal.MAX_DEPTH else random.nextInt(1, 5)
+            val result = LanguageTraversal.traverse(graph, assembled, requested, direction, dispatch, maxDepth, classHops = classHops)
+            assertMatchesClassHopOracle(assembled.edges, graph, result, classHops, maxDepth, "seed $seed")
+            val wide = LanguageTraversal.traverse(graph, assembled, requested, direction, dispatch, maxDepth)
+            assertTrue(wide.reached.map { it.node.id }.containsAll(result.reached.map { it.node.id }), "seed $seed narrow is a subset")
+            if (classHops == TraversalClassHops.ALL) assertEquals(wide, result, "seed $seed all is the default")
+        }
+    }
+
+    @Test
+    fun `member-only stops a member change at its class but keeps class-level usages`() {
+        val graph = viewModelGraph()
+        val root = listOf("method:app/Http#get()V")
+        val wide = LanguageTraversal.traverse(graph, root, TraversalDirection.DEPENDENTS).reached.map { it.node.id.value }.toSet()
+        val narrow = LanguageTraversal.traverse(graph, root, TraversalDirection.DEPENDENTS, classHops = TraversalClassHops.MEMBER_ONLY)
+        val kept = setOf("method:app/Vm#load()V", "method:app/Screen#render(Lapp/Vm;)V", "class:app/Vm", "method:app/Factory#create()Lapp/Vm;",
+            "class:app/SpecialVm", "method:app/Reflect#lookup()V", "class:app/Web\$1", "method:app/Web\$1#onPage()V", "method:app/Web#show()V",
+            "method:app/Web#open()V")
+        val spill = setOf("method:app/Format#label(Lapp/Vm;)V", "field:app/Holder#vm:Lapp/Vm;", "method:app/Holder#read()V",
+            "method:app/Printer#print()V", "method:app/SpecialUser#show(Lapp/SpecialVm;)V")
+        assertEquals(kept + spill, wide)
+        assertEquals(kept, narrow.reached.map { it.node.id.value }.toSet())
+        val byId = narrow.reached.associateBy { it.node.id.value }
+        assertEquals("method:app/Vm#load()V", byId.getValue("class:app/Vm").via)
+        assertEquals(listOf("reference"), byId.getValue("class:app/Vm").relationships)
+        assertEquals("class:app/Vm", byId.getValue("method:app/Factory#create()Lapp/Vm;").via)
+        assertEquals(listOf("inheritance"), byId.getValue("class:app/SpecialVm").relationships)
+        // Vm은 Screen.render·Format.label·Holder.vm, SpecialVm은 SpecialUser.show를 따르지 않는다. Web$1은 이름만 적은 사용자가 없다.
+        assertTrue(narrow.limitations.any { it.startsWith("class-hops-narrowed: 4 type-reference edge(s) from 2 class vertex(es)") },
+            narrow.limitations.toString())
+        val default = LanguageTraversal.traverse(graph, root, TraversalDirection.DEPENDENTS)
+        assertTrue(default.limitations.none { it.startsWith("class-hops-narrowed:") })
+        // class 자체가 root면 좁히지 않는다. 좁힐 hop이 없어도 모드를 알리는 한계는 싣는다.
+        val classRoot = LanguageTraversal.traverse(graph, listOf("class:app/Vm"), TraversalDirection.DEPENDENTS, classHops = TraversalClassHops.MEMBER_ONLY)
+        assertTrue(classRoot.reached.any { it.node.id.value == "method:app/Printer#print()V" })
+        assertTrue(classRoot.limitations.any { it.startsWith("class-hops-narrowed: 0 type-reference edge(s) from 0 class vertex(es)") })
+        // bound를 빼면 콜백 모델 간선이 없으므로 member → class hop도 없다.
+        val direct = LanguageTraversal.traverse(graph, root, TraversalDirection.DEPENDENTS, TraversalDispatch.DIRECT, classHops = TraversalClassHops.MEMBER_ONLY)
+        assertTrue(direct.reached.none { it.node.id.value == "class:app/Vm" })
+    }
+
+    @Test
+    fun `member-only reach does not expand a named-only class to its runtime callbacks`() {
+        val graph = viewModelGraph()
+        fun reach(root: String, classHops: TraversalClassHops) =
+            LanguageTraversal.traverse(graph, listOf(root), TraversalDirection.DEPENDENCIES, classHops = classHops)
+        val label = "method:app/Format#label(Lapp/Vm;)V"
+        assertTrue(reach(label, TraversalClassHops.ALL).reached.any { it.node.id.value == "method:app/Http#get()V" })
+        val narrow = reach(label, TraversalClassHops.MEMBER_ONLY)
+        // 다른 class 멤버로 가는 런타임 모델 간선은 콜백 모델이 아니므로 계속 따른다.
+        assertEquals(setOf("class:app/Vm", "method:app/Other#run()V"), narrow.reached.map { it.node.id.value }.toSet())
+        assertTrue(narrow.limitations.any { it.startsWith("class-hops-narrowed: 3 framework-callback member edge(s) from 1 class vertex(es)") },
+            narrow.limitations.toString())
+        // 인스턴스를 만드는 선언은 런타임 콜백까지 닿는다. 하위 class 이름만 적은 선언은 상속 사슬을 따라가도 막힌다.
+        assertTrue(reach("method:app/Factory#create()Lapp/Vm;", TraversalClassHops.MEMBER_ONLY).reached.any { it.node.id.value == "method:app/Http#get()V" })
+        val special = reach("method:app/SpecialUser#show(Lapp/SpecialVm;)V", TraversalClassHops.MEMBER_ONLY).reached.map { it.node.id.value }.toSet()
+        assertEquals(setOf("class:app/SpecialVm", "class:app/Vm", "method:app/Other#run()V"), special)
+    }
+
+    @Test
+    fun `class roles separate instantiation runtime lookups and owner callbacks from type references`() {
+        val roles = TraversalEdges.build(viewModelGraph()).filter { it.classRole != null }
+            .associate { (it.source.value to it.target.value) to it.classRole }
+        assertEquals(TraversalClassRole.OWNER_CALLBACK, roles["class:app/Vm" to "method:app/Vm#load()V"])
+        assertEquals(TraversalClassRole.TYPE_REFERENCE, roles["method:app/Format#label(Lapp/Vm;)V" to "class:app/Vm"])
+        assertEquals(TraversalClassRole.TYPE_REFERENCE, roles["field:app/Holder#vm:Lapp/Vm;" to "class:app/Vm"])
+        assertFalse("method:app/Factory#create()Lapp/Vm;" to "class:app/Vm" in roles, "instantiation is not a type reference")
+        assertFalse("method:app/Reflect#lookup()V" to "class:app/Vm" in roles, "runtime-modeled lookups are not type references")
+        assertFalse("class:app/Vm" to "method:app/Other#run()V" in roles, "a runtime edge to another class's member is not an owner callback")
+    }
+
     private fun assertMatchesOracle(graph: CodeGraph, result: LanguageTraversalResult, maxDepth: Int, context: String) {
         val edges = TraversalEdges.build(graph).filter { it.tier in result.dispatch.tiers }
             .map { if (result.direction == TraversalDirection.DEPENDENTS) Triple(it.target.value, it.source.value, it) else Triple(it.source.value, it.target.value, it) }
@@ -385,6 +472,170 @@ class LanguageTraversalTest {
         return CodeGraph(nodes, edges, calls, enclosures = listOf(LexicalEnclosure(NodeId("class:app/Caller\$run\$1"), caller)))
     }
 
+    /**
+     * `--class-hops` 상태 공간의 전수 BFS다. 상태는 (정점, 방식)이며 방식은 본(PLAIN)·콜백 그림자(CALLBACK)·class 진입(ENTERED)이다.
+     * 진입 간선은 ENTERED로 가고, ENTERED는 막힌 간선을 따르지 않으며 상속 간선으로 ENTERED를 잇는다. 콜백 간선은 역방향에서만
+     * 모든 방식에서 CALLBACK으로 가고, CALLBACK에서는 콜백 간선만 나간다.
+     */
+    private fun assertMatchesClassHopOracle(all: List<TraversalEdge>, graph: CodeGraph, result: LanguageTraversalResult,
+        classHops: TraversalClassHops, maxDepth: Int, context: String) {
+        val reverse = result.direction == TraversalDirection.DEPENDENTS
+        val allowed = all.filter { it.tier in result.dispatch.tiers && it.source != it.target && (!it.terminal || reverse) }
+        data class Hop(val from: String, val to: String, val edge: TraversalEdge)
+        val hops = allowed.map { if (reverse) Hop(it.target.value, it.source.value, it) else Hop(it.source.value, it.target.value, it) }
+        val entry = if (reverse) TraversalClassRole.OWNER_CALLBACK else TraversalClassRole.TYPE_REFERENCE
+        val narrow = classHops == TraversalClassHops.MEMBER_ONLY
+        fun next(state: Pair<String, Int>, maxLevel: Int): List<Pair<String, Int>> = hops.filter { it.from == state.first && level(it.edge.tier) <= maxLevel }
+            .mapNotNull { hop ->
+                val role = hop.edge.classRole?.takeIf { narrow }
+                when {
+                    hop.edge.terminal -> hop.to to CALLBACK
+                    state.second == CALLBACK -> null
+                    role == entry -> hop.to to ENTERED
+                    role != null && state.second == ENTERED -> null
+                    state.second == ENTERED && hop.edge.relationship == "inheritance" -> hop.to to ENTERED
+                    else -> hop.to to PLAIN
+                }
+            }
+        fun distances(start: String, maxLevel: Int): Map<Pair<String, Int>, Int> {
+            val found = mutableMapOf((start to PLAIN) to 0)
+            val queue = ArrayDeque(listOf(start to PLAIN))
+            while (queue.isNotEmpty()) {
+                val current = queue.removeFirst()
+                next(current, maxLevel).forEach { if (it !in found) { found[it] = found.getValue(current) + 1; queue += it } }
+            }
+            return found
+        }
+        val roots = result.roots.map { it.node?.id?.value }
+        val levels = (0..2).map { level -> roots.map { root -> root?.let { distances(it, level) }.orEmpty() } }
+        val full = levels[2]
+        val modes = listOf(PLAIN, CALLBACK, ENTERED)
+        fun reaches(map: Map<Pair<String, Int>, Int>, vertex: String) = modes.any { (vertex to it) in map }
+        fun distance(map: Map<Pair<String, Int>, Int>, vertex: String) = modes.mapNotNull { map[vertex to it] }.min()
+        val expected = graph.nodeIds.map { it.value }.mapNotNull { vertex ->
+            val reaching = roots.indices.filter { roots[it] != null && roots[it] != vertex && reaches(full[it], vertex) }
+            if (reaching.isEmpty()) return@mapNotNull null
+            val depth = reaching.minOf { distance(full[it], vertex) }
+            val evidence = reaching.maxOf { root -> (0..2).first { reaches(levels[it][root], vertex) } }
+            vertex to Triple(reaching, depth, evidence)
+        }.toMap()
+        val listed = expected.filterValues { it.second <= maxDepth }
+        assertEquals(listed.keys, result.reached.map { it.node.id.value }.toSet(), context)
+        assertEquals(expected.size > listed.size, result.depthTruncated, context)
+        for (row in result.reached) {
+            val vertex = row.node.id.value
+            val (reaching, depth, evidence) = listed.getValue(vertex)
+            assertEquals(reaching, row.roots, "$context roots $vertex")
+            assertEquals(depth, row.depth, "$context depth $vertex")
+            assertEquals(TraversalEvidence.entries[evidence], row.evidence, "$context evidence $vertex")
+            assertTrue(row.relationships.isNotEmpty(), "$context relationships $vertex")
+            if (row.via in roots && depth == 1) continue
+            val witnessed = reaching.any { root ->
+                modes.any { from -> full[root][row.via to from] == depth - 1 && next(row.via to from, 2).any { it.first == vertex && full[root][it] == depth } }
+            }
+            assertTrue(witnessed, "$context via ${row.via} -> $vertex")
+        }
+        val line = result.limitations.singleOrNull { it.startsWith("class-hops-narrowed:") }
+        if (!narrow) { assertEquals(null, line, context); return }
+        // 한계 수: 좁힌 상태로만 닿은 class에서 막힌 간선 중 같은 상태에서 다른 간선으로 잇지 않는 (class, 선언) 쌍이다.
+        val blocked = graph.nodeIds.map { it.value }.associateWith { vertex ->
+            val linked = next(vertex to ENTERED, 2).map { it.first }.toSet()
+            hops.filter { it.from == vertex && !it.edge.terminal && it.edge.classRole != null && it.edge.classRole != entry }
+                .map { it.to }.toSet() - linked
+        }.filter { (vertex, targets) -> targets.isNotEmpty() && full.any { (vertex to ENTERED) in it && (vertex to PLAIN) !in it } }
+        val counts = Regex("class-hops-narrowed: (\\d+) .* from (\\d+) class vertex").find(line!!)!!.destructured.toList().map(String::toInt)
+        assertEquals(listOf(blocked.values.sumOf { it.size }, blocked.size), counts, "$context narrowed count")
+    }
+
+    /**
+     * class와 멤버가 섞인 무작위 그래프다. 호출·이름만 적은 참조·콜백 모델·상속·바깥 class 참조·런타임 조회·생성자 호출·
+     * dispatch 후보·어휘적 소속을 섞는다.
+     */
+    private fun classGraph(random: Random): CodeGraph {
+        val classes = List(random.nextInt(1, 6)) { "app/K$it" }
+        val nodes = classes.flatMap { owner ->
+            listOf(GraphNode(NodeId("class:$owner"), owner, NodeKind.CLASS), GraphNode(NodeId("method:$owner#<init>()V"), "<init>", NodeKind.CONSTRUCTOR)) +
+                List(random.nextInt(1, 4)) { GraphNode(NodeId("method:$owner#m$it()V"), "m$it", NodeKind.METHOD) }
+        }
+        val members = nodes.filter { it.kind != NodeKind.CLASS }.map { it.id }
+        fun member() = members.random(random)
+        fun type() = classes.random(random)
+        val edges = mutableListOf<GraphEdge>()
+        val calls = mutableListOf<ExternalCall>()
+        repeat(random.nextInt(0, members.size * 3)) {
+            when (random.nextInt(9)) {
+                0 -> edges += GraphEdge(member(), member(), EdgeKind.CALL)
+                1 -> edges += GraphEdge(member(), NodeId("class:${type()}"), EdgeKind.REFERENCE)
+                2 -> type().let { owner -> members.filter { it.value.startsWith("method:$owner#") }.random(random)
+                    .let { edges += GraphEdge(NodeId("class:$owner"), it, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL) } }
+                3 -> edges += GraphEdge(NodeId("class:${type()}"), NodeId("class:${type()}"), EdgeKind.INHERITANCE)
+                4 -> edges += GraphEdge(NodeId("class:${type()}"), NodeId("class:${type()}"), EdgeKind.REFERENCE)
+                5 -> edges += GraphEdge(member(), NodeId("class:${type()}"), EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL)
+                6 -> type().let { owner -> member().let { source ->
+                    edges += GraphEdge(source, NodeId("method:$owner#<init>()V"), EdgeKind.CALL)
+                    edges += GraphEdge(source, NodeId("class:$owner"), EdgeKind.REFERENCE)
+                } }
+                7 -> {
+                    val (source, target) = member() to member()
+                    edges += GraphEdge(source, target, EdgeKind.OVERRIDE, origin = EdgeOrigin.DISPATCH_MODEL)
+                    calls += ExternalCall(source, "ext/Service", "m", "()V", InvocationKind.INTERFACE, resolvedTargets = listOf(target),
+                        resolution = CallResolution.PROJECT_CANDIDATES)
+                }
+                else -> edges += GraphEdge(member(), member(), EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL)
+            }
+        }
+        edges += nodes.filter { it.kind != NodeKind.CLASS }.map { GraphEdge(NodeId("class:" + it.id.value.substringAfter(':').substringBefore('#')), it.id, EdgeKind.MEMBER) }
+        val enclosures = if (random.nextInt(3) == 0) listOf(LexicalEnclosure(NodeId("class:${type()}"), member())) else emptyList()
+        return CodeGraph(nodes, edges, calls, enclosures = enclosures)
+    }
+
+    /**
+     * ViewModel 모양의 합성 그래프다. Vm.load가 root Http.get을 부르고, 콜백 모델이 Vm → 멤버(load·other·생성자)를 잇는다.
+     * Screen.render는 load를 부르며 Vm을 시그니처에 적고, Format.label·Holder.vm은 Vm을 이름만 적는다. Factory.create는
+     * Vm을 만들고, SpecialVm은 Vm을 상속하며, Reflect.lookup은 런타임 모델로 Vm을 찾는다. Web$1은 Web.show 안의 익명
+     * 콜백 class다.
+     */
+    private fun viewModelGraph(): CodeGraph {
+        fun method(id: String) = GraphNode(NodeId(id), id.substringAfter('#').substringBefore('('), if ("<init>" in id) NodeKind.CONSTRUCTOR else NodeKind.METHOD)
+        fun type(name: String) = GraphNode(NodeId("class:app/$name"), name, NodeKind.CLASS)
+        val nodes = listOf(type("Vm"), type("SpecialVm"), type("Web\$1"), method("method:app/Vm#load()V"), method("method:app/Vm#other()V"),
+            method("method:app/Vm#<init>()V"), method("method:app/Http#get()V"), method("method:app/Screen#render(Lapp/Vm;)V"),
+            method("method:app/Format#label(Lapp/Vm;)V"), method("method:app/Printer#print()V"), method("method:app/Holder#read()V"),
+            GraphNode(NodeId("field:app/Holder#vm:Lapp/Vm;"), "vm", NodeKind.FIELD), method("method:app/Factory#create()Lapp/Vm;"),
+            method("method:app/SpecialUser#show(Lapp/SpecialVm;)V"), method("method:app/Reflect#lookup()V"), method("method:app/Other#run()V"),
+            method("method:app/Web\$1#onPage()V"), method("method:app/Web#show()V"), method("method:app/Web#open()V"))
+        fun edge(source: String, target: String, kind: EdgeKind, origin: EdgeOrigin = EdgeOrigin.BYTECODE) = GraphEdge(NodeId(source), NodeId(target), kind, origin = origin)
+        val edges = listOf(
+            edge("method:app/Vm#load()V", "method:app/Http#get()V", EdgeKind.CALL),
+            edge("class:app/Vm", "method:app/Vm#load()V", EdgeKind.REFERENCE, EdgeOrigin.RUNTIME_MODEL),
+            edge("class:app/Vm", "method:app/Vm#other()V", EdgeKind.REFERENCE, EdgeOrigin.RUNTIME_MODEL),
+            edge("class:app/Vm", "method:app/Vm#<init>()V", EdgeKind.REFERENCE, EdgeOrigin.RUNTIME_MODEL),
+            edge("class:app/Vm", "method:app/Other#run()V", EdgeKind.REFERENCE, EdgeOrigin.RUNTIME_MODEL),
+            edge("method:app/Screen#render(Lapp/Vm;)V", "method:app/Vm#load()V", EdgeKind.CALL),
+            edge("method:app/Screen#render(Lapp/Vm;)V", "class:app/Vm", EdgeKind.REFERENCE),
+            edge("method:app/Format#label(Lapp/Vm;)V", "class:app/Vm", EdgeKind.REFERENCE),
+            edge("method:app/Printer#print()V", "method:app/Format#label(Lapp/Vm;)V", EdgeKind.CALL),
+            edge("field:app/Holder#vm:Lapp/Vm;", "class:app/Vm", EdgeKind.REFERENCE),
+            edge("method:app/Holder#read()V", "field:app/Holder#vm:Lapp/Vm;", EdgeKind.FIELD_ACCESS),
+            edge("method:app/Factory#create()Lapp/Vm;", "method:app/Vm#<init>()V", EdgeKind.CALL),
+            edge("method:app/Factory#create()Lapp/Vm;", "class:app/Vm", EdgeKind.REFERENCE),
+            edge("class:app/SpecialVm", "class:app/Vm", EdgeKind.INHERITANCE),
+            edge("method:app/SpecialUser#show(Lapp/SpecialVm;)V", "class:app/SpecialVm", EdgeKind.REFERENCE),
+            edge("method:app/Reflect#lookup()V", "class:app/Vm", EdgeKind.REFERENCE, EdgeOrigin.RUNTIME_MODEL),
+            edge("class:app/Web\$1", "method:app/Web\$1#onPage()V", EdgeKind.MEMBER),
+            edge("class:app/Web\$1", "method:app/Web\$1#onPage()V", EdgeKind.REFERENCE, EdgeOrigin.RUNTIME_MODEL),
+            edge("method:app/Web\$1#onPage()V", "method:app/Vm#load()V", EdgeKind.CALL),
+            edge("method:app/Web#open()V", "method:app/Web#show()V", EdgeKind.CALL),
+        )
+        return CodeGraph(nodes, edges, enclosures = listOf(LexicalEnclosure(NodeId("class:app/Web\$1"), NodeId("method:app/Web#show()V"))))
+    }
+
     private fun method(name: String) = GraphNode(NodeId(id(name)), name, NodeKind.METHOD)
     private fun id(name: String) = "method:app/$name#run()V"
+
+    private companion object {
+        const val PLAIN = 0
+        const val CALLBACK = 1
+        const val ENTERED = 2
+    }
 }

@@ -2,6 +2,7 @@ package dev.kartograph.cli
 
 import dev.kartograph.analysis.LanguageTraversal
 import dev.kartograph.analysis.TestSourceScope
+import dev.kartograph.analysis.TraversalClassHops
 import dev.kartograph.analysis.TraversalDirection
 import dev.kartograph.analysis.TraversalDispatch
 import dev.kartograph.export.ExternalInputBindingsCodec
@@ -25,7 +26,7 @@ import java.time.format.DateTimeParseException
 internal object TraversalCommand {
     private val VALUE_OPTIONS = setOf(
         "--graph-file", "--symbol", "--roots-from", "--project", "--depth", "--dispatch", "--generated-at",
-        "--revision", "--snapshot-max-mib", "--max-reached", "--format", "--input-bindings",
+        "--revision", "--snapshot-max-mib", "--max-reached", "--format", "--input-bindings", "--class-hops",
     )
 
     /** 값 없이 켜는 옵션이다. */
@@ -48,7 +49,7 @@ internal object TraversalCommand {
     private data class Options(
         val graphFile: String, val roots: List<String>, val project: String, val depth: Int, val dispatch: TraversalDispatch,
         val generatedAt: String, val revision: String?, val maximumBytes: Int, val maximumMiB: Int, val maxReached: Int,
-        val includeTests: Boolean, val inputBindings: String?,
+        val includeTests: Boolean, val inputBindings: String?, val classHops: TraversalClassHops,
     )
 
     /** 사용 오류 문구를 파서 밖으로 전달한다. 입력 값을 문구에 넣지 않는다. */
@@ -87,6 +88,8 @@ internal object TraversalCommand {
         }
         val dispatch = values["--dispatch"]?.single()?.let { label -> TraversalDispatch.entries.firstOrNull { it.label == label } }
             ?: if ("--dispatch" in values) return null.also { usage(error, "dispatch must be direct, bound, candidates or all") } else TraversalDispatch.CANDIDATES
+        val classHops = values["--class-hops"]?.single()?.let { label -> TraversalClassHops.entries.firstOrNull { it.label == label } }
+            ?: if ("--class-hops" in values) return null.also { usage(error, "class-hops must be all or member-only") } else TraversalClassHops.ALL
         val generatedAt = timestamp(values["--generated-at"]?.single()) ?: return null.also { usage(error, "--generated-at must be an ISO-8601 instant") }
         val revision = values["--revision"]?.single()
         if (revision != null && !LanguageTraversalCodec.isExchangeText(revision)) {
@@ -94,7 +97,7 @@ internal object TraversalCommand {
         }
         val roots = rootRequests(positional + values["--symbol"].orEmpty(), values["--roots-from"]?.single(), error) ?: return null
         return Options(graphFile, roots, project, depth, dispatch, generatedAt, revision, limit.maximumBytes, limit.maximumMiB, maxReached,
-            "--include-tests" in values, values["--input-bindings"]?.single())
+            "--include-tests" in values, values["--input-bindings"]?.single(), classHops)
     }
 
     /** isthmus는 모든 문서의 project가 같은 realpath 문자열이어야 조인한다. routes와 같은 규칙으로 만든다. */
@@ -151,7 +154,7 @@ internal object TraversalCommand {
         // 테스트 소스는 별도 프로그램이다. 기본 순회는 production 부분 그래프에서 하고 graphRevision도 그 그래프로 낸다.
         val scope = TestSourceScope.select(snapshot.graph, options.roots, options.includeTests)
         val traversal = LanguageTraversal.traverse(scope.graph, options.roots, direction, options.dispatch, options.depth,
-            options.maxReached, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured, rootGraph = snapshot.graph)
+            options.maxReached, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured, rootGraph = snapshot.graph, classHops = options.classHops)
         val limitations = traversal.limitations + scope.limitations + snapshot.limitations + listOfNotNull(freshness)
         val revision = options.revision ?: snapshot.revision ?: GitRevision.cleanHead(Path.of(options.project))
         val metadata = LanguageTraversalMetadata(options.generatedAt, options.project, revision,
@@ -194,6 +197,7 @@ internal object TraversalCommand {
           --roots-from <file>      JSON string array, or a bridge-facts document whose facts' symbol.usr become roots
           --project <directory>    project root written as "project"; pass the same root given to routes/schema
           --dispatch <mode>        direct, bound, candidates (default) or all
+          --class-hops <mode>      all (default) or member-only; see "Class hops" below
           --depth <n>              listed depth, 1..128 (default 128)
           --max-reached <n>        reached cap, 1..100000 (default 100000)
           --generated-at <instant> fixed ISO-8601 generatedAt for byte-stable output
@@ -210,6 +214,17 @@ internal object TraversalCommand {
           bound       + dispatch whose project receiver type resolves to a single project implementation, runtime models
           candidates  + class-hierarchy override candidates (evidence "candidate")
           all         + FunctionN/SAM invoke fan-out into every lambda or anonymous-class body (evidence "candidate")
+        Class hops:
+          all          follow every edge through class vertices (conservative; misses nothing the graph links)
+          member-only  never chain a type reference and the framework-callback model (class -> every member,
+                       e.g. ViewModel subclasses) through the same class vertex or its inheritance chain.
+                       impact: a member change reaches its owning class, which is listed, but not declarations
+                       that only name that class (signature, field type, cast, class literal, call owner).
+                       reach: a declaration that only names a class reaches the class, which is listed, but
+                       not the members the runtime is modeled to invoke on it.
+                       Instantiation (constructor calls), inheritance, lexical containment, callbacks,
+                       runtime-modeled lookups and direct member calls are still followed. Adds
+                       class-hops-narrowed: with the number of edges not followed.
         Every reached declaration carries roots (all roots that reach it), a via witness, per-root lower-bound evidence
         and unresolvedCalls. Roots reached from other roots are listed without their own index.
         Unknown roots stay listed without a symbol with root-not-found and exit 64. Recapture snapshots with this version

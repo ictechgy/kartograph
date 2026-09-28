@@ -25,6 +25,17 @@ import dev.kartograph.core.Visibility
 public enum class TraversalEdgeTier { DIRECT, BOUND, CANDIDATE, LAMBDA }
 
 /**
+ * 순회 간선이 class 정점을 드나드는 방식이다. `--class-hops member-only`가 이 표식으로 class 정점을 거치는 경로를 좁힌다.
+ *
+ * - [OWNER_CALLBACK]: 프레임워크 콜백 모델(`runtimeModel`)이 class에서 자기 멤버로 잇는 간선이다. 런타임이 그 class의
+ *   인스턴스에서 멤버를 부른다는 가정이다(예: `androidx/lifecycle/ViewModel` 하위 class → 비공개·정적이 아닌 모든 멤버).
+ * - [TYPE_REFERENCE]: class 정점을 가리키는 `reference` 간선 중 인스턴스를 만들지 않는 것이다 — 시그니처·필드 타입·
+ *   cast·class literal·호출 소유자·중첩 class의 바깥 class 참조가 모두 같은 REFERENCE 간선으로 합쳐져 있다. 같은 source가
+ *   그 class의 생성자를 부르면(인스턴스 생성) 달지 않는다. 런타임 모델 참조(reflection으로 해석한 class)도 달지 않는다.
+ */
+public enum class TraversalClassRole { OWNER_CALLBACK, TYPE_REFERENCE }
+
+/**
  * 의존하는 정점([source])에서 의존 대상([target])으로 향하는 순회 간선이다.
  *
  * @property relationship 출력 `relationships`에 싣는 관계 이름(`call`·`reference`·`override`·`contains`·`callback` 등)이다
@@ -32,6 +43,7 @@ public enum class TraversalEdgeTier { DIRECT, BOUND, CANDIDATE, LAMBDA }
  * @property terminal 호출 문맥 안에서만 참인 콜백 간선이다. 역방향 순회에서 [source]를 목록에 싣되 그 정점에서 일반
  *   간선으로 더 퍼지지 않는다(다른 호출자는 다른 람다를 넘긴다). 정방향 순회는 따르지 않는다 — 람다를 만든 함수에서
  *   본문으로 가는 길은 어휘적 소속이 이미 잇는다
+ * @property classRole class 정점을 드나드는 간선이면 그 방식이다. 기본 순회는 쓰지 않고 `--class-hops member-only`만 쓴다
  */
 public data class TraversalEdge(
     val source: NodeId,
@@ -39,6 +51,7 @@ public data class TraversalEdge(
     val relationship: String,
     val tier: TraversalEdgeTier,
     val terminal: Boolean = false,
+    val classRole: TraversalClassRole? = null,
 )
 
 /**
@@ -59,8 +72,9 @@ public object TraversalEdges {
     /** 간선과 콜백 흐름 집계를 함께 만든다. 콜백 간선은 [CallbackFlows]가 그래프의 콜백 관측 사실에서 만든다. */
     internal fun assemble(graph: CodeGraph, enclosuresCaptured: Boolean = true, callbackFactsCaptured: Boolean = true): TraversalGraph {
         val classifier = DispatchClassifier(graph, enclosuresCaptured)
+        val instantiated = instantiatedClasses(graph)
         val usage = graph.edges.filter { it.kind.impliesUsage && !isOwnerReference(it) }.map { edge ->
-            TraversalEdge(edge.source, edge.target, relationshipOf(edge.kind), classifier.tierOf(edge))
+            TraversalEdge(edge.source, edge.target, relationshipOf(edge.kind), classifier.tierOf(edge), classRole = classRoleOf(edge, instantiated))
         }
         // 콜백 사실을 다 싣지 않은 snapshot(일부 키만 있는 경우 포함)은 빠져나감을 놓칠 수 있으므로 콜백 간선을 만들지 않는다.
         val callbacks = if (callbackFactsCaptured) CallbackFlows(graph, classifier).analyze() else CallbackFlowResult(emptyList(), CallbackFlowSummary())
@@ -95,6 +109,37 @@ public object TraversalEdges {
         val owner = source.substringAfter(':').substringBefore('#', "")
         return owner.isNotEmpty() && edge.target.value == "class:$owner"
     }
+
+    /**
+     * 간선의 class 정점 드나듦 방식이다. 둘 다 아니면 null이다.
+     *
+     * @param instantiated 정점마다 그 정점이 생성자를 부르는 class 이름 집합이다([instantiatedClasses])
+     */
+    internal fun classRoleOf(edge: GraphEdge, instantiated: Map<NodeId, Set<String>>): TraversalClassRole? {
+        if (edge.kind != EdgeKind.REFERENCE || !edge.target.value.startsWith("class:")) {
+            return if (isOwnerCallback(edge)) TraversalClassRole.OWNER_CALLBACK else null
+        }
+        // reflection 등 런타임 모델이 해석한 class 사용은 이름만 적은 참조가 아니다.
+        if (edge.origin == EdgeOrigin.RUNTIME_MODEL) return null
+        return if (edge.target.value.removePrefix("class:") in instantiated[edge.source].orEmpty()) null else TraversalClassRole.TYPE_REFERENCE
+    }
+
+    /** 프레임워크 콜백 모델이 class에서 자기 멤버로 이은 간선인지다. 다른 class의 멤버를 가리키면 아니다. */
+    private fun isOwnerCallback(edge: GraphEdge): Boolean {
+        if (edge.kind != EdgeKind.REFERENCE || edge.origin != EdgeOrigin.RUNTIME_MODEL || !edge.source.value.startsWith("class:")) return false
+        val target = edge.target.value
+        if (!target.startsWith("method:") && !target.startsWith("field:")) return false
+        return target.substringAfter(':').substringBefore('#', "") == edge.source.value.removePrefix("class:")
+    }
+
+    /**
+     * 정점마다 생성자를 부르는 class 이름이다. `new C(...)`는 bytecode에서 `C.<init>` 호출이므로 CALL 간선 대상으로 안다.
+     * 같은 정점의 C 참조(`new`의 타입 명령·호출 소유자)는 인스턴스 생성이라 이름만 적은 참조와 구분한다.
+     */
+    internal fun instantiatedClasses(graph: CodeGraph): Map<NodeId, Set<String>> = graph.edges
+        .filter { it.kind == EdgeKind.CALL }
+        .mapNotNull { edge -> splitMethod(edge.target)?.takeIf { it.second.startsWith("<init>(") }?.let { edge.source to it.first } }
+        .groupBy({ it.first }, { it.second }).mapValues { (_, owners) -> owners.toSet() }
 
     /** 어휘적 소속 간선의 관계 이름이다. */
     public const val CONTAINS: String = "contains"
