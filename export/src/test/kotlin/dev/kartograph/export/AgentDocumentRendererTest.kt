@@ -10,6 +10,8 @@ import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RouteCallEvidence
+import dev.kartograph.core.RouteDeclEvidence
+import dev.kartograph.core.RouteParamConstraint
 import dev.kartograph.core.SourceLocation
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -154,5 +156,37 @@ class AgentDocumentRendererTest {
         assertEquals(1, Regex("\"queryTailStripped\"").findAll(json).count())
         assertEquals(1, Regex("\"testSource\"").findAll(json).count())
         assertFalse(json.contains("false, \"pathAnchor\""))
+    }
+
+    @Test
+    fun `server documents carry dispatch and route-decl evidence in contract field names`() {
+        val document = BridgeFactsDocument(
+            generatedAt = "2026-09-04T00:00:00Z",
+            target = "http",
+            project = "/project",
+            facts = listOf(
+                BridgeFact("route-decl", "/files/{}/{**}", method = "GET", dynamic = false, location = BridgeLocation("Web.kt", 3, 5),
+                    target = "http", routeDecl = RouteDeclEvidence("root", "strict", narrowed = true,
+                        paramConstraints = listOf(RouteParamConstraint(2, "regex", "[a-z]+"), RouteParamConstraint(1, "int")),
+                        configDefault = true, testSource = true)),
+                BridgeFact("route-decl", "/files", method = "ANY", dynamic = false, location = BridgeLocation("Web.kt", 3, 5),
+                    target = "http", routeDecl = RouteDeclEvidence("base", catchAllPrefix = true)),
+            ),
+            limitations = emptyList(),
+            roles = listOf("server"),
+            testSources = "included",
+            dispatch = "specificity",
+        )
+
+        val json = AgentDocumentRenderer.bridges(document)
+
+        assertContains(json, "{\"dispatch\": \"specificity\", \"facts\": [")
+        assertContains(json, "\"narrowed\": true, \"paramConstraints\": [{\"kind\": \"int\", \"segment\": 1}, " +
+            "{\"kind\": \"regex\", \"pattern\": \"[a-z]+\", \"segment\": 2}], \"pathAnchor\": \"root\"")
+        assertContains(json, "\"configDefault\": true")
+        assertContains(json, "\"testSource\": true, \"trailingSlash\": \"strict\"")
+        assertContains(json, "\"catchAllPrefix\": true, \"channel\": \"/files\"")
+        assertFalse(json.contains("\"narrowed\": false"))
+        assertFalse(json.contains("\"trailingSlash\": null"))
     }
 }

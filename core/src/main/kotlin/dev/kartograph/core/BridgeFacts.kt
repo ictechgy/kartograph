@@ -24,6 +24,11 @@ public data class BridgeFactsDocument(
     val testSources: String? = null,
     /** http 문서의 기본 서비스 신원이다. 사실의 service와 다르면 소비자가 문서를 거부한다. */
     val service: String? = null,
+    /**
+     * `route-decl`을 담은 http 문서의 디스패치 모델이다(`specificity`). Spring PathPattern은 구체성 순서로
+     * 고르므로 서버 문서는 항상 `specificity`를 싣는다. 클라이언트 문서에는 싣지 않는다.
+     */
+    val dispatch: String? = null,
 )
 
 /** 교환 문서의 생산 도구 식별자다. */
@@ -47,6 +52,8 @@ public data class BridgeFact(
     val mechanism: String? = null,
     /** `route-call` 사실 전용 증거 필드다. 다른 kind의 사실에는 싣지 않는다. */
     val route: RouteCallEvidence? = null,
+    /** `route-decl` 사실 전용 증거 필드다. [route]와 함께 싣지 않는다. */
+    val routeDecl: RouteDeclEvidence? = null,
 )
 
 /** 프로젝트 상대 파일과 1부터 시작하는 위치다. */
