@@ -53,7 +53,7 @@ internal class SpringProjectSignals private constructor(
             servletFiles = files.count { SERVLET.containsMatchIn(it.masked) },
             jaxRsFiles = files.count { file -> file.imports.any { it.path.startsWith("jakarta.ws.rs.") || it.path.startsWith("javax.ws.rs.") } },
             pathPrefixConfigured = files.any { PATH_PREFIX.containsMatchIn(it.masked) },
-            trailingSlashConfigured = files.any { TRAILING_SLASH.containsMatchIn(it.code) },
+            trailingSlashConfigured = files.any { TRAILING_SLASH.containsMatchIn(it.masked) },
             antMatcherConfigured = files.any { ANT_MATCHER.containsMatchIn(it.masked) },
         )
 

@@ -189,15 +189,22 @@ internal class SpringProjectConfig(
     private val buildTexts: Map<String, String>,
 ) {
     /**
-     * 소스 경로의 설정 후보다. 자기 모듈에 설정이 있으면 그것, 없으면 설정이 있는 모든 모듈(라이브러리 모듈을
-     * 조립하는 앱 후보), 그것도 없으면 빈 자기 모듈이다.
+     * 소스 경로의 설정 후보다. 자기 모듈이 앱 모듈(`@SpringBootApplication`이 있는 모듈)이거나 설정이 있으면 그것이다.
+     * 아니면(라이브러리 모듈) 앱 모듈 전부, 앱 모듈을 모르면 설정이 있는 모든 모듈, 그것도 없으면 빈 자기 모듈이다.
+     * 후보가 여럿이면 호출자는 모든 후보가 같은 결과를 줄 때만 확정한다.
+     *
+     * @param applicationRoots `@SpringBootApplication` 선언이 있는 모듈 루트다
      */
-    fun candidatesFor(sourcePath: String?): List<SpringModuleConfig> {
-        val own = modules.firstOrNull { module -> sourcePath != null && (module.root.isEmpty() || sourcePath.startsWith(module.root + "/")) }
-            ?: SpringModuleConfig.of("", emptyList())
-        if (own.hasConfig) return listOf(own)
+    fun candidatesFor(sourcePath: String?, applicationRoots: Set<String> = emptySet()): List<SpringModuleConfig> {
+        val own = moduleOf(sourcePath) ?: SpringModuleConfig.of("", emptyList())
+        if (own.root in applicationRoots || own.hasConfig) return listOf(own)
+        if (applicationRoots.isNotEmpty()) return modules.filter { it.root in applicationRoots }.ifEmpty { listOf(own) }
         return modules.filter { it.hasConfig }.ifEmpty { listOf(own) }
     }
+
+    /** 소스 경로를 담은 가장 깊은 모듈이다. 경로가 없으면 null이다. */
+    fun moduleOf(sourcePath: String?): SpringModuleConfig? =
+        modules.firstOrNull { module -> sourcePath != null && (module.root.isEmpty() || sourcePath.startsWith(module.root + "/")) }
 
     /** 모듈 빌드 파일에 [markers] 중 하나가 있는지 본다. 모듈 빌드 파일이 없으면 null이다. */
     fun moduleMentions(root: String, markers: List<String>): Boolean? {
@@ -218,7 +225,7 @@ internal class SpringProjectConfig(
         fun read(projectRoot: Path): SpringProjectConfig {
             val root = projectRoot.toRealPath()
             val buildFiles = findBuildFiles(root)
-            val texts = buildFiles.associate { relative(root, it) to mainDependencyText(readSmallText(it)) }
+            val texts = buildFiles.associate { relative(root, it) to mainDependencyText(withoutComments(it.fileName.toString(), readSmallText(it))) }
             val moduleRoots = (texts.keys.map { it.substringBeforeLast('/', "") } + "").distinct().sortedByDescending { it.length }
             val modules = moduleRoots.map { moduleRoot -> moduleConfig(root, moduleRoot) }
             val joined = texts.values.joinToString("\n")
@@ -246,6 +253,21 @@ internal class SpringProjectConfig(
         }
 
         private fun relative(root: Path, path: Path): String = root.relativize(path).joinToString("/")
+
+        /**
+         * 빌드 파일 주석을 지운다 — 주석 처리한 옛 의존성이 스택·버전 표지로 읽히지 않게 한다. Gradle은 `/* */`와 줄 앞이나
+         * 공백 뒤의 `//`(URL의 `://`는 남긴다), Maven은 `<!-- -->`, 버전 카탈로그·properties는 `#` 줄 주석이다.
+         */
+        internal fun withoutComments(fileName: String, text: String): String = when {
+            fileName.endsWith(".xml") -> XML_COMMENT.replace(text, "")
+            fileName.endsWith(".toml") || fileName.endsWith(".properties") -> HASH_COMMENT.replace(text, "")
+            else -> LINE_COMMENT.replace(BLOCK_COMMENT.replace(text, ""), "")
+        }
+
+        private val XML_COMMENT = Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL)
+        private val HASH_COMMENT = Regex("(?m)^\\s*#.*$")
+        private val BLOCK_COMMENT = Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL)
+        private val LINE_COMMENT = Regex("(?m)(^|\\s)//.*$")
 
         /**
          * 테스트 전용 의존성을 뺀 빌드 파일 본문이다 — Gradle `test*`·`androidTest*` 구성 줄과 Maven `<scope>test</scope>`

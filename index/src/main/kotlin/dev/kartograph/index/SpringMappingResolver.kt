@@ -44,15 +44,30 @@ internal class SpringMappingResolver(types: Collection<SpringType>, private val 
 
         /** 상위 타입 일부가 모델 밖(라이브러리)이라 상속된 매핑을 볼 수 없는 controller다. */
         val partiallyVisibleControllers = sortedSetOf<String>()
+
+        /** 매핑을 선언했지만 `@Controller`가 보이지 않고 모델 밖 상위 타입이 있어 핸들러인지 정하지 못한 class다. */
+        val unconfirmedControllers = sortedSetOf<String>()
     }
 
     val stats = Stats()
 
-    /** 모든 핸들러를 찾는다. 결과는 controller 이름·메서드 이름 순서다. */
-    fun handlers(): List<Handler> = types.values.filter(::isHandlerType).sortedBy { it.name }.flatMap(::handlersOf)
+    /**
+     * 모든 핸들러를 찾는다. 결과는 controller 이름·메서드 이름 순서다. 핸들러가 아닌데 매핑을 선언하고 모델 밖 상위 타입을
+     * 가진 class는 그 상위 타입이 `@Controller`를 줄 수 있으므로 [Stats.unconfirmedControllers]로 센다.
+     */
+    fun handlers(): List<Handler> {
+        val (handlerTypes, others) = types.values.filter(::isConcreteClass).partition(::isHandlerType)
+        others.filter { declaresMappings(it) && hasInvisibleSupertype(it, mutableSetOf()) }.forEach { stats.unconfirmedControllers += it.name }
+        return handlerTypes.sortedBy { it.name }.flatMap(::handlersOf)
+    }
+
+    private fun isConcreteClass(type: SpringType): Boolean =
+        type.kind == SpringTypeKind.CLASS && !type.isAbstract && type.name !in SpringAnnotations.BUILT_INS
+
+    private fun declaresMappings(type: SpringType): Boolean = (type.annotations + type.methods.flatMap { it.annotations })
+        .any { annotation -> merged(annotation, emptySet()) != null }
 
     private fun isHandlerType(type: SpringType): Boolean {
-        if (type.kind != SpringTypeKind.CLASS || type.isAbstract || type.name in SpringAnnotations.BUILT_INS) return false
         return hierarchyHas(type, mutableSetOf()) { annotation -> isStereotype(annotation.type, emptySet()) } ||
             (legacyTypeLevelHandlers && typeMapping(type, mutableSetOf()) != null)
     }
@@ -73,7 +88,7 @@ internal class SpringMappingResolver(types: Collection<SpringType>, private val 
         (type.interfaces + listOfNotNull(type.superclass)).mapNotNull(types::get)
 
     private fun handlersOf(handlerType: SpringType): List<Handler> {
-        recordInvisibleSupertypes(handlerType, mutableSetOf())
+        recordInvisibleSupertypes(handlerType)
         val typeMapping = typeMapping(handlerType, mutableSetOf())
         return candidateMethods(handlerType).mapNotNull { (declaring, method) ->
             val found = searchMethod(declaring, method, mutableSetOf(), own = method) ?: return@mapNotNull null
@@ -115,12 +130,16 @@ internal class SpringMappingResolver(types: Collection<SpringType>, private val 
 
     private fun signature(method: SpringMethod): String = method.name + (method.descriptor?.substringBefore(')') ?: "/${method.parameterCount}")
 
-    private fun recordInvisibleSupertypes(type: SpringType, visited: MutableSet<String>) {
-        if (!visited.add(type.name)) return
-        (type.interfaces + listOfNotNull(type.superclass)).forEach { name ->
-            val known = types[name]
-            if (known == null && IGNORED_SUPERTYPE_PACKAGES.none(name::startsWith)) stats.partiallyVisibleControllers += type.name
-            known?.let { recordInvisibleSupertypes(it, visited) }
+    private fun recordInvisibleSupertypes(type: SpringType) {
+        if (hasInvisibleSupertype(type, mutableSetOf())) stats.partiallyVisibleControllers += type.name
+    }
+
+    /** 타입 계층에 모델 밖 상위 타입이 있는지 본다. 플랫폼·Spring 패키지는 매핑을 싣지 않으므로 세지 않는다. */
+    private fun hasInvisibleSupertype(type: SpringType, visited: MutableSet<String>): Boolean {
+        if (!visited.add(type.name)) return false
+        return (type.interfaces + listOfNotNull(type.superclass)).any { name ->
+            val known = types[name] ?: return@any IGNORED_SUPERTYPE_PACKAGES.none(name::startsWith)
+            hasInvisibleSupertype(known, visited)
         }
     }
 

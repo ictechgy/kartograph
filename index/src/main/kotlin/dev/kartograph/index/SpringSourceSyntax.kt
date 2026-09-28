@@ -89,8 +89,9 @@ internal object SpringSourceSyntax {
         val match = ANNOTATION_NAME.find(file.masked, at) ?: return null
         val name = match.groupValues[2].trimEnd('.')
         if (name == "interface" || match.groupValues[1] == "file") return null
+        // Java는 이름과 `(` 사이 줄바꿈을 허용한다. Kotlin은 줄바꿈 뒤 괄호를 인자로 읽지 않는다.
         var after = match.range.last + 1
-        while (after < file.masked.length && file.masked[after].isWhitespace() && file.masked[after] != '\n') after++
+        while (after < file.masked.length && file.masked[after].isWhitespace() && (file.isJava || file.masked[after] != '\n')) after++
         if (file.masked.getOrNull(after) != '(') return Located(AnnotationToken(name, match.groupValues[1].ifEmpty { null }, at, null), match.range.last + 1)
         val close = balancedEnd(file.code, after).takeIf { it > after } ?: return null
         val token = AnnotationToken(name, match.groupValues[1].ifEmpty { null }, at, file.code.substring(after + 1, close))

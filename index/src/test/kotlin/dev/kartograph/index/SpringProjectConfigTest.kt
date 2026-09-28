@@ -204,4 +204,11 @@ class SpringProjectConfigTest {
         assertEquals(SpringModuleConfig.Lookup.Unknown, module.lookup("server.servlet.context-path"))
         assertNull(SpringPlaceholders(listOf(module)).resolve("\${a:b}").text)
     }
+
+    @Test
+    fun `build file comments are removed per file type`() {
+        assertEquals("<a/>\n<b/>", SpringProjectConfig.withoutComments("pom.xml", "<a/><!-- <web/> -->\n<b/>"))
+        assertEquals("x = 1\n", SpringProjectConfig.withoutComments("libs.versions.toml", "x = 1\n# web = 2"))
+        assertEquals("url(\"https://repo\")\nkeep", SpringProjectConfig.withoutComments("build.gradle", "url(\"https://repo\")\nkeep /* web */// web"))
+    }
 }

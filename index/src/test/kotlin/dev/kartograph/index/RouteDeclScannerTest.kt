@@ -504,4 +504,81 @@ class RouteDeclScannerTest {
         assertEquals("http", document.target)
         assertEquals(emptyList(), document.limitations)
     }
+
+    @Test
+    fun `java annotation arguments may start on the next line`() {
+        boot()
+        write("src/main/java/demo/Split.java", """
+            package demo;
+            $javaImports
+
+            @RestController
+            public class Split {
+                @GetMapping
+                ("/users/{id}")
+                public String user() { return ""; }
+            }
+        """)
+        assertEquals(setOf("GET /users/{}"), scan().keys())
+    }
+
+    @Test
+    fun `commented and catalog-only starters do not decide the web stack`() {
+        write("build.gradle.kts", """
+            plugins { id("org.springframework.boot") version "3.3.0" }
+            dependencies {
+                implementation("org.springframework.boot:spring-boot-starter-webflux")
+                // implementation("org.springframework.boot:spring-boot-starter-web")
+                /* implementation("org.springframework.boot:spring-boot-starter-web") */
+            }
+        """)
+        write("src/main/resources/application.properties", "spring.webflux.base-path=/api")
+        write("src/main/java/demo/A.java", "package demo;\n$javaImports\n@RestController public class A { @GetMapping(\"/a\") public String a() { return \"\"; } }")
+        assertEquals(setOf("GET /api/a"), scan().keys())
+
+        write("build.gradle.kts", "plugins { id(\"org.springframework.boot\") version \"3.3.0\" }\ndependencies { implementation(libs.web) }")
+        write("gradle/libs.versions.toml", "[libraries]\nweb = \"org.springframework.boot:spring-boot-starter-web\"\nflux = \"org.springframework.boot:spring-boot-starter-webflux\"")
+        val unknown = scan()
+        assertEquals("base", unknown.fact("GET /a").routeDecl!!.pathAnchor)
+        assertTrue(unknown.limitations.any { it.contains("(web stack unknown)") }, unknown.limitations.toString())
+
+        write("src/main/resources/application.properties", "spring.webflux.base-path=/api\nspring.main.web-application-type=reactive")
+        assertEquals(setOf("GET /api/a"), scan().keys())
+    }
+
+    @Test
+    fun `application modules keep their own configuration and libraries need agreement`() {
+        write("app-servlet/build.gradle.kts", "plugins { id(\"org.springframework.boot\") version \"3.3.0\" }\ndependencies { implementation(\"org.springframework.boot:spring-boot-starter-web\") }")
+        write("app-reactive/build.gradle.kts", "plugins { id(\"org.springframework.boot\") version \"3.3.0\" }\ndependencies { implementation(\"org.springframework.boot:spring-boot-starter-webflux\") }")
+        write("lib/build.gradle.kts", "")
+        write("app-reactive/src/main/resources/application.yml", "spring.webflux.base-path: /api")
+        write("app-servlet/src/main/java/demo/ServletApp.java", "package demo;\nimport org.springframework.boot.autoconfigure.SpringBootApplication;\n@SpringBootApplication public class ServletApp {}")
+        write("app-reactive/src/main/java/demo/ReactiveApp.java", "package demo;\nimport org.springframework.boot.autoconfigure.SpringBootApplication;\n@SpringBootApplication public class ReactiveApp {}")
+        write("app-servlet/src/main/java/demo/Users.java", "package demo;\n$javaImports\n@RestController public class Users { @GetMapping(\"/users\") public String a() { return \"\"; } }")
+        write("app-reactive/src/main/java/demo/Items.java", "package demo;\n$javaImports\n@RestController public class Items { @GetMapping(\"/items\") public String a() { return \"\"; } }")
+        write("lib/src/main/java/demo/Shared.java", "package demo;\n$javaImports\n@RestController public class Shared { @GetMapping(\"/shared\") public String a() { return \"\"; } }")
+        val document = scan()
+        assertEquals(setOf("GET /users", "GET /api/items", "GET /shared"), document.keys())
+        assertEquals("root", document.fact("GET /users").routeDecl!!.pathAnchor)
+        assertEquals("base", document.fact("GET /shared").routeDecl!!.pathAnchor)
+        assertTrue(document.limitations.any { it.contains("differs between application modules") }, document.limitations.toString())
+    }
+
+    @Test
+    fun `mapped classes whose controller status depends on invisible supertypes are counted`() {
+        boot()
+        write("src/main/java/demo/Maybe.java", """
+            package demo;
+            $javaImports
+            import com.vendor.VendorController;
+
+            public class Maybe extends VendorController {
+                @GetMapping("/maybe")
+                public String maybe() { return ""; }
+            }
+        """)
+        val document = scan()
+        assertTrue(document.facts.isEmpty())
+        assertTrue(document.limitations.any { it.startsWith("route-coverage: 1 class(es) declare mappings without a visible @Controller") }, document.limitations.toString())
+    }
 }

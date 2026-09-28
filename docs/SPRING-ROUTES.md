@@ -68,9 +68,11 @@ snapshot 형식은 바꾸지 않는다(어노테이션 값 보존은 계획상 c
   `spring.mvc.servlet.path`는 계약 예시대로 확정하지 못한 접두사(`base`)다.
 - WebFlux: `spring.webflux.base-path`를 붙인다. `cleanBasePath`처럼 앞 `/`를 보충하고 끝 `/`를 뗀다. context-path는
   쓰지 않는다.
-- 스택은 빌드 파일의 main 의존성 표지로 정한다(`spring-boot-starter-web`·`-webmvc`·`spring-webmvc` / `-webflux`). 테스트
-  구성(`testImplementation`, Maven `<scope>test</scope>`)은 뺀다. 둘 다면 모듈 빌드 파일, 그래도 둘 다면 Boot 기본인
-  서블릿이다. 스택을 모르는데 접두사 설정이 있으면 `base`다.
+- 스택은 `spring.main.web-application-type`이 있으면 그것이다. 없으면 빌드 파일의 main 의존성 표지로 정한다
+  (`spring-boot-starter-web`·`-webmvc`·`spring-webmvc` / `-webflux`). 주석과 테스트 구성(`testImplementation`, Maven
+  `<scope>test</scope>`)은 뺀다. 앱 모듈 빌드 파일이 한쪽만 쓰면 그것, 둘 다 쓰면 Boot 기본인 서블릿이다. 모듈 빌드 파일로
+  정하지 못하면 프로젝트 전체에서 한쪽 표지만 보일 때만 정한다 — 버전 카탈로그는 선언만 모으므로 양쪽이 다 보이면 모른다.
+  스택을 모르는데 접두사 설정이 있으면 `base`다.
 - `WebMvcConfigurer`·`WebFluxConfigurer`의 `addPathPrefix`·`setPathPrefixes`가 소스에 있으면 모든 사실을 `base`로 둔다.
 - 설정 파일: 모듈의 `src/main/resources/`, `src/main/resources/config/`, 모듈 루트, 모듈 `config/`의
   `application*.properties|yml|yaml`(뒤가 이기고 같은 위치에서는 properties가 이긴다). 키는 relaxed binding처럼 비교한다.
@@ -81,8 +83,9 @@ snapshot 형식은 바꾸지 않는다(어노테이션 값 보존은 계획상 c
 - 플레이스홀더(`${key}`·`${key:default}`, 중첩 포함): 기본 프로필 값이 있으면 그 값(다른 프로필이 재정의하면 매핑이면
   `route-coverage:`, 접두사면 `unresolved-route-prefix:`), 저장소 어디에도 없으면 기본값 + `configDefault`, 다른 프로필에만
   있거나 기본값이 없으면 dynamic + `route-coverage:`. SpEL `#{…}`은 풀지 않는다.
-- 다중 모듈: 소스 모듈에 설정이 있으면 그것, 없으면(라이브러리 모듈) 설정이 있는 모든 모듈을 후보로 보고 모두 같은 값을
-  줄 때만 쓴다. 다르면 `base`다.
+- 다중 모듈: 소스 모듈이 앱 모듈(`@SpringBootApplication` 선언이 있는 모듈)이거나 설정이 있으면 그 모듈 설정만 쓴다(설정이
+  없는 앱 모듈은 접두사가 없다). 라이브러리 모듈은 모든 앱 모듈(앱 모듈을 모르면 설정이 있는 모든 모듈)을 후보로 보고, 모든
+  후보가 같은 접두사·같은 플레이스홀더 값을 줄 때만 쓴다. 다르면 `base`와 `unresolved-route-prefix:`다.
 
 ### 프레임워크 제공 경로와 모델링하지 않은 경로
 
@@ -98,9 +101,10 @@ controller 등록, `ServletRegistrationBean`·`@WebServlet`, JAX-RS, AntPathMatc
 - 끝 세그먼트 전체 `*`(`/a/*`)는 Spring에서 빈 끝 세그먼트(`/a/`)도 받지만 `{}`는 비어 있지 않은 세그먼트만 받는다.
 - 부분 세그먼트 변수(`/files/{name}.json`)는 Spring에서 빈 캡처(`/files/.json`)도 받지만 계약의 `p{}s`는 가운데가 비어
   있지 않아야 한다.
-- 라이브러리가 선언한 stereotype·합성 매핑 어노테이션과 라이브러리 상위 타입의 매핑은 보이지 않는다(상위 타입이 모델
-  밖이면 `route-coverage: … inherit from types outside …`). `java.`·`javax.`·`jakarta.`·`kotlin.`·`org.springframework.`
-  상위 타입은 세지 않는다.
+- 라이브러리가 선언한 stereotype·합성 매핑 어노테이션과 라이브러리 상위 타입의 매핑은 보이지 않는다. controller의 상위
+  타입이 모델 밖이면 `route-coverage: … inherit from types outside …`, 매핑을 선언했지만 `@Controller`가 보이지 않고 모델 밖
+  상위 타입이 있는 class는 `route-coverage: … declare mappings without a visible @Controller …`로 센다. `java.`·`javax.`·
+  `jakarta.`·`kotlin.`·`org.springframework.` 상위 타입은 세지 않는다.
 - `@Controller` bean이 component scan 범위 안이라고 가정한다.
 
 ## 스파이크 결과
