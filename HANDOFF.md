@@ -27,6 +27,11 @@
 - **적합성 벡터:** `fixtures/isthmus-conformance/`에 `http-template.json`·`url-compose.json`과 `conformance.lock`(isthmus 커밋·sha256)을 벤더링했다. `RouteConformanceTest`가 sha256 대조 뒤 모든 생산자 케이스를 돌린다. isthmus가 벡터를 바꾸면 다시 복사하고 lock을 갱신한다.
 - **검증:** 합성 문서를 isthmus `check`로 조인해 수용을 확인했다. 비공개 도그푸딩 앱은 읽기 전용으로만 대조했고 결과는 공개 기록에 싣지 않는다(오라클 정의 지점 전부 일치, 줄 차이는 계약의 호출 시작 줄 규칙 때문).
 - **남은 범위:** `--role server`(route-decl), 파일 밖 상수, 수신자 타입 추론 없는 멤버 호출, OkHttp·Ktor 직접 호출, Java 명명 인자 없음 전제, `@file:JvmName` facade.
+- **Retrofit usr (2026-09-29, `fix/retrofit-usr`):** Retrofit 사실의 신원은 인터페이스 메서드다(`index/.../RetrofitSymbols.kt`,
+  소유 타입·이름·동사 어노테이션·매개변수 수). 하위 인터페이스로 부른 상속 추상 메서드는 `ClassFileIndexer`의
+  `inheritedInterfaceCallEdges`가 상위 선언으로 `call` 간선을 더한다. pythograph Phase 6 e2e에서 Android 주문·결제 사실에 usr가
+  붙고 역방향 순회가 저장소·ViewModel에 닿지만, isthmus trace 체인은 여전히 그 두 호출을 `unattributed-calls-omitted`로 뺀다 —
+  Retrofit 사실이 `pathAnchor: base`에 authority가 없기 때문이다(`Retrofit.Builder().baseUrl(...)` 결합 미모델링). 다음 과제다.
 
 ## 진행 중: Spring route-decl 생산자 (`routes --role server`, API 영향 Phase 4a)
 

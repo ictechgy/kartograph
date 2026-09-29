@@ -49,12 +49,23 @@ public class RouteCallScanner(
         val stats = RouteScanStats()
         val wrappersByDeclaration = declarations.map { resolveWrapper(it, files) }
         val facts = mutableListOf<BridgeFact>()
+        // Retrofit 사실은 인스턴스 신원으로 소스 선언을 찾는다 — 정렬해도 같은 인스턴스가 남는다.
+        val retrofitDeclarations = java.util.IdentityHashMap<BridgeFact, RetrofitDeclaration>()
         files.filter { includeTests || !it.isTest }.forEach { file ->
-            RouteFileScan(file, wrappersByDeclaration, stats, facts, includeTests).run()
+            RouteFileScan(file, wrappersByDeclaration, stats, facts, includeTests, retrofitDeclarations).run()
         }
+        val retrofitSymbols = graph?.takeIf { retrofitDeclarations.isNotEmpty() }?.let(::RetrofitSymbolIndex)
         val ordered = facts.sortedWith(
             compareBy({ it.location.path }, { it.location.line }, { it.location.column }, { it.channel.orEmpty() }, { it.method.orEmpty() }),
-        ).map { fact -> graph?.let { attachSnapshotSymbol(fact, it, projectRoot) } ?: fact }
+        ).map { fact ->
+            val declaration = retrofitDeclarations[fact]
+            when {
+                graph == null -> fact
+                // 추상 서비스 메서드는 줄 번호가 없어 위치 기반 부착이 닿지 않는다. 선언 신원으로만 찾는다.
+                declaration != null -> retrofitSymbols?.attach(fact, declaration) ?: fact
+                else -> attachSnapshotSymbol(fact, graph, projectRoot)
+            }
+        }
         return BridgeFactsDocument(
             generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
             sourceModifiedAt = files.maxOfOrNull { Files.getLastModifiedTime(root.resolve(it.relative)).toInstant() }
@@ -218,6 +229,7 @@ private class RouteFileScan(
     private val stats: RouteScanStats,
     private val facts: MutableList<BridgeFact>,
     private val includeTests: Boolean,
+    private val retrofitDeclarations: MutableMap<BridgeFact, RetrofitDeclaration>,
 ) {
     private val resolver = RoutePathResolver(file)
 
@@ -509,8 +521,14 @@ private class RouteFileScan(
         val signature = retrofitSignature(if (close > 0) close + 1 else afterName) ?: return
         val composed = if (signature.usesUrl || pathText == null) ComposedRoute(template = null, dynamic = true)
         else retrofitRoute(pathText, match.range.first, signature.encodedPathNames)
-        val qualifiedName = (listOf(file.packageName).filter { it.isNotEmpty() } + file.enclosingTypes(match.range.first).map { it.name } + signature.name).joinToString(".")
+        val types = file.enclosingTypes(match.range.first).map { it.name }
+        val qualifiedName = (listOf(file.packageName).filter { it.isNotEmpty() } + types + signature.name).joinToString(".")
         emit(match.range.first, method, composed, pathText.takeUnless { signature.usesUrl }, service = null, fallbackAnchor = "base", symbolName = qualifiedName)
+        // 감싸는 타입이 없으면(최상위 함수) Retrofit 서비스 메서드가 아니라 JVM 신원을 찾지 않는다.
+        if (types.isNotEmpty()) {
+            val owner = (listOf(file.packageName.replace('.', '/')).filter { it.isNotEmpty() } + types.joinToString("$")).joinToString("/")
+            retrofitDeclarations[facts.last()] = RetrofitDeclaration(owner, signature.name, verbName, signature.parameterCount)
+        }
     }
 
     /** 어노테이션 인자 하나다. Java·Kotlin 모두 `name = value`면 명명 요소다. */
@@ -530,8 +548,9 @@ private class RouteFileScan(
      *
      * @property usesUrl `@Url` 매개변수가 있어 URL 전체가 실행 시점 값이다
      * @property encodedPathNames `@Path(encoded = true)`인 매개변수 이름이다. 값의 `/`가 인코딩되지 않아 여러 세그먼트가 될 수 있다
+     * @property parameterCount 소스 매개변수 수다. 같은 이름·동사의 overload를 snapshot 정점과 가르는 데 쓴다
      */
-    private data class RetrofitSignature(val name: String, val usesUrl: Boolean, val encodedPathNames: Set<String>)
+    private data class RetrofitSignature(val name: String, val usesUrl: Boolean, val encodedPathNames: Set<String>, val parameterCount: Int)
 
     /** 어노테이션 뒤 첫 함수의 이름과 매개변수 어노테이션이다. 함수가 없으면 null이다. */
     private fun retrofitSignature(from: Int): RetrofitSignature? {
@@ -542,7 +561,7 @@ private class RouteFileScan(
         val open = header.range.last
         val close = balancedEnd(file.code, open).takeIf { it > open } ?: return null
         val usesUrl = callArguments(file.code, open, close).any { URL_PARAMETER.containsMatchIn(it) }
-        return RetrofitSignature(header.groupValues[1], usesUrl, encodedPathNames(open, close))
+        return RetrofitSignature(header.groupValues[1], usesUrl, encodedPathNames(open, close), parameterCount(file.masked, open, close))
     }
 
     /** 매개변수 목록 `(`…`)`에서 `@Path(… encoded = true)`의 이름을 모은다. 이름을 증명하지 못한 인코딩 매개변수는 `*`다. */

@@ -183,6 +183,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
             nodes = classFacts.flatMap(ClassFacts::nodes),
             edges = classFacts.flatMap(ClassFacts::edges) +
                 projectOverrideEdges(classFacts) +
+                inheritedInterfaceCallEdges(classFacts) +
                 frameworkCallbackEdges(classFacts) +
                 enclosingContainerEdges(classFacts),
             externalCalls = classFacts.flatMap(ClassFacts::calls),
@@ -732,6 +733,43 @@ private fun projectOverrideEdges(classFacts: List<ClassFacts>): List<GraphEdge> 
         }
     }
 }
+
+/**
+ * 하위 인터페이스를 수신 타입으로 부른 상속 추상 메서드를 JVM 해석 결과인 선언으로 잇는다.
+ *
+ * `invokeinterface Sub.m`의 `Sub`가 `m`을 선언하지 않으면 `Sub#m` 정점이 없어 CALL 간선이 사라진다. dispatch 모델은
+ * 구현 후보만 잇고 추상 선언 자신은 잇지 않으므로, 상위 인터페이스의 추상 선언(예: Retrofit 서비스 메서드)에서 역방향
+ * 순회가 이 호출자에 닿지 못한다. JVM 인터페이스 메서드 해석(JVMS §5.4.3.4)이 고르는 최대 특수 상위 인터페이스
+ * 선언으로 CALL 간선을 더해, 선언 타입으로 부른 것과 같은 간선을 만든다. 추상 선언만 잇는다 — default 메서드는
+ * dispatch 모델이 이미 후보로 잇는다. 외부 호출 사실은 그대로 두어 실행 대상 해석(`external-dispatch`)은 바뀌지 않는다.
+ * `java/lang/Object` 공개 메서드는 인터페이스 해석이 Object를 먼저 고르므로 제외한다.
+ */
+private fun inheritedInterfaceCallEdges(classFacts: List<ClassFacts>): List<GraphEdge> {
+    val factsByName = classFacts.associateBy(ClassFacts::internalName)
+    val typeNodes = classFacts.mapNotNull { facts -> facts.nodes.firstOrNull { it.id == JvmNodeId.classId(facts.internalName) } }
+        .associateBy { it.id.value.removePrefix("class:") }
+    val methods = classFacts.flatMap(ClassFacts::nodes).associateBy(GraphNode::id)
+    val ancestors = mutableMapOf<String, Set<String>>()
+    fun ancestorsOf(name: String): Set<String> = ancestors.getOrPut(name) { factsByName[name]?.projectSupertypes(factsByName).orEmpty() }
+    return classFacts.flatMap(ClassFacts::calls).mapNotNull { call ->
+        if (call.kind != InvocationKind.INTERFACE || typeNodes[call.owner]?.kind != NodeKind.INTERFACE || call.target in methods ||
+            call.name + call.descriptor in OBJECT_PUBLIC_METHODS) return@mapNotNull null
+        val declarations = ancestorsOf(call.owner).mapNotNull { owner ->
+            methods[JvmNodeId.methodId(owner, call.name, call.descriptor)]?.takeIf(GraphNode::isOverrideCandidate)
+        }
+        val owners = declarations.map { it.id.value.removePrefix("method:").substringBefore('#') }
+        // 다른 후보의 상위 인터페이스인 선언은 가려진다(최대 특수 선언만 남긴다).
+        val specific = declarations.filterIndexed { index, _ -> owners.none { other -> owners[index] in ancestorsOf(other) } }
+        specific.filter { JvmModifier.ABSTRACT in it.jvmModifiers }.takeIf { it.size == specific.size }
+            ?.map { declaration -> GraphEdge(call.caller, declaration.id, EdgeKind.CALL) }
+    }.flatten()
+}
+
+/** 인터페이스 메서드 해석이 상위 인터페이스보다 먼저 고르는 `java/lang/Object` 공개 인스턴스 메서드다. */
+private val OBJECT_PUBLIC_METHODS = setOf(
+    "equals(Ljava/lang/Object;)Z", "hashCode()I", "toString()Ljava/lang/String;", "getClass()Ljava/lang/Class;",
+    "notify()V", "notifyAll()V", "wait()V", "wait(J)V", "wait(JI)V",
+)
 
 private fun frameworkCallbackEdges(classFacts: List<ClassFacts>): List<GraphEdge> {
     val factsByName = classFacts.associateBy(ClassFacts::internalName)
