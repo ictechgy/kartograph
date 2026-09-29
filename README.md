@@ -278,9 +278,14 @@ isthmus http domain. Each `route-call` fact carries the HTTP method (or `methodD
 path template (or a `dynamic` fact with a proven `channelPrefix`), `pathAnchor`, and the location of the
 call expression. It recognizes calls of wrappers declared in an isthmus `http-wrappers` v1 file (only
 `"language": "kotlin"` entries), `java.net.URL` requests opened in the same function with a provable path
-and method, and Retrofit verb annotations (`@Url` is dynamic). String resolution covers literals, same-file
-constants, Kotlin templates whose interpolation fills a whole segment, and query tails (a literal `?`, or a
-trailing local proven to start with `?`). Literal URLs lose userinfo, query and fragment, and high-entropy
+and method, and Retrofit verb annotations in Kotlin and Java (named elements, `@HTTP`, fully qualified
+`@retrofit2.http.*`). Retrofit paths follow RFC 3986 resolution as OkHttp applies it: `/x` is root, `x` is relative
+to the base URL, and `.`/`..` segments are removed; `@Url`, `@Path(encoded = true)`, a `..` above the unknown base
+path, and constants declared in another file stay dynamic. The templates agree with the requests Retrofit 2.12.0
+sent to OkHttp MockWebServer for a synthetic service corpus
+([experiments/phase4-retrofit](experiments/phase4-retrofit/README.md)). String resolution covers literals,
+same-file constants (including Java interface fields), Kotlin templates whose interpolation fills a whole segment,
+and query tails (a literal `?`, or a trailing local proven to start with `?`). Literal URLs lose userinfo, query and fragment, and high-entropy
 or webhook segments are masked. Test source sets are excluded unless `--include-tests` marks those facts
 `testSource`. Other clients (OkHttp, Ktor, …), stale wrapper declarations, and undeclared sinks surface as
 limitations instead of guessed facts.

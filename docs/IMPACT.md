@@ -570,6 +570,43 @@ class 정점은 다시 그 class를 가리키는 모든 `reference` 간선의 so
   roots·depth·evidence·via·한계 수를 대조하고, `member-only` 결과가 `all`의 부분집합인지 확인한다.
 - `graphRevision`은 그래프 내용의 해시이므로 `--class-hops`와 무관하게 같다(`--dispatch`와 같다).
 
+### 정방향·역방향 대칭성 (`reach` ↔ `impact`)
+
+API 영향 계획 Phase 4의 종료 조건 "같은 스냅샷에서 `reach(H) ∋ U ⇔ impact(U) ∋ H`"를 옵션 조합별로 확인했다. 여기서
+`reach(H)`는 root H 하나의 `reach` 목록, `impact(U)`는 root U 하나의 `impact --format language-traversal` 목록이다.
+두 목록 모두 root 자신은 싣지 않는다.
+
+| 조건 | 관계 |
+|---|---|
+| 따르는 콜백 간선이 없다(`--dispatch direct`, 콜백 사실이 없는 옛 snapshot, 콜백 흐름이 없는 그래프) | 모든 `--class-hops`에서 정확한 전치다. 같은 쌍의 `depth`·`evidence`도 같다 |
+| `--dispatch bound`·`candidates`(기본)·`all`이고 콜백 간선이 있다 | `U ∈ reach(H) ⇒ H ∈ impact(U)`는 늘 성립한다. 반대 방향은 콜백 문맥만큼 넓다(아래 등식) |
+| `--depth`로 목록을 자른다 | 같은 경로 길이로 자르므로 위 두 줄이 그대로다. `--max-reached`로 잘리면(`reached-limit:`) 대칭을 주장하지 않는다 |
+| 테스트 소스 | root가 범위를 정한다. `--include-tests`거나 H·U가 모두 production이면 같은 그래프라 위 결론이 그대로다 |
+
+콜백 간선이 있을 때 역방향은 정확히 다음과 같다(→cb는 따르는 등급의 콜백 간선, G가 받은 람다 본문 B를 부른다).
+
+```text
+impact(U) = { H | U ∈ reach(H) } ∪ { G | G →cb+ B 이고 (B = U 또는 U ∈ reach(B)) } − { U }
+```
+
+- **왜 설계상 비대칭인가**: 콜백 간선은 호출 문맥 안에서만 참이다. 역방향은 람다 본문의 변경이 그 람다를 부르는
+  함수 G에 닿는다고 싣되 G의 다른 호출자로 퍼뜨리지 않는다([콜백 흐름](#콜백-흐름-callback)). 정방향은 G에서 G가 받을 수
+  있는 모든 람다 본문으로 퍼지지 않는다 — 그러면 다른 화면이 넘긴 람다까지 문맥 없이 닿는다. 람다를 만든 함수에서 본문으로
+  가는 길은 어휘적 소속(`contains`)이 양방향으로 같이 잇는다. 그래서 늘어나는 쌍은 "콜백 사슬로 본문을 부르는 G"뿐이다.
+- **`--class-hops member-only`는 대칭을 깨지 않는다**: 막는 경로 모양이 원래 간선 방향으로 `TYPE_REFERENCE ∘ 상속* ∘
+  OWNER_CALLBACK`(같은 class 정점에서 만나는 두 hop) 하나이고, 정방향은 앞에서, 역방향은 뒤에서 같은 모양을 막는다.
+  콜백 간선은 진입 상태의 본문에서도 호출자 그림자로 이어지므로 위 등식에서 `reach(B)`는 같은 `--class-hops`의 정방향이다.
+- **테스트 소스는 root가 정하는 범위다**: 기본 순회는 root가 테스트 선언일 때만 전체 그래프를 쓴다. 그래서 테스트 t가
+  production p를 부르면 `p ∈ reach(t)`(전체 그래프)지만 `t ∉ impact(p)`(production 부분 그래프)다. 반대로 production 호출이
+  테스트 fake 구현에 dispatch 후보로 닿으면 `p ∈ impact(fake)`지만 `fake ∉ reach(p)`다. 둘 다 "테스트 소스는 별도
+  프로그램" 정책([테스트 소스](#테스트-소스---include-tests))대로이며, 같은 프로그램에서 비교하려면 `--include-tests`를 쓴다.
+- **검증**: analysis `TraversalSymmetryTest`가 무작위 그래프 300개 × `--dispatch` 4 × `--class-hops` 2에서 모든 정점 쌍의
+  전치(depth·evidence 포함)를, 무작위 콜백 간선을 더한 그래프 300개에서 위 등식을 한 root 순회끼리 대조한다. 표본이 실제로
+  `member-only` 좁힘과 콜백 문맥 쌍을 담는지도 확인한다. cli `TraversalSymmetrySelfTest`는 kartograph 자신의 컴파일 그래프
+  (정점 11,745개, 콜백 간선 176개)에서 `direct`·`candidates`·`all` × `all`·`member-only` 표본 쌍 373,161개(정방향 양성
+  178,878개, 콜백 문맥으로만 역방향에 있는 쌍 1,622개)가 등식을 따르고 `direct`가 정확한 전치임을 확인한다. 의도하지 않은
+  비대칭은 찾지 못했다.
+
 ### 잇지 못한 호출 (`unresolvedCalls`)
 
 문서는 항상 `dispatch`를 실으므로 모든 정점의 `evidence`와 잇지 못한 호출을 완전히 신고한다는 선언이다.

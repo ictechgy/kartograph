@@ -20,6 +20,7 @@
 - `runtime-contracts/`: DroidBench 패턴의 Java 실행·정적 후보·R8 결과를 `Scripts/verify-runtime-contracts.py`로 대조한다.
 - `bridge-corpus/`: `Scripts/verify-agent-surface.sh`로 query/bridge JSON의 실제 parser 계약을 확인한다.
 - `spring-routes-corpus/`: 실제 Spring Boot 실행으로 기록한 `/actuator/mappings`와 합성 앱 소스다. index의 `SpringRouteCorpusTest`가 대조한다.
+- `retrofit-corpus/`: Retrofit 합성 서비스와 OkHttp MockWebServer가 기록한 요청이다. cli의 `RetrofitOracleTest`가 `routes --role client` 템플릿과 대조한다.
 - 실제 Room/Moshi KSP 입력은 [RoomFixtures.kt](false-positive-corpus/app/src/main/kotlin/dev/kartograph/fixture/RoomFixtures.kt)와 [MoshiFixtures.kt](false-positive-corpus/app/src/main/kotlin/dev/kartograph/fixture/MoshiFixtures.kt)다. Android verifier가 빌드하며 생성물을 직접 편집하지 않는다. 실제 Hilt 표본은 [공개 검증 재현 절차](../docs/PUBLIC-VALIDATION.md)를 따른다.
 
 명령은 저장소 루트에서 실행한다. SDK/JDK/의존성을 준비할 수 없으면 이유와 재현 명령을 남기고 검증 완료로 표시하지 않는다.
