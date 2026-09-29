@@ -8,6 +8,7 @@ import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
 import dev.kartograph.core.RouteCallEvidence
 import dev.kartograph.core.RouteDeclEvidence
+import dev.kartograph.core.RouteLimitationScope
 import dev.kartograph.core.SourceLocation
 
 /** 에이전트 교환 문서를 결정적인 키 순서의 JSON으로 렌더링한다. */
@@ -41,7 +42,9 @@ public object AgentDocumentRenderer {
         put("format", document.format)
         put("generatedAt", document.generatedAt)
         document.sourceModifiedAt?.let { put("sourceModifiedAt", it) }
-        put("limitations", document.limitations.sorted())
+        val limitations = document.limitations.sorted()
+        put("limitations", limitations)
+        limitationScopes(limitations, document.limitationScopes).takeIf { it.isNotEmpty() }?.let { put("limitationScopes", it) }
         put("platform", document.platform)
         put("project", document.project)
         document.roles?.let { put("roles", it) }
@@ -52,6 +55,27 @@ public object AgentDocumentRenderer {
         put("version", document.version)
         document.transport?.let { put("transport", it) }
     }.toSortedMap()) + "\n"
+
+    /**
+     * 문구로 가리킨 스코프를 정렬된 `limitations`의 인덱스로 바꾼다. 원소는 중복을 빼고 문자열 순으로 정규화한다(isthmus도
+     * 같은 정규화를 한다). 스코프는 한계 하나를 좁히므로, 가리킨 문구가 없거나 둘 이상이면 어느 공백을 좁히는지 정할 수 없어
+     * 조립 오류로 실패한다 — 다른 한계를 잘못 좁혀 거짓 error를 만드는 것보다 낫다.
+     */
+    private fun limitationScopes(limitations: List<String>, scopes: List<RouteLimitationScope>): List<Map<String, Any?>> =
+        scopes.map { scope ->
+            val index = limitations.indexOf(scope.limitation)
+            check(index >= 0 && limitations.lastIndexOf(scope.limitation) == index) {
+                "a limitation scope must name exactly one limitation of the document"
+            }
+            buildMap<String, Any?> {
+                put("limitationIndex", index)
+                scope.templates.takeIf { it.isNotEmpty() }?.let { put("templates", it.distinct().sorted()) }
+                scope.templatePrefixes.takeIf { it.isNotEmpty() }?.let { put("templatePrefixes", it.distinct().sorted()) }
+                scope.templateSuffixes.takeIf { it.isNotEmpty() }?.let { put("templateSuffixes", it.distinct().sorted()) }
+                scope.methods.takeIf { it.isNotEmpty() }?.let { put("methods", it.distinct().sorted()) }
+            }.toSortedMap()
+        }.also { rendered -> check(rendered.map { it["limitationIndex"] }.distinct().size == rendered.size) { "one scope per limitation" } }
+            .sortedBy { it["limitationIndex"] as Int }
 
     private fun SymbolQueryResult.toJsonValue(): Map<String, Any?> = buildMap<String, Any?> {
         declaredIn?.let { put("declaredIn", it.toJsonValue()) }

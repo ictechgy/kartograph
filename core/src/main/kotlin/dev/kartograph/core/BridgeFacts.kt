@@ -29,6 +29,12 @@ public data class BridgeFactsDocument(
      * 고르므로 서버 문서는 항상 `specificity`를 싣는다. 클라이언트 문서에는 싣지 않는다.
      */
     val dispatch: String? = null,
+    /**
+     * http 문서의 limitation 스코프다. 항목은 [limitations]의 문구를 가리키고, 렌더러가 정렬된 `limitations`의 인덱스로
+     * 바꾼다 — 문서를 조립하는 쪽이 한계를 더하거나 정렬해도 스코프가 다른 한계를 가리키지 않게 하기 위해서다.
+     * 스코프가 없는 한계는 문서 전체에 적용된다.
+     */
+    val limitationScopes: List<RouteLimitationScope> = emptyList(),
 )
 
 /** 교환 문서의 생산 도구 식별자다. */
