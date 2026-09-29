@@ -285,6 +285,9 @@ access)을 빌드·설정 파일에서 감지한 Hibernate 명명 전략으로 �
 웹훅 세그먼트는 가립니다. 테스트 소스 세트는 `--include-tests`가 없으면 제외하고, 주면 `testSource`로
 표시합니다. 그 밖의 클라이언트(OkHttp, Ktor 등), 낡은 래퍼 선언, 선언되지 않은 싱크는 추측한 사실 대신
 limitation으로 남깁니다.
+`--graph-file`이 있으면 Retrofit 사실의 `symbol.usr`는 어노테이션을 선언한 서비스 인터페이스 메서드입니다(상속 메서드는 그것을
+선언한 상위 인터페이스). 호출 지점이 이 메서드를 부르므로 역방향 순회(`impact --format language-traversal --roots-from`)가
+하위 인터페이스로 부른 호출을 포함해 모든 호출자에 닿습니다.
 JVM 신원을 붙이지 못한 사실은 `missing-route-usrs:`로 세고, source 경로에서 드러나면 snapshot과 routes의
 `--project` 불일치를 밝힙니다.
 

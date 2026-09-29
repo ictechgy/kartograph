@@ -291,6 +291,9 @@ and query tails (a literal `?`, or a trailing local proven to start with `?`). L
 or webhook segments are masked. Test source sets are excluded unless `--include-tests` marks those facts
 `testSource`. Other clients (OkHttp, Ktor, …), stale wrapper declarations, and undeclared sinks surface as
 limitations instead of guessed facts.
+With `--graph-file`, a Retrofit fact's `symbol.usr` is the service interface method that declares the annotation
+(for an inherited method, the super-interface that declares it). Call sites invoke that method, so reverse traversal
+(`impact --format language-traversal --roots-from`) reaches every caller, including calls through a sub-interface.
 Facts left without a JVM identity are counted by `missing-route-usrs:`, which names a snapshot/routes
 `--project` root mismatch when the source paths show one.
 

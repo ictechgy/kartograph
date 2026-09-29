@@ -211,6 +211,22 @@
   `TraversalSymmetrySelfTest`(kartograph 자신의 컴파일 그래프 표본 373,161쌍)로 고정했다. 의도하지 않은 비대칭은 없었다.
   규칙은 [IMPACT](docs/IMPACT.md#정방향역방향-대칭성-reach--impact)다.
 
+### Retrofit route-call 신원 (Fixed)
+
+- Fixed: `routes --role client --graph-file`이 Retrofit route-call 사실에 `symbol.usr`를 붙이지 못하던 문제. 서비스 메서드는
+  추상이라 bytecode에 줄 번호가 없고 사실 위치는 어노테이션 줄이어서 위치 기반 부착이 어떤 정점도 찾지 못했고,
+  `missing-route-usrs:`만 남아 isthmus trace가 Android 주문·결제 호출에서 클라이언트 심볼로 이어지지 못했다. 이제 소스에서
+  복원한 소유 타입(중첩은 `$`)·이름·동사 어노테이션으로 snapshot 정점을 찾고, 같은 이름·동사의 overload는 매개변수 수
+  (`suspend`의 `Continuation` 제외)로 가른다. 신원은 인터페이스 메서드 자신이다 — 호출 지점이 이를 `invokeinterface`로 부르므로
+  역방향 순회가 저장소·ViewModel까지 닿고, 같은 엔드포인트의 호출 지점이 여럿이어도 사실 하나로 덮는다.
+- Fixed: 하위 인터페이스를 수신 타입으로 부른 상속 추상 메서드(`invokeinterface Sub.m`, `m`은 상위 인터페이스 선언)의 호출
+  간선이 그래프에서 사라지던 문제. `Sub#m` 정점이 없어 간선이 버려지고 dispatch 모델은 구현 후보만 이어, 상위 선언(상속
+  Retrofit 메서드의 usr)에서 역방향 순회가 호출자에 닿지 못했다. snapshot이 JVM 인터페이스 메서드 해석(JVMS §5.4.3.4)의 최대
+  특수 추상 선언으로 `call` 간선을 더한다. default 메서드·`java/lang/Object` 메서드·class 수신 타입은 바꾸지 않고 외부 호출
+  해석(`external-dispatch`)도 그대로다.
+- Kotlin(suspend·`@HTTP`·기본 인자·overload·중첩·상속)과 Java 서비스의 실제 바이트코드로 usr와 역방향 도달을 index
+  `RetrofitSymbolTest`·`InheritedInterfaceCallTest`, cli `RoutesCliTest`에 고정했다.
+
 ## [0.17.0] - 2026-09-24
 
 ### Added

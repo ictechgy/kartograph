@@ -137,6 +137,13 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 - `routes --graph-file`이 사실에 JVM 신원을 붙이지 못하면 `missing-route-usrs:`로 수를 세고, source 경로가 공통 접두사만큼
   어긋나면 snapshot과 routes의 `--project` 불일치(`project-root-mismatch:`)를 밝힌다. 경로 비교로 찾지 못하는 원인은
   일반 문구로만 남는다.
+- Retrofit 사실의 신원은 소스에서 복원한 소유 타입·메서드 이름·동사 어노테이션이 같고 같은 파일 경로에 있는 snapshot 정점이
+  하나일 때만 붙는다. 같은 이름·동사의 overload는 소스 매개변수 수로 가르고, 그래도 여럿이면 신원을 붙이지 않는다. 값 class
+  매개변수로 바뀐 JVM 이름(`name-<hash>`)은 같은 선언으로 본다. 하위 인터페이스를 수신 타입으로 부른
+  상속 추상 메서드에는 JVM 인터페이스 메서드 해석이 고르는 선언으로 `call` 간선을 더한다. 수신 타입이 인터페이스일 때만이고
+  (추상 class 사슬은 dispatch 모델만 따른다), 선언과 호출이 같은 snapshot에 있어야 한다 — 모듈별 snapshot을 `snapshot merge`로
+  합치면 다른 모듈의 상위 인터페이스로 가는 간선은 생기지 않는다. 이 간선은 선언 정점에서 모든 override로 퍼지므로 정방향
+  순회가 수신 타입의 하위가 아닌 구현까지 넓게 닿을 수 있다. 실행 대상 해석(`external-dispatch`)은 바꾸지 않는다.
 - `routes --role server`는 어노테이션 controller만 읽는다. 함수형 라우터·view controller·서블릿 등록·JAX-RS는 사실 없이
   `route-coverage:`로, 프레임워크 제공 경로는 `framework-provided-routes:`로만 알린다. 제공 경로의 스코프는 상한을 증명한
   제공자(오류 컨트롤러·welcome page·정적 리소스·actuator·springdoc·H2 console)에만 붙고, 정적 리소스 위치는 열거하지 않아

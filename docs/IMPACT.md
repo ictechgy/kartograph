@@ -377,6 +377,10 @@ kartograph reach <usr>... --graph-file graph.json --project .
   `symbol.usr`와 같은 문자열이다. `--roots-from`은 JSON 문자열 배열이나 bridge-facts 문서를 받는다. bridge-facts면
   사실의 `symbol.usr`를 문서 순서대로 중복 없이 root로 쓴다. 해석하지 못한 root는 원문을 id로 두고 `symbol` 없이 싣고
   `root-not-found:`와 `truncationReasons: ["root-not-found"]`를 단다(종료 코드 64, 문서는 출력한다).
+- **Retrofit 신원**: Retrofit route-call 사실의 `symbol.usr`는 호출 지점을 감싼 함수가 아니라 어노테이션을 선언한 서비스
+  인터페이스 메서드다. 호출 지점은 이 메서드를 `invokeinterface`로 부르므로 역방향 순회가 `call` 간선을 따라 모든 호출자에
+  닿고, 선언 하나에 호출 지점이 여럿이어도 root 하나로 덮는다. 하위 인터페이스를 수신 타입으로 부른 상속 메서드는 그 하위
+  타입에 정점이 없으므로 snapshot이 JVM 인터페이스 메서드 해석이 고르는 상위 선언으로 `call` 간선(`direct`)을 더한다.
 - **`project`**: `--project`의 realpath다. isthmus는 모든 문서의 project가 같아야 조인하므로 `routes`와 같은 root를 준다.
   `--generated-at`을 주면 같은 입력에서 바이트가 같은 문서를 낸다.
 - **`revision`**: `--revision <rev>`를 주면 그 값이다. 없으면 snapshot의 commit 라벨(`snapshot --revision`)이고, 그것도
