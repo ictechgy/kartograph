@@ -21,6 +21,8 @@ import java.time.Instant
  *
  * 지원 표면은 증거가 있는 것으로 한정한다 — 사용자가 `http-wrappers` v1로 선언한 래퍼 호출,
  * `java.net.URL` + `HttpURLConnection`(또는 `openStream`·`readText`) 요청, Retrofit 동사 어노테이션.
+ * Retrofit 사실은 서비스를 만든 `create` 호출의 `baseUrl`을 따라가([RetrofitBaseIndex]) 리터럴이면 authority와 base 경로를
+ * 결합한 root 템플릿을, 풀지 못하면 base 앵커와 인스턴스 선언의 `baseRef`를 낸다.
  * 그 밖의 클라이언트(OkHttp·Ktor 등)는 지원한다고 주장하지 않고 `route-call-coverage:`로 센다.
  * 경로·동사를 증명하지 못한 호출은 버리지 않고 dynamic·`methodDynamic`과 limitation으로 남긴다.
  *
@@ -49,14 +51,20 @@ public class RouteCallScanner(
         val stats = RouteScanStats()
         val wrappersByDeclaration = declarations.map { resolveWrapper(it, files) }
         val facts = mutableListOf<BridgeFact>()
+        val scanned = files.filter { includeTests || !it.isTest }
+        val retrofitBases = RetrofitBaseIndex(scanned, BuildConfigFields(root))
         // Retrofit 사실은 인스턴스 신원으로 소스 선언을 찾는다 — 정렬해도 같은 인스턴스가 남는다.
         val retrofitDeclarations = java.util.IdentityHashMap<BridgeFact, RetrofitDeclaration>()
-        files.filter { includeTests || !it.isTest }.forEach { file ->
-            RouteFileScan(file, wrappersByDeclaration, stats, facts, includeTests, retrofitDeclarations).run()
+        scanned.forEach { file ->
+            RouteFileScan(file, wrappersByDeclaration, stats, facts, includeTests, retrofitDeclarations, retrofitBases).run()
         }
+        stats.urlRewriters = retrofitBases.urlRewriters
         val retrofitSymbols = graph?.takeIf { retrofitDeclarations.isNotEmpty() }?.let(::RetrofitSymbolIndex)
         val ordered = facts.sortedWith(
-            compareBy({ it.location.path }, { it.location.line }, { it.location.column }, { it.channel.orEmpty() }, { it.method.orEmpty() }),
+            compareBy(
+                { it.location.path }, { it.location.line }, { it.location.column }, { it.channel.orEmpty() }, { it.method.orEmpty() },
+                { it.route?.authority.orEmpty() }, { it.route?.baseRef.orEmpty() },
+            ),
         ).map { fact ->
             val declaration = retrofitDeclarations[fact]
             when {
@@ -139,6 +147,15 @@ public class RouteCallScanner(
         if (stats.ambiguousJoins > 0) add(
             "ambiguous-base-join: ${stats.ambiguousJoins} call(s) join an unresolved base URL with a relative path; their templates are dynamic",
         )
+        if (stats.unresolvedRetrofitServices.isNotEmpty()) add(
+            "unresolved-base-url: ${stats.unresolvedRetrofitServices.size} Retrofit service interface(s) have calls whose baseUrl was not " +
+                "resolved statically (no production create site, a runtime value, an ambiguous DI binding or a rewriting interceptor); " +
+                "those facts carry no authority and relative paths keep pathAnchor base",
+        )
+        if (stats.urlRewriters > 0) add(
+            "url-rewrite-interceptors: ${stats.urlRewriters} OkHttp interceptor request rewrite(s) (newBuilder().url/host/path) may " +
+                "change where requests go; Retrofit baseUrls were not applied",
+        )
         val unmodeled = files.count { file ->
             (includeTests || !file.isTest) && file.imports.any(::importsUnmodeledClient) &&
                 wrappers.none { wrapper -> declaresWrapper(file, wrapper) }
@@ -218,6 +235,12 @@ internal class ResolvedWrapper(
 internal class RouteScanStats {
     var undeclaredSinks = 0
     var ambiguousJoins = 0
+
+    /** base를 풀지 못한 결합으로 사실을 낸 Retrofit 서비스 FQN이다(`unresolved-base-url:`). */
+    val unresolvedRetrofitServices: MutableSet<String> = sortedSetOf()
+
+    /** URL을 바꾸는 OkHttp 인터셉터 호출 수다(`url-rewrite-interceptors:`). */
+    var urlRewriters = 0
 }
 
 /**
@@ -230,6 +253,7 @@ private class RouteFileScan(
     private val facts: MutableList<BridgeFact>,
     private val includeTests: Boolean,
     private val retrofitDeclarations: MutableMap<BridgeFact, RetrofitDeclaration>,
+    private val retrofitBases: RetrofitBaseIndex,
 ) {
     private val resolver = RoutePathResolver(file)
 
@@ -519,16 +543,50 @@ private class RouteFileScan(
         val pathText = if (verbName == "HTTP") arguments.firstOrNull { it.label == "path" }?.text ?: arguments.getOrNull(1)?.takeIf { it.label == null }?.text
         else arguments.firstOrNull { it.label == "value" }?.text ?: arguments.firstOrNull { it.label == null }?.text
         val signature = retrofitSignature(if (close > 0) close + 1 else afterName) ?: return
-        val composed = if (signature.usesUrl || pathText == null) ComposedRoute(template = null, dynamic = true)
-        else retrofitRoute(pathText, match.range.first, signature.encodedPathNames)
-        val types = file.enclosingTypes(match.range.first).map { it.name }
-        val qualifiedName = (listOf(file.packageName).filter { it.isNotEmpty() } + types + signature.name).joinToString(".")
-        emit(match.range.first, method, composed, pathText.takeUnless { signature.usesUrl }, service = null, fallbackAnchor = "base", symbolName = qualifiedName)
-        // 감싸는 타입이 없으면(최상위 함수) Retrofit 서비스 메서드가 아니라 JVM 신원을 찾지 않는다.
-        if (types.isNotEmpty()) {
-            val owner = (listOf(file.packageName.replace('.', '/')).filter { it.isNotEmpty() } + types.joinToString("$")).joinToString("/")
-            retrofitDeclarations[facts.last()] = RetrofitDeclaration(owner, signature.name, verbName, signature.parameterCount)
+        val types = file.enclosingTypes(match.range.first)
+        val qualifiedName = (listOf(file.packageName).filter { it.isNotEmpty() } + types.map { it.name } + signature.name).joinToString(".")
+        val service = types.lastOrNull()?.let { typeFqn(file, it) }
+        val routes = if (signature.usesUrl || pathText == null) listOf(ComposedRoute(template = null, dynamic = true) to null)
+        else retrofitVariants(pathText, match.range.first, signature.encodedPathNames, service)
+        routes.forEach { (composed, baseRef) ->
+            emit(
+                match.range.first, method, composed, pathText.takeUnless { signature.usesUrl }, service = null, fallbackAnchor = "base",
+                symbolName = qualifiedName, baseRef = baseRef,
+            )
+            // 감싸는 타입이 없으면(최상위 함수) Retrofit 서비스 메서드가 아니라 JVM 신원을 찾지 않는다.
+            if (types.isNotEmpty()) {
+                val owner = (listOf(file.packageName.replace('.', '/')).filter { it.isNotEmpty() } + types.joinToString("$") { it.name }).joinToString("/")
+                retrofitDeclarations[facts.last()] = RetrofitDeclaration(owner, signature.name, verbName, signature.parameterCount)
+            }
         }
+    }
+
+    /**
+     * 서비스 [service]를 만든 결합마다 경로를 base와 결합한 (템플릿, baseRef) 목록이다.
+     *
+     * 전체 URL·network-path 어노테이션과 뿌리부터 모르는 경로는 base와 무관해 하나만 낸다. 결합을 찾지 못하면 base 앵커 하나다.
+     * 리터럴 base면 `/x`는 그 host의 root 그대로, 상대 경로는 base 경로 뒤에 RFC 3986으로 붙인 root 템플릿이다. 같은 결과를 내는
+     * 결합은 하나로 합치고, 인스턴스가 여럿이면 `baseRef`를 싣지 않는다(authority가 귀속을 맡는다). base를 모르는 결합은
+     * 인스턴스(`baseRef`)마다 하나씩 낸다 — 서로 다른 인스턴스는 서로 다른 link로 귀속될 수 있기 때문이다.
+     */
+    private fun retrofitVariants(pathText: String, offset: Int, encodedNames: Set<String>, service: String?): List<Pair<ComposedRoute, String?>> {
+        val relative = retrofitRoute(pathText, offset, encodedNames)
+        // 전체 URL·network-path(`//host`)는 base를 쓰지 않는다 — host가 보간이라 authority가 없어도 base host를 붙이지 않는다.
+        val head = resolver.parts(pathText, offset).takeWhile { it is UrlPart.Literal }.joinToString("") { (it as UrlPart.Literal).text }
+        if (head.startsWith("//") || ABSOLUTE_URL.containsMatchIn(head) || relative.pathAnchor == null) return listOf(relative to null)
+        val bindings = service?.let(retrofitBases::bindings).orEmpty()
+        if (bindings.isEmpty()) {
+            service?.let(stats.unresolvedRetrofitServices::add)
+            return listOf(relative to null)
+        }
+        val known = bindings.filter { it.base != null }.groupBy { binding ->
+            val base = binding.base!!
+            if (relative.pathAnchor == "root") relative.copy(authority = base.authority)
+            else retrofitRoute(pathText, offset, encodedNames, base.path).copy(authority = base.authority)
+        }.map { (composed, group) -> composed to group.map { it.baseRef }.distinct().singleOrNull() }
+        val unknown = bindings.filter { it.base == null }.map { it.baseRef }.distinct().map { relative to it }
+        if (unknown.isNotEmpty()) service?.let(stats.unresolvedRetrofitServices::add)
+        return (known + unknown).sortedWith(compareBy({ it.first.authority.orEmpty() }, { it.second.orEmpty() }, { it.first.template ?: it.first.channelPrefix.orEmpty() }))
     }
 
     /** 어노테이션 인자 하나다. Java·Kotlin 모두 `name = value`면 명명 요소다. */
@@ -577,21 +635,24 @@ private class RouteFileScan(
     }.toSet()
 
     /**
-     * Retrofit 상대 경로는 RFC 3986 해석이다 — `/x`는 root, `x`는 base, `{name}`은 경로 매개변수이고 점 세그먼트는
+     * Retrofit 상대 경로는 RFC 3986 해석이다 — `/x`는 root, `x`는 base(리터럴 [basePath]가 있으면 그 뒤에 붙인 root), `{name}`은
+     * 경로 매개변수이고 점 세그먼트는
      * OkHttp가 지운다. 어노테이션 값은 컴파일 타임 상수이므로 풀지 못한 조각(파일 밖 상수)은 값이 아니라 경로 구조를
      * 모르는 것이다 — query 뒤가 아니면 dynamic이다. `@Path(encoded = true)` 값은 `/`를 담아 세그먼트 경계를 넘을 수
      * 있으므로 그 자리부터 dynamic이다.
      */
-    private fun retrofitRoute(pathText: String, offset: Int, encodedNames: Set<String>): ComposedRoute {
+    private fun retrofitRoute(pathText: String, offset: Int, encodedNames: Set<String>, basePath: String? = null): ComposedRoute {
         val resolved = resolver.parts(pathText, offset)
         val known = resolved.takeWhile { it is UrlPart.Literal }.joinToString("") { (it as UrlPart.Literal).text }
         // 풀지 못한 조각이 query·fragment 뒤에 있으면 경로는 이미 확정됐다.
         val unknownInPath = resolved.any { it !is UrlPart.Literal } && '?' !in known && '#' !in known
         // 첫 조각부터 모르면 상대·절대 여부도 모른다 — 앵커와 접두사를 싣지 않는다.
         if (unknownInPath && known.isEmpty()) return ComposedRoute(template = null, dynamic = true)
-        val anchor = if (known.startsWith('/') || ABSOLUTE_URL.containsMatchIn(known)) "root" else "base"
+        val relativeAnchor = if (known.startsWith('/') || ABSOLUTE_URL.containsMatchIn(known)) "root" else "base"
+        // 리터럴 base가 있으면 상대 경로는 그 경로 뒤에 붙어 host 루트부터 확정된다. `..`는 base 경로를 거슬러 오른다.
+        val anchor = if (relativeAnchor == "base" && basePath != null) "root" else relativeAnchor
         val parts = mutableListOf<UrlPart>()
-        if (anchor == "base") parts += UrlPart.Literal("/")
+        if (relativeAnchor == "base") parts += UrlPart.Literal(basePath ?: "/")
         var last = 0
         var multiSegment = false
         for (placeholder in RETROFIT_PLACEHOLDER.findAll(known)) {
@@ -646,6 +707,7 @@ private class RouteFileScan(
         service: String?,
         fallbackAnchor: String,
         symbolName: String? = file.qualifiedName(start),
+        baseRef: String? = null,
     ) {
         val methodDynamic = method == null || method == METHOD_DYNAMIC
         facts += BridgeFact(
@@ -662,6 +724,7 @@ private class RouteFileScan(
                 methodDynamic = methodDynamic,
                 authority = composed.authority,
                 service = service,
+                baseRef = baseRef,
                 queryTailStripped = composed.queryTailStripped && !composed.dynamic,
                 maskedSegments = composed.maskedSegments.takeIf { it > 0 && !composed.dynamic },
                 testSource = includeTests && file.isTest,

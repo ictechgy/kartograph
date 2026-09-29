@@ -156,6 +156,7 @@ public object AgentDocumentRenderer {
         if (route.methodDynamic) put("methodDynamic", true)
         route.authority?.let { put("authority", it) }
         route.service?.let { put("service", it) }
+        route.baseRef?.let { put("baseRef", it) }
         if (route.queryTailStripped) put("queryTailStripped", true)
         route.maskedSegments?.let { put("maskedSegments", it) }
         if (route.testSource) put("testSource", true)

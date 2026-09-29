@@ -11,6 +11,8 @@ package dev.kartograph.core
  * @property methodDynamic 동사가 리터럴로 확정되지 않았다는 표시다. 이때 [BridgeFact.method]는 null이다
  * @property authority userinfo를 뗀 소문자 리터럴 host다. 귀속 입력이며 조인 키가 아니다
  * @property service 선언된 래퍼가 지정한 서비스 신원이다
+ * @property baseRef base URL을 공급하는 선언(Retrofit 인스턴스·provider)의 생산자 id다. workspace link `match.baseRefs`로
+ *   귀속하는 입력이며 조인 키가 아니다. base를 정적으로 풀지 못해도 인스턴스를 찾았으면 싣는다
  * @property queryTailStripped 끝 보간·리터럴 꼬리가 query/fragment임을 증명하고 떼어 냈다는 증거다
  * @property maskedSegments 고엔트로피·웹훅 규칙으로 `{}`로 가린 세그먼트 수다. 0이면 null이다
  * @property testSource `--include-tests`로 테스트 소스 세트에서 낸 사실이다
@@ -20,6 +22,7 @@ public data class RouteCallEvidence(
     val methodDynamic: Boolean = false,
     val authority: String? = null,
     val service: String? = null,
+    val baseRef: String? = null,
     val queryTailStripped: Boolean = false,
     val maskedSegments: Int? = null,
     val testSource: Boolean = false,
