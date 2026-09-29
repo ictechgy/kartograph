@@ -2,10 +2,13 @@ package dev.kartograph.experiments.retrofit
 
 import dev.kartograph.fixture.retrofit.AdminApi
 import dev.kartograph.fixture.retrofit.FilesApi
+import dev.kartograph.fixture.retrofit.InventoryClients
 import dev.kartograph.fixture.retrofit.LegacyAdminApi
 import dev.kartograph.fixture.retrofit.LegacyApi
 import dev.kartograph.fixture.retrofit.OrgsApi
+import dev.kartograph.fixture.retrofit.ReportsClient
 import dev.kartograph.fixture.retrofit.UsersApi
+import dev.kartograph.fixture.retrofit.catalogApi
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
@@ -27,6 +30,9 @@ import retrofit2.Retrofit
  * 다른 host로 가는 전체 URL·network-path 어노테이션은 네트워크를 쓰지 않도록 인터셉터가 host·port만 MockWebServer로
  * 바꾼다. 경로는 Retrofit이 만든 그대로 두고, 바꾸기 전 host를 `authority`로 기록한다.
  *
+ * [FACTORY_CASES]는 코퍼스의 팩토리(`catalogApi`·`InventoryClients`·`ReportsClient`)가 리터럴 base로 만든 서비스를 부른다.
+ * 팩토리는 오라클이 준 `OkHttpClient`만 받으므로 base 결합은 코퍼스 소스 그대로다(baseUrl 결합 오라클).
+ *
  * 사용: `RetrofitOracle <output.json>`
  */
 fun main(arguments: Array<String>) {
@@ -37,7 +43,7 @@ fun main(arguments: Array<String>) {
     }
     server.start()
     try {
-        val results = CASES.map { case -> record(server, case) }
+        val results = CASES.map { case -> record(server, case) } + FACTORY_CASES.map { case -> recordFactory(server, case) }
         File(arguments[0]).writeText(render(results))
     } finally {
         server.shutdown()
@@ -57,9 +63,21 @@ data class PathArgument(val value: String, val encoded: Boolean = false)
 class Case(
     val id: String,
     val symbol: String,
-    val basePath: String,
+    val basePath: String?,
     val pathArguments: List<PathArgument>,
     val invoke: suspend (Retrofit) -> Unit,
+)
+
+/**
+ * 코퍼스 팩토리로 만든 서비스를 부르는 케이스다. base는 팩토리 소스가 정하므로 [Case.basePath]가 없다.
+ *
+ * @property invoke 오라클의 전환 인터셉터를 단 client로 팩토리를 불러 요청을 보낸다
+ */
+class FactoryCase(
+    val id: String,
+    val symbol: String,
+    val pathArguments: List<PathArgument>,
+    val invoke: suspend (OkHttpClient) -> Unit,
 )
 
 /** 한 케이스를 실행한 기록이다. [authority]는 인터셉터가 본 원래 host다. */
@@ -130,21 +148,58 @@ val CASES: List<Case> = listOf(
     },
 )
 
+private const val CATALOG = "dev.kartograph.fixture.retrofit.CatalogApi"
+private const val INVENTORY = "dev.kartograph.fixture.retrofit.InventoryApi"
+
+/** 팩토리 케이스 목록이다. 같은 메서드를 다른 base의 팩토리로 부른 케이스는 id 끝에 base를 적는다. */
+val FACTORY_CASES: List<FactoryCase> = listOf(
+    FactoryCase("catalog.item.base-path", "$CATALOG.item", listOf(PathArgument("42"))) { catalogApi(it).item("42").execute() },
+    FactoryCase("catalog.health.rooted", "$CATALOG.health", emptyList()) { catalogApi(it).health().execute() },
+    FactoryCase("catalog.legacy.climbs-base", "$CATALOG.legacy", emptyList()) { catalogApi(it).legacy().execute() },
+    FactoryCase("catalog.search.dot", "$CATALOG.search", emptyList()) { catalogApi(it).search().execute() },
+    FactoryCase("catalog.create", "$CATALOG.create", emptyList()) { catalogApi(it).create(body()).execute() },
+    FactoryCase("inventory.stock.primary", "$INVENTORY.stock", listOf(PathArgument("sku-1"))) { InventoryClients.primary(it).stock("sku-1").execute() },
+    FactoryCase("inventory.stock.mirror", "$INVENTORY.stock", listOf(PathArgument("sku-1"))) { InventoryClients.mirror(it).stock("sku-1").execute() },
+    FactoryCase("inventory.audit.primary", "$INVENTORY.audit", emptyList()) { InventoryClients.primary(it).audit().execute() },
+    FactoryCase("inventory.audit.mirror", "$INVENTORY.audit", emptyList()) { InventoryClients.mirror(it).audit().execute() },
+    FactoryCase("reports.year.java-local", "dev.kartograph.fixture.retrofit.ReportsApi.year", listOf(PathArgument("2026"))) {
+        ReportsClient.reports(it).year("2026").execute()
+    },
+)
+
+/** 원래 host를 기록하고 요청을 MockWebServer로 돌리는 client다. [authority]에 마지막 요청의 원래 host를 쓴다. */
+private class RedirectingClient(server: MockWebServer) {
+    var authority = ""
+    val client: OkHttpClient = OkHttpClient.Builder().addInterceptor(
+        Interceptor { chain ->
+            val original = chain.request().url()
+            authority = authorityOf(original)
+            val local = original.newBuilder().scheme("http").host(server.hostName).port(server.port).build()
+            chain.proceed(chain.request().newBuilder().url(local).build())
+        },
+    ).build()
+}
+
 /**
  * 케이스를 실행하고 받은 요청을 기록한다. 인터셉터는 원래 host를 기록한 뒤 MockWebServer로 보낸다.
  * 요청이 오지 않으면(Retrofit이 요청 전에 거부) 원인과 함께 실패한다.
  */
 private fun record(server: MockWebServer, case: Case): Recorded {
-    var authority = ""
-    val redirect = Interceptor { chain ->
-        val original = chain.request().url()
-        authority = authorityOf(original)
-        val local = original.newBuilder().scheme("http").host(server.hostName).port(server.port).build()
-        chain.proceed(chain.request().newBuilder().url(local).build())
-    }
-    val client = OkHttpClient.Builder().addInterceptor(redirect).build()
-    val retrofit = Retrofit.Builder().baseUrl(server.url(case.basePath)).client(client).build()
+    val redirect = RedirectingClient(server)
+    val retrofit = Retrofit.Builder().baseUrl(server.url(requireNotNull(case.basePath))).client(redirect.client).build()
     runBlocking { case.invoke(retrofit) }
+    return received(server, case, redirect.authority)
+}
+
+/** 팩토리 케이스를 실행하고 받은 요청을 기록한다. base는 팩토리 소스의 리터럴이다. */
+private fun recordFactory(server: MockWebServer, case: FactoryCase): Recorded {
+    val redirect = RedirectingClient(server)
+    runBlocking { case.invoke(redirect.client) }
+    return received(server, Case(case.id, case.symbol, null, case.pathArguments) {}, redirect.authority)
+}
+
+/** MockWebServer가 받은 요청 하나를 기록으로 만든다. 요청이 오지 않으면 원인과 함께 실패한다. */
+private fun received(server: MockWebServer, case: Case, authority: String): Recorded {
     val request = requireNotNull(server.takeRequest(5, TimeUnit.SECONDS)) { "case ${case.id} sent no request; check the service method" }
     val url = requireNotNull(request.requestUrl) { "case ${case.id} has no request URL" }
     return Recorded(case, requireNotNull(request.method), url.encodedPath(), url.encodedQuery(), authority)
@@ -162,7 +217,7 @@ private fun render(results: List<Recorded>): String = buildString {
         append("    {")
         append("\"id\": ").append(quote(case.id)).append(", ")
         append("\"symbol\": ").append(quote(case.symbol)).append(", ")
-        append("\"basePath\": ").append(quote(case.basePath)).append(", ")
+        append("\"basePath\": ").append(case.basePath?.let(::quote) ?: "null").append(", ")
         append("\"pathArguments\": [")
         append(case.pathArguments.joinToString(", ") { "{\"value\": ${quote(it.value)}, \"encoded\": ${it.encoded}}" })
         append("], ")

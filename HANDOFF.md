@@ -31,7 +31,13 @@
   소유 타입·이름·동사 어노테이션·매개변수 수). 하위 인터페이스로 부른 상속 추상 메서드는 `ClassFileIndexer`의
   `inheritedInterfaceCallEdges`가 상위 선언으로 `call` 간선을 더한다. pythograph Phase 6 e2e에서 Android 주문·결제 사실에 usr가
   붙고 역방향 순회가 저장소·ViewModel에 닿지만, isthmus trace 체인은 여전히 그 두 호출을 `unattributed-calls-omitted`로 뺀다 —
-  Retrofit 사실이 `pathAnchor: base`에 authority가 없기 때문이다(`Retrofit.Builder().baseUrl(...)` 결합 미모델링). 다음 과제다.
+  Retrofit 사실이 `pathAnchor: base`에 authority가 없기 때문이다(`Retrofit.Builder().baseUrl(...)` 결합 미모델링).
+- **Retrofit baseUrl 결합 (2026-09-29, `feature/retrofit-baseurl`):** `create` 호출의 수신 식을 따라가 base를 푼다
+  (`index/.../RetrofitBaseUrls.kt` 색인·URL, `RetrofitInstanceResolver.kt` 수신 식·DI·Koin, `SourceDeclarations.kt` 파일 밖 선언,
+  `BuildConfigFields.kt`). 리터럴이면 authority + root 결합 템플릿, 아니면 base + `baseRef`(`kt:` 소스 한정 id)와
+  `unresolved-base-url:`. 오라클 54케이스(팩토리 10 추가) 불일치 0, pythograph e2e에서 Android 주문·결제 체인이 ViewModel까지 닿고
+  `unattributed-calls-omitted`가 0이 됐다(pythograph 기록 재생성은 후속). 남은 범위: 오버로드 팩토리, 확장 함수 수신 객체,
+  Dagger `@Binds`·다중 컴포넌트, 인터셉터가 붙은 client 추적(지금은 하나라도 있으면 전체 base를 버림).
 
 ## 진행 중: Spring route-decl 생산자 (`routes --role server`, API 영향 Phase 4a)
 

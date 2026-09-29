@@ -19,6 +19,9 @@ import org.junit.jupiter.api.io.TempDir
  * 붙이고, `{}` 자리에 Retrofit 규칙으로 인코딩한 `@Path` 값을 넣은 경로가 기록 경로와 같아야 한다. `{}`는 한 세그먼트라는
  * 주장이므로 넣은 값이 `/`를 담으면 불일치다. dynamic 사실은 이유를 적은 케이스만 허용하고, 증명한 접두사가 기록 경로의
  * 접두사인지 확인한다.
+ *
+ * `basePath`가 없는 케이스는 코퍼스 팩토리가 리터럴 base로 만든 서비스다. 생산자가 `create` 호출의 `baseUrl`을 따라가
+ * authority와 base 경로를 결합한 root 템플릿을 내야 하며, base가 여럿이면 기록한 authority의 사실 하나와 대조한다.
  */
 class RetrofitOracleTest {
     @TempDir
@@ -60,10 +63,18 @@ class RetrofitOracleTest {
         println("Retrofit oracle agreement (${verdicts.count { it.outcome == "match" }} match, " +
             "${verdicts.count { it.outcome == "dynamic" }} dynamic, ${verdicts.count { it.outcome == "mismatch" }} mismatch)\n$table")
         assertTrue(verdicts.none { it.outcome == "mismatch" }, "Retrofit templates disagree with recorded requests:\n$table")
-        assertTrue(cases.size >= 40, "expected the full oracle case list, got ${cases.size}")
+        assertTrue(cases.size >= 50, "expected the full oracle case list, got ${cases.size}")
+        assertTrue(cases.count { it["basePath"] == null } >= 10, "expected the factory (baseUrl) cases")
         assertEquals(expectedDynamic.keys, verdicts.filter { it.outcome == "dynamic" }.map { it.id }.toSet(), "dynamic cases")
-        // 서비스 파일은 OkHttp 값 타입(RequestBody·ResponseBody)만 import한다 — 모델링하지 않은 호출이 아니다.
-        assertTrue(limitations.none { it.startsWith("route-call-coverage:") }, "unexpected coverage limitation: $limitations")
+        // 서비스 파일은 OkHttp 값 타입(RequestBody·ResponseBody)만 import한다 — 모델링하지 않은 호출이 아니다. 팩토리 두 파일은
+        // Retrofit에 넘길 OkHttpClient를 import하므로 기존 정책대로 모델링하지 않은 클라이언트로 센다(보수적).
+        assertEquals(
+            listOf("route-call-coverage: 2 source file(s)"),
+            limitations.filter { it.startsWith("route-call-coverage:") }.map { it.substringBefore(" use HTTP") },
+            "coverage limitations: $limitations",
+        )
+        // harness가 base를 주는 서비스는 코퍼스에 create 호출이 없어 base를 풀지 못한 것으로 센다.
+        assertTrue(limitations.any { it.startsWith("unresolved-base-url: 7 Retrofit service interface(s)") }, "unresolved: $limitations")
     }
 
     /** 임시 프로젝트에 `routes --role client`를 실행해 route-call 사실(symbol 한정 이름별)과 limitation을 모은다. */
@@ -82,11 +93,14 @@ class RetrofitOracleTest {
     private fun judge(case: Map<*, *>, facts: Map<String, List<Map<*, *>>>): Verdict {
         val id = case["id"] as String
         val recorded = case["recorded"] as Map<*, *>
-        val candidates = facts[case["symbol"] as String].orEmpty()
-        val fact = candidates.singleOrNull() ?: return Verdict(id, "mismatch", "expected one fact for ${case["symbol"]}, found ${candidates.size}")
+        val basePath = case["basePath"] as String?
+        val authority = (recorded["authority"] as String).ifEmpty { null }
+        // 팩토리 케이스는 base마다 사실이 하나다 — 기록한 host의 사실과 대조한다.
+        val candidates = facts[case["symbol"] as String].orEmpty().filter { basePath != null || it["authority"] == authority }
+        val fact = candidates.singleOrNull() ?: return Verdict(id, "mismatch", "expected one fact for ${case["symbol"]} (authority $authority), found ${candidates.size}")
+        if (basePath == null && fact["pathAnchor"] != "root") return Verdict(id, "mismatch", "a literal base must compose a root template, got ${fact["pathAnchor"]}")
         methodProblem(id, fact, recorded["method"] as String)?.let { return Verdict(id, "mismatch", it) }
         val arguments = (case["pathArguments"] as List<*>).map { it as Map<*, *> }.map { encodePathValue(it["value"] as String, it["encoded"] == true) }
-        val basePath = case["basePath"] as String
         val recordedPath = RouteUrlRules.normalizePath(recorded["path"] as String)
         if (fact["dynamic"] == true) return dynamicVerdict(id, fact, arguments, basePath, recordedPath)
         if (id in expectedDynamic) return Verdict(id, "mismatch", "expected dynamic (${expectedDynamic[id]}), got ${fact["channel"]}")
@@ -94,7 +108,6 @@ class RetrofitOracleTest {
         val filled = substitute(template, arguments) ?: return Verdict(id, "mismatch", "template $template does not take ${arguments.size} single-segment value(s) $arguments")
         val composed = RouteUrlRules.normalizePath(join(fact["pathAnchor"] as String, basePath, filled))
         if (composed != recordedPath) return Verdict(id, "mismatch", "${fact["pathAnchor"]} $template -> $composed, recorded $recordedPath")
-        val authority = (recorded["authority"] as String).ifEmpty { null }
         if (fact["authority"] != authority) return Verdict(id, "mismatch", "authority ${fact["authority"]}, recorded $authority")
         return Verdict(id, "match", "${fact["method"] ?: "methodDynamic"} ${fact["pathAnchor"]} $template -> $composed")
     }
@@ -107,7 +120,7 @@ class RetrofitOracleTest {
     }
 
     /** dynamic 사실은 이유가 적힌 케이스만 받는다. 증명한 접두사가 있으면 채운 접두사가 기록 경로의 접두사여야 한다. */
-    private fun dynamicVerdict(id: String, fact: Map<*, *>, arguments: List<String>, basePath: String, recordedPath: String): Verdict {
+    private fun dynamicVerdict(id: String, fact: Map<*, *>, arguments: List<String>, basePath: String?, recordedPath: String): Verdict {
         val reason = expectedDynamic[id] ?: return Verdict(id, "mismatch", "unexpected dynamic fact")
         val prefix = fact["channelPrefix"] as String? ?: return Verdict(id, "dynamic", reason)
         val filled = substitute(prefix, arguments.take(prefix.split("{}").size - 1), partial = true)
@@ -118,8 +131,8 @@ class RetrofitOracleTest {
     }
 
     /** base 앵커는 base URL 경로(`/`로 끝남) 뒤에, root 앵커는 host 루트에 붙인다. */
-    private fun join(anchor: String, basePath: String, template: String): String =
-        if (anchor == "base") basePath.removeSuffix("/") + template else template
+    private fun join(anchor: String, basePath: String?, template: String): String =
+        if (anchor == "base") requireNotNull(basePath) { "a base-anchored fact needs the case base path" }.removeSuffix("/") + template else template
 
     /**
      * 템플릿의 `{}`를 순서대로 값으로 채운다. 값이 `/`를 담으면 한 세그먼트라는 주장과 어긋나므로 null이다.

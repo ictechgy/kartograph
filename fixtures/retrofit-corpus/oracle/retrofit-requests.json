@@ -25,6 +25,71 @@
       "symbol": "dev.kartograph.fixture.retrofit.AdminApi.stats"
     },
     {
+      "basePath": null,
+      "id": "catalog.create",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "catalog.example.com",
+        "method": "POST",
+        "path": "/shop/v2/items",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.CatalogApi.create"
+    },
+    {
+      "basePath": null,
+      "id": "catalog.health.rooted",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "catalog.example.com",
+        "method": "GET",
+        "path": "/health",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.CatalogApi.health"
+    },
+    {
+      "basePath": null,
+      "id": "catalog.item.base-path",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "42"
+        }
+      ],
+      "recorded": {
+        "authority": "catalog.example.com",
+        "method": "GET",
+        "path": "/shop/v2/items/42",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.CatalogApi.item"
+    },
+    {
+      "basePath": null,
+      "id": "catalog.legacy.climbs-base",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "catalog.example.com",
+        "method": "GET",
+        "path": "/shop/v1/legacy",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.CatalogApi.legacy"
+    },
+    {
+      "basePath": null,
+      "id": "catalog.search.dot",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "catalog.example.com",
+        "method": "GET",
+        "path": "/shop/v2/search/",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.CatalogApi.search"
+    },
+    {
       "basePath": "/api/v1/",
       "id": "files.blob.absolute",
       "pathArguments": [
@@ -197,6 +262,64 @@
         "query": null
       },
       "symbol": "dev.kartograph.fixture.retrofit.FilesApi.summary"
+    },
+    {
+      "basePath": null,
+      "id": "inventory.audit.mirror",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "mirror.example.com:8443",
+        "method": "GET",
+        "path": "/admin/stock",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.InventoryApi.audit"
+    },
+    {
+      "basePath": null,
+      "id": "inventory.audit.primary",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "inventory.example.com",
+        "method": "GET",
+        "path": "/admin/stock",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.InventoryApi.audit"
+    },
+    {
+      "basePath": null,
+      "id": "inventory.stock.mirror",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "sku-1"
+        }
+      ],
+      "recorded": {
+        "authority": "mirror.example.com:8443",
+        "method": "GET",
+        "path": "/inv/stock/sku-1",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.InventoryApi.stock"
+    },
+    {
+      "basePath": null,
+      "id": "inventory.stock.primary",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "sku-1"
+        }
+      ],
+      "recorded": {
+        "authority": "inventory.example.com",
+        "method": "GET",
+        "path": "/stock/sku-1",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.InventoryApi.stock"
     },
     {
       "basePath": "/api/v1/",
@@ -378,6 +501,23 @@
         "query": null
       },
       "symbol": "dev.kartograph.fixture.retrofit.OrgsApi.teams"
+    },
+    {
+      "basePath": null,
+      "id": "reports.year.java-local",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "2026"
+        }
+      ],
+      "recorded": {
+        "authority": "reports.example.com",
+        "method": "GET",
+        "path": "/r/reports/2026",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.ReportsApi.year"
     },
     {
       "basePath": "/api/v1/",
@@ -641,7 +781,11 @@
   "sources": [
     "retrofit-client/src/main/java/dev/kartograph/fixture/retrofit/LegacyAdminApi.java",
     "retrofit-client/src/main/java/dev/kartograph/fixture/retrofit/LegacyApi.java",
+    "retrofit-client/src/main/java/dev/kartograph/fixture/retrofit/ReportsApi.java",
+    "retrofit-client/src/main/java/dev/kartograph/fixture/retrofit/ReportsClient.java",
     "retrofit-client/src/main/kotlin/dev/kartograph/fixture/retrofit/AdminApi.kt",
+    "retrofit-client/src/main/kotlin/dev/kartograph/fixture/retrofit/CatalogApi.kt",
+    "retrofit-client/src/main/kotlin/dev/kartograph/fixture/retrofit/CatalogClients.kt",
     "retrofit-client/src/main/kotlin/dev/kartograph/fixture/retrofit/FilesApi.kt",
     "retrofit-client/src/main/kotlin/dev/kartograph/fixture/retrofit/OrgsApi.kt",
     "retrofit-client/src/main/kotlin/dev/kartograph/fixture/retrofit/SharedPaths.kt",

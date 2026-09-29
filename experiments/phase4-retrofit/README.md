@@ -13,8 +13,13 @@
   결합대로 비교한다 — `pathAnchor: base`면 base URL 경로 뒤에, `root`면 host 루트에 템플릿을 붙이고 `{}`에 Retrofit 규칙으로
   인코딩한 `@Path` 값을 넣는다. `{}`는 한 세그먼트라는 주장이므로 넣은 값이 `/`를 담으면 불일치다. dynamic 사실은 이유를
   적은 케이스만 받고, 증명한 `channelPrefix`가 기록 경로의 접두사인지 본다. 동사와 `authority`도 대조한다.
-- `baseRef`는 isthmus 계약이 이 버전 출력에 싣지 않는 필드라(GRAPH-EXCHANGE "route 사실 필드") 비교하지 않는다. base URL은
-  케이스마다 `/api/v1/`(경로 세그먼트 있음) 또는 `/`다.
+- base URL은 케이스마다 `/api/v1/`(경로 세그먼트 있음) 또는 `/`다. 이 서비스들은 코퍼스 안에 `create` 호출이 없어 생산자가
+  base를 풀지 못하고(`unresolved-base-url:`) `pathAnchor: base`로 낸다.
+- **baseUrl 결합 케이스(2026-09-29 추가).** `basePath`가 `null`인 케이스는 코퍼스 팩토리(`CatalogClients.kt`의 `catalogApi`·
+  `InventoryClients`, `ReportsClient.java`)가 리터럴 base로 만든 서비스를 부른다. 팩토리는 오라클이 준 `OkHttpClient`만 받으므로
+  base 결합은 소스 그대로다. 생산자는 `create` 호출의 `baseUrl`을 따라가 `authority`와 base 경로를 결합한 `root` 템플릿을 내야 하고,
+  테스트는 템플릿을 host 루트에 붙여 기록 경로와, `authority`를 기록 host와 대조한다. base가 둘인 서비스(`InventoryApi`)는 기록한
+  host의 사실 하나와 대조한다. `baseRef`는 기록과 비교할 값이 없어 대조하지 않는다(단위 테스트 `RetrofitBaseUrlTest`가 고정).
 
 ## 결과
 
@@ -24,6 +29,24 @@
 |---|---:|---:|---:|
 | 수정 전 (`main` 3507399) | 29 | 2 | 13 |
 | 수정 후 | 38 | 6 | 0 |
+
+baseUrl 결합 케이스 10개(팩토리 3개, 서비스 메서드 8개)를 더한 54개 케이스:
+
+| | 일치 | dynamic(이유 있음) | 불일치 |
+|---|---:|---:|---:|
+| baseUrl 결합 전 (`main` 0c05e80) | 38 | 6 | 10 |
+| baseUrl 결합 후 | 48 | 6 | 0 |
+
+결합 전에는 팩토리 케이스 10개가 모두 `pathAnchor: base`·authority 없음이라 기록(authority와 host 루트부터의 경로)과 맞지 않았다.
+
+| 범주 | 케이스 | 기록 경로 | 결합 후 사실 |
+|---|---|---|---|
+| base 경로 뒤 상대 경로 | `items/{id}` + `https://catalog.example.com/shop/v2/`(템플릿 상수) | `/shop/v2/items/42` | root `catalog.example.com` `/shop/v2/items/{}` |
+| 앞 `/` | `/health` | `/health` | root `/health` |
+| base 위 `..` | `../v1/legacy` | `/shop/v1/legacy` | root `/shop/v1/legacy` |
+| `.`·끝 슬래시 | `./search/` | `/shop/v2/search/` | root `/shop/v2/search/` |
+| base 둘(지역 `val`·`HttpUrl` 속성, 포트) | `stock/{sku}`, `/admin/stock` | `/stock/sku-1`·`/inv/stock/sku-1`, `/admin/stock` ×2 | host마다 사실 하나(`inventory.example.com`, `mirror.example.com:8443`) |
+| Java 지역 변수·static final 상수 | `reports/{year}` + `https://reports.example.com/r/` | `/r/reports/2026` | root `/r/reports/{}` |
 
 수정 전에는 서비스 6파일 모두에 거짓 `route-call-coverage:`도 붙었다(OkHttp `RequestBody`·`ResponseBody` import를 모델링하지
 않은 클라이언트로 셌다).
@@ -73,6 +96,9 @@ JDK 21과 Maven Central·Gradle Plugin Portal 접근이 필요하다. MockWebSer
 기본 CI는 네트워크 의존 오라클을 돌리지 않고, 커밋된 기록에 대한 `RetrofitOracleTest`만 실행한다.
 
 ## 한계
+
+- baseUrl 결합의 DI(Hilt `@Provides`·`@Inject`·Koin)·`BuildConfig`·인터셉터 모양은 실행 오라클이 아니라 합성 단위 테스트
+  (`index` `RetrofitBaseUrlTest`)로 고정한다 — 결합 규칙(RFC 3986) 자체는 위 팩토리 케이스가 실행으로 확인한다.
 
 - 소스 스캐너라 파일 밖 상수(다른 파일 object·Java class 상수)는 증명하지 못하고 dynamic이다. 바이트코드의 접힌 어노테이션
   값을 읽는 경로(`routes --role server`의 `--graph-file`)는 클라이언트 쪽에 아직 없다.
