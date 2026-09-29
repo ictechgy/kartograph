@@ -47,6 +47,26 @@
   없을 때도 이유를 적는다. 전에는 usr가 조용히 0건이 됐다.
 - class 인덱스 캐시 형식을 5로 올렸다. 옛 캐시 항목은 한 번 다시 파싱된다.
 
+### Retrofit baseUrl 결합 (Added·Changed)
+
+- `routes --role client`가 Retrofit 서비스 인터페이스를 만드는 `create` 호출(`create(Api::class.java)`·`create(Api.class)`·
+  `create<Api>()`, `Class<T>`·reified 생성 함수의 호출)을 찾아 수신 식의 `baseUrl`을 따라간다. 같은 식의 빌더 사슬
+  (`apply { baseUrl(…) }` 포함), 지역 `val`, 속성(`= …`, `by lazy`, getter, `var`·Java 필드의 모든 대입), 함수 몸체, 한정자가
+  맞는 Dagger/Hilt `@Provides` provider(`@Inject` 생성자·필드, `@Provides` 매개변수), Koin `single`·`factory`와 `get()`을 읽는다.
+  하위 서비스로 만든 결합은 상위 서비스 인터페이스의 상속 메서드에도 적용한다. 테스트 소스의 `create`는 보지 않는다.
+- base가 리터럴(문자열·템플릿·같은 파일/다른 파일 상수·읽기 전용 속성·`HttpUrl.get`/`toHttpUrl` 래퍼·가장 가까운 모듈의
+  `buildConfigField` 리터럴)이면 Retrofit 사실이 `authority`와 OkHttp RFC 3986 규칙으로 base 경로를 결합한 `pathAnchor: root`
+  템플릿을 싣는다(`items/{id}` + `https://h/shop/v2/` → `/shop/v2/items/{}`, `../v1/x` → `/shop/v1/x`). base가 여럿이면(여러
+  `create`, 빌드 타입마다 다른 `BuildConfig`) base마다 사실 하나다. isthmus workspace link의 `match.hosts`로 귀속된다.
+- base를 풀지 못하면 `pathAnchor: base`를 유지하고, Retrofit 인스턴스를 담은 선언을 찾았으면 그 소스 한정 id를 새 route-call
+  필드 `baseRef`(`kt:<pkg>.<Type>.<member>`, Koin 한정자는 `#named:x`)로 싣는다 — `match.baseRefs`로 귀속할 수 있다. 그런
+  서비스 수는 `unresolved-base-url:`로 센다. 실행 시점 값·모호한 DI 결합·`/`로 끝나지 않는 base 경로는 authority를 만들지 않는다.
+- URL을 바꾸는 OkHttp 인터셉터(`intercept` 몸체·인터셉터 람다 안의 `newBuilder()` 뒤 `url`·`host`·경로 변경)가 있으면 모든 Retrofit base를 버리고
+  `url-rewrite-interceptors:`로 센다(헤더만 바꾸는 인터셉터는 세지 않는다).
+- 검증: Retrofit 2.12.0 + MockWebServer 오라클에 코퍼스 팩토리로 만든 baseUrl 결합 케이스 10개를 더해 54케이스 중 일치 48·
+  이유 있는 dynamic 6·불일치 0(결합 전 불일치 10). pythograph Phase 6 e2e에서 Android 주문·결제 호출이 isthmus trace 체인의
+  `OrderViewModel.refresh`·`CheckoutViewModel.pay`까지 닿고 `unattributed-calls-omitted`가 사라졌다.
+
 ### Spring 서버 라우트 (Added)
 
 - `routes --role server --project <dir> [--graph-file <snapshot> [--input-bindings <file>]] [--service <name>] [--include-tests] [<source-root>...]`가

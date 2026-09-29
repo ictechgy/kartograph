@@ -282,8 +282,8 @@ call expression. It recognizes calls of wrappers declared in an isthmus `http-wr
 `"language": "kotlin"` entries), `java.net.URL` requests opened in the same function with a provable path
 and method, and Retrofit verb annotations in Kotlin and Java (named elements, `@HTTP`, fully qualified
 `@retrofit2.http.*`). Retrofit paths follow RFC 3986 resolution as OkHttp applies it: `/x` is root, `x` is relative
-to the base URL, and `.`/`..` segments are removed; `@Url`, `@Path(encoded = true)`, a `..` above the unknown base
-path, and constants declared in another file stay dynamic. The templates agree with the requests Retrofit 2.12.0
+to the base URL, and `.`/`..` segments are removed; `@Url`, `@Path(encoded = true)`, a `..` above an unknown base
+path, and annotation constants declared in another file stay dynamic. The templates agree with the requests Retrofit 2.12.0
 sent to OkHttp MockWebServer for a synthetic service corpus
 ([experiments/phase4-retrofit](experiments/phase4-retrofit/README.md)). String resolution covers literals,
 same-file constants (including Java interface fields), Kotlin templates whose interpolation fills a whole segment,
@@ -291,6 +291,17 @@ and query tails (a literal `?`, or a trailing local proven to start with `?`). L
 or webhook segments are masked. Test source sets are excluded unless `--include-tests` marks those facts
 `testSource`. Other clients (OkHttp, Ktor, …), stale wrapper declarations, and undeclared sinks surface as
 limitations instead of guessed facts.
+Retrofit base URLs are joined by following where each service interface is created: `Retrofit.Builder()…baseUrl(x)…build()
+.create(Api::class.java)` (also `Api.class`, `create<Api>()`, and `Class<T>`/reified creator functions), through local `val`s,
+properties (`= …`, `by lazy`, getters, every assignment of a `var`/Java field), function bodies, Dagger/Hilt `@Provides`
+providers matched by qualifier (`@Inject` constructors and fields, `@Provides` parameters) and Koin `single`/`factory` with
+`get()`. A base that resolves to a literal (string, template, same-file or cross-file constant, read-only property, `HttpUrl`
+wrapper, or an in-repo `buildConfigField` literal of the nearest module) gives `authority` and a `root` template composed by
+the RFC 3986 rules above (`users/{id}` + `https://h/v1/` → `/v1/users/{}`; `/x` stays `/x`); several bases give one fact each.
+Otherwise the fact keeps `pathAnchor: base` and carries `baseRef` — the source-qualified id (`kt:<pkg>.<Type>.<member>`) of the
+declaration holding the Retrofit instance — for workspace links `match.baseRefs`, and `unresolved-base-url:` counts those
+services. Runtime values, ambiguous DI bindings and OkHttp interceptors that rewrite request URLs (`url-rewrite-interceptors:`)
+never yield an authority. Test-source `create` calls are ignored.
 With `--graph-file`, a Retrofit fact's `symbol.usr` is the service interface method that declares the annotation
 (for an inherited method, the super-interface that declares it). Call sites invoke that method, so reverse traversal
 (`impact --format language-traversal --roots-from`) reaches every caller, including calls through a sub-interface.

@@ -144,6 +144,16 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   (추상 class 사슬은 dispatch 모델만 따른다), 선언과 호출이 같은 snapshot에 있어야 한다 — 모듈별 snapshot을 `snapshot merge`로
   합치면 다른 모듈의 상위 인터페이스로 가는 간선은 생기지 않는다. 이 간선은 선언 정점에서 모든 override로 퍼지므로 정방향
   순회가 수신 타입의 하위가 아닌 구현까지 넓게 닿을 수 있다. 실행 대상 해석(`external-dispatch`)은 바꾸지 않는다.
+- Retrofit base URL 결합은 소스 어휘 해석이다. 서비스를 만드는 `create` 호출의 수신 식을 같은 식의 빌더 사슬·지역 `val`·속성·함수
+  몸체·`@Provides`(한정자 일치)·Koin 정의까지만 따라가며, 매개변수로 받은 Retrofit은 `@Provides`·`@Inject` 문맥일 때만 DI로 푼다.
+  같은 한정자의 provider가 둘 이상이면(다른 컴포넌트) 고르지 않는다. 오버로드된 팩토리 함수, 확장 함수 수신 객체(`fun Retrofit.x()`),
+  `with(retrofit) { create(…) }`, Dagger `@Binds`·다중 모듈 컴포넌트 그래프, Koin `named` 밖의 한정자·스코프는 모델링하지 않아
+  base 앵커로 남는다. `BuildConfig` 값은 가장 가까운 모듈 빌드 파일의 `buildConfigField` 리터럴만 읽는다(`gradle.properties`·환경
+  변수·`local.properties`·빌드 스크립트 계산 값은 모름). 값이 여럿이면(빌드 타입·flavor) base마다 사실을 내므로 한 빌드에서는 그중
+  하나만 실제로 쓰인다. authority는 OkHttp `HttpUrl`처럼 scheme 기본 포트(http 80·https 443)를 지우고, 범위 밖이거나 0으로
+  시작하는 포트의 base는 풀지 않는다(isthmus 계약의 기본 포트 정규화는 미결이라 다른 생산자와 표기가 다를 수 있다). URL을 바꾸는
+  OkHttp 인터셉터는 `intercept` 함수 몸체나 `Interceptor { … }`·`addInterceptor { … }` 블록 안의 `newBuilder()` 뒤 `url`·`host`·
+  경로 변경 호출만 어휘로 세고, 어느 client에 붙었는지 모르므로 하나라도 있으면 프로젝트의 모든 Retrofit base를 버린다. `baseRef`는 JVM 정점 id가 아니라 소스 한정 이름(`kt:` 접두사)이다.
 - `routes --role server`는 어노테이션 controller만 읽는다. 함수형 라우터·view controller·서블릿 등록·JAX-RS는 사실 없이
   `route-coverage:`로, 프레임워크 제공 경로는 `framework-provided-routes:`로만 알린다. 제공 경로의 스코프는 상한을 증명한
   제공자(오류 컨트롤러·welcome page·정적 리소스·actuator·springdoc·H2 console)에만 붙고, 정적 리소스 위치는 열거하지 않아

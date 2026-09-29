@@ -278,13 +278,23 @@ access)을 빌드·설정 파일에서 감지한 Hibernate 명명 전략으로 �
 경로와 동사를 증명할 수 있는 것, Kotlin·Java의 Retrofit 동사 어노테이션(명명 요소, `@HTTP`, 완전한 이름
 `@retrofit2.http.*`)을 인식합니다. Retrofit 경로는 OkHttp가 적용하는 RFC 3986 해석을 따릅니다 — `/x`는 root,
 `x`는 base URL 기준이고 `.`·`..` 세그먼트는 지웁니다. `@Url`, `@Path(encoded = true)`, 미상 base 경로 위로 올라가는
-`..`, 다른 파일의 상수는 dynamic으로 남깁니다. 합성 서비스 코퍼스에서 Retrofit 2.12.0이 OkHttp MockWebServer에 보낸
+`..`, 다른 파일에 선언한 어노테이션 상수는 dynamic으로 남깁니다. 합성 서비스 코퍼스에서 Retrofit 2.12.0이 OkHttp MockWebServer에 보낸
 요청과 템플릿이 일치합니다([experiments/phase4-retrofit](experiments/phase4-retrofit/README.md)). 문자열은
 리터럴, 같은 파일 상수(Java 인터페이스 필드 포함), 세그먼트 전체를 채우는 Kotlin 템플릿 보간, query 꼬리(리터럴 `?` 또는 `?`로
 시작함을 증명한 끝 지역 변수)까지 해석합니다. 리터럴 URL의 userinfo·query·fragment는 떼고 고엔트로피·
 웹훅 세그먼트는 가립니다. 테스트 소스 세트는 `--include-tests`가 없으면 제외하고, 주면 `testSource`로
 표시합니다. 그 밖의 클라이언트(OkHttp, Ktor 등), 낡은 래퍼 선언, 선언되지 않은 싱크는 추측한 사실 대신
 limitation으로 남깁니다.
+Retrofit base URL은 각 서비스 인터페이스를 만드는 곳을 따라가 결합합니다: `Retrofit.Builder()…baseUrl(x)…build().create(Api::class.java)`
+(`Api.class`, `create<Api>()`, `Class<T>`·reified 생성 함수 포함)를 지역 `val`, 속성(`= …`, `by lazy`, getter, `var`·Java 필드의
+모든 대입), 함수 몸체, 한정자가 맞는 Dagger/Hilt `@Provides` provider(`@Inject` 생성자·필드, `@Provides` 매개변수), Koin
+`single`·`factory`와 `get()`까지 따라갑니다. base가 리터럴(문자열, 템플릿, 같은 파일·다른 파일 상수, 읽기 전용 속성, `HttpUrl` 래퍼,
+가장 가까운 모듈의 저장소 안 `buildConfigField` 리터럴)로 풀리면 `authority`와 위 RFC 3986 규칙으로 결합한 `root` 템플릿을
+냅니다(`users/{id}` + `https://h/v1/` → `/v1/users/{}`, `/x`는 `/x`). base가 여럿이면 base마다 사실 하나입니다. 풀지 못하면
+`pathAnchor: base`를 유지하고 Retrofit 인스턴스를 담은 선언의 소스 한정 id(`kt:<pkg>.<Type>.<member>`)를 `baseRef`로 실어
+workspace link `match.baseRefs`로 귀속할 수 있게 하며, 그 서비스 수를 `unresolved-base-url:`로 셉니다. 실행 시점 값, 모호한 DI
+결합, 요청 URL을 바꾸는 OkHttp 인터셉터(`url-rewrite-interceptors:`)는 authority를 만들지 않습니다. 테스트 소스의 `create`는
+보지 않습니다.
 `--graph-file`이 있으면 Retrofit 사실의 `symbol.usr`는 어노테이션을 선언한 서비스 인터페이스 메서드입니다(상속 메서드는 그것을
 선언한 상위 인터페이스). 호출 지점이 이 메서드를 부르므로 역방향 순회(`impact --format language-traversal --roots-from`)가
 하위 인터페이스로 부른 호출을 포함해 모든 호출자에 닿습니다.
