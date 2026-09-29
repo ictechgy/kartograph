@@ -129,6 +129,42 @@ public object LanguageTraversalCodec {
         }.distinct()
     }
 
+    /**
+     * persistence bridge-facts 문서(`schema --graph-file`)에서 [dev.kartograph.analysis.PersistenceModeledCalls]의 근거를 읽는다:
+     * 호출자에 귀속된 relation-use 사실의 (호출자 usr, 줄, relation)과, 신원 없는 선언 위치 사실의 (소스 경로 → relation)이다.
+     * 명명 전략이 갈려 dynamic으로 낸 사실도 스캐너가 이 호출을 모델링한 결과이므로 채널 원문으로 함께 맞춘다(선언 위치와 호출 위치가
+     * 같은 원문을 쓴다).
+     *
+     * @param project 순회 문서의 `project`(realpath)다. persistence 문서의 `project`와 같아야 한다
+     * @throws IllegalArgumentException persistence 문서가 아니거나 형식·project가 맞지 않으면
+     */
+    public fun parsePersistenceEvidence(content: String, project: String): dev.kartograph.analysis.PersistenceModeledCalls.Evidence {
+        require(content.length <= 64 * 1024 * 1024) { "persistence facts exceed 64 MiB" }
+        val document = SnapshotJsonParser(content, generalNumbers = true).parse() as? Map<*, *>
+            ?: throw IllegalArgumentException("persistence facts must be a bridge-facts document")
+        require(document["format"] == "bridge-facts" && document["target"] == "persistence") { "persistence facts must be a persistence bridge-facts document" }
+        // 다른 프로젝트 루트의 문서는 같은 usr·줄이라도 이 순회의 호출을 근거하지 않는다(isthmus도 같은 project만 잇는다).
+        require(document["project"] == project) { "persistence facts must come from the same --project root" }
+        val facts = document["facts"] as? List<*> ?: throw IllegalArgumentException("bridge-facts document has no facts array")
+        val callSites = mutableSetOf<dev.kartograph.analysis.PersistenceModeledCalls.Attribution>()
+        val declarations = mutableMapOf<String, MutableSet<String>>()
+        facts.forEach { raw ->
+            val fact = raw as? Map<*, *> ?: throw IllegalArgumentException("bridge-facts facts must be objects")
+            val relation = fact["channel"] as? String
+            val location = fact["location"] as? Map<*, *>
+            if (fact["kind"] != "relation-use" || relation == null || location == null) return@forEach
+            val usr = (fact["symbol"] as? Map<*, *>)?.get("usr") as? String
+            val line = (location["line"] as? Number)?.toInt()
+            val path = location["path"] as? String
+            when {
+                usr != null && line != null -> callSites += dev.kartograph.analysis.PersistenceModeledCalls.Attribution(usr, line, relation)
+                usr == null && path != null ->
+                    declarations.getOrPut(dev.kartograph.analysis.PersistenceModeledCalls.normalizedPath(path)) { mutableSetOf() } += relation
+            }
+        }
+        return dev.kartograph.analysis.PersistenceModeledCalls.Evidence(callSites, declarations)
+    }
+
     private fun factRoots(document: Map<*, *>): List<String> {
         require(document["format"] == "bridge-facts") { "root document must be a bridge-facts document" }
         val facts = document["facts"] as? List<*> ?: throw IllegalArgumentException("bridge-facts document has no facts array")

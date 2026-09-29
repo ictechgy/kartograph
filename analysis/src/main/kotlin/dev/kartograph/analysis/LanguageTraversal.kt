@@ -1,6 +1,7 @@
 package dev.kartograph.analysis
 
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.ExternalCall
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.qualifiedName
@@ -109,6 +110,8 @@ public object LanguageTraversal {
      *   준다 — 테스트·production에 같은 이름이 있어 원래 그래프에서 모호한 요청이 부분 그래프에서 production 쪽으로 조용히
      *   해석되지 않게 한다. 해석한 정점이 [graph]에 없으면 root-not-found다
      * @param classHops class 정점을 거치는 경로의 범위다. [TraversalClassHops.MEMBER_ONLY]면 `class-hops-narrowed:` 한계를 싣는다
+     * @param modeledCalls 다른 사실이 이미 모델링해 `unresolvedCalls`에서 뺄 외부 호출이다([PersistenceModeledCalls]). 목록에 실린
+     *   정점의 것이 있으면 `persistence-modeled-calls:` 한계로 수를 알린다
      */
     public fun traverse(
         graph: CodeGraph,
@@ -121,8 +124,9 @@ public object LanguageTraversal {
         callbackFactsCaptured: Boolean = true,
         rootGraph: CodeGraph = graph,
         classHops: TraversalClassHops = TraversalClassHops.ALL,
+        modeledCalls: Set<ExternalCall> = emptySet(),
     ): LanguageTraversalResult = traverse(graph, TraversalEdges.assemble(graph, enclosuresCaptured, callbackFactsCaptured), requested, direction, dispatch,
-        maxDepth, maxReached, enclosuresCaptured, callbackFactsCaptured, rootGraph, classHops)
+        maxDepth, maxReached, enclosuresCaptured, callbackFactsCaptured, rootGraph, classHops, modeledCalls)
 
     /** 이미 만든 순회 간선으로 순회한다. 테스트가 임의의 콜백 간선으로 계산을 검증할 때 쓴다. */
     internal fun traverse(
@@ -137,18 +141,27 @@ public object LanguageTraversal {
         callbackFactsCaptured: Boolean = true,
         rootGraph: CodeGraph = graph,
         classHops: TraversalClassHops = TraversalClassHops.ALL,
+        modeledCalls: Set<ExternalCall> = emptySet(),
     ): LanguageTraversalResult {
         require(maxDepth in 1..MAX_DEPTH && maxReached in 1..MAX_REACHED && requested.size <= MAX_ROOTS)
         val edges = assembled.edges
-        val unresolved = graph.externalCalls.filter { it.isUnresolvedTarget() }.groupingBy { it.caller }.eachCount()
+        val unresolved = graph.externalCalls.filter { it.isUnresolvedTarget() && it !in modeledCalls }.groupingBy { it.caller }.eachCount()
         val roots = resolveRoots(graph, rootGraph, requested, unresolved)
         val space = TraversalSpace(graph, edges, direction, dispatch, classHops)
         val computation = space.compute(roots.map { root -> root.node?.let { space.index.getValue(it.id) } ?: -1 }, maxDepth)
         val (reached, reachedTruncated) = cap(computation.rows.map { row -> row.toReached(space, roots, unresolved) }, roots, maxReached)
+        val listed = roots.mapNotNullTo(mutableSetOf()) { it.node?.id } + reached.map { it.node.id }
+        val modeled = graph.externalCalls.count { it.isUnresolvedTarget() && it in modeledCalls && it.caller in listed }
         return LanguageTraversalResult(direction, dispatch, roots, reached, computation.depthTruncated, reachedTruncated,
             limitations(Limits(edges, direction, dispatch, enclosuresCaptured, callbackFactsCaptured, assembled.callbacks, classHops,
                 computation.narrowed), roots,
-                computation.depthTruncated, reachedTruncated, maxDepth, maxReached))
+                computation.depthTruncated, reachedTruncated, maxDepth, maxReached) + listOfNotNull(persistenceModeledLimitation(modeled)))
+    }
+
+    /** 목록 정점의 호출 중 persistence 사실이 모델링해 미해결로 세지 않은 수다. 0이면 싣지 않는다. */
+    private fun persistenceModeledLimitation(count: Int): String? = count.takeIf { it > 0 }?.let {
+        "persistence-modeled-calls: $it call(s) from listed declarations to inherited Spring Data repository methods have no project " +
+            "vertex but are attributed to their calling method by the given persistence facts; they are not counted in unresolvedCalls"
     }
 
     /** 한계 문구를 만드는 데 쓰는 순회 설정과 간선 집계다. */

@@ -1,6 +1,7 @@
 package dev.kartograph.cli
 
 import dev.kartograph.analysis.LanguageTraversal
+import dev.kartograph.analysis.PersistenceModeledCalls
 import dev.kartograph.analysis.TestSourceScope
 import dev.kartograph.analysis.TraversalClassHops
 import dev.kartograph.analysis.TraversalDirection
@@ -26,7 +27,7 @@ import java.time.format.DateTimeParseException
 internal object TraversalCommand {
     private val VALUE_OPTIONS = setOf(
         "--graph-file", "--symbol", "--roots-from", "--project", "--depth", "--dispatch", "--generated-at",
-        "--revision", "--snapshot-max-mib", "--max-reached", "--format", "--input-bindings", "--class-hops",
+        "--revision", "--snapshot-max-mib", "--max-reached", "--format", "--input-bindings", "--class-hops", "--persistence-facts",
     )
 
     /** 값 없이 켜는 옵션이다. */
@@ -49,7 +50,7 @@ internal object TraversalCommand {
     private data class Options(
         val graphFile: String, val roots: List<String>, val project: String, val depth: Int, val dispatch: TraversalDispatch,
         val generatedAt: String, val revision: String?, val maximumBytes: Int, val maximumMiB: Int, val maxReached: Int,
-        val includeTests: Boolean, val inputBindings: String?, val classHops: TraversalClassHops,
+        val includeTests: Boolean, val inputBindings: String?, val classHops: TraversalClassHops, val persistenceFacts: String?,
     )
 
     /** 사용 오류 문구를 파서 밖으로 전달한다. 입력 값을 문구에 넣지 않는다. */
@@ -97,7 +98,7 @@ internal object TraversalCommand {
         }
         val roots = rootRequests(positional + values["--symbol"].orEmpty(), values["--roots-from"]?.single(), error) ?: return null
         return Options(graphFile, roots, project, depth, dispatch, generatedAt, revision, limit.maximumBytes, limit.maximumMiB, maxReached,
-            "--include-tests" in values, values["--input-bindings"]?.single(), classHops)
+            "--include-tests" in values, values["--input-bindings"]?.single(), classHops, values["--persistence-facts"]?.single())
     }
 
     /** isthmus는 모든 문서의 project가 같은 realpath 문자열이어야 조인한다. routes와 같은 규칙으로 만든다. */
@@ -151,10 +152,19 @@ internal object TraversalCommand {
                 "(Gradle plugin or `snapshot merge`, 1 MiB max) to --input-bindings")
             return 2
         }
+        val persistence = try {
+            options.persistenceFacts?.let { LanguageTraversalCodec.parsePersistenceEvidence(SnapshotFiles.readText(it, 64 * 1024 * 1024), options.project) }
+                ?: PersistenceModeledCalls.Evidence.NONE
+        } catch (_: Exception) {
+            error.println("error: unable to read --persistence-facts; pass the persistence bridge-facts document written by `schema --graph-file` " +
+                "for this snapshot and the same --project root (64 MiB max)")
+            return 2
+        }
         // 테스트 소스는 별도 프로그램이다. 기본 순회는 production 부분 그래프에서 하고 graphRevision도 그 그래프로 낸다.
         val scope = TestSourceScope.select(snapshot.graph, options.roots, options.includeTests)
         val traversal = LanguageTraversal.traverse(scope.graph, options.roots, direction, options.dispatch, options.depth,
-            options.maxReached, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured, rootGraph = snapshot.graph, classHops = options.classHops)
+            options.maxReached, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured, rootGraph = snapshot.graph, classHops = options.classHops,
+            modeledCalls = PersistenceModeledCalls.select(scope.graph, persistence))
         val limitations = traversal.limitations + scope.limitations + snapshot.limitations + listOfNotNull(freshness)
         val revision = options.revision ?: snapshot.revision ?: GitRevision.cleanHead(Path.of(options.project))
         val metadata = LanguageTraversalMetadata(options.generatedAt, options.project, revision,
@@ -208,6 +218,13 @@ internal object TraversalCommand {
           --include-tests          also traverse test-source declarations (src/test, src/androidTest, src/testFixtures, ...)
           --input-bindings <file>  local input bindings written with the snapshot (Gradle plugin or `snapshot merge`) so
                                    inputs outside --project can be verified, as in routes
+          --persistence-facts <file>
+                                   persistence bridge-facts written by `schema --graph-file` for the same snapshot. Calls to
+                                   inherited Spring Data repository methods (save, findById, ...) on a project repository
+                                   interface have no project vertex; when that document attributes the repository's
+                                   relation to the calling method at the call line, and no project fragment or repository
+                                   implementation class could receive the call, it is not counted in unresolvedCalls and
+                                   persistence-modeled-calls: reports how many were excluded
 
         Dispatch modes (each includes the previous):
           direct      compiler-resolved calls, references, field accesses and lexical containment of lambda bodies
