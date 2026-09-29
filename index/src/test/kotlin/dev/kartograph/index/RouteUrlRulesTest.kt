@@ -23,6 +23,31 @@ class RouteUrlRulesTest {
     }
 
     @Test
+    fun `rfc 3986 dot segments are removed like okhttp and escaping an unknown base is dynamic`() {
+        assertEquals("/status", RouteUrlRules.removeDotSegments("/./status", "base"))
+        assertEquals("/", RouteUrlRules.removeDotSegments("/.", "base"))
+        assertEquals("/a/", RouteUrlRules.removeDotSegments("/a/b/..", "base"))
+        assertEquals("/a/b", RouteUrlRules.removeDotSegments("/a//../b", "base"))
+        assertEquals("/x", RouteUrlRules.removeDotSegments("/../x", "root"))
+        assertNull(RouteUrlRules.removeDotSegments("/../x", "base"))
+
+        val relative = RouteUrlRules.compose(listOf(literal("/reports/../summary")), JoinMode.Declared("base", resolveDotSegments = true))
+        assertEquals("/summary", relative.template)
+        val escaping = RouteUrlRules.compose(listOf(literal("/../v2/"), value("id")), JoinMode.Declared("base", resolveDotSegments = true))
+        assertTrue(escaping.dynamic)
+        assertNull(escaping.channelPrefix)
+        // 점 세그먼트를 지우지 않는 선언 래퍼는 리터럴을 그대로 둔다.
+        assertEquals("/./x", RouteUrlRules.compose(listOf(literal("/./x")), JoinMode.Declared("base")).template)
+        // 지운 세그먼트가 가린 세그먼트 수에 남지 않는다.
+        val masked = RouteUrlRules.compose(listOf(literal("/abcdef1234567890xyz/../x")), JoinMode.Declared("base", resolveDotSegments = true))
+        assertEquals("/x", masked.template)
+        assertEquals(0, masked.maskedSegments)
+        // 접두사의 끝 조각이 점뿐이면 뒤 보간과 이어진 세그먼트라 접두사를 싣지 않는다.
+        assertNull(RouteUrlRules.compose(listOf(literal("/a/.."), value("x")), JoinMode.Declared("root", resolveDotSegments = true)).channelPrefix)
+        assertEquals("/b/", RouteUrlRules.compose(listOf(literal("/a/../b/"), value("x"), literal(".json")), JoinMode.Declared("root", resolveDotSegments = true)).channelPrefix)
+    }
+
+    @Test
     fun `declared wrapper with an unresolved leading base joins like string concatenation`() {
         val rooted = RouteUrlRules.compose(listOf(value("base"), literal("/v1/items")), JoinMode.Declared("root"))
         assertEquals("/v1/items", rooted.template)

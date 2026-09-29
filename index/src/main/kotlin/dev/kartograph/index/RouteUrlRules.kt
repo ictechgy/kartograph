@@ -35,13 +35,21 @@ public object RouteUrlRules {
      * 가정하고 앞 보간을 base 식으로 해석하지 않는다(보간 규칙만 적용할 때).
      */
     public sealed interface JoinMode {
-        /** 선언된 래퍼 경로다. 앞의 미해석 보간은 단순 연결 base로 본다. */
-        public data class Declared(val anchor: String) : JoinMode
+        /**
+         * 선언된 래퍼 경로다. 앞의 미해석 보간은 단순 연결 base로 본다.
+         *
+         * @property resolveDotSegments 참이면 RFC 3986 §5.2.4처럼 `.`·`..` 세그먼트를 지운다. 생산자가 앵커를 직접 정하는
+         *   RFC 3986 해석 클라이언트(Retrofit)가 쓴다 — OkHttp `HttpUrl`이 상대·절대 경로 모두 점 세그먼트를 지우기 때문이다
+         */
+        public data class Declared(val anchor: String, val resolveDotSegments: Boolean = false) : JoinMode
 
         /** 조각 전체가 경로다. 앞의 미해석 보간은 dynamic이다. */
         public data object PathOnly : JoinMode
 
-        /** RFC 3986 상대 해석(Retrofit·Ktor)이다. `/x`는 root, `x`는 base다. */
+        /**
+         * RFC 3986 상대 해석(Retrofit·Ktor)이다. `/x`는 root, `x`는 base다. 점 세그먼트는 지우지 않는다 — 전송 전에 지우는지는
+         * 클라이언트·엔진마다 다르므로 확인한 생산자만 [Declared.resolveDotSegments]로 켠다.
+         */
         public data object Rfc3986 : JoinMode
 
         /** 슬래시 결합(axios 등)이다. 항상 base다. */
@@ -86,7 +94,8 @@ public object RouteUrlRules {
         val located = locate(merged, mode) ?: return ComposedRoute(
             template = null, dynamic = true, limitation = ambiguousJoinLimitation(merged, mode),
         )
-        return assemble(located)
+        val dotSegments = (mode as? JoinMode.Declared)?.resolveDotSegments == true
+        return assemble(located, dotSegments)
     }
 
     /** base 결합으로 앵커·authority와 `/`로 시작하는 경로 조각을 정한 중간 결과다. */
@@ -188,8 +197,12 @@ public object RouteUrlRules {
         return if (relativeLiteral || relativeAfterBase) AMBIGUOUS_BASE_JOIN else null
     }
 
-    /** query 꼬리·suffix·보간 규칙을 적용하고 정규화·마스킹한다. */
-    private fun assemble(located: Located): ComposedRoute {
+    /**
+     * query 꼬리·suffix·보간 규칙을 적용하고 정규화·마스킹한다.
+     *
+     * @param dotSegments 참이면 마스킹 전에 점 세그먼트를 지운다. `..`가 미상 base 위로 올라가면 dynamic이다
+     */
+    private fun assemble(located: Located, dotSegments: Boolean = false): ComposedRoute {
         val (parts, stripped) = stripQueryTail(located.parts)
         val template = StringBuilder()
         parts.forEachIndexed { index, part ->
@@ -199,10 +212,14 @@ public object RouteUrlRules {
                 is UrlPart.QueryTail -> true
                 is UrlPart.Value -> !fillsWholeSegment(parts, index)
             }
-            if (offending) return dynamicWithPrefix(template.toString(), located)
+            if (offending) return dynamicWithPrefix(template.toString(), located, dotSegments)
             if (part is UrlPart.Value) template.append("{}")
         }
-        val (masked, count) = mask(template.toString(), located.authority)
+        val resolved = if (dotSegments) {
+            removeDotSegments(template.toString(), located.anchor)
+                ?: return ComposedRoute(template = null, dynamic = true, pathAnchor = located.anchor, authority = located.authority)
+        } else template.toString()
+        val (masked, count) = mask(resolved, located.authority)
         if (validateTemplate(masked) != null) return dynamicWithPrefix("", located)
         return ComposedRoute(
             template = masked,
@@ -240,14 +257,51 @@ public object RouteUrlRules {
         return before.text.endsWith('/') && (after == null || (after is UrlPart.Literal && after.text.startsWith('/')))
     }
 
-    /** dynamic 결과에 `/`로 시작하는 증명된 접두사를 마스킹해 싣는다. */
-    private fun dynamicWithPrefix(prefix: String, located: Located): ComposedRoute {
-        val masked = prefix.takeIf { it.startsWith('/') }?.let { mask(it, located.authority).first }
+    /**
+     * dynamic 결과에 `/`로 시작하는 증명된 접두사를 마스킹해 싣는다. 점 세그먼트를 지우는 결합이면 완결된 세그먼트만
+     * 지우고, 뒤 보간과 이어지는 마지막 조각이 점뿐이면(`/a/..${'$'}{x}`) 접두사를 증명하지 못한 것으로 본다.
+     */
+    private fun dynamicWithPrefix(prefix: String, located: Located, dotSegments: Boolean = false): ComposedRoute {
+        val resolved = if (dotSegments && prefix.startsWith('/')) resolvePrefixDots(prefix, located.anchor) else prefix
+        val masked = resolved?.takeIf { it.startsWith('/') }?.let { mask(it, located.authority).first }
             ?.takeIf { validateTemplate(it) == null }
         return ComposedRoute(
             template = null, dynamic = true, channelPrefix = masked, pathAnchor = located.anchor,
             authority = located.authority,
         )
+    }
+
+    /**
+     * 경로 템플릿의 점 세그먼트를 RFC 3986 §5.2.4대로 지운다. OkHttp `HttpUrl`의 경로 해석(`push`·`pop`)과 같은 결과다 —
+     * 끝의 `.`·`..`는 끝 슬래시를 남기고, root 위의 `..`는 root에 머문다.
+     *
+     * @param template `/`로 시작하는 템플릿이다. `{}` 세그먼트는 점 세그먼트가 아니다(Retrofit은 `.`·`..` 값을 거부한다)
+     * @param anchor `base`면 템플릿이 미상 base 경로 뒤에 붙는다
+     * @return 지운 템플릿. `base`에서 `..`가 템플릿 앞(미상 base 경로)으로 올라가면 결과 경로를 알 수 없어 null이다
+     */
+    public fun removeDotSegments(template: String, anchor: String): String? {
+        val segments = template.removePrefix("/").split('/')
+        val output = ArrayList<String>()
+        segments.forEachIndexed { index, segment ->
+            val last = index == segments.lastIndex
+            when (segment) {
+                "." -> if (last) output += ""
+                ".." -> {
+                    if (output.isNotEmpty()) output.removeAt(output.lastIndex) else if (anchor == "base") return null
+                    if (last) output += ""
+                }
+                else -> output += segment
+            }
+        }
+        return "/" + output.joinToString("/")
+    }
+
+    /** dynamic 접두사의 완결된 세그먼트만 점을 지운다. 뒤 보간과 이어지는 마지막 조각이 점뿐이면 null이다. */
+    private fun resolvePrefixDots(prefix: String, anchor: String): String? {
+        val tail = prefix.substringAfterLast('/')
+        if (tail.isNotEmpty() && tail.all { it == '.' }) return null
+        val complete = removeDotSegments(prefix.substring(0, prefix.length - tail.length), anchor) ?: return null
+        return complete + tail
     }
 
     /**
