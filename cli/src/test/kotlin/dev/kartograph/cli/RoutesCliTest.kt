@@ -243,6 +243,73 @@ class RoutesCliTest {
             "unable to scan route declarations")
     }
 
+    /**
+     * Retrofit 서비스 사실이 snapshot의 인터페이스 메서드 usr를 달고, `impact --roots-from`(isthmus trace의 역방향 순회)이
+     * 그 usr에서 화면 계층까지 닿는지 CLI 경로 전체(snapshot 코덱 포함)로 확인한다. 상속 메서드는 하위 인터페이스로 부른다.
+     */
+    @Test
+    fun `retrofit route calls carry interface usrs that impact follows to screen callers`(@TempDir outside: Path) {
+        val stubs = listOf("GET", "POST").map { verb ->
+            outside.resolve("retrofit2/http/$verb.java").also {
+                it.parent.createDirectories()
+                it.writeText("package retrofit2.http; @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) " +
+                    "public @interface $verb { String value() default \"\"; }")
+            }
+        }
+        val sources = listOf(
+            write("src/main/java/demo/BaseApi.java", """
+                package demo;
+                import retrofit2.http.GET;
+                public interface BaseApi {
+                    @GET("items")
+                    String items();
+                }
+                """),
+            write("src/main/java/demo/OrdersApi.java", """
+                package demo;
+                import retrofit2.http.POST;
+                public interface OrdersApi extends BaseApi {
+                    @POST("orders")
+                    String place(java.util.Map<String, Object> body);
+                }
+                """),
+            write("src/main/java/demo/Screen.java", """
+                package demo;
+                public final class Screen {
+                    private final OrdersApi api;
+                    public Screen(OrdersApi api) { this.api = api; }
+                    public String show() { return api.items(); }
+                    public String submit() { return api.place(java.util.Map.of()); }
+                }
+                """),
+        )
+        val classes = project.resolve("out/classes").createDirectories()
+        val arguments = listOf("-g", "-d", classes.toString()) + (stubs + sources).map(Path::toString)
+        assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null, *arguments.toTypedArray()))
+        project.resolve("out/classes/retrofit2").toFile().deleteRecursively()
+        val capture = execute("snapshot", "--project", project.toString(), "--classes", classes.toString(), "--include-paths")
+        assertEquals(0, capture.status, capture.error)
+        val snapshot = write("snapshot.json", capture.output)
+
+        val routes = execute("routes", "--role", "client", "--project", project.toString(), "--graph-file", snapshot.toString())
+        assertEquals(0, routes.status, routes.error)
+        val facts = ((McpJsonCodec.parse(routes.output) as Map<*, *>)["facts"] as List<*>).map { it as Map<*, *> }
+        assertEquals(
+            mapOf("/items" to "method:demo/BaseApi#items()Ljava/lang/String;", "/orders" to "method:demo/OrdersApi#place(Ljava/util/Map;)Ljava/lang/String;"),
+            facts.associate { it["channel"].toString() to (it["symbol"] as Map<*, *>)["usr"].toString() },
+        )
+        assertFalse(routes.output.contains("missing-route-usrs"), routes.output)
+
+        val http = write("http.json", routes.output)
+        val impact = execute("impact", "--format", "language-traversal", "--roots-from", http.toString(), "--graph-file", snapshot.toString(),
+            "--project", project.toString())
+        assertEquals(0, impact.status, impact.error)
+        val reached = ((McpJsonCodec.parse(impact.output) as Map<*, *>)["reached"] as List<*>).map { it as Map<*, *> }
+            .associate { (it["symbol"] as Map<*, *>)["usr"].toString() to (it["roots"] as List<*>).map { root -> (root as Number).toInt() } }
+        assertEquals(listOf(0), reached["method:demo/Screen#show()Ljava/lang/String;"], reached.toString())
+        assertEquals(listOf(1), reached["method:demo/Screen#submit()Ljava/lang/String;"], reached.toString())
+    }
+
     @Test
     fun `routes help prints usage`() {
         listOf("--help", "-h").forEach { flag ->
