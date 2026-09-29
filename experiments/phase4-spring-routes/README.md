@@ -35,3 +35,21 @@
 오탐(false positive)은 모든 실행에서 0건이다. edge-mvc의 빈자리 4건은 계약상 dynamic으로 남긴 경로다(다른 프로필 전용
 플레이스홀더 2, 한 세그먼트 변수 두 개 2). error 판정 가능 비율은 지금 isthmus에서 0%(문서 전체 `framework-provided-routes:`),
 http limitation 스코프가 생기면 root·정적·비테스트 사실 기준 100%(edge-mvc는 60/64 사실)다.
+
+## error 판정 가능 비율 (2026-09-29, http limitation 스코프)
+
+isthmus `78d3dee`를 저장소 밖에서 `npm ci && node scripts/build.mjs`로 빌드하고, 공개 앱 3개의 소스 모드 서버 문서(스코프 전은
+origin/main `3507399`, 후는 `feature/spring-scopes`)에 합성 클라이언트 호출을 붙여 `isthmus check`로 판정했다.
+
+```bash
+python3 measure_judgeable.py <isthmus>/dist/cli/main.js server.json mappings.json <label> <out-dir> [<context-path>] [springdoc-h2]
+```
+
+| 앱 | 전 | 후 | 정밀도 |
+|---|---|---|---|
+| spring-petclinic | 0/28 | 16/28 (57.1%) | 16/16 |
+| spring-petclinic-kotlin | 0/30 | 17/30 (56.7%) | 17/17 |
+| spring-petclinic-rest (`/petclinic`, `springdoc-h2`) | 0/49 | 0/49 (Spring Security가 스코프 없는 한계) | error 없음 |
+
+해석은 [Spring 서버 라우트](../../docs/SPRING-ROUTES.md#오라클-검증-2026-09-28)에 있다. 서버는 이 측정에서 띄우지 않았다(9월 28일에
+기록한 mappings를 오라클로 썼다).
