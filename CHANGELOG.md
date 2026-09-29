@@ -165,6 +165,30 @@
 - 문자열 리터럴 판정이 `"\""`처럼 이스케이프된 따옴표 바로 뒤의 닫는 따옴표를 놓쳐 리터럴을 동적 식으로 읽던 문제를
   고쳤다(bridges·schema 공용 해석기).
 
+### Retrofit 오라클과 순회 대칭성 (Phase 4 종료 조건)
+
+- `routes --role client`의 Retrofit 템플릿을 Retrofit 2.12.0 + OkHttp MockWebServer 실행 기록과 대조하는 합성 코퍼스
+  (`fixtures/retrofit-corpus/`)와 재생성 오라클(`experiments/phase4-retrofit/`)을 더했다. 44개 케이스 중 38개가 템플릿·동사·
+  authority까지 일치하고 6개는 이유가 있는 dynamic(`@Url`, `@Path(encoded = true)`, 부분 세그먼트, base 위 `..`, 파일 밖
+  상수)이며 불일치는 0이다(수정 전 13개). cli `RetrofitOracleTest`가 커밋된 기록으로 검사한다.
+- Fixed: Java Retrofit 어노테이션의 명명 요소(`@GET(value = …)`, `@HTTP(method = …, path = …)`)를 읽지 못해 `/{}` 템플릿과
+  `methodDynamic`을 내던 문제, 풀지 못한 경로 상수(다른 파일 object 등)를 경로 매개변수 `{}`로 바꿔 거짓 템플릿(`/{}`)을 내던
+  문제(이제 dynamic, query 뒤면 무시), `@Path(encoded = true)` 값이 `/`로 여러 세그먼트가 될 수 있는데 `{}` 한 세그먼트로 내던
+  문제(이제 그 자리부터 dynamic), OkHttp가 지우는 점 세그먼트(`./x`, `a/../b`, `.`)를 템플릿에 남기던 문제(base 위로 올라가는
+  `..`는 dynamic), 완전한 이름 `@retrofit2.http.GET`을 놓치던 문제, Java 인터페이스 상수(암묵적 static final)를 상수로 보지
+  못하던 문제, OkHttp 값 타입(`RequestBody`·`ResponseBody`·`MediaType`·`MultipartBody`·`Headers`)만 import한 Retrofit 서비스
+  파일을 모델링하지 않은 클라이언트로 세어 거짓 `route-call-coverage:`를 내던 문제(`FormBody`와 중첩 타입·동반 객체 확장
+  `RequestBody.Companion.create`·`MultipartBody.Part` 포함).
+- `RouteUrlRules.removeDotSegments`와 `JoinMode.Declared(resolveDotSegments)`를 더했다. 점 세그먼트 제거는 OkHttp로 확인한
+  Retrofit 경로만 켜고, 엔진마다 다를 수 있는 `JoinMode.Rfc3986`(Ktor 등)은 바꾸지 않았다. 벤더링한 url-compose 벡터(isthmus
+  `78d3dee`와 바이트 동일)는 그대로 모두 통과한다.
+- `reach`와 `impact --format language-traversal`의 대칭성을 검증했다. 따르는 콜백 간선이 없으면(`--dispatch direct` 등) 모든
+  `--class-hops`에서 정확한 전치(depth·evidence 포함)이고, 콜백 간선이 있으면 `impact`만 콜백 문맥 쌍
+  `{G | G →cb+ B, B = U 또는 U ∈ reach(B)}`만큼 넓다(설계). 테스트 소스는 root가 범위를 정하므로 `--include-tests`나
+  production 쌍에서만 같은 그래프를 비교한다. analysis `TraversalSymmetryTest`(무작위 그래프)와 cli
+  `TraversalSymmetrySelfTest`(kartograph 자신의 컴파일 그래프 표본 373,161쌍)로 고정했다. 의도하지 않은 비대칭은 없었다.
+  규칙은 [IMPACT](docs/IMPACT.md#정방향역방향-대칭성-reach--impact)다.
+
 ## [0.17.0] - 2026-09-24
 
 ### Added

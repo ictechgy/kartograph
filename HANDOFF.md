@@ -40,6 +40,17 @@
 - **남은 범위:** 함수형 라우터 추출, isthmus http limitationScopes가 생기면 `framework-provided-routes:` 스코프 싣기(지금은 판정
   가능 비율 0%), Spring 벡터(`framework.spring.*`)를 isthmus conformance에 제안, Phase 4b(JPA·`reach` 검증).
 
+## 진행 중: Phase 4 종료 조건 — Retrofit 오라클과 순회 대칭성
+
+- **브랜치:** `feature/retrofit-symmetry`. Retrofit 결과·규칙 근거는 [experiments/phase4-retrofit](experiments/phase4-retrofit/README.md),
+  대칭성 결론은 [IMPACT](docs/IMPACT.md#정방향역방향-대칭성-reach--impact)다.
+- **Retrofit:** 합성 코퍼스 44케이스가 Retrofit 2.12.0 + MockWebServer 기록과 일치(38)하거나 이유 있는 dynamic(6)이다. 오라클
+  재생성은 `python3 experiments/phase4-retrofit/run.py`(Maven Central 필요, 기본 CI 밖), 검사는 cli `RetrofitOracleTest`.
+- **대칭성:** 콜백 간선을 따르지 않으면 정확한 전치, 따르면 `impact`만 콜백 문맥 쌍만큼 넓다(설계). 테스트 소스는 root가 범위를
+  정한다. analysis `TraversalSymmetryTest`, cli `TraversalSymmetrySelfTest`.
+- **남은 범위:** 클라이언트 쪽 파일 밖 상수(바이트코드 어노테이션 값 읽기), Retrofit `encoded = false` 부분 세그먼트의
+  재현율(공유 규칙상 dynamic), isthmus `match.interfaces`에 상속 상위 인터페이스를 적어야 하는 점.
+
 ## 진행 중: 변경 내용 기반 impact 진입점
 
 - **목표:** v8에서 agent가 정확한 선택자를 만들지 못해 MCP impact 3회가 모두 `notFound`로 끝난 문제를 푼다. agent가 가진 "수정한 파일+줄"(`changes` 또는 unified `diff`)을 받아 변경 선언을 찾고 기존 impact로 잇는다. AI 효용 개선은 주장하지 않고, 이후 새 평가로 판단한다.

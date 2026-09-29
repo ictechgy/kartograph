@@ -512,6 +512,109 @@ class RouteCallScannerTest {
     }
 
     @Test
+    fun `retrofit java annotations read named elements and interface constants`() {
+        write(
+            "src/main/java/dev/example/api/LegacyService.java",
+            """
+            package dev.example.api;
+            import okhttp3.RequestBody;
+            import okhttp3.ResponseBody;
+            import retrofit2.Call;
+            import retrofit2.http.*;
+            public interface LegacyService {
+                String ITEMS = "legacy/items";
+                @GET(value = "legacy/items/{id}")
+                Call<ResponseBody> item(@Path("id") String id);
+                @HTTP(method = "PATCH", path = "legacy/items/{id}", hasBody = true)
+                Call<ResponseBody> patch(@Path("id") String id, @Body RequestBody body);
+                @GET(ITEMS)
+                Call<ResponseBody> items();
+            }
+            """,
+        )
+        val document = scan()
+        assertEquals("/legacy/items/{}", document.at(8).channel)
+        assertEquals("PATCH", document.at(10).method)
+        assertEquals("/legacy/items/{}", document.at(10).channel)
+        assertEquals("/legacy/items", document.at(12).channel)
+        // Retrofit 서비스가 import한 OkHttp 본문 타입은 모델링하지 않은 호출의 근거가 아니다.
+        assertTrue(document.limitations.none { it.startsWith("route-call-coverage:") }, document.limitations.toString())
+    }
+
+    @Test
+    fun `okhttp body helper imports in a retrofit service are not unmodeled clients`() {
+        write(
+            "src/main/kotlin/dev/example/api/Upload.kt",
+            """
+            package dev.example.api
+
+            import okhttp3.MultipartBody
+            import okhttp3.MultipartBody.Part.Companion.createFormData
+            import okhttp3.RequestBody.Companion.asRequestBody
+            import okhttp3.RequestBody.Companion.create
+            import retrofit2.http.Multipart
+            import retrofit2.http.POST
+            import retrofit2.http.Part
+
+            interface Upload {
+                @Multipart
+                @POST("files")
+                fun upload(@Part file: MultipartBody.Part): Any
+                @POST("raw")
+                fun raw(@retrofit2 . http . Url url: String): Any
+            }
+            """,
+        )
+        write("src/main/kotlin/dev/example/api/Client.kt", "package dev.example.api\nimport okhttp3.OkHttpClient\nclass Client(val http: OkHttpClient)")
+        val document = scan()
+        assertTrue(document.limitations.any { it.startsWith("route-call-coverage: 1 source file(s)") }, document.limitations.toString())
+        assertEquals("/files", document.at(13).channel)
+        // 완전한 이름의 `@Url`도 공백과 무관하게 URL 전체를 실행 시점 값으로 만든다.
+        assertTrue(document.at(15).dynamic)
+    }
+
+    @Test
+    fun `retrofit paths that cannot be proven stay dynamic instead of becoming parameters`() {
+        write("src/main/kotlin/dev/example/api/Paths.kt", "package dev.example.api\nobject Paths { const val MEMBERS = \"orgs/members\" }")
+        write(
+            "src/main/kotlin/dev/example/api/Service.kt",
+            """
+            package dev.example.api
+
+            import retrofit2.http.GET
+            import retrofit2.http.Path
+
+            interface Service {
+                @GET(Paths.MEMBERS)
+                fun members(): Any
+                @GET("orgs/" + Paths.MEMBERS)
+                fun nested(): Any
+                @GET("docs/{path}/raw")
+                fun doc(@Path(value = "path", encoded = true) path: String): Any
+                @GET("../v2/status")
+                fun escape(): Any
+                @retrofit2.http.DELETE("./users/{id}")
+                fun remove(@Path("id") id: String): Any
+                @GET("search?q=" + Paths.MEMBERS)
+                fun search(): Any
+            }
+            """,
+        )
+        val document = scan()
+        assertTrue(document.at(7).dynamic)
+        assertNull(document.at(7).channelPrefix)
+        assertTrue(document.at(9).dynamic)
+        assertEquals("/orgs/", document.at(9).channelPrefix)
+        assertTrue(document.at(11).dynamic)
+        assertEquals("/docs/", document.at(11).channelPrefix)
+        assertTrue(document.at(13).dynamic)
+        assertEquals("DELETE", document.at(15).method)
+        assertEquals("/users/{}", document.at(15).channel)
+        assertEquals("/search", document.at(17).channel)
+        assertEquals(true, document.at(17).route?.queryTailStripped)
+    }
+
+    @Test
     fun `test source sets are excluded by default and marked when included`() {
         val call = """
             package dev.example.net

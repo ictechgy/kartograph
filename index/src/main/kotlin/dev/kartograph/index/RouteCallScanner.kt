@@ -129,12 +129,22 @@ public class RouteCallScanner(
             "ambiguous-base-join: ${stats.ambiguousJoins} call(s) join an unresolved base URL with a relative path; their templates are dynamic",
         )
         val unmodeled = files.count { file ->
-            (includeTests || !file.isTest) && file.imports.any { import -> UNMODELED_CLIENTS.any { import.path.startsWith(it) } } &&
+            (includeTests || !file.isTest) && file.imports.any(::importsUnmodeledClient) &&
                 wrappers.none { wrapper -> declaresWrapper(file, wrapper) }
         }
         if (unmodeled > 0) add(
             "route-call-coverage: $unmodeled source file(s) use HTTP clients this scanner does not model (OkHttp, Ktor, Volley, java.net.http, Spring, Feign); their requests are not reported",
         )
+    }
+
+    /**
+     * import가 모델링하지 않은 클라이언트의 요청 API인지 본다. OkHttp의 본문·미디어 타입·헤더 값 타입만 쓰는 파일(Retrofit
+     * 서비스 인터페이스의 `RequestBody`·`ResponseBody`)은 요청을 보내지 않으므로 세지 않는다.
+     */
+    private fun importsUnmodeledClient(import: RouteImport): Boolean {
+        // 값 타입 자신과 그 중첩 타입·동반 객체 확장(`RequestBody.Companion.create`, `MultipartBody.Part`)을 모두 뺀다.
+        val okhttpType = import.path.takeIf { it.startsWith("okhttp3.") }?.removePrefix("okhttp3.")?.substringBefore('.')
+        return okhttpType !in OKHTTP_VALUE_TYPES && UNMODELED_CLIENTS.any { import.path.startsWith(it) }
     }
 
     /** 파일이 래퍼 구현 자체(소유 타입 또는 최상위 래퍼 함수)를 선언하는지 본다. */
@@ -162,6 +172,9 @@ public class RouteCallScanner(
             "okhttp3.", "io.ktor.client", "com.android.volley", "java.net.http.", "org.springframework.web.client",
             "org.springframework.web.reactive.function.client", "feign.",
         )
+
+        /** 요청을 만들거나 보내지 않는 OkHttp 값 타입(단순 이름)이다. 이것만 import한 파일은 모델링하지 않은 호출의 근거가 아니다. */
+        val OKHTTP_VALUE_TYPES = setOf("RequestBody", "ResponseBody", "MediaType", "MultipartBody", "FormBody", "Headers")
     }
 }
 
@@ -211,7 +224,9 @@ private class RouteFileScan(
     fun run() {
         wrappers.forEach(::scanWrapper)
         if (seesJavaNetUrl()) URL_CALL.findAll(file.masked).forEach(::scanUrl)
-        if (file.imports.any { it.path.startsWith("retrofit2.http.") }) RETROFIT.findAll(file.masked).forEach(::scanRetrofit)
+        val importsRetrofit = file.imports.any { it.path.startsWith("retrofit2.http.") }
+        // 짧은 이름(`@GET`)은 Retrofit import가 있을 때만, 완전한 이름(`@retrofit2.http.GET`)은 언제나 Retrofit이다.
+        RETROFIT.findAll(file.masked).filter { importsRetrofit || it.groups[1] != null }.forEach(::scanRetrofit)
     }
 
     // ---- 선언된 래퍼 ----
@@ -481,20 +496,27 @@ private class RouteFileScan(
     // ---- Retrofit ----
 
     private fun scanRetrofit(match: MatchResult) {
-        val verbName = match.groupValues[1]
+        val verbName = match.groupValues[2]
         val afterName = match.range.last + 1
         val openIndex = file.masked.substring(afterName).indexOfFirst { !it.isWhitespace() }.let { if (it < 0) -1 else afterName + it }
         val hasArgs = openIndex >= 0 && file.masked[openIndex] == '('
         val close = if (hasArgs) balancedEnd(file.code, openIndex) else -1
-        val arguments = if (hasArgs && close > openIndex) callArguments(file.code, openIndex, close).map(::callArgument) else emptyList()
+        // Java 어노테이션도 `name = value` 명명 요소를 쓴다 — 메서드 호출과 달리 Java에서도 이름을 읽는다.
+        val arguments = if (hasArgs && close > openIndex) callArguments(file.code, openIndex, close).map(::annotationArgument) else emptyList()
         val method = retrofitMethod(verbName, arguments, match.range.first)
         val pathText = if (verbName == "HTTP") arguments.firstOrNull { it.label == "path" }?.text ?: arguments.getOrNull(1)?.takeIf { it.label == null }?.text
         else arguments.firstOrNull { it.label == "value" }?.text ?: arguments.firstOrNull { it.label == null }?.text
         val signature = retrofitSignature(if (close > 0) close + 1 else afterName) ?: return
-        val composed = if (signature.second || pathText == null) ComposedRoute(template = null, dynamic = true)
-        else retrofitRoute(pathText, match.range.first)
-        val qualifiedName = (listOf(file.packageName).filter { it.isNotEmpty() } + file.enclosingTypes(match.range.first).map { it.name } + signature.first).joinToString(".")
-        emit(match.range.first, method, composed, pathText.takeUnless { signature.second }, service = null, fallbackAnchor = "base", symbolName = qualifiedName)
+        val composed = if (signature.usesUrl || pathText == null) ComposedRoute(template = null, dynamic = true)
+        else retrofitRoute(pathText, match.range.first, signature.encodedPathNames)
+        val qualifiedName = (listOf(file.packageName).filter { it.isNotEmpty() } + file.enclosingTypes(match.range.first).map { it.name } + signature.name).joinToString(".")
+        emit(match.range.first, method, composed, pathText.takeUnless { signature.usesUrl }, service = null, fallbackAnchor = "base", symbolName = qualifiedName)
+    }
+
+    /** 어노테이션 인자 하나다. Java·Kotlin 모두 `name = value`면 명명 요소다. */
+    private fun annotationArgument(text: String): RawArgument {
+        val match = NAMED_ARGUMENT.find(text) ?: return RawArgument(null, text)
+        return RawArgument(match.groupValues[1], text.substring(match.range.last + 1).trim())
     }
 
     private fun retrofitMethod(verbName: String, arguments: List<RawArgument>, offset: Int): String {
@@ -503,8 +525,16 @@ private class RouteFileScan(
         return expression?.let { resolver.literalValue(it, offset) }?.takeIf { it in RouteUrlRules.VERBS } ?: METHOD_DYNAMIC
     }
 
-    /** 어노테이션 뒤 첫 함수의 (이름, `@Url` 매개변수 여부)다. 함수가 없으면 null이다. */
-    private fun retrofitSignature(from: Int): Pair<String, Boolean>? {
+    /**
+     * 어노테이션 뒤 첫 서비스 메서드다.
+     *
+     * @property usesUrl `@Url` 매개변수가 있어 URL 전체가 실행 시점 값이다
+     * @property encodedPathNames `@Path(encoded = true)`인 매개변수 이름이다. 값의 `/`가 인코딩되지 않아 여러 세그먼트가 될 수 있다
+     */
+    private data class RetrofitSignature(val name: String, val usesUrl: Boolean, val encodedPathNames: Set<String>)
+
+    /** 어노테이션 뒤 첫 함수의 이름과 매개변수 어노테이션이다. 함수가 없으면 null이다. */
+    private fun retrofitSignature(from: Int): RetrofitSignature? {
         val window = file.masked.substring(from, (from + 2_000).coerceAtMost(file.masked.length))
         val cleaned = RETROFIT_LEADING_ANNOTATIONS.find(window)?.let { from + it.range.last + 1 } ?: from
         val header = (if (file.isJava) JAVA_SIGNATURE else KOTLIN_SIGNATURE).find(file.masked, cleaned) ?: return null
@@ -512,27 +542,54 @@ private class RouteFileScan(
         val open = header.range.last
         val close = balancedEnd(file.code, open).takeIf { it > open } ?: return null
         val usesUrl = callArguments(file.code, open, close).any { URL_PARAMETER.containsMatchIn(it) }
-        return header.groupValues[1] to usesUrl
+        return RetrofitSignature(header.groupValues[1], usesUrl, encodedPathNames(open, close))
     }
 
-    /** Retrofit 상대 경로는 RFC 3986 해석이다 — `/x`는 root, `x`는 base, `{name}`은 경로 매개변수다. */
-    private fun retrofitRoute(pathText: String, offset: Int): ComposedRoute {
-        val parts = resolver.parts(pathText, offset).flatMap { part ->
-            if (part !is UrlPart.Literal) return@flatMap listOf(part)
-            val expanded = mutableListOf<UrlPart>()
-            var last = 0
-            RETROFIT_PLACEHOLDER.findAll(part.text).forEach { placeholder ->
-                expanded += UrlPart.Literal(part.text.substring(last, placeholder.range.first))
-                expanded += UrlPart.Value(placeholder.value)
-                last = placeholder.range.last + 1
-            }
-            expanded += UrlPart.Literal(part.text.substring(last))
-            expanded
+    /** 매개변수 목록 `(`…`)`에서 `@Path(… encoded = true)`의 이름을 모은다. 이름을 증명하지 못한 인코딩 매개변수는 `*`다. */
+    private fun encodedPathNames(open: Int, close: Int): Set<String> = PATH_PARAMETER.findAll(file.masked.substring(open, close)).mapNotNull { match ->
+        val annotationOpen = open + match.range.last
+        val annotationClose = balancedEnd(file.code, annotationOpen).takeIf { it > annotationOpen } ?: return@mapNotNull null
+        val arguments = callArguments(file.code, annotationOpen, annotationClose).map(::annotationArgument)
+        val encoded = arguments.firstOrNull { it.label == "encoded" }?.text?.trim() == "true" ||
+            arguments.getOrNull(1)?.takeIf { it.label == null }?.text?.trim() == "true"
+        if (!encoded) return@mapNotNull null
+        val name = arguments.firstOrNull { it.label == "value" }?.text ?: arguments.firstOrNull { it.label == null }?.text
+        name?.let { resolver.literalValue(it, annotationOpen) } ?: ANY_PATH_NAME
+    }.toSet()
+
+    /**
+     * Retrofit 상대 경로는 RFC 3986 해석이다 — `/x`는 root, `x`는 base, `{name}`은 경로 매개변수이고 점 세그먼트는
+     * OkHttp가 지운다. 어노테이션 값은 컴파일 타임 상수이므로 풀지 못한 조각(파일 밖 상수)은 값이 아니라 경로 구조를
+     * 모르는 것이다 — query 뒤가 아니면 dynamic이다. `@Path(encoded = true)` 값은 `/`를 담아 세그먼트 경계를 넘을 수
+     * 있으므로 그 자리부터 dynamic이다.
+     */
+    private fun retrofitRoute(pathText: String, offset: Int, encodedNames: Set<String>): ComposedRoute {
+        val resolved = resolver.parts(pathText, offset)
+        val known = resolved.takeWhile { it is UrlPart.Literal }.joinToString("") { (it as UrlPart.Literal).text }
+        // 풀지 못한 조각이 query·fragment 뒤에 있으면 경로는 이미 확정됐다.
+        val unknownInPath = resolved.any { it !is UrlPart.Literal } && '?' !in known && '#' !in known
+        // 첫 조각부터 모르면 상대·절대 여부도 모른다 — 앵커와 접두사를 싣지 않는다.
+        if (unknownInPath && known.isEmpty()) return ComposedRoute(template = null, dynamic = true)
+        val anchor = if (known.startsWith('/') || ABSOLUTE_URL.containsMatchIn(known)) "root" else "base"
+        val parts = mutableListOf<UrlPart>()
+        if (anchor == "base") parts += UrlPart.Literal("/")
+        var last = 0
+        var multiSegment = false
+        for (placeholder in RETROFIT_PLACEHOLDER.findAll(known)) {
+            parts += UrlPart.Literal(known.substring(last, placeholder.range.first))
+            val name = placeholder.value.removeSurrounding("{", "}")
+            if (name in encodedNames || ANY_PATH_NAME in encodedNames) { multiSegment = true; break }
+            parts += UrlPart.Value(placeholder.value)
+            last = placeholder.range.last + 1
         }
-        val first = (parts.firstOrNull() as? UrlPart.Literal)?.text.orEmpty()
-        val anchor = if (first.startsWith('/') || first.contains("://")) "root" else "base"
-        val rooted = if (anchor == "base") listOf(UrlPart.Literal("/")) + parts else parts
-        return RouteUrlRules.compose(rooted, JoinMode.Declared(anchor))
+        if (!multiSegment) parts += UrlPart.Literal(known.substring(last))
+        val composed = RouteUrlRules.compose(parts, JoinMode.Declared(anchor, resolveDotSegments = true))
+        if (!unknownInPath && !multiSegment) return composed
+        // 모르는 자리 앞까지만 증명됐다 — 그 접두사를 channelPrefix로 싣는다.
+        return ComposedRoute(
+            template = null, dynamic = true, channelPrefix = composed.template ?: composed.channelPrefix, pathAnchor = anchor,
+            authority = composed.authority,
+        )
     }
 
     // ---- 공통 ----
@@ -622,12 +679,16 @@ private class RouteFileScan(
         val CHAINED_SCOPE = Regex("^openConnection\\s*\\(\\s*\\)(?:\\s*as\\??\\s*[\\w.]+)?\\s*\\)?\\s*(?:\\?|!!)?\\s*\\.\\s*(?:apply|run|also|use|let)\\s*$")
         val SCOPE_RECEIVERS = setOf("", "this.", "it.")
         val DO_OUTPUT = Regex("\\bdoOutput\\s*=\\s*true\\b|\\bsetDoOutput\\s*\\(\\s*true\\s*\\)")
-        val RETROFIT = Regex("@(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|HTTP)\\b")
+        val RETROFIT = Regex("@(retrofit2\\s*\\.\\s*http\\s*\\.\\s*)?(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|HTTP)\\b")
         val RETROFIT_LEADING_ANNOTATIONS = Regex("^(?:\\s*@[A-Za-z_][\\w.]*(?:\\s*\\([^()]*\\))?)*")
         val KOTLIN_SIGNATURE = Regex("\\bfun\\s+(?:<[^>]*>\\s*)?([A-Za-z_]\\w*)\\s*\\(")
         val JAVA_SIGNATURE = Regex("([A-Za-z_]\\w*)\\s*\\(")
-        val URL_PARAMETER = Regex("@(?:retrofit2\\.http\\.)?Url\\b")
+        val URL_PARAMETER = Regex("@(?:retrofit2\\s*\\.\\s*http\\s*\\.\\s*)?Url\\b")
         val RETROFIT_PLACEHOLDER = Regex("\\{[a-zA-Z][a-zA-Z0-9_-]*}")
+        val PATH_PARAMETER = Regex("@(?:retrofit2\\s*\\.\\s*http\\s*\\.\\s*)?Path\\s*\\(")
+        /** 이름을 증명하지 못한 `@Path(encoded = true)`다 — 모든 자리를 여러 세그먼트일 수 있다고 본다. */
+        const val ANY_PATH_NAME = "*"
+        val ABSOLUTE_URL = Regex("^[A-Za-z][A-Za-z0-9+.-]*://")
         val CONTROL = Regex("\\p{C}")
     }
 }

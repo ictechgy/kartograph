@@ -239,8 +239,12 @@ internal class RouteSourceFile(
         type.substringBefore('<').substringBefore('=').trim().removeSuffix("?").substringAfterLast('.').trim()
 
     private fun collectConstants(): List<RouteConstant> {
-        val pattern = if (isJava) JAVA_CONSTANT else KOTLIN_CONSTANT
-        return pattern.findAll(masked).mapNotNull { match ->
+        val matches = if (isJava) {
+            // 인터페이스 필드는 수식어 없이도 static final이다. 두 패턴이 같은 선언을 잡으면 이름 위치로 한 번만 센다.
+            (JAVA_CONSTANT.findAll(masked) + JAVA_INTERFACE_CONSTANT.findAll(masked).filter(::declaredInInterface))
+                .distinctBy { it.groups[2]!!.range.first }
+        } else KOTLIN_CONSTANT.findAll(masked)
+        return matches.mapNotNull { match ->
             val start = match.range.first
             if (enclosingFunction(start) != null) return@mapNotNull null
             val isConst = isJava || match.groupValues[1].isNotBlank()
@@ -255,6 +259,10 @@ internal class RouteSourceFile(
             )
         }.toList()
     }
+
+    /** 선언을 감싸는 가장 안쪽 타입이 Java 인터페이스(또는 `@interface`)인지 본다. */
+    private fun declaredInInterface(match: MatchResult): Boolean =
+        enclosingTypes(match.range.first).lastOrNull()?.let { masked.startsWith("interface", it.start) } == true
 
     /** `{` 위치부터 짝이 맞는 `}`의 위치다 — 마스킹 뷰라 문자열 안 중괄호를 세지 않는다. */
     fun braceEnd(open: Int): Int {
@@ -287,6 +295,8 @@ internal class RouteSourceFile(
         val KOTLIN_CONSTANT = Regex("\\b(const\\s+)?val\\s+([A-Za-z_]\\w*)\\s*(?::\\s*String\\s*)?=(?!=)")
         // Java는 const 수식어가 없다 — 빈 첫 그룹으로 그룹 번호를 Kotlin 패턴과 맞춘다.
         val JAVA_CONSTANT = Regex("\\b()static\\s+final\\s+String\\s+([A-Za-z_]\\w*)\\s*=(?!=)")
+        // 인터페이스 몸체의 `String NAME = …`(수식어 생략 가능)이다. 인터페이스 안인지는 [declaredInInterface]가 거른다.
+        val JAVA_INTERFACE_CONSTANT = Regex("(?m)^[ \\t]*()(?:(?:public|static|final)\\s+)*String\\s+([A-Za-z_]\\w*)\\s*=(?!=)")
         val DECLARATION_START = Regex(
             "^\\s*(?:@|fun\\b|val\\b|var\\b|class\\b|object\\b|interface\\b|init\\b|constructor\\b|companion\\b|" +
                 "private\\b|public\\b|internal\\b|protected\\b|override\\b|enum\\b|data\\b|sealed\\b|abstract\\b|open\\b|" +
