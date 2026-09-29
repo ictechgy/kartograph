@@ -132,7 +132,11 @@ class SpringProjectConfigTest {
         assertEquals(3, config.bootMinor)
         assertTrue(config.servlet)
         assertFalse(config.reactive)
-        assertEquals(listOf("error endpoint (/error)", "static resources and webjars (/**)", "actuator endpoints (/actuator)", "H2 console"), config.frameworkRoutes)
+        assertEquals(
+            listOf(SpringFrameworkRoute.ERROR, SpringFrameworkRoute.STATIC, SpringFrameworkRoute.WELCOME, SpringFrameworkRoute.ACTUATOR,
+                SpringFrameworkRoute.H2_CONSOLE),
+            config.frameworkRoutes,
+        )
     }
 
     @Test
@@ -168,8 +172,11 @@ class SpringProjectConfigTest {
         val config = SpringProjectConfig.read(project)
         assertFalse(config.servlet)
         assertTrue(config.reactive)
-        assertEquals(listOf("static resources and webjars (/**)", "Spring Security login and logout pages", "springdoc OpenAPI and Swagger UI",
-            "Spring Data REST repositories", "GraphQL endpoint"), config.frameworkRoutes)
+        assertEquals(
+            listOf(SpringFrameworkRoute.STATIC, SpringFrameworkRoute.WELCOME, SpringFrameworkRoute.SECURITY, SpringFrameworkRoute.SPRINGDOC,
+                SpringFrameworkRoute.DATA_REST, SpringFrameworkRoute.GRAPHQL),
+            config.frameworkRoutes,
+        )
     }
 
     @Test

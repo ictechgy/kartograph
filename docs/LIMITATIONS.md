@@ -138,10 +138,15 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   어긋나면 snapshot과 routes의 `--project` 불일치(`project-root-mismatch:`)를 밝힌다. 경로 비교로 찾지 못하는 원인은
   일반 문구로만 남는다.
 - `routes --role server`는 어노테이션 controller만 읽는다. 함수형 라우터·view controller·서블릿 등록·JAX-RS는 사실 없이
-  `route-coverage:`로, 프레임워크 제공 경로는 `framework-provided-routes:`로만 알린다. 프로필은 기본 프로필만 템플릿에 쓰고
-  환경 변수·명령행·config server 재정의는 모델링하지 않는다. 라이브러리가 선언한 stereotype·합성 어노테이션·상위 타입의
-  매핑은 보이지 않는다. 끝 `*`의 빈 끝 세그먼트, 부분 세그먼트 변수의 빈 캡처처럼 계약 템플릿보다 넓게 받는 Spring 모양이
-  있다. 목록과 근거는 [Spring 서버 라우트](SPRING-ROUTES.md#알려진-차이)다.
+  `route-coverage:`로, 프레임워크 제공 경로는 `framework-provided-routes:`로만 알린다. 제공 경로의 스코프는 상한을 증명한
+  제공자(오류 컨트롤러·welcome page·정적 리소스·actuator·springdoc·H2 console)에만 붙고, 정적 리소스 위치는 열거하지 않아
+  GET·HEAD 호출은 언제나 가려진다. Spring Security·Data REST·GraphQL은 문서 전체에 적용된다. 프로필은 기본 프로필만 템플릿에
+  쓰고 환경 변수·명령행·config server 재정의는 모델링하지 않는다. 라이브러리가 선언한 stereotype·합성 어노테이션·상위 타입의
+  매핑은 보이지 않는다. 빈 값을 받는 자리(끝 `*`, 부분 세그먼트)는 빈 값 변형 decl로 펼치되 원본과 묶는 표식은 아직 없다.
+  목록과 근거는 [Spring 서버 라우트](SPRING-ROUTES.md#프레임워크-제공-경로와-스코프)다.
+- `reach`·`impact --format language-traversal`의 `--persistence-facts`는 persistence 문서가 호출 줄에 그 저장소의 relation을
+  귀속한 상속 Spring Data 저장소 호출만 `unresolvedCalls`에서 뺀다. 같은 줄에서 같은 테이블을 쓰는 다른 문장과는 구분하지 않고,
+  저장소 AOP advice처럼 프레임워크가 끼워 넣는 프로젝트 코드는 모델링하지 않는다.
 - `snapshot merge`는 구성원 class root를 다시 인덱싱하지만 보존 근거는 구성원별 결과를 합친다. 한 모듈의 keep rule·manifest가
   다른 모듈 선언을 보존하는 관계는 다시 평가하지 않으며 `aggregate-retention:`으로 알린다. processor 관측과 compiler-evidence
   witness가 있는 구성원은 아직 합치지 않는다.

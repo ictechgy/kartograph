@@ -70,6 +70,28 @@
   `fixtures/spring-routes-corpus/`에 두고 `SpringRouteCorpusTest`가 대조한다. `missing-route-usrs:` 문구가 사실 종류
   (`route-decl`·`route-call`)를 밝힌다.
 
+### Spring 라우트 limitation 스코프·CRUD 미해결 분류 (Added·Changed)
+
+- `routes --role server`가 `framework-provided-routes:`를 제공자마다 한 줄로 내고, 받을 수 있는 요청의 상한을 증명한 제공자에
+  isthmus http `limitationScopes`를 붙인다: 오류 컨트롤러(`/error`, 모든 method), welcome page(루트), 정적 리소스·webjars
+  (`static-path-pattern`·`webjars-path-pattern` 접두사, `GET`·`HEAD`), actuator(base-path), springdoc(`GET`·`HEAD`), H2 console.
+  원소는 context-path·base-path를 붙인 요청 경로이고, 설정을 확정하지 못하거나 다른 프로필이 바꾸면 그 제공자의 스코프를
+  생략한다. Spring Security·Data REST·GraphQL은 스코프 없이 문서 전체에 적용된다. isthmus `78d3dee` 측정에서 error 판정
+  가능 비율이 spring-petclinic 0%→57.1%, spring-petclinic-kotlin 0%→56.7%가 됐고(spring-petclinic-rest는 Security 때문에
+  0%), 거짓 error는 0건이다.
+- Spring이 빈 값을 받는 자리(마지막 요소 `*`, 부분 세그먼트의 변수·`*`)를 빈 값으로 채운 decl을 함께 낸다. 원본 포함 16개를
+  넘으면 dynamic과 `route-template-expansion-capped:`다. 부분 세그먼트 `*`(`/files/*.json`)는 이제 dynamic이 아니다.
+  `setMatchOptionalTrailingSeparator(true)`만 있는 프로젝트는 `trailingSlash: "optional"`이다.
+- isthmus 적합성 벡터를 `78d3dee`로 다시 벤더링했다(`http-template`의 Spring PathPattern 15건, 새 `http-limitation-scope`).
+  `RouteConformanceTest`가 `producer:kartograph` 케이스를 실제 서버 생산자로 돌린다.
+- `reach`·`impact --format language-traversal --persistence-facts <file>`: `schema --graph-file` 문서가 호출 줄에서 호출자에
+  그 저장소의 relation을 귀속한 상속 Spring Data 저장소 호출(`save`·`findById` 등, 프로젝트 저장소 인터페이스 owner)을
+  `unresolvedCalls`에서 빼고 `persistence-modeled-calls: N`으로 알린다. fragment 재정의나 프로젝트 저장소 구현 class가 있으면
+  빼지 않는다. spring-petclinic에서 isthmus trace의 `reach-possibly-incomplete`가 사라졌다.
+- JPA 명명 전략과 Spring 라우트 설정의 Spring Boot 버전 검출을 `SpringBootVersions` 하나로 합쳤다. 표지 목록·버전 해석·카탈로그
+  참조 해석을 공유하고, 형식마다 인정하는 소비자를 적어 두 쪽이 합치기 전에 읽던 형식 집합을 그대로 지킨다(동작 불변). 형식을
+  합집합으로 넓히면 plugin 버전과 다른 버전을 고정한 starter 좌표가 함께 있을 때 라우트 설정의 버전이 "모름"으로 바뀐다.
+
 ### Gradle plugin 다중 모듈 snapshot (Fixed·Added)
 
 - Fixed: build 디렉터리를 project 밖으로 옮긴 Android 모듈의 snapshot이 `Android XML is outside the project root`로

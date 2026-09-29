@@ -46,9 +46,12 @@ public class RouteDeclScanner(
         val lines = files.associate { it.relative to it.source }
         val model = SpringModelMerger.merge(SpringBytecodeReader(classRoots).read(), sources) { path, offset -> lineOf(lines[path], offset) }
         val resolver = SpringMappingResolver(model, legacyTypeLevelHandlers = config.bootMajor?.let { it < 3 } == true)
-        val emitter = SpringRouteEmitter(config, signals, lines, graph, includeTests, applicationRoots(model, config, signals))
+        val appRoots = applicationRoots(model, config, signals)
+        val emitter = SpringRouteEmitter(config, signals, lines, graph, includeTests, appRoots)
         val handlers = resolver.handlers()
         val facts = emitter.emit(handlers)
+        val framework = SpringFrameworkRoutes(config, signals, frameworkApps(config, appRoots), emitter::requestPrefix, emitter::webStack).limitations()
+        val limitations = (emitter.limitations(resolver.stats) + signals.limitations(config, handlers.isNotEmpty())).map(::ServerLimitation) + framework
         return BridgeFactsDocument(
             generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
             sourceModifiedAt = files.maxOfOrNull { Files.getLastModifiedTime(root.resolve(it.relative)).toInstant() }?.let(::bridgeTimestamp),
@@ -56,7 +59,8 @@ public class RouteDeclScanner(
             target = "http",
             project = root.toString().replace('\\', '/'),
             facts = facts,
-            limitations = (emitter.limitations(resolver.stats) + signals.limitations(config, handlers.isNotEmpty())).distinct().sorted(),
+            limitations = limitations.map { it.message }.distinct().sorted(),
+            limitationScopes = limitations.mapNotNull { it.scope }.filter { scope -> limitations.count { it.message == scope.limitation } == 1 },
             roles = listOf("server"),
             testSources = if (includeTests) "included" else "excluded",
             service = service,
@@ -89,6 +93,17 @@ public class RouteDeclScanner(
         return (annotated + signals.applicationLaunchers).mapNotNullTo(sortedSetOf()) { path -> config.moduleOf(path)?.root }
     }
 
+    /**
+     * 프레임워크 경로를 등록할 앱 모듈이다. 앱 모듈을 찾았으면 그 모듈들, 아니면 설정이 있는 모듈, 그것도 없으면 루트 모듈이다
+     * (라우트 접두사의 설정 후보와 같은 우선순위).
+     */
+    private fun frameworkApps(config: SpringProjectConfig, appRoots: Set<String>): List<SpringModuleConfig> {
+        if (appRoots.isNotEmpty()) return config.modules.filter { it.root in appRoots }
+        return config.modules.filter { it.hasConfig }
+            .ifEmpty { config.modules.filter { it.root.isEmpty() } }
+            .ifEmpty { listOf(SpringModuleConfig.of("", emptyList())) }
+    }
+
     private fun isApplicationClass(type: SpringType): Boolean {
         val names = type.annotations.mapTo(mutableSetOf()) { it.type }
         return SPRING_BOOT_APPLICATION in names || (SPRING_BOOT_CONFIGURATION in names && ENABLE_AUTO_CONFIGURATION in names)
@@ -118,6 +133,7 @@ internal class SpringRouteEmitter(
     private val applicationRoots: Set<String> = emptySet(),
 ) {
     private var dynamicPaths = 0
+    private var cappedPaths = 0
     private var placeholderPaths = 0
     private var profilePlaceholders = 0
     private var unlocated = 0
@@ -128,6 +144,7 @@ internal class SpringRouteEmitter(
 
     private val trailingSlash: String? = when {
         signals.trailingSlashConfigured -> null
+        signals.optionalTrailingSeparator -> "optional"
         config.bootMajor == null -> null
         config.bootMajor >= 3 -> "strict"
         else -> "optional"
@@ -193,7 +210,10 @@ internal class SpringRouteEmitter(
     private fun routes(handler: SpringMappingResolver.Handler): List<Route> {
         val candidates = config.candidatesFor(handler.handlerType.sourcePath ?: handler.declaringType.sourcePath, applicationRoots)
         val placeholders = SpringPlaceholders(candidates)
-        val prefix = prefix(candidates)
+        val decision = prefix(candidates)
+        unresolvedPrefixes += decision.unresolved
+        profilePrefixes += decision.profileKeys
+        val prefix = decision.prefix
         if (prefix.anchor == NO_WEB) { webDisabled++; return emptyList() }
         val typePaths = paths(handler.typeMapping)
         val methodPaths = paths(handler.methodMapping)
@@ -221,14 +241,20 @@ internal class SpringRouteEmitter(
         val patterns = if (typePattern.isEmpty() && methodPattern.isEmpty()) listOf("", "/")
         else listOf(SpringPathPatterns.combine(typePattern, methodPattern) ?: run { dynamicPaths++; return listOf(Route(rawChannel(typePath, methodPath), null, prefix.anchor)) })
         val usedDefault = typeResolved.usedDefault || methodResolved.usedDefault || prefix.configDefault
-        return patterns.map { pattern -> route(prefix, pattern, usedDefault) }
+        return patterns.flatMap { pattern -> routes(prefix, pattern, usedDefault) }
     }
 
-    private fun route(prefix: Prefix, pattern: String, usedDefault: Boolean): Route {
+    /** 패턴 하나의 경로들이다. 빈 값을 받는 자리가 있으면 빈 값 변형도 같은 핸들러의 경로로 낸다. */
+    private fun routes(prefix: Prefix, pattern: String, usedDefault: Boolean): List<Route> {
         val full = prefix.text + pattern
         val converted = SpringPathPatterns.convert(full)
-        if (converted.template == null) { dynamicPaths++; return Route(clean(full), null, prefix.anchor) }
-        return Route(converted.template, converted.template, prefix.anchor, converted.constraints, usedDefault, converted.catchAllPrefix)
+        if (converted.template == null) {
+            if (converted.expansionCapped) cappedPaths++ else dynamicPaths++
+            return listOf(Route(clean(full), null, prefix.anchor))
+        }
+        return (listOf(converted) + converted.emptyValueVariants).map { variant ->
+            Route(variant.template, variant.template, prefix.anchor, variant.constraints, usedDefault, variant.catchAllPrefix)
+        }
     }
 
     /** dynamic 사실의 원문 채널이다. 제어 문자를 지우고 계약 길이로 자른다. */
@@ -302,43 +328,68 @@ internal class SpringRouteEmitter(
     private data class Prefix(val text: String, val anchor: String, val configDefault: Boolean)
 
     /**
+     * 접두사 판정과 한계로 알릴 사유다. 판정 자체는 부수 효과가 없어야 프레임워크 제공 경로 스코프 계산이 라우트 한계를
+     * 바꾸지 않는다 — 사유는 라우트를 낸 호출자만 기록한다.
+     *
+     * @property unresolved `unresolved-route-prefix:`로 알릴 확정하지 못한 원인이다
+     * @property profileKeys 다른 프로필이 값을 바꾸는 접두사 키다
+     */
+    private data class PrefixDecision(val prefix: Prefix, val unresolved: Set<String> = emptySet(), val profileKeys: Set<String> = emptySet())
+
+    /**
      * 서블릿 스택은 `server.servlet.context-path`(와 기본값이 아닌 `spring.mvc.servlet.path`), WebFlux는
      * `spring.webflux.base-path`다. Boot의 `cleanContextPath`·`cleanBasePath`처럼 끝 `/`를 뗀다. 확정하지 못하면
      * `base` 앵커로 두고 한계로 알린다. 다른 프로필만 값을 바꾸면 기본 프로필 값을 쓰고 한계로 알린다.
      */
-    private fun prefix(candidates: List<SpringModuleConfig>): Prefix {
+    private fun prefix(candidates: List<SpringModuleConfig>): PrefixDecision {
         if (signals.pathPrefixConfigured) return unresolvedPrefix("a WebMvcConfigurer/WebFluxConfigurer path prefix (addPathPrefix)")
-        val prefixes = candidates.map { candidate -> candidatePrefix(candidate, SpringPlaceholders(listOf(candidate))) }.distinct()
-        return prefixes.singleOrNull() ?: unresolvedPrefix("the route prefix, which differs between application modules,")
+        val decisions = candidates.map { candidate -> candidatePrefix(candidate, SpringPlaceholders(listOf(candidate))) }
+        val unresolved = decisions.flatMapTo(sortedSetOf()) { it.unresolved }
+        val profileKeys = decisions.flatMapTo(sortedSetOf()) { it.profileKeys }
+        val single = decisions.map { it.prefix }.distinct().singleOrNull()
+            ?: return PrefixDecision(BASE_PREFIX, unresolved + "the route prefix, which differs between application modules,", profileKeys)
+        return PrefixDecision(single, unresolved, profileKeys)
     }
 
     /** 앱 모듈 하나의 접두사다. */
-    private fun candidatePrefix(candidate: SpringModuleConfig, placeholders: SpringPlaceholders): Prefix {
+    private fun candidatePrefix(candidate: SpringModuleConfig, placeholders: SpringPlaceholders): PrefixDecision {
         val candidates = listOf(candidate)
         if (candidate.unreadable) return unresolvedPrefix("an unreadable application configuration file")
         val stack = stack(candidate)
-        if (stack == NO_WEB) return Prefix("", NO_WEB, false)
+        if (stack == NO_WEB) return PrefixDecision(Prefix("", NO_WEB, false))
         if (candidate.importsConfig) return unresolvedPrefix("spring.config.import")
         // Boot 1.x 키다. 지금 규칙은 Boot 2 이상의 키만 풀므로 이 키가 보이면 접두사를 확정하지 않는다.
         if (candidates.any { it.lookup(LEGACY_CONTEXT_PATH) != SpringModuleConfig.Lookup.Absent }) return unresolvedPrefix(LEGACY_CONTEXT_PATH)
+        val profileKeys = sortedSetOf<String>()
         if (stack != "reactive") {
             val servletPath = prefixValue(SERVLET_PATH, candidates, placeholders) ?: return unresolvedPrefix(SERVLET_PATH)
             if (servletPath.text!!.isNotEmpty()) return unresolvedPrefix(SERVLET_PATH)
-            if (servletPath.profileDependent) profilePrefixes += SERVLET_PATH
+            if (servletPath.profileDependent) profileKeys += SERVLET_PATH
         }
         val keys = when (stack) { "servlet" -> listOf(CONTEXT_PATH); "reactive" -> listOf(BASE_PATH); else -> listOf(CONTEXT_PATH, BASE_PATH) }
-        val values = keys.map { key -> key to (prefixValue(key, candidates, placeholders) ?: return unresolvedPrefix(key)) }
+        val values = keys.map { key -> key to (prefixValue(key, candidates, placeholders) ?: return unresolvedPrefix(key, profileKeys)) }
         val present = values.filter { it.second.text!!.isNotEmpty() || it.second.profileDependent }
-        if (stack == null && present.isNotEmpty()) return unresolvedPrefix(present.joinToString(" or ") { it.first } + " (web stack unknown)")
-        val (key, chosen) = present.firstOrNull() ?: return Prefix("", "root", false)
-        if (chosen.profileDependent) profilePrefixes += key
-        return Prefix(chosen.text!!, "root", chosen.usedDefault && chosen.text.isNotEmpty())
+        if (stack == null && present.isNotEmpty()) return unresolvedPrefix(present.joinToString(" or ") { it.first } + " (web stack unknown)", profileKeys)
+        val (key, chosen) = present.firstOrNull() ?: return PrefixDecision(Prefix("", "root", false), profileKeys = profileKeys)
+        if (chosen.profileDependent) profileKeys += key
+        return PrefixDecision(Prefix(chosen.text!!, "root", chosen.usedDefault && chosen.text.isNotEmpty()), profileKeys = profileKeys)
     }
 
-    private fun unresolvedPrefix(reason: String): Prefix {
-        unresolvedPrefixes += reason
-        return Prefix("", "base", false)
+    private fun unresolvedPrefix(reason: String, profileKeys: Set<String> = emptySet()): PrefixDecision =
+        PrefixDecision(BASE_PREFIX, setOf(reason), profileKeys)
+
+    /**
+     * 앱 모듈 하나의 요청 경로 접두사다. 프레임워크 제공 경로 스코프를 같은 접두사 규칙으로 적는 데 쓴다. 한계를 기록하지 않는다.
+     *
+     * @return 접두사 문자열과 앵커(`root`·`base`). 웹 서버가 없는 앱이면 null이다
+     */
+    fun requestPrefix(app: SpringModuleConfig): Pair<String, String>? {
+        val prefix = prefix(listOf(app)).prefix
+        return if (prefix.anchor == NO_WEB) null else prefix.text to prefix.anchor
     }
+
+    /** 앱 모듈 하나의 웹 스택이다(`servlet`·`reactive`, 모르면 null). 웹 서버가 없으면 `none`이다. */
+    fun webStack(app: SpringModuleConfig): String? = stack(app)
 
     /**
      * 접두사 키의 기본 프로필 값이다. 없으면 빈 문자열이고, 다른 프로필에만 있으면 빈 문자열 + [SpringPlaceholderResult.profileDependent]다.
@@ -387,7 +438,8 @@ internal class SpringRouteEmitter(
 
     /** 사실이 싣지 못한 것을 서버 측 접두사 한계로 센다. */
     fun limitations(stats: SpringMappingResolver.Stats): List<String> = buildList {
-        if (dynamicPaths > 0) add("route-coverage: $dynamicPaths mapping path(s) could not be converted to a canonical template (unresolved constants or pattern shapes such as ?, partial *, several variables in one segment, or a non-final **); their facts are dynamic")
+        if (dynamicPaths > 0) add("route-coverage: $dynamicPaths mapping path(s) could not be converted to a canonical template (unresolved constants or pattern shapes such as ?, several variables or wildcards in one segment, or a non-final **); their facts are dynamic")
+        if (cappedPaths > 0) add("route-template-expansion-capped: $cappedPaths mapping path(s) accept empty values in more places than ${SpringPathPatterns.MAX_VARIANTS} variant templates can list; their facts are dynamic")
         if (placeholderPaths > 0) add("route-coverage: $placeholderPaths mapping path(s) use placeholders without a default-profile value, or overridden only in other profiles; their facts are dynamic")
         if (profilePlaceholders > 0) add("route-coverage: $profilePlaceholders mapping path(s) use placeholder values that other profiles override; templates use the default profile")
         if (unlocated > 0) add("route-coverage: $unlocated handler method(s) have no source location for their mapping annotation (generated or unscanned sources); their facts are omitted")
@@ -409,6 +461,9 @@ internal class SpringRouteEmitter(
 
         /** 웹 서버를 띄우지 않는 앱(`web-application-type=none`)의 접두사 표식이다. 사실을 내지 않는다. */
         const val NO_WEB = "none"
+
+        /** 확정하지 못한 접두사다. 사실은 `base` 앵커로 낸다. */
+        val BASE_PREFIX = Prefix("", "base", false)
         val NARROWING = listOf("params", "headers", "consumes", "produces", "version")
         val CONTROL = Regex("\\p{C}")
     }

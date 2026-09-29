@@ -93,3 +93,21 @@ public data class RouteDeclEvidence(
  * @property pattern `regex` 종류의 원래 정규식이다(정보용). 다른 종류에서는 null이다
  */
 public data class RouteParamConstraint(val segment: Int, val kind: String, val pattern: String? = null)
+
+/**
+ * http limitation 스코프 하나다(isthmus GRAPH-EXCHANGE "http limitation 스코프"). 한계 하나가 가릴 수 있는 요청(method, 경로)의
+ * 보수적 상한이며, 경로 필드 셋 중 하나 이상이 있어야 한다.
+ *
+ * @property limitation 스코프를 붙일 한계 문구다. 같은 문서의 `limitations`에 정확히 있어야 한다
+ * @property templates 정확한 정규 템플릿 집합이다(`{**}` 허용)
+ * @property templatePrefixes 세그먼트 경계의 root 접두사다. `/`는 모든 경로다
+ * @property templateSuffixes 알 수 없는 앞부분 뒤의 세그먼트 경계 접미사다
+ * @property methods 스코프가 가리는 HTTP 동사다. 비어 있으면 모든 method다
+ */
+public data class RouteLimitationScope(
+    val limitation: String,
+    val templates: List<String> = emptyList(),
+    val templatePrefixes: List<String> = emptyList(),
+    val templateSuffixes: List<String> = emptyList(),
+    val methods: List<String> = emptyList(),
+)

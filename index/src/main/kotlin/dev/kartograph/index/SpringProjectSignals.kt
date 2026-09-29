@@ -19,18 +19,26 @@ internal class SpringProjectSignals private constructor(
      * 앱으로 오인하지 않게 한다.
      */
     val applicationLaunchers: List<String>,
+    /** 끝 슬래시 매칭을 모델링하지 않는 방식으로 바꾼다(`setUseTrailingSlashMatch(true)`·`UrlHandlerFilter`). 끝 슬래시를 모른다. */
     val trailingSlashConfigured: Boolean,
+    /**
+     * `PathPatternParser.setMatchOptionalTrailingSeparator(true)`를 부른다. 다른 끝 슬래시 설정이 없으면 끝 슬래시는 `optional`이다
+     * (isthmus `spring/trailing-slash-optional-when-enabled`).
+     */
+    val optionalTrailingSeparator: Boolean,
     private val antMatcherConfigured: Boolean,
+    /**
+     * `addResourceHandler`로 리소스 핸들러를 직접 등록한다. 그 경로는 모델링하지 않으므로 정적 리소스 스코프를 설정한 패턴으로
+     * 좁히지 않는다.
+     */
+    val resourceHandlersRegistered: Boolean = false,
 ) {
     /**
-     * 신호와 Boot 버전으로 한계를 만든다.
+     * 신호와 Boot 버전으로 한계를 만든다. 프레임워크 제공 경로는 스코프와 함께 [SpringFrameworkRoutes]가 만든다.
      *
      * @param hasHandlers controller 핸들러를 하나 이상 찾았는지다. 빌드 표지가 없어도 핸들러가 있으면 버전을 모른다고 알린다
      */
     fun limitations(config: SpringProjectConfig, hasHandlers: Boolean): List<String> = buildList {
-        if (config.frameworkRoutes.isNotEmpty()) {
-            add("framework-provided-routes: ${config.frameworkRoutes.joinToString(", ")}; these routes have no project declaration and no synthetic route-decl facts are emitted")
-        }
         if (config.bootMajor == null && (config.servlet || config.reactive || hasHandlers)) {
             add("route-framework-version-unknown: no single Spring Boot version was found in the build files; trailingSlash is omitted and Spring Boot 3+ path matching is assumed")
         }
@@ -61,7 +69,9 @@ internal class SpringProjectSignals private constructor(
             pathPrefixConfigured = files.any { PATH_PREFIX.containsMatchIn(it.masked) },
             applicationLaunchers = files.filter { !it.isTest && launchesBoot(it) }.map { it.relative },
             trailingSlashConfigured = files.any { TRAILING_SLASH.containsMatchIn(it.masked) },
+            optionalTrailingSeparator = files.any { OPTIONAL_SEPARATOR.containsMatchIn(it.masked) },
             antMatcherConfigured = files.any { ANT_MATCHER.containsMatchIn(it.masked) },
+            resourceHandlersRegistered = files.any { RESOURCE_HANDLER.containsMatchIn(it.masked) },
         )
 
         private val FUNCTIONAL_IMPORTS = listOf("org.springframework.web.servlet.function.", "org.springframework.web.reactive.function.server.")
@@ -69,7 +79,9 @@ internal class SpringProjectSignals private constructor(
         private val VIEW_CONTROLLER = Regex("\\.\\s*add(?:View|RedirectView|Status)Controller\\s*\\(")
         private val SERVLET = Regex("\\bServletRegistrationBean\\b|@WebServlet\\b")
         private val PATH_PREFIX = Regex("\\.\\s*(?:addPathPrefix|setPathPrefixes)\\s*\\(")
-        private val TRAILING_SLASH = Regex("setUseTrailingSlashMatch\\s*\\(\\s*true|useTrailingSlashMatch\\s*=\\s*true|\\bUrlHandlerFilter\\b|setMatchOptionalTrailingSeparator\\s*\\(\\s*true")
+        private val TRAILING_SLASH = Regex("setUseTrailingSlashMatch\\s*\\(\\s*true|useTrailingSlashMatch\\s*=\\s*true|\\bUrlHandlerFilter\\b")
+        private val OPTIONAL_SEPARATOR = Regex("setMatchOptionalTrailingSeparator\\s*\\(\\s*true|matchOptionalTrailingSeparator\\s*=\\s*true")
+        private val RESOURCE_HANDLER = Regex("\\.\\s*addResourceHandler\\s*\\(")
         private val ANT_MATCHER = Regex("\\.\\s*setPathMatcher\\s*\\(")
         private val LAUNCHER = Regex("\\bSpringApplication\\s*\\.\\s*run\\s*\\(|\\brunApplication\\s*[<(]|\\bSpringApplicationBuilder\\s*\\(")
         private val BOOT_LAUNCH_IMPORTS = setOf(

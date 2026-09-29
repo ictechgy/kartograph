@@ -1,6 +1,6 @@
 # Spring 서버 라우트 (`routes --role server`)
 
-_기록: 2026-09-28 · 상태: 미출시(API 변경 영향 계획 Phase 4a) · isthmus http 계약은 아직 '개발 중'이다_
+_기록: 2026-09-28, 스코프·빈 값 변형 2026-09-29 · 상태: 미출시(API 변경 영향 계획 Phase 4a) · isthmus http 계약은 아직 '개발 중'이다_
 
 Spring MVC·WebFlux 어노테이션 controller를 isthmus http 도메인의 `route-decl` 사실로 낸다. 계약은 isthmus
 `docs/GRAPH-EXCHANGE.md`의 "개발 중: HTTP 경계" 절이고, 이 문서는 kartograph 생산자의 규칙·근거·검증 결과다.
@@ -55,10 +55,11 @@ snapshot 형식은 바꾸지 않는다(어노테이션 값 보존은 계획상 c
 | 빈 매핑 | 클래스·메서드 모두 경로가 없으면 `""`과 `/` 두 패턴(접두사가 있으면 `/ctx`와 `/ctx/`) | `getMappingForMethod`의 `paths("", "/")` |
 | 동사 | 클래스·메서드 동사의 합집합, 비면 `ANY`. HEAD·OPTIONS 자동 처리는 decl로 내지 않는다(isthmus가 `head-as-get`·`options-any`로 잇는다). 알 수 없는 동사는 사실 대신 `route-coverage:` | `RequestMethodsRequestCondition.combine` |
 | narrowed | 클래스나 메서드에 `params`·`headers`·`consumes`·`produces`·`version`이 하나라도 있으면 | `RequestMappingInfo` 조건 |
-| 경로 변수 | 세그먼트 전체 `{x}`·`*` → `{}`(빈 값 불가), 부분 세그먼트 `p{x}s` → `p{}s`, 세그먼트에 변수 둘 이상·`?`·부분 `*` → dynamic | `CaptureVariablePathElement`, `WildcardPathElement`, `RegexPathElement` |
+| 경로 변수 | 세그먼트 전체 `{x}`·`*` → `{}`, 부분 세그먼트 `p{x}s`·`p*s` → `p{}s`, 세그먼트에 변수·와일드카드 둘 이상·`?` → dynamic | `CaptureVariablePathElement`, `WildcardPathElement`, `RegexPathElement` |
+| 빈 값 변형 | Spring이 빈 값을 받는 자리(마지막 요소 `*`, 부분 세그먼트의 변수·`*`)를 빈 값으로 채운 decl을 같은 method·symbol·위치로 함께 낸다(`/files/*` → `/files/{}`·`/files/`, `/files/{name}.json` → `/files/{}.json`·`/files/.json`). 정규식이 빈 값을 받지 않는 변수(`{n:[a-z]+}`)와 세그먼트 전체 변수·가운데 `*`는 펼치지 않는다. 원본 포함 16개를 넘으면 dynamic + `route-template-expansion-capped:` | `WildcardPathElement`(마지막 요소는 0글자), `RegexPathElement`(기본 `(.*)`), isthmus `spring/*` 벡터 |
 | 정규식 제약 | `{x:re}` → `paramConstraints`. 언어가 계약의 가장 넓은 정의에 포함될 때만 닫힌 종류(`\d+`·`[0-9]+`·`-?\d+` 등 → `int`, 8-4-4-4-12 hex 클래스 → `uuid`, slug 문자만 쓴 `[…]+`·`\w+` → `slug`), 나머지는 `regex`와 원문 `pattern` | 계약의 `paramConstraints` 절 |
 | catch-all | 끝 `/**`·`/{*x}` → `…/{**}`와 접두사 decl(0세그먼트 매칭). usr가 있으면 접두사 decl에 `catchAllPrefix`, 없으면(계약상 표식에 usr 필수) 같은 키의 명시 decl이 없을 때만 일반 decl. 끝이 아닌 `**`·`{*x}`는 dynamic | `WildcardTheRestPathElement`, `CaptureTheRestPathElement` |
-| 끝 슬래시 | Boot 3 이상(Spring 6+) `strict`, Boot 2(Spring 5) `optional`, 버전 미상은 생략 + `route-framework-version-unknown:`. 소스에 `setUseTrailingSlashMatch(true)`·`UrlHandlerFilter`·`setMatchOptionalTrailingSeparator(true)`가 있으면 생략 | `PathPatternParser` 기본값(6.0에서 `matchOptionalTrailingSeparator=false`) |
+| 끝 슬래시 | Boot 3 이상(Spring 6+) `strict`, Boot 2(Spring 5) `optional`, 버전 미상은 생략 + `route-framework-version-unknown:`. 소스에 `setUseTrailingSlashMatch(true)`·`UrlHandlerFilter`가 있으면 생략, 그것 없이 `setMatchOptionalTrailingSeparator(true)`만 있으면 `optional` | `PathPatternParser` 기본값(6.0에서 `matchOptionalTrailingSeparator=false`) |
 | 대소문자 | `caseInsensitive`는 내지 않는다(증명하지 않음) | `PathPatternParser.caseSensitive=true` |
 
 ### 접두사와 설정
@@ -93,20 +94,42 @@ snapshot 형식은 바꾸지 않는다(어노테이션 값 보존은 계획상 c
   플레이스홀더 값을 줄 때만 쓴다. 다르면 `base`와 `unresolved-route-prefix:`다. 앱 모듈을 찾지 못하면 자기 설정, 없으면 설정이
   있는 모든 모듈이 후보다.
 
-### 프레임워크 제공 경로와 모델링하지 않은 경로
+### 프레임워크 제공 경로와 스코프
 
-합성 decl은 내지 않고 `framework-provided-routes:` 한 줄로 제공자를 밝힌다: Boot 서블릿 앱의 `/error`, 정적 리소스와
-webjars(`/**`), actuator, Spring Security 로그인·로그아웃, springdoc, Spring Data REST, GraphQL, H2 console. 다음은 사실로
-내지 않고 `route-coverage:`로 센다: 함수형 라우터(`RouterFunction`·`router {}`·`coRouter {}`), view·redirect·status
-controller 등록, `ServletRegistrationBean`·`@WebServlet`, JAX-RS, AntPathMatcher(Boot 2.6 이전 MVC 기본이거나 설정한 경우).
+합성 decl은 내지 않고 제공자마다 `framework-provided-routes:` 한 줄을 낸다. 받을 수 있는 요청(method, 경로)의 상한을 증명한
+제공자에는 isthmus http `limitationScopes`(계약 GRAPH-EXCHANGE "http limitation 스코프")를 붙인다. 스코프 밖의 호출은 그 한계가
+가리지 않으므로 isthmus가 `route-call-without-decl`·`route-method-mismatch` error를 판정할 수 있다. 스코프 원소는 라우트와 같은
+접두사 규칙(context-path·base-path)을 적용한 요청 경로다. 앱 모듈이 여럿이면 앱마다 구해 합치고, 한 앱이라도 증명하지 못하면 그
+제공자는 스코프 없이 문서 전체에 적용된다.
+
+| 제공자 | 스코프 | 근거 |
+|---|---|---|
+| 오류 컨트롤러(서블릿) | `templates: [<접두사>/error]`, 모든 method. `server.error.path`·`error.path`를 같은 플레이스홀더 규칙으로 풀고 빈 값 변형도 넣는다. 접두사를 모르면 `templateSuffixes`. 다른 프로필이 바꾸거나 풀지 못하면 생략 | `BasicErrorController`의 `@RequestMapping("${server.error.path:${error.path:/error}}")`, method 제한 없음 |
+| welcome page | 서블릿 `templates: [<접두사>]`(모든 method), WebFlux는 `GET`·`HEAD`. 접두사를 모르면 생략 | `WelcomePageNotAcceptableHandlerMapping`은 루트를 method 제한 없는 Controller로 받는다(406). WebFlux `WelcomePageRouterFunctionFactory`는 `GET /` |
+| 정적 리소스·webjars | `templatePrefixes`, `methods: [GET, HEAD]`. `static-path-pattern`·`webjars-path-pattern`(기본 `/**`·`/webjars/**`)의 리터럴 접두사로 좁히고 기본 `/webjars`는 항상 넣는다. 값을 확정하지 못하거나 프로젝트가 `addResourceHandler`로 직접 등록하면 앱 접두사 전체 | `ResourceHttpRequestHandler`·`ResourceWebHandler`는 GET·HEAD만 받는다. `WebMvcAutoConfiguration.addResourceHandlers` |
+| actuator | `templatePrefixes: [<접두사>+base-path, management.server.base-path+base-path, <접두사>/cloudfoundryapplication]`. base-path가 비거나(루트 매핑) health group `additional-path` 키가 있으면 생략 | `WebEndpointProperties.basePath = "/actuator"`와 `cleanBasePath` |
+| springdoc | `templatePrefixes: [<접두사>]`, `methods: [GET, HEAD]` | springdoc-openapi 3.1.0의 엔드포인트가 모두 `@GetMapping`이거나 리소스 핸들러다 |
+| H2 console | `templatePrefixes: [<접두사>+spring.h2.console.path]`(기본 `/h2-console`), 모든 method | `H2ConsoleAutoConfiguration`의 서블릿 매핑 `path/*`와 `setPath` 검증 |
+| Spring Security, Spring Data REST, GraphQL | 스코프 없음(문서 전체) | Security 엔드포인트는 코드 DSL(`loginPage`·`oauth2Login` 등), `Customizer<HttpSecurity>` bean, spring.factories 기본 구성으로 바뀐다. Data REST의 기본 base-path는 루트이고 GraphQL은 소스로 확인하지 않았다 |
+
+정적 리소스 위치(의존성 JAR의 `META-INF/resources`, 빌드 생성물, 리소스 체인 버전 경로)는 저장소 소스로 열거할 수 없으므로 파일
+경로로 좁히지 않는다. 그래서 GET·HEAD 호출은 정적 리소스 스코프가 가리고, 그 밖의 method 호출만 error를 판정할 수 있다.
+근거는 Spring Boot 4.1.0·4.1.1, Spring Framework 6.2.10·7.0.8, springdoc-openapi 3.1.0 공식 소스(Maven Central sources JAR)와,
+공개 앱·합성 코퍼스를 실제로 띄워 받은 `/actuator/mappings`의 프레임워크 매핑이다. `SpringRouteCorpusTest`가 기록한 프레임워크
+매핑이 모두 스코프 안에 드는지 대조한다.
+
+다음은 사실로 내지 않고 스코프 없는 `route-coverage:`로 센다: 함수형 라우터(`RouterFunction`·`router {}`·`coRouter {}`),
+view·redirect·status controller 등록, `ServletRegistrationBean`·`@WebServlet`, JAX-RS, AntPathMatcher(Boot 2.6 이전 MVC 기본이거나
+설정한 경우). 함수형 라우터는 등록 경로를 추출하지 않으므로 아는 접두사 아래라는 것도 증명하지 못한다. 다른 프로필만 정한
+플레이스홀더 경로도 dynamic 사실이라 isthmus가 `unjoined-dynamic-routes`로 따로 세고, 계약에 dynamic decl의 스코프 표현이 아직
+없어(미결 항목) 스코프를 붙이지 않는다.
 
 ## 알려진 차이
 
 실제 매칭과 템플릿이 조금 다른 경우다. 모두 드문 모양이며 isthmus 벡터로 정할 후보다.
 
-- 끝 세그먼트 전체 `*`(`/a/*`)는 Spring에서 빈 끝 세그먼트(`/a/`)도 받지만 `{}`는 비어 있지 않은 세그먼트만 받는다.
-- 부분 세그먼트 변수(`/files/{name}.json`)는 Spring에서 빈 캡처(`/files/.json`)도 받지만 계약의 `p{}s`는 가운데가 비어
-  있지 않아야 한다.
+- 빈 값 변형 decl은 원본과 묶는 표식이 계약에 아직 없다(미결 항목). 그래서 변형 decl도 미호출 진단(`route-decl-without-call`)의
+  대상이 된다.
 - 라이브러리가 선언한 stereotype·합성 매핑 어노테이션과 라이브러리 상위 타입의 매핑은 보이지 않는다. controller의 상위
   타입이 모델 밖이면 `route-coverage: … inherit from types outside …`로, `@Controller`가 보이지 않는데 매핑을 선언한 구체
   class(라이브러리 stereotype, 모델 밖 상위 타입, 다른 등록 방식 가능성)는 `route-coverage: … declare mappings without a
@@ -145,19 +168,59 @@ className·name·descriptor로 만든 JVM id), 소스 모드에서 qualifiedName
 ² 빈자리 4건은 계약상 dynamic으로 남긴 것이다: 다른 프로필에만 정의한 플레이스홀더(기본값을 쓰지 않음) 2건, 한
 세그먼트의 변수 두 개(`/v{major}.{minor}`) 2건. 둘 다 dynamic 사실과 `route-coverage:`로 드러난다.
 
-정밀도는 모든 표본에서 100%다. 오라클 패턴 중 `/owners/*/pets/…`처럼 끝이 아닌 세그먼트 전체 `*`는 `{}`로 맞췄다
+정밀도는 모든 표본에서 100%다. 2026-09-29부터 edge-mvc는 빈 값 변형 decl 2건(`/api/j/doc/.json`·`/api/java/doc/.json`)을 더 낸다.
+기록은 패턴 단위라 이 템플릿이 따로 없지만 같은 핸들러의 `/doc/{name}.json`이 받는 경로다(`SpringRouteCorpusTest`가 이 둘만 허용한다). 오라클 패턴 중 `/owners/*/pets/…`처럼 끝이 아닌 세그먼트 전체 `*`는 `{}`로 맞췄다
 (`WildcardPathElement`는 가운데 `*`에 한 글자 이상을 요구한다). WebFlux 공개 표본(spring-petclinic-reactive)은 Cassandra가
 필요해 띄우지 못했다. 소스 모드 출력만 수동으로 확인했다(Boot 2.x, `optional` 끝 슬래시, 32건).
 
-**error 판정 가능 비율**: 지금 isthmus(http limitation 스코프가 초안)에서는 서버 측 limitation이 문서 전체에 적용된다.
-Boot 웹 앱은 `/error`·정적 리소스 때문에 항상 `framework-provided-routes:`가 있으므로 판정 가능 비율은 모든 표본에서
-**0%**다(error가 아니라 `-unverified` warning이 된다). 스코프가 구현되면 root 앵커·정적·비테스트 사실의 비율은 모든 표본에서
-100%다(petclinic 17/17, kotlin 18/18, rest 37/37, edge-mvc 60/64 사실, edge-webflux 16/16). 이 차이를 줄이려면 isthmus의 http
-`limitationScopes`(`templatePrefixes: ["/actuator"]`, `templates: ["/error"]`)가 필요하다.
+**error 판정 가능 비율 (2026-09-29, isthmus `78d3dee`)**: 합성 클라이언트 호출로 측정했다. 앱마다 서버 문서(소스 모드)의 정적
+root 선언 키 하나당 맞는 호출 하나와, 선언이 없는 경로(`…/zz-missing`)·선언 경로의 다른 method 호출을 만들고, 실제로 서비스되는
+프레임워크 경로(`/actuator/health`, `POST /error`, `/webjars/…`, rest는 `/v3/api-docs`·`/swagger-ui/…`·`/h2-console/…`) 호출도
+넣었다. 음성 표본은 오라클(`/actuator/mappings`)의 프로젝트 핸들러가 받지 않는 호출이고, 비율은 그중 isthmus `check`가 error로
+판정한 비율이다. 정밀도는 error가 난 호출을 오라클의 프로젝트·프레임워크 핸들러·서블릿 매핑 전체와 대조해 계산했다.
+
+| 앱 | 전(한계 문서 전체) | 후(스코프) | 그중 GET·HEAD 외 | 정밀도 |
+|---|---|---|---|---|
+| spring-petclinic | 0/28 (0%) | 16/28 (57.1%) | 16/17 | 16/16 |
+| spring-petclinic-kotlin | 0/30 (0%) | 17/30 (56.7%) | 17/18 | 17/17 |
+| spring-petclinic-rest | 0/49 (0%) | 0/49 (0%) | 0/40 | error 없음 |
+
+남은 빈자리의 원인은 두 가지다. GET·HEAD 호출은 정적 리소스 스코프(`/` 아래 GET·HEAD)가 가린다(위치를 열거할 수 없음). 루트
+경로의 다른 method 호출은 welcome page 스코프가 가린다(petclinic·kotlin의 1건). spring-petclinic-rest는 Spring Security가 스코프
+없는 한계로 남아 문서 전체가 가려진다 — 참고로 Security 한 줄만 빼고 같은 측정을 하면 40/49(81.6%), 정밀도 40/40이다. 거짓
+error는 모든 표본에서 0건이다.
 
 ## isthmus 호환성
 
-isthmus `main` `9de927a`를 저장소 밖에 풀어 `node src/cli/main.ts`로 확인했다. `check`가 서버 문서(바이트코드·소스 모드,
+적합성 벡터는 isthmus `78d3dee`의 `http-template`(Spring PathPattern `spring/*` 15건 포함)·`url-compose`·`http-limitation-scope`를
+`fixtures/isthmus-conformance/`에 벤더링했고, `RouteConformanceTest`가 `producer`·`producer:kartograph` 케이스를 모두 돌린다. Spring
+케이스는 합성 Boot 3.5 프로젝트를 실제 서버 생산자로 스캔해 템플릿·catch-all 접두사·끝 슬래시를 비교하고, 스코프 케이스는
+`RouteLimitationScopes`(검증·겹침 판정)로 실행한다. 측정에는 isthmus `78d3dee`를 저장소 밖에서 빌드한 `dist/cli/main.js`를 썼다.
+
+처음 호환성 확인은 isthmus `main` `9de927a`를 저장소 밖에 풀어 `node src/cli/main.ts`로 했다. `check`가 서버 문서(바이트코드·소스 모드,
 catch-all 접두사·`paramConstraints`·dynamic·`configDefault` 포함)와 클라이언트 문서를 받아 조인한다(정수 제약 위반 호출은
 후보에서 빠지고, 접두사 decl은 `catch-all` 품질로 맞는다). `trace`가 route 선택 → 핸들러 usr → `kartograph reach` 순회를
-같은 id로 잇는다. isthmus 변경은 필요하지 않았다. 다만 위 판정 가능 비율 때문에 http limitation 스코프 구현을 권한다.
+같은 id로 잇는다.
+
+## 상속 Spring Data CRUD 호출과 `reach`
+
+`repo.save(x)`·`repo.findById(id)`처럼 `CrudRepository`·`JpaRepository`에서 상속한 메서드는 프로젝트 정점이 없어 `reach`·`impact`가
+`unresolvedCalls`로 세고, isthmus trace가 `reach-possibly-incomplete` gap을 낸다. 그러나 `schema --graph-file`은 이 호출 지점을
+호출자 메서드의 relation-use 사실로 이미 귀속한다. `reach`·`impact --format language-traversal`에 그 persistence 문서를
+`--persistence-facts`로 주면(문서의 `project`가 `--project` realpath와 같아야 하고, 아니면 종료 코드 2), 다음이 모두 참인 호출만
+미해결에서 빼고 `persistence-modeled-calls: N`으로 알린다. 같은 snapshot으로 만든 문서를 주는 것은 사용자 몫이다(문서에 snapshot
+신원이 없다).
+
+1. 외부 인터페이스·가상 호출이고 dispatch 해석이 `UNRESOLVED`다(라이브러리 모델·reflection·invokedynamic은 빼지 않는다).
+2. 호출 owner가 스냅샷의 프로젝트 인터페이스이고 프로젝트 상위 인터페이스를 따라 Spring Data 기반 인터페이스(`Repository`·
+   `CrudRepository`·`JpaRepository` 등)에 닿는다.
+3. 호출이 프로젝트 코드로 갈 수 없다: owner의 프로젝트 상위 인터페이스가 같은 이름의 메서드를 선언하지 않고(fragment 재정의),
+   스냅샷에 Spring Data 기반 타입·`SimpleJpaRepository`를 구현하거나 상속한 프로젝트 타입(class·Kotlin object·enum)이 없다(사용자
+   base class·직접 구현).
+4. persistence 문서가 owner 저장소 선언 파일에 둔 relation(상속 CRUD 표면의 도메인 테이블)과 같은 relation의 사실을
+   `symbol.usr`가 호출자이고 `location.line`이 그 호출 줄(줄이 없으면 호출자 선언 줄 — 스캐너와 같은 규칙)인 곳에 둔다. 명명
+   전략이 갈려 dynamic으로 낸 사실은 같은 원문으로 맞춘다.
+
+같은 줄에서 같은 테이블을 쓰는 다른 문장의 사실과는 구분하지 않지만, 그때도 호출자 → 테이블 relation-use는 사실로 있다. 저장소
+AOP advice처럼 프레임워크가 끼워 넣는 프로젝트 코드는 선언된 저장소 메서드 호출과 마찬가지로 모델링하지 않는다. spring-petclinic에서 핸들러 17개의 정방향 문서가 미해결 5건(모두 `owners.save`)에서 0건이 됐고, isthmus trace의
+`reach-possibly-incomplete` gap 2건이 사라졌으며 relation-use 수(4)는 같았다.

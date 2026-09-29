@@ -37,8 +37,12 @@
   provenance의 class root를 넘긴다.
 - **검증:** 공개 앱 3개와 합성 앱 2개의 actuator 오라클 정밀도 100%. 합성 앱과 기록한 오라클은 `fixtures/spring-routes-corpus/`,
   비교 스크립트는 `experiments/phase4-spring-routes/compare_mappings.py`.
-- **남은 범위:** 함수형 라우터 추출, isthmus http limitationScopes가 생기면 `framework-provided-routes:` 스코프 싣기(지금은 판정
-  가능 비율 0%), Spring 벡터(`framework.spring.*`)를 isthmus conformance에 제안, Phase 4b(JPA·`reach` 검증).
+- **스코프 (2026-09-29, `feature/spring-scopes`):** `framework-provided-routes:`를 제공자마다 내고 증명한 제공자에 http
+  `limitationScopes`를 붙인다(`index/.../SpringFrameworkRoutes.kt`, 검증·겹침은 `RouteLimitationScopes.kt`). 빈 값 변형 decl,
+  isthmus `78d3dee` 벡터 재벤더링, `reach --persistence-facts`(`analysis/.../PersistenceModeledCalls.kt`), Boot 버전 검출 통합
+  (`SpringBootVersions.kt`). 판정 가능 비율 측정 절차·수치는 [SPRING-ROUTES](docs/SPRING-ROUTES.md#오라클-검증-2026-09-28).
+- **남은 범위:** 함수형 라우터 추출, Spring Security 제공 경로의 증명 가능한 스코프, 정적 리소스 위치 열거(의존성 JAR 포함),
+  빈 값 변형 decl 표식(isthmus 미결), Phase 4b 나머지.
 
 ## 진행 중: Phase 4 종료 조건 — Retrofit 오라클과 순회 대칭성
 

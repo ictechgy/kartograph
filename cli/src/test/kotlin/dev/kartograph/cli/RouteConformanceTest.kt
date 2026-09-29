@@ -1,9 +1,16 @@
 package dev.kartograph.cli
 
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
 import dev.kartograph.core.HttpWrapperArgument
 import dev.kartograph.core.HttpWrapperDeclaration
+import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
+import dev.kartograph.core.RouteLimitationScope
 import dev.kartograph.export.McpJsonCodec
 import dev.kartograph.index.RouteCallScanner
+import dev.kartograph.index.RouteDeclScanner
+import dev.kartograph.index.RouteLimitationScopes
 import dev.kartograph.index.RouteUrlRules
 import dev.kartograph.index.RouteUrlRules.ArgumentValue
 import dev.kartograph.index.RouteUrlRules.CallArgument
@@ -12,6 +19,7 @@ import dev.kartograph.index.RouteUrlRules.JoinMode
 import dev.kartograph.index.RouteUrlRules.UrlPart
 import java.nio.file.Path
 import java.security.MessageDigest
+import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,7 +28,8 @@ import kotlin.test.fail
 import org.junit.jupiter.api.io.TempDir
 
 /**
- * isthmus 공유 적합성 벡터(`http-template`·`url-compose`)의 생산자 케이스를 kartograph 규칙으로 실행한다.
+ * isthmus 공유 적합성 벡터(`http-template`·`url-compose`·`http-limitation-scope`)의 생산자 케이스를 kartograph 규칙으로 실행한다.
+ * `producer`와 `producer:kartograph` 케이스를 모두 돌린다 — Spring PathPattern 케이스는 실제 서버 생산자(`RouteDeclScanner`)로 낸다.
  *
  * 벤더링한 파일의 sha256을 `conformance.lock`과 먼저 대조한다. 생산자 케이스의 규칙 식별자를 모르면
  * 건너뛰지 않고 실패한다 — 새 규칙이 조용히 미검증으로 남지 않게 하기 위해서다.
@@ -39,7 +48,7 @@ class RouteConformanceTest {
         assertEquals<Any?>("isthmus-conformance", suite["format"])
         assertEquals<Any?>(1L, suite["version"])
         return (suite["cases"] as List<*>).map { it as Map<*, *> }
-            .filter { case -> (case["appliesTo"] as List<*>).any { it == "producer" } }
+            .filter { case -> (case["appliesTo"] as List<*>).any { it == "producer" || it == "producer:kartograph" } }
     }
 
     @Test
@@ -47,7 +56,7 @@ class RouteConformanceTest {
         val lock = document("conformance.lock")
         assertEquals<Any?>("isthmus-conformance-lock", lock["format"])
         val files = lock["files"] as Map<*, *>
-        assertEquals<Any?>(setOf("http-template.json", "url-compose.json"), files.keys)
+        assertEquals<Any?>(setOf("http-limitation-scope.json", "http-template.json", "url-compose.json"), files.keys)
         files.forEach { (name, expected) ->
             val digest = MessageDigest.getInstance("SHA-256").digest(resource(name as String)).joinToString("") { "%02x".format(it) }
             assertEquals<Any?>(expected, digest, "vendored $name differs from conformance.lock; re-vendor from isthmus")
@@ -60,7 +69,7 @@ class RouteConformanceTest {
         val cases = producerCases("http-template.json")
         cases.forEach { case ->
             val input = case["input"] as Map<*, *>
-            val expect = case["expect"] as Map<*, *>
+            val expect = case["expect"] as Map<*, *>? ?: emptyMap<String, Any?>()
             when (case["ruleId"]) {
                 "template.grammar" -> {
                     val reason = RouteUrlRules.validateTemplate(input["template"] as String)
@@ -69,10 +78,86 @@ class RouteConformanceTest {
                 }
                 "template.normalize" ->
                     assertEquals<Any?>(expect["template"], RouteUrlRules.normalizePath(input["path"] as String), case["id"].toString())
+                "framework.spring.path-pattern" -> checkSpring(case)
                 else -> fail("unknown producer rule ${case["ruleId"]} in ${case["id"]}; implement it before vendoring")
             }
         }
         assertTrue(cases.size >= 30, "expected the grammar and normalize producer cases, got ${cases.size}")
+        assertEquals(15, cases.count { it["ruleId"] == "framework.spring.path-pattern" }, "every Spring PathPattern case runs")
+    }
+
+    /**
+     * Spring PathPattern 케이스를 합성 Boot 3.5(Spring Framework 6.2) 프로젝트로 만들어 서버 생산자로 낸다. 핸들러 정점이 있는
+     * 그래프를 주어 usr를 붙인다 — catch-all 접두사 표식(`catchAllPrefix`)은 계약상 usr가 있어야 달린다.
+     */
+    private fun checkSpring(case: Map<*, *>) {
+        val id = case["id"].toString()
+        val input = case["input"] as Map<*, *>
+        assertEquals<Any?>("spring-mvc", input["framework"], id)
+        val root = project.resolve(id.replace('/', '-')).createDirectories()
+        root.resolve("build.gradle.kts").writeText(
+            "plugins { id(\"org.springframework.boot\") version \"3.5.5\" }\n" +
+                "dependencies { implementation(\"org.springframework.boot:spring-boot-starter-web\") }\n",
+        )
+        val sources = root.resolve("src/main/java/demo").createDirectories()
+        val classMapping = (input["classMapping"] as String?)?.let { "@RequestMapping(\"${javaString(it)}\")\n" }.orEmpty()
+        sources.resolve("SpringCase.java").writeText(
+            "package demo;\nimport org.springframework.web.bind.annotation.*;\n@RestController\n$classMapping" +
+                "public class SpringCase {\n    @GetMapping(\"${javaString(input["mapping"] as String)}\")\n    public String handler() { return \"\"; }\n}\n",
+        )
+        if (input["matchOptionalTrailingSeparator"] == true) {
+            sources.resolve("PathConfig.java").writeText(
+                "package demo;\nclass PathConfig {\n    void configure(org.springframework.web.util.pattern.PathPatternParser parser) {\n" +
+                    "        parser.setMatchOptionalTrailingSeparator(true);\n    }\n}\n",
+            )
+        }
+        val handler = GraphNode(NodeId("method:demo/SpringCase#handler()Ljava/lang/String;"), "handler", NodeKind.METHOD)
+        val document = RouteDeclScanner(root).scan(generatedAt = "2026-01-01T00:00:00Z", graph = CodeGraph(listOf(handler), emptyList()))
+        val static = document.facts.filter { !it.dynamic }
+        (case["expectLimitation"] as String?)?.let { prefix -> assertTrue(document.limitations.any { it.startsWith(prefix) }, "$id limitation") }
+        if (case["expectDynamic"] == true) {
+            assertTrue(static.isEmpty() && document.facts.any { it.dynamic }, "$id dynamic")
+            return
+        }
+        val expect = case["expect"] as Map<*, *>
+        assertEquals<Any?>((expect["templates"] as List<*>).toSet(), static.mapTo(mutableSetOf()) { it.channel }, "$id templates")
+        (expect["catchAllPrefixTemplates"] as List<*>?)?.let { prefixes ->
+            assertEquals<Any?>(prefixes.toSet(), static.filter { it.routeDecl!!.catchAllPrefix }.mapTo(mutableSetOf()) { it.channel }, "$id catchAllPrefix")
+        } ?: assertTrue(static.none { it.routeDecl!!.catchAllPrefix }, "$id catchAllPrefix")
+        expect["trailingSlash"]?.let { slash -> assertTrue(static.all { it.routeDecl!!.trailingSlash == slash }, "$id trailingSlash") }
+        assertTrue(static.all { it.method == "GET" && it.symbol?.usr == handler.id.value }, "$id method and symbol")
+        assertEquals(1, static.map { it.location }.distinct().size, "$id variants share the handler location")
+    }
+
+    private fun javaString(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"")
+
+    @Test
+    fun `http-limitation-scope producer cases pass`() {
+        val cases = producerCases("http-limitation-scope.json")
+        cases.forEach { case ->
+            val id = case["id"].toString()
+            val input = case["input"] as Map<*, *>
+            val expect = case["expect"] as Map<*, *>
+            @Suppress("UNCHECKED_CAST")
+            val entry = input["scope"] as Map<String, Any?>
+            when (case["ruleId"]) {
+                "scope.validate" -> assertEquals<Any?>(expect["valid"], RouteLimitationScopes.problem(entry) == null, id)
+                "scope.applies" -> {
+                    assertEquals<Any?>(null, RouteLimitationScopes.problem(entry), "$id scope is valid")
+                    val probe = input["probe"] as Map<*, *>
+                    val applies = RouteLimitationScopes.applies(scopeOf(entry), probe["template"] as String, probe["method"] as String?,
+                        probe["pathAnchor"] as String, declaration = probe["side"] == "declaration")
+                    assertEquals<Any?>(expect["applies"], applies, id)
+                }
+                else -> fail("unknown producer rule ${case["ruleId"]} in $id; implement it before vendoring")
+            }
+        }
+        assertEquals(27, cases.size, "expected every http-limitation-scope producer case")
+    }
+
+    private fun scopeOf(entry: Map<String, Any?>): RouteLimitationScope {
+        fun strings(key: String) = (entry[key] as List<*>?).orEmpty().map { it as String }
+        return RouteLimitationScope("probe", strings("templates"), strings("templatePrefixes"), strings("templateSuffixes"), strings("methods"))
     }
 
     @Test

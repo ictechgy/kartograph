@@ -11,11 +11,13 @@ import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RouteCallEvidence
 import dev.kartograph.core.RouteDeclEvidence
+import dev.kartograph.core.RouteLimitationScope
 import dev.kartograph.core.RouteParamConstraint
 import dev.kartograph.core.SourceLocation
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
 class AgentDocumentRendererTest {
@@ -188,5 +190,43 @@ class AgentDocumentRendererTest {
         assertContains(json, "\"catchAllPrefix\": true, \"channel\": \"/files\"")
         assertFalse(json.contains("\"narrowed\": false"))
         assertFalse(json.contains("\"trailingSlash\": null"))
+    }
+
+    @Test
+    fun `limitation scopes point at the sorted limitation index with normalized elements`() {
+        val error = "framework-provided-routes: error endpoint"
+        val static = "framework-provided-routes: static resources"
+        val document = BridgeFactsDocument(
+            generatedAt = "2026-09-04T00:00:00Z", target = "http", project = "/project", facts = emptyList(),
+            limitations = listOf(static, "route-coverage: 1 path", error),
+            roles = listOf("server"), dispatch = "specificity",
+            limitationScopes = listOf(
+                RouteLimitationScope(static, templatePrefixes = listOf("/"), methods = listOf("HEAD", "GET", "GET")),
+                RouteLimitationScope(error, templates = listOf("/error", "/api/error", "/error"), templateSuffixes = listOf("/error")),
+            ),
+        )
+
+        val json = AgentDocumentRenderer.bridges(document)
+
+        assertContains(json, "\"limitationScopes\": [{\"limitationIndex\": 0, \"templateSuffixes\": [\"/error\"], " +
+            "\"templates\": [\"/api/error\", \"/error\"]}, {\"limitationIndex\": 1, \"methods\": [\"GET\", \"HEAD\"], \"templatePrefixes\": [\"/\"]}]")
+        assertFalse(AgentDocumentRenderer.bridges(document.copy(limitationScopes = emptyList())).contains("limitationScopes"))
+    }
+
+    @Test
+    fun `a scope must name exactly one limitation`() {
+        val document = BridgeFactsDocument(
+            generatedAt = "2026-09-04T00:00:00Z", target = "http", project = "/project", facts = emptyList(),
+            limitations = listOf("a", "a"), roles = listOf("server"),
+            limitationScopes = listOf(RouteLimitationScope("a", templates = listOf("/a"))),
+        )
+        assertFailsWith<IllegalStateException> { AgentDocumentRenderer.bridges(document) }
+        assertFailsWith<IllegalStateException> {
+            AgentDocumentRenderer.bridges(document.copy(limitations = listOf("b"), limitationScopes = listOf(RouteLimitationScope("c", templates = listOf("/c")))))
+        }
+        assertFailsWith<IllegalStateException> {
+            AgentDocumentRenderer.bridges(document.copy(limitations = listOf("a"),
+                limitationScopes = listOf(RouteLimitationScope("a", templates = listOf("/a")), RouteLimitationScope("a", templates = listOf("/b")))))
+        }
     }
 }

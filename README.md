@@ -269,8 +269,10 @@ alias paths resolved to tables and columns), native `@Query` SQL, named queries 
 `EntityManager` `createQuery`/`createNativeQuery`/`createNamedQuery`/`find` calls are read too. With
 `--graph-file`, every repository call site becomes facts located at the call and owned by the calling method's
 JVM id — the only identity a handler's forward `reach` is guaranteed to contain, because inherited CRUD methods
-have no project node. Unmodelled mappings, unresolved query paths and non-JPA repositories are counted as
-limitations instead of guessed.
+have no project node. Pass that document to `reach`/`impact --format language-traversal` with
+`--persistence-facts <file>`: calls to inherited Spring Data repository methods that it attributes to the calling
+method at the call line are then not counted in `unresolvedCalls` (`persistence-modeled-calls:` reports how many).
+Unmodelled mappings, unresolved query paths and non-JPA repositories are counted as limitations instead of guessed.
 
 `routes --role client --project <dir> [--wrappers <http-wrappers.json>] [--include-tests] [--service <name>] [<source-root>...]`
 (unreleased) emits a `bridge-facts` document with `"target": "http"` and `"roles": ["client"]` for the
@@ -302,8 +304,11 @@ the same id space as `impact`/`reach`; sources always supply the annotation loca
 `server.servlet.context-path` / `spring.webflux.base-path` and `${key:default}` placeholders (`configDefault` when only the
 default applies). Facts carry `trailingSlash` (`strict` for Spring Boot 3+, `optional` for Boot 2, omitted when unknown),
 `narrowed`, `paramConstraints` for regex path variables, and catch-all prefix expansion for `/**` and `{*path}`. Unresolved
-paths stay `dynamic`; functional routers, framework-provided routes (`/error`, actuator, static resources, ...), other
-profiles and unresolved prefixes are reported as server-side limitations. Rules, Spring sources and the actuator oracle
+paths stay `dynamic`; places Spring matches with an empty value (a trailing `*`, a partial-segment variable) also emit
+empty-value variant facts. Functional routers, framework-provided routes (`/error`, actuator, static resources, ...), other
+profiles and unresolved prefixes are reported as server-side limitations; providers whose requests can be bounded carry
+isthmus http `limitationScopes` (for example `/error` for every method, static resources for `GET`/`HEAD` only), so calls
+outside them stay error-judgeable. Rules, Spring sources and the actuator oracle
 results (100% precision on three public Spring Boot apps and two synthetic MVC/WebFlux apps) are in
 [Spring server routes](docs/SPRING-ROUTES.md).
 

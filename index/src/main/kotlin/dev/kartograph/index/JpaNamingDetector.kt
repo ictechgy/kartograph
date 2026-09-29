@@ -68,16 +68,10 @@ internal class JpaNamingDetector(private val projectRoot: Path) {
         globallyQuoted.size,
     )
 
-    /** Spring Boot plugin·BOM·parent·starter 좌표에서 major 버전을 읽는다. */
+    /** Spring Boot plugin·BOM·parent·starter 좌표·버전 카탈로그에서 major 버전을 읽는다([SpringBootVersions]의 JPA 형식). */
     private fun readBootVersions(text: String, evidence: Evidence, relative: String) {
-        val catalogVersions = CATALOG_VERSION.findAll(text).associate { it.groupValues[1] to it.groupValues[2] }
-        BOOT_VERSION_PATTERNS.forEach { pattern ->
-            pattern.findAll(text).forEach { match -> majorOf(match.groupValues[1])?.let(evidence.bootMajors::add) }
-        }
-        CATALOG_BOOT_REF.findAll(text).forEach { match ->
-            catalogVersions[match.groupValues[1]]?.let(::majorOf)?.let(evidence.bootMajors::add)
-        }
-        if (BOOT_MENTION.containsMatchIn(text)) evidence.bootUnversioned += relative
+        SpringBootVersions.find(text, SpringBootVersions.Consumer.JPA_NAMING).forEach { evidence.bootMajors += it.major }
+        if (SpringBootVersions.mentioned(text)) evidence.bootUnversioned += relative
     }
 
     /** 명시 Hibernate 좌표·버전 속성에서 major 버전을 읽는다. */
@@ -185,21 +179,6 @@ internal class JpaNamingDetector(private val projectRoot: Path) {
         val BUILD_FILES = setOf("build.gradle.kts", "build.gradle", "settings.gradle.kts", "settings.gradle", "pom.xml", "gradle.properties")
         val APPLICATION_CONFIG = Regex("application(?:-[A-Za-z0-9_.-]+)?\\.(?:properties|ya?ml)")
 
-        val BOOT_VERSION_PATTERNS = listOf(
-            Regex("id\\s*\\(?\\s*[\"']org\\.springframework\\.boot[\"']\\s*\\)?\\s*version\\s*[\"']([0-9][^\"']*)[\"']"),
-            Regex("org\\.springframework\\.boot:spring-boot[A-Za-z0-9-]*:([0-9][A-Za-z0-9.+-]*)"),
-            Regex(
-                "<groupId>\\s*org\\.springframework\\.boot\\s*</groupId>\\s*<artifactId>\\s*spring-boot-(?:starter-parent|dependencies)\\s*</artifactId>\\s*<version>\\s*([0-9][^<\\s]*)\\s*</version>",
-            ),
-            Regex("<spring-boot\\.version>\\s*([0-9][^<\\s]*)\\s*</spring-boot\\.version>"),
-            Regex("(?m)^\\s*(?:springBootVersion|spring-boot\\.version|springboot\\.version)\\s*=\\s*[\"']?([0-9][^\"'\\s]*)"),
-            Regex("(?m)^\\s*org\\.springframework\\.boot\\s*=\\s*\\{[^}\\n]*\\bversion\\s*=\\s*[\"']([0-9][^\"']*)[\"']"),
-            Regex("\\{\\s*id\\s*=\\s*\"org\\.springframework\\.boot\"\\s*,\\s*version\\s*=\\s*\"([0-9][^\"]*)\""),
-            Regex("module\\s*=\\s*\"org\\.springframework\\.boot:spring-boot[A-Za-z0-9-]*\"\\s*,\\s*version\\s*=\\s*\"([0-9][^\"]*)\""),
-        )
-        val CATALOG_VERSION = Regex("(?m)^\\s*([A-Za-z0-9_.-]+)\\s*=\\s*\"([0-9][^\"]*)\"\\s*$")
-        val CATALOG_BOOT_REF = Regex("org\\.springframework\\.boot[^\\n]*?version\\.ref\\s*=\\s*\"([A-Za-z0-9_.-]+)\"")
-        val BOOT_MENTION = Regex("org\\.springframework\\.boot\\b|spring-boot-starter")
         val HIBERNATE_MENTION = Regex("org\\.hibernate(?:\\.orm)?:hibernate-|<groupId>\\s*org\\.hibernate(?:\\.orm)?\\s*</groupId>")
 
         val HIBERNATE_VERSION_PATTERNS = listOf(

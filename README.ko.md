@@ -266,7 +266,9 @@ access)을 빌드·설정 파일에서 감지한 Hibernate 명명 전략으로 �
 이름 있는 질의, 상속 CRUD 메서드와 `EntityManager`의 `createQuery`/`createNativeQuery`/`createNamedQuery`/`find` 호출도
 읽습니다. `--graph-file`이 있으면 저장소 호출 지점마다 호출 위치의 사실을 내고 호출자 메서드의 JVM id를 owner로
 싣습니다 — 상속 CRUD 메서드에는 프로젝트 정점이 없어서, 핸들러의 정방향 `reach`가 확실히 포함하는 신원은 호출자뿐이기
-때문입니다. 모델링하지 않은 매핑, 해석하지 못한 질의 경로, JPA가 아닌 저장소는 추측하지 않고 limitation으로 셉니다.
+때문입니다. 이 문서를 `reach`·`impact --format language-traversal`에 `--persistence-facts <file>`로 주면, 호출 줄에서
+호출자에 귀속된 상속 Spring Data 저장소 호출은 `unresolvedCalls`에서 빠집니다(`persistence-modeled-calls:`가 수를 알립니다).
+모델링하지 않은 매핑, 해석하지 못한 질의 경로, JPA가 아닌 저장소는 추측하지 않고 limitation으로 셉니다.
 
 `routes --role client --project <dir> [--wrappers <http-wrappers.json>] [--include-tests] [--service <name>] [<source-root>...]`
 (미출시)는 isthmus http 도메인용으로 `"target": "http"`, `"roles": ["client"]`인 `bridge-facts` 문서를
@@ -295,8 +297,10 @@ JVM 신원을 붙이지 못한 사실은 `missing-route-usrs:`로 세고, source
 저장소 안 기본 프로필 설정으로 `server.servlet.context-path`·`spring.webflux.base-path`와 `${key:default}` 플레이스홀더를
 풉니다(기본값만 쓴 경우 `configDefault`). 사실에는 `trailingSlash`(Spring Boot 3 이상 `strict`, Boot 2 `optional`, 모르면
 생략), `narrowed`, 정규식 경로 변수의 `paramConstraints`, `/**`·`{*path}`의 catch-all 접두사 펼침을 싣습니다. 풀지 못한
-경로는 `dynamic`으로 남기고, 함수형 라우터, 프레임워크 제공 경로(`/error`, actuator, 정적 리소스 등), 다른 프로필, 확정하지
-못한 접두사는 서버 측 limitation으로 알립니다. 규칙과 Spring 소스 근거, actuator 오라클 결과(공개 Spring Boot 앱 3개와
+경로는 `dynamic`으로 남기고, Spring이 빈 값으로도 맞추는 자리(끝 `*`, 부분 세그먼트 변수)는 빈 값 변형 사실도 냅니다. 함수형
+라우터, 프레임워크 제공 경로(`/error`, actuator, 정적 리소스 등), 다른 프로필, 확정하지 못한 접두사는 서버 측 limitation으로
+알립니다. 요청 상한을 증명한 제공자에는 isthmus http `limitationScopes`를 붙여(예: `/error`는 모든 method, 정적 리소스는
+`GET`·`HEAD`만) 그 밖의 호출은 error를 판정할 수 있게 합니다. 규칙과 Spring 소스 근거, actuator 오라클 결과(공개 Spring Boot 앱 3개와
 합성 MVC·WebFlux 앱 2개에서 정밀도 100%)는 [Spring 서버 라우트](docs/SPRING-ROUTES.md)에 있습니다.
 
 `impact --format language-traversal`(역방향)과 `reach`(정방향)(미출시)는 isthmus `trace`용 `language-traversal`
