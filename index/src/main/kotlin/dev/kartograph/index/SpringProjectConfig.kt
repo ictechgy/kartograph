@@ -328,21 +328,15 @@ internal class SpringProjectConfig(
                 .sortedWith(compareBy({ it.fileName.toString().contains('-') }, { it.fileName.toString().endsWith(".properties") }, { it.fileName.toString() }))
         }
 
-        private val VERSION_PATTERNS = listOf(
-            Regex("org\\.springframework\\.boot['\"]?\\)?\\s+version\\s+['\"](\\d+)\\.(\\d+)"),
-            Regex("spring-boot-(?:gradle-plugin|dependencies)[:'\"]+\\s*(?:version\\s*[:=]?\\s*['\"])?(\\d+)\\.(\\d+)"),
-            Regex("(?i)spring[-_.]?boot(?:[-_.]?version)?\\s*[=:]\\s*['\"]?(\\d+)\\.(\\d+)"),
-            Regex("<artifactId>spring-boot-(?:starter-parent|dependencies)</artifactId>\\s*<version>(\\d+)\\.(\\d+)"),
-            Regex("<spring-boot\\.version>(\\d+)\\.(\\d+)"),
-        )
-
-        /** Boot 버전 표지를 모두 모은다. 서로 다른 (주, 부)가 섞이면 모른다(null)고 둔다. */
-        private fun bootVersion(texts: Map<String, String>): Pair<Int, Int>? {
-            val found = texts.values.flatMap { text ->
-                VERSION_PATTERNS.flatMap { pattern -> pattern.findAll(text).map { it.groupValues[1].toInt() to it.groupValues[2].toInt() }.toList() }
-            }.distinct()
-            return found.singleOrNull()
-        }
+        /**
+         * Boot 버전 표지를 모두 모은다([SpringBootVersions]의 라우트 형식). 서로 다른 (주, 부)가 섞이면 모른다(null)고 둔다 — 끝
+         * 슬래시 기본값과 AntPathMatcher 기본값이 버전에 따라 갈리기 때문이다.
+         */
+        private fun bootVersion(texts: Map<String, String>): Pair<Int, Int>? = texts.values
+            .flatMap { text -> SpringBootVersions.find(text, SpringBootVersions.Consumer.ROUTES) }
+            .mapNotNull { version -> version.minor?.let { version.major to it } }
+            .distinct()
+            .singleOrNull()
 
         /** 프레임워크 제공 경로의 제공자다. 합성 decl은 내지 않고 한계 문구(와 증명한 스코프)에만 쓴다. */
         private fun frameworkRoutes(buildText: String, modules: List<SpringModuleConfig>, boot: Boolean): List<SpringFrameworkRoute> = buildList {
