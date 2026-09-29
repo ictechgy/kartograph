@@ -1,0 +1,651 @@
+{
+  "cases": [
+    {
+      "basePath": "/api/v1/",
+      "id": "admin.ping.inherited",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/ping",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.BaseApi.ping"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "admin.stats",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/admin/stats",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.AdminApi.stats"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.blob.absolute",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "9"
+        }
+      ],
+      "recorded": {
+        "authority": "uploads.example.com",
+        "method": "GET",
+        "path": "/v2/blobs/9",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.blob"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.doc.encoded",
+      "pathArguments": [
+        {
+          "encoded": true,
+          "value": "guide/intro"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/docs/guide/intro",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.doc"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.export.rooted-dots",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/legacy/export",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.export"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.file",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "report"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/files/report",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.file"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.file.slash-value",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "a/b"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/files/a%2Fb",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.file"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.file.space-value",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "q 1"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/files/q%201",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.file"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.index.dot-only",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.index"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.logo.network-path",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "cdn.example.com",
+        "method": "GET",
+        "path": "/assets/logo.png",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.logo"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.metadata.partial-segment",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "report"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/files/report.json",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.metadata"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.status-v2.dot-dot",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v2/status",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.statusV2"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.status.dot",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/status",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.status"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "files.summary.inner-dot-dot",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/summary",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.FilesApi.summary"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "legacy.archive.class-constant",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/legacy/archive",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.LegacyApi.archive"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "legacy.item.java-value",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "5"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/legacy/items/5",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.LegacyApi.item"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "legacy.items.inherited",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/legacy/items",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.LegacyApi.items"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "legacy.items.interface-constant",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/legacy/items",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.LegacyApi.items"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "legacy.patch.java-http",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "5"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "PATCH",
+        "path": "/api/v1/legacy/items/5",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.LegacyApi.patch"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "legacy.purge.rooted",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "DELETE",
+        "path": "/legacy/cache",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.LegacyApi.purge"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "legacy.reindex",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "POST",
+        "path": "/api/v1/legacy/admin/reindex",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.LegacyAdminApi.reindex"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "orgs.audit",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/orgs/audit",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.OrgsApi.audit"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "orgs.member.external-constant",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "ann"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/orgs/members/ann",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.OrgsApi.member"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "orgs.members.external-constant",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/orgs/members",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.OrgsApi.members"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "orgs.org",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "acme"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/orgs/acme",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.OrgsApi.org"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "orgs.repos",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "acme"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/orgs/acme/repos",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.OrgsApi.repos"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "orgs.teams",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/teams",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.OrgsApi.teams"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.active",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/users",
+        "query": "active=true&page=2"
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.active"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.avatar.qualified-annotation",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "42"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/users/42/avatar",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.avatar"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.create",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "POST",
+        "path": "/api/v1/users",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.create"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.end-sessions",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "7"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "DELETE",
+        "path": "/api/v1/users/7/sessions",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.endSessions"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.exists",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "7"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "HEAD",
+        "path": "/api/v1/users/7",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.exists"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.health",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/health",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.health"
+    },
+    {
+      "basePath": "/",
+      "id": "users.health.root-base",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/health",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.health"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.options",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "OPTIONS",
+        "path": "/api/v1/users",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.options"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.profile.suspend",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "42"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/users/42/profile",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.profile"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.purge-cache",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "PURGE",
+        "path": "/api/v1/users/cache",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.purgeCache"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.raw",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/reports/daily",
+        "query": "format=csv"
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.raw"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.remove",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "7"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "DELETE",
+        "path": "/api/v1/users/7",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.remove"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.replace",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "7"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "PUT",
+        "path": "/api/v1/users/7",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.replace"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.search",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/search",
+        "query": "q=ann&sort=asc"
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.search"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.update",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "7"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "PATCH",
+        "path": "/api/v1/users/7",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.update"
+    },
+    {
+      "basePath": "/api/v1/",
+      "id": "users.user",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "42"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/api/v1/users/42",
+        "query": "fields=name"
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.user"
+    },
+    {
+      "basePath": "/",
+      "id": "users.user.root-base",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "42"
+        }
+      ],
+      "recorded": {
+        "authority": "",
+        "method": "GET",
+        "path": "/users/42",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.retrofit.UsersApi.user"
+    }
+  ],
+  "description": "Requests that Retrofit sent to OkHttp MockWebServer for each synthetic service method. path is the encoded request path; pathArguments are the @Path values in template order.",
+  "format": "kartograph-retrofit-requests",
+  "oracle": {
+    "mockwebserver": "3.14.9",
+    "okhttp": "3.14.9",
+    "retrofit": "2.12.0",
+    "source": "experiments/phase4-retrofit/harness"
+  },
+  "provenance": "execution",
+  "sources": [
+    "retrofit-client/src/main/java/dev/kartograph/fixture/retrofit/LegacyAdminApi.java",
+    "retrofit-client/src/main/java/dev/kartograph/fixture/retrofit/LegacyApi.java",
+    "retrofit-client/src/main/kotlin/dev/kartograph/fixture/retrofit/AdminApi.kt",
+    "retrofit-client/src/main/kotlin/dev/kartograph/fixture/retrofit/FilesApi.kt",
+    "retrofit-client/src/main/kotlin/dev/kartograph/fixture/retrofit/OrgsApi.kt",
+    "retrofit-client/src/main/kotlin/dev/kartograph/fixture/retrofit/SharedPaths.kt",
+    "retrofit-client/src/main/kotlin/dev/kartograph/fixture/retrofit/UsersApi.kt"
+  ],
+  "version": 1
+}

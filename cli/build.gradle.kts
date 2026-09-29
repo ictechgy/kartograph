@@ -79,6 +79,8 @@ sourceSets.test {
     resources.srcDir(rootProject.file("fixtures/isthmus-conformance"))
     // JPA 명명 벡터(엔티티 소스와 Hibernate 실행 결과)다. 테스트가 소스를 임시 프로젝트로 복사해 스캔한다.
     resources.srcDir(rootProject.file("fixtures/jpa-naming"))
+    // Retrofit 합성 서비스 소스와 MockWebServer가 기록한 요청이다. 테스트가 소스를 임시 프로젝트로 복사해 routes로 스캔한다.
+    resources.srcDir(rootProject.file("fixtures/retrofit-corpus/oracle"))
 }
 
 // compiler 코퍼스가 플랫폼별 캐시 경로를 추측하지 않고 실제 검증된 test 의존성을 사용한다.
