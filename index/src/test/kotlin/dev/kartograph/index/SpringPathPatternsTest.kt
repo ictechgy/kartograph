@@ -6,6 +6,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Spring `PathPattern` → 정규 템플릿 변환 규칙을 하나씩 고정한다. 근거는 spring-web 7.0.8 소스다. */
 class SpringPathPatternsTest {
@@ -55,11 +56,46 @@ class SpringPathPatternsTest {
 
     @Test
     fun `shapes without a template form are dynamic`() {
-        listOf("/v{major}.{minor}", "/t?st", "/files/*.png", "/a/**/b", "/a/{*rest}/b", "/a/{", "/a/}", "/a/{:x}", "/a/{*}x").forEach { pattern ->
+        listOf("/v{major}.{minor}", "/t?st", "/files/*.*", "/files/{a}*", "/a/**/b", "/a/{*rest}/b", "/a/{", "/a/}", "/a/{:x}", "/a/{*}x").forEach { pattern ->
             val converted = SpringPathPatterns.convert(pattern)
             assertNull(converted.template, pattern)
             assertEquals(true, converted.dynamicReason != null, pattern)
         }
+    }
+
+    /** 빈 값 변형의 원본 제외 템플릿들이다. */
+    private fun variants(pattern: String): List<String?> = SpringPathPatterns.convert(pattern).emptyValueVariants.map { it.template }
+
+    @Test
+    fun `places that accept empty values expand to empty-value variants`() {
+        // 끝 `*`는 빈 끝 세그먼트도 받는다(WildcardPathElement 마지막 요소). 가운데 `*`와 세그먼트 전체 변수는 빈 값을 받지 않는다.
+        assertEquals(listOf("/files/"), variants("/files/*"))
+        assertEquals(listOf("/"), variants("/*"))
+        assertEquals(emptyList(), variants("/files/*/meta"))
+        assertEquals(emptyList(), variants("/users/{id}"))
+        // 부분 세그먼트의 변수·`*`는 빈 캡처를 받는다(RegexPathElement). 빈 값을 받지 않는 정규식은 펼치지 않는다.
+        assertEquals("/files/{}.json", template("/files/*.json"))
+        assertEquals(listOf("/files/.json"), variants("/files/*.json"))
+        assertEquals(listOf("/files/.json"), variants("/files/{name}.json"))
+        assertEquals(listOf("/files/.json"), variants("/files/{name:[a-z]*}.json"))
+        assertEquals(emptyList(), variants("/files/{name:[a-z]+}.json"))
+        assertEquals(listOf("/files/.json"), variants("/files/{name:[}.json"))
+        // 변형은 자리마다 곱이고 제약은 채운 자리에서 빠진다. catch-all 접두사도 변형마다 따로 둔다.
+        val both = SpringPathPatterns.convert("/a/x{v:\\d*}/{w}.y/**")
+        assertEquals("/a/x{}/{}.y/{**}", both.template)
+        assertEquals(listOf("/a/x/{}.y/{**}", "/a/x{}/.y/{**}", "/a/x/.y/{**}"), both.emptyValueVariants.map { it.template })
+        assertEquals(listOf("/a/x/{}.y", "/a/x{}/.y", "/a/x/.y"), both.emptyValueVariants.map { it.catchAllPrefix })
+        assertEquals(listOf(RouteParamConstraint(1, "int")), both.constraints)
+        assertEquals(emptyList(), both.emptyValueVariants[0].constraints)
+        assertEquals(listOf(RouteParamConstraint(1, "int")), both.emptyValueVariants[1].constraints)
+    }
+
+    @Test
+    fun `empty-value variants are capped at sixteen templates`() {
+        assertEquals(15, variants("/{a}.x/{b}.x/{c}.x/{d}.x").size)
+        val capped = SpringPathPatterns.convert("/{a}.x/{b}.x/{c}.x/{d}.x/{e}.x")
+        assertNull(capped.template)
+        assertTrue(capped.expansionCapped)
     }
 
     @Test

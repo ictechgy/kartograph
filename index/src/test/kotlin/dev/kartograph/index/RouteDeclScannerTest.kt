@@ -2,6 +2,7 @@ package dev.kartograph.index
 
 import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
+import dev.kartograph.core.RouteLimitationScope
 import dev.kartograph.core.RouteParamConstraint
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -113,8 +114,16 @@ class RouteDeclScannerTest {
         assertEquals("demo", document.service)
         assertEquals("http", document.target)
         assertEquals(listOf(
-            "framework-provided-routes: error endpoint (/error), static resources and webjars (/**); these routes have no project declaration and no synthetic route-decl facts are emitted",
+            "framework-provided-routes: error endpoint (/error) accepts every method; no project declaration and no synthetic route-decl facts are emitted",
+            "framework-provided-routes: static resources and webjars (/**) may be served for GET and HEAD; no project declaration and no synthetic route-decl facts are emitted",
+            "framework-provided-routes: welcome page handlers may answer the root path (/); no project declaration and no synthetic route-decl facts are emitted",
         ), document.limitations)
+        // 스코프는 context-path를 붙인 요청 경로다. 오류 컨트롤러는 모든 method, 정적 리소스는 GET·HEAD다.
+        assertEquals(listOf(
+            RouteLimitationScope(document.limitations[0], templates = listOf("/api/error")),
+            RouteLimitationScope(document.limitations[1], templatePrefixes = listOf("/api"), methods = listOf("GET", "HEAD")),
+            RouteLimitationScope(document.limitations[2], templates = listOf("/api")),
+        ), document.limitationScopes.sortedBy { document.limitations.indexOf(it.limitation) })
     }
 
     @Test

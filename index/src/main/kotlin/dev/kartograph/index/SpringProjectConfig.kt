@@ -46,6 +46,13 @@ internal class SpringModuleConfig(
      */
     val importsConfig: Boolean = IMPORT in effective || IMPORT in otherProfiles
 
+    /**
+     * 기본 프로필이나 다른 프로필에 [predicate]를 만족하는 키(relaxed binding으로 정규화한 이름)가 있는지 본다. 설정을 읽지 못했거나
+     * 가져온 설정이 있으면 모르므로 참이다 — 호출자가 그 키 때문에 좁히지 못하는 쪽으로 판단하게 한다.
+     */
+    fun mayDefineKey(predicate: (String) -> Boolean): Boolean =
+        unreadable || importsConfig || effective.keys.any(predicate) || otherProfiles.keys.any(predicate)
+
     /** [key]를 relaxed binding으로 찾는다. */
     fun lookup(key: String): Lookup {
         if (unreadable || importsConfig) return Lookup.Unknown
@@ -183,7 +190,7 @@ internal class SpringPlaceholders(private val candidates: List<SpringModuleConfi
  * @property bootMinor Spring Boot 부 버전이다
  * @property servlet Spring MVC(서블릿) 표지를 봤다
  * @property reactive WebFlux 표지를 봤다
- * @property frameworkRoutes 프로젝트 선언 없이 프레임워크가 등록하는 경로 제공자 이름이다
+ * @property frameworkRoutes 프로젝트 선언 없이 프레임워크가 등록하는 경로의 제공자다
  * @property modules 모듈 설정이다. 루트가 긴 순서다
  */
 internal class SpringProjectConfig(
@@ -191,7 +198,7 @@ internal class SpringProjectConfig(
     val bootMinor: Int?,
     val servlet: Boolean,
     val reactive: Boolean,
-    val frameworkRoutes: List<String>,
+    val frameworkRoutes: List<SpringFrameworkRoute>,
     val modules: List<SpringModuleConfig>,
     private val buildTexts: Map<String, String>,
 ) {
@@ -337,20 +344,23 @@ internal class SpringProjectConfig(
             return found.singleOrNull()
         }
 
-        /** 프레임워크 제공 경로의 제공자 이름이다. 합성 decl은 내지 않고 한계 문구에만 쓴다. */
-        private fun frameworkRoutes(buildText: String, modules: List<SpringModuleConfig>, boot: Boolean): List<String> = buildList {
+        /** 프레임워크 제공 경로의 제공자다. 합성 decl은 내지 않고 한계 문구(와 증명한 스코프)에만 쓴다. */
+        private fun frameworkRoutes(buildText: String, modules: List<SpringModuleConfig>, boot: Boolean): List<SpringFrameworkRoute> = buildList {
             val springBoot = boot || "spring-boot" in buildText
             val servlet = SERVLET_MARKERS.any(buildText::contains)
-            if (springBoot && servlet) add("error endpoint (/error)")
-            if (springBoot && (servlet || REACTIVE_MARKERS.any(buildText::contains))) add("static resources and webjars (/**)")
-            if ("spring-boot-starter-actuator" in buildText || "spring-boot-actuator" in buildText) add("actuator endpoints (/actuator)")
-            if ("spring-boot-starter-security" in buildText) add("Spring Security login and logout pages")
-            if ("springdoc-openapi" in buildText) add("springdoc OpenAPI and Swagger UI")
-            if ("spring-boot-starter-data-rest" in buildText || "spring-data-rest-webmvc" in buildText) add("Spring Data REST repositories")
-            if ("spring-boot-starter-graphql" in buildText) add("GraphQL endpoint")
+            if (springBoot && servlet) add(SpringFrameworkRoute.ERROR)
+            if (springBoot && (servlet || REACTIVE_MARKERS.any(buildText::contains))) {
+                add(SpringFrameworkRoute.STATIC)
+                add(SpringFrameworkRoute.WELCOME)
+            }
+            if ("spring-boot-starter-actuator" in buildText || "spring-boot-actuator" in buildText) add(SpringFrameworkRoute.ACTUATOR)
+            if ("spring-boot-starter-security" in buildText) add(SpringFrameworkRoute.SECURITY)
+            if ("springdoc-openapi" in buildText) add(SpringFrameworkRoute.SPRINGDOC)
+            if ("spring-boot-starter-data-rest" in buildText || "spring-data-rest-webmvc" in buildText) add(SpringFrameworkRoute.DATA_REST)
+            if ("spring-boot-starter-graphql" in buildText) add(SpringFrameworkRoute.GRAPHQL)
             if (modules.any { module -> listOf("spring.h2.console.enabled", "spring.h2.console.path").any { key ->
                     module.lookup(key).let { it is SpringModuleConfig.Lookup.Value || it == SpringModuleConfig.Lookup.OtherProfilesOnly }
-                } }) add("H2 console")
+                } }) add(SpringFrameworkRoute.H2_CONSOLE)
         }
 
         private const val MAX_BUILD_DEPTH = 8
