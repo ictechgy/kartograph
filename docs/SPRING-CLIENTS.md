@@ -33,7 +33,9 @@ URL 인자는 문자열 템플릿(리터럴·Kotlin 템플릿·`+` 연결·상�
 ## base 결합
 
 Spring Framework 6.2.19·Spring Boot 3.5.16 소스(Maven Central `*-sources.jar`)로 확인했고, 오라클 실행이 재확인한다.
-isthmus `docs/HTTP-WRAPPERS.md` base 결합 표의 네 갈래 어느 것과도 같지 않다.
+기존 네 갈래(RFC 3986·슬래시 결합·dio 단순 연결) 어느 것과도 같지 않아 isthmus #131(`76b6141`)이 `docs/HTTP-WRAPPERS.md` base 결합
+표에 Spring 행으로 받았고, url-compose 벡터 `base-join/spring-*`(`producer:kartograph`) 13개가 고정한다. `RouteConformanceTest`는 케이스마다
+합성 Kotlin 클라이언트를 실제 `RouteCallScanner`로 스캔해 비교한다.
 
 **`DefaultUriBuilderFactory`(RestClient·WebClient `baseUrl`, `RestClient.create(url)`, `DefaultUriBuilderFactory(url)`을 준
 `uriTemplateHandler`·`uriBuilderFactory`) — 문자열 연결 + `//` 축약.**
@@ -143,9 +145,10 @@ base 앞에 값을 모르는 조각이 오는 템플릿(`"$usersUrl/users/{id}"`
 이어진다. 재현은 `experiments/phase7b-spring-clients/e2e/run_trace.py`, 기록은 `e2e/recorded/`다. A 자신의 route는 A가 server인
 link가 없어 trace가 잇지 않고(`http-member-unlinked`), 핸들러 usr가 A route-decl의 usr와 같은 것으로 확인한다.
 
-## isthmus 문서에 필요한 변경
+## isthmus 문서 반영
 
-isthmus `docs/HTTP-WRAPPERS.md`의 base 결합 표에 Spring 행이 없다(이 저장소는 isthmus를 고치지 않는다). 제안:
+아래 제안은 isthmus #131(`76b6141`)이 `docs/HTTP-WRAPPERS.md` base 결합 표와 url-compose 벡터로 받았다(이 저장소는 isthmus를 고치지 않는다).
+제안 당시 내용:
 
 | 결합 방식 | 예 | 경로 `/x` | 경로 `x` |
 |---|---|---|---|

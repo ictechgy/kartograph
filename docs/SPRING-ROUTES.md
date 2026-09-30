@@ -192,7 +192,8 @@ error는 모든 표본에서 0건이다.
 
 ## isthmus 호환성
 
-적합성 벡터는 isthmus `78d3dee`의 `http-template`(Spring PathPattern `spring/*` 15건 포함)·`url-compose`·`http-limitation-scope`를
+적합성 벡터는 isthmus `76b6141`의 `http-template`(Spring PathPattern `spring/*` 15건 포함)·`url-compose`(Spring 클라이언트 base 결합
+`base-join/spring-*` 13건 포함, [SPRING-CLIENTS](SPRING-CLIENTS.md#base-결합))·`http-limitation-scope`·`http-dispatch`를
 `fixtures/isthmus-conformance/`에 벤더링했고, `RouteConformanceTest`가 `producer`·`producer:kartograph` 케이스를 모두 돌린다. Spring
 케이스는 합성 Boot 3.5 프로젝트를 실제 서버 생산자로 스캔해 템플릿·catch-all 접두사·끝 슬래시를 비교하고, 스코프 케이스는
 `RouteLimitationScopes`(검증·겹침 판정)로 실행한다. 측정에는 isthmus `78d3dee`를 저장소 밖에서 빌드한 `dist/cli/main.js`를 썼다.
