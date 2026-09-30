@@ -206,14 +206,31 @@ internal class SpringExchangeIndex(files: List<RouteSourceFile>, private val res
     private fun collectServerContracts(): Set<String> = production.flatMap { file ->
         file.types.filter { type -> !file.masked.startsWith("interface", type.start) && type.bodyStart > type.start }.flatMap { type ->
             if (!CONTROLLER.containsMatchIn(leadingAnnotations(file, type.start))) return@flatMap emptyList()
-            val header = file.masked.substring(type.start, type.bodyStart)
-            SUPERTYPE.findAll(header.substringAfter(':', header.substringAfter("implements", ""))).mapNotNull { name ->
-                resolver.declarations.resolveType(file, name.value)
-            }.toList()
+            SUPERTYPE.findAll(supertypeClause(file, type)).mapNotNull { name -> resolver.declarations.resolveType(file, name.value) }.toList()
         }
     }.toSet()
 
+    /**
+     * 타입 머리의 상위 타입 절이다 — Java는 `implements` 뒤, Kotlin은 괄호 밖(주 생성자 매개변수 목록 뒤)의 첫 `:` 뒤다. 주 생성자 매개변수의
+     * 타입(`class C(private val api: Api)`)을 상위 타입으로 읽지 않기 위해서다.
+     */
+    private fun supertypeClause(file: RouteSourceFile, type: RouteTypeDecl): String {
+        val header = file.masked.substring(type.start, type.bodyStart)
+        if (file.isJava) return header.substringAfter("implements", "")
+        var depth = 0
+        header.forEachIndexed { index, character ->
+            when (character) {
+                '(', '<' -> depth++
+                ')', '>' -> depth--
+                ':' -> if (depth == 0) return header.substring(index + 1).replace(CALL_ARGUMENTS, "")
+            }
+        }
+        return ""
+    }
+
     private companion object {
+        /** 상위 클래스 생성자 호출 인자(`: Base(x: Int)`)다 — 인자 안의 이름을 상위 타입으로 읽지 않는다. */
+        val CALL_ARGUMENTS = Regex("\\([^()]*\\)")
         const val MAX_DEPTH = 8
         const val ANNOTATION_PACKAGE = "org.springframework.web.service.annotation"
         const val ANNOTATION_INTERNAL = "org/springframework/web/service/annotation"

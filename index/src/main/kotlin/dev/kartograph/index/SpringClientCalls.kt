@@ -307,7 +307,7 @@ internal class SpringClientCalls(private val resolver: SpringClientResolver, pri
                 val ref = if (url.parts.firstOrNull() is UrlPart.Value) url.leadingRef ?: base.baseRef.takeIf { baseAnchored } else base.baseRef
                 SpringClientCall(
                     start = start, method = method, composed = composed, expression = url.expression, parts = url.parts,
-                    // 앞 조각이 값을 모르는 base(`"${'$'}url/x"`)이거나 클라이언트 base를 모르면 host 루트부터 확정하지 못한 호출이다.
+                    // 앞 조각이 값을 모르는 base(`"$url/x"`)이거나 클라이언트 base를 모르면 host 루트부터 확정하지 못한 호출이다.
                     baseRef = ref, unresolvedBase = baseAnchored && (url.parts.firstOrNull() is UrlPart.Value || base.unresolved || base.mode == SpringClientBase.Mode.NONE),
                     profileDependent = base.profileDependent || url.profileDependent,
                 )
@@ -332,7 +332,8 @@ internal class SpringClientCalls(private val resolver: SpringClientResolver, pri
                         listOf(UrlPart.Literal(known.path.substringBeforeLast('/', "") + "/" + first)) + parts.drop(1),
                         RouteUrlRules.JoinMode.Declared("root", resolveDotSegments = true),
                     ).copy(authority = known.authority)
-                    else -> ComposedRoute(null, dynamic = true)
+                    // base 경로가 `/`로 끝나는지 몰라 문자열 템플릿과 같은 모호한 결합이다.
+                    else -> ComposedRoute(null, dynamic = true, limitation = "ambiguous-base-join:")
                 }
                 SpringClientCall(start, method, composed, url.expression, parts, base.baseRef, unresolvedBase = known == null, profileDependent = base.profileDependent)
             }.distinct().forEach(sink)

@@ -475,4 +475,56 @@ class SpringClientCallsTest {
             """)
         assertEquals("GET base - /loop", scan().of("call").single().summary().substringBeforeLast(' '))
     }
+
+    @Test
+    fun `review findings - constructor parameter types, single interpolation bases, FQN builders and query slashes`() {
+        write("src/main/resources/application.yml", """
+            api:
+              host: http://single.internal/s
+            """)
+        write("src/main/kotlin/dev/example/Review.kt", """
+            package dev.example
+
+            import org.springframework.beans.factory.annotation.Value
+            import org.springframework.web.bind.annotation.RestController
+            import org.springframework.web.client.RestClient
+            import org.springframework.web.service.annotation.GetExchange
+
+            interface InjectedApi {
+                @GetExchange("/injected")
+                fun injected(): String
+            }
+
+            @RestController
+            class UsesApi(private val api: InjectedApi) {
+                fun go() = api.injected()
+            }
+
+            class Single(@Value("\${'$'}{api.host}") private val host: String) {
+                private val client = RestClient.builder().baseUrl("${'$'}host").build()
+                private val template = org.springframework.boot.restclient.RestTemplateBuilder().rootUri("http://fqn.internal/q").build()
+
+                fun single() = client.get().uri("/one").retrieve()
+                fun fqn() = template.getForObject("/two", String::class.java)
+                fun query() = client.get().uri("/redirect?to=http://internal.svc/next").retrieve()
+                fun relativeUri() = client.get().uri(java.net.URI.create("x")).retrieve()
+            }
+
+            class UnknownBase(private val client: RestClient) {
+                fun relative() = client.get().uri(java.net.URI.create("x")).retrieve()
+            }
+            """)
+        val document = scan()
+        fun one(name: String) = document.of(name).single().summary().substringBeforeLast(' ')
+        // 생성자 매개변수 타입은 컨트롤러의 상위 타입이 아니다 — 주입받아 쓰는 클라이언트 인터페이스의 사실을 버리지 않는다.
+        assertEquals("GET base - /injected -", document.of("injected").single().summary())
+        // 보간 하나뿐인 base 템플릿(`"${'$'}host"`)도 `@Value` 값으로 푼다.
+        assertEquals("GET root single.internal /s/one", one("single"))
+        assertEquals("GET root fqn.internal /q/two", one("fqn"))
+        // query는 템플릿에서 떼어 내므로 `//` 축약이 query에 닿지 않는다.
+        assertEquals("GET root single.internal /s/redirect", one("query"))
+        // base를 모르는 상대 URI는 문자열 템플릿과 같이 모호한 결합으로 센다.
+        assertEquals("GET base - dynamic:-", one("relative"))
+        assertTrue(document.limitations.any { it.startsWith("ambiguous-base-join: 1") }, document.limitations.toString())
+    }
 }

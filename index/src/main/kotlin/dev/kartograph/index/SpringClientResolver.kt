@@ -153,7 +153,7 @@ internal class SpringClientResolver(
         budget: Budget,
     ): SpringClientInstance? {
         val none = listOf(SpringClientBase(SpringClientBase.Mode.NONE))
-        if (qualifier.isEmpty() || qualifier == "org.springframework.web.client" || qualifier == "org.springframework.boot.web.client") {
+        if (qualifier.isEmpty() || qualifier in CONSTRUCTION_PACKAGES) {
             when {
                 name == "RestTemplate" && seesType(file, qualifier, SpringClientKind.REST_TEMPLATE.types.first()) ->
                     return SpringClientInstance(SpringClientKind.REST_TEMPLATE, none)
@@ -383,8 +383,9 @@ internal class SpringClientResolver(
             val expression = unwrapUri(unwrapParentheses(text.trim()).removeSuffix("!!").trim())
             pathResolver(file).literalValue(expression, offset)?.let { return SpringStringValue(it) }
             if (REFERENCE.matches(expression)) return referenceValue(file, expression.replace(WHITESPACE, ""), offset, budget)
+            // `"$host"`처럼 보간 하나뿐인 템플릿도 그 참조를 푼다.
             val parts = pathResolver(file).parts(expression, offset)
-            if (parts.size < 2) return SpringStringValue(null)
+            if (parts.isEmpty()) return SpringStringValue(null)
             var profileDependent = false
             val pieces = parts.map { part ->
                 when (part) {
@@ -458,6 +459,8 @@ internal class SpringClientResolver(
         val BEAN = Regex("@(?:org\\.springframework\\.context\\.annotation\\.)?Bean\\b")
         val BEAN_ARGUMENTS = Regex("@(?:org\\.springframework\\.context\\.annotation\\.)?Bean\\s*\\(((?:[^()]|\\([^()]*\\))*)\\)")
         val QUALIFIER_ARGUMENT = Regex("@(?:[\\w.]+\\.)?Qualifier\\s*\\(\\s*(?:value\\s*=\\s*)?\"((?:[^\"\\\\]|\\\\.)*)\"")
+        /** 한정 이름으로 생성하는 RestTemplate·RestTemplateBuilder의 패키지다(Boot 4는 `boot.restclient`로 옮겼다). */
+        val CONSTRUCTION_PACKAGES = setOf("org.springframework.web.client", "org.springframework.boot.web.client", "org.springframework.boot.restclient")
         val KOTLIN_PROPERTY_TYPE = Regex("(?:lateinit\\s+)?(?:val|var)\\s+[A-Za-z_]\\w*\\s*:\\s*([A-Za-z_][\\w.]*)")
         val NAMED_ARGUMENT = Regex("@(?:[\\w.]+\\.)?Named\\s*\\(\\s*(?:value\\s*=\\s*)?\"((?:[^\"\\\\]|\\\\.)*)\"")
         val PRIMARY = Regex("@(?:org\\.springframework\\.context\\.annotation\\.)?Primary\\b")
