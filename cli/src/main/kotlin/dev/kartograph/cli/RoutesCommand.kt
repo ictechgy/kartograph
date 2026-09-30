@@ -15,7 +15,7 @@ import java.nio.file.Path
 /**
  * `kartograph routes` — isthmus http 도메인 문서를 낸다.
  *
- * `--role client`는 클라이언트 HTTP 호출을 `route-call`로, `--role server`는 Spring MVC·WebFlux 어노테이션
+ * `--role client`는 클라이언트 HTTP 호출(래퍼·`java.net.URL`·Retrofit·Spring 클라이언트)을 `route-call`로, `--role server`는 Spring MVC·WebFlux 어노테이션
  * controller를 `route-decl`로 낸다. 서버 역할은 snapshot이 신선하면 그 class root의 바이트코드 어노테이션을 값
  * 원천으로 쓴다(상수가 접힌 값). 역할마다 다른 스캐너를 쓰지만 입력 검증·신선도·신원 진단은 공유한다.
  */
@@ -209,7 +209,11 @@ internal object RoutesCommand {
           - calls of wrappers declared in an http-wrappers v1 file (--wrappers; only "kotlin" entries apply)
           - java.net.URL requests opened with openConnection/openStream/readText when the path is provable
           - Retrofit @GET/@POST/@PUT/@PATCH/@DELETE/@HEAD/@OPTIONS/@HTTP paths (@Url is dynamic)
-        Other clients (OkHttp, Ktor, ...) are not claimed and are reported as route-call-coverage.
+          - Spring RestTemplate (getForObject, exchange, ...), RestClient and WebClient (get()...uri(...)) calls on a
+            receiver proven to be such a client, and @HttpExchange interface methods (one fact per method); base URLs
+            come from builder chains (baseUrl, rootUri), @Bean methods and @Value properties of the in-repo default
+            profile, joined the way Spring's UriBuilderFactory does (see docs/SPRING-CLIENTS.md)
+        Other clients (OkHttp, Ktor, Feign, ...) are not claimed and are reported as route-call-coverage.
 
         Source roots resolve from --project and must stay inside it; without them the whole project is
         scanned. Test source sets (src/test, src/androidTest, src/*Test, ...) are excluded unless

@@ -1,0 +1,377 @@
+{
+  "analyses": [
+    {
+      "direction": "dependents",
+      "dispatch": "candidates",
+      "evidenceReported": true,
+      "graphRevision": "sha256:6a805323ce9c09342aa4beec6602eec0ff39a167a5ccb237781ace287e395fab",
+      "id": "orders-reverse",
+      "member": "orders",
+      "platform": "kotlin",
+      "reached": 2,
+      "revision": "e2e-orders",
+      "role": "reverse",
+      "rootProvenance": "complete",
+      "roots": 1,
+      "rootsTruncated": false,
+      "source": "language-traversal",
+      "tool": {
+        "name": "kartograph",
+        "version": "0.17.0"
+      },
+      "truncated": false,
+      "unresolvedCallsReported": true
+    },
+    {
+      "direction": "dependencies",
+      "dispatch": "candidates",
+      "evidenceReported": true,
+      "graphRevision": "sha256:575e65088ab6b35dc855c2a810f8f9687d3bebd99261fc71045edc1a48c5865f",
+      "id": "users-forward",
+      "member": "users",
+      "platform": "kotlin",
+      "reached": 3,
+      "revision": "e2e-users",
+      "role": "forward",
+      "rootProvenance": "complete",
+      "roots": 1,
+      "rootsTruncated": false,
+      "source": "language-traversal",
+      "tool": {
+        "name": "kartograph",
+        "version": "0.17.0"
+      },
+      "truncated": false,
+      "unresolvedCallsReported": true
+    }
+  ],
+  "analysisLimitations": [
+    {
+      "analysis": "orders-reverse",
+      "message": "bound-dispatch-closed-world: bound dispatch assumes the analyzed classes contain every implementation of project types; runtime proxies, mocks and classes outside the snapshot are not modeled"
+    },
+    {
+      "analysis": "orders-reverse",
+      "message": "graph-file-freshness-unverified: build-scope-mismatch;missing-build-witness;unwitnessed-class-root"
+    },
+    {
+      "analysis": "orders-reverse",
+      "message": "unresolved-calls: counts unresolved external virtual dispatch, runtime-modeled reflective calls without resolved values and invokedynamic sites with unmodeled bootstraps"
+    },
+    {
+      "analysis": "users-forward",
+      "message": "bound-dispatch-closed-world: bound dispatch assumes the analyzed classes contain every implementation of project types; runtime proxies, mocks and classes outside the snapshot are not modeled"
+    },
+    {
+      "analysis": "users-forward",
+      "message": "graph-file-freshness-unverified: build-scope-mismatch;missing-build-witness;unwitnessed-class-root"
+    },
+    {
+      "analysis": "users-forward",
+      "message": "unresolved-calls: counts unresolved external virtual dispatch, runtime-modeled reflective calls without resolved values and invokedynamic sites with unmodeled bootstraps"
+    }
+  ],
+  "chains": [
+    {
+      "database": [],
+      "handlers": [
+        {
+          "member": "users",
+          "platform": "kotlin",
+          "qualifiedName": "dev.kartograph.e2e.users.UsersController.user",
+          "reachedFrom": [],
+          "routes": [
+            {
+              "method": "GET",
+              "scope": "orders->users",
+              "template": "/api/users/{}"
+            }
+          ],
+          "usr": "method:dev/kartograph/e2e/users/UsersController#user(Ljava/lang/String;)Ljava/lang/String;"
+        }
+      ],
+      "relationUses": [],
+      "routes": [
+        {
+          "calls": [
+            {
+              "affected": [
+                {
+                  "analysis": "orders-reverse",
+                  "depth": 1,
+                  "evidence": "direct",
+                  "kind": "method",
+                  "location": {
+                    "line": 35,
+                    "path": "src/main/kotlin/dev/kartograph/e2e/orders/OrdersApplication.kt"
+                  },
+                  "member": "orders",
+                  "path": [
+                    "method:dev/kartograph/e2e/orders/UserGateway#fetchUser(Ljava/lang/String;)Ljava/lang/String;",
+                    "method:dev/kartograph/e2e/orders/OrderService#describe(Ljava/lang/String;)Ljava/lang/String;"
+                  ],
+                  "platform": "kotlin",
+                  "qualifiedName": "dev.kartograph.e2e.orders.OrderService.describe",
+                  "relationships": [
+                    "call"
+                  ],
+                  "usr": "method:dev/kartograph/e2e/orders/OrderService#describe(Ljava/lang/String;)Ljava/lang/String;"
+                },
+                {
+                  "analysis": "orders-reverse",
+                  "depth": 2,
+                  "evidence": "direct",
+                  "kind": "method",
+                  "location": {
+                    "line": 42,
+                    "path": "src/main/kotlin/dev/kartograph/e2e/orders/OrdersApplication.kt"
+                  },
+                  "member": "orders",
+                  "path": [
+                    "method:dev/kartograph/e2e/orders/UserGateway#fetchUser(Ljava/lang/String;)Ljava/lang/String;",
+                    "method:dev/kartograph/e2e/orders/OrderService#describe(Ljava/lang/String;)Ljava/lang/String;",
+                    "method:dev/kartograph/e2e/orders/OrdersController#order(Ljava/lang/String;)Ljava/lang/String;"
+                  ],
+                  "platform": "kotlin",
+                  "qualifiedName": "dev.kartograph.e2e.orders.OrdersController.order",
+                  "relationships": [
+                    "call"
+                  ],
+                  "usr": "method:dev/kartograph/e2e/orders/OrdersController#order(Ljava/lang/String;)Ljava/lang/String;"
+                }
+              ],
+              "call": {
+                "location": {
+                  "column": 42,
+                  "line": 29,
+                  "path": "src/main/kotlin/dev/kartograph/e2e/orders/OrdersApplication.kt"
+                },
+                "member": "orders",
+                "platform": "kotlin",
+                "route": {
+                  "kind": "route-call",
+                  "method": "GET",
+                  "pathAnchor": "root",
+                  "template": "/api/users/{}"
+                },
+                "symbol": {
+                  "qualifiedName": "dev.kartograph.e2e.orders.UserGateway.fetchUser",
+                  "usr": "method:dev/kartograph/e2e/orders/UserGateway#fetchUser(Ljava/lang/String;)Ljava/lang/String;"
+                }
+              },
+              "quality": "exact",
+              "side": "decl"
+            }
+          ],
+          "contracts": [],
+          "declarations": [
+            {
+              "location": {
+                "column": 5,
+                "line": 18,
+                "path": "src/main/kotlin/dev/kartograph/e2e/users/UsersApplication.kt"
+              },
+              "member": "users",
+              "platform": "kotlin",
+              "route": {
+                "kind": "route-decl",
+                "method": "GET",
+                "pathAnchor": "root",
+                "template": "/api/users/{}"
+              },
+              "symbol": {
+                "qualifiedName": "dev.kartograph.e2e.users.UsersController.user",
+                "usr": "method:dev/kartograph/e2e/users/UsersController#user(Ljava/lang/String;)Ljava/lang/String;"
+              }
+            }
+          ],
+          "method": "GET",
+          "scope": "orders->users",
+          "template": "/api/users/{}"
+        }
+      ],
+      "selector": {
+        "route": {
+          "method": "GET",
+          "template": "/api/users/{}"
+        }
+      }
+    }
+  ],
+  "complete": false,
+  "format": "isthmus-trace",
+  "gaps": [
+    {
+      "code": "http-member-unlinked",
+      "detail": "1 server-role http document(s) of this member are not joined by any workspace link (as server declarations or listed contract documents), so their routes are not matched to callers or handler chains.",
+      "member": "orders"
+    },
+    {
+      "code": "persistence-unscanned",
+      "detail": "The member lacks a persistence caller document or a sql declaration document, so database hops are incomplete.",
+      "member": "users"
+    }
+  ],
+  "limitations": [
+    {
+      "link": "orders->users",
+      "message": "framework-provided-routes: error endpoint (/error) accepts every method; no project declaration and no synthetic route-decl facts are emitted",
+      "platform": "kotlin",
+      "routeScope": {
+        "templates": [
+          "/error"
+        ]
+      },
+      "target": "http",
+      "tool": "kartograph"
+    },
+    {
+      "link": "orders->users",
+      "message": "framework-provided-routes: error endpoint (/error) accepts every method; no project declaration and no synthetic route-decl facts are emitted",
+      "platform": "kotlin",
+      "routeScope": {
+        "templates": [
+          "/error"
+        ]
+      },
+      "target": "http",
+      "tool": "kartograph"
+    },
+    {
+      "link": "orders->users",
+      "message": "framework-provided-routes: static resources and webjars (/**) may be served for GET and HEAD; no project declaration and no synthetic route-decl facts are emitted",
+      "platform": "kotlin",
+      "routeScope": {
+        "methods": [
+          "GET",
+          "HEAD"
+        ],
+        "templatePrefixes": [
+          "/"
+        ]
+      },
+      "target": "http",
+      "tool": "kartograph"
+    },
+    {
+      "link": "orders->users",
+      "message": "framework-provided-routes: static resources and webjars (/**) may be served for GET and HEAD; no project declaration and no synthetic route-decl facts are emitted",
+      "platform": "kotlin",
+      "routeScope": {
+        "methods": [
+          "GET",
+          "HEAD"
+        ],
+        "templatePrefixes": [
+          "/"
+        ]
+      },
+      "target": "http",
+      "tool": "kartograph"
+    },
+    {
+      "link": "orders->users",
+      "message": "framework-provided-routes: welcome page handlers may answer the root path (/); no project declaration and no synthetic route-decl facts are emitted",
+      "platform": "kotlin",
+      "routeScope": {
+        "templates": [
+          "/"
+        ]
+      },
+      "target": "http",
+      "tool": "kartograph"
+    },
+    {
+      "link": "orders->users",
+      "message": "framework-provided-routes: welcome page handlers may answer the root path (/); no project declaration and no synthetic route-decl facts are emitted",
+      "platform": "kotlin",
+      "routeScope": {
+        "templates": [
+          "/"
+        ]
+      },
+      "target": "http",
+      "tool": "kartograph"
+    },
+    {
+      "link": "orders->users",
+      "message": "graph-file-freshness-unverified: build-scope-mismatch;missing-build-witness;unwitnessed-class-root",
+      "platform": "kotlin",
+      "target": "http",
+      "tool": "kartograph"
+    },
+    {
+      "link": "orders->users",
+      "message": "graph-file-freshness-unverified: build-scope-mismatch;missing-build-witness;unwitnessed-class-root",
+      "platform": "kotlin",
+      "target": "http",
+      "tool": "kartograph"
+    },
+    {
+      "link": "orders->users",
+      "message": "graph-file-freshness-unverified: build-scope-mismatch;missing-build-witness;unwitnessed-class-root",
+      "platform": "kotlin",
+      "target": "http",
+      "tool": "kartograph"
+    }
+  ],
+  "notices": [],
+  "scope": {
+    "fieldCompatibility": "not-assessed",
+    "granularity": "route",
+    "queryAndHeaders": "not-assessed"
+  },
+  "selection": {
+    "routes": [
+      {
+        "method": "GET",
+        "template": "/api/users/{}"
+      }
+    ]
+  },
+  "summary": {
+    "calls": 1,
+    "chains": 1,
+    "clientSymbols": 2,
+    "databaseDependents": 0,
+    "databaseVertices": 0,
+    "evidence": {
+      "bound": 0,
+      "candidate": 0,
+      "direct": 2,
+      "unassessed": 0
+    },
+    "gaps": 2,
+    "handlers": 1,
+    "notices": 0,
+    "relationUses": 0,
+    "routes": 1
+  },
+  "version": 1,
+  "workspace": {
+    "links": [
+      {
+        "client": "orders",
+        "match": {
+          "hosts": [
+            "users.internal:8081"
+          ]
+        },
+        "name": "orders->users",
+        "server": "users"
+      }
+    ],
+    "members": [
+      {
+        "name": "users",
+        "project": "/e2e/users-service",
+        "revision": "e2e-users"
+      },
+      {
+        "name": "orders",
+        "project": "/e2e/orders-service",
+        "revision": "e2e-orders"
+      }
+    ]
+  }
+}

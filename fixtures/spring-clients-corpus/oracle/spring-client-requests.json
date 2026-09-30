@@ -1,0 +1,456 @@
+{
+  "cases": [
+    {
+      "basePath": null,
+      "id": "users.fetch",
+      "pathArguments": [
+        "42"
+      ],
+      "recorded": {
+        "authority": "users.example.test:8081",
+        "method": "GET",
+        "path": "/api/users/42",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.UserClient.fetchUser"
+    },
+    {
+      "basePath": null,
+      "id": "users.active.query",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "users.example.test:8081",
+        "method": "GET",
+        "path": "/api/users",
+        "query": "active=true"
+      },
+      "symbol": "dev.kartograph.fixture.springclient.UserClient.activeUsers"
+    },
+    {
+      "basePath": null,
+      "id": "users.status.no-slash-join",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "users.example.test:8081",
+        "method": "GET",
+        "path": "/apistatus",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.UserClient.status"
+    },
+    {
+      "basePath": null,
+      "id": "users.delete.lambda",
+      "pathArguments": [
+        "7"
+      ],
+      "recorded": {
+        "authority": "users.example.test:8081",
+        "method": "DELETE",
+        "path": "/api/users/7",
+        "query": "hard=true"
+      },
+      "symbol": "dev.kartograph.fixture.springclient.UserClient.deleteUser"
+    },
+    {
+      "basePath": null,
+      "id": "users.bulk.double-slash",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "users.example.test:8081",
+        "method": "PATCH",
+        "path": "/api/users/bulk/",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.UserClient.bulkPatch"
+    },
+    {
+      "basePath": null,
+      "id": "users.audit.absolute",
+      "pathArguments": [
+        "mon"
+      ],
+      "recorded": {
+        "authority": "audit.example.test",
+        "method": "GET",
+        "path": "/log/mon",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.UserClient.audit"
+    },
+    {
+      "basePath": null,
+      "id": "users.dotted",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "users.example.test:8081",
+        "method": "GET",
+        "path": "/api/users/./me/../self",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.UserClient.dotted"
+    },
+    {
+      "basePath": null,
+      "id": "search.profiled",
+      "pathArguments": [
+        "shoes"
+      ],
+      "recorded": {
+        "authority": "search.example.test",
+        "method": "GET",
+        "path": "/s/query/shoes",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.SearchClient.search"
+    },
+    {
+      "basePath": null,
+      "id": "orders.list.trailing-base",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "orders.example.test",
+        "method": "GET",
+        "path": "/v1/orders",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.OrdersClient.listOrders"
+    },
+    {
+      "basePath": null,
+      "id": "orders.one.slash-collapse",
+      "pathArguments": [
+        "5"
+      ],
+      "recorded": {
+        "authority": "orders.example.test",
+        "method": "GET",
+        "path": "/v1/orders/5",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.OrdersClient.order"
+    },
+    {
+      "basePath": null,
+      "id": "orders.add-item.lambda",
+      "pathArguments": [
+        "5"
+      ],
+      "recorded": {
+        "authority": "orders.example.test",
+        "method": "POST",
+        "path": "/v1/orders/5/items",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.OrdersClient.addItem"
+    },
+    {
+      "basePath": null,
+      "id": "orders.cancel.map-vars",
+      "pathArguments": [
+        "5"
+      ],
+      "recorded": {
+        "authority": "orders.example.test",
+        "method": "PUT",
+        "path": "/v1/orders/5/cancel",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.OrdersClient.cancel"
+    },
+    {
+      "basePath": null,
+      "id": "billing.invoice.root-uri",
+      "pathArguments": [
+        "inv-1"
+      ],
+      "recorded": {
+        "authority": "billing.example.test",
+        "method": "GET",
+        "path": "/billing/invoices/inv-1",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.BillingClient.invoice"
+    },
+    {
+      "basePath": null,
+      "id": "billing.replace.exchange",
+      "pathArguments": [
+        "inv-1"
+      ],
+      "recorded": {
+        "authority": "billing.example.test",
+        "method": "PUT",
+        "path": "/billing/invoices/inv-1",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.BillingClient.replaceInvoice"
+    },
+    {
+      "basePath": null,
+      "id": "billing.remove.delete",
+      "pathArguments": [
+        "inv-1"
+      ],
+      "recorded": {
+        "authority": "billing.example.test",
+        "method": "DELETE",
+        "path": "/billing/invoices/inv-1",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.BillingClient.removeInvoice"
+    },
+    {
+      "basePath": null,
+      "id": "billing.head",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "billing.example.test",
+        "method": "HEAD",
+        "path": "/billing/invoices",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.BillingClient.invoiceHeaders"
+    },
+    {
+      "basePath": null,
+      "id": "billing.create.post",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "billing.example.test",
+        "method": "POST",
+        "path": "/billing/invoices",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.BillingClient.createInvoice"
+    },
+    {
+      "basePath": null,
+      "id": "billing.external.absolute",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "ledger.example.test",
+        "method": "GET",
+        "path": "/entries",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.BillingClient.external"
+    },
+    {
+      "basePath": null,
+      "id": "legacy.item.value-concat",
+      "pathArguments": [
+        "i-9"
+      ],
+      "recorded": {
+        "authority": "legacy.example.test",
+        "method": "GET",
+        "path": "/v0/items/i-9",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.LegacyClient.item"
+    },
+    {
+      "basePath": null,
+      "id": "legacy.search.uri-builder",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "legacy.example.test",
+        "method": "GET",
+        "path": "/v0/search",
+        "query": "q=red%20shoes"
+      },
+      "symbol": "dev.kartograph.fixture.springclient.LegacyClient.search"
+    },
+    {
+      "basePath": null,
+      "id": "legacy.segment.path-segment",
+      "pathArguments": [
+        "i-9"
+      ],
+      "recorded": {
+        "authority": "legacy.example.test",
+        "method": "GET",
+        "path": "/v0/items/i-9",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.LegacyClient.segment"
+    },
+    {
+      "basePath": "/e",
+      "id": "env.ping.runtime-base",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "env.example.test",
+        "method": "GET",
+        "path": "/e/ping",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.EnvClient.ping"
+    },
+    {
+      "basePath": null,
+      "id": "catalog.item.exchange",
+      "pathArguments": [
+        "c-1"
+      ],
+      "recorded": {
+        "authority": "catalog.example.test",
+        "method": "GET",
+        "path": "/shop/api/items/c-1",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.CatalogApi.item"
+    },
+    {
+      "basePath": null,
+      "id": "catalog.create.exchange",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "catalog.example.test",
+        "method": "POST",
+        "path": "/shop/api/items",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.CatalogApi.createItem"
+    },
+    {
+      "basePath": null,
+      "id": "catalog.stock.http-exchange",
+      "pathArguments": [
+        "c-1"
+      ],
+      "recorded": {
+        "authority": "catalog.example.test",
+        "method": "PUT",
+        "path": "/shop/api/items/c-1/stock",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.CatalogApi.updateStock"
+    },
+    {
+      "basePath": null,
+      "id": "catalog.delete.exchange",
+      "pathArguments": [
+        "c-1"
+      ],
+      "recorded": {
+        "authority": "catalog.example.test",
+        "method": "DELETE",
+        "path": "/shop/api/items/c-1",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.CatalogApi.deleteItem"
+    },
+    {
+      "basePath": null,
+      "id": "inventory.stock.java-qualifier",
+      "pathArguments": [
+        "sku-1"
+      ],
+      "recorded": {
+        "authority": "inventory.example.test",
+        "method": "GET",
+        "path": "/inv/stock/sku-1",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.InventoryClient.stock"
+    },
+    {
+      "basePath": null,
+      "id": "inventory.reserve.java-lambda",
+      "pathArguments": [
+        "sku-1"
+      ],
+      "recorded": {
+        "authority": "inventory.example.test",
+        "method": "POST",
+        "path": "/inv/reservations/sku-1",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.InventoryClient.reserve"
+    },
+    {
+      "basePath": null,
+      "id": "shipping.parcel.java-constant",
+      "pathArguments": [
+        "p-1"
+      ],
+      "recorded": {
+        "authority": "shipping.example.test",
+        "method": "GET",
+        "path": "/ship/parcels/p-1",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.ShippingClient.parcel"
+    },
+    {
+      "basePath": null,
+      "id": "shipping.create.java-constant",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "shipping.example.test",
+        "method": "POST",
+        "path": "/ship/parcels",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.ShippingClient.createParcel"
+    },
+    {
+      "basePath": null,
+      "id": "reports.daily.java-exchange",
+      "pathArguments": [
+        "2026-09-30"
+      ],
+      "recorded": {
+        "authority": "reports.example.test",
+        "method": "GET",
+        "path": "/r/daily/2026-09-30",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.ReportsApi.daily"
+    },
+    {
+      "basePath": null,
+      "id": "reports.reopen.java-exchange",
+      "pathArguments": [
+        "2026-09"
+      ],
+      "recorded": {
+        "authority": "reports.example.test",
+        "method": "PATCH",
+        "path": "/r/monthly/2026-09",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.springclient.ReportsApi.reopen"
+    }
+  ],
+  "description": "Requests that the synthetic Spring Boot client app sent for each call, recorded by a local proxy. path is the encoded request path; pathArguments fill the template's {} in order; basePath is set only when the base URL is a runtime value the producer cannot resolve.",
+  "format": "kartograph-spring-client-requests",
+  "oracle": {
+    "http": "JDK HttpClient + HttpURLConnection via JVM proxy",
+    "source": "experiments/phase7b-spring-clients/harness",
+    "spring-boot": "3.5.16",
+    "spring-framework": "6.2.19"
+  },
+  "provenance": "execution",
+  "sources": [
+    "spring-client/src/main/java/dev/kartograph/fixture/springclient/InventoryClient.java",
+    "spring-client/src/main/java/dev/kartograph/fixture/springclient/InventoryConfig.java",
+    "spring-client/src/main/java/dev/kartograph/fixture/springclient/ReportsApi.java",
+    "spring-client/src/main/java/dev/kartograph/fixture/springclient/ShippingClient.java",
+    "spring-client/src/main/kotlin/dev/kartograph/fixture/springclient/BillingClient.kt",
+    "spring-client/src/main/kotlin/dev/kartograph/fixture/springclient/CatalogApi.kt",
+    "spring-client/src/main/kotlin/dev/kartograph/fixture/springclient/ClientConfig.kt",
+    "spring-client/src/main/kotlin/dev/kartograph/fixture/springclient/EnvClient.kt",
+    "spring-client/src/main/kotlin/dev/kartograph/fixture/springclient/LegacyClient.kt",
+    "spring-client/src/main/kotlin/dev/kartograph/fixture/springclient/OracleApplication.kt",
+    "spring-client/src/main/kotlin/dev/kartograph/fixture/springclient/OrdersClient.kt",
+    "spring-client/src/main/kotlin/dev/kartograph/fixture/springclient/SearchClient.kt",
+    "spring-client/src/main/kotlin/dev/kartograph/fixture/springclient/UserClient.kt",
+    "spring-client/src/main/resources/application-prod.yml",
+    "spring-client/src/main/resources/application.properties",
+    "spring-client/src/main/resources/application.yml"
+  ],
+  "version": 1
+}

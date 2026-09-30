@@ -23,7 +23,9 @@ import java.time.Instant
  * `java.net.URL` + `HttpURLConnection`(또는 `openStream`·`readText`) 요청, Retrofit 동사 어노테이션.
  * Retrofit 사실은 서비스를 만든 `create` 호출의 `baseUrl`을 따라가([RetrofitBaseIndex]) 리터럴이면 authority와 base 경로를
  * 결합한 root 템플릿을, 풀지 못하면 base 앵커와 인스턴스 선언의 `baseRef`를 낸다.
- * 그 밖의 클라이언트(OkHttp·Ktor 등)는 지원한다고 주장하지 않고 `route-call-coverage:`로 센다.
+ * Spring `RestTemplate`·`RestClient`·`WebClient` 호출과 `@HttpExchange` 인터페이스는 [SpringClientCalls]가 클라이언트의 base 결합
+ * (`baseUrl`·`rootUri`·`@Bean`·`@Value`)을 따라가 같은 모양의 사실로 낸다.
+ * 그 밖의 클라이언트(OkHttp·Ktor·Feign 등)는 지원한다고 주장하지 않고 `route-call-coverage:`로 센다.
  * 경로·동사를 증명하지 못한 호출은 버리지 않고 dynamic·`methodDynamic`과 limitation으로 남긴다.
  *
  * @param projectRoot 위치 경로의 기준이 되는 프로젝트 루트
@@ -55,9 +57,11 @@ public class RouteCallScanner(
         val retrofitBases = RetrofitBaseIndex(scanned, BuildConfigFields(root))
         // Retrofit 사실은 인스턴스 신원으로 소스 선언을 찾는다 — 정렬해도 같은 인스턴스가 남는다.
         val retrofitDeclarations = java.util.IdentityHashMap<BridgeFact, RetrofitDeclaration>()
+        val spring = SpringClientSetup.of(root, scanned)
         scanned.forEach { file ->
-            RouteFileScan(file, wrappersByDeclaration, stats, facts, includeTests, retrofitDeclarations, retrofitBases).run()
+            RouteFileScan(file, wrappersByDeclaration, stats, facts, includeTests, retrofitDeclarations, retrofitBases, spring?.calls).run()
         }
+        spring?.exchanges?.unresolvedInterfaces?.let(stats.unresolvedExchangeInterfaces::addAll)
         stats.urlRewriters = retrofitBases.urlRewriters
         val retrofitSymbols = graph?.takeIf { retrofitDeclarations.isNotEmpty() }?.let(::RetrofitSymbolIndex)
         val ordered = facts.sortedWith(
@@ -152,6 +156,21 @@ public class RouteCallScanner(
                 "resolved statically (no production create site, a runtime value, an ambiguous DI binding or a rewriting interceptor); " +
                 "those facts carry no authority and relative paths keep pathAnchor base",
         )
+        if (stats.unresolvedSpringCalls > 0 || stats.unresolvedExchangeInterfaces.isNotEmpty()) add(
+            "unresolved-base-url: ${stats.unresolvedSpringCalls} Spring RestTemplate/RestClient/WebClient call(s) and " +
+                "${stats.unresolvedExchangeInterfaces.size} @HttpExchange interface(s) have relative paths whose base URL was not resolved " +
+                "statically (a runtime value, a property missing from the default profile, an injected client without a single matching " +
+                "@Bean, or no createClient site); those facts carry no authority and keep pathAnchor base",
+        )
+        if (stats.profileSpringCalls > 0) add(
+            "unresolved-base-url: ${stats.profileSpringCalls} Spring HTTP client call(s) take their base URL or path from properties " +
+                "that other profiles override; facts use the default profile value",
+        )
+        if (stats.springUnmodeled > 0) add(
+            "route-call-coverage: ${stats.springUnmodeled} Spring RestTemplate/RestClient/WebClient call(s) use a request shape this " +
+                "scanner does not model (RequestEntity, a receiver not proven to be a client, a request spec split across statements); " +
+                "their requests are not reported",
+        )
         if (stats.urlRewriters > 0) add(
             "url-rewrite-interceptors: ${stats.urlRewriters} OkHttp interceptor request rewrite(s) (newBuilder().url/host/path) may " +
                 "change where requests go; Retrofit baseUrls were not applied",
@@ -161,7 +180,7 @@ public class RouteCallScanner(
                 wrappers.none { wrapper -> declaresWrapper(file, wrapper) }
         }
         if (unmodeled > 0) add(
-            "route-call-coverage: $unmodeled source file(s) use HTTP clients this scanner does not model (OkHttp, Ktor, Volley, java.net.http, Spring, Feign); their requests are not reported",
+            "route-call-coverage: $unmodeled source file(s) use HTTP clients this scanner does not model (OkHttp, Ktor, Volley, java.net.http, Feign); their requests are not reported",
         )
     }
 
@@ -197,8 +216,7 @@ public class RouteCallScanner(
     private companion object {
         /** 이 스캐너가 모델링하지 않는 HTTP 클라이언트 import 접두사다. */
         val UNMODELED_CLIENTS = listOf(
-            "okhttp3.", "io.ktor.client", "com.android.volley", "java.net.http.", "org.springframework.web.client",
-            "org.springframework.web.reactive.function.client", "feign.",
+            "okhttp3.", "io.ktor.client", "com.android.volley", "java.net.http.", "feign.", "org.springframework.cloud.openfeign.",
         )
 
         /** 요청을 만들거나 보내지 않는 OkHttp 값 타입(단순 이름)이다. 이것만 import한 파일은 모델링하지 않은 호출의 근거가 아니다. */
@@ -241,6 +259,18 @@ internal class RouteScanStats {
 
     /** URL을 바꾸는 OkHttp 인터셉터 호출 수다(`url-rewrite-interceptors:`). */
     var urlRewriters = 0
+
+    /** base를 풀지 못한 채 상대 경로로 사실을 낸 Spring 명령형 클라이언트 호출 수다(`unresolved-base-url:`). */
+    var unresolvedSpringCalls = 0
+
+    /** base를 풀지 못한 사실을 낸 `@HttpExchange` 인터페이스 FQN이다(`unresolved-base-url:`). */
+    val unresolvedExchangeInterfaces: MutableSet<String> = sortedSetOf()
+
+    /** 다른 프로필이 바꾸는 설정 값으로 base·경로를 정한 Spring 클라이언트 호출 수다. */
+    var profileSpringCalls = 0
+
+    /** 모양을 모델링하지 못한 Spring 클라이언트 호출 수다(`route-call-coverage:`). */
+    var springUnmodeled = 0
 }
 
 /**
@@ -254,6 +284,7 @@ private class RouteFileScan(
     private val includeTests: Boolean,
     private val retrofitDeclarations: MutableMap<BridgeFact, RetrofitDeclaration>,
     private val retrofitBases: RetrofitBaseIndex,
+    private val springCalls: SpringClientCalls?,
 ) {
     private val resolver = RoutePathResolver(file)
 
@@ -263,6 +294,25 @@ private class RouteFileScan(
         val importsRetrofit = file.imports.any { it.path.startsWith("retrofit2.http.") }
         // 짧은 이름(`@GET`)은 Retrofit import가 있을 때만, 완전한 이름(`@retrofit2.http.GET`)은 언제나 Retrofit이다.
         RETROFIT.findAll(file.masked).filter { importsRetrofit || it.groups[1] != null }.forEach(::scanRetrofit)
+        springCalls?.scan(file, ::emitSpring) { stats.springUnmodeled++ }
+    }
+
+    // ---- Spring RestTemplate·RestClient·WebClient·@HttpExchange ----
+
+    /**
+     * Spring 클라이언트 호출 후보를 사실로 낸다. 명령형 호출은 경로 구조 전체가 감싸는 함수의 매개변수에서 오면 싱크로 보고
+     * 사실을 내지 않는다(다른 싱크와 같은 규칙). `@HttpExchange` 사실은 인터페이스 메서드 신원을 기억한다.
+     */
+    private fun emitSpring(call: SpringClientCall) {
+        if (call.declaration == null && isParameterSink(call.composed, call.parts, call.start)) return
+        if (call.composed.limitation != null) stats.ambiguousJoins++
+        if (call.unresolvedBase) stats.unresolvedSpringCalls++
+        if (call.profileDependent) stats.profileSpringCalls++
+        emit(
+            call.start, call.method, call.composed, call.expression, service = null, fallbackAnchor = "base",
+            symbolName = call.symbolName ?: file.qualifiedName(call.start), baseRef = call.baseRef,
+        )
+        call.declaration?.let { retrofitDeclarations[facts.last()] = it }
     }
 
     // ---- 선언된 래퍼 ----

@@ -334,10 +334,15 @@ private fun enclosingDeclaration(projectRoot: Path, relativePath: String, line: 
         val start = index + 1
         val before = depth
         val kotlinHeader = KOTLIN_HEADER_START.find(text)
-        val kotlinOpening = kotlinHeader?.let { findKotlinOpening(lines, index, it.range.last) }
-        val javaDeclaration = if (kotlinHeader == null) JAVA_DECLARATION.find(text) else null
+        val kotlinBody = kotlinHeader?.let { findKotlinBody(lines, index, it.range.last) }
+        // Kotlin 클래스 머리(`class A(private val b: B) {`)도 Java 선언 모양이다 — Java 파일에서만 Java 선언으로 읽는다.
+        val javaDeclaration = if (kotlinHeader == null && !isKotlinPath(relativePath)) JAVA_DECLARATION.find(text) else null
         val declarationName = kotlinHeader?.groupValues?.get(1) ?: javaDeclaration?.groupValues?.get(1)
-        val openingLine = kotlinOpening ?: javaDeclaration?.let { index }
+        if (declarationName != null && kotlinBody != null && !kotlinBody.block) {
+            // 식 몸체(`fun f() = …`)는 식이 끝나는 줄까지다. 뒤 선언의 `{`를 몸체로 오인하지 않는다.
+            ranges += SourceDeclaration(declarationName, start, kotlinBody.line + 1)
+        }
+        val openingLine = kotlinBody?.takeIf { it.block }?.line ?: javaDeclaration?.let { index }
         if (declarationName != null && openingLine != null) {
             val openingDepth = before + 1
             var after = before
@@ -363,20 +368,68 @@ private fun enclosingDeclaration(projectRoot: Path, relativePath: String, line: 
     return ranges.filter { line in it.startLine..it.endLine }.minByOrNull { it.endLine - it.startLine }
 }
 
-private fun findKotlinOpening(lines: List<String>, declarationLine: Int, afterOpen: Int): Int? {
+private fun isKotlinPath(path: String): Boolean = path.endsWith(".kt") || path.endsWith(".kts")
+
+/**
+ * Kotlin 함수 머리 뒤 몸체다.
+ *
+ * @property line 블록 몸체면 `{`가 있는 줄, 식 몸체면 식의 마지막 줄(0부터)이다
+ * @property block 블록 몸체인지다
+ */
+private data class KotlinBody(val line: Int, val block: Boolean)
+
+/** 매개변수 목록 뒤 첫 `{`(블록 몸체)나 `=`(식 몸체)를 찾는다. 기본값의 `=`는 괄호 안이라 세지 않는다. */
+private fun findKotlinBody(lines: List<String>, declarationLine: Int, afterOpen: Int): KotlinBody? {
     var parentheses = 1
     for (lineIndex in declarationLine until minOf(lines.size, declarationLine + 128)) {
-        val text = lines[lineIndex].let { if (lineIndex == declarationLine) it.substring(afterOpen + 1) else it }
-        for (character in text) {
+        val offset = if (lineIndex == declarationLine) afterOpen + 1 else 0
+        val text = lines[lineIndex].substring(offset.coerceAtMost(lines[lineIndex].length))
+        // 매개변수 목록이 닫힌 뒤 다음 선언이 시작하면 몸체 없는 선언(추상·인터페이스 함수)이다.
+        if (lineIndex > declarationLine && parentheses == 0 && NEXT_DECLARATION.containsMatchIn(text)) return null
+        text.forEachIndexed { column, character ->
             when {
                 parentheses > 0 && character == '(' -> parentheses++
                 parentheses > 0 && character == ')' -> parentheses--
-                parentheses == 0 && character == '{' -> return lineIndex
+                parentheses == 0 && character == '{' -> return KotlinBody(lineIndex, block = true)
+                parentheses == 0 && character == '=' && text.getOrNull(column + 1) != '=' && text.getOrNull(column - 1)?.let { it in "=!<>" } != true ->
+                    return KotlinBody(expressionBodyEnd(lines, lineIndex, offset + column + 1), block = false)
             }
         }
     }
     return null
 }
+
+/**
+ * 식 몸체의 마지막 줄이다. 괄호가 열려 있거나, 줄이 연산자로 끝나거나, 다음 줄이 멤버 접근·연산자로 이어지면 식이 계속된다.
+ */
+private fun expressionBodyEnd(lines: List<String>, startLine: Int, startColumn: Int): Int {
+    var depth = 0
+    var lineIndex = startLine
+    while (lineIndex < lines.size) {
+        val text = lines[lineIndex].let { if (lineIndex == startLine) it.substring(startColumn.coerceAtMost(it.length)) else it }
+        text.forEach { character ->
+            when (character) {
+                '(', '[', '{' -> depth++
+                ')', ']', '}' -> depth--
+            }
+        }
+        if (depth < 0) return lineIndex
+        val trimmed = text.trimEnd()
+        val next = lines.getOrNull(lineIndex + 1)?.trimStart().orEmpty()
+        val continues = depth > 0 || (lineIndex == startLine && trimmed.isBlank()) ||
+            EXPRESSION_CONTINUATION_END.any { trimmed.endsWith(it) } || EXPRESSION_CONTINUATION_START.any { next.startsWith(it) }
+        if (!continues || lineIndex + 1 >= lines.size) return lineIndex
+        lineIndex++
+    }
+    return lines.lastIndex
+}
+
+private val NEXT_DECLARATION = Regex(
+    "^\\s*(?:@|}|(?:(?:public|private|protected|internal|override|open|abstract|final|suspend|inline|operator|infix|data|enum|sealed|inner|" +
+        "lateinit|const|companion)\\s+)*(?:fun|val|var|class|object|interface|init|constructor|typealias)\\b)",
+)
+private val EXPRESSION_CONTINUATION_END = listOf("=", "(", ",", ".", "+", "-", "*", "/", "&&", "||", "?:", "->", "{")
+private val EXPRESSION_CONTINUATION_START = listOf(".", "?.", "?:", "+", "-", "*", "/", "&&", "||", ")", "]")
 
 private fun maskDeclarationStrings(source: String): String = buildString(source.length) {
     var quoted = false

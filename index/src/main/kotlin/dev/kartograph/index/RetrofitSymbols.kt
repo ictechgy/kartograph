@@ -19,8 +19,16 @@ import org.objectweb.asm.Type
  * @property name 소스의 메서드 이름이다
  * @property verb 어노테이션 단순 이름이다(`GET`·`HTTP` 등). 정점의 `retrofit2/http/<verb>` 어노테이션과 대조한다
  * @property parameterCount 소스 매개변수 수다. 같은 이름·동사의 overload가 여럿일 때만 가르는 데 쓴다
+ * @property annotation 정점에 있어야 할 어노테이션의 JVM internal name이다. Spring `@HttpExchange` 인터페이스 메서드도 같은 방식으로
+ *   찾는다(`org/springframework/web/service/annotation/GetExchange`)
  */
-internal data class RetrofitDeclaration(val owner: String, val name: String, val verb: String, val parameterCount: Int)
+internal data class RetrofitDeclaration(
+    val owner: String,
+    val name: String,
+    val verb: String,
+    val parameterCount: Int,
+    val annotation: String = "retrofit2/http/$verb",
+)
 
 /**
  * snapshot 그래프에서 Retrofit 서비스 메서드 정점을 찾아 route-call 사실에 JVM 신원을 붙인다.
@@ -42,7 +50,7 @@ internal class RetrofitSymbolIndex(graph: CodeGraph) {
     }
 
     private fun find(path: String, declaration: RetrofitDeclaration): GraphNode? {
-        val annotation = "retrofit2/http/${declaration.verb}"
+        val annotation = declaration.annotation
         val candidates = methodsByOwner[declaration.owner].orEmpty().filter { node ->
             isJvmNameOf(jvmName(node), declaration.name) && annotation in node.annotations &&
                 node.location?.path?.replace('\\', '/') == path

@@ -1,0 +1,5 @@
+# 서비스 A다. 서비스 B의 base URL은 기본 프로필 설정이다.
+server:
+  port: 8080
+users:
+  base-url: http://users.internal:8081/api
