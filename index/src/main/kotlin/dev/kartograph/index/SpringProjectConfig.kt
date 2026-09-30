@@ -192,6 +192,10 @@ internal class SpringPlaceholders(private val candidates: List<SpringModuleConfi
  * @property reactive WebFlux 표지를 봤다
  * @property frameworkRoutes 프로젝트 선언 없이 프레임워크가 등록하는 경로의 제공자다
  * @property modules 모듈 설정이다. 루트가 긴 순서다
+ * @property dataRestAutoConfigured Boot의 Data REST 자동 구성 모듈(`spring-boot-starter-data-rest`·`spring-boot-data-rest`)이 빌드에 있다.
+ *   `spring.data.rest.*` 속성은 이 자동 구성이 적용한다
+ * @property securityDefaultChainReplaced 빌드에 OAuth2·SAML 모듈 표지가 있다. Boot 기본 `SecurityFilterChain`이 `formLogin`이 아니게 된다
+ * @property httpConfigurerFactories 모듈의 `META-INF/spring.factories`가 기본 `AbstractHttpConfigurer`를 등록한다
  */
 internal class SpringProjectConfig(
     val bootMajor: Int?,
@@ -201,6 +205,9 @@ internal class SpringProjectConfig(
     val frameworkRoutes: List<SpringFrameworkRoute>,
     val modules: List<SpringModuleConfig>,
     private val buildTexts: Map<String, String>,
+    val dataRestAutoConfigured: Boolean = false,
+    val securityDefaultChainReplaced: Boolean = false,
+    val httpConfigurerFactories: Boolean = false,
 ) {
     /**
      * 소스 경로의 설정 후보다. 자기 모듈이 앱 모듈(`@SpringBootApplication`·`SpringApplication.run`이 있는 모듈)이면 그것,
@@ -247,7 +254,31 @@ internal class SpringProjectConfig(
             val joined = texts.values.joinToString("\n")
             val version = bootVersion(texts)
             return SpringProjectConfig(version?.first, version?.second, SERVLET_MARKERS.any(joined::contains),
-                REACTIVE_MARKERS.any(joined::contains), frameworkRoutes(joined, modules, version != null), modules, texts)
+                REACTIVE_MARKERS.any(joined::contains), frameworkRoutes(joined, modules, version != null), modules, texts,
+                dataRestAutoConfigured = DATA_REST_AUTO_CONFIGURATION.any(joined::contains),
+                securityDefaultChainReplaced = SECURITY_CHAIN_MODULES.any(joined::contains),
+                httpConfigurerFactories = moduleRoots.any { moduleRoot -> registersHttpConfigurer(root, moduleRoot) })
+        }
+
+        private val DATA_REST_AUTO_CONFIGURATION = listOf("spring-boot-starter-data-rest", "spring-boot-data-rest")
+        private val SECURITY_CHAIN_MODULES = listOf("oauth2", "saml2")
+
+        /**
+         * Spring Security 표지다. starter 없이 `spring-security-web`·`-config`를 직접 쓰거나 OAuth2 starter만 써도 Boot가 Security를
+         * 자동 구성한다(`spring-security-crypto`만으로는 필터가 없다).
+         */
+        private val SECURITY_MARKERS = listOf("spring-boot-starter-security", "spring-boot-security", "spring-boot-starter-oauth2-",
+            "spring-security-web", "spring-security-config", "spring-security-oauth2-", "spring-security-saml2")
+
+        /**
+         * 모듈 `src/main/resources/META-INF/spring.factories`가 `AbstractHttpConfigurer`를 등록하는지 본다. `HttpSecurity` bean은
+         * 이 목록의 configurer를 모든 체인에 적용한다(`HttpSecurityConfiguration.applyDefaultConfigurers`). 읽지 못하면 등록한 것으로 본다.
+         */
+        private fun registersHttpConfigurer(root: Path, moduleRoot: String): Boolean {
+            val base = if (moduleRoot.isEmpty()) root else root.resolve(moduleRoot)
+            val factories = base.resolve("src/main/resources/META-INF/spring.factories")
+            if (!Files.exists(factories, LinkOption.NOFOLLOW_LINKS)) return false
+            return readText(factories)?.contains("AbstractHttpConfigurer") ?: true
         }
 
         private val BUILD_FILE_NAMES = setOf("build.gradle", "build.gradle.kts", "pom.xml", "libs.versions.toml", "gradle.properties")
@@ -348,7 +379,7 @@ internal class SpringProjectConfig(
                 add(SpringFrameworkRoute.WELCOME)
             }
             if ("spring-boot-starter-actuator" in buildText || "spring-boot-actuator" in buildText) add(SpringFrameworkRoute.ACTUATOR)
-            if ("spring-boot-starter-security" in buildText) add(SpringFrameworkRoute.SECURITY)
+            if (SECURITY_MARKERS.any(buildText::contains)) add(SpringFrameworkRoute.SECURITY)
             if ("springdoc-openapi" in buildText) add(SpringFrameworkRoute.SPRINGDOC)
             if ("spring-boot-starter-data-rest" in buildText || "spring-data-rest-webmvc" in buildText) add(SpringFrameworkRoute.DATA_REST)
             if ("spring-boot-starter-graphql" in buildText) add(SpringFrameworkRoute.GRAPHQL)

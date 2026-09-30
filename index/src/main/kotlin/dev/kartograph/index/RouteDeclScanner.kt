@@ -50,7 +50,10 @@ public class RouteDeclScanner(
         val emitter = SpringRouteEmitter(config, signals, lines, graph, includeTests, appRoots)
         val handlers = resolver.handlers()
         val facts = emitter.emit(handlers)
-        val framework = SpringFrameworkRoutes(config, signals, frameworkApps(config, appRoots), emitter::requestPrefix, emitter::webStack).limitations()
+        // 일부 source 루트만 스캔하면 보지 못한 Security 구성이 있을 수 있다.
+        val wholeProject = sourceRoots.isEmpty() || sourceRoots.any { it.toRealPath() == root }
+        val security = SpringSecurityRoutes(files, config.bootMajor, config.securityDefaultChainReplaced, config.httpConfigurerFactories, wholeProject) { path -> config.moduleOf(path)?.root }
+        val framework = SpringFrameworkRoutes(config, signals, frameworkApps(config, appRoots), emitter::requestPrefix, emitter::webStack, security).limitations()
         val limitations = (emitter.limitations(resolver.stats) + signals.limitations(config, handlers.isNotEmpty())).map(::ServerLimitation) + framework
         return BridgeFactsDocument(
             generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
