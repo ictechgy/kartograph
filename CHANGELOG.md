@@ -6,6 +6,24 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-30
+
+### 요약과 업그레이드 주의
+
+- 새 명령과 형식: `routes --role client`(선언 래퍼·`java.net.URL`·Retrofit·Spring RestTemplate/RestClient/WebClient/
+  `@HttpExchange`), `routes --role server`(Spring MVC·WebFlux, `limitationScopes`), `impact --format language-traversal`과
+  새 `reach`, `schema`의 JPA·Spring Data persistence 사실, Gradle plugin `snapshot merge`. 세부는 아래 절이다.
+- isthmus 호환: `routes`·`language-traversal` 문서는 isthmus http 도메인과 `trace`가 있는 isthmus-cli 0.10.0 이상(발행 예정)이
+  필요하다. isthmus-cli 0.9.0은 이 문서를 거부한다. 벤더링한 적합성 벡터 lock은 isthmus `76b6141`이다.
+- 동작 변경: class 인덱스 캐시 형식이 4(0.17.0)에서 6으로 바뀌어 업그레이드 뒤 첫 실행에서 옛 캐시 항목을 한 번 다시
+  파싱한다. `schema`는 JPA 프로퍼티 이름을 그대로 컬럼으로 내던 동작 대신 감지한 Hibernate 명명 전략을 적용하며
+  `jpa-persistence-sources:` limitation이 없어졌다. `bridges`·`schema`는 신선도가 확인된 snapshot에 사유가 빈
+  `graph-file-freshness-matched: ` 한계를 더 이상 싣지 않는다. 이스케이프된 따옴표(`"\""`) 뒤 문자열 리터럴을 이제 리터럴로 읽어
+  `bridges`·`schema` 결과가 달라질 수 있다.
+- Gradle plugin: resource witness의 외부 디렉터리 슬롯 이름이 바뀌어 `processResources`가 한 번 다시 실행될 수 있다.
+  `snapshot merge` 병합본의 `memberScopes`를 모르는 0.17.0 이하는 병합본을 `build-scope-mismatch`로 거부한다(fail-closed).
+- 바뀌지 않은 것: `impact` 기본 출력(`kartograph-impact` v1), 도달성·dead·query 결과, 단일 capture snapshot 바이트.
+
 ### Added
 
 - `routes --role client --project <dir> [--wrappers <http-wrappers.json>] [--include-tests] [<source-root>...]`가
@@ -45,7 +63,7 @@
 - `routes`가 JVM 신원을 붙이지 못한 사실을 `missing-route-usrs:`로 센다. `--graph-file` snapshot의 source 경로가
   공통 접두사만큼 어긋나면 snapshot과 routes의 `--project` 불일치를 접두사와 함께 밝히고, snapshot이 stale이거나
   없을 때도 이유를 적는다. 전에는 usr가 조용히 0건이 됐다.
-- class 인덱스 캐시 형식을 5로 올렸다. 옛 캐시 항목은 한 번 다시 파싱된다.
+- class 인덱스 캐시 형식을 0.17.0의 4에서 6으로 올렸다(5를 거쳐 콜백 사실로 6). 옛 캐시 항목은 한 번 다시 파싱된다.
 
 ### Retrofit baseUrl 결합 (Added·Changed)
 
@@ -218,7 +236,7 @@
   퍼뜨리지 않아, 공통 UI 함수를 통해 무관한 화면이 들어오지 않는다. 실행 지점 없이 빠져나간 흐름은
   `callback-flow-unresolved:`에 이유별로, 콜백 사실이 없는 옛 snapshot은 `callback-facts-unavailable:`로 알린다.
   `reach`(정방향)는 콜백 간선을 따르지 않는다.
-- class 인덱스 캐시 형식을 6으로 올렸다. `graphRevision`이 콜백 간선과 콜백 사실 캡처 여부를 담아 이전 버전과 값이 다르다.
+- class 인덱스 캐시 형식 6부터 `graphRevision`이 콜백 간선과 콜백 사실 캡처 여부를 담는다(형식 5 개발 빌드와 값이 다르다).
 - Gradle plugin `kartographSnapshot`(Android variant 포함)도 CLI `snapshot`과 같은 콜백 사실을 싣는다. 이전에는
   `includeSourcePaths`를 켜면 source 경로를 붙이는 재조립에서 세 목록이 빠져, 캡처 표식은 참인데 사실이 비어 콜백 간선이
   조용히 사라졌다. 이 snapshot을 `snapshot merge`로 합친 결과도 한 번에 캡처한 CLI snapshot과 같은 사실을 싣는다.
@@ -814,7 +832,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/ictechgy/kartograph/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/ictechgy/kartograph/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/ictechgy/kartograph/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/ictechgy/kartograph/compare/v0.14.0...v0.15.0
