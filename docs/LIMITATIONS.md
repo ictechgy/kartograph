@@ -154,12 +154,14 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   시작하는 포트의 base는 풀지 않는다(isthmus 계약의 기본 포트 정규화는 미결이라 다른 생산자와 표기가 다를 수 있다). `baseRef`는 JVM 정점 id가 아니라 소스 한정 이름(`kt:` 접두사)이다.
 - URL을 바꾸는 OkHttp 재작성도 어휘로만 센다 — `intercept` 함수 몸체, `Interceptor { … }` 람다, `addInterceptor { … }` 블록·부착 호출의
   인자 괄호(Java 람다), Java `Interceptor x = …` 초기식 안의 `newBuilder()` 뒤 `url`·`host`·scheme·port·경로 변경(`apply { … }` 포함)과
-  새 요청 생성(`Request.Builder()`·`Request(…)`)이다. 헬퍼 함수로 옮긴 재작성과 라이브러리 인터셉터는 보지 못한다. 재작성 개체(class·
+  새 요청 생성(`Request.Builder()`·`Request(…)`), 그리고 원래 요청(`chain.request()`)이나 그 `newBuilder()` 사본이 아닌 요청을 넘기는
+  `chain.proceed(x)`다. 인터셉터 문맥 밖 헬퍼 함수로 옮긴 재작성(그 결과를 proceed하지 않는 경우)과 라이브러리 인터셉터는 보지 못한다. 재작성 개체(class·
   object와 그 하위 타입·람다·익명 객체)가 만들어지는 모든 곳에서 부착 호출(`addInterceptor`·`addNetworkInterceptor`)까지 값의 흐름을
   따라가고(생성·지역·속성 변수의 모든 참조·함수 반환값의 모든 호출·같은 타입의 `@Provides` 주입 지점), Retrofit `client(…)`·
   `callFactory(…)`의 client를 base와 같은 DI 규칙으로 풀어(빌더 사슬·`newBuilder()` 복사본·다른 곳에 넘기지 않은 빌더 지역 변수) 재작성이
   붙은 client를 쓰는 인스턴스의 base와 전체 URL 어노테이션의 host만 버린다. `Authenticator`·`EventListener`는 `NONE`이나 몸체에 재작성이
-  없고 프로젝트 상위 타입이 없는 구현만 요청을 바꾸지 않는 것으로 보고, OkHttpClient임을 증명하지 못한 `callFactory`는 재작성으로 본다.
+  없고 프로젝트 상위 타입이 없는 구현만(`Authenticator`는 돌려주는 요청이 모두 `null`·`response.request()` 계열일 때만) 요청을 바꾸지
+  않는 것으로 보고, OkHttpClient임을 증명하지 못한 `callFactory`는 재작성으로 본다.
   흐름을 하나라도 증명하지 못하면 — 목록·반복문·다른 함수 인자·래퍼로 넘긴 인터셉터, `interceptors()` 목록 조작, 매개변수로 받은 빌더·
   확장 함수 안의 부착, 어디에도 붙지 않은 재작성, `@Provides`가 상위 타입(`Interceptor`)으로 돌려준 인터셉터, `@Binds`·다중 바인딩,
   메서드 참조, 원천을 모르는 client로 base를 푼 인스턴스 — #123처럼 프로젝트의 모든 Retrofit base를 버리고 개수만 센다. 인스턴스별

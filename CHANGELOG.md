@@ -81,8 +81,9 @@
   증명하지 못하면(목록·반복문·래퍼·다른 함수 인자, `interceptors()` 조작, 매개변수 빌더·확장 함수 안 부착, 어디에도 붙지 않은 재작성,
   상위 타입 `@Provides`·`@Binds`, 원천을 모르는 client) 이전처럼 모든 base를 버리고 이유를 적은 프로젝트 한 줄로 센다.
 - 수정: 재작성 client는 전체 URL·network-path 어노테이션의 host도 바꿀 수 있어 그 사실의 `authority`도 믿지 않는다(이전에는 인터셉터가
-  있어도 어노테이션 host를 실었다). 새 요청 생성(`Request.Builder()`·`Request(…)`), `newBuilder().apply { url(…) }`, 부착 호출 괄호 안의
-  Java 람다, Java `Interceptor x = …` 초기식도 재작성으로 센다.
+  있어도 어노테이션 host를 실었다). 새 요청 생성(`Request.Builder()`·`Request(…)`), 원래 요청이나 그 사본이 아닌 요청을 넘기는
+  `chain.proceed(x)`, `newBuilder().apply { url(…) }`, 부착 호출 괄호 안의 Java 람다, Java `Interceptor x = …` 초기식도 재작성으로 센다.
+  `Authenticator`는 돌려주는 요청이 모두 `null`·`response.request()` 계열일 때만 요청을 바꾸지 않는 것으로 본다.
 - 내부: #123의 DI·속성·함수 몸체·Koin 추적을 `SourceValueResolver`로 옮겨 Retrofit base 해석과 OkHttpClient 해석이 공유한다.
 - 검증: Retrofit 오라클에 인터셉터 결합 코퍼스(`interceptor-client`, 규칙마다 케이스 18개)를 더해 로컬 프록시로 실제 요청을 기록했다
   (Dagger 2.59·Koin 4.2.2, Maven Central). 일치 7·재작성으로 base를 버림 11(기록이 모두 재작성을 확인, 스코프 8개가 기록한 요청을 덮음)·
