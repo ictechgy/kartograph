@@ -1,0 +1,9 @@
+# 합성 오라클 앱의 기본 프로필 설정이다. host는 모두 `.example.test`이며 오라클이 로컬 기록 서버로 프록시한다.
+users:
+  base-url: http://Users.Example.Test:8081/api
+billing:
+  root: http://billing.example.test/billing
+legacy:
+  url: http://legacy.example.test/v0
+search:
+  url: http://search.example.test/s

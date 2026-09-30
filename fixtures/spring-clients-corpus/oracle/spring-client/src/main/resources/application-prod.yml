@@ -1,0 +1,3 @@
+# 다른 프로필 재정의다 — 생산자는 기본 프로필 값을 쓰고 프로필 의존을 한계로 알린다.
+search:
+  url: http://search.prod.example.test/s
