@@ -27,6 +27,9 @@ internal class RetrofitInstanceResolver(
     /** 파일 밖 선언 색인이다. */
     val declarations: SourceDeclarations = SourceDeclarations(files)
 
+    /** 값 원천을 찾는 공유 어휘 도구다. */
+    private val scopes = SourceScopes(declarations)
+
     private val pathResolvers = java.util.IdentityHashMap<RouteSourceFile, RoutePathResolver>()
 
     /** Koin `single`·`factory` 정의 중 Retrofit을 만드는 것들이다. */
@@ -37,7 +40,7 @@ internal class RetrofitInstanceResolver(
      */
     fun resolveReceiver(file: RouteSourceFile, start: Int, end: Int): List<RetrofitBinding> {
         if (start >= end || file.masked.substring(start, end).isBlank()) return listOf(RetrofitBinding(null, null))
-        return expression(file, start, end, declarationId(file, start), Budget())
+        return expression(file, start, end, scopes.declarationId(file, start), Budget())
     }
 
     /** 재귀 한도와 순환 방지다 — 서로를 참조하는 속성·함수가 무한히 따라가지 않게 한다. */
@@ -96,124 +99,48 @@ internal class RetrofitInstanceResolver(
         }
         if (qualifier.isEmpty() && last.name == "get" && file.imports.any { it.path.startsWith("org.koin.") }) return koin(file, last, budget)
         val (owner, function) = declarations.findFunction(file, qualifier, last.name, last.start) ?: return unknown(null)
-        return functionBody(owner, function, functionId(owner, function), budget)
+        return functionBody(owner, function, scopes.functionId(owner, function), budget)
     }
 
     /** 식별자 참조 `qualifier.name`을 지역 `val`·매개변수·속성으로 따라간다. */
     private fun reference(file: RouteSourceFile, qualifier: String, name: String, offset: Int, ref: String?, budget: Budget): List<RetrofitBinding> {
         if (qualifier.isEmpty()) {
-            localInitializer(file, name, offset)?.let { (isVal, range) ->
+            scopes.localInitializer(file, name, offset)?.let { (isVal, range) ->
                 return if (isVal) expression(file, range.first, range.last + 1, ref, budget) else unknown(ref)
             }
-            parameter(file, name, offset)?.let { (function, parameter) -> return injectedParameter(file, function, parameter, budget) }
+            scopes.parameter(file, name, offset)?.let { (function, parameter) -> return injectedParameter(file, function, parameter, budget) }
         }
-        val property = if (qualifier.isEmpty() || qualifier == "this") propertyInScope(file, name, offset) ?: declarations.findTopLevelProperty(file, name)
+        val property = if (qualifier.isEmpty() || qualifier == "this") scopes.propertyInScope(file, name, offset) ?: declarations.findTopLevelProperty(file, name)
         else declarations.findMemberProperty(file, qualifier, name)
         if (property != null) return propertyBindings(property.first, property.second, budget)
         if (qualifier.isEmpty() || qualifier == "this") {
-            constructorParameter(file, name, offset)?.let { (header, parameter) -> return injectedConstructorParameter(header, parameter, budget) }
+            scopes.constructorParameter(file, name, offset)?.let { (header, parameter) -> return injectedConstructorParameter(header, parameter, budget) }
         }
         return unknown(null)
-    }
-
-    /** 감싸는 타입(안쪽부터)과 같은 파일 최상위에서 [name] 속성을 찾는다. */
-    private fun propertyInScope(file: RouteSourceFile, name: String, offset: Int): Pair<RouteSourceFile, SourceProperty>? {
-        val chain = file.enclosingTypes(offset)
-        for (depth in chain.size downTo 0) {
-            val owners = chain.take(depth)
-            val found = declarations.properties(file).filter { property ->
-                property.name == name && property.containers.size == owners.size && property.containers.indices.all { property.containers[it] === owners[it] }
-            }
-            if (found.isNotEmpty()) return found.singleOrNull()?.let { file to it }
-        }
-        return null
     }
 
     /** 속성·필드 값의 원천(초기식, lazy 본문의 마지막 식, getter, 가변이면 모든 대입)을 푼다. */
     private fun propertyBindings(file: RouteSourceFile, property: SourceProperty, budget: Budget): List<RetrofitBinding> {
         val ref = "kt:" + (listOf(property.ownerFqn(file)).filter { it.isNotEmpty() } + property.name).joinToString(".")
         val sources = mutableListOf<IntRange>()
-        property.initializer?.takeUnless { isNullLiteral(file, it) }?.let(sources::add)
-        property.lazyBody?.let { lastStatement(file, it) }?.let(sources::add)
-        property.getterBody?.let { body -> sources += if (file.masked.substring(body).contains(RETURN)) returnRanges(file, body) else listOf(body) }
-        if (property.mutable || sources.isEmpty() && property.lazyBody == null && property.getterBody == null) sources += assignments(file, property)
+        property.initializer?.takeUnless { scopes.isNullLiteral(file, it) }?.let(sources::add)
+        property.lazyBody?.let { scopes.lastStatement(file, it) }?.let(sources::add)
+        property.getterBody?.let { body -> sources += if (file.masked.substring(body).contains(RETURN)) scopes.returnRanges(file, body) else listOf(body) }
+        if (property.mutable || sources.isEmpty() && property.lazyBody == null && property.getterBody == null) sources += scopes.assignments(file, property)
         if (sources.isEmpty()) {
             return if (INJECT.containsMatchIn(property.annotations)) injected(declarations.qualifiers(property.annotations), budget) else unknown(ref)
         }
         return sources.flatMap { expression(file, it.first, it.last + 1, ref, budget) }.distinct()
     }
 
-    /** 가변 속성·필드에 대한 같은 파일의 대입(`name = …`, `this.name = …`) 우변 범위다. `null` 대입과 명명 인자는 뺀다. */
-    private fun assignments(file: RouteSourceFile, property: SourceProperty): List<IntRange> {
-        val owner = property.containers.lastOrNull()?.name
-        val qualifiers = listOfNotNull("this", owner).joinToString("|") { Regex.escape(it) }
-        val pattern = Regex("(?<![\\w.])(?:(?:$qualifiers)\\s*\\.\\s*)?${Regex.escape(property.name)}\\s*=(?![=>])")
-        return pattern.findAll(file.masked).mapNotNull { match ->
-            val before = file.masked.substring(0, match.range.first).trimEnd()
-            if (before.endsWith('(') || before.endsWith(',') || before.endsWith("val") || before.endsWith("var")) return@mapNotNull null
-            if (match.range.first <= property.start && property.start <= match.range.last) return@mapNotNull null
-            // 한정자 없는 대입은 속성의 소유 타입 몸체 안에서만, 같은 이름의 지역 변수·매개변수가 가리지 않을 때만 이 속성의 대입이다.
-            val qualified = match.value.contains('.') && !match.value.trimStart().startsWith("this")
-            if (!qualified && !assignsInOwnerScope(file, property, match.range.first)) return@mapNotNull null
-            if (!match.value.contains('.') && shadowedLocally(file, property.name, match.range.first)) return@mapNotNull null
-            val start = match.range.last + 1
-            (start until file.statementEnd(start)).takeUnless { isNullLiteral(file, it) }
-        }.toList()
-    }
-
-    /**
-     * [offset]의 대입이 [property]의 스코프 안인지 본다 — 감싸는 타입 사슬이 속성의 소유 타입 사슬로 시작하고, 그 사이의 더 안쪽
-     * 타입이 같은 이름의 속성을 따로 선언하지 않아야 한다(다른 class의 같은 이름 속성에 한 대입을 빌려 오지 않기 위해서다).
-     */
-    private fun assignsInOwnerScope(file: RouteSourceFile, property: SourceProperty, offset: Int): Boolean {
-        val chain = file.enclosingTypes(offset)
-        val owners = property.containers
-        if (chain.size < owners.size || owners.indices.any { chain[it] !== owners[it] }) return false
-        val inner = chain.drop(owners.size)
-        return declarations.properties(file).none { other ->
-            other !== property && other.name == property.name && other.containers.lastOrNull()?.let { owner -> inner.any { it === owner } } == true
-        }
-    }
-
-    /** [offset]을 감싸는 함수가 [name] 매개변수나 그 앞의 지역 선언(초기식 없는 Java 선언 포함)을 가지는지 본다. */
-    private fun shadowedLocally(file: RouteSourceFile, name: String, offset: Int): Boolean {
-        val function = file.enclosingFunction(offset) ?: return false
-        if (parameter(file, name, offset) != null) return true
-        val escaped = Regex.escape(name)
-        val declaration = Regex("\\b(?:val|var)\\s+$escaped\\b|\\b(?!(?:return|throw|else|new|case)\\b)[A-Za-z_][\\w.]*(?:<[^;=()]*>)?\\s+$escaped\\s*[;=,)]")
-        val bodyStart = function.bodyStart.coerceAtLeast(function.start)
-        return declaration.findAll(file.masked.substring(0, offset), bodyStart).any { file.inScope(it.range.first, offset) }
-    }
-
-    private fun isNullLiteral(file: RouteSourceFile, range: IntRange): Boolean = file.masked.substring(range).trim() == "null"
-
     /** 함수 몸체의 값: 식 몸체면 그 식, 블록이면 모든 `return` 식이다. */
     private fun functionBody(file: RouteSourceFile, function: RouteFunctionDecl, ref: String, budget: Budget): List<RetrofitBinding> {
         val bodyStart = function.bodyStart
         if (bodyStart < 0 || bodyStart >= file.masked.length) return unknown(ref)
         if (file.masked[bodyStart] == '=') return expression(file, bodyStart + 1, function.end, ref, budget)
-        val returns = returnRanges(file, (bodyStart + 1) until function.end.coerceAtMost(file.masked.length))
+        val returns = scopes.returnRanges(file, (bodyStart + 1) until function.end.coerceAtMost(file.masked.length))
         if (returns.isEmpty()) return unknown(ref)
         return returns.flatMap { expression(file, it.first, it.last + 1, ref, budget) }.distinct()
-    }
-
-    /** 범위 안의 `return 식` 식 범위다. 레이블 반환(`return@x`)과 `return null`은 뺀다. */
-    private fun returnRanges(file: RouteSourceFile, body: IntRange): List<IntRange> =
-        RETURN.findAll(file.masked.substring(0, (body.last + 1).coerceAtMost(file.masked.length)), body.first).mapNotNull { match ->
-            val start = match.range.last + 1
-            (start until file.statementEnd(start)).takeUnless { isNullLiteral(file, it) || file.masked.substring(it).isBlank() }
-        }.toList()
-
-    /** 블록(람다 본문) 안 마지막 문장의 범위다. */
-    private fun lastStatement(file: RouteSourceFile, body: IntRange): IntRange? {
-        var position = body.first
-        var last: IntRange? = null
-        while (position <= body.last) {
-            val end = file.statementEnd(position).coerceAtMost(body.last + 1)
-            if (file.masked.substring(position, end).isNotBlank()) last = position until end
-            position = end + 1
-        }
-        return last
     }
 
     /**
@@ -238,7 +165,7 @@ internal class RetrofitInstanceResolver(
         val provider = declarations.retrofitProviders.filter { (file, function) ->
             declarations.qualifiers(functionAnnotations(file, function)) == qualifiers
         }.singleOrNull() ?: return unknown(null)
-        return functionBody(provider.first, provider.second, functionId(provider.first, provider.second), budget)
+        return functionBody(provider.first, provider.second, scopes.functionId(provider.first, provider.second), budget)
     }
 
     /** Koin `get()`·`get<Retrofit>()`·`get(named("x"))`을 한정자가 같은 Retrofit 정의 하나로 푼다. */
@@ -256,13 +183,13 @@ internal class RetrofitInstanceResolver(
             KOIN_DEFINITION.findAll(file.masked).mapNotNull { match ->
                 val open = match.range.last
                 val close = file.braceEnd(open).takeIf { it > open } ?: return@mapNotNull null
-                val body = lastStatement(file, (open + 1) until close) ?: return@mapNotNull null
+                val body = scopes.lastStatement(file, (open + 1) until close) ?: return@mapNotNull null
                 val typeArgument = match.groupValues[2].trim().substringAfterLast('.')
                 val statement = file.masked.substring(body)
                 val buildsRetrofit = typeArgument == "Retrofit" || typeArgument.isEmpty() && RETROFIT_BUILD_CHAIN.containsMatchIn(statement)
                 if (!buildsRetrofit) return@mapNotNull null
                 val qualifier = match.groups[3]?.let { koinQualifier(file.code.substring(it.range.first + 1, it.range.last)) }
-                val ref = (declarationId(file, match.range.first) ?: "kt:${file.packageName}") + (qualifier?.let { "#$it" } ?: "")
+                val ref = (scopes.declarationId(file, match.range.first) ?: "kt:${file.packageName}") + (qualifier?.let { "#$it" } ?: "")
                 KoinDefinition(file, body, qualifier, ref)
             }.toList()
         }
@@ -328,14 +255,14 @@ internal class RetrofitInstanceResolver(
             return buildConfig.values(file, name, referencePackage)
         }
         if (qualifier.isEmpty()) {
-            localInitializer(file, name, offset)?.let { (isVal, range) ->
+            scopes.localInitializer(file, name, offset)?.let { (isVal, range) ->
                 return if (isVal) baseValues(file, file.code.substring(range), range.first, budget) else null
             }
-            if (parameter(file, name, offset) != null) return null
+            if (scopes.parameter(file, name, offset) != null) return null
         }
         declarations.findConstant(file, qualifier, name)?.let { (owner, constant) -> return baseValues(owner, constant.expression, 0, budget) }
         // 상수가 아닌 읽기 전용 속성(`private val baseUrl = "…"`, `val url = HttpUrl.get("…")`)도 초기식이 값이다.
-        val property = if (qualifier.isEmpty() || qualifier == "this") propertyInScope(file, name, offset) ?: declarations.findTopLevelProperty(file, name)
+        val property = if (qualifier.isEmpty() || qualifier == "this") scopes.propertyInScope(file, name, offset) ?: declarations.findTopLevelProperty(file, name)
         else declarations.findMemberProperty(file, qualifier, name)
         val (owner, declaration) = property ?: return null
         val initializer = declaration.initializer?.takeUnless { declaration.mutable } ?: return null
@@ -343,65 +270,6 @@ internal class RetrofitInstanceResolver(
     }
 
     private fun resolver(file: RouteSourceFile): RoutePathResolver = pathResolvers.getOrPut(file) { RoutePathResolver(file) }
-
-    /**
-     * 같은 함수에서 [offset] 앞에 선언된 지역 변수의 (val 여부, 초기식 범위)다. Kotlin `val`·`var`, Java `Retrofit x =`·`var x =`·
-     * `String x =`를 본다.
-     */
-    private fun localInitializer(file: RouteSourceFile, name: String, offset: Int): Pair<Boolean, IntRange>? {
-        val function = file.enclosingFunction(offset) ?: return null
-        val escaped = Regex.escape(name)
-        val pattern = if (file.isJava) Regex("\\b(final\\s+)?(?:[A-Za-z_][\\w.]*(?:<[^;=()]*>)?)\\s+$escaped\\s*=(?!=)")
-        else Regex("\\b(val|var)\\s+$escaped\\b\\s*(?::[^=\\n]+)?=(?!=)")
-        val searchStart = function.bodyStart.coerceAtLeast(function.start)
-        val match = pattern.findAll(file.masked.substring(0, offset.coerceAtMost(file.masked.length)), searchStart)
-            .lastOrNull { file.inScope(it.range.first, offset) } ?: return null
-        val start = match.range.last + 1
-        // Java 지역 변수는 다시 대입되지 않았을 때만(사실상 final) 값으로 본다.
-        val isVal = if (file.isJava) !Regex("(?<![\\w.])$escaped\\s*=(?![=>])").containsMatchIn(file.masked.substring(start, offset.coerceAtLeast(start)))
-        else match.groupValues[1] == "val"
-        return isVal to (start until file.statementEnd(start))
-    }
-
-    /** [offset]을 감싸는 함수의 [name] 매개변수다. */
-    private fun parameter(file: RouteSourceFile, name: String, offset: Int): Pair<RouteFunctionDecl, SourceParameter>? {
-        val function = file.enclosingFunction(offset) ?: return null
-        return functionParameters(file, function).firstOrNull { it.name == name }?.let { function to it }
-    }
-
-    /** 감싸는 타입들의 Kotlin 주 생성자 매개변수 중 [name]이다. 결과의 첫 값은 생성자 머리 원문(`@Inject` 판정용)이다. */
-    private fun constructorParameter(file: RouteSourceFile, name: String, offset: Int): Pair<String, SourceParameter>? {
-        if (file.isJava) return null
-        for (type in file.enclosingTypes(offset).reversed()) {
-            val header = file.masked.substring(type.start, type.bodyStart.coerceAtLeast(type.start))
-            val open = header.indexOf('(').takeIf { it >= 0 }?.plus(type.start) ?: continue
-            val close = balancedEnd(file.code, open).takeIf { it > open } ?: continue
-            val parameter = callArguments(file.code, open, close).mapNotNull(::kotlinSourceParameter).firstOrNull { it.name == name } ?: continue
-            return file.code.substring(type.start, open) to parameter
-        }
-        return null
-    }
-
-    /** 함수 매개변수 목록이다(어노테이션 원문 포함). */
-    private fun functionParameters(file: RouteSourceFile, function: RouteFunctionDecl): List<SourceParameter> {
-        val open = parameterListOpen(file, function) ?: return emptyList()
-        val close = balancedEnd(file.code, open).takeIf { it > open } ?: return emptyList()
-        return callArguments(file.code, open, close).mapNotNull { if (file.isJava) javaSourceParameter(it) else kotlinSourceParameter(it) }
-    }
-
-    /**
-     * [offset]을 감싸는 선언의 생산자 id(`kt:` + 소스 한정 이름)다. 함수 안이면 함수, 속성 초기식 안이면 속성, 아니면 타입이다.
-     */
-    fun declarationId(file: RouteSourceFile, offset: Int): String? {
-        val function = file.enclosingFunction(offset)
-        val member = function?.name ?: declarations.properties(file).firstOrNull { offset in it.start..it.end }?.name
-        val names = listOf(file.packageName).filter { it.isNotEmpty() } + file.enclosingTypes(offset).map { it.name } + listOfNotNull(member)
-        if (names.isEmpty() || member == null && file.enclosingTypes(offset).isEmpty()) return null
-        return "kt:" + names.joinToString(".")
-    }
-
-    private fun functionId(file: RouteSourceFile, function: RouteFunctionDecl): String =
-        "kt:" + (listOf(declarations.containerFqn(file, function.start)).filter { it.isNotEmpty() } + function.name).joinToString(".")
 
     private companion object {
         const val MAX_DEPTH = 16
@@ -428,8 +296,11 @@ private val BUILDER_METHODS = setOf(
 /** Koin 정의 하나다. [body]는 정의 람다의 마지막 식 범위다. */
 private data class KoinDefinition(val file: RouteSourceFile, val body: IntRange, val qualifier: String?, val ref: String)
 
-/** 매개변수 하나다. [annotations]는 매개변수에 붙은 어노테이션 원문이다(DI 한정자용). */
-internal data class SourceParameter(val name: String, val type: String, val annotations: String)
+/**
+ * 매개변수 하나다. [annotations]는 매개변수에 붙은 어노테이션 원문이다(DI 한정자용). [type]은 한정·제네릭을 뗀 단순 이름이고,
+ * [rawType]은 한정을 보존한 타입 표기다(`RestClient.Builder`와 `WebClient.Builder`를 가르기 위해서다).
+ */
+internal data class SourceParameter(val name: String, val type: String, val annotations: String, val rawType: String = type)
 
 private val PARAMETER_ANNOTATION = Regex("@[A-Za-z_][\\w.]*(?::[A-Za-z_]\\w*)?(?:\\s*\\((?:[^()]|\\([^()]*\\))*\\))?")
 private val KOTLIN_PARAMETER_MODIFIERS = Regex("\\b(?:vararg|noinline|crossinline|val|var|private|public|internal|protected|override|open|final)\\b")
@@ -440,7 +311,7 @@ internal fun kotlinSourceParameter(text: String): SourceParameter? {
     val annotations = PARAMETER_ANNOTATION.findAll(text).joinToString(" ") { it.value }
     val cleaned = PARAMETER_ANNOTATION.replace(text, " ").replace(KOTLIN_PARAMETER_MODIFIERS, " ").trim()
     val match = KOTLIN_NAMED_TYPE.find(cleaned) ?: return null
-    return SourceParameter(match.groupValues[1], parameterTypeName(match.groupValues[2]), annotations)
+    return SourceParameter(match.groupValues[1], parameterTypeName(match.groupValues[2]), annotations, rawTypeName(match.groupValues[2]))
 }
 
 /** Java 매개변수 원문(`@Named("a") final Retrofit retrofit`)을 읽는다. */
@@ -448,8 +319,11 @@ internal fun javaSourceParameter(text: String): SourceParameter? {
     val annotations = PARAMETER_ANNOTATION.findAll(text).joinToString(" ") { it.value }
     val cleaned = PARAMETER_ANNOTATION.replace(text, " ").replace(Regex("\\bfinal\\b"), " ").trim()
     val name = Regex("[A-Za-z_]\\w*$").find(cleaned)?.value ?: return null
-    return SourceParameter(name, parameterTypeName(cleaned.removeSuffix(name)), annotations)
+    return SourceParameter(name, parameterTypeName(cleaned.removeSuffix(name)), annotations, rawTypeName(cleaned.removeSuffix(name)))
 }
+
+/** 제네릭·nullable·기본값을 뗀 타입 표기다(한정은 보존한다). */
+private fun rawTypeName(type: String): String = type.substringBefore('<').substringBefore('=').trim().removeSuffix("?").trim()
 
 private fun parameterTypeName(type: String): String =
     type.substringBefore('<').substringBefore('=').trim().removeSuffix("?").substringAfterLast('.').trim()
