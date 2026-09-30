@@ -37,13 +37,27 @@ internal object TraversalCommand {
     private val timestampFormat = DateTimeFormatterBuilder().appendInstant(3).toFormatter()
 
     fun run(arguments: List<String>, direction: TraversalDirection, output: PrintStream, error: PrintStream): Int {
-        if (arguments == listOf("--help") || arguments == listOf("-h")) { output.print(help(direction)); return 0 }
+        if (isHelpRequest(arguments)) { output.print(help(direction)); return 0 }
         val parsed = try { parse(arguments) } catch (invalid: TraversalUsageException) { return usage(error, invalid.text) }
         val values = parsed.first
         val format = values["--format"]?.single()
         if (format != null && format != "language-traversal") return usage(error, "${command(direction)} supports only --format language-traversal")
         val options = options(values, parsed.second, error) ?: return 64
         return execute(options, direction, output, error)
+    }
+
+    /**
+     * 도움말 요청인지 본다. `impact --help`가 안내하는 `impact --format language-traversal --help`처럼 형식 선택 한 쌍이
+     * 함께 오므로, `--format language-traversal`을 뗀 나머지가 `--help`나 `-h` 하나뿐이면 도움말이다.
+     *
+     * @param arguments 명령 이름을 뗀 인자 목록.
+     * @return 도움말을 출력해야 하면 true.
+     */
+    private fun isHelpRequest(arguments: List<String>): Boolean {
+        val formatIndex = arguments.indexOf("--format")
+        val hasTraversalFormat = formatIndex >= 0 && arguments.getOrNull(formatIndex + 1) == "language-traversal"
+        val remaining = if (hasTraversalFormat) arguments.filterIndexed { index, _ -> index != formatIndex && index != formatIndex + 1 } else arguments
+        return remaining == listOf("--help") || remaining == listOf("-h")
     }
 
     /** 검증을 마친 입력이다. */

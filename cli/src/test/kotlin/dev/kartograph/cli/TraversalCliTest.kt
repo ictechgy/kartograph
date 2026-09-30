@@ -281,6 +281,30 @@ class TraversalCliTest {
     }
 
     /**
+     * `impact --help`가 안내하는 `impact --format language-traversal --help`가 순회 도움말을 내고 0으로 끝난다.
+     * 전에는 인자 전체가 `--help` 하나일 때만 도움말이라 `unknown traversal option: --help`와 64였다(회귀 방지).
+     */
+    @Test
+    fun `help after the traversal format prints traversal help`() {
+        assertContains(run("impact", "--help").output, "impact --format language-traversal --help")
+        listOf(
+            arrayOf("impact", "--format", "language-traversal", "--help") to "kartograph impact --format language-traversal <usr>",
+            arrayOf("impact", "--format", "language-traversal", "-h") to "kartograph impact --format language-traversal <usr>",
+            arrayOf("impact", "--help", "--format", "language-traversal") to "kartograph impact --format language-traversal <usr>",
+            arrayOf("reach", "--format", "language-traversal", "--help") to "kartograph reach <usr>",
+            arrayOf("reach", "-h") to "kartograph reach <usr>",
+        ).forEach { (arguments, usage) ->
+            val execution = run(*arguments)
+            assertEquals(0, execution.status, arguments.joinToString(" "))
+            assertContains(execution.output, usage)
+            assertContains(execution.output, "Dispatch modes")
+            assertEquals("", execution.error)
+        }
+        // 도움말 말고 다른 인자가 섞이면 이전처럼 사용 오류다.
+        assertEquals(64, run("impact", "--format", "language-traversal", "--help", "method:p/A#run()V").status)
+    }
+
+    /**
      * ViewModel 모양의 합성 Java 프로젝트다. `androidx.lifecycle.ViewModel`은 콜백 모델만 켜는 빈 대역이다.
      * JobsViewModel.load가 Http.get을 부르고, JobsScreen은 load를 부른다. Formatter·Holder·SpecialUser는 이름만 적고,
      * Factory는 인스턴스를 만들며, SpecialViewModel은 상속한다.

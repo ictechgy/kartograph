@@ -1,6 +1,7 @@
 # HANDOFF
 
-마지막 갱신: 2026-09-25 — 변경 내용 기반 impact 설계 완료(spec 검토 대기), 0.17.0 배포 완료
+마지막 갱신: 2026-09-30 — #122–#127(Retrofit usr·baseUrl·인터셉터, Spring 클라이언트, 벡터 재벤더링, Security 스코프) 머지 반영.
+이전 갱신: 2026-09-25 — 변경 내용 기반 impact 설계 완료(spec 검토 대기), 0.17.0 배포 완료
 
 ## 진행 중: isthmus trace용 `language-traversal` 생산자
 
@@ -22,39 +23,41 @@
 
 ## 진행 중: http route-call 생산자 (`kartograph routes`)
 
-- **브랜치:** `feature/http-route-calls` (로컬만, push·PR 안 함). isthmus 소비자 계약은 isthmus `feature/http-domain-core`의 `docs/GRAPH-EXCHANGE.md` http 절·`docs/HTTP-WRAPPERS.md`다(아직 isthmus main에 없음).
+- **브랜치:** `feature/http-route-calls`(#107 머지). isthmus 소비자 계약은 isthmus main의 `docs/GRAPH-EXCHANGE.md` http 절·`docs/HTTP-WRAPPERS.md`다(isthmus #118로 머지).
 - **구현:** `routes --role client`가 `"target": "http"`, `"roles": ["client"]` 문서를 낸다. `index/.../RouteUrlRules.kt`(url-compose·http-template 순수 규칙), `RouteSourceModel.kt`(패키지·import·선언 범위·상수·경로 식 해석), `RouteCallScanner.kt`(래퍼·`java.net.URL`·Retrofit), `export/.../HttpWrappersCodec.kt`, `cli/.../RoutesCommand.kt`.
-- **적합성 벡터:** `fixtures/isthmus-conformance/`에 `http-template.json`·`url-compose.json`과 `conformance.lock`(isthmus 커밋·sha256)을 벤더링했다. `RouteConformanceTest`가 sha256 대조 뒤 모든 생산자 케이스를 돌린다. isthmus가 벡터를 바꾸면 다시 복사하고 lock을 갱신한다.
+- **적합성 벡터:** `fixtures/isthmus-conformance/`에 `http-template.json`·`url-compose.json`과 `conformance.lock`(isthmus 커밋·sha256)을 벤더링했다. `RouteConformanceTest`가 sha256 대조 뒤 모든 생산자 케이스를 돌린다. isthmus가 벡터를 바꾸면 다시 복사하고 lock을 갱신한다. 현재 lock은 isthmus `76b6141`(#125, `http-dispatch.json` 추가, Spring base 결합 러너 `spring-uri-builder`·`spring-root-uri`·`spring-http-exchange`)이다.
 - **검증:** 합성 문서를 isthmus `check`로 조인해 수용을 확인했다. 비공개 도그푸딩 앱은 읽기 전용으로만 대조했고 결과는 공개 기록에 싣지 않는다(오라클 정의 지점 전부 일치, 줄 차이는 계약의 호출 시작 줄 규칙 때문).
-- **남은 범위:** `--role server`(route-decl), 파일 밖 상수, 수신자 타입 추론 없는 멤버 호출, OkHttp·Ktor 직접 호출, Java 명명 인자 없음 전제, `@file:JvmName` facade.
+- **남은 범위:** 파일 밖 상수(Retrofit base 값은 #123이 다른 파일 상수까지 푼다), 수신자 타입 추론 없는 멤버 호출, OkHttp·Ktor 직접 호출, Java 명명 인자 없음 전제, `@file:JvmName` facade.
 - **Retrofit usr (2026-09-29, `fix/retrofit-usr`):** Retrofit 사실의 신원은 인터페이스 메서드다(`index/.../RetrofitSymbols.kt`,
   소유 타입·이름·동사 어노테이션·매개변수 수). 하위 인터페이스로 부른 상속 추상 메서드는 `ClassFileIndexer`의
   `inheritedInterfaceCallEdges`가 상위 선언으로 `call` 간선을 더한다. pythograph Phase 6 e2e에서 Android 주문·결제 사실에 usr가
-  붙고 역방향 순회가 저장소·ViewModel에 닿지만, isthmus trace 체인은 여전히 그 두 호출을 `unattributed-calls-omitted`로 뺀다 —
-  Retrofit 사실이 `pathAnchor: base`에 authority가 없기 때문이다(`Retrofit.Builder().baseUrl(...)` 결합 미모델링).
-- **Retrofit baseUrl 결합 (2026-09-29, `feature/retrofit-baseurl`):** `create` 호출의 수신 식을 따라가 base를 푼다
+  붙고 역방향 순회가 저장소·ViewModel에 닿는다(#122 머지). 당시 남았던 trace 체인의 `unattributed-calls-omitted`(authority 없는
+  `pathAnchor: base`)는 아래 baseUrl 결합(#123)으로 해소됐다.
+- **Retrofit baseUrl 결합 (2026-09-29, `feature/retrofit-baseurl`, #123 머지):** `create` 호출의 수신 식을 따라가 base를 푼다
   (`index/.../RetrofitBaseUrls.kt` 색인·URL, `RetrofitInstanceResolver.kt` 수신 식·DI·Koin, `SourceDeclarations.kt` 파일 밖 선언,
   `BuildConfigFields.kt`). 리터럴이면 authority + root 결합 템플릿, 아니면 base + `baseRef`(`kt:` 소스 한정 id)와
   `unresolved-base-url:`. 오라클 54케이스(팩토리 10 추가) 불일치 0, pythograph e2e에서 Android 주문·결제 체인이 ViewModel까지 닿고
-  `unattributed-calls-omitted`가 0이 됐다(pythograph 기록 재생성은 후속). 남은 범위: 오버로드 팩토리, 확장 함수 수신 객체,
-  Dagger `@Binds`·다중 컴포넌트.
-- **인터셉터 client 결합 (2026-09-30, `feature/interceptor-scope`):** URL 재작성 인터셉터 → `addInterceptor` → OkHttpClient → Retrofit
+  `unattributed-calls-omitted`가 0이 됐다(pythograph 기록 재생성은 후속). 재작성 인터셉터가 있으면 모든 base를 버리던 규칙은
+  #127이 인스턴스별로 좁혔다. 남은 범위: 오버로드 팩토리, 확장 함수 수신 객체, Dagger `@Binds`·다중 컴포넌트.
+- **인터셉터 client 결합 (2026-09-30, `feature/interceptor-scope`, #127 머지):** URL 재작성 인터셉터 → `addInterceptor` → OkHttpClient → Retrofit
   결합을 따라가 재작성 client를 쓰는 인스턴스의 base만 버린다(`InterceptorRewriteIndex.kt` 재작성 개체의 값 흐름,
   `OkHttpClientResolver.kt` client 해석·`Authenticator`/`EventListener` 판정, `SourceValueResolver.kt` #123 DI 공유). 결합을 증명하지
   못하면 이전처럼 전체 base를 버린다. 인스턴스별 한계에 authority만 바꾸는 재작성이면 호출 측 스코프. 오라클 인터셉터 케이스 18개
   (일치 7·재작성으로 버림 11·불일치 0). 남은 범위: 헬퍼 함수로 옮긴 재작성·라이브러리 인터셉터(어휘로 못 봄), Java 생성자 주입,
   `@Binds`·다중 바인딩(항상 전체 대체), 재작성 뒤 host를 모르는데 남는 `baseRef` 귀속.
 
-## 진행 중: Spring HTTP 클라이언트 route-call (API 영향 Phase 7b)
+## 완료: Spring HTTP 클라이언트 route-call (API 영향 Phase 7b)
 
-- **브랜치:** `feature/spring-clients`. 규칙·출처·오라클·e2e는 [SPRING-CLIENTS](docs/SPRING-CLIENTS.md)와
+- **브랜치:** `feature/spring-clients`(#124 머지). 규칙·출처·오라클·e2e는 [SPRING-CLIENTS](docs/SPRING-CLIENTS.md)와
   [experiments/phase7b-spring-clients](experiments/phase7b-spring-clients/README.md)다.
 - **구현:** `index/.../SpringClientCalls.kt`(호출 지점·`SpringClientSetup`), `SpringClientResolver.kt`(클라이언트 식 → 종류·base, `@Bean`·
   `@Value`), `SpringHttpExchanges.kt`(`@HttpExchange`), `SpringUriRules.kt`(결합 규칙). Retrofit과 공유하는 소스 범위 도구는 `SourceScopes.kt`다.
   한 줄 식 몸체 함수의 `symbol.usr` 누락은 `ChannelBridgeScanner.enclosingDeclaration`에서 고쳤다.
 - **검증:** 합성 Spring Boot 앱 32개 호출 실행 오라클 전부 일치(`SpringClientOracleTest`), isthmus origin/main `f9dcd1d` workspace trace에서
   B route → A 호출(`exact`) → A 핸들러 체인 확인(`e2e/run_trace.py`, 기록 `e2e/recorded/`).
-- **남은 범위:** isthmus `HTTP-WRAPPERS.md` base 결합 표에 Spring 행 추가(제안은 SPRING-CLIENTS 끝), Feign, Boot 4 `@ImportHttpServices`,
+- **isthmus 반영:** isthmus #131(`76b6141`)이 `HTTP-WRAPPERS.md` base 결합 표에 Spring 행과 url-compose `base-join/spring-*` 13개를
+  받았고, #125가 재벤더링해 러너로 13개 모두 생산자 코드 변경 없이 통과했다.
+- **남은 범위:** Feign, Boot 4 `@ImportHttpServices`,
   `@ConfigurationProperties` base, trace가 client member의 역방향 도달을 그 member의 route-decl로 잇는 기능(isthmus 쪽).
 
 ## 진행 중: Spring route-decl 생산자 (`routes --role server`, API 영향 Phase 4a)
@@ -70,7 +73,13 @@
   `limitationScopes`를 붙인다(`index/.../SpringFrameworkRoutes.kt`, 검증·겹침은 `RouteLimitationScopes.kt`). 빈 값 변형 decl,
   isthmus `78d3dee` 벡터 재벤더링, `reach --persistence-facts`(`analysis/.../PersistenceModeledCalls.kt`), Boot 버전 검출 통합
   (`SpringBootVersions.kt`). 판정 가능 비율 측정 절차·수치는 [SPRING-ROUTES](docs/SPRING-ROUTES.md#오라클-검증-2026-09-28).
-- **남은 범위:** 함수형 라우터 추출, Spring Security 제공 경로의 증명 가능한 스코프, 정적 리소스 위치 열거(의존성 JAR 포함),
+- **Security·Data REST·GraphQL 스코프 (2026-09-30, `feature/security-scopes`, #126 머지):** 정적으로 풀리는 서블릿
+  `SecurityFilterChain`(logout·form login·기본 로그인 페이지·`oauth2Login`·7.x resource server 메타데이터)의 필터 응답 경로와
+  Data REST base path·GraphQL 경로를 `limitationScopes`로 싣는다. 규칙·근거는 [SPRING-ROUTES](docs/SPRING-ROUTES.md#spring-security).
+  spring-petclinic-rest 판정 가능 비율 0/49 → 40/49(정밀도 40/40).
+- **남은 범위:** 함수형 라우터 추출, Security 중 모델링하지 않은 것(SAML2·WebAuthn·one-time token·`oauth2Client`·
+  `passwordManagement`, 사용자 필터·`RequestMatcher`·`WebSecurityCustomizer`, 리액티브 Security, Boot 2 — 모두 스코프 생략),
+  정적 리소스 위치 열거(의존성 JAR 포함),
   빈 값 변형 decl 표식(isthmus 미결), Phase 4b 나머지.
 
 ## 진행 중: Phase 4 종료 조건 — Retrofit 오라클과 순회 대칭성
