@@ -11,6 +11,7 @@ import dev.kartograph.fixture.retrofit.UsersApi
 import dev.kartograph.fixture.retrofit.catalogApi
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.runBlocking
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
@@ -33,18 +34,26 @@ import retrofit2.Retrofit
  * [FACTORY_CASES]는 코퍼스의 팩토리(`catalogApi`·`InventoryClients`·`ReportsClient`)가 리터럴 base로 만든 서비스를 부른다.
  * 팩토리는 오라클이 준 `OkHttpClient`만 받으므로 base 결합은 코퍼스 소스 그대로다(baseUrl 결합 오라클).
  *
+ * [INTERCEPTOR_CASES]는 인터셉터 결합 코퍼스의 서비스를 코퍼스가 만든 client 그대로 부르고, 기본 프록시로 받은 요청을
+ * `interceptorCases`에 따로 기록한다(인터셉터 결합 오라클).
+ *
  * 사용: `RetrofitOracle <output.json>`
  */
 fun main(arguments: Array<String>) {
     require(arguments.size == 1) { "usage: RetrofitOracle <output.json>" }
     val server = MockWebServer()
+    // `Authenticator` 케이스만 다음 요청 하나에 401을 받는다. 그 밖의 케이스는 늘 200이다.
+    val challenge = AtomicBoolean(false)
     server.dispatcher = object : Dispatcher() {
-        override fun dispatch(request: RecordedRequest): MockResponse = MockResponse().setResponseCode(200).setBody("")
+        override fun dispatch(request: RecordedRequest): MockResponse =
+            if (challenge.getAndSet(false)) MockResponse().setResponseCode(401).addHeader("WWW-Authenticate", "Bearer realm=\"oracle\"")
+            else MockResponse().setResponseCode(200).setBody("")
     }
     server.start()
     try {
         val results = CASES.map { case -> record(server, case) } + FACTORY_CASES.map { case -> recordFactory(server, case) }
-        File(arguments[0]).writeText(render(results))
+        val interceptors = recordInterceptorCases(server, challenge)
+        File(arguments[0]).writeText(render(results, interceptors))
     } finally {
         server.shutdown()
     }
@@ -210,7 +219,7 @@ private fun authorityOf(url: HttpUrl): String =
     if (url.port() == HttpUrl.defaultPort(url.scheme())) url.host() else "${url.host()}:${url.port()}"
 
 /** 결정적 JSON이다(케이스 id 순, 키 고정 순서). MockWebServer의 host·port는 싣지 않는다. */
-private fun render(results: List<Recorded>): String = buildString {
+private fun render(results: List<Recorded>, interceptors: List<InterceptorRecorded>): String = buildString {
     append("{\n  \"cases\": [\n")
     results.sortedBy { it.case.id }.forEachIndexed { index, result ->
         val case = result.case
@@ -229,8 +238,13 @@ private fun render(results: List<Recorded>): String = buildString {
         append("}}")
         append(if (index < results.lastIndex) ",\n" else "\n")
     }
+    append("  ],\n  \"interceptorCases\": [\n")
+    append(renderInterceptorCases(interceptors)).append("\n")
     append("  ]\n}\n")
 }
+
+/** JSON 문자열 리터럴이다. */
+fun quoteJson(text: String): String = quote(text)
 
 private fun quote(text: String): String = buildString {
     append('"')

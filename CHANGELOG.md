@@ -67,6 +67,28 @@
   이유 있는 dynamic 6·불일치 0(결합 전 불일치 10). pythograph Phase 6 e2e에서 Android 주문·결제 호출이 isthmus trace 체인의
   `OrderViewModel.refresh`·`CheckoutViewModel.pay`까지 닿고 `unattributed-calls-omitted`가 사라졌다.
 
+### Retrofit 인터셉터 client 결합 (Changed·Fixed)
+
+- URL을 바꾸는 OkHttp 인터셉터 하나가 프로젝트의 모든 Retrofit base를 버리던 규칙을 인스턴스별로 좁혔다. 재작성 인터셉터(class·
+  `object`와 그 하위 타입·`Interceptor { … }` 람다·익명 객체·부착 호출 안 람다)가 만들어지는 모든 곳에서 `addInterceptor`·
+  `addNetworkInterceptor`까지 값의 흐름을 따라가고, Retrofit `client(…)`·`callFactory(…)`의 OkHttpClient를 base와 같은 DI 규칙
+  (`@Provides` 한정자·Koin `get(named(…))`·속성·함수 몸체)과 빌더 사슬·`newBuilder()` 복사본·빌더 지역 변수로 풀어, 재작성이 붙은
+  client를 쓰는 인스턴스의 base만 버린다. `client`를 주지 않은 Retrofit은 인터셉터 없는 기본 client다.
+- 인스턴스마다 `url-rewrite-interceptors: Retrofit instance <baseRef> …` 한 줄을 내고, 모든 재작성이 원래 요청 URL의 authority만
+  바꿈을 증명하면 숨은 요청(root 템플릿·상대 경로 접미사·리터럴 동사)의 isthmus 호출 측 `limitationScopes`를 싣는다.
+- 보수 규칙: `Authenticator`·`EventListener`는 `NONE`이나 몸체에 재작성이 없는 프로젝트 구현만 요청을 바꾸지 않는 것으로 보고,
+  OkHttpClient임을 증명하지 못한 `callFactory`는 재작성으로 본다. 재작성·부착의 흐름이나 base를 푼 인스턴스의 client를 하나라도
+  증명하지 못하면(목록·반복문·래퍼·다른 함수 인자, `interceptors()` 조작, 매개변수 빌더·확장 함수 안 부착, 어디에도 붙지 않은 재작성,
+  상위 타입 `@Provides`·`@Binds`, 원천을 모르는 client) 이전처럼 모든 base를 버리고 이유를 적은 프로젝트 한 줄로 센다.
+- 수정: 재작성 client는 전체 URL·network-path 어노테이션의 host도 바꿀 수 있어 그 사실의 `authority`도 믿지 않는다(이전에는 인터셉터가
+  있어도 어노테이션 host를 실었다). 새 요청 생성(`Request.Builder()`·`Request(…)`), 원래 요청이나 그 사본이 아닌 요청을 넘기는
+  `chain.proceed(x)`, `newBuilder().apply { url(…) }`, 부착 호출 괄호 안의 Java 람다, Java `Interceptor x = …` 초기식도 재작성으로 센다.
+  `Authenticator`는 돌려주는 요청이 모두 `null`·`response.request()` 계열일 때만 요청을 바꾸지 않는 것으로 본다.
+- 내부: #123의 DI·속성·함수 몸체·Koin 추적을 `SourceValueResolver`로 옮겨 Retrofit base 해석과 OkHttpClient 해석이 공유한다.
+- 검증: Retrofit 오라클에 인터셉터 결합 코퍼스(`interceptor-client`, 규칙마다 케이스 18개)를 더해 로컬 프록시로 실제 요청을 기록했다
+  (Dagger 2.59·Koin 4.2.2, Maven Central). 일치 7·재작성으로 base를 버림 11(기록이 모두 재작성을 확인, 스코프 8개가 기록한 요청을 덮음)·
+  불일치 0이며, 변경 전 `main`(5564cb3)은 18개 사실 모두 authority가 없었다. 기존 54케이스 기록은 바뀌지 않았다.
+
 ### Spring HTTP 클라이언트 route-call (Added·Fixed)
 
 - `routes --role client`가 Spring `RestTemplate`(`getForObject`·`postForEntity`·`exchange`·`execute` 등)·`RestClient`·`WebClient`

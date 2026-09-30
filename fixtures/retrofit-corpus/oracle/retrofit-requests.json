@@ -771,7 +771,279 @@
   ],
   "description": "Requests that Retrofit sent to OkHttp MockWebServer for each synthetic service method. path is the encoded request path; pathArguments are the @Path values in template order.",
   "format": "kartograph-retrofit-requests",
+  "interceptorCases": [
+    {
+      "challenged": {
+        "authority": "token.api.example.com",
+        "path": "/secure/token"
+      },
+      "declaredBase": "http://token.api.example.com/",
+      "id": "interceptor.authenticator.header",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "token.api.example.com",
+        "method": "GET",
+        "path": "/secure/token",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.TokenApi.token"
+    },
+    {
+      "challenged": {
+        "authority": "auth.api.example.com",
+        "path": "/secure/profile"
+      },
+      "declaredBase": "http://auth.api.example.com/",
+      "id": "interceptor.authenticator.reroute",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "auth.example.net",
+        "method": "GET",
+        "path": "/secure/profile",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.AuthApi.profile"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://factory.api.example.com/",
+      "id": "interceptor.call-factory.ping",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "factory.example.net",
+        "method": "GET",
+        "path": "/factory/ping",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.FactoryApi.ping"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://api.example.com/v1/",
+      "id": "interceptor.class-instance.item",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "42"
+        }
+      ],
+      "recorded": {
+        "authority": "edge.example.net",
+        "method": "GET",
+        "path": "/v1/items/42",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.EdgeApi.item"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://api.example.com/v1/",
+      "id": "interceptor.class-instance.order",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "edge.example.net",
+        "method": "POST",
+        "path": "/orders",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.EdgeApi.order"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://shared.api.example.com/",
+      "id": "interceptor.derived.ping",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "derived.example.net",
+        "method": "GET",
+        "path": "/derived/ping",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.DerivedApi.ping"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://events.api.example.com/",
+      "id": "interceptor.event-listener.ping",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "events.api.example.com",
+        "method": "GET",
+        "path": "/events/ping",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.ListenerApi.ping"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://api.example.com/v1/",
+      "id": "interceptor.header-only.status",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "api.example.com",
+        "method": "GET",
+        "path": "/v1/status",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.PlainApi.status"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://java.api.example.com/",
+      "id": "interceptor.java.edge",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "java.example.net",
+        "method": "GET",
+        "path": "/java/ping",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.JavaInterceptorClients.JavaEdgeApi.ping"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://java.api.example.com/",
+      "id": "interceptor.java.plain",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "java.api.example.com",
+        "method": "GET",
+        "path": "/java/status",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.JavaInterceptorClients.JavaPlainApi.status"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://koin.api.example.com/",
+      "id": "interceptor.koin.edge",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "5"
+        }
+      ],
+      "recorded": {
+        "authority": "koin.example.net",
+        "method": "GET",
+        "path": "/koin/items/5",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.KoinEdgeApi.item"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://koin.api.example.com/",
+      "id": "interceptor.koin.plain",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "koin.api.example.com",
+        "method": "GET",
+        "path": "/koin/status",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.KoinPlainApi.status"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://lambda.api.example.com/",
+      "id": "interceptor.lambda.ping",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "lambda.example.net",
+        "method": "GET",
+        "path": "/lambda/ping",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.LambdaApi.ping"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://reports.example.com/v1/",
+      "id": "interceptor.network-path.report",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "7"
+        }
+      ],
+      "recorded": {
+        "authority": "reports.example.com",
+        "method": "GET",
+        "path": "/edge/v1/reports/7",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.PrefixApi.report"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://object.api.example.com/",
+      "id": "interceptor.object.ping",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "object.example.net",
+        "method": "GET",
+        "path": "/object/ping",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.ObjectApi.ping"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://provided.api.example.com/",
+      "id": "interceptor.provides.edge",
+      "pathArguments": [
+        {
+          "encoded": false,
+          "value": "9"
+        }
+      ],
+      "recorded": {
+        "authority": "provided.example.net",
+        "method": "GET",
+        "path": "/provided/items/9",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.ProvidedEdgeApi.item"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://provided.api.example.com/",
+      "id": "interceptor.provides.plain",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "provided.api.example.com",
+        "method": "GET",
+        "path": "/provided/status",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.ProvidedPlainApi.status"
+    },
+    {
+      "challenged": null,
+      "declaredBase": "http://shared.api.example.com/",
+      "id": "interceptor.shared.ping",
+      "pathArguments": [],
+      "recorded": {
+        "authority": "shared.api.example.com",
+        "method": "GET",
+        "path": "/shared/ping",
+        "query": null
+      },
+      "symbol": "dev.kartograph.fixture.interceptor.SharedApi.ping"
+    }
+  ],
+  "interceptorSources": [
+    "interceptor-client/src/main/java/dev/kartograph/fixture/interceptor/JavaInterceptorClients.java",
+    "interceptor-client/src/main/kotlin/dev/kartograph/fixture/interceptor/InterceptorApis.kt",
+    "interceptor-client/src/main/kotlin/dev/kartograph/fixture/interceptor/InterceptorClients.kt",
+    "interceptor-client/src/main/kotlin/dev/kartograph/fixture/interceptor/InterceptorKoin.kt",
+    "interceptor-client/src/main/kotlin/dev/kartograph/fixture/interceptor/InterceptorModule.kt",
+    "interceptor-client/src/main/kotlin/dev/kartograph/fixture/interceptor/Interceptors.kt"
+  ],
   "oracle": {
+    "dagger": "2.59",
+    "koin": "4.2.2",
     "mockwebserver": "3.14.9",
     "okhttp": "3.14.9",
     "retrofit": "2.12.0",

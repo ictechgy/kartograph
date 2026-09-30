@@ -51,8 +51,11 @@ internal data class RetrofitBaseUrl(val authority: String, val path: String) {
  * `retrofit.create(Service::class.java)`·`create(Service.class)`·`create<Service>()` 호출과, `Class<T>`·reified 타입 매개변수를
  * 받아 `create`로 넘기는 생성 함수(`ServiceGenerator.createService(Service::class.java)`)의 호출을 찾아 수신 식을
  * [RetrofitInstanceResolver]로 푼다. 상위 서비스 인터페이스의 메서드는 하위 인터페이스 프록시로도 불리므로 하위의 결합을
- * 물려받는다. 테스트 소스의 `create`(MockWebServer 등)는 production base가 아니라 보지 않는다. URL을 바꾸는 OkHttp
- * 인터셉터가 있으면 base를 신뢰하지 않고 선언 신원만 남긴다.
+ * 물려받는다. 테스트 소스의 `create`(MockWebServer 등)는 production base가 아니라 보지 않는다.
+ *
+ * URL을 바꾸는 OkHttp 인터셉터·재작성을 증명하지 못한 `Authenticator`·`EventListener`·`Call.Factory`가 있으면
+ * ([InterceptorRewriteIndex]) 그 재작성이 붙은 client를 쓰는 인스턴스의 base만 버리고 선언 신원을 남긴다. 재작성이 어느 client에
+ * 붙는지, 또는 base를 푼 인스턴스가 어느 client를 쓰는지 하나라도 증명하지 못하면 #123처럼 모든 base를 버린다([unboundRewrites]).
  *
  * @param files 스캔한 source 파일 전체다(테스트 파일 포함 가능)
  * @param buildConfig `BuildConfig` 필드 해석기다
@@ -69,8 +72,11 @@ internal class RetrofitBaseIndex(files: List<RouteSourceFile>, buildConfig: Buil
         }.toList()
     }.toSet()
 
-    /** URL을 바꾸는 OkHttp 인터셉터 호출 수다(`url-rewrite-interceptors:`). */
-    val urlRewriters: Int = production.sumOf(::countUrlRewrites)
+    /** 인터셉터 재작성과 그 부착 위치다. */
+    private val rewrites = InterceptorRewriteIndex(production, resolver.clients)
+
+    /** URL을 바꾸는 OkHttp 인터셉터 재작성 지점 수와 재작성하지 않음을 증명하지 못한 부착 수다(`url-rewrite-interceptors:`). */
+    val urlRewriters: Int get() = rewrites.population
 
     /** 서비스 → 직접 상위 서비스 인터페이스다. */
     private val superServices: Map<String, Set<String>> = files.filter { it.source.isNotEmpty() }.flatMap { file ->
@@ -86,13 +92,47 @@ internal class RetrofitBaseIndex(files: List<RouteSourceFile>, buildConfig: Buil
     private val direct: Map<String, List<RetrofitBinding>> = collectBindings()
 
     /**
+     * 재작성과 client의 결합을 증명하지 못해 모든 Retrofit base를 버리는 이유다. 재작성이 없으면 client를 몰라도 null이다.
+     * null이면 인스턴스마다 자기 client의 재작성으로만 판단한다.
+     */
+    val unboundRewrites: String? = when {
+        rewrites.population == 0 -> null
+        rewrites.unboundReason != null -> rewrites.unboundReason
+        direct.values.flatten().any { it.base != null && it.client.unknown } ->
+            "a Retrofit instance with a resolved baseUrl sends requests through an OkHttp client whose source is not resolved"
+        else -> null
+    }
+
+    /**
      * [service]의 메서드가 요청을 보낼 수 있는 결합들이다 — 자신과 (전이적) 하위 서비스로 만든 결합의 합이다. `create` 호출을
-     * 찾지 못했으면 빈 목록이다. 인터셉터가 URL을 바꾸면 base를 지운 결합이다.
+     * 찾지 못했으면 빈 목록이다. [unboundRewrites]면 모든 결합의 base를, 아니면 URL을 바꾸는 client를 쓰는 결합의 base를 지우고
+     * [RetrofitBinding.rewrite]에 근거를 싣는다.
      */
     fun bindings(service: String): List<RetrofitBinding> {
         val owners = services.filter { candidate -> candidate == service || service in ancestors(candidate) }
         val bindings = owners.sorted().flatMap { direct[it].orEmpty() }.distinct()
-        return if (urlRewriters > 0) bindings.map { it.copy(base = null) }.distinct() else bindings
+        return if (unboundRewrites != null) bindings.map { it.copy(base = null) }.distinct() else bindings.map(::decide).distinct()
+    }
+
+    /**
+     * 전체 URL·network-path 어노테이션의 host를 믿을 수 없는지 본다 — 모든 base를 버렸거나, 이 서비스의 인스턴스가 URL을 바꾸는
+     * client를 쓰거나, 재작성이 있는데 서비스를 만든 곳을 찾지 못했거나 인스턴스의 client를 모를 때다(base를 모르는 인스턴스의
+     * client는 대체 조건이 아니지만 어노테이션 host에는 쓰인다). 재작성 인터셉터는 base와 무관하게 요청 URL 전체를 바꿀 수 있다.
+     */
+    fun absoluteHostUntrusted(service: String?): Boolean {
+        if (unboundRewrites != null) return true
+        val bindings = service?.let(::bindings).orEmpty()
+        return bindings.any { it.rewrite != null } || rewrites.population > 0 && (bindings.isEmpty() || bindings.any { it.client.unknown })
+    }
+
+    /** 결합의 client에 붙은 재작성이 있으면 base를 지우고 근거를 싣는다. */
+    private fun decide(binding: RetrofitBinding): RetrofitBinding {
+        val rewriting = binding.client.adders.mapNotNull { rewrites.rewritingAdders[it] }
+        val count = rewriting.size + binding.client.forced.size
+        if (count == 0) return binding
+        val forcedEffect = if (binding.client.forced.isEmpty()) RewriteEffect(pathPreserved = true, methodPreserved = true) else RewriteEffect.UNPROVEN
+        val effect = rewriting.fold(forcedEffect, RewriteEffect::and)
+        return binding.copy(base = null, rewrite = RetrofitRewrite(count, effect.pathPreserved, effect.methodPreserved, binding.base))
     }
 
     private fun ancestors(service: String): Set<String> {
@@ -167,37 +207,6 @@ internal class RetrofitBaseIndex(files: List<RouteSourceFile>, buildConfig: Buil
         }.associate { (name, text) -> name to (if (file.isJava) text.substringBeforeLast(name).trim() else text) }
     }
 
-    /** 인터셉터 파일 안에서 요청 URL을 바꾸는 빌더 호출(`newBuilder()` 뒤 `url`·`host`·경로 변경)을 센다. */
-    private fun countUrlRewrites(file: RouteSourceFile): Int {
-        if (!INTERCEPTOR.containsMatchIn(file.masked)) return 0
-        return NEW_BUILDER.findAll(file.masked).count { match ->
-            insideInterceptor(file, match.range.first) && chainedCalls(file, match.range.last + 1).any { it in REWRITE_METHODS }
-        }
-    }
-
-    /** [offset]이 `intercept` 함수 몸체나 인터셉터 람다(`Interceptor { … }`, `addInterceptor { … }`) 안인지 본다. */
-    private fun insideInterceptor(file: RouteSourceFile, offset: Int): Boolean {
-        if (file.functions.any { it.name == "intercept" && offset in it.bodyStart..it.end }) return true
-        return INTERCEPTOR_BLOCK.findAll(file.masked.substring(0, offset)).any { block ->
-            val open = block.range.last
-            file.braceEnd(open).let { close -> close > offset }
-        }
-    }
-
-    /** [from]부터 이어지는 `.name(…)` 호출 이름들이다. */
-    private fun chainedCalls(file: RouteSourceFile, from: Int): List<String> {
-        val names = mutableListOf<String>()
-        var index = from
-        while (true) {
-            val dot = skipSpaces(file.masked, index)
-            if (file.masked.getOrNull(dot) != '.') return names
-            val name = Regex("\\G\\s*([A-Za-z_]\\w*)\\s*\\(").find(file.masked, dot + 1) ?: return names
-            val close = balancedEnd(file.code, name.range.last).takeIf { it > name.range.last } ?: return names
-            names += name.groupValues[1]
-            index = close + 1
-        }
-    }
-
     private companion object {
         val RETROFIT_VERB = Regex("@(retrofit2\\s*\\.\\s*http\\s*\\.\\s*)?(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|HTTP)\\b")
         val JAVA_EXTENDS = Regex("\\bextends\\s+([^{]+?)(?:\\bimplements\\b|$)")
@@ -214,16 +223,8 @@ internal class RetrofitBaseIndex(files: List<RouteSourceFile>, buildConfig: Buil
             "(?:(\\.)\\s*|(?<![\\w.])(?=create))create\\s*(?:\\(\\s*([A-Za-z_]\\w*)\\s*\\)|\\(\\s*([A-Za-z_]\\w*)\\s*::\\s*class\\s*\\.\\s*java\\s*\\)|" +
                 "<\\s*([A-Za-z_]\\w*)\\s*>\\s*\\(\\s*\\))",
         )
-        val INTERCEPTOR = Regex("\\bInterceptor\\b")
         /** `Class<T>`·`java.lang.Class<*>` 매개변수 타입이다(`ClassKind` 같은 다른 타입은 아니다). */
         val CLASS_TYPE = Regex("(?:java\\.lang\\.)?Class\\s*<.*>\\??", RegexOption.DOT_MATCHES_ALL)
-        /** 인터셉터 람다·등록 블록의 여는 괄호다(`Interceptor { … }`, `addInterceptor { … }`). */
-        val INTERCEPTOR_BLOCK = Regex("\\b(?:Interceptor|addInterceptor|addNetworkInterceptor)\\s*\\{")
-        val NEW_BUILDER = Regex("\\.\\s*newBuilder\\s*\\(\\s*\\)")
-        val REWRITE_METHODS = setOf(
-            "url", "host", "scheme", "port", "encodedPath", "addPathSegment", "addPathSegments", "addEncodedPathSegment",
-            "addEncodedPathSegments", "setPathSegment", "setEncodedPathSegment", "removePathSegment",
-        )
     }
 }
 

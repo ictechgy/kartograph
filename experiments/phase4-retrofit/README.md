@@ -21,6 +21,15 @@
   테스트는 템플릿을 host 루트에 붙여 기록 경로와, `authority`를 기록 host와 대조한다. base가 둘인 서비스(`InventoryApi`)는 기록한
   host의 사실 하나와 대조한다. `baseRef`는 기록과 비교할 값이 없어 대조하지 않는다(단위 테스트 `RetrofitBaseUrlTest`가 고정).
 
+- **인터셉터 결합 케이스(2026-09-30 추가).** `fixtures/retrofit-corpus/oracle/interceptor-client/`는 URL을 바꾸는 OkHttp 인터셉터가
+  어느 client → Retrofit 인스턴스에 붙는지를 규칙마다 보이는 별도 코퍼스다(Kotlin 5파일·Java 1파일). client를 모두 코퍼스 안에서
+  만들므로 오라클은 client에 손대지 않고 JVM 기본 `ProxySelector`를 MockWebServer로 돌린다 — `http` 요청은 프록시에 절대 URL 요청
+  줄로 오므로 인터셉터·`Authenticator`·`Call.Factory`가 바꾼 뒤의 host·경로를 그대로 기록한다(루프백은 프록시하지 않아 기존 케이스는
+  그대로다). `Authenticator` 케이스는 첫 요청에 401을 받아 재요청을 기록한다. Dagger 모듈은 어노테이션만 쓰고(생성기 없음) 제공
+  함수를 그래프 순서로 직접 부르며, Koin은 코퍼스 모듈로 시작한다(Dagger 2.59·Koin 4.2.2, Maven Central). 테스트는 이 코퍼스를 따로
+  스캔해 base를 적용한 사실은 기록과 일치하는지, base를 버린 사실은 이유가 적힌 케이스이고 버린 base로 결합하면 기록과 어긋나는지
+  (재작성이 실제로 일어났는지), 인스턴스별 한계의 스코프가 기록한 요청을 덮는지 본다.
+
 ## 결과
 
 44개 케이스(서비스 메서드 39개, 같은 메서드를 다른 base·값·상속 프록시로 부른 경우 포함):
@@ -47,6 +56,31 @@ baseUrl 결합 케이스 10개(팩토리 3개, 서비스 메서드 8개)를 더�
 | `.`·끝 슬래시 | `./search/` | `/shop/v2/search/` | root `/shop/v2/search/` |
 | base 둘(지역 `val`·`HttpUrl` 속성, 포트) | `stock/{sku}`, `/admin/stock` | `/stock/sku-1`·`/inv/stock/sku-1`, `/admin/stock` ×2 | host마다 사실 하나(`inventory.example.com`, `mirror.example.com:8443`) |
 | Java 지역 변수·static final 상수 | `reports/{year}` + `https://reports.example.com/r/` | `/r/reports/2026` | root `/r/reports/{}` |
+
+인터셉터 결합 케이스 18개(2026-09-30):
+
+| | 일치(base 적용) | base 버림(재작성 확인) | 불일치 |
+|---|---:|---:|---:|
+| 인스턴스별 결합 전 (`main` 5564cb3) | 0 | 18 | — |
+| 인스턴스별 결합 후 | 7 | 11 | 0 |
+
+결합 전에는 재작성 인터셉터가 하나라도 있으면 모든 base를 버려 헤더만 더하는 client·공유 client·`@Provides`/Koin 일반 client·Java
+람다·요청을 바꾸지 않는 `Authenticator`·`EventListener` 7케이스도 authority를 잃었다. 결합 후 base를 버린 11케이스는 모두 기록이 base와
+다르다(재작성이 요청을 바꿨다).
+
+| 규칙 | 케이스 | 기록 | 사실 |
+|---|---|---|---|
+| class 인스턴스(`addInterceptor(HostRewriteInterceptor(…))`) | `EdgeApi.item`·`order` | `edge.example.net` `/v1/items/42`·`/orders` | base 버림, 스코프 `/v1/items/{}`·`/orders` GET·POST |
+| 같은 모듈의 헤더 인터셉터 client | `PlainApi.status` | `api.example.com` `/v1/status` | root `api.example.com` `/v1/status` |
+| network 인터셉터 람다(경로 앞 세그먼트) | `PrefixApi.report` | `/edge/v1/reports/7` | base 버림, 스코프 없음(경로 변경) |
+| 속성의 `Interceptor { … }` 람다·`object` | `LambdaApi`·`ObjectApi` | 바뀐 host | base 버림, 스코프 |
+| `newBuilder()` 복사본에 더한 인터셉터 | `DerivedApi` / 원본 `SharedApi` | 바뀐 host / base 그대로 | base 버림 / root 일치 |
+| `@Provides` 한정자(`@Named("edge")`·`"plain"`) | `ProvidedEdgeApi` / `ProvidedPlainApi` | 바뀐 host / base 그대로 | base 버림 / root 일치 |
+| Koin `get(named(…))` | `KoinEdgeApi` / `KoinPlainApi` | 바뀐 host / base 그대로 | base 버림 / root 일치 |
+| Java 빌더 지역 변수 + 익명 인터셉터 / 람다 | `JavaEdgeApi` / `JavaPlainApi` | 바뀐 host / base 그대로 | base 버림 / root 일치 |
+| 다른 host로 재요청하는 `Authenticator` | `AuthApi` | 401 뒤 `auth.example.net` | base 버림, 스코프 없음 |
+| 헤더만 더하는 `Authenticator`·`EventListener` | `TokenApi`·`ListenerApi` | base 그대로 | root 일치 |
+| 직접 구현한 `Call.Factory` | `FactoryApi` | `factory.example.net` | base 버림, 스코프 없음 |
 
 수정 전에는 서비스 6파일 모두에 거짓 `route-call-coverage:`도 붙었다(OkHttp `RequestBody`·`ResponseBody` import를 모델링하지
 않은 클라이언트로 셌다).
@@ -97,8 +131,12 @@ JDK 21과 Maven Central·Gradle Plugin Portal 접근이 필요하다. MockWebSer
 
 ## 한계
 
-- baseUrl 결합의 DI(Hilt `@Provides`·`@Inject`·Koin)·`BuildConfig`·인터셉터 모양은 실행 오라클이 아니라 합성 단위 테스트
-  (`index` `RetrofitBaseUrlTest`)로 고정한다 — 결합 규칙(RFC 3986) 자체는 위 팩토리 케이스가 실행으로 확인한다.
+- baseUrl 결합의 DI(Hilt `@Provides`·`@Inject`·Koin)·`BuildConfig` 모양은 실행 오라클이 아니라 합성 단위 테스트
+  (`index` `RetrofitBaseUrlTest`)로 고정한다 — 결합 규칙(RFC 3986) 자체는 위 팩토리 케이스가 실행으로 확인한다. 인터셉터 결합의
+  실행 케이스는 결합을 증명하는 모양만 담는다. 결합을 증명하지 못해 모든 base를 버려야 하는 모양(목록·래퍼·확장 함수·상위 타입
+  `@Provides`·어디에도 붙지 않은 재작성)은 `RetrofitInterceptorBindingTest`가 고정한다.
+- 인터셉터 오라클은 `http` base만 쓴다(프록시가 `https`는 CONNECT 터널로 받아 host·경로를 볼 수 없다). 경로·host 결합 규칙은
+  scheme과 무관하다.
 
 - 소스 스캐너라 파일 밖 상수(다른 파일 object·Java class 상수)는 증명하지 못하고 dynamic이다. 바이트코드의 접힌 어노테이션
   값을 읽는 경로(`routes --role server`의 `--graph-file`)는 클라이언트 쪽에 아직 없다.

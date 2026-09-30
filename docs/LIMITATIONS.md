@@ -151,9 +151,24 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   base 앵커로 남는다. `BuildConfig` 값은 가장 가까운 모듈 빌드 파일의 `buildConfigField` 리터럴만 읽는다(`gradle.properties`·환경
   변수·`local.properties`·빌드 스크립트 계산 값은 모름). 값이 여럿이면(빌드 타입·flavor) base마다 사실을 내므로 한 빌드에서는 그중
   하나만 실제로 쓰인다. authority는 OkHttp `HttpUrl`처럼 scheme 기본 포트(http 80·https 443)를 지우고, 범위 밖이거나 0으로
-  시작하는 포트의 base는 풀지 않는다(isthmus 계약의 기본 포트 정규화는 미결이라 다른 생산자와 표기가 다를 수 있다). URL을 바꾸는
-  OkHttp 인터셉터는 `intercept` 함수 몸체나 `Interceptor { … }`·`addInterceptor { … }` 블록 안의 `newBuilder()` 뒤 `url`·`host`·
-  경로 변경 호출만 어휘로 세고, 어느 client에 붙었는지 모르므로 하나라도 있으면 프로젝트의 모든 Retrofit base를 버린다. `baseRef`는 JVM 정점 id가 아니라 소스 한정 이름(`kt:` 접두사)이다.
+  시작하는 포트의 base는 풀지 않는다(isthmus 계약의 기본 포트 정규화는 미결이라 다른 생산자와 표기가 다를 수 있다). `baseRef`는 JVM 정점 id가 아니라 소스 한정 이름(`kt:` 접두사)이다.
+- URL을 바꾸는 OkHttp 재작성도 어휘로만 센다 — `intercept` 함수 몸체, `Interceptor { … }` 람다, `addInterceptor { … }` 블록·부착 호출의
+  인자 괄호(Java 람다), Java `Interceptor x = …` 초기식 안의 `newBuilder()` 뒤 `url`·`host`·scheme·port·경로 변경(`apply { … }` 포함)과
+  새 요청 생성(`Request.Builder()`·`Request(…)`), 그리고 원래 요청(`chain.request()`)이나 그 `newBuilder()` 사본이 아닌 요청을 넘기는
+  `chain.proceed(x)`다. 인터셉터 문맥 밖 헬퍼 함수로 옮긴 재작성(그 결과를 proceed하지 않는 경우)과 라이브러리 인터셉터는 보지 못한다. 재작성 개체(class·
+  object와 그 하위 타입·람다·익명 객체)가 만들어지는 모든 곳에서 부착 호출(`addInterceptor`·`addNetworkInterceptor`)까지 값의 흐름을
+  따라가고(생성·지역·속성 변수의 모든 참조·함수 반환값의 모든 호출·같은 타입의 `@Provides` 주입 지점), Retrofit `client(…)`·
+  `callFactory(…)`의 client를 base와 같은 DI 규칙으로 풀어(빌더 사슬·`newBuilder()` 복사본·다른 곳에 넘기지 않은 빌더 지역 변수) 재작성이
+  붙은 client를 쓰는 인스턴스의 base와 전체 URL 어노테이션의 host만 버린다. `Authenticator`·`EventListener`는 `NONE`이나 몸체에 재작성이
+  없고 프로젝트 상위 타입이 없는 구현만(`Authenticator`는 돌려주는 요청이 모두 `null`·`response.request()` 계열일 때만) 요청을 바꾸지
+  않는 것으로 보고, OkHttpClient임을 증명하지 못한 `callFactory`는 재작성으로 본다.
+  흐름을 하나라도 증명하지 못하면 — 목록·반복문·다른 함수 인자·래퍼로 넘긴 인터셉터, `interceptors()` 목록 조작, 매개변수로 받은 빌더·
+  확장 함수 안의 부착, 어디에도 붙지 않은 재작성, `@Provides`가 상위 타입(`Interceptor`)으로 돌려준 인터셉터, `@Binds`·다중 바인딩,
+  메서드 참조, 원천을 모르는 client로 base를 푼 인스턴스 — #123처럼 프로젝트의 모든 Retrofit base를 버리고 개수만 센다. 인스턴스별
+  `url-rewrite-interceptors:`의 호출 측 limitation 스코프는 모든 재작성이 원래 요청 URL의 `newBuilder()` 사본에서 authority·query만 바꿈을
+  증명하고 그 인스턴스의 모든 사실의 경로를 알 때만 싣는다(base를 알던 경로는 root 템플릿, 모르던 상대 경로는 접미사). 재작성 뒤 요청이
+  가는 host는 모르므로 버린 base를 공급하던 인스턴스의 `baseRef`는 그대로 싣는다 — 매니페스트가 그 `baseRef`를 다른 서비스로 선언하면
+  isthmus는 그 서비스로 귀속한다.
 - Spring HTTP 클라이언트(`RestTemplate`·`RestClient`·`WebClient`·`@HttpExchange`) 사실도 소스 어휘 해석이다. 수신 식을 import한 타입의
   선언·생성 식·`@Bean`(타입·`@Qualifier`·`@Named`·`@Primary`·이름)으로 증명한 호출만 내고, 일반 메서드 매개변수로 받은 클라이언트·프로젝트
   한정자 어노테이션·`@ConfigurationProperties` 객체·환경 변수·다른 프로필 값·SpEL은 base를 모르는 쪽으로 둔다. `with(client) { … }`처럼

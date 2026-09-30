@@ -6,34 +6,42 @@ import dev.kartograph.index.RouteUrlRules.UrlPart
  * Retrofit 서비스가 만들어지는 base 결합 하나다.
  *
  * @property base 정적으로 푼 base URL이다. null이면 값을 증명하지 못했다(실행 시점 값·모호한 DI·빌더에 base 없음)
+ *   또는 URL을 바꾸는 client라 적용하지 않았다([rewrite])
  * @property baseRef base를 공급하는 선언(Retrofit 인스턴스를 담은 함수·속성·DI provider)의 생산자 id다. 선언을 찾지 못하면 null이다
+ * @property client 이 인스턴스가 요청을 보내는 OkHttp client의 재작성 증거다(`client(…)`·`callFactory(…)`)
+ * @property rewrite URL을 바꾸는 client라 base를 적용하지 않았을 때의 근거다. [RetrofitBaseIndex.bindings]가 채운다
  */
-internal data class RetrofitBinding(val base: RetrofitBaseUrl?, val baseRef: String?)
+internal data class RetrofitBinding(
+    val base: RetrofitBaseUrl?,
+    val baseRef: String?,
+    val client: RetrofitClientFacts = RetrofitClientFacts.UNKNOWN,
+    val rewrite: RetrofitRewrite? = null,
+)
 
 /**
- * Retrofit `create` 호출의 수신 식을 따라가 그 인스턴스의 `baseUrl` 값과 선언 신원을 푼다.
+ * Retrofit `create` 호출의 수신 식을 따라가 그 인스턴스의 `baseUrl` 값과 선언 신원, 요청을 보내는 OkHttp client를 푼다.
  *
  * 따라가는 모양: 같은 식의 `Retrofit.Builder()…baseUrl(x)…build()` 사슬(`apply { baseUrl(x) }` 포함), 같은 함수의 `val`, 감싸는
  * 타입·파일·다른 파일의 속성(`= …`, `by lazy { … }`, getter, `var`·Java 필드의 모든 대입), 함수 호출의 식 몸체·`return`,
  * Dagger/Hilt `@Provides` provider(`@Inject` 생성자·필드와 `@Provides` 매개변수, 한정자 일치), Koin `get()`과 `single`·`factory`
- * 정의. base 값은 리터럴·Kotlin 템플릿·같은 파일/다른 파일 상수·읽기 전용 속성의 초기식·`BuildConfig` 필드([BuildConfigFields])·
- * `HttpUrl` 래퍼를 푼다.
+ * 정의([SourceValueResolver]). base 값은 리터럴·Kotlin 템플릿·같은 파일/다른 파일 상수·읽기 전용 속성의 초기식·`BuildConfig`
+ * 필드([BuildConfigFields])·`HttpUrl` 래퍼를 푼다. 사슬의 마지막 `client(…)`·`callFactory(…)`는 [OkHttpClientResolver]로 풀고,
+ * 없으면 Retrofit이 만드는 기본 client(인터셉터 없음)이거나 `newBuilder()`로 복사한 인스턴스의 client다.
  * 그 밖의 식은 값을 모르는 결합으로 남긴다 — 추측한 base로 템플릿을 확정하지 않는다.
  */
 internal class RetrofitInstanceResolver(
     files: List<RouteSourceFile>,
     private val buildConfig: BuildConfigFields,
-) {
-    /** 파일 밖 선언 색인이다. */
-    val declarations: SourceDeclarations = SourceDeclarations(files)
+    declarations: SourceDeclarations = SourceDeclarations(files),
+) : SourceValueResolver<List<RetrofitBinding>>(files, declarations) {
+    /** `client(…)`·`callFactory(…)` 인자의 OkHttp client 해석기다. */
+    val clients: OkHttpClientResolver = OkHttpClientResolver(files, declarations)
 
-    /** 값 원천을 찾는 공유 어휘 도구다. */
-    private val scopes = SourceScopes(declarations)
+    override val typeName: String = "Retrofit"
+    override val providers: List<Pair<RouteSourceFile, RouteFunctionDecl>> get() = declarations.retrofitProviders
+    override val koinBuilder: Regex = Regex("\\bRetrofit\\s*\\.\\s*Builder\\s*\\(")
 
     private val pathResolvers = java.util.IdentityHashMap<RouteSourceFile, RoutePathResolver>()
-
-    /** Koin `single`·`factory` 정의 중 Retrofit을 만드는 것들이다. */
-    private val koinDefinitions: List<KoinDefinition> by lazy { collectKoinDefinitions(files) }
 
     /**
      * `create` 수신 식 [start, end)의 결합들이다. 수신 식이 비어 있으면(`with(retrofit) { create(…) }`) 모르는 결합 하나다.
@@ -43,48 +51,75 @@ internal class RetrofitInstanceResolver(
         return expression(file, start, end, scopes.declarationId(file, start), Budget())
     }
 
-    /** 재귀 한도와 순환 방지다 — 서로를 참조하는 속성·함수가 무한히 따라가지 않게 한다. */
-    private class Budget {
-        // RouteSourceFile은 data class가 아니라 동등성이 곧 인스턴스 신원이다.
-        private val visiting = mutableSetOf<Pair<RouteSourceFile, Int>>()
-        var depth = 0
+    override fun unknown(ref: String?): List<RetrofitBinding> = listOf(RetrofitBinding(null, ref))
 
-        fun enter(file: RouteSourceFile, start: Int): Boolean {
-            if (depth >= MAX_DEPTH || !visiting.add(file to start)) return false
-            depth++
-            return true
-        }
+    override fun combine(values: List<List<RetrofitBinding>>): List<RetrofitBinding> = values.flatten().distinct()
 
-        fun leave(file: RouteSourceFile, start: Int) {
-            visiting.remove(file to start)
-            depth--
-        }
-    }
-
-    private fun unknown(ref: String?): List<RetrofitBinding> = listOf(RetrofitBinding(null, ref))
-
-    /** Retrofit 값을 내는 식 [start, end)를 푼다. */
-    private fun expression(file: RouteSourceFile, start: Int, end: Int, ref: String?, budget: Budget): List<RetrofitBinding> {
+    /**
+     * Retrofit 값을 내는 식 [start, end)를 푼다. 끝에서부터 사슬을 읽어 마지막 `baseUrl`과 마지막 `client`·`callFactory`를 찾는다.
+     * base를 찾은 뒤 읽을 수 없는 단위를 만나면 base는 유지하고 client만 모른다.
+     */
+    override fun expression(file: RouteSourceFile, start: Int, end: Int, ref: String?, budget: Budget): List<RetrofitBinding> {
         val trimmedStart = skipSpaces(file.masked, start)
         if (!budget.enter(file, trimmedStart)) return unknown(ref)
         try {
             val segments = chainSegments(file, trimmedStart, end) ?: return unknown(ref)
             val rootSize = rootLength(segments)
+            var base: List<RetrofitBinding>? = null
+            var client: RetrofitClientFacts? = null
             for (index in segments.lastIndex downTo rootSize) {
                 val segment = segments[index]
                 when {
-                    segment.name == "baseUrl" && segment.arguments != null -> return baseBindings(file, segment.arguments, ref, budget)
+                    segment.name in CLIENT_SETTERS && segment.arguments != null -> if (client == null) client = clientArgument(file, segment.name, segment.start, segment.arguments, budget)
+                    segment.name == "baseUrl" && segment.arguments != null -> if (base == null) base = baseBindings(file, segment.arguments, ref, budget)
                     segment.name in SCOPE_BLOCKS && segment.lambda != null && segment.arguments == null -> {
-                        lambdaBaseUrl(file, segment.lambda)?.let { return baseBindings(file, it, ref, budget) }
+                        if (base == null) lambdaCall(file, segment.lambda, BASE_URL_CALL)?.let { base = baseBindings(file, it.second, ref, budget) }
+                        if (client == null) client = blockClient(file, segment.lambda, budget)
                     }
                     segment.name in BUILDER_METHODS -> Unit
-                    else -> return unknown(ref)
+                    else -> return base?.withClient(client ?: RetrofitClientFacts.UNKNOWN) ?: unknown(ref)
                 }
+                val found = base
+                if (found != null && client != null) return found.withClient(client!!)
             }
-            return root(file, segments.subList(0, rootSize), ref, budget)
+            val rooted = root(file, segments.subList(0, rootSize), ref, budget)
+            val found = base
+            return when {
+                found != null -> found.withClient(client ?: rooted.map { it.client }.reduce(RetrofitClientFacts::merge))
+                client != null -> rooted.withClient(client!!)
+                else -> rooted
+            }
         } finally {
             budget.leave(file, trimmedStart)
         }
+    }
+
+    /**
+     * 범위 함수 블록 안의 `client(…)`·`callFactory(…)` 호출들의 client다. 조건문 가지나 `it.client(…)`처럼 어느 호출이 마지막에
+     * 적용될지 모르므로 블록 안의 모든 호출을 합친다(넓게 잡아도 재작성 client가 늘 뿐이다). 호출이 없으면 null이다.
+     */
+    private fun blockClient(file: RouteSourceFile, lambda: IntRange, budget: Budget): RetrofitClientFacts? {
+        var merged: RetrofitClientFacts? = null
+        for (match in CLIENT_CALL.findAll(file.masked.substring(0, lambda.last), lambda.first + 1)) {
+            val open = match.range.last
+            val close = balancedEnd(file.code, open).takeIf { it > open } ?: return RetrofitClientFacts.UNKNOWN
+            val facts = clientArgument(file, match.groupValues[1], match.range.first, open..close, budget)
+            merged = merged?.merge(facts) ?: facts
+        }
+        return merged
+    }
+
+    private fun List<RetrofitBinding>.withClient(client: RetrofitClientFacts): List<RetrofitBinding> = map { it.copy(client = client) }.distinct()
+
+    /**
+     * `client(x)`·`callFactory(x)` 인자의 client 증거다. `callFactory`에 OkHttpClient임을 증명하지 못한 값(직접 구현한
+     * `Call.Factory`·모르는 값)이 오면 요청을 바꿀 수 있는 것으로 본다 — 이 Retrofit에 직접 붙었으므로 이 인스턴스만의 재작성이다.
+     */
+    private fun clientArgument(file: RouteSourceFile, name: String, position: Int, arguments: IntRange, budget: Budget): RetrofitClientFacts {
+        val argument = singleArgument(file, arguments)
+        val facts = if (argument == null) RetrofitClientFacts.UNKNOWN else clients.client(file, argument.first, argument.last + 1, budget)
+        if (name == "callFactory" && facts.unknown) return RetrofitClientFacts(forced = setOf(SourcePosition(file.relative, position)))
+        return facts
     }
 
     /** 사슬의 뿌리(`Retrofit.Builder()`, 참조, 함수 호출, Koin `get()`)를 푼다. */
@@ -94,110 +129,12 @@ internal class RetrofitInstanceResolver(
         if (last.lambda != null) return unknown(ref)
         if (last.arguments == null) return reference(file, qualifier, last.name, segments.first().start, ref, budget)
         if (last.name == "Builder" && (qualifier.endsWith("Retrofit") || qualifier.isEmpty() && file.visibleNameOf("retrofit2.Retrofit.Builder") == "Builder")) {
-            // baseUrl 없이 build()하면 Retrofit이 거부한다 — 이 결합으로는 요청이 나가지 않는다.
-            return unknown(ref)
+            // baseUrl 없이 build()하면 Retrofit이 거부한다 — 이 결합으로는 요청이 나가지 않는다. client를 주지 않으면 Retrofit은
+            // 인터셉터 없는 새 OkHttpClient를 만든다.
+            return listOf(RetrofitBinding(null, ref, RetrofitClientFacts.DEFAULT))
         }
         if (qualifier.isEmpty() && last.name == "get" && file.imports.any { it.path.startsWith("org.koin.") }) return koin(file, last, budget)
-        val (owner, function) = declarations.findFunction(file, qualifier, last.name, last.start) ?: return unknown(null)
-        return functionBody(owner, function, scopes.functionId(owner, function), budget)
-    }
-
-    /** 식별자 참조 `qualifier.name`을 지역 `val`·매개변수·속성으로 따라간다. */
-    private fun reference(file: RouteSourceFile, qualifier: String, name: String, offset: Int, ref: String?, budget: Budget): List<RetrofitBinding> {
-        if (qualifier.isEmpty()) {
-            scopes.localInitializer(file, name, offset)?.let { (isVal, range) ->
-                return if (isVal) expression(file, range.first, range.last + 1, ref, budget) else unknown(ref)
-            }
-            scopes.parameter(file, name, offset)?.let { (function, parameter) -> return injectedParameter(file, function, parameter, budget) }
-        }
-        val property = if (qualifier.isEmpty() || qualifier == "this") scopes.propertyInScope(file, name, offset) ?: declarations.findTopLevelProperty(file, name)
-        else declarations.findMemberProperty(file, qualifier, name)
-        if (property != null) return propertyBindings(property.first, property.second, budget)
-        if (qualifier.isEmpty() || qualifier == "this") {
-            scopes.constructorParameter(file, name, offset)?.let { (header, parameter) -> return injectedConstructorParameter(header, parameter, budget) }
-        }
-        return unknown(null)
-    }
-
-    /** 속성·필드 값의 원천(초기식, lazy 본문의 마지막 식, getter, 가변이면 모든 대입)을 푼다. */
-    private fun propertyBindings(file: RouteSourceFile, property: SourceProperty, budget: Budget): List<RetrofitBinding> {
-        val ref = "kt:" + (listOf(property.ownerFqn(file)).filter { it.isNotEmpty() } + property.name).joinToString(".")
-        val sources = mutableListOf<IntRange>()
-        property.initializer?.takeUnless { scopes.isNullLiteral(file, it) }?.let(sources::add)
-        property.lazyBody?.let { scopes.lastStatement(file, it) }?.let(sources::add)
-        property.getterBody?.let { body -> sources += if (file.masked.substring(body).contains(RETURN)) scopes.returnRanges(file, body) else listOf(body) }
-        if (property.mutable || sources.isEmpty() && property.lazyBody == null && property.getterBody == null) sources += scopes.assignments(file, property)
-        if (sources.isEmpty()) {
-            return if (INJECT.containsMatchIn(property.annotations)) injected(declarations.qualifiers(property.annotations), budget) else unknown(ref)
-        }
-        return sources.flatMap { expression(file, it.first, it.last + 1, ref, budget) }.distinct()
-    }
-
-    /** 함수 몸체의 값: 식 몸체면 그 식, 블록이면 모든 `return` 식이다. */
-    private fun functionBody(file: RouteSourceFile, function: RouteFunctionDecl, ref: String, budget: Budget): List<RetrofitBinding> {
-        val bodyStart = function.bodyStart
-        if (bodyStart < 0 || bodyStart >= file.masked.length) return unknown(ref)
-        if (file.masked[bodyStart] == '=') return expression(file, bodyStart + 1, function.end, ref, budget)
-        val returns = scopes.returnRanges(file, (bodyStart + 1) until function.end.coerceAtMost(file.masked.length))
-        if (returns.isEmpty()) return unknown(ref)
-        return returns.flatMap { expression(file, it.first, it.last + 1, ref, budget) }.distinct()
-    }
-
-    /**
-     * 함수 매개변수로 받은 Retrofit이다. `@Provides` provider의 매개변수와 `@Inject` 생성자(Java)의 매개변수만 DI 그래프에서 풀고,
-     * 그 밖의 매개변수는 호출자마다 다를 수 있어 모른다.
-     */
-    private fun injectedParameter(file: RouteSourceFile, function: RouteFunctionDecl, parameter: SourceParameter, budget: Budget): List<RetrofitBinding> {
-        if (parameter.type != "Retrofit") return unknown(null)
-        val annotations = functionAnnotations(file, function)
-        if (!PROVIDES.containsMatchIn(annotations) && !INJECT.containsMatchIn(annotations)) return unknown(null)
-        return injected(declarations.qualifiers(parameter.annotations), budget)
-    }
-
-    /** Kotlin 주 생성자 매개변수로 받은 Retrofit이다. `@Inject constructor`일 때만 DI로 푼다. */
-    private fun injectedConstructorParameter(header: String, parameter: SourceParameter, budget: Budget): List<RetrofitBinding> {
-        if (parameter.type != "Retrofit" || !INJECT.containsMatchIn(header)) return unknown(null)
-        return injected(declarations.qualifiers(parameter.annotations), budget)
-    }
-
-    /** 한정자가 같은 `@Provides` Retrofit provider가 하나일 때만 그 몸체를 푼다. 없거나 여럿이면 모른다. */
-    private fun injected(qualifiers: Set<String>, budget: Budget): List<RetrofitBinding> {
-        val provider = declarations.retrofitProviders.filter { (file, function) ->
-            declarations.qualifiers(functionAnnotations(file, function)) == qualifiers
-        }.singleOrNull() ?: return unknown(null)
-        return functionBody(provider.first, provider.second, scopes.functionId(provider.first, provider.second), budget)
-    }
-
-    /** Koin `get()`·`get<Retrofit>()`·`get(named("x"))`을 한정자가 같은 Retrofit 정의 하나로 푼다. */
-    private fun koin(file: RouteSourceFile, segment: ChainSegment, budget: Budget): List<RetrofitBinding> {
-        val typeArgument = segment.typeArguments?.trim()?.substringAfterLast('.')
-        if (typeArgument != null && typeArgument != "Retrofit") return unknown(null)
-        val qualifier = segment.arguments?.let { koinQualifier(file.code.substring(it.first + 1, it.last)) }
-        val definition = koinDefinitions.filter { it.qualifier == qualifier }.singleOrNull() ?: return unknown(null)
-        return expression(definition.file, definition.body.first, definition.body.last + 1, definition.ref, budget)
-    }
-
-    private fun collectKoinDefinitions(files: List<RouteSourceFile>): List<KoinDefinition> = files
-        .filter { file -> file.imports.any { it.path.startsWith("org.koin.") } }
-        .flatMap { file ->
-            KOIN_DEFINITION.findAll(file.masked).mapNotNull { match ->
-                val open = match.range.last
-                val close = file.braceEnd(open).takeIf { it > open } ?: return@mapNotNull null
-                val body = scopes.lastStatement(file, (open + 1) until close) ?: return@mapNotNull null
-                val typeArgument = match.groupValues[2].trim().substringAfterLast('.')
-                val statement = file.masked.substring(body)
-                val buildsRetrofit = typeArgument == "Retrofit" || typeArgument.isEmpty() && RETROFIT_BUILD_CHAIN.containsMatchIn(statement)
-                if (!buildsRetrofit) return@mapNotNull null
-                val qualifier = match.groups[3]?.let { koinQualifier(file.code.substring(it.range.first + 1, it.range.last)) }
-                val ref = (scopes.declarationId(file, match.range.first) ?: "kt:${file.packageName}") + (qualifier?.let { "#$it" } ?: "")
-                KoinDefinition(file, body, qualifier, ref)
-            }.toList()
-        }
-
-    /** Koin 한정자 인자(`named("x")`, `qualifier = named("x")`)를 `named:x`로 정규화한다. 없으면 null이다. */
-    private fun koinQualifier(arguments: String): String? {
-        val match = KOIN_NAMED.find(arguments) ?: return null
-        return "named:" + (scriptString(match.groupValues[1]) ?: match.groupValues[1].trim())
+        return functionCall(file, qualifier, last.name, last.start, budget)
     }
 
     /** base 인자 범위의 결합들이다. 값 집합의 각 URL마다 하나다. */
@@ -272,19 +209,15 @@ internal class RetrofitInstanceResolver(
     private fun resolver(file: RouteSourceFile): RoutePathResolver = pathResolvers.getOrPut(file) { RoutePathResolver(file) }
 
     private companion object {
-        const val MAX_DEPTH = 16
-
-        /** 수신 객체를 그대로 돌려주는 범위 함수다. 블록 안의 `baseUrl(…)`을 읽는다. */
+        /** 수신 객체를 그대로 돌려주는 범위 함수다. 블록 안의 `baseUrl(…)`·`client(…)`를 읽는다. */
         val SCOPE_BLOCKS = setOf("apply", "also")
-        val PROVIDES = Regex("@(?:dagger\\.)?Provides\\b")
-        val INJECT = Regex("@(?:javax\\.inject\\.|jakarta\\.inject\\.)?Inject\\b")
-        val RETURN = Regex("\\breturn\\b(?!@)")
+        /** 요청을 보내는 client를 정하는 `Retrofit.Builder` 메서드다(마지막 호출이 이긴다). */
+        val CLIENT_SETTERS = setOf("client", "callFactory")
+        val BASE_URL_CALL = Regex("(?<![\\w.])(?:this\\s*\\.\\s*)?(baseUrl)\\s*\\(")
+        val CLIENT_CALL = Regex("(?<![\\w])(client|callFactory)\\s*\\(")
         val REFERENCE = Regex("[A-Za-z_]\\w*(?:\\s*\\.\\s*[A-Za-z_]\\w*)*")
         val HTTP_URL_EXTENSION = Regex("(.+?)\\s*\\.\\s*(?:toHttpUrl|toHttpUrlOrNull)\\s*\\(\\s*\\)\\s*(?:!!)?", RegexOption.DOT_MATCHES_ALL)
         val HTTP_URL_FACTORY = Regex("(?:okhttp3\\s*\\.\\s*)?HttpUrl\\s*\\.\\s*(?:Companion\\s*\\.\\s*)?(?:get|parse)\\s*(\\().*", RegexOption.DOT_MATCHES_ALL)
-        val KOIN_DEFINITION = Regex("(?<![\\w.])(single|factory|scoped)\\s*(?:<\\s*([\\w.]+)\\s*>)?\\s*(\\((?:[^()]|\\([^()]*\\))*\\))?\\s*\\{")
-        val KOIN_NAMED = Regex("\\bnamed\\s*\\(\\s*(\"(?:[^\"\\\\]|\\\\.)*\")\\s*\\)")
-        val RETROFIT_BUILD_CHAIN = Regex("\\bRetrofit\\s*\\.\\s*Builder\\s*\\(")
     }
 }
 
@@ -292,9 +225,6 @@ internal class RetrofitInstanceResolver(
 private val BUILDER_METHODS = setOf(
     "build", "client", "callFactory", "addConverterFactory", "addCallAdapterFactory", "callbackExecutor", "validateEagerly", "newBuilder",
 )
-
-/** Koin 정의 하나다. [body]는 정의 람다의 마지막 식 범위다. */
-private data class KoinDefinition(val file: RouteSourceFile, val body: IntRange, val qualifier: String?, val ref: String)
 
 /**
  * 매개변수 하나다. [annotations]는 매개변수에 붙은 어노테이션 원문이다(DI 한정자용). [type]은 한정·제네릭을 뗀 단순 이름이고,
@@ -425,10 +355,11 @@ private fun rootLength(segments: List<ChainSegment>): Int {
     return if (next.arguments != null && !builderMethod) plain + 1 else plain
 }
 
-/** 람다 블록 [lambda] 바로 안의 마지막 `baseUrl(…)` 인자 괄호 범위다. */
-private fun lambdaBaseUrl(file: RouteSourceFile, lambda: IntRange): IntRange? {
-    val pattern = Regex("(?<![\\w.])(?:this\\s*\\.\\s*)?baseUrl\\s*\\(")
-    return pattern.findAll(file.masked.substring(0, lambda.last), lambda.first + 1).lastOrNull { match ->
+/**
+ * 람다 블록 [lambda] 바로 안(중첩 블록 밖)의 마지막 [pattern] 호출의 (이름, 인자 괄호 범위)다. [pattern]의 1번 그룹이 호출
+ * 이름이고 매치는 여는 괄호에서 끝난다.
+ */
+private fun lambdaCall(file: RouteSourceFile, lambda: IntRange, pattern: Regex): Pair<String, IntRange>? =
+    pattern.findAll(file.masked.substring(0, lambda.last), lambda.first + 1).lastOrNull { match ->
         file.masked.substring(lambda.first + 1, match.range.first).let { text -> text.count { it == '{' } == text.count { it == '}' } }
-    }?.let { match -> balancedEnd(file.code, match.range.last).takeIf { it > match.range.last }?.let { match.range.last..it } }
-}
+    }?.let { match -> balancedEnd(file.code, match.range.last).takeIf { it > match.range.last }?.let { match.groupValues[1] to (match.range.last..it) } }

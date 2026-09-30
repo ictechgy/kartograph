@@ -6,6 +6,7 @@ import dev.kartograph.core.BridgeSymbol
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.HttpWrapperDeclaration
 import dev.kartograph.core.RouteCallEvidence
+import dev.kartograph.core.RouteLimitationScope
 import dev.kartograph.core.TestSourceSets
 import dev.kartograph.index.RouteUrlRules.ArgumentValue
 import dev.kartograph.index.RouteUrlRules.CallArgument
@@ -62,7 +63,11 @@ public class RouteCallScanner(
             RouteFileScan(file, wrappersByDeclaration, stats, facts, includeTests, retrofitDeclarations, retrofitBases, spring?.calls).run()
         }
         spring?.exchanges?.unresolvedInterfaces?.let(stats.unresolvedExchangeInterfaces::addAll)
-        stats.urlRewriters = retrofitBases.urlRewriters
+        retrofitBases.unboundRewrites?.let { reason ->
+            stats.urlRewriters = retrofitBases.urlRewriters
+            stats.unboundRewriteReason = reason
+        }
+        val rewriteLimitations = rewriteLimitations(stats)
         val retrofitSymbols = graph?.takeIf { retrofitDeclarations.isNotEmpty() }?.let(::RetrofitSymbolIndex)
         val ordered = facts.sortedWith(
             compareBy(
@@ -86,7 +91,8 @@ public class RouteCallScanner(
             target = "http",
             project = root.toString().replace('\\', '/'),
             facts = ordered,
-            limitations = limitations(stats, wrappersByDeclaration, files).distinct().sorted(),
+            limitations = (limitations(stats, wrappersByDeclaration, files) + rewriteLimitations.map { it.first }).distinct().sorted(),
+            limitationScopes = rewriteLimitations.mapNotNull { it.second },
             roles = listOf("client"),
             testSources = if (includeTests) "included" else "excluded",
             service = service,
@@ -171,10 +177,13 @@ public class RouteCallScanner(
                 "scanner does not model (RequestEntity, a receiver not proven to be a client, a request spec split across statements); " +
                 "their requests are not reported",
         )
-        if (stats.urlRewriters > 0) add(
-            "url-rewrite-interceptors: ${stats.urlRewriters} OkHttp interceptor request rewrite(s) (newBuilder().url/host/path) may " +
-                "change where requests go; Retrofit baseUrls were not applied",
-        )
+        stats.unboundRewriteReason?.let { reason ->
+            add(
+                "url-rewrite-interceptors: ${stats.urlRewriters} OkHttp interceptor request rewrite(s) (newBuilder().url/host/path, a new " +
+                    "Request, or an Authenticator/EventListener not proven to keep the URL) may change where requests go and are not bound " +
+                    "to the OkHttp clients they affect ($reason); Retrofit baseUrls and absolute annotation hosts were not applied",
+            )
+        }
         val unmodeled = files.count { file ->
             (includeTests || !file.isTest) && file.imports.any(::importsUnmodeledClient) &&
                 wrappers.none { wrapper -> declaresWrapper(file, wrapper) }
@@ -183,6 +192,29 @@ public class RouteCallScanner(
             "route-call-coverage: $unmodeled source file(s) use HTTP clients this scanner does not model (OkHttp, Ktor, Volley, java.net.http, Feign); their requests are not reported",
         )
     }
+
+    /**
+     * URL을 바꾸는 client를 쓰는 Retrofit 인스턴스마다의 `url-rewrite-interceptors:` 한 줄과 증명한 스코프다.
+     *
+     * 스코프(isthmus http limitation 스코프, 호출 측)는 숨은 요청의 상한이다 — 모든 재작성이 요청 경로를 보존하고(authority만
+     * 바꿈) 그 인스턴스의 모든 사실의 경로를 알 때만 싣는다. base를 알던 상대 경로·앞 `/` 경로·전체 URL 경로는 root 템플릿,
+     * base를 모르던 상대 경로는 알 수 없는 앞부분 뒤의 접미사다. method를 보존함을 증명하고 모든 동사가 리터럴이면 `methods`도 싣는다.
+     */
+    private fun rewriteLimitations(stats: RouteScanStats): List<Pair<String, RouteLimitationScope?>> =
+        stats.rewrittenInstances.map { (ref, instance) ->
+            val text = "url-rewrite-interceptors: Retrofit instance ${ref.ifEmpty { "(no source declaration)" }} sends requests through an " +
+                "OkHttp client with ${instance.rewrites} request rewrite(s) (a URL-rewriting interceptor, an Authenticator/EventListener " +
+                "not proven to keep the URL, or a custom Call.Factory); its baseUrl and absolute annotation hosts were not applied to " +
+                "${instance.services.size} service interface(s)"
+            val scope = if (!instance.pathsProvable || instance.templates.isEmpty() && instance.suffixes.isEmpty()) null
+            else RouteLimitationScope(
+                limitation = text,
+                templates = instance.templates.toList(),
+                templateSuffixes = instance.suffixes.toList(),
+                methods = if (instance.methodsProvable) instance.methods.toList() else emptyList(),
+            ).takeIf { RouteLimitationScopes.problem(it) == null }
+            text to scope
+        }
 
     /**
      * import가 모델링하지 않은 클라이언트의 요청 API인지 본다. OkHttp의 본문·미디어 타입·헤더 값 타입만 쓰는 파일(Retrofit
@@ -257,8 +289,14 @@ internal class RouteScanStats {
     /** base를 풀지 못한 결합으로 사실을 낸 Retrofit 서비스 FQN이다(`unresolved-base-url:`). */
     val unresolvedRetrofitServices: MutableSet<String> = sortedSetOf()
 
-    /** URL을 바꾸는 OkHttp 인터셉터 호출 수다(`url-rewrite-interceptors:`). */
+    /** 결합을 증명하지 못한 URL 재작성 수다(프로젝트 전체 `url-rewrite-interceptors:`). */
     var urlRewriters = 0
+
+    /** 재작성과 client의 결합을 증명하지 못해 모든 base를 버린 이유다. null이면 인스턴스별로 판단했다. */
+    var unboundRewriteReason: String? = null
+
+    /** baseRef(없으면 빈 문자열) → URL을 바꾸는 client를 쓰는 Retrofit 인스턴스다(인스턴스별 `url-rewrite-interceptors:`). */
+    val rewrittenInstances: MutableMap<String, RewrittenRetrofitInstance> = sortedMapOf()
 
     /** base를 풀지 못한 채 상대 경로로 사실을 낸 Spring 명령형 클라이언트 호출 수다(`unresolved-base-url:`). */
     var unresolvedSpringCalls = 0
@@ -271,6 +309,27 @@ internal class RouteScanStats {
 
     /** 모양을 모델링하지 못한 Spring 클라이언트 호출 수다(`route-call-coverage:`). */
     var springUnmodeled = 0
+}
+
+/**
+ * URL을 바꾸는 client를 쓰는 Retrofit 인스턴스 하나에서 모은 사실의 요약이다.
+ *
+ * @property services 이 인스턴스로 만든(상속 메서드 포함) 서비스 인터페이스 FQN이다
+ * @property rewrites client에 붙은 재작성 수의 최댓값이다
+ * @property pathsProvable 모든 사실의 요청 경로 상한을 증명했다
+ * @property methodsProvable 모든 사실의 method를 증명했다
+ * @property templates 숨은 요청의 root 템플릿이다
+ * @property suffixes 알 수 없는 앞부분 뒤의 접미사다
+ * @property methods 숨은 요청의 method다
+ */
+internal class RewrittenRetrofitInstance {
+    val services: MutableSet<String> = sortedSetOf()
+    var rewrites = 0
+    var pathsProvable = true
+    var methodsProvable = true
+    val templates: MutableSet<String> = sortedSetOf()
+    val suffixes: MutableSet<String> = sortedSetOf()
+    val methods: MutableSet<String> = sortedSetOf()
 }
 
 /**
@@ -596,8 +655,10 @@ private class RouteFileScan(
         val types = file.enclosingTypes(match.range.first)
         val qualifiedName = (listOf(file.packageName).filter { it.isNotEmpty() } + types.map { it.name } + signature.name).joinToString(".")
         val service = types.lastOrNull()?.let { typeFqn(file, it) }
+        val bindings = service?.let(retrofitBases::bindings).orEmpty()
         val routes = if (signature.usesUrl || pathText == null) listOf(ComposedRoute(template = null, dynamic = true) to null)
-        else retrofitVariants(pathText, match.range.first, signature.encodedPathNames, service)
+        else retrofitVariants(pathText, match.range.first, signature.encodedPathNames, service, bindings)
+        recordRewrites(bindings, method, pathText.takeUnless { signature.usesUrl }, match.range.first, signature.encodedPathNames, service)
         routes.forEach { (composed, baseRef) ->
             emit(
                 match.range.first, method, composed, pathText.takeUnless { signature.usesUrl }, service = null, fallbackAnchor = "base",
@@ -619,12 +680,20 @@ private class RouteFileScan(
      * 결합은 하나로 합치고, 인스턴스가 여럿이면 `baseRef`를 싣지 않는다(authority가 귀속을 맡는다). base를 모르는 결합은
      * 인스턴스(`baseRef`)마다 하나씩 낸다 — 서로 다른 인스턴스는 서로 다른 link로 귀속될 수 있기 때문이다.
      */
-    private fun retrofitVariants(pathText: String, offset: Int, encodedNames: Set<String>, service: String?): List<Pair<ComposedRoute, String?>> {
+    private fun retrofitVariants(
+        pathText: String,
+        offset: Int,
+        encodedNames: Set<String>,
+        service: String?,
+        bindings: List<RetrofitBinding>,
+    ): List<Pair<ComposedRoute, String?>> {
         val relative = retrofitRoute(pathText, offset, encodedNames)
         // 전체 URL·network-path(`//host`)는 base를 쓰지 않는다 — host가 보간이라 authority가 없어도 base host를 붙이지 않는다.
-        val head = resolver.parts(pathText, offset).takeWhile { it is UrlPart.Literal }.joinToString("") { (it as UrlPart.Literal).text }
-        if (head.startsWith("//") || ABSOLUTE_URL.containsMatchIn(head) || relative.pathAnchor == null) return listOf(relative to null)
-        val bindings = service?.let(retrofitBases::bindings).orEmpty()
+        // URL을 바꾸는 client가 요청을 보낼 수 있으면 어노테이션의 host도 믿지 않는다.
+        if (isAbsolute(pathText, offset)) {
+            return listOf((if (retrofitBases.absoluteHostUntrusted(service)) relative.copy(authority = null) else relative) to null)
+        }
+        if (relative.pathAnchor == null) return listOf(relative to null)
         if (bindings.isEmpty()) {
             service?.let(stats.unresolvedRetrofitServices::add)
             return listOf(relative to null)
@@ -637,6 +706,45 @@ private class RouteFileScan(
         val unknown = bindings.filter { it.base == null }.map { it.baseRef }.distinct().map { relative to it }
         if (unknown.isNotEmpty()) service?.let(stats.unresolvedRetrofitServices::add)
         return (known + unknown).sortedWith(compareBy({ it.first.authority.orEmpty() }, { it.second.orEmpty() }, { it.first.template ?: it.first.channelPrefix.orEmpty() }))
+    }
+
+    /** 어노테이션 경로가 전체 URL·network-path(`//host`)인지 본다. */
+    private fun isAbsolute(pathText: String, offset: Int): Boolean {
+        val head = resolver.parts(pathText, offset).takeWhile { it is UrlPart.Literal }.joinToString("") { (it as UrlPart.Literal).text }
+        return head.startsWith("//") || ABSOLUTE_URL.containsMatchIn(head)
+    }
+
+    /**
+     * URL을 바꾸는 client를 쓰는 결합마다 이 메서드의 숨은 요청(경로 상한과 method)을 인스턴스 요약에 더한다. 경로를 보존하는
+     * 재작성이면 base를 알던 결합은 base와 결합한 root 템플릿, 모르던 결합은 상대 경로 접미사다. `@Url`·dynamic 경로는 상한을
+     * 증명하지 못한다.
+     */
+    private fun recordRewrites(bindings: List<RetrofitBinding>, method: String, pathText: String?, offset: Int, encodedNames: Set<String>, service: String?) {
+        bindings.forEach { binding ->
+            val rewrite = binding.rewrite ?: return@forEach
+            val instance = stats.rewrittenInstances.getOrPut(binding.baseRef.orEmpty()) { RewrittenRetrofitInstance() }
+            service?.let(instance.services::add)
+            instance.rewrites = maxOf(instance.rewrites, rewrite.rewrites)
+            if (!rewrite.methodPreserved || method == METHOD_DYNAMIC) instance.methodsProvable = false else instance.methods += method
+            val element = if (rewrite.pathPreserved && pathText != null) hiddenPath(pathText, offset, encodedNames, rewrite.withheldBase) else null
+            when {
+                element == null -> instance.pathsProvable = false
+                element.second -> instance.templates += element.first
+                else -> instance.suffixes += element.first
+            }
+        }
+    }
+
+    /** 경로를 보존하는 재작성 뒤의 요청 경로 (템플릿, root 여부)다. 증명하지 못하면 null이다. */
+    private fun hiddenPath(pathText: String, offset: Int, encodedNames: Set<String>, base: RetrofitBaseUrl?): Pair<String, Boolean>? {
+        val relative = retrofitRoute(pathText, offset, encodedNames)
+        if (relative.dynamic || relative.template == null) return null
+        if (isAbsolute(pathText, offset) || relative.pathAnchor == "root") return relative.template to true
+        if (base != null) {
+            val composed = retrofitRoute(pathText, offset, encodedNames, base.path)
+            return composed.template?.takeUnless { composed.dynamic }?.let { it to true }
+        }
+        return relative.template.takeIf { it != "/" }?.let { it to false }
     }
 
     /** 어노테이션 인자 하나다. Java·Kotlin 모두 `name = value`면 명명 요소다. */

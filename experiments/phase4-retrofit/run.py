@@ -21,7 +21,7 @@ HARNESS = Path(__file__).resolve().parent / "harness"
 ORACLE = ROOT / "fixtures" / "retrofit-corpus" / "oracle"
 OUTPUT = ORACLE / "retrofit-requests.json"
 TIMEOUT_SECONDS = 1800
-VERSIONS = {"retrofit": "2.12.0", "okhttp": "3.14.9", "mockwebserver": "3.14.9"}
+VERSIONS = {"retrofit": "2.12.0", "okhttp": "3.14.9", "mockwebserver": "3.14.9", "dagger": "2.59", "koin": "4.2.2"}
 
 
 def run_oracle(output: Path) -> dict:
@@ -35,9 +35,9 @@ def run_oracle(output: Path) -> dict:
     return json.loads(output.read_text())
 
 
-def source_files() -> list:
+def source_files(project: str = "retrofit-client") -> list:
     """합성 서비스 소스 목록이다 — 테스트가 classpath에서 같은 파일을 임시 프로젝트로 복사해 스캔한다."""
-    return sorted(str(path.relative_to(ORACLE)) for path in (ORACLE / "retrofit-client").rglob("*")
+    return sorted(str(path.relative_to(ORACLE)) for path in (ORACLE / project).rglob("*")
                   if path.suffix in (".java", ".kt"))
 
 
@@ -53,6 +53,9 @@ def build_document() -> dict:
         "oracle": dict(VERSIONS, source="experiments/phase4-retrofit/harness"),
         "sources": source_files(),
         "cases": recorded["cases"],
+        # 인터셉터 결합 코퍼스는 따로 스캔하는 프로젝트다(재작성 인터셉터가 기존 코퍼스의 결합을 바꾸지 않게).
+        "interceptorSources": source_files("interceptor-client"),
+        "interceptorCases": recorded["interceptorCases"],
     }
 
 
