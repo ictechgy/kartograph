@@ -53,3 +53,24 @@ python3 measure_judgeable.py <isthmus>/dist/cli/main.js server.json mappings.jso
 
 해석은 [Spring 서버 라우트](../../docs/SPRING-ROUTES.md#오라클-검증-2026-09-28)에 있다. 서버는 이 측정에서 띄우지 않았다(9월 28일에
 기록한 mappings를 오라클로 썼다).
+
+## Security·Data REST·GraphQL 스코프 재측정 (2026-09-30)
+
+같은 revision의 앱 3개를 JDK 21로 다시 빌드해 띄우고 `/actuator/mappings`를 받았다. actuator mappings는 서블릿 필터가 받는 경로를
+싣지 않으므로 `/login`·`/logout`·`/default-ui.css`·`/oauth2/authorization/x`·`/login/oauth2/code/x`·`/zz-missing`에 GET·POST·PUT·
+DELETE·HEAD를 보내 응답 코드를 기록했다(`probe-<app>.txt`, 404·500이 아니면 필터가 받은 것). 서버는 기록 뒤 모두 껐다. isthmus는
+`c395c59`를 저장소 밖에 풀어 `node src/cli/main.ts`로 실행했다(런타임 의존성 없음).
+
+```bash
+python3 measure_judgeable.py <isthmus>/src/cli/main.ts server.json mappings.json <label> <out-dir> [<context-path>] [springdoc-h2] --probe=probe.txt
+```
+
+| 앱 | 전(main `5564cb3`) | 후 | 정밀도(후) |
+|---|---|---|---|
+| spring-petclinic | 16/28 | 16/28 | 16/16 |
+| spring-petclinic-kotlin | 17/30 | 17/30 | 17/17 |
+| spring-petclinic-rest (`/petclinic`, `springdoc-h2`) | 0/49 | 40/49 (81.6%) | 40/40 |
+
+spring-petclinic-rest는 `/petclinic/logout`만 GET·POST·PUT·DELETE에 302로 응답했다(CSRF를 끈 `DisableSecurityConfig`). 이 네 호출을
+양성 표본으로 넣었고 error가 나지 않았다. 해석은 [Spring 서버 라우트](../../docs/SPRING-ROUTES.md#spring-security)에 있다.
+

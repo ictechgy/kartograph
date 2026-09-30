@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """error 판정 가능 비율 측정 — 합성 클라이언트 호출을 만들어 isthmus check로 판정하고 actuator mappings 오라클로 정밀도를 확인한다.
 
-사용: measure_judgeable.py <isthmus dist/cli/main.js> <server.json> <mappings.json> <label> <out-dir> [<context-path>]
+사용: measure_judgeable.py <isthmus dist/cli/main.js> <server.json> <mappings.json> <label> <out-dir> [<context-path>] [springdoc-h2]
+      [--probe=<probe.txt>]
+
+- --probe: 실행 중인 앱에 보낸 요청의 응답 기록(`<METHOD> <app path> <status>` 줄). 404·500이 아닌 요청은 필터(Spring Security 등)가
+  받은 것으로 보고 오라클에 더하고 프레임워크 호출(양성 표본)로도 넣는다 — actuator mappings는 서블릿 필터가 받는 경로를 싣지 않는다.
 
 - 음성 표본: 서버 문서의 정적 root 선언 키마다 없는 경로(`…/zz-missing`)와 선언 경로의 다른 method 호출. 오라클의 프로젝트
   핸들러가 받는 호출은 뺀다.
@@ -13,8 +17,10 @@ import re
 import subprocess
 import sys
 
-isthmus, server_path, mappings_path, label, out_dir = sys.argv[1:6]
-ctx = sys.argv[6] if len(sys.argv) > 6 else ''
+probe_args = [a for a in sys.argv[1:] if a.startswith('--probe=')]
+argv = [sys.argv[0]] + [a for a in sys.argv[1:] if not a.startswith('--probe=')]
+isthmus, server_path, mappings_path, label, out_dir = argv[1:6]
+ctx = argv[6] if len(argv) > 6 else ''
 server = json.load(open(server_path))
 mappings = json.load(open(mappings_path))
 
@@ -68,6 +74,13 @@ def oracle_handlers():
 
 
 HANDLERS = oracle_handlers()
+PROBED = []  # (method, app path) — 필터가 응답한 요청
+for probe in probe_args:
+    for line in open(probe.split('=', 1)[1]):
+        method, path, status = line.split()
+        if status not in ('404', '500'):
+            PROBED.append((method, path))
+            HANDLERS.append(({method}, re.compile('^' + re.escape(ctx + path) + '$'), path, False))
 
 
 def served(method, template, project_only=False):
@@ -98,7 +111,8 @@ for template, verbs in sorted(verbs_by_template.items()):
     other = next(v for v in ['DELETE', 'PATCH', 'PUT', 'POST'] if v not in verbs)
     calls.append(('method-mismatch', other, template.replace('{**}', 'a/b')))
 framework_calls = [('GET', '/actuator/health'), ('POST', '/error'), ('GET', '/webjars/app.css'), ('GET', '/favicon.ico')]
-if len(sys.argv) > 7 and sys.argv[7] == 'springdoc-h2':
+framework_calls += PROBED
+if len(argv) > 7 and argv[7] == 'springdoc-h2':
     framework_calls += [('GET', '/v3/api-docs'), ('GET', '/swagger-ui/index.html'), ('POST', '/h2-console/login.do')]
 for method, template in framework_calls:
     calls.append(('framework', method, ctx + template))
