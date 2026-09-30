@@ -63,6 +63,10 @@ expect_status 0 "query --help" query --help
 expect_status 0 "bridges --help" bridges --help
 expect_status 0 "routes --help" routes --help
 expect_status 0 "reach --help" reach --help
+expect_status 0 "impact --help" impact --help
+expect_status 0 "impact --format language-traversal --help" impact --format language-traversal --help
+expect_status 0 "impact --format language-traversal -h" impact --format language-traversal -h
+expect_status 0 "reach --format language-traversal --help" reach --format language-traversal --help
 expect_status 0 "skill --help" skill --help
 expect_status 0 "cycles --help" cycles --help
 expect_status 0 "rules --help" rules --help
@@ -129,6 +133,7 @@ expect_output "Exit codes:" "도움말에 종료 코드 표" --help
 expect_output "kartograph baseline" "도움말에 baseline 명령" --help
 expect_output "kartograph cycles" "도움말에 architecture 명령" --help
 expect_output "kartograph reach" "도움말에 정방향 순회 명령" --help
+expect_output "Dispatch modes" "impact 순회 형식 도움말" impact --format language-traversal --help
 expect_output "digraph kartograph" "graph의 DOT 문서" graph --classes "$TEMPORARY_DIRECTORY/classes"
 expect_output '"format": "code-graph"' "graph의 교환 JSON 문서" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json
 expect_output '"limitations"' "graph JSON의 한계 필드" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json

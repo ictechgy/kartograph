@@ -177,6 +177,12 @@
 - isthmus `c395c59` 재측정에서 error 판정 가능 비율이 spring-petclinic-rest 0/49→40/49(81.6%)가 됐고, spring-petclinic 16/28·
   spring-petclinic-kotlin 17/30은 같다. 필터 응답을 실제로 기록한 오라클로 거짓 error는 0건이다(`measure_judgeable.py --probe`).
 
+### language-traversal 도움말 (Fixed)
+
+- `impact --help`가 안내하는 `impact --format language-traversal --help`(와 `-h`)가 `unknown traversal option: --help`로
+  종료 코드 64였다. `--format language-traversal` 한 쌍을 뗀 나머지가 `--help`·`-h` 하나뿐이면 순회 도움말을 내고 0으로 끝난다.
+  `reach --format language-traversal --help`도 같다. 다른 인자가 섞이면 이전처럼 사용 오류다.
+
 ### Gradle plugin 다중 모듈 snapshot (Fixed·Added)
 
 - Fixed: build 디렉터리를 project 밖으로 옮긴 Android 모듈의 snapshot이 `Android XML is outside the project root`로
