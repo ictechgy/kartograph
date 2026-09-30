@@ -102,8 +102,13 @@ class SpringFrameworkRoutesTest {
               mvc:
                 static-path-pattern: ${'$'}{unknown.pattern}
         """)
+        write("src/main/java/demo/Security.java", """
+            package demo;
+            class Security { @org.springframework.context.annotation.Bean WebSecurityCustomizer ignore() { return null; } }
+        """)
         val document = scan()
-        listOf("error endpoint", "actuator", "Spring Security", "Spring Data REST", "GraphQL").forEach { fragment ->
+        // Data REST 기본 base path는 루트라 좁힐 것이 없다. WebSecurityCustomizer는 체인을 바꿀 수 있다.
+        listOf("error endpoint", "actuator", "Spring Security", "Spring Data REST").forEach { fragment ->
             assertNull(document.scopeOf(fragment), fragment)
         }
         // 풀지 못한 정적 경로 패턴은 앱 전체로 넓히되 GET·HEAD 스코프는 유지한다(리소스 핸들러는 method로 좁혀진다).
@@ -183,5 +188,66 @@ class SpringFrameworkRoutesTest {
         val document = scan()
         assertTrue(document.limitations.any { it.startsWith("framework-provided-routes: ") })
         assertTrue(document.limitationScopes.isEmpty())
+    }
+
+    @Test
+    fun `data rest is scoped to its base path under the context path`() {
+        build("org.springframework.boot:spring-boot-starter-web", "org.springframework.boot:spring-boot-starter-data-rest")
+        write("src/main/resources/application.properties", "server.servlet.context-path=/ctx\nspring.data.rest.base-path=api/")
+        val scope = scan().scopeOf("Spring Data REST")!!
+        assertEquals(listOf("/ctx/api"), scope.templatePrefixes)
+        assertTrue(scope.methods.isEmpty())
+        assertFalse(RouteLimitationScopes.applies(scope, "/ctx/owners", "DELETE", "root"))
+        assertTrue(RouteLimitationScopes.applies(scope, "/ctx/api/owners/{}", "PATCH", "root"))
+    }
+
+    @Test
+    fun `data rest base paths that code or profiles can change stay document-wide`() {
+        build("org.springframework.boot:spring-boot-starter-web", "org.springframework.boot:spring-boot-starter-data-rest")
+        write("src/main/resources/application.properties", "spring.data.rest.base-path=/api")
+        write("src/main/resources/application-prod.properties", "spring.data.rest.base-path=/v2")
+        assertNull(scan().scopeOf("Spring Data REST"), "profile override")
+        project.resolve("src/main/resources/application-prod.properties").toFile().delete()
+        write("src/main/java/demo/Rest.java", """
+            package demo;
+            class Rest { void configure(Object config) { config.setBasePath("/elsewhere"); } }
+        """)
+        assertNull(scan().scopeOf("Spring Data REST"), "setBasePath in code")
+        project.resolve("src/main/java/demo/Rest.java").toFile().delete()
+        // Boot 자동 구성 모듈이 없으면 spring.data.rest.* 속성이 적용된다는 근거가 없다.
+        build("org.springframework.boot:spring-boot-starter-web", "org.springframework.data:spring-data-rest-webmvc")
+        assertNull(scan().scopeOf("Spring Data REST"), "no Boot auto-configuration")
+    }
+
+    @Test
+    fun `graphql is scoped to its router paths`() {
+        build("org.springframework.boot:spring-boot-starter-web", "org.springframework.boot:spring-boot-starter-graphql")
+        assertEquals(listOf("/graphiql", "/graphql", "/graphql/schema"), scan().scopeOf("GraphQL")!!.templates)
+        write("src/main/resources/application.yml", """
+            server:
+              servlet:
+                context-path: /ctx
+            spring:
+              graphql:
+                http:
+                  path: /api/gql/
+                graphiql:
+                  path: /ide
+                websocket:
+                  path: /subscriptions
+        """)
+        val scope = scan().scopeOf("GraphQL")!!
+        // 옛 키 기본값(/graphql)도 합집합에 남긴다 — 버전마다 읽는 키가 다르다.
+        assertEquals(listOf("/ctx/api/gql", "/ctx/api/gql/schema", "/ctx/graphql", "/ctx/graphql/schema", "/ctx/ide", "/ctx/subscriptions"), scope.templates)
+        assertEquals(listOf("GET", "HEAD", "POST"), scope.methods)
+    }
+
+    @Test
+    fun `unresolved graphql paths stay document-wide`() {
+        build("org.springframework.boot:spring-boot-starter-web", "org.springframework.boot:spring-boot-starter-graphql")
+        write("src/main/resources/application.properties", "spring.graphql.path=${'$'}{gql.path}")
+        assertNull(scan().scopeOf("GraphQL"))
+        write("src/main/resources/application.properties", "spring.graphql.websocket.path=ws")
+        assertNull(scan().scopeOf("GraphQL"))
     }
 }

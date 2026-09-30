@@ -32,6 +32,11 @@ internal class SpringProjectSignals private constructor(
      * 좁히지 않는다.
      */
     val resourceHandlersRegistered: Boolean = false,
+    /**
+     * 프로덕션 코드가 Data REST base path를 바꾸거나(`setBasePath`) `RepositoryRestMvcConfiguration`을 직접 쓴다(Boot 자동 구성이 물러나
+     * `spring.data.rest.*`가 적용되지 않는다). Data REST 스코프를 base path로 좁히지 않는다.
+     */
+    val dataRestConfiguredInCode: Boolean = false,
 ) {
     /**
      * 신호와 Boot 버전으로 한계를 만든다. 프레임워크 제공 경로는 스코프와 함께 [SpringFrameworkRoutes]가 만든다.
@@ -72,6 +77,7 @@ internal class SpringProjectSignals private constructor(
             optionalTrailingSeparator = files.any { OPTIONAL_SEPARATOR.containsMatchIn(it.masked) },
             antMatcherConfigured = files.any { ANT_MATCHER.containsMatchIn(it.masked) },
             resourceHandlersRegistered = files.any { RESOURCE_HANDLER.containsMatchIn(it.masked) },
+            dataRestConfiguredInCode = files.any { !it.isTest && DATA_REST_CODE.containsMatchIn(it.masked) },
         )
 
         private val FUNCTIONAL_IMPORTS = listOf("org.springframework.web.servlet.function.", "org.springframework.web.reactive.function.server.")
@@ -82,6 +88,7 @@ internal class SpringProjectSignals private constructor(
         private val TRAILING_SLASH = Regex("setUseTrailingSlashMatch\\s*\\(\\s*true|useTrailingSlashMatch\\s*=\\s*true|\\bUrlHandlerFilter\\b")
         private val OPTIONAL_SEPARATOR = Regex("setMatchOptionalTrailingSeparator\\s*\\(\\s*true|matchOptionalTrailingSeparator\\s*=\\s*true")
         private val RESOURCE_HANDLER = Regex("\\.\\s*addResourceHandler\\s*\\(")
+        private val DATA_REST_CODE = Regex("\\bsetBasePath\\s*\\(|\\bRepositoryRestMvcConfiguration\\b")
         private val ANT_MATCHER = Regex("\\.\\s*setPathMatcher\\s*\\(")
         private val LAUNCHER = Regex("\\bSpringApplication\\s*\\.\\s*run\\s*\\(|\\brunApplication\\s*[<(]|\\bSpringApplicationBuilder\\s*\\(")
         private val BOOT_LAUNCH_IMPORTS = setOf(

@@ -43,14 +43,18 @@ internal data class ServerLimitation(val message: String, val scope: RouteLimita
  * - actuator: `management.endpoints.web.base-path`(기본 `/actuator`) 아래, Cloud Foundry `/cloudfoundryapplication` 아래.
  * - springdoc: 모든 엔드포인트가 `@GetMapping`이거나 리소스 핸들러다(springdoc-openapi 3.1.0) — 경로 대신 GET·HEAD로 좁힌다.
  * - H2 console: `spring.h2.console.path`(기본 `/h2-console`) 서블릿 매핑 `path` 아래 전체(와일드카드 매핑), method 제한 없음.
- * - Spring Security·Spring Data REST·GraphQL은 경로를 설정·코드·spring.factories 기본 구성으로 바꿀 수 있어 증명하지 못한다 — 스코프
- *   없이 문서 전체에 적용한다.
+ * - Spring Security: [SpringSecurityRoutes]가 `SecurityFilterChain` 구성에서 증명한 필터 응답 경로(서블릿 스택만).
+ * - Spring Data REST: 모든 핸들러가 `BasePathAwareHandlerMapping`·`RepositoryRestHandlerMapping`으로 `spring.data.rest.base-path`
+ *   아래에 매핑된다(HAL explorer 리소스도 base path 아래). base path가 루트면 증명할 것이 없다.
+ * - GraphQL: Boot `GraphQlWebMvcAutoConfiguration`·`GraphQlWebFluxAutoConfiguration`의 라우터가 `spring.graphql.http.path`(3.5 이전과
+ *   3.5의 옛 키 `spring.graphql.path`, 기본 `/graphql`)의 GET·POST, `<path>/schema`, GraphiQL 경로, WebSocket 경로만 등록한다.
  *
  * 경로가 설정값에 기대면 기본 프로필 값을 쓰되 다른 프로필이 바꾸면, 또는 값을 풀지 못하면 그 제공자의 스코프를 생략한다.
  *
  * @param apps 프레임워크 경로를 등록할 앱 모듈의 설정이다
  * @param requestPrefix 앱 모듈의 요청 경로 접두사와 앵커다. 웹 서버가 없는 앱이면 null이다
  * @param webStack 앱 모듈의 웹 스택이다(`servlet`·`reactive`·null)
+ * @param security Spring Security 필터 응답 경로를 증명하는 분석이다
  */
 internal class SpringFrameworkRoutes(
     private val config: SpringProjectConfig,
@@ -58,6 +62,7 @@ internal class SpringFrameworkRoutes(
     private val apps: List<SpringModuleConfig>,
     private val requestPrefix: (SpringModuleConfig) -> Pair<String, String>?,
     private val webStack: (SpringModuleConfig) -> String?,
+    private val security: SpringSecurityRoutes? = null,
 ) {
     /** 요청 경로 스코프 원소 모음이다. 제공자 하나의 앱별 결과를 합칠 때 쓴다. */
     private data class Range(
@@ -92,7 +97,9 @@ internal class SpringFrameworkRoutes(
             SpringFrameworkRoute.ACTUATOR -> union(webApps) { app, prefix -> actuatorRange(app, prefix) }?.let { it to emptyList() }
             SpringFrameworkRoute.SPRINGDOC -> union(webApps) { _, prefix -> rootRange(prefix) }?.let { it to getHead }
             SpringFrameworkRoute.H2_CONSOLE -> union(webApps) { app, prefix -> h2Range(app, prefix) }?.let { it to emptyList() }
-            SpringFrameworkRoute.SECURITY, SpringFrameworkRoute.DATA_REST, SpringFrameworkRoute.GRAPHQL -> null
+            SpringFrameworkRoute.SECURITY -> securityScope(webApps)
+            SpringFrameworkRoute.DATA_REST -> union(webApps) { app, prefix -> dataRestRange(app, prefix) }?.let { it to emptyList() }
+            SpringFrameworkRoute.GRAPHQL -> union(webApps) { app, prefix -> graphQlRange(app, prefix) }?.let { it to listOf("GET", "HEAD", "POST") }
         }
     }
 
@@ -167,6 +174,54 @@ internal class SpringFrameworkRoutes(
         return Range(prefixes = minimal(prefixes))
     }
 
+    /**
+     * Spring Security 필터가 응답하는 경로다. 필터는 context-path를 뺀 요청 경로에 매칭하므로 앱 접두사를 붙인다. 접두사를 모르거나
+     * (DispatcherServlet 경로 등) 서블릿 스택이 아니면 증명하지 않는다. method는 모든 경로의 합집합이다(스코프 하나에 method 목록 하나).
+     */
+    private fun securityScope(webApps: List<Pair<SpringModuleConfig, Pair<String, String>>>): Pair<Range, List<String>>? {
+        val endpoints = security?.endpoints(webApps.mapTo(mutableSetOf()) { it.first.root }, multipleApps = webApps.size > 1)?.ifEmpty { null } ?: return null
+        val range = union(webApps) { app, prefix ->
+            if (prefix.second != "root" || webStack(app) != "servlet") return@union null
+            Range(
+                templates = endpoints.filter { !it.prefix }.mapTo(sortedSetOf()) { joined(prefix.first, it.path) },
+                prefixes = minimal(endpoints.filter { it.prefix }.map { joined(prefix.first, it.path) }),
+            )
+        } ?: return null
+        val methods = if (endpoints.any { it.methods == null }) emptyList() else endpoints.flatMapTo(sortedSetOf<String>()) { it.methods.orEmpty() }.toList()
+        return range to methods
+    }
+
+    /**
+     * Spring Data REST base path 아래 전체다(모든 method). Boot 자동 구성이 없거나(빌드 표지), 코드가 base path를 바꾸거나
+     * `RepositoryRestMvcConfiguration`을 직접 쓰면(Boot 속성이 적용되지 않는다) 증명하지 않는다. WebFlux 앱에는 Data REST가 없다.
+     */
+    private fun dataRestRange(app: SpringModuleConfig, prefix: Pair<String, String>): Range? {
+        if (!config.dataRestAutoConfigured || signals.dataRestConfiguredInCode) return null
+        when (webStack(app)) {
+            "reactive" -> return Range()
+            null -> return null
+        }
+        if (prefix.second != "root") return null
+        // RepositoryRestConfiguration.setBasePath: 끝 `/`를 떼고 앞 `/`를 보충한다. 비면 루트라 증명할 것이 없다.
+        val raw = patternValue(app, "spring.data.rest.base-path", "")?.trim() ?: return null
+        val base = literalPath(if (raw.isEmpty() || raw.startsWith('/')) raw else "/$raw") ?: return null
+        return if (base.isEmpty()) null else Range(prefixes = setOf(joined(prefix.first, base)))
+    }
+
+    /**
+     * GraphQL 라우터 경로다. HTTP 경로는 옛 키·새 키의 값과 기본값을 모두 넣는다(버전마다 읽는 키가 달라 합집합으로 덮는다).
+     * GraphiQL은 켜졌는지와 무관하게 넣고, WebSocket 경로는 설정했을 때만 넣는다.
+     */
+    private fun graphQlRange(app: SpringModuleConfig, prefix: Pair<String, String>): Range? {
+        if (prefix.second != "root") return null
+        val paths = listOf("spring.graphql.path", "spring.graphql.http.path").map { key -> cleanedPath(app, key, "/graphql") ?: return null } + "/graphql"
+        val graphiql = cleanedPath(app, "spring.graphql.graphiql.path", "/graphiql") ?: return null
+        val websocket = if (app.lookup("spring.graphql.websocket.path") == SpringModuleConfig.Lookup.Absent) emptyList()
+        else listOf(cleanedPath(app, "spring.graphql.websocket.path", "") ?: return null)
+        val all = paths.flatMap { listOf(it, "$it/schema") } + graphiql + websocket
+        return Range(templates = all.mapTo(sortedSetOf()) { joined(prefix.first, it) })
+    }
+
     /** H2 console 서블릿 경로다(와일드카드 서블릿 매핑은 `path` 자체도 받는다). */
     private fun h2Range(app: SpringModuleConfig, prefix: Pair<String, String>): Range? {
         if (prefix.second != "root") return null
@@ -178,8 +233,11 @@ internal class SpringFrameworkRoutes(
      * `/`로 시작하는 리터럴 경로 설정값이다. 끝 `/`를 떼고 `/` 하나는 빈 문자열이다. 없으면 [default], 다른 프로필이 바꾸거나
      * 풀지 못하거나 리터럴 템플릿이 아니면 null이다.
      */
-    private fun cleanedPath(app: SpringModuleConfig, key: String, default: String): String? {
-        val text = patternValue(app, key, default)?.trim() ?: return null
+    private fun cleanedPath(app: SpringModuleConfig, key: String, default: String): String? = patternValue(app, key, default)?.let(::literalPath)
+
+    /** `/`로 시작하는 리터럴 경로 값을 정리한다. 끝 `/`를 떼고 `/` 하나는 빈 문자열이다. 리터럴 템플릿이 아니면 null이다. */
+    private fun literalPath(value: String): String? {
+        val text = value.trim()
         if (text.isEmpty()) return ""
         if (!text.startsWith('/')) return null
         val cleaned = text.removeSuffix("/")
