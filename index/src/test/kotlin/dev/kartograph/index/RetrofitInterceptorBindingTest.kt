@@ -500,6 +500,95 @@ class RetrofitInterceptorBindingTest {
     }
 
     @Test
+    fun `self registration, foreign proceeded requests and unresolved clients of absolute hosts stay conservative`() {
+        services(rewriter = false)
+        val rewriter = "src/main/kotlin/dev/example/net/HostRewriteInterceptor.kt"
+        val clients = "src/main/kotlin/dev/example/net/Clients.kt"
+        write(
+            clients,
+            """
+            package dev.example.net
+
+            import dev.example.api.EdgeApi
+            import dev.example.api.PlainApi
+            import okhttp3.OkHttpClient
+            import retrofit2.Retrofit
+
+            fun edgeApi(): EdgeApi = Retrofit.Builder().baseUrl("https://api.example.com/")
+                .client(OkHttpClient.Builder().addInterceptor(HostRewriteInterceptor("edge.example.net")).build()).build().create(EdgeApi::class.java)
+
+            fun plainApi(): PlainApi = Retrofit.Builder().baseUrl("https://api.example.com/").build().create(PlainApi::class.java)
+            """,
+        )
+        // 자기 자신을 등록하는 인터셉터는 생성 지점 밖으로 흐른다.
+        write(
+            rewriter,
+            """
+            package dev.example.net
+
+            import okhttp3.Interceptor
+
+            object Registry { val all = mutableListOf<Interceptor>() }
+
+            class HostRewriteInterceptor(private val host: String) : Interceptor {
+                init { Registry.all += this }
+                override fun intercept(chain: Interceptor.Chain) =
+                    chain.proceed(chain.request().newBuilder().url(chain.request().url.newBuilder().host(host).build()).build())
+            }
+            """,
+        )
+        assertTrue(scan().globalFallback())
+        // 다른 곳에서 온 요청을 넘기면 경로 보존을 증명하지 못한다 — base는 버리지만 스코프는 없다.
+        write(
+            rewriter,
+            """
+            package dev.example.net
+
+            import okhttp3.Interceptor
+            import okhttp3.Request
+
+            class HostRewriteInterceptor(private val host: String) : Interceptor {
+                var pending: Request? = null
+                override fun intercept(chain: Interceptor.Chain) =
+                    chain.proceed(pending ?: chain.request().newBuilder().url(chain.request().url.newBuilder().host(host).build()).build())
+            }
+            """,
+        )
+        scan().let { document ->
+            assertFalse(document.globalFallback(), document.limitations.toString())
+            assertEquals(listOf("base - /items/{} kt:dev.example.net.edgeApi"), document.of("item").map { it.summary() })
+            assertTrue(document.limitationScopes.isEmpty(), document.limitationScopes.toString())
+        }
+        // base를 모르는 인스턴스의 client를 모르면 전체 URL 어노테이션 host도 믿지 않는다.
+        write(
+            "src/main/kotlin/dev/example/api/Cdn.kt",
+            """
+            package dev.example.api
+
+            import retrofit2.http.GET
+
+            interface CdnApi { @GET("https://cdn.example.com/logo.png") fun logo(): Any }
+            """,
+        )
+        write(
+            "src/main/kotlin/dev/example/net/Cdn.kt",
+            """
+            package dev.example.net
+
+            import dev.example.api.CdnApi
+            import okhttp3.OkHttpClient
+            import retrofit2.Retrofit
+
+            fun cdnApi(base: String, client: OkHttpClient): CdnApi = Retrofit.Builder().baseUrl(base).client(client).build().create(CdnApi::class.java)
+            """,
+        )
+        scan().let { document ->
+            assertFalse(document.globalFallback(), document.limitations.toString())
+            assertEquals(listOf("root - /logo.png -"), document.of("logo").map { it.summary() })
+        }
+    }
+
+    @Test
     fun `without rewrites unresolved clients keep their bases`() {
         services(rewriter = false)
         write(

@@ -129,6 +129,8 @@ internal class OkHttpClientResolver(files: List<RouteSourceFile>, declarations: 
         val last = root.last()
         if (last.arguments == null) return false
         val qualifier = root.dropLast(1).joinToString(".") { it.name }
+        // 인자를 받는 생성자(다른 client를 복사하는 모양)는 새 빌더가 아니다.
+        if (file.masked.substring(last.arguments.first + 1, last.arguments.last).isNotBlank()) return false
         if (last.name == "Builder") return qualifier.endsWith("OkHttpClient") || qualifier.isEmpty() && file.visibleNameOf("okhttp3.OkHttpClient.Builder") == "Builder"
         return last.name == "OkHttpClient" && (qualifier.isEmpty() || qualifier == "okhttp3")
     }

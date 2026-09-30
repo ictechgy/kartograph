@@ -116,13 +116,13 @@ internal class RetrofitBaseIndex(files: List<RouteSourceFile>, buildConfig: Buil
 
     /**
      * 전체 URL·network-path 어노테이션의 host를 믿을 수 없는지 본다 — 모든 base를 버렸거나, 이 서비스의 인스턴스가 URL을 바꾸는
-     * client를 쓰거나, 재작성이 있는데 서비스를 만든 곳을 찾지 못해 client를 모를 때다. 재작성 인터셉터는 base와 무관하게 요청
-     * URL 전체를 바꿀 수 있다.
+     * client를 쓰거나, 재작성이 있는데 서비스를 만든 곳을 찾지 못했거나 인스턴스의 client를 모를 때다(base를 모르는 인스턴스의
+     * client는 대체 조건이 아니지만 어노테이션 host에는 쓰인다). 재작성 인터셉터는 base와 무관하게 요청 URL 전체를 바꿀 수 있다.
      */
     fun absoluteHostUntrusted(service: String?): Boolean {
         if (unboundRewrites != null) return true
         val bindings = service?.let(::bindings).orEmpty()
-        return bindings.any { it.rewrite != null } || rewrites.population > 0 && bindings.isEmpty()
+        return bindings.any { it.rewrite != null } || rewrites.population > 0 && (bindings.isEmpty() || bindings.any { it.client.unknown })
     }
 
     /** 결합의 client에 붙은 재작성이 있으면 base를 지우고 근거를 싣는다. */

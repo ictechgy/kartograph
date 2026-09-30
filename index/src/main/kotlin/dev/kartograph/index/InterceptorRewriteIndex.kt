@@ -96,6 +96,11 @@ internal class InterceptorRewriteIndex(private val files: List<RouteSourceFile>,
         }
         owners.forEach { (owner, located) ->
             val (file, context) = located
+            // 개체가 자기 자신(`this`)을 값으로 넘기면(등록·반환) 생성 지점 밖으로 흐름이 새어 따라갈 수 없다.
+            val body = if (owner is Owner.Named) declarations.type(owner.fqn)?.let { (typeFile, type) -> typeFile to (type.bodyStart..type.bodyEnd) } else file to context.region
+            if (body == null || THIS_VALUE.containsMatchIn(body.first.masked.substring(body.second.first, (body.second.last + 1).coerceAtMost(body.first.masked.length)))) {
+                return@forEach fail("a URL-rewriting interceptor passes itself (this) as a value, so its OkHttp client is not resolved")
+            }
             var effect = if (owner is Owner.Named) namedEffect(owner.fqn) else effect(file, context.region, context.chainParam)
             val adders = when (owner) {
                 is Owner.Adder -> setOf(owner.position)
@@ -174,6 +179,8 @@ internal class InterceptorRewriteIndex(private val files: List<RouteSourceFile>,
      */
     private fun effect(file: RouteSourceFile, region: IntRange, chainParam: String?): RewriteEffect {
         if (RequestRewrites.buildsFreshRequest(file, region)) return RewriteEffect.UNPROVEN
+        // 다음 단계로 넘기는 요청이 모두 원래 요청(또는 그 newBuilder 사본)이어야 한다 — 다른 곳에서 온 요청은 URL을 모른다.
+        if (!proceedsOriginal(file, region, chainParam)) return RewriteEffect.UNPROVEN
         var path = true
         var method = true
         RequestRewrites.builders(file, region).forEach { from ->
@@ -183,6 +190,32 @@ internal class InterceptorRewriteIndex(private val files: List<RouteSourceFile>,
             if (calls.any { it.name == "url" && !authorityOnlyUrl(file, it.arguments, region, chainParam, 0) }) path = false
         }
         return RewriteEffect(path, method)
+    }
+
+    /** [region]의 모든 `chain.proceed(x)`의 `x`가 원래 요청이거나 그 `newBuilder()` 사본인지 본다. proceed가 없으면 증명하지 못한다. */
+    private fun proceedsOriginal(file: RouteSourceFile, region: IntRange, chainParam: String?): Boolean {
+        if (chainParam == null) return false
+        val proceed = Regex("(?<![\\w.])${Regex.escape(chainParam)}\\s*\\.\\s*proceed\\s*\\(")
+        val calls = proceed.findAll(file.masked.substring(0, (region.last + 1).coerceAtMost(file.masked.length)), region.first).toList()
+        return calls.isNotEmpty() && calls.all { match ->
+            val open = match.range.last
+            val close = balancedEnd(file.code, open).takeIf { it > open } ?: return@all false
+            val argument = singleArgument(file, open..close) ?: return@all false
+            fromOriginalRequest(file, argument.first, argument.last + 1, region, chainParam, 0)
+        }
+    }
+
+    /** 식이 원래 요청, 또는 원래 요청의 `newBuilder()…build()` 사본(지역 `val` 포함)인지 본다. 사본의 URL 변경은 [effect]가 따로 본다. */
+    private fun fromOriginalRequest(file: RouteSourceFile, from: Int, end: Int, region: IntRange, chainParam: String, depth: Int): Boolean {
+        if (depth > 4) return false
+        val segments = chainSegments(file, from, end) ?: return false
+        if (originalRequest(file, segments, from, region, chainParam, depth)) return true
+        segments.singleOrNull()?.takeIf { it.isPlain }?.let { single ->
+            val (isVal, range) = scopes.localInitializer(file, single.name, from) ?: return false
+            return isVal && range.first in region && fromOriginalRequest(file, skipSpaces(file.masked, range.first), range.last + 1, region, chainParam, depth + 1)
+        }
+        val newBuilder = segments.indexOfFirst { it.name == "newBuilder" && emptyCall(file, it) }
+        return newBuilder >= 1 && originalRequest(file, segments.subList(0, newBuilder), from, region, chainParam, depth)
     }
 
     /** 인자 괄호 [arguments]의 식이 원래 요청 URL에서 authority·query만 바꾼 사본인지 본다. */
@@ -551,6 +584,8 @@ internal class InterceptorRewriteIndex(private val files: List<RouteSourceFile>,
     private companion object {
         const val MAX_BLOCK_DEPTH = 16
         val WHITESPACE = Regex("\\s+")
+        /** 멤버 접근(`this.x`)·레이블(`this@X`)이 아닌 값으로 쓴 `this`다. */
+        val THIS_VALUE = Regex("(?<![\\w.@])this(?!\\s*(?:[.@\\w]|\\?\\.))")
         /** 인터셉터 람다·등록 블록의 여는 괄호다(`Interceptor { … }`, `addInterceptor { … }`). */
         val INTERCEPTOR_BLOCK = Regex("\\b(Interceptor|addInterceptor|addNetworkInterceptor)\\s*\\{")
         val ADDER_PARENTHESES = Regex("\\b(?:addInterceptor|addNetworkInterceptor)\\s*\\(")
