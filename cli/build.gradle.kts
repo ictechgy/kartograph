@@ -56,6 +56,7 @@ distributions {
                 "INDEX-CACHE.md",
                 "MCP.md",
                 "SPRING-ROUTES.md",
+                "SPRING-CLIENTS.md",
             )
             from(releaseDocumentation.map { document -> rootProject.file("docs/$document") }) {
                 into("docs")
