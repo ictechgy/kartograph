@@ -128,22 +128,26 @@ internal class SourceDeclarations(val files: List<RouteSourceFile>) {
     }
 
     /** `@Provides`(Dagger·Hilt)이고 `Retrofit`을 돌려주는 함수들이다. */
-    val retrofitProviders: List<Pair<RouteSourceFile, RouteFunctionDecl>> by lazy {
-        files.flatMap { file ->
-            file.functions.filter { function -> PROVIDES.containsMatchIn(functionAnnotations(file, function)) && returnsRetrofit(file, function) }
-                .map { file to it }
-        }
+    val retrofitProviders: List<Pair<RouteSourceFile, RouteFunctionDecl>> by lazy { providers(RETROFIT_TYPE) }
+
+    /** `@Provides`(Dagger·Hilt)이고 `OkHttpClient`를 돌려주는 함수들이다. 인터셉터 결합에서 client를 찾는 데 쓴다. */
+    val okHttpClientProviders: List<Pair<RouteSourceFile, RouteFunctionDecl>> by lazy { providers(OKHTTP_CLIENT_TYPE) }
+
+    /** [type]을 돌려주는 `@Provides` 함수들이다. */
+    private fun providers(type: ProvidedType): List<Pair<RouteSourceFile, RouteFunctionDecl>> = files.flatMap { file ->
+        file.functions.filter { function -> PROVIDES.containsMatchIn(functionAnnotations(file, function)) && returns(file, function, type) }
+            .map { file to it }
     }
 
-    /** 함수가 `Retrofit`을 돌려준다고 선언했거나(Kotlin `: Retrofit`, Java `Retrofit name(`) 식 몸체가 Retrofit 빌더인지 본다. */
-    private fun returnsRetrofit(file: RouteSourceFile, function: RouteFunctionDecl): Boolean {
+    /** 함수가 [type]을 돌려준다고 선언했거나(Kotlin `: T`, Java `T name(`) 반환 타입을 생략한 식 몸체가 그 타입의 빌더인지 본다. */
+    private fun returns(file: RouteSourceFile, function: RouteFunctionDecl, type: ProvidedType): Boolean {
         val open = parameterListOpen(file, function) ?: return false
-        if (file.isJava) return JAVA_RETROFIT_RETURN.containsMatchIn(file.masked.substring(function.start, open))
+        if (file.isJava) return type.javaReturn.containsMatchIn(file.masked.substring(function.start, open))
         val close = balancedEnd(file.code, open).takeIf { it > open } ?: return false
         val header = file.masked.substring(close + 1, function.bodyStart.coerceAtLeast(close + 1))
-        if (KOTLIN_RETROFIT_RETURN.matches(header)) return true
+        if (type.kotlinReturn.matches(header)) return true
         return file.masked.getOrNull(function.bodyStart) == '=' && header.isBlank() &&
-            RETROFIT_BUILDER.containsMatchIn(file.masked.substring(function.bodyStart, function.end.coerceAtMost(file.masked.length)))
+            type.builder.containsMatchIn(file.masked.substring(function.bodyStart, function.end.coerceAtMost(file.masked.length)))
     }
 
     /** 선언 앞 어노테이션에서 DI 한정자(`@Named("x")`, 프로젝트 `@Qualifier` 어노테이션)를 모은다. */
@@ -232,9 +236,16 @@ internal class SourceDeclarations(val files: List<RouteSourceFile>) {
         private val QUALIFIER_DECLARATION = Regex("\\bannotation\\s+class\\s+([A-Za-z_]\\w*)|@interface\\s+([A-Za-z_]\\w*)")
         private val QUALIFIER_MARKER = Regex("@(?:javax\\.inject\\.|jakarta\\.inject\\.)?Qualifier\\b")
         private val PROVIDES = Regex("@(?:dagger\\.)?Provides\\b")
-        private val KOTLIN_RETROFIT_RETURN = Regex("^\\s*:\\s*(?:retrofit2\\s*\\.\\s*)?Retrofit\\s*$")
-        private val JAVA_RETROFIT_RETURN = Regex("(?:^|[\\s>])(?:retrofit2\\.)?Retrofit\\s+[A-Za-z_]\\w*\\s*$")
-        private val RETROFIT_BUILDER = Regex("\\bRetrofit\\s*\\.\\s*Builder\\s*\\(")
+        private val RETROFIT_TYPE = ProvidedType(
+            kotlinReturn = Regex("^\\s*:\\s*(?:retrofit2\\s*\\.\\s*)?Retrofit\\s*$"),
+            javaReturn = Regex("(?:^|[\\s>])(?:retrofit2\\.)?Retrofit\\s+[A-Za-z_]\\w*\\s*$"),
+            builder = Regex("\\bRetrofit\\s*\\.\\s*Builder\\s*\\("),
+        )
+        private val OKHTTP_CLIENT_TYPE = ProvidedType(
+            kotlinReturn = Regex("^\\s*:\\s*(?:okhttp3\\s*\\.\\s*)?OkHttpClient\\s*$"),
+            javaReturn = Regex("(?:^|[\\s>])(?:okhttp3\\.)?OkHttpClient\\s+[A-Za-z_]\\w*\\s*$"),
+            builder = Regex("\\bOkHttpClient\\s*\\.\\s*Builder\\s*\\("),
+        )
         private val ANNOTATION = Regex(
             "@(?:(?:param|field|get|set|setparam|property|receiver|delegate)\\s*:\\s*)?([A-Za-z_][\\w.]*)(\\s*\\((?:[^()]|\\([^()]*\\))*\\))?",
         )
@@ -248,6 +259,15 @@ internal class SourceDeclarations(val files: List<RouteSourceFile>) {
         private val GETTER = Regex("^\\s*get\\s*\\(\\s*\\)\\s*(?::\\s*[\\w.<>?]+\\s*)?(=|\\{)")
     }
 }
+
+/**
+ * DI provider가 돌려주는 타입의 어휘 표지다.
+ *
+ * @property kotlinReturn Kotlin 반환 타입 표기(`: T`)다
+ * @property javaReturn Java 메서드 머리의 반환 타입(`T name`)이다
+ * @property builder 반환 타입을 생략한 식 몸체가 이 타입을 만든다고 볼 빌더 호출이다
+ */
+internal class ProvidedType(val kotlinReturn: Regex, val javaReturn: Regex, val builder: Regex)
 
 /**
  * Kotlin 속성 또는 Java 필드 선언이다.
