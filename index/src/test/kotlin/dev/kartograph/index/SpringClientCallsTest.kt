@@ -2,6 +2,12 @@ package dev.kartograph.index
 
 import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
+import dev.kartograph.core.JvmModifier
+import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
+import dev.kartograph.core.SourceLocation
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
@@ -259,6 +265,50 @@ class SpringClientCallsTest {
             }
             """)
         assertTrue(scan().facts.isEmpty())
+    }
+
+    @Test
+    fun `imperative calls take the enclosing method id and exchange methods the interface method id`() {
+        val path = "src/main/kotlin/dev/example/Gateway.kt"
+        write(path, """
+            package dev.example
+
+            import org.springframework.web.client.RestClient
+            import org.springframework.web.service.annotation.GetExchange
+
+            class Gateway(private val client: RestClient) {
+                fun fetch(id: String): String? = client.get().uri("/users/{id}", id).retrieve().body(String::class.java)
+
+                fun twoLines(id: String): String? =
+                    client.get().uri("/users/{id}/v2", id)
+                        .retrieve().body(String::class.java)
+
+                abstract fun marker(): String
+            }
+
+            interface Remote {
+                @GetExchange("/remote/{id}")
+                fun remote(id: String): String
+            }
+            """)
+        fun node(owner: String, signature: String, line: Int?, vararg annotations: String) = GraphNode(
+            NodeId("method:dev/example/$owner#$signature"), signature.substringBefore('('), NodeKind.METHOD,
+            location = SourceLocation(path, line), annotations = annotations.toSet(),
+            jvmModifiers = if (line == null) setOf(JvmModifier.ABSTRACT) else emptySet(),
+        )
+        val graph = CodeGraph(
+            listOf(
+                node("Gateway", "fetch(Ljava/lang/String;)Ljava/lang/String;", 7),
+                node("Gateway", "twoLines(Ljava/lang/String;)Ljava/lang/String;", 10),
+                node("Remote", "remote(Ljava/lang/String;)Ljava/lang/String;", null, "org/springframework/web/service/annotation/GetExchange"),
+            ),
+            emptyList(),
+        )
+        val facts = RouteCallScanner(project).scan(generatedAt = "2026-01-01T00:00:00Z", graph = graph).facts.associate { it.channel to it.symbol?.usr }
+        // 한 줄 식 몸체 함수는 주 생성자가 있는 클래스 머리(Java 선언 모양)에 가려지지 않는다.
+        assertEquals("method:dev/example/Gateway#fetch(Ljava/lang/String;)Ljava/lang/String;", facts["/users/{}"])
+        assertEquals("method:dev/example/Gateway#twoLines(Ljava/lang/String;)Ljava/lang/String;", facts["/users/{}/v2"])
+        assertEquals("method:dev/example/Remote#remote(Ljava/lang/String;)Ljava/lang/String;", facts["/remote/{}"])
     }
 
     @Test
