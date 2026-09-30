@@ -37,7 +37,13 @@
   `BuildConfigFields.kt`). 리터럴이면 authority + root 결합 템플릿, 아니면 base + `baseRef`(`kt:` 소스 한정 id)와
   `unresolved-base-url:`. 오라클 54케이스(팩토리 10 추가) 불일치 0, pythograph e2e에서 Android 주문·결제 체인이 ViewModel까지 닿고
   `unattributed-calls-omitted`가 0이 됐다(pythograph 기록 재생성은 후속). 남은 범위: 오버로드 팩토리, 확장 함수 수신 객체,
-  Dagger `@Binds`·다중 컴포넌트, 인터셉터가 붙은 client 추적(지금은 하나라도 있으면 전체 base를 버림).
+  Dagger `@Binds`·다중 컴포넌트.
+- **인터셉터 client 결합 (2026-09-30, `feature/interceptor-scope`):** URL 재작성 인터셉터 → `addInterceptor` → OkHttpClient → Retrofit
+  결합을 따라가 재작성 client를 쓰는 인스턴스의 base만 버린다(`InterceptorRewriteIndex.kt` 재작성 개체의 값 흐름,
+  `OkHttpClientResolver.kt` client 해석·`Authenticator`/`EventListener` 판정, `SourceValueResolver.kt` #123 DI 공유). 결합을 증명하지
+  못하면 이전처럼 전체 base를 버린다. 인스턴스별 한계에 authority만 바꾸는 재작성이면 호출 측 스코프. 오라클 인터셉터 케이스 18개
+  (일치 7·재작성으로 버림 11·불일치 0). 남은 범위: 헬퍼 함수로 옮긴 재작성·라이브러리 인터셉터(어휘로 못 봄), Java 생성자 주입,
+  `@Binds`·다중 바인딩(항상 전체 대체), 재작성 뒤 host를 모르는데 남는 `baseRef` 귀속.
 
 ## 진행 중: Spring HTTP 클라이언트 route-call (API 영향 Phase 7b)
 

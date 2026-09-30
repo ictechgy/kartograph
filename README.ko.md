@@ -293,8 +293,14 @@ Retrofit base URL은 각 서비스 인터페이스를 만드는 곳을 따라가
 냅니다(`users/{id}` + `https://h/v1/` → `/v1/users/{}`, `/x`는 `/x`). base가 여럿이면 base마다 사실 하나입니다. 풀지 못하면
 `pathAnchor: base`를 유지하고 Retrofit 인스턴스를 담은 선언의 소스 한정 id(`kt:<pkg>.<Type>.<member>`)를 `baseRef`로 실어
 workspace link `match.baseRefs`로 귀속할 수 있게 하며, 그 서비스 수를 `unresolved-base-url:`로 셉니다. 실행 시점 값, 모호한 DI
-결합, 요청 URL을 바꾸는 OkHttp 인터셉터(`url-rewrite-interceptors:`)는 authority를 만들지 않습니다. 테스트 소스의 `create`는
-보지 않습니다.
+결합은 authority를 만들지 않습니다. 테스트 소스의 `create`는 보지 않습니다.
+OkHttp 요청 재작성(`url-rewrite-interceptors:`)은 그 재작성이 붙었음을 증명한 client를 쓰는 Retrofit 인스턴스의 base만 버립니다.
+URL을 바꾸는 인터셉터(class·object·람다·익명 객체)를 닿는 `addInterceptor`·`addNetworkInterceptor` 호출까지, Retrofit
+`client(…)`·`callFactory(…)`를 OkHttpClient(빌더 사슬, `newBuilder()` 복사본, 빌더 지역 변수, `@Provides`, Koin)까지 따라갑니다.
+URL을 유지함을 증명하지 못한 `Authenticator`·`EventListener`와 직접 구현한 `Call.Factory`도 재작성으로 봅니다. 그런 인스턴스는
+한계를 따로 받고, 모든 재작성이 scheme·host·port만 바꿈을 증명하면 숨은 요청의 상한을 호출 측 `limitationScopes`로 싣습니다.
+재작성이나 base를 푼 인스턴스의 client를 하나라도 결합하지 못하면(인터셉터 목록, 다른 곳에 넘긴 빌더, 어디에도 붙지 않은 재작성)
+이전처럼 모든 base를 버립니다.
 `--graph-file`이 있으면 Retrofit 사실의 `symbol.usr`는 어노테이션을 선언한 서비스 인터페이스 메서드입니다(상속 메서드는 그것을
 선언한 상위 인터페이스). 호출 지점이 이 메서드를 부르므로 역방향 순회(`impact --format language-traversal --roots-from`)가
 하위 인터페이스로 부른 호출을 포함해 모든 호출자에 닿습니다.

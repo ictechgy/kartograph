@@ -300,8 +300,14 @@ wrapper, or an in-repo `buildConfigField` literal of the nearest module) gives `
 the RFC 3986 rules above (`users/{id}` + `https://h/v1/` → `/v1/users/{}`; `/x` stays `/x`); several bases give one fact each.
 Otherwise the fact keeps `pathAnchor: base` and carries `baseRef` — the source-qualified id (`kt:<pkg>.<Type>.<member>`) of the
 declaration holding the Retrofit instance — for workspace links `match.baseRefs`, and `unresolved-base-url:` counts those
-services. Runtime values, ambiguous DI bindings and OkHttp interceptors that rewrite request URLs (`url-rewrite-interceptors:`)
-never yield an authority. Test-source `create` calls are ignored.
+services. Runtime values and ambiguous DI bindings never yield an authority. Test-source `create` calls are ignored.
+OkHttp request rewrites (`url-rewrite-interceptors:`) drop the base only of the Retrofit instances whose client provably carries
+them: each URL-rewriting interceptor (class, object, lambda, anonymous object) is followed to the `addInterceptor`/
+`addNetworkInterceptor` call it reaches, and each Retrofit `client(…)`/`callFactory(…)` to its OkHttpClient (builder chains,
+`newBuilder()` copies, local builders, `@Provides`, Koin). Authenticators and event listeners not proven to keep the URL, and custom
+`Call.Factory` implementations, count as rewrites. Such an instance gets its own limitation, with a client-side `limitationScopes`
+entry bounding its hidden requests when every rewrite provably changes only scheme/host/port. If any rewrite or any client with a
+resolved base cannot be bound (interceptor lists, builders passed around, unattached rewrites), every base is dropped as before.
 With `--graph-file`, a Retrofit fact's `symbol.usr` is the service interface method that declares the annotation
 (for an inherited method, the super-interface that declares it). Call sites invoke that method, so reverse traversal
 (`impact --format language-traversal --roots-from`) reaches every caller, including calls through a sub-interface.
