@@ -87,6 +87,11 @@
   Java 선언 정규식에 맞아 더 좁은 범위로 이겼고, 식 몸체는 뒤 선언의 `{`까지 범위를 잡았다. Kotlin 파일에는 Java 선언 모양을 쓰지 않고
   식 몸체는 식이 끝나는 줄까지로 잡는다.
 - 내부: Retrofit base 해석의 소스 범위 도구(지역 선언·매개변수·속성 대입·`return`)를 `SourceScopes`로 옮겨 Spring 해석과 공유한다.
+- 적합성 벡터를 isthmus `76b6141`로 다시 벤더링했다. isthmus #131이 이 결합 규칙을 base 결합 표에 받아 url-compose 벡터
+  `base-join/spring-*` 13개(`producer:kartograph`, join `spring-uri-builder`·`spring-root-uri`·`spring-http-exchange`)로 고정했고,
+  `RouteConformanceTest`가 케이스마다 합성 Kotlin 클라이언트를 실제 `RouteCallScanner`로 스캔해 템플릿·앵커·authority·
+  `ambiguous-base-join:`을 비교한다(13개 모두 통과, 생산자 코드 변경 없음). 새 suite `http-dispatch`도 lock에 더했다 — 생산자 케이스는
+  `order` 검증뿐이고 kartograph는 `order`를 내지 않으므로(서버 문서는 항상 `specificity`) 다른 생산자 규칙이 생기면 실패하도록만 검사한다.
 
 ### Spring 서버 라우트 (Added)
 
