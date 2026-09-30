@@ -39,6 +39,18 @@
   `unattributed-calls-omitted`가 0이 됐다(pythograph 기록 재생성은 후속). 남은 범위: 오버로드 팩토리, 확장 함수 수신 객체,
   Dagger `@Binds`·다중 컴포넌트, 인터셉터가 붙은 client 추적(지금은 하나라도 있으면 전체 base를 버림).
 
+## 진행 중: Spring HTTP 클라이언트 route-call (API 영향 Phase 7b)
+
+- **브랜치:** `feature/spring-clients`. 규칙·출처·오라클·e2e는 [SPRING-CLIENTS](docs/SPRING-CLIENTS.md)와
+  [experiments/phase7b-spring-clients](experiments/phase7b-spring-clients/README.md)다.
+- **구현:** `index/.../SpringClientCalls.kt`(호출 지점·`SpringClientSetup`), `SpringClientResolver.kt`(클라이언트 식 → 종류·base, `@Bean`·
+  `@Value`), `SpringHttpExchanges.kt`(`@HttpExchange`), `SpringUriRules.kt`(결합 규칙). Retrofit과 공유하는 소스 범위 도구는 `SourceScopes.kt`다.
+  한 줄 식 몸체 함수의 `symbol.usr` 누락은 `ChannelBridgeScanner.enclosingDeclaration`에서 고쳤다.
+- **검증:** 합성 Spring Boot 앱 32개 호출 실행 오라클 전부 일치(`SpringClientOracleTest`), isthmus origin/main `f9dcd1d` workspace trace에서
+  B route → A 호출(`exact`) → A 핸들러 체인 확인(`e2e/run_trace.py`, 기록 `e2e/recorded/`).
+- **남은 범위:** isthmus `HTTP-WRAPPERS.md` base 결합 표에 Spring 행 추가(제안은 SPRING-CLIENTS 끝), Feign, Boot 4 `@ImportHttpServices`,
+  `@ConfigurationProperties` base, trace가 client member의 역방향 도달을 그 member의 route-decl로 잇는 기능(isthmus 쪽).
+
 ## 진행 중: Spring route-decl 생산자 (`routes --role server`, API 영향 Phase 4a)
 
 - **브랜치:** `feature/spring-routes`. 규칙·근거·오라클 결과는 [SPRING-ROUTES](docs/SPRING-ROUTES.md)다.

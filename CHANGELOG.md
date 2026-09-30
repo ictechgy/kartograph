@@ -67,6 +67,27 @@
   이유 있는 dynamic 6·불일치 0(결합 전 불일치 10). pythograph Phase 6 e2e에서 Android 주문·결제 호출이 isthmus trace 체인의
   `OrderViewModel.refresh`·`CheckoutViewModel.pay`까지 닿고 `unattributed-calls-omitted`가 사라졌다.
 
+### Spring HTTP 클라이언트 route-call (Added·Fixed)
+
+- `routes --role client`가 Spring `RestTemplate`(`getForObject`·`postForEntity`·`exchange`·`execute` 등)·`RestClient`·`WebClient`
+  (`get()`…`method(…)` 뒤 `.uri(…)`) 호출과 `@HttpExchange` 인터페이스 메서드를 `route-call`로 낸다. 수신 식이 Spring 클라이언트임을
+  증명한 호출만 보고, URL은 문자열 템플릿·`UriComponentsBuilder` 사슬·`URI`·빌더 람다를 읽는다. `@HttpExchange` 사실의 신원은
+  인터페이스 메서드이고, 명령형 호출은 감싸는 메서드다.
+- base URL은 빌더 사슬(`baseUrl`·`RestTemplateBuilder.rootUri`·`DefaultUriBuilderFactory`)·`@Bean`(타입·`@Qualifier`·`@Primary`·이름)·
+  `@Value("${key}")`(저장소 안 기본 프로필 설정)로 풀고, Spring Framework 6.2.19·Boot 3.5.16 소스로 확인한 규칙으로 잇는다 —
+  `UriBuilderFactory`는 문자열 연결 뒤 `//` 축약(`/api` + `users` = `/apiusers`), `rootUri`는 `/`로 시작하는 템플릿에만 붙는다.
+  `@HttpExchange`는 타입·메서드 url을 `HttpServiceMethod.initUrl`처럼 잇고 `createClient`에 쓴 어댑터 클라이언트의 base를 쓴다.
+  풀지 못하면 `pathAnchor: base`와 `baseRef`, `unresolved-base-url:`이고, 다른 프로필이 바꾸는 설정 값도 같은 접두사로 알린다.
+  `service`는 싣지 않는다(대상 서비스 이름은 호출자 저장소에 없다 — link의 `match.hosts`·`match.baseRefs`로 귀속한다).
+- 모델링하지 못한 요청 모양(`RequestEntity`, 클라이언트로 증명하지 못한 수신 식)은 `route-call-coverage:`로 센다. Spring 클라이언트
+  import만으로 파일 전체를 모델링하지 않은 클라이언트로 세던 계수는 빼고, Feign(`org.springframework.cloud.openfeign.`)을 더했다.
+- 합성 Spring Boot 앱 32개 호출의 실행 오라클(로컬 프록시 기록)과 모두 일치한다(변경 전 사실 0건). 서비스 A 핸들러 → RestClient →
+  서비스 B route 체인이 isthmus trace workspace link로 이어진다([experiments/phase7b-spring-clients](experiments/phase7b-spring-clients/README.md)).
+- 수정: 한 줄 식 몸체 Kotlin 함수(`fun f() = client.get()…`) 안의 사실이 `symbol.usr`를 잃던 결함 — 주 생성자가 있는 클래스 머리가
+  Java 선언 정규식에 맞아 더 좁은 범위로 이겼고, 식 몸체는 뒤 선언의 `{`까지 범위를 잡았다. Kotlin 파일에는 Java 선언 모양을 쓰지 않고
+  식 몸체는 식이 끝나는 줄까지로 잡는다.
+- 내부: Retrofit base 해석의 소스 범위 도구(지역 선언·매개변수·속성 대입·`return`)를 `SourceScopes`로 옮겨 Spring 해석과 공유한다.
+
 ### Spring 서버 라우트 (Added)
 
 - `routes --role server --project <dir> [--graph-file <snapshot> [--input-bindings <file>]] [--service <name>] [--include-tests] [<source-root>...]`가

@@ -154,6 +154,12 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   시작하는 포트의 base는 풀지 않는다(isthmus 계약의 기본 포트 정규화는 미결이라 다른 생산자와 표기가 다를 수 있다). URL을 바꾸는
   OkHttp 인터셉터는 `intercept` 함수 몸체나 `Interceptor { … }`·`addInterceptor { … }` 블록 안의 `newBuilder()` 뒤 `url`·`host`·
   경로 변경 호출만 어휘로 세고, 어느 client에 붙었는지 모르므로 하나라도 있으면 프로젝트의 모든 Retrofit base를 버린다. `baseRef`는 JVM 정점 id가 아니라 소스 한정 이름(`kt:` 접두사)이다.
+- Spring HTTP 클라이언트(`RestTemplate`·`RestClient`·`WebClient`·`@HttpExchange`) 사실도 소스 어휘 해석이다. 수신 식을 import한 타입의
+  선언·생성 식·`@Bean`(타입·`@Qualifier`·`@Named`·`@Primary`·이름)으로 증명한 호출만 내고, 일반 메서드 매개변수로 받은 클라이언트·프로젝트
+  한정자 어노테이션·`@ConfigurationProperties` 객체·환경 변수·다른 프로필 값·SpEL은 base를 모르는 쪽으로 둔다. `with(client) { … }`처럼
+  수신 식이 없는 호출과 여러 문장으로 나눈 요청 spec은 보지 않거나 `route-call-coverage:`로 센다. `RestTemplate` 기본 인코딩은 경로
+  변수의 `/`를 인코딩하지 않지만 `{}`(한 세그먼트)로 낸다. `@HttpExchange`의 `${…}`는 dynamic이고, Spring Boot 4의
+  `@ImportHttpServices`·HTTP 서비스 그룹 base는 모델링하지 않는다. 규칙과 출처는 [Spring HTTP 클라이언트](SPRING-CLIENTS.md)다.
 - `routes --role server`는 어노테이션 controller만 읽는다. 함수형 라우터·view controller·서블릿 등록·JAX-RS는 사실 없이
   `route-coverage:`로, 프레임워크 제공 경로는 `framework-provided-routes:`로만 알린다. 제공 경로의 스코프는 상한을 증명한
   제공자(오류 컨트롤러·welcome page·정적 리소스·actuator·springdoc·H2 console)에만 붙고, 정적 리소스 위치는 열거하지 않아

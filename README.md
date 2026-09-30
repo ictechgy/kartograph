@@ -113,7 +113,7 @@ kartograph bridges --project . --format json
 kartograph bridges --project . --target flutter --messages --graph-file build/reports/kartograph/main-graph.json
 # Persistence relation uses for isthmus: Room/JDBC/Exposed/jOOQ, SQL-shaped literals, SQLDelight .sq/.sqm.
 kartograph schema --project . --format json
-# Client HTTP route calls for isthmus: declared wrappers, java.net.URL requests, Retrofit annotations.
+# Client HTTP route calls for isthmus: declared wrappers, java.net.URL requests, Retrofit, Spring RestTemplate/RestClient/WebClient/@HttpExchange.
 kartograph routes --role client --project . --wrappers http-wrappers.json app/src/main
 # Spring MVC/WebFlux route declarations for isthmus; a fresh snapshot supplies bytecode values and handler usrs.
 kartograph routes --role server --project . --service api --graph-file graph.json
@@ -307,6 +307,17 @@ With `--graph-file`, a Retrofit fact's `symbol.usr` is the service interface met
 (`impact --format language-traversal --roots-from`) reaches every caller, including calls through a sub-interface.
 Facts left without a JVM identity are counted by `missing-route-usrs:`, which names a snapshot/routes
 `--project` root mismatch when the source paths show one.
+Spring server-to-server calls are recognized too: `RestTemplate` request methods (`getForObject`, `exchange`, ...), `RestClient`
+and `WebClient` `get()`/`post()`/.../`method(...)` followed by `.uri(...)` (template strings, `UriComponentsBuilder` chains, `URI`
+values, builder lambdas), on a receiver proven to be such a client, and `@HttpExchange` interface methods (one fact per method,
+`symbol.usr` = the interface method). Base URLs follow builder chains (`baseUrl`, `RestTemplateBuilder.rootUri`,
+`DefaultUriBuilderFactory`), `@Bean` methods chosen by type, `@Qualifier`, `@Primary` or name, and `@Value("${key}")` properties
+from the in-repo default profile, and are joined the way Spring does it — string concatenation with `//` collapsed for
+`UriBuilderFactory` (`/api` + `users` is `/apiusers`), root only for `/`-prefixed templates with `rootUri` — verified against Spring
+Framework 6.2.19 / Boot 3.5.16 sources and an execution oracle (32 of 32 calls match). Unresolved bases keep `pathAnchor: base` with a
+`baseRef` (the `@Bean` method, property or field supplying the client) and are counted by `unresolved-base-url:`; facts carry no
+`service`, so link server members by `match.hosts` or `match.baseRefs`. Details, source citations and the two-service isthmus trace
+are in [Spring HTTP clients](docs/SPRING-CLIENTS.md).
 
 `routes --role server --project <dir> [--graph-file <snapshot> [--input-bindings <file>]] [--service <name>] [--include-tests] [<source-root>...]`
 (unreleased) emits `"roles": ["server"]` and `"dispatch": "specificity"` with one `route-decl` fact per Spring MVC or
