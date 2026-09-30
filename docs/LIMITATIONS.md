@@ -162,8 +162,10 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   `@ImportHttpServices`·HTTP 서비스 그룹 base는 모델링하지 않는다. 규칙과 출처는 [Spring HTTP 클라이언트](SPRING-CLIENTS.md)다.
 - `routes --role server`는 어노테이션 controller만 읽는다. 함수형 라우터·view controller·서블릿 등록·JAX-RS는 사실 없이
   `route-coverage:`로, 프레임워크 제공 경로는 `framework-provided-routes:`로만 알린다. 제공 경로의 스코프는 상한을 증명한
-  제공자(오류 컨트롤러·welcome page·정적 리소스·actuator·springdoc·H2 console)에만 붙고, 정적 리소스 위치는 열거하지 않아
-  GET·HEAD 호출은 언제나 가려진다. Spring Security·Data REST·GraphQL은 문서 전체에 적용된다. 프로필은 기본 프로필만 템플릿에
+  제공자(오류 컨트롤러·welcome page·정적 리소스·actuator·springdoc·H2 console, base path를 아는 Data REST, 경로를 푼 GraphQL, 정적으로
+  풀리는 서블릿 `SecurityFilterChain` 구성의 Security)에만 붙고, 정적 리소스 위치는 열거하지 않아 GET·HEAD 호출은 언제나 가려진다.
+  사용자 필터·`WebSecurityCustomizer`·`Customizer` bean·SAML·WebAuthn·리액티브 Security와 의존성 JAR이 더하는 Security 구성은 증명하지
+  않거나 보지 못한다. 프로필은 기본 프로필만 템플릿에
   쓰고 환경 변수·명령행·config server 재정의는 모델링하지 않는다. 라이브러리가 선언한 stereotype·합성 어노테이션·상위 타입의
   매핑은 보이지 않는다. 빈 값을 받는 자리(끝 `*`, 부분 세그먼트)는 빈 값 변형 decl로 펼치되 원본과 묶는 표식은 아직 없다.
   목록과 근거는 [Spring 서버 라우트](SPRING-ROUTES.md#프레임워크-제공-경로와-스코프)다.

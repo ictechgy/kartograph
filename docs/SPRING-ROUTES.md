@@ -1,6 +1,6 @@
 # Spring 서버 라우트 (`routes --role server`)
 
-_기록: 2026-09-28, 스코프·빈 값 변형 2026-09-29 · 상태: 미출시(API 변경 영향 계획 Phase 4a) · isthmus http 계약은 아직 '개발 중'이다_
+_기록: 2026-09-28, 스코프·빈 값 변형 2026-09-29, Security·Data REST·GraphQL 스코프 2026-09-30 · 상태: 미출시(API 변경 영향 계획 Phase 4a) · isthmus http 계약은 아직 '개발 중'이다_
 
 Spring MVC·WebFlux 어노테이션 controller를 isthmus http 도메인의 `route-decl` 사실로 낸다. 계약은 isthmus
 `docs/GRAPH-EXCHANGE.md`의 "개발 중: HTTP 경계" 절이고, 이 문서는 kartograph 생산자의 규칙·근거·검증 결과다.
@@ -110,7 +110,57 @@ snapshot 형식은 바꾸지 않는다(어노테이션 값 보존은 계획상 c
 | actuator | `templatePrefixes: [<접두사>+base-path, management.server.base-path+base-path, <접두사>/cloudfoundryapplication]`. base-path가 비거나(루트 매핑) health group `additional-path` 키가 있으면 생략 | `WebEndpointProperties.basePath = "/actuator"`와 `cleanBasePath` |
 | springdoc | `templatePrefixes: [<접두사>]`, `methods: [GET, HEAD]` | springdoc-openapi 3.1.0의 엔드포인트가 모두 `@GetMapping`이거나 리소스 핸들러다 |
 | H2 console | `templatePrefixes: [<접두사>+spring.h2.console.path]`(기본 `/h2-console`), 모든 method | `H2ConsoleAutoConfiguration`의 서블릿 매핑 `path/*`와 `setPath` 검증 |
-| Spring Security, Spring Data REST, GraphQL | 스코프 없음(문서 전체) | Security 엔드포인트는 코드 DSL(`loginPage`·`oauth2Login` 등), `Customizer<HttpSecurity>` bean, spring.factories 기본 구성으로 바뀐다. Data REST의 기본 base-path는 루트이고 GraphQL은 소스로 확인하지 않았다 |
+| Spring Security(서블릿) | 소스의 `SecurityFilterChain` 구성에서 증명한 필터 응답 경로의 `templates`·`templatePrefixes`, method는 모든 경로의 합집합. 아래 [Spring Security](#spring-security) | 아래 표 |
+| Spring Data REST | `templatePrefixes: [<접두사>+spring.data.rest.base-path]`, 모든 method. base-path가 없거나 루트면, 코드가 `setBasePath`를 부르거나 `RepositoryRestMvcConfiguration`을 직접 쓰면, Boot 자동 구성 모듈(`spring-boot-starter-data-rest`·`spring-boot-data-rest`)이 빌드에 없으면 생략 | `BasePathAwareHandlerMapping.getMappingForMethod`가 모든 `@BasePathAwareController`(Data REST 자체 controller 포함) 매핑 앞에 base path를 붙이고, `RepositoryRestHandlerMapping`도 base path 아래만 찾는다. HAL explorer 리소스도 `basePath + "/**"`다. `RepositoryRestConfiguration.setBasePath`는 끝 `/`를 떼고 앞 `/`를 보충한다(spring-data-rest-webmvc 5.1.0·4.5.4) |
+| GraphQL | `templates: [<접두사>+path, …+path/schema, …+graphiql.path, …+websocket.path]`, `methods: [GET, HEAD, POST]`. path는 `spring.graphql.http.path`·옛 `spring.graphql.path`의 값과 기본 `/graphql`의 합집합, GraphiQL(기본 `/graphiql`)은 켜졌는지와 무관하게 넣고 WebSocket 경로는 설정했을 때만 넣는다. 값을 풀지 못하면 생략 | Boot `GraphQlWebMvcAutoConfiguration`·`GraphQlWebFluxAutoConfiguration`의 라우터가 path의 POST(HTTP·SSE)·GET(405), `path + "/schema"`(printer), GraphiQL 경로의 GET만 등록하고 WebSocket은 `WebSocketHandlerMapping`에 그 경로 하나다(Boot 3.0.13·3.5.6·4.1.0). Boot 3.5는 두 키를 모두 읽고 4.1은 새 키만 읽는다 |
+
+### Spring Security
+
+필터는 context-path를 뺀 요청 경로에 매칭하므로 원소에 앱 접두사를 붙인다. 접두사를 모르거나(`spring.mvc.servlet.path` 등 — Boot 4는
+`PathPatternRequestMatcher.Builder`에 DispatcherServlet 경로를 basePath로 준다) 서블릿 스택이 아니면(리액티브 Security는 모델링하지
+않는다) 스코프를 생략한다. 근거는 Spring Security 6.0.8·6.5.5·7.1.0과 Spring Boot 3.0.13·3.5.6·4.1.0 공식 소스(Maven Central sources
+JAR)다. 인가 규칙(`authorizeHttpRequests`)·HTTP Basic·CSRF·CORS·headers·세션·예외 처리·remember-me·x509는 요청을 인증·거부·리다이렉트할
+뿐 받는 경로를 더하지 않는다(각 configurer가 더하는 필터를 확인했다). CORS 필터는 브라우저 preflight(`Origin`·
+`Access-Control-Request-Method` 헤더가 있는 OPTIONS)에만 직접 응답하고, 그런 요청은 클라이언트 코드의 `route-call`이 아니다.
+`/error`는 오류 컨트롤러 스코프가 이미 덮는다.
+
+| 필터 | 받는 요청 | 바꾸는 설정 | 근거 |
+|---|---|---|---|
+| `LogoutFilter`(항상, `logout` 끄기 전까지) | `logoutUrl`(기본 `/logout`). `CsrfConfigurer`가 있으면 POST, 없으면 GET·POST·PUT·DELETE | `logoutUrl`, `logoutRequestMatcher`(임의 → 증명 안 함), `csrf` 끄기 | `HttpSecurityConfiguration.httpSecurity`가 `http.logout(withDefaults())`를 적용, `LogoutConfigurer.createLogoutRequestMatcher` |
+| `UsernamePasswordAuthenticationFilter`(`formLogin`) | `loginProcessingUrl`의 POST. 기본은 loginPage, loginPage 기본 `/login` | `loginProcessingUrl`, `loginPage` | `FormLoginConfigurer.createLoginProcessingUrlMatcher`, `AbstractAuthenticationFilterConfigurer.updateAuthenticationDefaults` |
+| `DefaultLoginPageGeneratingFilter`(`formLogin`·`oauth2Login`에 `loginPage`가 없을 때) | GET만: loginPage(`/login`), failureUrl(기본 `/login?error`), `/login?logout` — 경로는 질의를 뗀 값 | `loginPage`(부르면 꺼짐), `failureUrl` | `DefaultLoginPageConfigurer.configure`, `DefaultLoginPageGeneratingFilter.matches`(`"GET"`만) |
+| `DefaultLogoutPageGeneratingFilter`·`DefaultResourcesFilter` | `GET /logout`, `GET /default-ui.css`(6.4+) | 위와 같다 | 같은 곳 |
+| `OAuth2AuthorizationRequestRedirectFilter`·`OAuth2LoginAuthenticationFilter`(`oauth2Login`) | `/oauth2/authorization/{registrationId}`, `/login/oauth2/code/*`, method 제한 없음 | `authorizationEndpoint.baseUri`·resolver(bean 포함)·`redirectionEndpoint`·`loginProcessingUrl` → 증명 안 함 | `DefaultOAuth2AuthorizationRequestResolver`, `OAuth2LoginAuthenticationFilter.DEFAULT_FILTER_PROCESSES_URI` |
+| `OAuth2ProtectedResourceMetadataFilter`(7.x `oauth2ResourceServer`) | `GET /.well-known/oauth-protected-resource` 아래 | 없음(상수) | `OAuth2ResourceServerConfigurer`, spring-security-oauth2-resource-server 7.1.0 |
+| HTTP Basic | 없음 | — | `HttpBasicConfigurer`는 `BasicAuthenticationFilter`만 더한다 |
+
+증명하는 구성은 다음뿐이다.
+
+- `@Bean` 메서드가 `HttpSecurity` 매개변수 하나를 받아 `SecurityFilterChain`을 돌려주고, 몸체가 그 매개변수의 DSL 호출과 `build()`뿐이다.
+  lambda(`formLogin(f -> f.loginPage("/signin"))`, `csrf(AbstractHttpConfigurer::disable)`, `withDefaults()`), chained(`formLogin()
+  .loginPage(…).and()`), Kotlin DSL(`http { formLogin { loginPage = "/signin" } }`)을 읽는다. 경로 값은 문자열 리터럴이어야 한다.
+- 모르는 호출·지역 선언·제어문, 모르는 configurer(`with`·`apply`·`addFilter*`·SAML·WebAuthn·one-time token·`oauth2Client`·
+  `passwordManagement`·`requiresChannel` 등), `WebSecurityCustomizer`, `Customizer`·`ThrowingCustomizer`·Kotlin DSL 함수 bean(7.x는 이
+  bean을 모든 체인에 적용한다), 프로젝트 `AbstractHttpConfigurer` 하위 타입이나 `META-INF/spring.factories` 등록(`applyDefaultConfigurers`),
+  직접 만든 체인(`DefaultSecurityFilterChain`), `OAuth2AuthorizationRequestResolver`, `@ImportResource`, 리액티브 Security, Boot 2(Security 5),
+  일부 source 루트만 스캔한 경우는 스코프를 생략한다. `HttpSecurity`·`SecurityFilterChain`이 체인 bean 머리 밖에 보여도 생략한다.
+- 체인 bean이 없거나 모두 조건부(메서드나 감싸는 타입에 등록과 무관하다고 아는 어노테이션 — `@Bean`·`@Configuration`·`@Order`·
+  `@EnableWebSecurity` 등 — 밖의 것이 있으면 조건부로 본다. `@Profile`을 메타 어노테이션으로 단 프로젝트 어노테이션도 있다)이거나 앱 모듈 밖(라이브러리 모듈)에만 있거나 웹 앱 모듈이 둘 이상이면 Boot 기본 체인
+  (`formLogin`·`httpBasic`, `@ConditionalOnDefaultWebSecurity`)의 경로도 더한다. 그때 빌드에 OAuth2·SAML 모듈 표지가 있으면 기본 체인이
+  `oauth2Login`·`oauth2Client`·`saml2Login`이 되므로 생략한다.
+- 여러 체인은 합집합이다. `securityMatcher`는 체인이 받는 요청을 좁히기만 하므로 무시해도 상한이다. configurer를 끈 뒤 다시 쓰면
+  Spring이 기본값으로 새로 만들므로 기본 경로도 넣는다.
+
+기본 경로를 알지만 증명하지 않는 필터: SAML2(`/saml2/authenticate/{id}`, `/login/saml2/sso/{id}`, `/logout/saml2/slo`), WebAuthn
+(`/webauthn/register/options`·`/webauthn/register`·`/webauthn/authenticate/options`·`/login/webauthn`·`/login/webauthn.js`),
+`passwordManagement`(`/.well-known/change-password`), `oauth2Client`(등록마다 redirect URI). 등록·설정에 따라 경로가 달라져 이 저장소에서
+모델링하지 않는다. 의존성 JAR이 spring.factories나 bean으로 더하는 구성은 저장소 소스로 볼 수 없다(`@Controller` component scan 가정과
+같은 한계). Security 표지는 `spring-boot-starter-security`·`spring-boot-security`·`spring-boot-starter-oauth2-*`·`spring-security-web`·
+`-config`·`-oauth2-*`·`-saml2`다(starter 없이 모듈만 써도 Boot가 Security를 자동 구성한다).
+
+spring-petclinic-rest를 실제로 띄워 확인했다(Security 7.1.0, `DisableSecurityConfig` 활성, CSRF 꺼짐): `/petclinic/logout`만 GET·POST·
+PUT·DELETE에 302로 응답했고 HEAD와 `/login`·`/default-ui.css`·`/oauth2/…`·`/login/oauth2/…`는 필터가 받지 않았다. 두 체인 bean이
+`@ConditionalOnProperty`라 스코프는 Boot 기본 체인을 더한 `/petclinic/{default-ui.css,login,logout}`, GET·POST·PUT·DELETE다.
 
 정적 리소스 위치(의존성 JAR의 `META-INF/resources`, 빌드 생성물, 리소스 체인 버전 경로)는 저장소 소스로 열거할 수 없으므로 파일
 경로로 좁히지 않는다. 그래서 GET·HEAD 호출은 정적 리소스 스코프가 가리고, 그 밖의 method 호출만 error를 판정할 수 있다.
@@ -173,7 +223,7 @@ className·name·descriptor로 만든 JVM id), 소스 모드에서 qualifiedName
 (`WildcardPathElement`는 가운데 `*`에 한 글자 이상을 요구한다). WebFlux 공개 표본(spring-petclinic-reactive)은 Cassandra가
 필요해 띄우지 못했다. 소스 모드 출력만 수동으로 확인했다(Boot 2.x, `optional` 끝 슬래시, 32건).
 
-**error 판정 가능 비율 (2026-09-29, isthmus `78d3dee`)**: 합성 클라이언트 호출로 측정했다. 앱마다 서버 문서(소스 모드)의 정적
+**error 판정 가능 비율 (2026-09-29, isthmus `78d3dee`; 2026-09-30 재측정은 아래)**: 합성 클라이언트 호출로 측정했다. 앱마다 서버 문서(소스 모드)의 정적
 root 선언 키 하나당 맞는 호출 하나와, 선언이 없는 경로(`…/zz-missing`)·선언 경로의 다른 method 호출을 만들고, 실제로 서비스되는
 프레임워크 경로(`/actuator/health`, `POST /error`, `/webjars/…`, rest는 `/v3/api-docs`·`/swagger-ui/…`·`/h2-console/…`) 호출도
 넣었다. 음성 표본은 오라클(`/actuator/mappings`)의 프로젝트 핸들러가 받지 않는 호출이고, 비율은 그중 isthmus `check`가 error로
@@ -189,6 +239,19 @@ root 선언 키 하나당 맞는 호출 하나와, 선언이 없는 경로(`…/
 경로의 다른 method 호출은 welcome page 스코프가 가린다(petclinic·kotlin의 1건). spring-petclinic-rest는 Spring Security가 스코프
 없는 한계로 남아 문서 전체가 가려진다 — 참고로 Security 한 줄만 빼고 같은 측정을 하면 40/49(81.6%), 정밀도 40/40이다. 거짓
 error는 모든 표본에서 0건이다.
+
+**재측정 (2026-09-30, isthmus `c395c59`, Security·Data REST·GraphQL 스코프)**: 같은 revision의 앱을 다시 빌드해 띄우고
+`/actuator/mappings`와 필터 응답 기록(`--probe`, 404·500이 아닌 요청)을 오라클로 썼다. 필터가 받은 요청(rest의 `/petclinic/logout`
+GET·POST·PUT·DELETE)은 양성 표본에도 넣었다. 전은 main `5564cb3`, 후는 이 변경이다.
+
+| 앱 | 전 | 후 | 정밀도(후) |
+|---|---|---|---|
+| spring-petclinic | 16/28 (57.1%) | 16/28 (57.1%) | 16/16 |
+| spring-petclinic-kotlin | 17/30 (56.7%) | 17/30 (56.7%) | 17/17 |
+| spring-petclinic-rest | 0/49 (0%) | 40/49 (81.6%) | 40/40 |
+
+petclinic·kotlin은 Security·Data REST·GraphQL을 쓰지 않아 같다. rest의 남은 9건은 GET·HEAD 호출(정적 리소스·springdoc 스코프)이다.
+거짓 error와 양성 표본의 error는 모든 표본에서 0건이다.
 
 ## isthmus 호환성
 

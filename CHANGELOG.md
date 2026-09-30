@@ -138,6 +138,23 @@
   참조 해석을 공유하고, 형식마다 인정하는 소비자를 적어 두 쪽이 합치기 전에 읽던 형식 집합을 그대로 지킨다(동작 불변). 형식을
   합집합으로 넓히면 plugin 버전과 다른 버전을 고정한 starter 좌표가 함께 있을 때 라우트 설정의 버전이 "모름"으로 바뀐다.
 
+### Spring Security·Data REST·GraphQL limitation 스코프 (Added·Changed)
+
+- `routes --role server`가 Spring Security `framework-provided-routes:`에 스코프를 붙인다. `@Bean` 메서드가 `HttpSecurity`
+  하나로 `SecurityFilterChain`을 만들고 몸체가 DSL 호출(lambda·chained·Kotlin `http { }`)과 `build()`뿐이면, 필터가 직접 응답하는
+  경로(`LogoutFilter`의 `logoutUrl` — CSRF가 꺼지면 GET·POST·PUT·DELETE, form login 처리 URL의 POST, 기본 로그인·로그아웃 페이지와
+  `/default-ui.css`의 GET, `oauth2Login`의 `/oauth2/authorization`·`/login/oauth2/code`, 7.x 보호 자원 메타데이터)를 context-path 아래
+  요청 경로로 싣는다. 체인 bean이 없거나 모두 조건부거나 앱이 여럿이면 Boot 기본 체인(`formLogin`·`httpBasic`) 경로를 더한다. 모르는
+  호출·configurer·사용자 필터·`RequestMatcher`·`WebSecurityCustomizer`·`Customizer` bean·spring.factories configurer·리액티브
+  Security·Boot 2·일부 source 루트 스캔이면 이전처럼 문서 전체에 적용한다. 근거는 Spring Security 6.0.8·6.5.5·7.1.0과 Spring Boot
+  3.0.13·3.5.6·4.1.0 공식 소스다.
+- Spring Data REST는 `spring.data.rest.base-path`가 루트가 아니고 Boot 자동 구성 모듈이 있으며 코드가 base path를 바꾸지 않을 때 그
+  아래 전체(모든 method)로, GraphQL은 `spring.graphql.http.path`·옛 `spring.graphql.path`·기본 `/graphql`과 `/schema`, GraphiQL,
+  WebSocket 경로의 GET·HEAD·POST로 좁힌다. 값을 풀지 못하면 스코프를 생략한다.
+- Spring Security 표지를 넓혔다. starter 없이 `spring-security-web`·`-config`나 OAuth2 starter만 써도 Security 한계를 낸다.
+- isthmus `c395c59` 재측정에서 error 판정 가능 비율이 spring-petclinic-rest 0/49→40/49(81.6%)가 됐고, spring-petclinic 16/28·
+  spring-petclinic-kotlin 17/30은 같다. 필터 응답을 실제로 기록한 오라클로 거짓 error는 0건이다(`measure_judgeable.py --probe`).
+
 ### Gradle plugin 다중 모듈 snapshot (Fixed·Added)
 
 - Fixed: build 디렉터리를 project 밖으로 옮긴 Android 모듈의 snapshot이 `Android XML is outside the project root`로
