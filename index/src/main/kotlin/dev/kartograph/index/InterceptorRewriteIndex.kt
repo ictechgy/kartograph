@@ -87,7 +87,7 @@ internal class InterceptorRewriteIndex(private val files: List<RouteSourceFile>,
         // `addInterceptor(chain -> …)`처럼 `Interceptor`를 import하지 않는 Java 람다도 있어 단어 경계 없이 거른다.
         files.filter { it.source.isNotEmpty() && "Interceptor" in it.masked }.forEach { file ->
             val contexts = contexts(file)
-            RequestRewrites.sites(file).forEach { site ->
+            (RequestRewrites.sites(file) + foreignProceeds(file, contexts)).distinct().sorted().forEach { site ->
                 val context = contexts.filter { site in it.range }.maxByOrNull { it.range.first } ?: return@forEach
                 siteList += SourcePosition(file.relative, site)
                 val owner = context.owner ?: return@forEach fail("an interceptor rewrite is not inside a class, object or lambda")
@@ -120,6 +120,18 @@ internal class InterceptorRewriteIndex(private val files: List<RouteSourceFile>,
             }
         }
     }
+
+    /**
+     * 인터셉터 문맥 안에서 원래 요청(`chain.request()`)이나 그 `newBuilder()` 사본이 아닌 요청을 넘기는 `chain.proceed(x)` 위치다.
+     * 다른 곳에서 만든 요청(필드·생성자 인자·헬퍼 함수 결과)은 어휘 재작성 호출 없이도 요청이 가는 곳을 바꾼다.
+     */
+    private fun foreignProceeds(file: RouteSourceFile, contexts: List<Context>): List<Int> = PROCEED.findAll(file.masked).mapNotNull { match ->
+        val context = contexts.filter { match.range.first in it.range }.maxByOrNull { it.range.first } ?: return@mapNotNull null
+        val open = match.range.last
+        val close = balancedEnd(file.code, open).takeIf { it > open } ?: return@mapNotNull match.range.first
+        val argument = singleArgument(file, open..close) ?: return@mapNotNull match.range.first
+        match.range.first.takeUnless { fromOriginalRequest(file, argument.first, argument.last + 1, context.region, match.groupValues[1], 0) }
+    }.toList()
 
     /** [file]의 인터셉터 문맥들이다. */
     private fun contexts(file: RouteSourceFile): List<Context> = buildList {
@@ -253,8 +265,23 @@ internal class InterceptorRewriteIndex(private val files: List<RouteSourceFile>,
             if (single.name == "it") "(?!\\s*[A-Za-z_]\\w*\\s*(?:,[^-]*)?->)" else "\\s*${Regex.escape(single.name)}\\s*->")
         return let.findAll(file.masked.substring(0, offset), region.first).any { match ->
             val open = file.masked.indexOf('{', match.range.first)
-            file.braceEnd(open) > offset
+            file.braceEnd(open) > offset && !rebound(file, single.name, open, offset)
         }
+    }
+
+    /**
+     * `let` 블록 [open]과 사용 위치 [offset] 사이에서 이름 [name]이 다시 묶이는지 본다 — 같은 이름의 람다 매개변수·지역 선언, `it`이면
+     * 사용 위치를 감싸는 안쪽 람다 블록이다.
+     */
+    private fun rebound(file: RouteSourceFile, name: String, open: Int, offset: Int): Boolean {
+        val between = file.masked.substring(open + 1, offset)
+        if (name == "it") {
+            var depth = 0
+            between.forEach { character -> if (character == '{') depth++ else if (character == '}') depth-- }
+            return depth > 0
+        }
+        val escaped = Regex.escape(name)
+        return Regex("[{(,]\\s*$escaped\\s*(?:[,:)]|->)|\\b(?:val|var)\\s+$escaped\\b").containsMatchIn(between)
     }
 
     private fun emptyCall(file: RouteSourceFile, segment: ChainSegment): Boolean =
@@ -574,7 +601,7 @@ internal class InterceptorRewriteIndex(private val files: List<RouteSourceFile>,
                 if (Regex("\\bfun\\s+$").containsMatchIn(before) || file.functions.any { it.name == match.value.trim() && it.start <= match.range.first &&
                         parameterListOpen(file, it)?.let { open -> match.range.first < open } == true }) return@forEach
                 val shape = clients.callShape(file, match.range.last)
-                if (shape != null && clients.attachmentClean(file, shape.first, shape.second)) return@forEach
+                if (shape != null && clients.attachmentClean(file, shape.first, shape.second, authenticator = "uthenticator" in match.value)) return@forEach
                 unclean++
                 if (!adderResolvable(file, match.range.first)) fail("an Authenticator or EventListener that may rewrite requests is attached to an OkHttpClient.Builder whose origin is not resolved")
             }
@@ -584,6 +611,7 @@ internal class InterceptorRewriteIndex(private val files: List<RouteSourceFile>,
     private companion object {
         const val MAX_BLOCK_DEPTH = 16
         val WHITESPACE = Regex("\\s+")
+        val PROCEED = Regex("(?<![\\w.])([A-Za-z_]\\w*)\\s*\\.\\s*proceed\\s*\\(")
         /** 멤버 접근(`this.x`)·레이블(`this@X`)이 아닌 값으로 쓴 `this`다. */
         val THIS_VALUE = Regex("(?<![\\w.@])this(?!\\s*(?:[.@\\w]|\\?\\.))")
         /** 인터셉터 람다·등록 블록의 여는 괄호다(`Interceptor { … }`, `addInterceptor { … }`). */

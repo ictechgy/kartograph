@@ -80,7 +80,7 @@ internal class OkHttpClientResolver(files: List<RouteSourceFile>, declarations: 
     /** 빌더 사슬 단위 하나의 증거다. `newBuilder`는 원본 client의 인터셉터를 복사할 뿐이라 그대로 지나간다. */
     private fun segmentFacts(file: RouteSourceFile, segment: ChainSegment): RetrofitClientFacts = when {
         segment.name in ADDERS -> RetrofitClientFacts(adders = setOf(SourcePosition(file.relative, segment.start)))
-        segment.name in ATTACHMENTS -> if (attachmentClean(file, segment.arguments, segment.lambda)) RetrofitClientFacts.DEFAULT
+        segment.name in ATTACHMENTS -> if (attachmentClean(file, segment.arguments, segment.lambda, "uthenticator" in segment.name)) RetrofitClientFacts.DEFAULT
         else RetrofitClientFacts(forced = setOf(SourcePosition(file.relative, segment.start)))
         segment.name in LIST_ACCESSORS -> RetrofitClientFacts.UNKNOWN
         segment.name in SCOPE_BLOCKS && segment.lambda != null && segment.arguments == null -> blockFacts(file, segment.lambda)
@@ -102,7 +102,7 @@ internal class OkHttpClientResolver(files: List<RouteSourceFile>, declarations: 
             facts = facts.merge(
                 when {
                     match.groupValues[1] in ADDERS -> RetrofitClientFacts(adders = setOf(SourcePosition(file.relative, position)))
-                    attachmentClean(file, call.first, call.second) -> RetrofitClientFacts.DEFAULT
+                    attachmentClean(file, call.first, call.second, "uthenticator" in match.groupValues[1]) -> RetrofitClientFacts.DEFAULT
                     else -> RetrofitClientFacts(forced = setOf(SourcePosition(file.relative, position)))
                 },
             )
@@ -193,37 +193,98 @@ internal class OkHttpClientResolver(files: List<RouteSourceFile>, declarations: 
      * `authenticator`·`proxyAuthenticator`·`eventListener`·`eventListenerFactory`의 인자가 요청을 바꾸지 않음을 증명하는지 본다.
      * `NONE` 상수, 몸체에 재작성 호출이 없는 람다·익명 객체, 몸체에 재작성 호출이 없고 프로젝트 상위 타입이 없는 프로젝트 class의
      * 생성, 그런 값을 담은 지역 `val`·읽기 전용 속성만 증명한다. 그 밖(주입된 값·라이브러리 구현)은 재작성으로 본다.
+     * [authenticator]면 `authenticate`가 돌려주는 모든 요청이 `null`이거나 `response.request()`(와 그 `newBuilder()` 사본)여야 한다 —
+     * 헬퍼가 만든 요청은 재작성 호출 없이도 다른 곳으로 간다.
      */
-    fun attachmentClean(file: RouteSourceFile, arguments: IntRange?, lambda: IntRange?): Boolean {
-        if (arguments == null) return lambda != null && bodyClean(file, lambda, mutableSetOf())
+    fun attachmentClean(file: RouteSourceFile, arguments: IntRange?, lambda: IntRange?, authenticator: Boolean): Boolean {
+        if (arguments == null) return lambda != null && bodyClean(file, lambda, mutableSetOf()) && (!authenticator || returnsResponseRequest(file, lambda))
         if (lambda != null) return false
         val argument = singleArgument(file, arguments) ?: return false
-        return implementationClean(file, argument.first, argument.last + 1, mutableSetOf())
+        return implementationClean(file, argument.first, argument.last + 1, mutableSetOf(), authenticator)
     }
 
-    private fun implementationClean(file: RouteSourceFile, start: Int, end: Int, visiting: MutableSet<String>): Boolean {
+    /**
+     * 구현 범위(람다·익명 객체·타입 몸체)의 `authenticate`가 돌려주는 식이 모두 `null`·`response.request()` 계열인지 본다. 함수가
+     * 없으면(상속) SAM 람다의 마지막 식을 본다.
+     */
+    private fun returnsResponseRequest(file: RouteSourceFile, range: IntRange): Boolean {
+        val masked = file.masked
+        val function = file.functions.firstOrNull { it.name == "authenticate" && it.start in range && it.bodyStart >= 0 }
+        if (function != null) {
+            val response = function.parameters.getOrNull(1)?.name ?: return false
+            val end = function.end.coerceAtMost(masked.length)
+            val returns = if (masked.getOrNull(function.bodyStart) == '=') listOf((function.bodyStart + 1) until end)
+            else scopes.returnRanges(file, (function.bodyStart + 1) until end)
+            return returns.all { requestFromResponse(file, it, response, 0) }
+        }
+        val open = masked.indexOf('{', range.first).takeIf { it in range } ?: return javaLambdaReturns(file, range)
+        val close = file.braceEnd(open).takeIf { it > open } ?: return false
+        val response = SAM_PARAMETERS.find(masked, open)?.takeIf { it.range.first == open }?.groupValues?.get(2) ?: return javaLambdaReturns(file, range)
+        if ("return@" in masked.substring(open, close)) return false
+        val last = scopes.lastStatement(file, (open + 1) until close) ?: return false
+        val statement = skipSpaces(masked, last.first)
+        val arrow = masked.indexOf("->", open)
+        return requestFromResponse(file, (if (statement <= arrow) arrow + 2 else statement) until (last.last + 1), response, 0)
+    }
+
+    /** Java 람다 `(route, response) -> 식`·`-> { … return 식; }`의 반환 식들이다. */
+    private fun javaLambdaReturns(file: RouteSourceFile, range: IntRange): Boolean {
+        val match = JAVA_SAM_PARAMETERS.find(file.masked, range.first)?.takeIf { it.range.first == skipSpaces(file.masked, range.first) } ?: return false
+        val body = skipSpaces(file.masked, match.range.last + 1)
+        if (file.masked.getOrNull(body) != '{') return requestFromResponse(file, body..range.last, match.groupValues[2], 0)
+        val close = file.braceEnd(body).takeIf { it > body } ?: return false
+        return scopes.returnRanges(file, (body + 1) until close).all { requestFromResponse(file, it, match.groupValues[2], 0) }
+    }
+
+    /** 식이 `null`이거나 `response.request()`(`response.request`)로 시작하는 사슬, 또는 그런 값을 담은 지역 `val`로 시작하는 사슬인지 본다. */
+    private fun requestFromResponse(file: RouteSourceFile, range: IntRange, response: String, depth: Int): Boolean {
+        if (depth > 4) return false
+        val from = skipSpaces(file.masked, range.first)
+        val end = (range.last + 1).coerceAtMost(file.masked.length)
+        if (from >= end) return false
+        if (file.masked.substring(from, end).trim() == "null") return true
+        val segments = chainSegments(file, from, end) ?: return false
+        // 뿌리가 지역 `val`(`val original = response.request()`)이면 그 초기식이 원래 요청 계열이어야 한다.
+        segments.first().takeIf { it.isPlain && it.name != response }?.let { root ->
+            val (isVal, initializer) = scopes.localInitializer(file, root.name, from) ?: return false
+            return isVal && requestFromResponse(file, initializer, response, depth + 1)
+        }
+        val request = segments.getOrNull(1) ?: return false
+        return segments[0].isPlain && segments[0].name == response && request.name == "request" && request.lambda == null &&
+            request.arguments?.let { file.masked.substring(it.first + 1, it.last).isBlank() } != false
+    }
+
+    private fun implementationClean(file: RouteSourceFile, start: Int, end: Int, visiting: MutableSet<String>, authenticator: Boolean = false): Boolean {
         val from = skipSpaces(file.masked, start)
         val text = file.masked.substring(from, end).trim()
         if (NONE_CONSTANT.matches(text)) return true
         // 익명 객체·익명 class·SAM 람다·Java 람다는 그 몸체 전체를 본다.
-        if (INLINE_IMPLEMENTATION.containsMatchIn(text)) return bodyClean(file, from until end, visiting)
+        if (INLINE_IMPLEMENTATION.containsMatchIn(text)) {
+            return bodyClean(file, from until end, visiting) && (!authenticator || returnsResponseRequest(file, from until end))
+        }
         val segments = chainSegments(file, from, end) ?: return false
         val single = segments.singleOrNull()
         if (single != null && single.arguments != null && single.lambda == null) {
             val fqn = declarations.resolveType(file, single.name) ?: return false
-            return typeClean(fqn, visiting)
+            return typeClean(fqn, visiting) && (!authenticator || typeReturnsResponseRequest(fqn))
         }
         if (single == null || !single.isPlain) return false
         // 프로젝트 `object`의 참조는 그 타입 하나다.
         declarations.resolveType(file, single.name)?.takeIf { fqn ->
             declarations.type(fqn)?.let { (owner, type) -> owner.masked.startsWith("object", type.start) } == true
-        }?.let { return typeClean(it, visiting) }
+        }?.let { return typeClean(it, visiting) && (!authenticator || typeReturnsResponseRequest(it)) }
         scopes.localInitializer(file, single.name, from)?.let { (isVal, range) ->
-            return isVal && implementationClean(file, range.first, range.last + 1, visiting)
+            return isVal && implementationClean(file, range.first, range.last + 1, visiting, authenticator)
         }
         val (owner, property) = scopes.propertyInScope(file, single.name, from) ?: declarations.findTopLevelProperty(file, single.name) ?: return false
         val initializer = property.initializer?.takeUnless { property.mutable } ?: return false
-        return implementationClean(owner, initializer.first, initializer.last + 1, visiting)
+        return implementationClean(owner, initializer.first, initializer.last + 1, visiting, authenticator)
+    }
+
+    /** 프로젝트 `Authenticator` 타입의 `authenticate`가 원래 요청 계열만 돌려주는지 본다. */
+    private fun typeReturnsResponseRequest(fqn: String): Boolean {
+        val (file, type) = declarations.type(fqn) ?: return false
+        return type.bodyStart >= 0 && returnsResponseRequest(file, type.bodyStart..type.bodyEnd)
     }
 
     /** 범위에 재작성 호출이 없고, 범위 안에서 만든 프로젝트 타입도 모두 [typeClean]이다. */
@@ -291,6 +352,8 @@ internal class OkHttpClientResolver(files: List<RouteSourceFile>, declarations: 
                 "new\\s+(?:okhttp3\\s*\\.\\s*)?(?:Authenticator|EventListener(?:\\s*\\.\\s*Factory)?)\\s*\\(\\s*\\)\\s*\\{|" +
                 "(?:okhttp3\\s*\\.\\s*)?(?:Authenticator|EventListener(?:\\s*\\.\\s*Factory)?)\\s*\\{|\\{|\\(?[\\w\\s,]*\\)?\\s*->)",
         )
+        private val SAM_PARAMETERS = Regex("\\{\\s*([A-Za-z_]\\w*)\\s*,\\s*([A-Za-z_]\\w*)\\s*->")
+        private val JAVA_SAM_PARAMETERS = Regex("\\(\\s*([A-Za-z_]\\w*)\\s*,\\s*([A-Za-z_]\\w*)\\s*\\)\\s*->")
         private val CONSTRUCTION = Regex("(?<![\\w.])(?:new\\s+)?([A-Z]\\w*(?:\\s*\\.\\s*[A-Z]\\w*)*)\\s*\\(")
 
         /** 사슬의 뿌리 단위 수다. 앞의 이름 단위들과, 그 뒤가 빌더 메서드가 아닌 호출이면 그 호출까지다. */

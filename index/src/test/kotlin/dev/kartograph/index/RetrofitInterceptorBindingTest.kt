@@ -589,6 +589,133 @@ class RetrofitInterceptorBindingTest {
     }
 
     @Test
+    fun `review reproductions - foreign proceeded requests, rebuilt requests, shadowed let parameters and delegating authenticators`() {
+        services(rewriter = false)
+        val rewriter = "src/main/kotlin/dev/example/net/HostRewriteInterceptor.kt"
+        write(
+            "src/main/kotlin/dev/example/net/Clients.kt",
+            """
+            package dev.example.net
+
+            import dev.example.api.EdgeApi
+            import dev.example.api.PlainApi
+            import okhttp3.OkHttpClient
+            import retrofit2.Retrofit
+
+            fun edgeApi(): EdgeApi = Retrofit.Builder().baseUrl("https://api.example.com/")
+                .client(OkHttpClient.Builder().addInterceptor(HostRewriteInterceptor("edge.example.net")).build()).build().create(EdgeApi::class.java)
+
+            fun plainApi(): PlainApi = Retrofit.Builder().baseUrl("https://api.example.com/").build().create(PlainApi::class.java)
+            """,
+        )
+        // D1: 재작성 호출 없이 다른 곳에서 온 요청을 넘긴다.
+        write(
+            rewriter,
+            """
+            package dev.example.net
+
+            import okhttp3.Interceptor
+            import okhttp3.Request
+
+            object Vault { fun rebuild(request: Request): Request = request }
+
+            class HostRewriteInterceptor(private val host: String) : Interceptor {
+                override fun intercept(chain: Interceptor.Chain) = chain.proceed(Vault.rebuild(chain.request()))
+            }
+            """,
+        )
+        scan().let { document ->
+            assertEquals(listOf("base - /items/{} kt:dev.example.net.edgeApi"), document.of("item").map { it.summary() })
+            assertEquals(listOf("root api.example.com /status kt:dev.example.net.plainApi"), document.of("status").map { it.summary() })
+            assertTrue(document.limitationScopes.isEmpty(), document.limitationScopes.toString())
+        }
+        // D2: 헬퍼가 다시 만든 요청의 사본에서 host만 바꿔도 경로 보존은 증명하지 못한다.
+        write(
+            rewriter,
+            """
+            package dev.example.net
+
+            import okhttp3.Interceptor
+            import okhttp3.Request
+
+            object Vault { fun rebuild(request: Request): Request = request }
+
+            class HostRewriteInterceptor(private val host: String) : Interceptor {
+                override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
+                    val request = Vault.rebuild(chain.request())
+                    return chain.proceed(request.newBuilder().url(request.url.newBuilder().host(host).build()).build())
+                }
+            }
+            """,
+        )
+        scan().let { document ->
+            assertEquals(listOf("base - /items/{} kt:dev.example.net.edgeApi"), document.of("item").map { it.summary() })
+            assertTrue(document.limitationScopes.isEmpty(), document.limitationScopes.toString())
+        }
+        // D3: 안쪽 람다가 같은 이름을 다시 묶으면 원래 요청이 아니다.
+        write(
+            rewriter,
+            """
+            package dev.example.net
+
+            import okhttp3.Interceptor
+
+            class HostRewriteInterceptor(private val host: String) : Interceptor {
+                val pending = mutableListOf<okhttp3.Request>()
+                override fun intercept(chain: Interceptor.Chain) = chain.request().let { request ->
+                    pending.first().let { request ->
+                        chain.proceed(chain.request().newBuilder().url(request.url.newBuilder().host(host).build()).build())
+                    }
+                }
+            }
+            """,
+        )
+        assertTrue(scan().limitationScopes.isEmpty())
+        // D4: 헬퍼가 만든 요청을 돌려주는 Authenticator는 재작성으로 본다.
+        write(rewriter, "package dev.example.net\n")
+        write(
+            "src/main/kotlin/dev/example/net/Clients.kt",
+            """
+            package dev.example.net
+
+            import dev.example.api.EdgeApi
+            import dev.example.api.PlainApi
+            import okhttp3.Authenticator
+            import okhttp3.OkHttpClient
+            import okhttp3.Request
+            import okhttp3.Response
+            import okhttp3.Route
+            import retrofit2.Retrofit
+
+            object AuthVault { fun retry(response: Response): Request? = null }
+
+            class DelegatingAuthenticator : Authenticator {
+                override fun authenticate(route: Route?, response: Response): Request? = AuthVault.retry(response)
+            }
+
+            class HeaderAuthenticator : Authenticator {
+                override fun authenticate(route: Route?, response: Response): Request? {
+                    if (response.request.header("Authorization") != null) return null
+                    return response.request.newBuilder().header("Authorization", "t").build()
+                }
+            }
+
+            fun edgeApi(): EdgeApi = Retrofit.Builder().baseUrl("https://api.example.com/")
+                .client(OkHttpClient.Builder().authenticator(DelegatingAuthenticator()).build()).build().create(EdgeApi::class.java)
+
+            fun plainApi(): PlainApi = Retrofit.Builder().baseUrl("https://api.example.com/")
+                .client(OkHttpClient.Builder().authenticator(HeaderAuthenticator()).authenticator { _, response -> response.request }.build())
+                .build().create(PlainApi::class.java)
+            """,
+        )
+        scan().let { document ->
+            assertEquals(listOf("base - /items/{} kt:dev.example.net.edgeApi"), document.of("item").map { it.summary() })
+            assertEquals(listOf("root api.example.com /status kt:dev.example.net.plainApi"), document.of("status").map { it.summary() })
+            assertFalse(document.globalFallback(), document.limitations.toString())
+        }
+    }
+
+    @Test
     fun `without rewrites unresolved clients keep their bases`() {
         services(rewriter = false)
         write(
