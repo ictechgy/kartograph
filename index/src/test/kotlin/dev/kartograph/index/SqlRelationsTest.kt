@@ -11,6 +11,14 @@ class SqlRelationsTest {
     private fun relations(sql: String): List<String> = sqlRelations(sql).first.map { it.name }
 
     @Test
+    fun `table valued functions are not table names`() {
+        assertEquals(emptyList(), relations("SELECT * FROM pragma_table_info('t')"))
+        assertEquals(listOf("users"), relations("SELECT * FROM users JOIN main.pragma_table_info('t') p ON true"))
+        assertEquals(listOf("users"), relations("SELECT * FROM pragma_table_info('t') AS p, users"))
+        assertEquals(1, sqlRelations("SELECT * FROM pragma_table_info('t')").second)
+    }
+
+    @Test
     fun `basic relation keywords`() {
         assertEquals(listOf("users"), relations("SELECT * FROM users"))
         assertEquals(listOf("users", "orders"), relations("SELECT * FROM users JOIN orders ON true"))

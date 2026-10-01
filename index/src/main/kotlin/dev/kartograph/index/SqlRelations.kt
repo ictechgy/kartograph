@@ -289,10 +289,18 @@ internal fun sqlRelations(text: String, strict: Boolean = false): Pair<List<SqlR
                     break
                 }
                 val (name, next) = read
-                if (bufferedGrant) buf += name
-                else if (seen.add("${tok.offset} $name")) out += SqlRelation(name, tok.offset)
                 for (c in j until next) consumed[c] = true
-                next
+                if (word in setOf("from", "join") &&
+                    tokens.getOrNull(next)?.let { !it.quoted && it.text == "(" } == true
+                ) {
+                    // 함수의 내부 관계를 추측하지 않고 미해석 근거를 남긴다.
+                    unresolved++
+                    skipParens(tokens, next) ?: break
+                } else {
+                    if (bufferedGrant) buf += name
+                    else if (seen.add("${tok.offset}\u0000$name")) out += SqlRelation(name, tok.offset)
+                    next
+                }
             }
             // `AS alias` 또는 쉼표 직전 별칭(`FROM users u, ..`)을 건너뛴다.
             var k = operandEnd
