@@ -58,7 +58,7 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.18.1"
+    id("io.github.ictechgy.kartograph") version "0.18.2"
 }
 ```
 
