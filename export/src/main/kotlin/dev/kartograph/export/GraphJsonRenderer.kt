@@ -101,5 +101,8 @@ public object GraphJsonRenderer {
         "source" to source.value,
         "target" to target.value,
         "weight" to weight,
-    ).apply { if (origin != dev.kartograph.core.EdgeOrigin.BYTECODE) put("origin", origin.name.lowerCamel()) }
+    ).apply {
+        if (origin != dev.kartograph.core.EdgeOrigin.BYTECODE) put("origin", origin.name.lowerCamel())
+        if (callSiteLines.isNotEmpty()) put("callSiteLines", callSiteLines)
+    }
 }

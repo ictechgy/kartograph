@@ -45,6 +45,18 @@ class GraphJsonRendererTest {
     )
 
     @Test
+    fun `renders sparse call-site lines only when observed`() {
+        val caller = GraphNode(NodeId("method:a/Caller#calls()V"), "calls", NodeKind.METHOD)
+        val target = GraphNode(NodeId("method:a/Target#run()V"), "run", NodeKind.METHOD)
+        val output = GraphJsonRenderer.render(
+            CodeGraph(listOf(caller, target), listOf(GraphEdge(caller.id, target.id, EdgeKind.CALL, weight = 2, callSiteLines = listOf(5, 7)))),
+            "test",
+        )
+
+        assertTrue(output.contains("\"callSiteLines\": [5, 7]"))
+    }
+
+    @Test
     fun `distinct evidence origins retain independent weights and deterministic output`() {
         val edges = listOf(
             GraphEdge(methodId, classId, EdgeKind.REFERENCE, 2),

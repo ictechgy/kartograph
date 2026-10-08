@@ -317,6 +317,8 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private var classAccess: Int = 0
     private var innerClassAccess: Int? = null
     private var sourceFile: String? = null
+    private var sourceDebugMapper: SourceDebugMapper? = null
+    private var sourceDebugPresent = false
     private var metadataValues: MetadataAnnotationValues? = null
     private val nodes = mutableListOf<GraphNode>()
     private val edges = mutableListOf<GraphEdge>()
@@ -351,6 +353,8 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
 
     override fun visitSource(source: String?, debug: String?) {
         sourceFile = source
+        sourceDebugPresent = debug?.startsWith("SMAP") == true
+        sourceDebugMapper = if (sourceDebugPresent) SourceDebugMapper.parse(debug) else null
     }
 
     override fun visitInnerClass(name: String, outerName: String?, innerName: String?, access: Int) {
@@ -486,6 +490,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                     methodId,
                     JvmNodeId.methodId(owner, targetName, targetDescriptor),
                     EdgeKind.CALL,
+                    callSiteLines = callSiteLine(currentLine)?.let(::listOf).orEmpty(),
                 )
                 edges += GraphEdge(methodId, JvmNodeId.classId(owner), EdgeKind.REFERENCE)
             }
@@ -507,7 +512,11 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 vararg bootstrapMethodArguments: Any,
             ) {
                 val ordinal = callOrdinal++
-                edges += GraphEdge(methodId, JvmNodeId.methodId(bootstrapMethodHandle.owner, bootstrapMethodHandle.name, bootstrapMethodHandle.desc), EdgeKind.CALL)
+                edges += GraphEdge(
+                    methodId,
+                    JvmNodeId.methodId(bootstrapMethodHandle.owner, bootstrapMethodHandle.name, bootstrapMethodHandle.desc),
+                    EdgeKind.CALL,
+                )
                 edges += GraphEdge(methodId, JvmNodeId.classId(bootstrapMethodHandle.owner), EdgeKind.REFERENCE)
                 calls += ExternalCall(methodId, bootstrapMethodHandle.owner, bootstrapMethodHandle.name,
                     bootstrapMethodHandle.desc, InvocationKind.BOOTSTRAP, sourceLocation(currentLine), ordinal)
@@ -667,6 +676,97 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         sourceFile?.substringAfterLast('/')?.substringAfterLast('\\')
             ?.takeIf(String::isNotBlank)
             ?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
+
+    /** 새 호출부 근거만 SMAP으로 확인한다. 같은 basename의 inline body도 caller 위치로 오인하지 않게 identity만 쓴다. */
+    private fun callSiteLine(line: Int?): Int? {
+        if (line == null || line !in 1..65535) return null
+        if (!sourceDebugPresent) return sourceLocation(line)?.line
+        val mapped = sourceDebugMapper?.location(line) ?: return null
+        val ownPath = sourceLocation()?.path ?: return null
+        // primary SMAP의 output/input identity만 확정적인 caller 위치다. KotlinDebug stratum이나 inline 매핑은 추정하지 않는다.
+        return mapped.line?.takeIf { mapped.path == ownPath && it == line && it in 1..65535 }
+    }
+}
+
+/** Kotlin SMAP의 output line을 input source basename과 line으로만 복원한다. */
+private class SourceDebugMapper private constructor(private val lines: Map<Int, SourceLocation?>) {
+    fun location(outputLine: Int): SourceLocation? = lines[outputLine]
+
+    companion object {
+        private const val MAX_DEBUG_BYTES = 1_048_576
+        private const val MAX_MAPPED_LINES = 100_000
+        private val linePattern = Regex("^(\\d+)#(\\d+)(?:,(\\d+))?:(\\d+)(?:,(\\d+))?$")
+
+        fun parse(debug: String?): SourceDebugMapper? {
+            if (debug == null || debug.toByteArray(Charsets.UTF_8).size > MAX_DEBUG_BYTES || !debug.startsWith("SMAP")) return null
+            val rows = debug.split(Regex("\\r?\\n"))
+            val defaultStratum = rows.getOrNull(2)?.trimEnd('\r')?.takeIf(String::isNotBlank) ?: return null
+            val files = mutableMapOf<Int, SmapFile>()
+            val basenames = mutableMapOf<String, String>()
+            val ambiguousBasenames = mutableSetOf<String>()
+            val mapped = mutableMapOf<Int, SourceLocation?>()
+            var section = ""
+            var hasStratum = false
+            var activeStratum = false
+            var index = 0
+            while (index < rows.size) {
+                val row = rows[index].trimEnd('\r')
+                when (row) {
+                    "*F" -> if (!hasStratum || activeStratum) section = "files"
+                    "*L" -> if (!hasStratum || activeStratum) section = "lines"
+                    "*E" -> break
+                    else -> if (row.startsWith("*S ")) {
+                        hasStratum = true
+                        activeStratum = row.removePrefix("*S ") == defaultStratum
+                        section = ""
+                    } else when (section) {
+                        "files" -> {
+                            val tokens = row.removePrefix("+").trim().split(Regex("\\s+"), limit = 3)
+                            val id = tokens.firstOrNull()?.toIntOrNull() ?: return null
+                            if (row.trimStart().startsWith("+")) {
+                                if (index + 1 >= rows.size) return null
+                                val fullPath = rows[++index].trimEnd('\r')
+                                val logicalName = tokens.drop(1).joinToString(" ").substringAfterLast('/').substringAfterLast('\\')
+                                val basename = logicalName.takeIf(String::isNotBlank) ?: fullPath.substringAfterLast('/').substringAfterLast('\\')
+                                if (files.put(id, SmapFile(fullPath, basename)) != null) return null
+                                val prior = basenames.putIfAbsent(basename, fullPath)
+                                if (prior != null && prior != fullPath) ambiguousBasenames += basename
+                            } else {
+                                val fullPath = tokens.drop(1).joinToString(" ")
+                                val basename = fullPath.substringAfterLast('/').substringAfterLast('\\').takeIf(String::isNotBlank) ?: return null
+                                if (files.put(id, SmapFile(fullPath, basename)) != null) return null
+                                val prior = basenames.putIfAbsent(basename, fullPath)
+                                if (prior != null && prior != fullPath) ambiguousBasenames += basename
+                            }
+                        }
+                        "lines" -> {
+                            val match = linePattern.matchEntire(row) ?: return null
+                            val inputStart = match.groupValues[1].toLongOrNull() ?: return null
+                            val fileId = match.groupValues[2].toIntOrNull() ?: return null
+                            val repeat = match.groupValues[3].takeIf(String::isNotEmpty)?.toLongOrNull() ?: 1L
+                            val outputStart = match.groupValues[4].toLongOrNull() ?: return null
+                            val outputIncrement = match.groupValues[5].takeIf(String::isNotEmpty)?.toLongOrNull() ?: 1L
+                            val file = files[fileId] ?: return null
+                            if (repeat < 1 || repeat > MAX_MAPPED_LINES || outputIncrement < 1 || mapped.size + repeat > MAX_MAPPED_LINES) return null
+                            repeat(repeat.toInt()) { offset ->
+                                val output = outputStart + offset.toLong() * outputIncrement
+                                val input = inputStart + offset
+                                if (output in 1..65535 && input in 1..65535 && file.basename !in ambiguousBasenames) {
+                                    val location = SourceLocation(file.basename, input.toInt())
+                                    if (mapped.containsKey(output.toInt()) && mapped[output.toInt()] != location) mapped[output.toInt()] = null
+                                    else mapped[output.toInt()] = location
+                                }
+                            }
+                        }
+                    }
+                }
+                index++
+            }
+            return SourceDebugMapper(mapped)
+        }
+
+        private data class SmapFile(val fullPath: String, val basename: String)
+    }
 }
 
 internal data class ClassFacts(
@@ -749,20 +849,54 @@ private fun inheritedInterfaceCallEdges(classFacts: List<ClassFacts>): List<Grap
     val typeNodes = classFacts.mapNotNull { facts -> facts.nodes.firstOrNull { it.id == JvmNodeId.classId(facts.internalName) } }
         .associateBy { it.id.value.removePrefix("class:") }
     val methods = classFacts.flatMap(ClassFacts::nodes).associateBy(GraphNode::id)
+    // 관련된 unresolved interface 호출만 먼저 묶어, 대형 그래프의 unrelated edge에는 key 객체를 만들지 않는다.
+    val relevantCalls = linkedMapOf<NodeId, MutableMap<NodeId, MutableList<ExternalCall>>>()
+    classFacts.forEach { facts ->
+        facts.calls.forEach { call ->
+            if (call.kind != InvocationKind.INTERFACE || typeNodes[call.owner]?.kind != NodeKind.INTERFACE || call.target in methods ||
+                call.name + call.descriptor in OBJECT_PUBLIC_METHODS) return@forEach
+            relevantCalls.getOrPut(call.caller) { linkedMapOf() }
+                .getOrPut(call.target) { mutableListOf() }
+                .add(call)
+        }
+    }
+    if (relevantCalls.isEmpty()) return emptyList()
+
+    // 실제 BYTECODE CALL 사실도 위의 caller/target 집합에 맞는 것만 보존한다. bootstrap CALL은 호출 후보를 만들지 않는다.
+    val directBytecodeCalls = linkedMapOf<NodeId, MutableMap<NodeId, MutableList<GraphEdge>>>()
+    classFacts.forEach { facts ->
+        facts.edges.forEach { edge ->
+            if (edge.kind != EdgeKind.CALL || edge.origin != EdgeOrigin.BYTECODE) return@forEach
+            val targets = relevantCalls[edge.source] ?: return@forEach
+            if (edge.target !in targets) return@forEach
+            directBytecodeCalls.getOrPut(edge.source) { linkedMapOf() }
+                .getOrPut(edge.target) { mutableListOf() }
+                .add(edge)
+        }
+    }
     val ancestors = mutableMapOf<String, Set<String>>()
     fun ancestorsOf(name: String): Set<String> = ancestors.getOrPut(name) { factsByName[name]?.projectSupertypes(factsByName).orEmpty() }
-    return classFacts.flatMap(ClassFacts::calls).mapNotNull { call ->
-        if (call.kind != InvocationKind.INTERFACE || typeNodes[call.owner]?.kind != NodeKind.INTERFACE || call.target in methods ||
-            call.name + call.descriptor in OBJECT_PUBLIC_METHODS) return@mapNotNull null
-        val declarations = ancestorsOf(call.owner).mapNotNull { owner ->
-            methods[JvmNodeId.methodId(owner, call.name, call.descriptor)]?.takeIf(GraphNode::isOverrideCandidate)
+    val derived = mutableListOf<GraphEdge>()
+    relevantCalls.forEach { (caller, targets) ->
+        targets.forEach { (target, calls) ->
+            val call = calls.first()
+            val declarations = ancestorsOf(call.owner).mapNotNull { owner ->
+                methods[JvmNodeId.methodId(owner, call.name, call.descriptor)]?.takeIf(GraphNode::isOverrideCandidate)
+            }
+            val owners = declarations.map { it.id.value.removePrefix("method:").substringBefore('#') }
+            // 다른 후보의 상위 인터페이스인 선언은 가려진다(최대 특수 선언만 남긴다).
+            val specific = declarations.filterIndexed { index, _ -> owners.none { other -> owners[index] in ancestorsOf(other) } }
+            if (specific.any { JvmModifier.ABSTRACT !in it.jvmModifiers } || specific.isEmpty()) return@forEach
+
+            val direct = directBytecodeCalls[caller]?.get(target).orEmpty()
+            val weight = direct.sumOf(GraphEdge::weight).takeIf { it > 0 } ?: calls.size
+            val lines = direct.flatMap(GraphEdge::callSiteLines).distinct().sorted()
+            specific.forEach { declaration ->
+                derived += GraphEdge(caller, declaration.id, EdgeKind.CALL, weight = weight, callSiteLines = lines)
+            }
         }
-        val owners = declarations.map { it.id.value.removePrefix("method:").substringBefore('#') }
-        // 다른 후보의 상위 인터페이스인 선언은 가려진다(최대 특수 선언만 남긴다).
-        val specific = declarations.filterIndexed { index, _ -> owners.none { other -> owners[index] in ancestorsOf(other) } }
-        specific.filter { JvmModifier.ABSTRACT in it.jvmModifiers }.takeIf { it.size == specific.size }
-            ?.map { declaration -> GraphEdge(call.caller, declaration.id, EdgeKind.CALL) }
-    }.flatten()
+    }
+    return derived
 }
 
 /** 인터페이스 메서드 해석이 상위 인터페이스보다 먼저 고르는 `java/lang/Object` 공개 인스턴스 메서드다. */

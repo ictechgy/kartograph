@@ -6,6 +6,25 @@
 
 ## [Unreleased]
 
+### Added
+
+- 직접 bytecode CALL의 호출부 줄을 `query` 이웃의 선택적 `references`와 그래프의 `callSiteLines`로 제공한다.
+  Kotlin SMAP은 자신의 소스 파일의 identity 줄만 채택하며 기존 선언 위치·column·offset을 바꾸거나 추측하지 않는다.
+- 일반·compact snapshot은 선택적 sparse `callSiteEvidence`를 보존한다. 필드가 없는 옛 snapshot은
+  `call-site-lines:` 한계를 알리고, 새로 인덱싱하는 merge는 입력 snapshot의 나이와 관계없이 새 근거를 보존한다.
+
+### Fixed
+
+- snapshot JSON을 모두 만든 뒤 검사하던 byte 상한을 인코딩 중에 적용한다. 선택한 상한과 trailing newline을
+  같은 UTF-8 예산으로 세며, 초과 입력은 부분 문서 대신 기존 크기 오류로 실패한다.
+
+### Changed
+
+- `GraphEdge`와 `SymbolQueryNeighbor` 생성자·copy의 binary signature가 바뀐다. JVM 라이브러리를
+  직접 사용하는 compiled 소비자는 같은 릴리스의 모듈로 다시 컴파일한다. JSON 선택 필드와 옛 snapshot 읽기는 유지한다.
+- class 파싱 캐시 형식을 7로 올려 호출부 줄이 없는 형식 6의 항목을 다시 파싱한다.
+  같은 간선의 weight와 줄은 한 번의 누적 순회로 결합하며 간선 출처는 구분한다.
+
 ## [0.18.2] - 2026-10-01
 
 0.18.1 기록의 SQL 함수 추출 수정을 이번 발행본에 포함한다.

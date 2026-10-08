@@ -26,8 +26,61 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class QuerySnapshotCodecTest {
+    @Test
+    fun `legacy reference capture gap survives both snapshot encodings and recapture`() {
+        val caller = GraphNode(NodeId("method:app/Caller#calls()V"), "calls", NodeKind.METHOD)
+        val target = GraphNode(NodeId("method:app/Target#run()V"), "run", NodeKind.METHOD)
+        val legacy = QuerySnapshot(CodeGraph(listOf(caller, target), listOf(
+            GraphEdge(caller.id, target.id, EdgeKind.CALL),
+        )), emptyList(), emptyList(), callSiteLinesCaptured = false)
+        for (compact in listOf(false, true)) {
+            val encoded = QuerySnapshotCodec.render(legacy, compact)
+            assertFalse(encoded.contains("\"callSiteEvidence\""))
+            val decoded = QuerySnapshotCodec.parse(encoded)
+            assertFalse(decoded.callSiteLinesCaptured)
+            assertFalse(QuerySnapshotCodec.parse(QuerySnapshotCodec.render(decoded, compact)).callSiteLinesCaptured)
+            val query = SymbolQuery.query(decoded.graph, ReachabilityAnalyzer.analyze(decoded.graph, emptyList()),
+                target.id.value, emptyList(), callSiteLinesCaptured = decoded.callSiteLinesCaptured)
+            assertEquals(1, query.limitations.count { it.startsWith("call-site-lines:") })
+        }
+    }
+
+    @Test
+    fun `rejects malformed call-site line metadata while accepting legacy edges`() {
+        val caller = GraphNode(NodeId("method:app/Caller#calls()V"), "calls", NodeKind.METHOD)
+        val target = GraphNode(NodeId("method:app/Target#run()V"), "run", NodeKind.METHOD)
+        val snapshot = QuerySnapshot(CodeGraph(listOf(caller, target), listOf(
+            GraphEdge(caller.id, target.id, EdgeKind.CALL, weight = 2, callSiteLines = listOf(2, 4)),
+        )), emptyList(), emptyList())
+        val plain = QuerySnapshotCodec.render(snapshot)
+        assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.parse(plain.replace("[2, 4]", "[4, 2]")) }
+        assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.parse(plain.replace("[2, 4]", "[0]")) }
+        assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.parse(plain.replace("\"kind\": \"call\"", "\"kind\": \"reference\"")) }
+
+        val compact = QuerySnapshotCodec.render(snapshot, compact = true)
+        assertContains(compact, "\"callSiteEvidence\"")
+        val legacy = compact.replace(Regex("\"callSiteEvidence\": \\[.*?\\], \"edges\"", setOf(RegexOption.DOT_MATCHES_ALL)), "\"edges\"")
+        assertEquals(emptyList(), QuerySnapshotCodec.parse(legacy).graph.edges.single().callSiteLines)
+    }
+
+    @Test
+    fun `requires call-site evidence to be an array in both encodings`() {
+        val snapshot = QuerySnapshot(CodeGraph(emptyList(), emptyList()), emptyList(), emptyList())
+        for (compact in listOf(false, true)) {
+            val encoded = QuerySnapshotCodec.render(snapshot, compact)
+            assertTrue(QuerySnapshotCodec.parse(encoded).callSiteLinesCaptured)
+            assertFailsWith<IllegalArgumentException> {
+                QuerySnapshotCodec.parse(encoded.replace("\"callSiteEvidence\": []", "\"callSiteEvidence\": null"))
+            }
+            assertFailsWith<IllegalArgumentException> {
+                QuerySnapshotCodec.parse(encoded.replace("\"callSiteEvidence\": []", "\"callSiteEvidence\": {}"))
+            }
+        }
+    }
+
     @Test
     fun `snapshot roundtrips processor attribution in both encodings without changing graph reachability`() {
         val source = dev.kartograph.core.CompilerEvidenceSource("build/generated/Created.java", "a".repeat(64))

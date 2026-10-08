@@ -35,4 +35,31 @@ class QuerySnapshotSizeLimitTest {
             assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.parse(encoded, invalid) }
         }
     }
+
+    @Test
+    fun `normal and compact bounded renders preserve exact bytes at their boundary`() {
+        for (compact in listOf(false, true)) {
+            val expected = QuerySnapshotCodec.render(snapshot, compact)
+            val maximum = expected.toByteArray(Charsets.UTF_8).size
+            assertEquals(expected, QuerySnapshotCodec.render(snapshot, compact, maximum))
+            assertFailsWith<QuerySnapshotSizeException> {
+                QuerySnapshotCodec.render(snapshot, compact, maximum - 1)
+            }
+        }
+    }
+
+    @Test
+    fun `invalid byte maximum is rejected before snapshot assembly`() {
+        val invalidLocation = dev.kartograph.core.GraphNode(
+            dev.kartograph.core.NodeId("class:Invalid"), "Invalid", dev.kartograph.core.NodeKind.CLASS,
+            location = dev.kartograph.core.SourceLocation("/private/source.kt"),
+        )
+        val invalidSnapshot = QuerySnapshot(
+            CodeGraph(listOf(invalidLocation), emptyList()), emptyList(), emptyList(),
+        )
+        val error = assertFailsWith<IllegalArgumentException> {
+            QuerySnapshotCodec.render(invalidSnapshot, maximumBytes = 0, compact = false)
+        }
+        assertEquals("query snapshot byte maximum must be between 1 byte and 128 MiB", error.message)
+    }
 }

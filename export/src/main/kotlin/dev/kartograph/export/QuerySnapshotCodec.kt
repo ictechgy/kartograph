@@ -46,6 +46,8 @@ public data class QuerySnapshot(
      * 버전의 snapshot은 거짓이며, 관측이 0건인 새 snapshot과 구별하려고 둔다. 렌더링에는 쓰지 않는다.
      */
     val callbackFactsCaptured: Boolean = true,
+    /** 새 snapshot이 sparse call-site evidence를 캡처했는지다. 옛 문서는 false로 읽는다. */
+    val callSiteLinesCaptured: Boolean = true,
 ) {
     init {
         require(revision == null || Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) { "snapshot revision must be a full commit hash" }
@@ -83,10 +85,10 @@ public object QuerySnapshotCodec {
     /** v2는 간선의 반복 USR을 node 배열 위치로 저장하며 모든 사실과 보존 문맥을 유지한다. */
     public fun render(snapshot: QuerySnapshot, compact: Boolean): String = render(snapshot, compact, MAX_BYTES)
 
-    private fun renderContent(snapshot: QuerySnapshot, compact: Boolean): String {
+    private fun renderContent(snapshot: QuerySnapshot, compact: Boolean, maximumBytes: Int): String {
         val positions = if (compact) snapshot.graph.nodeIds.withIndex().associate { it.value to it.index } else emptyMap()
         val encoding = if (compact) CompactSnapshotGraph(positions.mapKeys { it.key.value }) else null
-        return jsonValue(sortedMapOf(
+        return boundedJsonValue(sortedMapOf(
         "format" to FORMAT,
         "version" to if (compact) 2 else 1,
         "toolVersion" to snapshot.toolVersion,
@@ -110,9 +112,13 @@ public object QuerySnapshotCodec {
             "edges" to snapshot.graph.edges.map { edge ->
                 if (encoding != null) listOf(positions.getValue(edge.source), positions.getValue(edge.target),
                     encoding.text(edge.kind.name.lowerCamel()), encoding.text(edge.origin.name.lowerCamel()), edge.weight)
-                else sortedMapOf("source" to edge.source.value, "target" to edge.target.value, "kind" to edge.kind.name.lowerCamel(),
-                    "origin" to edge.origin.name.lowerCamel(), "weight" to edge.weight)
+                else sortedMapOf<String, Any?>("source" to edge.source.value, "target" to edge.target.value,
+                    "kind" to edge.kind.name.lowerCamel(), "origin" to edge.origin.name.lowerCamel(), "weight" to edge.weight)
             },
+            "callSiteEvidence" to if (snapshot.callSiteLinesCaptured) snapshot.graph.edges.filter { it.callSiteLines.isNotEmpty() }.map { edge ->
+                sortedMapOf("source" to edge.source.value, "target" to edge.target.value,
+                    "kind" to edge.kind.name.lowerCamel(), "origin" to edge.origin.name.lowerCamel(), "lines" to edge.callSiteLines)
+            } else emptyList<Map<String, Any?>>(),
             "externalCalls" to snapshot.graph.externalCalls.map { call -> sortedMapOf(
                 "caller" to call.caller.value, "owner" to call.owner, "name" to call.name,
                 "descriptor" to call.descriptor, "kind" to call.kind.name.lowerCamel(), "ordinal" to call.ordinal,
@@ -138,13 +144,16 @@ public object QuerySnapshotCodec {
                 "method" to item.method.value, "parameter" to item.parameter, "kind" to item.kind.name.lowerCamel(),
                 "target" to item.target?.value, "invocation" to item.invocation?.name?.lowerCamel(), "position" to item.position,
             ).filterValues { it != null } },
-        ).let { graph -> if (encoding == null) graph else graph + ("stringTable" to encoding.table) },
-        ).filterValues { it != null }) + "\n"
+        ).let { graph -> if (snapshot.callSiteLinesCaptured) graph else graph - "callSiteEvidence" }
+            .let { graph -> if (encoding == null) graph else graph + ("stringTable" to encoding.table) },
+        ).filterValues { it != null }, maximumBytes, "\n")
     }
 
     /** 저장 전에 선택한 byte 상한을 적용하며 문서 schema와 정렬은 바꾸지 않는다. */
-    public fun render(snapshot: QuerySnapshot, compact: Boolean, maximumBytes: Int): String =
-        renderContent(snapshot, compact).also { requireMaximum(it, maximumBytes) }
+    public fun render(snapshot: QuerySnapshot, compact: Boolean, maximumBytes: Int): String {
+        requireValidMaximum(maximumBytes)
+        return renderContent(snapshot, compact, maximumBytes)
+    }
 
     /** 불완전한 그래프를 정상 결과로 처리하지 않도록 타입·중복·참조 대상을 조립 전에 검증한다. */
     public fun parse(content: String): QuerySnapshot = parse(content, MAX_BYTES)
@@ -174,15 +183,34 @@ public object QuerySnapshotCodec {
         }
         val ids = nodes.map { it.id }.toSet()
         require(ids.size == nodes.size) { "query snapshot contains duplicate nodes" }
+        // compact v2 확장기는 누락된 선택 필드를 null로 채울 수 있으므로 raw graph의 존재 여부를 보존한다.
+        // 필드가 실제로 있으면 null도 허용하지 않고 배열로 검증해 legacy gap marker를 오염시키지 않는다.
+        val callSiteEvidence = if (rawGraph.containsKey("callSiteEvidence")) list(graph["callSiteEvidence"]).map { raw ->
+            val item = objectValue(raw)
+            val source = NodeId(string(item["source"])); val target = NodeId(string(item["target"]))
+            val kind = enumValue<EdgeKind>(item["kind"]); val origin = enumValue<EdgeOrigin>(item["origin"])
+            val lines = list(item["lines"]).map(::integer)
+            require(source in ids && target in ids && kind == EdgeKind.CALL && origin == EdgeOrigin.BYTECODE &&
+                lines.withIndex().all { (index, line) ->
+                    line in 1..65535 && (index == 0 || lines[index - 1] < line)
+                }) { "query snapshot contains invalid call-site evidence" }
+            CallSiteEvidenceKey(source, target, kind, origin) to lines
+        } else emptyList()
+        require(callSiteEvidence.map { it.first }.distinct().size == callSiteEvidence.size) { "query snapshot contains duplicate call-site evidence" }
+        val callSiteMap = callSiteEvidence.toMap()
         val edges = list(graph["edges"]).map { raw ->
             val edge = objectValue(raw)
-            GraphEdge(NodeId(string(edge["source"])), NodeId(string(edge["target"])), enumValue(edge["kind"]),
-                integer(edge["weight"]), enumValue(edge["origin"]))
+            val source = NodeId(string(edge["source"])); val target = NodeId(string(edge["target"]))
+            val kind = enumValue<EdgeKind>(edge["kind"]); val origin = enumValue<EdgeOrigin>(edge["origin"])
+            GraphEdge(source, target, kind, integer(edge["weight"]), origin,
+                callSiteMap[CallSiteEvidenceKey(source, target, kind, origin)].orEmpty())
         }
         require(edges.all { it.source in ids && it.target in ids }) { "query snapshot contains dangling edges" }
         require(edges.map { listOf(it.source, it.target, it.kind, it.origin) }.distinct().size == edges.size) {
             "query snapshot contains duplicate edges"
         }
+        val edgeKeys = edges.mapTo(mutableSetOf()) { CallSiteEvidenceKey(it.source, it.target, it.kind, it.origin) }
+        require(callSiteMap.keys.all(edgeKeys::contains)) { "query snapshot contains unattached call-site evidence" }
         val calls = list(graph["externalCalls"]).map { raw ->
             val call = objectValue(raw)
             ExternalCall(NodeId(string(call["caller"])), string(call["owner"]), string(call["name"]), string(call["descriptor"]),
@@ -246,15 +274,20 @@ public object QuerySnapshotCodec {
                     } })
             } }.orEmpty(),
             document["processorOutputs"]?.let { values -> list(values).map { ProcessorOutputCodec.observation(it) } }.orEmpty(),
-            enclosuresCaptured = enclosures != null, callbackFactsCaptured = callbackArguments != null && parameterUses != null && lambdaEscapes != null)
+            enclosuresCaptured = enclosures != null, callbackFactsCaptured = callbackArguments != null && parameterUses != null && lambdaEscapes != null,
+            callSiteLinesCaptured = rawGraph.containsKey("callSiteEvidence"))
     }
 
     /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */
     public fun requireMaximum(content: String, maximumBytes: Int) {
+        requireValidMaximum(maximumBytes)
+        if (!utf8BytesAtMost(content, maximumBytes)) throw QuerySnapshotSizeException()
+    }
+
+    private fun requireValidMaximum(maximumBytes: Int) {
         require(maximumBytes in 1..QuerySnapshotCodec.maximumBytes(MAX_MIB)) {
             "query snapshot byte maximum must be between 1 byte and 128 MiB"
         }
-        if (!utf8BytesAtMost(content, maximumBytes)) throw QuerySnapshotSizeException()
     }
 
     /** String을 다시 byte 배열로 복사하지 않고 UTF-8 크기 상한을 조기에 판정한다. */
@@ -314,6 +347,7 @@ public object QuerySnapshotCodec {
     private inline fun <reified T : Enum<T>> enumValue(value: Any?): T =
         enumValueOf<T>(ENUM_NAMES[string(value)] ?: invalid())
     private fun invalid(): Nothing = throw IllegalArgumentException("query snapshot has invalid or missing fields")
+    private data class CallSiteEvidenceKey(val source: NodeId, val target: NodeId, val kind: EdgeKind, val origin: EdgeOrigin)
     private val WINDOWS_DRIVE = Regex("^[A-Za-z]:")
     private val ENUM_NAMES = listOf(NodeKind.entries, Visibility.entries, JvmModifier.entries, NodeAttribute.entries,
         EdgeKind.entries, EdgeOrigin.entries, InvocationKind.entries, CallResolution.entries, RetentionReason.entries,
