@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-08
+
 ### Added
 
 - 직접 bytecode CALL의 호출부 줄을 `query` 이웃의 선택적 `references`와 그래프의 `callSiteLines`로 제공한다.
@@ -867,7 +869,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/ictechgy/kartograph/compare/v0.18.2...v0.19.0
 [0.18.0]: https://github.com/ictechgy/kartograph/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/ictechgy/kartograph/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/ictechgy/kartograph/compare/v0.15.0...v0.16.0
