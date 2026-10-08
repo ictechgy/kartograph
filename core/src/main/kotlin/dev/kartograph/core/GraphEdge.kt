@@ -37,10 +37,15 @@ public data class GraphEdge(
 ) : Comparable<GraphEdge> {
     init {
         require(weight > 0) { "edge weight must be positive" }
-        require(callSiteLines.withIndex().all { (index, line) ->
-            line in 1..65535 && (index == 0 || callSiteLines[index - 1] < line)
-        }) {
-            "call-site lines must be sorted, distinct JVM line numbers"
+        var previousLine = 0
+        var lineIndex = 0
+        while (lineIndex < callSiteLines.size) {
+            val line = callSiteLines[lineIndex]
+            if (line < 1 || line > 65535 || (lineIndex > 0 && previousLine >= line)) {
+                throw IllegalArgumentException("call-site lines must be sorted, distinct JVM line numbers")
+            }
+            previousLine = line
+            lineIndex++
         }
         require(callSiteLines.isEmpty() || (kind == EdgeKind.CALL && origin == EdgeOrigin.BYTECODE)) {
             "only bytecode call edges may carry call-site lines"
