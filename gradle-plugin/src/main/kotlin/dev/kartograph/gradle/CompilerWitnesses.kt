@@ -6,6 +6,7 @@ import dev.kartograph.export.BuildWitnessCodec
 import dev.kartograph.index.ContentFingerprint
 import dev.kartograph.index.CompilerEvidenceReceipts
 import dev.kartograph.index.CompilerEvidenceToken
+import dev.kartograph.index.CompilerCallPositionOptions
 import org.gradle.api.Action
 import org.gradle.api.Project
 import org.gradle.api.Task
@@ -205,7 +206,10 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
         } + listOf(project.absolutePath, project.toURI().toASCIIString().trimEnd('/'), project.toPath().toAbsolutePath().toUri().toASCIIString().trimEnd('/'))
             .map { it to "project" }).sortedByDescending { it.first.length }
         val normalized = observed.options.map { value -> replacements.fold(value) { text, (path, identity) -> text.replace(path, identity) } }
-        return fingerprints + InputFingerprint("options", "$artifact-options", ContentFingerprint.values(normalized))
+        val observedInputs = fingerprints + InputFingerprint("options", "$artifact-options", ContentFingerprint.values(normalized))
+        return if (CompilerCallPositionOptionParser.enabled(kind, observed.options, compilerEvidence)) {
+            observedInputs + CompilerCallPositionOptions.enabledInput()
+        } else observedInputs
     }
 
     fun output(task: Task): InputFingerprint {
@@ -294,7 +298,7 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
                 }
             } else require(argument in setOf("-parameters", "-Werror", "-Xlint", "-g", "-proc:none", "-proc:full", "--enable-preview", "-XDstringConcat=inline") ||
                 argument.startsWith("-Xlint:") || argument.startsWith("-g:") || argument.startsWith("-A") || argument.startsWith("-Xdiags:") ||
-                compilerEvidence && argument.startsWith("-Xplugin:KartographEvidence ")) {
+                compilerEvidence && CompilerCallPositionOptionParser.isJavacPluginArgument(argument)) {
                 "unsupported javac option for compiler witness"
             }
         }

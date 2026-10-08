@@ -2,6 +2,8 @@ package dev.kartograph.export
 
 import dev.kartograph.core.CallResolution
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.CompilerEvidenceSource
+import dev.kartograph.core.CompilerSourceCoordinateBasis
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.ExternalCall
@@ -14,6 +16,7 @@ import dev.kartograph.core.LexicalEnclosure
 import dev.kartograph.core.CallbackArgument
 import dev.kartograph.core.ParameterUse
 import dev.kartograph.core.LambdaEscape
+import dev.kartograph.core.LocatedCompilerReference
 import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
@@ -137,6 +140,14 @@ public object QuerySnapshotCodec {
                 "caller" to item.caller.value, "callee" to item.callee.value, "invocation" to item.invocation.name.lowerCamel(),
                 "argument" to item.argument, "lambda" to item.lambda.value, "samMethod" to item.samMethod,
             ).filterValues { it != null } },
+            "compilerCallEvidence" to if (snapshot.graph.compilerCallPositionsCaptured) snapshot.graph.locatedCompilerReferences.map { item ->
+                if (encoding == null) compilerCallEvidenceValue(item) else listOf(
+                    positions.getValue(item.source), positions.getValue(item.target),
+                    encoding.text(compilerEvidencePath(item.file.path)), encoding.text(item.file.sha256),
+                    encoding.text(item.collector), encoding.text(item.compilerVersion), encoding.text(item.coordinateBasis.name.lowerCamel()),
+                    item.offsetUtf16, item.endOffsetUtf16, item.line, item.column, item.generated,
+                )
+            } else emptyList<Any>(),
             "lambdaEscapes" to snapshot.graph.lambdaEscapes.map { item -> sortedMapOf(
                 "caller" to item.caller.value, "lambda" to item.lambda.value, "kind" to item.kind.name.lowerCamel(),
             ) },
@@ -145,6 +156,7 @@ public object QuerySnapshotCodec {
                 "target" to item.target?.value, "invocation" to item.invocation?.name?.lowerCamel(), "position" to item.position,
             ).filterValues { it != null } },
         ).let { graph -> if (snapshot.callSiteLinesCaptured) graph else graph - "callSiteEvidence" }
+            .let { graph -> if (snapshot.graph.compilerCallPositionsCaptured) graph else graph - "compilerCallEvidence" }
             .let { graph -> if (encoding == null) graph else graph + ("stringTable" to encoding.table) },
         ).filterValues { it != null }, maximumBytes, "\n")
     }
@@ -211,6 +223,9 @@ public object QuerySnapshotCodec {
         }
         val edgeKeys = edges.mapTo(mutableSetOf()) { CallSiteEvidenceKey(it.source, it.target, it.kind, it.origin) }
         require(callSiteMap.keys.all(edgeKeys::contains)) { "query snapshot contains unattached call-site evidence" }
+        val compilerCallEvidence = if (rawGraph.containsKey("compilerCallEvidence")) {
+            parseCompilerCallEvidence(rawGraph, version, nodes)
+        } else null
         val calls = list(graph["externalCalls"]).map { raw ->
             val call = objectValue(raw)
             ExternalCall(NodeId(string(call["caller"])), string(call["owner"]), string(call["name"]), string(call["descriptor"]),
@@ -261,8 +276,10 @@ public object QuerySnapshotCodec {
         }
         val suppressed = strings(document["suppressed"]).map(::NodeId).toSet()
         require(suppressed.all(ids::contains)) { "query snapshot contains invalid baseline references" }
-        return QuerySnapshot(CodeGraph(nodes, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
-            lambdaEscapes.orEmpty()), retention, strings(document["limitations"]), suppressed,
+        val baseGraph = CodeGraph(nodes, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
+            lambdaEscapes.orEmpty())
+        val restoredGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
+        return QuerySnapshot(restoredGraph, retention, strings(document["limitations"]), suppressed,
             boolean(document["includePrivateMembers"]), string(document["toolVersion"]),
             optionalString(document["revision"]), optionalString(document["scope"]),
             document["provenance"]?.let(BuildWitnessCodec::provenance),
@@ -320,6 +337,80 @@ public object QuerySnapshotCodec {
         "supertypes" to supertypes.sorted(), "extensionReceiverType" to extensionReceiverType, "synthesized" to synthesized,
     )
 
+    private fun compilerCallEvidenceValue(item: LocatedCompilerReference): Map<String, Any?> = sortedMapOf(
+        "source" to item.source.value,
+        "target" to item.target.value,
+        "path" to compilerEvidencePath(item.file.path),
+        "sourceSha256" to item.file.sha256,
+        "collector" to item.collector,
+        "compilerVersion" to item.compilerVersion,
+        "coordinateBasis" to item.coordinateBasis.name.lowerCamel(),
+        "offsetUtf16" to item.offsetUtf16,
+        "endOffsetUtf16" to item.endOffsetUtf16,
+        "line" to item.line,
+        "column" to item.column,
+        "generated" to item.generated,
+    )
+
+    private fun parseCompilerCallEvidence(
+        rawGraph: Map<*, *>,
+        version: Int,
+        nodes: List<GraphNode>,
+    ): List<LocatedCompilerReference> {
+        val rows = list(rawGraph["compilerCallEvidence"])
+        val evidence = if (version == 1) rows.map { raw ->
+            val item = objectValue(raw)
+            require(item.keys == COMPILER_CALL_EVIDENCE_FIELDS) { "query snapshot contains invalid compiler call evidence" }
+            LocatedCompilerReference(
+                NodeId(string(item["source"])),
+                NodeId(string(item["target"])),
+                CompilerEvidenceSource(compilerEvidencePath(string(item["path"])), string(item["sourceSha256"])),
+                string(item["collector"]),
+                string(item["compilerVersion"]),
+                enumValue<CompilerSourceCoordinateBasis>(item["coordinateBasis"]),
+                integer(item["offsetUtf16"]),
+                integer(item["endOffsetUtf16"]),
+                integer(item["line"]),
+                integer(item["column"]),
+                boolean(item["generated"]),
+            )
+        } else {
+            val table = list(rawGraph["stringTable"]).map(::string)
+            fun index(value: Any?, size: Int): Int = integer(value).also { require(it in 0 until size) {
+                "query snapshot contains invalid compact compiler call evidence"
+            } }
+            fun text(value: Any?): String = table[index(value, table.size)]
+            fun node(value: Any?): NodeId = nodes[index(value, nodes.size)].id
+            rows.map { raw ->
+                val row = list(raw)
+                require(row.size == COMPACT_COMPILER_CALL_EVIDENCE_FIELDS) {
+                    "query snapshot contains invalid compact compiler call evidence"
+                }
+                LocatedCompilerReference(
+                    node(row[0]),
+                    node(row[1]),
+                    CompilerEvidenceSource(compilerEvidencePath(text(row[2])), text(row[3])),
+                    text(row[4]),
+                    text(row[5]),
+                    enumValue<CompilerSourceCoordinateBasis>(text(row[6])),
+                    integer(row[7]),
+                    integer(row[8]),
+                    integer(row[9]),
+                    integer(row[10]),
+                    boolean(row[11]),
+                )
+            }
+        }
+        require(evidence.distinct().size == evidence.size) { "query snapshot contains duplicate compiler call evidence" }
+        return evidence
+    }
+
+    private fun compilerEvidencePath(path: String): String = path.also {
+        require(portable(it) && it.split('/').none { segment -> segment == "." }) {
+            "query snapshot compiler evidence path must be canonical and portable"
+        }
+    }
+
     private fun locationValue(location: SourceLocation?): Map<String, Any?>? = location?.let {
         val normalized = it.path.replace('\\', '/')
         val path = if (portable(normalized)) normalized else normalized.substringAfterLast('/').takeIf(::portable)
@@ -348,10 +439,15 @@ public object QuerySnapshotCodec {
         enumValueOf<T>(ENUM_NAMES[string(value)] ?: invalid())
     private fun invalid(): Nothing = throw IllegalArgumentException("query snapshot has invalid or missing fields")
     private data class CallSiteEvidenceKey(val source: NodeId, val target: NodeId, val kind: EdgeKind, val origin: EdgeOrigin)
+    private const val COMPACT_COMPILER_CALL_EVIDENCE_FIELDS: Int = 12
+    private val COMPILER_CALL_EVIDENCE_FIELDS = setOf(
+        "source", "target", "path", "sourceSha256", "collector", "compilerVersion", "coordinateBasis",
+        "offsetUtf16", "endOffsetUtf16", "line", "column", "generated",
+    )
     private val WINDOWS_DRIVE = Regex("^[A-Za-z]:")
     private val ENUM_NAMES = listOf(NodeKind.entries, Visibility.entries, JvmModifier.entries, NodeAttribute.entries,
         EdgeKind.entries, EdgeOrigin.entries, InvocationKind.entries, CallResolution.entries, RetentionReason.entries,
-        dev.kartograph.core.ParameterUseKind.entries)
+        dev.kartograph.core.ParameterUseKind.entries, CompilerSourceCoordinateBasis.entries)
         .flatten().associate { it.name.lowerCamel() to it.name }
 }
 

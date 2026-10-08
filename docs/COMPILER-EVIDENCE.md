@@ -71,6 +71,41 @@ directory automatically.
 
 ## Capture, verify and inspect impact
 
+### Optional selected-call positions
+
+The javac and Kotlin collectors accept the explicit boolean `callPositions=true` option. With
+javac, append `callPositions=true` inside the existing `-Xplugin:KartographEvidence ...` argument.
+With Kotlin, add `-P plugin:kartograph.compiler-evidence:callPositions=true`. Duplicate or invalid
+values fail rather than selecting an arbitrary setting. Omitting the option or using `false` keeps
+the existing reference protocol behavior.
+
+The opt-in v3 evidence records compiler-selected method-call selectors, their actual JVM caller and
+target, relative source identity, raw source SHA-256 and source coordinates. It supplements an
+existing bytecode call pair; it does not invent call edges or replace declarations with source guesses.
+Some synthetic, external, source-less and ambiguous compiler emissions cannot supply positions and
+remain counted omissions. A captured empty result is distinct from positions not captured. Completed
+receipts, source identity and witness freshness remain required before snapshot import.
+
+Offsets are UTF-16 code units in the explicitly named compiler source sequence. Javac columns use
+its `LineMap`, including tab expansion; Kotlin coordinates use its normalized source sequence.
+The raw source hash still refers to file bytes. These columns are not interchangeable with bytecode
+debug columns or HTTP exchange UTF-8 columns. Consumers must inspect the coordinate basis.
+
+Snapshots preserve optional compiler call evidence in ordinary and compact forms. Query output and
+graph exports retain it as separate evidence. The producer has a finite row budget and fails before
+unbounded evidence growth. Exact selector fixture checks do not establish whole-program coverage or
+accuracy/performance superiority over an IDE.
+
+The source-checkout gate runs actual compilers and the pinned released reader without skipping the
+required integration cases:
+
+```sh
+python3 Scripts/verify-compiler-call-positions.py
+```
+
+Use `--offline --old-archive <verified-archive.zip>` when the required SDKs/dependencies and pinned
+compatibility archive are already available.
+
 After compilation, use the returned witness and actual output providers:
 
 ```sh

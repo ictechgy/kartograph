@@ -1,11 +1,14 @@
 package dev.kartograph.analysis
 
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.CompilerEvidenceSource
+import dev.kartograph.core.CompilerSourceCoordinateBasis
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.JvmModifier
+import dev.kartograph.core.LocatedCompilerReference
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.SourceLocation
@@ -85,6 +88,32 @@ class TestSourceScopeTest {
             .reached.associate { it.node.id.value to it.evidence }
         assertEquals(TraversalEvidence.BOUND, forward.getValue("method:p/RealClient#fetch()V"))
         assertFalse("method:p/FakeClient#fetch()V" in forward)
+    }
+
+    @Test
+    fun `excluding test nodes preserves capture state and only surviving compiler positions`() {
+        val productionSource = NodeId("method:p/RealClient#fetch()V")
+        val testSource = NodeId("method:p/FakeClient#fetch()V")
+        val target = NodeId("method:p/Http#get()V")
+        fun position(source: NodeId, path: String, offset: Int) = LocatedCompilerReference(
+            source, target, CompilerEvidenceSource(path, "a".repeat(64)),
+            "kotlin-constants", "2.4.10", CompilerSourceCoordinateBasis.KOTLIN_UTF16_NORMALIZED_SOURCE,
+            offset, offset + 3, 1, offset + 1,
+        )
+        val positioned = graph().withCompilerCallPositions(listOf(
+            position(productionSource, "$main/RealClient.kt", 10),
+            position(testSource, "$test/FakeClient.kt", 20),
+        ))
+
+        val selected = TestSourceScope.select(positioned, listOf(target.value), includeTests = false).graph
+        assertTrue(selected.compilerCallPositionsCaptured)
+        assertEquals(listOf(productionSource), selected.locatedCompilerReferences.map { it.source })
+        assertTrue(selected.edges.any { it.source == productionSource && it.target == target && it.kind == EdgeKind.CALL })
+
+        val capturedEmpty = graph().withCompilerCallPositions(emptyList())
+        val emptySelected = TestSourceScope.select(capturedEmpty, listOf(target.value), includeTests = false).graph
+        assertTrue(emptySelected.compilerCallPositionsCaptured)
+        assertEquals(emptyList(), emptySelected.locatedCompilerReferences)
     }
 
     @Test

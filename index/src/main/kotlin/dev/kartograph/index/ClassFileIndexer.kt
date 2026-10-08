@@ -74,12 +74,33 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         generatedClassRoots: Iterable<Path>,
     ): IndexedClasses = indexWithObservations(classRoots, classpath, serviceResources, generatedClassRoots, null)
 
+    /** 내보내기에서 제외한 후보는 만들지 않고, 큰 fanout은 부분 선택 대신 전체 생략으로 보고한다. */
+    public fun indexForGraphExport(
+        classRoots: Iterable<Path>,
+        classpath: Iterable<Path>? = null,
+        serviceResources: Iterable<Path> = emptyList(),
+        generatedClassRoots: Iterable<Path> = emptyList(),
+        options: GraphExportIndexOptions = GraphExportIndexOptions(),
+    ): GraphExportIndexResult {
+        val limitations = mutableListOf<String>()
+        val indexed = indexConfigured(classRoots, classpath, serviceResources, generatedClassRoots, null, options, limitations)
+        return GraphExportIndexResult(indexed, limitations.distinct().sorted())
+    }
+
     internal fun indexWithObservations(
         classRoots: Iterable<Path>,
         classpath: Iterable<Path>?,
         serviceResources: Iterable<Path>,
         generatedClassRoots: Iterable<Path>,
         observedJarDigests: ObservedJarDigestLookup?,
+    ): IndexedClasses = indexConfigured(classRoots, classpath, serviceResources, generatedClassRoots,
+        observedJarDigests, null, mutableListOf())
+
+    /** 기존 인덱싱과 export 선택이 같은 class 파싱·소유권·관측을 공유하는 내부 경계다. */
+    private fun indexConfigured(
+        classRoots: Iterable<Path>, classpath: Iterable<Path>?, serviceResources: Iterable<Path>,
+        generatedClassRoots: Iterable<Path>, observedJarDigests: ObservedJarDigestLookup?,
+        exportOptions: GraphExportIndexOptions?, exportLimitations: MutableList<String>,
     ): IndexedClasses {
         val started = System.nanoTime()
         var classFiles = 0
@@ -207,8 +228,20 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         runtimeNanos = System.nanoTime() - runtimeStart
         val selectedRootByNode = classFacts.flatMap { facts -> facts.nodes.map { it.id to rootByClass.getValue(facts.internalName) } }.toMap()
         val dispatchStart = System.nanoTime()
-        val dispatched = IndexedClasses(modeled, observations, hierarchy, declarationsByRoot.toList(), selectedRootByNode)
-            .withHierarchy(hierarchy)
+        val dispatchResult = when {
+            exportOptions == null -> DispatchEnrichment(ExternalDispatchIndexer.enrich(modeled, hierarchy), 0)
+            EdgeOrigin.DISPATCH_MODEL in exportOptions.excludedOrigins -> DispatchEnrichment(modeled, 0)
+            else -> ExternalDispatchIndexer.enrichBounded(modeled, hierarchy, exportOptions.maximumDispatchCandidates)
+        }
+        if (dispatchResult.overLimitCalls > 0) exportLimitations +=
+            "dispatch-candidates-over-limit: ${dispatchResult.overLimitCalls} call site(s) exceeded " +
+                "${exportOptions!!.maximumDispatchCandidates} distinct targets; all candidates for those calls were omitted"
+        val expanded = if (exportOptions?.includeExternalStubs == true) externalStubs(dispatchResult.graph, classFacts) else dispatchResult.graph
+        val selected = if (exportOptions == null || exportOptions.excludedOrigins.isEmpty()) expanded else
+            CodeGraph(expanded.nodes.values, expanded.edges.filter { it.origin !in exportOptions.excludedOrigins },
+                expanded.externalCalls, expanded.serviceProviders, expanded.enclosures,
+                expanded.callbackArguments, expanded.parameterUses, expanded.lambdaEscapes)
+        val dispatched = IndexedClasses(selected, observations, hierarchy, declarationsByRoot.toList(), selectedRootByNode)
         val dispatchNanos = System.nanoTime() - dispatchStart
         val statistics = IndexingStatistics(classFiles, cacheHits, cacheMisses, parsedClasses, invalidEntries, writeFailures,
             readNanos, cacheReadNanos, parseNanos, assemblyNanos, hierarchyNanos, runtimeNanos, cacheWriteNanos,
@@ -218,6 +251,32 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
             hierarchyIndexer.statistics.hierarchyWriteFailures, hierarchyIndexer.statistics.hierarchyUnavailableEntries,
             dispatchNanos)
         return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics)
+    }
+
+    /** 실제 classfile 참조의 identity만 복원한다. SDK 구현이나 source 위치를 만들어내지 않는다. */
+    private fun externalStubs(graph: CodeGraph, facts: List<ClassFacts>): CodeGraph {
+        val stubs = linkedMapOf<NodeId, GraphNode>()
+        facts.forEach { fact -> fact.edges.forEach edgeLoop@ { edge ->
+            if (edge.target in graph.nodes) return@edgeLoop
+            val id = edge.target
+            val owner = id.value.substringAfter(':').substringBefore('#')
+            val member = id.value.substringAfter('#', "").substringBefore('(').substringBefore(':')
+            val kind = when {
+                id.value.startsWith("class:") -> if (edge.kind == EdgeKind.ANNOTATION) NodeKind.ANNOTATION_CLASS else NodeKind.CLASS
+                id.value.startsWith("method:") -> if (member == "<init>") NodeKind.CONSTRUCTOR else NodeKind.METHOD
+                id.value.startsWith("field:") -> NodeKind.FIELD
+                else -> return@edgeLoop
+            }
+            val name = if (member.isEmpty()) owner.substringAfterLast('/') else member
+            if (name.isNotEmpty()) stubs.putIfAbsent(id, GraphNode(id, name, kind, jvmSignature = id.value.substringAfter(':'),
+                attributes = setOf(NodeAttribute.EXTERNAL_STUB)))
+        } }
+        val edges = sequence {
+            yieldAll(graph.edges)
+            facts.forEach { fact -> fact.edges.forEach { edge -> if (edge.target in stubs) yield(edge) } }
+        }
+        return CodeGraph(graph.nodes.values + stubs.values, edges.asIterable(), graph.externalCalls,
+            graph.serviceProviders, graph.enclosures, graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes)
     }
 
     private fun readRoot(root: Path, readMany: (List<() -> ClassInput>) -> List<ClassFacts>): List<ClassFacts> = when {

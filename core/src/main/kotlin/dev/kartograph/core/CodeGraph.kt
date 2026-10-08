@@ -52,6 +52,14 @@ public class CodeGraph private constructor(
     public val lambdaEscapes: List<LambdaEscape>
         get() = state.lambdaEscapes
 
+    /** BYTECODE CALL과 분리해 보존한 compiler selector 위치다. 그래프 도달성·weight에는 참여하지 않는다. */
+    public val locatedCompilerReferences: List<LocatedCompilerReference>
+        get() = state.locatedCompilerReferences
+
+    /** 완료된 v3 증거가 빈 결과까지 포함해 처리됐는지 구분한다. */
+    public val compilerCallPositionsCaptured: Boolean
+        get() = state.compilerCallPositionsCaptured
+
     public val edges: List<GraphEdge>
         get() = state.edges
 
@@ -90,6 +98,30 @@ public class CodeGraph private constructor(
     /** 모든 관계를 포함한 선행 정점 목록을 반환한다. */
     public fun predecessorsOf(id: NodeId): List<NodeId> = incomingEdgesTo(id).map(GraphEdge::source)
 
+    /** 기존 그래프를 바꾸지 않고 검증·정렬한 compiler CALL selector 사실을 붙인다. */
+    public fun withCompilerCallPositions(references: Iterable<LocatedCompilerReference>): CodeGraph {
+        val combined = ArrayList<LocatedCompilerReference>(state.locatedCompilerReferences.size)
+        combined.addAll(state.locatedCompilerReferences)
+        references.forEach(combined::add)
+        val normalized = normalizeLocatedCompilerReferences(combined, state.nodes, state.edges)
+        if (state.compilerCallPositionsCaptured && normalized == state.locatedCompilerReferences) return this
+        return CodeGraph(CanonicalState(
+            state.nodes,
+            state.nodeIds,
+            state.edges,
+            state.externalCalls,
+            state.serviceProviders,
+            state.enclosures,
+            state.callbackArguments,
+            state.parameterUses,
+            state.lambdaEscapes,
+            normalized,
+            true,
+            state.outgoing,
+            state.incoming,
+        ))
+    }
+
     /**
      * 이미 정규화된 그래프에 간선 delta를 더해 새 불변 그래프를 만든다.
      * 간선 identity는 `(source, target, kind, origin)`이며 기존 결정적 순서와 weight·call-site line 검증을 유지한다.
@@ -126,12 +158,15 @@ public class CodeGraph private constructor(
                 state.callbackArguments,
                 state.parameterUses,
                 state.lambdaEscapes,
+                state.locatedCompilerReferences,
+                state.compilerCallPositionsCaptured,
                 state.outgoing,
                 state.incoming,
             ))
         }
 
         val mergedEdges = mergeSortedEdges(selectedBase, delta)
+        val positions = retainValidCompilerReferences(state.locatedCompilerReferences, mergedEdges)
         val outgoing = mergedEdges.groupBy(GraphEdge::source)
         val incoming = mergedEdges.groupBy(GraphEdge::target)
         return CodeGraph(CanonicalState(
@@ -144,6 +179,8 @@ public class CodeGraph private constructor(
             state.callbackArguments,
             state.parameterUses,
             state.lambdaEscapes,
+            positions,
+            state.compilerCallPositionsCaptured,
             outgoing,
             incoming,
         ))
@@ -215,6 +252,8 @@ public class CodeGraph private constructor(
         val callbackArguments: List<CallbackArgument>,
         val parameterUses: List<ParameterUse>,
         val lambdaEscapes: List<LambdaEscape>,
+        val locatedCompilerReferences: List<LocatedCompilerReference>,
+        val compilerCallPositionsCaptured: Boolean,
         val outgoing: Map<NodeId, List<GraphEdge>>,
         val incoming: Map<NodeId, List<GraphEdge>>,
     )
@@ -281,6 +320,8 @@ public class CodeGraph private constructor(
                 callbackArguments,
                 parameterUses,
                 lambdaEscapes,
+                emptyList(),
+                false,
                 edges.groupBy(GraphEdge::source),
                 edges.groupBy(GraphEdge::target),
             )
@@ -290,7 +331,7 @@ public class CodeGraph private constructor(
             calls: Iterable<ExternalCall>,
             nodes: Map<NodeId, GraphNode>,
         ): List<ExternalCall> = calls
-            .filter { it.caller in nodes && it.target !in nodes }
+            .filter { it.caller in nodes && (it.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(it.target).attributes) }
             .map { it.copy(resolvedTargets = it.resolvedTargets.filter(nodes::containsKey).distinct().sorted()) }
             .distinct().sorted()
 
@@ -305,6 +346,54 @@ public class CodeGraph private constructor(
                 GraphEdge(signature.source, signature.target, signature.kind, value.weight,
                     signature.origin, value.callSiteLines?.sorted().orEmpty())
             }.sorted()
+        }
+
+        private data class CompilerPositionKey(
+            val source: NodeId,
+            val target: NodeId,
+            val path: String,
+            val offsetUtf16: Int,
+        )
+
+        private fun normalizeLocatedCompilerReferences(
+            references: Iterable<LocatedCompilerReference>,
+            nodes: Map<NodeId, GraphNode>,
+            edges: List<GraphEdge>,
+        ): List<LocatedCompilerReference> {
+            val bytecodeCalls = edges.asSequence()
+                .filter { it.kind == EdgeKind.CALL && it.origin == EdgeOrigin.BYTECODE }
+                .map { it.source to it.target }
+                .toSet()
+            val byKey = mutableMapOf<CompilerPositionKey, LocatedCompilerReference>()
+            references.forEach { reference ->
+                require(reference.source in nodes && reference.target in nodes) {
+                    "compiler call position endpoint is absent from graph"
+                }
+                require(reference.source to reference.target in bytecodeCalls) {
+                    "compiler call position requires a matching BYTECODE CALL"
+                }
+                val key = CompilerPositionKey(reference.source, reference.target, reference.file.path, reference.offsetUtf16)
+                val previous = byKey.putIfAbsent(key, reference)
+                require(previous == null || previous == reference) { "conflicting compiler call positions" }
+            }
+            return byKey.values.sortedWith(compareBy<LocatedCompilerReference>(
+                { it.source }, { it.target }, { it.file.path }, { it.offsetUtf16 }, { it.endOffsetUtf16 },
+                { it.line }, { it.column }, { it.file.sha256 }, { it.collector }, { it.compilerVersion },
+                { it.coordinateBasis.name }, { it.generated },
+            ))
+        }
+
+        private fun retainValidCompilerReferences(
+            references: List<LocatedCompilerReference>,
+            edges: List<GraphEdge>,
+        ): List<LocatedCompilerReference> {
+            if (references.isEmpty()) return references
+            val calls = edges.asSequence()
+                .filter { it.kind == EdgeKind.CALL && it.origin == EdgeOrigin.BYTECODE }
+                .map { it.source to it.target }
+                .toSet()
+            val retained = references.filter { it.source to it.target in calls }
+            return if (retained.size == references.size) references else retained
         }
 
         private val DELTA_ENTRY_COMPARATOR = Comparator<Map.Entry<EdgeSignature, EdgeAccumulator>> { left, right ->

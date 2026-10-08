@@ -4,8 +4,11 @@ import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.ErroneousTree;
 import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.Tree;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.Plugin;
 import com.sun.source.util.TaskEvent;
@@ -14,8 +17,10 @@ import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreeScanner;
 import com.sun.source.util.Trees;
+import com.sun.source.util.SourcePositions;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -71,6 +76,8 @@ public final class JavacEvidencePlugin implements Plugin {
 
 /** 한 javac task의 실제 source unit, compiler semantic edge와 성공 완료를 모은다. */
 final class JavacEvidenceSession implements TaskListener {
+    private record PendingCall(EvidenceProtocol.CallPosition position, String targetOwner, String targetSource, long budgetBytes) {}
+
     private final EvidenceProtocol.Options options;
     private final Trees trees;
     private final Elements elements;
@@ -81,8 +88,14 @@ final class JavacEvidenceSession implements TaskListener {
     private final Set<ClassTree> parsedClasses = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<ClassTree> analyzedClasses = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<TypeElement> analyzedTypes = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<String> analyzedOwners = new TreeSet<>();
     private final Set<TypeElement> generatedTypes = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<ClassTree> scanned = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<CompilationUnitTree, CharSequence> sourceContents = new IdentityHashMap<>();
+    private final Map<CompilationUnitTree, Integer> remainingTopLevelScans = new IdentityHashMap<>();
+    private final Map<TypeElement, String> targetSources = new IdentityHashMap<>();
+    private final EvidenceProtocol.CallPositionBuffer callPositionBuffer = new EvidenceProtocol.CallPositionBuffer();
+    private final ArrayDeque<PendingCall> pendingCalls = new ArrayDeque<>();
     private final Set<EvidenceProtocol.Edge> edges = new TreeSet<>((left, right) -> {
         int source = left.source().compareTo(right.source());
         if (source != 0) return source;
@@ -117,7 +130,14 @@ final class JavacEvidenceSession implements TaskListener {
                 observeSource(event.getSourceFile());
                 CompilationUnitTree unit = event.getCompilationUnit();
                 if (unit != null) {
-                    for (var declaration : unit.getTypeDecls()) if (declaration instanceof ClassTree type) parsedClasses.add(type);
+                    int topLevelClasses = 0;
+                    for (var declaration : unit.getTypeDecls()) {
+                        if (declaration instanceof ClassTree type) {
+                            parsedClasses.add(type);
+                            topLevelClasses++;
+                        }
+                    }
+                    if (options.callPositions() && topLevelClasses > 0) remainingTopLevelScans.put(unit, topLevelClasses);
                     new TreeScanner<Void, Void>() {
                         @Override public Void visitErroneous(ErroneousTree tree, Void unused) {
                             fail("javac source contains a syntax error");
@@ -148,6 +168,11 @@ final class JavacEvidenceSession implements TaskListener {
                     if (path == null || !(path.getLeaf() instanceof ClassTree tree)) fail("javac attributed class is unavailable");
                     else {
                         analyzedTypes.add(type);
+                        if (options.callPositions()) {
+                            String analyzedOwner = owner(type);
+                            if (analyzedOwner != null) analyzedOwners.add(analyzedOwner);
+                            cacheTargetSource(type, source);
+                        }
                         analyzedClasses.add(tree);
                         if (options.collector().equals("javac-constants") && scanned.add(tree)) scan(path);
                     }
@@ -161,6 +186,9 @@ final class JavacEvidenceSession implements TaskListener {
                 finally {
                     if (options.collector().equals("dagger-bindings")) DaggerEvidenceFiles.cleanup(options);
                     if (options.collector().equals("javac-processors")) ProcessorEvidenceFiles.cleanup(options);
+                    sourceContents.clear();
+                    remainingTopLevelScans.clear();
+                    targetSources.clear();
                     JavacEvidencePlugin.clear(this);
                 }
             }
@@ -216,17 +244,44 @@ final class JavacEvidenceSession implements TaskListener {
             fail("javac semantic unit is unavailable");
             return;
         }
+        try {
         new TreePathScanner<Void, Void>() {
             private ExecutableElement caller;
+            private ExecutableElement callCaller;
+
+            @Override public Void visitClass(ClassTree tree, Void unused) {
+                ExecutableElement previousCallCaller = callCaller;
+                if (options.callPositions()) {
+                    callCaller = null;
+                    Element element = trees.getElement(getCurrentPath());
+                    if (element instanceof TypeElement type) {
+                        String analyzedOwner = owner(type);
+                        if (analyzedOwner != null) analyzedOwners.add(analyzedOwner);
+                        CompilationUnitTree unit = getCurrentPath().getCompilationUnit();
+                        cacheTargetSource(type, unit == null ? null : sourcePath(unit.getSourceFile()));
+                    }
+                }
+                try {
+                    return super.visitClass(tree, unused);
+                } finally {
+                    callCaller = previousCallCaller;
+                }
+            }
 
             @Override public Void visitMethod(MethodTree tree, Void unused) {
                 ExecutableElement previous = caller;
+                ExecutableElement previousCallCaller = callCaller;
                 Element element = trees.getElement(getCurrentPath());
                 if (element == null) { unmapped++; return null; }
                 caller = element instanceof ExecutableElement executable ? executable : null;
-                super.visitMethod(tree, unused);
-                caller = previous;
-                return null;
+                if (options.callPositions()) callCaller = caller;
+                try {
+                    super.visitMethod(tree, unused);
+                    return null;
+                } finally {
+                    caller = previous;
+                    callCaller = previousCallCaller;
+                }
             }
 
             private void reference() {
@@ -243,6 +298,22 @@ final class JavacEvidenceSession implements TaskListener {
                 else edges.add(new EvidenceProtocol.Edge(source, target, "constant"));
             }
 
+            @Override public Void visitMethodInvocation(MethodInvocationTree tree, Void unused) {
+                if (options.callPositions()) recordCall(getCurrentPath(), tree, callCaller);
+                return super.visitMethodInvocation(tree, unused);
+            }
+
+            @Override public Void visitLambdaExpression(LambdaExpressionTree tree, Void unused) {
+                if (!options.callPositions()) return super.visitLambdaExpression(tree, unused);
+                ExecutableElement previousCallCaller = callCaller;
+                callCaller = null;
+                try {
+                    return super.visitLambdaExpression(tree, unused);
+                } finally {
+                    callCaller = previousCallCaller;
+                }
+            }
+
             @Override public Void visitIdentifier(IdentifierTree tree, Void unused) {
                 reference();
                 return super.visitIdentifier(tree, unused);
@@ -253,6 +324,22 @@ final class JavacEvidenceSession implements TaskListener {
                 return super.visitMemberSelect(tree, unused);
             }
         }.scan(path, null);
+        } finally {
+            releaseSourceContent(path);
+        }
+    }
+
+    private void releaseSourceContent(TreePath path) {
+        if (!options.callPositions() || !(path.getLeaf() instanceof ClassTree type) || !parsedClasses.contains(type)) return;
+        CompilationUnitTree unit = path.getCompilationUnit();
+        Integer remaining = remainingTopLevelScans.get(unit);
+        if (remaining == null) return;
+        if (remaining <= 1) {
+            remainingTopLevelScans.remove(unit);
+            sourceContents.remove(unit);
+        } else {
+            remainingTopLevelScans.put(unit, remaining - 1);
+        }
     }
 
     private String identity(Element element) {
@@ -282,6 +369,136 @@ final class JavacEvidenceSession implements TaskListener {
             return returns == null ? null : "method:" + owner(type) + "#" + name + "(" + String.join("", arguments) + ")" + returns;
         }
         return null;
+    }
+
+    private void recordCall(TreePath path, MethodInvocationTree invocation, ExecutableElement caller) {
+        if (invalid) return;
+        try {
+            callPositionBuffer.observe();
+            if (path == null || caller == null) {
+                callPositionBuffer.unmapped();
+                return;
+            }
+            CompilationUnitTree unit = path.getCompilationUnit();
+            String sourcePath = unit == null ? null : sourcePath(unit.getSourceFile());
+            String sourceId = identity(caller);
+            Element element = trees.getElement(path);
+            ExecutableElement target = element instanceof ExecutableElement executable ? executable : null;
+            TypeElement targetType = target != null && target.getEnclosingElement() instanceof TypeElement type ? type : null;
+            String targetId = target == null ? null : identity(target);
+            String targetOwner = targetType == null ? null : owner(targetType);
+            String targetSource = targetType == null ? null : targetSource(targetType);
+            EvidenceProtocol.Source source = sourcePath == null ? null : sources.get(sourcePath);
+            if (unit == null || sourceId == null || targetId == null || targetOwner == null || source == null ||
+                targetSource == null || !sources.containsKey(targetSource)) {
+                callPositionBuffer.unmapped();
+                return;
+            }
+            long[] span = selectorSpan(unit, invocation);
+            if (span == null || unit.getLineMap() == null) {
+                callPositionBuffer.unmapped();
+                return;
+            }
+            long line = unit.getLineMap().getLineNumber(span[0]);
+            long column = unit.getLineMap().getColumnNumber(span[0]);
+            if (line < 1 || line > Integer.MAX_VALUE || column < 1 || column > Integer.MAX_VALUE) {
+                callPositionBuffer.unmapped();
+                return;
+            }
+            var position = new EvidenceProtocol.CallPosition(sourceId, targetId, source,
+                (int) span[0], (int) span[1], (int) line, (int) column);
+            long budgetBytes = EvidenceProtocol.pendingCallBytes(position, targetOwner, targetSource);
+            callPositionBuffer.retainPending(budgetBytes);
+            pendingCalls.addLast(new PendingCall(position, targetOwner, targetSource, budgetBytes));
+        } catch (EvidenceProtocol.CallPositionLimitException error) {
+            pendingCalls.clear();
+            fail("javac call position collection exceeded its resource limit");
+            throw error;
+        } catch (RuntimeException error) {
+            pendingCalls.clear();
+            fail("invalid javac compiler call position collection");
+            throw error;
+        }
+    }
+
+    private String targetSource(TypeElement type) {
+        TypeElement outermost = outermostType(type);
+        if (targetSources.containsKey(outermost)) return targetSources.get(outermost);
+        TreePath declaration = trees.getPath(outermost);
+        CompilationUnitTree unit = declaration == null ? null : declaration.getCompilationUnit();
+        String source = unit == null ? null : sourcePath(unit.getSourceFile());
+        targetSources.put(outermost, source);
+        return source;
+    }
+
+    private void cacheTargetSource(TypeElement type, String source) {
+        if (source != null) targetSources.putIfAbsent(outermostType(type), source);
+    }
+
+    private TypeElement outermostType(TypeElement type) {
+        TypeElement outermost = type;
+        Element current = type;
+        while (current.getEnclosingElement() != null) {
+            current = current.getEnclosingElement();
+            if (current instanceof TypeElement enclosingType) outermost = enclosingType;
+        }
+        return outermost;
+    }
+
+    private void finalizeCalls() {
+        try {
+            while (!pendingCalls.isEmpty()) {
+                PendingCall pending = pendingCalls.removeFirst();
+                if (!analyzedOwners.contains(pending.targetOwner()) || !sources.containsKey(pending.targetSource())) {
+                    callPositionBuffer.dropPending(pending.budgetBytes());
+                    callPositionBuffer.unmapped();
+                } else {
+                    callPositionBuffer.replacePending(pending.budgetBytes(), pending.position());
+                }
+            }
+        } catch (EvidenceProtocol.CallPositionLimitException error) {
+            pendingCalls.clear();
+            fail("javac call position collection exceeded its resource limit");
+            throw error;
+        } catch (RuntimeException error) {
+            pendingCalls.clear();
+            fail("invalid javac compiler call position collection");
+            throw error;
+        }
+    }
+
+    private long[] selectorSpan(CompilationUnitTree unit, MethodInvocationTree invocation) {
+        Tree selector = invocation.getMethodSelect();
+        SourcePositions positions = trees.getSourcePositions();
+        long start = positions.getStartPosition(unit, selector);
+        long end = positions.getEndPosition(unit, selector);
+        String name;
+        if (selector instanceof MemberSelectTree member) {
+            name = member.getIdentifier().toString();
+            if (end < 0 || name.isEmpty()) return null;
+            start = end - name.length();
+        } else if (selector instanceof IdentifierTree identifier) {
+            name = identifier.getName().toString();
+        } else {
+            return null;
+        }
+        if (name.isEmpty() || start < 0 || end <= start || end > Integer.MAX_VALUE) return null;
+        CharSequence content = sourceContent(unit);
+        return content != null && end <= content.length() &&
+            content.subSequence((int) start, (int) end).toString().equals(name) ? new long[]{start, end} : null;
+    }
+
+    private CharSequence sourceContent(CompilationUnitTree unit) {
+        if (sourceContents.containsKey(unit)) return sourceContents.get(unit);
+        try {
+            CharSequence content = unit.getSourceFile().getCharContent(false);
+            sourceContents.put(unit, content);
+            return content;
+        } catch (java.io.IOException | RuntimeException error) {
+            sourceContents.put(unit, null);
+            fail("javac compiler source content is unavailable");
+            return null;
+        }
     }
 
     private String owner(TypeElement type) {
@@ -345,7 +562,13 @@ final class JavacEvidenceSession implements TaskListener {
                 }
             }
             if (options.collector().equals("javac-constants")) {
-                EvidenceProtocol.write(options, Runtime.version().toString(), artifact, sources.values(), unmapped, edges);
+                if (options.callPositions()) {
+                    finalizeCalls();
+                    EvidenceProtocol.write(options, Runtime.version().toString(), artifact, sources.values(), unmapped, edges, null,
+                        callPositionBuffer.positionsList(), callPositionBuffer.observedCount(), callPositionBuffer.unmappedCount(), callPositionBuffer.ambiguousCount());
+                } else {
+                    EvidenceProtocol.write(options, Runtime.version().toString(), artifact, sources.values(), unmapped, edges);
+                }
             } else if (options.collector().equals("javac-processors")) {
                 if (!ProcessorEvidenceFiles.hasStage(options)) {
                     fail("recording processor did not publish a round; select RecordingProcessor and enable annotation processing");

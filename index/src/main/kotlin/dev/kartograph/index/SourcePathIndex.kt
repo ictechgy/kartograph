@@ -57,17 +57,30 @@ public object SourcePathIndex {
 
     private fun resolvePaths(graph: CodeGraph, root: Path, pathsByFileName: Map<String, Set<Path>>): SourcePathResolution {
         val byNodeId = mutableMapOf<NodeId, String>()
+        val declaredPackages = mutableMapOf<Path, String?>()
+        fun packageOf(path: Path): String? {
+            if (!declaredPackages.containsKey(path)) declaredPackages[path] = readDeclaredPackage(root, path)
+            return declaredPackages[path]
+        }
         var located = 0
         var unresolved = 0
+        var ambiguous = 0
+        var unavailable = 0
         graph.nodeIds.forEach { nodeId ->
             val node = graph.nodes.getValue(nodeId)
+            if (dev.kartograph.core.NodeAttribute.EXTERNAL_STUB in node.attributes) return@forEach
             val sourceFileName = node.location?.path ?: return@forEach
             located++
             // 이름이 여러 파일과 맞거나(모호) project 밖에서 컴파일된 class(무일치)는 확정하지 않는다.
-            val match = pathsByFileName[sourceFileName]?.singleOrNull()
-            // 이름이 같기만 한 무관한 파일을 사실로 단언하지 않도록 선언의 package와 후보의 위치도 대조한다.
-            if (match == null || !match.startsWith(root) || !matchesPackage(node.id, root.relativize(match))) {
+            val candidates = pathsByFileName[sourceFileName].orEmpty().filter { candidate ->
+                candidate.startsWith(root) && (packageOf(candidate)?.let { declared ->
+                    declared == node.id.value.substringAfter(':').substringBefore('#').substringBeforeLast('/', "").replace('/', '.')
+                } ?: matchesPackage(node.id, root.relativize(candidate)))
+            }
+            val match = candidates.singleOrNull()
+            if (match == null) {
                 unresolved++
+                if (candidates.size > 1) ambiguous++ else unavailable++
                 return@forEach
             }
             // 교환 문서가 플랫폼과 무관하게 같아지도록 항상 '/'로 잇는다.
@@ -79,10 +92,28 @@ public object SourcePathIndex {
                 if (unresolved > 0) add(
                     "unresolved-source-paths: $unresolved of $located located node(s) did not match exactly one project source file",
                 )
+                if (ambiguous > 0) add("ambiguous-source-paths: $ambiguous located node(s) have multiple package-compatible source files")
+                if (unavailable > 0) add("unavailable-source-paths: $unavailable located node(s) have no package-compatible source file; generated, external or omitted sources may be absent")
                 addAll(missingSourcePaths(graph))
             },
         )
     }
+
+    /** 패키지 header만 corroborate하며 크기·링크·decode 불확실성은 경로 suffix 기준으로 남긴다. */
+    private fun readDeclaredPackage(root: Path, path: Path): String? = try {
+        val real = path.toRealPath()
+        if (!real.startsWith(root) || Files.isSymbolicLink(path) || Files.size(real) > 2 * 1024 * 1024) null else {
+            val bytes = Files.newInputStream(real, java.nio.file.LinkOption.NOFOLLOW_LINKS).use { it.readNBytes(2 * 1024 * 1024 + 1) }
+            if (bytes.size > 2 * 1024 * 1024) null else {
+                val source = java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+                val masked = maskStringContents(stripComments(source)).removePrefix("\uFEFF")
+                PACKAGE_DECLARATION.find(masked)?.groupValues?.get(1)?.replace(Regex("\\s+"), "")
+            }
+        }
+    } catch (_: IOException) { null } catch (_: SecurityException) { null }
+
+    private val PACKAGE_DECLARATION = Regex("(?m)^\\s*package\\s+([A-Za-z_][\\w]*(?:\\s*\\.\\s*[A-Za-z_][\\w]*)*)\\s*(?:;|$)")
 
     /**
      * 위치를 복원하지 못한 정점 수를 계량된 한계로 만든다.
@@ -91,7 +122,9 @@ public object SourcePathIndex {
      * 해서 "알릴 한계가 없다"고 보고하지 않도록, 경로 해석과 분리해 항상 쓸 수 있게 둔다.
      */
     public fun missingSourcePaths(graph: CodeGraph): List<String> {
-        val missing = graph.nodeIds.count { nodeId -> graph.nodes.getValue(nodeId).location == null }
+        val missing = graph.nodeIds.count { nodeId -> graph.nodes.getValue(nodeId).let {
+            it.location == null && dev.kartograph.core.NodeAttribute.EXTERNAL_STUB !in it.attributes
+        } }
         if (missing == 0) return emptyList()
         return listOf(
             "missing-source-paths: $missing of ${graph.nodeCount} node(s) have no source file in the class debug attributes",

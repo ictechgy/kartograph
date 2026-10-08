@@ -35,6 +35,10 @@ public enum class NodeAttribute {
     FILE_FACADE,
     PROPERTY_ACCESSOR,
     GENERATED_INPUT,
+    /** 그래프 내보내기를 위해 참조 identity만 붙인 외부 선언이다. 프로젝트 구현으로 취급하지 않는다. */
+    EXTERNAL_STUB,
+    /** compiler line이 없을 때 현재 project source header에서 유일하게 보강한 선언 위치다. */
+    SOURCE_DECLARATION_LOCATION,
 }
 
 /** ProGuard/R8 class specification과 직접 비교하는 JVM access flag다. */

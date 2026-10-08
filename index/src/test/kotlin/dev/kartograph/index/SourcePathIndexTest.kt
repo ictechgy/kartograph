@@ -16,6 +16,37 @@ import org.junit.jupiter.api.io.TempDir
 
 class SourcePathIndexTest {
     @Test
+    fun `declared package resolves sources whose directory layout differs`() {
+        val root = java.nio.file.Files.createTempDirectory("package-path")
+        try {
+            val first = root.resolve("feature-one/Screen.kt"); first.parent.createDirectories()
+            first.writeText("package sample.north\nclass Screen")
+            val other = root.resolve("feature-two/Screen.kt"); other.parent.createDirectories()
+            other.writeText("package sample.south\nclass Screen")
+            val id = node("class:sample/north/Screen", "Screen", "Screen.kt")
+            val result = SourcePathIndex.resolve(CodeGraph(listOf(id), emptyList()), root)
+            assertEquals("feature-one/Screen.kt", result.byNodeId[id.id])
+        } finally { root.toFile().deleteRecursively() }
+    }
+
+    @Test
+    fun `package paths narrow duplicate filenames and distinguish ambiguous from absent source`(@TempDir root: Path) {
+        write(root, "src/main/kotlin/north/Screen.kt")
+        write(root, "src/main/kotlin/south/Screen.kt")
+        write(root, "module-one/north/Shared.kt")
+        write(root, "module-two/north/Shared.kt")
+        val precise = node("class:north/Screen", "Screen", "Screen.kt")
+        val ambiguous = node("class:north/Shared", "Shared", "Shared.kt")
+        val absent = node("class:north/Generated", "Generated", "Generated.kt")
+        val result = SourcePathIndex.resolve(CodeGraph(listOf(precise, ambiguous, absent), emptyList()), root)
+        assertEquals("src/main/kotlin/north/Screen.kt", result.byNodeId[precise.id])
+        assertEquals(null, result.byNodeId[ambiguous.id])
+        assertEquals(null, result.byNodeId[absent.id])
+        assertTrue(result.limitations.any { it.startsWith("ambiguous-source-paths: 1 ") })
+        assertTrue(result.limitations.any { it.startsWith("unavailable-source-paths: 1 ") })
+    }
+
+    @Test
     fun `explicit inventory keeps generated sources and ignores unselected names without claiming external paths`(@TempDir root: Path) {
         val project = root.resolve("project").createDirectories()
         write(project, "src/p/Target.kt")

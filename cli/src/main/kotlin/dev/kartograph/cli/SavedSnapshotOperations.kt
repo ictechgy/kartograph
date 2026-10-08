@@ -20,12 +20,15 @@ internal object SavedSnapshotOperations {
         val provenanceLimitation = if (snapshot.provenance?.witnesses.isNullOrEmpty())
             "build-provenance-unverified: no compiler-task evidence was captured"
             else "build-provenance: captured compiler-task evidence has not been rechecked"
+        val callPositionLimitation = if (snapshot.graph.compilerCallPositionsCaptured) emptyList() else listOf(
+            "compiler-call-positions: saved graph has no captured compiler selector positions; exact offsets and columns are unavailable",
+        )
         val document = SymbolQuery.query(snapshot.graph, ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention),
             requested, (snapshot.limitations +
                 "saved-graph: using captured graph and retention evidence; live inputs and freshness are not rechecked" +
-                provenanceLimitation).distinct().sorted(), depth, limit, snapshot.suppressed,
+                provenanceLimitation + callPositionLimitation).distinct().sorted(), depth, limit, snapshot.suppressed,
             callSiteLinesCaptured = snapshot.callSiteLinesCaptured)
-        return Document(AgentDocumentRenderer.query(document), if (document.status == "found") 0 else 64)
+        return Document(AgentDocumentRenderer.query(document, snapshot.graph), if (document.status == "found") 0 else 64)
     }
 
     fun compatible(current: QuerySnapshot, base: QuerySnapshot?) {

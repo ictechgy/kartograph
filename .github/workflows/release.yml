@@ -47,6 +47,8 @@ jobs:
           python3 -m unittest discover -s Scripts/tests -v
       - name: Verify optional compiler collectors
         run: KARTOGRAPH_SNAPSHOT_CLI="$PWD/cli/build/install/kartograph/bin/kartograph" ./gradlew --no-daemon -p compiler-collectors integrationTest
+      - name: Verify exact compiler call positions without skipped checks
+        run: python3 Scripts/verify-compiler-call-positions.py
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
         with:
           gradle-version: '8.10.2'
@@ -65,6 +67,7 @@ jobs:
           name: release-readiness
           path: |
             build/reports/release-readiness/*.sha256
+            build/reports/compiler-call-positions/
             build/reports/release-readiness/**/*.log
             build/reports/release-readiness/**/build.stdout
             build/reports/release-readiness/**/build.stderr

@@ -6,6 +6,7 @@ import dev.kartograph.index.ClassFileIndexer
 import dev.kartograph.index.SourcePathIndex
 import dev.kartograph.index.SourcePathResolution
 import java.nio.file.Files
+import java.nio.charset.StandardCharsets
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.tasks.InputFiles
@@ -87,10 +88,9 @@ public abstract class KartographGraphTask : DefaultTask() {
         }
         val target = graphFile.get().asFile.toPath()
         Files.createDirectories(requireNotNull(target.parent))
-        Files.writeString(
-            target,
-            GraphJsonRenderer.render(graph, KartographVersion.current, paths.byNodeId, paths.limitations),
-        )
+        Files.newBufferedWriter(target, StandardCharsets.UTF_8).use { writer ->
+            GraphJsonRenderer.write(graph, KartographVersion.current, writer, paths.byNodeId, paths.limitations)
+        }
         logger.lifecycle(
             "kartograph ${variantName.get()}: ${graph.nodeCount} nodes and ${graph.edgeCount} edges",
         )

@@ -211,14 +211,15 @@ internal object AgentCommand {
                 val indexed = scope?.indexWithObservations(classRoots, classpath, services, generatedRoots, indexCache)
                     ?: ClassFileIndexer().indexWithObservations(classRoots, classpath, services, generatedRoots)
                 indexStatistics = indexed.statistics
-                val compilerFacts = try {
-                    CompilerEvidenceIndexer.enrich(indexed, classRoots, compilerEvidence,
+                val compilerEnrichment = try {
+                    CompilerEvidenceIndexer.enrichWithCallPositions(indexed, classRoots, compilerEvidence,
                         if (compilerEvidence.isEmpty()) null else CompilerEvidenceContext(project, requireNotNull(options.single("--scope")),
                             requireNotNull(provenance), externalInputs))
                 } catch (evidenceError: IllegalArgumentException) {
                     error.println("error: ${evidenceError.message ?: "invalid compiler evidence"}")
                     return ExitStatus.FAILURE.code
                 }
+                val compilerFacts = compilerEnrichment.result
                 val graph = compilerFacts.graph
                 val hierarchy = indexed.hierarchy
                 val inputEvidence = buildList {
@@ -240,17 +241,15 @@ internal object AgentCommand {
                     .filter { node -> Finding(node.id, node.location).fingerprint in baseline }
                     .mapTo(mutableSetOf()) { node -> node.id }
                 val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, classRoots, processorOutputs.verify(options.single("--scope")))
-                val limitations = RuntimeLimitationScanner.scan(indexed, project) + dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) + buildList {
+                val limitations = RuntimeLimitationScanner.scan(indexed, project) +
+                    dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) + compilerEnrichment.limitations + buildList {
                     if (compilerFacts.unmappedReferences > 0) add("compiler-evidence-unmapped-references: ${compilerFacts.unmappedReferences}")
                     if (compilerFacts.outsideGraphReferences > 0) add("compiler-evidence-outside-graph: ${compilerFacts.outsideGraphReferences}")
                     if (compilerFacts.shadowedReferences > 0) add("compiler-evidence-shadowed-references: ${compilerFacts.shadowedReferences}")
                 }
                 return if (requested == null) {
                     val paths = if (options.values("--include-paths").isNotEmpty()) dev.kartograph.index.SourcePathIndex.resolve(graph, project) else null
-                    val capturedGraph = if (paths == null) graph else dev.kartograph.core.CodeGraph(graph.nodes.values.map { node ->
-                        paths.byNodeId[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
-                    }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures,
-            graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes)
+                    val capturedGraph = if (paths == null) graph else relocateSourcePaths(graph, paths.byNodeId)
                     val renderStarted = System.nanoTime()
                     val selectedLimit = requireNotNull(snapshotLimit)
                     val captured = try {
@@ -270,7 +269,7 @@ internal object AgentCommand {
                 } else {
                     val document = SymbolQuery.query(graph, ReachabilityAnalyzer.analyze(graph, evidence), requested,
                         limitations, depth, limit, suppressed)
-                    output.print(AgentDocumentRenderer.query(document))
+                    output.print(AgentDocumentRenderer.query(document, graph))
                     if (document.status == "found") ExitStatus.SUCCESS.code else ExitStatus.USAGE.code
                 }
             }
@@ -314,6 +313,20 @@ internal object AgentCommand {
             error.println("error: unable to query compiled declarations; check the inputs")
             ExitStatus.FAILURE.code
         }
+    }
+
+    /** 정점 source path만 바꾸며 모든 외부 사실과 compiler 위치 캡처 상태를 보존한다. */
+    private fun relocateSourcePaths(
+        graph: dev.kartograph.core.CodeGraph,
+        paths: Map<dev.kartograph.core.NodeId, String>,
+    ): dev.kartograph.core.CodeGraph {
+        val relocated = dev.kartograph.core.CodeGraph(graph.nodes.values.map { node ->
+            paths[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
+        }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures,
+            graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes)
+        return if (graph.compilerCallPositionsCaptured) {
+            relocated.withCompilerCallPositions(graph.locatedCompilerReferences)
+        } else relocated
     }
 
     private fun savedQuery(requested: String, arguments: List<String>, output: PrintStream, error: PrintStream): Int {
