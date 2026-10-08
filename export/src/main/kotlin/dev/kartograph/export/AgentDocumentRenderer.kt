@@ -120,6 +120,15 @@ public object AgentDocumentRenderer {
         module?.let { put("module", it) }
         put("name", name)
         put("qualifiedName", qualifiedName)
+        references.takeIf { it.isNotEmpty() }?.let { values ->
+            put("references", values.map { reference ->
+                sortedMapOf(
+                    "kind" to reference.kind,
+                    "location" to reference.location.toJsonValue(),
+                    "origin" to reference.origin,
+                )
+            })
+        }
         usr?.let { put("usr", it) }
     }.toSortedMap()
 

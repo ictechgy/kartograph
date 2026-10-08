@@ -32,9 +32,20 @@ public data class GraphEdge(
     val kind: EdgeKind,
     val weight: Int = 1,
     val origin: EdgeOrigin = EdgeOrigin.BYTECODE,
+    /** 동일한 직접 bytecode 호출 간선에 대응하는 유효한 source line 집합이다. */
+    val callSiteLines: List<Int> = emptyList(),
 ) : Comparable<GraphEdge> {
     init {
         require(weight > 0) { "edge weight must be positive" }
+        require(callSiteLines.withIndex().all { (index, line) ->
+            line in 1..65535 && (index == 0 || callSiteLines[index - 1] < line)
+        }) {
+            "call-site lines must be sorted, distinct JVM line numbers"
+        }
+        require(callSiteLines.isEmpty() || (kind == EdgeKind.CALL && origin == EdgeOrigin.BYTECODE)) {
+            "only bytecode call edges may carry call-site lines"
+        }
+        require(callSiteLines.size <= weight) { "call-site lines cannot outnumber edge occurrences" }
     }
 
     /** 자기 자신을 가리키는 간선인지 나타낸다. */

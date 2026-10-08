@@ -22,6 +22,41 @@ class CodeGraphTest {
     }
 
     @Test
+    fun `duplicate call edges stream-merge weights and sorted call-site lines`() {
+        val graph = CodeGraph(
+            nodes = listOf(node("a"), node("b")),
+            edges = listOf(
+                GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, weight = 1, callSiteLines = listOf(5)),
+                GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, weight = 2, callSiteLines = listOf(3, 5)),
+            ),
+        )
+
+        assertEquals(3, graph.edges.single().weight)
+        assertEquals(listOf(3, 5), graph.edges.single().callSiteLines)
+    }
+
+    @Test
+    fun `many streamed duplicate edges retain weights and independent origin evidence`() {
+        val a = NodeId("a")
+        val b = NodeId("b")
+        val rawEdges = sequence {
+            repeat(50_000) { index ->
+                yield(GraphEdge(a, b, EdgeKind.CALL, callSiteLines = listOf(index % 17 + 1)))
+            }
+            yield(GraphEdge(a, b, EdgeKind.CALL, origin = EdgeOrigin.RUNTIME_MODEL))
+            yield(GraphEdge(a, NodeId("missing"), EdgeKind.CALL, callSiteLines = listOf(7)))
+        }.asIterable()
+        val graph = CodeGraph(listOf(node("a"), node("b")), rawEdges)
+        assertEquals(2, graph.edgeCount)
+        val bytecode = graph.edges.single { it.origin == EdgeOrigin.BYTECODE }
+        assertEquals(50_000, bytecode.weight)
+        assertEquals((1..17).toList(), bytecode.callSiteLines)
+        val modeled = graph.edges.single { it.origin == EdgeOrigin.RUNTIME_MODEL }
+        assertEquals(1, modeled.weight)
+        assertTrue(modeled.callSiteLines.isEmpty())
+    }
+
+    @Test
     fun `edges without both endpoints are dropped`() {
         val graph = CodeGraph(
             nodes = listOf(node("a")),

@@ -48,8 +48,10 @@ internal class CompactSnapshotGraph(private val positions: Map<String, Int>) {
             val edges = array(graph["edges"]).map { value ->
                 val row = array(value)
                 require(row.size == 5) { "invalid compact edge" }
-                mapOf("source" to node(row[0]), "target" to node(row[1]), "kind" to string(row[2]),
-                    "origin" to string(row[3]), "weight" to row[4])
+                buildMap<String, Any?> {
+                    put("source", node(row[0])); put("target", node(row[1])); put("kind", string(row[2]))
+                    put("origin", string(row[3])); put("weight", row[4])
+                }
             }
             val calls = array(graph["externalCalls"]).map { value ->
                 val row = array(value)
@@ -64,7 +66,7 @@ internal class CompactSnapshotGraph(private val positions: Map<String, Int>) {
             return mapOf("nodes" to nodes, "edges" to edges, "externalCalls" to calls, "serviceProviders" to graph["serviceProviders"],
                 "enclosures" to graph["enclosures"],
                 "callbackArguments" to graph["callbackArguments"], "parameterUses" to graph["parameterUses"],
-                "lambdaEscapes" to graph["lambdaEscapes"])
+                "lambdaEscapes" to graph["lambdaEscapes"], "callSiteEvidence" to graph["callSiteEvidence"])
         }
 
         private fun array(value: Any?): List<*> = value as? List<*> ?: throw IllegalArgumentException("invalid compact array")

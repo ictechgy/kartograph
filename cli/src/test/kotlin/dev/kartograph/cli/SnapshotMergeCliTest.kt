@@ -21,13 +21,18 @@ class SnapshotMergeCliTest {
     @Test
     fun `merge reindexes member class roots so cross-module edges and freshness survive`(@TempDir root: Path) {
         val fixture = Fixture(root)
+        // 한 구성원은 call-site evidence가 없는 옛 문서여도 merge graph는 새로 캡처한 사실을 사용한다.
+        val legacyApp = QuerySnapshotCodec.parse(Files.readString(fixture.appSnapshot)).copy(callSiteLinesCaptured = false)
+        Files.writeString(fixture.appSnapshot, QuerySnapshotCodec.render(legacyApp))
         val merged = fixture.merge()
         assertEquals(0, merged.first, merged.second)
         assertContains(merged.second, "warning: merged snapshot includes unverified members")
         val snapshot = QuerySnapshotCodec.parse(merged.stdout)
         val screen = NodeId("method:app/Screen#render()I")
         val api = NodeId("method:core/Api#load()I")
-        assertTrue(snapshot.graph.edges.any { it.source == screen && it.target == api && it.kind == EdgeKind.CALL })
+        val call = snapshot.graph.edges.single { it.source == screen && it.target == api && it.kind == EdgeKind.CALL }
+        assertTrue(call.callSiteLines.isNotEmpty())
+        assertTrue(snapshot.callSiteLinesCaptured)
         assertTrue(snapshot.graph.edges.any { it.target == NodeId("class:core/Api") && it.source.value.startsWith("field:app/Screen#api") })
         assertEquals("aggregate:jvm", snapshot.scope)
         assertEquals(listOf(":app:jvm", ":core:jvm"), snapshot.provenance!!.memberScopes.sorted())

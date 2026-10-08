@@ -23,7 +23,8 @@ internal object SavedSnapshotOperations {
         val document = SymbolQuery.query(snapshot.graph, ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention),
             requested, (snapshot.limitations +
                 "saved-graph: using captured graph and retention evidence; live inputs and freshness are not rechecked" +
-                provenanceLimitation).distinct().sorted(), depth, limit, snapshot.suppressed)
+                provenanceLimitation).distinct().sorted(), depth, limit, snapshot.suppressed,
+            callSiteLinesCaptured = snapshot.callSiteLinesCaptured)
         return Document(AgentDocumentRenderer.query(document), if (document.status == "found") 0 else 64)
     }
 

@@ -2,6 +2,7 @@ package dev.kartograph.analysis
 
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.EdgeKind
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
@@ -15,6 +16,40 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SymbolQueryTest {
+    @Test
+    fun `direct bytecode call neighbors expose sorted call-site references`() {
+        val caller = GraphNode(NodeId("method:app/Caller#calls()V"), "calls", NodeKind.METHOD,
+            location = SourceLocation("Caller.java", 3))
+        val target = GraphNode(NodeId("method:app/Target#run()V"), "run", NodeKind.METHOD,
+            location = SourceLocation("Target.java", 1))
+        val graph = CodeGraph(listOf(caller, target), listOf(
+            GraphEdge(caller.id, target.id, EdgeKind.CALL, weight = 2, origin = EdgeOrigin.BYTECODE, callSiteLines = listOf(5, 7)),
+        ))
+
+        val neighbor = SymbolQuery.query(graph, ReachabilityAnalyzer.analyze(graph, emptyList()), target.id.value, emptyList())
+            .result!!.usedBy.single()
+
+        assertEquals(listOf(5, 7), neighbor.references.map { it.location.line })
+        assertEquals(listOf("Caller.java", "Caller.java"), neighbor.references.map { it.location.path })
+        assertTrue(neighbor.references.all { it.kind == "call" && it.origin == "bytecode" && it.location.column == null })
+
+        val outgoing = SymbolQuery.query(graph, ReachabilityAnalyzer.analyze(graph, emptyList()), caller.id.value, emptyList())
+            .result!!.dependsOn.single()
+        assertEquals(listOf(5, 7), outgoing.references.map { it.location.line })
+        assertEquals(listOf("Caller.java", "Caller.java"), outgoing.references.map { it.location.path })
+    }
+
+    @Test
+    fun `saved graphs without call-site capture report the measured gap`() {
+        val node = GraphNode(NodeId("class:app/Subject"), "Subject", NodeKind.CLASS)
+        val document = SymbolQuery.query(
+            CodeGraph(listOf(node), emptyList()), ReachabilityAnalyzer.analyze(CodeGraph(listOf(node), emptyList()), emptyList()),
+            node.id.value, emptyList(), callSiteLinesCaptured = false,
+        )
+
+        assertTrue(document.limitations.any { it.startsWith("call-site-lines:") })
+    }
+
     @Test
     fun `source style discovery returns every overload without resolving the query`() {
         val primitive = GraphNode(NodeId("method:com/acme/Writer#value(D)V"), "value", NodeKind.METHOD,

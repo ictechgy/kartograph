@@ -54,14 +54,7 @@ public class CodeGraph(
         .filter { it.caller in this.nodes && it.lambda in this.nodes }
         .distinct().sorted()
 
-    public val edges: List<GraphEdge> = edges
-        .filter { edge -> edge.source in this.nodes && edge.target in this.nodes }
-        .groupingBy { edge -> EdgeSignature(edge.source, edge.target, edge.kind, edge.origin) }
-        .fold(0) { weight, edge -> weight + edge.weight }
-        .map { (signature, weight) ->
-            GraphEdge(signature.source, signature.target, signature.kind, weight, signature.origin)
-        }
-        .sorted()
+    public val edges: List<GraphEdge> = mergeEdges(edges)
 
     private val outgoing: Map<NodeId, List<GraphEdge>> = this.edges.groupBy(GraphEdge::source)
     private val incoming: Map<NodeId, List<GraphEdge>> = this.edges.groupBy(GraphEdge::target)
@@ -93,6 +86,34 @@ public class CodeGraph(
 
     /** 모든 관계를 포함한 선행 정점 목록을 반환한다. */
     public fun predecessorsOf(id: NodeId): List<NodeId> = incomingEdgesTo(id).map(GraphEdge::source)
+
+    /** 원본 간선 목록을 복사하지 않고 관계별 가중치와 희소한 호출 줄만 누적한다. */
+    private fun mergeEdges(edges: Iterable<GraphEdge>): List<GraphEdge> {
+        val merged = mutableMapOf<EdgeSignature, EdgeAccumulator>()
+        for (edge in edges) {
+            if (edge.source !in nodes || edge.target !in nodes) continue
+            val signature = EdgeSignature(edge.source, edge.target, edge.kind, edge.origin)
+            merged.getOrPut(signature, ::EdgeAccumulator).add(edge)
+        }
+        return merged.map { (signature, value) ->
+            GraphEdge(signature.source, signature.target, signature.kind, value.weight,
+                signature.origin, value.callSiteLines?.sorted().orEmpty())
+        }.sorted()
+    }
+
+    /** 호출 줄이 없는 관계는 별도 set을 할당하지 않는다. */
+    private class EdgeAccumulator {
+        var weight: Int = 0
+        var callSiteLines: MutableSet<Int>? = null
+
+        fun add(edge: GraphEdge) {
+            weight += edge.weight
+            if (edge.callSiteLines.isNotEmpty()) {
+                val lines = callSiteLines ?: mutableSetOf<Int>().also { callSiteLines = it }
+                lines.addAll(edge.callSiteLines)
+            }
+        }
+    }
 
     private data class EdgeSignature(
         val source: NodeId,

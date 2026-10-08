@@ -35,6 +35,10 @@ class InheritedInterfaceCallTest {
             abstract class Partial implements Base {}
             public final class Entry {
                 String inherited(Sub value) { return value.m(); }
+                String repeated(Sub value) {
+                    value.m();
+                    return value.m();
+                }
                 String redeclared(Leaf value) { return value.m(); }
                 String diamond(Joined value) { return value.both(); }
                 String defaults(SubDefaults value) { return value.d(); }
@@ -49,6 +53,14 @@ class InheritedInterfaceCallTest {
             .groupBy({ it.source.value.substringAfter('#').substringBefore('(') }, { it.target.value })
 
         assertEquals(listOf("method:probe/Base#m()Ljava/lang/String;"), calls["inherited"])
+        val repeatedEdges = graph.edges.filter {
+            it.source.value == "method:probe/Entry#repeated(Lprobe/Sub;)Ljava/lang/String;" &&
+                it.target.value == "method:probe/Base#m()Ljava/lang/String;" && it.kind == EdgeKind.CALL
+        }
+        assertEquals(1, repeatedEdges.size, repeatedEdges.toString())
+        val repeated = repeatedEdges.single()
+        assertEquals(2, repeated.weight)
+        assertEquals(2, repeated.callSiteLines.size)
         assertEquals(listOf("method:probe/Mid#m()Ljava/lang/String;"), calls["redeclared"], "the redeclaration hides Base#m")
         assertEquals(listOf("method:probe/Left#both()Ljava/lang/String;", "method:probe/Right#both()Ljava/lang/String;"), calls["diamond"]?.sorted())
         assertEquals(null, calls["defaults"], "default methods are dispatch candidates, not added calls")
@@ -56,7 +68,7 @@ class InheritedInterfaceCallTest {
         assertEquals(null, calls["classReceiver"], "class receivers keep the dispatch model")
         assertEquals(listOf("method:probe/Base#m()Ljava/lang/String;"), calls["direct"])
         // 실행 대상 해석은 그대로다 — 구현이 없는 상속 호출은 여전히 external-dispatch로 센다.
-        assertEquals(CallResolution.UNRESOLVED, graph.externalCalls.single { it.owner == "probe/Sub" }.resolution)
+        assertEquals(CallResolution.UNRESOLVED, graph.externalCalls.first { it.owner == "probe/Sub" }.resolution)
         assertEquals(
             listOf("method:probe/Defaults#d()Ljava/lang/String;"),
             graph.edges.filter { it.origin == EdgeOrigin.DISPATCH_MODEL && it.source.value.contains("#defaults(") }.map { it.target.value },

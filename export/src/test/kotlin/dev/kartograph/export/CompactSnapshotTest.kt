@@ -13,7 +13,7 @@ class CompactSnapshotTest {
 
     @Test fun `compact snapshots keep all facts and materially reduce repeated edge identities`() {
         val nodes=(0..25).map { GraphNode(NodeId("class:long/package/with/repeated/names/Type$it"),"Type$it",NodeKind.CLASS) }
-        val graph=CodeGraph(nodes,nodes.zipWithNext { a,b -> GraphEdge(a.id,b.id,EdgeKind.CALL,3,EdgeOrigin.RUNTIME_MODEL) })
+        val graph=CodeGraph(nodes,nodes.zipWithNext { a,b -> GraphEdge(a.id,b.id,EdgeKind.CALL,3,EdgeOrigin.BYTECODE, listOf(2,4)) })
         val original=QuerySnapshot(graph,listOf(RetentionEvidence(nodes.first().id,RetentionReason.KEEP_RULE,null)),listOf("measured: 1"),
             revision="a".repeat(40),scope="sample:debug")
         val plain=QuerySnapshotCodec.render(original)

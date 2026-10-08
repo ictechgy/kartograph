@@ -38,6 +38,21 @@ class GraphModelTest {
         assertFailsWith<IllegalArgumentException> {
             GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, weight = 0)
         }
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, callSiteLines = listOf(4, 2))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.REFERENCE, callSiteLines = listOf(2))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, origin = EdgeOrigin.RUNTIME_MODEL, callSiteLines = listOf(2))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, callSiteLines = listOf(1, 2))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, callSiteLines = listOf(65536))
+        }
     }
 
     @Test

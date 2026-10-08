@@ -104,11 +104,16 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   JAR entry 시각은 일반 ZIP의 정밀도를 고려해 2초 구간으로 보수적으로 취급한다. source 시각이 그 구간 안에
   있으면 stale이 아니라 `index-freshness-unknown`이며, 구간 이후의 변경은 계속 stale로 잡는다.
   디렉터리 class 파일은 이 허용 구간을 적용하지 않는다.
+- 직접 bytecode CALL의 `callSiteLines`는 컴파일러 LineNumberTable에서 관측한 줄이다. 깊이 1의
+  `query` 이웃에만 선택적 `references`로 노출하며, 기존 `location`은 선언/호출자 위치다.
+  column·offset은 제공하지 않는다. 파일 경로 해석을 하지 않은 live query의 경로는 SourceFile 이름이다.
+  Kotlin SMAP의 외부 소스·모호한 동명 소스·미매핑 줄 및 identity가 아닌 inline 합성 줄과 bootstrap/method-handle 간선에는 호출부 줄을 붙이지 않는다.
+  새 snapshot은 빈 근거 배열도 캡처 여부로 구분하며, 필드가 없는 옛 snapshot은 `call-site-lines:` 한계를 싣는다.
 - `snapshot`은 생성 시점의 그래프·보존 근거·baseline 상태·측정 한계를 고정한다. `query --graph-file`은
   원본 class/source/규칙 파일을 읽지 않으며 `saved-graph` 한계를 추가한다. 현재 source와 일치하는지는 확인하지
   않으므로 변경 후에는 새 snapshot을 만든다. live 입력이나 baseline을 섞어 저장된 의미를 바꿀 수 없다.
   일반 `graph --format json` 문서에는 보존 문맥이 없으므로 질의 snapshot으로 읽지 않는다. 입력은 UTF-8 JSON,
-  기본 64 MiB이며 `--snapshot-max-mib`로 명시한 경우 최대 128 MiB다. 지원하지 않는 버전·손상·중복 정점·dangling edge를 오류로 거부한다.
+  기본 64 MiB이며 `--snapshot-max-mib`로 명시한 경우 최대 128 MiB다. 출력도 인코딩 중 같은 byte 상한으로 제한한다. 지원하지 않는 버전·손상·중복 정점·dangling edge를 오류로 거부한다.
 - `snapshot --compact` v2는 반복 문자열과 graph 행을 인덱스로 저장한다. 사실을 생략하지 않으며 v1도 계속 읽는다.
   `--revision`/`--scope`는 호출자의 입력 라벨이고 내용 지문이나 빌드 신선도 증명이 아니다.
 - `impact`는 잠재적 사용/계약 의존을 역방향으로 조사하며 실제 동작 변화나 테스트 생략을 승인하지 않는다.

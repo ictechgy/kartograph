@@ -22,6 +22,19 @@ import org.junit.jupiter.api.io.TempDir
 
 class SavedQueryCliTest {
     @Test
+    fun `saved legacy graph declares unavailable call-site capture in either encoding`(@TempDir root: Path) {
+        val target = dev.kartograph.core.GraphNode(NodeId("method:Entry#used()V"), "used", dev.kartograph.core.NodeKind.METHOD)
+        val legacy = QuerySnapshot(CodeGraph(listOf(target), emptyList()), emptyList(), emptyList(),
+            callSiteLinesCaptured = false)
+        for (compact in listOf(false, true)) {
+            val file = root.resolve("legacy-$compact.json").apply { writeText(QuerySnapshotCodec.render(legacy, compact)) }
+            val result = execute("query", target.id.value, "--graph-file", file.toString())
+            assertEquals(0, result.status, result.error)
+            assertContains(result.output, "call-site-lines: saved graph predates direct call-site evidence")
+        }
+    }
+
+    @Test
     fun `snapshot preserves private member entry policy baseline and ambiguous candidates`(@TempDir root: Path) {
         val source = root.resolve("Entry.java").apply { writeText("""
             public class Entry {
