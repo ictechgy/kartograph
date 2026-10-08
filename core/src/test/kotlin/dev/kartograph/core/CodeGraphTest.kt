@@ -314,6 +314,8 @@ class CodeGraphTest {
         assertEquals(expected.callbackArguments, actual.callbackArguments)
         assertEquals(expected.parameterUses, actual.parameterUses)
         assertEquals(expected.lambdaEscapes, actual.lambdaEscapes)
+        assertEquals(expected.locatedCompilerReferences, actual.locatedCompilerReferences)
+        assertEquals(expected.compilerCallPositionsCaptured, actual.compilerCallPositionsCaptured)
         assertEquals(expected.nodeIds, actual.nodeIds)
         assertEquals(expected.nodeCount, actual.nodeCount)
         assertEquals(expected.edgeCount, actual.edgeCount)

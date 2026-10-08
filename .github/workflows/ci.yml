@@ -93,6 +93,8 @@ jobs:
             --archive "compiler-collectors/build/distributions/kartograph-compiler-collectors-$(cat VERSION).zip" \
             --version "$(cat VERSION)" --evidence build/reports/collector-installation
           python3 Scripts/verify-compiler-evidence.py
+      - name: Verify exact compiler call positions without skipped checks
+        run: python3 Scripts/verify-compiler-call-positions.py
       - name: Preserve compiler evidence validation
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -100,6 +102,7 @@ jobs:
           name: compiler-evidence-validation
           path: |
             build/reports/compiler-evidence-integration/
+            build/reports/compiler-call-positions/
             build/reports/collector-installation/*.log
             build/reports/collector-installation/**/build.stdout
             build/reports/collector-installation/**/build.stderr

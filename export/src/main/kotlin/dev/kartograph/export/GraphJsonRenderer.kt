@@ -34,22 +34,96 @@ public object GraphJsonRenderer {
         toolVersion: String,
         projectRelativePaths: Map<NodeId, String> = emptyMap(),
         limitations: List<String> = emptyList(),
-    ): String = jsonValue(
+    ): String = jsonValue(document(graph, toolVersion, projectRelativePaths, limitations)) + "\n"
+
+    /** 전체 문자열이나 정점·간선 JSON 목록을 만들지 않고 목적지에 순서대로 기록한다. */
+    public fun write(
+        graph: CodeGraph,
+        toolVersion: String,
+        output: Appendable,
+        projectRelativePaths: Map<NodeId, String> = emptyMap(),
+        limitations: List<String> = emptyList(),
+    ) {
+        output.appendJsonValue(document(graph, toolVersion, projectRelativePaths, limitations))
+        output.append('\n')
+    }
+
+    /** 버전 header와 독립 JSON 레코드를 한 줄씩 기록하는 대용량 그래프 내보내기다. */
+    public fun writeNdjson(
+        graph: CodeGraph,
+        toolVersion: String,
+        output: Appendable,
+        projectRelativePaths: Map<NodeId, String> = emptyMap(),
+        limitations: List<String> = emptyList(),
+        includeGraphRecords: Boolean = true,
+    ) {
+        fun record(kind: String, value: Map<String, Any?>) {
+            output.appendJsonValue(sortedMapOf(kind to value, "record" to kind))
+            output.append('\n')
+        }
+        output.appendJsonValue(sortedMapOf(
+            "edgeCount" to exportEdges(graph).count(),
+            "rawEdgeCount" to graph.edgeCount,
+            "format" to "code-graph-ndjson",
+            "graphVersion" to VERSION,
+            "limitations" to limitations.sorted(),
+            "nodeCount" to graph.nodeCount,
+            "record" to "header",
+            "tool" to sortedMapOf("name" to "kartograph", "version" to toolVersion),
+            "version" to 1,
+        ))
+        output.append('\n')
+        if (includeGraphRecords) {
+        graph.nodeIds.forEach { id ->
+            val node = graph.nodes.getValue(id).toJsonValue(projectRelativePaths[id]).toMutableMap()
+            node.putIfAbsent("attributes", emptyList<String>())
+            node["annotations"] = graph.nodes.getValue(id).annotations.sorted()
+            node.putIfAbsent("location", null)
+            node.putIfAbsent("module", null)
+            record("node", node.toSortedMap())
+        }
+        exportEdges(graph).forEach { record("edge", it.toJsonValue()) }
+        }
+        graph.serviceProviders.forEach { provider ->
+            record("serviceProvider", sortedMapOf("service" to provider.service, "provider" to provider.provider.value,
+                "location" to provider.location.toJsonValue(null)))
+        }
+        graph.externalCalls.forEach { call ->
+            val value = sortedMapOf<String, Any?>(
+                "caller" to call.caller.value, "target" to call.target.value,
+                "kind" to call.kind.name.lowerCamel(), "ordinal" to call.ordinal,
+                "resolvedTargets" to call.resolvedTargets.map { it.value }.sorted(),
+                "resolution" to call.resolution.name.lowerCamel(),
+            )
+            call.location?.toJsonValue(projectRelativePaths[call.caller])?.let { value["location"] = it }
+            call.model?.let { value["model"] = it }
+            record("externalCall", value)
+        }
+    }
+
+    /** 큰 목록은 소비되는 원소 하나씩만 JSON 객체로 바꾸며 기존 정렬·공백을 보존한다. */
+    private fun <T, R> Iterable<T>.jsonRows(transform: (T) -> R): Iterable<R> =
+        Iterable { asSequence().map(transform).iterator() }
+
+    /** 문서 수준의 고정 필드와 지연 레코드 목록이다. */
+    private fun document(
+        graph: CodeGraph, toolVersion: String, projectRelativePaths: Map<NodeId, String>, limitations: List<String>,
+    ): Map<String, Any?> =
         sortedMapOf<String, Any?>(
-            "edges" to graph.edges.map { edge -> edge.toJsonValue() },
+            "edges" to graph.edges.jsonRows { edge -> edge.toJsonValue() },
             "format" to FORMAT,
             "limitations" to limitations.sorted(),
-            "nodes" to graph.nodeIds.map { nodeId ->
+            "nodes" to graph.nodeIds.jsonRows { nodeId ->
                 graph.nodes.getValue(nodeId).toJsonValue(projectRelativePaths[nodeId])
             },
             "tool" to sortedMapOf("name" to "kartograph", "version" to toolVersion),
             "version" to VERSION,
         ).apply {
-            if (graph.serviceProviders.isNotEmpty()) put("serviceProviders", graph.serviceProviders.map { provider ->
+            if (graph.serviceProviders.isNotEmpty()) put("serviceProviders", graph.serviceProviders.jsonRows { provider ->
                 sortedMapOf("service" to provider.service, "provider" to provider.provider.value,
                     "location" to provider.location.toJsonValue(null))
             })
-            if (graph.externalCalls.isNotEmpty()) put("externalCalls", graph.externalCalls.map { call ->
+            if (graph.externalCalls.isNotEmpty()) put("externalCalls", graph.externalCalls.jsonRows { call ->
                 sortedMapOf<String, Any?>(
                     "caller" to call.caller.value,
                     "target" to call.target.value,
@@ -62,14 +136,15 @@ public object GraphJsonRenderer {
                     call.model?.let { put("model", it) }
                 }
             })
-        },
-    ) + "\n"
+        }
 
     // query 문서와 같은 필드 이름(usr·qualifiedName·accessibility·location)을 써서 두 표면을 join할 수 있게 한다.
     private fun GraphNode.toJsonValue(projectRelativePath: String?): Map<String, Any?> = buildMap<String, Any?> {
         put("accessibility", visibility.name.lowerCamel())
         if (attributes.isNotEmpty()) put("attributes", attributes.map { it.name.lowerCamel() }.sorted())
         put("kind", kind.name.lowerCamel())
+        if (dev.kartograph.core.NodeAttribute.EXTERNAL_STUB in attributes) put("external", true)
+        if (annotations.isNotEmpty()) put("annotations", annotations.sorted())
         location?.toJsonValue(projectRelativePath)?.let { put("location", it) }
         moduleName?.let { put("module", it) }
         put("name", name)

@@ -6,6 +6,8 @@ import dev.kartograph.analysis.SymbolQueryResult
 import dev.kartograph.analysis.SymbolQuerySubject
 import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.LocatedCompilerReference
 import dev.kartograph.core.RouteCallEvidence
 import dev.kartograph.core.RouteDeclEvidence
 import dev.kartograph.core.RouteLimitationScope
@@ -14,9 +16,21 @@ import dev.kartograph.core.SourceLocation
 /** 에이전트 교환 문서를 결정적인 키 순서의 JSON으로 렌더링한다. */
 public object AgentDocumentRenderer {
     /** SymbolQueryDocument의 optional 필드 생략 의미를 보존한 JSON을 만든다. */
-    public fun query(document: SymbolQueryDocument): String = jsonValue(
+    public fun query(document: SymbolQueryDocument): String = jsonValue(document.queryValue()) + "\n"
+
+    /** released query model을 바꾸지 않고 직접 이웃에 compiler selector 위치를 덧붙인다. */
+    public fun query(document: SymbolQueryDocument, graph: CodeGraph): String {
+        if (document.result == null || graph.locatedCompilerReferences.isEmpty()) return query(document)
+        val positions = graph.locatedCompilerReferences.groupBy { it.source.value to it.target.value }
+            .mapValues { (_, values) -> values.sortedWith(COMPILER_REFERENCE_COMPARATOR) }
+        return jsonValue(document.queryValue(positions)) + "\n"
+    }
+
+    private fun SymbolQueryDocument.queryValue(
+        compilerReferences: Map<Pair<String, String>, List<LocatedCompilerReference>> = emptyMap(),
+    ): Map<String, Any?> =
         buildMap<String, Any?> {
-            document.candidates?.let { candidates ->
+            candidates?.let { candidates ->
                 put(
                     "candidates",
                     candidates.map { candidate ->
@@ -27,13 +41,12 @@ public object AgentDocumentRenderer {
                     },
                 )
             }
-            put("level", document.level)
-            put("limitations", document.limitations.sorted())
-            put("requested", document.requested)
-            document.result?.let { put("result", it.toJsonValue()) }
-            put("status", document.status)
-        }.toSortedMap(),
-    ) + "\n"
+            put("level", level)
+            put("limitations", limitations.sorted())
+            put("requested", requested)
+            result?.let { put("result", it.toJsonValue(compilerReferences)) }
+            put("status", status)
+        }.toSortedMap()
 
     /** isthmus bridge-facts v1의 public 필드만 포함한 JSON을 만든다. */
     public fun bridges(document: BridgeFactsDocument): String = jsonValue(buildMap<String, Any?> {
@@ -77,9 +90,13 @@ public object AgentDocumentRenderer {
         }.also { rendered -> check(rendered.map { it["limitationIndex"] }.distinct().size == rendered.size) { "one scope per limitation" } }
             .sortedBy { it["limitationIndex"] as Int }
 
-    private fun SymbolQueryResult.toJsonValue(): Map<String, Any?> = buildMap<String, Any?> {
+    private fun SymbolQueryResult.toJsonValue(
+        compilerReferences: Map<Pair<String, String>, List<LocatedCompilerReference>> = emptyMap(),
+    ): Map<String, Any?> = buildMap<String, Any?> {
         declaredIn?.let { put("declaredIn", it.toJsonValue()) }
-        put("dependsOn", dependsOn.map { it.toJsonValue() })
+        put("dependsOn", dependsOn.map { neighbor ->
+            neighbor.toJsonValue(compilerReferences.direct(subject.usr, neighbor.usr, neighbor.depth))
+        })
         put("members", members.map { it.toJsonValue() })
         put(
             "reachability",
@@ -99,7 +116,9 @@ public object AgentDocumentRenderer {
                 "usedBy" to truncated.usedBy,
             ),
         )
-        put("usedBy", usedBy.map { it.toJsonValue() })
+        put("usedBy", usedBy.map { neighbor ->
+            neighbor.toJsonValue(compilerReferences.direct(neighbor.usr, subject.usr, neighbor.depth))
+        })
     }.toSortedMap()
 
     private fun SymbolQuerySubject.toJsonValue(): Map<String, Any?> = buildMap<String, Any?> {
@@ -112,7 +131,9 @@ public object AgentDocumentRenderer {
         usr?.let { put("usr", it) }
     }.toSortedMap()
 
-    private fun SymbolQueryNeighbor.toJsonValue(): Map<String, Any?> = buildMap<String, Any?> {
+    private fun SymbolQueryNeighbor.toJsonValue(
+        compilerReferences: List<LocatedCompilerReference> = emptyList(),
+    ): Map<String, Any?> = buildMap<String, Any?> {
         put("depth", depth)
         put("edges", edges)
         put("kind", kind)
@@ -120,14 +141,15 @@ public object AgentDocumentRenderer {
         module?.let { put("module", it) }
         put("name", name)
         put("qualifiedName", qualifiedName)
-        references.takeIf { it.isNotEmpty() }?.let { values ->
-            put("references", values.map { reference ->
-                sortedMapOf(
-                    "kind" to reference.kind,
-                    "location" to reference.location.toJsonValue(),
-                    "origin" to reference.origin,
-                )
-            })
+        val renderedReferences = references.map { reference ->
+            sortedMapOf(
+                "kind" to reference.kind,
+                "location" to reference.location.toJsonValue(),
+                "origin" to reference.origin,
+            )
+        } + compilerReferences.map { it.toJsonValue() }
+        renderedReferences.takeIf { it.isNotEmpty() }?.let { values ->
+            put("references", values)
         }
         usr?.let { put("usr", it) }
     }.toSortedMap()
@@ -137,6 +159,27 @@ public object AgentDocumentRenderer {
         line?.let { put("line", it) }
         put("path", path)
     }.toSortedMap()
+
+    private fun LocatedCompilerReference.toJsonValue(): Map<String, Any?> = sortedMapOf(
+        "kind" to "call",
+        "origin" to "compiler",
+        "location" to SourceLocation(file.path, line, column).toJsonValue(),
+        "offset" to offsetUtf16,
+        "endOffset" to endOffsetUtf16,
+        "offsetEncoding" to "utf16-compiler-source",
+        "coordinateBasis" to coordinateBasis.name.lowerCamel(),
+        "sourceSha256" to file.sha256,
+        "generated" to generated,
+        "collector" to collector,
+        "compilerVersion" to compilerVersion,
+    )
+
+    private fun Map<Pair<String, String>, List<LocatedCompilerReference>>.direct(
+        source: String?,
+        target: String?,
+        depth: Int,
+    ): List<LocatedCompilerReference> =
+        if (depth == 1 && source != null && target != null) this[source to target].orEmpty() else emptyList()
 
     private fun BridgeFact.toJsonValue(): Map<String, Any?> = buildMap<String, Any?> {
         put("channel", channel)
@@ -187,4 +230,10 @@ public object AgentDocumentRenderer {
         if (route.catchAllPrefix) put("catchAllPrefix", true)
         if (route.testSource) put("testSource", true)
     }
+
+    private val COMPILER_REFERENCE_COMPARATOR = compareBy<LocatedCompilerReference>(
+        { it.file.path }, { it.offsetUtf16 }, { it.endOffsetUtf16 }, { it.file.sha256 },
+        { it.coordinateBasis.name }, { it.collector }, { it.compilerVersion }, { it.generated },
+        { it.line }, { it.column },
+    )
 }

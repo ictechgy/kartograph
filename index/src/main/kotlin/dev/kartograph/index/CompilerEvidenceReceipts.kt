@@ -21,9 +21,16 @@ public object CompilerEvidenceReceipts {
         val derived = linkedSetOf<Path>()
         val receipts = mutableListOf<InputFingerprint>()
         documents.sortedBy { it.toAbsolutePath().normalize().toString() }.forEachIndexed { index, file ->
-            val before = ContentFingerprint.hash(file)
-            val document = CompilerEvidenceReader.read(file)
+            val bounded = BoundedCompilerEvidenceReader.read(file)
+            val before = bounded.fingerprint
+            val envelope = CompilerEvidenceReader.parseEnvelope(bounded.text)
+            val document = envelope.evidence
             require(document.inputToken == token) { "compiler evidence belongs to a different compilation" }
+            if (envelope.callStats != null) {
+                require(CompilerCallPositionOptions.isEnabled(inputs)) {
+                    "v3 compiler evidence requires a recorded call positions option"
+                }
+            }
             require(document.collector in if (compiler == "javac") setOf("javac-constants", "dagger-bindings", "javac-processors") else setOf("kotlin-constants")) {
                 "compiler evidence collector does not match the compiler"
             }

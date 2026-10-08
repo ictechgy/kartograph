@@ -2,7 +2,15 @@ package dev.kartograph.cli
 
 import dev.kartograph.core.Finding
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.CompilerEvidenceSource
+import dev.kartograph.core.CompilerSourceCoordinateBasis
+import dev.kartograph.core.EdgeKind
+import dev.kartograph.core.EdgeOrigin
+import dev.kartograph.core.GraphEdge
+import dev.kartograph.core.GraphNode
+import dev.kartograph.core.LocatedCompilerReference
 import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
 import dev.kartograph.core.SourceLocation
 import dev.kartograph.export.BaselineCodec
 import dev.kartograph.export.QuerySnapshot
@@ -18,9 +26,75 @@ import kotlin.io.path.writeBytes
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
 class SavedQueryCliTest {
+    @Test
+    fun `saved queries distinguish uncaptured captured-empty and positioned compiler calls`(@TempDir root: Path) {
+        val caller = GraphNode(NodeId("method:demo/Caller#use()V"), "use", NodeKind.METHOD,
+            location = SourceLocation("Caller.java", 1))
+        val target = GraphNode(NodeId("method:demo/Target#hit()V"), "hit", NodeKind.METHOD,
+            location = SourceLocation("Target.java", 1))
+        val base = CodeGraph(listOf(caller, target), listOf(
+            GraphEdge(caller.id, target.id, EdgeKind.CALL, origin = EdgeOrigin.BYTECODE, callSiteLines = listOf(5)),
+        ))
+        val positioned = base.withCompilerCallPositions(listOf(
+            LocatedCompilerReference(caller.id, target.id,
+                CompilerEvidenceSource("src/main/java/demo/Caller.java", "a".repeat(64)),
+                "javac-constants", "17.0.20+0", CompilerSourceCoordinateBasis.JAVAC_UTF16_CHAR_SEQUENCE,
+                63, 66, 1, 64),
+        ))
+        for (compact in listOf(false, true)) {
+            val file = root.resolve("positioned-$compact.json")
+            Files.writeString(file, QuerySnapshotCodec.render(QuerySnapshot(positioned, emptyList(), listOf(
+                "compiler-call-positions-uncovered-roots: 1",
+                "compiler-call-positions-source-unverified: 1",
+            )), compact))
+            val found = execute("query", target.id.value, "--graph-file", file.toString())
+            assertEquals(0, found.status, found.error)
+            assertContains(found.output, "\"origin\": \"bytecode\"")
+            assertContains(found.output, "\"origin\": \"compiler\"")
+            assertContains(found.output, "\"coordinateBasis\": \"javacUtf16CharSequence\"")
+            assertContains(found.output, "\"collector\": \"javac-constants\"")
+            assertContains(found.output, "\"compilerVersion\": \"17.0.20+0\"")
+            assertContains(found.output, "compiler-call-positions-uncovered-roots: 1")
+            assertContains(found.output, "compiler-call-positions-source-unverified: 1")
+            assertEquals(-1, found.output.indexOf("compiler-call-positions: saved graph has no captured"))
+            assertTrue(found.output.indexOf("\"origin\": \"bytecode\"") < found.output.indexOf("\"origin\": \"compiler\""))
+
+            val emptyFile = root.resolve("captured-empty-$compact.json")
+            Files.writeString(emptyFile, QuerySnapshotCodec.render(QuerySnapshot(
+                base.withCompilerCallPositions(emptyList()), emptyList(), listOf("compiler-call-positions-unmapped: 2"),
+            ), compact))
+            val empty = execute("query", target.id.value, "--graph-file", emptyFile.toString())
+            assertContains(empty.output, "compiler-call-positions-unmapped: 2")
+            assertEquals(-1, empty.output.indexOf("compiler-call-positions: saved graph has no captured"))
+        }
+
+        val twin = GraphNode(NodeId("method:other/Target#hit()V"), "hit", NodeKind.METHOD)
+        val partial = CodeGraph(base.nodes.values + twin, base.edges)
+            .withCompilerCallPositions(positioned.locatedCompilerReferences)
+        val partialFile = root.resolve("partial-statuses.json").apply { writeText(QuerySnapshotCodec.render(QuerySnapshot(
+            partial, emptyList(), listOf("compiler-call-positions-uncovered-roots: 1"),
+        ))) }
+        for (requested in listOf("hit", "Missing")) {
+            val result = execute("query", requested, "--graph-file", partialFile.toString())
+            assertEquals(64, result.status, result.error)
+            assertContains(result.output, "compiler-call-positions-uncovered-roots: 1")
+            assertEquals(-1, result.output.indexOf("compiler-call-positions: saved graph has no captured"))
+        }
+
+        val uncaptured = QuerySnapshot(CodeGraph(base.nodes.values + twin, base.edges), emptyList(), emptyList())
+        val file = root.resolve("uncaptured.json").apply { writeText(QuerySnapshotCodec.render(uncaptured)) }
+        for ((requested, expectedStatus) in listOf(target.id.value to 0, "hit" to 64, "Missing" to 64)) {
+            val result = execute("query", requested, "--graph-file", file.toString())
+            assertEquals(expectedStatus, result.status, result.error)
+            assertContains(result.output,
+                "compiler-call-positions: saved graph has no captured compiler selector positions; exact offsets and columns are unavailable")
+        }
+    }
+
     @Test
     fun `saved legacy graph declares unavailable call-site capture in either encoding`(@TempDir root: Path) {
         val target = dev.kartograph.core.GraphNode(NodeId("method:Entry#used()V"), "used", dev.kartograph.core.NodeKind.METHOD)

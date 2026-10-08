@@ -110,6 +110,23 @@ class SnapshotMergeCliTest {
         assertEquals(0, run("snapshot", "merge", "--help").first)
     }
 
+    @Test
+    fun `merge rejects captured-empty compiler positions independently of provenance`(@TempDir root: Path) {
+        for (keepProvenance in listOf(true, false)) {
+            val fixture = Fixture(root.resolve(if (keepProvenance) "verified" else "no-provenance"))
+            val original = QuerySnapshotCodec.parse(Files.readString(fixture.coreSnapshot))
+            val captured = original.copy(
+                graph = original.graph.withCompilerCallPositions(emptyList()),
+                provenance = original.provenance.takeIf { keepProvenance },
+            )
+            Files.writeString(fixture.coreSnapshot, QuerySnapshotCodec.render(captured))
+
+            val result = fixture.merge()
+            assertEquals(2, result.first, result.second)
+            assertContains(result.second, "captured compiler call positions")
+        }
+    }
+
     /** `core` 라이브러리와 이를 호출하는 `app` 모듈을 각자 캡처한 두 snapshot이다. */
     private inner class Fixture(val root: Path) {
         val coreClasses: Path = Files.createDirectories(root.resolve("core/build/classes"))

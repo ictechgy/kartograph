@@ -31,6 +31,57 @@ import org.junit.jupiter.api.io.TempDir
 
 class KartographCliTest {
     @Test
+    fun `graph input module tags and external stubs are explicit export metadata`() {
+        val result = execute("graph", "--classes", classRoot.toString(), "--module-name", "example-module",
+            "--include-external-stubs", "--exclude-origin", "dispatchModel", "--format", "ndjson")
+        assertEquals(ExitStatus.SUCCESS.code, result.status, result.error)
+        assertContains(result.output, "\"module\": \"example-module\"")
+        assertContains(result.output, "\"external\": true")
+        assertContains(result.output, "edge-origin-excluded: dispatchModel")
+        assertEquals(ExitStatus.USAGE.code, execute("graph", "--module-name", "bad-order", "--classes", classRoot.toString()).status)
+        assertEquals(ExitStatus.USAGE.code, execute("graph", "--classes", classRoot.toString(), "--dispatch-candidate-limit", "0").status)
+    }
+
+    @Test
+    fun `Neo4j CSV export creates fixed files and refuses an existing destination`(@TempDir root: Path) {
+        val directory = root.resolve("export")
+        val first = execute("graph", "--classes", classRoot.toString(), "--format", "neo4j-csv",
+            "--output-directory", directory.toString())
+        assertEquals(ExitStatus.SUCCESS.code, first.status, first.error)
+        assertTrue(directory.resolve("nodes.csv").readText().startsWith("\"usr:ID\""))
+        assertTrue(directory.resolve("edges.csv").readText().startsWith("\":START_ID\""))
+        assertTrue(directory.resolve("manifest.json").readText().contains("code-graph-csv"))
+        val original = directory.resolve("nodes.csv").readText()
+        assertEquals(ExitStatus.FAILURE.code, execute("graph", "--classes", classRoot.toString(), "--format", "neo4j-csv",
+            "--output-directory", directory.toString()).status)
+        assertEquals(original, directory.resolve("nodes.csv").readText())
+    }
+
+    @Test
+    fun `graph NDJSON is independently parseable and keeps observed source facts`() {
+        val result = execute("graph", "--classes", classRoot.toString(), "--format", "ndjson")
+        assertEquals(ExitStatus.SUCCESS.code, result.status, result.error)
+        val rows = result.output.lineSequence().filter(String::isNotBlank).toList()
+        assertTrue(rows.size > 1)
+        assertContains(rows.first(), "\"format\": \"code-graph-ndjson\"")
+        assertTrue(rows.drop(1).all { it.contains("\"record\":") })
+        assertTrue(rows.any { it.contains("\"record\": \"node\"") })
+        assertTrue(rows.any { it.contains("\"record\": \"edge\"") })
+    }
+
+    @Test
+    fun `graph reports a failed output destination as a tool failure`() {
+        val sink = object : java.io.OutputStream() {
+            override fun write(value: Int) { throw java.io.IOException("synthetic unavailable sink") }
+        }
+        val errors = ByteArrayOutputStream()
+        val status = KartographCli.run(arrayOf("graph", "--classes", classRoot.toString(), "--format", "ndjson"),
+            PrintStream(sink), PrintStream(errors))
+        assertEquals(ExitStatus.FAILURE.code, status)
+        assertContains(errors.toString(), "output could not be written")
+    }
+
+    @Test
     fun `graph reports invalid dependency inputs as sanitized tool failures`(@TempDir root: Path) {
         val broken = root.resolve("broken.jar").apply { writeText("not a jar") }
         for (dependency in listOf(broken, root.resolve("missing.jar"))) {
@@ -283,9 +334,10 @@ class KartographCliTest {
             execution.output,
             """"path": "app/src/main/java/UniqueSample.java", "pathKind": "projectRelative"""",
         )
-        // 같은 basename이 두 모듈에 있으면 유일 확정이 불가능하므로 source file 이름으로 남고 한계로 보고한다.
-        assertContains(execution.output, """"path": "Shared.java", "pathKind": "sourceFileName"""")
-        assertContains(execution.output, "unresolved-source-paths: ")
+        // 다른 package의 동명 파일은 JVM package와 디렉터리로 좁혀 각각 확정한다.
+        assertContains(execution.output, """"path": "moduleA/src/main/java/a/Shared.java", "pathKind": "projectRelative"""")
+        assertContains(execution.output, """"path": "moduleB/src/main/java/b/Shared.java", "pathKind": "projectRelative"""")
+        kotlin.test.assertFalse(execution.output.contains("ambiguous-source-paths:"))
         kotlin.test.assertFalse(execution.output.contains(root.toString()))
     }
 

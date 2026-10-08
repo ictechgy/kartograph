@@ -114,6 +114,9 @@ internal object SnapshotMergeCommand {
     /** 합칠 수 있는 구성원인지 확인한다. 다른 버전·옵션·scope의 사실을 섞지 않는다. */
     private fun requireCompatible(members: List<AggregateMember>) {
         val snapshots = members.map { it.snapshot }
+        if (snapshots.any { it.graph.compilerCallPositionsCaptured }) {
+            throw MergeException("members with captured compiler call positions are not supported by snapshot merge")
+        }
         if (snapshots.any { it.provenance == null || it.scope == null }) throw MergeException("member snapshots must carry provenance and a scope; recapture them with a supported capture path")
         if (snapshots.any { it.toolVersion != KartographVersion.current }) throw MergeException("member snapshots must be captured by kartograph ${KartographVersion.current}; recapture them with this version")
         if (snapshots.map { it.scope }.distinct().size != snapshots.size) throw MergeException("member snapshot scopes must be distinct")

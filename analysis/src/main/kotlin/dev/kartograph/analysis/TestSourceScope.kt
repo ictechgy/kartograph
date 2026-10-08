@@ -91,11 +91,17 @@ public object TestSourceScope {
         "test-source declarations were traversed and bound dispatch counts their implementations because $reason"))
 
     /** 정점을 뺀 부분 그래프다. 간선·호출·콜백 사실은 [CodeGraph]가 남은 정점 기준으로 다시 거른다. */
-    private fun withoutNodes(graph: CodeGraph, removed: Set<NodeId>): CodeGraph = CodeGraph(
-        nodes = graph.nodes.values.filter { it.id !in removed }, edges = graph.edges, externalCalls = graph.externalCalls,
-        serviceProviders = graph.serviceProviders, enclosures = graph.enclosures, callbackArguments = graph.callbackArguments,
-        parameterUses = graph.parameterUses, lambdaEscapes = graph.lambdaEscapes,
-    )
+    private fun withoutNodes(graph: CodeGraph, removed: Set<NodeId>): CodeGraph {
+        val selected = CodeGraph(
+            nodes = graph.nodes.values.filter { it.id !in removed }, edges = graph.edges, externalCalls = graph.externalCalls,
+            serviceProviders = graph.serviceProviders, enclosures = graph.enclosures, callbackArguments = graph.callbackArguments,
+            parameterUses = graph.parameterUses, lambdaEscapes = graph.lambdaEscapes,
+        )
+        if (!graph.compilerCallPositionsCaptured) return selected
+        return selected.withCompilerCallPositions(graph.locatedCompilerReferences.filter {
+            it.source !in removed && it.target !in removed
+        })
+    }
 
     private val MEMBER_PREFIXES = listOf("method:", "field:")
 }
