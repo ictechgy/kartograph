@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-08
+
 ### Added
 
 - 직접 bytecode CALL의 호출부 줄을 `query` 이웃의 선택적 `references`와 그래프의 `callSiteLines`로 제공한다.
@@ -19,6 +21,9 @@
   같은 UTF-8 예산으로 세며, 초과 입력은 부분 문서 대신 기존 크기 오류로 실패한다.
 
 ### Changed
+
+- `CodeGraph.enrichedWith`가 정규화된 정점·사실을 재사용하고 새 간선만 합친다. runtime·dispatch 보강에서
+  전체 그래프를 반복 정리하는 비용을 줄이며 기존 생성자와 간선 순서·가중치·검증 경계는 유지한다.
 
 - `GraphEdge`와 `SymbolQueryNeighbor` 생성자·copy의 binary signature가 바뀐다. JVM 라이브러리를
   직접 사용하는 compiled 소비자는 같은 릴리스의 모듈로 다시 컴파일한다. JSON 선택 필드와 옛 snapshot 읽기는 유지한다.
@@ -867,7 +872,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/ictechgy/kartograph/compare/v0.18.2...v0.19.0
 [0.18.0]: https://github.com/ictechgy/kartograph/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/ictechgy/kartograph/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/ictechgy/kartograph/compare/v0.15.0...v0.16.0
