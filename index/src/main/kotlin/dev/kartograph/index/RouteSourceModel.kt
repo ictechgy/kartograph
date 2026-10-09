@@ -18,6 +18,7 @@ internal class RouteSourceFile(
     val isJava: Boolean,
     val isTest: Boolean,
     val source: String,
+    private val maximumParameterChars: Int? = null,
 ) {
     /** 주석만 공백으로 지운 뷰다. 인자 원문은 이 뷰에서 읽는다. */
     val code: String = stripComments(source)
@@ -34,6 +35,10 @@ internal class RouteSourceFile(
     val imports: List<RouteImport> = IMPORT.findAll(masked).map { match ->
         RouteImport(match.groupValues[1].replace(WHITESPACE, ""), match.groupValues[2].ifEmpty { null })
     }.toList()
+
+    /** bounded parameter scan이 완성되지 않으면 호출자는 파일 전체의 선언 위치 추측을 중단한다. */
+    var parameterScanIncomplete: Boolean = false
+        private set
 
     /** 타입 선언(class·interface·object·companion)이다. */
     val types: List<RouteTypeDecl> = collectTypes()
@@ -135,34 +140,60 @@ internal class RouteSourceFile(
         val result = mutableListOf<RouteTypeDecl>()
         TYPE_DECL.findAll(masked).forEach { match ->
             val name = match.groupValues[2].ifEmpty { "Companion" }
-            val bodyStart = typeBodyStart(match.range.last + 1)
-            result += RouteTypeDecl(name, match.range.first, bodyStart, if (bodyStart >= 0) braceEnd(bodyStart) else -1)
+            val (bodyStart, headerEnd) = typeHeader(match.range.last + 1)
+            result += RouteTypeDecl(name, match.range.first, bodyStart, if (bodyStart >= 0) braceEnd(bodyStart) else -1, headerEnd)
         }
         return result
     }
 
     /** 타입 머리 뒤 몸체 `{` 위치를 찾는다 — 괄호 밖 줄바꿈에서 이어지지 않으면 몸체 없는 선언이다. */
-    private fun typeBodyStart(from: Int): Int {
+    private fun typeHeader(from: Int): Pair<Int, Int> {
         var depth = 0
         var index = from
         while (index < masked.length) {
             when (masked[index]) {
                 '(', '<' -> depth++
                 ')', '>' -> depth--
-                '{' -> if (depth <= 0) return index
-                ';', '}', '=' -> if (depth <= 0) return -1
-                '\n' -> if (depth <= 0 && !typeHeaderContinues(index)) return -1
+                '{' -> if (depth <= 0) return index to index
+                ';', '}', '=' -> if (depth <= 0) return -1 to index
+                '\n' -> if (depth <= 0 && !typeHeaderContinues(index)) return -1 to index
             }
             index++
         }
-        return -1
+        return -1 to masked.length
     }
 
     private fun typeHeaderContinues(newline: Int): Boolean {
-        val before = masked.substring(0, newline).trimEnd()
-        val after = masked.substring(newline + 1).trimStart()
-        return before.endsWith(':') || before.endsWith(',') || after.startsWith('{') || after.startsWith(':') ||
-            after.startsWith(',') || after.startsWith("where")
+        var before = newline - 1
+        while (before >= 0 && masked[before].isWhitespace()) before--
+        var after = newline + 1
+        while (after < masked.length && masked[after].isWhitespace()) after++
+        return masked.getOrNull(before) in setOf(':', ',') || masked.getOrNull(after) in setOf('{', ':', ',') ||
+            masked.startsWith("where", after) || (maximumParameterChars != null && !isJava &&
+                (masked.startsWith("constructor", after) || masked.getOrNull(after) == '@' && constructorAfterAnnotations(after)))
+    }
+
+    /** sibling annotation을 타입 header로 삼지 않고 bounded annotation chain 뒤 constructor만 확인한다. */
+    private fun constructorAfterAnnotations(from: Int): Boolean {
+        val limit = minOf(masked.length, from + requireNotNull(maximumParameterChars))
+        var cursor = from
+        while (cursor < limit && masked[cursor] == '@') {
+            cursor++
+            if (masked.getOrNull(cursor) == '[') { parameterScanIncomplete = true; return false }
+            val nameStart = cursor
+            while (cursor < limit && (Character.isJavaIdentifierPart(masked[cursor]) || masked[cursor] in setOf('.', ':'))) cursor++
+            if (cursor == nameStart) { parameterScanIncomplete = true; return false }
+            while (cursor < limit && masked[cursor].isWhitespace()) cursor++
+            if (masked.getOrNull(cursor) == '(') {
+                val end = balancedEnd(code, cursor, limit)
+                if (end < 0) { parameterScanIncomplete = true; return false }
+                cursor = end + 1
+            }
+            while (cursor < limit && masked[cursor].isWhitespace()) cursor++
+        }
+        if (cursor >= limit) { parameterScanIncomplete = true; return false }
+        return masked.startsWith("constructor", cursor) &&
+            masked.getOrNull(cursor + "constructor".length)?.let(Character::isJavaIdentifierPart) != true
     }
 
     private fun collectKotlinFunctions(): List<RouteFunctionDecl> = KOTLIN_FUN.findAll(masked).mapNotNull { match ->
@@ -171,7 +202,7 @@ internal class RouteSourceFile(
         val header = masked.substring(match.range.last + 1, open)
         if (!FUN_HEADER.matches(header)) return@mapNotNull null
         val name = IDENTIFIER_TAIL.find(header.trimEnd())?.value ?: return@mapNotNull null
-        val close = balancedEnd(code, open).takeIf { it > open } ?: return@mapNotNull null
+        val close = parameterEnd(open).takeIf { it > open } ?: return@mapNotNull null
         val parameters = callArguments(code, open, close).mapNotNull(::kotlinParameter)
         val (bodyStart, end) = kotlinBody(close + 1)
         RouteFunctionDecl(name, match.range.first, bodyStart, end, parameters)
@@ -216,7 +247,7 @@ internal class RouteSourceFile(
         val name = match.groupValues[1]
         if (name in JAVA_KEYWORDS) return@mapNotNull null
         val open = masked.indexOf('(', match.range.first + match.value.indexOf(name))
-        val close = balancedEnd(code, open).takeIf { it > open } ?: return@mapNotNull null
+        val close = parameterEnd(open).takeIf { it > open } ?: return@mapNotNull null
         val bodyStart = masked.indexOf('{', close).takeIf { it >= 0 } ?: return@mapNotNull null
         val parameters = callArguments(code, open, close).mapNotNull(::javaParameter)
         RouteFunctionDecl(name, match.range.first, bodyStart, braceEnd(bodyStart).coerceAtLeast(bodyStart), parameters)
@@ -226,6 +257,12 @@ internal class RouteSourceFile(
         val cleaned = ANNOTATION.replace(text, " ").replace(PARAMETER_MODIFIERS, " ").trim()
         val match = KOTLIN_PARAMETER.find(cleaned) ?: return null
         return RouteParameter(match.groupValues[1], simpleType(match.groupValues[2]))
+    }
+
+    private fun parameterEnd(open: Int): Int {
+        val end = balancedEnd(code, open, maximumParameterChars?.let { (open + it).coerceAtMost(code.length) } ?: code.length)
+        if (maximumParameterChars != null && end <= open) parameterScanIncomplete = true
+        return end
     }
 
     private fun javaParameter(text: String): RouteParameter? {
@@ -311,7 +348,7 @@ internal class RouteSourceFile(
 internal data class RouteImport(val path: String, val alias: String?)
 
 /** 타입 선언의 머리 시작과 몸체 범위다. 몸체가 없으면 [bodyStart]가 -1이다. */
-internal data class RouteTypeDecl(val name: String, val start: Int, val bodyStart: Int, val bodyEnd: Int)
+internal data class RouteTypeDecl(val name: String, val start: Int, val bodyStart: Int, val bodyEnd: Int, val headerEnd: Int = bodyStart)
 
 /** 함수 선언의 범위와 매개변수다. [end]는 블록·식 몸체의 끝이다. */
 internal data class RouteFunctionDecl(

@@ -98,6 +98,7 @@ internal object KotlinMetadataEnricher {
         val receiverType = function.receiverParameterType?.classifierName()
         nodes.patch(JvmNodeId.methodId(owner, signature.name, signature.descriptor)) { node ->
             node.copy(
+                kotlinSourceName = function.name,
                 visibility = function.visibility.toCoreVisibility(),
                 attributes = node.attributes.withExtensionFunction(receiverType != null).let { attributes ->
                     if (function.isInline) attributes + NodeAttribute.INLINE_FUNCTION else attributes

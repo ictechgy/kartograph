@@ -8,6 +8,188 @@ import org.junit.jupiter.api.io.TempDir
 import kotlin.test.*
 
 class SourceDeclarationLocationsTest {
+    @Test fun `annotated sibling type never becomes the preceding bodyless type body`(@TempDir root: Path) {
+        Files.writeString(root.resolve("Types.kt"), "package sample\nclass First\n@Deprecated(\"x\") class Second {\n val field = 1\n}\n")
+        val first = GraphNode(JvmNodeId.classId("sample/First"), "First", NodeKind.CLASS, location = SourceLocation("Types.kt"))
+        val second = GraphNode(JvmNodeId.classId("sample/Second"), "Second", NodeKind.CLASS, location = SourceLocation("Types.kt"))
+        val graph = CodeGraph(listOf(first, second), emptyList())
+        val result = SourceDeclarationLocations.enrich(graph, root, graph.nodeIds.associateWith { "Types.kt" })
+        assertEquals(2, result.nodes.getValue(first.id).sourceDeclaration?.line)
+        assertEquals(3, result.nodes.getValue(second.id).sourceDeclaration?.line)
+    }
+
+    @Test fun `actual synthetic bridge does not hide the unique source method`(@TempDir root: Path) {
+        val source = Files.writeString(root.resolve("SupplierImpl.java"), "package sample;\nclass SupplierImpl implements java.util.function.Supplier<String> {\n public String get() { return \"x\"; }\n}\n")
+        val classes = Files.createDirectory(root.resolve("classes"))
+        assertEquals(0, assertNotNull(ToolProvider.getSystemJavaCompiler()).run(null, null, null,
+            "-g", "-d", classes.toString(), source.toString()))
+        val graph = ClassFileIndexer(callbackFacts = false).index(listOf(classes))
+        val result = SourceDeclarationLocations.enrich(graph, root, graph.nodeIds.associateWith { "SupplierImpl.java" })
+        assertEquals(3, result.nodes.getValue(JvmNodeId.methodId("sample/SupplierImpl", "get", "()Ljava/lang/String;")).sourceDeclaration?.line)
+        result.nodes[JvmNodeId.methodId("sample/SupplierImpl", "get", "()Ljava/lang/Object;")]?.let { assertNull(it.sourceDeclaration) }
+    }
+
+    @Test fun `bodyless multiline primary constructor remains inside its own type header`(@TempDir root: Path) {
+        val fixture = dev.kartograph.index.fixture.SourceDeclarationBodylessFixture::class.java
+        val compiled = Path.of(fixture.protectionDomain.codeSource.location.toURI())
+        val owner = "dev/kartograph/index/fixture/SourceDeclarationBodylessFixture"
+        val output = root.resolve("classes/$owner.class")
+        Files.createDirectories(output.parent)
+        Files.copy(compiled.resolve("$owner.class"), output)
+        val graph = ClassFileIndexer(callbackFacts = false).index(listOf(root.resolve("classes")))
+        val repository = generateSequence(Path.of("").toRealPath(), Path::getParent)
+            .first { Files.isRegularFile(it.resolve("settings.gradle.kts")) }
+        val relative = "index/src/test/kotlin/dev/kartograph/index/fixture/SourceDeclarationJvmNameFixture.kt"
+        val result = SourceDeclarationLocations.enrich(graph, repository, graph.nodeIds.associateWith { relative })
+        assertNull(result.nodes.getValue(JvmNodeId.methodId(owner, "<init>", "(I)V")).sourceDeclaration)
+    }
+
+    @Test fun `an incomplete bounded parameter scan leaves the whole source without guessed coordinates`(@TempDir root: Path) {
+        Files.writeString(root.resolve("LongHeader.java"), "package sample;\nclass LongHeader {\n void work(" + " ".repeat(5000) + "int value) {}\n}\n")
+        val owner = "sample/LongHeader"
+        val nodes = listOf(
+            GraphNode(JvmNodeId.classId(owner), "LongHeader", NodeKind.CLASS, location = SourceLocation("LongHeader.java", 2)),
+            GraphNode(JvmNodeId.methodId(owner, "work", "(I)V"), "work", NodeKind.METHOD, location = SourceLocation("LongHeader.java", 3)),
+        )
+        val graph = CodeGraph(nodes, emptyList())
+        val result = SourceDeclarationLocations.enrich(graph, root, graph.nodeIds.associateWith { "LongHeader.java" })
+        nodes.forEach { node ->
+            assertNull(result.nodes.getValue(node.id).sourceDeclaration)
+            assertEquals(node.location, result.nodes.getValue(node.id).location)
+        }
+    }
+
+    @Test fun `actual Java multiline return type is a method rather than a constructor header`(@TempDir root: Path) {
+        val source = Files.writeString(root.resolve("Named.java"), "package sample;\nclass Named {\n Named\n Named() { return this; }\n}\n")
+        val positive = Files.writeString(root.resolve("Positive.java"), "package sample;\nclass Positive {\n public Positive() {}\n}\n")
+        val classes = Files.createDirectory(root.resolve("classes"))
+        assertEquals(0, assertNotNull(ToolProvider.getSystemJavaCompiler()).run(null, null, null,
+            "-g", "-d", classes.toString(), source.toString(), positive.toString()))
+        val graph = ClassFileIndexer(callbackFacts = false).index(listOf(classes))
+        val paths = graph.nodes.values.associate { it.id to requireNotNull(it.location).path }
+        val result = SourceDeclarationLocations.enrich(graph, root, paths)
+        val implicit = JvmNodeId.methodId("sample/Named", "<init>", "()V")
+        assertEquals(2, result.nodes.getValue(implicit).location?.line)
+        assertNull(result.nodes.getValue(implicit).sourceDeclaration)
+        assertEquals(4, result.nodes.getValue(JvmNodeId.methodId("sample/Named", "Named", "()Lsample/Named;")).sourceDeclaration?.line)
+        assertEquals(3, result.nodes.getValue(JvmNodeId.methodId("sample/Positive", "<init>", "()V")).sourceDeclaration?.line)
+    }
+
+    @Test fun `actual Kotlin JVM names must not bind to a different source function with that name`(@TempDir root: Path) {
+        val fixture = dev.kartograph.index.fixture.SourceDeclarationJvmNameFixture::class.java
+        val compiled = Path.of(fixture.protectionDomain.codeSource.location.toURI())
+        val owner = "dev/kartograph/index/fixture/SourceDeclarationJvmNameFixture"
+        val isolated = Files.createDirectory(root.resolve("classes"))
+        val output = isolated.resolve("$owner.class")
+        Files.createDirectories(output.parent)
+        Files.copy(compiled.resolve("$owner.class"), output)
+        val graph = ClassFileIndexer(callbackFacts = false).index(listOf(isolated))
+        val repository = generateSequence(Path.of("").toRealPath(), Path::getParent)
+            .first { Files.isRegularFile(it.resolve("settings.gradle.kts")) }
+        val relative = "index/src/test/kotlin/dev/kartograph/index/fixture/SourceDeclarationJvmNameFixture.kt"
+        val result = SourceDeclarationLocations.enrich(graph, repository, graph.nodeIds.associateWith { relative })
+        listOf("original", "renamed").forEach { name ->
+            val id = JvmNodeId.methodId(owner, name, "()I")
+            assertNotNull(graph.nodes.getValue(id).location?.line)
+            assertNotEquals(name, graph.nodes.getValue(id).kotlinSourceName)
+            assertNull(result.nodes.getValue(id).sourceDeclaration, name)
+        }
+    }
+
+    @Test fun `JVM arity collisions and nested constructor headers cannot supply false declaration evidence`(@TempDir root: Path) {
+        Files.writeString(root.resolve("Example.kt"), """
+            package sample
+            class Example(value: Int) {
+                constructor(value: String) : this(value.length)
+                fun method(value: Int) {}
+                suspend fun method() {}
+                class Nested constructor(value: Int) { }
+            }
+        """.trimIndent())
+        val owner = "sample/Example"
+        val nodes = listOf(
+            GraphNode(JvmNodeId.classId(owner), "Example", NodeKind.CLASS, location = SourceLocation("Example.kt", 2)),
+            GraphNode(JvmNodeId.methodId(owner, "<init>", "(I)V"), "<init>", NodeKind.CONSTRUCTOR, location = SourceLocation("Example.kt", 2)),
+            GraphNode(JvmNodeId.methodId(owner, "<init>", "(Ljava/lang/String;)V"), "<init>", NodeKind.CONSTRUCTOR, location = SourceLocation("Example.kt", 3)),
+            GraphNode(JvmNodeId.methodId(owner, "method", "(I)V"), "method", NodeKind.METHOD, location = SourceLocation("Example.kt", 4)),
+            GraphNode(JvmNodeId.methodId(owner, "method", "(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;"), "method", NodeKind.METHOD, location = SourceLocation("Example.kt", 5)),
+        )
+        val graph = CodeGraph(nodes, emptyList())
+        val result = SourceDeclarationLocations.enrich(graph, root, graph.nodeIds.associateWith { "Example.kt" })
+        nodes.filter { it.kind != NodeKind.CLASS }.forEach { node ->
+            assertNull(result.nodes.getValue(node.id).sourceDeclaration, node.id.value)
+            assertEquals(node.location, result.nodes.getValue(node.id).location)
+        }
+        val uniqueConstructor = CodeGraph(nodes.take(2), emptyList())
+        Files.writeString(root.resolve("Example.kt"), "package sample\nclass Example(value: Int) {\n class Nested constructor(value: Int) {}\n}\n")
+        assertNull(SourceDeclarationLocations.enrich(uniqueConstructor, root,
+            uniqueConstructor.nodeIds.associateWith { "Example.kt" }).nodes.getValue(nodes[1].id).sourceDeclaration)
+    }
+
+    @Test fun `unsupported portable evidence path omits coordinates without failing the graph`(@TempDir root: Path) {
+        val relative = "a:b/Example.java"
+        val node = GraphNode(JvmNodeId.classId("sample/Example"), "Example", NodeKind.CLASS, location = SourceLocation("Example.java", 2))
+        val result = SourceDeclarationLocations.enrich(CodeGraph(listOf(node), emptyList()), root, mapOf(node.id to relative))
+        assertNull(result.nodes.getValue(node.id).sourceDeclaration)
+        assertEquals(node.location, result.nodes.getValue(node.id).location)
+    }
+
+    @Test fun `raw decoded coordinates retain BOM CRLF standalone CR and tab code units`(@TempDir root: Path) {
+        listOf("\r\n", "\r", "\n").forEach { newline ->
+            val source = "\uFEFFpackage sample;${newline}class Coordinates {${newline}\tvoid work() { }${newline}}"
+            Files.writeString(root.resolve("Coordinates.java"), source)
+            val owner = GraphNode(JvmNodeId.classId("sample/Coordinates"), "Coordinates", NodeKind.CLASS,
+                location = SourceLocation("Coordinates.java"))
+            val method = GraphNode(JvmNodeId.methodId("sample/Coordinates", "work", "()V"), "work", NodeKind.METHOD,
+                location = SourceLocation("Coordinates.java", 3))
+            val graph = CodeGraph(listOf(owner, method), emptyList())
+            val result = SourceDeclarationLocations.enrich(graph, root, graph.nodeIds.associateWith { "Coordinates.java" })
+            val point = assertNotNull(result.nodes.getValue(method.id).sourceDeclaration)
+            assertEquals(source.indexOf("work"), point.offsetUtf16)
+            assertEquals(3, point.line)
+            assertEquals(7, point.column)
+            assertEquals(source.indexOf("Coordinates"), result.nodes.getValue(owner.id).sourceDeclaration?.offsetUtf16)
+        }
+    }
+
+    @Test fun `ambiguous same arity and changed package cannot supply coordinates even with compiler lines`(@TempDir root: Path) {
+        val source = "package sample;\nclass Example {\n void work(int value) {}\n void work(String value) {}\n}\n"
+        Files.writeString(root.resolve("Example.java"), source)
+        val owner = GraphNode(JvmNodeId.classId("sample/Example"), "Example", NodeKind.CLASS, location = SourceLocation("Example.java", 2))
+        val method = GraphNode(JvmNodeId.methodId("sample/Example", "work", "(I)V"), "work", NodeKind.METHOD,
+            location = SourceLocation("Example.java", 3))
+        val graph = CodeGraph(listOf(owner, method), emptyList())
+        val paths = graph.nodeIds.associateWith { "Example.java" }
+        val enriched = SourceDeclarationLocations.enrich(graph, root, paths)
+        assertNull(enriched.nodes.getValue(method.id).sourceDeclaration)
+        assertEquals(method.location, enriched.nodes.getValue(method.id).location)
+        assertNotNull(enriched.nodes.getValue(owner.id).sourceDeclaration)
+        Files.writeString(root.resolve("Example.java"), source.replace("package sample", "package different"))
+        assertNull(SourceDeclarationLocations.enrich(enriched, root, paths).nodes.getValue(owner.id).sourceDeclaration)
+    }
+
+    @Test fun `compiled executable line and independent declaration coordinates are both retained`(@TempDir root: Path) {
+        val source = "package sample;\nclass Positioned {\n\tvoid execute() {\n\t\tSystem.out.println(1);\n\t}\n}\n"
+        Files.writeString(root.resolve("Positioned.java"), source)
+        val classes = Files.createDirectory(root.resolve("classes"))
+        val compiler = assertNotNull(ToolProvider.getSystemJavaCompiler())
+        assertEquals(0, compiler.run(null, null, null, "-g", "-d", classes.toString(), root.resolve("Positioned.java").toString()))
+        val graph = ClassFileIndexer(callbackFacts = false).index(listOf(classes))
+        val id = JvmNodeId.methodId("sample/Positioned", "execute", "()V")
+        assertEquals(4, graph.nodes.getValue(id).location?.line)
+        val result = SourceDeclarationLocations.enrich(graph, root, graph.nodeIds.associateWith { "Positioned.java" })
+        val node = result.nodes.getValue(id)
+        assertEquals(4, node.location?.line)
+        val evidence = assertNotNull(node.sourceDeclaration)
+        assertEquals("Positioned.java", evidence.path)
+        assertEquals(source.indexOf("execute"), evidence.offsetUtf16)
+        assertEquals(3, evidence.line)
+        assertEquals(7, evidence.column)
+        assertEquals(java.security.MessageDigest.getInstance("SHA-256").digest(source.toByteArray())
+            .joinToString("") { "%02x".format(it) }, evidence.sourceSha256)
+        assertEquals(source.indexOf("Positioned"), result.nodes.getValue(JvmNodeId.classId("sample/Positioned")).sourceDeclaration?.offsetUtf16)
+    }
+
     @Test fun `different declared package cannot supply a source declaration line`(@TempDir root: Path) {
         Files.writeString(root.resolve("Container.kt"), "package unrelated\nclass Container\n")
         val node = GraphNode(

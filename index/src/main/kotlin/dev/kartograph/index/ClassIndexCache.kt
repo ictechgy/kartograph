@@ -123,7 +123,7 @@ internal class CacheFormatException(cause: Throwable? = null) : IOException("inv
 /** 제한된 ClassFacts 포맷. 선택된 고유 메서드 본문은 ASM classfile 한 벌로 보관한다. */
 internal object ClassFactsCodec {
     private const val MAGIC = 0x4b584332
-    private const val VERSION = 7
+    private const val VERSION = 8
     private const val MAX_METHOD_BYTES = 4 * 1024 * 1024
     private const val MAX_LIST_ITEMS = 1_000_000
     private const val MAX_STRING_BYTES = 65_535
@@ -254,8 +254,9 @@ internal object ClassFactsCodec {
         writeString(n.id.value); writeString(n.name); writeEnum(n.kind); writeNullable(n.moduleName); writeNullable(n.jvmSignature); writeLocation(n.location)
         writeEnum(n.visibility); writeEnum(n.jvmVisibility); writeList(n.jvmModifiers) { writeEnum(it) }; writeList(n.attributes) { writeEnum(it) }
         writeList(n.annotations) { writeString(it) }; writeList(n.supertypes) { writeString(it) }; writeNullable(n.extensionReceiverType); writeBoolean(n.synthesized)
+        writeNullable(n.kotlinSourceName)
     }
-    private fun DataInputStream.readNode() = GraphNode(NodeId(readString()), readString(), readEnum<NodeKind>(), readNullable(), readNullable(), readLocation(), readEnum<Visibility>(), readEnum<Visibility>(), readList { readEnum<JvmModifier>() }.toSet(), readList { readEnum<NodeAttribute>() }.toSet(), readList { readString() }.toSet(), readList { readString() }.toSet(), readNullable(), readBoolean())
+    private fun DataInputStream.readNode() = GraphNode(NodeId(readString()), readString(), readEnum<NodeKind>(), readNullable(), readNullable(), readLocation(), readEnum<Visibility>(), readEnum<Visibility>(), readList { readEnum<JvmModifier>() }.toSet(), readList { readEnum<NodeAttribute>() }.toSet(), readList { readString() }.toSet(), readList { readString() }.toSet(), readNullable(), readBoolean(), kotlinSourceName = readNullable())
     private fun DataOutputStream.writeEdge(e: GraphEdge) {
         writeString(e.source.value); writeString(e.target.value); writeEnum(e.kind); writeInt(e.weight); writeEnum(e.origin)
         writeList(e.callSiteLines) { writeInt(it) }

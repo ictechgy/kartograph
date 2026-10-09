@@ -8,26 +8,34 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.util.ArrayDeque
 
 /** 확정된 파일의 package·owner·직접 member header가 유일할 때만 source 선언 줄을 보강한다. */
 public object SourceDeclarationLocations {
     /**
-     * 기존 compiler 줄은 보존하고, source에서 보강한 줄에는 별도 origin attribute를 붙인다.
+     * 기존 compiler 줄은 보존하고, 독립 source 선언 좌표를 함께 보관한다.
+     * compiler 줄이 없을 때만 기존 location도 보강하고 origin attribute를 붙인다.
      *
      * 파일은 최대 2 MiB를 한 번만 읽는다. 파일별 후보 index를 만든 뒤 정점은 key 조회만
      * 하므로 선언 수만큼 source 전체를 다시 훑지 않는다.
      */
-    public fun enrich(graph: CodeGraph, projectRoot: Path, paths: Map<NodeId, String>): CodeGraph {
+    @JvmOverloads
+    public fun enrich(graph: CodeGraph, projectRoot: Path, paths: Map<NodeId, String>, fillMissingLines: Boolean = true): CodeGraph {
         val root = projectRoot.toRealPath()
         val localClassOwners = graph.enclosures.mapNotNullTo(mutableSetOf()) { enclosure ->
             enclosure.localClass.value.removePrefix("class:")
                 .takeIf { it.length < enclosure.localClass.value.length }
         }
         val declarations = mutableMapOf<String, SourceDeclarations>()
-        val nodes = graph.nodes.values.map { node ->
+        val jvmCandidates = graph.nodes.values.filter { !it.synthesized && JvmModifier.SYNTHETIC !in it.jvmModifiers }.mapNotNull { node ->
+            identity(node)?.let { identity -> declarationKey(node, identity)?.let { identity.owner to it } }
+        }.groupingBy { it }.eachCount()
+        val nodes = graph.nodes.values.map { original ->
+            val node = if (original.sourceDeclaration == null) original else original.copy(sourceDeclaration = null)
             val location = node.location ?: return@map node
-            if (location.line != null || node.synthesized ||
+            if (node.synthesized || JvmModifier.SYNTHETIC in node.jvmModifiers ||
+                NodeAttribute.EXTENSION_FUNCTION in node.attributes ||
                 NodeAttribute.EXTERNAL_STUB in node.attributes ||
                 NodeAttribute.FILE_FACADE in node.attributes ||
                 NodeAttribute.PROPERTY_ACCESSOR in node.attributes
@@ -40,17 +48,24 @@ public object SourceDeclarationLocations {
                 if (owner.synthesized || NodeAttribute.FILE_FACADE in owner.attributes ||
                     NodeAttribute.EXTERNAL_STUB in owner.attributes
                 ) return@map node
+                // enum·중첩 생성자의 JVM 인자는 source 인자 외에 암시적 값이 들어갈 수 있다.
+                if (node.kind == NodeKind.CONSTRUCTOR && (owner.kind == NodeKind.ENUM || '$' in identity.owner)) return@map node
             }
             val relative = paths[node.id] ?: return@map node
             if (fileName(location.path) != fileName(relative)) return@map node
+            if ('/' in location.path.replace('\\', '/') && location.path.replace('\\', '/') != relative) return@map node
             val source = declarations.getOrPut(relative) { read(root, relative) }
+            // Kotlin JVM 이름은 annotation alias로 바뀔 수 있으므로 compiler metadata의 원래 이름을 대조한다.
+            if (relative.endsWith(".kt") && node.kind == NodeKind.METHOD && node.kotlinSourceName != identity.member) return@map node
             val expectedPackage = identity.owner.substringBeforeLast('/', "").replace('/', '.')
             if (source.packageName != expectedPackage) return@map node
             val key = declarationKey(node, identity) ?: return@map node
-            val line = source.declarations[key].orEmpty().singleOrNull() ?: return@map node
+            if (jvmCandidates[identity.owner to key] != 1) return@map node
+            val declaration = source.declarations[key].orEmpty().singleOrNull() ?: return@map node
             node.copy(
-                location = SourceLocation(relative, line),
-                attributes = node.attributes + NodeAttribute.SOURCE_DECLARATION_LOCATION,
+                location = if (fillMissingLines && location.line == null) SourceLocation(relative, declaration.line) else location,
+                attributes = if (fillMissingLines && location.line == null) node.attributes + NodeAttribute.SOURCE_DECLARATION_LOCATION else node.attributes,
+                sourceDeclaration = declaration.evidence,
             )
         }
         val enriched = CodeGraph(
@@ -77,14 +92,17 @@ public object SourceDeclarationLocations {
         val name: String,
         val arity: Int? = null,
         val sourceOwner: String? = null,
+        val identifierOffset: Int? = offset,
     )
 
     private data class JvmIdentity(val owner: String, val member: String? = null, val arity: Int? = null)
     private data class DelimiterDepth(val braces: Int, val parentheses: Int)
     private data class SourceDeclarations(
         val packageName: String?,
-        val declarations: Map<DeclarationKey, List<Int>>,
+        val declarations: Map<DeclarationKey, List<DeclarationLocation>>,
     )
+
+    private data class DeclarationLocation(val line: Int, val evidence: SourceDeclarationEvidence?)
 
     private val UNKNOWN = SourceDeclarations(null, emptyMap())
 
@@ -147,7 +165,7 @@ public object SourceDeclarationLocations {
     /** source 파일 하나는 한 번만 bounded하게 읽고 유일성 대조용 header index만 보관한다. */
     private fun read(root: Path, relative: String): SourceDeclarations = try {
         val path = root.resolve(relative).normalize()
-        if (!path.startsWith(root) || Files.isSymbolicLink(path) ||
+        if (!SourceDeclarationEvidence.isPortablePath(relative) || !path.startsWith(root) || Files.isSymbolicLink(path) ||
             !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || !path.toRealPath().startsWith(root)
         ) UNKNOWN else {
             val bytes = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { it.readNBytes(MAX_BYTES + 1) }
@@ -155,27 +173,41 @@ public object SourceDeclarationLocations {
                 val text = StandardCharsets.UTF_8.newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes)).toString().removePrefix("\uFEFF")
-                declarations(RouteSourceFile(relative, relative.endsWith(".java"), false, text))
+                    .decode(ByteBuffer.wrap(bytes)).toString()
+                // BOM을 공백으로 바꿔 parser의 package 해석과 raw UTF-16 offset을 함께 보존한다.
+                val parsed = if (text.startsWith('\uFEFF')) " " + text.substring(1) else text
+                val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+                val model = RouteSourceFile(relative, relative.endsWith(".java"), false, parsed,
+                    maximumParameterChars = MAX_HEADER_CHARS)
+                if (model.parameterScanIncomplete) UNKNOWN else declarations(model, hash)
             }
         }
     } catch (_: IOException) {
         UNKNOWN
     } catch (_: SecurityException) {
         UNKNOWN
+    } catch (_: IllegalArgumentException) {
+        UNKNOWN
     }
 
-    private fun declarations(file: RouteSourceFile): SourceDeclarations {
+    private fun declarations(file: RouteSourceFile, sourceSha256: String): SourceDeclarations {
+        val headerRanges = typeHeaderRanges(file)
+        val methods = file.functions.mapNotNull { functionDeclaration(file, it) }
+        val methodOffsets = methods.mapTo(mutableSetOf()) { it.offset }
         val raw = buildList {
             file.types.forEach { type ->
-                add(RawDeclaration(type.start, DeclarationKind.TYPE, type.name))
+                val header = file.masked.substring(type.start, (type.start + MAX_HEADER_CHARS).coerceAtMost(file.masked.length))
+                val name = TYPE_IDENTIFIER.find(header)?.groups?.get(1)
+                add(RawDeclaration(type.start, DeclarationKind.TYPE, type.name,
+                    identifierOffset = name?.takeIf { it.value == type.name }?.range?.first?.plus(type.start)))
             }
-            file.functions.mapNotNullTo(this) { functionDeclaration(file, it) }
+            addAll(methods)
             if (file.isJava) {
                 JAVA_FIELD.findAll(file.masked).forEach { match ->
                     add(RawDeclaration(match.groups[1]!!.range.first, DeclarationKind.JAVA_FIELD, match.groupValues[1]))
                 }
-                JAVA_CONSTRUCTOR.findAll(file.masked).mapNotNullTo(this) { constructorDeclaration(file, it, true) }
+                JAVA_CONSTRUCTOR.findAll(file.masked).mapNotNullTo(this) { constructorDeclaration(file, it, true)
+                    ?.takeUnless { declaration -> declaration.offset in methodOffsets } }
             } else {
                 KOTLIN_PROPERTY.findAll(file.masked).forEach { match ->
                     add(RawDeclaration(
@@ -185,7 +217,9 @@ public object SourceDeclarationLocations {
                     ))
                 }
                 KOTLIN_CONSTRUCTOR.findAll(file.masked).mapNotNullTo(this) {
-                    constructorDeclaration(file, it, false)
+                    constructorDeclaration(file, it, false)?.takeUnless { declaration ->
+                        inTypeHeader(headerRanges, declaration.offset)
+                    }
                 }
             }
         }
@@ -200,7 +234,7 @@ public object SourceDeclarationLocations {
         val delimiterDepths = delimiterDepths(file.masked, offsets)
             ?: return SourceDeclarations(file.packageName, emptyMap())
         val lineStarts = lineStarts(file.source)
-        val result = mutableMapOf<DeclarationKey, MutableList<Int>>()
+        val result = mutableMapOf<DeclarationKey, MutableList<DeclarationLocation>>()
         raw.forEach { declaration ->
             val scopes = owners[declaration.offset] ?: return@forEach
             val key = if (declaration.kind == DeclarationKind.TYPE) {
@@ -213,7 +247,11 @@ public object SourceDeclarationLocations {
                 ) return@forEach
                 DeclarationKey(scopes.map { it.name }, declaration.kind, declaration.name, declaration.arity)
             }
-            result.getOrPut(key) { mutableListOf() } += lineAt(lineStarts, declaration.offset)
+            val evidence = declaration.identifierOffset?.let { offset ->
+                val line = lineAt(lineStarts, offset)
+                SourceDeclarationEvidence(file.relative, sourceSha256, offset, line, offset - lineStarts[line - 1] + 1)
+            }
+            result.getOrPut(key) { mutableListOf() } += DeclarationLocation(lineAt(lineStarts, declaration.offset), evidence)
         }
         return SourceDeclarations(file.packageName, result.mapValues { it.value.toList() })
     }
@@ -223,11 +261,11 @@ public object SourceDeclarationLocations {
             .coerceIn(function.start + 1, file.masked.length)
         if (headerEnd - function.start > MAX_HEADER_CHARS) return null
         val header = file.masked.substring(function.start, headerEnd)
-        val names = Regex("\\b${Regex.escape(function.name)}\\b\\s*\\(").findAll(header).toList()
-        val match = names.singleOrNull() ?: return null
-        val offset = function.start + match.range.first
+        val nameOffset = functionNameOffset(header, function.name) ?: return null
+        if (file.isJava && !hasJavaReturnType(header.substring(0, nameOffset))) return null
+        val offset = function.start + nameOffset
         val open = file.masked.indexOf('(', offset + function.name.length)
-        val close = balancedEnd(file.code, open)
+        val close = balancedEnd(file.code, open, (function.start + MAX_HEADER_CHARS).coerceAtMost(file.code.length))
             .takeIf { it > open && it - function.start <= MAX_HEADER_CHARS }
             ?: return null
         val arguments = callArguments(file.code, open, close)
@@ -235,11 +273,45 @@ public object SourceDeclarationLocations {
         return RawDeclaration(offset, DeclarationKind.METHOD, function.name, arguments.size)
     }
 
+    /** 하나의 header에서 이름 뒤 괄호가 정확히 한 번 있는지 검사하며 선언마다 regex를 만들지 않는다. */
+    private fun functionNameOffset(header: String, name: String): Int? {
+        var cursor = 0
+        var found: Int? = null
+        while (cursor < header.length) {
+            val offset = header.indexOf(name, cursor).takeIf { it >= 0 } ?: break
+            cursor = offset + name.length
+            if (offset > 0 && Character.isJavaIdentifierPart(header[offset - 1]) ||
+                header.getOrNull(cursor)?.let(Character::isJavaIdentifierPart) == true) continue
+            var after = cursor
+            while (after < header.length && header[after].isWhitespace()) after++
+            if (header.getOrNull(after) != '(') continue
+            if (found != null) return null
+            found = offset
+        }
+        return found
+    }
+
+    /** Java parser의 modifier backtracking으로 실제 constructor가 method로 분류되는 경우를 거른다. */
+    private fun hasJavaReturnType(prefix: String): Boolean {
+        var cleaned = JAVA_HEADER_MODIFIERS.replace(JAVA_HEADER_ANNOTATIONS.replace(prefix, " "), " ").trim()
+        if (cleaned.startsWith('<')) {
+            var depth = 0
+            val end = cleaned.indexOfFirst { character ->
+                if (character == '<') depth++ else if (character == '>') depth--
+                character == '>' && depth == 0
+            }
+            if (end < 0) return false
+            cleaned = cleaned.substring(end + 1).trim()
+        }
+        return cleaned.isNotEmpty()
+    }
+
     private fun constructorDeclaration(file: RouteSourceFile, match: MatchResult, java: Boolean): RawDeclaration? {
         val offset = if (java) match.groups[1]!!.range.first else match.range.first
         val name = if (java) match.groupValues[1] else "constructor"
         val open = file.masked.indexOf('(', offset + name.length)
-        val close = balancedEnd(file.code, open).takeIf { it > open && it - offset <= MAX_HEADER_CHARS } ?: return null
+        val close = balancedEnd(file.code, open, (offset + MAX_HEADER_CHARS).coerceAtMost(file.code.length))
+            .takeIf { it > open && it - offset <= MAX_HEADER_CHARS } ?: return null
         val tail = file.masked.substring(close + 1, (close + 1 + MAX_HEADER_CHARS).coerceAtMost(file.masked.length))
         val isDeclaration = if (java) JAVA_CONSTRUCTOR_TAIL.containsMatchIn(tail)
         else KOTLIN_CONSTRUCTOR_TAIL.containsMatchIn(tail)
@@ -290,6 +362,37 @@ public object SourceDeclarationLocations {
         val type: RouteTypeDecl? = null,
     )
 
+    /** 중첩 타입의 primary constructor header를 바깥 owner의 secondary constructor로 읽지 않는다. */
+    private fun typeHeaderRanges(file: RouteSourceFile): List<IntRange> {
+        val ranges = file.types.map { type ->
+            val end = type.headerEnd
+            type.start until end
+        }.sortedBy { it.first }
+        val merged = mutableListOf<IntRange>()
+        ranges.forEach { range ->
+            val previous = merged.lastOrNull()
+            if (previous != null && range.first <= previous.last) {
+                merged[merged.lastIndex] = previous.first..maxOf(previous.last, range.last)
+            } else merged += range
+        }
+        return merged
+    }
+
+    private fun inTypeHeader(ranges: List<IntRange>, offset: Int): Boolean {
+        var low = 0
+        var high = ranges.size - 1
+        while (low <= high) {
+            val middle = (low + high) ushr 1
+            val range = ranges[middle]
+            when {
+                offset < range.first -> high = middle - 1
+                offset > range.last -> low = middle + 1
+                else -> return true
+            }
+        }
+        return false
+    }
+
     /** local 함수·함수 body 안 후보를 거르기 위한 depth를 한 번의 event sweep으로 만든다. */
     private fun functionDepths(functions: List<RouteFunctionDecl>, offsets: Set<Int>): Map<Int, Int>? {
         val actions = buildList {
@@ -337,7 +440,9 @@ public object SourceDeclarationLocations {
     private fun lineStarts(source: String): IntArray {
         val starts = ArrayList<Int>()
         starts += 0
-        source.forEachIndexed { offset, character -> if (character == '\n') starts += offset + 1 }
+        source.forEachIndexed { offset, character ->
+            if (character == '\n' || character == '\r' && source.getOrNull(offset + 1) != '\n') starts += offset + 1
+        }
         return starts.toIntArray()
     }
 
@@ -374,6 +479,9 @@ public object SourceDeclarationLocations {
         NodeKind.ENUM,
         NodeKind.ANNOTATION_CLASS,
     )
+    private val TYPE_IDENTIFIER = Regex("^(?:class|interface|object)\\s+([A-Za-z_]\\w*)")
+    private val JAVA_HEADER_MODIFIERS = Regex("\\b(?:public|protected|private|static|final|synchronized|abstract|default|native|strictfp)\\b")
+    private val JAVA_HEADER_ANNOTATIONS = Regex("@[A-Za-z_][\\w.]*(?:\\s*\\([^)]*\\))?")
     private val KOTLIN_PROPERTY = Regex("\\b(?:val|var)[ \\t]+([A-Za-z_]\\w*)\\b")
     private val KOTLIN_CONSTRUCTOR = Regex("\\bconstructor\\s*\\(")
     private val KOTLIN_CONSTRUCTOR_TAIL = Regex("^\\s*(?::|\\{)")

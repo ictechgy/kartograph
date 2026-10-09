@@ -122,6 +122,7 @@ public object AgentDocumentRenderer {
     }.toSortedMap()
 
     private fun SymbolQuerySubject.toJsonValue(): Map<String, Any?> = buildMap<String, Any?> {
+        sourceDeclaration?.let { put("sourceDeclaration", it.toJsonValue()) }
         put("accessibility", accessibility)
         put("kind", kind)
         location?.let { put("location", it.toJsonValue()) }
@@ -134,6 +135,7 @@ public object AgentDocumentRenderer {
     private fun SymbolQueryNeighbor.toJsonValue(
         compilerReferences: List<LocatedCompilerReference> = emptyList(),
     ): Map<String, Any?> = buildMap<String, Any?> {
+        sourceDeclaration?.let { put("sourceDeclaration", it.toJsonValue()) }
         put("depth", depth)
         put("edges", edges)
         put("kind", kind)

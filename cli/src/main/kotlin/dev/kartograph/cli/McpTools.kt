@@ -19,6 +19,7 @@ internal class McpTools(
     private val expectedScope: String?,
     private val external: Map<String, Path>,
 ) {
+    private val querySession = SavedSnapshotOperations.QuerySession(current)
     fun call(name: String, arguments: Map<String, Any?>): Map<String, Any?> {
         val definition = definitions.firstOrNull { it["name"] == name }
             ?: throw IllegalArgumentException("Unknown tool; use tools/list")
@@ -58,7 +59,7 @@ internal class McpTools(
                 var recovery: List<SymbolSuggestionPage>? = null
                 attempts.forEachIndexed { index, effectiveLimit ->
                     if (previousLimit != effectiveLimit) {
-                        document = McpJsonCodec.parse(SavedSnapshotOperations.query(current, symbol, depth, effectiveLimit).json)
+                        document = McpJsonCodec.parse(querySession.query(symbol, depth, effectiveLimit).json)
                         previousLimit = effectiveLimit
                     }
                     val pages = recovery ?: (if ((document as? Map<*, *>)?.get("status") == "found") emptyList()

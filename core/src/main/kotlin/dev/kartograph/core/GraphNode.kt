@@ -83,8 +83,13 @@ public data class GraphNode(
     val supertypes: Set<String> = emptySet(),
     val extensionReceiverType: String? = null,
     val synthesized: Boolean = false,
+    /** 현재 source header의 독립 위치다. 기존 compiler 위치와 신선도 의미를 바꾸지 않는다. */
+    val sourceDeclaration: SourceDeclarationEvidence? = null,
+    /** Kotlin metadata가 JVM signature에 대응시킨 원래 함수 이름이다. 바이트코드 이름과 구분한다. */
+    val kotlinSourceName: String? = null,
 ) {
     init {
         require(name.isNotBlank()) { "node name must not be blank" }
+        require(kotlinSourceName == null || kotlinSourceName.isNotBlank()) { "Kotlin source name must not be blank" }
     }
 }

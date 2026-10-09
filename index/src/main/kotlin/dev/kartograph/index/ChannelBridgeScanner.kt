@@ -616,14 +616,14 @@ internal fun stripComments(source: String): String {
 }
 
 /** `(` 위치부터 짝이 맞는 `)`의 위치를 돌려준다 — 닫히지 않으면 -1. */
-internal fun balancedEnd(source: String, open: Int): Int {
+internal fun balancedEnd(source: String, open: Int, endExclusive: Int = source.length): Int {
     if (open < 0 || source.getOrNull(open) != '(') return -1
     var depth = 0
     var quote: Char? = null
     var rawQuote = false
     var escaped = false
     var index = open
-    while (index < source.length) {
+    while (index < minOf(source.length, endExclusive)) {
         if (rawQuote) {
             if (source.startsWith("\"\"\"", index)) { rawQuote = false; index += 3 } else index++
             continue
