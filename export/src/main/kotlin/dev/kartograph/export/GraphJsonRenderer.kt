@@ -88,6 +88,9 @@ public object GraphJsonRenderer {
             record("serviceProvider", sortedMapOf("service" to provider.service, "provider" to provider.provider.value,
                 "location" to provider.location.toJsonValue(null)))
         }
+        graph.nodes.values.filter { it.sourceDeclaration != null }.sortedBy { it.id }.forEach { node ->
+            record("sourceDeclaration", requireNotNull(node.sourceDeclaration).toJsonValue() + ("usr" to node.id.value))
+        }
         graph.externalCalls.forEach { call ->
             val value = sortedMapOf<String, Any?>(
                 "caller" to call.caller.value, "target" to call.target.value,
@@ -146,6 +149,7 @@ public object GraphJsonRenderer {
         if (dev.kartograph.core.NodeAttribute.EXTERNAL_STUB in attributes) put("external", true)
         if (annotations.isNotEmpty()) put("annotations", annotations.sorted())
         location?.toJsonValue(projectRelativePath)?.let { put("location", it) }
+        sourceDeclaration?.let { put("sourceDeclaration", it.toJsonValue()) }
         moduleName?.let { put("module", it) }
         put("name", name)
         put("qualifiedName", qualifiedName)

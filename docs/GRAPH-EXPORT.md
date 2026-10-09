@@ -64,6 +64,29 @@ accessor·file facade·같은 arity의 모호한 overload는 추측하지 않는
 classfile과 소스의 빌드 신선도를 증명하지 않는다. Kotlin primary-constructor property·생성자,
 top-level member, Java 다중 field 선언 및 모든 언어 구문을 복원한다고 보장하지 않는다.
 
+확정할 수 있는 직접 선언에는 기존 compiler `location`과 별도로 `sourceDeclaration`을 싣는다.
+이 필드는 project 상대 `path`, raw bytes의 `sourceSha256`, 0부터 시작하는 `offsetUtf16`,
+1부터 시작하는 `line`·`column`, `coordinateBasis: rawDecodedUtf16`, `origin: sourceHeader`를 포함한다.
+좌표는 UTF-8을 decode한 원문 기준으로 BOM·CRLF·탭 code unit을 보존한다. column은 탭을 펼친
+화면 열이 아니다. compiler CALL 좌표의 별도 기준과 혼합하지 않는다. 기존 `location.line`은
+첫 실행 줄일 수 있으며 이를 선언 줄로 덮어쓰지 않는다. 같은 arity의 overload 등 모호한
+header에는 이 필드가 없다. JVM 쪽 대응도 유일해야 하며 synthetic·extension member와
+enum·중첩 타입의 생성자는 암시적 JVM 인자를 source 인자와 혼동하지 않도록 제외한다.
+Kotlin method는 metadata에 기록된 원래 함수 이름이 JVM 이름과 일치해야 한다.
+이 대조는 `@JvmName`의 annotation list·import alias·typealias 형태도 source 문자열 추측 없이
+구분한다. 원래 이름을 확인할 metadata가 없으면 method 좌표를 보강하지 않는다.
+hash는 읽은 source를 식별하며 컴파일 산출물과의 신선도를 보증하지 않는다.
+기존의 줄 보강은 header 시작 줄이며, `sourceDeclaration.line`은 식별자 줄이다. 여러 줄 header에서
+둘이 다르면 식별자의 선언 좌표는 `sourceDeclaration`을 사용한다. compiler 위치가 이미 상대
+디렉터리를 포함하면 복원한 선언 경로도 정확히 같아야 한다. basename만 있을 때는 그 위치 자체로
+디렉터리를 검증할 수 없으며, 원래 입력과의 신선도·인증을 이 근거만으로 판단하지 않는다.
+
+JSON node와 live query의 subject·neighbor에 이 필드를 제공한다. `snapshot --include-paths`는
+plain/compact 모두 별도 `graph.sourceDeclarations` 레코드로 보존하며 saved query는 source를
+다시 읽지 않는다. NDJSON과 CSV의 `facts.ndjson`에는 `record: sourceDeclaration` 레코드가 들어간다.
+Kotlin metadata의 함수 이름은 선택적 `graph.kotlinSourceNames` 레코드로 snapshot에 함께 보존한다.
+CSV node의 기존 compiler 위치 컬럼과 compact node row는 유지한다. 이전 snapshot은 이 근거 없이 읽힌다.
+
 어노테이션은 classfile에 있는 BINARY/CLASS 및 RUNTIME 보존 항목을 수집한다.
 SOURCE 보존 항목은 classfile에 없어 복원하지 않는다. 대상이 입력 밖이면 일반 그래프에서
 간선이 없어도 노드의 `annotations`에는 관찰한 identity가 남는다. 외부 stub 옵션은

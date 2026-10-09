@@ -16,14 +16,25 @@ import java.nio.file.Path
 internal object SavedSnapshotOperations {
     data class Document(val json: String, val status: Int)
 
-    fun query(snapshot: QuerySnapshot, requested: String, depth: Int, limit: Int): Document {
+    /** 한 번 로드한 snapshot에만 묶인 반복 질의 문맥이다. live 파일이나 다른 generation과 공유하지 않는다. */
+    class QuerySession(private val snapshot: QuerySnapshot) {
+        private val reachability by lazy { ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention) }
+        fun query(requested: String, depth: Int, limit: Int): Document =
+            SavedSnapshotOperations.query(snapshot, requested, depth, limit, reachability)
+    }
+
+    fun query(snapshot: QuerySnapshot, requested: String, depth: Int, limit: Int): Document =
+        query(snapshot, requested, depth, limit, ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention))
+
+    private fun query(snapshot: QuerySnapshot, requested: String, depth: Int, limit: Int,
+        reachability: dev.kartograph.analysis.ReachabilityResult): Document {
         val provenanceLimitation = if (snapshot.provenance?.witnesses.isNullOrEmpty())
             "build-provenance-unverified: no compiler-task evidence was captured"
             else "build-provenance: captured compiler-task evidence has not been rechecked"
         val callPositionLimitation = if (snapshot.graph.compilerCallPositionsCaptured) emptyList() else listOf(
             "compiler-call-positions: saved graph has no captured compiler selector positions; exact offsets and columns are unavailable",
         )
-        val document = SymbolQuery.query(snapshot.graph, ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention),
+        val document = SymbolQuery.query(snapshot.graph, reachability,
             requested, (snapshot.limitations +
                 "saved-graph: using captured graph and retention evidence; live inputs and freshness are not rechecked" +
                 provenanceLimitation + callPositionLimitation).distinct().sorted(), depth, limit, snapshot.suppressed,

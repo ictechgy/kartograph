@@ -220,7 +220,11 @@ internal object AgentCommand {
                     return ExitStatus.FAILURE.code
                 }
                 val compilerFacts = compilerEnrichment.result
-                val graph = compilerFacts.graph
+                val sourcePaths = if (requested != null || options.values("--include-paths").isNotEmpty())
+                    dev.kartograph.index.SourcePathIndex.resolve(compilerFacts.graph, project) else null
+                val graph = if (sourcePaths == null) compilerFacts.graph else
+                    dev.kartograph.index.SourceDeclarationLocations.enrich(compilerFacts.graph, project, sourcePaths.byNodeId,
+                        fillMissingLines = false)
                 val hierarchy = indexed.hierarchy
                 val inputEvidence = buildList {
                     options.single("--manifest")?.let { manifest ->
@@ -242,18 +246,18 @@ internal object AgentCommand {
                     .mapTo(mutableSetOf()) { node -> node.id }
                 val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, classRoots, processorOutputs.verify(options.single("--scope")))
                 val limitations = RuntimeLimitationScanner.scan(indexed, project) +
+                    sourcePaths?.limitations.orEmpty() +
                     dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) + compilerEnrichment.limitations + buildList {
                     if (compilerFacts.unmappedReferences > 0) add("compiler-evidence-unmapped-references: ${compilerFacts.unmappedReferences}")
                     if (compilerFacts.outsideGraphReferences > 0) add("compiler-evidence-outside-graph: ${compilerFacts.outsideGraphReferences}")
                     if (compilerFacts.shadowedReferences > 0) add("compiler-evidence-shadowed-references: ${compilerFacts.shadowedReferences}")
                 }
                 return if (requested == null) {
-                    val paths = if (options.values("--include-paths").isNotEmpty()) dev.kartograph.index.SourcePathIndex.resolve(graph, project) else null
-                    val capturedGraph = if (paths == null) graph else relocateSourcePaths(graph, paths.byNodeId)
+                    val capturedGraph = if (sourcePaths == null) graph else relocateSourcePaths(graph, sourcePaths.byNodeId)
                     val renderStarted = System.nanoTime()
                     val selectedLimit = requireNotNull(snapshotLimit)
                     val captured = try {
-                        QuerySnapshotCodec.render(QuerySnapshot(capturedGraph, evidence, limitations + paths?.limitations.orEmpty(), suppressed,
+                        QuerySnapshotCodec.render(QuerySnapshot(capturedGraph, evidence, limitations, suppressed,
                             options.values("--include-private-members").isNotEmpty(), revision = options.single("--revision"),
                             scope = options.single("--scope"), provenance = provenance, processorGenerations = compilerFacts.processorGenerations,
                             processorOutputs = outputObservations),

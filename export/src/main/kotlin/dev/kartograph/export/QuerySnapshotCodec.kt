@@ -24,6 +24,7 @@ import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.RetentionReason
 import dev.kartograph.core.ServiceProviderRegistration
 import dev.kartograph.core.SourceLocation
+import dev.kartograph.core.SourceDeclarationEvidence
 import dev.kartograph.core.Visibility
 
 /** 컴파일 그래프와 그때의 보존·baseline·관측 한계를 함께 고정한 질의 입력이다. */
@@ -156,6 +157,18 @@ public object QuerySnapshotCodec {
                 "target" to item.target?.value, "invocation" to item.invocation?.name?.lowerCamel(), "position" to item.position,
             ).filterValues { it != null } },
         ).let { graph -> if (snapshot.callSiteLinesCaptured) graph else graph - "callSiteEvidence" }
+            .let { graph ->
+                val names = snapshot.graph.nodes.values.mapNotNull { node ->
+                    node.kotlinSourceName?.let { sortedMapOf("usr" to node.id.value, "name" to it) }
+                }.sortedBy { it["usr"] }
+                if (names.isEmpty()) graph else graph + ("kotlinSourceNames" to names)
+            }
+            .let { graph ->
+                val declarations = snapshot.graph.nodes.values.mapNotNull { node ->
+                    node.sourceDeclaration?.let { it.toJsonValue() + ("usr" to node.id.value) }
+                }.sortedBy { it["usr"] as String }
+                if (declarations.isEmpty()) graph else graph + ("sourceDeclarations" to declarations)
+            }
             .let { graph -> if (snapshot.graph.compilerCallPositionsCaptured) graph else graph - "compilerCallEvidence" }
             .let { graph -> if (encoding == null) graph else graph + ("stringTable" to encoding.table) },
         ).filterValues { it != null }, maximumBytes, "\n")
@@ -180,6 +193,13 @@ public object QuerySnapshotCodec {
         }
         val rawGraph = objectValue(document["graph"])
         val graph = if (version == 2) CompactSnapshotGraph.expand(rawGraph) else rawGraph
+        val sourceNames = rawGraph["kotlinSourceNames"]?.let { value ->
+            list(value).map { raw ->
+                val item = objectValue(raw)
+                require(item.keys == setOf("usr", "name")) { "invalid Kotlin source name fact" }
+                NodeId(string(item["usr"])) to string(item["name"])
+            }.also { entries -> require(entries.map { it.first }.distinct().size == entries.size) { "duplicate Kotlin source name fact" } }.toMap()
+        }.orEmpty()
         val nodes = list(graph["nodes"]).map { raw ->
             val node = objectValue(raw)
             GraphNode(
@@ -191,10 +211,44 @@ public object QuerySnapshotCodec {
                 attributes = list(node["attributes"]).map { enumValue<NodeAttribute>(it) }.toSet(),
                 annotations = strings(node["annotations"]).toSet(), supertypes = strings(node["supertypes"]).toSet(),
                 extensionReceiverType = optionalString(node["extensionReceiverType"]), synthesized = boolean(node["synthesized"]),
+                kotlinSourceName = sourceNames[NodeId(string(node["usr"]))],
             )
         }
         val ids = nodes.map { it.id }.toSet()
         require(ids.size == nodes.size) { "query snapshot contains duplicate nodes" }
+        require(sourceNames.keys.all { it in ids } && nodes.filter { it.kotlinSourceName != null }.all { it.kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) }) {
+            "Kotlin source name fact does not match a function node"
+        }
+        val nodesById = if (rawGraph["sourceDeclarations"] == null) emptyMap() else nodes.associateBy { it.id }
+        val declarations = rawGraph["sourceDeclarations"]?.let { value ->
+            list(value).map { raw ->
+                val item = objectValue(raw)
+                require(item.keys == setOf("usr", "path", "pathKind", "sourceSha256", "offsetUtf16", "line", "column", "coordinateBasis", "origin") &&
+                    item["pathKind"] == "projectRelative" && item["coordinateBasis"] == "rawDecodedUtf16" &&
+                    item["origin"] == "sourceHeader") { "invalid source declaration evidence" }
+                val id = NodeId(string(item["usr"]))
+                require(id in ids) { "source declaration evidence has an unknown node" }
+                val node = nodesById.getValue(id)
+                val sourcePath = string(item["path"])
+                val compilerLocation = node.location
+                require(!node.synthesized && JvmModifier.SYNTHETIC !in node.jvmModifiers && compilerLocation != null &&
+                    node.kind !in setOf(NodeKind.FUNCTION) &&
+                    node.attributes.none { it in setOf(NodeAttribute.EXTERNAL_STUB, NodeAttribute.FILE_FACADE,
+                        NodeAttribute.PROPERTY_ACCESSOR, NodeAttribute.EXTENSION_FUNCTION) } &&
+                    portable(sourcePath) && sourcePath.substringAfterLast('/') == compilerLocation.path.substringAfterLast('/') &&
+                    ('/' !in compilerLocation.path || sourcePath == compilerLocation.path)) {
+                    "source declaration evidence does not match an eligible source node"
+                }
+                require(!sourcePath.endsWith(".kt") || node.kind != NodeKind.METHOD ||
+                    node.kotlinSourceName != null && node.kotlinSourceName == node.id.value.substringAfter('#').substringBefore('(')) {
+                    "source declaration evidence does not match Kotlin metadata name"
+                }
+                id to SourceDeclarationEvidence(sourcePath, string(item["sourceSha256"]),
+                    integer(item["offsetUtf16"]), integer(item["line"]), integer(item["column"]))
+            }.also { entries -> require(entries.map { it.first }.distinct().size == entries.size) {
+                "duplicate source declaration evidence"
+            } }.toMap()
+        }.orEmpty()
         // compact v2 확장기는 누락된 선택 필드를 null로 채울 수 있으므로 raw graph의 존재 여부를 보존한다.
         // 필드가 실제로 있으면 null도 허용하지 않고 배열로 검증해 legacy gap marker를 오염시키지 않는다.
         val callSiteEvidence = if (rawGraph.containsKey("callSiteEvidence")) list(graph["callSiteEvidence"]).map { raw ->
@@ -276,7 +330,7 @@ public object QuerySnapshotCodec {
         }
         val suppressed = strings(document["suppressed"]).map(::NodeId).toSet()
         require(suppressed.all(ids::contains)) { "query snapshot contains invalid baseline references" }
-        val baseGraph = CodeGraph(nodes, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
+        val baseGraph = CodeGraph(nodes.map { node -> declarations[node.id]?.let { node.copy(sourceDeclaration = it) } ?: node }, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
             lambdaEscapes.orEmpty())
         val restoredGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
         return QuerySnapshot(restoredGraph, retention, strings(document["limitations"]), suppressed,

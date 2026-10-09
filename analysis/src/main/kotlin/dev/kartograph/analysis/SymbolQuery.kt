@@ -41,6 +41,7 @@ public data class SymbolQuerySubject(
     val usr: String?,
     val accessibility: String,
     val location: SourceLocation?,
+    val sourceDeclaration: dev.kartograph.core.SourceDeclarationEvidence? = null,
 )
 
 /** 질의 대상과 관계가 있는 선언 및 그 관계다. */
@@ -55,6 +56,7 @@ public data class SymbolQueryNeighbor(
     val location: SourceLocation?,
     /** 원본 bytecode CALL 간선이 직접 관측한 호출부 line이다. 기존 node location과 별개다. */
     val references: List<SymbolQueryReference> = emptyList(),
+    val sourceDeclaration: dev.kartograph.core.SourceDeclarationEvidence? = null,
 )
 
 /** 직접 CALL 이웃에만 붙는 호출부 관측이다. column/offset은 bytecode에서 추측하지 않는다. */
@@ -161,6 +163,7 @@ public object SymbolQuery {
 
     private fun GraphNode.toSubject() = SymbolQuerySubject(
         name, qualifiedName, kind.name.lowerCamel(), moduleName, id.value, visibility.name.lowerCamel(), location,
+        sourceDeclaration,
     )
 
     private fun GraphNode.toNeighbor(
@@ -182,11 +185,12 @@ public object SymbolQuery {
             }
             .distinct()
             .sortedWith(compareBy({ it.kind }, { it.origin }, { it.location.path }, { it.location.line ?: 0 }))
-        return SymbolQueryNeighbor(name, qualifiedName, kind.name.lowerCamel(), id.value, moduleName, edges, depth, location, references)
+        return SymbolQueryNeighbor(name, qualifiedName, kind.name.lowerCamel(), id.value, moduleName, edges, depth, location, references, sourceDeclaration)
     }
 
     private fun GraphNode.toNeighborWithoutReferences(edges: List<String>, depth: Int): SymbolQueryNeighbor =
-        SymbolQueryNeighbor(name, qualifiedName, kind.name.lowerCamel(), id.value, moduleName, edges, depth, location)
+        SymbolQueryNeighbor(name, qualifiedName, kind.name.lowerCamel(), id.value, moduleName, edges, depth, location,
+            sourceDeclaration = sourceDeclaration)
 
     private data class NeighborPage(val items: List<SymbolQueryNeighbor>, val truncated: Boolean)
 
