@@ -49,7 +49,7 @@ jobs:
         run: KARTOGRAPH_SNAPSHOT_CLI="$PWD/cli/build/install/kartograph/bin/kartograph" ./gradlew --no-daemon -p compiler-collectors integrationTest
       - name: Verify exact compiler call positions without skipped checks
         run: python3 Scripts/verify-compiler-call-positions.py
-      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
         with:
           gradle-version: '8.10.2'
       - name: Verify minimum supported AGP and Gradle
