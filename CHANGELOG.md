@@ -6,11 +6,15 @@
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-09
+
 ### Added
+
+- 선택적 compiler-selected CALL 위치와 완료 witness를 실제 compiler identity·artifact/source hash로 확인하고 graph·snapshot·saved query에 보존한다. Gradle snapshot과 zero-skip 통합 검사를 함께 제공한다.
 
 - 큰 그래프는 CLI와 Gradle graph task에서 JSON을 순서대로 쓰며, CLI는 NDJSON과 고정 헤더 Neo4j CSV도 제공한다. 출처 제외·후보 수 상한·입력별 모듈 이름·외부 stub을 명시적으로 선택할 수 있다.
 - NDJSON/CSV 간선은 출처별 정적 관찰 가중치를 보존하며 합치고, dispatch 후보를 실제 override와 구분한다.
-- package 선언으로 소스 경로 후보를 좁히고 모호함·부재를 나눠 보고한다. 유일한 타입 선언은 현재 소스의 줄로 보강한다.
+- package 선언으로 소스 경로 후보를 좁히고 모호함·부재를 나눠 보고한다. 유일한 타입·직접 field/property·method·명시 constructor 선언은 현재 소스의 줄로 보강하고 관찰 속성을 구분한다.
 
 ### Fixed
 
