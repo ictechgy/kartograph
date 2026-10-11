@@ -6,10 +6,15 @@
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-10-11
+
 ### Fixed
 
 - JVM subclass owner로 기록된 상속 static·super 호출과 field 접근을 실제 프로젝트 선언에 연결한다.
   호출 횟수·줄·원래 operand를 보존하며, hiding·인터페이스 field 우선순위·누락된 hierarchy를 구분한다.
+- 같은 JVM operand에 super 호출과 virtual 호출이 함께 있어도 정확한 호출의 근거만 별도로 보존한다.
+  virtual 호출의 줄·횟수를 직접 호출의 근거로 옮기지 않으며 `--dispatch direct`에서도 super 호출을 유지한다.
+- 상속한 static·super 호출을 해석한 사실을 불확실한 virtual dispatch로 계수하지 않는다.
 
 ## [0.20.0] - 2026-10-09
 
