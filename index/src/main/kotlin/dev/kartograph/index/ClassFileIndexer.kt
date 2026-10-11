@@ -200,14 +200,16 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         }
         val assemblyStart = System.nanoTime()
         val enclosures = lexicalEnclosures(classFacts)
+        val inheritedMembers = InheritedMemberReferences(classFacts)
         val graph = CodeGraph(
             nodes = classFacts.flatMap(ClassFacts::nodes),
             edges = classFacts.flatMap(ClassFacts::edges) +
                 projectOverrideEdges(classFacts) +
+                inheritedMembers.edges +
                 inheritedInterfaceCallEdges(classFacts) +
                 frameworkCallbackEdges(classFacts) +
                 enclosingContainerEdges(classFacts),
-            externalCalls = classFacts.flatMap(ClassFacts::calls),
+            externalCalls = inheritedMembers.calls,
             serviceProviders = ServiceProviderScanner.scan(roots + serviceResources),
             enclosures = enclosures,
             callbackArguments = localCallbackArguments(classFacts, enclosures),
