@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- JVM subclass owner로 기록된 상속 static·super 호출과 field 접근을 실제 프로젝트 선언에 연결한다.
+  호출 횟수·줄·원래 operand를 보존하며, hiding·인터페이스 field 우선순위·누락된 hierarchy를 구분한다.
+
 ## [0.20.0] - 2026-10-09
 
 ### Added

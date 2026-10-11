@@ -81,6 +81,13 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   취급해 보고하지 않으므로(보수적 방향) multi-file top-level은 part 기준으로만 보고된다. inline 함수·property
   접근자·backing field·native 함수·launcher `main`과 private 모드 아닌 private top-level은 보수적으로 보고하지
   않는다. top-level property는 여전히 미사용이어도 보고되지 않는다.
+- JVM operand의 owner가 상속한 멤버를 직접 선언하지 않아도, 제공된 프로젝트 class 사슬 안의 static 호출·직접 superclass
+  `super` 호출과 상속 field 접근은 실제 선언에 연결한다. [JVMS field/method resolution](https://docs.oracle.com/javase/specs/jvms/se21/html/jvms-5.html#jvms-5.4.3.2)
+  규칙에 따라 field는 인터페이스를 superclass보다 먼저 살피며, 같은 이름이라도 JVM descriptor가 다르면 다른 멤버다.
+  가장 가까운 선언을 넘어 먼 ancestor에 연결하지 않는다. 원래 호출 operand와 call-site line·weight는 보존한다.
+  필드 탐색의 관련 hierarchy가 빠졌거나 여러 인터페이스 선언으로 모호하면 대상을 추측하지 않는다. dependency field header,
+  생성자 상속, private 상속, 인터페이스 default `super` 호출은 새 경로에서 복원하지 않는다. virtual 호출은 기존 dispatch
+  후보 모델을 유지하며, 이 보강은 PSI 전체의 대체나 실행 시점의 완전성을 증명하지 않는다.
 - source file과 line은 JVM debug attribute에 의존하므로 누락되거나 같은 basename 때문에 모호할 수 있다.
 - `graph --format json --include-paths`와 Gradle의 `kartographGraph<Variant>`(`includeSourcePaths`)는
   그 source file 이름을 `--project` 안에서 유일하게 일치하는 파일에만

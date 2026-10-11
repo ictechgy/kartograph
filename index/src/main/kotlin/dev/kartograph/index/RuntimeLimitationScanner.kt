@@ -133,7 +133,9 @@ public object RuntimeLimitationScanner {
         val constructions = observations.sumOf { it.reflectiveConstructions }
         val serviceLoading = observations.sumOf { it.serviceLoadingCalls }
         val externalDispatch = calls.count { it.kind in setOf(InvocationKind.VIRTUAL, InvocationKind.INTERFACE) && it.resolution == CallResolution.UNRESOLVED }
-        val modeledDispatch = calls.count { it.resolution == CallResolution.PROJECT_CANDIDATES }
+        val modeledDispatch = calls.count {
+            it.kind in setOf(InvocationKind.VIRTUAL, InvocationKind.INTERFACE) && it.resolution == CallResolution.PROJECT_CANDIDATES
+        }
         val constants = indexed.graph.nodes.values.count { NodeAttribute.COMPILE_TIME_CONSTANT in it.attributes }
         return buildList {
             val missingMembers = observations.sumOf { it.reflectiveMemberMisses }
