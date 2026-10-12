@@ -410,6 +410,10 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         interfaces.forEach { interfaceName ->
             edges += GraphEdge(JvmNodeId.classId(name), JvmNodeId.classId(interfaceName), EdgeKind.INHERITANCE)
         }
+        // 상속 자체는 위 간선에 이미 있으므로 지워진 타입 인자·bound만 선언 참조로 더한다.
+        (signatureClassNames(signature) - supertypes - "java/lang/Object").forEach { target ->
+            edges += GraphEdge(JvmNodeId.classId(name), JvmNodeId.classId(target), EdgeKind.REFERENCE)
+        }
     }
 
     override fun visitSource(source: String?, debug: String?) {
@@ -454,7 +458,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         val annotations = mutableSetOf<String>()
         edges += GraphEdge(JvmNodeId.classId(internalName), fieldId, EdgeKind.MEMBER)
         edges += GraphEdge(fieldId, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
-        descriptorClassNames(descriptor).forEach { target ->
+        (descriptorClassNames(descriptor) + signatureClassNames(signature, typeOnly = true) - internalName).forEach { target ->
             edges += GraphEdge(fieldId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
         }
         return object : FieldVisitor(Opcodes.ASM9) {
@@ -497,10 +501,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         if (name == "<clinit>") {
             edges += GraphEdge(JvmNodeId.classId(internalName), methodId, EdgeKind.REFERENCE)
         }
-        descriptorClassNames(descriptor).forEach { target ->
-            edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
-        }
-        exceptions.orEmpty().forEach { target ->
+        (descriptorClassNames(descriptor) + signatureClassNames(signature) + exceptions.orEmpty() - internalName).forEach { target ->
             edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
         }
         return object : MethodVisitor(Opcodes.ASM9) {

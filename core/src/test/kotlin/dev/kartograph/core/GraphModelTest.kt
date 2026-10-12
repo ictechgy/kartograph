@@ -9,6 +9,19 @@ import kotlin.test.assertTrue
 
 class GraphModelTest {
     @Test
+    fun `hierarchy constructors preserve unknown kinds and copy observed class kinds`() {
+        val entries = mapOf("fixture/Type" to emptySet<String>())
+        listOf(ClassHierarchy(entries), ClassHierarchy(entries, emptyMap()), ClassHierarchy(entries, emptyMap(), emptyMap()))
+            .forEach { assertNull(it.isInterface("fixture/Type")) }
+        val kinds = mutableMapOf("fixture/Type" to false, "fixture/Contract" to true)
+        val hierarchy = ClassHierarchy(entries, emptyMap(), emptyMap(), kinds)
+        kinds["fixture/Type"] = true
+        assertEquals(false, hierarchy.isInterface("fixture/Type"))
+        assertEquals(true, hierarchy.isInterface("fixture/Contract"))
+        assertNull(hierarchy.isInterface("fixture/Missing"))
+    }
+
+    @Test
     fun `member containment does not imply usage`() {
         assertTrue(EdgeKind.CALL.impliesUsage)
         assertTrue(EdgeKind.FIELD_ACCESS.impliesUsage)

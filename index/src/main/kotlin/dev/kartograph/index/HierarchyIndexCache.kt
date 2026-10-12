@@ -100,7 +100,7 @@ internal sealed interface HierarchyCacheReadResult {
 /** bounded tagged binary hierarchy fact 포맷이다. */
 private object HierarchyFactCodec {
     private const val MAGIC = 0x4b484958
-    private const val VERSION = 3
+    private const val VERSION = 4
     private const val MAX_FACTS = 500_000
     private const val MAX_RELATIONS = 100_000
     private const val MAX_METHODS = 100_000
@@ -157,6 +157,7 @@ private object HierarchyFactCodec {
                 writeBoolean(method.isFinal)
             }
             writeBoolean(fact.isAnnotation)
+            writeBoolean(fact.isInterface)
             writeStrings(fact.annotations, MAX_RELATIONS)
         }
     }
@@ -173,9 +174,10 @@ private object HierarchyFactCodec {
             HierarchyMethod(name, descriptor, visibility, readBoolean(), readBoolean())
         }
         val isAnnotation = readBoolean()
+        val isInterface = readBoolean()
         val annotations = readStrings(MAX_RELATIONS)
-        if (!isAnnotation && annotations.isNotEmpty()) throw CacheFormatException()
-        HierarchyFact(internalName, supertypes, methods, isAnnotation, annotations)
+        if ((!isAnnotation && annotations.isNotEmpty()) || (isAnnotation && !isInterface)) throw CacheFormatException()
+        HierarchyFact(internalName, supertypes, methods, isAnnotation, annotations, isInterface)
     }
 
     private fun DataOutputStream.writeStrings(values: Collection<String>, maximum: Int) {
