@@ -11,10 +11,25 @@ import java.time.OffsetDateTime
 /** isthmus의 external-retentions v0를 JVM 식별자와 원본 호출 근거로 읽는다. */
 public object ExternalRetentionCodec {
     /** 손상·미지원·불완전 입력은 일부만 보존하지 않고 문서 전체를 거부한다. */
-    public fun parse(content: String): List<RetentionEvidence> {
-        require(content.length <= 16 * 1024 * 1024) { "external retention input is too large; narrow the inputs" }
+    public fun parse(content: String): List<RetentionEvidence> = parseDocument(content).retentions
+
+    /** 디코딩 전에 byte 상한과 엄격한 UTF8을 적용하는 외부 파일 진입점이다. */
+    public fun parseDocument(content: ByteArray): ExternalRetentionDocument {
+        require(content.size <= 16 * 1024 * 1024) { "external retention input is too large; narrow the inputs" }
+        val decoded = try {
+            Charsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(content)).toString()
+        } catch (_: java.nio.charset.CharacterCodingException) { invalid() }
+        return parseDocument(decoded)
+    }
+
+    /** root 목록이 비어도 문서 전체의 출처와 불완전성 관측을 보존한다. */
+    public fun parseDocument(content: String): ExternalRetentionDocument {
+        require(content.length <= 16 * 1024 * 1024 && content.toByteArray(Charsets.UTF_8).size <= 16 * 1024 * 1024) {
+            "external retention input is too large; narrow the inputs"
+        }
         try {
-            val document = record(SnapshotJsonParser(content, generalNumbers = true).parse())
+            val document = record(SnapshotJsonParser(content, generalNumbers = true, externalRetentionEnvelope = true).parse())
             require(document["format"] == "external-retentions" && document["version"] == 0L)
             val producer = record(document["producedBy"])
             require(text(producer["name"]) == "isthmus")
@@ -23,8 +38,9 @@ public object ExternalRetentionCodec {
             document["omittedObjectiveCHandlers"]?.let { integer(it, 0) }
             val entries = document["retentions"] as? List<*> ?: invalid()
             require(entries.size <= 100_000)
+            val context = ExternalRetentionProvenance.context(document)
             var callerCount = 0L
-            return entries.map { raw ->
+            val retentions = entries.map { raw ->
                 val item = record(raw)
                 require(item["reason"] == "bridge")
                 val symbol = record(item["symbol"])
@@ -41,6 +57,7 @@ public object ExternalRetentionCodec {
                     SourceLocation(bridge.caller.path, bridge.caller.line), bridge,
                 )
             }.distinct()
+            return ExternalRetentionDocument(retentions, context)
         } catch (_: IllegalArgumentException) {
             invalid()
         } catch (_: java.time.format.DateTimeParseException) {

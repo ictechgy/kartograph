@@ -138,11 +138,12 @@ internal object AgentCommand {
             arguments,
             setOf(
                 "--classes", "--project", "--manifest", "--resources", "--namespace",
-                "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes",
+                "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes", "--external-retentions",
             ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings", "--compiler-evidence", "--processor-output-config", "--input", "--index-cache", "--snapshot-max-mib"),
             error,
         )
             ?: return ExitStatus.USAGE.code
+        if (options.values("--external-retentions").size > 1) return usage(error, "provide at most one --external-retentions file")
         val snapshotLimit = if (requested == null) SnapshotFiles.limit(options.values("--snapshot-max-mib"))
             ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128") else null
         if (requested == null) {
@@ -189,7 +190,7 @@ internal object AgentCommand {
                 processorOutputs.trackedFiles +
                 compilerEvidence.map { "compilerEvidence" to it } +
                 generatedRoots.map { "generated-classes" to it } +
-                listOf("--manifest", "--resources", "--service-resources", "--baseline", "--source-root", "--build-input").flatMap { option ->
+                listOf("--manifest", "--resources", "--service-resources", "--baseline", "--source-root", "--build-input", "--external-retentions").flatMap { option ->
                     val role = when (option) { "--source-root" -> "sources"; "--build-input" -> "buildConfig"; else -> option.removePrefix("--") }
                     options.values(option).map { role to resolveProjectPath(project, it) }
                 } + keepScanner.inputFiles.map { "keepRules" to it }
@@ -226,7 +227,14 @@ internal object AgentCommand {
                     dev.kartograph.index.SourceDeclarationLocations.enrich(compilerFacts.graph, project, sourcePaths.byNodeId,
                         fillMissingLines = false)
                 val hierarchy = indexed.hierarchy
+                // verified capture의 전후 해시 사이에서 읽어 이전 문맥과 새 파일 해시가 섞이지 않게 한다.
+                val externalDocument = options.single("--external-retentions")?.let {
+                    ExternalRetentionFiles.read(resolveProjectPath(project, it))
+                }
+                val externalContexts = listOfNotNull(externalDocument?.context)
+                ExternalRetentionFiles.requireMatches(graph, externalDocument?.retentions.orEmpty(), externalContexts)
                 val inputEvidence = buildList {
+                    addAll(externalDocument?.retentions.orEmpty())
                     options.single("--manifest")?.let { manifest ->
                         val namespace = options.single("--namespace")
                             ?: return usage(error, "query with --manifest requires --namespace")
@@ -260,7 +268,7 @@ internal object AgentCommand {
                         QuerySnapshotCodec.render(QuerySnapshot(capturedGraph, evidence, limitations, suppressed,
                             options.values("--include-private-members").isNotEmpty(), revision = options.single("--revision"),
                             scope = options.single("--scope"), provenance = provenance, processorGenerations = compilerFacts.processorGenerations,
-                            processorOutputs = outputObservations),
+                            processorOutputs = outputObservations, externalRetentionContexts = externalContexts),
                             compact = options.values("--compact").isNotEmpty(), maximumBytes = selectedLimit.maximumBytes)
                     } catch (_: QuerySnapshotSizeException) {
                         renderNanos = System.nanoTime() - renderStarted
@@ -272,7 +280,7 @@ internal object AgentCommand {
                     ExitStatus.SUCCESS.code
                 } else {
                     val document = SymbolQuery.query(graph, ReachabilityAnalyzer.analyze(graph, evidence), requested,
-                        limitations, depth, limit, suppressed)
+                        limitations + dev.kartograph.export.ExternalRetentionCaveats.messages(externalContexts), depth, limit, suppressed)
                     output.print(AgentDocumentRenderer.query(document, graph))
                     if (document.status == "found") ExitStatus.SUCCESS.code else ExitStatus.USAGE.code
                 }
@@ -312,6 +320,9 @@ internal object AgentCommand {
             ExitStatus.FAILURE.code
         } catch (ruleError: KeepRuleScanningException) {
             error.println("error: ${ruleError.message}")
+            ExitStatus.FAILURE.code
+        } catch (inputError: ExternalRetentionInputException) {
+            error.println("error: ${inputError.message}")
             ExitStatus.FAILURE.code
         } catch (_: Exception) {
             error.println("error: unable to query compiled declarations; check the inputs")
@@ -496,6 +507,7 @@ internal object AgentCommand {
           --keep-rules <file>       retention rule file, repeatable
           --classpath <path>        dependency hierarchy entry, repeatable
           --service-resources <path> Java resource directory or JAR, repeatable
+          --external-retentions <file>  preserve JVM roots and cross-language document caveats
           --baseline <file>         suppress fingerprinted findings
           --include-private-members include private members in the graph
           --generated-classes <path> mark a supplied class root as generated, repeatable
