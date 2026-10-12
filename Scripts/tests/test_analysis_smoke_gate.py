@@ -56,7 +56,7 @@ class AnalysisSmokeGateTest(unittest.TestCase):
 
     def test_smoke_gate_json_output(self):
         res = self.run_gate("--json")
-        self.assertEqual(res.returncode, 0)
+        self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}\nstderr: {res.stderr}")
         data = json.loads(res.stdout)
         self.assertEqual(data["status"], "PASS")
         # 저장소가 커져도 DOT 간선을 정점으로 잘못 세지 않는지 독립 JSON 출력과 비교한다.
