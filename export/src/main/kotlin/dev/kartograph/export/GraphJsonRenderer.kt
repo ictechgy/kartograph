@@ -150,6 +150,7 @@ public object GraphJsonRenderer {
         if (annotations.isNotEmpty()) put("annotations", annotations.sorted())
         location?.toJsonValue(projectRelativePath)?.let { put("location", it) }
         sourceDeclaration?.let { put("sourceDeclaration", it.toJsonValue()) }
+        kotlinDefaultBridge?.let { put("kotlinDefaultBridge", it.toJsonValue()) }
         moduleName?.let { put("module", it) }
         put("name", name)
         put("qualifiedName", qualifiedName)

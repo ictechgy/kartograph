@@ -47,6 +47,8 @@ internal class InheritedMemberReferences(classFacts: List<ClassFacts>) {
     }
 
     private fun inheritedCallEdges(classFacts: List<ClassFacts>): List<GraphEdge> {
+        // 복원할 대상이 없으면 호출·간선을 재탐색할 필요가 없다. 필드 복원은 별도로 계속한다.
+        if (callTargets.isEmpty()) return emptyList()
         val relevant = callTargets.keys.mapTo(mutableSetOf()) { it.caller to it.target }
         val observations = inputCalls.filter { it.caller to it.target in relevant }.groupBy { it.caller to it.target }
         val rawEdges = classFacts.asSequence().flatMap { it.edges.asSequence() }

@@ -309,3 +309,19 @@ unused control을 확인한다. `reflective_field` 실행 표본의 mutable 초�
 
 이름은 알려졌지만 public/declared 검색 조건 등에 맞는 프로젝트 member가 없으면 `runtime-member-lookup`으로
 별도 계량한다. 외부 class 대상과 조회 조건 불일치를 같은 범주로 단정하지 않는다.
+
+### Kotlin 기본 인자 source association
+
+`GraphNode.kotlinDefaultBridge`와 graph JSON의 같은 이름 필드는 raw JVM `CALL`과 별도인 선택적 근거다.
+공식 Kotlin metadata에 기본 인자가 있는 함수의 정확한 JVM signature/value parameter 수와 동일 owner의
+static synthetic bridge descriptor, 실제 원본 호출이 모두 일치할 때만 `kotlinMetadataAndBytecode`로 기록한다.
+dispatch/extension/context receiver와 continuation은 value parameter mask 수에 포함하지 않는다.
+Kotlin 2.4.20의 실제 context parameter 및 value-class 맹글링 fixture도 같은 exact signature 계약으로 검증한다. default expression이 호출하는 다른
+함수/overload를 포함한 모든 실제 `CALL`은 보존하며, 도달성이나 외부 호출 개수를 다시 정의하지 않는다.
+null/필드 누락은 미확정이다. 이름만 같은 사용자 함수는 연결하지 않는다. 생성자 default overload,
+다른 owner로 이동한 legacy interface `DefaultImpls`/multifile facade, 변형되거나 모호한 lowering 등은
+이 연관으로 추측하지 않는다. source-level 소비자는 미확정을 성공한 빈 결과로 바꾸면 안 된다.
+선택적 snapshot side table은 v1/v2에 동일하게 적용되며 오래된 snapshot의 누락은 null로 읽는다.
+ClassFacts cache binary v8은 재사용하지 않고 v9로 재파싱한다.
+그래프 선택/가지치기 또는 origin 제외로 원본 정점이나 BYTECODE CALL 근거가 사라지면 연관도 null로
+정규화한다. 원본 그래프의 사실과 raw CALL은 변경하지 않는다.

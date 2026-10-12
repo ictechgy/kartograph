@@ -10,6 +10,7 @@ import dev.kartograph.core.ExternalCall
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.InvocationKind
+import dev.kartograph.core.KotlinDefaultBridge
 import dev.kartograph.core.JvmModifier
 import dev.kartograph.core.KartographVersion
 import dev.kartograph.core.LexicalEnclosure
@@ -162,6 +163,12 @@ public object QuerySnapshotCodec {
                     node.kotlinSourceName?.let { sortedMapOf("usr" to node.id.value, "name" to it) }
                 }.sortedBy { it["usr"] }
                 if (names.isEmpty()) graph else graph + ("kotlinSourceNames" to names)
+            }
+            .let { graph ->
+                val bridges = snapshot.graph.nodes.values.mapNotNull { node ->
+                    node.kotlinDefaultBridge?.let { it.toJsonValue() + ("usr" to node.id.value) }
+                }.sortedBy { it["usr"] as String }
+                if (bridges.isEmpty()) graph else graph + ("kotlinDefaultBridges" to bridges)
             }
             .let { graph ->
                 val declarations = snapshot.graph.nodes.values.mapNotNull { node ->
@@ -330,7 +337,30 @@ public object QuerySnapshotCodec {
         }
         val suppressed = strings(document["suppressed"]).map(::NodeId).toSet()
         require(suppressed.all(ids::contains)) { "query snapshot contains invalid baseline references" }
-        val baseGraph = CodeGraph(nodes.map { node -> declarations[node.id]?.let { node.copy(sourceDeclaration = it) } ?: node }, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
+        val bridgeFacts = rawGraph["kotlinDefaultBridges"]?.let { value ->
+            val byId = nodes.associateBy { it.id }
+            val callPairs = edges.filter { it.kind == EdgeKind.CALL && it.origin == EdgeOrigin.BYTECODE }
+                .map { it.source to it.target }.toSet()
+            list(value).map { raw ->
+                val item = objectValue(raw)
+                require(item.keys == setOf("usr", "target", "basis", "valueParameterCount", "maskParameterCount") &&
+                    item["basis"] == "kotlinMetadataAndBytecode") { "invalid Kotlin default bridge evidence" }
+                val id = NodeId(string(item["usr"]))
+                val association = KotlinDefaultBridge(NodeId(string(item["target"])),
+                    integer(item["valueParameterCount"]), integer(item["maskParameterCount"]))
+                val bridge = byId[id]
+                val target = byId[association.target]
+                require(bridge != null && target != null && bridge.kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) &&
+                    bridge.kotlinSourceName == null && JvmModifier.STATIC in bridge.jvmModifiers &&
+                    JvmModifier.SYNTHETIC in bridge.jvmModifiers && target.kotlinSourceName != null &&
+                    (id to association.target) in callPairs && association.matches(bridge, target)) { "Kotlin default bridge evidence does not match graph facts" }
+                id to association
+            }.also { entries -> require(entries.map { it.first }.distinct().size == entries.size) {
+                "duplicate Kotlin default bridge evidence"
+            } }.toMap()
+        }.orEmpty()
+        val baseGraph = CodeGraph(nodes.map { node -> node.copy(sourceDeclaration = declarations[node.id],
+            kotlinDefaultBridge = bridgeFacts[node.id]) }, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
             lambdaEscapes.orEmpty())
         val restoredGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
         return QuerySnapshot(restoredGraph, retention, strings(document["limitations"]), suppressed,

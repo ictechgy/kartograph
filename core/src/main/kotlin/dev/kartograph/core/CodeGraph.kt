@@ -1,5 +1,8 @@
 package dev.kartograph.core
 
+import java.util.IdentityHashMap
+import java.util.RandomAccess
+
 /**
  * 중복과 dangling edge를 정리하고 방향별 인접 목록을 한 번만 만드는 불변 코드 그래프다.
  * 분석 알고리즘이 전체 간선을 반복 스캔하지 않게 한다.
@@ -170,7 +173,7 @@ public class CodeGraph private constructor(
         val outgoing = mergedEdges.groupBy(GraphEdge::source)
         val incoming = mergedEdges.groupBy(GraphEdge::target)
         return CodeGraph(CanonicalState(
-            state.nodes,
+            retainDefaultBridgeWitnesses(state.nodes, outgoing),
             state.nodeIds,
             mergedEdges,
             calls,
@@ -310,8 +313,9 @@ public class CodeGraph private constructor(
                 .filter { it.caller in nodes && it.lambda in nodes }
                 .distinct().sorted()
             val edges = mergeAllEdges(edgeInputs, nodes)
+            val outgoing = edges.groupBy(GraphEdge::source)
             return CanonicalState(
-                nodes,
+                retainDefaultBridgeWitnesses(nodes, outgoing),
                 nodes.keys.sorted(),
                 edges,
                 externalCalls,
@@ -322,18 +326,55 @@ public class CodeGraph private constructor(
                 lambdaEscapes,
                 emptyList(),
                 false,
-                edges.groupBy(GraphEdge::source),
+                outgoing,
                 edges.groupBy(GraphEdge::target),
             )
+        }
+
+        // 선택/가지치기로 근거 CALL 또는 원본 정점이 사라지면 연관도 미확정으로 되돌린다.
+        // 원본 그래프는 그대로 두고 실제로 제거할 항목이 있을 때만 정점 map을 복사한다.
+        private fun retainDefaultBridgeWitnesses(
+            nodes: Map<NodeId, GraphNode>, outgoing: Map<NodeId, List<GraphEdge>>,
+        ): Map<NodeId, GraphNode> {
+            var changed: MutableMap<NodeId, GraphNode>? = null
+            nodes.values.forEach { node ->
+                val association = node.kotlinDefaultBridge ?: return@forEach
+                if (association.target !in nodes || outgoing[node.id].orEmpty().none {
+                    it.target == association.target && it.kind == EdgeKind.CALL && it.origin == EdgeOrigin.BYTECODE
+                }) {
+                    if (changed == null) changed = nodes.toMutableMap()
+                    changed!![node.id] = node.copy(kotlinDefaultBridge = null)
+                }
+            }
+            return changed ?: nodes
         }
 
         private fun normalizeExternalCalls(
             calls: Iterable<ExternalCall>,
             nodes: Map<NodeId, GraphNode>,
-        ): List<ExternalCall> = calls
-            .filter { it.caller in nodes && (it.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(it.target).attributes) }
-            .map { it.copy(resolvedTargets = it.resolvedTargets.filter(nodes::containsKey).distinct().sorted()) }
-            .distinct().sorted()
+        ): List<ExternalCall> {
+            // 한 번의 정규화 안에서만 공유한다. 새 그래프/가지치기는 현재 정점으로 다시 검증한다.
+            val candidates = IdentityHashMap<List<NodeId>, List<NodeId>>()
+            return calls
+                .filter { it.caller in nodes && (it.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(it.target).attributes) }
+                .map { call ->
+                    val targets = call.resolvedTargets
+                    val canonical = if (targets.isEmpty()) emptyList() else candidates.getOrPut(targets) {
+                        val retained = targets.filter(nodes::containsKey).distinct().sorted()
+                        if (retained.size < 2) retained else CanonicalTargets(retained)
+                    }
+                    call.copy(resolvedTargets = canonical)
+                }
+                .distinct().sorted()
+        }
+
+        // 방어 복사만 감싸므로 해시가 바뀌지 않는다. 같은 후보를 가진 호출마다 전체 목록을 재해시하지 않는다.
+        private class CanonicalTargets(private val entries: List<NodeId>) : AbstractList<NodeId>(), RandomAccess {
+            private val cachedHashCode = entries.hashCode()
+            override val size: Int get() = entries.size
+            override fun get(index: Int): NodeId = entries[index]
+            override fun hashCode(): Int = cachedHashCode
+        }
 
         private fun mergeAllEdges(edges: Iterable<GraphEdge>, nodes: Map<NodeId, GraphNode>): List<GraphEdge> {
             val merged = mutableMapOf<EdgeSignature, EdgeAccumulator>()

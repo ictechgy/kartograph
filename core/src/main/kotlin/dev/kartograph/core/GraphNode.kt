@@ -87,9 +87,29 @@ public data class GraphNode(
     val sourceDeclaration: SourceDeclarationEvidence? = null,
     /** Kotlin metadata가 JVM signature에 대응시킨 원래 함수 이름이다. 바이트코드 이름과 구분한다. */
     val kotlinSourceName: String? = null,
+    /** metadata와 실제 호출이 함께 증명한 기본 인자 bridge 원본이다. null은 미확정이며 부재 증명이 아니다. */
+    val kotlinDefaultBridge: KotlinDefaultBridge? = null,
 ) {
     init {
         require(name.isNotBlank()) { "node name must not be blank" }
         require(kotlinSourceName == null || kotlinSourceName.isNotBlank()) { "Kotlin source name must not be blank" }
+    }
+}
+
+/**
+ * 실제 JVM CALL을 보존하면서 Kotlin 기본 인자 bridge의 원본 선언을 연결한다.
+ * metadata value parameter 수로 mask 수를 확정하며 receiver/context/continuation은 그 수에 포함하지 않는다.
+ */
+public data class KotlinDefaultBridge(
+    val target: NodeId,
+    val valueParameterCount: Int,
+    val maskParameterCount: Int,
+) {
+    /** metadata signature, 정확한 bridge descriptor, 실제 bytecode CALL을 모두 확인한 근거다. */
+    val basis: String get() = "kotlinMetadataAndBytecode"
+
+    init {
+        require(valueParameterCount in 1..255) { "default bridge value parameter count must be between 1 and 255" }
+        require(maskParameterCount == (valueParameterCount + 31) / 32) { "default bridge mask count does not match metadata" }
     }
 }
