@@ -6,6 +6,11 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 
 ## 현재 릴리스의 경계
 
+- 실행 JVM과 분석 SDK는 별개다. 기존 index 생성자는 host JDK의 platform header를 사용한다.
+  명시적 `targetJdkHome` 생성자는 해당 SDK의 `jmods`만 읽으며 누락된 platform header를 host로 대체하지 않는다.
+  내용 지문·bounded lazy header·cache 분리·측정 비용은 [명시적 JDK 계약](TARGET-JDK.md)을 본다.
+  CLI/plugin 기본값이나 JVM bytecode target만으로 동일 SDK 분석을 주장하지 않는다.
+
 - Hilt/Dagger의 확인된 생성 marker와 Hilt application sibling은 구분하지만 모든 generator를 인식하지는 않는다.
   protobuf generated wrapper/Kotlin DSL처럼 marker가 없는 생성물은 `--generated-classes`로 생성 전용 컴파일 root를
   명시할 수 있다. 해당 root는 `--classes`에도 포함돼야 한다. Gradle의 같은 입력은 `generatedClassRoots`다.
