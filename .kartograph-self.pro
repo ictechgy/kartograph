@@ -19,3 +19,8 @@
 -keep class dev.kartograph.gradle.MatchingWitness {
     public boolean isSatisfiedBy(java.lang.Object);
 }
+# 설치된 analysis/core JAR만 사용하는 별도 소비자가 검증하는 공개 library 진입점이다.
+# public 전체나 같은 owner의 다른 overload/helper를 자동 보존하지 않는다.
+-keep class dev.kartograph.analysis.AuthoredCallUniverse {
+    public dev.kartograph.analysis.AuthoredCallUniverseResult examine(dev.kartograph.core.CodeGraph, dev.kartograph.analysis.AuthoredCallerScope);
+}

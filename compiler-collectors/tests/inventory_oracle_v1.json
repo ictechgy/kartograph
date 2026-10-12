@@ -1,0 +1,143 @@
+{
+  "contract": "complete-source-body-and-emitted-method-inventory-v1",
+  "sourceSha256": {
+    "generated/GeneratedInput.java": "1f538c2736dd93e37301ca1bf07f4706f5c0fac0ca1f7b3f667bf9f264227080",
+    "generated/GeneratedInput.kt": "b5448311fe31691d1c7f275c5d360c007e5f60e930a11040e635ede234798ede",
+    "java/JavaBodies.java": "094f167c506fb3f9f16d8d5f6008f8c5d8163e38c04b50c319e875984a6b7965",
+    "java/NoClass.java": "61c762065c7e7961174a488a839337891ab00c2e0019d71cbe47a1e83fd65c3e",
+    "java/NoMethods.java": "2590661905320bbfb154c64099fd0a40da674d5792e7239c6fbad0bf88ad8340",
+    "kotlin/KotlinBodies.kt": "bccf1f177c91b786153fe2cf68945c92e3404882e13cb59f5f8615888e0af2b3",
+    "kotlin/NoClass.kt": "66472117301bbcfd0a83a139f41fc7ed2ae2d3ce5061f8e90e77d4029bd1f810",
+    "kotlin/NoMethods.kt": "ca6be36bf8e3b088b48ab02673350a339a1aa066e83aeb4149d56e8805be8e34",
+    "implicit/Helper.java": "201e05b8267ce2a9b1f7b39b00874ff15ccbfaa0073b92eca4b5ced06d66440b",
+    "implicit/Main.java": "7011980fd70baa4bd32786c34e57874cc242a759fb087f3292f10c7072179b36",
+    "unsupported/AnnotationDefault.java": "d0bae6f554e7c028b70698ecf799231c090c4f46b768e6a36173e40329e663b8"
+  },
+  "backendOracle": "All emitted method owner/name/descriptors, flags and Code presence must equal an independent javap/ASM parse; UNKNOWN rows are retained by identity. No generated exclusions are allowed.",
+  "java": {
+    "completeOrdinary": [
+      "JavaBodies#mark(Ljava/lang/String;)Ljava/lang/String;",
+      "JavaBodies#empty()V",
+      "JavaBodies#map(Ljava/lang/String;)Ljava/lang/String;",
+      "JavaBodies#overload()Ljava/lang/String;",
+      "JavaBodies#overload(Ljava/lang/String;)Ljava/lang/String;",
+      "JavaBodies$Nested#zero()V",
+      "JavaBase#map(Ljava/lang/Object;)Ljava/lang/Object;"
+    ],
+    "completeZero": [
+      "JavaBodies#mark(Ljava/lang/String;)Ljava/lang/String;",
+      "JavaBodies#empty()V",
+      "JavaBodies#map(Ljava/lang/String;)Ljava/lang/String;",
+      "JavaBodies$Nested#zero()V",
+      "JavaBase#map(Ljava/lang/Object;)Ljava/lang/Object;"
+    ],
+    "incompleteOrdinary": [
+      "JavaBodies#locals()V"
+    ],
+    "positiveNoBody": [
+      "JavaBodies$Abstract#missing()V"
+    ],
+    "unsupportedNoBody": [
+      "JavaBodies$Abstract#nativeMethod()V"
+    ],
+    "requiredUnsupportedSourceBodies": {
+      "explicitConstructor": 4,
+      "fieldInitializer": 2,
+      "staticInitializer": 1,
+      "instanceInitializer": 1,
+      "lambda": 1
+    },
+    "requiredNestedOrdinaryBodies": {
+      "localClassMethod": 1,
+      "anonymousClassMethod": 1
+    },
+    "requiredUnknownBackend": [
+      "JavaBodies#map(Ljava/lang/Object;)Ljava/lang/Object;"
+    ],
+    "constructors": "Every actual <init> is source-bound unsupported or UNKNOWN; implicit constructors are never excluded.",
+    "generatedSource": "GeneratedInput.java is an ordinary explicitly named saved source with one COMPLETE-zero method; its default constructor remains unknown."
+  },
+  "kotlin": {
+    "completeOrdinary": [
+      "KotlinBodiesFile#mark(Ljava/lang/String;)Ljava/lang/String;",
+      "KotlinBodiesFile#empty()V",
+      "KotlinBase#map(Ljava/lang/Object;)Ljava/lang/Object;",
+      "KotlinBodies#map(Ljava/lang/String;)Ljava/lang/String;",
+      "KotlinBodies#overload()Ljava/lang/String;",
+      "KotlinBodies#overload(Ljava/lang/String;)Ljava/lang/String;",
+      "KotlinBodies$Nested#zero()V"
+    ],
+    "completeZero": [
+      "KotlinBodiesFile#mark(Ljava/lang/String;)Ljava/lang/String;",
+      "KotlinBodiesFile#empty()V",
+      "KotlinBase#map(Ljava/lang/Object;)Ljava/lang/Object;",
+      "KotlinBodies$Nested#zero()V"
+    ],
+    "incompleteOrdinary": [
+      "KotlinBodies#locals()V"
+    ],
+    "positiveNoBody": [
+      "KotlinBodies$Abstract#missing()V"
+    ],
+    "requiredUnsupportedSourceBodies": {
+      "parameterDefault": 1,
+      "propertyInitializer": 4,
+      "initBlock": 1,
+      "explicitAccessor": 2,
+      "secondaryConstructor": 1,
+      "localFunction": 1,
+      "lambda": 1,
+      "anonymousClassMethod": 1
+    },
+    "requiredUnknownBackend": [
+      "KotlinBodies#map(Ljava/lang/Object;)Ljava/lang/Object;"
+    ],
+    "constructors": "Every actual <init> and default-argument helper remains source-bound unsupported or UNKNOWN; no compiler-origin category is an exclusion.",
+    "generatedSource": "GeneratedInput.kt is an ordinary explicitly named saved source with one COMPLETE-zero method."
+  },
+  "negatives": [
+    "class output initially nonempty",
+    "deleted source with leftover class",
+    "partial recompile",
+    "omitted no-call method",
+    "omitted source file",
+    "omitted source body",
+    "omitted emitted method",
+    "duplicate or contradictory origin",
+    "wrong compiler/feature/token",
+    "source swap with identical binary",
+    "failed compilation",
+    "dependency-only replacement",
+    "selected-root shadow",
+    "implicit unnamed javac source",
+    "snapshot projection/removal",
+    "missing requested module/file/kind scope"
+  ],
+  "scope": "Explicit ordinary-method request can be complete only if all selected files are fully inventoried and every ordinary caller is complete. Whole-project remains incomplete for these mixed fixtures.",
+  "noClassSources": [
+    "java/NoClass.java",
+    "kotlin/NoClass.kt"
+  ],
+  "noClassContract": "Both processed source files must be positively inventoried despite emitting no classes/methods. Missing either file makes requested scope incomplete.",
+  "noMethodOutputs": [
+    "inventory/empty/NoMethods.class",
+    "inventory/empty/KotlinNoMethods.class"
+  ],
+  "noMethodContract": "An emitted interface with no methods is still in the exact output inventory; an otherwise supported task may have a complete empty backend-method universe.",
+  "implicitSourceControl": {
+    "named": [
+      "implicit/Main.java"
+    ],
+    "processed": [
+      "implicit/Main.java",
+      "implicit/Helper.java"
+    ],
+    "contract": "Compiler must account for both actually parsed sources or reject publication as incomplete. An exact completion receipt naming only Main must never certify either result."
+  },
+  "annotationDefaultControl": {
+    "source": "unsupported/AnnotationDefault.java",
+    "abstractMethods": 1,
+    "unsupportedBodies": 1,
+    "contract": "Annotation default expressions stay explicitly unsupported; abstract no-body zero must not erase them."
+  }
+}

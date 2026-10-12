@@ -36,7 +36,9 @@ See the [output workflow](../docs/PROCESSOR-GENERATION.md#output-collector-kaptk
 Set `JAVA_HOME` to JDK 17 and run from the repository root:
 
 ```sh
-./gradlew --no-daemon -p compiler-collectors integrationTest
+./gradlew --no-daemon :cli:installDist
+./gradlew --no-daemon -p compiler-collectors \
+  -Pkartograph.consumerDistribution="$PWD/cli/build/install/kartograph" integrationTest
 ```
 
 The first run resolves fixed compiler dependencies using the checked-in SHA-256
@@ -54,6 +56,9 @@ Gradle plugin runtime.
 
 The build publishes `build/libs/kartograph-compiler-collectors.jar` and runs
 the real Java, Kotlin, and Dagger fixtures in `tests/run.py`.
+The required `publicAuthoredApiTest` compiles a separate consumer against only
+the explicitly installed analysis/core/stdlib JARs. Missing or mismatched
+distributions fail instead of skipping; no source or internal-test classpath is used.
 It also runs `tests/output_attribution.py` for real javac/KAPT/KSP output and
 failure controls. The latter restores the native javac/KAPT/KSP task from the
 Gradle build cache, reuses configuration cache and validates restored output
@@ -138,3 +143,9 @@ ordinary Java methods and Kotlin 2.4.20 functions. It writes an independent
 `compiler-references-authored.tsv` sidecar and leaves `callPositions` unchanged.
 Use completed compiler witnesses and the additive authored importer, not raw
 sidecars as build proof. See [profile, freshness, API and limits](../docs/COMPILER-AUTHORED-CALLS.md).
+
+`callerInventory=true` plus `authoredCalls=true` and an explicit fresh `classOutput`
+adds separately versioned source/backend inventory. It records no-class sources and
+every emitted method, including unknown generated methods, without changing v3 or raw
+CALL. [The inventory contract](../docs/COMPILER-CALLER-INVENTORY.md) documents its fresh
+output requirement, successful receipts and explicit module/file/body-kind scope.

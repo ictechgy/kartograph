@@ -237,7 +237,12 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
                 "authored evidence requires the native target SDK"
             }
         }
-        return positionInputs + CompilerAuthoredCallOptions.enabledInput()
+        val authoredInputs = positionInputs + CompilerAuthoredCallOptions.enabledInput()
+        if (!CompilerCallPositionOptionParser.inventoryEnabled(kind, observed.options, compilerEvidence)) return authoredInputs
+        require(CompilerCallPositionOptionParser.inventoryOutput(kind, observed.options) == observed.destination.canonicalFile) {
+            "caller inventory classOutput differs from the actual task destination"
+        }
+        return authoredInputs + dev.kartograph.index.CompilerCallerInventoryOptions.enabledInput()
     }
 
     fun output(task: Task): InputFingerprint {

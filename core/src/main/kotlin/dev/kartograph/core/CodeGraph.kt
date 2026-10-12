@@ -89,8 +89,38 @@ public class CodeGraph private constructor(
         }.sortedBy { it.caller }
         return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
             state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses, state.lambdaEscapes,
-            state.locatedCompilerReferences, state.compilerCallPositionsCaptured, state.outgoing, state.incoming, normalized))
+            state.locatedCompilerReferences, state.compilerCallPositionsCaptured, state.outgoing, state.incoming, normalized, state.compilerCallerInventories))
     }
+
+    /** source/body와 실제 output method의 전체 accounting이다. CALL이 없는 method도 포함한다. */
+    public val compilerCallerInventories: List<CompilerCallerInventory>
+        get() = state.compilerCallerInventories
+
+    /** inventory를 붙여도 원시 그래프는 바뀌지 않으며 missing output은 projection incomplete로 남는다. */
+    public fun withCompilerCallerInventories(inventories: Iterable<CompilerCallerInventory>): CodeGraph {
+        val rows = inventories.toList()
+        require(rows.size <= 256 && rows.map { it.scope to it.artifact }.distinct().size == rows.size) { "duplicate caller inventory task" }
+        require(rows.sumOf { it.sources.size + it.bodies.size + it.outputs.size + it.methods.size + it.bodies.sumOf { body -> body.methods.size.toLong() } } <= 200_000) { "caller inventories exceed total row limit" }
+        val owners = rows.flatMap { it.outputs }.mapNotNull { it.owner }
+        val methods = rows.flatMap { it.methods }.map { it.id }
+        require(owners.distinct().size == owners.size && methods.distinct().size == methods.size) { "overlapping caller inventory outputs" }
+        val sourceOwners = rows.flatMap { row -> row.sources.map { row.scope to it.path } }
+        require(sourceOwners.distinct().size == sourceOwners.size) { "duplicate caller inventory source owner" }
+        val normalized = rows.map { row -> row.copy(sources = row.sources.sortedBy { it.path },
+            bodies = row.bodies.map { it.copy(methods = it.methods.sorted()) }.sortedBy { it.key },
+            outputs = row.outputs.sortedBy { it.path }, methods = row.methods.sortedBy { it.id },
+            sourceBodyCounts = row.sourceBodyCounts.toSortedMap()).retainingNodes(state.nodes) }.sortedWith(compareBy({ it.scope }, { it.artifact }))
+        return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
+            state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses, state.lambdaEscapes,
+            state.locatedCompilerReferences, state.compilerCallPositionsCaptured, state.outgoing, state.incoming,
+            state.compilerAuthoredCallers, normalized))
+    }
+
+    /**
+     * 같은 JVM identity/관계를 유지한 표시 보강 또는 node projection에 기존 C1/C2 capture-time 사실을 보존한다.
+     * 제거·변경된 선언과 source 모순은 완전성을 잃는다. 현재 input/output 신선도 검증을 대신하지 않는다.
+     */
+    public fun withCompilerSourceFactsFrom(original: CodeGraph): CodeGraph = CompilerSourceFacts.retain(original, this)
 
     public val edges: List<GraphEdge>
         get() = state.edges
@@ -152,6 +182,7 @@ public class CodeGraph private constructor(
             state.outgoing,
             state.incoming,
             state.compilerAuthoredCallers,
+            state.compilerCallerInventories,
         ))
     }
 
@@ -196,6 +227,7 @@ public class CodeGraph private constructor(
                 state.outgoing,
                 state.incoming,
                 state.compilerAuthoredCallers,
+                state.compilerCallerInventories,
             ))
         }
 
@@ -218,6 +250,7 @@ public class CodeGraph private constructor(
             outgoing,
             incoming,
             state.compilerAuthoredCallers,
+            state.compilerCallerInventories,
         ))
     }
 
@@ -292,6 +325,7 @@ public class CodeGraph private constructor(
         val outgoing: Map<NodeId, List<GraphEdge>>,
         val incoming: Map<NodeId, List<GraphEdge>>,
         val compilerAuthoredCallers: List<CompilerAuthoredCaller> = emptyList(),
+        val compilerCallerInventories: List<CompilerCallerInventory> = emptyList(),
     ) {
         val compilerAuthoredCallersById: Map<NodeId, CompilerAuthoredCaller> = compilerAuthoredCallers.associateBy { it.caller }
     }

@@ -55,6 +55,8 @@ public final class JavacEvidencePlugin implements Plugin {
         EvidenceProtocol.Options options = EvidenceProtocol.parse("javac-constants", arguments);
         EvidenceProtocol.invalidateOutput(options);
         AuthoredCallProtocol.invalidate(options);
+        CallerInventoryProtocol.invalidate(options);
+        if (options.callerInventory()) CallerOutputHeaders.requireFresh(options.classOutput());
         if (options.authoredCalls() && Runtime.version().feature() != 17 && Runtime.version().feature() != 21)
             throw new IllegalArgumentException("authored calls require javac 17 or 21");
         install(task, options);
@@ -85,6 +87,7 @@ final class JavacEvidenceSession implements TaskListener {
     private final Trees trees;
     private final Elements elements;
     private final Types types;
+    private final JavacCallerInventory callerInventory;
     private final String initialToken;
     private final String artifact;
     private final Map<String, EvidenceProtocol.Source> sources = new TreeMap<>();
@@ -119,6 +122,7 @@ final class JavacEvidenceSession implements TaskListener {
         this.trees = Trees.instance(task);
         this.elements = task.getElements();
         this.types = task.getTypes();
+        this.callerInventory = options.callerInventory() ? new JavacCallerInventory(options, trees, elements, this::identity) : null;
         this.initialToken = EvidenceProtocol.readToken(options);
         this.artifact = EvidenceProtocol.artifactFingerprint(JavacEvidencePlugin.class);
         if (options.collector().equals("dagger-bindings")) DaggerEvidenceFiles.begin(options, initialToken, artifact);
@@ -181,7 +185,10 @@ final class JavacEvidenceSession implements TaskListener {
                             cacheTargetSource(type, source);
                         }
                         analyzedClasses.add(tree);
-                        if (options.collector().equals("javac-constants") && scanned.add(tree)) scan(path);
+                        if (options.collector().equals("javac-constants") && scanned.add(tree)) {
+                            if (callerInventory != null) callerInventory.observe(path, sources.get(source));
+                            scan(path);
+                        }
                     }
                 }
             }
@@ -674,6 +681,14 @@ final class JavacEvidenceSession implements TaskListener {
             if (options.authoredCalls()) {
                 AuthoredCallProtocol.write(options, Runtime.version().toString(), artifact, sources.values(), unmappedAuthoredCallers, authoredCallers);
             }
+            if (callerInventory != null) {
+                Set<String> generatedOwners = new TreeSet<>();
+                for (TypeElement type : generatedTypes) {
+                    String generated = owner(type);
+                    if (generated == null || !generatedOwners.add(generated)) throw new IllegalArgumentException("caller inventory generated owner is unavailable");
+                }
+                callerInventory.finish(Runtime.version().toString(), artifact, sources.values(), generatedOwners);
+            }
             completed = true;
             if (unmapped > 0) diagnostic("unmapped javac compiler references");
         } catch (RuntimeException error) {
@@ -686,6 +701,11 @@ final class JavacEvidenceSession implements TaskListener {
 
     private void fail(String reason) {
         invalid = true;
+        if (options.callerInventory()) {
+            CallerInventoryProtocol.invalidate(options);
+            AuthoredCallProtocol.invalidate(options);
+            EvidenceProtocol.invalidateOutput(options);
+        }
         if (invalidReason == null) invalidReason = reason;
         diagnostic(reason);
     }
