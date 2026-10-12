@@ -54,6 +54,12 @@ CSV는 닫힌 staging 디렉터리를 게시한다. 기존 목적지는 거부�
 소스 위치를 추측하지 않는다. 외부 호출 원시 레코드도 보존한다. 이 노드를 프로젝트
 구현이나 완전한 SDK 타입 색인으로 취급하지 않는다.
 
+plain v1·compact v2 query snapshot도 외부 호출 operand target이 없거나 해당 정점에
+`externalStub` attribute가 명시되어 있으면 원시 호출·선언 근거·해석 상태·간선을 보존한다.
+이 표식은 그래프 모델의 주장일 뿐 인증된 입력 출처나 메서드 본문의 완전성을 증명하지 않는다.
+표식 없는 프로젝트 target과 외부 호출의 모순은 계속 거부하며, caller·ordinal·resolved target과
+선언 side table의 identity·scope·알려진 프로젝트 사실 검증도 그대로 적용한다.
+
 경로 후보는 package 디렉터리와 읽을 수 있는 소스 package 선언으로 좁힌다.
 `ambiguous-source-paths`와 `unavailable-source-paths`는 각각 여러 후보와 후보 부재를
 구분한다. 경로가 확정된 소스 안에서 타입 소유 사슬과 유일한 선언이 일치하면 타입 줄을
