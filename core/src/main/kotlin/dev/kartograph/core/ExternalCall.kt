@@ -34,9 +34,20 @@ public data class ExternalCall(
     public val target: NodeId get() = NodeId("method:$owner#$name$descriptor")
 
     /** 동일한 줄의 여러 호출도 명령 순서로 구분해 결정적으로 정렬한다. */
-    override fun compareTo(other: ExternalCall): Int = compareValuesBy(this, other,
-        { it.caller.value }, { it.target.value }, { it.kind.name },
-        { it.ordinal }, { it.location?.path.orEmpty() }, { it.location?.line ?: 0 })
+    override fun compareTo(other: ExternalCall): Int {
+        // selector 배열을 매 비교마다 만들지 않되 기존 문자열 순서와 null 대체값은 그대로 유지한다.
+        var comparison = caller.value.compareTo(other.caller.value)
+        if (comparison != 0) return comparison
+        comparison = target.value.compareTo(other.target.value)
+        if (comparison != 0) return comparison
+        comparison = kind.name.compareTo(other.kind.name)
+        if (comparison != 0) return comparison
+        comparison = ordinal.compareTo(other.ordinal)
+        if (comparison != 0) return comparison
+        comparison = location?.path.orEmpty().compareTo(other.location?.path.orEmpty())
+        if (comparison != 0) return comparison
+        return (location?.line ?: 0).compareTo(other.location?.line ?: 0)
+    }
 }
 
 /** 확인한 JVM 선언이 프로젝트 정점인지 외부 header인지 구분한다. */
