@@ -18,8 +18,19 @@ import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.Type
 import org.objectweb.asm.Opcodes
 
-/** directory와 JAR dependency에서 method body 없이 class 상속 header만 읽는다. */
+/** directory와 JAR dependency의 header를 읽는다. SDK를 지정하지 않으면 실행 JVM의 플랫폼을 사용한다. */
 public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
+    private var targetJdkHome: Path? = null
+
+    /** 분석할 SDK의 jmods를 명시한다. 실행 JVM의 class로 대체하지 않는다. */
+    public constructor(targetJdkHome: Path, cache: ClassIndexCache? = null) : this(cache) {
+        this.targetJdkHome = targetJdkHome
+    }
+
+    /** 마지막 성공한 명시적 SDK 관측의 내용 지문이다. 로컬 설치 경로는 포함하지 않는다. */
+    public var targetJdkFingerprint: String? = null
+        private set
+
     private var maximumSnapshotBytes: Int = safeSnapshotMaximum(MAX_JAR_SNAPSHOT_BYTES)
     private var observedJarDigests: ObservedJarDigestLookup? = null
 
@@ -32,6 +43,11 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
         this.observedJarDigests = observedJarDigests
     }
 
+    internal constructor(targetJdkHome: Path, cache: ClassIndexCache?, observedJarDigests: ObservedJarDigestLookup) :
+        this(targetJdkHome, cache) {
+        this.observedJarDigests = observedJarDigests
+    }
+
     internal var statistics: HierarchyIndexingStatistics = HierarchyIndexingStatistics()
         private set
 
@@ -40,14 +56,18 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
         classpathEntries: Iterable<Path>,
         referencedSupertypes: Iterable<String> = emptyList(),
     ): ClassHierarchy {
+        targetJdkFingerprint = null
         val runStatistics = MutableHierarchyIndexingStatistics()
         val supertypesByClass = linkedMapOf<String, Set<String>>()
         val methodsByClass = linkedMapOf<String, List<HierarchyMethod>>()
         val annotationTypes = linkedMapOf<String, Set<String>>()
         val interfaceKinds = linkedMapOf<String, Boolean>()
-        fun merge(indexed: IndexedHierarchyEntry) {
+        fun merge(indexed: IndexedHierarchyEntry, target: TargetJdkHeaders?) {
             runStatistics.add(indexed.statistics)
             indexed.facts.forEach { fact ->
+                if (target?.isPlatformClass(fact.internalName) == true) {
+                    throw ClassHierarchyIndexingException("classpath header conflicts with the target JDK; platform overrides are not supported")
+                }
                 if (supertypesByClass.putIfAbsent(fact.internalName, fact.supertypes) == null) {
                     methodsByClass[fact.internalName] = fact.methods
                     interfaceKinds[fact.internalName] = fact.isInterface
@@ -56,9 +76,14 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
             }
         }
         return try {
-            if (cache == null) {
+            val target = targetJdkHome?.let { TargetJdkHeaders.open(it) }
+            // raw class facts는 SDK 독립적이다. MR 선택을 포함하는 dependency headers는 SDK 내용으로 격리한다.
+            val effectiveCache = if (target == null || cache == null) cache else ClassIndexCache(
+                cache.directory, cache.identity?.let { ContentFingerprint.values(listOf(it, target.fingerprint)) },
+            )
+            if (effectiveCache == null) {
                 classpathEntries.forEach { entry ->
-                    merge(indexEntry(PreparedHierarchyEntry(entry, observedJarDigests?.take(entry))))
+                    merge(indexEntry(PreparedHierarchyEntry(entry, observedJarDigests?.take(entry)), effectiveCache, target?.javaFeature), target)
                 }
             } else {
                 val prepared = classpathEntries.map { entry ->
@@ -69,7 +94,7 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
                     IndexWorkPool().use { pool ->
                         // 완료 facts를 전체 classpath만큼 중복 보관하지 않고 worker batch마다 순서대로 병합한다.
                         prepared.chunked(MAX_PARALLEL_HEADER_BATCH).forEach { batch ->
-                            pool.map(batch, ::indexEntry).forEach(::merge)
+                            pool.map(batch) { indexEntry(it, effectiveCache, target?.javaFeature) }.forEach { merge(it, target) }
                         }
                     }
                 } finally {
@@ -77,14 +102,17 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
                     prepared.forEach { it.observedJar?.complete(false) }
                 }
             }
-            expandJdkHierarchy(supertypesByClass, methodsByClass, interfaceKinds, referencedSupertypes)
-            ClassHierarchy(supertypesByClass, methodsByClass, annotationTypes, interfaceKinds)
+            expandJdkHierarchy(supertypesByClass, methodsByClass, interfaceKinds, referencedSupertypes, target)
+            target?.verifyUnchanged()
+            ClassHierarchy(supertypesByClass, methodsByClass, annotationTypes, interfaceKinds).also {
+                targetJdkFingerprint = target?.fingerprint
+            }
         } finally {
             statistics = runStatistics.freeze()
         }
     }
 
-    private fun indexEntry(prepared: PreparedHierarchyEntry): IndexedHierarchyEntry {
+    private fun indexEntry(prepared: PreparedHierarchyEntry, effectiveCache: ClassIndexCache?, javaFeature: Int?): IndexedHierarchyEntry {
         val entryStatistics = MutableHierarchyIndexingStatistics()
         val facts = when {
             prepared.path.isDirectory() -> try {
@@ -93,7 +121,7 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
                 prepared.observedJar?.complete(false)
             }
             prepared.path.isRegularFile() && prepared.path.fileName.toString().endsWith(".jar", ignoreCase = true) ->
-                readJar(prepared.path, entryStatistics, prepared.observedJar)
+                readJar(prepared.path, entryStatistics, prepared.observedJar, effectiveCache, javaFeature ?: Runtime.version().feature())
             else -> {
                 prepared.observedJar?.complete(false)
                 throw ClassHierarchyIndexingException("classpath entry must be a class directory or JAR")
@@ -107,32 +135,40 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
         methodsByClass: MutableMap<String, List<HierarchyMethod>>,
         interfaceKinds: MutableMap<String, Boolean>,
         referencedSupertypes: Iterable<String>,
+        target: TargetJdkHeaders?,
     ) {
         val queue = ArrayDeque(
             (supertypesByClass.values.flatten() + referencedSupertypes)
-                .filter { internalName -> internalName.isJdkClass() }
+                .filter { internalName -> target?.isPlatformClass(internalName) ?: internalName.isJdkClass() }
                 .sorted(),
         )
         while (queue.isNotEmpty()) {
             val internalName = queue.removeFirst()
             if (internalName in supertypesByClass) continue
-            val resource = ClassLoader.getSystemResourceAsStream("$internalName.class")
-                ?: if (internalName.startsWith("java/") || internalName.startsWith("jdk/")) {
-                    throw ClassHierarchyIndexingException(
-                        "JDK class hierarchy is unavailable for ${internalName.takeIf { it.matches(Regex("[A-Za-z0-9_$/]+")) }?.replace('/', '.') ?: "an invalid type name"}; run kartograph with a compatible JDK or supply its classpath",
-                    )
-                } else {
-                    continue
+            val fact = if (target != null) {
+                val bytes = target.read(internalName)
+                readClass(bytes.inputStream(), "target JDK class hierarchy cannot be parsed").also {
+                    if (it.internalName != internalName) throw ClassHierarchyIndexingException("target JDK class identity does not match its entry")
                 }
-            val fact = try {
-                resource.use(::readJdkClass)
-            } catch (error: IOException) {
-                throw ClassHierarchyIndexingException("JDK class hierarchy cannot be read", error)
+            } else {
+                val resource = ClassLoader.getSystemResourceAsStream("$internalName.class")
+                    ?: if (internalName.startsWith("java/") || internalName.startsWith("jdk/")) {
+                        throw ClassHierarchyIndexingException(
+                            "JDK class hierarchy is unavailable for ${internalName.takeIf { it.matches(Regex("[A-Za-z0-9_$/]+")) }?.replace('/', '.') ?: "an invalid type name"}; run kartograph with a compatible JDK or supply its classpath",
+                        )
+                    } else {
+                        continue
+                    }
+                try {
+                    resource.use(::readJdkClass)
+                } catch (error: IOException) {
+                    throw ClassHierarchyIndexingException("JDK class hierarchy cannot be read", error)
+                }
             }
             supertypesByClass[fact.internalName] = fact.supertypes
             methodsByClass[fact.internalName] = fact.methods
             interfaceKinds[fact.internalName] = fact.isInterface
-            fact.supertypes.filter { name -> name.isJdkClass() }.sorted().forEach(queue::addLast)
+            fact.supertypes.filter { name -> target?.isPlatformClass(name) ?: name.isJdkClass() }.sorted().forEach(queue::addLast)
         }
     }
 
@@ -158,6 +194,8 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
         jar: Path,
         statistics: MutableHierarchyIndexingStatistics,
         observedJar: ObservedJarInput?,
+        configuredCache: ClassIndexCache?,
+        javaFeature: Int,
     ): List<HierarchyFact> {
         statistics.hierarchyJars++
         var completionReported = false
@@ -168,15 +206,14 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
             }
         }
         try {
-            val configuredCache = cache
             if (configuredCache == null) {
                 statistics.hierarchyParsedJars++
-                return readJarFile(jar).also { complete(false) }
+                return readJarFile(jar, javaFeature).also { complete(false) }
             }
             if (configuredCache.identity == null || configuredCache.namespace == null) {
                 statistics.hierarchyUnavailableEntries++
                 statistics.hierarchyParsedJars++
-                return readJarFile(jar).also { complete(false) }
+                return readJarFile(jar, javaFeature).also { complete(false) }
             }
             val hierarchyCache = HierarchyIndexCache(configuredCache)
             fun storeFacts(jarHash: String, facts: List<HierarchyFact>): List<HierarchyFact> {
@@ -204,14 +241,14 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
             if (capturedSpool != null) {
                 val jarHash = requireNotNull(observedJarHash)
                 statistics.hierarchyParsedJars++
-                val facts = capturedSpool.consume(::readJarFile)
+                val facts = capturedSpool.consume { readJarFile(it, javaFeature) }
                 return storeFacts(jarHash, facts)
             }
             val snapshot = readBoundedSnapshot(jar)
             if (snapshot == null) {
                 statistics.hierarchyUnavailableEntries++
                 statistics.hierarchyParsedJars++
-                return readJarFile(jar).also { complete(false) }
+                return readJarFile(jar, javaFeature).also { complete(false) }
             }
             val jarHash = sha256(snapshot)
             if (observedJarHash != null && jarHash != observedJarHash) {
@@ -224,10 +261,10 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
                 }
             }
             statistics.hierarchyParsedJars++
-            val facts = readSnapshotJar(snapshot)
+            val facts = readSnapshotJar(snapshot, javaFeature)
             if (facts == null) {
                 statistics.hierarchyUnavailableEntries++
-                return readJarFile(jar).also { complete(false) }
+                return readJarFile(jar, javaFeature).also { complete(false) }
             }
             return storeFacts(jarHash, facts)
         } finally {
@@ -252,12 +289,12 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
         }
     }
 
-    private fun readJarFile(jar: Path): List<HierarchyFact> = try {
+    private fun readJarFile(jar: Path, javaFeature: Int): List<HierarchyFact> = try {
         JarFile(jar.toFile(), false).use { archive ->
             val multiRelease = archive.manifest?.mainAttributes?.getValue("Multi-Release")
                 ?.equals("true", ignoreCase = true) == true
             archive.entries().asSequence()
-                .mapNotNull { entry -> entry.toClassCandidate(multiRelease) }
+                .mapNotNull { entry -> entry.toClassCandidate(multiRelease, javaFeature) }
                 .groupBy(ClassCandidate::logicalName)
                 .toSortedMap()
                 .values
@@ -296,7 +333,7 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
     }
 
     /** JarFile의 manifest 탐색과 multi-release/entry 의미를 그대로 쓰기 위해 snapshot을 임시 JAR로 연다. */
-    private fun readSnapshotJar(snapshot: ByteArray): List<HierarchyFact>? {
+    private fun readSnapshotJar(snapshot: ByteArray, javaFeature: Int): List<HierarchyFact>? {
         val temporary = try {
             Files.createTempFile("kartograph-hierarchy-", ".jar")
         } catch (_: IOException) {
@@ -316,7 +353,7 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
             } catch (_: UnsupportedOperationException) {
                 return null
             }
-            return readJarFile(temporary)
+            return readJarFile(temporary, javaFeature)
         } finally {
             try {
                 Files.deleteIfExists(temporary)
@@ -345,7 +382,7 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
         }
     }
 
-    private fun JarEntry.toClassCandidate(multiRelease: Boolean): ClassCandidate? {
+    private fun JarEntry.toClassCandidate(multiRelease: Boolean, javaFeature: Int): ClassCandidate? {
         if (isDirectory || !name.endsWith(".class")) return null
         if (!name.startsWith(MULTI_RELEASE_PREFIX)) return ClassCandidate(name, 0, this)
         if (!multiRelease) return null
@@ -353,7 +390,7 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
         val version = versionAndName.substringBefore('/').toIntOrNull() ?: return null
         val logicalName = versionAndName.substringAfter('/', missingDelimiterValue = "")
         return logicalName.takeIf(String::isNotEmpty)
-            ?.takeIf { version in 9..Runtime.version().feature() }
+            ?.takeIf { version in 9..javaFeature }
             ?.let { ClassCandidate(it, version, this) }
     }
 

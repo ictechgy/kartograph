@@ -48,6 +48,17 @@ import org.objectweb.asm.tree.MethodNode
  */
 public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbackFacts: Boolean = true) {
     private val collectCallbacks: Boolean = callbackFacts || cache != null
+    private var targetJdkHome: Path? = null
+
+    /** 분석 SDK를 실행 JVM과 분리한다. 미지정 생성자는 기존 host-runtime 동작을 유지한다. */
+    public constructor(targetJdkHome: Path, cache: ClassIndexCache? = null, callbackFacts: Boolean = true) :
+        this(cache, callbackFacts) {
+        this.targetJdkHome = targetJdkHome
+    }
+
+    /** 마지막 성공한 SDK 관측의 내용 지문이다. 전체 discovery·검증 비용은 hierarchyNanos에 포함된다. */
+    public var targetJdkFingerprint: String? = null
+        private set
 
     /**
      * 각 root를 재귀 탐색하고 JVM class name이 같은 중복 산출물은 첫 번째 것만 사용한다.
@@ -103,6 +114,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         exportOptions: GraphExportIndexOptions?, exportLimitations: MutableList<String>,
     ): IndexedClasses {
         val started = System.nanoTime()
+        targetJdkFingerprint = null
         var classFiles = 0
         var cacheHits = 0
         var cacheMisses = 0
@@ -218,12 +230,18 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         )
         assemblyNanos = System.nanoTime() - assemblyStart
         val hierarchyStart = System.nanoTime()
-        val hierarchyIndexer = if (observedJarDigests == null) {
-            ClassHierarchyIndexer(cache)
-        } else {
-            ClassHierarchyIndexer(cache, observedJarDigests)
+        val targetHome = targetJdkHome
+        val hierarchyIndexer = when {
+            targetHome != null && observedJarDigests != null -> ClassHierarchyIndexer(targetHome, cache, observedJarDigests)
+            targetHome != null -> ClassHierarchyIndexer(targetHome, cache)
+            observedJarDigests != null -> ClassHierarchyIndexer(cache, observedJarDigests)
+            else -> ClassHierarchyIndexer(cache)
         }
-        val hierarchy = classpath?.let { hierarchyIndexer.index(it, graph.nodes.values.flatMap(GraphNode::supertypes)) } ?: ClassHierarchy.EMPTY
+        val hierarchy = if (classpath != null || targetHome != null) {
+            val referenced = graph.nodes.values.flatMap(GraphNode::supertypes) +
+                if (targetHome != null) inheritedMembers.calls.map(ExternalCall::owner) else emptyList()
+            hierarchyIndexer.index(classpath ?: emptyList(), referenced)
+        } else ClassHierarchy.EMPTY
         hierarchyNanos = System.nanoTime() - hierarchyStart
         val runtimeStart = System.nanoTime()
         val (modeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
@@ -253,6 +271,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
             hierarchyIndexer.statistics.hierarchyParsedJars, hierarchyIndexer.statistics.hierarchyInvalidEntries,
             hierarchyIndexer.statistics.hierarchyWriteFailures, hierarchyIndexer.statistics.hierarchyUnavailableEntries,
             dispatchNanos)
+        targetJdkFingerprint = hierarchyIndexer.targetJdkFingerprint
         return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics,
             inheritedMembers.calls.filter { it.target in graph.nodes &&
                 (it.kind == InvocationKind.VIRTUAL || it.kind == InvocationKind.INTERFACE) })
