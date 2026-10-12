@@ -9,6 +9,15 @@ import kotlin.test.assertTrue
 
 class GraphModelTest {
     @Test
+    fun `legacy node constructor leaves default bridge association unknown`() {
+        val node = GraphNode(NodeId("method:Legacy#run()V"), "run", NodeKind.METHOD)
+        assertNull(node.kotlinDefaultBridge)
+        assertEquals(2, KotlinDefaultBridge(node.id, 33, 2).maskParameterCount)
+        assertFailsWith<IllegalArgumentException> { KotlinDefaultBridge(node.id, 33, 1) }
+        assertFailsWith<IllegalArgumentException> { KotlinDefaultBridge(node.id, 0, 0) }
+    }
+
+    @Test
     fun `hierarchy constructors preserve unknown kinds and copy observed class kinds`() {
         val entries = mapOf("fixture/Type" to emptySet<String>())
         listOf(ClassHierarchy(entries), ClassHierarchy(entries, emptyMap()), ClassHierarchy(entries, emptyMap(), emptyMap()))
