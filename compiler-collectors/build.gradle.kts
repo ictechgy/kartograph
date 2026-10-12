@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.File
 
 plugins {
-    kotlin("jvm") version "2.4.10"
+    kotlin("jvm") version "2.4.20"
 }
 
 repositories { mavenCentral() }
@@ -17,12 +17,12 @@ configurations.create("kotlinCompilerRuntime")
 configurations.create("daggerRuntime")
 
 dependencies {
-    compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.10")
+    compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20")
     compileOnly("com.google.dagger:dagger-spi:2.59")
     compileOnly("com.google.devtools.ksp:symbol-processing-api:2.3.12")
 
-    add("kotlinCompilerRuntime", "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.10")
-    add("kotlinCompilerRuntime", "org.jetbrains.kotlin:kotlin-stdlib:2.4.10")
+    add("kotlinCompilerRuntime", "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20")
+    add("kotlinCompilerRuntime", "org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
     add("kotlinCompilerRuntime", "org.jetbrains:annotations:23.0.0")
     add("daggerRuntime", "com.google.dagger:dagger-compiler:2.59")
     add("daggerRuntime", "com.google.dagger:dagger:2.59")
@@ -80,7 +80,17 @@ val outputAttributionTest = tasks.register<Exec>("outputAttributionTest") {
     commandLine("python3", layout.projectDirectory.file("tests/output_attribution.py").asFile.absolutePath)
 }
 
+val authoredCallsTest = tasks.register<Exec>("authoredCallsTest") {
+    dependsOn(tasks.named("jar"))
+    doFirst {
+        commandLine("python3", layout.projectDirectory.file("tests/authored_calls.py").asFile.absolutePath,
+            "--collector", tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath,
+            "--kotlin-classpath", configurations.getByName("kotlinCompilerRuntime").files.joinToString(File.pathSeparator) { it.absolutePath })
+    }
+}
+
 val integrationTest = tasks.register<Exec>("integrationTest") {
+    dependsOn(authoredCallsTest)
     dependsOn(outputAttributionTest)
     dependsOn(tasks.named("jar"))
     doFirst {

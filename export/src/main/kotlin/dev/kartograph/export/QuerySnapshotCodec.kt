@@ -181,6 +181,8 @@ public object QuerySnapshotCodec {
                 if (declarations.isEmpty()) graph else graph + ("sourceDeclarations" to declarations)
             }
             .let { graph -> if (snapshot.graph.compilerCallPositionsCaptured) graph else graph - "compilerCallEvidence" }
+            .let { graph -> if (snapshot.graph.compilerAuthoredCallers.isEmpty()) graph else
+                graph + ("compilerAuthoredCalls" to CompilerAuthoredCallCodec.value(snapshot.graph.compilerAuthoredCallers)) }
             .let { graph -> if (encoding == null) graph else graph + ("stringTable" to encoding.table) },
         ).filterValues { it != null }, maximumBytes, "\n")
     }
@@ -367,7 +369,9 @@ public object QuerySnapshotCodec {
         val baseGraph = CodeGraph(nodes.map { node -> node.copy(sourceDeclaration = declarations[node.id],
             kotlinDefaultBridge = bridgeFacts[node.id]) }, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
             lambdaEscapes.orEmpty())
-        val restoredGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
+        val locatedGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
+        val restoredGraph = if (rawGraph.containsKey("compilerAuthoredCalls")) locatedGraph.withCompilerAuthoredCalls(
+            CompilerAuthoredCallCodec.parse(rawGraph["compilerAuthoredCalls"], nodes)) else locatedGraph
         return QuerySnapshot(restoredGraph, retention, strings(document["limitations"]), suppressed,
             boolean(document["includePrivateMembers"]), string(document["toolVersion"]),
             optionalString(document["revision"]), optionalString(document["scope"]),

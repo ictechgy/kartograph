@@ -12,7 +12,7 @@ Verify the ZIP's SHA-256 against its entry before extracting it. The archive
 contains no compiler, Kotlin runtime, KSP API, or annotation processor dependency;
 use the compiler and processor dependencies declared by your build.
 
-The collectors target JDK 17, Kotlin/KAPT 2.4.10, KSP 2.3.12 and Dagger 2.59.
+The collectors target JDK 17, Kotlin/KAPT 2.4.20, KSP 2.3.12 and Dagger 2.59.
 These are tested integration versions, not a claim of compatibility with every
 compiler or processor version. Compiler plugins can depend on version-specific
 APIs.

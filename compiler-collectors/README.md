@@ -8,7 +8,7 @@ The jar contains four separately selected collectors:
 
 - `javac-constants`: a `javac` plugin that records resolved references to
   compile-time constant fields.
-- `kotlin-constants`: a Kotlin 2.4.10 K2 compiler plugin. FIR supplies the
+- `kotlin-constants`: a Kotlin 2.4.20 K2 compiler plugin. FIR supplies the
   resolved constant reference and the JVM backend supplies the emitted method
   and field identities. This is what handles file `JvmName`, objects,
   companions, function `JvmName`, and overload descriptors; no fixture mapping
@@ -97,11 +97,11 @@ The SPI uses bounded temporary staging so Gradle's separate processor and compil
 classloaders do not need to share an implementation object. Temporary files are
 not final compiler evidence. Missing pairing produces a compiler error.
 
-For Kotlin 2.4.10, pass the collector jar and plugin configuration to the K2
+For Kotlin 2.4.20, pass the collector jar and plugin configuration to the K2
 compiler:
 
 ```text
-java -cp <kotlin-2.4.10-compiler-classpath> org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
+java -cp <kotlin-2.4.20-compiler-classpath> org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
   -Xplugin=/path/kartograph-compiler-collectors.jar \
   -P plugin:kartograph.compiler-evidence:root=/project \
   -P plugin:kartograph.compiler-evidence:output=/evidence \
@@ -130,3 +130,11 @@ qualifier strings, timestamps, random values, or absolute paths are emitted.
 `unmapped` is explicit incomplete evidence, not a best-effort success signal.
 The producer never walks a source directory to manufacture compiler coverage,
 and hand-authored TSV is not compiler proof.
+
+## Opt-in authored source calls
+
+`authoredCalls=true` records a separately versioned complete-caller profile for
+ordinary Java methods and Kotlin 2.4.20 functions. It writes an independent
+`compiler-references-authored.tsv` sidecar and leaves `callPositions` unchanged.
+Use completed compiler witnesses and the additive authored importer, not raw
+sidecars as build proof. See [profile, freshness, API and limits](../docs/COMPILER-AUTHORED-CALLS.md).
