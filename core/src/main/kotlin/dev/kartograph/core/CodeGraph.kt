@@ -363,7 +363,14 @@ public class CodeGraph private constructor(
                         val retained = targets.filter(nodes::containsKey).distinct().sorted()
                         if (retained.size < 2) retained else CanonicalTargets(retained)
                     }
-                    call.copy(resolvedTargets = canonical)
+                    call.copy(resolvedTargets = canonical,
+                        declaration = call.declaration?.takeUnless { declaration ->
+                            declaration.scope == CallDeclarationScope.PROJECT &&
+                                (declaration.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(declaration.target).attributes)
+                        }?.let { declaration ->
+                            require(declaration.ownerChain.size in 1..CallDeclaration.MAX_OWNER_CHAIN) { "invalid call declaration chain size" }
+                            declaration.copy(ownerChain = declaration.ownerChain.toList())
+                        })
                 }
                 .distinct().sorted()
         }

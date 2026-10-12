@@ -238,7 +238,8 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         if (dispatchResult.overLimitCalls > 0) exportLimitations +=
             "dispatch-candidates-over-limit: ${dispatchResult.overLimitCalls} call site(s) exceeded " +
                 "${exportOptions!!.maximumDispatchCandidates} distinct targets; all candidates for those calls were omitted"
-        val expanded = if (exportOptions?.includeExternalStubs == true) externalStubs(dispatchResult.graph, classFacts) else dispatchResult.graph
+        val declared = CallDeclarationIndexer(dispatchResult.graph, hierarchy).enrich()
+        val expanded = if (exportOptions?.includeExternalStubs == true) externalStubs(declared, classFacts) else declared
         val selected = if (exportOptions == null || exportOptions.excludedOrigins.isEmpty()) expanded else
             CodeGraph(expanded.nodes.values, expanded.edges.filter { it.origin !in exportOptions.excludedOrigins },
                 expanded.externalCalls, expanded.serviceProviders, expanded.enclosures,
@@ -252,7 +253,9 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
             hierarchyIndexer.statistics.hierarchyParsedJars, hierarchyIndexer.statistics.hierarchyInvalidEntries,
             hierarchyIndexer.statistics.hierarchyWriteFailures, hierarchyIndexer.statistics.hierarchyUnavailableEntries,
             dispatchNanos)
-        return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics)
+        return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics,
+            inheritedMembers.calls.filter { it.target in graph.nodes &&
+                (it.kind == InvocationKind.VIRTUAL || it.kind == InvocationKind.INTERFACE) })
     }
 
     /** 실제 classfile 참조의 identity만 복원한다. SDK 구현이나 source 위치를 만들어내지 않는다. */

@@ -3,6 +3,7 @@ package dev.kartograph.core
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -124,6 +125,28 @@ class ExternalCallNormalizationTest {
         assertEquals(listOf(raw.copy(resolvedTargets = listOf(first, second)), stub.copy(resolvedTargets = listOf(first, second))).sorted(),
             graph.externalCalls)
         assertEquals(raw.target, graph.externalCalls.single { it.owner == raw.owner }.target)
+    }
+
+    @Test
+    fun `candidate sharing still copies validates and prunes declaration evidence`() {
+        val candidates = mutableListOf(second, first)
+        val chain = mutableListOf("library/Api", "app/A")
+        val proof = CallDeclaration(first, CallDeclarationScope.PROJECT, chain)
+        val raw = call(candidates).copy(kind = InvocationKind.VIRTUAL, declaration = proof)
+        val graph = CodeGraph(nodes, emptyList(), listOf(raw, raw.copy(ordinal = 1)))
+        val canonical = graph.externalCalls.first().resolvedTargets
+        assertSame(canonical, graph.externalCalls.last().resolvedTargets)
+        candidates.clear()
+        chain.clear()
+
+        assertEquals(listOf(first, second), canonical)
+        assertTrue(graph.externalCalls.all { it.declaration?.ownerChain == listOf("library/Api", "app/A") })
+        assertFailsWith<IllegalArgumentException> { graph.enrichedWith(emptyList(), listOf(raw)) }
+        val pruned = CodeGraph(nodes.filter { it.id != first }, emptyList(), graph.externalCalls)
+        assertTrue(pruned.externalCalls.all { it.resolvedTargets == listOf(second) && it.declaration == null })
+        val stubNodes = nodes.map { if (it.id == first) it.copy(attributes = setOf(NodeAttribute.EXTERNAL_STUB)) else it }
+        val withStub = CodeGraph(stubNodes, emptyList(), graph.externalCalls)
+        assertNull(withStub.externalCalls.first().declaration)
     }
 
     private fun call(targets: List<NodeId>, ordinal: Int = 0): ExternalCall = ExternalCall(
