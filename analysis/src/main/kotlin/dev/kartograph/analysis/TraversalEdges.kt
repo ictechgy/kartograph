@@ -187,7 +187,8 @@ internal class DispatchClassifier(private val graph: CodeGraph, private val encl
     /** 외부 소유 호출 → 프로젝트 구현 후보다. 같은 간선을 만든 호출 지점 중 가장 강한 근거를 쓴다. */
     private fun modeledDispatchTier(edge: GraphEdge): TraversalEdgeTier {
         val calls = callsByCaller[edge.source].orEmpty().filter { edge.target in it.resolvedTargets }
-        if (calls.any { singleTarget(it.owner, it.name + it.descriptor) == edge.target }) return TraversalEdgeTier.BOUND
+        if (calls.any { it.resolution != CallResolution.UNRESOLVED && singleTarget(it.owner, it.name + it.descriptor) == edge.target })
+            return TraversalEdgeTier.BOUND
         val callback = isLocalMember(edge.target) || (calls.isNotEmpty() && calls.all { isFunctionalOwner(it.owner) })
         return if (callback) lambdaTier() else TraversalEdgeTier.CANDIDATE
     }

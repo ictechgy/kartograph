@@ -44,11 +44,13 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
         val supertypesByClass = linkedMapOf<String, Set<String>>()
         val methodsByClass = linkedMapOf<String, List<HierarchyMethod>>()
         val annotationTypes = linkedMapOf<String, Set<String>>()
+        val interfaceKinds = linkedMapOf<String, Boolean>()
         fun merge(indexed: IndexedHierarchyEntry) {
             runStatistics.add(indexed.statistics)
             indexed.facts.forEach { fact ->
                 if (supertypesByClass.putIfAbsent(fact.internalName, fact.supertypes) == null) {
                     methodsByClass[fact.internalName] = fact.methods
+                    interfaceKinds[fact.internalName] = fact.isInterface
                     if (fact.isAnnotation) annotationTypes[fact.internalName] = fact.annotations
                 }
             }
@@ -75,8 +77,8 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
                     prepared.forEach { it.observedJar?.complete(false) }
                 }
             }
-            expandJdkHierarchy(supertypesByClass, methodsByClass, referencedSupertypes)
-            ClassHierarchy(supertypesByClass, methodsByClass, annotationTypes)
+            expandJdkHierarchy(supertypesByClass, methodsByClass, interfaceKinds, referencedSupertypes)
+            ClassHierarchy(supertypesByClass, methodsByClass, annotationTypes, interfaceKinds)
         } finally {
             statistics = runStatistics.freeze()
         }
@@ -103,6 +105,7 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
     private fun expandJdkHierarchy(
         supertypesByClass: MutableMap<String, Set<String>>,
         methodsByClass: MutableMap<String, List<HierarchyMethod>>,
+        interfaceKinds: MutableMap<String, Boolean>,
         referencedSupertypes: Iterable<String>,
     ) {
         val queue = ArrayDeque(
@@ -128,6 +131,7 @@ public class ClassHierarchyIndexer(private val cache: ClassIndexCache? = null) {
             }
             supertypesByClass[fact.internalName] = fact.supertypes
             methodsByClass[fact.internalName] = fact.methods
+            interfaceKinds[fact.internalName] = fact.isInterface
             fact.supertypes.filter { name -> name.isJdkClass() }.sorted().forEach(queue::addLast)
         }
     }
@@ -412,6 +416,7 @@ private class HierarchyVisitor : ClassVisitor(Opcodes.ASM9) {
     private var supertypes: Set<String> = emptySet()
     private val methods = mutableListOf<HierarchyMethod>()
     private var isAnnotation = false
+    private var isInterface = false
     private val annotations = mutableSetOf<String>()
 
     override fun visit(
@@ -424,6 +429,7 @@ private class HierarchyVisitor : ClassVisitor(Opcodes.ASM9) {
     ) {
         internalName = name
         isAnnotation = access and Opcodes.ACC_ANNOTATION != 0
+        isInterface = access and Opcodes.ACC_INTERFACE != 0
         supertypes = buildSet {
             if (superName != null && superName != "java/lang/Object") add(superName)
             addAll(interfaces)
@@ -446,7 +452,7 @@ private class HierarchyVisitor : ClassVisitor(Opcodes.ASM9) {
         return null
     }
 
-    fun fact(): HierarchyFact = HierarchyFact(internalName, supertypes, methods, isAnnotation, annotations)
+    fun fact(): HierarchyFact = HierarchyFact(internalName, supertypes, methods, isAnnotation, annotations, isInterface)
 }
 
 internal data class HierarchyFact(
@@ -455,6 +461,7 @@ internal data class HierarchyFact(
     val methods: List<HierarchyMethod>,
     val isAnnotation: Boolean,
     val annotations: Set<String>,
+    val isInterface: Boolean = isAnnotation,
 )
 
 /** dependency classpath를 완전하게 읽지 못해 부분 hierarchy를 버릴 때 사용한다. */

@@ -5,18 +5,26 @@ public class ClassHierarchy(
     entries: Map<String, Set<String>>,
     methods: Map<String, List<HierarchyMethod>>,
     annotationTypes: Map<String, Set<String>>,
+    interfaceKinds: Map<String, Boolean>,
 ) {
+    /** kind 사실이 없는 기존 생성자의 알 수 없음 경계를 유지한다. */
+    public constructor(entries: Map<String, Set<String>>, methods: Map<String, List<HierarchyMethod>>,
+        annotationTypes: Map<String, Set<String>>) : this(entries, methods, annotationTypes, emptyMap())
     /** 어노테이션 header를 전달하지 않는 기존 호출의 계약을 유지한다. */
     public constructor(entries: Map<String, Set<String>>, methods: Map<String, List<HierarchyMethod>> = emptyMap()) :
         this(entries, methods, emptyMap())
     private val entries: Map<String, Set<String>> = entries.mapValues { (_, supertypes) -> supertypes.toSet() }
     private val methods: Map<String, List<HierarchyMethod>> = methods.mapValues { (_, members) -> members.toList() }
+    private val interfaceKinds: Map<String, Boolean> = interfaceKinds.toMap()
 
     /** 어노테이션 타입에 직접 붙은 어노테이션 이름이다. 일반 class나 라이브러리 body는 포함하지 않는다. */
     public val annotationTypes: Map<String, Set<String>> = annotationTypes.mapValues { (_, annotations) -> annotations.toSet() }
 
     /** class가 인덱스에 없으면 null, 알려진 root class면 빈 집합을 반환한다. */
     public fun directSupertypesOf(internalName: String): Set<String>? = entries[internalName]
+
+    /** classfile의 인터페이스 여부다. 해당 사실을 읽지 않았으면 null이며 class로 추정하지 않는다. */
+    public fun isInterface(internalName: String): Boolean? = interfaceKinds[internalName]
 
     /** 메서드 header를 읽지 않았으면 null이며 body를 분석 그래프에 수입하지 않는다. */
     public fun declaredMethodsOf(internalName: String): List<HierarchyMethod>? = methods[internalName]
