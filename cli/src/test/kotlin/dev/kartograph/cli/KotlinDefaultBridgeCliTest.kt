@@ -3,6 +3,7 @@ package dev.kartograph.cli
 import dev.kartograph.core.*
 import dev.kartograph.export.*
 import dev.kartograph.index.ClassFileIndexer
+import dev.kartograph.index.GraphExportIndexOptions
 import dev.kartograph.cli.fixture.defaultbridge.BridgeFixture
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -33,6 +34,14 @@ class KotlinDefaultBridgeCliTest {
             PrintStream(output), PrintStream(error)), error.toString())
         assertContains(output.toString(), "kotlinDefaultBridge")
         assertContains(output.toString(), "kotlinMetadataAndBytecode")
+        val selected = ClassFileIndexer().indexForGraphExport(listOf(classes), options =
+            GraphExportIndexOptions(excludedOrigins = setOf(EdgeOrigin.BYTECODE))).indexed.graph
+        assertTrue(selected.nodes.values.all { it.kotlinDefaultBridge == null })
+        for (compact in listOf(false, true)) {
+            val selectedRestored = QuerySnapshotCodec.parse(QuerySnapshotCodec.render(QuerySnapshot(selected, emptyList(), emptyList()), compact)).graph
+            assertEquals(selected.nodes, selectedRestored.nodes)
+            assertEquals(selected.edges, selectedRestored.edges)
+        }
         for (compact in listOf(false, true)) {
             val snapshot = Files.writeString(root.resolve("snapshot-$compact.json"),
                 QuerySnapshotCodec.render(QuerySnapshot(graph, emptyList(), emptyList()), compact))

@@ -170,7 +170,7 @@ public class CodeGraph private constructor(
         val outgoing = mergedEdges.groupBy(GraphEdge::source)
         val incoming = mergedEdges.groupBy(GraphEdge::target)
         return CodeGraph(CanonicalState(
-            state.nodes,
+            retainDefaultBridgeWitnesses(state.nodes, outgoing),
             state.nodeIds,
             mergedEdges,
             calls,
@@ -310,8 +310,9 @@ public class CodeGraph private constructor(
                 .filter { it.caller in nodes && it.lambda in nodes }
                 .distinct().sorted()
             val edges = mergeAllEdges(edgeInputs, nodes)
+            val outgoing = edges.groupBy(GraphEdge::source)
             return CanonicalState(
-                nodes,
+                retainDefaultBridgeWitnesses(nodes, outgoing),
                 nodes.keys.sorted(),
                 edges,
                 externalCalls,
@@ -322,9 +323,27 @@ public class CodeGraph private constructor(
                 lambdaEscapes,
                 emptyList(),
                 false,
-                edges.groupBy(GraphEdge::source),
+                outgoing,
                 edges.groupBy(GraphEdge::target),
             )
+        }
+
+        // 선택/가지치기로 근거 CALL 또는 원본 정점이 사라지면 연관도 미확정으로 되돌린다.
+        // 원본 그래프는 그대로 두고 실제로 제거할 항목이 있을 때만 정점 map을 복사한다.
+        private fun retainDefaultBridgeWitnesses(
+            nodes: Map<NodeId, GraphNode>, outgoing: Map<NodeId, List<GraphEdge>>,
+        ): Map<NodeId, GraphNode> {
+            var changed: MutableMap<NodeId, GraphNode>? = null
+            nodes.values.forEach { node ->
+                val association = node.kotlinDefaultBridge ?: return@forEach
+                if (association.target !in nodes || outgoing[node.id].orEmpty().none {
+                    it.target == association.target && it.kind == EdgeKind.CALL && it.origin == EdgeOrigin.BYTECODE
+                }) {
+                    if (changed == null) changed = nodes.toMutableMap()
+                    changed!![node.id] = node.copy(kotlinDefaultBridge = null)
+                }
+            }
+            return changed ?: nodes
         }
 
         private fun normalizeExternalCalls(

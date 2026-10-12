@@ -42,14 +42,16 @@ internal object ExternalDispatchIndexer {
         val derived = mutableListOf<GraphEdge>()
         // CodeGraph는 내부 target 호출을 externalCalls에서 제거한다. assembly의 원래 opcode 사실을 별도로 받는다.
         val internalVirtualCalls = projectCalls.filter { call ->
+            if (call.kind !in VIRTUAL_KINDS) return@filter false
             val method = graph.node(call.target) ?: return@filter false
-            call.kind in VIRTUAL_KINDS && method.jvmVisibility != Visibility.PRIVATE &&
+            method.jvmVisibility != Visibility.PRIVATE &&
                 JvmModifier.FINAL !in method.jvmModifiers && JvmModifier.STATIC !in method.jvmModifiers &&
                 JvmModifier.FINAL !in types[call.owner]?.jvmModifiers.orEmpty()
         }
         val calls = (graph.externalCalls + internalVirtualCalls).map { call ->
             if (call.kind !in VIRTUAL_KINDS || call.resolution == CallResolution.RUNTIME_MODEL) return@map call
-            val resolved = targetCache.getOrPut(call.target) {
+            val callTarget = call.target
+            val resolved = targetCache.getOrPut(callTarget) {
                 // 프로젝트 선언을 먼저 확인한다. 외부 hierarchy에는 앱 메서드가 들어 있지 않다.
                 fun declaredMethod(owner: String): HierarchyMethod? {
                     if (owner !in types) return hierarchy.declaredMethodsOf(owner)
@@ -135,8 +137,10 @@ internal object ExternalDispatchIndexer {
                 }
             }
             if (resolved.overLimit) overLimitCalls++
-            resolved.targets.filter { it != call.target }.forEach {
-                derived += GraphEdge(call.caller, it, EdgeKind.OVERRIDE, origin = EdgeOrigin.DISPATCH_MODEL)
+            resolved.targets.forEach { target ->
+                if (target != callTarget) {
+                    derived += GraphEdge(call.caller, target, EdgeKind.OVERRIDE, origin = EdgeOrigin.DISPATCH_MODEL)
+                }
             }
             call.copy(resolvedTargets = resolved.targets, resolution = resolved.resolution)
         }

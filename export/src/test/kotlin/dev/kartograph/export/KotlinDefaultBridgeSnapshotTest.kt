@@ -27,6 +27,25 @@ class KotlinDefaultBridgeSnapshotTest {
         assertContains(GraphJsonRenderer.render(graph, "test"), "\"maskParameterCount\": 1")
     }
 
+    @Test fun `legitimately pruned targets and raw call witnesses roundtrip as unknown`() {
+        val projections = listOf(
+            CodeGraph(graph.nodes.values, emptyList()),
+            CodeGraph(graph.nodes.values.filter { it.id != target.id }, graph.edges),
+            CodeGraph(graph.nodes.values, graph.edges.map { it.copy(origin = EdgeOrigin.DISPATCH_MODEL) }),
+            graph.enrichedWith(emptyList(), replacingOrigin = EdgeOrigin.BYTECODE),
+        )
+        assertNotNull(graph.node(bridge.id)!!.kotlinDefaultBridge)
+        projections.forEach { projection ->
+            assertNull(projection.node(bridge.id)!!.kotlinDefaultBridge)
+            assertFalse("kotlinDefaultBridge" in GraphJsonRenderer.render(projection, "test"))
+            for (compact in listOf(false, true)) {
+                val restored = QuerySnapshotCodec.parse(QuerySnapshotCodec.render(QuerySnapshot(projection, emptyList(), emptyList()), compact)).graph
+                assertEquals(projection.nodes, restored.nodes)
+                assertEquals(projection.edges, restored.edges)
+            }
+        }
+    }
+
     @Test fun `legacy absent association remains unknown`() {
         val legacy = CodeGraph(graph.nodes.values.map { it.copy(kotlinDefaultBridge = null) }, graph.edges)
         for (compact in listOf(false, true)) {
@@ -51,13 +70,15 @@ class KotlinDefaultBridgeSnapshotTest {
             }
         }
         listOf(
-            CodeGraph(graph.nodes.values, emptyList()),
             CodeGraph(graph.nodes.values.map { if (it.id == bridge.id) it.copy(kotlinSourceName = "authored") else it }, graph.edges),
             CodeGraph(graph.nodes.values.map { if (it.id == bridge.id) it.copy(jvmModifiers = setOf(JvmModifier.STATIC)) else it }, graph.edges),
-            CodeGraph(graph.nodes.values, graph.edges.map { it.copy(origin = EdgeOrigin.DISPATCH_MODEL) }),
         ).forEach { invalid ->
             assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.parse(QuerySnapshotCodec.render(QuerySnapshot(invalid, emptyList(), emptyList()))) }
         }
+        // Serialized evidence는 정규화 전에 엄격히 검증하므로 위조 raw CALL 부재를 받아들이지 않는다.
+        val forged = SnapshotJsonParser(QuerySnapshotCodec.render(QuerySnapshot(graph, emptyList(), emptyList()))).parse() as Map<*, *>
+        val forgedGraph = (forged["graph"] as Map<*, *>).toMutableMap().apply { put("edges", emptyList<Any>()) }
+        assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.parse(jsonValue(forged.toMutableMap().apply { put("graph", forgedGraph) })) }
         val duplicateDocument = SnapshotJsonParser(QuerySnapshotCodec.render(QuerySnapshot(graph, emptyList(), emptyList()))).parse() as Map<*, *>
         val duplicateGraph = (duplicateDocument["graph"] as Map<*, *>).toMutableMap()
         val facts = duplicateGraph["kotlinDefaultBridges"] as List<*>

@@ -37,7 +37,7 @@ class KotlinDefaultBridgeTest {
         assertEquals(cold.graph.edges, migrated.graph.edges)
         val graph = warm.graph
         val associations = graph.nodes.values.filter { it.kotlinDefaultBridge != null }
-        assertEquals(9, associations.size)
+        assertEquals(13, associations.size)
         fun bridge(name: String, owner: String = "DefaultBridgeFixtures") = associations.single {
             it.id.value.startsWith("method:$PACKAGE/$owner#$name\$default(")
         }
@@ -57,6 +57,16 @@ class KotlinDefaultBridgeTest {
         assertContains(bridge("suspendLabel").kotlinDefaultBridge!!.target.value, "Lkotlin/coroutines/Continuation;")
         assertEquals("sourceNamed", graph.node(bridge("jvmNamed").kotlinDefaultBridge!!.target)!!.kotlinSourceName)
         assertEquals("authored\$default", graph.node(bridge("authored\$default").kotlinDefaultBridge!!.target)!!.kotlinSourceName)
+        assertEquals("ctx:21|r:ctx:22|23", dev.kartograph.index.fixture.defaultbridges.contextRuntime())
+        for ((name, owner) in listOf("contextual" to "DefaultBridgeFixtures", "contextualSuspend" to "DefaultBridgeFixtures", "contextMember" to "Receiver")) {
+            assertEquals(1, bridge(name, owner).kotlinDefaultBridge!!.valueParameterCount)
+            assertEquals(1, bridge(name, owner).kotlinDefaultBridge!!.maskParameterCount)
+            assertContains(bridge(name, owner).kotlinDefaultBridge!!.target.value, "Ljava/lang/String;I")
+        }
+        val mangled = associations.single { graph.node(it.kotlinDefaultBridge!!.target)!!.kotlinSourceName == "valueToken" }
+        assertContains(mangled.kotlinDefaultBridge!!.target.value, "#valueToken-")
+        assertTrue(mangled.kotlinDefaultBridge!!.target.value.endsWith("(I)I"))
+        assertEquals(1, mangled.kotlinDefaultBridge!!.valueParameterCount)
         associations.forEach { node ->
             assertEquals("kotlinMetadataAndBytecode", node.kotlinDefaultBridge!!.basis)
             assertTrue(graph.outgoingEdgesFrom(node.id).any { it.kind == EdgeKind.CALL && it.target == node.kotlinDefaultBridge!!.target })
@@ -90,7 +100,7 @@ class KotlinDefaultBridgeTest {
         Files.write(file, writer.toByteArray())
         val graph = ClassFileIndexer().index(listOf(classes))
         assertNull(graph.nodes.values.single { it.name == "decorate\$default" }.kotlinDefaultBridge)
-        assertEquals(8, graph.nodes.values.count { it.kotlinDefaultBridge != null })
+        assertEquals(12, graph.nodes.values.count { it.kotlinDefaultBridge != null })
     }
 
     @Test

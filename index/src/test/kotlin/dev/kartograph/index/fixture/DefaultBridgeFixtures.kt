@@ -10,6 +10,8 @@ fun callExtensionExplicit(): String = "x".decorate("explicit")
 fun callExtensionDefault(): String = "x".decorate()
 
 class Receiver(private val tag: String) {
+    context(prefix: String)
+    fun contextMember(value: Int = 22): String = "$tag:$prefix:$value"
     fun member(value: Int = 7): String = "$tag:$value"
     fun String.memberExtension(value: Int = 9): String = "$tag:$this:$value"
     fun callMemberExtensionDefault(): String = "inner".memberExtension()
@@ -75,3 +77,17 @@ fun callAuthoredDefault(): String = `authored$default`()
 
 fun thirtyTwo(p01: Int = 1, p02: Int = 2, p03: Int = 3, p04: Int = 4, p05: Int = 5, p06: Int = 6, p07: Int = 7, p08: Int = 8, p09: Int = 9, p10: Int = 10, p11: Int = 11, p12: Int = 12, p13: Int = 13, p14: Int = 14, p15: Int = 15, p16: Int = 16, p17: Int = 17, p18: Int = 18, p19: Int = 19, p20: Int = 20, p21: Int = 21, p22: Int = 22, p23: Int = 23, p24: Int = 24, p25: Int = 25, p26: Int = 26, p27: Int = 27, p28: Int = 28, p29: Int = 29, p30: Int = 30, p31: Int = 31, p32: Int = 32): Int = p01 + p02 + p03 + p04 + p05 + p06 + p07 + p08 + p09 + p10 + p11 + p12 + p13 + p14 + p15 + p16 + p17 + p18 + p19 + p20 + p21 + p22 + p23 + p24 + p25 + p26 + p27 + p28 + p29 + p30 + p31 + p32
 fun callThirtyTwo(): Int = thirtyTwo()
+
+context(prefix: String)
+fun contextual(value: Int = 21): String = "$prefix:$value"
+
+context(prefix: String)
+suspend fun contextualSuspend(value: Int = 24): String = "$prefix:$value"
+
+@JvmInline
+value class Token(val value: Int)
+fun valueToken(value: Token = Token(23)): Int = value.value
+
+fun contextRuntime(): String = with("ctx") {
+    contextual() + "|" + Receiver("r").contextMember() + "|" + valueToken()
+}
