@@ -222,10 +222,16 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 
 선택 `externalCalls.declaration`은 `target` JVM identity, `scope`(`project`/`external`),
 `ownerChain`(operand owner부터 첫 선언까지)을 별도로 싣는다. 필드가 없으면 **미확정**이며 선언 부재가 아니다.
-단일한 class superclass 사슬과 모든 sibling 종류가 알려진 virtual/static 및 직접 superclass-special 호출만
+class 경로는 단일한 superclass 사슬과 모든 sibling 종류가 알려진 virtual/static 및 직접 superclass-special 호출만
 확인한다. 첫 외부 선언이 더 먼 프로젝트 선언을 가리면 외부 선언에서 멈춘다. abstract 선언도 선언으로
 확인할 수 있지만 실행 body나 dispatch 후보라는 뜻은 아니다. final 선언은 override 후보를 추가하지 않는다.
-인터페이스/default 선택, 누락·종류 미상·다중 class 부모·cycle, constructor, signature-polymorphic,
+`kind=interface`는 알려진 interface header의 완전한 직접 method 목록에서 정확한 name+descriptor가
+하나이며 public·non-static인 경우에만 같은 owner의 선언을 확인한다. `ownerChain`은 반드시 한 원소다.
+별도 proof 필드 없이 부모 `kind`가 class 사슬과 직접 interface 근거를 구분하며 길이만으로 추정하지 않는다.
+프로젝트 직접 operand는 기존 내부 BYTECODE CALL로 남고 externalCalls를 추가하지 않는다.
+알 수 없는 조상은 직접 선언의 증명을 막지 않지만, 직접 선언이 없으면 inherited/default/abstract 선택과
+Object fallback은 미확정이다. interface-owned static·special도 지원하지 않는다.
+그 밖에 누락·종류 미상·다중 class 부모·cycle, constructor, signature-polymorphic,
 기타 special 형태와 256개 초과 사슬은 추측하지 않는다. 접근 권한과 static 호환성을 확인하며 다른 package의
 protected virtual 호출은 caller 상속과 receiver owner 제약을 함께 증명한다. private nestmate는 같은 owner가
 아니면 지원하지 않는다. class 가시성·module export의 접근 사실은 보존되지 않아 전체 JVM linkage나
