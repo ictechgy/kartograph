@@ -41,7 +41,7 @@ public final class EvidenceProtocol {
     private EvidenceProtocol() {}
 
     /** compiler가 읽을 절대 경로 옵션이다. 이 값들은 raw 문서에 직렬화하지 않는다. */
-    public record Options(Path root, Path output, Path token, String collector, boolean callPositions) {
+    public record Options(Path root, Path output, Path token, String collector, boolean callPositions, boolean authoredCalls) {
         public Options {
             Objects.requireNonNull(root, "root");
             Objects.requireNonNull(output, "output");
@@ -49,16 +49,20 @@ public final class EvidenceProtocol {
             try { root = root.toRealPath(); }
             catch (IOException error) { throw new IllegalArgumentException("compiler project root is unavailable", error); }
             if (!COLLECTOR.matcher(collector).matches()) throw new IllegalArgumentException("unsupported compiler evidence collector");
-            if (callPositions && !(collector.equals("javac-constants") || collector.equals("kotlin-constants"))) {
+            if ((callPositions || authoredCalls) && !(collector.equals("javac-constants") || collector.equals("kotlin-constants"))) {
                 throw new IllegalArgumentException("call positions require a constants collector");
             }
         }
 
         public Options(Path root, Path output, Path token, String collector) {
-            this(root, output, token, collector, false);
+            this(root, output, token, collector, false, false);
         }
 
-        public Options withCollector(String value) { return new Options(root, output, token, value, callPositions); }
+        public Options(Path root, Path output, Path token, String collector, boolean callPositions) {
+            this(root, output, token, collector, callPositions, false);
+        }
+
+        public Options withCollector(String value) { return new Options(root, output, token, value, callPositions, authoredCalls); }
     }
 
     public record Source(String path, String sha256) {
@@ -234,6 +238,8 @@ public final class EvidenceProtocol {
         String collector = defaultCollector;
         Path root = null, output = null, token = null;
         boolean callPositions = false;
+        boolean authoredCalls = false;
+        boolean authoredSeen = false;
         for (String argument : arguments) {
             int separator = argument.indexOf('=');
             if (separator <= 0) throw new IllegalArgumentException("compiler evidence options must be key=value");
@@ -245,6 +251,12 @@ public final class EvidenceProtocol {
                 case ROOT_OPTION -> root = pathOption(value);
                 case OUTPUT_OPTION -> output = pathOption(value);
                 case TOKEN_OPTION -> token = pathOption(value);
+                case "authoredCalls" -> {
+                    if (authoredSeen) throw new IllegalArgumentException("authoredCalls may be configured only once");
+                    authoredSeen = true;
+                    if (!value.equals("true") && !value.equals("false")) throw new IllegalArgumentException("authoredCalls must be true or false");
+                    authoredCalls = Boolean.parseBoolean(value);
+                }
                 case CALL_POSITIONS_OPTION -> {
                     if (!value.equals("true") && !value.equals("false")) {
                         throw new IllegalArgumentException("compiler call positions option must be true or false");
@@ -258,7 +270,7 @@ public final class EvidenceProtocol {
         if (callPositions && !(collector.equals("javac-constants") || collector.equals("kotlin-constants"))) {
             throw new IllegalArgumentException("call positions require a constants collector");
         }
-        return new Options(root, output, token, collector, callPositions);
+        return new Options(root, output, token, collector, callPositions, authoredCalls);
     }
 
     /** Dagger SPI가 전달한 -A 옵션의 짧은 이름과 정식 이름을 모두 허용한다. */
@@ -471,7 +483,7 @@ public final class EvidenceProtocol {
         return current + rowBytes;
     }
 
-    private static String encode(String value) {
+    static String encode(String value) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 

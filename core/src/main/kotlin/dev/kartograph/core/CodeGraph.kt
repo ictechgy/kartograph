@@ -63,6 +63,35 @@ public class CodeGraph private constructor(
     public val compilerCallPositionsCaptured: Boolean
         get() = state.compilerCallPositionsCaptured
 
+    /** v3 selector와 별도인 compiler-authored 호출 분류다. 누락된 caller의 완전성은 알 수 없다. */
+    public val compilerAuthoredCallers: List<CompilerAuthoredCaller>
+        get() = state.compilerAuthoredCallers
+
+    /** COMPLETE 행의 calls만 해당 caller의 전체 authored 집합이다. 원시 간선과 합치지 않는다. */
+    public fun compilerAuthoredCallsFrom(caller: NodeId): CompilerAuthoredCaller? =
+        state.compilerAuthoredCallersById[caller]
+
+    /** 검증된 side table을 원시 간선·dispatch와 독립적으로 교체한다. */
+    public fun withCompilerAuthoredCalls(callers: Iterable<CompilerAuthoredCaller>): CodeGraph {
+        val rows = callers.toList()
+        require(rows.size <= 200_000 && rows.map { it.caller }.distinct().size == rows.size) { "duplicate authored caller coverage" }
+        val normalized = rows.filter { it.caller in state.nodes }.map { row ->
+            require(state.nodes.getValue(row.caller).let { it.kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) &&
+                NodeAttribute.EXTERNAL_STUB !in it.attributes }) { "authored caller must be a project method" }
+            require(row.calls.all { it.origin != AuthoredCallOrigin.PROJECT || it.target !in state.nodes ||
+                state.nodes.getValue(it.target).kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) }) { "authored target must be a method" }
+            require(row.calls.all { call -> state.nodes[call.target]?.let { target ->
+                (call.origin == AuthoredCallOrigin.BINARY) == (NodeAttribute.EXTERNAL_STUB in target.attributes)
+            } ?: true }) { "authored target scope contradicts graph" }
+            row.retainingTargets(state.nodes.keys).let { it.copy(
+                calls = it.calls.sortedWith(compareBy({ call -> call.offsetUtf16 }, { call -> call.target })),
+                reasons = it.reasons.sortedBy { reason -> reason.name }) }
+        }.sortedBy { it.caller }
+        return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
+            state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses, state.lambdaEscapes,
+            state.locatedCompilerReferences, state.compilerCallPositionsCaptured, state.outgoing, state.incoming, normalized))
+    }
+
     public val edges: List<GraphEdge>
         get() = state.edges
 
@@ -122,6 +151,7 @@ public class CodeGraph private constructor(
             true,
             state.outgoing,
             state.incoming,
+            state.compilerAuthoredCallers,
         ))
     }
 
@@ -165,6 +195,7 @@ public class CodeGraph private constructor(
                 state.compilerCallPositionsCaptured,
                 state.outgoing,
                 state.incoming,
+                state.compilerAuthoredCallers,
             ))
         }
 
@@ -186,6 +217,7 @@ public class CodeGraph private constructor(
             state.compilerCallPositionsCaptured,
             outgoing,
             incoming,
+            state.compilerAuthoredCallers,
         ))
     }
 
@@ -259,7 +291,10 @@ public class CodeGraph private constructor(
         val compilerCallPositionsCaptured: Boolean,
         val outgoing: Map<NodeId, List<GraphEdge>>,
         val incoming: Map<NodeId, List<GraphEdge>>,
-    )
+        val compilerAuthoredCallers: List<CompilerAuthoredCaller> = emptyList(),
+    ) {
+        val compilerAuthoredCallersById: Map<NodeId, CompilerAuthoredCaller> = compilerAuthoredCallers.associateBy { it.caller }
+    }
 
     private data class EdgeSignature(
         val source: NodeId,

@@ -23,10 +23,13 @@ public object CompilerEvidenceReceipts {
         documents.sortedBy { it.toAbsolutePath().normalize().toString() }.forEachIndexed { index, file ->
             val bounded = BoundedCompilerEvidenceReader.read(file)
             val before = bounded.fingerprint
-            val envelope = CompilerEvidenceReader.parseEnvelope(bounded.text)
-            val document = envelope.evidence
+            val authored = if (bounded.text.startsWith(CompilerAuthoredCallReader.HEADER + "\n"))
+                CompilerAuthoredCallReader.parse(bounded.text, bounded.fingerprint) else null
+            val envelope = if (authored == null) CompilerEvidenceReader.parseEnvelope(bounded.text) else null
+            val document = authored?.evidence ?: requireNotNull(envelope).evidence
+            if (authored != null) require(CompilerAuthoredCallOptions.isEnabled(inputs)) { "authored evidence requires recorded profile option" }
             require(document.inputToken == token) { "compiler evidence belongs to a different compilation" }
-            if (envelope.callStats != null) {
+            if (envelope?.callStats != null) {
                 require(CompilerCallPositionOptions.isEnabled(inputs)) {
                     "v3 compiler evidence requires a recorded call positions option"
                 }
