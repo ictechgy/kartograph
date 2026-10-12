@@ -302,7 +302,9 @@ public object QuerySnapshotCodec {
                 strings(call["resolvedTargets"]).map(::NodeId), enumValue(call["resolution"]), optionalString(call["model"]))
         }
         val calls = CallDeclarationCodec.parse(rawGraph["callDeclarations"], rawCalls, nodes, rawGraph.containsKey("callDeclarations"))
-        require(calls.all { it.caller in ids && it.target !in ids && it.ordinal >= 0 && it.resolvedTargets.all(ids::contains) }) {
+        val externalStubIds = nodes.filter { NodeAttribute.EXTERNAL_STUB in it.attributes }.mapTo(mutableSetOf()) { it.id }
+        require(calls.all { it.caller in ids && (it.target !in ids || it.target in externalStubIds) &&
+            it.ordinal >= 0 && it.resolvedTargets.all(ids::contains) }) {
             "query snapshot contains invalid external calls"
         }
         val providers = list(graph["serviceProviders"]).map { raw ->
