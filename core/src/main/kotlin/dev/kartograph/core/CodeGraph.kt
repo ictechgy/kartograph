@@ -351,7 +351,14 @@ public class CodeGraph private constructor(
             nodes: Map<NodeId, GraphNode>,
         ): List<ExternalCall> = calls
             .filter { it.caller in nodes && (it.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(it.target).attributes) }
-            .map { it.copy(resolvedTargets = it.resolvedTargets.filter(nodes::containsKey).distinct().sorted()) }
+            .map { it.copy(resolvedTargets = it.resolvedTargets.filter(nodes::containsKey).distinct().sorted(),
+                declaration = it.declaration?.takeUnless { declaration ->
+                    declaration.scope == CallDeclarationScope.PROJECT &&
+                        (declaration.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(declaration.target).attributes)
+                }?.let { declaration ->
+                    require(declaration.ownerChain.size in 1..CallDeclaration.MAX_OWNER_CHAIN) { "invalid call declaration chain size" }
+                    declaration.copy(ownerChain = declaration.ownerChain.toList())
+                }) }
             .distinct().sorted()
 
         private fun mergeAllEdges(edges: Iterable<GraphEdge>, nodes: Map<NodeId, GraphNode>): List<GraphEdge> {

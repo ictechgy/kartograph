@@ -19,7 +19,17 @@ public data class ExternalCall(
     val resolution: CallResolution = CallResolution.UNRESOLVED,
     /** 해당 API 호출의 값·대상 해석에 대응하는 라이브러리 모델 식별자다. 해석 완료 여부는 resolution으로 구분한다. */
     val model: String? = null,
+    /** class header 사슬로 확인한 선언이다. null은 미확정이며 dispatch 후보와 별개다. */
+    val declaration: CallDeclaration? = null,
 ) : Comparable<ExternalCall> {
+    init {
+        require(declaration == null || (declaration.ownerChain.first() == owner &&
+            declaration.target.value == "method:${declaration.ownerChain.last()}#$name$descriptor" &&
+            kind in setOf(InvocationKind.VIRTUAL, InvocationKind.STATIC, InvocationKind.SPECIAL) && !name.startsWith('<'))) {
+            "call declaration does not match the observed operand"
+        }
+    }
+
     /** 기존 JVM identity 규칙과 동일한 외부 메서드 식별자다. */
     public val target: NodeId get() = NodeId("method:$owner#$name$descriptor")
 
@@ -27,4 +37,25 @@ public data class ExternalCall(
     override fun compareTo(other: ExternalCall): Int = compareValuesBy(this, other,
         { it.caller.value }, { it.target.value }, { it.kind.name },
         { it.ordinal }, { it.location?.path.orEmpty() }, { it.location?.line ?: 0 })
+}
+
+/** 확인한 JVM 선언이 프로젝트 정점인지 외부 header인지 구분한다. */
+public enum class CallDeclarationScope { PROJECT, EXTERNAL }
+
+/** 선언 identity와 operand부터 첫 선언까지 확인한 순서다. 실행 body나 전체 JVM linkage 성공의 증명이 아니다. */
+public data class CallDeclaration(
+    val target: NodeId,
+    val scope: CallDeclarationScope,
+    val ownerChain: List<String>,
+) {
+    init {
+        require(ownerChain.size in 1..MAX_OWNER_CHAIN && ownerChain.distinct().size == ownerChain.size &&
+            ownerChain.all { it.isNotBlank() && it.length <= 65535 && it.none { c -> c in ".;[\u0000#" } } &&
+            target.value.startsWith("method:${ownerChain.last()}#")) { "invalid call declaration chain" }
+    }
+
+    public companion object {
+        /** 손상되거나 과도한 hierarchy를 무한 탐색하거나 할당하지 않는 공개 경계다. */
+        public const val MAX_OWNER_CHAIN: Int = 256
+    }
 }

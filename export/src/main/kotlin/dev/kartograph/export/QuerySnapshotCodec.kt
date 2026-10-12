@@ -171,6 +171,10 @@ public object QuerySnapshotCodec {
                 if (bridges.isEmpty()) graph else graph + ("kotlinDefaultBridges" to bridges)
             }
             .let { graph ->
+                val declarations = CallDeclarationCodec.records(snapshot.graph.externalCalls)
+                if (declarations.isEmpty()) graph else graph + ("callDeclarations" to declarations)
+            }
+            .let { graph ->
                 val declarations = snapshot.graph.nodes.values.mapNotNull { node ->
                     node.sourceDeclaration?.let { it.toJsonValue() + ("usr" to node.id.value) }
                 }.sortedBy { it["usr"] as String }
@@ -287,12 +291,13 @@ public object QuerySnapshotCodec {
         val compilerCallEvidence = if (rawGraph.containsKey("compilerCallEvidence")) {
             parseCompilerCallEvidence(rawGraph, version, nodes)
         } else null
-        val calls = list(graph["externalCalls"]).map { raw ->
+        val rawCalls = list(graph["externalCalls"]).map { raw ->
             val call = objectValue(raw)
             ExternalCall(NodeId(string(call["caller"])), string(call["owner"]), string(call["name"]), string(call["descriptor"]),
                 enumValue(call["kind"]), location(call["location"]), integer(call["ordinal"]),
                 strings(call["resolvedTargets"]).map(::NodeId), enumValue(call["resolution"]), optionalString(call["model"]))
         }
+        val calls = CallDeclarationCodec.parse(rawGraph["callDeclarations"], rawCalls, nodes, rawGraph.containsKey("callDeclarations"))
         require(calls.all { it.caller in ids && it.target !in ids && it.ordinal >= 0 && it.resolvedTargets.all(ids::contains) }) {
             "query snapshot contains invalid external calls"
         }
