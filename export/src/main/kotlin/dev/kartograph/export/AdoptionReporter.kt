@@ -35,19 +35,21 @@ public object AdoptionReporter {
         expiredSuppressions: Int = 0,
         unmatchedKeepRules: Collection<KeepRule> = emptyList(),
         inputHints: Collection<InputHint> = emptyList(),
+        externalRetentionContexts: Collection<ExternalRetentionDocumentContext> = emptyList(),
     ): String {
         val sortedRules = unmatchedKeepRules.sortedWith(
             compareBy({ it.location.path }, { it.location.line ?: 0 }),
         )
         // 호출자의 컬렉션 종류와 무관하게 enum 선언 순서로 고정해 결정적 출력을 만든다.
         val sortedHints = inputHints.distinct().sortedBy { hint -> hint.ordinal }
+        val externalCaveats = ExternalRetentionCaveats.messages(externalRetentionContexts)
         return when (format) {
-            ReportFormat.TEXT -> text(findings, limitations, sortedRules, sortedHints)
-            ReportFormat.GRADLE -> gradle(findings, limitations, sortedRules, sortedHints)
-            ReportFormat.GITHUB_ACTIONS -> github(findings, limitations, sortedRules, sortedHints)
-            ReportFormat.JSON -> json(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules, sortedHints)
-            ReportFormat.SARIF -> sarif(findings, limitations, confidence, sortedRules, sortedHints)
-            ReportFormat.MARKDOWN -> markdown(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules, sortedHints)
+            ReportFormat.TEXT -> text(findings, limitations, sortedRules, sortedHints, externalCaveats)
+            ReportFormat.GRADLE -> gradle(findings, limitations, sortedRules, sortedHints, externalCaveats)
+            ReportFormat.GITHUB_ACTIONS -> github(findings, limitations, sortedRules, sortedHints, externalCaveats)
+            ReportFormat.JSON -> json(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules, sortedHints, externalCaveats)
+            ReportFormat.SARIF -> sarif(findings, limitations, confidence, sortedRules, sortedHints, externalCaveats)
+            ReportFormat.MARKDOWN -> markdown(findings, limitations, suppressedCount, confidence, expiredSuppressions, sortedRules, sortedHints, externalCaveats)
         }
     }
 
@@ -56,6 +58,7 @@ public object AdoptionReporter {
         limitations: Collection<AnalysisLimitation>,
         unmatchedKeepRules: List<KeepRule>,
         inputHints: Collection<InputHint>,
+        externalCaveats: List<String>,
     ): String = buildString {
         findings.sorted().forEach { finding ->
             append("unreachable\t${finding.nodeId}\t${finding.location.toPlainTextLocation()}")
@@ -70,6 +73,7 @@ public object AdoptionReporter {
         }
         limitations.sortedBy(AnalysisLimitation::name)
             .forEach { append("limitation\t${it.name}\t${it.description}\n") }
+        externalCaveats.forEach { append("limitation\tEXTERNAL_RETENTIONS\t$it\n") }
     }
 
     private fun gradle(
@@ -77,6 +81,7 @@ public object AdoptionReporter {
         limitations: Collection<AnalysisLimitation>,
         unmatchedKeepRules: List<KeepRule>,
         inputHints: Collection<InputHint>,
+        externalCaveats: List<String>,
     ): String = buildString {
         findings.sorted().forEach { finding ->
             val location = finding.location.toPlainTextLocation().takeUnless { it == "-" }?.plus(": ").orEmpty()
@@ -91,6 +96,7 @@ public object AdoptionReporter {
         limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
             append("kartograph limitation ${limitation.name}: ${limitation.description}\n")
         }
+        externalCaveats.forEach { append("kartograph limitation EXTERNAL_RETENTIONS: $it\n") }
     }
 
     private fun github(
@@ -98,6 +104,7 @@ public object AdoptionReporter {
         limitations: Collection<AnalysisLimitation>,
         unmatchedKeepRules: List<KeepRule>,
         inputHints: Collection<InputHint>,
+        externalCaveats: List<String>,
     ): String = buildString {
         findings.sorted().forEach { finding ->
             val properties = buildList {
@@ -129,6 +136,9 @@ public object AdoptionReporter {
             append("::notice title=kartograph limitation ${limitation.name}::")
             append(githubMessage(limitation.description)).append('\n')
         }
+        externalCaveats.forEach {
+            append("::notice title=kartograph external retentions::").append(githubMessage(it)).append('\n')
+        }
     }
 
     private fun json(
@@ -139,6 +149,7 @@ public object AdoptionReporter {
         expiredSuppressions: Int,
         unmatchedKeepRules: List<KeepRule>,
         inputHints: Collection<InputHint>,
+        externalCaveats: List<String>,
     ): String = buildString {
         append("{\n  \"command\": \"dead\",\n  \"diagnostics\": [")
         val sorted = findings.sorted()
@@ -191,7 +202,7 @@ public object AdoptionReporter {
             append("  ]")
         }
         append(",\n  \"limitations\": [")
-        val descriptions = limitations.map(AnalysisLimitation::description).sorted()
+        val descriptions = (limitations.map(AnalysisLimitation::description) + externalCaveats).sorted()
         if (descriptions.isEmpty()) {
             append("]")
         } else {
@@ -222,6 +233,7 @@ public object AdoptionReporter {
         confidence: Map<NodeId, FindingConfidence>,
         unmatchedKeepRules: List<KeepRule>,
         inputHints: Collection<InputHint>,
+        externalCaveats: List<String>,
     ): String = buildString {
         append("{\n  \"${'$'}schema\": \"https://json.schemastore.org/sarif-2.1.0.json\",\n  \"runs\": [\n    {\n")
         append("      \"invocations\": [{\"executionSuccessful\": true, \"toolExecutionNotifications\": [")
@@ -247,6 +259,11 @@ public object AdoptionReporter {
             append("{\"descriptor\": {\"id\": \"").append(jsonEscape(hint.id))
             append("\"}, \"level\": \"note\", \"message\": {\"text\": \"")
             append(jsonEscape(hint.description)).append("\"}}")
+        }
+        externalCaveats.forEachIndexed { index, message ->
+            if (sortedLimitations.isNotEmpty() || unmatchedKeepRules.isNotEmpty() || inputHints.isNotEmpty() || index > 0) append(',')
+            append("{\"descriptor\": {\"id\": \"externalRetentions\"}, \"level\": \"note\", ")
+            append("\"message\": {\"text\": \"").append(jsonEscape(message)).append("\"}}")
         }
         append("]}],\n")
         append("      \"results\": [")
@@ -294,6 +311,7 @@ public object AdoptionReporter {
         expiredSuppressions: Int,
         unmatchedKeepRules: List<KeepRule>,
         inputHints: Collection<InputHint>,
+        externalCaveats: List<String>,
     ): String = buildString {
         append("## kartograph dead findings\n\n")
         if (findings.isEmpty()) {
@@ -337,6 +355,7 @@ public object AdoptionReporter {
         limitations.sortedBy(AnalysisLimitation::name).forEach { limitation ->
             append("- ").append(limitation.name).append(" — ").append(limitation.description).append('\n')
         }
+        externalCaveats.forEach { append("- EXTERNAL_RETENTIONS — ").append(markdownCell(it)).append('\n') }
     }
 
     private fun markdownCell(value: String): String = value.replace("|", "\\|").replace("\r", " ").replace("\n", " ")

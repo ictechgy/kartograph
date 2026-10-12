@@ -43,4 +43,26 @@ class SnapshotAggregationTest {
         assertEquals(listOf("inlined-constant-references: 9", ":feature:jobs:debug missing-generated-keep-files: 1", SnapshotAggregation.RETENTION_LIMITATION),
             SnapshotAggregation.limitations(listOf(root, feature), listOf("inlined-constant-references: 9")))
     }
+    @Test
+    fun `project pruning and rebase cannot erase or rewrite external document context`() {
+        val parsed = dev.kartograph.export.ExternalRetentionCodec.parseDocument("""{
+            "format":"external-retentions","version":0,"producedBy":{"name":"isthmus","version":"test"},
+            "generatedAt":"2026-10-12T12:00:00Z","retentions":[{"symbol":{"qualifiedName":"Main","usr":"class:p/Main"},
+            "reason":"bridge","evidence":{"channel":"x","caller":{"platform":"dart","path":"lib/main.dart","line":2}}}],
+            "provenance":{"version":2,"project":"/original/other-language","opaque":{"origin":"future"}}}""")
+        val original = member("feature/jobs", 2, ":feature:jobs:debug", emptyList())
+        val live = original.copy(snapshot = original.snapshot.copy(retention = parsed.retentions,
+            externalRetentionContexts = listOf(parsed.context)))
+        assertEquals("lib/main.dart", SnapshotAggregation.retention(listOf(live)).single().location!!.path)
+        val pruned = live.copy(snapshot = live.snapshot.copy(retention = emptyList()))
+        val contexts = SnapshotAggregation.externalRetentionContexts(listOf(live, pruned))
+        assertEquals(listOf(parsed.context), contexts)
+        val merged = pruned.snapshot.copy(externalRetentionContexts = contexts)
+        for (compact in listOf(false, true)) {
+            val restored = dev.kartograph.export.QuerySnapshotCodec.parse(dev.kartograph.export.QuerySnapshotCodec.render(merged, compact))
+            assertEquals(parsed.context.canonicalDocument, restored.externalRetentionContexts.single().canonicalDocument)
+            assertEquals(pruned.snapshot.provenance, restored.provenance)
+        }
+    }
+
 }

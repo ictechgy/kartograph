@@ -11,7 +11,7 @@ import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.RetentionReason
 import dev.kartograph.export.AdoptionReporter
 import dev.kartograph.export.BaselineCodec
-import dev.kartograph.export.ExternalRetentionCodec
+import dev.kartograph.export.ExternalRetentionCaveats
 import dev.kartograph.export.ReportFormat
 import dev.kartograph.export.SuppressCodec
 import dev.kartograph.export.toPlainTextLocation
@@ -87,6 +87,7 @@ internal object DeadCommand {
     }
 
     private fun execute(options: DeadOptions, output: PrintStream, error: PrintStream): Int {
+        val externalDocument = options.externalRetentions?.let(ExternalRetentionFiles::read)
         val analysis = RetentionPipeline.analyze(
             RetentionInputs(
                 classRoots = options.classRoots,
@@ -100,12 +101,8 @@ internal object DeadCommand {
                 classpath = options.classpath,
                 serviceResources = options.serviceResources,
                 includePrivateMembers = options.includePrivateMembers,
-                externalRetentions = options.externalRetentions?.let { path ->
-                    require(Files.size(path) <= 16 * 1024 * 1024) {
-                        "external retention input is too large; narrow the inputs"
-                    }
-                    ExternalRetentionCodec.parse(Files.readString(path))
-                }.orEmpty(),
+                externalRetentions = externalDocument?.retentions.orEmpty(),
+                externalRetentionContexts = listOfNotNull(externalDocument?.context),
             ),
         )
         val graph = analysis.graph
@@ -113,6 +110,8 @@ internal object DeadCommand {
         if (options.explainNodeId != null) {
             val status = explain(options.explainNodeId, graph, result, output, error)
             if (status == ExitStatus.SUCCESS.code) printLimitations(output)
+            val caveatOutput = if (status == ExitStatus.SUCCESS.code) output else error
+            ExternalRetentionCaveats.messages(analysis.externalRetentionContexts).forEach { caveatOutput.println("limitation\t$it") }
             return status
         }
 
@@ -132,6 +131,7 @@ internal object DeadCommand {
             target.parent?.let { parent -> Files.createDirectories(parent) }
             Files.writeString(target, BaselineCodec.render(allFindings))
             output.println("baseline\twritten\t${allFindings.size}")
+            ExternalRetentionCaveats.messages(analysis.externalRetentionContexts).forEach { output.println("limitation\t$it") }
             return ExitStatus.SUCCESS.code
         }
         val scoped = options.since?.let { reference ->
@@ -162,6 +162,7 @@ internal object DeadCommand {
                 expiredSuppressions,
                 analysis.unmatchedKeepRules,
                 inputHints = analysis.inputHints.takeIf { findings.isNotEmpty() }.orEmpty(),
+                externalRetentionContexts = analysis.externalRetentionContexts,
             ),
         )
         return if (options.strict && findings.isNotEmpty()) ExitStatus.FINDINGS.code else ExitStatus.SUCCESS.code
