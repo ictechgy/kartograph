@@ -78,6 +78,15 @@ internal object CallDeclarationCodec {
         }
         require(call.caller.value.startsWith("method:") && project(call.caller)?.kind in CALLER_KINDS) { "call declaration requires a method caller" }
         val chain = declaration.ownerChain
+        if (call.kind == InvocationKind.INTERFACE) {
+            // kind는 side table과 raw call 양쪽에서 일치해야 하며 한 owner만 허용된다.
+            // 외부 inventory는 snapshot에 없으므로 재인증하지 않고, 알려진 프로젝트 사실과의 모순만 거부한다.
+            require(chain.size == 1 && declaration.scope == CallDeclarationScope.EXTERNAL &&
+                type(call.owner) == null && project(declaration.target) == null) {
+                "direct interface declaration conflicts with a project owner or target"
+            }
+            return
+        }
         chain.forEachIndexed { index, owner ->
             type(owner)?.let { node ->
                 require(node.kind in CLASS_KINDS && node.jvmSignature == owner) { "call declaration chain conflicts with a project class" }
