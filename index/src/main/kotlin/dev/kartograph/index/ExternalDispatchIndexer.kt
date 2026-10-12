@@ -17,7 +17,8 @@ internal object ExternalDispatchIndexer {
     fun enrich(graph: CodeGraph, hierarchy: ClassHierarchy): CodeGraph = enrichBounded(graph, hierarchy, null).graph
 
     /** 후보를 한도 넘게 모으지 않으며 초과한 선언은 일부 후보로 완전성을 가장하지 않는다. */
-    fun enrichBounded(graph: CodeGraph, hierarchy: ClassHierarchy, maximumCandidates: Int?): DispatchEnrichment {
+    fun enrichBounded(graph: CodeGraph, hierarchy: ClassHierarchy, maximumCandidates: Int?,
+        projectCalls: List<dev.kartograph.core.ExternalCall> = emptyList()): DispatchEnrichment {
         val types = graph.nodes.values.filter { it.kind in TYPE_KINDS && it.jvmSignature != null }
             .associateBy { requireNotNull(it.jvmSignature) }
         val ancestors = mutableMapOf<String, Set<String>>()
@@ -39,7 +40,14 @@ internal object ExternalDispatchIndexer {
         val targetCache = mutableMapOf<dev.kartograph.core.NodeId, DispatchTargets>()
         var overLimitCalls = 0
         val derived = mutableListOf<GraphEdge>()
-        val calls = graph.externalCalls.map { call ->
+        // CodeGraph는 내부 target 호출을 externalCalls에서 제거한다. assembly의 원래 opcode 사실을 별도로 받는다.
+        val internalVirtualCalls = projectCalls.filter { call ->
+            val method = graph.node(call.target) ?: return@filter false
+            call.kind in VIRTUAL_KINDS && method.jvmVisibility != Visibility.PRIVATE &&
+                JvmModifier.FINAL !in method.jvmModifiers && JvmModifier.STATIC !in method.jvmModifiers &&
+                JvmModifier.FINAL !in types[call.owner]?.jvmModifiers.orEmpty()
+        }
+        val calls = (graph.externalCalls + internalVirtualCalls).map { call ->
             if (call.kind !in VIRTUAL_KINDS || call.resolution == CallResolution.RUNTIME_MODEL) return@map call
             val resolved = targetCache.getOrPut(call.target) {
                 // 프로젝트 선언을 먼저 확인한다. 외부 hierarchy에는 앱 메서드가 들어 있지 않다.
@@ -87,7 +95,8 @@ internal object ExternalDispatchIndexer {
                     val matching = subtypes[call.owner].orEmpty()
                     val candidates = linkedSetOf<dev.kartograph.core.NodeId>()
                     var overLimit = false
-                    candidateLoop@ for (type in matching) {
+                    // 외부 정적 수신 타입도 프로젝트 superclass body를 그대로 상속할 수 있다.
+                    candidateLoop@ for (type in (matching + call.owner).distinct()) {
                         val owners = ancestorsOf(type)
                         if (owners.any { isInterface(it) == null && declaredMethod(it) != null }) incompleteKinds = true
                         // 가장 가까운 class 선언이 외부 body여도 더 먼 프로젝트 구현으로 건너뛰지 않는다.
@@ -126,7 +135,9 @@ internal object ExternalDispatchIndexer {
                 }
             }
             if (resolved.overLimit) overLimitCalls++
-            resolved.targets.forEach { derived += GraphEdge(call.caller, it, EdgeKind.OVERRIDE, origin = EdgeOrigin.DISPATCH_MODEL) }
+            resolved.targets.filter { it != call.target }.forEach {
+                derived += GraphEdge(call.caller, it, EdgeKind.OVERRIDE, origin = EdgeOrigin.DISPATCH_MODEL)
+            }
             call.copy(resolvedTargets = resolved.targets, resolution = resolved.resolution)
         }
         return DispatchEnrichment(graph.enrichedWith(derived, calls, replacingOrigin = EdgeOrigin.DISPATCH_MODEL), overLimitCalls)
