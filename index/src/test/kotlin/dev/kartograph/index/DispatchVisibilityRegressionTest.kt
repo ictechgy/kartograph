@@ -137,6 +137,35 @@ class DispatchVisibilityRegressionTest {
         }
     }
 
+    @Test
+    fun `unknown legacy hierarchy kinds do not shadow a known project class`(@TempDir root: Path) {
+        val classes = compile(root, mapOf(
+            "a/I.java" to "package a; public interface I { String m(); }",
+            "z/Base.java" to "package z; public class Base { public String m() { return \"base\"; } }",
+            "z/Child.java" to "package z; public class Child extends Base implements a.I {}",
+            "z/Entry.java" to "package z; public class Entry { public static String run(Child value) { return value.m(); } }",
+        ))
+        URLClassLoader(arrayOf(classes.toUri().toURL()), null).use { loader ->
+            val child = loader.loadClass("z.Child")
+            assertEquals("base", loader.loadClass("z.Entry").getMethod("run", child)
+                .invoke(null, child.getConstructor().newInstance()))
+        }
+        Files.delete(classes.resolve("a/I.class"))
+        val graph = ClassFileIndexer().index(listOf(classes))
+        val entries = mapOf("a/I" to setOf("java/lang/Object"))
+        val methods = mapOf("a/I" to listOf(dev.kartograph.core.HierarchyMethod(
+            "m", "()Ljava/lang/String;", dev.kartograph.core.Visibility.PUBLIC)))
+        val legacy = dev.kartograph.core.ClassHierarchy(entries, methods, emptyMap())
+        val known = dev.kartograph.core.ClassHierarchy(entries, methods, emptyMap(), mapOf("a/I" to true))
+        val expected = listOf(JvmNodeId.methodId("z/Base", "m", "()Ljava/lang/String;"))
+        val legacyCall = ExternalDispatchIndexer.enrich(graph, legacy).externalCalls.single { it.name == "m" }
+        val knownCall = ExternalDispatchIndexer.enrich(graph, known).externalCalls.single { it.name == "m" }
+        assertEquals(expected, legacyCall.resolvedTargets, "unknown kind must not hide the inherited project implementation")
+        assertEquals(dev.kartograph.core.CallResolution.UNRESOLVED, legacyCall.resolution)
+        assertEquals(expected, knownCall.resolvedTargets)
+        assertEquals(dev.kartograph.core.CallResolution.PROJECT_CANDIDATES, knownCall.resolution)
+    }
+
     private fun cachedGraph(root: Path, classes: Path, classpath: List<Path>? = null): dev.kartograph.core.CodeGraph {
         val uncached = ClassFileIndexer().indexWithObservations(listOf(classes), classpath)
         val cache = ClassIndexCache(root.resolve("cache"), "dispatch-visibility-regression")

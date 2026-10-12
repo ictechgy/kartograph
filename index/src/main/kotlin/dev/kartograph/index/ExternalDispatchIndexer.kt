@@ -53,8 +53,10 @@ internal object ExternalDispatchIndexer {
                 val declarations = ancestorsOf(call.owner).mapNotNull { owner -> declaredMethod(owner)?.let { owner to it } }
                 // class 선언은 인터페이스보다 먼저 해석하며 더 가까운 선언을 건너뛰지 않는다.
                 val declared = declarations.firstOrNull { it.first == call.owner }
-                    ?: declarations.firstOrNull { isInterface(it.first) != true }
+                    ?: declarations.firstOrNull { isInterface(it.first) == false }
                     ?: declarations.firstOrNull()
+                // kind가 없는 legacy/partial header는 class shadow로 확정하지 않는다.
+                var incompleteKinds = declarations.any { isInterface(it.first) == null }
                 val declarationOwner = declared?.first ?: call.owner
                 val declaration = declared?.second
                 fun visibleOverride(owner: String): Boolean {
@@ -76,16 +78,21 @@ internal object ExternalDispatchIndexer {
                     // 상속 operand로 호출한 final 프로젝트 구현은 남기되 override 후보는 만들지 않는다.
                     val exact = if (declaration?.isFinal == true && !declaration.isStatic && declarationOwner in types)
                         listOf(JvmNodeId.methodId(declarationOwner, call.name, call.descriptor)) else emptyList()
-                    DispatchTargets(exact, if (exact.isEmpty()) CallResolution.NO_PROJECT_TARGET else CallResolution.PROJECT_CANDIDATES)
+                    DispatchTargets(exact, when {
+                        incompleteKinds -> CallResolution.UNRESOLVED
+                        exact.isEmpty() -> CallResolution.NO_PROJECT_TARGET
+                        else -> CallResolution.PROJECT_CANDIDATES
+                    })
                 } else {
                     val matching = subtypes[call.owner].orEmpty()
                     val candidates = linkedSetOf<dev.kartograph.core.NodeId>()
                     var overLimit = false
                     candidateLoop@ for (type in matching) {
                         val owners = ancestorsOf(type)
+                        if (owners.any { isInterface(it) == null && declaredMethod(it) != null }) incompleteKinds = true
                         // 가장 가까운 class 선언이 외부 body여도 더 먼 프로젝트 구현으로 건너뛰지 않는다.
                         val classBody = owners.firstOrNull { owner ->
-                            isInterface(owner) != true && declaredMethod(owner)?.let {
+                            isInterface(owner) == false && declaredMethod(owner)?.let {
                                 !it.isStatic && it.visibility != Visibility.PRIVATE && visibleOverride(owner)
                             } == true
                         }
@@ -111,7 +118,7 @@ internal object ExternalDispatchIndexer {
                         }
                     }
                     DispatchTargets(if (overLimit) emptyList() else candidates.sorted(), when {
-                        overLimit -> CallResolution.UNRESOLVED
+                        overLimit || incompleteKinds -> CallResolution.UNRESOLVED
                         candidates.isNotEmpty() -> CallResolution.PROJECT_CANDIDATES
                         matching.isEmpty() -> CallResolution.NO_PROJECT_TARGET
                         else -> CallResolution.UNRESOLVED
