@@ -1,5 +1,8 @@
 package dev.kartograph.core
 
+import java.util.IdentityHashMap
+import java.util.RandomAccess
+
 /**
  * 중복과 dangling edge를 정리하고 방향별 인접 목록을 한 번만 만드는 불변 코드 그래프다.
  * 분석 알고리즘이 전체 간선을 반복 스캔하지 않게 한다.
@@ -349,17 +352,36 @@ public class CodeGraph private constructor(
         private fun normalizeExternalCalls(
             calls: Iterable<ExternalCall>,
             nodes: Map<NodeId, GraphNode>,
-        ): List<ExternalCall> = calls
-            .filter { it.caller in nodes && (it.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(it.target).attributes) }
-            .map { it.copy(resolvedTargets = it.resolvedTargets.filter(nodes::containsKey).distinct().sorted(),
-                declaration = it.declaration?.takeUnless { declaration ->
-                    declaration.scope == CallDeclarationScope.PROJECT &&
-                        (declaration.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(declaration.target).attributes)
-                }?.let { declaration ->
-                    require(declaration.ownerChain.size in 1..CallDeclaration.MAX_OWNER_CHAIN) { "invalid call declaration chain size" }
-                    declaration.copy(ownerChain = declaration.ownerChain.toList())
-                }) }
-            .distinct().sorted()
+        ): List<ExternalCall> {
+            // 한 번의 정규화 안에서만 공유한다. 새 그래프/가지치기는 현재 정점으로 다시 검증한다.
+            val candidates = IdentityHashMap<List<NodeId>, List<NodeId>>()
+            return calls
+                .filter { it.caller in nodes && (it.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(it.target).attributes) }
+                .map { call ->
+                    val targets = call.resolvedTargets
+                    val canonical = if (targets.isEmpty()) emptyList() else candidates.getOrPut(targets) {
+                        val retained = targets.filter(nodes::containsKey).distinct().sorted()
+                        if (retained.size < 2) retained else CanonicalTargets(retained)
+                    }
+                    call.copy(resolvedTargets = canonical,
+                        declaration = call.declaration?.takeUnless { declaration ->
+                            declaration.scope == CallDeclarationScope.PROJECT &&
+                                (declaration.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(declaration.target).attributes)
+                        }?.let { declaration ->
+                            require(declaration.ownerChain.size in 1..CallDeclaration.MAX_OWNER_CHAIN) { "invalid call declaration chain size" }
+                            declaration.copy(ownerChain = declaration.ownerChain.toList())
+                        })
+                }
+                .distinct().sorted()
+        }
+
+        // 방어 복사만 감싸므로 해시가 바뀌지 않는다. 같은 후보를 가진 호출마다 전체 목록을 재해시하지 않는다.
+        private class CanonicalTargets(private val entries: List<NodeId>) : AbstractList<NodeId>(), RandomAccess {
+            private val cachedHashCode = entries.hashCode()
+            override val size: Int get() = entries.size
+            override fun get(index: Int): NodeId = entries[index]
+            override fun hashCode(): Int = cachedHashCode
+        }
 
         private fun mergeAllEdges(edges: Iterable<GraphEdge>, nodes: Map<NodeId, GraphNode>): List<GraphEdge> {
             val merged = mutableMapOf<EdgeSignature, EdgeAccumulator>()
