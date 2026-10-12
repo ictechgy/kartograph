@@ -14,6 +14,10 @@ import kotlin.coroutines.Continuation
 import kotlin.io.path.createDirectories
 import kotlin.test.*
 import org.junit.jupiter.api.io.TempDir
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.Opcodes
+import org.objectweb.asm.tree.ClassNode
+import org.objectweb.asm.tree.MethodInsnNode
 
 /** 실제 javac/Kotlin 산출물과 JVM body를 declaration·raw CALL·dispatch별로 독립 검증한다. */
 class DirectInterfaceDeclarationJvmTest {
@@ -104,9 +108,27 @@ class DirectInterfaceDeclarationJvmTest {
         }
         assertNull(graph.externalCalls.single { it.owner == "p/Entry\$Child" && it.name == "value" }.declaration)
         val plain = graph.externalCalls.single { it.caller.value.contains("#plain(") && it.name == "toString" }
-        assertEquals(InvocationKind.VIRTUAL, plain.kind)
-        assertEquals("java/lang/Object", plain.owner)
-        assertEquals(plain.target, plain.declaration?.target)
+        // --release 17이어도 javac17은 Object invokevirtual, javac21은 Plain invokeinterface를 낸다.
+        // index 결과와 독립적으로 실제 operand를 읽고 두 유효한 lowering의 증명 경계를 각각 확인한다.
+        val bytecode = ClassNode().also { ClassReader(Files.readAllBytes(classes.resolve("p/Entry.class"))).accept(it, 0) }
+        val operand = bytecode.methods.single { it.name == "plain" }.instructions.iterator().asSequence()
+            .filterIsInstance<MethodInsnNode>().single { it.name == "toString" }
+        assertEquals(operand.owner, plain.owner)
+        assertEquals(JvmNodeId.methodId(operand.owner, operand.name, operand.desc), plain.target)
+        when (operand.opcode to operand.owner) {
+            Opcodes.INVOKEVIRTUAL to "java/lang/Object" -> {
+                assertFalse(operand.itf)
+                assertEquals(InvocationKind.VIRTUAL, plain.kind)
+                assertEquals(plain.target, plain.declaration?.target)
+            }
+            Opcodes.INVOKEINTERFACE to "p/Entry\$Plain" -> {
+                assertTrue(operand.itf)
+                assertEquals(InvocationKind.INTERFACE, plain.kind)
+                assertNull(graph.node(plain.target))
+                assertNull(plain.declaration)
+            }
+            else -> fail("unexpected javac Plain.toString operand: ${operand.opcode} ${operand.owner}")
+        }
         URLClassLoader(arrayOf(classes.toUri().toURL(), dependency.toUri().toURL()), null).use { loader ->
             val entry = loader.loadClass("p.Entry")
             val printable = loader.loadClass("p.Entry\$Printable").getConstructor().newInstance()
