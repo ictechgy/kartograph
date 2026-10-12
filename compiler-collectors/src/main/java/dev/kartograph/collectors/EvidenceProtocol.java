@@ -41,13 +41,19 @@ public final class EvidenceProtocol {
     private EvidenceProtocol() {}
 
     /** compiler가 읽을 절대 경로 옵션이다. 이 값들은 raw 문서에 직렬화하지 않는다. */
-    public record Options(Path root, Path output, Path token, String collector, boolean callPositions, boolean authoredCalls) {
+    public record Options(Path root, Path output, Path token, String collector, boolean callPositions, boolean authoredCalls, boolean callerInventory, Path classOutput) {
         public Options {
             Objects.requireNonNull(root, "root");
             Objects.requireNonNull(output, "output");
             Objects.requireNonNull(token, "token");
             try { root = root.toRealPath(); }
             catch (IOException error) { throw new IllegalArgumentException("compiler project root is unavailable", error); }
+            if (callerInventory) {
+                if (!authoredCalls || classOutput == null) throw new IllegalArgumentException("caller inventory requires authoredCalls and classOutput");
+                try { classOutput = classOutput.toRealPath(); }
+                catch (IOException error) { throw new IllegalArgumentException("caller inventory class output is unavailable", error); }
+                if (!classOutput.startsWith(root) || classOutput.equals(root)) throw new IllegalArgumentException("caller inventory output must be inside the project");
+            } else if (classOutput != null) throw new IllegalArgumentException("classOutput requires callerInventory");
             if (!COLLECTOR.matcher(collector).matches()) throw new IllegalArgumentException("unsupported compiler evidence collector");
             if ((callPositions || authoredCalls) && !(collector.equals("javac-constants") || collector.equals("kotlin-constants"))) {
                 throw new IllegalArgumentException("call positions require a constants collector");
@@ -55,14 +61,18 @@ public final class EvidenceProtocol {
         }
 
         public Options(Path root, Path output, Path token, String collector) {
-            this(root, output, token, collector, false, false);
+            this(root, output, token, collector, false, false, false, null);
         }
 
         public Options(Path root, Path output, Path token, String collector, boolean callPositions) {
-            this(root, output, token, collector, callPositions, false);
+            this(root, output, token, collector, callPositions, false, false, null);
         }
 
-        public Options withCollector(String value) { return new Options(root, output, token, value, callPositions, authoredCalls); }
+        public Options(Path root, Path output, Path token, String collector, boolean callPositions, boolean authoredCalls) {
+            this(root, output, token, collector, callPositions, authoredCalls, false, null);
+        }
+
+        public Options withCollector(String value) { return new Options(root, output, token, value, callPositions, authoredCalls, callerInventory, classOutput); }
     }
 
     public record Source(String path, String sha256) {
@@ -240,6 +250,8 @@ public final class EvidenceProtocol {
         boolean callPositions = false;
         boolean authoredCalls = false;
         boolean authoredSeen = false;
+        boolean callerInventory = false, inventorySeen = false;
+        Path classOutput = null;
         for (String argument : arguments) {
             int separator = argument.indexOf('=');
             if (separator <= 0) throw new IllegalArgumentException("compiler evidence options must be key=value");
@@ -251,6 +263,16 @@ public final class EvidenceProtocol {
                 case ROOT_OPTION -> root = pathOption(value);
                 case OUTPUT_OPTION -> output = pathOption(value);
                 case TOKEN_OPTION -> token = pathOption(value);
+                case "callerInventory" -> {
+                    if (inventorySeen) throw new IllegalArgumentException("callerInventory may be configured only once");
+                    inventorySeen = true;
+                    if (!value.equals("true") && !value.equals("false")) throw new IllegalArgumentException("callerInventory must be true or false");
+                    callerInventory = Boolean.parseBoolean(value);
+                }
+                case "classOutput" -> {
+                    if (classOutput != null) throw new IllegalArgumentException("classOutput may be configured only once");
+                    classOutput = pathOption(value);
+                }
                 case "authoredCalls" -> {
                     if (authoredSeen) throw new IllegalArgumentException("authoredCalls may be configured only once");
                     authoredSeen = true;
@@ -270,7 +292,7 @@ public final class EvidenceProtocol {
         if (callPositions && !(collector.equals("javac-constants") || collector.equals("kotlin-constants"))) {
             throw new IllegalArgumentException("call positions require a constants collector");
         }
-        return new Options(root, output, token, collector, callPositions, authoredCalls);
+        return new Options(root, output, token, collector, callPositions, authoredCalls, callerInventory, classOutput);
     }
 
     /** Dagger SPI가 전달한 -A 옵션의 짧은 이름과 정식 이름을 모두 허용한다. */

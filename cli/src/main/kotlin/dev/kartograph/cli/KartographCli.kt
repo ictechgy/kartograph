@@ -168,7 +168,8 @@ internal object KartographCli {
             indexed.selectedRootByNode[node.id]?.let { options.moduleNames.getOrNull(it) }?.let { node.copy(moduleName = it) } ?: node
         }, original.edges, original.externalCalls, original.serviceProviders, original.enclosures,
             original.callbackArguments, original.parameterUses, original.lambdaEscapes)
-        return if (original.compilerCallPositionsCaptured) tagged.withCompilerCallPositions(original.locatedCompilerReferences) else tagged
+        val located = if (original.compilerCallPositionsCaptured) tagged.withCompilerCallPositions(original.locatedCompilerReferences) else tagged
+        return located.withCompilerSourceFactsFrom(original)
     }
 
     /** 위치 해석 요청과 관측한 누락 한계를 JSON·NDJSON에 동일하게 적용한다. */

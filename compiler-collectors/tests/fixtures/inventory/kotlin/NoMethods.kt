@@ -1,0 +1,2 @@
+package inventory.empty
+interface KotlinNoMethods

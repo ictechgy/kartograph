@@ -58,3 +58,14 @@ After recording, import with `kartograph snapshot --project <project> --classes 
 `processorOutputConfigs.from('config.json')` on the Gradle snapshot task. The
 snapshot rechecks the declared inputs and all observed output bytes; it never
 executes the configuration's command.
+
+### Optional complete caller inventory
+
+For the separate source/backend accounting profile, also pass `callerInventory=true` and
+`classOutput=<existing empty task-owned directory>` together with `authoredCalls=true`.
+Use separate Kotlin and javac output roots. Each actual compile needs fresh outputs; the
+collector never cleans them. The `*-callers.tsv` sidecar belongs in the same successful
+completion receipt as the authored sidecar. Implicit unnamed javac sources, partial
+compilation, stale output files and unsupported ownership layouts are rejected.
+See `docs/COMPILER-CALLER-INVENTORY.md` in the repository for the explicit scoped API and
+remaining unknown constructor/initializer/generated categories.

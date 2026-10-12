@@ -90,13 +90,38 @@ val authoredCallsTest = tasks.register<Exec>("authoredCallsTest") {
     }
 }
 
+val callerInventoryTest = tasks.register<Exec>("callerInventoryTest") {
+    dependsOn(tasks.named("jar"))
+    doFirst {
+        commandLine("python3", layout.projectDirectory.file("tests/caller_inventory.py").asFile.absolutePath,
+            "--collector", tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath,
+            "--compiler-classpath", configurations.getByName("kotlinCompilerRuntime").files.joinToString(File.pathSeparator) { it.absolutePath })
+    }
+}
+
 val kotlinRuntimeTest = tasks.register<Exec>("kotlinRuntimeTest") {
     commandLine("python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_kotlin_runtime.py", "-v")
 }
 
+val publicAuthoredApiInputTest = tasks.register<Exec>("publicAuthoredApiInputTest") {
+    commandLine("python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_public_authored_api.py", "-v")
+}
+
+val publicAuthoredApiTest = tasks.register<Exec>("publicAuthoredApiTest") {
+    dependsOn(publicAuthoredApiInputTest)
+    doFirst {
+        // 소스/class 디렉터리로 대체하지 않는다. 설치물 누락은 verifier가 명시적으로 실패시킨다.
+        commandLine("python3", layout.projectDirectory.file("tests/public_authored_api.py").asFile.absolutePath,
+            "--distribution", providers.gradleProperty("kartograph.consumerDistribution").orNull.orEmpty(),
+            "--version", collectorVersion, "--kotlin-version", kotlinCompilerVersion,
+            "--compiler-classpath", configurations.getByName("kotlinCompilerRuntime").files.joinToString(File.pathSeparator) { it.absolutePath },
+            "--report", layout.buildDirectory.dir("reports/public-authored-api").get().asFile.absolutePath)
+    }
+}
+
 val integrationTest = tasks.register<Exec>("integrationTest") {
     dependsOn(kotlinRuntimeTest)
-    dependsOn(authoredCallsTest)
+    dependsOn(authoredCallsTest, callerInventoryTest, publicAuthoredApiTest)
     dependsOn(outputAttributionTest)
     dependsOn(tasks.named("jar"))
     doFirst {
