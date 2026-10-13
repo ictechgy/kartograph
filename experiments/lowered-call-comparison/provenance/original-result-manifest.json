@@ -1,0 +1,38 @@
+{
+  "comparison.json": {
+    "bytes": 15255,
+    "sha256": "e0c788a80593a3abab85b39af5ad5e15cd31715dd47200fc2d92b6d1ef2dc92f"
+  },
+  "psi-calls.jsonl": {
+    "bytes": 3646,
+    "sha256": "238504b8a5ec2e537e67bf38843449504df578dbc1abebb2ab2044d2a020a9fc"
+  },
+  "javap.txt": {
+    "bytes": 26248,
+    "sha256": "43a6a006f5b112415ae9c275244e0db07b691c56148b180152af5e5764c13795"
+  },
+  "kartograph-graph.json": {
+    "bytes": 23369,
+    "sha256": "7290ca4c93ee340f0e0301c588ab784147361b3b35db4ce9374f43f60c580261"
+  },
+  "stages.json": {
+    "bytes": 516,
+    "sha256": "5ab8b02c04adfb20c500fd8527be85b208a919546faa3c460c0739589c8f8e7f"
+  },
+  "compiled-inputs.json": {
+    "bytes": 701,
+    "sha256": "f0978296e449a8faa16b0457df1282c69ded0995550d736db0e9c8a9db56acfb"
+  },
+  "final-compiled-inputs.json": {
+    "bytes": 701,
+    "sha256": "f0978296e449a8faa16b0457df1282c69ded0995550d736db0e9c8a9db56acfb"
+  },
+  "inputs.json": {
+    "bytes": 5199,
+    "sha256": "88a1d864b3a06d805923c7851ca16ab0eaf7ace66101299546d85592b3dadd3c"
+  },
+  "final-inputs.json": {
+    "bytes": 5199,
+    "sha256": "88a1d864b3a06d805923c7851ca16ab0eaf7ace66101299546d85592b3dadd3c"
+  }
+}

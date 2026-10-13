@@ -1,0 +1,15 @@
+test_all_fixture_relations_require_both_engines (test_compare.FixtureComparisonTest.test_all_fixture_relations_require_both_engines) ... ok
+test_exact_source_rows_pass (test_compare.FixtureComparisonTest.test_exact_source_rows_pass) ... ok
+test_extra_wrong_authored_product_call_fails (test_compare.FixtureComparisonTest.test_extra_wrong_authored_product_call_fails) ... ok
+test_javap_parser_recovers_instruction_and_actual_bootstrap_target (test_compare.FixtureComparisonTest.test_javap_parser_recovers_instruction_and_actual_bootstrap_target) ... ok
+test_missing_bytecode_evidence_is_unclassified (test_compare.FixtureComparisonTest.test_missing_bytecode_evidence_is_unclassified) ... ok
+test_missing_duplicate_wrong_target_unresolved_or_extra_each_fail (test_compare.FixtureComparisonTest.test_missing_duplicate_wrong_target_unresolved_or_extra_each_fail) ... ok
+test_missing_product_edge_is_unclassified (test_compare.FixtureComparisonTest.test_missing_product_edge_is_unclassified) ... ok
+test_no_bootstrap_handle_is_unclassified (test_compare.FixtureComparisonTest.test_no_bootstrap_handle_is_unclassified) ... ok
+test_unused_incoming_raw_call_fails (test_compare.FixtureComparisonTest.test_unused_incoming_raw_call_fails) ... ok
+test_wrong_default_association_is_unclassified (test_compare.FixtureComparisonTest.test_wrong_default_association_is_unclassified) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.004s
+
+OK
