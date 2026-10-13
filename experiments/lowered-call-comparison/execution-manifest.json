@@ -1,0 +1,23 @@
+{
+  "status": "publication-only manifest rebasing; exact executed implementation bytes retained; no new compiler/JVM/product run",
+  "fixtureManifestSha256": "b3b58e3008e32c8bddbf732240b0842b0ebb3f5013d2beb3aa355b43cf15014b",
+  "implementationSha256": {
+    "run.py": "e72e218dda8542c0c9f6c60231d39655fb65ee917029cb1a78a74ab9013d9c2d",
+    "compare.py": "b7d356cf35f88b7fb5f38b792ae1a4e7e9c267aeec43374b1cbdf631469cd90a",
+    "test_compare.py": "9da425e52f9e5071bbdb1f45d8f4c233e8eafde850a36c70b30f903fac06efbd"
+  },
+  "processLifecycle": {
+    "basePath": "experiments/embedded-psi-comparison/run.py",
+    "baseRevision": "254c8ad40e08de6fa899a9ffd8bd3c606b8aad1b",
+    "baseSha256": "f7294d73cdc5efa38b215df268e661fd345fbaa1402a5375fcf25d6b09817519",
+    "commandAndStopProcessAstIdentical": false,
+    "successorDelta": "SIGTERM raises through existing child cleanup; command adds explicit bounded JVM environment; final selected-input equality readback. stop_process unchanged. Raw compiler/javac/javap heap flags and final deadline check are explicit."
+  },
+  "staticControls": "10 pure-Python unit tests passed; AST syntax checks and lifecycle identity checks passed; no compiler/JVM/product invocation for this fixture",
+  "priorUnrunImplementationSha256": "c1bb2253a9a1365dee0e0e60985f2711afd97a88a1f0c59de4b36ffc7ab5daad",
+  "publicationCorrespondence": {
+    "originalManifest": "provenance/original-execution-manifest.json",
+    "originalManifestSha256": "0116440c3ca99b0301900928db55f83a8b1ed444de973b7c3b9d233070370e23",
+    "scope": "Fixture-manifest digest and publication metadata only; run.py, compare.py and test_compare.py retain their executed hashes."
+  }
+}

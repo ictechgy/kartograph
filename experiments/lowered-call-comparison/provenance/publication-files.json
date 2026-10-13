@@ -1,0 +1,382 @@
+{
+  "status": "publication-only copy/transformation ledger; not a new benchmark run",
+  "originalFixtureManifestSha256": "ffef91dd0974160fa4c360e4453cd43965250b48dd48e8b99b9cfe7535c6dc1e",
+  "originalExecutionManifestSha256": "0116440c3ca99b0301900928db55f83a8b1ed444de973b7c3b9d233070370e23",
+  "publicationFixtureManifestSha256": "b3b58e3008e32c8bddbf732240b0842b0ebb3f5013d2beb3aa355b43cf15014b",
+  "publicationExecutionManifestSha256": "718296f4c15c71da54285cc13775c66efe072ade6486ddec0261be1491e674b2",
+  "files": [
+    {
+      "originalPath": "fixture/lowered/LoweredJava.java",
+      "publishedPath": "fixture/lowered/LoweredJava.java",
+      "originalSha256": "86dfcefd038e73f8d9ad31e45d8249539e2c7ef51e9b8a9e6ae0756b4b67c18c",
+      "publishedSha256": "86dfcefd038e73f8d9ad31e45d8249539e2c7ef51e9b8a9e6ae0756b4b67c18c",
+      "bytes": 684,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "fixture/lowered/LoweredKotlin.kt",
+      "publishedPath": "fixture/lowered/LoweredKotlin.kt",
+      "originalSha256": "8fcfc29d48d1ae788658291e3a4e318e282c3e5afa1004894596041470510eb9",
+      "publishedSha256": "8fcfc29d48d1ae788658291e3a4e318e282c3e5afa1004894596041470510eb9",
+      "bytes": 531,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "source-call-expectations.json",
+      "publishedPath": "source-call-expectations.json",
+      "originalSha256": "7099acb51dfcbc7a8937d050564accd7f4ae48f1dc80673205115a015b5d82ae",
+      "publishedSha256": "7099acb51dfcbc7a8937d050564accd7f4ae48f1dc80673205115a015b5d82ae",
+      "bytes": 17702,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "lowering-expectations.json",
+      "publishedPath": "lowering-expectations.json",
+      "originalSha256": "0b8c6ac1b25cfcfe91e22fc742498da99a83d2be045185bd34fa29213fdf722e",
+      "publishedSha256": "0b8c6ac1b25cfcfe91e22fc742498da99a83d2be045185bd34fa29213fdf722e",
+      "bytes": 5353,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "source-files.txt",
+      "publishedPath": "source-files.txt",
+      "originalSha256": "4f12bc739b5ab5d2b6ca398ea3442388ad5314176b42cbe34e7c281ec77f32ff",
+      "publishedSha256": "4f12bc739b5ab5d2b6ca398ea3442388ad5314176b42cbe34e7c281ec77f32ff",
+      "bytes": 66,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "runtime-jars.json",
+      "publishedPath": "runtime-jars.json",
+      "originalSha256": "a23813087f8634ce82cb612f7f6932962458a8947338d2e71ddac66b68df5efa",
+      "publishedSha256": "a23813087f8634ce82cb612f7f6932962458a8947338d2e71ddac66b68df5efa",
+      "bytes": 2873,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run.py",
+      "publishedPath": "run.py",
+      "originalSha256": "e72e218dda8542c0c9f6c60231d39655fb65ee917029cb1a78a74ab9013d9c2d",
+      "publishedSha256": "e72e218dda8542c0c9f6c60231d39655fb65ee917029cb1a78a74ab9013d9c2d",
+      "bytes": 11383,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "compare.py",
+      "publishedPath": "compare.py",
+      "originalSha256": "b7d356cf35f88b7fb5f38b792ae1a4e7e9c267aeec43374b1cbdf631469cd90a",
+      "publishedSha256": "b7d356cf35f88b7fb5f38b792ae1a4e7e9c267aeec43374b1cbdf631469cd90a",
+      "bytes": 12186,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "test_compare.py",
+      "publishedPath": "test_compare.py",
+      "originalSha256": "9da425e52f9e5071bbdb1f45d8f4c233e8eafde850a36c70b30f903fac06efbd",
+      "publishedSha256": "9da425e52f9e5071bbdb1f45d8f4c233e8eafde850a36c70b30f903fac06efbd",
+      "bytes": 6250,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "README.md",
+      "publishedPath": "historical/README.md",
+      "originalSha256": "5dd672f062c6bf0f7a861c51021e6ac6abe315a2c89e8316cc631c9a8af5a4d2",
+      "publishedSha256": "5dd672f062c6bf0f7a861c51021e6ac6abe315a2c89e8316cc631c9a8af5a4d2",
+      "bytes": 5475,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "RUN-PLAN.md",
+      "publishedPath": "historical/RUN-PLAN.md",
+      "originalSha256": "7fc9e7a7f19906dd3dba9a16468e0966c429c8a0b35acc7cf748d24b40b6b1b6",
+      "publishedSha256": "e6e5627954273263e3dea60168298b1c709018eaac3c0eefb37e4313a470c1de",
+      "bytes": 5392,
+      "change": "One local absolute classpath literal replaced by <prior-run>/semantic-classpath.txt; all other bytes unchanged."
+    },
+    {
+      "originalPath": "fixture-manifest.json",
+      "publishedPath": "provenance/original-fixture-manifest.json",
+      "originalSha256": "ffef91dd0974160fa4c360e4453cd43965250b48dd48e8b99b9cfe7535c6dc1e",
+      "publishedSha256": "ffef91dd0974160fa4c360e4453cd43965250b48dd48e8b99b9cfe7535c6dc1e",
+      "bytes": 1821,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "execution-manifest.json",
+      "publishedPath": "provenance/original-execution-manifest.json",
+      "originalSha256": "0116440c3ca99b0301900928db55f83a8b1ed444de973b7c3b9d233070370e23",
+      "publishedSha256": "0116440c3ca99b0301900928db55f83a8b1ed444de973b7c3b9d233070370e23",
+      "bytes": 1279,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "result-manifest.json",
+      "publishedPath": "provenance/original-result-manifest.json",
+      "originalSha256": "96660f145062c20b994840159c1a6daa50ace3a01aa0b2e84e5786df00ee3c81",
+      "publishedSha256": "96660f145062c20b994840159c1a6daa50ace3a01aa0b2e84e5786df00ee3c81",
+      "bytes": 1165,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/comparison.json",
+      "publishedPath": "results/2026-10-13/comparison.json",
+      "originalSha256": "e0c788a80593a3abab85b39af5ad5e15cd31715dd47200fc2d92b6d1ef2dc92f",
+      "publishedSha256": "e0c788a80593a3abab85b39af5ad5e15cd31715dd47200fc2d92b6d1ef2dc92f",
+      "bytes": 15255,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/psi-calls.jsonl",
+      "publishedPath": "results/2026-10-13/psi-calls.jsonl",
+      "originalSha256": "238504b8a5ec2e537e67bf38843449504df578dbc1abebb2ab2044d2a020a9fc",
+      "publishedSha256": "238504b8a5ec2e537e67bf38843449504df578dbc1abebb2ab2044d2a020a9fc",
+      "bytes": 3646,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/kartograph-graph.json",
+      "publishedPath": "results/2026-10-13/kartograph-graph.json",
+      "originalSha256": "7290ca4c93ee340f0e0301c588ab784147361b3b35db4ce9374f43f60c580261",
+      "publishedSha256": "7290ca4c93ee340f0e0301c588ab784147361b3b35db4ce9374f43f60c580261",
+      "bytes": 23369,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/stages.json",
+      "publishedPath": "results/2026-10-13/stages.json",
+      "originalSha256": "5ab8b02c04adfb20c500fd8527be85b208a919546faa3c460c0739589c8f8e7f",
+      "publishedSha256": "5ab8b02c04adfb20c500fd8527be85b208a919546faa3c460c0739589c8f8e7f",
+      "bytes": 516,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/compiled-inputs.json",
+      "publishedPath": "results/2026-10-13/compiled-inputs.json",
+      "originalSha256": "f0978296e449a8faa16b0457df1282c69ded0995550d736db0e9c8a9db56acfb",
+      "publishedSha256": "f0978296e449a8faa16b0457df1282c69ded0995550d736db0e9c8a9db56acfb",
+      "bytes": 701,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/final-compiled-inputs.json",
+      "publishedPath": "results/2026-10-13/final-compiled-inputs.json",
+      "originalSha256": "f0978296e449a8faa16b0457df1282c69ded0995550d736db0e9c8a9db56acfb",
+      "publishedSha256": "f0978296e449a8faa16b0457df1282c69ded0995550d736db0e9c8a9db56acfb",
+      "bytes": 701,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/inputs.json",
+      "publishedPath": "results/2026-10-13/inputs.json",
+      "originalSha256": "88a1d864b3a06d805923c7851ca16ab0eaf7ace66101299546d85592b3dadd3c",
+      "publishedSha256": "88a1d864b3a06d805923c7851ca16ab0eaf7ace66101299546d85592b3dadd3c",
+      "bytes": 5199,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/final-inputs.json",
+      "publishedPath": "results/2026-10-13/final-inputs.json",
+      "originalSha256": "88a1d864b3a06d805923c7851ca16ab0eaf7ace66101299546d85592b3dadd3c",
+      "publishedSha256": "88a1d864b3a06d805923c7851ca16ab0eaf7ace66101299546d85592b3dadd3c",
+      "bytes": 5199,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/psi-qualification.json",
+      "publishedPath": "results/2026-10-13/psi-qualification.json",
+      "originalSha256": "b2d2e7ec333b203ca7bfc150f36341a488b62144fac18af2febebb8af9d794c0",
+      "publishedSha256": "b2d2e7ec333b203ca7bfc150f36341a488b62144fac18af2febebb8af9d794c0",
+      "bytes": 720,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/compare.stdout.log",
+      "publishedPath": "results/2026-10-13/compare.stdout.log",
+      "originalSha256": "708dadabec84be029ac8bfaf5a0852907028fd901d5c0c31a6054b6929b4c2b0",
+      "publishedSha256": "708dadabec84be029ac8bfaf5a0852907028fd901d5c0c31a6054b6929b4c2b0",
+      "bytes": 91,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/compiler-version.stderr.log",
+      "publishedPath": "results/2026-10-13/compiler-version.stderr.log",
+      "originalSha256": "bd03269b011b319f47857e477bba94dc5679c5c7b54c2adaf59802888ca8644f",
+      "publishedSha256": "bd03269b011b319f47857e477bba94dc5679c5c7b54c2adaf59802888ca8644f",
+      "bytes": 43,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/fixture-kotlin-build.stderr.log",
+      "publishedPath": "results/2026-10-13/fixture-kotlin-build.stderr.log",
+      "originalSha256": "c88cf3bba0cb312f631e615498d72e6ab9d7ddfe927f5a41404d8e3e29e68400",
+      "publishedSha256": "c88cf3bba0cb312f631e615498d72e6ab9d7ddfe927f5a41404d8e3e29e68400",
+      "bytes": 262,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/java-version.stderr.log",
+      "publishedPath": "results/2026-10-13/java-version.stderr.log",
+      "originalSha256": "8ffd2d05de22acb2a1f82845905d499e807c7595cf7c3e7f2a2cab7e576a26de",
+      "publishedSha256": "8ffd2d05de22acb2a1f82845905d499e807c7595cf7c3e7f2a2cab7e576a26de",
+      "bytes": 193,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/psi-grade.stdout.log",
+      "publishedPath": "results/2026-10-13/psi-grade.stdout.log",
+      "originalSha256": "f5ccba50dc55af0ab566b172586eba73d3b993fe6a2a4ff229ab0fb251077c36",
+      "publishedSha256": "f5ccba50dc55af0ab566b172586eba73d3b993fe6a2a4ff229ab0fb251077c36",
+      "bytes": 82,
+      "change": "none; byte-for-byte copy"
+    },
+    {
+      "originalPath": "run-01/javap.txt",
+      "publishedPath": "results/2026-10-13/javap.portable.txt",
+      "originalSha256": "43a6a006f5b112415ae9c275244e0db07b691c56148b180152af5e5764c13795",
+      "publishedSha256": "03b86cd9bb6a1b2153c70ace11024c7b7e2eb08da058641386203c08c9849339",
+      "bytes": 26128,
+      "change": "Only the two Classfile header paths changed to fixture-classes/lowered/<class>.class; bytecode, flags, constants, line tables and bootstrap entries unchanged."
+    },
+    {
+      "originalPath": "RESULTS.md",
+      "publishedPath": "historical/RESULTS.md",
+      "originalSha256": "56363a3730e4e9079fac3e57620a7eadee88042d2586d0fe3ca3a6ed49412f9f",
+      "publishedSha256": "56363a3730e4e9079fac3e57620a7eadee88042d2586d0fe3ca3a6ed49412f9f",
+      "bytes": 2070,
+      "change": "none; byte-for-byte copy"
+    }
+  ],
+  "omitted": [
+    "compiled class files",
+    "absolute runtime classpath",
+    "outer wrapper log containing a local absolute output path",
+    "earlier unexecuted implementation archive",
+    "Python bytecode caches",
+    "dependency/runtime JARs",
+    "zero-byte successful stage streams (individual hashes/byte counts in omittedOriginalArtifacts)",
+    "historical publication-preparation note (hash/byte count in omittedOriginalArtifacts)"
+  ],
+  "omittedOriginalArtifacts": [
+    {
+      "originalPath": "run-01/adapter-build.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "run-01/adapter-build.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "run-01/compare.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "run-01/compiler-version.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "run-01/fixture-java-build.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "run-01/fixture-java-build.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "run-01/fixture-kotlin-build.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "run-01/java-version.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "run-01/javap.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "run-01/kartograph.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "run-01/psi-grade.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "run-01/psi.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Empty successful stage stream; omitted intentionally, with original stage status retained."
+    },
+    {
+      "originalPath": "PUBLICATION-NOTE.md",
+      "bytes": 2181,
+      "sha256": "26bfa93d26618d82cf2eebadb606164120ac3b52fd67581c41e07a7bfe2bb1d3",
+      "reason": "Packaging-preparation note; not a frozen fixture input or observed result."
+    }
+  ],
+  "publicationOnlyFiles": [
+    {
+      "path": ".gitignore",
+      "bytes": 19,
+      "sha256": "ccf58e28fccde6c0c37d6abe83e98be8db118e70e1d82214ccaceca4bcac7931"
+    },
+    {
+      "path": "README.md",
+      "bytes": 8132,
+      "sha256": "2ceee73ccdfef53a435b30738c91e32571d8695be7ad1fb7db643caa46f7acdf"
+    },
+    {
+      "path": "execution-manifest.json",
+      "bytes": 1679,
+      "sha256": "718296f4c15c71da54285cc13775c66efe072ade6486ddec0261be1491e674b2"
+    },
+    {
+      "path": "fixture-manifest.json",
+      "bytes": 2228,
+      "sha256": "b3b58e3008e32c8bddbf732240b0842b0ebb3f5013d2beb3aa355b43cf15014b"
+    },
+    {
+      "path": "provenance/README.md",
+      "bytes": 4782,
+      "sha256": "4c2570ec7ba92d35b3df3890ee0fb97321f9d5cc2cbbc53faca6d1e27d1219fd"
+    },
+    {
+      "path": "provenance/publication-validation.json",
+      "bytes": 396,
+      "sha256": "d9a99eef8c72b36e968b0a45c13d5ab6999e8c5021b541e5e4cac1a8cb0859e9"
+    },
+    {
+      "path": "provenance/pure-controls.log",
+      "bytes": 1473,
+      "sha256": "272941a6a07599da4e9b71a7b7bfc288e648dfc210e3a719ad8db9b8180f68ea"
+    }
+  ],
+  "membership": {
+    "retainedOriginalArtifacts": 30,
+    "intentionallyOmittedOriginalArtifacts": 13,
+    "publicationOnlyFilesExcludingThisLedger": 7,
+    "ledgerFile": "provenance/publication-files.json"
+  }
+}

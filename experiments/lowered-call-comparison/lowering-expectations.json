@@ -1,0 +1,86 @@
+{
+  "status": "pre-execution hypotheses; not observed bytecode or product facts",
+  "rawGraphPolicy": "Retain original CALL endpoints and origin. Associations/projections are separate evidence, never rewritten raw calls.",
+  "preservedDirectSourcePairs": [
+    {
+      "site": "k-inline-body",
+      "source": "method:lowered/LoweredKotlin#inlineStep(I)I",
+      "target": "method:lowered/LoweredJava#inlineLeaf(I)I"
+    },
+    {
+      "site": "k-to-java-sam-call",
+      "source": "method:lowered/LoweredKotlin#kotlinToJavaLambda()I",
+      "target": "method:lowered/LoweredJava#acceptKotlinLambda(Ljava/util/function/IntUnaryOperator;)I"
+    },
+    {
+      "site": "j-inline-control",
+      "source": "method:lowered/LoweredJava#javaInline(Llowered/LoweredKotlin;)I",
+      "target": "method:lowered/LoweredKotlin#inlineStep(I)I"
+    },
+    {
+      "site": "j-explicit-default-control",
+      "source": "method:lowered/LoweredJava#javaExplicitDefault(Llowered/LoweredKotlin;)I",
+      "target": "method:lowered/LoweredKotlin#withDefault(I)I"
+    },
+    {
+      "site": "j-to-kotlin-sam-call",
+      "source": "method:lowered/LoweredJava#javaToKotlinLambda(Llowered/LoweredKotlin;)I",
+      "target": "method:lowered/LoweredKotlin#acceptJavaLambda(Ljava/util/function/IntUnaryOperator;)I"
+    }
+  ],
+  "transformedSites": [
+    {
+      "site": "k-inline-call",
+      "hypothesis": "The named inline call is erased; kotlinInline contains a direct inlineLeaf invocation.",
+      "rawCaller": "method:lowered/LoweredKotlin#kotlinInline()I",
+      "erasedSourceTarget": "method:lowered/LoweredKotlin#inlineStep(I)I",
+      "expandedBodyTarget": "method:lowered/LoweredJava#inlineLeaf(I)I",
+      "requiredEvidence": "javap instructions and graph CALLs; the surviving javaInline -> inlineStep control"
+    },
+    {
+      "site": "k-default-call",
+      "hypothesis": "The source target is reached through the synthetic default bridge.",
+      "rawCaller": "method:lowered/LoweredKotlin#kotlinDefault()I",
+      "expectedBridge": "method:lowered/LoweredKotlin#withDefault$default(Llowered/LoweredKotlin;IILjava/lang/Object;)I",
+      "sourceTarget": "method:lowered/LoweredKotlin#withDefault(I)I",
+      "existingAssociationExpected": {
+        "target": "method:lowered/LoweredKotlin#withDefault(I)I",
+        "valueParameterCount": 1,
+        "maskParameterCount": 1
+      },
+      "requiredEvidence": "javap caller -> bridge and bridge -> source method instructions, raw graph CALLs, and independently recorded kotlinDefaultBridge field"
+    },
+    {
+      "site": "k-default-expression",
+      "hypothesis": "The defaultSeed invocation is moved from lexical withDefault ownership into the synthetic default bridge.",
+      "lexicalSourceCaller": "method:lowered/LoweredKotlin#withDefault(I)I",
+      "expectedRawOwner": "method:lowered/LoweredKotlin#withDefault$default(Llowered/LoweredKotlin;IILjava/lang/Object;)I",
+      "target": "method:lowered/LoweredJava#defaultSeed()I",
+      "requiredEvidence": "javap bridge instructions and raw graph CALL; do not replace bridge association with defaultSeed"
+    },
+    {
+      "site": "k-sam-body",
+      "hypothesis": "The lambdaLeaf invocation is owned by a compiler-emitted lambda implementation, not the enclosing Kotlin method.",
+      "lexicalSourceCaller": "method:lowered/LoweredKotlin#kotlinToJavaLambda()I",
+      "target": "method:lowered/LoweredJava#lambdaLeaf(I)I",
+      "generatedIdentity": "Not pre-guessed; record actual owner/method/descriptor from class files and bootstrap implementation handle.",
+      "requiredEvidence": "javap synthetic method/body and lambda creation/bootstrap linkage, raw product CALLs and available enclosures; callback execution is not inferred"
+    },
+    {
+      "site": "j-sam-body",
+      "hypothesis": "The lambdaLeaf invocation is owned by a compiler-emitted lambda implementation, not the enclosing Java method.",
+      "lexicalSourceCaller": "method:lowered/LoweredJava#javaToKotlinLambda(Llowered/LoweredKotlin;)I",
+      "target": "method:lowered/LoweredJava#lambdaLeaf(I)I",
+      "generatedIdentity": "Not pre-guessed; record actual owner/method/descriptor from class files and bootstrap implementation handle.",
+      "requiredEvidence": "javap synthetic method/body and lambda creation/bootstrap linkage, raw product CALLs and available enclosures; callback execution is not inferred"
+    }
+  ],
+  "reporting": "Five predicted preserved source pairs plus five explicitly classified transformations. These are not equal denominators for an accuracy metric. Contradictory or incomplete evidence remains unclassified.",
+  "potentialPrecisionChecks": [
+    "Exact targets and source locations for the five preserved direct pairs, with no K.unused incoming calls.",
+    "Existing kotlinDefaultBridge evidence selects withDefault rather than defaultSeed, while all real bridge body CALLs survive.",
+    "Synthetic lambda implementation CALLs and linkage remain visible without being flattened into fabricated source-level direct calls.",
+    "Inline-expanded CALL source lines follow the existing SMAP/line limitations rather than claiming erased call identity."
+  ],
+  "prohibitedInference": "A source-level inline call missing from bytecode alone is not a collector bug; source lexical lambda/default ownership is not runtime direct-call ownership."
+}
