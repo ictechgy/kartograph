@@ -1,0 +1,50 @@
+[
+  {
+    "stage": "dependencies",
+    "exit": 0
+  },
+  {
+    "stage": "record-dependencies",
+    "exit": 0
+  },
+  {
+    "stage": "java-version",
+    "exit": 0
+  },
+  {
+    "stage": "compiler-version",
+    "exit": 0
+  },
+  {
+    "stage": "adapter-build",
+    "exit": 0
+  },
+  {
+    "stage": "fixture-kotlin-build",
+    "exit": 0
+  },
+  {
+    "stage": "fixture-java-build",
+    "exit": 0
+  },
+  {
+    "stage": "record-fixture",
+    "exit": 0
+  },
+  {
+    "stage": "psi",
+    "exit": 0
+  },
+  {
+    "stage": "psi-grade",
+    "exit": 0
+  },
+  {
+    "stage": "kartograph",
+    "exit": 0
+  },
+  {
+    "stage": "compare",
+    "exit": 0
+  }
+]
