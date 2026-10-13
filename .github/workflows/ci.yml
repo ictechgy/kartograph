@@ -75,7 +75,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Verify analysis smoke gate and self-analysis contracts
-        run: python3 Scripts/verify-analysis-smoke-gate.py
+        run: python3 Scripts/verify-analysis-smoke-gate.py --json
       - name: Verify agent query and bridge contracts
         run: Scripts/verify-agent-surface.sh
       - name: Verify runtime blind-spot corpus
