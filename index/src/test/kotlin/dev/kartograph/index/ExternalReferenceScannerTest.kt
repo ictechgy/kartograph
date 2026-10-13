@@ -150,6 +150,15 @@ class ExternalReferenceScannerTest {
             output.closeEntry()
         }
         assertEquals(expected, scanner.scan(listOf(jar)).filter { it.startsWith("lib/") }.toSet())
+        // CLI/Gradle 의존성 입력도 같은 visitor를 사용한다. 구현 참조와 공개 ABI를 각각 확인한다.
+        for (input in listOf(app, jar)) {
+            val usage = DependencyUsageScanner().scan(listOf(input))
+            assertEquals(expected, usage.referencedClasses.filter { it.startsWith("lib/") }.toSet())
+            assertEquals(setOf("lib/Bound", "lib/SignatureOnly", "lib/Fn"),
+                usage.apiClasses.filter { it.startsWith("lib/") }.toSet())
+            assertEquals(setOf("app/GenericFactory"), usage.declaredClasses)
+            assertTrue(usage.apiComplete)
+        }
     }
 
     @Test
