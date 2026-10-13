@@ -134,6 +134,9 @@ class DispatchVisibilityRegressionTest {
             val call = graph.externalCalls.single { it.name == "m" }
             val expected = if (isFinal) emptyList() else listOf(JvmNodeId.methodId("app/Sub", "m", "()Ljava/lang/String;"))
             assertEquals(expected, call.resolvedTargets, "an external body shadows both older project and interface bodies")
+            assertEquals(dev.kartograph.core.CallDeclarationScope.EXTERNAL, call.declaration?.scope)
+            assertEquals("method:lib/P#m()Ljava/lang/String;", call.declaration?.target?.value)
+            assertEquals(listOf("app/C", "lib/P"), call.declaration?.ownerChain)
         }
     }
 

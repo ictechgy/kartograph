@@ -97,10 +97,10 @@ public object TestSourceScope {
             serviceProviders = graph.serviceProviders, enclosures = graph.enclosures, callbackArguments = graph.callbackArguments,
             parameterUses = graph.parameterUses, lambdaEscapes = graph.lambdaEscapes,
         )
-        if (!graph.compilerCallPositionsCaptured) return selected
-        return selected.withCompilerCallPositions(graph.locatedCompilerReferences.filter {
+        val located = if (!graph.compilerCallPositionsCaptured) selected else selected.withCompilerCallPositions(graph.locatedCompilerReferences.filter {
             it.source !in removed && it.target !in removed
         })
+        return located.withCompilerSourceFactsFrom(graph)
     }
 
     private val MEMBER_PREFIXES = listOf("method:", "field:")

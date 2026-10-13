@@ -38,6 +38,11 @@ public class LayerRuleEvaluator(
     private val layers: List<LayerDefinition>,
     private val rules: List<LayerRule>,
 ) {
+    // 생성 당시의 문자열만 보존하고 실제 첫 사용 때 컴파일한다. 호출자가 목록에 나중에 넣은 패턴은 캐시하지 않는다.
+    private val compiledPatterns = layers.flatMap { it.patterns }.distinct().associateWith { pattern ->
+        lazy { compileGlob(pattern) }
+    }
+
     /** 이름, 모듈, source 경로 중 실제로 먼저 맞은 값을 근거와 함께 반환한다. */
     public fun assignment(node: GraphNode): LayerAssignment {
         val candidates = listOfNotNull(node.name, node.moduleName, ArchitectureGraph.unitOf(node), node.location?.path).distinct()
@@ -68,7 +73,10 @@ public class LayerRuleEvaluator(
     private fun violates(rule: LayerRule, target: String): Boolean =
         rule.deny?.contains(target) == true || (rule.allow != null && target !in rule.allow)
 
-    private fun globMatches(pattern: String, candidate: String): Boolean {
+    private fun globMatches(pattern: String, candidate: String): Boolean =
+        (compiledPatterns[pattern]?.value ?: compileGlob(pattern)).matches(candidate)
+
+    private fun compileGlob(pattern: String): Regex {
         val regex = buildString {
             append('^')
             pattern.forEach { character ->
@@ -80,6 +88,6 @@ public class LayerRuleEvaluator(
             }
             append('$')
         }
-        return Regex(regex).matches(candidate)
+        return Regex(regex)
     }
 }

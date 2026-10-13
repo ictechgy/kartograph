@@ -37,7 +37,7 @@ internal object SavedSnapshotOperations {
         val document = SymbolQuery.query(snapshot.graph, reachability,
             requested, (snapshot.limitations +
                 "saved-graph: using captured graph and retention evidence; live inputs and freshness are not rechecked" +
-                provenanceLimitation + callPositionLimitation).distinct().sorted(), depth, limit, snapshot.suppressed,
+                provenanceLimitation + callPositionLimitation + dev.kartograph.export.ExternalRetentionCaveats.messages(snapshot.externalRetentionContexts)).distinct().sorted(), depth, limit, snapshot.suppressed,
             callSiteLinesCaptured = snapshot.callSiteLinesCaptured)
         return Document(AgentDocumentRenderer.query(document, snapshot.graph), if (document.status == "found") 0 else 64)
     }
@@ -56,8 +56,8 @@ internal object SavedSnapshotOperations {
         filters: ImpactFilter, sort: ImpactSort, summaryLimit: Int? = null): Document {
         compatible(current, base)
         val report = ChangeImpact.analyze(
-            current = ImpactInput(current.graph, current.retention, current.limitations), symbols = symbols, files = files,
-            base = base?.let { ImpactInput(it.graph, it.retention, it.limitations) },
+            current = ImpactInput(current.graph, current.retention, current.limitations + dev.kartograph.export.ExternalRetentionCaveats.messages(current.externalRetentionContexts)), symbols = symbols, files = files,
+            base = base?.let { ImpactInput(it.graph, it.retention, it.limitations + dev.kartograph.export.ExternalRetentionCaveats.messages(it.externalRetentionContexts)) },
             depth = depth, limit = limit, visitLimit = visitLimit, pathLimit = pathLimit, offset = offset, filters = filters, sort = sort)
         val limitations = report.limitations + "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness" +
             if (current.scope == null) listOf("snapshot-scope: project and variant labels were not provided") else emptyList()

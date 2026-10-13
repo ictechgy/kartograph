@@ -1,0 +1,353 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.attribute.BasicFileAttributes
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
+import org.gradle.api.artifacts.result.ResolvedComponentResult
+import org.gradle.api.artifacts.result.ResolvedDependencyResult
+import org.gradle.maven.MavenModule
+import org.gradle.maven.MavenPomArtifact
+import javax.xml.parsers.DocumentBuilderFactory
+
+gradle.projectsEvaluated {
+    def p = gradle.rootProject
+    def tools = p.configurations.create('callPositionVerificationTools')
+    tools.canBeConsumed = false
+    tools.canBeResolved = true
+    ['kotlin-build-tools-compat', 'kotlin-build-tools-impl'].each {
+        p.dependencies.add(tools.name, "org.jetbrains.kotlin:$it:@@KOTLIN_VERSION@@")
+    }
+    p.tasks.register('callPositionVerificationRuntime') {
+        dependsOn p.tasks.named('jar')
+        doLast {
+            def metadataAcquisition = [schemaVersion:1, mode:'artifact-resolution-query-v1']
+            def capture = { cfg ->
+                def selected = cfg.resolvedConfiguration
+                def artifacts = selected.resolvedArtifacts.collect { artifact ->
+                    def f = artifact.file.canonicalFile
+                    assert f.isFile() && f.name.endsWith('.jar') && f.length() <= 128L * 1024 * 1024
+                    def digest = MessageDigest.getInstance('SHA-256')
+                    f.withInputStream { stream ->
+                        byte[] buffer = new byte[65536]
+                        for (int n; (n = stream.read(buffer)) > 0;) digest.update(buffer, 0, n)
+                    }
+                    [group: artifact.moduleVersion.id.group, name: artifact.name,
+                     version: artifact.moduleVersion.id.version, classifier: artifact.classifier ?: '',
+                     extension: artifact.extension, path: f.absolutePath, bytes: f.length(),
+                     sha256: digest.digest().encodeHex().toString()]
+                }.sort { it.path }
+                assert artifacts.size() > 0 && artifacts.size() <= 256
+                assert artifacts*.path == cfg.files.collect { it.canonicalPath }.sort()
+                def nodes = [:]
+                def queue = selected.firstLevelModuleDependencies.toList()
+                def roots = queue.collect { "${it.moduleGroup}:${it.moduleName}:${it.moduleVersion}" }.sort()
+                while (!queue.isEmpty()) {
+                    def dep = queue.remove(0)
+                    def key = "${dep.moduleGroup}:${dep.moduleName}:${dep.moduleVersion}".toString()
+                    if (!nodes.containsKey(key)) {
+                        assert nodes.size() < 512
+                        def children = dep.children.toList()
+                        nodes[key] = children.collect { "${it.moduleGroup}:${it.moduleName}:${it.moduleVersion}".toString() }.sort()
+                        queue.addAll(children)
+                    }
+                }
+                [roots: roots, graph: nodes.sort(), artifacts: artifacts]
+            }
+            // 기존 정렬된 세 역할은 그대로 두고 실제 모듈/메타데이터 경계를 별도 version으로 기록한다.
+            def captureModuleMirror = { cfg ->
+                def version = '@@KOTLIN_VERSION@@'
+                if (version != '2.4.20') throw new GradleException('module mirror supports only the reviewed Kotlin 2.4.20 closure')
+                def expectedModules = [
+                    'org.jetbrains.kotlin:kotlin-build-tools-api:2.4.20',
+                    'org.jetbrains.kotlin:kotlin-build-tools-compat:2.4.20',
+                    'org.jetbrains.kotlin:kotlin-build-tools-cri-impl:2.4.20',
+                    'org.jetbrains.kotlin:kotlin-build-tools-impl:2.4.20',
+                    'org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20',
+                    'org.jetbrains.kotlin:kotlin-compiler-runner:2.4.20',
+                    'org.jetbrains.kotlin:kotlin-daemon-client:2.4.20',
+                    'org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.20',
+                    'org.jetbrains.kotlin:kotlin-reflect:1.6.10',
+                    'org.jetbrains.kotlin:kotlin-script-runtime:2.4.20',
+                    'org.jetbrains.kotlin:kotlin-stdlib:2.4.20',
+                    'org.jetbrains.kotlin:kotlin-tooling-core:2.4.20',
+                    'org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0',
+                    'org.jetbrains:annotations:13.0'
+                ].sort()
+                def expectedRoots = ['org.jetbrains.kotlin:kotlin-build-tools-compat:2.4.20',
+                                     'org.jetbrains.kotlin:kotlin-build-tools-impl:2.4.20'].sort()
+                def coordinate = { id ->
+                    if (!(id instanceof ModuleComponentIdentifier)) throw new GradleException('module mirror requires real module component identities')
+                    "${id.group}:${id.module}:${id.version}".toString()
+                }
+                def result = cfg.incoming.resolutionResult
+                def root = result.rootComponent.get()
+                def graph = [:]
+                def componentIds = [:]
+                def selected = result.allComponents.findAll { it.id != root.id }
+                if (selected.size() > 64) throw new GradleException('module component bound exceeded')
+                selected.each { component ->
+                    def key = coordinate(component.id)
+                    if (componentIds.put(key, component.id) != null) throw new GradleException('duplicate selected module coordinate')
+                    def edges = []
+                    component.dependencies.each { edge ->
+                        if (!(edge instanceof ResolvedDependencyResult)) throw new GradleException('unresolved module graph edge')
+                        edges += coordinate(edge.selected.id)
+                    }
+                    if (edges.size() > 64) throw new GradleException('module graph edge bound exceeded')
+                    graph[key] = edges.unique().sort()
+                }
+                def roots = root.dependencies.collect { edge ->
+                    if (!(edge instanceof ResolvedDependencyResult)) throw new GradleException('unresolved module root')
+                    coordinate(edge.selected.id)
+                }.sort()
+                if (componentIds.keySet().toList().sort() != expectedModules || roots != expectedRoots) {
+                    throw new GradleException('selected module closure differs from reviewed fourteen modules')
+                }
+                if (graph.values().flatten().any { !componentIds.containsKey(it) }) throw new GradleException('selected module graph is incomplete')
+                // artifacts에서 module universe를 만들지 않는다. artifact가 없는 selected component도 위에서 검사한다.
+                def naturalArtifacts = cfg.resolvedConfiguration.resolvedArtifacts.toList()
+                if (naturalArtifacts.size() != 14) throw new GradleException('module mirror requires fourteen actual artifacts')
+                def artifactOrder = []
+                def artifactPaths = [:]
+                naturalArtifacts.each { artifact ->
+                    def key = coordinate(artifact.id.componentIdentifier)
+                    if (artifact.classifier || artifact.extension != 'jar' || artifact.name != artifact.moduleVersion.id.name || artifactPaths.containsKey(artifact.file.canonicalPath)) {
+                        throw new GradleException('ambiguous module artifact layout')
+                    }
+                    artifactOrder += key
+                    artifactPaths[artifact.file.canonicalPath] = key
+                }
+                if (artifactOrder.toSet().toList().sort() != expectedModules) throw new GradleException('artifact module closure differs')
+                def fileOrder = cfg.files.collect { file ->
+                    def key = artifactPaths[file.canonicalPath]
+                    if (key == null) throw new GradleException('natural file lacks exact module artifact identity')
+                    key
+                }
+                if (fileOrder.size() != 14 || fileOrder.toSet() != artifactOrder.toSet()) throw new GradleException('natural module file order is incomplete')
+
+                long retainedMetadataBytes = 0
+                def metadata = []
+                def seenMetadata = [] as Set
+                def readMetadata = { File file ->
+                    def path = file.toPath().toAbsolutePath().normalize()
+                    def before = Files.readAttributes(path, BasicFileAttributes, LinkOption.NOFOLLOW_LINKS)
+                    if (!before.isRegularFile() || before.size() > 256L * 1024 || path.toRealPath() != path) {
+                        throw new GradleException('metadata must be a bounded canonical regular file')
+                    }
+                    byte[] bytes
+                    Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).withCloseable { input -> bytes = input.readNBytes(256 * 1024 + 1) }
+                    def after = Files.readAttributes(path, BasicFileAttributes, LinkOption.NOFOLLOW_LINKS)
+                    if (bytes.length != before.size() || bytes.length > 256 * 1024 || !after.isRegularFile() ||
+                        before.fileKey() != after.fileKey() || before.size() != after.size() || before.lastModifiedTime() != after.lastModifiedTime()) {
+                        throw new GradleException('metadata changed while reading')
+                    }
+                    retainedMetadataBytes += bytes.length
+                    if (retainedMetadataBytes > 4L * 1024 * 1024) throw new GradleException('metadata total byte bound exceeded')
+                    bytes
+                }
+                // CLI가 명시적으로 검증·복사한 입력만 받으며 일반 query 실패 뒤 fallback하지 않는다.
+                def metadataEnvironment = ['KARTOGRAPH_CALL_METADATA_INPUT', 'KARTOGRAPH_CALL_METADATA_INPUT_SHA256',
+                                           'KARTOGRAPH_CALL_METADATA_PROFILE_SHA256'].collect { System.getenv(it) }
+                def suppliedFiles = null
+                def suppliedRows = null
+                def verifySuppliedManifest = { }
+                if (metadataEnvironment.any { it != null }) {
+                    if (!gradle.startParameter.offline || metadataEnvironment.any { it == null || it.isEmpty() } ||
+                        !(metadataEnvironment[1] ==~ /[0-9a-f]{64}/) ||
+                        metadataEnvironment[2] != 'b19c3f3520225b716c4a82d18f28e42bea1fcd9eaf3b864fefda595baf94c32e') {
+                        throw new GradleException('supplied original metadata requires explicit offline input and exact profile pins')
+                    }
+                    def manifestPath = java.nio.file.Path.of(metadataEnvironment[0])
+                    if (!manifestPath.isAbsolute() || manifestPath.normalize() != manifestPath || manifestPath.fileName.toString() != 'manifest.json') {
+                        throw new GradleException('supplied metadata manifest path is not canonical')
+                    }
+                    verifySuppliedManifest = {
+                        def bytes = readMetadata(manifestPath.toFile())
+                        if (MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString() != metadataEnvironment[1]) {
+                            throw new GradleException('supplied metadata manifest bytes differ')
+                        }
+                        bytes
+                    }
+                    def manifest = new JsonSlurper().parse(verifySuppliedManifest())
+                    // 해시·경로 기대값은 공급된 manifest가 아닌 검토된 고정 profile에서 온다.
+                    def pinnedEntries = [
+                        ['org.jetbrains.kotlin:kotlin-build-tools-api:2.4.20', 'pom', 'org/jetbrains/kotlin/kotlin-build-tools-api/2.4.20/kotlin-build-tools-api-2.4.20.pom', 1137, 'e8cd9ffd7d0886ba1a1795cbf4a34a06681f184aa50f25686effeefb3c1f56f5'],
+                        ['org.jetbrains.kotlin:kotlin-build-tools-compat:2.4.20', 'pom', 'org/jetbrains/kotlin/kotlin-build-tools-compat/2.4.20/kotlin-build-tools-compat-2.4.20.pom', 1374, 'f8e9f647a00bfbc237e3ddff3891b2d4e4a947611b949281658f836def304002'],
+                        ['org.jetbrains.kotlin:kotlin-build-tools-cri-impl:2.4.20', 'pom', 'org/jetbrains/kotlin/kotlin-build-tools-cri-impl/2.4.20/kotlin-build-tools-cri-impl-2.4.20.pom', 1570, '8af52efa886eed45c54d568b692e339b70ddc7c768bee9ab9c2d2f96ed8bb0e1'],
+                        ['org.jetbrains.kotlin:kotlin-build-tools-impl:2.4.20', 'pom', 'org/jetbrains/kotlin/kotlin-build-tools-impl/2.4.20/kotlin-build-tools-impl-2.4.20.pom', 2348, '7a13ab2d818a5de92afa23004aa9baed99671bb48553b7098cf920fa785c3351'],
+                        ['org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20', 'pom', 'org/jetbrains/kotlin/kotlin-compiler-embeddable/2.4.20/kotlin-compiler-embeddable-2.4.20.pom', 2647, '269d98cc4c68670c11e4aeb404e1c7c6f31b782321908d7268ba25cd236d59b2'],
+                        ['org.jetbrains.kotlin:kotlin-compiler-runner:2.4.20', 'pom', 'org/jetbrains/kotlin/kotlin-compiler-runner/2.4.20/kotlin-compiler-runner-2.4.20.pom', 1924, '4566946280971fe8d67990ee83480af480e846590f325a40951f62657e26a40a'],
+                        ['org.jetbrains.kotlin:kotlin-daemon-client:2.4.20', 'pom', 'org/jetbrains/kotlin/kotlin-daemon-client/2.4.20/kotlin-daemon-client-2.4.20.pom', 1353, '37cff66ae34c924f0f738106eeb7234e7ace880f199de3362e993f4987025adc'],
+                        ['org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.20', 'pom', 'org/jetbrains/kotlin/kotlin-daemon-embeddable/2.4.20/kotlin-daemon-embeddable-2.4.20.pom', 1173, 'ca631ce7c7cc2a8ecb47d3462b429004c1cd3488437b3f739e35eafea2033bfb'],
+                        ['org.jetbrains.kotlin:kotlin-reflect:1.6.10', 'pom', 'org/jetbrains/kotlin/kotlin-reflect/1.6.10/kotlin-reflect-1.6.10.pom', 1375, '57905524274a00ae028aaccc27283f6bc5925a934a046c1cc5d06c8ee4d6d5a9'],
+                        ['org.jetbrains.kotlin:kotlin-script-runtime:2.4.20', 'pom', 'org/jetbrains/kotlin/kotlin-script-runtime/2.4.20/kotlin-script-runtime-2.4.20.pom', 1134, 'dd0e3846b61a6d641300958cc52e4693cd7b47bd1d626505f383b2f9d23ade0e'],
+                        ['org.jetbrains.kotlin:kotlin-stdlib:2.4.20', 'pom', 'org/jetbrains/kotlin/kotlin-stdlib/2.4.20/kotlin-stdlib-2.4.20.pom', 2301, 'bd69b382dba8e2b7ae3846375eb2f1389017eb908987277051ae4e3acec8c938'],
+                        ['org.jetbrains.kotlin:kotlin-stdlib:2.4.20', 'module', 'org/jetbrains/kotlin/kotlin-stdlib/2.4.20/kotlin-stdlib-2.4.20.module', 12431, 'afb28052ac6c3d605c0f661816ea653e073eb039682fed35bfa6cdc704c0911c'],
+                        ['org.jetbrains.kotlin:kotlin-tooling-core:2.4.20', 'pom', 'org/jetbrains/kotlin/kotlin-tooling-core/2.4.20/kotlin-tooling-core-2.4.20.pom', 1128, '29dd79ed2bc1e64f6bfd5ccf0c1336c6b6c11ee2a69e0c585e3fad2f45b5325d'],
+                        ['org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0', 'pom', 'org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.8.0/kotlinx-coroutines-core-jvm-1.8.0.pom', 2196, 'a5633abd53467ceb91622d81f2e982080877145e0b76e1b75788715434885d0b'],
+                        ['org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0', 'module', 'org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.8.0/kotlinx-coroutines-core-jvm-1.8.0.module', 4278, 'ff6a22da40040938751db0ae21177e76517dbf126a76796f5426727bf76c1228'],
+                        ['org.jetbrains:annotations:13.0', 'pom', 'org/jetbrains/annotations/13.0/annotations-13.0.pom', 4930, '965aeb2bedff369819bdde1bf7a0b3b89b8247dd69c88b86375d76163bb8c397'],
+                        ['org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.8.0', 'pom', 'org/jetbrains/kotlinx/kotlinx-coroutines-bom/1.8.0/kotlinx-coroutines-bom-1.8.0.pom', 4291, '1239e9dbe1397cd5971342956b2511bc3ace7b641842e4372a088dcfa8b9ad55']
+                    ].collect { row -> [coordinate:row[0], kind:row[1], path:row[2], bytes:row[3], sha256:row[4]] }
+                    if (!(manifest instanceof Map) || manifest.keySet() != (['schemaVersion','profile','compilerVersion','entries'] as Set) ||
+                        !(manifest.schemaVersion instanceof Integer) || manifest.schemaVersion != 1 ||
+                        manifest.profile != 'kartograph-call-position-original-metadata-2.4.20' || manifest.compilerVersion != '2.4.20' ||
+                        !(manifest.entries instanceof List) || manifest.entries != pinnedEntries ||
+                        manifest.entries.any { !(it.bytes instanceof Integer) }) {
+                        throw new GradleException('supplied original metadata profile differs')
+                    }
+                    suppliedRows = pinnedEntries.collectEntries { row -> [(row.coordinate + '@' + row.kind):row] }
+                    suppliedFiles = suppliedRows.collectEntries { key, row -> [(key):manifestPath.parent.resolve(row.path).toFile()] }
+                    metadataAcquisition = [schemaVersion:1, mode:'supplied-original-metadata-v1',
+                        profileSha256:metadataEnvironment[2], manifestSha256:metadataEnvironment[1]]
+                }
+                def addMetadata = { String key, String extension, File file, String reason ->
+                    def parts = key.split(':', -1)
+                    if (parts.size() != 3 || parts.any { !(it ==~ /[A-Za-z0-9_.-]+/) } || parts.any { it == '.' || it == '..' }) {
+                        throw new GradleException('nonliteral metadata coordinate')
+                    }
+                    if (metadata.size() >= 17 || !seenMetadata.add(key + '@' + extension)) throw new GradleException('duplicate or extra metadata')
+                    def expectedName = parts[1] + '-' + parts[2] + '.' + extension
+                    if (file.name != expectedName) throw new GradleException('metadata artifact filename differs')
+                    def bytes = readMetadata(file)
+                    if (suppliedRows != null) {
+                        def expected = suppliedRows[key + '@' + extension]
+                        if (expected == null || file.toPath() != suppliedFiles[key + '@' + extension].toPath() ||
+                            bytes.length != expected.bytes || MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString() != expected.sha256) {
+                            throw new GradleException('supplied original metadata file bytes differ')
+                        }
+                    }
+                    def row = [group: parts[0], name: parts[1], version: parts[2], extension: extension,
+                        path: file.absoluteFile.toPath().normalize().toString(),
+                        relativePath: parts[0].replace('.', '/') + '/' + parts[1] + '/' + parts[2] + '/' + expectedName,
+                        bytes: bytes.length, sha256: MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString(), reason: reason]
+                    metadata += row
+                    [row: row, bytes: bytes]
+                }
+                def factory = DocumentBuilderFactory.newInstance()
+                factory.setNamespaceAware(true)
+                factory.setFeature('http://apache.org/xml/features/disallow-doctype-decl', true)
+                factory.setFeature('http://xml.org/sax/features/external-general-entities', false)
+                factory.setFeature('http://xml.org/sax/features/external-parameter-entities', false)
+                factory.setXIncludeAware(false)
+                factory.setExpandEntityReferences(false)
+                factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, '')
+                factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, '')
+                def children = { element, name ->
+                    def values = []
+                    for (def node = element.firstChild; node != null; node = node.nextSibling) {
+                        if (node.nodeType == org.w3c.dom.Node.ELEMENT_NODE && node.localName == name && node.namespaceURI == 'http://maven.apache.org/POM/4.0.0') values += node
+                    }
+                    if (values.size() > 128) throw new GradleException('metadata element bound exceeded')
+                    values
+                }
+                def text = { element, name ->
+                    def values = children(element, name)
+                    if (values.size() != 1) throw new GradleException('missing or duplicate literal metadata field: ' + name)
+                    def value = values[0].textContent.trim()
+                    if (!(value ==~ /[A-Za-z0-9_.-]+/) || value == '.' || value == '..') throw new GradleException('unresolved or malformed metadata field')
+                    value
+                }
+                def metadataReferences = []
+                def advertisedModules = [] as Set
+                def queue = expectedModules.collect { [coordinate: it, reason: 'selected-module'] }
+                def fetchedPoms = [] as Set
+                while (!queue.isEmpty()) {
+                    def request = queue.remove(0)
+                    def key = request.coordinate
+                    if (fetchedPoms.contains(key)) continue
+                    if (fetchedPoms.size() >= 15) throw new GradleException('parent/BOM metadata closure exceeded')
+                    def parts = key.split(':', -1)
+                    File pomFile
+                    if (suppliedFiles != null) {
+                        pomFile = suppliedFiles[key + '@pom']
+                        if (pomFile == null) throw new GradleException('supplied original POM is absent')
+                    } else {
+                        def query = p.dependencies.createArtifactResolutionQuery()
+                        if (componentIds.containsKey(key)) query.forComponents([componentIds[key]])
+                        else query.forModule(parts[0], parts[1], parts[2])
+                        def pomResult = query.withArtifacts(MavenModule, MavenPomArtifact).execute()
+                        if (pomResult.components.size() != 1 || pomResult.resolvedComponents.size() != 1) throw new GradleException('Maven POM query did not resolve exactly one module')
+                        def component = pomResult.resolvedComponents.iterator().next()
+                        if (coordinate(component.id) != key) throw new GradleException('Maven POM query selected a different module')
+                        def pomArtifacts = component.getArtifacts(MavenPomArtifact)
+                        if (pomArtifacts.size() != 1 || !(pomArtifacts.iterator().next() instanceof ResolvedArtifactResult)) throw new GradleException('Maven POM artifact is unavailable')
+                        pomFile = pomArtifacts.iterator().next().file
+                    }
+                    def captured = addMetadata(key, 'pom', pomFile, request.reason)
+                    fetchedPoms += key
+                    def document = factory.newDocumentBuilder().parse(new ByteArrayInputStream(captured.bytes))
+                    def project = document.documentElement
+                    if (project.localName != 'project' || project.namespaceURI != 'http://maven.apache.org/POM/4.0.0') throw new GradleException('unexpected Maven metadata root')
+                    if (text(project, 'groupId') + ':' + text(project, 'artifactId') + ':' + text(project, 'version') != key) throw new GradleException('POM coordinate contradicts selected module')
+                    def references = []
+                    children(project, 'parent').each { parent -> references += [reason: 'parent', coordinate: text(parent, 'groupId') + ':' + text(parent, 'artifactId') + ':' + text(parent, 'version')] }
+                    children(project, 'dependencyManagement').each { management ->
+                        children(management, 'dependencies').each { dependencies ->
+                            children(dependencies, 'dependency').each { dependency ->
+                                def scopes = children(dependency, 'scope')
+                                def types = children(dependency, 'type')
+                                if (scopes.size() > 1 || types.size() > 1) throw new GradleException('duplicate dependency metadata selector')
+                                if (scopes && scopes[0].textContent.trim() == 'import') {
+                                    if (text(dependency, 'type') != 'pom') throw new GradleException('imported metadata is not a POM')
+                                    references += [reason: 'imported-bom', coordinate: text(dependency, 'groupId') + ':' + text(dependency, 'artifactId') + ':' + text(dependency, 'version')]
+                                }
+                            }
+                        }
+                    }
+                    references.each { reference ->
+                        if (reference.reason != 'imported-bom' || key != 'org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0' || reference.coordinate != 'org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.8.0') {
+                            throw new GradleException('parent/import metadata closure differs from reviewed BOM')
+                        }
+                        metadataReferences += [from: key, to: reference.coordinate, reason: reference.reason]
+                        queue += reference
+                    }
+                    if (new String(captured.bytes, java.nio.charset.StandardCharsets.UTF_8).contains('do_not_remove: published-with-gradle-metadata')) advertisedModules += key
+                }
+                def expectedAdvertised = ['org.jetbrains.kotlin:kotlin-stdlib:2.4.20', 'org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0'] as Set
+                if (advertisedModules != expectedAdvertised || metadataReferences != [[from: 'org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0', to: 'org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.8.0', reason: 'imported-bom']]) {
+                    throw new GradleException('published module/BOM metadata set differs')
+                }
+                advertisedModules.toList().sort().each { key ->
+                    File moduleFile
+                    if (suppliedFiles != null) {
+                        moduleFile = suppliedFiles[key + '@module']
+                        if (moduleFile == null) throw new GradleException('supplied original module metadata is absent')
+                    } else {
+                        // 메타데이터 파일 하나의 요청만 비전이적이다. 실제 tools configuration은 바꾸지 않는다.
+                        def dependency = p.dependencies.create(key + '@module')
+                        dependency.transitive = false
+                        def metadataOnly = p.configurations.detachedConfiguration(dependency)
+                        metadataOnly.transitive = false
+                        def artifacts = metadataOnly.resolvedConfiguration.resolvedArtifacts.toList()
+                        if (artifacts.size() != 1 || coordinate(artifacts[0].id.componentIdentifier) != key || artifacts[0].extension != 'module' || artifacts[0].classifier) {
+                            throw new GradleException('original Gradle module metadata is unavailable or ambiguous')
+                        }
+                        moduleFile = artifacts[0].file
+                    }
+                    addMetadata(key, 'module', moduleFile, 'published-gradle-metadata')
+                }
+                if (metadata.size() != 17 || fetchedPoms.size() != 15) throw new GradleException('module mirror metadata closure is incomplete')
+                verifySuppliedManifest()
+                [schemaVersion: 1, kotlinVersion: version, requestedRoots: roots, selectedModules: componentIds.keySet().toList().sort(),
+                 graph: graph.sort(), artifactlessModules: componentIds.keySet().findAll { !(it in artifactOrder) }.sort(),
+                 naturalArtifactOrder: artifactOrder, naturalFileOrder: fileOrder,
+                 metadataReferences: metadataReferences, metadata: metadata.sort { it.relativePath }]
+            }
+            def report = [schemaVersion: 1, compilerVersion: '@@KOTLIN_VERSION@@',
+                requestedBuildTools: ['org.jetbrains.kotlin:kotlin-build-tools-compat:@@KOTLIN_VERSION@@',
+                                     'org.jetbrains.kotlin:kotlin-build-tools-impl:@@KOTLIN_VERSION@@'],
+                roles: [compiler: capture(p.configurations.kotlinCompilerRuntime),
+                        plugin: capture(p.buildscript.configurations.classpath), buildTools: capture(tools)]]
+            report.moduleMirror = captureModuleMirror(tools)
+            report.metadataAcquisition = metadataAcquisition
+            def destination = new File(System.getenv('KARTOGRAPH_CALL_RUNTIME_FILE'))
+            assert !destination.exists()
+            destination.parentFile.mkdirs()
+            destination.setText(JsonOutput.prettyPrint(JsonOutput.toJson(report)) + '\n', 'UTF-8')
+        }
+    }
+}

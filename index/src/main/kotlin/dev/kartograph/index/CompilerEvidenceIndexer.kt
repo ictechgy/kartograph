@@ -39,6 +39,11 @@ public data class CompilerEvidenceEnrichment(
 
 /** 명시적으로 요청하고 성공한 compiler 증거에 묶인 참조만 그래프에 추가한다. */
 public object CompilerEvidenceIndexer {
+    /** 명시적 SDK와 순서 있는 입력을 새로 인덱싱하여 source-only complete-caller 증거를 검증한다. */
+    public fun indexWithAuthoredCalls(classRoots: List<Path>, classpath: List<Path>, targetJdkHome: Path,
+        explicit: List<Path>, context: CompilerEvidenceContext): CompilerEvidenceEnrichment =
+        CompilerAuthoredCallIndexer.index(classRoots, classpath, targetJdkHome, explicit, context)
+
     /** 원래 class 방문의 정점 소유권을 재사용하며 class root의 첫 입력 우선 계약을 유지한다. */
     public fun enrich(indexed: IndexedClasses, classRoots: List<Path>, explicit: List<Path>,
         context: CompilerEvidenceContext? = null): CompilerEvidenceResult =

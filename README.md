@@ -235,6 +235,32 @@ entry policy still applies; the owner expansion itself does not select sibling m
 original Dart/JS caller locations, channel, method and omitted caller count. Supply the normal
 required dead arguments as well.
 
+Optional document-level `provenance` (wire version 1) preserves the original source headers and
+join limitations independently of the matched JVM roots. `dead`, `dead --explain`, live `query`,
+saved-query/MCP results and all dead report formats display bounded context caveats. A stale or
+unsupported context does not remove matching roots. Legacy or empty source metadata remains
+unavailable context; it does not mean complete coverage. Nonempty unmatched identifiers still
+fail the entire analysis, with caveats and no partial findings. Zero-retention documents retain
+all document context.
+
+`query` and `snapshot` also accept one `--external-retentions <file>`. Snapshot capture fingerprints
+the document and reads it inside the capture checks. Plain/compact snapshots preserve the admitted
+context as canonical raw document strings and validate it again when loading. Snapshot merge keeps
+contexts even if no matched node remains, and never rebases original cross-language projects or
+caller paths. These observations remain separate from compiler build-witness provenance. They do
+not establish freshness, source/index completeness or permission to delete code.
+
+The provenance envelope uses a bounded portable JSON profile: at most 1 MiB canonical UTF-8,
+256 source headers, 4,096 limitations and 64 nested containers. Duplicate keys, invalid Unicode,
+fraction/exponent numeric tokens, negative zero and integers outside the JavaScript safe range
+are rejected before version dispatch. Unknown positive envelope versions remain opaque and
+unsupported after the same admission checks. Source timestamps use real Gregorian dates with
+case-insensitive T/Z, hours and offset hours 00–23, minutes 00–59, seconds 00–59 and preserved
+fraction digits; leap seconds are unsupported. The CLI reads at most 16 MiB from a regular,
+non-symlink document with before/after identity checks. JDK file APIs do not provide a portable
+nonblocking open, so these checks do not claim atomic protection against hostile concurrent
+replacement by a special file. Supply a completed, stable input.
+
 `bridges --rn-events [--target react-native]` exports explicit
 `getJSModule(...RCTDeviceEventEmitter::class.java).emit(...)` calls (Java `.class` is also supported)
 in a separate v2 `react-native-event` document. `--graph-file` can attach actual JVM identities.

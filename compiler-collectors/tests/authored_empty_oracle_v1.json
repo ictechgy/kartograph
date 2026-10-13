@@ -1,0 +1,11 @@
+{
+  "basis": "Frozen before executing the reviewer empty-body control against C1",
+  "java": {
+    "method:empty/EmptyJava#zero()V": {"status":"COMPLETE","targets":[]},
+    "method:empty/EmptyJava#call()V": {"status":"COMPLETE","targets":["method:empty/EmptyJava#zero()V"]}
+  },
+  "kotlin": {
+    "method:empty/EmptyKotlin#zero()V": {"status":"COMPLETE","targets":[]},
+    "method:empty/EmptyKotlin#call()V": {"status":"COMPLETE","targets":["method:empty/EmptyKotlin#zero()V"]}
+  }
+}

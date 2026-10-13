@@ -6,6 +6,11 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 
 ## 현재 릴리스의 경계
 
+- 실행 JVM과 분석 SDK는 별개다. 기존 index 생성자는 host JDK의 platform header를 사용한다.
+  명시적 `targetJdkHome` 생성자는 해당 SDK의 `jmods`만 읽으며 누락된 platform header를 host로 대체하지 않는다.
+  내용 지문·bounded lazy header·cache 분리·측정 비용은 [명시적 JDK 계약](TARGET-JDK.md)을 본다.
+  CLI/plugin 기본값이나 JVM bytecode target만으로 동일 SDK 분석을 주장하지 않는다.
+
 - Hilt/Dagger의 확인된 생성 marker와 Hilt application sibling은 구분하지만 모든 generator를 인식하지는 않는다.
   protobuf generated wrapper/Kotlin DSL처럼 marker가 없는 생성물은 `--generated-classes`로 생성 전용 컴파일 root를
   명시할 수 있다. 해당 root는 `--classes`에도 포함돼야 한다. Gradle의 같은 입력은 `generatedClassRoots`다.
@@ -214,6 +219,26 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 그래프 JSON의 `externalCalls`는 앱 정점 밖 메서드 호출을 별도로 보존한다. 외부 선언을 앱의 dead 후보로
 추가하지 않으며 호출자·대상 JVM identity·호출 종류·같은 메서드 내 invoke 명령 ordinal·위치를 기록한다. invokedynamic의 bootstrap과 method handle 대상도 구분해 기록한다.
 `resolvedTargets`는 제공된 사실으로 연결한 프로젝트 대상이며 빈 배열은 대상 부재의 증명이 아니다.
+
+선택 `externalCalls.declaration`은 `target` JVM identity, `scope`(`project`/`external`),
+`ownerChain`(operand owner부터 첫 선언까지)을 별도로 싣는다. 필드가 없으면 **미확정**이며 선언 부재가 아니다.
+class 경로는 단일한 superclass 사슬과 모든 sibling 종류가 알려진 virtual/static 및 직접 superclass-special 호출만
+확인한다. 첫 외부 선언이 더 먼 프로젝트 선언을 가리면 외부 선언에서 멈춘다. abstract 선언도 선언으로
+확인할 수 있지만 실행 body나 dispatch 후보라는 뜻은 아니다. final 선언은 override 후보를 추가하지 않는다.
+`kind=interface`는 알려진 interface header의 완전한 직접 method 목록에서 정확한 name+descriptor가
+하나이며 public·non-static인 경우에만 같은 owner의 선언을 확인한다. `ownerChain`은 반드시 한 원소다.
+별도 proof 필드 없이 부모 `kind`가 class 사슬과 직접 interface 근거를 구분하며 길이만으로 추정하지 않는다.
+프로젝트 직접 operand는 기존 내부 BYTECODE CALL로 남고 externalCalls를 추가하지 않는다.
+알 수 없는 조상은 직접 선언의 증명을 막지 않지만, 직접 선언이 없으면 inherited/default/abstract 선택과
+Object fallback은 미확정이다. interface-owned static·special도 지원하지 않는다.
+그 밖에 누락·종류 미상·다중 class 부모·cycle, constructor, signature-polymorphic,
+기타 special 형태와 256개 초과 사슬은 추측하지 않는다. 접근 권한과 static 호환성을 확인하며 다른 package의
+protected virtual 호출은 caller 상속과 receiver owner 제약을 함께 증명한다. private nestmate는 같은 owner가
+아니면 지원하지 않는다. class 가시성·module export의 접근 사실은 보존되지 않아 전체 JVM linkage나
+실행 성공을 증명하지 않는다. CHA 후보 목록에서 선언을 골라내거나 원래 operand·ordinal·호출 수를 바꾸지 않는다.
+이 근거는 현재 dependency header 조립 뒤 다시 계산하고 raw class cache에는 저장하지 않는다. 외부 선언은
+앱 정점·dead 후보나 새로운 usage 간선을 만들지 않는다. source-call 소비자는 `project` 선언만 선택한 뒤
+독립적으로 확인한 Kotlin default-bridge 근거를 적용해야 한다. 이 제한된 관계는 PSI와의 동등성을 주장하지 않는다.
 
 `query`는 ClassLoader 로딩, reflection 생성자, ServiceLoader, 프로젝트 상위 타입에 대한 미해결 외부
 virtual 호출, 해석된 프로젝트 밖 runtime 대상, 값 분석 한도, 인라인 상수 사용처 손실을 실제 입력 개수로 알린다.

@@ -65,6 +65,9 @@ private object KotlinEvidenceConfiguration {
     val ROOT = CompilerConfigurationKey<String>("kartograph.compiler.evidence.root")
     val OUTPUT = CompilerConfigurationKey<String>("kartograph.compiler.evidence.output")
     val TOKEN = CompilerConfigurationKey<String>("kartograph.compiler.evidence.token")
+    val CALLER_INVENTORY = CompilerConfigurationKey<Boolean>("kartograph.compiler.evidence.callerInventory")
+    val CLASS_OUTPUT = CompilerConfigurationKey<String>("kartograph.compiler.evidence.classOutput")
+    val AUTHORED_CALLS = CompilerConfigurationKey<Boolean>("kartograph.compiler.evidence.authoredCalls")
     val CALL_POSITIONS = CompilerConfigurationKey<Boolean>("kartograph.compiler.evidence.callPositions")
 }
 
@@ -75,6 +78,9 @@ public class KotlinEvidenceCommandLineProcessor : CommandLineProcessor {
         CliOption("root", "<path>", "project root for source identities", true, false),
         CliOption("output", "<path>", "raw evidence TSV file or directory", true, false),
         CliOption("token", "<path>", "compiler input token file", true, false),
+        CliOption("callerInventory", "<true|false>", "record complete source and backend inventory", false, false),
+        CliOption("classOutput", "<path>", "fresh task-owned class output directory", false, false),
+        CliOption("authoredCalls", "<true|false>", "record complete ordinary authored calls", false, false),
         CliOption("callPositions", "<true|false>", "record semantic call selector positions", false, false),
     )
 
@@ -83,6 +89,11 @@ public class KotlinEvidenceCommandLineProcessor : CommandLineProcessor {
             "root" -> configuration.put(KotlinEvidenceConfiguration.ROOT, value)
             "output" -> configuration.put(KotlinEvidenceConfiguration.OUTPUT, value)
             "token" -> configuration.put(KotlinEvidenceConfiguration.TOKEN, value)
+            "classOutput" -> configuration.put(KotlinEvidenceConfiguration.CLASS_OUTPUT, value)
+            "callerInventory" -> configuration.put(KotlinEvidenceConfiguration.CALLER_INVENTORY,
+                value.toBooleanStrictOrNull() ?: error("callerInventory must be true or false"))
+            "authoredCalls" -> configuration.put(KotlinEvidenceConfiguration.AUTHORED_CALLS,
+                value.toBooleanStrictOrNull() ?: error("authoredCalls must be true or false"))
             "callPositions" -> configuration.put(KotlinEvidenceConfiguration.CALL_POSITIONS,
                 value.toBooleanStrictOrNull() ?: error("callPositions must be true or false"))
             else -> error("unsupported Kotlin compiler evidence option")
@@ -100,8 +111,15 @@ public class KotlinEvidenceRegistrar : CompilerPluginRegistrar() {
         val output = EvidenceProtocol.pathOption(requireNotNull(configuration[KotlinEvidenceConfiguration.OUTPUT]))
         val token = EvidenceProtocol.pathOption(requireNotNull(configuration[KotlinEvidenceConfiguration.TOKEN]))
         val callPositions = configuration[KotlinEvidenceConfiguration.CALL_POSITIONS] ?: false
-        val options = EvidenceProtocol.Options(root, output, token, "kotlin-constants", callPositions)
+        val authoredCalls = configuration[KotlinEvidenceConfiguration.AUTHORED_CALLS] ?: false
+        val inventory = configuration[KotlinEvidenceConfiguration.CALLER_INVENTORY] ?: false
+        val classOutput = configuration[KotlinEvidenceConfiguration.CLASS_OUTPUT]?.let(EvidenceProtocol::pathOption)
+        val options = EvidenceProtocol.Options(root, output, token, "kotlin-constants", callPositions, authoredCalls, inventory, classOutput)
         EvidenceProtocol.invalidateOutput(options)
+        AuthoredCallProtocol.invalidate(options)
+        CallerInventoryProtocol.invalidate(options)
+        if (inventory) CallerOutputHeaders.requireFresh(options.classOutput())
+        require(!authoredCalls || KotlinCompilerVersion.VERSION == "2.4.20") { "authored calls require Kotlin 2.4.20" }
         val state = KotlinEvidenceState(options)
         KotlinCompilerBridge.registerFir(this, KotlinFirRegistrar(state))
         KotlinCompilerBridge.register(this, IrGenerationExtension.Companion, object : IrGenerationExtension {
@@ -121,6 +139,10 @@ private class KotlinFirRegistrar(private val state: KotlinEvidenceState) : FirEx
 }
 
 private class KotlinReferenceCheckers(session: FirSession, private val state: KotlinEvidenceState) : FirAdditionalCheckersExtension(session) {
+    override val declarationCheckers = object : org.jetbrains.kotlin.fir.analysis.checkers.declaration.DeclarationCheckers() {
+        override val fileCheckers = state.inventory?.let { setOf(KotlinCallerInventoryChecker(it)) }.orEmpty()
+        override val namedFunctionCheckers = state.authored?.let { setOf(KotlinAuthoredChecker(it)) }.orEmpty()
+    }
     override val expressionCheckers: ExpressionCheckers = object : ExpressionCheckers() {
         override val propertyAccessExpressionCheckers = setOf(KotlinReferenceChecker(state))
         override val functionCallCheckers = if (state.callPositionsEnabled) setOf(KotlinCallChecker(state)) else emptySet()
@@ -244,16 +266,19 @@ private fun canonicalPath(path: String): String {
 
 private class KotlinEvidenceState(private val options: EvidenceProtocol.Options) {
     val callPositionsEnabled: Boolean = options.callPositions()
+    val inventory = if (options.callerInventory()) KotlinCallerInventory(options) else null
+    val authored = if (options.authoredCalls()) KotlinAuthoredCalls(options) else null
+    private val semanticMappingEnabled = callPositionsEnabled || options.authoredCalls()
     private val initialToken = EvidenceProtocol.readToken(options)
     private val artifact = EvidenceProtocol.artifactFingerprint(KotlinEvidenceRegistrar::class.java)
     private val sources = linkedMapOf<String, EvidenceProtocol.Source>()
-    private val callSources = if (callPositionsEnabled) linkedMapOf<String, EvidenceProtocol.Source>() else null
-    private val callPathCache = if (callPositionsEnabled) HashMap<String, String>() else null
+    private val callSources = if (semanticMappingEnabled) linkedMapOf<String, EvidenceProtocol.Source>() else null
+    private val callPathCache = if (semanticMappingEnabled) HashMap<String, String>() else null
     private val references = LinkedHashSet<Reference>()
     private val callReferences = ArrayDeque<CallReference>()
     private val callPositionBuffer = EvidenceProtocol.CallPositionBuffer()
     private val methods = LinkedHashSet<MethodCandidate>()
-    private val callMethodIdentities = if (callPositionsEnabled) {
+    private val callMethodIdentities = if (semanticMappingEnabled) {
         IdentityHashMap<FirFunctionSymbol<*>, LinkedHashSet<String>>()
     } else null
     private val fields = LinkedHashSet<FieldCandidate>()
@@ -282,7 +307,7 @@ private class KotlinEvidenceState(private val options: EvidenceProtocol.Options)
                 val key = sourceFile.toAbsolutePath().normalize().toString()
                 val previous = sources.putIfAbsent(key, source)
                 if (previous != null && previous != source) fail("Kotlin source changed during collection")
-                if (callPositionsEnabled) {
+                if (semanticMappingEnabled) {
                     val callKey = callPath(sourceFile.toString())
                     val previousCallSource = callSources!!.putIfAbsent(callKey, source)
                     if (previousCallSource != null && previousCallSource != source) fail("Kotlin source changed during collection")
@@ -362,6 +387,7 @@ private class KotlinEvidenceState(private val options: EvidenceProtocol.Options)
     }
 
     fun recordMethod(function: IrFunction?, owner: String?, name: String, descriptor: String) {
+        if (owner != null) inventory?.method("method:$owner#$name$descriptor", function?.origin?.toString() ?: "NO_IR_FUNCTION")
         if (function == null || owner == null) return
         val file = KotlinCompilerBridge.ioFileForDeclaration(function) ?: return
         val start = function.startOffset
@@ -374,7 +400,7 @@ private class KotlinEvidenceState(private val options: EvidenceProtocol.Options)
             end,
             identity,
         )
-        if (callPositionsEnabled) {
+        if (semanticMappingEnabled) {
             val firSymbol = (function.metadata as? FirMetadataSource.Function)?.fir?.symbol ?: return
             val identities = callMethodIdentities!![firSymbol]
                 ?: LinkedHashSet<String>().also { callMethodIdentities[firSymbol] = it }
@@ -454,6 +480,8 @@ private class KotlinEvidenceState(private val options: EvidenceProtocol.Options)
             } else {
                 EvidenceProtocol.write(options, KotlinCompilerVersion.VERSION, artifact, sourceValues, unmapped, edges)
             }
+            authored?.finish(checkNotNull(callMethodIdentities), checkNotNull(callSources), artifact, KotlinCompilerVersion.VERSION)
+            inventory?.finish(classFactory, checkNotNull(callMethodIdentities), artifact, KotlinCompilerVersion.VERSION)
             if (unmapped > 0) diagnostic("unmapped Kotlin compiler references")
         } catch (error: RuntimeException) {
             fail("Kotlin compiler evidence could not be published")
@@ -463,6 +491,11 @@ private class KotlinEvidenceState(private val options: EvidenceProtocol.Options)
 
     private fun fail(reason: String) {
         invalid = true
+        if (options.callerInventory()) {
+            CallerInventoryProtocol.invalidate(options)
+            AuthoredCallProtocol.invalidate(options)
+            EvidenceProtocol.invalidateOutput(options)
+        }
         if (invalidReason == null) invalidReason = reason
         diagnostic(reason)
     }

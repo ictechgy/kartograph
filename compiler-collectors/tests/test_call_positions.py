@@ -11,6 +11,8 @@ import subprocess
 import tempfile
 import unittest
 
+from run import content_fingerprint, kotlin_artifact
+
 
 JAVA_SOURCE = """\
 package demo;
@@ -473,12 +475,7 @@ class CallPositionCollectorRedTests(unittest.TestCase):
             output = root / "evidence.tsv"
             token = root / "token"
             token.write_text("2" * 64, encoding="utf-8")
-            stdlib = next(
-                (item for item in self.kotlin_classpath.split(os.pathsep)
-                 if Path(item).name.startswith("kotlin-stdlib-2.4.10")),
-                None,
-            )
-            self.assertIsNotNone(stdlib, self.kotlin_classpath)
+            stdlib = self.kotlin_stdlib()
 
             result = run([
                 str(self.jdk17 / "bin/java"),
@@ -855,13 +852,10 @@ class CallPositionCollectorRedTests(unittest.TestCase):
             }, expected_stats=(call_count, call_count, 0, 0))
 
     def kotlin_stdlib(self) -> Path:
-        stdlib = next(
-            (item for item in self.kotlin_classpath.split(os.pathsep)
-             if Path(item).name.startswith("kotlin-stdlib-2.4.10")),
-            None,
-        )
-        self.assertIsNotNone(stdlib, self.kotlin_classpath)
-        return Path(stdlib)
+        version = os.environ.get("KARTOGRAPH_CALL_KOTLIN_VERSION", "")
+        self.assertRegex(version, r"^[0-9]+\.[0-9]+\.[0-9]+$", "explicit collector compiler version is required")
+        kotlin_artifact(self.kotlin_classpath, "kotlin-compiler-embeddable", version)
+        return kotlin_artifact(self.kotlin_classpath, "kotlin-stdlib", version)
 
     def test_javac_call_position_row_cap_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory(prefix="call-positions-cap-") as temporary:
@@ -952,6 +946,10 @@ class CallPositionCollectorRedTests(unittest.TestCase):
     ) -> None:
         rows = [line.split("\t") for line in output.read_text(encoding="utf-8").splitlines() if line]
         self.assertEqual(["format", "kartograph-compiler-evidence", "3"], rows[0])
+        headers = {row[0]: row[1] for row in rows if len(row) == 2 and row[0] in {"collector", "compiler", "artifact"}}
+        self.assertEqual(content_fingerprint(self.collector), headers.get("artifact"))
+        if headers.get("collector") == "kotlin-constants":
+            self.assertEqual(os.environ["KARTOGRAPH_CALL_KOTLIN_VERSION"], headers.get("compiler"))
         stats_rows = [row for row in rows if row[0] == "callStats"]
         self.assertEqual(1, len(stats_rows))
         stats = stats_rows[0]

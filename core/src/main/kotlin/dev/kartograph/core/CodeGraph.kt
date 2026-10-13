@@ -63,6 +63,65 @@ public class CodeGraph private constructor(
     public val compilerCallPositionsCaptured: Boolean
         get() = state.compilerCallPositionsCaptured
 
+    /** v3 selector와 별도인 compiler-authored 호출 분류다. 누락된 caller의 완전성은 알 수 없다. */
+    public val compilerAuthoredCallers: List<CompilerAuthoredCaller>
+        get() = state.compilerAuthoredCallers
+
+    /** COMPLETE 행의 calls만 해당 caller의 전체 authored 집합이다. 원시 간선과 합치지 않는다. */
+    public fun compilerAuthoredCallsFrom(caller: NodeId): CompilerAuthoredCaller? =
+        state.compilerAuthoredCallersById[caller]
+
+    /** 검증된 side table을 원시 간선·dispatch와 독립적으로 교체한다. */
+    public fun withCompilerAuthoredCalls(callers: Iterable<CompilerAuthoredCaller>): CodeGraph {
+        val rows = callers.toList()
+        require(rows.size <= 200_000 && rows.map { it.caller }.distinct().size == rows.size) { "duplicate authored caller coverage" }
+        val normalized = rows.filter { it.caller in state.nodes }.map { row ->
+            require(state.nodes.getValue(row.caller).let { it.kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) &&
+                NodeAttribute.EXTERNAL_STUB !in it.attributes }) { "authored caller must be a project method" }
+            require(row.calls.all { it.origin != AuthoredCallOrigin.PROJECT || it.target !in state.nodes ||
+                state.nodes.getValue(it.target).kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) }) { "authored target must be a method" }
+            require(row.calls.all { call -> state.nodes[call.target]?.let { target ->
+                (call.origin == AuthoredCallOrigin.BINARY) == (NodeAttribute.EXTERNAL_STUB in target.attributes)
+            } ?: true }) { "authored target scope contradicts graph" }
+            row.retainingTargets(state.nodes.keys).let { it.copy(
+                calls = it.calls.sortedWith(compareBy({ call -> call.offsetUtf16 }, { call -> call.target })),
+                reasons = it.reasons.sortedBy { reason -> reason.name }) }
+        }.sortedBy { it.caller }
+        return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
+            state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses, state.lambdaEscapes,
+            state.locatedCompilerReferences, state.compilerCallPositionsCaptured, state.outgoing, state.incoming, normalized, state.compilerCallerInventories))
+    }
+
+    /** source/body와 실제 output method의 전체 accounting이다. CALL이 없는 method도 포함한다. */
+    public val compilerCallerInventories: List<CompilerCallerInventory>
+        get() = state.compilerCallerInventories
+
+    /** inventory를 붙여도 원시 그래프는 바뀌지 않으며 missing output은 projection incomplete로 남는다. */
+    public fun withCompilerCallerInventories(inventories: Iterable<CompilerCallerInventory>): CodeGraph {
+        val rows = inventories.toList()
+        require(rows.size <= 256 && rows.map { it.scope to it.artifact }.distinct().size == rows.size) { "duplicate caller inventory task" }
+        require(rows.sumOf { it.sources.size + it.bodies.size + it.outputs.size + it.methods.size + it.bodies.sumOf { body -> body.methods.size.toLong() } } <= 200_000) { "caller inventories exceed total row limit" }
+        val owners = rows.flatMap { it.outputs }.mapNotNull { it.owner }
+        val methods = rows.flatMap { it.methods }.map { it.id }
+        require(owners.distinct().size == owners.size && methods.distinct().size == methods.size) { "overlapping caller inventory outputs" }
+        val sourceOwners = rows.flatMap { row -> row.sources.map { row.scope to it.path } }
+        require(sourceOwners.distinct().size == sourceOwners.size) { "duplicate caller inventory source owner" }
+        val normalized = rows.map { row -> row.copy(sources = row.sources.sortedBy { it.path },
+            bodies = row.bodies.map { it.copy(methods = it.methods.sorted()) }.sortedBy { it.key },
+            outputs = row.outputs.sortedBy { it.path }, methods = row.methods.sortedBy { it.id },
+            sourceBodyCounts = row.sourceBodyCounts.toSortedMap()).retainingNodes(state.nodes) }.sortedWith(compareBy({ it.scope }, { it.artifact }))
+        return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
+            state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses, state.lambdaEscapes,
+            state.locatedCompilerReferences, state.compilerCallPositionsCaptured, state.outgoing, state.incoming,
+            state.compilerAuthoredCallers, normalized))
+    }
+
+    /**
+     * 같은 JVM identity/관계를 유지한 표시 보강 또는 node projection에 기존 C1/C2 capture-time 사실을 보존한다.
+     * 제거·변경된 선언과 source 모순은 완전성을 잃는다. 현재 input/output 신선도 검증을 대신하지 않는다.
+     */
+    public fun withCompilerSourceFactsFrom(original: CodeGraph): CodeGraph = CompilerSourceFacts.retain(original, this)
+
     public val edges: List<GraphEdge>
         get() = state.edges
 
@@ -122,6 +181,8 @@ public class CodeGraph private constructor(
             true,
             state.outgoing,
             state.incoming,
+            state.compilerAuthoredCallers,
+            state.compilerCallerInventories,
         ))
     }
 
@@ -165,6 +226,8 @@ public class CodeGraph private constructor(
                 state.compilerCallPositionsCaptured,
                 state.outgoing,
                 state.incoming,
+                state.compilerAuthoredCallers,
+                state.compilerCallerInventories,
             ))
         }
 
@@ -186,6 +249,8 @@ public class CodeGraph private constructor(
             state.compilerCallPositionsCaptured,
             outgoing,
             incoming,
+            state.compilerAuthoredCallers,
+            state.compilerCallerInventories,
         ))
     }
 
@@ -259,7 +324,11 @@ public class CodeGraph private constructor(
         val compilerCallPositionsCaptured: Boolean,
         val outgoing: Map<NodeId, List<GraphEdge>>,
         val incoming: Map<NodeId, List<GraphEdge>>,
-    )
+        val compilerAuthoredCallers: List<CompilerAuthoredCaller> = emptyList(),
+        val compilerCallerInventories: List<CompilerCallerInventory> = emptyList(),
+    ) {
+        val compilerAuthoredCallersById: Map<NodeId, CompilerAuthoredCaller> = compilerAuthoredCallers.associateBy { it.caller }
+    }
 
     private data class EdgeSignature(
         val source: NodeId,
@@ -363,7 +432,16 @@ public class CodeGraph private constructor(
                         val retained = targets.filter(nodes::containsKey).distinct().sorted()
                         if (retained.size < 2) retained else CanonicalTargets(retained)
                     }
-                    call.copy(resolvedTargets = canonical)
+                    call.copy(resolvedTargets = canonical,
+                        declaration = call.declaration?.takeUnless { declaration ->
+                            declaration.scope == CallDeclarationScope.PROJECT &&
+                                (declaration.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(declaration.target).attributes) ||
+                                call.kind == InvocationKind.INTERFACE && declaration.scope == CallDeclarationScope.EXTERNAL &&
+                                nodes[NodeId("class:${call.owner}")]?.let { NodeAttribute.EXTERNAL_STUB !in it.attributes } == true
+                        }?.let { declaration ->
+                            require(declaration.ownerChain.size in 1..CallDeclaration.MAX_OWNER_CHAIN) { "invalid call declaration chain size" }
+                            declaration.copy(ownerChain = declaration.ownerChain.toList())
+                        })
                 }
                 .distinct().sorted()
         }
