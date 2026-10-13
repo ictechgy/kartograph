@@ -28,9 +28,13 @@ public object SourceDeclarationLocations {
                 .takeIf { it.length < enclosure.localClass.value.length }
         }
         val declarations = mutableMapOf<String, SourceDeclarations>()
+        val overloads = mutableMapOf<Triple<String, String, DeclarationKey>, Map<NodeId, DeclarationLocation>>()
         val jvmCandidates = graph.nodes.values.filter { !it.synthesized && JvmModifier.SYNTHETIC !in it.jvmModifiers }.mapNotNull { node ->
-            identity(node)?.let { identity -> declarationKey(node, identity)?.let { identity.owner to it } }
-        }.groupingBy { it }.eachCount()
+            identity(node)?.let { identity -> declarationKey(node, identity)?.let { (identity.owner to it) to node } }
+        }.groupBy({ it.first }, { it.second })
+        val indexedTypeNames = graph.nodes.values.filter {
+            it.kind in TYPE_KINDS && NodeAttribute.EXTERNAL_STUB !in it.attributes
+        }.mapTo(mutableSetOf()) { it.id.value.removePrefix("class:").substringAfterLast('/').substringAfterLast('$') }
         val nodes = graph.nodes.values.map { original ->
             val node = if (original.sourceDeclaration == null) original else original.copy(sourceDeclaration = null)
             val location = node.location ?: return@map node
@@ -54,14 +58,18 @@ public object SourceDeclarationLocations {
             val relative = paths[node.id] ?: return@map node
             if (fileName(location.path) != fileName(relative)) return@map node
             if ('/' in location.path.replace('\\', '/') && location.path.replace('\\', '/') != relative) return@map node
-            val source = declarations.getOrPut(relative) { read(root, relative) }
+            val source = declarations.getOrPut(relative) { read(root, relative, indexedTypeNames) }
             // Kotlin JVM 이름은 annotation alias로 바뀔 수 있으므로 compiler metadata의 원래 이름을 대조한다.
             if (relative.endsWith(".kt") && node.kind == NodeKind.METHOD && node.kotlinSourceName != identity.member) return@map node
             val expectedPackage = identity.owner.substringBeforeLast('/', "").replace('/', '.')
             if (source.packageName != expectedPackage) return@map node
             val key = declarationKey(node, identity) ?: return@map node
-            if (jvmCandidates[identity.owner to key] != 1) return@map node
-            val declaration = source.declarations[key].orEmpty().singleOrNull() ?: return@map node
+            val candidates = jvmCandidates[identity.owner to key].orEmpty()
+            val locations = source.declarations[key].orEmpty()
+            val declaration = if (candidates.size == 1 && locations.size == 1) locations.single()
+            else overloads.getOrPut(Triple(relative, identity.owner, key)) {
+                matchedOverloads(candidates, locations, paths)
+            }[node.id] ?: return@map node
             node.copy(
                 location = if (fillMissingLines && location.line == null) SourceLocation(relative, declaration.line) else location,
                 attributes = if (fillMissingLines && location.line == null) node.attributes + NodeAttribute.SOURCE_DECLARATION_LOCATION else node.attributes,
@@ -93,16 +101,64 @@ public object SourceDeclarationLocations {
         val arity: Int? = null,
         val sourceOwner: String? = null,
         val identifierOffset: Int? = offset,
+        val parameterDescriptor: String? = null,
+        val endOffset: Int = offset,
     )
 
-    private data class JvmIdentity(val owner: String, val member: String? = null, val arity: Int? = null)
+    private data class JvmIdentity(
+        val owner: String,
+        val member: String? = null,
+        val arity: Int? = null,
+        val parameterDescriptor: String? = null,
+    )
     private data class DelimiterDepth(val braces: Int, val parentheses: Int)
     private data class SourceDeclarations(
         val packageName: String?,
         val declarations: Map<DeclarationKey, List<DeclarationLocation>>,
     )
 
-    private data class DeclarationLocation(val line: Int, val evidence: SourceDeclarationEvidence?)
+    private data class DeclarationLocation(
+        val line: Int,
+        val evidence: SourceDeclarationEvidence?,
+        val parameterDescriptor: String?,
+        val endLine: Int,
+    )
+
+    /** 타입 대조와 compiler 줄이 모두 일치하는 완전한 overload 집합만 보강한다. */
+    private fun matchedOverloads(
+        candidates: List<GraphNode>,
+        declarations: List<DeclarationLocation>,
+        paths: Map<NodeId, String>,
+    ): Map<NodeId, DeclarationLocation> {
+        if (candidates.firstOrNull()?.kind != NodeKind.METHOD || candidates.size < 2 || candidates.size != declarations.size) return emptyMap()
+        val ordered = declarations.sortedBy { it.line }
+        if (ordered.zipWithNext().any { (first, next) -> first.endLine >= next.line }) return emptyMap()
+        val byDescriptor = declarations.associateBy { it.parameterDescriptor ?: return emptyMap() }
+        if (byDescriptor.size != declarations.size) return emptyMap()
+        val matched = mutableMapOf<NodeId, DeclarationLocation>()
+        val descriptors = mutableSetOf<String>()
+        candidates.forEach { candidate ->
+            if (NodeAttribute.SOURCE_DECLARATION_LOCATION in candidate.attributes ||
+                NodeAttribute.EXTENSION_FUNCTION in candidate.attributes ||
+                NodeAttribute.PROPERTY_ACCESSOR in candidate.attributes ||
+                NodeAttribute.EXTERNAL_STUB in candidate.attributes
+            ) return emptyMap()
+            val identity = identity(candidate) ?: return emptyMap()
+            val descriptor = identity.parameterDescriptor ?: return emptyMap()
+            if (!descriptors.add(descriptor)) return emptyMap()
+            val declaration = byDescriptor[descriptor] ?: return emptyMap()
+            val evidence = declaration.evidence ?: return emptyMap()
+            if (evidence.path.endsWith(".kt") && candidate.kotlinSourceName != identity.member) return emptyMap()
+            val location = candidate.location ?: return emptyMap()
+            if (paths[candidate.id] != evidence.path || fileName(location.path) != fileName(evidence.path) ||
+                '/' in location.path.replace('\\', '/') && location.path.replace('\\', '/') != evidence.path
+            ) return emptyMap()
+            val compilerLine = location.line ?: return emptyMap()
+            if (compilerLine !in declaration.line..declaration.endLine) return emptyMap()
+            matched[candidate.id] = declaration
+        }
+        return matched
+    }
 
     private val UNKNOWN = SourceDeclarations(null, emptyMap())
 
@@ -144,7 +200,8 @@ public object SourceDeclarationLocations {
         } else {
             val open = signature.indexOf('(').takeIf { it > 0 } ?: return null
             val descriptor = signature.substring(open)
-            JvmIdentity(owner, signature.substring(0, open), descriptorParameterCount(descriptor) ?: return null)
+            JvmIdentity(owner, signature.substring(0, open), descriptorParameterCount(descriptor) ?: return null,
+                descriptor.substringBefore(')') + ")")
         }
     }
 
@@ -163,7 +220,7 @@ public object SourceDeclarationLocations {
     private fun fileName(path: String): String = path.replace('\\', '/').substringAfterLast('/')
 
     /** source 파일 하나는 한 번만 bounded하게 읽고 유일성 대조용 header index만 보관한다. */
-    private fun read(root: Path, relative: String): SourceDeclarations = try {
+    private fun read(root: Path, relative: String, indexedTypeNames: Set<String>): SourceDeclarations = try {
         val path = root.resolve(relative).normalize()
         if (!SourceDeclarationEvidence.isPortablePath(relative) || !path.startsWith(root) || Files.isSymbolicLink(path) ||
             !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || !path.toRealPath().startsWith(root)
@@ -179,7 +236,7 @@ public object SourceDeclarationLocations {
                 val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
                 val model = RouteSourceFile(relative, relative.endsWith(".java"), false, parsed,
                     maximumParameterChars = MAX_HEADER_CHARS)
-                if (model.parameterScanIncomplete) UNKNOWN else declarations(model, hash)
+                if (model.parameterScanIncomplete) UNKNOWN else declarations(model, hash, indexedTypeNames)
             }
         }
     } catch (_: IOException) {
@@ -190,9 +247,14 @@ public object SourceDeclarationLocations {
         UNKNOWN
     }
 
-    private fun declarations(file: RouteSourceFile, sourceSha256: String): SourceDeclarations {
+    private fun declarations(file: RouteSourceFile, sourceSha256: String, indexedTypeNames: Set<String>): SourceDeclarations {
         val headerRanges = typeHeaderRanges(file)
-        val methods = file.functions.mapNotNull { functionDeclaration(file, it) }
+        val parameterTypes = parameterTypes(file, indexedTypeNames)
+        val unsupportedOwners = file.types.filter { type ->
+            val header = file.masked.substring(type.start, type.headerEnd)
+            '<' in header || ':' in header || JAVA_INHERITANCE.containsMatchIn(header)
+        }.map { it.start..it.bodyEnd }
+        val methods = file.functions.mapNotNull { functionDeclaration(file, it, parameterTypes, unsupportedOwners) }
         val methodOffsets = methods.mapTo(mutableSetOf()) { it.offset }
         val raw = buildList {
             file.types.forEach { type ->
@@ -251,12 +313,20 @@ public object SourceDeclarationLocations {
                 val line = lineAt(lineStarts, offset)
                 SourceDeclarationEvidence(file.relative, sourceSha256, offset, line, offset - lineStarts[line - 1] + 1)
             }
-            result.getOrPut(key) { mutableListOf() } += DeclarationLocation(lineAt(lineStarts, declaration.offset), evidence)
+            result.getOrPut(key) { mutableListOf() } += DeclarationLocation(
+                lineAt(lineStarts, declaration.offset), evidence, declaration.parameterDescriptor,
+                lineAt(lineStarts, declaration.endOffset),
+            )
         }
         return SourceDeclarations(file.packageName, result.mapValues { it.value.toList() })
     }
 
-    private fun functionDeclaration(file: RouteSourceFile, function: RouteFunctionDecl): RawDeclaration? {
+    private fun functionDeclaration(
+        file: RouteSourceFile,
+        function: RouteFunctionDecl,
+        parameterTypes: Map<String, String>,
+        unsupportedOwners: List<IntRange>,
+    ): RawDeclaration? {
         val headerEnd = (if (function.bodyStart > function.start) function.bodyStart + 1 else function.end)
             .coerceIn(function.start + 1, file.masked.length)
         if (headerEnd - function.start > MAX_HEADER_CHARS) return null
@@ -270,7 +340,44 @@ public object SourceDeclarationLocations {
             ?: return null
         val arguments = callArguments(file.code, open, close)
         if (arguments.size != function.parameters.size) return null
-        return RawDeclaration(offset, DeclarationKind.METHOD, function.name, arguments.size)
+        return RawDeclaration(offset, DeclarationKind.METHOD, function.name, arguments.size,
+            parameterDescriptor = parameterDescriptor(file, function, header.substring(0, nameOffset), arguments, parameterTypes, unsupportedOwners),
+            endOffset = function.end.coerceAtMost(file.source.length))
+    }
+
+    /** 기본 타입의 단순 header만 읽는다. 별칭·제네릭·상속·lowering은 해석하지 않는다. */
+    private fun parameterDescriptor(
+        file: RouteSourceFile,
+        function: RouteFunctionDecl,
+        prefix: String,
+        arguments: List<String>,
+        parameterTypes: Map<String, String>,
+        unsupportedOwners: List<IntRange>,
+    ): String? {
+        if ('<' in prefix || !file.isJava && prefix.trim() != "fun" ||
+            unsupportedOwners.any { function.start in it }
+        ) return null
+        val descriptors = arguments.map { argument ->
+            val type = (if (file.isJava) JAVA_PLAIN_PARAMETER else KOTLIN_PLAIN_PARAMETER)
+                .matchEntire(argument.trim())?.groupValues?.get(1) ?: return null
+            parameterTypes[type] ?: return null
+        }
+        return descriptors.joinToString("", "(", ")")
+    }
+
+    /** 파일별 가림 후보는 한 번만 검사하며 프로젝트 전체 이름 해석을 주장하지 않는다. */
+    private fun parameterTypes(file: RouteSourceFile, indexedTypeNames: Set<String>): Map<String, String> {
+        if (UNSUPPORTED_OVERLOAD_CONTEXT.containsMatchIn(file.masked)) return emptyMap()
+        val names = file.types.mapTo(mutableSetOf()) { it.name }
+        return (if (file.isJava) JAVA_PARAMETER_TYPES else KOTLIN_PARAMETER_TYPES).filter { (type, descriptor) ->
+            // Java primitive는 가려질 수 없다. 나머지는 import·지역/관측 타입의 가림을 거른다.
+            if (file.isJava && descriptor.length == 1) true else {
+                val name = type.substringBefore('.')
+                name !in indexedTypeNames && name !in names && file.imports.none { imported ->
+                    imported.path.endsWith(".*") || (imported.alias ?: imported.path.substringAfterLast('.')) == name
+                }
+            }
+        }
     }
 
     /** 하나의 header에서 이름 뒤 괄호가 정확히 한 번 있는지 검사하며 선언마다 regex를 만들지 않는다. */
@@ -479,6 +586,19 @@ public object SourceDeclarationLocations {
         NodeKind.ENUM,
         NodeKind.ANNOTATION_CLASS,
     )
+    private val JAVA_PARAMETER_TYPES = mapOf(
+        "boolean" to "Z", "byte" to "B", "char" to "C", "short" to "S", "int" to "I",
+        "long" to "J", "float" to "F", "double" to "D", "String" to "Ljava/lang/String;",
+        "java.lang.String" to "Ljava/lang/String;",
+    )
+    private val KOTLIN_PARAMETER_TYPES = mapOf(
+        "Boolean" to "Z", "Byte" to "B", "Char" to "C", "Short" to "S", "Int" to "I",
+        "Long" to "J", "Float" to "F", "Double" to "D", "String" to "Ljava/lang/String;",
+    ).let { types -> types + types.mapKeys { "kotlin.${it.key}" } }
+    private val JAVA_PLAIN_PARAMETER = Regex("(?:final\\s+)?([A-Za-z_][\\w.]*)\\s+[A-Za-z_]\\w*")
+    private val KOTLIN_PLAIN_PARAMETER = Regex("[A-Za-z_]\\w*\\s*:\\s*([A-Za-z_][\\w.]*)")
+    private val UNSUPPORTED_OVERLOAD_CONTEXT = Regex("\\b(?:typealias|suspend|context)\\b")
+    private val JAVA_INHERITANCE = Regex("\\b(?:extends|implements)\\b")
     private val TYPE_IDENTIFIER = Regex("^(?:class|interface|object)\\s+([A-Za-z_]\\w*)")
     private val JAVA_HEADER_MODIFIERS = Regex("\\b(?:public|protected|private|static|final|synchronized|abstract|default|native|strictfp)\\b")
     private val JAVA_HEADER_ANNOTATIONS = Regex("@[A-Za-z_][\\w.]*(?:\\s*\\([^)]*\\))?")
