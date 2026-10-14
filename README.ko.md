@@ -59,11 +59,18 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.21.0"
+    id("io.github.ictechgy.kartograph") version "0.22.0"
 }
 ```
 
 GitHub release에서 `kartograph-<version>.zip` 또는 `.tar`를 받는다. 0.5.0 이상은 압축을 풀기 전에 파일의 SHA256을 `SHA256SUMS`의 해당 항목과 대조하고, 그다음 `bin/kartograph`를 실행한다. release에는 CycloneDX runtime SBOM도 들어 있다. 별도 서명은 배포하지 않는다.
+
+0.22.0은 준비 중이다. 위 예시는 해당 버전의 Portal 공개 후 사용하며 GitHub asset과 Portal
+설치 가능성을 따로 확인한다. 0.21.0은 태그·release 페이지만 공개됐고 실패한 배포에서
+distribution asset이나 Portal plugin은 발행되지 않았다. 0.20.0에서 올리는 직접 JVM 라이브러리
+소비자는 `GraphNode`·`QuerySnapshot`의 생성자·`copy` ABI 변경에 맞춰 다시 컴파일하고
+CLI·plugin·선택적 collector를 같은 버전으로 설치한다. 캐시·snapshot 호환성은
+[업그레이드 안내](CHANGELOG.md)를 참고한다.
 
 ## 사용법
 

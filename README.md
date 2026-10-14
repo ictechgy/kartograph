@@ -58,11 +58,18 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.21.0"
+    id("io.github.ictechgy.kartograph") version "0.22.0"
 }
 ```
 
 Download `kartograph-<version>.zip` or `.tar` from a GitHub release. For 0.5.0 and later, check its SHA256 against the matching entry in `SHA256SUMS` before unpacking, then run `bin/kartograph`. Releases also include CycloneDX runtime SBOMs. Detached signatures are not published.
+
+0.22.0 is in preparation. Use the example above only after that version is available in the
+Plugin Portal; GitHub assets and Portal availability are separate checks. The 0.21.0 tag and
+release page exist, but its failed release produced no distribution assets or Portal plugin.
+When upgrading from 0.20.0, rebuild direct JVM library consumers for the `GraphNode` and
+`QuerySnapshot` ABI changes and use matching CLI, plugin and optional collector versions.
+See the [upgrade notes](CHANGELOG.md) for cache and snapshot compatibility.
 
 ## Usage
 
@@ -265,13 +272,13 @@ non-symlink document with before/after identity checks. JDK file APIs do not pro
 nonblocking open, so these checks do not claim atomic protection against hostile concurrent
 replacement by a special file. Supply a completed, stable input.
 
-This source addition is not included in the 0.21.0 release. It changes the public JVM constructor
+This addition is prepared for 0.22.0 and is absent from the 0.21.0 tag. It changes the public JVM constructor
 and generated `copy`/default-call signatures of `QuerySnapshot`; clients compiled against an
 earlier `QuerySnapshot` must be rebuilt together with the updated export library. Source-level
 default arguments and existing snapshot wire versions remain compatible. The existing
 `ExternalRetentionCodec.parse(String)` and `AdoptionReporter.render` JVM entry points are retained.
-Publication of this public shape requires the next pre-1.0 minor release, 0.22.0; version metadata
-is intentionally unchanged in this standalone consumer change.
+This public shape uses the pre-1.0 minor version 0.22.0; release preparation does not establish
+artifact or Plugin Portal availability.
 
 `bridges --rn-events [--target react-native]` exports explicit
 `getJSModule(...RCTDeviceEventEmitter::class.java).emit(...)` calls (Java `.class` is also supported)

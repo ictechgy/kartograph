@@ -69,9 +69,11 @@ Java의 non-private/compiler-visible 선언을 ABI 후보로 본다. 의미 기�
 
 ## Gradle
 
+아래 0.22.0 예시는 release 준비본이며 해당 버전이 Plugin Portal에 공개된 뒤 사용한다.
+
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.21.0"
+    id("io.github.ictechgy.kartograph") version "0.22.0"
 }
 kartograph {
     reportFormat.set("json")
