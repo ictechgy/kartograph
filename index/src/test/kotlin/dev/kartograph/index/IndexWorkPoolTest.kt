@@ -20,6 +20,7 @@ class IndexWorkPoolTest {
         val workers = ConcurrentLinkedQueue<Thread>()
         val started = CountDownLatch(2)
         val cleaning = CountDownLatch(2)
+        val cleanupFinished = CountDownLatch(2)
         val releaseCleanup = CountDownLatch(1)
         val returned = CountDownLatch(1)
         val closed = CountDownLatch(1)
@@ -48,6 +49,7 @@ class IndexWorkPoolTest {
                             }
                         }
                         if (!resourceOpen.get()) resourceClosedDuringCleanup.set(true)
+                        cleanupFinished.countDown()
                     }
                 } }
             } catch (error: Throwable) {
@@ -71,6 +73,9 @@ class IndexWorkPoolTest {
             caller.join(10_000)
         }
         assertFalse(caller.isAlive)
+        assertEquals(0L, cleanupFinished.count, "task cleanup completes before the caller returns")
+        // Executor의 종료 신호와 마지막 Thread.run 반환 사이의 차이만 기다린다.
+        workers.forEach { it.join(10_000) }
         val error = assertIs<ClassIndexingException>(failure.get())
         assertEquals("indexing was interrupted", error.message)
         assertIs<InterruptedException>(error.cause)
