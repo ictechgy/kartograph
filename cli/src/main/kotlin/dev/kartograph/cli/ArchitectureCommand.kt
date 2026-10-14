@@ -7,9 +7,11 @@ import dev.kartograph.analysis.LayerRuleEvaluator
 import dev.kartograph.analysis.LayerRuleYaml
 import dev.kartograph.analysis.MartinMetrics
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.qualifiedName
 import dev.kartograph.index.ClassFileIndexer
 import dev.kartograph.index.ClassIndexingException
+import dev.kartograph.index.GraphExportIndexOptions
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
@@ -138,7 +140,14 @@ internal object ArchitectureCommand {
             error.println("error: layer configuration does not exist")
             return ExitStatus.FAILURE.code
         }
-        return try { action(ClassFileIndexer(callbackFacts = false).index(options.roots), options) } catch (problem: ClassIndexingException) {
+        return try {
+            // 선언 의존 분석은 이미 dispatch 후보 간선을 제외하므로 이 출처의 확장을 생략한다.
+            val indexed = ClassFileIndexer(callbackFacts = false).indexForGraphExport(
+                options.roots,
+                options = GraphExportIndexOptions(excludedOrigins = setOf(EdgeOrigin.DISPATCH_MODEL)),
+            )
+            action(indexed.indexed.graph, options)
+        } catch (problem: ClassIndexingException) {
             error.println("error: ${problem.message ?: "unable to index compiled declarations"}")
             ExitStatus.FAILURE.code
         }
