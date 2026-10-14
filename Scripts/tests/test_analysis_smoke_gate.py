@@ -249,7 +249,7 @@ class AnalysisSmokeFailureJsonTest(unittest.TestCase):
         spec.loader.exec_module(mod)
         observed_passes = []
 
-        def measure(commands, env, samples, counters, failures):
+        def measure(commands, env, samples, counters, failures, diagnostics=None):
             duration = (3.0, 3.5, 4.0)[len(observed_passes)]
             observed_passes.append([name for name, _, _ in commands])
             for name, _, _ in commands:
