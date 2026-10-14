@@ -239,10 +239,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
             "dispatch-candidates-over-limit: ${dispatchResult.overLimitCalls} call site(s) exceeded " +
                 "${exportOptions!!.maximumDispatchCandidates} distinct targets; all candidates for those calls were omitted"
         val expanded = if (exportOptions?.includeExternalStubs == true) externalStubs(dispatchResult.graph, classFacts) else dispatchResult.graph
-        val selected = if (exportOptions == null || exportOptions.excludedOrigins.isEmpty()) expanded else
-            CodeGraph(expanded.nodes.values, expanded.edges.filter { it.origin !in exportOptions.excludedOrigins },
-                expanded.externalCalls, expanded.serviceProviders, expanded.enclosures,
-                expanded.callbackArguments, expanded.parameterUses, expanded.lambdaEscapes)
+        val selected = selectForGraphExport(expanded, exportOptions)
         val dispatched = IndexedClasses(selected, observations, hierarchy, declarationsByRoot.toList(), selectedRootByNode)
         val dispatchNanos = System.nanoTime() - dispatchStart
         val statistics = IndexingStatistics(classFiles, cacheHits, cacheMisses, parsedClasses, invalidEntries, writeFailures,
@@ -253,6 +250,17 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
             hierarchyIndexer.statistics.hierarchyWriteFailures, hierarchyIndexer.statistics.hierarchyUnavailableEntries,
             dispatchNanos)
         return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics)
+    }
+
+    /** 전체 필터를 한 번 평가한 뒤 제거와 compiler 위치 상태가 없을 때만 정규화된 그래프를 재사용한다. */
+    private fun selectForGraphExport(expanded: CodeGraph, exportOptions: GraphExportIndexOptions?): CodeGraph {
+        if (exportOptions == null || exportOptions.excludedOrigins.isEmpty()) return expanded
+        val edges = expanded.edges.filter { it.origin !in exportOptions.excludedOrigins }
+        return if (edges.size == expanded.edgeCount && expanded.locatedCompilerReferences.isEmpty() &&
+            !expanded.compilerCallPositionsCaptured) expanded else
+            CodeGraph(expanded.nodes.values, edges,
+                expanded.externalCalls, expanded.serviceProviders, expanded.enclosures,
+                expanded.callbackArguments, expanded.parameterUses, expanded.lambdaEscapes)
     }
 
     /** 실제 classfile 참조의 identity만 복원한다. SDK 구현이나 source 위치를 만들어내지 않는다. */
