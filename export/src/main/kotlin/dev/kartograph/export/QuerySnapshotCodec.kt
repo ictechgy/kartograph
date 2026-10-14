@@ -53,6 +53,8 @@ public data class QuerySnapshot(
     val callbackFactsCaptured: Boolean = true,
     /** 새 snapshot이 sparse call-site evidence를 캡처했는지다. 옛 문서는 false로 읽는다. */
     val callSiteLinesCaptured: Boolean = true,
+    /** 보존 교환 문서의 원본 관측이며 compiler-task build provenance와 독립적이다. */
+    val externalRetentionContexts: List<ExternalRetentionDocumentContext> = emptyList(),
 ) {
     init {
         require(revision == null || Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) { "snapshot revision must be a full commit hash" }
@@ -99,6 +101,8 @@ public object QuerySnapshotCodec {
         "toolVersion" to snapshot.toolVersion,
         "revision" to snapshot.revision, "scope" to snapshot.scope,
         "provenance" to snapshot.provenance?.let(BuildWitnessCodec::provenanceValue),
+        "externalRetentionContexts" to snapshot.externalRetentionContexts.takeIf { it.isNotEmpty() }
+            ?.map { it.canonicalDocument }?.distinct()?.sorted(),
         "processorOutputs" to snapshot.processorOutputs.sortedWith(compareBy({ it.kind }, { it.processor }, { it.processorArtifact }, { it.rawSha256 })).map(ProcessorOutputCodec::value),
         "processorGenerations" to snapshot.processorGenerations.sortedWith(compareBy({ it.processor }, { it.artifactSha256 })).map { generation ->
             sortedMapOf("processor" to generation.processor, "artifactSha256" to generation.artifactSha256,
@@ -376,7 +380,12 @@ public object QuerySnapshotCodec {
             } }.orEmpty(),
             document["processorOutputs"]?.let { values -> list(values).map { ProcessorOutputCodec.observation(it) } }.orEmpty(),
             enclosuresCaptured = enclosures != null, callbackFactsCaptured = callbackArguments != null && parameterUses != null && lambdaEscapes != null,
-            callSiteLinesCaptured = rawGraph.containsKey("callSiteEvidence"))
+            callSiteLinesCaptured = rawGraph.containsKey("callSiteEvidence"),
+            externalRetentionContexts = if ("externalRetentionContexts" in document) list(document["externalRetentionContexts"]).map { raw ->
+                ExternalRetentionCodec.parseDocument(string(raw)).also { require(it.retentions.isEmpty()) {
+                    "external retention snapshot context must not contain hidden retention roots"
+                } }.context
+            }.distinct().sortedBy { it.canonicalDocument } else emptyList())
     }
 
     /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */
@@ -539,57 +548,71 @@ public object QuerySnapshotCodec {
 public class QuerySnapshotSizeException internal constructor() : IllegalArgumentException("query snapshot is too large")
 
 /** 문서 밖의 입력을 오류 문구에 넣지 않는, 깊이와 크기가 제한된 JSON reader다. */
-internal class SnapshotJsonParser(private val text: String, private val generalNumbers: Boolean = false) {
+internal class SnapshotJsonParser(
+    private val text: String,
+    private val generalNumbers: Boolean = false,
+    private val externalRetentionEnvelope: Boolean = false,
+    private val strictRetentionRoot: Boolean = false,
+) {
     private var offset = 0
 
     fun parse(): Any? {
-        val result = value(0)
+        val result = value(0, if (strictRetentionRoot) 0 else null)
         whitespace()
         checkInput(offset == text.length)
         return result
     }
 
-    private fun value(depth: Int): Any? {
-        checkInput(depth <= 32)
+    private fun value(depth: Int, retentionDepth: Int? = null, arrayLimit: Int? = null): Any? {
+        if (retentionDepth == null) checkInput(depth <= 32)
         whitespace()
-        return when (text.getOrNull(offset)) {
-            '{' -> objectValue(depth + 1)
-            '[' -> arrayValue(depth + 1)
-            '"' -> stringValue()
+        val token = text.getOrNull(offset)
+        if (retentionDepth != null && (token == '{' || token == '[')) checkInput(retentionDepth < 64)
+        return when (token) {
+            '{' -> objectValue(depth + 1, retentionDepth?.plus(1))
+            '[' -> arrayValue(depth + 1, retentionDepth?.plus(1), arrayLimit)
+            '"' -> stringValue(retentionDepth != null)
             't' -> literal("true", true)
             'f' -> literal("false", false)
             'n' -> literal("null", null)
-            '-', in '0'..'9' -> numberValue()
+            '-', in '0'..'9' -> numberValue(retentionDepth != null)
             else -> invalid()
         }
     }
 
-    private fun objectValue(depth: Int): Map<String, Any?> {
+    private fun objectValue(depth: Int, retentionDepth: Int?): Map<String, Any?> {
         expect('{')
         val result = linkedMapOf<String, Any?>()
         if (consume('}')) return result
         while (true) {
-            val key = stringValue()
+            val key = stringValue(retentionDepth != null)
             checkInput(key !in result)
             expect(':')
-            result[key] = value(depth)
+            val envelope = externalRetentionEnvelope && retentionDepth == null && depth == 1 && key == "provenance"
+            val limit = if (retentionDepth == 1) when (key) {
+                "sources" -> 256
+                "limitations" -> 4096
+                else -> null
+            } else null
+            result[key] = if (envelope) value(0, 0) else value(depth, retentionDepth, limit)
             if (consume('}')) return result
             expect(',')
         }
     }
 
-    private fun arrayValue(depth: Int): List<Any?> {
+    private fun arrayValue(depth: Int, retentionDepth: Int?, maximum: Int?): List<Any?> {
         expect('[')
         val result = mutableListOf<Any?>()
         if (consume(']')) return result
         while (true) {
-            result += value(depth)
+            if (maximum != null) checkInput(result.size < maximum)
+            result += value(depth, retentionDepth)
             if (consume(']')) return result
             expect(',')
         }
     }
 
-    private fun stringValue(): String {
+    private fun stringValue(strictScalar: Boolean = false): String {
         expect('"')
         return buildString {
             while (offset < text.length) {
@@ -608,7 +631,7 @@ internal class SnapshotJsonParser(private val text: String, private val generalN
                                 checkInput(offset + 4 <= text.length)
                                 val digits = text.substring(offset, offset + 4)
                                 offset += 4
-                                checkInput(digits.all { it.digitToIntOrNull(16) != null })
+                                checkInput(digits.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' })
                                 digits.toInt(16).toChar()
                             }
                             else -> invalid()
@@ -618,16 +641,23 @@ internal class SnapshotJsonParser(private val text: String, private val generalN
                 }
             }
             invalid()
-        }
+        }.also { if (strictScalar) checkInput(it.codePoints().allMatch { code -> code !in 0xD800..0xDFFF }) }
     }
 
-    private fun numberValue(): Number {
+    private fun numberValue(strictInteger: Boolean = false): Number {
         val start = offset
         if (text.getOrNull(offset) == '-') offset++
         val digits = offset
         while (text.getOrNull(offset) in '0'..'9') offset++
         checkInput(offset > digits && (text[digits] != '0' || offset == digits + 1))
         checkInput(offset - start <= MAX_NUMBER_CHARACTERS)
+        if (strictInteger) {
+            checkInput(text.getOrNull(offset) !in listOf('.', 'e', 'E'))
+            val spelling = text.substring(start, offset)
+            checkInput(spelling != "-0")
+            return spelling.toLongOrNull()?.takeIf { it in -9_007_199_254_740_991L..9_007_199_254_740_991L }
+                ?: invalid()
+        }
         if (!generalNumbers) return text.substring(start, offset).toLongOrNull() ?: invalid()
         var decimal = false
         if (text.getOrNull(offset) == '.') {

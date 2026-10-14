@@ -59,11 +59,16 @@ internal object SnapshotAggregation {
     /** 구성원 보존 근거의 파일 위치를 aggregate project 기준으로 옮긴다. 외부 keep 파일 표기는 그대로 둔다. */
     fun retention(members: List<AggregateMember>): List<RetentionEvidence> = members.flatMap { member ->
         member.snapshot.retention.map { evidence ->
+            if (evidence.externalBridge != null) return@map evidence
             val location = evidence.location ?: return@map evidence
             if (location.path.startsWith("external/")) evidence
             else evidence.copy(location = location.copy(path = member.rebase(location.path)))
         }
     }.distinct()
+
+    /** 원본 교차 언어 project/path는 rebase하지 않으며 모든 노드가 사라져도 문서 문맥을 남긴다. */
+    fun externalRetentionContexts(members: List<AggregateMember>): List<dev.kartograph.export.ExternalRetentionDocumentContext> =
+        members.flatMap { it.snapshot.externalRetentionContexts }.distinct().sortedBy { it.canonicalDocument }
 
     /**
      * 다시 계산한 한계와 겹치지 않는 구성원 한계에 구성원 scope를 붙여 보존한다.

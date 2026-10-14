@@ -106,7 +106,7 @@ internal object SnapshotMergeCommand {
         val snapshot = QuerySnapshot(graph, SnapshotAggregation.retention(members), limitations, suppressed,
             first.includePrivateMembers, revision = first.revision, scope = label, provenance = provenance,
             // 구성원 문서의 marker가 아니라 이 명령이 방금 만든 graph의 관측 결과를 기준으로 한다.
-            callSiteLinesCaptured = true)
+            callSiteLinesCaptured = true, externalRetentionContexts = SnapshotAggregation.externalRetentionContexts(members))
         if (unverified.isNotEmpty()) error.println("warning: merged snapshot includes unverified members; see its aggregate-member-unverified limitations")
         return Merged(snapshot, bindings)
     }

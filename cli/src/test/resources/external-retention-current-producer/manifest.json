@@ -1,0 +1,70 @@
+{
+  "format": "current-retention-producer-controls",
+  "version": 1,
+  "producerCapture": "producer.json",
+  "producerCaptureSha256": "070933d13db2a7e3bd3080ecd642579144ae8ab5058f3e02dee22cbf0d70382e",
+  "originalObservationsSha256": "843e3ff912d097b4923f87d9110cd37f882fc4099d67fc263fb5942a0f0e8d93",
+  "scope": "Actual built CLI outputs from authored synthetic inputs. The Kotlin receiver ID was bound to the sample.Camera javac test fixture; it was not obtained from a compiler-backed bridge producer. Unknown-version and unmatched-ID controls are explicitly derived by tests, not producer outputs.",
+  "cases": [
+    {
+      "scenario": "baseline",
+      "file": "kartograph-baseline-retentions.json",
+      "sha256": "686879d5a632711bae1a93db55dc840a15c5055f4b369a334a9cfbd192385dd2",
+      "producerExitCode": 0,
+      "inputs": {
+        "kartograph-baseline-dart.json": "850383b01e53dba72028b85e0610bd8586718eeef0f8563898f670e40761c5c0",
+        "kartograph-baseline-receiver.json": "6d45eb4f4428cc54ba17d63c5596f66084e87d7200c0a8c417542cf0bad3a4fd"
+      },
+      "command": [
+        "node",
+        "dist/cli/main.js",
+        "retentions",
+        "kartograph-baseline-dart.json",
+        "kartograph-baseline-receiver.json",
+        "--for",
+        "kartograph"
+      ],
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "scenario": "stale",
+      "file": "kartograph-stale-retentions.json",
+      "sha256": "db8d3bd92416a7336cc54426882044a50295779c4e26c806d11a448cb541ffd8",
+      "producerExitCode": 0,
+      "inputs": {
+        "kartograph-stale-dart.json": "850383b01e53dba72028b85e0610bd8586718eeef0f8563898f670e40761c5c0",
+        "kartograph-stale-receiver.json": "6ab00acc2a782fc8d3dceb6408dbfabc8bf805fea291872a1b394d8dfdaaa784"
+      },
+      "command": [
+        "node",
+        "dist/cli/main.js",
+        "retentions",
+        "kartograph-stale-dart.json",
+        "kartograph-stale-receiver.json",
+        "--for",
+        "kartograph"
+      ],
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "scenario": "zero",
+      "file": "kartograph-zero-retentions.json",
+      "sha256": "809dd7a6fac283e92a88e106630c80394f31b4b2983f27f3541231513e118469",
+      "producerExitCode": 0,
+      "inputs": {
+        "kartograph-zero-dart.json": "b75dad72e9004141388347b183f5d5b8729a7d3a0e1296d9ef12a4355ece5b9e",
+        "kartograph-zero-receiver.json": "6ab00acc2a782fc8d3dceb6408dbfabc8bf805fea291872a1b394d8dfdaaa784"
+      },
+      "command": [
+        "node",
+        "dist/cli/main.js",
+        "retentions",
+        "kartograph-zero-dart.json",
+        "kartograph-zero-receiver.json",
+        "--for",
+        "kartograph"
+      ],
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}
