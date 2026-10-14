@@ -21,11 +21,11 @@ jobs:
     timeout-minutes: 45
     env:
       TARGET_SHA: ${{ inputs.target_sha }}
-      EVIDENCE_DIRECTORY: ${{ runner.temp }}/release-readiness-validation
     steps:
       - name: Require a full commit SHA
         shell: bash
         run: |
+          printf 'EVIDENCE_DIRECTORY=%s/release-readiness-validation\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
           [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || {
             echo "target_sha must be a full lowercase hexadecimal commit SHA" >&2
             exit 64
