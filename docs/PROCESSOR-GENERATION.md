@@ -8,10 +8,10 @@
 
 ## 수집과 확인
 
-0.22.0의 collector JAR·runner·cache adapter는 별도 collector ZIP으로 배포할 준비 중이며,
-CLI ZIP/TAR나 Portal plugin runtime에 포함하지 않는다. 공개 후
-[GitHub Releases](https://github.com/ictechgy/kartograph/releases)에서 같은 버전의 ZIP과 checksum을
-확인한다. 0.21.0 태그의 실패한 배포에는 collector ZIP이 없다. 준비 소스를 빌드하려면
+0.22.0의 collector JAR·runner·cache adapter는 별도 collector ZIP으로 공개됐으며,
+CLI ZIP/TAR나 Portal plugin runtime에 포함하지 않는다.
+[0.22.0 GitHub Release](https://github.com/ictechgy/kartograph/releases/tag/v0.22.0)에서 같은 버전의 ZIP과 checksum을
+확인한다. 0.21.0 태그의 실패한 배포에는 collector ZIP이 없다. 소스로 빌드하려면
 CLI/plugin과 같은 source revision을 checkout하고 JDK 17로 실행한다.
 
 ```bash
@@ -166,7 +166,7 @@ KAPT/Kotlin2.4.10, KSP2.3.12에서 각 4종류 출력을 확인한다. source/cl
 ## v3 task 입력과 JVM 선언 귀속
 
 이 절의 기능은 0.15.0부터 제공한다. 기존 0.14.0 ZIP·Portal plugin은 v2까지
-지원하며, v3를 사용하려면 같은 버전(0.22.0 준비본)의 collector runner/cache adapter와 CLI/plugin을 함께 설치한다.
+지원하며, v3를 사용하려면 같은 버전(0.22.0)의 collector runner/cache adapter와 CLI/plugin을 함께 설치한다.
 기존 설정에 다음 선택 필드만 추가하고, 위의 `registerProcessorOutputCache`로 실제 native task를 선택한다.
 
 ```json
