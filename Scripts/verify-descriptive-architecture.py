@@ -25,15 +25,28 @@ AA = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(AA)
 PRODUCT_SHA = "13277fbbfd7d26e14a0c5bf7becf826ccb33f6c4"
 PRODUCT_TREE = "86ea1e2c50cd3f4ecb4b6cdac7ecd7ab0eecef73"
-PATCH_SHA256 = "ce67faf7531f0aed1bc1f6024afe20e76f4fb6f849e460e3cfd8bf549f32a44c"
+PATCH_SHA256 = "ea5e3efc3f0f563a1bc2015eecb9cab7a2bb1735d390f0485632f1eb9d9f2eba"
+CANDIDATE_SCOPE = "combined-architecture-dispatch-exclusion-and-index-zero-removal-reuse"
+CANDIDATE_MANIFEST_SHA256 = "13aac83c12a9997c84d21e760ba344c6a0681dc32142e157323571147e47c0d8"
+SOURCE_MANIFEST_SHA256 = "35d196ab775053055ff3e671e281f5b1b70dd783308e6d2825906d07733465c7"
 PLAN_SHA256 = "d585c8231d7f445ba6e2fbeaa51d444fc3f5d411500ddc20d3ddffb4fa3ac40a"
 CHANGED_FILES = [
-    {"path": "cli/src/main/kotlin/dev/kartograph/cli/ArchitectureCommand.kt",
+    {"path": "cli/src/main/kotlin/dev/kartograph/cli/ArchitectureCommand.kt", "status": "M",
      "sha256": "5c136882adf9d44aaa50c29b6922c24eb983dc125948c744ad10b2487ca1f0a2", "bytes": 9543},
-    {"path": "cli/src/test/kotlin/dev/kartograph/cli/ArchitectureDispatchSelectionTest.kt",
+    {"path": "cli/src/test/kotlin/dev/kartograph/cli/ArchitectureDispatchSelectionTest.kt", "status": "A",
      "sha256": "6d2358ec8c983e164a8ad7b187037a8a27379c5fe56055e9061ee754da35ef46", "bytes": 30189},
-    {"path": "cli/src/test/kotlin/dev/kartograph/cli/FullIndexArchitectureCommandOracle.kt",
+    {"path": "cli/src/test/kotlin/dev/kartograph/cli/FullIndexArchitectureCommandOracle.kt", "status": "A",
      "sha256": "d280d26be1e1b17fbabe039b8ad24439bd50492c30ca5b873db0d456f4b8e8fa", "bytes": 9126},
+    {"path": "index/src/main/kotlin/dev/kartograph/index/ClassFileIndexer.kt", "status": "M",
+     "sha256": "066cfd2632a3f03faaf0ffa3e8ed51bef64752ef0159da63329cb4e6610c1635", "bytes": 62265},
+    {"path": "index/src/test/kotlin/dev/kartograph/index/FullRebuildGraphExportSelectionOracle.kt", "status": "A",
+     "sha256": "2b5e34beb89164c85ede5f929659453be4c281d6a5b7fc20250fcf5bc39ed671", "bytes": 740},
+    {"path": "index/src/test/kotlin/dev/kartograph/index/GraphExportIndexTest.kt", "status": "M",
+     "sha256": "05fcc8118dbb507e9bf232c9fdbc5328403ae198d604d917ae9548ce0d49b930", "bytes": 5934},
+    {"path": "index/src/test/kotlin/dev/kartograph/index/GraphExportSelectionIntegrationTest.kt", "status": "A",
+     "sha256": "40fc45ff964f003d180491de7164f31205cfb66da84c4751d7945f9658a29f2f", "bytes": 17766},
+    {"path": "index/src/test/kotlin/dev/kartograph/index/GraphExportSelectionTest.kt", "status": "A",
+     "sha256": "79adf6d432cd8405b9298e222d20e0204b2d6e774a485e05e281bbab609b481e", "bytes": 9239},
 ]
 REQUIRED_TESTS = (
     "javac cross package interface and subclass fanout preserves authored dependencies",
@@ -48,11 +61,34 @@ REQUIRED_TESTS = (
     "architecture leaves later default cold warm graph capture and dead dispatch intact",
     "explicit dispatch selection preserves Kotlin metadata and bridge witnesses",
 )
+REQUIRED_INDEX_TESTS = {
+    "dev.kartograph.index.GraphExportSelectionTest": (
+        "every origin and mixed exclusions reuse only zero removal graphs()",
+        "null and empty options retain identity including compiler state()",
+        "empty and populated compiler captures take old reconstruction path()",
+        "stateful exclusions preserve exact full membership sequence()",
+        "throwing exclusions preserve exception and call prefix()",
+    ),
+    "dev.kartograph.index.GraphExportSelectionIntegrationTest": (
+        "compiler fixtures match old selection across roots callbacks stubs and cache states(Path)",
+        "accepted cached origins and stub restored edges are filtered after expansion(Path)",
+        "full index preserves caller exclusion calls and throwing membership(Path)",
+        "malformed class and jar still fail before final selection(Path)",
+        "invalid cache bytes enums weights and lines reparse identically(Path)",
+        "assembly and restored stub overflow still fail before exclusions can remove them(Path)",
+    ),
+}
+REQUIRED_CASES = {
+    "cli": {"dev.kartograph.cli.ArchitectureDispatchSelectionTest": tuple(name + "(Path)" for name in REQUIRED_TESTS)},
+    "index": REQUIRED_INDEX_TESTS,
+}
 NAMES = AA.NAMES
 UNCHANGED = ("graph", "dead", "dead_private")
 PAIRS = ("AB", "BA", "BA", "AB", "AB", "BA", "BA", "AB", "AB", "BA", "BA", "AB")
 SMALL_PAIRS = ("AB", "BA", "AB")
 CLI_JAR = "lib/cli-0.21.0.jar"
+INDEX_JAR = "lib/index-0.21.0.jar"
+CHANGED_JARS = (CLI_JAR, INDEX_JAR)
 RSS_LIMIT_KIB = 1.2 * 1024 * 1024
 MAIN_GROUPS = ("early", "late", "AB", "BA")
 HARNESS_PATHS = (
@@ -236,7 +272,7 @@ def source_identity(repo):
 
 
 def validate_sources(sources):
-    expected = [("M" if i == 0 else "A", row["path"]) for i, row in enumerate(CHANGED_FILES)]
+    expected = [(row["status"], row["path"]) for row in CHANGED_FILES]
     for label in "AB":
         source = sources[label]
         if source["head"] != PRODUCT_SHA or source["tree"] != PRODUCT_TREE or source["unstaged"] or source["untracked"]:
@@ -248,7 +284,8 @@ def validate_sources(sources):
     if {k: v for k, v in maps["A"].items() if k not in changed} != {k: v for k, v in maps["B"].items() if k not in changed}:
         raise ValueError("noncandidate tracked source differs")
     for row in CHANGED_FILES:
-        if maps["B"].get(row["path"]) != dict(row, mode=0o644):
+        body = {key: value for key, value in row.items() if key != "status"}
+        if maps["B"].get(row["path"]) != dict(body, mode=0o644):
             raise ValueError("candidate body or mode is not the reviewed patch")
 
 
@@ -258,8 +295,8 @@ def validate_installs(installs):
     if a["directories"] != b["directories"] or maps["A"].keys() != maps["B"].keys():
         raise ValueError("installation membership differs")
     differences = [name for name in maps["A"] if maps["A"][name] != maps["B"][name]]
-    if differences != [CLI_JAR] or maps["A"][CLI_JAR]["mode"] != maps["B"][CLI_JAR]["mode"]:
-        raise ValueError("only the reviewed CLI JAR may differ")
+    if differences != list(CHANGED_JARS) or any(maps["A"][name]["mode"] != maps["B"][name]["mode"] for name in CHANGED_JARS):
+        raise ValueError("exactly the reviewed CLI and index JARs must differ with unchanged modes")
     launcher = maps["A"].get("bin/kartograph")
     if not launcher or not launcher["mode"] & 0o111:
         raise ValueError("missing executable CLI launcher")
@@ -281,16 +318,22 @@ def validate_binding(harness):
     manifest = json.loads((directory / "candidate-source.json").read_text())
     expected = {"product_sha": PRODUCT_SHA, "product_tree": PRODUCT_TREE, "patch": "candidate.patch",
                 "patch_sha256": PATCH_SHA256, "reviewed_plan_sha256": PLAN_SHA256,
+                "candidate_scope": CANDIDATE_SCOPE, "candidate_source_manifest_sha256": SOURCE_MANIFEST_SHA256,
+                "allowed_install_differences": list(CHANGED_JARS),
+                "required_correctness_cases": {module: {cls: list(names) for cls, names in classes.items()}
+                                               for module, classes in REQUIRED_CASES.items()},
                 "changed_files": CHANGED_FILES, "unchanged_controls": list(UNCHANGED),
                 "changed_commands": ["cycles", "rules", "metrics"]}
     if any(manifest.get(key) != value for key, value in expected.items()) \
-            or AA.digest(directory / "candidate.patch") != PATCH_SHA256:
+            or AA.digest(directory / "candidate.patch") != PATCH_SHA256 \
+            or AA.digest(directory / "candidate-source.json") != CANDIDATE_MANIFEST_SHA256:
         raise ValueError("fixed candidate patch or declaration changed")
 
 
 def correctness_receipts(candidate):
-    """실제 Gradle XML의 성공·skip 수와 필수 11개 테스트를 타이머 전에 확인한다."""
-    result, required = {}, []
+    """실제 Gradle XML과 두 모듈의 필수 22개 정확한 테스트를 타이머 전에 확인한다."""
+    result = {}
+    required = {cls: [] for classes in REQUIRED_CASES.values() for cls in classes}
     for module in ("index", "cli"):
         root = candidate / module / "build/test-results/test"
         paths = sorted(root.glob("*.xml"))
@@ -311,16 +354,20 @@ def correctness_receipts(candidate):
             for key in totals:
                 totals[key] += counts[key]
             for case in cases:
-                if case.get("classname") == "dev.kartograph.cli.ArchitectureDispatchSelectionTest":
-                    if module != "cli" or case.find("skipped") is not None:
-                        raise ValueError("required architecture correctness test skipped or misplaced")
-                    required.append(case.get("name"))
+                cls = case.get("classname")
+                if cls in required:
+                    if cls not in REQUIRED_CASES[module] or case.find("skipped") is not None:
+                        raise ValueError("required correctness test skipped or misplaced")
+                    required[cls].append(case.get("name"))
         if totals["tests"] <= totals["skipped"]:
             raise ValueError("no successful correctness tests")
         result[module] = {"totals": totals, "xml": AA.file_rows(root, paths)}
-    if sorted(required) != sorted(name + "(Path)" for name in REQUIRED_TESTS):
-        raise ValueError("all eleven exact architecture correctness cases must pass once")
-    result["required_architecture_cases"] = sorted(required)
+    for classes in REQUIRED_CASES.values():
+        for cls, names in classes.items():
+            if sorted(required[cls]) != sorted(names):
+                raise ValueError("all 22 exact architecture and index correctness cases must pass once")
+    result["required_architecture_cases"] = sorted(required["dev.kartograph.cli.ArchitectureDispatchSelectionTest"])
+    result["required_index_cases"] = {cls: sorted(required[cls]) for cls in REQUIRED_INDEX_TESTS}
     return result
 
 
@@ -383,7 +430,8 @@ def main(argv=None):
     validate_roots(baseline, candidate, output)
     output.mkdir(parents=True, exist_ok=False)
     harness = Path(__file__).resolve().parents[1]
-    result = {"scope": "Fixed descriptive architecture assessment; no population, confidence, independence or release-headroom guarantee",
+    result = {"scope": "Fixed combined-versus-original descriptive assessment; no causal delta isolation, population, confidence, independence or release-headroom guarantee",
+              "candidate_scope": CANDIDATE_SCOPE, "reviewed_plan_sha256": PLAN_SHA256,
               "status": "incomplete", "product_sha": PRODUCT_SHA, "patch_sha256": PATCH_SHA256,
               "unchanged_controls": UNCHANGED, "schedule": schedule(), "rows": [], "suites": [], "metadata": [], "setup": []}
     capture, primary, bracket_started = None, None, False

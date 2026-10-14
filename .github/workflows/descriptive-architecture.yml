@@ -46,7 +46,7 @@ jobs:
           test -z "$(git -C baseline status --porcelain)"
           test -z "$(git -C candidate status --porcelain)"
           printf '%s  %s\n' \
-            ce67faf7531f0aed1bc1f6024afe20e76f4fb6f849e460e3cfd8bf549f32a44c \
+            ea5e3efc3f0f563a1bc2015eecb9cab7a2bb1735d390f0485632f1eb9d9f2eba \
             harness/experiments/descriptive-architecture/candidate.patch | sha256sum --check --strict
           git -C candidate apply --index "$GITHUB_WORKSPACE/harness/experiments/descriptive-architecture/candidate.patch"
           mkdir -p "$EVIDENCE_DIRECTORY"

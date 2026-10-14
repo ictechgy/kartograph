@@ -726,3 +726,491 @@ index 0000000..25f2f7e
 +    private fun format(value: Double): String = String.format(Locale.ROOT, "%.3f", value)
 +    private data class Options(val roots: List<Path>, val config: Path?, val strict: Boolean, val explain: String?)
 +}
+diff --git a/index/src/main/kotlin/dev/kartograph/index/ClassFileIndexer.kt b/index/src/main/kotlin/dev/kartograph/index/ClassFileIndexer.kt
+index 4a3fc87..47fb8bd 100644
+--- a/index/src/main/kotlin/dev/kartograph/index/ClassFileIndexer.kt
++++ b/index/src/main/kotlin/dev/kartograph/index/ClassFileIndexer.kt
+@@ -239,10 +239,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
+             "dispatch-candidates-over-limit: ${dispatchResult.overLimitCalls} call site(s) exceeded " +
+                 "${exportOptions!!.maximumDispatchCandidates} distinct targets; all candidates for those calls were omitted"
+         val expanded = if (exportOptions?.includeExternalStubs == true) externalStubs(dispatchResult.graph, classFacts) else dispatchResult.graph
+-        val selected = if (exportOptions == null || exportOptions.excludedOrigins.isEmpty()) expanded else
+-            CodeGraph(expanded.nodes.values, expanded.edges.filter { it.origin !in exportOptions.excludedOrigins },
+-                expanded.externalCalls, expanded.serviceProviders, expanded.enclosures,
+-                expanded.callbackArguments, expanded.parameterUses, expanded.lambdaEscapes)
++        val selected = selectForGraphExport(expanded, exportOptions)
+         val dispatched = IndexedClasses(selected, observations, hierarchy, declarationsByRoot.toList(), selectedRootByNode)
+         val dispatchNanos = System.nanoTime() - dispatchStart
+         val statistics = IndexingStatistics(classFiles, cacheHits, cacheMisses, parsedClasses, invalidEntries, writeFailures,
+@@ -255,6 +252,17 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
+         return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics)
+     }
+ 
++    /** 전체 필터를 한 번 평가한 뒤 제거와 compiler 위치 상태가 없을 때만 정규화된 그래프를 재사용한다. */
++    private fun selectForGraphExport(expanded: CodeGraph, exportOptions: GraphExportIndexOptions?): CodeGraph {
++        if (exportOptions == null || exportOptions.excludedOrigins.isEmpty()) return expanded
++        val edges = expanded.edges.filter { it.origin !in exportOptions.excludedOrigins }
++        return if (edges.size == expanded.edgeCount && expanded.locatedCompilerReferences.isEmpty() &&
++            !expanded.compilerCallPositionsCaptured) expanded else
++            CodeGraph(expanded.nodes.values, edges,
++                expanded.externalCalls, expanded.serviceProviders, expanded.enclosures,
++                expanded.callbackArguments, expanded.parameterUses, expanded.lambdaEscapes)
++    }
++
+     /** 실제 classfile 참조의 identity만 복원한다. SDK 구현이나 source 위치를 만들어내지 않는다. */
+     private fun externalStubs(graph: CodeGraph, facts: List<ClassFacts>): CodeGraph {
+         val stubs = linkedMapOf<NodeId, GraphNode>()
+diff --git a/index/src/test/kotlin/dev/kartograph/index/GraphExportIndexTest.kt b/index/src/test/kotlin/dev/kartograph/index/GraphExportIndexTest.kt
+index a35658a..4ff84c7 100644
+--- a/index/src/test/kotlin/dev/kartograph/index/GraphExportIndexTest.kt
++++ b/index/src/test/kotlin/dev/kartograph/index/GraphExportIndexTest.kt
+@@ -8,7 +8,7 @@ import org.junit.jupiter.api.io.TempDir
+ import kotlin.test.*
+ 
+ class GraphExportIndexTest {
+-    private fun fixture(root: Path): Pair<Path, Path> {
++    internal fun fixture(root: Path): Pair<Path, Path> {
+         val library = Files.createDirectories(root.resolve("library"))
+         val input = Files.createDirectories(root.resolve("input"))
+         val api = root.resolve("ServicePort.java")
+diff --git a/index/src/test/kotlin/dev/kartograph/index/FullRebuildGraphExportSelectionOracle.kt b/index/src/test/kotlin/dev/kartograph/index/FullRebuildGraphExportSelectionOracle.kt
+new file mode 100644
+index 0000000..88db272
+--- /dev/null
++++ b/index/src/test/kotlin/dev/kartograph/index/FullRebuildGraphExportSelectionOracle.kt
+@@ -0,0 +1,12 @@
++package dev.kartograph.index
++
++import dev.kartograph.core.CodeGraph
++
++/** 13277fbb의 최종 선택문을 식별자·조건·생성자 인자 변경 없이 추출한 테스트 oracle이다. */
++internal fun fullRebuildGraphExportSelection(expanded: CodeGraph, exportOptions: GraphExportIndexOptions?): CodeGraph {
++        val selected = if (exportOptions == null || exportOptions.excludedOrigins.isEmpty()) expanded else
++            CodeGraph(expanded.nodes.values, expanded.edges.filter { it.origin !in exportOptions.excludedOrigins },
++                expanded.externalCalls, expanded.serviceProviders, expanded.enclosures,
++                expanded.callbackArguments, expanded.parameterUses, expanded.lambdaEscapes)
++        return selected
++}
+diff --git a/index/src/test/kotlin/dev/kartograph/index/GraphExportSelectionTest.kt b/index/src/test/kotlin/dev/kartograph/index/GraphExportSelectionTest.kt
+new file mode 100644
+index 0000000..14b5acb
+--- /dev/null
++++ b/index/src/test/kotlin/dev/kartograph/index/GraphExportSelectionTest.kt
+@@ -0,0 +1,158 @@
++package dev.kartograph.index
++
++import dev.kartograph.core.*
++import java.lang.reflect.InvocationTargetException
++import kotlin.test.*
++
++class GraphExportSelectionTest {
++    @Test fun `every origin and mixed exclusions reuse only zero removal graphs`() {
++        for (excluded in exclusionCases) {
++            val options = GraphExportIndexOptions(excludedOrigins = excluded)
++            val noRemoval = graph(EdgeOrigin.entries.filterNot(excluded::contains))
++            val reused = selectGraphForExport(noRemoval, options)
++            assertSame(noRemoval, reused, "$excluded must reuse")
++            assertExportGraph(fullRebuildGraphExportSelection(noRemoval, options), reused)
++            val removal = graph(EdgeOrigin.entries)
++            val rebuilt = selectGraphForExport(removal, options)
++            assertNotSame(removal, rebuilt, "$excluded must reconstruct")
++            assertExportGraph(fullRebuildGraphExportSelection(removal, options), rebuilt)
++            assertTrue(rebuilt.edges.none { it.origin in excluded })
++        }
++        val empty = CodeGraph(emptyList(), emptyList())
++        assertSame(empty, selectGraphForExport(empty, GraphExportIndexOptions(setOf(EdgeOrigin.DISPATCH_MODEL))))
++    }
++
++    @Test fun `null and empty options retain identity including compiler state`() {
++        val captured = graph(listOf(EdgeOrigin.BYTECODE)).withCompilerCallPositions(emptyList())
++        assertSame(captured, selectGraphForExport(captured, null))
++        val exclusions = TracedExclusions(empty = true)
++        assertSame(captured, selectGraphForExport(captured, GraphExportIndexOptions(exclusions)))
++        assertEquals(listOf("isEmpty"), exclusions.calls)
++        assertExportGraph(fullRebuildGraphExportSelection(captured, GraphExportIndexOptions()), captured)
++    }
++
++    @Test fun `empty and populated compiler captures take old reconstruction path`() {
++        val base = graph(listOf(EdgeOrigin.BYTECODE))
++        val reference = LocatedCompilerReference(source, target, CompilerEvidenceSource("src/Caller.java", "a".repeat(64)),
++            "javac-constants", "21", CompilerSourceCoordinateBasis.JAVAC_UTF16_CHAR_SEQUENCE, 0, 3, 1, 1)
++        val options = GraphExportIndexOptions(setOf(EdgeOrigin.DISPATCH_MODEL))
++        val populated = base.withCompilerCallPositions(listOf(reference))
++        // 현재 생성 경로에 없는 nonempty/false 조합도 두 guard를 독립적으로 확인한다.
++        val nonemptyUncaptured = base.withCompilerCallPositions(listOf(reference)).also { graph ->
++            val state = CodeGraph::class.java.getDeclaredField("state").apply { isAccessible = true }.get(graph)
++            state.javaClass.getDeclaredField("compilerCallPositionsCaptured").apply { isAccessible = true }.setBoolean(state, false)
++        }
++        for (input in listOf(base.withCompilerCallPositions(emptyList()), populated, nonemptyUncaptured)) {
++            val result = selectGraphForExport(input, options)
++            assertNotSame(input, result)
++            assertFalse(result.compilerCallPositionsCaptured)
++            assertTrue(result.locatedCompilerReferences.isEmpty())
++            assertExportGraph(fullRebuildGraphExportSelection(input, options), result)
++        }
++        assertTrue(populated.compilerCallPositionsCaptured)
++        assertEquals(listOf(reference), populated.locatedCompilerReferences)
++    }
++
++    @Test fun `stateful exclusions preserve exact full membership sequence`() {
++        val input = graph(EdgeOrigin.entries)
++        for (mode in 0..2) {
++            fun exclusions() = TracedExclusions { call, _ -> when (mode) { 0 -> false; 1 -> true; else -> call % 2 == 0 } }
++            val prior = exclusions()
++            val current = exclusions()
++            assertExportGraph(fullRebuildGraphExportSelection(input, GraphExportIndexOptions(prior)),
++                selectGraphForExport(input, GraphExportIndexOptions(current)))
++            assertEquals(listOf("isEmpty") + input.edges.map { "contains:${it.origin}" }, current.calls)
++            assertEquals(prior.calls, current.calls)
++        }
++    }
++
++    @Test fun `throwing exclusions preserve exception and call prefix`() {
++        val input = graph(EdgeOrigin.entries)
++        for (throwAt in listOf(0, 1, 3, input.edgeCount)) {
++            val prior = TracedExclusions(throwAt = throwAt)
++            val current = TracedExclusions(throwAt = throwAt)
++            val expected = assertFailsWith<MembershipFailure> { fullRebuildGraphExportSelection(input, GraphExportIndexOptions(prior)) }
++            val actual = assertFailsWith<MembershipFailure> { selectGraphForExport(input, GraphExportIndexOptions(current)) }
++            assertEquals(expected.message, actual.message)
++            assertEquals(prior.calls, current.calls)
++            assertEquals(throwAt + 1, current.calls.size)
++        }
++    }
++
++    private fun graph(origins: List<EdgeOrigin>): CodeGraph {
++        val local = JvmNodeId.classId("sample/Caller\$Local")
++        val nodes = listOf(GraphNode(target, "hit", NodeKind.METHOD), GraphNode(local, "Local", NodeKind.CLASS),
++            GraphNode(source, "use", NodeKind.METHOD))
++        return CodeGraph(nodes, origins.map { GraphEdge(source, target, EdgeKind.CALL, 2, it,
++            if (it == EdgeOrigin.BYTECODE) listOf(3, 7) else emptyList()) },
++            externalCalls = listOf(ExternalCall(source, "outside/Api", "call", "()V", InvocationKind.STATIC,
++                resolvedTargets = listOf(target))),
++            serviceProviders = listOf(ServiceProviderRegistration("sample.Service", local, SourceLocation("META-INF/services/sample.Service", 1))),
++            enclosures = listOf(LexicalEnclosure(local, source)),
++            callbackArguments = listOf(CallbackArgument(source, target, InvocationKind.STATIC, 0, local)),
++            parameterUses = listOf(ParameterUse(source, 0, ParameterUseKind.DECLARED)),
++            lambdaEscapes = listOf(LambdaEscape(source, local, ParameterUseKind.RETURN)))
++    }
++
++    private val source = JvmNodeId.methodId("sample/Caller", "use", "()V")
++    private val target = JvmNodeId.methodId("sample/Target", "hit", "()V")
++}
++
++internal val exclusionCases: List<Set<EdgeOrigin>> = EdgeOrigin.entries.map(::setOf) + listOf(
++    setOf(EdgeOrigin.DISPATCH_MODEL, EdgeOrigin.BYTECODE),
++    setOf(EdgeOrigin.KOTLIN_METADATA, EdgeOrigin.RUNTIME_MODEL, EdgeOrigin.COMPILER_REFERENCE),
++    EdgeOrigin.entries.toSet(),
++)
++
++internal fun selectGraphForExport(graph: CodeGraph, options: GraphExportIndexOptions?): CodeGraph = try {
++    ClassFileIndexer::class.java.getDeclaredMethod("selectForGraphExport", CodeGraph::class.java, GraphExportIndexOptions::class.java)
++        .apply { isAccessible = true }.invoke(ClassFileIndexer(), graph, options) as CodeGraph
++} catch (error: InvocationTargetException) { throw error.targetException }
++
++internal class MembershipFailure(message: String) : RuntimeException(message)
++
++internal class TracedExclusions(
++    private val empty: Boolean = false,
++    private val throwAt: Int? = null,
++    private val answer: (Int, EdgeOrigin) -> Boolean = { _, _ -> false },
++) : Set<EdgeOrigin> by emptySet() {
++    val calls = mutableListOf<String>()
++    private var containsCalls = 0
++    override fun isEmpty(): Boolean {
++        calls += "isEmpty"
++        if (throwAt == 0) throw MembershipFailure("isEmpty")
++        return empty
++    }
++    override fun contains(element: EdgeOrigin): Boolean {
++        calls += "contains:$element"
++        containsCalls++
++        if (throwAt == containsCalls) throw MembershipFailure("contains:$containsCalls")
++        return answer(containsCalls, element)
++    }
++}
++
++internal fun assertExportGraph(expected: CodeGraph, actual: CodeGraph) {
++    assertEquals(expected.nodes.entries.toList(), actual.nodes.entries.toList(), "nodes and insertion order")
++    assertEquals(expected.nodeIds, actual.nodeIds)
++    assertEquals(expected.nodeCount, actual.nodeCount)
++    assertEquals(expected.edgeCount, actual.edgeCount)
++    assertEquals(expected.isEmpty, actual.isEmpty)
++    assertEquals(expected.edges, actual.edges, "edges, order, weights and call-site lines")
++    assertEquals(expected.externalCalls, actual.externalCalls)
++    assertEquals(expected.serviceProviders, actual.serviceProviders)
++    assertEquals(expected.enclosures, actual.enclosures)
++    assertEquals(expected.callbackArguments, actual.callbackArguments)
++    assertEquals(expected.parameterUses, actual.parameterUses)
++    assertEquals(expected.lambdaEscapes, actual.lambdaEscapes)
++    assertEquals(expected.locatedCompilerReferences, actual.locatedCompilerReferences)
++    assertEquals(expected.compilerCallPositionsCaptured, actual.compilerCallPositionsCaptured)
++    for (id in expected.nodeIds + NodeId("class:missing/Node")) {
++        assertEquals(expected.node(id), actual.node(id))
++        assertEquals(expected.contains(id), actual.contains(id))
++        assertEquals(expected.outgoingEdgesFrom(id), actual.outgoingEdgesFrom(id))
++        assertEquals(expected.incomingEdgesTo(id), actual.incomingEdgesTo(id))
++        assertEquals(expected.successorsOf(id), actual.successorsOf(id))
++        assertEquals(expected.usageSuccessorsOf(id), actual.usageSuccessorsOf(id))
++        assertEquals(expected.predecessorsOf(id), actual.predecessorsOf(id))
++    }
++}
+diff --git a/index/src/test/kotlin/dev/kartograph/index/GraphExportSelectionIntegrationTest.kt b/index/src/test/kotlin/dev/kartograph/index/GraphExportSelectionIntegrationTest.kt
+new file mode 100644
+index 0000000..1b31df3
+--- /dev/null
++++ b/index/src/test/kotlin/dev/kartograph/index/GraphExportSelectionIntegrationTest.kt
+@@ -0,0 +1,253 @@
++package dev.kartograph.index
++
++import dev.kartograph.core.*
++import dev.kartograph.index.fixture.CallbackFlowFixture
++import dev.kartograph.index.fixture.defaultbridges.Receiver
++import java.io.ByteArrayInputStream
++import java.io.DataInputStream
++import java.nio.ByteBuffer
++import java.nio.file.Files
++import java.nio.file.Path
++import java.util.zip.CRC32C
++import kotlin.test.*
++import org.junit.jupiter.api.io.TempDir
++
++class GraphExportSelectionIntegrationTest {
++    @Test fun `compiler fixtures match old selection across roots callbacks stubs and cache states`(@TempDir root: Path) {
++        val (java, library) = GraphExportIndexTest().fixture(root.resolve("java"))
++        val kotlin = copyCompilerFixtures(root.resolve("kotlin"))
++        val duplicate = Files.createDirectories(root.resolve("duplicate/sample"))
++        Files.copy(java.resolve("sample/Consumer.class"), duplicate.resolve("Consumer.class"))
++        val roots = listOf(java, kotlin, duplicate.parent)
++        val generated = listOf(kotlin, duplicate.parent)
++        val resources = root.resolve("resources")
++        Files.createDirectories(resources.resolve("META-INF/services"))
++        Files.writeString(resources.resolve("META-INF/services/sample.ServicePort"), "sample.Handler0\n")
++        var run = 0
++        for (callbacks in listOf(false, true)) for (stubs in listOf(false, true)) for (excluded in exclusionCases) {
++            val options = GraphExportIndexOptions(excluded, maximumDispatchCandidates = 2, includeExternalStubs = stubs)
++            for (state in listOf("none", "cold", "warm")) {
++                val pair = List(2) { side -> if (state == "none") null else
++                    ClassIndexCache(root.resolve("cache-${run}-$side"), "export-selection") }
++                run++
++                fun invoke(side: Int, old: Boolean) = index(roots, options, pair[side], callbacks, listOf(library),
++                    listOf(resources), generated, old)
++                if (state == "warm") { invoke(0, true); invoke(1, false) }
++                val expected = invoke(0, true)
++                val actual = invoke(1, false)
++                assertExportIndex(expected, actual)
++                val graph = actual.indexed.graph
++                assertTrue(graph.edges.none { it.origin in excluded })
++                assertEquals(0, actual.indexed.selectedRootByNode[JvmNodeId.classId("sample/Consumer")])
++                assertFalse(graph.nodes.getValue(JvmNodeId.classId("sample/Consumer")).synthesized)
++                assertTrue(graph.nodes.getValue(JvmNodeId.classId("dev/kartograph/index/fixture/defaultbridges/Receiver")).synthesized)
++                assertTrue(graph.serviceProviders.isNotEmpty())
++                assertTrue(graph.enclosures.isNotEmpty())
++                assertEquals(callbacks || state != "none", graph.callbackArguments.isNotEmpty())
++                assertEquals(callbacks || state != "none", graph.parameterUses.isNotEmpty())
++                assertEquals(callbacks || state != "none", graph.lambdaEscapes.isNotEmpty())
++                assertEquals(EdgeOrigin.BYTECODE !in excluded, graph.nodes.values.any { it.kotlinDefaultBridge != null })
++                assertEquals(EdgeOrigin.DISPATCH_MODEL !in excluded, actual.limitations.isNotEmpty())
++                when (state) {
++                    "none" -> assertEquals(0, actual.indexed.statistics.cacheHits)
++                    "cold" -> assertEquals(1, actual.indexed.statistics.cacheHits, "later duplicate root reuses the first parse")
++                    "warm" -> assertEquals(actual.indexed.statistics.classFiles, actual.indexed.statistics.cacheHits)
++                }
++                assertEquals(state != "warm", actual.indexed.statistics.parsedClasses > 0)
++            }
++        }
++        val expanded = ClassFileIndexer().indexWithObservations(roots).graph
++        val noOp = GraphExportIndexOptions(setOf(EdgeOrigin.COMPILER_REFERENCE))
++        assertTrue(expanded.nodes.values.any { it.kotlinDefaultBridge != null })
++        assertSame(expanded, selectGraphForExport(expanded, noOp), "real default-bridge witnesses survive graph reuse")
++        assertExportGraph(fullRebuildGraphExportSelection(expanded, noOp), expanded)
++        val runtime = expanded.edges.filter { it.origin == EdgeOrigin.RUNTIME_MODEL && it.kind == EdgeKind.REFERENCE }
++        assertTrue(runtime.isNotEmpty(), "real compiler fixture must exercise runtime REFERENCE facts")
++        for (excluded in listOf(setOf(EdgeOrigin.DISPATCH_MODEL), setOf(EdgeOrigin.RUNTIME_MODEL))) {
++            val result = ClassFileIndexer().indexForGraphExport(roots, options = GraphExportIndexOptions(excluded)).indexed.graph
++            assertEquals(if (EdgeOrigin.RUNTIME_MODEL in excluded) emptyList() else runtime,
++                result.edges.filter { it.origin == EdgeOrigin.RUNTIME_MODEL && it.kind == EdgeKind.REFERENCE })
++        }
++    }
++
++    @Test fun `accepted cached origins and stub restored edges are filtered after expansion`(@TempDir root: Path) {
++        val (input, _) = GraphExportIndexTest().fixture(root)
++        val file = input.resolve("sample/Consumer.class")
++        val cache = ClassIndexCache(root.resolve("cache"), "cached-origins")
++        ClassFileIndexer(cache).index(listOf(input))
++        val hash = sha256(Files.readAllBytes(file))
++        val original = (cache.read(hash) as CacheReadResult.Hit).facts
++        val caller = JvmNodeId.methodId("sample/Consumer", "use", "(Lsample/ServicePort;)V")
++        val internal = JvmNodeId.methodId("sample/Consumer", "<init>", "()V")
++        val external = JvmNodeId.classId("outside/Restored")
++        for (excluded in exclusionCases) for (stubs in listOf(false, true)) {
++            val injected = excluded.flatMap { origin -> listOf(internal, external).map { GraphEdge(caller, it, EdgeKind.REFERENCE, origin = origin) } }
++            assertEquals(CacheWriteResult.Written, cache.write(hash, original.copy(edges = original.edges + injected)))
++            assertTrue((cache.read(hash) as CacheReadResult.Hit).facts.edges.containsAll(injected))
++            val options = GraphExportIndexOptions(excluded, includeExternalStubs = stubs)
++            val expanded = indexExpanded(listOf(input), options, cache)
++            assertTrue(expanded.indexed.graph.edges.containsAll(injected.filter { it.target == internal || stubs }))
++            assertEquals(stubs, external in expanded.indexed.graph.nodes)
++            val actual = index(listOf(input), options, cache)
++            assertExportIndex(withOldSelection(expanded, options), actual)
++            assertTrue(actual.indexed.statistics.cacheHits > 0)
++            assertEquals(0, actual.indexed.statistics.parsedClasses)
++            assertTrue(actual.indexed.graph.edges.none { it.origin in excluded })
++            if (stubs) assertContains(actual.indexed.graph.nodes.getValue(external).attributes, NodeAttribute.EXTERNAL_STUB)
++        }
++    }
++
++    @Test fun `full index preserves caller exclusion calls and throwing membership`(@TempDir root: Path) {
++        val (input, _) = GraphExportIndexTest().fixture(root)
++        for (throwAt in listOf<Int?>(null, 1, 3)) {
++            fun exclusions() = TracedExclusions(throwAt = throwAt) { call, _ -> call == 1 || call % 3 == 0 }
++            val prior = exclusions()
++            val current = exclusions()
++            if (throwAt == null) {
++                assertExportIndex(index(listOf(input), GraphExportIndexOptions(prior), old = true),
++                    index(listOf(input), GraphExportIndexOptions(current)))
++            } else {
++                val expected = assertFailsWith<MembershipFailure> { index(listOf(input), GraphExportIndexOptions(prior), old = true) }
++                val actual = assertFailsWith<MembershipFailure> { index(listOf(input), GraphExportIndexOptions(current)) }
++                assertEquals(expected.message, actual.message)
++            }
++            assertEquals(prior.calls, current.calls)
++            assertEquals("contains:DISPATCH_MODEL", current.calls.first())
++            if (throwAt != 1) assertEquals("isEmpty", current.calls[1])
++        }
++    }
++
++    @Test fun `malformed class and jar still fail before final selection`(@TempDir root: Path) {
++        val classes = Files.createDirectories(root.resolve("broken"))
++        Files.write(classes.resolve("Broken.class"), byteArrayOf(0, 1, 2))
++        val jar = Files.write(root.resolve("broken.jar"), byteArrayOf(0, 1, 2))
++        for (input in listOf(classes, jar)) for (stubs in listOf(false, true)) for (cached in listOf(false, true)) {
++            val options = GraphExportIndexOptions(setOf(EdgeOrigin.DISPATCH_MODEL), includeExternalStubs = stubs)
++            val cache = if (cached) ClassIndexCache(root.resolve("cache"), "malformed") else null
++            val expected = assertFailsWith<ClassIndexingException> { index(listOf(input), options, cache, old = true) }
++            val actual = assertFailsWith<ClassIndexingException> { index(listOf(input), options, cache) }
++            assertEquals(expected.message, actual.message)
++            assertEquals(expected.cause?.javaClass, actual.cause?.javaClass)
++        }
++    }
++
++    @Test fun `invalid cache bytes enums weights and lines reparse identically`(@TempDir root: Path) {
++        val (input, _) = GraphExportIndexTest().fixture(root)
++        val hash = sha256(Files.readAllBytes(input.resolve("sample/Consumer.class")))
++        val marker = GraphEdge(NodeId("method:marker/Source#run()V"), NodeId("method:marker/Target#hit()V"),
++            EdgeKind.CALL, 2, EdgeOrigin.BYTECODE, listOf(11, 17))
++        val valid = ClassFactsCodec.encode(ClassFacts("sample/Consumer", emptyList(), listOf(marker)), "invalid-fields", hash)
++        val corrupt = listOf(byteArrayOf(1, 2, 3), valid.copyOf().also { it[it.lastIndex] = (it.last().toInt() xor 1).toByte() },
++            corruptEdgeField(valid, 2, -1), corruptEdgeField(valid, 1, 0), corruptEdgeField(valid, 4, 0))
++        for ((case, bytes) in corrupt.withIndex()) for (stubs in listOf(false, true)) {
++            val caches = List(2) { side -> ClassIndexCache(root.resolve("bad-$case-$stubs-$side"), "invalid-fields") }
++            caches.forEach { cache ->
++                ClassFileIndexer(cache).index(listOf(input))
++                Files.write(cache.directory.resolve("$hash-${cache.namespace}.cix"), bytes)
++                assertEquals(CacheReadResult.Invalid, cache.read(hash))
++            }
++            val options = GraphExportIndexOptions(setOf(EdgeOrigin.DISPATCH_MODEL), includeExternalStubs = stubs)
++            val expected = index(listOf(input), options, caches[0], old = true)
++            val actual = index(listOf(input), options, caches[1])
++            assertExportIndex(expected, actual)
++            assertEquals(1, actual.indexed.statistics.invalidEntries)
++            assertEquals(1, actual.indexed.statistics.parsedClasses)
++            assertEquals(1, actual.indexed.statistics.cacheMisses)
++        }
++    }
++
++    @Test fun `assembly and restored stub overflow still fail before exclusions can remove them`(@TempDir root: Path) {
++        val (input, _) = GraphExportIndexTest().fixture(root)
++        val file = input.resolve("sample/Consumer.class")
++        val hash = sha256(Files.readAllBytes(file))
++        val cache = ClassIndexCache(root.resolve("cache"), "overflow")
++        ClassFileIndexer(cache).index(listOf(input))
++        val original = (cache.read(hash) as CacheReadResult.Hit).facts
++        val source = JvmNodeId.methodId("sample/Consumer", "use", "(Lsample/ServicePort;)V")
++        for (external in listOf(false, true)) {
++            val target = if (external) JvmNodeId.classId("outside/Overflow") else JvmNodeId.classId("sample/Consumer")
++            val edges = listOf(Int.MAX_VALUE, 1).map { GraphEdge(source, target, EdgeKind.REFERENCE, it, EdgeOrigin.DISPATCH_MODEL) }
++            assertEquals(CacheWriteResult.Written, cache.write(hash, original.copy(edges = original.edges + edges)))
++            assertIs<CacheReadResult.Hit>(cache.read(hash))
++            for (stubs in listOf(false, true)) {
++                val options = GraphExportIndexOptions(setOf(EdgeOrigin.DISPATCH_MODEL), includeExternalStubs = stubs)
++                if (external && !stubs) {
++                    assertExportIndex(index(listOf(input), options, cache, old = true), index(listOf(input), options, cache))
++                } else {
++                    val expected = assertFailsWith<IllegalArgumentException> { index(listOf(input), options, cache, old = true) }
++                    val actual = assertFailsWith<IllegalArgumentException> { index(listOf(input), options, cache) }
++                    assertEquals("edge weight must be positive", actual.message)
++                    assertEquals(expected.message, actual.message)
++                }
++            }
++        }
++    }
++
++    private fun index(
++        roots: List<Path>, options: GraphExportIndexOptions, cache: ClassIndexCache? = null, callbacks: Boolean = true,
++        classpath: List<Path>? = null, services: List<Path> = emptyList(), generated: List<Path> = emptyList(), old: Boolean = false,
++    ): GraphExportIndexResult = if (old) withOldSelection(indexExpanded(roots, options, cache, callbacks, classpath, services, generated), options)
++        else ClassFileIndexer(cache, callbacks).indexForGraphExport(roots, classpath, services, generated, options)
++
++    // dispatch의 contains는 그대로 위임하고 마지막 isEmpty만 우회해 실제 expanded 입력을 얻는다.
++    private fun indexExpanded(
++        roots: List<Path>, options: GraphExportIndexOptions, cache: ClassIndexCache? = null, callbacks: Boolean = true,
++        classpath: List<Path>? = null, services: List<Path> = emptyList(), generated: List<Path> = emptyList(),
++    ): GraphExportIndexResult = ClassFileIndexer(cache, callbacks).indexForGraphExport(roots, classpath, services, generated,
++        options.copy(excludedOrigins = object : Set<EdgeOrigin> by options.excludedOrigins { override fun isEmpty() = true }))
++
++    private fun withOldSelection(expanded: GraphExportIndexResult, options: GraphExportIndexOptions): GraphExportIndexResult {
++        val indexed = expanded.indexed
++        return GraphExportIndexResult(IndexedClasses(fullRebuildGraphExportSelection(indexed.graph, options), indexed.observations,
++            indexed.hierarchy, indexed.declarationsByRoot, indexed.selectedRootByNode, indexed.statistics), expanded.limitations)
++    }
++
++    private fun copyCompilerFixtures(target: Path): Path {
++        val source = Path.of(CallbackFlowFixture::class.java.protectionDomain.codeSource.location.toURI())
++        val common = "dev/kartograph/index/fixture"
++        Files.list(source.resolve(common)).use { files -> files.filter { path ->
++            path.fileName.toString().endsWith(".class") && listOf("CallbackFlowFixture", "Listener", "KotlinFieldFixture", "RuntimeObservationFixture")
++                .any { path.fileName.toString().startsWith(it) }
++        }.forEach { path ->
++            val output = target.resolve(common).resolve(path.fileName)
++            Files.createDirectories(output.parent); Files.copy(path, output)
++        } }
++        val bridges = Path.of(Receiver::class.java.protectionDomain.codeSource.location.toURI()).resolve("$common/defaultbridges")
++        Files.list(bridges).use { files -> files.filter { it.toString().endsWith(".class") }.forEach { path ->
++            val output = target.resolve("$common/defaultbridges").resolve(path.fileName)
++            Files.createDirectories(output.parent); Files.copy(path, output)
++        } }
++        return target
++    }
++
++    private fun corruptEdgeField(bytes: ByteArray, field: Int, value: Int): ByteArray {
++        val pattern = ByteBuffer.allocate(24).apply { listOf(EdgeKind.CALL.ordinal, 2, EdgeOrigin.BYTECODE.ordinal, 2, 11, 17).forEach { putInt(it) } }.array()
++        val offsets = (0..bytes.size - pattern.size).filter { start -> pattern.indices.all { bytes[start + it] == pattern[it] } }
++        assertEquals(1, offsets.size, "unique serialized edge marker")
++        return bytes.copyOf().also { changed ->
++            ByteBuffer.wrap(changed).putInt(offsets.single() + 4 * field, value)
++            val header = DataInputStream(ByteArrayInputStream(changed))
++            header.readInt(); header.readInt(); header.readUTF(); header.readUTF()
++            val length = header.readInt()
++            val start = changed.size - header.available()
++            val crc = CRC32C().also { it.update(changed, start, length) }.value.toInt()
++            ByteBuffer.wrap(changed).putInt(start + length, crc)
++        }
++    }
++}
++
++private fun assertExportIndex(expected: GraphExportIndexResult, actual: GraphExportIndexResult) {
++    assertExportGraph(expected.indexed.graph, actual.indexed.graph)
++    assertEquals(expected.limitations, actual.limitations)
++    assertEquals(expected.indexed.observations, actual.indexed.observations)
++    assertEquals(expected.indexed.declarationsByRoot, actual.indexed.declarationsByRoot)
++    assertEquals(expected.indexed.selectedRootByNode, actual.indexed.selectedRootByNode)
++    // 공개 조회에서 이름 inventory를 주지 않는 hierarchy도 내부의 네 map 전체를 비교한다.
++    for (name in listOf("entries", "methods", "annotationTypes", "interfaceKinds")) {
++        val field = ClassHierarchy::class.java.getDeclaredField(name).apply { isAccessible = true }
++        assertEquals(field.get(expected.indexed.hierarchy), field.get(actual.indexed.hierarchy), "hierarchy $name")
++    }
++    fun counts(statistics: IndexingStatistics) = statistics.copy(readNanos = 0, cacheReadNanos = 0, parseNanos = 0,
++        assemblyNanos = 0, hierarchyNanos = 0, runtimeNanos = 0, cacheWriteNanos = 0, totalNanos = 0, dispatchNanos = 0)
++    assertEquals(counts(expected.indexed.statistics), counts(actual.indexed.statistics))
++}

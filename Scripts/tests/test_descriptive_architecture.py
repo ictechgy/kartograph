@@ -37,10 +37,12 @@ def passing_rows():
 
 def source_fixture():
     shared = {"path": "shared.kt", "sha256": "1" * 64, "bytes": 10, "mode": 0o644}
+    bodies = [{key: value for key, value in row.items() if key != "status"} for row in D.CHANGED_FILES]
     base = {"head": D.PRODUCT_SHA, "tree": D.PRODUCT_TREE, "staged": [], "unstaged": [], "untracked": [],
-            "files": [shared, dict(D.CHANGED_FILES[0], sha256="2" * 64, mode=0o644)]}
-    candidate = dict(deepcopy(base), staged=[("M" if i == 0 else "A", r["path"]) for i, r in enumerate(D.CHANGED_FILES)],
-                     files=[deepcopy(shared), *[dict(r, mode=0o644) for r in D.CHANGED_FILES]])
+            "files": [shared, *[dict(body, sha256="2" * 64, mode=0o644)
+                                for row, body in zip(D.CHANGED_FILES, bodies) if row["status"] == "M"]]}
+    candidate = dict(deepcopy(base), staged=[(r["status"], r["path"]) for r in D.CHANGED_FILES],
+                     files=[deepcopy(shared), *[dict(r, mode=0o644) for r in bodies]])
     return {"A": base, "B": candidate}
 
 
@@ -48,22 +50,24 @@ def install_fixture():
     a = {"directories": ["bin", "lib"], "files": [
         {"path": "bin/kartograph", "sha256": "1" * 64, "bytes": 20, "mode": 0o755},
         {"path": D.CLI_JAR, "sha256": "2" * 64, "bytes": 30, "mode": 0o644},
-        {"path": "lib/index.jar", "sha256": "3" * 64, "bytes": 40, "mode": 0o644}]}
+        {"path": D.INDEX_JAR, "sha256": "3" * 64, "bytes": 40, "mode": 0o644},
+        {"path": "lib/other.jar", "sha256": "5" * 64, "bytes": 50, "mode": 0o644}]}
     b = deepcopy(a)
-    b["files"][1]["sha256"] = "4" * 64
+    for i in (1, 2):
+        b["files"][i]["sha256"] = "4" * 64
     return {"A": a, "B": b}
 
 
-def write_xml(root, module, names, skipped=()):
-    suite = ET.Element("testsuite", name=module, tests=str(len(names)), skipped=str(len(skipped)), failures="0", errors="0")
+def write_xml(root, module, names, skipped=(), classname=None):
+    classname = classname or ("dev.kartograph.cli.ArchitectureDispatchSelectionTest" if module == "cli" else "OtherTest")
+    suite = ET.Element("testsuite", name=classname, tests=str(len(names)), skipped=str(len(skipped)), failures="0", errors="0")
     for name in names:
-        case = ET.SubElement(suite, "testcase", name=name,
-                             classname="dev.kartograph.cli.ArchitectureDispatchSelectionTest" if module == "cli" else "OtherTest")
+        case = ET.SubElement(suite, "testcase", name=name, classname=classname)
         if name in skipped:
             ET.SubElement(case, "skipped")
     directory = root / module / "build/test-results/test"
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / "TEST-owned.xml"
+    path = directory / ("TEST-" + classname + ".xml")
     ET.ElementTree(suite).write(path, encoding="utf-8")
     return path
 
@@ -220,19 +224,53 @@ class DescriptiveIdentityTest(unittest.TestCase):
             with self.subTest(mutate=mutate), self.assertRaises(ValueError):
                 D.validate_sources(sources)
 
-    def test_only_cli_jar_difference_is_admitted(self):
-        self.assertEqual([D.CLI_JAR], D.validate_installs(install_fixture()))
+    def test_each_of_eight_exact_paths_statuses_and_bodies_is_required(self):
+        self.assertEqual(8, len(D.CHANGED_FILES))
+        self.assertEqual(3, sum(row["status"] == "M" for row in D.CHANGED_FILES))
+        for i, row in enumerate(D.CHANGED_FILES):
+            for kind in ("missing_status", "wrong_status", "wrong_path", "missing_body", "body_path", "sha256", "bytes", "mode"):
+                sources = source_fixture()
+                candidate = sources["B"]
+                if kind == "missing_status":
+                    candidate["staged"].pop(i)
+                elif kind == "wrong_status":
+                    candidate["staged"][i] = ("A" if row["status"] == "M" else "M", row["path"])
+                elif kind == "wrong_path":
+                    candidate["staged"][i] = (row["status"], "unreviewed.kt")
+                elif kind == "missing_body":
+                    candidate["files"].pop(i + 1)
+                else:
+                    key = "path" if kind == "body_path" else kind
+                    candidate["files"][i + 1][key] = {"path": "unreviewed.kt", "sha256": "8" * 64,
+                                                     "bytes": row["bytes"] + 1, "mode": 0o755}[key]
+                with self.subTest(path=row["path"], kind=kind), self.assertRaises(ValueError):
+                    D.validate_sources(sources)
+
+    def test_exact_cli_and_index_jar_differences_are_required(self):
+        self.assertEqual([D.CLI_JAR, D.INDEX_JAR], D.validate_installs(install_fixture()))
         for mutate in (
                 lambda i: i["B"]["files"][0].update(sha256="9" * 64),
-                lambda i: i["B"]["files"][2].update(sha256="9" * 64),
+                lambda i: i["B"]["files"][3].update(sha256="9" * 64),
                 lambda i: i["B"]["files"].pop(),
                 lambda i: i["B"]["directories"].append("extra"),
-                lambda i: i["B"]["files"][1].update(mode=0o755),
                 lambda i: i.update(B=deepcopy(i["A"]))):
             installs = install_fixture()
             mutate(installs)
             with self.assertRaises(ValueError):
                 D.validate_installs(installs)
+        for index, jar in ((1, D.CLI_JAR), (2, D.INDEX_JAR)):
+            for kind in ("mode", "unchanged", "missing", "missing_both"):
+                installs = install_fixture()
+                if kind == "mode":
+                    installs["B"]["files"][index]["mode"] = 0o755
+                elif kind == "unchanged":
+                    installs["B"]["files"][index] = deepcopy(installs["A"]["files"][index])
+                else:
+                    installs["B"]["files"].pop(index)
+                    if kind == "missing_both":
+                        installs["A"]["files"].pop(index)
+                with self.subTest(jar=jar, kind=kind), self.assertRaises(ValueError):
+                    D.validate_installs(installs)
 
     def test_membership_content_and_symlink_drift(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -268,33 +306,80 @@ class DescriptiveIdentityTest(unittest.TestCase):
                 D.validate_binding(root)
         self.assertEqual(D.HELPER_SHA256, D.AA.digest(D.HELPER))
 
+    def test_frozen_manifest_scope_and_oracle_metadata_cannot_drift(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / "experiments/descriptive-architecture"
+            directory.mkdir(parents=True)
+            original = ROOT / "experiments/descriptive-architecture"
+            for name in ("candidate-source.json", "candidate.patch"):
+                (directory / name).write_bytes((original / name).read_bytes())
+            D.validate_binding(root)
+            manifest_path = directory / "candidate-source.json"
+            original_manifest = manifest_path.read_bytes()
+            for mutate in (
+                    lambda m: m.update(candidate_scope="architecture-only"),
+                    lambda m: m.update(candidate_source_manifest_sha256="0" * 64),
+                    lambda m: m.update(reviewed_plan_sha256="0" * 64),
+                    lambda m: m["allowed_install_differences"].append("lib/other.jar"),
+                    lambda m: m["oracle"].update(base_source_sha256="0" * 64),
+                    lambda m: m["selection_oracle"].update(sha256="0" * 64),
+                    lambda m: m["selection_oracle"].update(selection_sha256="0" * 64)):
+                manifest = json.loads(original_manifest)
+                mutate(manifest)
+                manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+                with self.subTest(mutate=mutate), self.assertRaises(ValueError):
+                    D.validate_binding(root)
+            manifest_path.write_bytes(original_manifest)
+            with (directory / "candidate.patch").open("ab") as stream:
+                stream.write(b"unreviewed patch bytes\n")
+            with self.assertRaises(ValueError):
+                D.validate_binding(root)
+
     def test_actual_xml_counts_and_all_required_cases(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             index = write_xml(root, "index", ["passed", "optional"], skipped=["optional"])
-            cli = write_xml(root, "cli", [name + "(Path)" for name in D.REQUIRED_TESTS])
+            paths = {(module, cls): write_xml(root, module, names, classname=cls)
+                     for module, classes in D.REQUIRED_CASES.items() for cls, names in classes.items()}
+            originals = {key: path.read_bytes() for key, path in paths.items()}
             receipts = D.correctness_receipts(root)
-            self.assertEqual({"tests": 2, "skipped": 1, "failures": 0, "errors": 0}, receipts["index"]["totals"])
+            self.assertEqual({"tests": 13, "skipped": 1, "failures": 0, "errors": 0}, receipts["index"]["totals"])
             self.assertEqual(11, receipts["cli"]["totals"]["tests"])
             self.assertEqual(11, len(receipts["required_architecture_cases"]))
-            original = cli.read_bytes()
-            for kind in ("skipped", "failure", "missing", "duplicate", "renamed"):
-                xml = ET.fromstring(original)
-                if kind in ("skipped", "failure"):
-                    ET.SubElement(xml.find("testcase"), kind)
-                    xml.set("skipped" if kind == "skipped" else "failures", "1")
-                elif kind == "missing":
-                    xml.remove(xml.find("testcase"))
-                    xml.set("tests", "10")
-                elif kind == "duplicate":
-                    xml.append(deepcopy(xml.find("testcase")))
-                    xml.set("tests", "12")
-                else:
-                    xml.find("testcase").set("name", "unreviewed(Path)")
-                ET.ElementTree(xml).write(cli)
-                with self.subTest(kind=kind), self.assertRaises(ValueError):
-                    D.correctness_receipts(root)
-            cli.write_bytes(original)
+            self.assertEqual(11, sum(len(names) for names in receipts["required_index_cases"].values()))
+            self.assertEqual(3, len(receipts["index"]["xml"]))
+            for module, classes in D.REQUIRED_CASES.items():
+                for cls, names in classes.items():
+                    path = paths[(module, cls)]
+                    for name in names:
+                        for kind in ("skipped", "failure", "missing", "duplicate", "renamed", "wrong_class", "wrong_module"):
+                            xml = ET.fromstring(originals[(module, cls)])
+                            case = next(case for case in xml.findall("testcase") if case.get("name") == name)
+                            misplaced = None
+                            if kind in ("skipped", "failure"):
+                                ET.SubElement(case, kind)
+                                xml.set("skipped" if kind == "skipped" else "failures", "1")
+                            elif kind in ("missing", "wrong_module"):
+                                xml.remove(case)
+                                xml.set("tests", str(len(names) - 1))
+                                if kind == "wrong_module":
+                                    misplaced = write_xml(root, "cli" if module == "index" else "index", [name], classname=cls)
+                            elif kind == "duplicate":
+                                xml.append(deepcopy(case))
+                                xml.set("tests", str(len(names) + 1))
+                            elif kind == "wrong_class":
+                                case.set("classname", "OtherTest")
+                            else:
+                                case.set("name", "unreviewed(Path)")
+                            ET.ElementTree(xml).write(path)
+                            try:
+                                with self.subTest(module=module, cls=cls, name=name, kind=kind), self.assertRaises(ValueError):
+                                    D.correctness_receipts(root)
+                            finally:
+                                path.write_bytes(originals[(module, cls)])
+                                if misplaced is not None:
+                                    misplaced.unlink()
             index.write_text('<testsuite tests="2" skipped="0" failures="0" errors="0"/>')
             with self.assertRaisesRegex(ValueError, "inconsistent"):
                 D.correctness_receipts(root)
