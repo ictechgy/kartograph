@@ -6,7 +6,45 @@
 
 ## [Unreleased]
 
-## [0.20.1] - 2026-10-11
+## [0.21.0] - 준비 중 (미발행)
+
+### 업그레이드와 호환성
+
+- 0.20.1 준비본은 발행하지 않았으며 아래 수정 사항과 함께 0.21.0에 포함한다.
+- `GraphNode`에 `sourceDeclaration`, `kotlinSourceName`, `kotlinDefaultBridge`가 추가되어
+  JVM 생성자·`copy`의 binary signature가 바뀐다. 라이브러리를 직접 사용하는 compiled 소비자는
+  같은 릴리스의 모듈로 다시 컴파일한다. 이전 버전과 새 버전의 모듈 JAR을 섞지 않는다.
+- class 인덱스 캐시 형식은 7에서 9로, hierarchy 캐시 형식은 3에서 4로 바뀐다.
+  이전 캐시 항목은 다시 파싱하며 사용자가 캐시를 수동 삭제할 필요는 없다.
+- 일반·compact snapshot 형식 번호는 각각 1·2를 유지한다. 선택적 `sourceDeclarations`,
+  `kotlinSourceNames`, `kotlinDefaultBridges` 표가 없는 옛 snapshot도 읽지만 새 근거가 있다고 간주하지 않는다.
+  옛 reader가 새 근거를 보존한다고 보장하지 않는다.
+- graph JSON의 선택적 node 근거와 NDJSON의 `sourceDeclaration` record를 엄격하게 제한하는
+  소비자는 reader의 허용 필드·record 종류를 확인한다. CLI·Gradle plugin·선택적 compiler collector
+  JAR·runner·cache adapter는 같은 릴리스로 함께 설치한다.
+
+### Added
+
+- 현재 소스 선언 위치를 compiler 위치와 구분해 그래프·snapshot·saved query에 보존한다.
+  지원하는 같은 인자 수의 method overload는 타입과 compiler 줄 근거가 함께 유일할 때만 연결한다.
+- Kotlin metadata와 실제 bytecode CALL이 함께 증명한 기본 인자 bridge의 원본 선언과
+  Kotlin 함수 이름을 JVM identity와 구분해 제공한다.
+- 고정 Java/Kotlin fixture의 embedded PSI 비교와 inline·default argument·lambda lowering
+  경계 실험을 재현 가능한 소스·오라클과 함께 제공한다. 전체 프로젝트 정확도나 성능 보장은 아니다.
+
+### Fixed
+
+- generic signature 참조와 유효한 virtual dispatch 후보를 보존하고 프로젝트 호출 해석을 보완한다.
+- generic method 안의 lambda를 포함한 유효한 class 파일을 shared reference visitor가 잘못 거부하던
+  문제를 고친다. 완전한 compile root를 사용하는 `dependencies` 명령의 정상·strict 종료와 진단을 검증한다.
+
+### Changed
+
+- DOT escaping의 문자 boxing과 layer 규칙의 동일 glob pattern 반복 컴파일을 줄인다.
+  기존 출력·규칙 계약은 유지하며 작은 비교 실험의 결과를 모든 입력에 대한 속도 보장으로 일반화하지 않는다.
+- CI smoke gate는 완료된 측정의 명령별 표본을 JSON으로 남긴다. 시간 예산·판정 계산은 바꾸지 않는다.
+
+## [0.20.1] - 2026-10-11 (미발행, 0.21.0에 포함)
 
 ### Fixed
 
