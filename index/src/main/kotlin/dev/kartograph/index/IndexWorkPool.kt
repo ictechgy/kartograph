@@ -32,19 +32,40 @@ internal class IndexWorkPool : AutoCloseable {
             throw error.cause ?: error
         } catch (error: InterruptedException) {
             Thread.currentThread().interrupt()
-            throw ClassIndexingException("indexing was interrupted", error)
+            val failure = ClassIndexingException("indexing was interrupted", error)
+            // archive 등의 입력 수명이 끝나기 전에 취소된 읽기 작업의 정리를 기다린다.
+            try {
+                close()
+            } catch (cleanup: RuntimeException) {
+                failure.addSuppressed(cleanup)
+            }
+            throw failure
         }
     }
 
-    /** 취소된 worker가 자기 정리를 마칠 때까지 기다린다. 그래야 호출자가 close 직후 잔여물 없음을 믿을 수 있다. */
+    /**
+     * 취소된 worker가 정리를 마칠 때까지 최대 30초 기다린다. 정상 반환은 종료를 확인한 경우뿐이다.
+     * 제한 시간이 지나면 예외를 던지며, 취소에 협조하지 않는 worker는 여전히 실행 중일 수 있다.
+     */
     override fun close() {
         val pool = executor ?: return
         executor = null
         pool.shutdownNow()
+        // 이미 설정된 interrupt도 기다리는 동안만 비운다. 재차 interrupt되어도 전체 예산을 늘리지 않는다.
+        var interrupted = Thread.interrupted()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
         try {
-            pool.awaitTermination(30, TimeUnit.SECONDS)
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
+            while (!pool.isTerminated) {
+                val remaining = deadline - System.nanoTime()
+                if (remaining <= 0) throw ClassIndexingException("indexing workers did not stop within 30 seconds")
+                try {
+                    pool.awaitTermination(remaining, TimeUnit.NANOSECONDS)
+                } catch (_: InterruptedException) {
+                    interrupted = true
+                }
+            }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt()
         }
     }
 }
