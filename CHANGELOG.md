@@ -6,7 +6,50 @@
 
 ## [Unreleased]
 
-## [0.21.0] - 준비 중 (미발행)
+## [0.22.0] - 준비 중 (미발행)
+
+### 업그레이드와 호환성
+
+- `QuerySnapshot`의 선택적 external-retention context가 공개 JVM 생성자·기본 인자·
+  `copy` signature를 바꾸므로 pre-1.0 minor 버전을 올린다. 직접 라이브러리를 사용하는
+  compiled 소비자는 같은 릴리스의 모듈로 다시 컴파일하고 서로 다른 버전의 JAR을 섞지 않는다.
+  기존 `ExternalRetentionCodec.parse(String)`과 `AdoptionReporter.render` JVM 진입점은 유지한다.
+- 0.20.0에서 올릴 때는 아래 0.21.0의 `GraphNode` ABI·캐시·엄격한 graph reader 안내도 적용한다.
+  0.21.0 태그는 보존하며 실패한 배포의 artifact나 Portal 설치 가능성을 이 버전으로 간주하지 않는다.
+- 일반·compact snapshot 형식 번호는 각각 1·2를 유지한다. 선택적
+  `externalRetentionContexts`가 없는 옛 snapshot은 읽지만 해당 출처 근거가 있다고 간주하지 않는다.
+  옛 reader가 새 context를 보존한다고 보장하지 않는다. 원래 cross-language project·caller 경로를
+  다른 module 경로로 바꾸지 않으며, context는 compiler freshness나 삭제 승인이 아니다.
+
+### Added
+
+- version 0 `external-retentions`의 선택적 provenance context를 dead/explain, snapshot,
+  saved query와 aggregation에 보존한다. 보존 root가 0개여도 source·limitation context를 유지한다.
+  version 1의 알려진 필드를 검증하며 알 수 없는 양의 version은 제한된 opaque context로 남긴다.
+- 문서 크기·깊이·배열 수와 portable JSON admission을 제한하고, 중복 decoded key·잘못된 Unicode·
+  날짜·숫자를 거부한다. source 배열의 원래 순서·중복과 외부 caller/evidence 경로를 유지한다.
+
+### Fixed
+
+- indexing 중 interrupt가 발생해도 cooperative worker cleanup을 기다린 뒤 archive 범위를 벗어난다.
+  반복 interrupt가 기존 30초 총 기한을 늘리지 않으며 caller interrupt를 복원한다.
+  비협조적인 worker의 강제 종료를 보장하지 않고 cleanup timeout을 보고한다.
+
+### Changed
+
+- cycles/rules/metrics는 사용하지 않는 dispatch-model 간선 생성을 기존 export 선택 경로로 제외한다.
+  전체 bytecode·metadata·runtime 분석과 validation은 유지하며 기본 graph/dead·cache API는 바꾸지 않는다.
+- export origin filter가 간선을 제거하지 않았고 compiler 위치 근거가 비어 있는 경우에만
+  동등한 그래프의 재구성을 생략한다. 실제 제거와 compiler 위치 상태가 있는 경우는 기존 경로를 유지한다.
+  고정 비교와 ordinary CI에서 검증했으며 모든 입력에서의 속도 향상을 보장하지 않는다.
+- JSON smoke receipt에 선택한 Java·runner·resource의 제한된 관찰과 전용 순차 실행의
+  waited-child CPU를 추가한다. 관찰 실패는 기존 결과를 바꾸지 않으며 20초/5초 예산과 측정 순서는 유지한다.
+
+## [0.21.0] - 2026-10-14 (태그 공개, 배포 미완료)
+
+- GitHub 태그·release 페이지는 공개됐으나 [원래 release 실행](https://github.com/ictechgy/kartograph/actions/runs/38510131118)이
+  smoke 총합 20.346초로 20초 예산을 넘겨 중단됐다. 배포 asset과 Portal plugin은 발행되지 않았다.
+  기존 태그와 실패 기록을 보존하며 아래 항목은 해당 태그의 소스 변경을 설명한다.
 
 ### 업그레이드와 호환성
 
