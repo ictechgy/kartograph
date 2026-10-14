@@ -1,0 +1,53 @@
+{
+  "protocol": "Prospective descriptive architecture assessment; no confidence or release gate substitution",
+  "product_sha": "13277fbbfd7d26e14a0c5bf7becf826ccb33f6c4",
+  "product_tree": "86ea1e2c50cd3f4ecb4b6cdac7ecd7ab0eecef73",
+  "patch": "candidate.patch",
+  "patch_sha256": "ce67faf7531f0aed1bc1f6024afe20e76f4fb6f849e460e3cfd8bf549f32a44c",
+  "changed_files": [
+    {
+      "path": "cli/src/main/kotlin/dev/kartograph/cli/ArchitectureCommand.kt",
+      "sha256": "5c136882adf9d44aaa50c29b6922c24eb983dc125948c744ad10b2487ca1f0a2",
+      "bytes": 9543
+    },
+    {
+      "path": "cli/src/test/kotlin/dev/kartograph/cli/ArchitectureDispatchSelectionTest.kt",
+      "sha256": "6d2358ec8c983e164a8ad7b187037a8a27379c5fe56055e9061ee754da35ef46",
+      "bytes": 30189
+    },
+    {
+      "path": "cli/src/test/kotlin/dev/kartograph/cli/FullIndexArchitectureCommandOracle.kt",
+      "sha256": "d280d26be1e1b17fbabe039b8ad24439bd50492c30ca5b873db0d456f4b8e8fa",
+      "bytes": 9126
+    }
+  ],
+  "oracle": {
+    "path": "cli/src/test/kotlin/dev/kartograph/cli/FullIndexArchitectureCommandOracle.kt",
+    "base_path": "cli/src/main/kotlin/dev/kartograph/cli/ArchitectureCommand.kt",
+    "base_source_sha256": "610367fd551f4e8f01b92903f48c62d83ecadc701f758a680efd835acf8eaaeb",
+    "only_substitution": {
+      "from": "internal object ArchitectureCommand {",
+      "to": "internal object FullIndexArchitectureCommandOracle {"
+    },
+    "mechanical_equality_verified": true
+  },
+  "unchanged_controls": [
+    "graph",
+    "dead",
+    "dead_private"
+  ],
+  "changed_commands": [
+    "cycles",
+    "rules",
+    "metrics"
+  ],
+  "reviewed_plan_sha256": "d585c8231d7f445ba6e2fbeaa51d444fc3f5d411500ddc20d3ddffb4fa3ac40a",
+  "prior_records": {
+    "architecture_pilot": "rejected under its original frozen screen",
+    "earlier_guard_pilot": "rejected under its original frozen screen",
+    "aa_qualification_run": 38554070997,
+    "aa_qualification_result": "not-qualified",
+    "aa_result_sha256": "9b9cd131caefc163657977c0b16163a89c1d48f0161e772426c32764577d98b0"
+  },
+  "authorization": "This file pins reviewed inputs; it does not authorize publication or execution."
+}
