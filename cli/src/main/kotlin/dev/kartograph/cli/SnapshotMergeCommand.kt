@@ -114,6 +114,9 @@ internal object SnapshotMergeCommand {
     /** 합칠 수 있는 구성원인지 확인한다. 다른 버전·옵션·scope의 사실을 섞지 않는다. */
     private fun requireCompatible(members: List<AggregateMember>) {
         val snapshots = members.map { it.snapshot }
+        if (snapshots.any { it.graph.compilerSourceUseEvidence != null }) {
+            throw MergeException("members with captured compiler source uses are not supported by snapshot merge")
+        }
         if (snapshots.any { it.graph.compilerCallPositionsCaptured }) {
             throw MergeException("members with captured compiler call positions are not supported by snapshot merge")
         }
@@ -161,7 +164,8 @@ internal object SnapshotMergeCommand {
 
     private fun relocate(graph: CodeGraph, paths: Map<dev.kartograph.core.NodeId, String>): CodeGraph = CodeGraph(graph.nodes.values.map { node ->
         paths[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
-    }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures, graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes)
+    }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures, graph.callbackArguments, graph.parameterUses,
+        graph.lambdaEscapes).preserveCompilerSourceUsesFrom(graph)
 
     /** 구성원 scope가 같은 variant로 끝나면 `aggregate:<variant>`를 기본 label로 쓴다. */
     private fun defaultScope(members: List<AggregateMember>): String {

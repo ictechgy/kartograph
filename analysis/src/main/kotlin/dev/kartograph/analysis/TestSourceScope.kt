@@ -96,7 +96,7 @@ public object TestSourceScope {
             nodes = graph.nodes.values.filter { it.id !in removed }, edges = graph.edges, externalCalls = graph.externalCalls,
             serviceProviders = graph.serviceProviders, enclosures = graph.enclosures, callbackArguments = graph.callbackArguments,
             parameterUses = graph.parameterUses, lambdaEscapes = graph.lambdaEscapes,
-        )
+        ).preserveCompilerSourceUsesFrom(graph)
         if (!graph.compilerCallPositionsCaptured) return selected
         return selected.withCompilerCallPositions(graph.locatedCompilerReferences.filter {
             it.source !in removed && it.target !in removed

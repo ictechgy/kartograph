@@ -10,7 +10,18 @@ public object ProvenanceVerifier {
     public data class Result(val status: String, val reasons: List<String>)
 
     /** 외부 입력은 문서의 external 슬롯에 명시적으로 다시 연결해야 한다. */
-    public fun verify(provenance: SnapshotProvenance?, project: Path, scope: String?, external: Map<String, Path> = emptyMap()): Result {
+    public fun verify(provenance: SnapshotProvenance?, project: Path, scope: String?, external: Map<String, Path> = emptyMap()): Result =
+        verifyObserved(provenance, project, scope, external, ContentFingerprint::hashInput)
+
+    /** 새 source-use capture는 각 bounded pass에서 읽은 receipt 지문을 같은 검증 경계에 제공한다. */
+    internal fun verifySourceUses(provenance: SnapshotProvenance, project: Path, scope: String,
+        external: Map<String, Path>, receiptFingerprint: (Path) -> String): Result =
+        verifyObserved(provenance, project, scope, external) { path, role ->
+            if (role == "compilerEvidence") receiptFingerprint(path) else ContentFingerprint.hashInput(path, role)
+        }
+
+    private fun verifyObserved(provenance: SnapshotProvenance?, project: Path, scope: String?, external: Map<String, Path>,
+        fingerprint: (Path, String) -> String): Result {
         if (provenance == null) return Result("unverified", listOf("legacy-snapshot"))
         if (provenance.witnesses.any { it.compilerEvidence.isNotEmpty() && !CompilerEvidenceToken.matches(it) })
             return Result("unverified", listOf("invalid-compiler-evidence-token"))
@@ -25,7 +36,7 @@ public object ProvenanceVerifier {
             val path = locate(input)
             if (path == null) reasons += "missing-external-input"
             else try {
-                val actual = observedHashes.getOrPut(path to input.role) { ContentFingerprint.hashInput(path, input.role) }
+                val actual = observedHashes.getOrPut(path to input.role) { fingerprint(path, input.role) }
                 if (actual != input.sha256) reasons += "changed-${input.role}"
             } catch (_: java.io.IOException) { reasons += "unavailable-${input.role}" }
             catch (_: IllegalArgumentException) { reasons += "unavailable-${input.role}" }

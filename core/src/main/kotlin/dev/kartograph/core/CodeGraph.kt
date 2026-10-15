@@ -63,6 +63,10 @@ public class CodeGraph private constructor(
     public val compilerCallPositionsCaptured: Boolean
         get() = state.compilerCallPositionsCaptured
 
+    /** 명시적으로 수집한 원본 선택이며 runtime 간선/분석 정책에 참여하지 않는다. */
+    public val compilerSourceUseEvidence: CompilerSourceUseEvidence?
+        get() = state.compilerSourceUseEvidence
+
     public val edges: List<GraphEdge>
         get() = state.edges
 
@@ -122,8 +126,25 @@ public class CodeGraph private constructor(
             true,
             state.outgoing,
             state.incoming,
+            state.compilerSourceUseEvidence,
         ))
     }
+
+    /** 새 channel은 전부 검증한 뒤 한 번 붙이며 다른 capture로 덮어쓰지 않는다. */
+    public fun withCompilerSourceUses(evidence: CompilerSourceUseEvidence): CodeGraph {
+        evidence.requireMatchesGraph(this)
+        val previous = state.compilerSourceUseEvidence
+        require(previous == null || previous == evidence) { "conflicting compiler source use attachment" }
+        if (previous != null) return this
+        return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
+            state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses,
+            state.lambdaEscapes, state.locatedCompilerReferences, state.compilerCallPositionsCaptured,
+            state.outgoing, state.incoming, evidence))
+    }
+
+    /** graph 복사/가지치기가 원래 capture의 근거와 view 계수를 보존하도록 한다. */
+    public fun preserveCompilerSourceUsesFrom(original: CodeGraph): CodeGraph =
+        original.compilerSourceUseEvidence?.let { withCompilerSourceUses(it.select(nodes.keys)) } ?: this
 
     /**
      * 이미 정규화된 그래프에 간선 delta를 더해 새 불변 그래프를 만든다.
@@ -165,6 +186,7 @@ public class CodeGraph private constructor(
                 state.compilerCallPositionsCaptured,
                 state.outgoing,
                 state.incoming,
+                state.compilerSourceUseEvidence,
             ))
         }
 
@@ -186,6 +208,7 @@ public class CodeGraph private constructor(
             state.compilerCallPositionsCaptured,
             outgoing,
             incoming,
+            state.compilerSourceUseEvidence,
         ))
     }
 
@@ -259,6 +282,7 @@ public class CodeGraph private constructor(
         val compilerCallPositionsCaptured: Boolean,
         val outgoing: Map<NodeId, List<GraphEdge>>,
         val incoming: Map<NodeId, List<GraphEdge>>,
+        val compilerSourceUseEvidence: CompilerSourceUseEvidence? = null,
     )
 
     private data class EdgeSignature(

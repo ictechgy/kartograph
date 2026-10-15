@@ -93,6 +93,11 @@ public object QuerySnapshotCodec {
     public fun render(snapshot: QuerySnapshot, compact: Boolean): String = render(snapshot, compact, MAX_BYTES)
 
     private fun renderContent(snapshot: QuerySnapshot, compact: Boolean, maximumBytes: Int): String {
+        snapshot.graph.compilerSourceUseEvidence?.let { evidence ->
+            evidence.requireMatchesGraph(snapshot.graph)
+            evidence.requireMatchesProvenance(requireNotNull(snapshot.provenance) { "compiler source uses require snapshot provenance" },
+                requireNotNull(snapshot.scope) { "compiler source uses require snapshot scope" })
+        }
         val positions = if (compact) snapshot.graph.nodeIds.withIndex().associate { it.value to it.index } else emptyMap()
         val encoding = if (compact) CompactSnapshotGraph(positions.mapKeys { it.key.value }) else null
         return boundedJsonValue(sortedMapOf(
@@ -181,6 +186,9 @@ public object QuerySnapshotCodec {
                 if (declarations.isEmpty()) graph else graph + ("sourceDeclarations" to declarations)
             }
             .let { graph -> if (snapshot.graph.compilerCallPositionsCaptured) graph else graph - "compilerCallEvidence" }
+            .let { graph -> snapshot.graph.compilerSourceUseEvidence?.let {
+                graph + ("compilerSourceUses" to CompilerSourceUseSnapshotCodec.value(it))
+            } ?: graph }
             .let { graph -> if (encoding == null) graph else graph + ("stringTable" to encoding.table) },
         ).filterValues { it != null }, maximumBytes, "\n")
     }
@@ -366,11 +374,19 @@ public object QuerySnapshotCodec {
         val baseGraph = CodeGraph(nodes.map { node -> node.copy(sourceDeclaration = declarations[node.id],
             kotlinDefaultBridge = bridgeFacts[node.id]) }, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
             lambdaEscapes.orEmpty())
-        val restoredGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
+        val positionedGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
+        val provenance = document["provenance"]?.let(BuildWitnessCodec::provenance)
+        val scope = optionalString(document["scope"])
+        // 새 확장은 compact string table과 독립적이며 원래 graph에서만 존재 여부를 판단한다.
+        val restoredGraph = if (rawGraph.containsKey("compilerSourceUses")) {
+            val evidence = CompilerSourceUseSnapshotCodec.parse(rawGraph["compilerSourceUses"])
+            evidence.requireMatchesProvenance(requireNotNull(provenance) { "compiler source uses require snapshot provenance" },
+                requireNotNull(scope) { "compiler source uses require snapshot scope" })
+            positionedGraph.withCompilerSourceUses(evidence)
+        } else positionedGraph
         return QuerySnapshot(restoredGraph, retention, strings(document["limitations"]), suppressed,
             boolean(document["includePrivateMembers"]), string(document["toolVersion"]),
-            optionalString(document["revision"]), optionalString(document["scope"]),
-            document["provenance"]?.let(BuildWitnessCodec::provenance),
+            optionalString(document["revision"]), scope, provenance,
             document["processorGenerations"]?.let { values -> list(values).map { raw ->
                 val generation = objectValue(raw)
                 dev.kartograph.core.ProcessorGeneration(string(generation["processor"]), string(generation["artifactSha256"]),
