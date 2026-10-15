@@ -179,3 +179,28 @@ configuration-cache reuse, wrong scopes, changed collector bytes, preserved-mtim
 source changes, replayed old sidecars and missing bindings. The CI runs the same
 validator and retains its report and fixture logs. These fixture results are not
 the later broad evaluation of real application changes or AI repair success.
+
+## Direct source-selection capture and inspection
+
+`snapshot --include-source-uses` explicitly retains compiler-selected invocation dependencies from admitted v3 evidence.
+It requires explicit `--compiler-evidence`, `--scope` and completed `--build-witness` inputs; the producer must have enabled
+`callPositions=true`. A validated zero-emission v3 unit is a captured empty observation. Missing v3 evidence, stale source,
+output, collector, token, option or receipt inputs fail capture rather than falling back. No sidecar is discovered implicitly.
+Without this flag the existing snapshot path and option fingerprint are unchanged. There is no Gradle or MCP activation.
+
+Inspect a saved snapshot using `query '<exact-usr>' --graph-file captured.json --source-uses`, or inspect direct source
+selection dependencies on resolved changed declarations using `impact '<exact-usr>' --graph-file captured.json --source-edits`.
+These return separately typed `kartograph-source-use-query` and `kartograph-source-edit-impact` version 1 reports. The nested
+ordinary `query` / `graphImpact` retains the existing graph result. Source observations do not become graph edges. A method
+selected by the compiler may have no matching bytecode CALL; that correlation does not explain why a CALL is absent.
+
+Each returned observation preserves the immutable source path, raw source SHA-256, UTF-16 range, compiler/collector and unit/root
+IDs. Caller/target declaration metadata belongs to the selected graph view and is distinct from that source location. Returned
+unit bindings identify the receipt InputFingerprint, collector artifact fingerprint, input token and claim count; the original
+ordered claims, outputs and root ownership remain in the bound snapshot. A receipt fingerprint is not a raw TSV hash.
+
+Coverage is global to the captured revision/view: `unavailable` means no channel was captured; `captured` may be empty.
+`partial` preserves known producer/import omissions, view omissions and historical uncovered callable roots; otherwise coverage
+is `unknown`, never complete. Counts refer to retained observations and original capture units, not all real-world source uses.
+Saved reports hash the exact parsed snapshot bytes and say `currentness: notChecked`. They do not re-read source files or
+recapture evidence. Use the existing `verify-snapshot` workflow for a separate currentness check at a specific time.
