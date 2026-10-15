@@ -56,9 +56,12 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 - Android graph/dead tasks: AGP 8.7+, Gradle 8.10+, JDK 17+ (verified with AGP 8.7.3 / Gradle 8.10.2 and with AGP 9.x).
 - Automatic snapshots: JVM Java/Kotlin on Gradle 9.6.1 and JDK 17/21, plus the [tested Android combinations](docs/IMPACT.md#android-variant-자동-캡처). The Kotlin compiler adapter is verified with KGP 2.4.10; other KGP versions are not guaranteed. The minimum Android combination was tested on Gradle 8.10.2, although KGP itself recommends 8.14.4 or later.
 
+The following example targets the unreleased 0.23.0 preparation version. It is not yet installable from the Portal;
+use it only after that version is published, or build matching modules from the same source revision.
+
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.22.0"
+    id("io.github.ictechgy.kartograph") version "0.23.0"
 }
 ```
 
@@ -71,7 +74,14 @@ The published archives retain their original preparation-era documentation.
 The 0.21.0 tag and release page exist, but its failed release produced no distribution assets or Portal plugin.
 When upgrading from 0.20.0, rebuild direct JVM library consumers for the `GraphNode` and
 `QuerySnapshot` ABI changes and use matching CLI, plugin and optional collector versions.
-See the [upgrade notes](CHANGELOG.md) for cache and snapshot compatibility.
+The current source prepares 0.23.0; changing VERSION does not create a released artifact or complete release validation.
+Use matching CLI, plugin, collector and library artifacts. The new source-use APIs and explicit
+`snapshot --include-source-uses`, `query --source-uses` and `impact --source-edits` flags are additive.
+Saved source-use reports are partial/historical evidence with `currentness: notChecked`, separate from ordinary graph results.
+A 0.22 reader drops the optional source-use extension when reserializing. Recapture missing evidence, and recapture both
+base/current snapshots with the same tool version when required; do not relabel old snapshots or mix module versions.
+Old compiled-client and descriptor checks cover selected APIs, not every client or Kotlin source compatibility.
+See the [upgrade notes](CHANGELOG.md) and [source-use compatibility guide](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility).
 
 ## Usage
 

@@ -204,3 +204,40 @@ Coverage is global to the captured revision/view: `unavailable` means no channel
 is `unknown`, never complete. Counts refer to retained observations and original capture units, not all real-world source uses.
 Saved reports hash the exact parsed snapshot bytes and say `currentness: notChecked`. They do not re-read source files or
 recapture evidence. Use the existing `verify-snapshot` workflow for a separate currentness check at a specific time.
+
+## 0.23.0 upgrade and API compatibility
+
+0.23.0 is an unreleased additive feature preparation. Published v0.22.0 artifacts remain unchanged;
+a newer source build previously reporting 0.22.0 is not the published binary. Version/docs preparation does not
+establish release readiness, publication, or independent installation of 0.23.0.
+
+- New core/index APIs are `CodeGraph.compilerSourceUseEvidence`, `withCompilerSourceUses`,
+  `preserveCompilerSourceUsesFrom`, and `CompilerEvidenceIndexer.enrichWithSourceUses`, with eight separate
+  `CompilerSourceUse*` evidence/value types. Analysis adds `SourceUseQuery.inspect`, `SourceEditImpact.analyze`,
+  `SourceUseCoverage.from` and page/observation types; export adds typed source-use documents and
+  `SourceUseDocumentRenderer.query` / `impact`. Existing `SymbolQuery` and `ChangeImpact` remain separate.
+- New-API consumers need matching new library modules. Keep CLI, plugin, collector and direct-library artifacts
+  on the same version/source revision; do not mix published 0.22.0 JARs with new modules. Retained execution of one
+  compiled 0.22 client and preservation of 132 public declaration/descriptor pairs in 11 released classes, plus
+  252 pairs in 19 Stage A classes, are bounded compatibility evidence. They are not whole-library ABI, all-client
+  or Kotlin source-compatibility proof. New Stage B types lie outside that 19-class inventory. A real new-API
+  client negative/positive test against old/new artifacts remains unexecuted.
+- Ordinary and compact snapshot versions stay 1 and 2. Optional `graph.compilerSourceUses` has its own version 1,
+  independent of compact string-table encoding. Missing evidence is unavailable, not captured-empty;
+  malformed or unsupported present extensions fail validation. The actual published 0.22 reader can read the
+  compatible graph but drops source-use evidence on reserialization in both encodings. This is not lossless downgrade.
+  Unsupported snapshot merge/aggregation paths reject source-use evidence rather than silently combining it.
+- Recapture with the explicit source-use flag and fresh admitted compiler receipts when evidence was never captured
+  or was lost through an old reader. Where base/current comparison requires equal analyzer/tool versions, recapture both
+  revisions with the same 0.23.0 tool version and capture configuration. Do not edit a snapshot's version field to
+  bypass compatibility. A saved historical report does not recapture or validate live sources: it always reports
+  `currentness: notChecked`; use separate snapshot verification and respect any stale or unavailable result.
+- Capture status (`unavailable` or `captured`, including empty) and coverage (`partial` or `unknown`) are distinct.
+  An empty selection or exhausted page does not prove no uses. Known producer/import/view omissions and historical
+  uncovered roots stay visible. Direct source-edit results include only observations targeting an exact changed
+  declaration whose caller is not changed; they do not traverse source selections, graph edges, overrides or owners.
+  Ordinary CALL edges, weights, retention and reachability are unchanged by opting into this separate evidence channel.
+
+The explicit CLI prerequisites and report contract are described above and in [impact](IMPACT.md#opt-in-direct-observed-source-selections).
+There is no automatic Gradle-plugin or MCP activation. These observations do not establish overall PSI/IDE accuracy,
+performance superiority, runtime behavior, deletion safety or permission to skip tests.

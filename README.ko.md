@@ -57,9 +57,12 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 - Android graph/dead task: AGP 8.7+, Gradle 8.10+, JDK 17+(AGP 8.7.3 / Gradle 8.10.2와 AGP 9.x에서 검증).
 - 자동 snapshot: JVM Java/Kotlin은 Gradle 9.6.1과 JDK 17/21에서, Android는 [검증된 조합](docs/IMPACT.md#android-variant-자동-캡처)에서 확인했다. Kotlin compiler adapter는 KGP 2.4.10에서 검증했고 다른 버전은 보장하지 않는다. 최소 Android 조합은 Gradle 8.10.2에서 검증했지만, KGP 자체는 8.14.4 이상을 권고한다.
 
+아래 예시는 미출시 0.23.0 준비본용이며 아직 Portal에서 설치할 수 없다.
+해당 버전 공개 후 사용하거나 같은 source revision에서 matching 모듈을 빌드한다.
+
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.22.0"
+    id("io.github.ictechgy.kartograph") version "0.23.0"
 }
 ```
 
@@ -72,8 +75,15 @@ GitHub release에서 `kartograph-<version>.zip` 또는 `.tar`를 받는다. 0.5.
 0.21.0은 태그·release 페이지만 공개됐고 실패한 배포에서
 distribution asset이나 Portal plugin은 발행되지 않았다. 0.20.0에서 올리는 직접 JVM 라이브러리
 소비자는 `GraphNode`·`QuerySnapshot`의 생성자·`copy` ABI 변경에 맞춰 다시 컴파일하고
-CLI·plugin·선택적 collector를 같은 버전으로 설치한다. 캐시·snapshot 호환성은
-[업그레이드 안내](CHANGELOG.md)를 참고한다.
+CLI·plugin·선택적 collector를 같은 버전으로 설치한다.
+현재 소스는 0.23.0 준비본이며 VERSION 변경만으로 배포나 release 검증이 끝나지 않는다.
+CLI·plugin·collector·library artifact는 같은 버전으로 맞춘다. 새 source-use API와 명시적
+`snapshot --include-source-uses`·`query --source-uses`·`impact --source-edits`는 additive 기능이다.
+saved report는 `currentness: notChecked`인 부분적 과거 관찰이며 ordinary graph 결과와 별도다.
+0.22 reader로 다시 저장하면 선택적 source-use extension이 사라진다. 없는 근거는 재캡처하고,
+base/current 비교가 같은 tool version을 요구하면 둘 다 재캡처한다. 옛 snapshot의 version만 바꾸거나 모듈을 섞지 않는다.
+기존 compiled-client·descriptor 검사는 선택한 API의 근거이며 모든 client·Kotlin source 호환성 보장이 아니다.
+[업그레이드 안내](CHANGELOG.md)와 [source-use 호환성](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility)을 참고한다.
 
 ## 사용법
 

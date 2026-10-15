@@ -6,6 +6,44 @@
 
 ## [Unreleased]
 
+## [0.23.0] - Unreleased (준비 중)
+
+- source-use 기능을 더하는 다음 pre-1.0 minor 준비본이다. 이 버전의 tag·배포 asset·Portal
+  plugin은 아직 발행하지 않았다. 공개된 0.22.0 tag·asset과 실패한 0.21.0 기록은 그대로 보존한다.
+- source/docs 준비와 기존 기능의 제한된 검증은 이 versioned head의 release-readiness 통과가 아니다.
+  전체 CI·coverage·회귀/호환성 gate, clean build 재현성, 실제 배포본 검사와 독립 설치는 별도 gate다.
+
+### Added
+
+- `CodeGraph.compilerSourceUseEvidence`와 `withCompilerSourceUses`·`preserveCompilerSourceUsesFrom`,
+  `CompilerEvidenceIndexer.enrichWithSourceUses` 및 별도 core evidence/value 타입을 추가한다.
+  `SourceUseQuery.inspect`·`SourceEditImpact.analyze`·`SourceUseCoverage.from`과 typed document/renderer는
+  기존 `SymbolQuery`·`ChangeImpact`와 구분되는 additive API다.
+- `snapshot --include-source-uses`는 명시한 `--compiler-evidence`·`--scope`·완료된
+  `--build-witness`와 producer `callPositions=true`를 요구한다. 누락·오래된 입력은 실패하며 자동 발견하지 않는다.
+- saved snapshot의 `query --source-uses`와 `impact --source-edits`는 version 1의 별도 source-use
+  문서를 반환한다. ordinary `query`·`graphImpact`를 따로 유지하고 source selection을 CALL 간선으로 바꾸지 않는다.
+  source-edit 결과는 변경된 정확한 target을 직접 선택한, 자신은 변경되지 않은 caller만 포함하며 전이 탐색하지 않는다.
+
+### 업그레이드와 호환성
+
+- 일반·compact snapshot 형식 번호는 1·2를 유지한다. 선택적 `graph.compilerSourceUses` extension의
+  version은 별도로 1이다. extension 부재는 unavailable이며 captured-empty와 다르다.
+  0.22 reader는 호환 graph를 읽지만 다시 저장하면 source-use extension을 잃는다. lossless downgrade가 아니다.
+  source-use snapshot을 지원하지 않는 merge/aggregation 경로는 거부한다.
+- CLI·plugin·collector와 직접 사용하는 library 모듈은 같은 버전/소스 revision으로 맞춘다.
+  새 API 사용자는 0.23.0의 matching 모듈로 빌드하며 published 0.22.0 JAR과 섞지 않는다.
+  base/current 비교가 같은 analyzer/tool version을 요구하면 두 snapshot을 같은 0.23.0 도구·설정으로 재캡처한다.
+  source-use가 없거나 옛 reader에서 사라진 snapshot에도 명시적 재캡처가 필요하며 버전 필드만 고치지 않는다.
+- 기존 compiled 0.22 client 실행과 11개 released class의 public declaration/descriptor 132쌍,
+  19개 Stage A class의 252쌍 보존은 제한된 근거다. 모든 API·client·Kotlin source 호환성을 증명하지 않는다.
+  새 Stage B API 타입은 그 19개 class inventory 밖이다. 새 API client의 구버전 실패/신버전 성공 비교는 미실행이다.
+- coverage는 captured/unavailable 상태와 partial/unknown 범위를 구분하며 complete를 주장하지 않는다.
+  saved report의 `currentness: notChecked`는 과거 관찰이며 live source를 읽지 않는다. 신선도는 별도 검증한다.
+  기본 graph·retention·reachability·ordinary query/impact 계약은 유지하고 Gradle/MCP 자동 활성화는 없다.
+  PSI/IDE 전반의 정확도·성능 우위나 삭제/테스트 생략의 근거가 아니다.
+  자세한 [API·snapshot 업그레이드 안내](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility)를 참고한다.
+
 ## [0.22.0] - 2026-10-14
 
 ### 업그레이드와 호환성
