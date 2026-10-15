@@ -69,11 +69,14 @@ Java의 non-private/compiler-visible 선언을 ABI 후보로 본다. 의미 기�
 
 ## Gradle
 
-아래 0.22.0 예시는 [Plugin Portal에 공개된 버전](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.22.0)을 사용한다.
+아래 예시는 미출시 0.23.0 준비본용이며 아직 Portal에서 설치할 수 없다.
+해당 버전 공개 후 사용하거나 같은 source revision에서 matching 모듈을 빌드한다.
+공개된 0.22.0은 [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.22.0)에 그대로 남는다.
+CLI·plugin·collector 버전을 맞추며 [source-use 업그레이드 조건](COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility)을 따른다.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.22.0"
+    id("io.github.ictechgy.kartograph") version "0.23.0"
 }
 kartograph {
     reportFormat.set("json")
