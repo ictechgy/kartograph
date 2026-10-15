@@ -79,7 +79,7 @@ public object SourceDeclarationLocations {
         val enriched = CodeGraph(
             nodes, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures,
             graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes,
-        )
+        ).preserveCompilerSourceUsesFrom(graph)
         return if (graph.compilerCallPositionsCaptured) {
             enriched.withCompilerCallPositions(graph.locatedCompilerReferences)
         } else enriched

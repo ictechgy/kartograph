@@ -167,7 +167,7 @@ internal object KartographCli {
         val tagged = CodeGraph(original.nodes.values.map { node ->
             indexed.selectedRootByNode[node.id]?.let { options.moduleNames.getOrNull(it) }?.let { node.copy(moduleName = it) } ?: node
         }, original.edges, original.externalCalls, original.serviceProviders, original.enclosures,
-            original.callbackArguments, original.parameterUses, original.lambdaEscapes)
+            original.callbackArguments, original.parameterUses, original.lambdaEscapes).preserveCompilerSourceUsesFrom(original)
         return if (original.compilerCallPositionsCaptured) tagged.withCompilerCallPositions(original.locatedCompilerReferences) else tagged
     }
 

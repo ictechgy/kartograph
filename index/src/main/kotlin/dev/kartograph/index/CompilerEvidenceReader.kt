@@ -17,6 +17,7 @@ import java.util.Base64
 internal class BoundedCompilerEvidenceInput(
     val text: String,
     val fingerprint: String,
+    val byteCount: Int,
 )
 
 /** receipt와 parser가 공유하는 내부 file adapter다. 공개 reader ABI에는 포함하지 않는다. */
@@ -25,9 +26,25 @@ internal object BoundedCompilerEvidenceReader {
         require(Files.isRegularFile(file) && !Files.isSymbolicLink(file)) { "compiler evidence must be a regular file" }
         val bytes = Files.newInputStream(file).use { it.readNBytes(CompilerEvidenceReader.MAX_BYTES + 1) }
         require(bytes.size <= CompilerEvidenceReader.MAX_BYTES) { "compiler evidence exceeds the byte limit" }
+        return input(bytes)
+    }
+
+    /** 새 source-use 경로만 실제 남은 예산과 open 시점의 symlink 거부를 적용한다. */
+    fun read(file: Path, maximumBytes: Int): BoundedCompilerEvidenceInput = readForSourceUses(file, maximumBytes, null)
+
+    /** open 직전 race를 재현하는 내부 관찰 지점이며 실제 open의 NOFOLLOW_LINKS는 바꾸지 않는다. */
+    internal fun readForSourceUses(file: Path, maximumBytes: Int, beforeOpen: (() -> Unit)?): BoundedCompilerEvidenceInput {
+        require(maximumBytes in 0..CompilerEvidenceReader.MAX_BYTES) { "invalid compiler evidence byte budget" }
+        require(Files.isRegularFile(file) && !Files.isSymbolicLink(file)) { "compiler evidence must be a regular file" }
+        beforeOpen?.invoke()
+        val bytes = Files.newInputStream(file, java.nio.file.LinkOption.NOFOLLOW_LINKS).use { it.readNBytes(maximumBytes + 1) }
+        require(bytes.size <= maximumBytes) { "compiler evidence exceeds the byte limit" }
+        return input(bytes)
+    }
+
+    private fun input(bytes: ByteArray): BoundedCompilerEvidenceInput {
         val raw = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        return BoundedCompilerEvidenceInput(strictUtf8(bytes),
-            ContentFingerprint.values(listOf("file", raw)))
+        return BoundedCompilerEvidenceInput(strictUtf8(bytes), ContentFingerprint.values(listOf("file", raw)), bytes.size)
     }
 }
 

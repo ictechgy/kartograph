@@ -443,6 +443,6 @@ internal fun relocateSnapshotSourcePaths(graph: CodeGraph, paths: Map<NodeId, St
     val relocated = CodeGraph(graph.nodes.values.map { node ->
         paths[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
     }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures,
-        graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes)
+        graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes).preserveCompilerSourceUsesFrom(graph)
     return if (graph.compilerCallPositionsCaptured) relocated.withCompilerCallPositions(graph.locatedCompilerReferences) else relocated
 }

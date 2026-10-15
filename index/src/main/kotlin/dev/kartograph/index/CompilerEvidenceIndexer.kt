@@ -49,12 +49,20 @@ public object CompilerEvidenceIndexer {
         context: CompilerEvidenceContext? = null): CompilerEvidenceEnrichment =
         enrichInternal(indexed, classRoots, explicit, context, callPositions = true)
 
+    /** 명시적으로 요청한 v3 source 선택을 매 호출 새로 검증하며 class cache에는 보관하지 않는다. */
+    public fun enrichWithSourceUses(indexed: IndexedClasses, classRoots: List<Path>, explicit: List<Path>,
+        context: CompilerEvidenceContext? = null): CompilerEvidenceEnrichment =
+        enrichInternal(indexed, classRoots, explicit, context, callPositions = true, sourceUses = true)
+
     private fun enrichInternal(indexed: IndexedClasses, classRoots: List<Path>, explicit: List<Path>,
-        context: CompilerEvidenceContext?, callPositions: Boolean): CompilerEvidenceEnrichment {
+        context: CompilerEvidenceContext?, callPositions: Boolean, sourceUses: Boolean = false): CompilerEvidenceEnrichment {
+        require(!sourceUses || explicit.isNotEmpty()) { "compiler source uses require a completed v3 document" }
         if (explicit.isEmpty()) return CompilerEvidenceEnrichment(CompilerEvidenceResult(indexed.graph), emptyList())
         val verified = requireNotNull(context) { "compiler evidence requires a completed compiler receipt context" }
         require(indexed.declarationsByRoot.size == classRoots.size) { "compiler evidence requires original class root observations" }
-        val freshness = ProvenanceVerifier.verify(verified.provenance, verified.project, verified.scope, verified.externalInputs)
+        val sourceCapture = if (sourceUses) CompilerSourceUseImport(indexed, classRoots, explicit, verified) else null
+        val freshness = sourceCapture?.verifyFreshness(recheckReceipts = false)
+            ?: ProvenanceVerifier.verify(verified.provenance, verified.project, verified.scope, verified.externalInputs)
         require(freshness.status == "matched") { "compiler evidence requires matched build inputs" }
         val root = verified.project.toRealPath()
         val locatedInputs = mutableMapOf<InputFingerprint, Path>()
@@ -95,7 +103,7 @@ public object CompilerEvidenceIndexer {
             require(!Files.isSymbolicLink(file)) { "symbolic compiler evidence inputs are not supported" }
             val evidencePath = file.toRealPath()
             if (!seen.add(evidencePath)) continue
-            val bounded = BoundedCompilerEvidenceReader.read(file)
+            val bounded = sourceCapture?.read(evidencePath) ?: BoundedCompilerEvidenceReader.read(file)
             val fingerprint = bounded.fingerprint
             val claims = verified.provenance.witnesses.filter { witness -> witness.compilerEvidence.any {
                 it.role == "compilerEvidence" && it.sha256 == fingerprint && locate(it) == evidencePath
@@ -158,6 +166,7 @@ public object CompilerEvidenceIndexer {
                     .map(::locate)
                     .toSet()
             }
+            sourceCapture?.record(evidencePath, envelope, claims, positions, sourcePaths, generatedSourcePaths)
             val sourceInCompilerOutput = mutableMapOf<NodeId, Boolean>()
             fun belongsToCompilerOutput(source: NodeId): Boolean =
                 sourceInCompilerOutput.getOrPut(source) { positions.any { source in indexed.declarationsByRoot[it] } }
@@ -227,6 +236,7 @@ public object CompilerEvidenceIndexer {
         } else 0
         var graph = indexed.graph.enrichedWith(references.sorted(), indexed.graph.externalCalls)
         if (callPositionsCaptured) graph = graph.withCompilerCallPositions(locatedReferences)
+        if (sourceCapture != null) graph = sourceCapture.attach(graph)
         val result = CompilerEvidenceResult(graph, outside, shadowed, unmapped,
             generations.distinct().sortedWith(compareBy({ it.processor }, { it.artifactSha256 })))
         val limitations = buildList {
