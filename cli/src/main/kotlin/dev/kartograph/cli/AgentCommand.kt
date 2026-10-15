@@ -139,11 +139,16 @@ internal object AgentCommand {
             setOf(
                 "--classes", "--project", "--manifest", "--resources", "--namespace",
                 "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes", "--external-retentions",
-            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings", "--compiler-evidence", "--processor-output-config", "--input", "--index-cache", "--snapshot-max-mib"),
+            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings", "--compiler-evidence", "--processor-output-config", "--input", "--index-cache", "--snapshot-max-mib", "--include-source-uses"),
             error,
         )
             ?: return ExitStatus.USAGE.code
         if (options.values("--external-retentions").size > 1) return usage(error, "provide at most one --external-retentions file")
+        if (options.values("--include-source-uses").size > 1) return usage(error, "duplicate --include-source-uses")
+        val includeSourceUses = options.values("--include-source-uses").isNotEmpty()
+        if (includeSourceUses && (options.values("--compiler-evidence").isEmpty() || options.single("--scope") == null ||
+                options.values("--build-witness").isEmpty()))
+            return usage(error, "--include-source-uses requires --compiler-evidence, --scope and completed --build-witness inputs")
         val snapshotLimit = if (requested == null) SnapshotFiles.limit(options.values("--snapshot-max-mib"))
             ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128") else null
         if (requested == null) {
@@ -194,7 +199,8 @@ internal object AgentCommand {
                     val role = when (option) { "--source-root" -> "sources"; "--build-input" -> "buildConfig"; else -> option.removePrefix("--") }
                     options.values(option).map { role to resolveProjectPath(project, it) }
                 } + keepScanner.inputFiles.map { "keepRules" to it }
-            val context = listOf("--namespace", "--include-private-members", "--include-paths", "--scope").flatMap { listOf(it) + options.values(it) }
+            val context = listOf("--namespace", "--include-private-members", "--include-paths", "--scope").flatMap { listOf(it) + options.values(it) } +
+                if (includeSourceUses) listOf("--include-source-uses", "true") else emptyList()
             val witnessPaths = options.values("--build-witness").map { resolveProjectPath(project, it) }
             val indexCache = options.single("--index-cache")?.let { ClassIndexCache(resolveProjectPath(project, it)) }
             var captureHashNanos = 0L
@@ -213,9 +219,10 @@ internal object AgentCommand {
                     ?: ClassFileIndexer().indexWithObservations(classRoots, classpath, services, generatedRoots)
                 indexStatistics = indexed.statistics
                 val compilerEnrichment = try {
-                    CompilerEvidenceIndexer.enrichWithCallPositions(indexed, classRoots, compilerEvidence,
-                        if (compilerEvidence.isEmpty()) null else CompilerEvidenceContext(project, requireNotNull(options.single("--scope")),
-                            requireNotNull(provenance), externalInputs))
+                    val context = if (compilerEvidence.isEmpty()) null else CompilerEvidenceContext(project,
+                        requireNotNull(options.single("--scope")), requireNotNull(provenance), externalInputs)
+                    if (includeSourceUses) CompilerEvidenceIndexer.enrichWithSourceUses(indexed, classRoots, compilerEvidence, context)
+                    else CompilerEvidenceIndexer.enrichWithCallPositions(indexed, classRoots, compilerEvidence, context)
                 } catch (evidenceError: IllegalArgumentException) {
                     error.println("error: ${evidenceError.message ?: "invalid compiler evidence"}")
                     return ExitStatus.FAILURE.code
@@ -345,18 +352,36 @@ internal object AgentCommand {
     }
 
     private fun savedQuery(requested: String, arguments: List<String>, output: PrintStream, error: PrintStream): Int {
-        val options = parsePaths(arguments, setOf("--graph-file", "--depth", "--limit", "--snapshot-max-mib"), error)
+        val options = parsePaths(arguments, setOf("--graph-file", "--depth", "--limit", "--snapshot-max-mib", "--source-uses", "--source-limit", "--source-offset"), error)
             ?: return ExitStatus.USAGE.code
         if (options.values("--graph-file").size != 1) return usage(error, "provide exactly one --graph-file")
+        val sourceUses = options.values("--source-uses").isNotEmpty()
+        if (listOf("--source-uses", "--source-limit", "--source-offset").any { options.values(it).size > 1 })
+            return usage(error, "duplicate source-use option")
+        if (!sourceUses && (options.values("--source-limit").isNotEmpty() || options.values("--source-offset").isNotEmpty()))
+            return usage(error, "source pagination requires --source-uses")
+        val sourceLimit = options.single("--source-limit")?.toIntOrNull() ?: if (options.single("--source-limit") == null) 100 else 0
+        val sourceOffset = options.single("--source-offset")?.toIntOrNull() ?: if (options.single("--source-offset") == null) 0 else -1
+        if (sourceLimit !in 1..1000 || sourceOffset !in 0..200000)
+            return usage(error, "source-limit must be 1..1000 and source-offset must be 0..200000")
         val snapshotLimit = SnapshotFiles.limit(options.values("--snapshot-max-mib"))
             ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128")
         val depth = options.positiveInt("--depth", 1, error) ?: return ExitStatus.USAGE.code
         val limit = options.positiveInt("--limit", 50, error) ?: return ExitStatus.USAGE.code
         return try {
-            val snapshot = SnapshotFiles.read(options.single("--graph-file")!!, snapshotLimit.maximumBytes)
-            val document = SavedSnapshotOperations.query(snapshot, requested, depth, limit)
+            val document = if (sourceUses) {
+                val loaded = SnapshotFiles.readWithIdentity(options.single("--graph-file")!!, snapshotLimit.maximumBytes)
+                SavedSnapshotOperations.sourceQuery(loaded, requested, depth, limit,
+                    dev.kartograph.analysis.SourceUsePageRequest(sourceLimit, sourceOffset))
+            } else {
+                val snapshot = SnapshotFiles.read(options.single("--graph-file")!!, snapshotLimit.maximumBytes)
+                SavedSnapshotOperations.query(snapshot, requested, depth, limit)
+            }
             output.print(document.json)
             document.status
+        } catch (_: dev.kartograph.export.SourceUseDocumentSizeException) {
+            error.println("error: source report exceeds 16 MiB; reduce graph/source pages or use a narrower snapshot")
+            ExitStatus.FAILURE.code
         } catch (_: InvalidPathException) {
             usage(error, "invalid graph file path")
         } catch (_: Exception) {
@@ -469,7 +494,7 @@ internal object AgentCommand {
                 error.println("error: unknown option: $option")
                 return null
             }
-            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings", "--messages", "--events", "--rn-events")) {
+            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings", "--messages", "--events", "--rn-events", "--include-source-uses", "--source-uses")) {
                 values.getOrPut(option) { mutableListOf() } += "true"
                 index++
                 continue
@@ -510,6 +535,9 @@ internal object AgentCommand {
           --baseline <file>         suppress fingerprinted findings
           --include-private-members include private members in the graph
           --generated-classes <path> mark a supplied class root as generated, repeatable
+          --source-uses             separate direct compiler-selection observations (saved snapshots only)
+          --source-limit <n>        source page size, 1..1000 (default 100; requires --source-uses)
+          --source-offset <n>       source page offset, 0..200000 (default 0; requires --source-uses)
           --graph-file <file>       query a saved snapshot without reading live inputs
           --snapshot-max-mib <n>    saved snapshot read maximum in MiB, 1..128 (default 64)
 
@@ -537,6 +565,8 @@ internal object AgentCommand {
         --timings reports fingerprint, index/cache phases and render time to stderr.
         verify-snapshot reports comparison time. Cache and timing settings do not change snapshot facts.
         --compiler-evidence <file> attaches explicitly selected compiler facts with completed build receipts.
+        --include-source-uses captures direct compiler selections from explicit validated v3 evidence;
+        requires --compiler-evidence, --scope and completed --build-witness inputs. No transitive impact is inferred.
         --processor-output-config <file> attaches verified v2 javac/KAPT/KSP output receipts as metadata (requires --scope).
         It requires --scope, --build-witness and --input bindings for every external witness input.
         These labels are caller assertions; the source freshness checks still apply.

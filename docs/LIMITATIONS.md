@@ -325,3 +325,12 @@ null/필드 누락은 미확정이다. 이름만 같은 사용자 함수는 연�
 ClassFacts cache binary v8은 재사용하지 않고 v9로 재파싱한다.
 그래프 선택/가지치기 또는 origin 제외로 원본 정점이나 BYTECODE CALL 근거가 사라지면 연관도 null로
 정규화한다. 원본 그래프의 사실과 raw CALL은 변경하지 않는다.
+
+### Direct compiler-source observations
+
+Opt-in saved query/impact source reports expose only admitted direct compiler selections. They do not cover source transitivity,
+unobserved syntax, local/lambda/ambiguous mappings, external targets/consumers, unbuilt variants or dynamic execution. A missing
+exact bytecode CALL is a correlation fact, not an inline/erased/unused classification. Querying a class does not expand its members.
+Captured root/producer/import omissions remain global historical gaps after narrowing; a smaller view cannot improve capture
+coverage or restore removed rows. Source page counts and graph traversal/path truncation are independent. Saved snapshot identity
+hashes are neither producer authentication nor current-build freshness. `verify-snapshot` remains a separate explicit check.

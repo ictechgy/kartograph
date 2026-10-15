@@ -651,3 +651,29 @@ impact(U) = { H | U ∈ reach(H) } ∪ { G | G →cb+ B 이고 (B = U 또는 U �
 현재 갱신은 전체 snapshot capture다. 저장 그래프 재사용은 증분 인덱싱이 아니다.
 평가는 [계획](IMPACT-PLAN.md)의 실제 변경 과제와 compiler/runtime 코퍼스에서 수행한다.
 20,699개 후보의 탐색·출력량·시간 비교와 재현 명령은 [영향 탐색 평가](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/impact-navigation/README.md)에 있다.
+
+## Opt-in direct observed source selections
+
+Use `impact '<symbol-or-usr>' --graph-file current.json --source-edits`, optionally with `--base-graph base.json`.
+The `kartograph-source-edit-impact` version 1 wrapper contains the unchanged ordinary `graphImpact` document plus
+`sourceEdit.policy: directObservedSelections`. Each source row is a retained compiler selection whose exact target is in
+that revision's resolved changed IDs and whose caller is not itself changed. It does not propagate across graph edges,
+other source selections, overrides, subtypes or owner/member relationships. No combined affected count or risk score is given.
+
+`--source-limit` accepts 1..1000 (default 100); `--source-offset` accepts 0..200000 (default 0). The same page request applies
+independently to base and current; a page exhausted in one revision does not exhaust the other. Source rows use fixed Unicode
+scalar ordering by caller, target, source path, numeric UTF-16 offset, unit ID and use ID. Existing graph depth, result/page,
+visit, path and summary limits remain graph-only. `--all`, explicit `--sort`, and affected-result filters (`--module`,
+`--affected-file`, `--filter-file`, `--kind`, `--test-status`, `--relation`, `--path-status`) are rejected in this first source mode.
+`--format json` is supported; `language-traversal` is not. Existing default-mode behavior is unchanged.
+
+Symbol/file resolution and revision compatibility remain the ordinary impact rules. Source seeds come from the full resolved
+changed list, never a graph affected page. Missing or ambiguous selections remain in `graphImpact.unresolved`. Partially resolved
+selections inspect only resolved seeds. A revision with no selected IDs is `noTargetsInRevision`; an explicitly empty changed-file
+list is `noChanges`. Unresolved selection or unavailable evidence has a null page. Captured-empty and offset-exhausted pages
+retain their distinct counts. Empty output does not approve deletion or skipping tests.
+
+Source coverage is global, historical, and unknown or partial. The wrapper records each loaded snapshot's exact raw-byte SHA-256
+with `currentness: notChecked`. It does not prove source freshness, runtime reachability, executed calls or behavior changes.
+The complete wrapper is rendered before writing stdout and is capped at 16 MiB including the final newline. If too large, reduce
+graph/source page sizes or use a narrower snapshot; no partial successful JSON is written. Reports are not snapshot inputs.
