@@ -3,9 +3,11 @@ package dev.kartograph.export
 import dev.kartograph.core.CallResolution
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.CompilerEvidenceSource
+import dev.kartograph.core.CompilerEnumDecisionEvidence
 import dev.kartograph.core.CompilerSourceCoordinateBasis
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
+import dev.kartograph.core.EnumConstantIds
 import dev.kartograph.core.ExternalCall
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
@@ -55,8 +57,15 @@ public data class QuerySnapshot(
     val callSiteLinesCaptured: Boolean = true,
     /** 보존 교환 문서의 원본 관측이며 compiler-task build provenance와 독립적이다. */
     val externalRetentionContexts: List<ExternalRetentionDocumentContext> = emptyList(),
+    /** opt-in compiler 판단 capture이며 null은 미수집이다. graph view에서도 원본 행을 유지한다. */
+    val enumDecisionEvidence: CompilerEnumDecisionEvidence? = null,
 ) {
     init {
+        enumDecisionEvidence?.let { evidence ->
+            evidence.requireMatchesGraph(graph)
+            evidence.requireMatchesProvenance(requireNotNull(provenance) { "enum decisions require snapshot provenance" },
+                requireNotNull(scope) { "enum decisions require snapshot scope" })
+        }
         require(revision == null || Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) { "snapshot revision must be a full commit hash" }
         require(scope == null || (scope.length <= 200 && Regex("[A-Za-z0-9_.:-]+").matches(scope))) { "snapshot scope must be a portable project and variant label" }
         require(processorOutputs.size <= 256 && processorOutputs.all { it.scope == scope }) { "processor outputs require the matching snapshot scope" }
@@ -98,6 +107,11 @@ public object QuerySnapshotCodec {
             evidence.requireMatchesProvenance(requireNotNull(snapshot.provenance) { "compiler source uses require snapshot provenance" },
                 requireNotNull(snapshot.scope) { "compiler source uses require snapshot scope" })
         }
+        snapshot.enumDecisionEvidence?.let { evidence ->
+            evidence.requireMatchesGraph(snapshot.graph)
+            evidence.requireMatchesProvenance(requireNotNull(snapshot.provenance) { "enum decisions require snapshot provenance" },
+                requireNotNull(snapshot.scope) { "enum decisions require snapshot scope" })
+        }
         val positions = if (compact) snapshot.graph.nodeIds.withIndex().associate { it.value to it.index } else emptyMap()
         val encoding = if (compact) CompactSnapshotGraph(positions.mapKeys { it.key.value }) else null
         return boundedJsonValue(sortedMapOf(
@@ -106,6 +120,7 @@ public object QuerySnapshotCodec {
         "toolVersion" to snapshot.toolVersion,
         "revision" to snapshot.revision, "scope" to snapshot.scope,
         "provenance" to snapshot.provenance?.let(BuildWitnessCodec::provenanceValue),
+        "enumDecisions" to snapshot.enumDecisionEvidence?.let(CompilerEnumDecisionSnapshotCodec::value),
         "externalRetentionContexts" to snapshot.externalRetentionContexts.takeIf { it.isNotEmpty() }
             ?.map { it.canonicalDocument }?.distinct()?.sorted(),
         "processorOutputs" to snapshot.processorOutputs.sortedWith(compareBy({ it.kind }, { it.processor }, { it.processorArtifact }, { it.rawSha256 })).map(ProcessorOutputCodec::value),
@@ -123,6 +138,12 @@ public object QuerySnapshotCodec {
         },
         "graph" to sortedMapOf(
             "nodes" to snapshot.graph.nodeIds.map { snapshot.graph.nodes.getValue(it).toValue().let { value -> encoding?.node(value) ?: value } },
+            // field 정점이 가지치기돼도 전체 capture 목록을 보존한다. compact 사전과 독립적인 선택 확장이다.
+            "enumInventories" to snapshot.graph.nodeIds.mapNotNull { id ->
+                snapshot.graph.nodes.getValue(id).enumConstants?.let { constants ->
+                    sortedMapOf("usr" to id.value, "constants" to constants.map { it.value })
+                }
+            },
             "edges" to snapshot.graph.edges.map { edge ->
                 if (encoding != null) listOf(positions.getValue(edge.source), positions.getValue(edge.target),
                     encoding.text(edge.kind.name.lowerCamel()), encoding.text(edge.origin.name.lowerCamel()), edge.weight)
@@ -185,6 +206,7 @@ public object QuerySnapshotCodec {
                 }.sortedBy { it["usr"] as String }
                 if (declarations.isEmpty()) graph else graph + ("sourceDeclarations" to declarations)
             }
+            .let { graph -> if (snapshot.graph.nodes.values.any { it.enumConstants != null }) graph else graph - "enumInventories" }
             .let { graph -> if (snapshot.graph.compilerCallPositionsCaptured) graph else graph - "compilerCallEvidence" }
             .let { graph -> snapshot.graph.compilerSourceUseEvidence?.let {
                 graph + ("compilerSourceUses" to CompilerSourceUseSnapshotCodec.value(it))
@@ -235,6 +257,34 @@ public object QuerySnapshotCodec {
         }
         val ids = nodes.map { it.id }.toSet()
         require(ids.size == nodes.size) { "query snapshot contains duplicate nodes" }
+        val enumInventories = if (rawGraph.containsKey("enumInventories")) {
+            val byId = nodes.associateBy { it.id }
+            list(rawGraph["enumInventories"]).map { raw ->
+                val item = objectValue(raw)
+                require(item.keys == setOf("usr", "constants")) { "invalid enum inventory" }
+                val id = NodeId(string(item["usr"]))
+                val owner = requireNotNull(byId[id]) { "enum inventory has an unknown owner" }
+                val constants = strings(item["constants"]).map(::NodeId)
+                // GraphNode는 owner kind·stub·정확한 self descriptor와 정렬/중복을 함께 검증한다.
+                owner.copy(enumConstants = constants)
+                require(constants.all { constant ->
+                    byId[constant]?.let { field -> field.kind == NodeKind.FIELD &&
+                        NodeAttribute.ENUM_CONSTANT in field.attributes && NodeAttribute.EXTERNAL_STUB !in field.attributes } ?: true
+                }) { "enum inventory does not match retained field facts" }
+                id to constants
+            }.also { entries -> require(entries.map { it.first }.distinct().size == entries.size) {
+                "duplicate enum inventory"
+            } }.toMap()
+        } else emptyMap()
+        val capturedConstants = enumInventories.mapValues { it.value.toSet() }
+        val enumNodesById = nodes.associateBy { it.id }
+        require(nodes.filter { NodeAttribute.ENUM_CONSTANT in it.attributes }.all { field ->
+            val owner = NodeId("class:" + field.id.value.removePrefix("field:").substringBefore('#'))
+            val retainedOwner = enumNodesById[owner]
+            EnumConstantIds.belongsTo(owner, field.id) &&
+                (retainedOwner == null || retainedOwner.kind == NodeKind.ENUM && NodeAttribute.EXTERNAL_STUB !in retainedOwner.attributes) &&
+                capturedConstants[owner]?.contains(field.id) != false
+        }) { "enum constant does not match captured graph facts" }
         require(sourceNames.keys.all { it in ids } && nodes.filter { it.kotlinSourceName != null }.all { it.kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) }) {
             "Kotlin source name fact does not match a function node"
         }
@@ -372,7 +422,7 @@ public object QuerySnapshotCodec {
             } }.toMap()
         }.orEmpty()
         val baseGraph = CodeGraph(nodes.map { node -> node.copy(sourceDeclaration = declarations[node.id],
-            kotlinDefaultBridge = bridgeFacts[node.id]) }, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
+            kotlinDefaultBridge = bridgeFacts[node.id], enumConstants = enumInventories[node.id]) }, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
             lambdaEscapes.orEmpty())
         val positionedGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
         val provenance = document["provenance"]?.let(BuildWitnessCodec::provenance)
@@ -401,7 +451,8 @@ public object QuerySnapshotCodec {
                 ExternalRetentionCodec.parseDocument(string(raw)).also { require(it.retentions.isEmpty()) {
                     "external retention snapshot context must not contain hidden retention roots"
                 } }.context
-            }.distinct().sortedBy { it.canonicalDocument } else emptyList())
+            }.distinct().sortedBy { it.canonicalDocument } else emptyList(),
+            enumDecisionEvidence = if ("enumDecisions" in document) CompilerEnumDecisionSnapshotCodec.parse(document["enumDecisions"]) else null)
     }
 
     /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */

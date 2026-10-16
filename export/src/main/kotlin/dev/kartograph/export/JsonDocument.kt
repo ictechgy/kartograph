@@ -15,6 +15,12 @@ internal fun boundedJsonValue(value: Any?, maximumBytes: Int, suffix: CharSequen
     }.toString()
 }
 
+/** 일반 텍스트 보고서도 같은 증분 UTF-8 출력 한도를 사용한다. */
+internal fun boundedTextValue(maximumBytes: Int, write: Appendable.() -> Unit): String {
+    require(maximumBytes > 0) { "text byte maximum must be positive" }
+    return BoundedJsonAppendable(maximumBytes).apply(write).toString()
+}
+
 /** 하위 문서마다 임시 문자열을 만들지 않고 같은 버퍼에 순서대로 기록한다. */
 internal fun Appendable.appendJsonValue(value: Any?) {
     when (value) {

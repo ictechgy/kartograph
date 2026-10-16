@@ -7,6 +7,7 @@ import dev.kartograph.index.ContentFingerprint
 import dev.kartograph.index.CompilerEvidenceReceipts
 import dev.kartograph.index.CompilerEvidenceToken
 import dev.kartograph.index.CompilerCallPositionOptions
+import dev.kartograph.index.CompilerEnumDecisionOptions
 import org.gradle.api.Action
 import org.gradle.api.Project
 import org.gradle.api.Task
@@ -207,9 +208,11 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
             .map { it to "project" }).sortedByDescending { it.first.length }
         val normalized = observed.options.map { value -> replacements.fold(value) { text, (path, identity) -> text.replace(path, identity) } }
         val observedInputs = fingerprints + InputFingerprint("options", "$artifact-options", ContentFingerprint.values(normalized))
-        return if (CompilerCallPositionOptionParser.enabled(kind, observed.options, compilerEvidence)) {
-            observedInputs + CompilerCallPositionOptions.enabledInput()
-        } else observedInputs
+        return observedInputs +
+            (if (CompilerCallPositionOptionParser.enabled(kind, observed.options, compilerEvidence))
+                listOf(CompilerCallPositionOptions.enabledInput()) else emptyList()) +
+            (if (CompilerCallPositionOptionParser.enumDecisionsEnabled(kind, observed.options, compilerEvidence))
+                listOf(CompilerEnumDecisionOptions.enabledInput()) else emptyList())
     }
 
     fun output(task: Task): InputFingerprint {

@@ -677,3 +677,70 @@ Source coverage is global, historical, and unknown or partial. The wrapper recor
 with `currentness: notChecked`. It does not prove source freshness, runtime reachability, executed calls or behavior changes.
 The complete wrapper is rendered before writing stdout and is capped at 16 MiB including the final newline. If too large, reduce
 graph/source page sizes or use a narrower snapshot; no partial successful JSON is written. Reports are not snapshot inputs.
+
+## Opt-in enum expansion candidates
+
+Use the explicit enum mode to inspect new constants that existing source
+decisions could absorb. This mode compares exact JVM enum identities and
+complete `ACC_ENUM` inventories, then examines only current typed source sites:
+
+```sh
+kartograph impact --enum-expansion --graph-file current.json --base-graph base.json \
+  --symbol 'class:sample/Status' --format json
+kartograph impact --enum-expansion --graph-file current.json --base-graph base.json \
+  --symbol 'class:sample/Status' --format text --limit 100 --offset 0
+```
+
+`--symbol` is optional and repeatable, and accepts exact `class:` identities.
+With no selector, the query compares the current snapshot's enum declarations.
+Both snapshots are required and must have matching tool version and scope.
+Use the [enum capture workflow](COMPILER-EVIDENCE.md#opt-in-enum-expansion-decisions)
+to collect the current decisions. Old/missing inventories or decision channels
+remain unavailable; they are never interpreted as complete empty sets.
+
+The `kartograph-enum-expansion` version 1 JSON report includes:
+
+- `comparisons`: baseline/current inventory availability and the added/removed
+  constant IDs for each enum. Only reliably compared additions produce candidates.
+- `candidates`: current authored fallback or finite membership sites that do not
+  explicitly list an added constant. Each row has its kind/reason, added and
+  listed constants, source path/hash/UTF-16 range/line/column, attribution,
+  output-root IDs, and the compiler receipt/input-token provenance.
+- `unresolved`: emitted current source sites with attribution reasons, including
+  dependency/shadowed/ambiguous roots or later view unavailability.
+- `coverage`: selected-enum site counts, explicitly global captured-unit producer
+  counts, global `capturedAttributionCounts`, and uncovered output roots.
+  Unsupported syntax is counted at unit level; it has no fabricated source row.
+- `inputs`: the SHA-256 of the exact parsed base/current snapshot bytes, revision,
+  tool version and scope. No currentness check or source reread is performed.
+
+`EXPLICIT_FALLBACK` means an added constant may select an authored fallback.
+`FINITE_MEMBERSHIP` means the new constant is absent from the literal set;
+`NEGATED_FINITE_MEMBERSHIP` means it may pass a negated test. These are review
+candidates, not observed bugs, reachable execution paths, or whole-filter proofs.
+Current sites explicitly listing the new constant are not reported for that
+constant. Removed constants or unavailable baseline identities do not become
+added-case findings. Historical decisions are never relabeled with current source
+coordinates.
+
+`--limit` accepts 1..1000 (default 100); `--offset` accepts 0..200000 (default 0).
+The same request pages candidates and unresolved records independently.
+`navigation` and `unresolvedNavigation` retain total/omitted counts independent of
+page size; raw captured counts are not recomputed from a returned page. Identical
+source assertions repeated across completed units are deduplicated for display
+while capture counts remain intact.
+
+Top-level status is `evidenceUnavailable`, `partial`, `candidates`, or
+`noCandidates`. Unavailable comparisons, unresolved/view-omitted sites,
+unsupported producer observations or uncovered roots keep status partial.
+`noCandidates` only means this captured supported slice found no candidate.
+The JSON and text reports both preserve snapshot limitations and are rendered
+fully under a 16 MiB UTF-8 limit before stdout is written.
+
+Captured enum decision snapshots cannot currently be aggregated with snapshot
+merge; the existing compiler-evidence guard refuses them before reindexing.
+
+This mode cannot be combined with `--source-edits`, source pagination or
+`--format language-traversal`. Duplicate format/mode/singular options reject
+before snapshot reads. Ordinary graph impact remains a separate query, and enum
+decision evidence adds no reachability, retention or CALL edges.

@@ -139,13 +139,18 @@ internal object AgentCommand {
             setOf(
                 "--classes", "--project", "--manifest", "--resources", "--namespace",
                 "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes", "--external-retentions",
-            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings", "--compiler-evidence", "--processor-output-config", "--input", "--index-cache", "--snapshot-max-mib", "--include-source-uses"),
+            ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings", "--compiler-evidence", "--processor-output-config", "--input", "--index-cache", "--snapshot-max-mib", "--include-source-uses", "--include-enum-decisions"),
             error,
         )
             ?: return ExitStatus.USAGE.code
         if (options.values("--external-retentions").size > 1) return usage(error, "provide at most one --external-retentions file")
         if (options.values("--include-source-uses").size > 1) return usage(error, "duplicate --include-source-uses")
         val includeSourceUses = options.values("--include-source-uses").isNotEmpty()
+        if (options.values("--include-enum-decisions").size > 1) return usage(error, "duplicate --include-enum-decisions")
+        val includeEnumDecisions = options.values("--include-enum-decisions").isNotEmpty()
+        if (includeEnumDecisions && (options.values("--compiler-evidence").isEmpty() || options.single("--scope") == null ||
+                options.values("--build-witness").isEmpty()))
+            return usage(error, "--include-enum-decisions requires --compiler-evidence, --scope and completed --build-witness inputs")
         if (includeSourceUses && (options.values("--compiler-evidence").isEmpty() || options.single("--scope") == null ||
                 options.values("--build-witness").isEmpty()))
             return usage(error, "--include-source-uses requires --compiler-evidence, --scope and completed --build-witness inputs")
@@ -200,7 +205,8 @@ internal object AgentCommand {
                     options.values(option).map { role to resolveProjectPath(project, it) }
                 } + keepScanner.inputFiles.map { "keepRules" to it }
             val context = listOf("--namespace", "--include-private-members", "--include-paths", "--scope").flatMap { listOf(it) + options.values(it) } +
-                if (includeSourceUses) listOf("--include-source-uses", "true") else emptyList()
+                (if (includeSourceUses) listOf("--include-source-uses", "true") else emptyList()) +
+                (if (includeEnumDecisions) listOf("--include-enum-decisions", "true") else emptyList())
             val witnessPaths = options.values("--build-witness").map { resolveProjectPath(project, it) }
             val indexCache = options.single("--index-cache")?.let { ClassIndexCache(resolveProjectPath(project, it)) }
             var captureHashNanos = 0L
@@ -221,7 +227,8 @@ internal object AgentCommand {
                 val compilerEnrichment = try {
                     val context = if (compilerEvidence.isEmpty()) null else CompilerEvidenceContext(project,
                         requireNotNull(options.single("--scope")), requireNotNull(provenance), externalInputs)
-                    if (includeSourceUses) CompilerEvidenceIndexer.enrichWithSourceUses(indexed, classRoots, compilerEvidence, context)
+                    if (includeEnumDecisions) CompilerEvidenceIndexer.enrichWithEnumDecisions(indexed, classRoots, compilerEvidence, context, includeSourceUses)
+                    else if (includeSourceUses) CompilerEvidenceIndexer.enrichWithSourceUses(indexed, classRoots, compilerEvidence, context)
                     else CompilerEvidenceIndexer.enrichWithCallPositions(indexed, classRoots, compilerEvidence, context)
                 } catch (evidenceError: IllegalArgumentException) {
                     error.println("error: ${evidenceError.message ?: "invalid compiler evidence"}")
@@ -275,7 +282,8 @@ internal object AgentCommand {
                         QuerySnapshotCodec.render(QuerySnapshot(capturedGraph, evidence, limitations, suppressed,
                             options.values("--include-private-members").isNotEmpty(), revision = options.single("--revision"),
                             scope = options.single("--scope"), provenance = provenance, processorGenerations = compilerFacts.processorGenerations,
-                            processorOutputs = outputObservations, externalRetentionContexts = externalContexts),
+                            processorOutputs = outputObservations, externalRetentionContexts = externalContexts,
+                            enumDecisionEvidence = compilerEnrichment.enumDecisions),
                             compact = options.values("--compact").isNotEmpty(), maximumBytes = selectedLimit.maximumBytes)
                     } catch (_: QuerySnapshotSizeException) {
                         renderNanos = System.nanoTime() - renderStarted
@@ -494,7 +502,7 @@ internal object AgentCommand {
                 error.println("error: unknown option: $option")
                 return null
             }
-            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings", "--messages", "--events", "--rn-events", "--include-source-uses", "--source-uses")) {
+            if (option in setOf("--include-private-members", "--include-paths", "--compact", "--timings", "--messages", "--events", "--rn-events", "--include-source-uses", "--include-enum-decisions", "--source-uses")) {
                 values.getOrPut(option) { mutableListOf() } += "true"
                 index++
                 continue
@@ -565,6 +573,7 @@ internal object AgentCommand {
         --timings reports fingerprint, index/cache phases and render time to stderr.
         verify-snapshot reports comparison time. Cache and timing settings do not change snapshot facts.
         --compiler-evidence <file> attaches explicitly selected compiler facts with completed build receipts.
+        --include-enum-decisions captures opt-in v4 typed enum fallback/membership sites with completed witnesses.
         --include-source-uses captures direct compiler selections from explicit validated v3 evidence;
         requires --compiler-evidence, --scope and completed --build-witness inputs. No transitive impact is inferred.
         --processor-output-config <file> attaches verified v2 javac/KAPT/KSP output receipts as metadata (requires --scope).

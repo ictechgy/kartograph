@@ -14,6 +14,14 @@ import java.io.PrintStream
 internal object ImpactCommand {
     fun run(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
         if (arguments == listOf("--help") || arguments == listOf("-h")) { output.print(HELP); return 0 }
+        if (arguments.count { it == "--format" } > 1) return usage(error, "duplicate impact option")
+        if ("--enum-expansion" in arguments) {
+            if (arguments.count { it == "--enum-expansion" } != 1 ||
+                arguments.any { it in setOf("--source-edits", "--source-limit", "--source-offset") } ||
+                arguments.windowed(2).any { it == listOf("--format", "language-traversal") })
+                return usage(error, "enum expansion cannot be combined with source edits or language traversal")
+            return EnumImpactCommand.run(arguments, output, error)
+        }
         // 새 교환 형식은 별도 생산자가 맡는다. 기본 kartograph-impact v1 경로와 출력은 그대로 둔다.
         val formatIndex = arguments.indexOf("--format")
         val format = if (formatIndex >= 0) arguments.getOrNull(formatIndex + 1) else null
@@ -185,6 +193,7 @@ internal object ImpactCommand {
           kartograph impact --file <project-relative-path> --graph-file <current.json> --base-graph <base.json>
 
         Options:
+          --enum-expansion         compare enum additions and current source decision candidates (json|text)
           --source-edits           separate direct compiler-selection observations (JSON only)
           --source-limit <n>       per-revision source page size, 1..1000 (default 100)
           --source-offset <n>      per-revision source offset, 0..200000 (default 0)

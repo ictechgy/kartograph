@@ -83,6 +83,12 @@ base/current snapshots with the same tool version when required; do not relabel 
 Old compiled-client and descriptor checks cover selected APIs, not every client or Kotlin source compatibility.
 See the [upgrade notes](CHANGELOG.md) and [source-use compatibility guide](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility).
 
+The source-only enum expansion feature captures explicit fallback and finite literal membership decisions with
+`enumDecisions=true` and `snapshot --include-enum-decisions`. Compare compatible snapshots using
+`impact --enum-expansion`; results include current source locations, added enum constants and unresolved coverage.
+See the [enum expansion guide](docs/IMPACT.md#opt-in-enum-expansion-candidates). These are review candidates,
+not proof of runtime behavior. This feature is not present in published 0.22.0 artifacts.
+
 ## Usage
 
 ```bash

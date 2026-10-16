@@ -65,6 +65,7 @@ private object KotlinEvidenceConfiguration {
     val ROOT = CompilerConfigurationKey<String>("kartograph.compiler.evidence.root")
     val OUTPUT = CompilerConfigurationKey<String>("kartograph.compiler.evidence.output")
     val TOKEN = CompilerConfigurationKey<String>("kartograph.compiler.evidence.token")
+    val ENUM_DECISIONS = CompilerConfigurationKey<Boolean>("kartograph.compiler.evidence.enumDecisions")
     val CALL_POSITIONS = CompilerConfigurationKey<Boolean>("kartograph.compiler.evidence.callPositions")
 }
 
@@ -75,6 +76,7 @@ public class KotlinEvidenceCommandLineProcessor : CommandLineProcessor {
         CliOption("root", "<path>", "project root for source identities", true, false),
         CliOption("output", "<path>", "raw evidence TSV file or directory", true, false),
         CliOption("token", "<path>", "compiler input token file", true, false),
+        CliOption("enumDecisions", "<true|false>", "record source enum decision candidates", false, false),
         CliOption("callPositions", "<true|false>", "record semantic call selector positions", false, false),
     )
 
@@ -83,6 +85,11 @@ public class KotlinEvidenceCommandLineProcessor : CommandLineProcessor {
             "root" -> configuration.put(KotlinEvidenceConfiguration.ROOT, value)
             "output" -> configuration.put(KotlinEvidenceConfiguration.OUTPUT, value)
             "token" -> configuration.put(KotlinEvidenceConfiguration.TOKEN, value)
+            "enumDecisions" -> {
+                require(configuration[KotlinEvidenceConfiguration.ENUM_DECISIONS] == null) { "duplicate enumDecisions option" }
+                configuration.put(KotlinEvidenceConfiguration.ENUM_DECISIONS,
+                    value.toBooleanStrictOrNull() ?: error("enumDecisions must be true or false"))
+            }
             "callPositions" -> configuration.put(KotlinEvidenceConfiguration.CALL_POSITIONS,
                 value.toBooleanStrictOrNull() ?: error("callPositions must be true or false"))
             else -> error("unsupported Kotlin compiler evidence option")
@@ -100,7 +107,8 @@ public class KotlinEvidenceRegistrar : CompilerPluginRegistrar() {
         val output = EvidenceProtocol.pathOption(requireNotNull(configuration[KotlinEvidenceConfiguration.OUTPUT]))
         val token = EvidenceProtocol.pathOption(requireNotNull(configuration[KotlinEvidenceConfiguration.TOKEN]))
         val callPositions = configuration[KotlinEvidenceConfiguration.CALL_POSITIONS] ?: false
-        val options = EvidenceProtocol.Options(root, output, token, "kotlin-constants", callPositions)
+        val enumDecisions = configuration[KotlinEvidenceConfiguration.ENUM_DECISIONS] ?: false
+        val options = EvidenceProtocol.Options(root, output, token, "kotlin-constants", callPositions, enumDecisions)
         EvidenceProtocol.invalidateOutput(options)
         val state = KotlinEvidenceState(options)
         KotlinCompilerBridge.registerFir(this, KotlinFirRegistrar(state))
@@ -123,7 +131,11 @@ private class KotlinFirRegistrar(private val state: KotlinEvidenceState) : FirEx
 private class KotlinReferenceCheckers(session: FirSession, private val state: KotlinEvidenceState) : FirAdditionalCheckersExtension(session) {
     override val expressionCheckers: ExpressionCheckers = object : ExpressionCheckers() {
         override val propertyAccessExpressionCheckers = setOf(KotlinReferenceChecker(state))
-        override val functionCallCheckers = if (state.callPositionsEnabled) setOf(KotlinCallChecker(state)) else emptySet()
+        override val functionCallCheckers = buildSet {
+            if (state.callPositionsEnabled) add(KotlinCallChecker(state))
+            if (state.enumDecisionsEnabled) add(KotlinEnumMembershipChecker(state))
+        }
+        override val whenExpressionCheckers = if (state.enumDecisionsEnabled) setOf(KotlinEnumWhenChecker(state)) else emptySet()
     }
 }
 
@@ -242,8 +254,11 @@ private fun canonicalPath(path: String): String {
     }
 }
 
-private class KotlinEvidenceState(private val options: EvidenceProtocol.Options) {
+internal class KotlinEvidenceState(private val options: EvidenceProtocol.Options) {
     val callPositionsEnabled: Boolean = options.callPositions()
+    val enumDecisionsEnabled: Boolean = options.enumDecisions()
+    private val enumDecisionBuffer = EvidenceProtocol.EnumDecisionBuffer()
+    private val enumSources = if (enumDecisionsEnabled) HashMap<String, EvidenceProtocol.Source>() else null
     private val initialToken = EvidenceProtocol.readToken(options)
     private val artifact = EvidenceProtocol.artifactFingerprint(KotlinEvidenceRegistrar::class.java)
     private val sources = linkedMapOf<String, EvidenceProtocol.Source>()
@@ -307,6 +322,37 @@ private class KotlinEvidenceState(private val options: EvidenceProtocol.Options)
 
     fun recordUnmapped() {
         unresolvedReferences++
+    }
+
+    fun observeEnumDecision() = enumOperation { enumDecisionBuffer.observe() }
+    fun recordEnumUnsupported() = enumOperation { enumDecisionBuffer.unsupported() }
+    fun recordEnumIgnored() = enumOperation { enumDecisionBuffer.ignored() }
+
+    fun recordEnumDecision(path: String, start: Int, end: Int, line: Int, column: Int,
+        lexicalClass: String?, enumClass: String, kind: String, constants: List<String>, lexicalLambda: Boolean) {
+        enumOperation {
+            val canonical = canonicalPath(path)
+            val cache = checkNotNull(enumSources)
+            // 실제 포함 컴파일 단위만 이 메서드에 전달한다. 파일 시스템을 순회해 목록을 만들지 않는다.
+            val source = cache[canonical] ?: EvidenceProtocol.source(options.root(), Path.of(path))
+            enumDecisionBuffer.add(EvidenceProtocol.EnumDecision(source, start, end, line, column,
+                lexicalClass, enumClass, kind, lexicalLambda, constants))
+            cache.putIfAbsent(canonical, source)
+        }
+    }
+
+    private fun <T> enumOperation(operation: () -> T): T {
+        try {
+            return operation()
+        } catch (error: RuntimeException) {
+            enumSources?.clear()
+            fail(if (error is EvidenceProtocol.EnumDecisionLimitException) {
+                "Kotlin enum decision collection exceeded its resource limit"
+            } else {
+                "invalid Kotlin compiler enum decision collection"
+            })
+            throw error
+        }
     }
 
     fun observeCall() {
@@ -449,6 +495,16 @@ private class KotlinEvidenceState(private val options: EvidenceProtocol.Options)
                         }
                     }
                 }
+            }
+            if (enumDecisionsEnabled) {
+                enumOperation {
+                    EvidenceProtocol.write(options, KotlinCompilerVersion.VERSION, artifact, sourceValues, unmapped, edges, null,
+                        callPositionBuffer.positionsList(), callPositionBuffer.observedCount(),
+                        callPositionBuffer.unmappedCount(), callPositionBuffer.ambiguousCount(),
+                        enumDecisionBuffer.decisionsList(), enumDecisionBuffer.observedCount(),
+                        enumDecisionBuffer.unsupportedCount(), enumDecisionBuffer.ignoredCount())
+                }
+            } else if (callPositionsEnabled) {
                 EvidenceProtocol.write(options, KotlinCompilerVersion.VERSION, artifact, sourceValues, unmapped, edges, null,
                     callPositionBuffer.positionsList(), callPositionBuffer.observedCount(), callPositionBuffer.unmappedCount(), callPositionBuffer.ambiguousCount())
             } else {

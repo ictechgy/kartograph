@@ -95,6 +95,8 @@ final class JavacEvidenceSession implements TaskListener {
     private final Map<CompilationUnitTree, Integer> remainingTopLevelScans = new IdentityHashMap<>();
     private final Map<TypeElement, String> targetSources = new IdentityHashMap<>();
     private final EvidenceProtocol.CallPositionBuffer callPositionBuffer = new EvidenceProtocol.CallPositionBuffer();
+    private final EvidenceProtocol.EnumDecisionBuffer enumDecisionBuffer = new EvidenceProtocol.EnumDecisionBuffer();
+    private final Set<Tree> observedEnumDecisions = JavacEnumDecisionScanner.observedSet();
     private final ArrayDeque<PendingCall> pendingCalls = new ArrayDeque<>();
     private final Set<EvidenceProtocol.Edge> edges = new TreeSet<>((left, right) -> {
         int source = left.source().compareTo(right.source());
@@ -245,6 +247,12 @@ final class JavacEvidenceSession implements TaskListener {
             return;
         }
         try {
+        if (options.enumDecisions()) {
+            String relative = sourcePath(path.getCompilationUnit().getSourceFile());
+            EvidenceProtocol.Source source = relative == null ? null : sources.get(relative);
+            if (source == null) throw new IllegalArgumentException("javac enum source inventory is unavailable");
+            new JavacEnumDecisionScanner(trees, elements, source, enumDecisionBuffer, observedEnumDecisions).scan(path, null);
+        }
         new TreePathScanner<Void, Void>() {
             private ExecutableElement caller;
             private ExecutableElement callCaller;
@@ -324,6 +332,9 @@ final class JavacEvidenceSession implements TaskListener {
                 return super.visitMemberSelect(tree, unused);
             }
         }.scan(path, null);
+        } catch (RuntimeException error) {
+            fail("javac semantic collection failed");
+            throw error;
         } finally {
             releaseSourceContent(path);
         }
@@ -562,7 +573,13 @@ final class JavacEvidenceSession implements TaskListener {
                 }
             }
             if (options.collector().equals("javac-constants")) {
-                if (options.callPositions()) {
+                if (options.enumDecisions()) {
+                    if (options.callPositions()) finalizeCalls();
+                    EvidenceProtocol.write(options, Runtime.version().toString(), artifact, sources.values(), unmapped, edges, null,
+                        callPositionBuffer.positionsList(), callPositionBuffer.observedCount(), callPositionBuffer.unmappedCount(), callPositionBuffer.ambiguousCount(),
+                        enumDecisionBuffer.decisionsList(), enumDecisionBuffer.observedCount(),
+                        enumDecisionBuffer.unsupportedCount(), enumDecisionBuffer.ignoredCount());
+                } else if (options.callPositions()) {
                     finalizeCalls();
                     EvidenceProtocol.write(options, Runtime.version().toString(), artifact, sources.values(), unmapped, edges, null,
                         callPositionBuffer.positionsList(), callPositionBuffer.observedCount(), callPositionBuffer.unmappedCount(), callPositionBuffer.ambiguousCount());

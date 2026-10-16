@@ -35,7 +35,8 @@ private fun neighbor(value: SymbolQueryNeighbor): SymbolQueryNeighbor = value.co
 
 private fun impactNode(value: ImpactNode): ImpactNode = value.copy(
     node = value.node.copy(jvmModifiers = frozenSet(value.node.jvmModifiers), attributes = frozenSet(value.node.attributes),
-        annotations = frozenSet(value.node.annotations), supertypes = frozenSet(value.node.supertypes)),
+        annotations = frozenSet(value.node.annotations), supertypes = frozenSet(value.node.supertypes),
+        enumConstants = value.node.enumConstants?.let { frozen(it) }),
     presentIn = frozenSet(value.presentIn), observedIn = frozenSet(value.observedIn),
     paths = frozenItems(value.paths) { path -> path.copy(nodes = frozen(path.nodes),
         edges = frozenItems(path.edges) { edge -> edge.copy(callSiteLines = frozen(edge.callSiteLines)) }) },

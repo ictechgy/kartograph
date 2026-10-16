@@ -241,3 +241,83 @@ establish release readiness, publication, or independent installation of 0.23.0.
 The explicit CLI prerequisites and report contract are described above and in [impact](IMPACT.md#opt-in-direct-observed-source-selections).
 There is no automatic Gradle-plugin or MCP activation. These observations do not establish overall PSI/IDE accuracy,
 performance superiority, runtime behavior, deletion safety or permission to skip tests.
+
+## Opt-in enum expansion decisions
+
+The unreleased source feature adds a separate enum decision channel. Build matching
+CLI, index/export, Gradle plugin and collector artifacts from the same revision.
+It does not add dependency or execution edges.
+
+Each unambiguous indexed enum captures its complete JVM `ACC_ENUM` constant inventory.
+An unavailable inventory is distinct from a complete empty enum. Static aliases
+with the enum's type and synthetic values/entries storage are not constants.
+The captured inventory survives view pruning of the individual field nodes;
+conflicting or shadowed captures cannot be merged into a supposedly complete set.
+Older snapshots without this fact remain unavailable, and the class cache is
+invalidated by the new payload version. Recompile direct library clients for the
+new `GraphNode`/`QuerySnapshot` shape. Old readers need not accept the new
+`ENUM_CONSTANT` attribute and must not be used for a lossless downgrade.
+
+Add `enumDecisions=true` to the existing real compiler configuration:
+
+- Java: add `enumDecisions=true` inside the single
+  `-Xplugin:KartographEvidence collector=javac-constants ...` argument.
+- Kotlin 2.4.10: add
+  `-P plugin:kartograph.compiler-evidence:enumDecisions=true`.
+- The option is independent of `callPositions=true`; enable both if both channels
+  are needed. Omitted/false enum capture preserves the v1–v3 producer formats.
+- The Gradle compiler-witness adapter derives a separate token-bound
+  `compiler-enum-decisions` marker from these actual arguments. Keep
+  `compilerEvidence = true` and use the completed witness from the successful task.
+
+A successful enabled collector writes a v4 document with `enumStats` and typed
+`enumDecision` rows. Counts partition observed decisions into emitted,
+unsupported and ignored; zero rows alone do not mean zero decisions were examined.
+The decoder validates exact source hashes, UTF-16 ranges, kinds, enum identities,
+same-enum literal constant identities and duplicate source ranges. Snapshot
+import additionally verifies the completed compiler receipt/token, recorded
+collector/compiler inputs, current source hashes and output-root attribution.
+
+Capture the current snapshot using the existing project/class/input arguments
+plus `--include-enum-decisions`, explicit `--compiler-evidence`, `--scope` and
+completed `--build-witness` inputs. The channel is optional snapshot-level
+`enumDecisions` metadata; it is separate from ordinary call-position or
+source-use evidence. Inventory comparison needs base/current snapshots captured
+by compatible versions for the same scope. The baseline does not need source
+decision rows: actionable decision locations always come from the current snapshot.
+
+Snapshot aggregation/merge of captured enum decisions is unsupported and rejects
+rather than dropping or rebasing the channel. Plain inventory-only captures can
+still follow the existing aggregation rules.
+
+The first supported source patterns are:
+
+- Java enum switch statements/expressions with an authored `default`, and Kotlin
+  subjectful enum `when` with finite enum-entry branches and an authored `else`. Compiler-generated exhaustive throws are
+  not authored fallback evidence.
+- Java `contains` on direct `Set.of`, `List.of`, `Arrays.asList` or `EnumSet.of`
+  calls whose arguments are constants of one enum. Direct surrounding `!` and
+  parentheses retain their polarity.
+- Kotlin direct standard `setOf`/`listOf` finite literal membership, including
+  `in` and `!in`. Explicit `!contains`/`.not()` chains are currently unsupported;
+  their inner positive call is not emitted as if it were the whole expression.
+- Supported sites inside lambdas retain `lexicalLambda` as descriptive source
+  context, without assuming that the enclosing method executes the lambda.
+
+Resolved attribution requires a unique claimed selected output root shared by
+the source and enum. A bytecode SourceFile basename is only a consistency check,
+not independent source identity. Ambiguous same-basename/multi-output sources,
+shadowed classes, dependency enums outside the claimed output, unavailable
+inventories and constants outside that inventory retain unresolved reasons and
+locations. Arbitrary equality, custom or dynamic collections, aliases, spread
+arguments, general filter behavior, and cross-output/dependency attribution are
+outside this first slice. Unsupported syntax has unit-level counts rather than
+located emitted rows.
+
+The dedicated collector integration runner requires JDK 17. Newer Java switch
+syntax must not be described as executed coverage merely because a conditional
+fixture exists; supported syntax and observed test coverage are separate.
+
+See [enum expansion impact](IMPACT.md#opt-in-enum-expansion-candidates) for the
+saved-snapshot query and its coverage contract. A saved query does not recheck
+live inputs, establish runtime behavior, or authorize skipping tests.
