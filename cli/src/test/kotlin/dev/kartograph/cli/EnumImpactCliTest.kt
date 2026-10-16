@@ -278,7 +278,8 @@ class EnumImpactCliTest {
         val source = run(*ordinary, "--source-edits")
         assertEquals(0, source.first, source.third)
         assertEquals(source, run(*ordinary, "--source-edits", "--format", "json"))
-        val traversal = listOf(OWNER.value, "--graph-file", current.toString(), "--format", "language-traversal")
+        val traversal = listOf(OWNER.value, "--graph-file", current.toString(), "--format", "language-traversal",
+            "--project", directory.toString(), "--generated-at", "2026-10-16T00:00:00.000Z")
         val expectedOutput = ByteArrayOutputStream()
         val expectedError = ByteArrayOutputStream()
         val expectedStatus = TraversalCommand.run(traversal, TraversalDirection.DEPENDENTS,

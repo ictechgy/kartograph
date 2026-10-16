@@ -103,9 +103,14 @@ class CompilerEnumDecisionImportTest {
         } }
         val roots = listOf(duplicate, fixture.classes)
         val outputs = roots.mapIndexed { index, path -> ContentFingerprint.capture(root, path, "classes", "classes-$index") }
+        val witness = fixture.context.provenance.witnesses.single()
+        val shadowWitnessFile = Files.writeString(root.resolve("shadow-witness.json"), "unit shadow output witness")
+        val shadowWitness = ContentFingerprint.capture(root, shadowWitnessFile, "witness", "shadow-witness")
         val context = fixture.context.copy(provenance = SnapshotProvenance(
-            outputs + fixture.context.provenance.inputs.filter { it.role != "classes" },
-            listOf(fixture.context.provenance.witnesses.single().copy(outputs = listOf(outputs[1])))))
+            outputs + fixture.context.provenance.inputs.filter { it.role != "classes" } + shadowWitness,
+            listOf(witness.copy(outputs = listOf(outputs[1])),
+                BuildWitness(witness.scope, witness.compiler, witness.artifact, witness.inputs, listOf(outputs[0])))))
+        assertEquals("matched", ProvenanceVerifier.verify(context.provenance, root, context.scope).status)
         val evidence = CompilerEvidenceIndexer.enrichWithEnumDecisions(ClassFileIndexer().indexWithObservations(roots),
             roots, listOf(fixture.document), context).enumDecisions!!
         assertEquals(EnumDecisionAttribution.SHADOWED_SOURCE, evidence.sites.single().attribution)
