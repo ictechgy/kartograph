@@ -688,8 +688,18 @@ fun invoke(value: Phase) = fallback(value)
                 assert len(observed) == 1, observed
                 use = observed[0]
                 assert use["path"] == "src/" + users.name and use["sourceSha256"] == sha256(users)
-                source = source_text(users, "javac-constants" if language == "javac" else "kotlin-constants")
-                assert utf16_slice(source, use["offsetUtf16"], use["endOffsetUtf16"]) == "fallback(value)"
+                source_collector = "javac-constants" if language == "javac" else "kotlin-constants"
+                source = source_text(users, source_collector)
+                selector, invocation = "fallback", "fallback(value)"
+                assert source.count(invocation) == 1, (language, invocation)
+                expected_start = utf16_length(source[:source.index(invocation)])
+                expected_end = expected_start + utf16_length(selector)
+                actual = utf16_slice(source, use["offsetUtf16"], use["endOffsetUtf16"])
+                diagnostic = dict(language=language, use=use, actualSlice=actual,
+                                  expectedSelector=selector, expectedRange=(expected_start, expected_end))
+                assert (use["offsetUtf16"], use["endOffsetUtf16"]) == (expected_start, expected_end), diagnostic
+                assert actual == selector, diagnostic
+                assert (use["line"], use["column"]) == source_coordinates(source, expected_start, source_collector), diagnostic
                 source_file = project / f"{name}-source-uses.json"
                 source_file.write_text(source_result.stdout, encoding="utf-8")
                 combined_file = project / f"{name}-combined.json"
