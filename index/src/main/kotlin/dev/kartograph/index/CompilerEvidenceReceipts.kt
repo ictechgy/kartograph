@@ -26,6 +26,11 @@ public object CompilerEvidenceReceipts {
             val envelope = CompilerEvidenceReader.parseEnvelope(bounded.text)
             val document = envelope.evidence
             require(document.inputToken == token) { "compiler evidence belongs to a different compilation" }
+            if (envelope.enumStats != null) {
+                require(CompilerEnumDecisionOptions.isEnabled(inputs)) {
+                    "v4 compiler enum decisions require the recorded enum decisions option"
+                }
+            }
             if (envelope.callStats != null) {
                 require(CompilerCallPositionOptions.isEnabled(inputs)) {
                     "v3 compiler evidence requires a recorded call positions option"

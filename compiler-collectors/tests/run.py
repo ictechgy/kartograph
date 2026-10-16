@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import tempfile
 from processor_outputs import exercise as processor_outputs_test
+from enum_decisions import exercise as enum_decisions_test
 
 
 HERE = Path(__file__).resolve().parent
@@ -305,16 +306,20 @@ def main() -> None:
         staging_classes = work / "stage-test-classes"
         run([javac, "-cp", args.collector, "-d", staging_classes,
              HERE / "java/dev/kartograph/collectors/DaggerEvidenceFilesTest.java",
-             HERE / "java/dev/kartograph/collectors/ProcessorOutputSessionTest.java"], work)
+             HERE / "java/dev/kartograph/collectors/ProcessorOutputSessionTest.java",
+             HERE / "java/dev/kartograph/collectors/EnumDecisionProtocolTest.java"], work)
         run([java, "-cp", os.pathsep.join([str(staging_classes), str(args.collector)]),
              "dev.kartograph.collectors.DaggerEvidenceFilesTest", work / "stages"], work)
         run([java, "-cp", os.pathsep.join([str(args.collector), str(staging_classes)]),
              "dev.kartograph.collectors.ProcessorOutputSessionTest", work / "output-session"], work)
+        run([java, "-cp", os.pathsep.join([str(staging_classes), str(args.collector)]),
+             "dev.kartograph.collectors.EnumDecisionProtocolTest", work / "enum-protocol"], work)
         java_test(javac, args.collector, work)
         kotlin_test(java, args.collector, args.kotlin_classpath, work)
+        enum_decisions_test(javac, java, args.collector, args.kotlin_classpath, work, run, encoded, sha256, content_fingerprint)
         dagger_test(javac, java, args.collector, dagger_classpath, work)
         processor_outputs_test(javac, args.collector, work, run, encoded, sha256, content_fingerprint, dagger_classpath)
-    print("compiler collectors verified: javac constants, Kotlin JVM identities, Dagger selected bindings, processor source attribution, failures rejected")
+    print("compiler collectors verified: javac constants, Kotlin JVM identities, Dagger selected bindings, processor source attribution, enum decisions, failures rejected")
 
 
 if __name__ == "__main__":

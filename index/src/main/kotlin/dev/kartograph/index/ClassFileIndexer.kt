@@ -174,7 +174,15 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
                     val selected = if (generatedInput) facts.copy(nodes = facts.nodes.map { node ->
                         node.copy(synthesized = true, attributes = node.attributes + NodeAttribute.GENERATED_INPUT)
                     }) else facts
-                    if (factsByClass.putIfAbsent(facts.internalName, selected) == null) rootByClass[facts.internalName] = rootIndex
+                    val previous = factsByClass.putIfAbsent(facts.internalName, selected)
+                    if (previous == null) {
+                        rootByClass[facts.internalName] = rootIndex
+                    } else {
+                        // 첫 root의 구현 선택은 유지하지만 shadowed class의 capture를 완전한 enum 근거로 쓰지 않는다.
+                        factsByClass[facts.internalName] = previous.copy(nodes = previous.nodes.map { node ->
+                            if (node.enumConstants == null) node else node.copy(enumConstants = null)
+                        })
+                    }
                 }
             }
         } finally {
@@ -384,6 +392,8 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     // EnclosingMethod 속성의 감싼 메서드(초기화 문맥이면 class)다. 지역·익명 class에만 있다.
     private var enclosingDeclaration: NodeId? = null
     private var classAccess: Int = 0
+    private var capturesEnumInventory = false
+    private val enumConstants = mutableListOf<NodeId>()
     private var innerClassAccess: Int? = null
     private var sourceFile: String? = null
     private var sourceDebugMapper: SourceDebugMapper? = null
@@ -410,6 +420,8 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     ) {
         internalName = name
         classAccess = access
+        // 상수별 익명 subclass와 Kotlin metadata의 enum-entry kind만으로 빈 enum을 확정하지 않는다.
+        capturesEnumInventory = access and Opcodes.ACC_ENUM != 0 && superName == "java/lang/Enum"
         if (superName != null && superName != "java/lang/Object") supertypes += superName
         supertypes += interfaces
         if (superName != null && superName != "java/lang/Object") {
@@ -460,6 +472,14 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         value: Any?,
     ): FieldVisitor {
         val fieldId = JvmNodeId.fieldId(internalName, name, descriptor)
+        val enumConstant = access and Opcodes.ACC_ENUM != 0
+        require(!enumConstant || capturesEnumInventory && descriptor == "L$internalName;") {
+            "enum constant does not match its enum owner"
+        }
+        if (enumConstant) {
+            require(fieldId !in enumConstants) { "duplicate enum constant field" }
+            enumConstants += fieldId
+        }
         if (value is String && descriptor == "Ljava/lang/String;" && access and Opcodes.ACC_STATIC != 0) {
             constantStringFields[fieldId] = value
         }
@@ -486,7 +506,10 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                     visibility = access.toVisibility(),
                     jvmVisibility = access.toVisibility(),
                     jvmModifiers = access.toJvmModifiers(),
-                    attributes = if (value != null) setOf(NodeAttribute.COMPILE_TIME_CONSTANT) else emptySet(),
+                    attributes = buildSet {
+                        if (value != null) add(NodeAttribute.COMPILE_TIME_CONSTANT)
+                        if (enumConstant) add(NodeAttribute.ENUM_CONSTANT)
+                    },
                     annotations = annotations,
                     synthesized = access.isSynthetic() || internalName.isAndroidGeneratedClass(),
                 )
@@ -686,6 +709,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             annotations = classAnnotations,
             supertypes = supertypes,
             synthesized = effectiveClassAccess.isSynthetic() || internalName.isAndroidGeneratedClass(),
+            enumConstants = if (capturesEnumInventory) enumConstants.sorted() else null,
         )
     }
 

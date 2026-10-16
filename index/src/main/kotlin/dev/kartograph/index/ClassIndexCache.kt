@@ -63,7 +63,7 @@ internal object CacheIdentity {
         KotlinMetadataEnricher::class.java, RuntimeValueAnalyzer::class.java, JvmNodeId::class.java, CallbackFactScanner::class.java,
         CallbackArgument::class.java, ParameterUse::class.java, ParameterUseKind::class.java, LambdaEscape::class.java,
         CodeGraph::class.java, GraphNode::class.java, KotlinDefaultBridge::class.java, GraphEdge::class.java, ExternalCall::class.java,
-        NodeKind::class.java, NodeAttribute::class.java, JvmModifier::class.java,
+        NodeKind::class.java, NodeAttribute::class.java, JvmModifier::class.java, EnumConstantIds::class.java,
         EdgeKind::class.java, EdgeOrigin::class.java, InvocationKind::class.java, CallResolution::class.java,
         ClassReader::class.java, MethodNode::class.java,
         org.objectweb.asm.tree.analysis.Analyzer::class.java, KotlinClassMetadata::class.java, kotlin.Unit::class.java,
@@ -123,7 +123,7 @@ internal class CacheFormatException(cause: Throwable? = null) : IOException("inv
 /** 제한된 ClassFacts 포맷. 선택된 고유 메서드 본문은 ASM classfile 한 벌로 보관한다. */
 internal object ClassFactsCodec {
     private const val MAGIC = 0x4b584332
-    private const val VERSION = 9
+    private const val VERSION = 10
     private const val MAX_METHOD_BYTES = 4 * 1024 * 1024
     private const val MAX_LIST_ITEMS = 1_000_000
     private const val MAX_STRING_BYTES = 65_535
@@ -257,9 +257,12 @@ internal object ClassFactsCodec {
         writeNullable(n.kotlinSourceName)
         writeBoolean(n.kotlinDefaultBridge != null)
         n.kotlinDefaultBridge?.let { writeString(it.target.value); writeInt(it.valueParameterCount); writeInt(it.maskParameterCount) }
+        writeBoolean(n.enumConstants != null)
+        n.enumConstants?.let { constants -> writeList(constants) { writeString(it.value) } }
     }
     private fun DataInputStream.readNode() = GraphNode(NodeId(readString()), readString(), readEnum<NodeKind>(), readNullable(), readNullable(), readLocation(), readEnum<Visibility>(), readEnum<Visibility>(), readList { readEnum<JvmModifier>() }.toSet(), readList { readEnum<NodeAttribute>() }.toSet(), readList { readString() }.toSet(), readList { readString() }.toSet(), readNullable(), readBoolean(), kotlinSourceName = readNullable(),
-        kotlinDefaultBridge = if (readBoolean()) KotlinDefaultBridge(NodeId(readString()), readInt(), readInt()) else null)
+        kotlinDefaultBridge = if (readBoolean()) KotlinDefaultBridge(NodeId(readString()), readInt(), readInt()) else null,
+        enumConstants = if (readBoolean()) readList { NodeId(readString()) } else null)
     private fun DataOutputStream.writeEdge(e: GraphEdge) {
         writeString(e.source.value); writeString(e.target.value); writeEnum(e.kind); writeInt(e.weight); writeEnum(e.origin)
         writeList(e.callSiteLines) { writeInt(it) }

@@ -151,6 +151,7 @@ public object GraphJsonRenderer {
         location?.toJsonValue(projectRelativePath)?.let { put("location", it) }
         sourceDeclaration?.let { put("sourceDeclaration", it.toJsonValue()) }
         kotlinDefaultBridge?.let { put("kotlinDefaultBridge", it.toJsonValue()) }
+        enumConstants?.let { put("enumConstants", it.map(NodeId::value)) }
         moduleName?.let { put("module", it) }
         put("name", name)
         put("qualifiedName", qualifiedName)

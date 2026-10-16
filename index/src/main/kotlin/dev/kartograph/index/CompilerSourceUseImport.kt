@@ -23,8 +23,8 @@ internal class CompilerSourceUseImport(
     classRoots: List<Path>,
     explicit: List<Path>,
     private val context: CompilerEvidenceContext,
+    private val receiptPass: CompilerSourceUseReceiptPass = CompilerSourceUseReceiptPass(),
 ) {
-    private val receiptPass = CompilerSourceUseReceiptPass()
     private val project = context.project.toAbsolutePath().normalize()
     private val physicalRoots: List<Path>
     private val selectedInputs: List<InputFingerprint>

@@ -320,7 +320,16 @@ public class CodeGraph private constructor(
             lambdaEscapeInputs: Iterable<LambdaEscape>,
         ): CanonicalState {
             val nodes = buildMap {
-                nodeInputs.forEach { node -> putIfAbsent(node.id, node) }
+                nodeInputs.forEach { node ->
+                    val previous = putIfAbsent(node.id, node)
+                    // 첫 입력의 일반 정점 사실은 그대로 두되 서로 다른 capture를 완전한 enum 목록으로 합치지 않는다.
+                    if (previous != null && previous.enumConstants != null &&
+                        (previous.enumConstants != node.enumConstants || previous.kind != node.kind ||
+                            previous.moduleName != node.moduleName || previous.location?.path != node.location?.path ||
+                            previous.sourceDeclaration != node.sourceDeclaration)) {
+                        put(node.id, previous.copy(enumConstants = null))
+                    }
+                }
             }
             val externalCalls = normalizeExternalCalls(externalCallInputs, nodes)
             val serviceProviders = serviceProviderInputs.distinct().sorted()
