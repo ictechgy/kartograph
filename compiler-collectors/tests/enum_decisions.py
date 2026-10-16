@@ -128,6 +128,7 @@ package fixture
 import fixture.domain.Phase
 import fixture.domain.Phase.NEW as FIRST
 import fixture.domain.Holder.Nested
+import kotlin.collections.setOf
 import kotlin.collections.setOf as choices
 typealias Status = Phase
 fun fallback(value: Status) = /*site:fallback*/when (value) { FIRST, Phase.READY -> 1; else -> 0 }/*end:fallback*/
