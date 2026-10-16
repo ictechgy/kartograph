@@ -564,10 +564,11 @@ public class Users {
   public static boolean member(Phase value) { return Set.of(Phase.NEW).contains(value); }
   public static boolean negative(Phase value) { return !(Set.of(Phase.NEW).contains(value)); }
   public static boolean unrelated(unrelated.Phase value) { return Set.of(unrelated.Phase.NEW).contains(value); }
+  public static int invoke(Phase value) { return fallback(value); }
 }
 """, encoding="utf-8")
             compiler_paths = [javac]
-            compile_options = ["-g", "-proc:none", "enumDecisions=true"]
+            compile_options = ["-g", "-proc:none", "enumDecisions=true", "callPositions=true"]
         else:
             enum_file = sources / "Phase.kt"
             enum_file.write_text("package fixture\nenum class Phase { NEW, READY }\n", encoding="utf-8")
@@ -583,9 +584,10 @@ fun negative(value: Phase) = value !in listOf(Phase.NEW)
 val lambda: (Phase) -> Boolean = { value -> value in setOf(Phase.NEW) }
 fun unsupported(value: Phase) = !setOf(Phase.NEW).contains(value)
 fun unrelated(value: unrelated.Phase) = value in setOf(unrelated.Phase.NEW)
+fun invoke(value: Phase) = fallback(value)
 """, encoding="utf-8")
             compiler_paths = [Path(path) for path in kotlin_classpath.split(os.pathsep)]
-            compile_options = ["-no-reflect", "-jvm-target", "17", "enumDecisions=true"]
+            compile_options = ["-no-reflect", "-jvm-target", "17", "enumDecisions=true", "callPositions=true"]
 
         bindings = {}
         def input_row(role, path, slot):
@@ -607,6 +609,7 @@ fun unrelated(value: unrelated.Phase) = value in setOf(unrelated.Phase.NEW)
                 *[input_row("classpath", path, f"dependency-{index}") for index, path in enumerate(extra_classpaths)],
                 dict(role="options", path="compile-options", sha256=_values(compile_options)),
                 dict(role="options", path="compiler-enum-decisions", sha256=_values(["enumDecisions=true"])),
+                dict(role="options", path="compiler-call-positions", sha256=_values(["callPositions=true"])),
             ]
 
         def capture(name, expected_stats=None, extra_classpath=None):
@@ -623,7 +626,7 @@ fun unrelated(value: unrelated.Phase) = value in setOf(unrelated.Phase.NEW)
             if language == "javac":
                 dependency_options = [] if extra_classpath is None else ["-classpath", extra_classpath]
                 run([javac, "-g", "-proc:none", *dependency_options, "-processorpath", collector,
-                     f"-Xplugin:KartographEvidence collector=javac-constants root={project.as_uri()} output={raw.as_uri()} token={token_file.as_uri()} enumDecisions=true",
+                     f"-Xplugin:KartographEvidence collector=javac-constants root={project.as_uri()} output={raw.as_uri()} token={token_file.as_uri()} enumDecisions=true callPositions=true",
                      "-d", output, enum_file, other, users], project)
             else:
                 run([java, "-cp", kotlin_classpath, "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
@@ -633,6 +636,7 @@ fun unrelated(value: unrelated.Phase) = value in setOf(unrelated.Phase.NEW)
                      "-P", f"plugin:kartograph.compiler-evidence:output={raw}",
                      "-P", f"plugin:kartograph.compiler-evidence:token={token_file}",
                      "-P", "plugin:kartograph.compiler-evidence:enumDecisions=true",
+                     "-P", "plugin:kartograph.compiler-evidence:callPositions=true",
                      "-d", output, enum_file, other, users], project)
             assert observe_inputs() == inputs, "compiler inputs changed during the successful compilation"
             decisions, stats, rows = read_enum_rows(raw, project, sha256)
@@ -659,6 +663,45 @@ fun unrelated(value: unrelated.Phase) = value in setOf(unrelated.Phase.NEW)
             assert ordinary["retention"] == captured["retention"]
             snapshot_file = project / f"{name}.json"
             snapshot_file.write_text(captured_result.stdout, encoding="utf-8")
+            if name == "current":
+                # 같은 완료 영수증으로 단독·결합 캡처를 비교해 두 증거 채널의 보존을 검증한다.
+                source_result = run(command + ["--include-source-uses"], project)
+                source_only = json.loads(source_result.stdout)
+                combined_result = run(command + ["--include-enum-decisions", "--include-source-uses"], project)
+                combined = json.loads(combined_result.stdout)
+                source_evidence = source_only["graph"]["compilerSourceUses"]
+                enum_evidence = captured["enumDecisions"]
+                assert source_evidence["uses"] and enum_evidence["sites"]
+                assert "enumDecisions" not in source_only
+                assert "compilerSourceUses" not in captured["graph"]
+                assert combined["graph"]["compilerSourceUses"] == source_evidence
+                assert combined["enumDecisions"] == enum_evidence
+                for snapshot in (source_only, combined):
+                    assert snapshot["graph"]["nodes"] == ordinary["graph"]["nodes"]
+                    assert snapshot["graph"]["edges"] == ordinary["graph"]["edges"]
+                    assert snapshot["retention"] == ordinary["retention"]
+                host = "fixture/Users" if language == "javac" else "fixture/DecisionFacade"
+                target = f"method:{host}#fallback(Lfixture/Phase;)I"
+                caller = f"method:{host}#invoke(Lfixture/Phase;)I"
+                observed = [use for use in source_evidence["uses"] if use["source"] == caller and use["target"] == target]
+                assert len(observed) == 1, observed
+                use = observed[0]
+                assert use["path"] == "src/" + users.name and use["sourceSha256"] == sha256(users)
+                source = source_text(users, "javac-constants" if language == "javac" else "kotlin-constants")
+                assert utf16_slice(source, use["offsetUtf16"], use["endOffsetUtf16"]) == "fallback(value)"
+                source_file = project / f"{name}-source-uses.json"
+                source_file.write_text(source_result.stdout, encoding="utf-8")
+                combined_file = project / f"{name}-combined.json"
+                combined_file.write_text(combined_result.stdout, encoding="utf-8")
+                queries = [json.loads(run([cli, "query", target, "--graph-file", path, "--source-uses"], project).stdout)
+                           for path in (source_file, combined_file)]
+                assert all(query["format"] == "kartograph-source-use-query" for query in queries)
+                assert queries[0]["sourceUses"] == queries[1]["sourceUses"]
+                result = queries[1]["sourceUses"]
+                assert result["selectionStatus"] == "found" and result["subject"] == target
+                assert result["page"]["observedUses"] == result["page"]["returnedUses"] == 1
+                assert result["page"]["observations"][0]["use"] == use
+                snapshot_file, captured = combined_file, combined
             return snapshot_file, captured
 
         base_file, base_snapshot = capture("base")

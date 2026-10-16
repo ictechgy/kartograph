@@ -32,7 +32,7 @@ class EnumDecisionImpactTest {
     @Test
     fun `only additions absent from current explicit constants produce candidates`() {
         val evidence = evidence()
-        val report = EnumDecisionImpact.analyze(graph(a), graph(a, b), evidence)
+        val report = EnumDecisionImpact.analyze(graph(listOf(a)), graph(listOf(a, b)), evidence)
         assertTrue(report.evidenceAvailable)
         assertEquals(listOf(b), report.comparisons.single().addedConstants)
         assertEquals(2, report.totalCandidates)
@@ -43,17 +43,17 @@ class EnumDecisionImpactTest {
         assertEquals(1, report.unresolvedSites)
         assertEquals("SOURCE_ROOT_UNRESOLVED", report.unresolved.single().reason)
         assertEquals(1, report.unresolvedAttributions[EnumDecisionAttribution.SOURCE_ROOT_UNRESOLVED])
-        assertEquals(0, EnumDecisionImpact.analyze(graph(a, b), graph(a, b), evidence).totalCandidates)
-        assertEquals(0, EnumDecisionImpact.analyze(graph(a, b), graph(a), evidence(constants = listOf(a))).totalCandidates)
-        assertEquals(listOf(b), EnumDecisionImpact.analyze(graph(a, b), graph(a), evidence(constants = listOf(a))).comparisons.single().removedConstants)
+        assertEquals(0, EnumDecisionImpact.analyze(graph(listOf(a, b)), graph(listOf(a, b)), evidence).totalCandidates)
+        assertEquals(0, EnumDecisionImpact.analyze(graph(listOf(a, b)), graph(listOf(a)), evidence(constants = listOf(a))).totalCandidates)
+        assertEquals(listOf(b), EnumDecisionImpact.analyze(graph(listOf(a, b)), graph(listOf(a)), evidence(constants = listOf(a))).comparisons.single().removedConstants)
         // 이전 소스가 어떠했는지와 무관하게 현재 모든 판단이 새 상수를 명시하면 후보가 없다.
-        assertEquals(0, EnumDecisionImpact.analyze(graph(a), graph(a, b), evidence(constants = listOf(a, b))).totalCandidates)
+        assertEquals(0, EnumDecisionImpact.analyze(graph(listOf(a)), graph(listOf(a, b)), evidence(constants = listOf(a, b))).totalCandidates)
     }
 
     @Test
     fun `paging never changes original counts and reports omitted unresolved independently`() {
-        val full = EnumDecisionImpact.analyze(graph(a), graph(a, b), evidence())
-        val page = EnumDecisionImpact.analyze(graph(a), graph(a, b), evidence(), limit = 1, offset = 1)
+        val full = EnumDecisionImpact.analyze(graph(listOf(a)), graph(listOf(a, b)), evidence())
+        val page = EnumDecisionImpact.analyze(graph(listOf(a)), graph(listOf(a, b)), evidence(), limit = 1, offset = 1)
         assertEquals(1, page.candidates.size)
         assertEquals(2, page.totalCandidates)
         assertEquals(1, page.omittedCandidates)
@@ -63,31 +63,31 @@ class EnumDecisionImpactTest {
         assertTrue(page.unresolved.isEmpty())
         assertEquals(1, page.totalUnresolvedRecords)
         assertEquals(1, page.omittedUnresolvedSites)
-        val emptyPage = EnumDecisionImpact.analyze(graph(a), graph(a, b), evidence(), offset = Int.MAX_VALUE)
+        val emptyPage = EnumDecisionImpact.analyze(graph(listOf(a)), graph(listOf(a, b)), evidence(), offset = Int.MAX_VALUE)
         assertEquals(2, emptyPage.omittedCandidates)
         assertTrue(emptyPage.candidates.isEmpty())
     }
 
     @Test
     fun `null and inspected empty are distinct and unavailable inventories are never empty enums`() {
-        val unknown = EnumDecisionImpact.analyze(graph(a), graph(a, b), null)
+        val unknown = EnumDecisionImpact.analyze(graph(listOf(a)), graph(listOf(a, b)), null)
         assertFalse(unknown.evidenceAvailable)
         assertTrue(unknown.candidates.isEmpty())
-        assertTrue(EnumDecisionImpact.analyze(graph(a), graph(a, b), emptyEvidence()).evidenceAvailable)
-        val noBase = EnumDecisionImpact.analyze(CodeGraph(emptyList(), emptyList()), graph(a, b), evidence())
+        assertTrue(EnumDecisionImpact.analyze(graph(listOf(a)), graph(listOf(a, b)), emptyEvidence()).evidenceAvailable)
+        val noBase = EnumDecisionImpact.analyze(CodeGraph(emptyList(), emptyList()), graph(listOf(a, b)), evidence())
         assertEquals(EnumInventoryComparisonStatus.BASE_ENUM_UNAVAILABLE, noBase.comparisons.single().status)
         assertEquals(0, noBase.totalCandidates)
         val noInventory = CodeGraph(listOf(GraphNode(owner, "Mode", NodeKind.ENUM)), emptyList())
-        val hidden = EnumDecisionImpact.analyze(graph(a), noInventory, evidence())
+        val hidden = EnumDecisionImpact.analyze(graph(listOf(a)), noInventory, evidence())
         assertEquals(EnumInventoryComparisonStatus.CURRENT_INVENTORY_UNAVAILABLE, hidden.comparisons.single().status)
         assertEquals(3, hidden.viewUnavailableSites)
         assertEquals(4, hidden.totalUnresolvedRecords)
         assertEquals(3, hidden.unresolved.count { it.reason == "VIEW_UNAVAILABLE" })
-        val pruned = EnumDecisionImpact.analyze(graph(a), CodeGraph(emptyList(), emptyList()), evidence(), setOf(owner))
+        val pruned = EnumDecisionImpact.analyze(graph(listOf(a)), CodeGraph(emptyList(), emptyList()), evidence(), setOf(owner))
         assertEquals(EnumInventoryComparisonStatus.CURRENT_ENUM_UNAVAILABLE, pruned.comparisons.single().status)
         assertEquals(3, pruned.viewUnavailableSites)
         assertEquals(0, pruned.totalCandidates)
-        assertEquals(listOf(b), EnumDecisionImpact.analyze(graph(), graph(b), emptyEvidence()).comparisons.single().addedConstants)
+        assertEquals(listOf(b), EnumDecisionImpact.analyze(graph(), graph(listOf(b)), emptyEvidence()).comparisons.single().addedConstants)
     }
 
     @Test
@@ -98,7 +98,7 @@ class EnumDecisionImpactTest {
             listOf(site(unit, 1, listOf(a)), site(unit, 20, listOf(a), attribution = EnumDecisionAttribution.SOURCE_ROOT_UNRESOLVED))
         }
         val evidence = CompilerEnumDecisionEvidence(listOf(root), listOf(first, second), rows)
-        val report = EnumDecisionImpact.analyze(graph(a), graph(a, b), evidence)
+        val report = EnumDecisionImpact.analyze(graph(listOf(a)), graph(listOf(a, b)), evidence)
         assertEquals(1, report.totalCandidates)
         assertEquals(2, report.resolvedSites)
         assertEquals(2, report.unresolvedSites)
@@ -114,8 +114,8 @@ class EnumDecisionImpactTest {
         val other = NodeId("class:p/Other")
         val x = NodeId("field:p/Other#X:Lp/Other;")
         val y = NodeId("field:p/Other#Y:Lp/Other;")
-        val base = CodeGraph(graph(a).nodes.values + GraphNode(other, "Other", NodeKind.ENUM, enumConstants = listOf(x)), emptyList())
-        val current = CodeGraph(graph(a, b).nodes.values + GraphNode(other, "Other", NodeKind.ENUM, enumConstants = listOf(x, y)), emptyList())
+        val base = CodeGraph(graph(listOf(a)).nodes.values + GraphNode(other, "Other", NodeKind.ENUM, enumConstants = listOf(x)), emptyList())
+        val current = CodeGraph(graph(listOf(a, b)).nodes.values + GraphNode(other, "Other", NodeKind.ENUM, enumConstants = listOf(x, y)), emptyList())
         val selected = EnumDecisionImpact.analyze(base, current, evidence(), setOf(other))
         assertEquals(listOf(other), selected.comparisons.map { it.owner })
         assertEquals(listOf(y), selected.comparisons.single().addedConstants)
@@ -126,7 +126,7 @@ class EnumDecisionImpactTest {
         assertFailsWith<IllegalArgumentException> { EnumDecisionImpact.analyze(base, current, evidence(), setOf(a)) }
     }
 
-    private fun graph(vararg constants: NodeId) = CodeGraph(listOf(GraphNode(owner, "Mode", NodeKind.ENUM, enumConstants = constants.sorted())), emptyList())
+    private fun graph(constants: List<NodeId> = emptyList()) = CodeGraph(listOf(GraphNode(owner, "Mode", NodeKind.ENUM, enumConstants = constants.sorted())), emptyList())
     private fun unit(resolved: Int, unresolved: Int, receipt: String = "build/enum.tsv") =
         CompilerEnumDecisionUnit(InputFingerprint("compilerEvidence", receipt, "2".repeat(64)), "kotlin-constants", "2.4.10",
             "3".repeat(64), "4".repeat(64), listOf(CompilerSourceUseClaim("sample:main", "kotlin", ":compileKotlin", listOf(output))),
