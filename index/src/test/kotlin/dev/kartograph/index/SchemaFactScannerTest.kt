@@ -1,5 +1,10 @@
 package dev.kartograph.index
 
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
+import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
+import dev.kartograph.core.SourceLocation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -374,6 +379,31 @@ class SchemaFactScannerTest {
         val doc = scan()
         // `'"'`가 문자열로 오인되면 뒤의 선언이 통째로 사라진다 — 살아 있어야 한다.
         assertTrue(doc.facts.any { it.channel == "users" && it.method == "id" })
+    }
+
+    @Test
+    fun `char literal does not hide the enclosing function from snapshot symbols`() {
+        project.resolve("Repo.kt").writeText(
+            """
+            import java.sql.Connection
+            class Repo(private val conn: Connection) {
+                fun isQuote(c: Char) = c == '"'
+                fun run() {
+                    conn.prepareStatement("SELECT * FROM inventory WHERE sku = ?")
+                }
+            }
+            """.trimIndent(),
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:Repo#isQuote(C)Z"), "isQuote", NodeKind.METHOD, location = SourceLocation("Repo.kt", 3)),
+            GraphNode(NodeId("method:Repo#run()V"), "run", NodeKind.METHOD, location = SourceLocation("Repo.kt", 5)),
+        ), emptyList())
+
+        val fact = SchemaFactScanner(project).scan(generatedAt = "2026-01-01T00:00:00Z", graph = graph).facts.single()
+
+        assertEquals("inventory", fact.channel)
+        // 식 몸체의 `'"'`를 문자열 시작으로 읽으면 run의 머리가 가려져 USR이 빠진다.
+        assertEquals("method:Repo#run()V", fact.symbol?.usr)
     }
 
     @Test

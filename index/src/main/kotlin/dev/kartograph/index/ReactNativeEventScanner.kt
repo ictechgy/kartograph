@@ -33,7 +33,8 @@ internal class ReactNativeEventScanner(private val projectRoot: Path) {
 
     private fun scanFile(root: Path, path: Path): List<BridgeFact> {
         val source = ProjectTraversal.readSourceLines(root, path).joinToString("\n")
-        val comments = maskDeclarationComments(source)
+        // 주석만 지운 뷰다. `'"'` 같은 문자 리터럴도 인용으로 읽어 뒤 주석이 코드로 남지 않게 하고, channel 식은 이 뷰에서 자른다.
+        val comments = stripComments(source)
         val code = maskStringContents(comments)
         val importsReact = Regex("\\bimport\\s+com\\.facebook\\.react\\.").containsMatchIn(code)
         return EMIT.findAll(code).filter { importsReact || it.value.contains("com.facebook.react.modules.core.") }.map { match ->

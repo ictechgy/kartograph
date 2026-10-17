@@ -651,6 +651,61 @@ class BridgeFactScannerTest {
     }
 
     @Test
+    fun `snapshot symbol does not leak a block body across a double quote character literal`(@TempDir project: Path) {
+        // `'"'`의 `"`를 문자열로 읽으면 escape 범위가 파일 끝까지 늘어나 register의 핸들러가 escape에 붙는다.
+        project.resolve("Plugin.kt").writeText(
+            """
+            class Plugin {
+              fun escape(c: Char): Boolean {
+                return c == '"'
+              }
+              fun register(messenger: Any) {
+                MethodChannel(messenger, "camera").setMethodCallHandler(handler)
+              }
+            }
+            """.trimIndent(),
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/Plugin#escape(C)Z"), "escape", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 3, 5)),
+            GraphNode(NodeId("method:app/Plugin#register(Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
+                location = SourceLocation("Plugin.kt", 6, 5)),
+        ), emptyList())
+
+        val fact = BridgeFactScanner(project).scan(graph = graph).facts.single()
+
+        assertEquals("method:app/Plugin#register(Ljava/lang/Object;)V", fact.symbol?.usr)
+    }
+
+    @Test
+    fun `snapshot symbol follows a header after quote character literals and raw strings`(@TempDir project: Path) {
+        val prefixes = mapOf(
+            "expression body with a double quote" to "fun isQuote(c: Char) = c == '\"'",
+            "escaped double quote" to "fun isEscapedQuote(c: Char) = c == '\\\"'",
+            "escaped apostrophe" to "fun isApostrophe(c: Char) = c == '\\''",
+            "raw string" to "val pattern = \"\"\"a\"b'c\n  d'\"\"\"",
+        )
+        for ((label, prefix) in prefixes) {
+            project.resolve("Plugin.kt").writeText(
+                prefix + "\n" + """
+                fun register(messenger: Any) {
+                  MethodChannel(messenger, "camera").setMethodCallHandler(handler)
+                }
+                """.trimIndent(),
+            )
+            val headerLine = prefix.count { it == '\n' } + 2
+            val graph = CodeGraph(listOf(
+                GraphNode(NodeId("method:app/PluginKt#register(Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
+                    location = SourceLocation("Plugin.kt", headerLine + 1, 3)),
+            ), emptyList())
+
+            val fact = BridgeFactScanner(project).scan(graph = graph).facts.single()
+
+            assertEquals("method:app/PluginKt#register(Ljava/lang/Object;)V", fact.symbol?.usr, label)
+        }
+    }
+
+    @Test
     fun `keeps dynamic MethodChannel names as counted limitations`(@TempDir project: Path) {
         project.resolve("Plugin.kt").writeText(
             "val channel = MethodChannel(messenger, channelName)\nchannel.setMethodCallHandler(handler)\n",

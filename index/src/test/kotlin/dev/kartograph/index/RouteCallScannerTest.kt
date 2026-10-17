@@ -2,8 +2,13 @@ package dev.kartograph.index
 
 import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
 import dev.kartograph.core.HttpWrapperArgument
 import dev.kartograph.core.HttpWrapperDeclaration
+import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
+import dev.kartograph.core.SourceLocation
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
@@ -436,6 +441,38 @@ class RouteCallScannerTest {
         assertEquals("dev.example.Legacy.remove", document.at(10).symbol?.qualifiedName)
         // Java 문자열의 `$`는 보간이 아니라 리터럴이다.
         assertEquals("/v1/\$price", document.at(15).channel)
+    }
+
+    @Test
+    fun `snapshot symbol follows the enclosing function after a double quote character literal`() {
+        val path = "src/main/kotlin/dev/example/net/Direct.kt"
+        write(
+            path,
+            """
+            package dev.example.net
+            import java.net.*
+
+            class Direct {
+                fun isQuote(c: Char): Boolean {
+                    return c == '"'
+                }
+                fun post() {
+                    val connection = URL("https://api.example.com/v1/items").openConnection() as HttpURLConnection
+                    connection.requestMethod = "POST"
+                }
+            }
+            """,
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:dev/example/net/Direct#isQuote(C)Z"), "isQuote", NodeKind.METHOD, location = SourceLocation(path, 6)),
+            GraphNode(NodeId("method:dev/example/net/Direct#post()V"), "post", NodeKind.METHOD, location = SourceLocation(path, 9)),
+        ), emptyList())
+
+        val fact = RouteCallScanner(project).scan(generatedAt = "2026-01-01T00:00:00Z", graph = graph).facts.single()
+
+        assertEquals("/v1/items", fact.channel)
+        // `'"'`를 문자열 시작으로 읽으면 isQuote 범위가 파일 끝까지 늘어나 호출이 isQuote에 붙는다.
+        assertEquals("method:dev/example/net/Direct#post()V", fact.symbol?.usr)
     }
 
     @Test

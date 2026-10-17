@@ -326,7 +326,8 @@ private fun enclosingDeclaration(projectRoot: Path, relativePath: String, line: 
     } catch (_: Exception) {
         return null
     }
-    val masked = maskDeclarationStrings(maskDeclarationComments(source))
+    // 사실을 찾은 스캐너 뷰와 같은 어휘 규칙을 쓴다 — `'"'` 같은 문자 리터럴이 문자열을 열어 뒤 함수 머리를 가리지 않게 한다.
+    val masked = maskStringContents(stripComments(source))
     val ranges = mutableListOf<SourceDeclaration>()
     var depth = 0
     val lines = masked.split('\n')
@@ -430,65 +431,6 @@ private val NEXT_DECLARATION = Regex(
 )
 private val EXPRESSION_CONTINUATION_END = listOf("=", "(", ",", ".", "+", "-", "*", "/", "&&", "||", "?:", "->", "{")
 private val EXPRESSION_CONTINUATION_START = listOf(".", "?.", "?:", "+", "-", "*", "/", "&&", "||", ")", "]")
-
-private fun maskDeclarationStrings(source: String): String = buildString(source.length) {
-    var quoted = false
-    var rawQuoted = false
-    var escaped = false
-    var index = 0
-    while (index < source.length) {
-        if (rawQuoted && source.startsWith("\"\"\"", index)) { rawQuoted = false; quoted = false; append("   "); index += 3; continue }
-        if (!quoted && source.startsWith("\"\"\"", index)) { rawQuoted = true; quoted = true; append("   "); index += 3; continue }
-        val character = source[index]
-        when {
-            rawQuoted && character == '\n' -> append('\n')
-            rawQuoted -> append(' ')
-            !quoted && character == '"' -> { quoted = true; append(character) }
-            quoted && escaped -> { escaped = false; append(' ') }
-            quoted && character == '\\' -> { escaped = true; append(' ') }
-            quoted && character == '"' -> { quoted = false; append(character) }
-            quoted && character == '\n' -> append('\n')
-            quoted -> append(' ')
-            else -> append(character)
-        }
-        index++
-    }
-}
-
-internal fun maskDeclarationComments(source: String): String = buildString(source.length) {
-    var block = false
-    var line = false
-    var quote = false
-    var rawQuote = false
-    var escaped = false
-    var index = 0
-    while (index < source.length) {
-        val character = source[index]
-        val next = source.getOrNull(index + 1)
-        if (line) {
-            if (character == '\n') { line = false; append(character) } else append(' ')
-            index++
-            continue
-        }
-        if (block) {
-            if (character == '*' && next == '/') { block = false; append("  "); index += 2 }
-            else { append(if (character == '\n') '\n' else ' '); index++ }
-            continue
-        }
-        if (rawQuote && source.startsWith("\"\"\"", index)) { rawQuote = false; quote = false; append("\"\"\""); index += 3; continue }
-        if (!quote && source.startsWith("\"\"\"", index)) { rawQuote = true; quote = true; append("\"\"\""); index += 3; continue }
-        if (rawQuote) { append(source[index]); index++; continue }
-        when {
-            !quote && character == '/' && next == '/' -> { line = true; append("  "); index++ }
-            !quote && character == '/' && next == '*' -> { block = true; append("  "); index++ }
-            quote && character == '\\' && !escaped -> { escaped = true; append(character) }
-            quote && escaped -> { escaped = false; append(character) }
-            character == '"' -> { quote = !quote; append(character) }
-            else -> { escaped = false; append(character) }
-        }
-        index++
-    }
-}
 
 private fun braceDelta(text: String): Int = text.count { it == '{' } - text.count { it == '}' }
 

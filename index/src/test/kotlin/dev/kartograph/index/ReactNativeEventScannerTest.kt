@@ -61,4 +61,22 @@ class ReactNativeEventScannerTest {
         """.trimIndent())
         assertEquals(listOf("real"), BridgeFactScanner(root).scanReactNativeEvents().facts.map { it.channel })
     }
+
+    @Test
+    fun `a double quote character literal does not expose commented emissions`(@TempDir root: Path) {
+        // `'"'` 안의 `"`를 문자열 시작으로 읽으면 뒤 주석이 코드로 남아 주석 속 emit이 사실이 된다.
+        root.resolve("Events.kt").writeText("""
+            import com.facebook.react.modules.core.DeviceEventManagerModule
+            class Events {
+              fun isQuote(c: Char) = c == '"'
+              fun notify() {
+                // context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit("legacyEvent", null)
+                context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit("ready", null)
+              }
+            }
+        """.trimIndent())
+        val facts = BridgeFactScanner(root).scanReactNativeEvents().facts
+        assertEquals(listOf("ready"), facts.map { it.channel })
+        assertEquals(listOf(6), facts.map { it.location.line })
+    }
 }
