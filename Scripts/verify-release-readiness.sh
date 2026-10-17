@@ -97,6 +97,92 @@ TAR_BINARY="$TEMPORARY_DIRECTORY/kartograph-$VERSION/bin/kartograph"
 Scripts/verify-cli-contract.sh "$TAR_BINARY"
 KARTOGRAPH_BINARY="$TAR_BINARY" KARTOGRAPH_PR_SCRIPT="$TEMPORARY_DIRECTORY/kartograph-$VERSION/Scripts/check-pr.py" \
     python3 -m unittest discover -s Scripts/tests -v
+
+# 동일 배포본의 collector와 ZIP/TAR CLI로 완료 영수증 기반 enum 비교를 검증한다.
+cat > "$TEMPORARY_DIRECTORY/enum-runtime.gradle" <<'GRADLE'
+import groovy.json.JsonOutput
+
+gradle.projectsEvaluated {
+    def project = gradle.rootProject
+    project.tasks.register('releaseEnumRuntime') {
+        doLast {
+            def runtime = project.configurations.getByName('kotlinCompilerRuntime').files
+            new File(System.getenv('KARTOGRAPH_ENUM_RUNTIME_FILE')).text =
+                JsonOutput.toJson(runtime.collect { it.canonicalPath }.sort())
+        }
+    }
+}
+GRADLE
+KARTOGRAPH_ENUM_RUNTIME_FILE="$TEMPORARY_DIRECTORY/enum-runtime.json" \
+    ./gradlew --no-daemon --no-configuration-cache -p compiler-collectors \
+    -I "$TEMPORARY_DIRECTORY/enum-runtime.gradle" releaseEnumRuntime \
+    > "$REPORT_DIRECTORY/packaged-enum-runtime.log" 2>&1
+python3 - "$VERSION" \
+    "$REPORT_DIRECTORY/collector-installation/installed/kartograph-compiler-collectors-$VERSION/lib/kartograph-compiler-collectors.jar" \
+    "$BINARY" "$TAR_BINARY" "$TEMPORARY_DIRECTORY/enum-runtime.json" "$REPORT_DIRECTORY" \
+    > "$REPORT_DIRECTORY/packaged-enum.log" 2>&1 <<'PY'
+from pathlib import Path
+import json
+import os
+import sys
+
+if not __debug__:
+    raise SystemExit("packaged enum verification requires Python assertions")
+sys.path.insert(0, str(Path.cwd() / "compiler-collectors/tests"))
+from enum_decisions import _content_hash, _snapshot_comparison
+from run import content_fingerprint, encoded, java_home, run, sha256
+
+version = sys.argv[1]
+collector, zip_cli, tar_cli, runtime_file = (Path(value).resolve(strict=True) for value in sys.argv[2:6])
+reports = Path(sys.argv[6]).resolve()
+runtime = [Path(value).resolve(strict=True) for value in json.loads(runtime_file.read_text(encoding="utf-8"))]
+if not runtime or any(not path.is_file() for path in (collector, zip_cli, tar_cli, *runtime)):
+    raise SystemExit("packaged enum verification requires the extracted artifacts and compiler runtime")
+stdlib = next((path for path in runtime if path.name == "kotlin-stdlib-2.4.10.jar"), None)
+if stdlib is None:
+    raise SystemExit("packaged enum verification requires the configured Kotlin stdlib")
+home = java_home()
+collector_archive = Path(f"compiler-collectors/build/distributions/kartograph-compiler-collectors-{version}.zip")
+
+def artifact_hashes(cli, archive):
+    return {
+        "collectorArchiveSha256": sha256(collector_archive),
+        "collectorJarSha256": sha256(collector),
+        "cliArchiveSha256": sha256(archive),
+        "cliLauncherSha256": sha256(cli),
+        "cliInstallationSha256": _content_hash(cli.parent.parent, sha256),
+        "compilerRuntimeSha256": [{"name": path.name, "sha256": sha256(path)} for path in runtime],
+    }
+
+for label, cli in (("zip", zip_cli), ("tar", tar_cli)):
+    evidence = reports / ("packaged-enum-" + label)
+    evidence.mkdir(exist_ok=False)
+    archive = Path(f"cli/build/distributions/kartograph-{version}.{label}")
+    identities = artifact_hashes(cli, archive)
+    result = {
+        "status": "failed", "version": version, "cliFormat": label,
+        "languages": ["javac", "kotlin"], "artifacts": identities,
+        "log": "../packaged-enum.log",
+    }
+    try:
+        os.environ["KARTOGRAPH_SNAPSHOT_CLI"] = str(cli)
+        _snapshot_comparison(home / "bin/javac", home / "bin/java", collector,
+                             os.pathsep.join(map(str, runtime)), stdlib, evidence,
+                             run, encoded, sha256, content_fingerprint)
+        if artifact_hashes(cli, archive) != identities:
+            raise AssertionError("packaged enum verification changed consumed artifacts")
+        result["snapshotSha256"] = {
+            f"snapshot-{language}/{name}": sha256(evidence / ("snapshot-" + language) / name)
+            for language in ("javac", "kotlin")
+            for name in ("base.json", "current.json", "current-source-uses.json", "current-combined.json", "external.json")
+        }
+        result["status"] = "passed"
+        print("packaged enum snapshot comparison passed: " + label)
+    finally:
+        (evidence / "verification.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+
+PY
+
 [[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/docs/LIMITATIONS.md" ]]
 python3 - "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION" <<'PY'
 from pathlib import Path

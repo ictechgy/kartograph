@@ -694,6 +694,10 @@ kartograph impact --enum-expansion --graph-file current.json --base-graph base.j
 `--symbol` is optional and repeatable, and accepts exact `class:` identities.
 With no selector, the query compares the current snapshot's enum declarations.
 Both snapshots are required and must have matching tool version and scope.
+For 0.24.0, rebuild/capture both revisions with matching collector/CLI artifacts;
+recompile clients when a library enum changes. Follow the
+[migration conditions](COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration), including
+public data-class recompilation and old-reader limitations.
 Use the [enum capture workflow](COMPILER-EVIDENCE.md#opt-in-enum-expansion-decisions)
 to collect the current decisions. Old/missing inventories or decision channels
 remain unavailable; they are never interpreted as complete empty sets.

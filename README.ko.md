@@ -57,12 +57,12 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 - Android graph/dead task: AGP 8.7+, Gradle 8.10+, JDK 17+(AGP 8.7.3 / Gradle 8.10.2와 AGP 9.x에서 검증).
 - 자동 snapshot: JVM Java/Kotlin은 Gradle 9.6.1과 JDK 17/21에서, Android는 [검증된 조합](docs/IMPACT.md#android-variant-자동-캡처)에서 확인했다. Kotlin compiler adapter는 KGP 2.4.10에서 검증했고 다른 버전은 보장하지 않는다. 최소 Android 조합은 Gradle 8.10.2에서 검증했지만, KGP 자체는 8.14.4 이상을 권고한다.
 
-아래 예시는 미출시 0.23.0 준비본용이며 아직 Portal에서 설치할 수 없다.
-해당 버전 공개 후 사용하거나 같은 source revision에서 matching 모듈을 빌드한다.
+아래 예시는 미출시 0.24.0 준비본용이다. 해당 버전이 Portal에 제공된 뒤 사용하거나
+같은 source revision에서 matching 모듈을 빌드한다.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.23.0"
+    id("io.github.ictechgy.kartograph") version "0.24.0"
 }
 ```
 
@@ -76,7 +76,12 @@ GitHub release에서 `kartograph-<version>.zip` 또는 `.tar`를 받는다. 0.5.
 distribution asset이나 Portal plugin은 발행되지 않았다. 0.20.0에서 올리는 직접 JVM 라이브러리
 소비자는 `GraphNode`·`QuerySnapshot`의 생성자·`copy` ABI 변경에 맞춰 다시 컴파일하고
 CLI·plugin·선택적 collector를 같은 버전으로 설치한다.
-현재 소스는 0.23.0 준비본이며 VERSION 변경만으로 배포나 release 검증이 끝나지 않는다.
+2026-10-17 확인 기준 [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)은
+7개 asset이 공개됐고 [release run](https://github.com/ictechgy/kartograph/actions/runs/38721915580)의
+Gradle plugin publish step도 성공했다. GitHub prerelease 상태이며 latest stable은 0.22.0이다.
+0.23.0의 공개 asset·Portal consumer 독립 검증은 미완료다. 기존 asset·checksum·archive 문서는
+그대로 보존하며 publish 성공을 독립 설치 성공으로 해석하지 않는다.
+현재 소스는 0.24.0 준비본이며 VERSION 변경만으로 배포나 release 검증이 끝나지 않는다.
 CLI·plugin·collector·library artifact는 같은 버전으로 맞춘다. 새 source-use API와 명시적
 `snapshot --include-source-uses`·`query --source-uses`·`impact --source-edits`는 additive 기능이다.
 saved report는 `currentness: notChecked`인 부분적 과거 관찰이며 ordinary graph 결과와 별도다.
@@ -84,6 +89,17 @@ saved report는 `currentness: notChecked`인 부분적 과거 관찰이며 ordin
 base/current 비교가 같은 tool version을 요구하면 둘 다 재캡처한다. 옛 snapshot의 version만 바꾸거나 모듈을 섞지 않는다.
 기존 compiled-client·descriptor 검사는 선택한 API의 근거이며 모든 client·Kotlin source 호환성 보장이 아니다.
 [업그레이드 안내](CHANGELOG.md)와 [source-use 호환성](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility)을 참고한다.
+
+0.24.0 준비본은 enum 상수 추가가 authored default/else 또는 유한 리터럴 membership/negation에
+흡수될 수 있는 검토 후보를 제공한다. compiler `enumDecisions=true`와
+`snapshot --include-enum-decisions`를 켜고 fresh baseline/current snapshot을
+`impact --enum-expansion`으로 비교한다. current 소스 위치·이유·추가 상수·미해결 coverage를 보존하며
+enum/source-use 캡처를 함께 사용할 수 있다. `GraphNode`·`QuerySnapshot` 공개 형태가 바뀌므로
+직접 library client를 다시 컴파일하고 collector/CLI build를 맞춘다. library enum 변경 시 그 client도
+다시 빌드한다. [0.24.0 migration](docs/COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration)과
+[enum 영향 안내](docs/IMPACT.md#opt-in-enum-expansion-candidates)를 따른다.
+실제 runtime 동작이나 버그를 확정하는 결과가 아니며 공개된 0.23.0 artifact에는 이 기능이 없다.
+JDK 17 collector CI의 Java 21 null/pattern 구문 분기는 미실행이다.
 
 ## 사용법
 

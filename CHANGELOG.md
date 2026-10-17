@@ -6,12 +6,48 @@
 
 ## [Unreleased]
 
-## [0.23.0] - Unreleased (준비 중)
+## [0.24.0] - Unreleased (준비 중)
 
-- source-use 기능을 더하는 다음 pre-1.0 minor 준비본이다. 이 버전의 tag·배포 asset·Portal
-  plugin은 아직 발행하지 않았다. 공개된 0.22.0 tag·asset과 실패한 0.21.0 기록은 그대로 보존한다.
-- source/docs 준비와 기존 기능의 제한된 검증은 이 versioned head의 release-readiness 통과가 아니다.
-  전체 CI·coverage·회귀/호환성 gate, clean build 재현성, 실제 배포본 검사와 독립 설치는 별도 gate다.
+### Added
+
+- JVM `ACC_ENUM`에서 얻은 enum 상수 전체 목록을 `GraphNode.enumConstants`에 보존한다.
+  unavailable과 complete-empty를 구분하고 field view pruning 뒤에도 목록을 유지한다.
+  같은 enum 타입의 일반 static field나 alias를 enum 상수로 추측하지 않는다.
+- 명시적 compiler `enumDecisions=true`와 `snapshot --include-enum-decisions`로 Java switch의
+  authored default, Kotlin when의 authored else, 유한 리터럴 membership/negation의 타입·소스 위치를 수집한다.
+  `impact --enum-expansion`은 baseline/current의 추가 상수와 current의 검토 후보·이유·미해결 coverage를 낸다.
+  runtime 실행이나 실제 버그를 확정하지 않는다.
+- `callPositions=true`와 `--include-source-uses`를 함께 켠 캡처도 지원한다.
+  두 채널은 별도이며 기존 graph edge·retention을 바꾸지 않는다.
+- impact의 중복 `--format`과 enum/source-edit/traversal 혼합 옵션을 snapshot 읽기 전에 거부한다.
+
+### 업그레이드와 검증 범위
+
+- CLI·plugin·collector·library를 같은 0.24.0 build로 맞추고 직접 JVM library client를 다시 컴파일한다.
+  `GraphNode`·`QuerySnapshot` 공개 생성자/`copy` 형태가 바뀌므로 binary drop-in 호환성을 주장하지 않는다.
+- baseline/current source revision을 각각 다시 빌드하고 같은 0.24.0 도구·scope로 새 snapshot을 만든다.
+  current decision에는 성공한 compiler task의 fresh receipt/witness가 필요하다. baseline에는 complete inventory가
+  필요하며 decision row는 필수가 아니다. 라이브러리 enum을 바꿨다면 그 정의를 사용하는 client도 다시 컴파일한다.
+- 옛 snapshot의 누락 inventory/evidence를 empty로 취급하거나 version만 바꾸지 않는다.
+  옛 reader는 새 `ENUM_CONSTANT`를 거부하거나 optional evidence를 잃을 수 있어 lossless downgrade가 아니다.
+  captured enum decision의 snapshot merge/aggregation은 아직 지원하지 않는다.
+- 같은 claimed output root의 enum/source 귀속만 해석한다. dependency/shadowed root·일반 equality·동적/custom
+  collection·일반 filter 의미는 미해결/미지원이다. Kotlin `!in`은 지원하고 authored `!contains`/`.not()`은
+  미지원으로 센다. Java 21 null/pattern collector 분기는 JDK 17 collector CI에서 미실행이다.
+- [PR183](https://github.com/ictechgy/kartograph/pull/183)의
+  [main CI](https://github.com/ictechgy/kartograph/actions/runs/38928690616)는 소스 빌드의 Java/Kotlin
+  compiler → witness → snapshot → impact와 결합 채널을 검증했다. 이는 0.24.0 versioned head의
+  release-readiness, archive 재현성, 공개 asset/Portal 소비 또는 배포 완료를 뜻하지 않는다.
+  자세한 [0.24.0 migration](docs/COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration)을 따른다.
+
+## [0.23.0] - 2026-10-15 (prerelease)
+
+- source-use 기능을 추가한 pre-1.0 minor다.
+  [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)은 tag와 7개 asset이 공개됐고,
+  [release run](https://github.com/ictechgy/kartograph/actions/runs/38721915580)의 Gradle plugin publish step도 성공했다.
+  2026-10-17 확인 기준 GitHub prerelease 상태이며 latest stable은 0.22.0이다.
+- 공개 asset·Portal plugin의 독립 consumer 검증은 미완료다. publish step 성공을 독립 설치 성공으로 해석하지 않는다.
+  기존 tag·asset·checksum과 발행 당시 archive 문서를 변경하지 않는다. 아래 호환성 근거의 한계도 그대로다.
 
 ### Added
 
@@ -1016,7 +1052,9 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.23.0...HEAD
+[0.24.0]: https://github.com/ictechgy/kartograph/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.23.0
 [0.19.0]: https://github.com/ictechgy/kartograph/compare/v0.18.2...v0.19.0
 [0.18.0]: https://github.com/ictechgy/kartograph/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/ictechgy/kartograph/compare/v0.16.0...v0.17.0
