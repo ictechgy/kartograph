@@ -176,15 +176,19 @@ public object LanguageTraversal {
      * 해석은 [rootGraph]에서 하고, 순회할 [graph]에 없는 정점은 해석하지 못한 것으로 둔다.
      */
     private fun resolveRoots(graph: CodeGraph, rootGraph: CodeGraph, requested: List<String>, unresolved: Map<NodeId, Int>): List<TraversalRoot> {
+        val resolver = TraversalRootResolver(rootGraph)
         val seen = mutableSetOf<String>()
         return requested.mapNotNull { text ->
-            val node = resolveRootNode(rootGraph, text)?.let { graph.node(it.id) }
+            val node = resolver.resolve(text)?.let { graph.node(it.id) }
             val id = node?.id?.value ?: text
             if (!seen.add(id)) null else TraversalRoot(id, node, node?.let { unresolved[it.id] } ?: 0)
         }
     }
 
-    /** root 요청 하나를 정점으로 해석한다. 정확한 usr를 우선하고, 없으면 유일한 한정 이름·이름이다. 못 하면 null이다. */
+    /**
+     * root 요청 하나를 정점으로 해석한다. 정확한 usr를 우선하고, 없으면 유일한 한정 이름·이름이다. 못 하면 null이다.
+     * 정확한 usr가 아니면 정점 전체를 훑으므로 요청이 여럿이면 [TraversalRootResolver]를 쓴다(같은 규칙이다).
+     */
     internal fun resolveRootNode(graph: CodeGraph, text: String): GraphNode? =
         graph.node(NodeId(text)) ?: graph.nodes.values.filter { it.qualifiedName == text || it.name == text }.singleOrNull()
 
@@ -228,6 +232,28 @@ public object LanguageTraversal {
         if (depthTruncated) add("depth-limit: some reachable declarations are more than $maxDepth edge(s) from every root and are not listed")
         if (reachedTruncated) add("reached-limit: more than $maxReached reachable declarations; the (depth, usr) prefix is listed")
     }
+}
+
+/**
+ * language-traversal의 root 요청을 정점으로 해석한다([LanguageTraversal.traverse]와 같은 규칙).
+ *
+ * 정확한 usr를 우선하고, 없으면 한정 이름이나 이름이 맞는 정점이 정확히 하나일 때 그 정점이다. 둘 이상이면 모호해서
+ * 해석하지 않는다. 이름 색인은 정확한 usr가 아닌 요청이 처음 올 때 정점을 한 번 훑어 만든다. 요청마다 정점 전체를 훑으며
+ * `qualifiedName`을 다시 만들면 바뀐 usr 수천 개를 넘긴 실행의 비용이 (요청 수 × 정점 수)로 커지기 때문이다.
+ * 순회는 안에서 이 해석기를 쓰고, 테스트 소스 범위 결정처럼 순회 전에 같은 요청을 해석해야 하는 호출부도 이것을 쓴다.
+ *
+ * @param graph root를 해석할 그래프다
+ */
+public class TraversalRootResolver(private val graph: CodeGraph) {
+    private val byQualifiedName: Map<String, List<GraphNode>> by lazy { graph.nodes.values.groupBy { it.qualifiedName } }
+    private val byName: Map<String, List<GraphNode>> by lazy { graph.nodes.values.groupBy { it.name } }
+
+    /**
+     * @param text root 요청이다. 정확한 usr, 한정 이름 또는 이름이다
+     * @return 해석한 정점이다. 맞는 정점이 없거나 둘 이상이면 null이다
+     */
+    public fun resolve(text: String): GraphNode? = graph.node(NodeId(text))
+        ?: (byQualifiedName[text].orEmpty().asSequence() + byName[text].orEmpty()).distinctBy { it.id }.take(2).singleOrNull()
 }
 
 /**

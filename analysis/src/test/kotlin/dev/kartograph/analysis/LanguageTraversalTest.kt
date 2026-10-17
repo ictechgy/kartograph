@@ -15,6 +15,7 @@ import dev.kartograph.core.JvmModifier
 import dev.kartograph.core.LexicalEnclosure
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
+import dev.kartograph.core.qualifiedName
 import java.lang.management.ManagementFactory
 import kotlin.random.Random
 import kotlin.test.Test
@@ -239,6 +240,33 @@ class LanguageTraversalTest {
         assertEquals(listOf(id("A"), "nope"), result.roots.map { it.id })
         assertTrue(result.rootNotFound)
         assertTrue(result.limitations.any { it.startsWith("root-not-found: 1 ") })
+    }
+
+    @Test
+    fun `the root resolver matches single-request resolution on random graphs`() {
+        // 리뷰 지적(perf#4)의 이름 색인은 기존 규칙(정확한 usr, 아니면 한정 이름·이름이 맞는 정점이 정확히 하나)과 같아야 한다.
+        // 이름 후보에 한정 이름 모양을 섞어 한 정점의 이름이 다른 정점의 한정 이름과 맞는 경우도 만든다.
+        val names = listOf("run", "K0", "K1", "p.K0", "p.K0.run", "app.p.K1", "get")
+        repeat(300) { seed ->
+            val random = Random(60_000 + seed)
+            val nodes = List(random.nextInt(1, 25)) { index ->
+                val owner = "p/K${random.nextInt(3)}"
+                val (id, kind) = when (random.nextInt(3)) {
+                    0 -> "class:$owner" to NodeKind.CLASS
+                    1 -> "method:$owner#m$index()V" to NodeKind.METHOD
+                    else -> "field:$owner#f$index:I" to NodeKind.FIELD
+                }
+                GraphNode(NodeId(id), names.random(random), kind, moduleName = listOf(null, "app", "p").random(random))
+            }.distinctBy { it.id }
+            val graph = CodeGraph(nodes, emptyList())
+            val resolver = TraversalRootResolver(graph)
+            val requests = nodes.flatMap { listOf(it.id.value, it.name, it.qualifiedName) } + names + listOf("missing", "class:p/K9")
+            requests.forEach { text ->
+                assertEquals(LanguageTraversal.resolveRootNode(graph, text), resolver.resolve(text), "seed $seed request $text")
+            }
+            // 색인을 만든 뒤에도 정확한 usr가 이름보다 먼저다.
+            nodes.forEach { assertEquals(it, resolver.resolve(it.id.value), "seed $seed exact ${it.id}") }
+        }
     }
 
     @Test

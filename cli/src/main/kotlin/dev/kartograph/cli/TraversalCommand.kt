@@ -6,6 +6,7 @@ import dev.kartograph.analysis.TestSourceScope
 import dev.kartograph.analysis.TraversalClassHops
 import dev.kartograph.analysis.TraversalDirection
 import dev.kartograph.analysis.TraversalDispatch
+import dev.kartograph.analysis.TraversalRootResolver
 import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.export.LanguageTraversalCodec
 import dev.kartograph.export.LanguageTraversalMetadata
@@ -175,7 +176,11 @@ internal object TraversalCommand {
             return 2
         }
         // 테스트 소스는 별도 프로그램이다. 기본 순회는 production 부분 그래프에서 하고 graphRevision도 그 그래프로 낸다.
-        val scope = TestSourceScope.select(snapshot.graph, options.roots, options.includeTests)
+        // 범위 결정에는 전체 그래프 이름 색인으로 한 번 해석한 정확한 usr만 넘긴다. 범위 결정이 요청마다 정점 전체를 다시
+        // 훑지 않게 하려는 것이며, 해석하지 못한 요청은 원래도 테스트 root로 세지 않으므로 결정이 같다. 순회에는 원래 요청을
+        // 넘겨 root-not-found의 원문 id와 exit 64를 지킨다.
+        val resolver = TraversalRootResolver(snapshot.graph)
+        val scope = TestSourceScope.select(snapshot.graph, options.roots.mapNotNull { resolver.resolve(it)?.id?.value }, options.includeTests)
         val traversal = LanguageTraversal.traverse(scope.graph, options.roots, direction, options.dispatch, options.depth,
             options.maxReached, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured, rootGraph = snapshot.graph, classHops = options.classHops,
             modeledCalls = PersistenceModeledCalls.select(scope.graph, persistence))
