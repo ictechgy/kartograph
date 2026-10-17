@@ -60,7 +60,7 @@ public class RouteDeclScanner(
             sourceModifiedAt = files.maxOfOrNull { Files.getLastModifiedTime(root.resolve(it.relative)).toInstant() }?.let(::bridgeTimestamp),
             platform = "kotlin",
             target = "http",
-            project = root.toString().replace('\\', '/'),
+            project = projectIdentity(root),
             facts = facts,
             limitations = limitations.map { it.message }.distinct().sorted(),
             limitationScopes = limitations.mapNotNull { it.scope }.filter { scope -> limitations.count { it.message == scope.limitation } == 1 },

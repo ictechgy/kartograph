@@ -74,7 +74,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
             sourceModifiedAt = sources.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() }?.let(::bridgeTimestamp),
             target = target,
-            project = projectRoot.toRealPath().toString().replace('\\', '/'),
+            project = projectIdentity(projectRoot.toRealPath()),
             facts = withSymbols,
             limitations = limitations,
         )

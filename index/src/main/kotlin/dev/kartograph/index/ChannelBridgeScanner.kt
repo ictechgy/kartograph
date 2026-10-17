@@ -60,7 +60,7 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
         return BridgeFactsDocument(
             generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
             sourceModifiedAt = newest?.let(::bridgeTimestamp),
-            project = projectRoot.toRealPath().toString().replace('\\', '/'),
+            project = projectIdentity(projectRoot.toRealPath()),
             target = withSymbols.firstOrNull()?.let { "flutter" },
             facts = withSymbols,
             limitations = limitations.distinct().sorted(),
@@ -654,6 +654,14 @@ internal fun List<String>.firstNamed(name: String): String? = firstOrNull { argu
     argument.substringBefore('=', "").trim() == name &&
         !argument.substringAfter('=', "").startsWith('=')
 }?.substringAfter('=', "")?.trim()
+
+/**
+ * 교환 문서의 `project` 값이다. isthmus는 문서마다 이 문자열이 같아야 조인하므로 모든 생산자가 이 규칙 하나를 쓴다.
+ * 구분자를 `/`로 맞춘 canonical 절대경로다 — Windows의 `\`도 다른 문서와 같은 POSIX 형태가 된다.
+ *
+ * @param realRoot `toRealPath()`로 정규화한 프로젝트 루트다
+ */
+internal fun projectIdentity(realRoot: Path): String = realRoot.toString().replace('\\', '/')
 
 /** source 오프셋을 프로젝트 상대 경로의 1기반 줄·UTF-8 바이트 열 위치로 변환한다. */
 internal fun sourceLocation(path: String, source: String, offset: Int): BridgeLocation {

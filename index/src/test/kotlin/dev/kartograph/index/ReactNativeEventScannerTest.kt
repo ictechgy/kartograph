@@ -1,5 +1,6 @@
 package dev.kartograph.index
 
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -78,5 +79,33 @@ class ReactNativeEventScannerTest {
         val facts = BridgeFactScanner(root).scanReactNativeEvents().facts
         assertEquals(listOf("ready"), facts.map { it.channel })
         assertEquals(listOf(6), facts.map { it.location.line })
+    }
+
+    @Test
+    fun `RN event documents share the project value of the other exchange documents`(@TempDir parent: Path) {
+        // isthmus는 project 문자열이 같아야 조인한다. POSIX에서는 `\`가 이름 문자라 Windows 구분자 차이를 그대로 재현한다.
+        val root = Files.createDirectories(parent.resolve("work\\app"))
+        root.resolve("Events.kt").writeText("""
+            import com.facebook.react.modules.core.DeviceEventManagerModule
+            class Events {
+              fun notify() {
+                context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit("ready", null)
+              }
+            }
+        """.trimIndent())
+        val scanner = BridgeFactScanner(root)
+        val projects = listOf(
+            scanner.scanReactNativeEvents().project, scanner.scan().project, scanner.scanMessages().project, scanner.scanEvents().project,
+            RouteCallScanner(root).scan().project, RouteDeclScanner(root).scan().project, SchemaFactScanner(root).scan().project,
+        )
+        val canonical = root.toRealPath().toString().replace('\\', '/')
+        assertEquals(List(projects.size) { canonical }, projects)
+    }
+
+    @Test
+    fun `project identity writes Windows separators as forward slashes`() {
+        // Windows 파일 시스템 없이 문자열 규칙만 본다 — POSIX에서는 `\`가 이름 문자라 경로가 그대로 남는다.
+        assertEquals("C:/work/app", projectIdentity(Path.of("C:\\work\\app")))
+        assertEquals("/work/app", projectIdentity(Path.of("/work/app")))
     }
 }

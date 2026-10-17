@@ -90,7 +90,7 @@ public class RouteCallScanner(
                 ?.let(::bridgeTimestamp),
             platform = "kotlin",
             target = "http",
-            project = root.toString().replace('\\', '/'),
+            project = projectIdentity(root),
             facts = ordered,
             limitations = (limitations(stats, wrappersByDeclaration, files) + rewriteLimitations.map { it.first }).distinct().sorted(),
             limitationScopes = rewriteLimitations.mapNotNull { it.second },

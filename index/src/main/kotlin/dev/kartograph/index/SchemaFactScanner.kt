@@ -66,7 +66,7 @@ public class SchemaFactScanner(private val projectRoot: Path, private val jpaNam
                 ?.let(::bridgeTimestamp),
             platform = "kotlin",
             target = if (withSymbols.isEmpty()) null else "persistence",
-            project = root.toString().replace('\\', '/'),
+            project = projectIdentity(root),
             facts = withSymbols,
             limitations = (limitations(stats) + jpa.limitations).distinct().sorted(),
         )

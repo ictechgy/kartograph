@@ -20,7 +20,7 @@ internal class ReactNativeEventScanner(private val projectRoot: Path) {
         val missing = facts.count { it.symbol?.usr == null }
         val dynamic = facts.count { it.dynamic }
         return BridgeFactsDocument(
-            version = 2, transport = "react-native-event", project = root.toString(),
+            version = 2, transport = "react-native-event", project = projectIdentity(root),
             target = if (facts.isEmpty()) null else "react-native", facts = facts,
             generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
             sourceModifiedAt = files.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() }?.let(::bridgeTimestamp),
