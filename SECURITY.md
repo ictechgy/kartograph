@@ -22,7 +22,10 @@ baseline, DOT 및 CI log는 소스 자체를 포함하지 않더라도 저장소
 올리기 전에 검토한다. 오류 메시지는 의도적으로 절대경로를 피하지만 모든 third-party Gradle/JVM 오류의
 출력까지 정제한다고 보장하지 않는다.
 
-`bridge-facts`의 `project` 값은 `.`이고 fact 위치도 프로젝트 상대경로만 사용한다. 소비 도구가 report를
+`bridges`·`routes`·`schema`가 내는 `bridge-facts` 문서와 `reach`·`impact --format language-traversal` 문서의
+`project` 값은 isthmus가 문서를 조인할 때 쓰는 `--project`의 canonical POSIX 절대 realpath라서 사용자 홈 경로나
+계정 이름을 드러낼 수 있다. `bridge-facts`의 fact 위치는 프로젝트 상대경로만 사용한다. 이 문서들을 공개
+artifact로 올리기 전에는 `project` 값을 치환하거나 지운다(예: `jq '.project="."'`). 소비 도구가 report를
 저장하거나 결합하면서 절대경로를 덧붙일 수 있으므로 최종 공개 artifact는 별도로 확인한다.
 
 분석 대상은 신뢰된 build output이어야 한다. 조작된 class/JAR/resource를 처리하는 것은 보안 격리가 아니며,
