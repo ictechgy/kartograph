@@ -14,8 +14,9 @@ internal class ReactNativeEventScanner(private val projectRoot: Path) {
         val root = projectRoot.toRealPath()
         val files = mutableListOf<Path>()
         ProjectTraversal.walkSources(root) { files.add(it) }
+        val attacher = graph?.let { SnapshotSymbolAttacher(it, root) }
         val facts = files.sorted().flatMap { path -> scanFile(root, path) }
-            .map { fact -> graph?.let { attachSnapshotSymbol(fact, it, root) } ?: fact }
+            .map { fact -> attacher?.attach(fact) ?: fact }
         val missing = facts.count { it.symbol?.usr == null }
         val dynamic = facts.count { it.dynamic }
         return BridgeFactsDocument(

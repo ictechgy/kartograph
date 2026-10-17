@@ -52,7 +52,8 @@ public class SchemaFactScanner(private val projectRoot: Path, private val jpaNam
         val facts = mutableListOf<BridgeFact>()
         sources.forEach { scanFile(it, entities, exposedTables, facts, stats, jpa.consumed[it.relative].orEmpty()) }
         // JPA 사실은 owner 규칙에 따라 스스로 symbol을 정했다 — 소스 범위 기반 부착은 나머지 사실에만 적용한다.
-        val attached = facts.map { graph?.let { snapshot -> attachSnapshotSymbol(it, snapshot, projectRoot) } ?: it }
+        val attacher = graph?.let { SnapshotSymbolAttacher(it, projectRoot) }
+        val attached = facts.map { attacher?.attach(it) ?: it }
         val withSymbols = (attached + jpa.facts).distinct().sortedWith(
             compareBy(
                 { it.location.path }, { it.location.line }, { it.location.column },

@@ -2,6 +2,10 @@ package dev.kartograph.index
 
 import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
+import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RouteLimitationScope
 import dev.kartograph.core.RouteParamConstraint
 import java.nio.file.Path
@@ -663,5 +667,47 @@ class RouteDeclScannerTest {
         write("lib/src/main/resources/application.properties", "server.servlet.context-path=/lib")
         write("lib/src/main/java/demo/Shared.java", "package demo;\n$javaImports\n@RestController public class Shared { @GetMapping(\"/shared\") public String a() { return \"\"; } }")
         assertEquals(setOf("GET /app/shared"), scan().keys())
+    }
+
+    @Test
+    fun `source-only handlers attach snapshot methods by owner, name and parameter count`() {
+        boot()
+        write("src/main/kotlin/demo/Items.kt", """
+            package demo
+
+            import org.springframework.web.bind.annotation.GetMapping
+            import org.springframework.web.bind.annotation.RestController
+
+            @RestController
+            class Items {
+                @GetMapping("/items")
+                fun items(): String = ""
+
+                @GetMapping("/items/{id}")
+                fun item(id: String): String = ""
+
+                @GetMapping("/counts")
+                fun count(): String = ""
+            }
+        """)
+        fun node(id: String) = GraphNode(NodeId(id), id.substringAfter('#').substringBefore('('), NodeKind.METHOD)
+        val graph = CodeGraph(listOf(
+            node("method:demo/Items#items()Ljava/lang/String;"),
+            // 이름이 접두사로 겹치는 메서드와 다른 owner의 동명 메서드는 후보가 아니다.
+            node("method:demo/Items#itemsCount()I"),
+            node("method:demo/Other#items()Ljava/lang/String;"),
+            node("method:demo/Items#item(Ljava/lang/String;)Ljava/lang/String;"),
+            node("method:demo/Items#item(Ljava/lang/String;I)Ljava/lang/String;"),
+            // continuation을 빼면 매개변수 수가 같은 오버로드가 둘이라 신원을 정하지 않는다.
+            node("method:demo/Items#count()Ljava/lang/String;"),
+            node("method:demo/Items#count(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;"),
+        ), emptyList())
+
+        val document = RouteDeclScanner(project).scan(generatedAt = "2026-01-01T00:00:00Z", graph = graph)
+
+        assertEquals("method:demo/Items#items()Ljava/lang/String;", document.fact("GET /items").symbol?.usr)
+        assertEquals("method:demo/Items#item(Ljava/lang/String;)Ljava/lang/String;", document.fact("GET /items/{}").symbol?.usr)
+        assertEquals("demo.Items.count", document.fact("GET /counts").symbol?.qualifiedName)
+        assertNull(document.fact("GET /counts").symbol?.usr)
     }
 }

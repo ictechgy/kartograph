@@ -5,6 +5,8 @@ import dev.kartograph.core.BridgeFactsDocument
 import dev.kartograph.core.BridgeLocation
 import dev.kartograph.core.BridgeSymbol
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
+import dev.kartograph.core.NodeKind
 import dev.kartograph.core.qualifiedName
 import java.nio.file.Files
 import java.nio.file.Path
@@ -34,8 +36,9 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
         val stats = ScanStats()
         files.sorted().forEach { scanFile(it, facts, stats) }
 
+        val attacher = graph?.let { SnapshotSymbolAttacher(it, projectRoot) }
         val withSymbols = facts.map { fact ->
-            graph?.let { attachSnapshotSymbol(fact, it, projectRoot) } ?: fact
+            attacher?.attach(fact) ?: fact
         }.sortedWith(compareBy({ it.location.path }, { it.location.line }, { it.location.column }, { it.kind }, { it.channel.orEmpty() }))
         val noun = spec.factKind.substringBefore('-')
         val dynamicCount = withSymbols.count { it.dynamic }
@@ -301,31 +304,72 @@ internal val EVENT_CHANNEL_SPEC = ChannelScanSpec(
     javaLimitation = "java-source-event-channel-analysis",
 )
 
-/** Snapshot의 실제 source location이 한 정점으로만 해석될 때만 JVM identity를 붙인다. */
-internal fun attachSnapshotSymbol(fact: BridgeFact, graph: CodeGraph, projectRoot: Path): BridgeFact {
-    val declaration = enclosingDeclaration(projectRoot, fact.location.path, fact.location.line) ?: return fact
-    val candidates = graph.nodes.values.filter { node ->
-        val location = node.location ?: return@filter false
-        location.path.replace('\\', '/') == fact.location.path &&
-            location.line in declaration.startLine..declaration.endLine &&
-            node.name == declaration.name &&
-            node.kind.name.lowercase() in setOf("function", "method")
+/**
+ * Snapshot의 실제 source location이 한 정점으로만 해석될 때만 JVM identity를 붙인다.
+ * 사실 하나만 붙일 때 쓴다. 한 스캔의 사실 여러 개는 [SnapshotSymbolAttacher] 하나를 공유한다.
+ */
+internal fun attachSnapshotSymbol(fact: BridgeFact, graph: CodeGraph, projectRoot: Path): BridgeFact =
+    SnapshotSymbolAttacher(graph, projectRoot).attach(fact)
+
+/**
+ * 한 스캔의 사실들을 snapshot 정점에 붙이는 색인이다.
+ *
+ * 사실마다 정점 전체를 훑고 소스를 다시 읽어 선언 범위를 계산하면 비용이 사실 수 × 정점 수로 커진다.
+ * 그래서 위치가 있는 함수·메서드 정점을 경로별로 한 번 묶고, 경로별 선언 범위도 한 번만 계산해 기억한다.
+ * 부착 규칙은 그대로다 — 사실을 감싼 가장 좁은 선언과 경로·범위·이름이 맞는 정점 중 사실 줄 앞의 하나,
+ * 그런 정점이 없으면 범위 안의 하나만 받아들인다.
+ *
+ * @param graph 부착할 snapshot 그래프다
+ * @param projectRoot 사실 위치 경로의 기준 루트다
+ * @param readSource 프로젝트 루트와 소스 경로로 소스 줄을 읽는다. 테스트가 경로별 읽기 횟수를 셀 때 바꾼다
+ */
+internal class SnapshotSymbolAttacher(
+    private val graph: CodeGraph,
+    private val projectRoot: Path,
+    private val readSource: (Path, Path) -> List<String> = { root, source -> ProjectTraversal.readSourceLines(root, source) },
+) {
+    /** `/`로 정규화한 위치 경로 → 위치가 있는 함수·메서드 정점이다. 묶음 안은 그래프 순서를 유지한다. */
+    private val nodesByPath: Map<String, List<GraphNode>> by lazy {
+        graph.nodes.values.filter { node -> node.location != null && (node.kind == NodeKind.FUNCTION || node.kind == NodeKind.METHOD) }
+            .groupBy { node -> node.location!!.path.replace('\\', '/') }
     }
-    val preceding = candidates.filter { (it.location?.line ?: Int.MAX_VALUE) <= fact.location.line }
-    val node = preceding.singleOrNull() ?: candidates.singleOrNull()
-        ?: return fact
-    return fact.copy(symbol = BridgeSymbol(node.qualifiedName, node.id.value))
+
+    /** 사실 경로 → 선언 범위 목록이다. 읽지 못한 경로도 null로 기억해 다시 읽지 않는다. */
+    private val declarationsByPath = HashMap<String, List<SourceDeclaration>?>()
+
+    /** 사실을 감싼 선언의 정점이 하나로 정해지면 그 JVM identity를 붙인 사본을, 아니면 원래 사실을 돌려준다. */
+    fun attach(fact: BridgeFact): BridgeFact {
+        val declaration = enclosingDeclaration(fact.location.path, fact.location.line) ?: return fact
+        val candidates = nodesByPath[fact.location.path].orEmpty().filter { node ->
+            node.location?.line in declaration.startLine..declaration.endLine && node.name == declaration.name
+        }
+        val preceding = candidates.filter { (it.location?.line ?: Int.MAX_VALUE) <= fact.location.line }
+        val node = preceding.singleOrNull() ?: candidates.singleOrNull()
+            ?: return fact
+        return fact.copy(symbol = BridgeSymbol(node.qualifiedName, node.id.value))
+    }
+
+    /** Current source supplies the only safe body range; graph lines alone do not. */
+    private fun enclosingDeclaration(relativePath: String, line: Int): SourceDeclaration? =
+        declarations(relativePath)?.filter { line in it.startLine..it.endLine }?.minByOrNull { it.endLine - it.startLine }
+
+    private fun declarations(relativePath: String): List<SourceDeclaration>? {
+        if (relativePath in declarationsByPath) return declarationsByPath[relativePath]
+        val source = try {
+            readSource(projectRoot, projectRoot.resolve(relativePath)).joinToString("\n")
+        } catch (_: Exception) {
+            // 읽을 수 없는 소스(test source set·프로젝트 밖 링크 등)는 몸체 범위를 증명하지 못한다.
+            // 신원을 붙이지 않고, 사실은 스캐너의 missing-*-usrs 한계로 집계된다.
+            null
+        }
+        return source?.let { sourceDeclarations(relativePath, it) }.also { declarationsByPath[relativePath] = it }
+    }
 }
 
 private data class SourceDeclaration(val name: String, val startLine: Int, val endLine: Int)
 
-/** Current source supplies the only safe body range; graph lines alone do not. */
-private fun enclosingDeclaration(projectRoot: Path, relativePath: String, line: Int): SourceDeclaration? {
-    val source = try {
-        ProjectTraversal.readSourceLines(projectRoot, projectRoot.resolve(relativePath)).joinToString("\n")
-    } catch (_: Exception) {
-        return null
-    }
+/** 소스의 함수 선언과 몸체 줄 범위를 모두 찾는다. 경로는 Kotlin·Java 선언 모양을 가르는 데만 쓴다. */
+private fun sourceDeclarations(relativePath: String, source: String): List<SourceDeclaration> {
     // 사실을 찾은 스캐너 뷰와 같은 어휘 규칙을 쓴다 — `'"'` 같은 문자 리터럴이 문자열을 열어 뒤 함수 머리를 가리지 않게 한다.
     val masked = maskStringContents(stripComments(source))
     val ranges = mutableListOf<SourceDeclaration>()
@@ -366,7 +410,7 @@ private fun enclosingDeclaration(projectRoot: Path, relativePath: String, line: 
         }
         depth = (before + braceDelta(text)).coerceAtLeast(0)
     }
-    return ranges.filter { line in it.startLine..it.endLine }.minByOrNull { it.endLine - it.startLine }
+    return ranges
 }
 
 private fun isKotlinPath(path: String): Boolean = path.endsWith(".kt") || path.endsWith(".kts")

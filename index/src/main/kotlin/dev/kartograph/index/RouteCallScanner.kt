@@ -69,6 +69,7 @@ public class RouteCallScanner(
         }
         val rewriteLimitations = rewriteLimitations(stats)
         val retrofitSymbols = graph?.takeIf { retrofitDeclarations.isNotEmpty() }?.let(::RetrofitSymbolIndex)
+        val attacher = graph?.let { SnapshotSymbolAttacher(it, projectRoot) }
         val ordered = facts.sortedWith(
             compareBy(
                 { it.location.path }, { it.location.line }, { it.location.column }, { it.channel.orEmpty() }, { it.method.orEmpty() },
@@ -77,10 +78,10 @@ public class RouteCallScanner(
         ).map { fact ->
             val declaration = retrofitDeclarations[fact]
             when {
-                graph == null -> fact
+                attacher == null -> fact
                 // 추상 서비스 메서드는 줄 번호가 없어 위치 기반 부착이 닿지 않는다. 선언 신원으로만 찾는다.
                 declaration != null -> retrofitSymbols?.attach(fact, declaration) ?: fact
-                else -> attachSnapshotSymbol(fact, graph, projectRoot)
+                else -> attacher.attach(fact)
             }
         }
         return BridgeFactsDocument(

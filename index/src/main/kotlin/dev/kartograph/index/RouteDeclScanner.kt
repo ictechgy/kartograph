@@ -316,10 +316,20 @@ internal class SpringRouteEmitter(
         val owner = handler.declaringType.internalName
         handler.method.descriptor?.let { descriptor -> return graph.nodes[JvmNodeId.methodId(owner, handler.method.name, descriptor)] }
         val prefix = "method:$owner#${handler.method.name}("
-        val candidates = graph.nodes.values.filter { it.id.value.startsWith(prefix) }
+        val index = methodIndex ?: graph.nodes.values.filter { it.id.value.startsWith("method:") && '(' in it.id.value }
+            .groupBy { it.id.value.methodKey() }.also { methodIndex = it }
+        val candidates = index[prefix.methodKey()].orEmpty().filter { it.id.value.startsWith(prefix) }
         return candidates.filter { parameterCount(it.id.value.substringAfter('#').substringAfter(handler.method.name)) == handler.method.parameterCount }
             .singleOrNull()
     }
+
+    /**
+     * descriptor 없는 핸들러를 찾는 `method:<owner>#<name>(` → 메서드 정점 색인이다 — 핸들러마다 전체 정점을 훑지 않게 한 번만 만든다.
+     * 키는 id의 첫 `(`까지다. 접두사와 맞는 id는 첫 `(`의 위치도 접두사와 같으므로 같은 묶음에 든다.
+     */
+    private var methodIndex: Map<String, List<dev.kartograph.core.GraphNode>>? = null
+
+    private fun String.methodKey(): String = substring(0, indexOf('(') + 1)
 
     /** descriptor의 매개변수 수다. Kotlin `suspend`의 continuation은 세지 않는다. */
     private fun parameterCount(descriptor: String): Int {

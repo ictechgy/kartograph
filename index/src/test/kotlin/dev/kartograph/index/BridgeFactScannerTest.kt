@@ -1,6 +1,8 @@
 package dev.kartograph.index
 
 import java.nio.file.Path
+import dev.kartograph.core.BridgeFact
+import dev.kartograph.core.BridgeLocation
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
@@ -703,6 +705,153 @@ class BridgeFactScannerTest {
 
             assertEquals("method:app/PluginKt#register(Ljava/lang/Object;)V", fact.symbol?.usr, label)
         }
+    }
+
+    private fun attachProbe(path: String, line: Int) =
+        BridgeFact(kind = "channel-register", channel = "probe", dynamic = false, location = BridgeLocation(path, line, 3), target = "flutter")
+
+    @Test
+    fun `snapshot attacher reads each source path once across facts`(@TempDir project: Path) {
+        project.resolve("A.kt").writeText(
+            """
+            fun first(messenger: Any) {
+              MethodChannel(messenger, "a").setMethodCallHandler(handler)
+            }
+            fun second(messenger: Any) {
+              MethodChannel(messenger, "b").setMethodCallHandler(handler)
+            }
+            """.trimIndent(),
+        )
+        project.resolve("B.kt").writeText(
+            """
+            fun third(messenger: Any) {
+              MethodChannel(messenger, "c").setMethodCallHandler(handler)
+            }
+            """.trimIndent(),
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:app/AKt#first(Ljava/lang/Object;)V"), "first", NodeKind.FUNCTION, location = SourceLocation("A.kt", 2)),
+            GraphNode(NodeId("method:app/AKt#second(Ljava/lang/Object;)V"), "second", NodeKind.FUNCTION, location = SourceLocation("A.kt", 5)),
+            GraphNode(NodeId("method:app/BKt#third(Ljava/lang/Object;)V"), "third", NodeKind.FUNCTION, location = SourceLocation("B.kt", 2)),
+        ), emptyList())
+        val reads = mutableMapOf<String, Int>()
+        val attacher = SnapshotSymbolAttacher(graph, project) { root, source ->
+            reads.merge(root.relativize(source).toString(), 1, Int::plus)
+            ProjectTraversal.readSourceLines(root, source)
+        }
+        // 같은 줄의 사실 여러 개(테이블마다 사실을 내는 SQL처럼)와 읽을 수 없는 경로도 경로당 한 번만 읽는다.
+        val probes = listOf(attachProbe("A.kt", 2), attachProbe("A.kt", 2), attachProbe("A.kt", 5), attachProbe("B.kt", 2),
+            attachProbe("Missing.kt", 1), attachProbe("Missing.kt", 4))
+
+        val usrs = probes.map { attacher.attach(it).symbol?.usr }
+
+        assertEquals(listOf("method:app/AKt#first(Ljava/lang/Object;)V", "method:app/AKt#first(Ljava/lang/Object;)V",
+            "method:app/AKt#second(Ljava/lang/Object;)V", "method:app/BKt#third(Ljava/lang/Object;)V", null, null), usrs)
+        assertEquals(mapOf("A.kt" to 1, "B.kt" to 1, "Missing.kt" to 1), reads)
+    }
+
+    @Test
+    fun `snapshot attacher keeps per-fact selection rules on a shared index`(@TempDir project: Path) {
+        project.resolve("sub").createDirectories()
+        project.resolve("sub/Plugin.kt").writeText(
+            """
+            class Plugin {
+              fun register(messenger: Any) {
+                MethodChannel(messenger, "a").setMethodCallHandler(handler)
+              }
+              fun quoted(c: Char) = c == '"' &&
+                MethodChannel(messenger, "b").setMethodCallHandler(handler) != null
+              fun outer(messenger: Any) {
+                fun inner() {
+                  MethodChannel(messenger, "c").setMethodCallHandler(handler)
+                }
+              }
+            }
+            """.trimIndent(),
+        )
+        project.resolve("Other.kt").writeText(
+            """
+            fun register(messenger: Any) {
+              MethodChannel(messenger, "d").setMethodCallHandler(handler)
+            }
+            """.trimIndent(),
+        )
+        val graph = CodeGraph(listOf(
+            // Windows 구분자 경로도 같은 파일로 본다.
+            GraphNode(NodeId("method:app/Plugin#register(Ljava/lang/Object;)V"), "register", NodeKind.METHOD, location = SourceLocation("sub\\Plugin.kt", 3)),
+            // 함수·메서드가 아닌 정점, 범위 밖 동명 정점, 줄 없는 정점은 후보가 아니다.
+            GraphNode(NodeId("class:app/register"), "register", NodeKind.CLASS, location = SourceLocation("sub/Plugin.kt", 3)),
+            GraphNode(NodeId("method:app/Plugin#register()V"), "register", NodeKind.METHOD, location = SourceLocation("sub/Plugin.kt", 20)),
+            GraphNode(NodeId("method:app/Plugin#inner()V"), "inner", NodeKind.METHOD, location = SourceLocation("sub/Plugin.kt")),
+            GraphNode(NodeId("method:app/Plugin#quoted(C)Z"), "quoted", NodeKind.METHOD, location = SourceLocation("sub/Plugin.kt", 5)),
+            GraphNode(NodeId("method:app/Plugin#outer(Ljava/lang/Object;)V"), "outer", NodeKind.METHOD, location = SourceLocation("sub/Plugin.kt", 7)),
+            GraphNode(NodeId("method:app/Plugin#outer\$inner(Ljava/lang/Object;)V"), "inner", NodeKind.FUNCTION, location = SourceLocation("sub/Plugin.kt", 9)),
+            // 다른 파일의 동명 함수는 그 파일의 사실만 받는다.
+            GraphNode(NodeId("method:app/OtherKt#register(Ljava/lang/Object;)V"), "register", NodeKind.FUNCTION, location = SourceLocation("Other.kt", 2)),
+        ), emptyList())
+        val probes = listOf(attachProbe("sub/Plugin.kt", 3), attachProbe("sub/Plugin.kt", 3), attachProbe("sub/Plugin.kt", 6),
+            attachProbe("sub/Plugin.kt", 9), attachProbe("Other.kt", 2), attachProbe("sub/Plugin.kt", 11))
+        val attacher = SnapshotSymbolAttacher(graph, project)
+
+        val shared = probes.map { attacher.attach(it).symbol?.usr }
+
+        assertEquals(listOf("method:app/Plugin#register(Ljava/lang/Object;)V", "method:app/Plugin#register(Ljava/lang/Object;)V",
+            "method:app/Plugin#quoted(C)Z", "method:app/Plugin#outer\$inner(Ljava/lang/Object;)V",
+            "method:app/OtherKt#register(Ljava/lang/Object;)V", "method:app/Plugin#outer(Ljava/lang/Object;)V"), shared)
+        assertEquals(probes.map { attachSnapshotSymbol(it, graph, project).symbol?.usr }, shared)
+    }
+
+    @Test
+    fun `snapshot attacher matches a linear scan over every node`(@TempDir project: Path) {
+        project.resolve("sub").createDirectories()
+        project.resolve("A.kt").writeText(
+            """
+            class A {
+              fun run(messenger: Any) {
+                MethodChannel(messenger, "a").setMethodCallHandler(handler)
+              }
+              fun load(c: Char) = c == '"'
+              fun outer(messenger: Any) {
+                fun inner() {
+                  MethodChannel(messenger, "b").setMethodCallHandler(handler)
+                }
+              }
+            }
+            """.trimIndent(),
+        )
+        project.resolve("sub/B.java").writeText(
+            """
+            class B {
+              void run(Object messenger) {
+                new MethodChannel(messenger, "c").setMethodCallHandler(handler);
+              }
+              void load() { }
+            }
+            """.trimIndent(),
+        )
+        val names = listOf("run", "load", "outer", "inner")
+        val paths = listOf("A.kt", "sub/B.java", "sub\\B.java", "Missing.kt")
+        val random = java.util.Random(20261018)
+        val graph = CodeGraph((0 until 48).map { index ->
+            val line = if (random.nextInt(8) == 0) null else 1 + random.nextInt(12)
+            GraphNode(NodeId("method:app/N$index#n()V"), names[random.nextInt(names.size)], NodeKind.entries[random.nextInt(NodeKind.entries.size)],
+                location = if (random.nextInt(10) == 0) null else SourceLocation(paths[random.nextInt(paths.size)], line))
+        }, emptyList())
+        // 구 구현처럼 정점 전체를 훑는 기준이다 — 정점 하나짜리 그래프로 후보인지 하나씩 확인하고 같은 선택 규칙을 적용한다.
+        fun linear(probe: BridgeFact): String? {
+            val candidates = graph.nodes.values.filter { node ->
+                attachSnapshotSymbol(probe, CodeGraph(listOf(node), emptyList()), project).symbol != null
+            }
+            val preceding = candidates.filter { (it.location?.line ?: Int.MAX_VALUE) <= probe.location.line }
+            return (preceding.singleOrNull() ?: candidates.singleOrNull())?.id?.value
+        }
+        val probes = listOf("A.kt", "sub/B.java", "Missing.kt").flatMap { path -> (1..12).map { line -> attachProbe(path, line) } }
+        val attacher = SnapshotSymbolAttacher(graph, project)
+
+        val shared = probes.map { attacher.attach(it).symbol?.usr }
+
+        assertEquals(probes.map(::linear), shared)
+        assertTrue(shared.any { it != null } && shared.any { it == null }, shared.toString())
     }
 
     @Test

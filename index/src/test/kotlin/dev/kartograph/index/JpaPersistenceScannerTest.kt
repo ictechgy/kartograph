@@ -261,6 +261,37 @@ class JpaPersistenceScannerTest {
     }
 
     @Test
+    fun `entity manager calls carry the enclosing method identity from the snapshot`() {
+        write("src/main/kotlin/app/Job.kt", job)
+        write(
+            "src/main/kotlin/app/JobDao.kt",
+            """
+            package app
+            import jakarta.persistence.EntityManager
+            class JobDao(private val em: EntityManager) {
+                fun load(id: Long) = em.find(Job::class.java, id)
+                fun titles() = em.createQuery("select j.title from Job j", String::class.java).resultList
+            }
+            """,
+        )
+        val load = "method:app/JobDao#load(J)Lapp/Job;"
+        val titles = "method:app/JobDao#titles()Ljava/util/List;"
+        val graph = CodeGraph(
+            listOf(
+                GraphNode(NodeId(load), "load", NodeKind.METHOD, location = SourceLocation("src/main/kotlin/app/JobDao.kt", 4)),
+                GraphNode(NodeId(titles), "titles", NodeKind.METHOD, location = SourceLocation("src/main/kotlin/app/JobDao.kt", 5)),
+            ),
+            emptyList(),
+        )
+        val document = scan(graph = graph)
+        assertEquals(setOf("jobs"), document.at("JobDao.kt", 4).keys())
+        assertEquals(setOf(load), document.at("JobDao.kt", 4).map { it.symbol?.usr }.toSet())
+        // 같은 줄의 사실 여러 개(테이블·컬럼)도 같은 신원을 받는다.
+        assertEquals(setOf("jobs", "jobs.title"), document.at("JobDao.kt", 5).keys())
+        assertEquals(setOf(titles), document.at("JobDao.kt", 5).map { it.symbol?.usr }.toSet())
+    }
+
+    @Test
     fun `unmodelled mappings and non-jpa repositories stay visible`() {
         write(
             "src/main/java/app/Legacy.java",
