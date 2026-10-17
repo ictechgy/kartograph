@@ -56,6 +56,8 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+          # 입력 SHA의 코드를 실행한 뒤 기본 브랜치 범위 캐시를 저장하지 않도록 복원만 한다.
+          cache-read-only: true
       - name: Build the single installation and corpus
         shell: bash
         working-directory: target
