@@ -282,9 +282,9 @@ Published v0.23.0 artifacts do not contain the enum-expansion feature.
   emitting an inner positive fact. The actual collector fixture uses JDK 17; its conditional Java 21
   null/pattern-label branch has not been executed. JDK 21 product CI does not establish that coverage.
 
-A candidate is a review location, not proof of an executed path or defect. Saved analysis uses the
-captured source hashes and reports `currentness: notChecked`; use a separate verification/build when
-freshness is required. See the [query contract](IMPACT.md#opt-in-enum-expansion-candidates).
+A candidate is a review location, not proof of an executed path or defect. Saved enum analysis uses
+captured source hashes and does not recheck live source/build freshness; use a separate verification/build
+when freshness is required. See the [query contract](IMPACT.md#opt-in-enum-expansion-candidates).
 
 ## Opt-in enum expansion decisions
 
