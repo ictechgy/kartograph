@@ -530,7 +530,7 @@ private class TraversalComputation private constructor(
         val depth = targets.map { depthOf(it, vertex, own) }.filter { it >= 0 }.minOrNull() ?: return null
         if (depth !in 1..maxDepth) return null
         val level = reach.indexOfFirst { sets -> rootsOf(sets, vertex).let { reached -> roots.stream().allMatch(reached::get) } }
-        return witness(vertex, targets, own, depth).copy(depth = depth, roots = roots.stream().toArray().toList(), level = level)
+        return witness(vertex, targets, own, depth).copy(depth = depth, roots = RootIndexList(roots), level = level)
     }
 
     /**
@@ -564,6 +564,46 @@ private class TraversalComputation private constructor(
     companion object {
         fun run(space: TraversalSpace, rootVertices: List<Int>, maxDepth: Int): TraversalComputation =
             TraversalComputation(space, rootVertices, maxDepth).also { it.execute() }
+    }
+}
+
+/**
+ * 정점에 닿는 root 인덱스의 오름차순 읽기 전용 목록이다([TraversalReached.roots]).
+ *
+ * 인덱스마다 boxing한 목록을 만들면 (도달 정점 수 × root 수)개의 Integer가 남아, 촘촘한 그래프에 root 수천 개를 주면
+ * 출력 상한(정점당 64개)과 무관하게 heap이 GB 단위로 는다. 그래서 boxing하지 않고 담는다 — 비트 집합(root 64개당
+ * 8바이트)과 정렬한 int 배열(원소당 4바이트) 중 작은 쪽이다. equals·hashCode는 일반 [List]와 같다.
+ *
+ * @param roots 이 목록만 쓰는 사본이다([TraversalComputation.rootsOf]가 정점마다 만든다). 넘긴 뒤 바꾸지 않는다
+ */
+private class RootIndexList(roots: BitSet) : AbstractList<Int>() {
+    override val size: Int = roots.cardinality()
+
+    /** 촘촘한 집합이면 비트 집합 그대로다. [BitSet.size]는 실제로 잡힌 words의 비트 수다. */
+    private val bits: BitSet? = roots.takeIf { it.size() <= size * Int.SIZE_BITS }
+
+    /** 성긴 집합이면 처음부터, 촘촘한 집합이면 [get]이 처음 쓸 때 만든 정렬 배열이다. 같은 값을 다시 만들 수 있어 경합은 무해하다. */
+    @Volatile private var sorted: IntArray? = if (bits == null) roots.stream().toArray() else null
+
+    override fun get(index: Int): Int {
+        if (index !in 0 until size) throw IndexOutOfBoundsException("root index position $index is outside 0 until $size")
+        val array = sorted ?: checkNotNull(bits).stream().toArray().also { sorted = it }
+        return array[index]
+    }
+
+    override fun iterator(): Iterator<Int> {
+        sorted?.let { return it.iterator() }
+        val set = checkNotNull(bits)
+        return object : Iterator<Int> {
+            private var next = set.nextSetBit(0)
+
+            override fun hasNext(): Boolean = next >= 0
+
+            override fun next(): Int {
+                if (next < 0) throw NoSuchElementException("no more root indices")
+                return next.also { next = set.nextSetBit(it + 1) }
+            }
+        }
     }
 }
 

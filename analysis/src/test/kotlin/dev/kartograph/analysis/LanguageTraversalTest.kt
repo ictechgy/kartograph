@@ -15,11 +15,14 @@ import dev.kartograph.core.JvmModifier
 import dev.kartograph.core.LexicalEnclosure
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
+import java.lang.management.ManagementFactory
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 /** 다중 root 순회가 root별 전수 BFS와 같은 결과를 내는지, 간선 등급이 설계대로 매겨지는지 확인한다. */
 class LanguageTraversalTest {
@@ -110,6 +113,60 @@ class LanguageTraversalTest {
         assertEquals(3, byName.getValue("R").depth)
         assertEquals(id("V"), byName.getValue("R").via)
         assertEquals(listOf(0), byName.getValue("R").roots)
+    }
+
+    @Test
+    fun `root lists behave as plain ascending lists for dense and sparse root sets`() {
+        // root 300개가 모두 Hub를, 그중 250·299번만 Sparse를 부른다. 촘촘한 집합과 성긴 집합의 목록 계약이 같아야 한다.
+        val roots = List(300) { "R$it" }
+        val graph = graphOf(roots + listOf("Hub", "Sparse"), roots.map { it to "Hub" } + listOf("R250" to "Sparse", "R299" to "Sparse"))
+        val result = LanguageTraversal.traverse(graph, roots.map(::id), TraversalDirection.DEPENDENCIES)
+        val byName = result.reached.associateBy { it.node.name }
+        listOf("Hub" to (0 until 300).toList(), "Sparse" to listOf(250, 299)).forEach { (name, expected) ->
+            val row = byName.getValue(name)
+            val actual = row.roots
+            assertEquals(expected, actual, name)
+            assertEquals(actual, expected, name)
+            assertEquals(expected.hashCode(), actual.hashCode(), name)
+            assertEquals(expected.toString(), actual.toString(), name)
+            assertEquals(expected.size, actual.size, name)
+            assertEquals(expected, expected.indices.map { actual[it] }, name)
+            assertEquals(expected, actual.toList(), name)
+            assertEquals(expected.take(LIMIT), actual.take(LIMIT), name)
+            assertEquals(expected.subList(1, 2), actual.subList(1, 2), name)
+            assertEquals(expected.indexOf(250), actual.indexOf(250), name)
+            assertTrue(299 in actual && 300 !in actual && -1 !in actual, name)
+            assertFailsWith<IndexOutOfBoundsException>(name) { actual[actual.size] }
+            assertEquals(row.copy(roots = expected), row, name)
+            assertEquals(row.copy(roots = expected).hashCode(), row.hashCode(), name)
+        }
+    }
+
+    @Test
+    fun `reached root lists do not allocate per reaching root`() {
+        // 리뷰 지적 재현(perf#0): 도달 정점마다 root 인덱스를 boxing한 List<Int>로 만들면 (도달 정점 수 × root 수)개의
+        // Integer를 할당해 촘촘한 그래프에 root 수천 개를 주면 heap이 GB 단위로 늘었다. 시간 대신 스레드 할당량으로 본다.
+        val threads = ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean
+        assumeTrue(threads != null && threads.isThreadAllocatedMemorySupported && threads.isThreadAllocatedMemoryEnabled,
+            "thread allocation accounting is unavailable on this JVM")
+        // 같은 그래프에서 요청 root 수만 바꿔 정점·간선 수에 비례하는 할당을 상쇄한다.
+        val roots = List(MANY_ROOTS) { "R$it" }
+        val leaves = List(LEAVES) { "L$it" }
+        val graph = graphOf(roots + "Hub" + leaves, roots.map { it to "Hub" } + leaves.map { "Hub" to it })
+        fun allocated(rootCount: Int): Long {
+            val requested = roots.take(rootCount).map(::id)
+            // 첫 실행의 클래스 적재 할당을 빼려고 한 번 먼저 돌린다.
+            LanguageTraversal.traverse(graph, requested, TraversalDirection.DEPENDENCIES)
+            val before = threads!!.currentThreadAllocatedBytes
+            val result = LanguageTraversal.traverse(graph, requested, TraversalDirection.DEPENDENCIES)
+            val bytes = threads.currentThreadAllocatedBytes - before
+            assertEquals(LEAVES + 1, result.reached.size)
+            assertTrue(result.reached.all { it.roots.size == rootCount })
+            return bytes
+        }
+        val cells = (LEAVES + 1).toLong() * (MANY_ROOTS - FEW_ROOTS)
+        val extra = allocated(MANY_ROOTS) - allocated(FEW_ROOTS)
+        assertTrue(extra < cells * 4, "root lists allocated $extra extra bytes for $cells more (row, root) cells")
     }
 
     @Test
@@ -637,5 +694,13 @@ class LanguageTraversalTest {
         const val PLAIN = 0
         const val CALLBACK = 1
         const val ENTERED = 2
+
+        /** codec이 정점마다 싣는 root 인덱스 상한과 같은 값이다. */
+        const val LIMIT = 64
+
+        /** 할당량 비교 그래프의 Hub 아래 잎 정점 수와 두 root 수다. */
+        const val LEAVES = 1_000
+        const val MANY_ROOTS = 2_000
+        const val FEW_ROOTS = 20
     }
 }
