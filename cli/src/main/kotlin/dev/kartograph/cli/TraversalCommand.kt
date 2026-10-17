@@ -6,6 +6,7 @@ import dev.kartograph.analysis.TestSourceScope
 import dev.kartograph.analysis.TraversalClassHops
 import dev.kartograph.analysis.TraversalDirection
 import dev.kartograph.analysis.TraversalDispatch
+import dev.kartograph.analysis.TraversalEdges
 import dev.kartograph.analysis.TraversalRootResolver
 import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.export.LanguageTraversalCodec
@@ -181,13 +182,14 @@ internal object TraversalCommand {
         // 넘겨 root-not-found의 원문 id와 exit 64를 지킨다.
         val resolver = TraversalRootResolver(snapshot.graph)
         val scope = TestSourceScope.select(snapshot.graph, options.roots.mapNotNull { resolver.resolve(it)?.id?.value }, options.includeTests)
-        val traversal = LanguageTraversal.traverse(scope.graph, options.roots, direction, options.dispatch, options.depth,
-            options.maxReached, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured, rootGraph = snapshot.graph, classHops = options.classHops,
-            modeledCalls = PersistenceModeledCalls.select(scope.graph, persistence))
+        // 순회와 graphRevision이 같은 간선 조립(콜백 흐름 분석 포함)을 한 번만 쓴다.
+        val assembled = TraversalEdges.prepare(scope.graph, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured)
+        val traversal = LanguageTraversal.traverse(assembled, options.roots, direction, options.dispatch, options.depth, options.maxReached,
+            rootGraph = snapshot.graph, classHops = options.classHops, modeledCalls = PersistenceModeledCalls.select(scope.graph, persistence))
         val limitations = traversal.limitations + scope.limitations + snapshot.limitations + listOfNotNull(freshness)
         val revision = options.revision ?: snapshot.revision ?: GitRevision.cleanHead(Path.of(options.project))
         val metadata = LanguageTraversalMetadata(options.generatedAt, options.project, revision,
-            LanguageTraversalCodec.graphRevision(scope.graph, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured))
+            LanguageTraversalCodec.graphRevision(scope.graph, assembled.edges, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured))
         output.print(LanguageTraversalCodec.render(traversal.copy(limitations = limitations), metadata))
         return if (traversal.rootNotFound) 64 else 0
     }

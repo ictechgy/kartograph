@@ -4,6 +4,7 @@ import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
+import dev.kartograph.export.LanguageTraversalCodec
 import dev.kartograph.export.McpJsonCodec
 import dev.kartograph.export.QuerySnapshot
 import dev.kartograph.export.QuerySnapshotCodec
@@ -231,6 +232,9 @@ class TraversalCliTest {
         val graph = capture(root)
         val reverse = document(traverse(graph, root))["graphRevision"] as String
         assertTrue(Regex("sha256:[0-9a-f]{64}").matches(reverse), reverse)
+        // 순회가 조립한 간선을 해시에 넘겨도 snapshot 그래프만으로 다시 낸 해시와 같다.
+        val snapshot = QuerySnapshotCodec.parse(Files.readString(graph))
+        assertEquals(LanguageTraversalCodec.graphRevision(snapshot.graph, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured), reverse)
         val forward = run("reach", "method:p/Main#main([Ljava/lang/String;)V", "--graph-file", graph.toString(), "--project", root.toString())
         assertEquals(0, forward.status, forward.error)
         assertEquals(reverse, document(forward)["graphRevision"])

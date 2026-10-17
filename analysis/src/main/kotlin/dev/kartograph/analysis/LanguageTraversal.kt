@@ -128,6 +128,26 @@ public object LanguageTraversal {
     ): LanguageTraversalResult = traverse(graph, TraversalEdges.assemble(graph, enclosuresCaptured, callbackFactsCaptured), requested, direction, dispatch,
         maxDepth, maxReached, enclosuresCaptured, callbackFactsCaptured, rootGraph, classHops, modeledCalls)
 
+    /**
+     * [TraversalEdges.prepare]로 조립해 둔 간선으로 순회한다. 같은 그래프의 해시를 함께 내는 호출부가 간선을 두 번 조립하지
+     * 않게 한다. 순회할 그래프와 두 캡처 여부는 [prepared]의 값이고, 나머지 매개변수는 위 [traverse]와 같다.
+     *
+     * @param prepared 순회할 그래프에서 조립한 간선이다
+     * @param rootGraph root 요청을 해석할 그래프다. 기본은 [prepared]의 그래프다
+     */
+    public fun traverse(
+        prepared: AssembledTraversalEdges,
+        requested: List<String>,
+        direction: TraversalDirection,
+        dispatch: TraversalDispatch = TraversalDispatch.CANDIDATES,
+        maxDepth: Int = MAX_DEPTH,
+        maxReached: Int = MAX_REACHED,
+        rootGraph: CodeGraph = prepared.graph,
+        classHops: TraversalClassHops = TraversalClassHops.ALL,
+        modeledCalls: Set<ExternalCall> = emptySet(),
+    ): LanguageTraversalResult = traverse(prepared.graph, prepared.assembled, requested, direction, dispatch, maxDepth, maxReached,
+        prepared.enclosuresCaptured, prepared.callbackFactsCaptured, rootGraph, classHops, modeledCalls)
+
     /** 이미 만든 순회 간선으로 순회한다. 테스트가 임의의 콜백 간선으로 계산을 검증할 때 쓴다. */
     internal fun traverse(
         graph: CodeGraph,

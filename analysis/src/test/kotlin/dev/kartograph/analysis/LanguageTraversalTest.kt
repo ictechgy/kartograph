@@ -303,6 +303,30 @@ class LanguageTraversalTest {
     }
 
     @Test
+    fun `prepared edges traverse like edges assembled inside the traversal`() {
+        repeat(200) { seed ->
+            val random = Random(80_000 + seed)
+            val graph = classGraph(random)
+            val names = graph.nodeIds.map { it.value }
+            val requested = List(random.nextInt(1, 5)) { if (random.nextInt(8) == 0) "missing-$it" else names.random(random) }
+            val enclosures = random.nextBoolean()
+            val callbacks = random.nextBoolean()
+            val direction = TraversalDirection.entries.random(random)
+            val dispatch = TraversalDispatch.entries.random(random)
+            val classHops = TraversalClassHops.entries.random(random)
+            val maxDepth = if (random.nextBoolean()) LanguageTraversal.MAX_DEPTH else random.nextInt(1, 5)
+            val prepared = TraversalEdges.prepare(graph, enclosures, callbacks)
+            assertEquals(TraversalEdges.build(graph, enclosures, callbacks), prepared.edges, "seed $seed edges")
+            assertEquals(
+                LanguageTraversal.traverse(graph, requested, direction, dispatch, maxDepth, enclosuresCaptured = enclosures,
+                    callbackFactsCaptured = callbacks, classHops = classHops),
+                LanguageTraversal.traverse(prepared, requested, direction, dispatch, maxDepth, classHops = classHops),
+                "seed $seed",
+            )
+        }
+    }
+
+    @Test
     fun `member-only stops a member change at its class but keeps class-level usages`() {
         val graph = viewModelGraph()
         val root = listOf("method:app/Http#get()V")
