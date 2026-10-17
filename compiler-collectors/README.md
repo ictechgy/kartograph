@@ -133,6 +133,13 @@ and hand-authored TSV is not compiler proof.
 
 ## Optional enum decisions
 
+This feature is part of the unreleased 0.24.0 preparation; published v0.23.0
+collectors do not include it. Use matching collector/CLI/plugin artifacts from
+the same revision and recompile clients after a library enum changes. Capture
+fresh compatible baseline and current snapshots rather than relabeling an old
+snapshot. Direct JVM clients also need recompilation for the changed public
+GraphNode/QuerySnapshot data-class shapes.
+
 The constants collectors accept a separate `enumDecisions=true` option. Java
 places it inside the existing KartographEvidence plugin argument; Kotlin uses
 `-P plugin:kartograph.compiler-evidence:enumDecisions=true`. Enabled capture writes

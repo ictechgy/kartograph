@@ -207,9 +207,11 @@ recapture evidence. Use the existing `verify-snapshot` workflow for a separate c
 
 ## 0.23.0 upgrade and API compatibility
 
-0.23.0 is an unreleased additive feature preparation. Published v0.22.0 artifacts remain unchanged;
-a newer source build previously reporting 0.22.0 is not the published binary. Version/docs preparation does not
-establish release readiness, publication, or independent installation of 0.23.0.
+[v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0) was published on 2026-10-15
+as a GitHub prerelease with seven assets. Its [release workflow](https://github.com/ictechgy/kartograph/actions/runs/38721915580)
+and Gradle plugin publishing step succeeded. As of 2026-10-17, independent consumption of those public assets
+and the Portal plugin has not been verified here; v0.22.0 remains the latest stable GitHub release.
+The original v0.23.0 tag, assets, packaged documents and checksums remain unchanged.
 
 - New core/index APIs are `CodeGraph.compilerSourceUseEvidence`, `withCompilerSourceUses`,
   `preserveCompilerSourceUsesFrom`, and `CompilerEvidenceIndexer.enrichWithSourceUses`, with eight separate
@@ -242,9 +244,51 @@ The explicit CLI prerequisites and report contract are described above and in [i
 There is no automatic Gradle-plugin or MCP activation. These observations do not establish overall PSI/IDE accuracy,
 performance superiority, runtime behavior, deletion safety or permission to skip tests.
 
+## 0.24.0 upgrade and enum migration
+
+0.24.0 is release preparation. A versioned source build, ordinary CI success, packaged readiness,
+publication and independent public installation are separate gates. The enum feature's
+[source-built Java/Kotlin integration passed](https://github.com/ictechgy/kartograph/actions/runs/38928690616)
+with `KARTOGRAPH_SNAPSHOT_CLI` enabled, including combined enum/source-use capture and saved queries.
+That result predates this version bump and does not establish 0.24.0 packaged readiness or publication.
+Published v0.23.0 artifacts do not contain the enum-expansion feature.
+
+- Build matching CLI, Gradle plugin, collector and direct-library modules from the same 0.24.0 revision.
+  Do not combine the published v0.23.0 collector with the new CLI or identify an artifact by its version
+  string alone: the enum feature initially landed on main while main still reported 0.23.0.
+- Rebuild and capture **both baseline and current revisions** with the same compatible tool version,
+  scope and capture settings. The baseline needs a complete enum inventory; it does not need decision
+  evidence. The current build needs `enumDecisions=true`, a fresh completed compiler witness and
+  `snapshot --include-enum-decisions` for source-located candidates. Do not relabel an old snapshot's
+  version or interpret missing inventory/evidence as a complete empty set.
+- An enum change in a library requires recompiling its clients to capture their current decisions.
+  This first slice attributes decisions only within a unique claimed compiler output root;
+  dependency-only and shadowed-root attribution remains unresolved even after an otherwise valid build.
+- Direct JVM library consumers must recompile. `GraphNode.enumConstants` and
+  `QuerySnapshot.enumDecisionEvidence` change public Kotlin data-class constructor/`copy` shapes.
+  Defaulted parameters do not preserve all previously compiled JVM call sites.
+  Old readers can reject the new `ENUM_CONSTANT` attribute or lose optional enum evidence.
+  There is no lossless downgrade promise; snapshot merge/aggregation with captured enum decisions
+  is currently rejected.
+- Enum inventory `null` means unavailable; `[]` is a captured complete empty enum. The captured
+  full inventory is retained when a view prunes constant field nodes. Conflicted captures cannot
+  become a complete inventory by unioning their cases.
+- To retain both channels, enable collector `enumDecisions=true` and `callPositions=true`, then pass
+  both `--include-enum-decisions` and `--include-source-uses` to snapshot capture. The channels have
+  separate evidence/coverage and do not add ordinary CALL or retention edges.
+- Supported candidates are authored default/else and the finite standard-factory membership forms
+  below. General equality, arbitrary filters and dynamic/custom collection semantics remain outside
+  this slice. Kotlin `!in` is supported; authored `!contains`/`.not()` is counted unsupported without
+  emitting an inner positive fact. The actual collector fixture uses JDK 17; its conditional Java 21
+  null/pattern-label branch has not been executed. JDK 21 product CI does not establish that coverage.
+
+A candidate is a review location, not proof of an executed path or defect. Saved enum analysis uses
+captured source hashes and does not recheck live source/build freshness; use a separate verification/build
+when freshness is required. See the [query contract](IMPACT.md#opt-in-enum-expansion-candidates).
+
 ## Opt-in enum expansion decisions
 
-The unreleased source feature adds a separate enum decision channel. Build matching
+The 0.24.0 preparation adds a separate enum decision channel. Build matching
 CLI, index/export, Gradle plugin and collector artifacts from the same revision.
 It does not add dependency or execution edges.
 
