@@ -27,8 +27,11 @@ trap 'rm -f "$LOG" "$RESOURCE_XML"' EXIT
 mkdir -p "$(dirname "$RESOURCE_XML")"
 printf '%s\n' '<resources><string name="kartograph_producer_evidence">before</string></resources>' >"$RESOURCE_XML"
 
-if ! "$GRADLE_8" --no-daemon --console=plain -p "$FIXTURE" kartographSnapshotDebug --rerun-tasks >"$LOG" 2>&1; then
-    cat "$LOG" >&2
+if "$GRADLE_8" --no-daemon --console=plain -p "$FIXTURE" kartographSnapshotDebug --rerun-tasks >"$LOG" 2>&1; then
+    :
+else
+    status=$?
+    python3 Scripts/resource_process_diagnostics.py producer-initial-snapshot "$status" "$LOG"
     if grep -Fq 'unwitnessed-class-root' "$LOG"; then
         echo 'snapshot rejected with unwitnessed-class-root: the resource producer witness is not wired or did not cover R.jar' >&2
     fi
@@ -61,7 +64,9 @@ if "$BINARY" verify-snapshot --graph-file "$SNAPSHOT" --project "$FIXTURE" --sco
     python3 Scripts/verify-agp-8-resource-producer.py
     echo '1단계 + 후보 A 완료: application snapshot(실물 R.jar 포함)이 검증 시점에 matched evidence로 검증됐다'
     exit 0
+else
+    status=$?
 fi
-cat "$LOG" >&2
+python3 Scripts/resource_process_diagnostics.py producer-initial-verification "$status" "$LOG"
 echo 'verification did not reach matched; inspect the reasons above' >&2
 exit 1

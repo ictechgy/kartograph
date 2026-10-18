@@ -4,9 +4,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import subprocess
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1]
+run_process = runpy.run_path(str(Path(__file__).with_name("resource_process_diagnostics.py")))["run"]
 
 
 def require(condition, message):
@@ -43,8 +44,8 @@ def main():
     original = xml.read_bytes()
     try:
         xml.write_bytes(original + b"\n<!-- producer-only XML tamper -->\n")
-        result = subprocess.run(command + ["kartographSnapshotDebug", "-x", "processDebugResources"],
-                                cwd=ROOT, text=True, capture_output=True, timeout=600)
+        result = run_process(command + ["kartographSnapshotDebug", "-x", "processDebugResources"],
+                             cwd=ROOT, timeout=600, phase="producer-tamper-snapshot")
         log = result.stdout + result.stderr
         (output / "tamper.log").write_text(log, encoding="utf-8")
         require(result.returncode != 0, "XML tamper unexpectedly published a snapshot")
@@ -56,15 +57,15 @@ def main():
                 "failed capture changed the previously published snapshot")
     finally:
         xml.write_bytes(original)
-    result = subprocess.run(command + ["kartographSnapshotDebug", "--rerun-tasks"],
-                            cwd=ROOT, text=True, capture_output=True, timeout=600)
+    result = run_process(command + ["kartographSnapshotDebug", "--rerun-tasks"],
+                         cwd=ROOT, timeout=600, phase="producer-restored-rebuild")
     (output / "rebuilt.log").write_text(result.stdout + result.stderr, encoding="utf-8")
     require(result.returncode == 0, "restored producer rebuild failed")
     binary = ROOT / "cli/build/install/kartograph/bin/kartograph"
-    result = subprocess.run([str(binary), "verify-snapshot", "--graph-file", str(snapshot),
+    result = run_process([str(binary), "verify-snapshot", "--graph-file", str(snapshot),
                              "--project", str(project), "--input-bindings",
                              str(project / "build/kartograph/debug-input-bindings.json")],
-                            cwd=ROOT, text=True, capture_output=True, timeout=600)
+                            cwd=ROOT, timeout=600, phase="producer-rebuilt-verification")
     require(result.returncode == 0 and json.loads(result.stdout).get("status") == "matched",
             "rebuilt resource producer did not restore matched snapshot")
     print(json.dumps({"format": "kartograph-resource-producer-regression", "version": 1,
