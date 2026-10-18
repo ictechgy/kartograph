@@ -18,6 +18,14 @@ SNAPSHOT="$FIXTURE/build/reports/kartograph/debug-snapshot.json"
 BINDINGS="$FIXTURE/build/kartograph/debug-input-bindings.json"
 LOG="$(mktemp "${TMPDIR:-/tmp}/kartograph-app-snapshot.XXXXXX")"
 trap 'rm -f "$LOG"' EXIT
+RESOURCE_XML="$FIXTURE/src/main/res/values/kartograph_producer_evidence.xml"
+if [[ -e "$RESOURCE_XML" || -L "$RESOURCE_XML" ]]; then
+    echo 'resource-producer fixture path already exists; refusing to overwrite it' >&2
+    exit 1
+fi
+trap 'rm -f "$LOG" "$RESOURCE_XML"' EXIT
+mkdir -p "$(dirname "$RESOURCE_XML")"
+printf '%s\n' '<resources><string name="kartograph_producer_evidence">before</string></resources>' >"$RESOURCE_XML"
 
 if ! "$GRADLE_8" --no-daemon --console=plain -p "$FIXTURE" kartographSnapshotDebug --rerun-tasks >"$LOG" 2>&1; then
     cat "$LOG" >&2
@@ -33,8 +41,8 @@ fi
 if ! grep -q 'R.jar' "$SNAPSHOT"; then
     cat >&2 <<'NOTE'
 the captured scope contains no R.jar class root, so this fixture cannot exercise the
-application R.jar contract yet. Add src/main/res/values/strings.xml so processDebugResources
-emits R.jar, re-run, and record which class root carries it (1단계 남은 진단).
+application R.jar contract yet. The owned src/main/res/values/kartograph_producer_evidence.xml fixture should make
+processDebugResources emit R.jar; inspect producer wiring and captured class roots.
 NOTE
     exit 4
 fi
@@ -51,7 +59,7 @@ fi
 if "$BINARY" verify-snapshot --graph-file "$SNAPSHOT" --project "$FIXTURE" --scope "$SCOPE" \
     --input-bindings "$BINDINGS" >"$LOG" 2>&1; then
     python3 Scripts/verify-agp-8-resource-producer.py
-    echo '1단계 + 후보 A 완료: application snapshot(실물 R.jar 포함)이 matched evidence로 검증됐다'
+    echo '1단계 + 후보 A 완료: application snapshot(실물 R.jar 포함)이 검증 시점에 matched evidence로 검증됐다'
     exit 0
 fi
 cat "$LOG" >&2

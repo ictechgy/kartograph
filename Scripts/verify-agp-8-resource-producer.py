@@ -22,7 +22,7 @@ def main():
     project = ROOT / "fixtures/agp-8-smoke"
     snapshot = project / "build/reports/kartograph/debug-snapshot.json"
     witness = project / "build/kartograph/witnesses/processDebugResources/witness.json"
-    xml = project / "src/main/res/values/strings.xml"
+    xml = project / "src/main/res/values/kartograph_producer_evidence.xml"
     output = ROOT / "build/reports/agp-8-resource-producer"
     output.mkdir(parents=True, exist_ok=True)
     command = [str(Path(os.environ["GRADLE_8_HOME"]) / "bin/gradle"),
