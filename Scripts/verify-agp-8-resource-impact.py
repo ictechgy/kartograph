@@ -15,6 +15,7 @@ PACKAGE = "dev/kartograph/compat"
 LAYOUTS = ("screen", "child", "parent", "unrelated")
 LIMITATION = "XML identity and exact nonfinal R ownership are captured; XML file impact and include-to-code mapping remain unavailable."
 TIMEOUT = 600
+ABSENT_ROOT = "src/declaredAbsent/res"
 
 
 def require(condition, message):
@@ -87,12 +88,15 @@ def verify_resource_bindings(snapshot, xml_hashes):
     require(facts.get("admission") == "unverified" and facts.get("namespace") == PACKAGE.replace("/", "."),
             "unexpected raw resource facts namespace or admission")
     require(bindings.get("scope") == facts.get("scope") == snapshot.get("scope")
-            and bindings.get("namespace") == facts.get("namespace"), "resource scope/namespace mismatch")
+            and bindings.get("namespace") == facts.get("namespace")
+            and bindings.get("scope") == "::debug", "resource scope/namespace mismatch")
     definitions = {row["path"]: row for row in facts["definitions"]}
     outcomes = {row["key"]["name"]: row for row in bindings["outcomes"]}
     require(len(outcomes) == len(bindings["outcomes"])
             and set(outcomes) == {row["key"]["name"] for row in facts["definitions"]},
             "resource key outcomes are not exhaustive")
+    require(all(row["key"] == {"namespace": PACKAGE.replace("/", "."), "type": "layout", "name": row["key"]["name"]}
+                for row in [*facts["definitions"], *bindings["outcomes"]]), "unexpected resource key namespace/type")
     for name in LAYOUTS:
         path = "src/main/res/layout/" + name + ".xml"
         require(path in definitions and definitions[path]["sourceSha256"] == xml_hashes[name],
@@ -101,10 +105,17 @@ def verify_resource_bindings(snapshot, xml_hashes):
                 and outcomes[name].get("unavailable") is None, "exact nonfinal R field was not admitted")
     roots = sorted((row["input"] for row in facts["roots"]), key=lambda row: row["path"])
     require(roots == bindings["mainRoots"], "captured main inventory differs from admitted inventory")
+    require(any(row["path"] == ABSENT_ROOT for row in roots), "declared absent main root was omitted")
+    require(bindings["producerArtifact"] == ":processDebugResources", "unexpected fixture producer artifact")
+    namespace_bytes = ("namespace=" + PACKAGE.replace("/", ".")).encode("utf-8")
+    expected_options = {"role": "options", "path": "processDebugResources-options",
+                        "sha256": hashlib.sha256(len(namespace_bytes).to_bytes(4, "big") + namespace_bytes).hexdigest()}
+    require(bindings.get("namespaceOptions") == expected_options, "fixture namespace option identity differs")
     producer = [row for row in snapshot["provenance"]["witnesses"]
                 if row["compiler"] == "agp-process-resources"
                 and row["artifact"] == bindings["producerArtifact"] and row["scope"] == bindings["scope"]]
     require(len(producer) == 1, "resource producer missing or ambiguous")
+    require(producer[0]["inputs"].count(expected_options) == 1, "fixture namespace option is not witnessed")
     require(sorted((row for row in producer[0]["inputs"] if row["role"] == "android-resources"),
                    key=lambda row: row["path"]) == roots, "producer byte roots do not cover captured inventory")
     require(producer[0]["outputs"] == [bindings["output"]]
@@ -115,7 +126,7 @@ def verify_resource_bindings(snapshot, xml_hashes):
                 for row in facts["includes"]), "literal include fact missing")
     return {"status": "captured", "scope": bindings["scope"], "namespace": bindings["namespace"],
             "boundFields": [outcomes[name]["field"] for name in LAYOUTS],
-            "mainRootCount": len(roots), "literalInclude": "parent-to-child"}
+            "mainRootCount": len(roots), "declaredAbsentRoot": "captured", "literalInclude": "parent-to-child"}
 
 
 def verify_junit(directory):
@@ -181,7 +192,8 @@ def prepare(project):
             and "org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21" in build,
             "fixture toolchain changed; update the bounded experiment deliberately")
     with (project / "build.gradle").open("a", encoding="utf-8") as stream:
-        stream.write("\ndependencies { testImplementation 'junit:junit:4.13.2' }\n")
+        stream.write("\nandroid.sourceSets.main.res.srcDir('src/declaredAbsent/res')\n"
+                     "dependencies { testImplementation 'junit:junit:4.13.2' }\n")
     write(project, "gradle.properties", "android.nonFinalResIds=true\nandroid.nonTransitiveRClass=true\n")
     for name in LAYOUTS:
         body = ('<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" '
@@ -248,6 +260,7 @@ def main():
             require(freshness.get("status") == "matched", "resource snapshot is not verified")
             require(source_hashes == {str(path.relative_to(project)): digest(path) for path in source_paths},
                     "code/test sources changed during XML-only experiment")
+            require(not (project / ABSENT_ROOT).exists(), "declared absent fixture root unexpectedly exists")
             admitted = verify_resource_bindings(json.loads(snapshot.read_text(encoding="utf-8")),
                 {name: digest(path) for name, path in layout_paths.items()})
             executed = verify_junit(project / "build/test-results/testDebugUnitTest")

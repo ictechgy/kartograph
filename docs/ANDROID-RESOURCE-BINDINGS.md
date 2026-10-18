@@ -10,6 +10,8 @@ All declared main roots, including absent roots, must match the copied facts inv
 
 The capture adapter retains its trusted, quiescent build precondition and its documented caps. Descriptor-relative no-follow checks do not make hostile concurrent mutation safe or establish an atomic snapshot. Unsupported descriptor providers, external roots, observed symlinks/special files, limits, invalid XML, incomplete inventories and unavailable producer evidence leave the optional channel unavailable with a bounded reason. Ordinary snapshot behavior remains available where its existing checks pass. Existing compiler freshness checks still reject stale producer inputs and changed outputs.
 
+If the optional facts/bindings exceed the existing snapshotMaxMiB cap, the task drops both records, adds a fixed snapshot-size-limit reason, restores the producer inventory-unverified limitation, and renders the ordinary snapshot under the same cap. An ordinary snapshot that still exceeds the cap fails as before. No size failure is treated as an empty resource inventory.
+
 ## Recorded structure
 
 androidResources remains the original unverified facts channel. Its presence alone does not admit mapping.
@@ -34,6 +36,6 @@ The codec validates recorded cross-field consistency only. It performs no live f
 
 Canonical snapshots reject dangling bound fields or lost required flags. Clients constructing a pruned graph view must explicitly remove the entire binding record and retain an unavailable diagnostic, rather than trim per-key outcomes. Harmless source-location enrichment preserves bindings.
 
-The first real gate is the existing AGP8.7.3/Gradle8.10.2/KGP2.0.21 application fixture with non-final R fields, Java17 and SDK35. It checks four exact layout fields, caller/test witnesses, unrelated exclusions, literal include facts, unchanged code/test sources and XML-only stale→rebuild→matched behavior. XML impact remains explicitly unmapped at this stage.
+The first real gate is the existing AGP8.7.3/Gradle8.10.2/KGP2.0.21 application fixture with non-final R fields, Java17 and SDK35. It explicitly registers a main resource directory that remains absent and requires its row in facts, bindings and producer inputs in both phases. The AGP SourceDirectories.Layered.all contract supplies registered source folders; the real fixture must confirm absent-root preservation for this supported toolchain. It checks four exact layout fields, caller/test witnesses, unrelated exclusions, literal include facts, unchanged code/test sources and XML-only stale→rebuild→matched behavior. XML impact remains explicitly unmapped at this stage.
 
 Final/inlined IDs, configuration/overlay winners, custom-view links, resource IDs, navigation, data binding/view binding and Android inflation are not covered by this channel.

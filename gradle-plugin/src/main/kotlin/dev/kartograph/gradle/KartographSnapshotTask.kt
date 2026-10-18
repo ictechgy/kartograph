@@ -325,7 +325,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
                 scope = scope.get(), provenance = before, processorGenerations = compilerFacts.processorGenerations,
                 processorOutputs = outputObservations, androidResourceEvidence = resourceEvidence.facts,
                 androidResourceBindings = resourceEvidence.bindings)
-            val content = QuerySnapshotCodec.render(snapshot, compact = true, maximumBytes = snapshotMaximumBytes)
+            val content = AndroidResourceSnapshotEvidence.render(snapshot, snapshotMaximumBytes)
             SnapshotOutput(content, indexed, before, located)
         }
         val finalVerification = ProvenanceVerifier.verify(prepared.provenance, project, scope.get(), bindings)

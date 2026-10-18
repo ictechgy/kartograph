@@ -88,27 +88,33 @@ class ResourceExperimentContractTest(unittest.TestCase):
     def test_binding_receipt_requires_exact_scope_roots_xml_fields_and_include(self):
         namespace = MODULE.PACKAGE.replace("/", ".")
         root = {"role": "android-resources", "path": "src/main/res", "sha256": "a" * 64}
+        absent_root = {"role": "android-resources", "path": MODULE.ABSENT_ROOT, "sha256": "d" * 64}
+        roots = [absent_root, root]
+        namespace_bytes = ("namespace=" + namespace).encode("utf-8")
+        options = {"role": "options", "path": "processDebugResources-options",
+                   "sha256": MODULE.hashlib.sha256(len(namespace_bytes).to_bytes(4, "big") + namespace_bytes).hexdigest()}
         output = {"role": "classes", "path": "build/R.jar", "sha256": "b" * 64}
         definitions = [{"id": name, "path": "src/main/res/layout/" + name + ".xml",
                         "sourceSha256": "c" * 64, "key": {"namespace": namespace, "type": "layout", "name": name}}
                        for name in MODULE.LAYOUTS]
         facts = {"admission": "unverified", "scope": "::debug", "namespace": namespace,
-                 "roots": [{"input": root}], "definitions": definitions,
+                 "roots": [{"input": item} for item in roots], "definitions": definitions,
                  "includes": [{"sourceDefinitionId": "parent", "kind": "literal",
                                "target": {"namespace": namespace, "type": "layout", "name": "child"}}]}
-        bindings = {"scope": "::debug", "namespace": namespace, "mainRoots": [root],
+        bindings = {"scope": "::debug", "namespace": namespace, "mainRoots": roots, "namespaceOptions": options,
                     "producerArtifact": ":processDebugResources", "output": output,
                     "outcomes": [{"key": row["key"], "field": MODULE.field(row["key"]["name"]), "unavailable": None}
                                  for row in definitions]}
         snapshot = {"scope": "::debug", "androidResources": facts, "androidResourceBindings": bindings,
                     "provenance": {"inputs": [output], "witnesses": [
                         {"scope": "::debug", "compiler": "agp-process-resources", "artifact": ":processDebugResources",
-                         "inputs": [root], "outputs": [output]}]}}
+                         "inputs": [*roots, options], "outputs": [output]}]}}
         hashes = {name: "c" * 64 for name in MODULE.LAYOUTS}
         receipt = MODULE.verify_resource_bindings(snapshot, hashes)
         self.assertEqual(receipt["boundFields"], [MODULE.field(name) for name in MODULE.LAYOUTS])
         for mutation in ("absent", "namespace", "scope", "field", "missing-key", "duplicate-key",
-                         "xml", "roots", "producer", "output", "include"):
+                         "xml", "roots", "producer", "output", "include", "uniform-scope",
+                         "uniform-artifact", "uniform-key-namespace", "options", "absent-root"):
             with self.subTest(mutation=mutation):
                 value = copy.deepcopy(snapshot)
                 binding = value["androidResourceBindings"]
@@ -116,6 +122,20 @@ class ResourceExperimentContractTest(unittest.TestCase):
                     value["androidResourceBindings"] = None
                 elif mutation in ("namespace", "scope"):
                     binding[mutation] = "other"
+                elif mutation == "uniform-scope":
+                    value["scope"] = binding["scope"] = value["androidResources"]["scope"] = "other"
+                    value["provenance"]["witnesses"][0]["scope"] = "other"
+                elif mutation == "uniform-artifact":
+                    binding["producerArtifact"] = value["provenance"]["witnesses"][0]["artifact"] = ":other"
+                elif mutation == "uniform-key-namespace":
+                    for row in [*binding["outcomes"], *value["androidResources"]["definitions"]]:
+                        row["key"]["namespace"] = "other"
+                elif mutation == "options":
+                    binding["namespaceOptions"]["sha256"] = "f" * 64
+                elif mutation == "absent-root":
+                    binding["mainRoots"] = [root]
+                    value["androidResources"]["roots"] = [{"input": root}]
+                    value["provenance"]["witnesses"][0]["inputs"] = [root, options]
                 elif mutation == "field":
                     binding["outcomes"][0]["field"] = "field:other/R$layout#screen:I"
                 elif mutation == "missing-key":

@@ -2,6 +2,9 @@ package dev.kartograph.gradle
 
 import dev.kartograph.core.*
 import dev.kartograph.index.*
+import dev.kartograph.export.QuerySnapshot
+import dev.kartograph.export.QuerySnapshotCodec
+import dev.kartograph.export.QuerySnapshotSizeException
 import java.nio.file.Path
 
 /** Gradle build 실행 경계 안의 선택적 리소스 채널이다. 일반 CLI scan에는 적용하지 않는다. */
@@ -11,6 +14,19 @@ internal object AndroidResourceSnapshotEvidence {
         val bindings: AndroidResourceBindingEvidence? = null,
         val limitations: List<String> = emptyList(),
     )
+
+    /** 선택 채널만 상한을 넘기면 일반 snapshot을 같은 byte 상한으로 다시 렌더링한다. */
+    fun render(snapshot: QuerySnapshot, maximumBytes: Int): String = try {
+        QuerySnapshotCodec.render(snapshot, compact = true, maximumBytes = maximumBytes)
+    } catch (error: QuerySnapshotSizeException) {
+        if (snapshot.androidResourceEvidence == null && snapshot.androidResourceBindings == null) throw error
+        val ordinary = snapshot.copy(androidResourceEvidence = null, androidResourceBindings = null,
+            limitations = (snapshot.limitations.filterNot {
+                it.startsWith("android-resource-bindings-") || it.startsWith("android-resource-layout-coverage:")
+            } + "android-resource-bindings-unavailable: snapshot-size-limit" +
+                ResourceProcessWitnesses.resourceLimitations(snapshot.provenance?.witnesses.orEmpty())).distinct().sorted())
+        QuerySnapshotCodec.render(ordinary, compact = true, maximumBytes = maximumBytes)
+    }
 
     fun capture(
         project: Path,

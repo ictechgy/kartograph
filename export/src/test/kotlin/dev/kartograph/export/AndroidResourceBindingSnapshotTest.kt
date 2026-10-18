@@ -67,7 +67,7 @@ class AndroidResourceBindingSnapshotTest {
         assertFailsWith<IllegalArgumentException> { snapshot.copy(graph = pruned) }
         val text = QuerySnapshotCodec.render(snapshot)
         assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.parse(rewrite(text) { document ->
-            rows(document["nodes"]).removeIf { obj(it)["id"] == "field:dev/app/R\$layout#other:I" }
+            rows(obj(document["graph"])["nodes"]).removeIf { obj(it)["usr"] == "field:dev/app/R\$layout#other:I" }
         }) }
         val enriched = CodeGraph(snapshot.graph.nodes.values.map { it.copy(location = SourceLocation("src/R.java", 1)) }, snapshot.graph.edges)
         assertEquals(snapshot.androidResourceBindings, snapshot.copy(graph = enriched).androidResourceBindings)
