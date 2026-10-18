@@ -19,7 +19,7 @@ BINDINGS="$FIXTURE/build/kartograph/debug-input-bindings.json"
 LOG="$(mktemp "${TMPDIR:-/tmp}/kartograph-app-snapshot.XXXXXX")"
 trap 'rm -f "$LOG"' EXIT
 
-if ! "$GRADLE_8" --no-daemon --console=plain -p "$FIXTURE" kartographSnapshotDebug >"$LOG" 2>&1; then
+if ! "$GRADLE_8" --no-daemon --console=plain -p "$FIXTURE" kartographSnapshotDebug --rerun-tasks >"$LOG" 2>&1; then
     cat "$LOG" >&2
     if grep -Fq 'unwitnessed-class-root' "$LOG"; then
         echo 'snapshot rejected with unwitnessed-class-root: the resource producer witness is not wired or did not cover R.jar' >&2
@@ -50,6 +50,7 @@ if [[ -z "$SCOPE" ]]; then
 fi
 if "$BINARY" verify-snapshot --graph-file "$SNAPSHOT" --project "$FIXTURE" --scope "$SCOPE" \
     --input-bindings "$BINDINGS" >"$LOG" 2>&1; then
+    python3 Scripts/verify-agp-8-resource-producer.py
     echo '1단계 + 후보 A 완료: application snapshot(실물 R.jar 포함)이 matched evidence로 검증됐다'
     exit 0
 fi
