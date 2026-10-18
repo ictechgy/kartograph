@@ -23,6 +23,8 @@ internal fun sourceFrozenImpact(value: ImpactReport): ImpactReport = value.copy(
     changed = frozenItems(value.changed, ::impactNode), affected = frozenItems(value.affected, ::impactNode),
     unresolved = frozenItems(value.unresolved) { it.copy(candidates = frozen(it.candidates)) },
     limitations = frozen(value.limitations),
+    selectedByRevision = Collections.unmodifiableMap(value.selectedByRevision.mapValues { (_, ids) -> frozenSet(ids) }),
+    resourceSelections = Collections.unmodifiableMap(LinkedHashMap(value.resourceSelections)),
     navigation = value.navigation.copy(filters = filter(value.navigation.filters),
         observed = summary(value.navigation.observed), filtered = summary(value.navigation.filtered)),
     budgets = value.budgets.copy(visited = Collections.unmodifiableMap(LinkedHashMap(value.budgets.visited)),

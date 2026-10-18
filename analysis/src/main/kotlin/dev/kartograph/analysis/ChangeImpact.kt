@@ -9,13 +9,17 @@ import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.qualifiedName
+import java.util.Collections
 
 /** 한 시점의 그래프와 해당 시점에서 관측한 보존·한계다. */
 public data class ImpactInput(
     val graph: CodeGraph,
     val retention: List<RetentionEvidence> = emptyList(),
     val limitations: List<String> = emptyList(),
-)
+    val androidResources: AndroidResourceImpactContext? = null,
+) {
+    init { androidResources?.requireMatches(graph) }
+}
 
 /** 경로를 구성한 그래프 시점이며, 서로 다른 시점의 간선을 섞지 않는다. */
 public enum class ImpactRevision { BASE, CURRENT }
@@ -94,7 +98,12 @@ public data class ImpactNode(
 )
 
 /** 입력에 대응하는 사실을 확정하지 못한 경우와 명시적으로 선택할 후보다. */
-public data class ImpactUnresolved(val requested: String, val reason: String, val candidates: List<NodeId> = emptyList())
+public data class ImpactUnresolved(
+    val requested: String,
+    val reason: String,
+    val candidates: List<NodeId> = emptyList(),
+    val revision: ImpactRevision? = null,
+)
 
 /** 결과 수·깊이·방문 예산에 따른 잘림을 각각 알린다. */
 public data class ImpactTruncation(val results: Boolean = false, val depth: Boolean = false, val budget: Boolean = false)
@@ -145,6 +154,10 @@ public data class ImpactReport(
     val truncated: ImpactTruncation,
     val navigation: ImpactNavigation = ImpactNavigation(),
     val budgets: ImpactBudget = ImpactBudget(),
+    /** 실제 seed admission이다. graph에 같은 ID가 존재한다는 사실과 구분한다. */
+    val selectedByRevision: Map<ImpactRevision, Set<NodeId>> = emptyMap(),
+    /** JVM 간선 경로에 합성하지 않은 XML/include/field 선택 근거다. */
+    val resourceSelections: Map<ImpactRevision, AndroidResourceImpactSelection> = emptyMap(),
 )
 
 /** 변경 선언의 역방향 사용 관계를 시점별로 탐색하는 순수 질의다. */
@@ -187,6 +200,32 @@ public object ChangeImpact {
                 else -> unresolved += ImpactUnresolved(symbol, "ambiguous", matches)
             }
         }
+        val knownResourcePaths = inputs.values.flatMap { it.androidResources?.facts?.definitions.orEmpty() }
+            .mapTo(hashSetOf()) { it.file.path }
+        val resourceFiles = files.distinct().sorted().filter { it in knownResourcePaths || AndroidResourceImpact.isResourceFile(it) }
+        val resourceSelections = if (resourceFiles.isEmpty()) emptyMap() else inputs.mapValues { (_, input) ->
+            AndroidResourceImpact.select(input.graph, input.androidResources, resourceFiles)
+        }
+        for ((revision, selection) in resourceSelections) {
+            limitations += selection.limitations.map { "${revision.name.lowercase()}: $it" }
+            for (receipt in selection.files) {
+                val reason = when (receipt.status) {
+                    AndroidResourceImpactFileStatus.MATCHED, AndroidResourceImpactFileStatus.ABSENT -> null
+                    AndroidResourceImpactFileStatus.EVIDENCE_UNAVAILABLE -> "resourceEvidenceUnavailable"
+                    AndroidResourceImpactFileStatus.BINDING_UNAVAILABLE -> "resourceBindingUnavailable"
+                    AndroidResourceImpactFileStatus.OUTSIDE_ROOT -> "resourceOutsideRoots"
+                    AndroidResourceImpactFileStatus.INVALID_PATH -> "resourceInvalidPath"
+                    AndroidResourceImpactFileStatus.BUDGET_EXCEEDED -> "resourceBudgetExceeded"
+                }
+                if (reason != null) unresolved += ImpactUnresolved(receipt.requested, reason, revision = revision)
+            }
+            for (resource in selection.resources.filter { it.outcome.unavailable != null }) {
+                unresolved += ImpactUnresolved(
+                    "${resource.key.namespace}:${resource.key.type}/${resource.key.name}",
+                    "resourceFieldUnavailable", revision = revision,
+                )
+            }
+        }
         var fallbackMatches = 0
         for (file in files.distinct().sorted()) {
             var matched = false
@@ -202,15 +241,25 @@ public object ChangeImpact {
                 selected.getValue(revision).addAll(nodes + retained)
                 if (nodes.isNotEmpty() || retained.isNotEmpty()) matched = true
             }
-            if (!matched) unresolved += ImpactUnresolved(file, "unmappedFile")
+            val resourceMatched = resourceSelections.values.any { selection ->
+                selection.files.any { it.requested == file && it.status == AndroidResourceImpactFileStatus.MATCHED }
+            }
+            val resourceRefused = file in resourceFiles &&
+                resourceSelections.values.any { it.status == AndroidResourceImpactStatus.REFUSED }
+            if (!matched && !resourceMatched && !resourceRefused && unresolved.none { it.requested == file }) {
+                unresolved += ImpactUnresolved(file, "unmappedFile")
+            }
         }
         if (fallbackMatches > 0) limitations += "source-file-candidates: $fallbackMatches node match(es) used a source filename instead of an exact project-relative path"
 
-        val changedIds = selected.values.flatten().toSortedSet()
-        // 파일 경로가 이동해도 같은 JVM 선언을 가진 모든 시점의 호출자를 조사한다.
+        val ordinaryChangedIds = selected.values.flatten().toSortedSet()
+        // 기존 symbol/source/retention 선택은 이동한 JVM 선언의 모든 시점을 조사한다.
         for ((revision, input) in inputs) {
-            selected.getValue(revision).addAll(changedIds.filter { input.graph.contains(it) })
+            selected.getValue(revision).addAll(ordinaryChangedIds.filter { input.graph.contains(it) })
         }
+        // 리소스만으로 승인된 field는 그 revision에만 추가한다. 다른 시점의 동명 field는 근거가 아니다.
+        for ((revision, selection) in resourceSelections) selected.getValue(revision).addAll(selection.selectedFields)
+        val changedIds = selected.values.flatten().toSortedSet()
         val paths = sortedMapOf<NodeId, MutableList<ImpactPath>>()
         val pathOmissions = sortedMapOf<NodeId, MutableList<ImpactPathOmission>>()
         val observedIn = sortedMapOf<NodeId, MutableSet<ImpactRevision>>()
@@ -218,7 +267,7 @@ public object ChangeImpact {
         val visitedBy = sortedMapOf<ImpactRevision, Int>()
         val visitLimitReached = sortedSetOf<ImpactRevision>()
         var depthTruncated = false
-        var budgetTruncated = false
+        var budgetTruncated = resourceSelections.values.any { it.status == AndroidResourceImpactStatus.REFUSED }
         var pathEdgesUsed = 0
         var pathOmissionCount = 0
         for ((revision, input) in inputs) {
@@ -377,6 +426,10 @@ public object ChangeImpact {
                 offset > 0 && orderedCandidates.isNotEmpty(), pageEnd < orderedCandidates.size,
             ),
             budgets = ImpactBudget(visitLimit, pathLimit, visitedBy, visitLimitReached, pathEdgesUsed, pathOmissionCount),
+            selectedByRevision = Collections.unmodifiableMap(selected.mapValues { (_, ids) ->
+                Collections.unmodifiableSet(ids.toSortedSet())
+            }),
+            resourceSelections = Collections.unmodifiableMap(resourceSelections),
         )
     }
 

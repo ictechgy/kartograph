@@ -2,6 +2,8 @@ package dev.kartograph.cli
 
 import dev.kartograph.analysis.ChangeImpact
 import dev.kartograph.analysis.ImpactFilter
+import dev.kartograph.analysis.AndroidResourceImpactContext
+import dev.kartograph.analysis.ImpactRevision
 import dev.kartograph.analysis.ImpactInput
 import dev.kartograph.analysis.ImpactSort
 import dev.kartograph.analysis.ReachabilityAnalyzer
@@ -96,13 +98,18 @@ internal object SavedSnapshotOperations {
         depth: Int, limit: Int, visitLimit: Int, pathLimit: Int, offset: Int, filters: ImpactFilter, sort: ImpactSort): ImpactReport {
         compatible(current, base)
         val report = ChangeImpact.analyze(
-            current = ImpactInput(current.graph, current.retention, current.limitations + dev.kartograph.export.ExternalRetentionCaveats.messages(current.externalRetentionContexts)), symbols = symbols, files = files,
-            base = base?.let { ImpactInput(it.graph, it.retention, it.limitations + dev.kartograph.export.ExternalRetentionCaveats.messages(it.externalRetentionContexts)) },
+            current = ImpactInput(current.graph, current.retention, current.limitations + dev.kartograph.export.ExternalRetentionCaveats.messages(current.externalRetentionContexts),
+                androidResources = resourceContext(current)), symbols = symbols, files = files,
+            base = base?.let { ImpactInput(it.graph, it.retention, it.limitations + dev.kartograph.export.ExternalRetentionCaveats.messages(it.externalRetentionContexts),
+                androidResources = resourceContext(it)) },
             depth = depth, limit = limit, visitLimit = visitLimit, pathLimit = pathLimit, offset = offset, filters = filters, sort = sort)
         val limitations = report.limitations + "saved-graph: impact uses captured inputs; revision and scope labels do not prove build freshness" +
             if (current.scope == null) listOf("snapshot-scope: project and variant labels were not provided") else emptyList()
         return report.copy(limitations = limitations.sorted())
     }
+
+    private fun resourceContext(snapshot: QuerySnapshot) = AndroidResourceImpactContext(
+        snapshot.androidResourceEvidence, snapshot.androidResourceBindings, snapshot.provenance, snapshot.scope)
 
     /** 원래의 unpaged 변경 seed만 revision별로 투영한다. graph 영향 후보는 seed가 아니다. */
     fun sourceImpact(current: SnapshotFiles.Loaded, base: SnapshotFiles.Loaded?, symbols: List<String>, files: List<String>,
@@ -111,12 +118,14 @@ internal object SavedSnapshotOperations {
         val ordinary = impactReport(current.snapshot, base?.snapshot, symbols, files, depth, limit,
             visitLimit, pathLimit, offset, ImpactFilter(), ImpactSort.REVIEW)
         val loaded = buildMap { put("current", current); base?.let { put("base", it) } }
-        val revisions = loaded.mapValues { (_, input) ->
+        val revisions = loaded.mapValues { (revision, input) ->
             val graph = input.snapshot.graph
-            val changed = ordinary.changed.map { it.node.id }.filter { it in graph.nodes }
+            val selectedRevision = if (revision == "base") ImpactRevision.BASE else ImpactRevision.CURRENT
+            val changed = ordinary.selectedByRevision[selectedRevision].orEmpty().sorted()
             val status = when {
                 ordinary.changed.isEmpty() && ordinary.unresolved.isNotEmpty() -> "unresolved"
                 symbols.isEmpty() && files.isEmpty() -> "noChanges"
+                changed.isEmpty() && ordinary.unresolved.any { it.revision == selectedRevision } -> "unresolved"
                 changed.isEmpty() -> "noTargetsInRevision"
                 ordinary.unresolved.isNotEmpty() -> "partial"
                 else -> "resolved"

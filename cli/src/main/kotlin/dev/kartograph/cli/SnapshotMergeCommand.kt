@@ -114,6 +114,9 @@ internal object SnapshotMergeCommand {
     /** 합칠 수 있는 구성원인지 확인한다. 다른 버전·옵션·scope의 사실을 섞지 않는다. */
     private fun requireCompatible(members: List<AggregateMember>) {
         val snapshots = members.map { it.snapshot }
+        if (snapshots.any { it.androidResourceEvidence != null }) {
+            throw MergeException("members with captured Android resources are not supported by snapshot merge")
+        }
         if (snapshots.any { it.graph.compilerSourceUseEvidence != null }) {
             throw MergeException("members with captured compiler source uses are not supported by snapshot merge")
         }

@@ -112,6 +112,10 @@ internal object AndroidSnapshotTasks {
             task.configure { snapshot ->
                 snapshot.dependsOn(processTaskName)
                 snapshot.buildWitnessFiles.from(resourceWitness)
+                variant.sources.res?.all?.let {
+                    snapshot.androidMainResourceDirectories.from(witnessResDirs)
+                    snapshot.androidResourceProducerArtifact.set(if (project.path == ":") ":$processTaskName" else "${project.path}:$processTaskName")
+                }
             }
         }
         val javaInputs = components.associate { component ->

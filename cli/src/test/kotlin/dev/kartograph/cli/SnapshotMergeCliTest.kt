@@ -1,5 +1,6 @@
 package dev.kartograph.cli
 
+import dev.kartograph.core.AndroidResourceEvidence
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.NodeId
 import dev.kartograph.export.ExternalInputBindingsCodec
@@ -124,6 +125,25 @@ class SnapshotMergeCliTest {
             val result = fixture.merge()
             assertEquals(2, result.first, result.second)
             assertContains(result.second, "captured compiler call positions")
+        }
+    }
+
+    @Test
+    fun `merge refuses captured-empty Android resources without silently dropping them`(@TempDir root: Path) {
+        for (keepProvenance in listOf(true, false)) {
+            val fixture = Fixture(root.resolve(if (keepProvenance) "resource-provenance" else "resource-no-provenance"))
+            val original = QuerySnapshotCodec.parse(Files.readString(fixture.coreSnapshot))
+            val captured = original.copy(
+                androidResourceEvidence = AndroidResourceEvidence(requireNotNull(original.scope), "dev.example",
+                    emptyList(), emptyList(), emptyList()),
+                provenance = original.provenance.takeIf { keepProvenance },
+            )
+            Files.writeString(fixture.coreSnapshot, QuerySnapshotCodec.render(captured))
+            val result = fixture.merge()
+            assertEquals(2, result.first, result.second)
+            assertContains(result.second, "captured Android resources")
+            assertTrue(result.stdout.isEmpty())
+            assertFalse(Files.exists(fixture.mergedBindings))
         }
     }
 

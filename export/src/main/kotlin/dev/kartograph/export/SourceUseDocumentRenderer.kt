@@ -107,13 +107,44 @@ private fun sourceSnapshotMetadata(
         "source edit snapshots, identities and revisions must match"
     }
     require(summaryLimit == null || summaryLimit in 1..100_000) { "impact summary limit must be 1..100000" }
+    if (report.selectedByRevision.isNotEmpty()) {
+        require(report.selectedByRevision.keys.map { it.name.lowercase() }.toSet() == originals.keys) {
+            "source edits require the exact revision selection inventory"
+        }
+        require(report.selectedByRevision.values.flatten().toSet() == report.changed.map { it.node.id }.toSet()) {
+            "source edit selected seeds do not match changed declarations"
+        }
+        report.selectedByRevision.forEach { (revision, ids) ->
+            val graph = originals.getValue(revision.name.lowercase()).graph
+            require(ids.all(graph::contains)) { "source edit seed is absent from its revision graph" }
+        }
+    }
+    if (report.resourceSelections.isNotEmpty()) {
+        require(report.resourceSelections.keys.map { it.name.lowercase() }.toSet() == originals.keys &&
+            report.selectedByRevision.keys == report.resourceSelections.keys) {
+            "resource source edits require authoritative revision selections"
+        }
+        report.resourceSelections.forEach { (revision, selection) ->
+            val snapshot = originals.getValue(revision.name.lowercase())
+            val binding = snapshot.androidResourceBindings
+            val expectedBinding = binding?.let { dev.kartograph.analysis.AndroidResourceImpactBinding(
+                it.resourceFactsSha256, it.producerArtifact, it.producerSha256, it.output) }
+            require(selection.scope == snapshot.scope && selection.namespace == snapshot.androidResourceEvidence?.namespace &&
+                selection.binding == expectedBinding &&
+                selection.selectedFields.all { it in report.selectedByRevision.getValue(revision) }) {
+                "resource impact selection does not match its snapshot channels"
+            }
+        }
+    }
     identities.forEach { (key, input) ->
         val snapshot = originals.getValue(key)
         require(input.toolVersion == snapshot.toolVersion && input.scope == snapshot.scope && input.revision == snapshot.revision) {
             "source edit identity metadata must match its snapshot"
         }
-        require(sections.getValue(key).changed == report.changed.asSequence().map { it.node.id }
-            .filter { it in snapshot.graph.nodes }.toList()) { "source edit changed IDs must preserve ordinary report order" }
+        val revision = dev.kartograph.analysis.ImpactRevision.valueOf(key.uppercase())
+        val expected = report.selectedByRevision[revision]?.sorted() ?: report.changed.asSequence().map { it.node.id }
+            .filter { it in snapshot.graph.nodes }.toList()
+        require(sections.getValue(key).changed == expected) { "source edit changed IDs must preserve revision selections" }
     }
     return Collections.unmodifiableMap(originals.mapValues { (_, snapshot) ->
         SourceSnapshotMetadata(snapshot.toolVersion, snapshot.scope, snapshot.revision)

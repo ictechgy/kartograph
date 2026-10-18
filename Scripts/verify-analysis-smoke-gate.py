@@ -407,6 +407,65 @@ class SmokeDiagnostics:
 COUNTER_FIELDS = ("nodes", "findings", "rows")
 
 
+def public_jvm_identity(value):
+    """공개 자체 코드의 정규 owner와 JVM field/method descriptor만 허용한다."""
+    segment = r"[A-Za-z0-9_$-]+"
+    owner = segment + r"(?:/" + segment + r")*"
+    project_owner = r"dev/kartograph/" + owner
+    scalar = r"(?:[BCDFIJSZ]|L" + owner + r";)"
+    field_type = r"\[*" + scalar
+    method_name = r"(?:<init>|<clinit>|[A-Za-z_$][A-Za-z0-9_$-]*)"
+    patterns = (
+        r"class:" + project_owner,
+        r"field:" + project_owner + r"#[A-Za-z_$][A-Za-z0-9_$-]*:" + field_type,
+        r"method:" + project_owner + r"#" + method_name + r"\((?:" + field_type + r")*\)(?:V|" + field_type + r")",
+    )
+    return len(value) <= 512 and any(re.fullmatch(pattern, value) for pattern in patterns)
+
+
+def analysis_failure_receipt(name, result):
+    """실패한 자체 분석에서 공개 JVM identity만 제한적으로 추출한다. 위치·환경·stderr는 내보내지 않는다."""
+    if result.returncode == 0:
+        return None
+    stdout = result.stdout or ""
+    stderr = result.stderr or ""
+    maximum_text = 256 * 1024
+    maximum_ids = 10
+    stdout_bytes = stdout.encode("utf-8")
+    inspected = stdout_bytes[:maximum_text].decode("utf-8", errors="ignore")
+    if len(stdout_bytes) > maximum_text:
+        inspected = inspected.rsplit("\n", 1)[0] if "\n" in inspected else ""
+    identities = []
+    rejected = 0
+    observed = 0
+    for line in inspected.splitlines():
+        if not line.startswith("unreachable\t"):
+            continue
+        observed += 1
+        fields = line.split("\t", 2)
+        identity = fields[1] if len(fields) >= 2 else ""
+        if not public_jvm_identity(identity):
+            rejected += 1
+        elif len(identities) < maximum_ids:
+            identities.append(identity)
+    return {
+        "format": "kartograph-analysis-process-failure",
+        "command": name if name in {"graph", "dead", "dead_private", "cycles", "rules", "metrics"} else "unknown",
+        "returncode": result.returncode,
+        "stderrBytes": len(stderr.encode("utf-8")),
+        "stderrSha256": hashlib.sha256(stderr.encode("utf-8")).hexdigest(),
+        "stderrContent": "omitted-untrusted-text",
+        "unsupportedOutputShape": observed == 0,
+        "stdoutSha256": hashlib.sha256(stdout_bytes).hexdigest(),
+        "hashBasis": "decoded-stream-utf8",
+        "observedUnreachableRows": observed,
+        "identities": identities,
+        "rejectedIdentities": rejected,
+        "inputTruncated": len(stdout_bytes) > maximum_text,
+        "identitiesTruncated": observed - rejected > len(identities),
+    }
+
+
 def check_contract(name, contract_kind, res, measurement, contract_failures):
     """한 명령의 출력이 자체 분석 계약을 만족하는지 검사하고, 센 수치를 measurement에 기록한다."""
     if res.returncode != 0:
@@ -471,6 +530,8 @@ def run_measurement_pass(commands, env, samples, counters, contract_failures, di
             cpu_after = observe(diagnostics.cpu_snapshot)
             observe(diagnostics.after_child, cpu_before, cpu_after, len(samples[name]), name)
 
+        if res.returncode != 0:
+            print(json.dumps(analysis_failure_receipt(name, res), sort_keys=True), file=sys.stderr)
         if res.returncode == 2:
             print(f"error: command '{name}' failed with tool failure (exit 2)", file=sys.stderr)
             return 2
