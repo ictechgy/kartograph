@@ -407,6 +407,22 @@ class SmokeDiagnostics:
 COUNTER_FIELDS = ("nodes", "findings", "rows")
 
 
+def public_jvm_identity(value):
+    """공개 자체 코드의 정규 owner와 JVM field/method descriptor만 허용한다."""
+    segment = r"[A-Za-z0-9_$-]+"
+    owner = segment + r"(?:/" + segment + r")*"
+    project_owner = r"dev/kartograph/" + owner
+    scalar = r"(?:[BCDFIJSZ]|L" + owner + r";)"
+    field_type = r"\[*" + scalar
+    method_name = r"(?:<init>|<clinit>|[A-Za-z_$][A-Za-z0-9_$-]*)"
+    patterns = (
+        r"class:" + project_owner,
+        r"field:" + project_owner + r"#[A-Za-z_$][A-Za-z0-9_$-]*:" + field_type,
+        r"method:" + project_owner + r"#" + method_name + r"\((?:" + field_type + r")*\)(?:V|" + field_type + r")",
+    )
+    return len(value) <= 512 and any(re.fullmatch(pattern, value) for pattern in patterns)
+
+
 def analysis_failure_receipt(name, result):
     """실패한 자체 분석에서 공개 JVM identity만 제한적으로 추출한다. 위치·환경·stderr는 내보내지 않는다."""
     if result.returncode == 0:
@@ -415,8 +431,9 @@ def analysis_failure_receipt(name, result):
     stderr = result.stderr or ""
     maximum_text = 256 * 1024
     maximum_ids = 10
-    inspected = stdout[:maximum_text]
-    if len(stdout) > maximum_text:
+    stdout_bytes = stdout.encode("utf-8")
+    inspected = stdout_bytes[:maximum_text].decode("utf-8", errors="ignore")
+    if len(stdout_bytes) > maximum_text:
         inspected = inspected.rsplit("\n", 1)[0] if "\n" in inspected else ""
     identities = []
     rejected = 0
@@ -427,9 +444,7 @@ def analysis_failure_receipt(name, result):
         observed += 1
         fields = line.split("\t", 2)
         identity = fields[1] if len(fields) >= 2 else ""
-        if len(identity) > 512 or not re.fullmatch(
-            r"(?:class|method|field):dev/kartograph/[A-Za-z0-9_$/#;:()<>\[\].-]+", identity
-        ):
+        if not public_jvm_identity(identity):
             rejected += 1
         elif len(identities) < maximum_ids:
             identities.append(identity)
@@ -441,12 +456,12 @@ def analysis_failure_receipt(name, result):
         "stderrSha256": hashlib.sha256(stderr.encode("utf-8")).hexdigest(),
         "stderrContent": "omitted-untrusted-text",
         "unsupportedOutputShape": observed == 0,
-        "stdoutSha256": hashlib.sha256(stdout.encode("utf-8")).hexdigest(),
+        "stdoutSha256": hashlib.sha256(stdout_bytes).hexdigest(),
         "hashBasis": "decoded-stream-utf8",
         "observedUnreachableRows": observed,
         "identities": identities,
         "rejectedIdentities": rejected,
-        "inputTruncated": len(stdout) > maximum_text,
+        "inputTruncated": len(stdout_bytes) > maximum_text,
         "identitiesTruncated": observed - rejected > len(identities),
     }
 

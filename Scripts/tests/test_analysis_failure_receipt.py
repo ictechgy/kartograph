@@ -40,9 +40,25 @@ class AnalysisFailureReceiptTest(unittest.TestCase):
         stdout = "\n".join("unreachable\t" + value for value in [
             "/private/secret", "class:outside/Secret", "class:dev/kartograph/Bad name",
             "class:dev/kartograph/" + "A" * 513,
+            "class:dev/kartograph/../../private", "class:dev/kartograph/Foo#anything",
+            "class:dev/kartograph//Foo", "field:dev/kartograph/Foo#value:V",
+            "method:dev/kartograph/Foo#read(I",
         ])
         receipt = MODULE.analysis_failure_receipt("dead", self.result(stdout))
-        self.assertEqual(receipt["rejectedIdentities"], 4)
+        self.assertEqual(receipt["rejectedIdentities"], 9)
+        self.assertEqual(receipt["identities"], [])
+
+    def test_valid_class_method_and_field_grammar(self):
+        for identity in [
+            "class:dev/kartograph/Outer$1",
+            "field:dev/kartograph/Outer#items:[Ljava/lang/String;",
+            "method:dev/kartograph/Outer#<init>()V",
+            "method:dev/kartograph/Outer#read([ILjava/lang/String;)Ljava/lang/Object;",
+        ]:
+            self.assertTrue(MODULE.public_jvm_identity(identity), identity)
+        receipt = MODULE.analysis_failure_receipt("dead", self.result("é" * (128 * 1024) +
+            "\nunreachable\tclass:dev/kartograph/OutsidePrefix\tignored\n"))
+        self.assertTrue(receipt["inputTruncated"])
         self.assertEqual(receipt["identities"], [])
 
     def test_receipt_caps_scanned_text_and_identity_count(self):
