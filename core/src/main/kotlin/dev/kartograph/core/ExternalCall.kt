@@ -20,11 +20,21 @@ public data class ExternalCall(
     /** 해당 API 호출의 값·대상 해석에 대응하는 라이브러리 모델 식별자다. 해석 완료 여부는 resolution으로 구분한다. */
     val model: String? = null,
 ) : Comparable<ExternalCall> {
-    /** 기존 JVM identity 규칙과 동일한 외부 메서드 식별자다. */
-    public val target: NodeId get() = NodeId("method:$owner#$name$descriptor")
+    /** 기존 JVM identity 규칙과 동일한 외부 메서드 식별자다. 불변 생성 인자에서 한 번 계산하며 copy는 새로 계산한다. */
+    public val target: NodeId = NodeId("method:$owner#$name$descriptor")
 
-    /** 동일한 줄의 여러 호출도 명령 순서로 구분해 결정적으로 정렬한다. */
-    override fun compareTo(other: ExternalCall): Int = compareValuesBy(this, other,
-        { it.caller.value }, { it.target.value }, { it.kind.name },
-        { it.ordinal }, { it.location?.path.orEmpty() }, { it.location?.line ?: 0 })
+    /** 동일한 줄의 여러 호출도 명령 순서로 구분하며 비교마다 selector 배열·identity 문자열을 만들지 않는다. */
+    override fun compareTo(other: ExternalCall): Int {
+        var comparison = caller.value.compareTo(other.caller.value)
+        if (comparison != 0) return comparison
+        comparison = target.value.compareTo(other.target.value)
+        if (comparison != 0) return comparison
+        comparison = kind.name.compareTo(other.kind.name)
+        if (comparison != 0) return comparison
+        comparison = ordinal.compareTo(other.ordinal)
+        if (comparison != 0) return comparison
+        comparison = location?.path.orEmpty().compareTo(other.location?.path.orEmpty())
+        if (comparison != 0) return comparison
+        return (location?.line ?: 0).compareTo(other.location?.line ?: 0)
+    }
 }

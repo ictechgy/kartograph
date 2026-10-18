@@ -1,0 +1,428 @@
+#!/usr/bin/env python3
+"""고정 baseline과 이미 빌드한 후보를 같은 입력으로 관측한다. smoke 판정은 바꾸지 않는다."""
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+import threading
+import time
+
+BASELINE = "465000337131de3fc8e302a9027f6ef417c581e0"
+MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
+PROFILES = ("graph", "dead", "architecture")
+LIMIT = 32 * 1024 * 1024
+
+
+class DiagnosticError(Exception):
+    """원문 경로나 child 로그를 노출하지 않는 실패 코드다."""
+
+    def __init__(self, reason, receipt=None):
+        super().__init__(reason)
+        self.receipt = receipt
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def file_record(path, relative):
+    before = path.stat()
+    if not stat.S_ISREG(before.st_mode) or before.st_size > 1024 * 1024 * 1024:
+        raise DiagnosticError("invalid-inventory-file")
+    checksum = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            checksum.update(chunk)
+    after = path.stat()
+    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+        raise DiagnosticError("inventory-changed-during-read")
+    return {"path": relative, "size": after.st_size, "mtimeNs": after.st_mtime_ns,
+            "sha256": checksum.hexdigest()}
+
+
+def inventory(directory):
+    if not directory.is_dir() or directory.is_symlink():
+        raise DiagnosticError("missing-inventory-directory")
+    rows = []
+    for path in sorted(directory.rglob("*")):
+        relative = path.relative_to(directory).as_posix()
+        if len(relative) > 1024 or not re.fullmatch(r"[A-Za-z0-9_.$/()+@, =-]+", relative):
+            raise DiagnosticError("invalid-inventory-name")
+        if path.is_symlink():
+            raise DiagnosticError("symlink-in-inventory")
+        if path.is_dir():
+            continue
+        rows.append(file_record(path, relative))
+        if len(rows) > 100000:
+            raise DiagnosticError("inventory-too-large")
+    if not rows:
+        raise DiagnosticError("empty-inventory")
+    return rows
+
+
+def root_inventory(root):
+    result = {}
+    for module in MODULES:
+        rows = inventory(root / module / "build/classes/kotlin/main")
+        if not any(row["path"].endswith(".class") for row in rows):
+            raise DiagnosticError("missing-classes")
+        result[module] = rows
+    return result
+
+
+def require_equal(before, after, reason):
+    if before != after:
+        raise DiagnosticError(reason)
+
+
+def java_identity(home):
+    # 선택된 JDK의 실행 파일·runtime image·release를 해시한다. 전체 OS identity는 아니다.
+    return [file_record(home / name, name)
+            for name in ("bin/java", "bin/javac", "release", "lib/modules")]
+
+
+def kill_group(process):
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
+    """각 child의 두 stream을 제한하고 timeout에는 소유한 process group을 끝낸다."""
+    if not re.fullmatch(r"[a-z-]{1,64}", phase):
+        raise DiagnosticError("invalid-process-phase")
+    started = time.monotonic_ns()
+    process = subprocess.Popen(list(map(str, arguments)), cwd=cwd, env=env,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               start_new_session=True)
+    streams = [bytearray(), bytearray()]
+    overflow = threading.Event()
+    failures = []
+    def drain(index, stream):
+        try:
+            while True:
+                chunk = stream.read(65536)
+                if not chunk:
+                    break
+                if len(streams[index]) + len(chunk) > limit:
+                    overflow.set()
+                    kill_group(process)
+                    break
+                streams[index].extend(chunk)
+        except OSError:
+            failures.append("stream-read-failed")
+        finally:
+            stream.close()
+    readers = [threading.Thread(target=drain, args=(i, stream))
+               for i, stream in enumerate((process.stdout, process.stderr))]
+    for reader in readers:
+        reader.start()
+    timed_out = False
+    wait_failed = False
+    rss = {"status": "unavailable", "reason": "wait4-not-supported"}
+    def wait_owned():
+        nonlocal rss
+        if not hasattr(os, "wait4"):
+            process.wait(timeout=timeout)
+            return
+        deadline = time.monotonic() + timeout
+        while True:
+            pid, status, usage = os.wait4(process.pid, os.WNOHANG)
+            if pid:
+                process.returncode = os.waitstatus_to_exitcode(status)
+                if sys.platform in ("linux", "darwin") and 0 < usage.ru_maxrss < 2**63:
+                    rss = {"status": "observed", "peakBytes": int(usage.ru_maxrss) *
+                           (1024 if sys.platform == "linux" else 1),
+                           "scope": "owned-wait4-child-peak-rss; kernel-accounting-not-live-heap"}
+                else:
+                    rss = {"status": "unavailable", "reason": "unknown-rusage-units"}
+                return
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(arguments, timeout)
+            time.sleep(0.005)
+    try:
+        wait_owned()
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        kill_group(process)
+        process.wait(timeout=10)
+    except OSError:
+        wait_failed = True
+    finally:
+        # 정상 종료 뒤 남은 자손도 pipe를 계속 잡지 못하게 한다.
+        kill_group(process)
+        if process.returncode is None:
+            process.wait(timeout=10)
+        for reader in readers:
+            reader.join(timeout=10)
+    result = {"exit": process.returncode, "stdout": bytes(streams[0]), "stderr": bytes(streams[1]),
+              "wallNanos": time.monotonic_ns() - started, "rss": rss, "phase": phase}
+    reason = ("child-stream-not-closed" if any(reader.is_alive() for reader in readers) else
+              "child-timeout" if timed_out else "child-output-limit" if overflow.is_set() else
+              "child-stream-failed" if failures else "child-wait-failed" if wait_failed else None)
+    if reason:
+        raise DiagnosticError(reason, summary(result))
+    return result
+
+
+def summary(result):
+    return {"phase": result.get("phase", "child"), "exit": result["exit"], "wallNanos": result["wallNanos"], "rss": result["rss"],
+            **{stream: {"bytes": len(result[stream]), "sha256": digest(result[stream])}
+               for stream in ("stdout", "stderr")}}
+
+
+def successful(arguments, cwd, env, timeout=120, phase="child"):
+    result = run(arguments, cwd, env, timeout, phase=phase)
+    if result["exit"] != 0:
+        raise DiagnosticError("required-child-failed", summary(result))
+    return result
+
+
+def validate_probe(result, profile):
+    try:
+        data = json.loads(result["stdout"])
+    except (ValueError, UnicodeError):
+        raise DiagnosticError("invalid-probe-output")
+    if not isinstance(data, dict):
+        raise DiagnosticError("invalid-probe-output")
+    numeric = ("entryUptimeMillis", "invocationNanos", "currentThreadAllocatedBytes",
+               "nodes", "edges", "externalCalls", "classFiles", "parsedClasses", "cacheHits",
+               "cacheMisses", "readNanos", "cacheReadNanos", "parseNanos", "assemblyNanos",
+               "hierarchyNanos", "runtimeNanos", "dispatchNanos", "cacheWriteNanos", "totalNanos")
+    expected_keys = set(numeric) | {"profile", "allocationScope"}
+    if (set(data) != expected_keys or data.get("profile") != profile or result["stderr"]
+            or data.get("allocationScope") !=
+            "index-invocation-current-thread-only; excludes-other-threads-and-startup"
+            or any(not (type(data[key]) is int and 0 <= data[key] < 2**63)
+                   for key in numeric if not (key == "currentThreadAllocatedBytes" and data[key] is None))):
+        raise DiagnosticError("invalid-probe-output")
+    return data
+
+
+def check_profile_counts(records):
+    for profile in PROFILES:
+        values = [tuple(row[key] for key in ("nodes", "edges", "externalCalls", "classFiles",
+                                            "parsedClasses", "cacheHits", "cacheMisses"))
+                  for row in records if row["profile"] == profile]
+        if len(values) != 6 or any(value != values[0] for value in values):
+            raise DiagnosticError("profile-structural-counts-changed")
+
+
+def successful_pair(left, right):
+    return left["exit"] == 0 and right["exit"] == 0 and equivalent(left, right)
+
+
+def source_identity(repo, ref, env):
+    result = successful(["git", "rev-parse", "--verify", ref + "^{commit}"], repo, env)
+    commit = result["stdout"].decode("ascii").strip()
+    result = successful(["git", "rev-parse", "--verify", ref + "^{tree}"], repo, env)
+    tree = result["stdout"].decode("ascii").strip()
+    if not all(re.fullmatch(r"[0-9a-f]{40}", value) for value in (commit, tree)):
+        raise DiagnosticError("invalid-source-identity")
+    return {"commit": commit, "tree": tree}
+
+
+def identity_digest(value):
+    return digest(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+
+
+def public_summary(report):
+    # 경로·환경·원문 stream 없이 고정 계수와 identity hash만 log에 남긴다.
+    result = {"format": report["format"], "status": report["status"],
+              "reason": report.get("reason"), "scope": report["scope"],
+              "residualScope": report["residualScope"]}
+    if "failure" in report:
+        result["failure"] = report["failure"]
+    if "sourcesBefore" in report:
+        result["sources"] = report["sourcesBefore"]
+    result["identitySha256"] = {key: identity_digest(report[key]) for key in (
+        "rootsBefore", "projectBefore", "libsBefore", "launchersBefore", "jdkBefore",
+        "probeSourceBefore", "probesBefore") if key in report}
+    result["profiles"] = report.get("profiles", [])
+    result["cli"] = report.get("cli", [])
+    encoded = json.dumps(result, sort_keys=True)
+    if len(encoded.encode("utf-8")) > 65536:
+        raise DiagnosticError("public-summary-too-large")
+    return encoded
+
+
+def equivalent(left, right):
+    # 순서·중복·진단·줄바꿈·종료 코드를 있는 그대로 비교한다.
+    return all(left[key] == right[key] for key in ("exit", "stdout", "stderr"))
+
+
+def schedule():
+    return [(profile, sample, arm) for profile in PROFILES
+            for sample, order in enumerate((("baseline", "candidate"), ("candidate", "baseline"),
+                                            ("baseline", "candidate")), 1) for arm in order]
+
+
+def cli_commands(binary, roots, project):
+    classes = [value for root in roots for value in ("--classes", str(root))]
+    dead = ["dead", *classes, "--project", str(project),
+            "--manifest", str(project / "AndroidManifest.xml"), "--resources", str(project / "res"),
+            "--namespace", "dev.kartograph", "--keep-rules", str(project / ".kartograph-self.pro")]
+    return [
+        ("graph", [binary, "graph", *classes, "--format", "dot"]),
+        ("dead", [binary, *dead, "--strict"]),
+        ("dead_private", [binary, *dead, "--include-private-members", "--strict"]),
+        ("cycles", [binary, "cycles", *classes, "--strict"]),
+        ("rules", [binary, "rules", *classes, "--config", str(project / ".kartograph.yml"), "--strict"]),
+        ("metrics", [binary, "metrics", *classes]),
+    ]
+
+
+def compile_probe(repo, distribution, destination, java_home, env):
+    destination.mkdir()
+    successful([java_home / "bin/javac", "-cp", str(distribution / "lib/*"), "-d", destination,
+                repo / "Scripts/IndexCostProbe.java"], repo, env, phase="compile-probe")
+    return str(destination) + os.pathsep + str(distribution / "lib/*")
+
+
+def experiment(repo, work, env, report):
+    java_home = Path(env["JAVA_HOME"]).resolve(strict=True)
+    jdk_before = java_identity(java_home)
+    report["jdkBefore"] = jdk_before
+    candidate = repo / "cli/build/install/kartograph"
+    if not (candidate / "bin/kartograph").is_file() or not os.access(candidate / "bin/kartograph", os.X_OK):
+        raise DiagnosticError("missing-candidate-distribution")
+    candidate_before = inventory(candidate / "lib")
+    launchers_candidate_before = inventory(candidate / "bin")
+    candidate_source = source_identity(repo, "HEAD", env)
+    probe_source_before = file_record(repo / "Scripts/IndexCostProbe.java", "IndexCostProbe.java")
+    report["probeSourceBefore"] = probe_source_before
+    source_before = root_inventory(repo)
+    frozen = work / "input"
+    for module in MODULES:
+        relative = Path(module) / "build/classes/kotlin/main"
+        shutil.copytree(repo / relative, frozen / relative, copy_function=shutil.copy2)
+    frozen_before = root_inventory(frozen)
+    require_equal(source_before, frozen_before, "frozen-copy-mismatch")
+    report["rootsBefore"] = frozen_before
+    project = work / "project"
+    project.mkdir()
+    (project / "res").mkdir()
+    (project / "AndroidManifest.xml").write_text(
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.kartograph">\n'
+        '    <application/>\n</manifest>\n', encoding="utf-8")
+    for name in (".kartograph-self.pro", ".kartograph.yml"):
+        shutil.copy2(repo / name, project / name)
+    project_before = inventory(project)
+    report["projectBefore"] = project_before
+    baseline = work / "baseline"
+    baseline.mkdir()
+    # shallow checkout에서도 요청한 고정 object만 확보한다.
+    found = run(["git", "cat-file", "-e", BASELINE + "^{commit}"], repo, env, phase="baseline-presence")
+    if found["exit"] != 0:
+        successful(["git", "fetch", "--no-tags", "--depth=1", "origin", BASELINE], repo, env, phase="baseline-fetch")
+    baseline_source = source_identity(repo, BASELINE, env)
+    if baseline_source["commit"] != BASELINE:
+        raise DiagnosticError("baseline-resolution-mismatch")
+    sources_before = {"baseline": baseline_source, "candidate": candidate_source}
+    report["sourcesBefore"] = sources_before
+    archive = work / "baseline.tar"
+    successful(["git", "archive", "--format=tar", "--output", archive, BASELINE], repo, env, phase="baseline-archive")
+    with tarfile.open(archive) as source:
+        source.extractall(baseline, filter="data")
+    for name in ("gradlew", "gradle/wrapper/gradle-wrapper.jar",
+                 "gradle/wrapper/gradle-wrapper.properties", "gradle/verification-metadata.xml"):
+        require_equal((repo / name).read_bytes(), (baseline / name).read_bytes(), "build-tool-identity-mismatch")
+    successful([baseline / "gradlew", "--no-daemon", ":cli:installDist"], baseline, env, timeout=600, phase="baseline-build")
+    distributions = {"baseline": baseline / "cli/build/install/kartograph", "candidate": candidate}
+    libs_before = {arm: inventory(dist / "lib") for arm, dist in distributions.items()}
+    require_equal(candidate_before, libs_before["candidate"], "candidate-rebuilt-or-changed")
+    report["libsBefore"] = libs_before
+    launchers_before = {arm: inventory(dist / "bin") for arm, dist in distributions.items()}
+    require_equal(launchers_candidate_before, launchers_before["candidate"], "candidate-launchers-changed")
+    report["launchersBefore"] = launchers_before
+    require_equal(source_before, root_inventory(repo), "source-roots-changed-before-arms")
+    require_equal(frozen_before, root_inventory(frozen), "frozen-roots-changed-before-arms")
+    require_equal(jdk_before, java_identity(java_home), "selected-jdk-changed-before-arms")
+    classpaths = {arm: compile_probe(repo, dist, work / ("probe-" + arm), java_home, env)
+                  for arm, dist in distributions.items()}
+    probes_before = {arm: inventory(work / ("probe-" + arm)) for arm in distributions}
+    report["probesBefore"] = probes_before
+    roots = [frozen / module / "build/classes/kotlin/main" for module in MODULES]
+    report["profiles"] = []
+    report["cli"] = []
+    try:
+        for profile, sample, arm in schedule():
+            result = successful([java_home / "bin/java", "-cp", classpaths[arm], "IndexCostProbe",
+                                 profile, *roots], project, env, phase="index-probe")
+            data = validate_probe(result, profile)
+            report["profiles"].append({"arm": arm, "sample": sample, **data, "process": summary(result)})
+        check_profile_counts(report["profiles"])
+        commands = {arm: cli_commands(dist / "bin/kartograph", roots, project)
+                    for arm, dist in distributions.items()}
+        all_equal = True
+        for index in range(6):
+            name = commands["baseline"][index][0]
+            results = {arm: run(commands[arm][index][1], project, env, phase="cli-" + name.replace("_", "-"))
+                       for arm in (("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline"))}
+            equal = equivalent(results["baseline"], results["candidate"])
+            all_equal = all_equal and successful_pair(results["baseline"], results["candidate"])
+            report["cli"].append({"command": name, "exactEqual": equal,
+                                 **{arm: summary(result) for arm, result in results.items()}})
+        if not all_equal:
+            raise DiagnosticError("cli-byte-mismatch-or-unsuccessful-exit")
+    finally:
+        report["sourcesAfter"] = {"baseline": source_identity(repo, BASELINE, env),
+                                  "candidate": source_identity(repo, "HEAD", env)}
+        report["launchersAfter"] = {arm: inventory(dist / "bin") for arm, dist in distributions.items()}
+        report["probeSourceAfter"] = file_record(repo / "Scripts/IndexCostProbe.java", "IndexCostProbe.java")
+        report["probesAfter"] = {arm: inventory(work / ("probe-" + arm)) for arm in distributions}
+        require_equal(sources_before, report["sourcesAfter"], "source-commit-or-tree-changed")
+        require_equal(launchers_before, report["launchersAfter"], "distribution-launchers-changed")
+        require_equal(probe_source_before, report["probeSourceAfter"], "probe-source-changed")
+        require_equal(probes_before, report["probesAfter"], "compiled-probes-changed")
+        report["rootsAfter"] = root_inventory(frozen)
+        report["libsAfter"] = {arm: inventory(dist / "lib") for arm, dist in distributions.items()}
+        report["jdkAfter"] = java_identity(java_home)
+        report["projectAfter"] = inventory(project)
+        require_equal(source_before, root_inventory(repo), "source-roots-changed")
+        require_equal(frozen_before, report["rootsAfter"], "frozen-roots-changed")
+        require_equal(libs_before, report["libsAfter"], "distribution-libs-changed")
+        require_equal(jdk_before, report["jdkAfter"], "selected-jdk-changed")
+        require_equal(project_before, report["projectAfter"], "shared-project-changed")
+
+
+def main():
+    repo = Path(__file__).resolve().parents[1]
+    output = repo / "build/reports/index-cost/result.json"
+    report = {"format": "kartograph-index-cost-v1", "baseline": BASELINE, "status": "FAIL",
+              "scope": "frozen-class-and-config-diagnostic; original-source-tree-omitted; separate-from-mandatory-smoke",
+              "residualScope": "process-minus-index-includes-startup-loading-probe-and-shutdown; not-query-only"}
+    try:
+        env = dict(os.environ)
+        if sys.platform != "linux" or not env.get("JAVA_HOME") or not env.get("RUNNER_TEMP"):
+            raise DiagnosticError("required-runner-input-missing")
+        if any(env.get(name) for name in ("CLASSPATH", "JAVA_OPTS", "KARTOGRAPH_OPTS", "JAVA_TOOL_OPTIONS",
+                                         "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS")):
+            raise DiagnosticError("injected-java-options")
+        with tempfile.TemporaryDirectory(prefix="kartograph-index-cost-", dir=env["RUNNER_TEMP"]) as name:
+            experiment(repo, Path(name), env, report)
+        report["status"] = "PASS"
+    except DiagnosticError as error:
+        report["reason"] = str(error)
+        if error.receipt is not None:
+            report["failure"] = error.receipt
+    except Exception:
+        report["reason"] = "unexpected-diagnostic-error"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(public_summary(report))
+    return 0 if report["status"] == "PASS" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
