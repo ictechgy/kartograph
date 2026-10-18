@@ -1,7 +1,10 @@
 package dev.kartograph.analysis
 
 import dev.kartograph.core.*
+import java.lang.management.ManagementFactory
+import kotlin.random.Random
 import kotlin.test.*
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class ChangeImpactTest {
     private fun node(name: String, file: String = "$name.kt") = GraphNode(NodeId("class:p/$name"), name, NodeKind.CLASS,
@@ -323,5 +326,182 @@ class ChangeImpactTest {
         assertEquals(ImpactRelation.DIRECT, fieldChange.affected.single { it.node.id == reader }.relation)
         assertFalse(fieldChange.affected.any { it.node.id == member })
         assertTrue(fieldChange.affected.any { it.node.id == external })
+    }
+
+    @Test fun `changed file and symbol selection keeps exact fallback retention and unresolved results`() {
+        // 정확한 경로, 파일 이름만 남은 옛 위치(대체 매칭), 보존 근거, 그래프 밖 선언의 보존 근거, 대응 없는 파일을 섞는다.
+        val base = ImpactInput(
+            CodeGraph(listOf(node("A", "src/main/kotlin/p/A.kt"), node("B", "B.kt"), node("Gone", "src/main/kotlin/p/Gone.kt"),
+                node("C").copy(id = NodeId("class:other/C"))), emptyList()),
+            retention = listOf(
+                RetentionEvidence(NodeId("class:p/A"), RetentionReason.MANIFEST_COMPONENT, SourceLocation("AndroidManifest.xml", 3)),
+                RetentionEvidence(NodeId("class:p/Absent"), RetentionReason.MANIFEST_COMPONENT, SourceLocation("res/layout/main.xml", 1)),
+            ),
+        )
+        val current = ImpactInput(CodeGraph(listOf(node("A", "src/main/kotlin/p/A.kt"), node("B", "B.kt"), node("B2", "B.kt"), node("C")), emptyList()))
+
+        val result = ChangeImpact.analyze(
+            current,
+            symbols = listOf("p.Gone", "C", "class:p/A", "Nope", "B"),
+            files = listOf("src/main/kotlin/q/B.kt", "B.kt", "AndroidManifest.xml", "res/layout/main.xml", "src/main/kotlin/p/A.kt", "src/main/kotlin/q/B.kt"),
+            base = base,
+        )
+
+        assertEquals(listOf("class:p/A", "class:p/B", "class:p/B2", "class:p/Gone"), result.changed.map { it.node.id.value })
+        assertEquals(listOf(
+            ImpactUnresolved("C", "ambiguous", listOf(NodeId("class:other/C"), NodeId("class:p/C"))),
+            ImpactUnresolved("Nope", "notFound"),
+            ImpactUnresolved("res/layout/main.xml", "unmappedFile"),
+        ), result.unresolved)
+        // q/B.kt는 base의 B와 current의 B·B2를 파일 이름으로만 찾는다(3건). 디렉터리가 없는 B.kt 요청은 정확한 일치라 세지 않는다.
+        assertEquals(3, fallbackCount(result))
+    }
+
+    @Test fun `indexed selection agrees with the previous linear scan on random revisions`() {
+        // 색인 도입 전 선형 필터를 기준 구현으로 두고 선택 집합·미해결 순서·대체 매칭 수가 같은지 무작위 두 시점에서 대조한다.
+        val exercised = mutableSetOf<String>()
+        repeat(400) { seed ->
+            val random = Random(70_000 + seed)
+            val base = randomImpactInput(random)
+            val current = randomImpactInput(random)
+            val symbols = List(random.nextInt(0, 6)) { SYMBOL_POOL.random(random) }
+            val files = List(random.nextInt(0, 8)) { FILE_POOL.random(random) }
+            val expected = legacySelection(listOf(base, current), symbols, files)
+            val result = ChangeImpact.analyze(current, symbols, files, base = base)
+            assertEquals(expected.selected, result.changed.map { it.node.id }.toSet(), "seed $seed")
+            assertEquals(expected.unresolved, result.unresolved, "seed $seed")
+            assertEquals(expected.fallbackMatches, fallbackCount(result), "seed $seed")
+            if (expected.fallbackMatches > 0) exercised += "fallback"
+            if (expected.retainedFiles > 0) exercised += "retained"
+            expected.unresolved.forEach { exercised += it.reason }
+        }
+        // 표본이 모든 선택 분기를 지나야 대조가 의미 있다.
+        assertEquals(setOf("fallback", "retained", "notFound", "ambiguous", "unmappedFile"), exercised)
+    }
+
+    @Test fun `changed files read retention evidence once per revision rather than once per file`() {
+        // 리뷰 지적 재현(perf#2): 파일마다 두 시점의 보존 근거 전체를 다시 걸러 읽기 횟수가 (파일 수 × 보존 근거 수)로 늘었다.
+        val evidence = List(RETENTION_ENTRIES) {
+            RetentionEvidence(NodeId("class:p/A"), RetentionReason.MANIFEST_COMPONENT, SourceLocation("res/layout/screen$it.xml", 1))
+        }
+        fun reads(fileCount: Int): Int {
+            val counted = CountingList(evidence)
+            val data = input(edge("A", "C")).copy(retention = counted)
+            val result = ChangeImpact.analyze(data, files = List(fileCount) { "res/layout/screen$it.xml" }, base = data)
+            assertEquals(listOf(NodeId("class:p/A")), result.changed.map { it.node.id })
+            return counted.reads
+        }
+        assertEquals(reads(1), reads(RETENTION_ENTRIES))
+    }
+
+    @Test fun `file and symbol requests do not rescan every declaration`() {
+        // 리뷰 지적 재현(perf#2): 변경 파일·symbol마다 두 시점의 전체 정점을 다시 걸러 비용이 (요청 수 × 정점 수)로 늘었다.
+        // 파일 이름만 남은 bytecode 위치에서는 정점마다 요청의 파일 이름 문자열을, symbol마다 정점의 qualifiedName을 새로 만들었다.
+        // 시간 대신 같은 그래프에서 요청 수만 바꾼 스레드 할당량 차이로 요청 하나의 비용이 정점 수와 무관한지 본다.
+        val threads = ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean
+        assumeTrue(threads != null && threads.isThreadAllocatedMemorySupported && threads.isThreadAllocatedMemoryEnabled,
+            "thread allocation accounting is unavailable on this JVM")
+        val data = ImpactInput(CodeGraph(List(DECLARATIONS) { node("N$it", "N$it.kt") }, emptyList()))
+        fun allocated(requests: Int, files: Boolean): Long {
+            val requested = List(requests) { if (files) "src/main/kotlin/p/Missing$it.kt" else "Missing$it" }
+            fun select() = if (files) ChangeImpact.analyze(data, files = requested, base = data) else ChangeImpact.analyze(data, requested, base = data)
+            // 첫 실행의 클래스 적재 할당을 빼려고 한 번 먼저 돌린다.
+            select()
+            val before = threads!!.currentThreadAllocatedBytes
+            val result = select()
+            val bytes = threads.currentThreadAllocatedBytes - before
+            assertEquals(requests, result.unresolved.size)
+            return bytes
+        }
+        for (files in listOf(true, false)) {
+            val perRequest = (allocated(MANY_REQUESTS, files) - allocated(FEW_REQUESTS, files)) / (MANY_REQUESTS - FEW_REQUESTS)
+            assertTrue(perRequest < PER_REQUEST_BYTES,
+                "${if (files) "file" else "symbol"} selection allocated $perRequest bytes per request over $DECLARATIONS declarations")
+        }
+    }
+
+    private fun fallbackCount(report: ImpactReport): Int = report.limitations.singleOrNull { it.startsWith("source-file-candidates:") }
+        ?.removePrefix("source-file-candidates: ")?.substringBefore(' ')?.toInt() ?: 0
+
+    private fun randomImpactInput(random: Random): ImpactInput {
+        val nodes = (0 until 12).filter { random.nextInt(3) != 0 }.map { index ->
+            GraphNode(NodeId("class:p/N$index"), NAME_POOL.random(random), NodeKind.CLASS,
+                moduleName = if (random.nextInt(4) == 0) "app" else null, location = PATH_POOL.random(random)?.let(::SourceLocation))
+        }
+        // 일부 보존 근거는 이 시점 그래프에 없는 선언을 가리킨다.
+        val retention = List(random.nextInt(0, 5)) {
+            RetentionEvidence(NodeId("class:p/N${random.nextInt(14)}"), RetentionReason.MANIFEST_COMPONENT,
+                PATH_POOL.random(random)?.let { SourceLocation(it, 1) })
+        }
+        return ImpactInput(CodeGraph(nodes, emptyList()), retention)
+    }
+
+    /** 색인 도입 전 analyze의 symbol·파일 선택 규칙을 그대로 옮긴 기준 결과다. */
+    private data class LegacySelection(val selected: Set<NodeId>, val unresolved: List<ImpactUnresolved>, val fallbackMatches: Int, val retainedFiles: Int)
+
+    private fun legacySelection(inputs: List<ImpactInput>, symbols: List<String>, files: List<String>): LegacySelection {
+        val selected = sortedSetOf<NodeId>()
+        val unresolved = mutableListOf<ImpactUnresolved>()
+        for (symbol in symbols.distinct().sorted()) {
+            val matches = inputs.flatMap { it.graph.nodes.values }
+                .filter { it.id.value == symbol || it.name == symbol || it.qualifiedName == symbol }
+                .map { it.id }.distinct().sorted()
+            when (matches.size) {
+                0 -> unresolved += ImpactUnresolved(symbol, "notFound")
+                1 -> selected += matches.single()
+                else -> unresolved += ImpactUnresolved(symbol, "ambiguous", matches)
+            }
+        }
+        var fallbackMatches = 0
+        var retainedFiles = 0
+        for (file in files.distinct().sorted()) {
+            var matched = false
+            for (input in inputs) {
+                val nodes = input.graph.nodes.values.filter { node ->
+                    val path = node.location?.path ?: return@filter false
+                    if (path == file) true else if ('/' !in path && path == file.substringAfterLast('/')) {
+                        fallbackMatches++
+                        true
+                    } else false
+                }.map { it.id }
+                val retained = input.retention.filter { it.location?.path == file && input.graph.contains(it.nodeId) }.map { it.nodeId }
+                if (retained.isNotEmpty()) retainedFiles++
+                selected += nodes + retained
+                if (nodes.isNotEmpty() || retained.isNotEmpty()) matched = true
+            }
+            if (!matched) unresolved += ImpactUnresolved(file, "unmappedFile")
+        }
+        return LegacySelection(selected, unresolved, fallbackMatches, retainedFiles)
+    }
+
+    /** 원소를 읽은 횟수를 세는 목록이다. 보존 근거를 몇 번 훑는지 시간 대신 결정적으로 확인한다. */
+    private class CountingList<T>(private val items: List<T>) : AbstractList<T>() {
+        var reads = 0
+            private set
+
+        override val size: Int get() = items.size
+
+        override fun get(index: Int): T {
+            reads++
+            return items[index]
+        }
+    }
+
+    private companion object {
+        /** 무작위 그래프의 위치 후보다. null은 위치 없는 선언, 디렉터리 없는 이름은 bytecode의 옛 위치다. */
+        val PATH_POOL = listOf(null, "A.kt", "B.kt", "AndroidManifest.xml", "src/main/kotlin/p/A.kt", "src/test/kotlin/p/A.kt", "x/B.kt", "res/layout/main.xml")
+        val NAME_POOL = listOf("A", "B", "N1", "app", "Shared")
+        val FILE_POOL = listOf("A.kt", "B.kt", "C.kt", "AndroidManifest.xml", "src/main/kotlin/p/A.kt", "src/main/kotlin/q/A.kt",
+            "src/test/kotlin/p/B.kt", "x/B.kt", "res/layout/main.xml", "res/layout/other.xml", "src/")
+        val SYMBOL_POOL = listOf("A", "B", "N1", "app", "Shared", "Missing", "class:p/N1", "class:p/N7", "p.N3", "app.p.N3", "p.N13")
+
+        /** 보존 근거 읽기 횟수 비교에 쓰는 근거 수다. 요청 파일 수와 같게 둔다. */
+        const val RETENTION_ENTRIES = 40
+
+        /** 할당량 비교 그래프의 선언 수와 두 요청 수, 요청 하나에 허용하는 할당 상한이다. */
+        const val DECLARATIONS = 2_000
+        const val FEW_REQUESTS = 4
+        const val MANY_REQUESTS = 68
+        const val PER_REQUEST_BYTES = 8_192L
     }
 }

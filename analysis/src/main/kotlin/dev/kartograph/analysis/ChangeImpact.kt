@@ -190,10 +190,9 @@ public object ChangeImpact {
         val limitations = inputs.flatMap { (revision, input) ->
             input.limitations.map { "${revision.name.lowercase()}: $it" }
         }.toMutableList()
+        val symbolMatches = symbolCandidates(inputs.values, symbols)
         for (symbol in symbols.distinct().sorted()) {
-            val matches = inputs.values.flatMap { it.graph.nodes.values }
-                .filter { it.id.value == symbol || it.name == symbol || it.qualifiedName == symbol }
-                .map { it.id }.distinct().sorted()
+            val matches = symbolMatches[symbol].orEmpty().toList()
             when (matches.size) {
                 0 -> unresolved += ImpactUnresolved(symbol, "notFound")
                 1 -> inputs.forEach { (revision, input) -> if (input.graph.contains(matches.single())) selected.getValue(revision) += matches.single() }
@@ -227,19 +226,16 @@ public object ChangeImpact {
             }
         }
         var fallbackMatches = 0
+        val fileIndexes = if (files.isEmpty()) emptyMap() else inputs.mapValues { (_, input) -> ChangedFileIndex(input) }
         for (file in files.distinct().sorted()) {
             var matched = false
-            for ((revision, input) in inputs) {
-                val nodes = input.graph.nodes.values.filter { node ->
-                    val path = node.location?.path ?: return@filter false
-                    if (path == file) true else if ('/' !in path && path == file.substringAfterLast('/')) {
-                        fallbackMatches++
-                        true
-                    } else false
-                }.map { it.id }
-                val retained = input.retention.filter { it.location?.path == file && input.graph.contains(it.nodeId) }.map { it.nodeId }
-                selected.getValue(revision).addAll(nodes + retained)
-                if (nodes.isNotEmpty() || retained.isNotEmpty()) matched = true
+            for ((revision, index) in fileIndexes) {
+                val nodes = index.exact(file)
+                val fallback = index.filenameOnly(file)
+                val retained = index.retained(file)
+                fallbackMatches += fallback.size
+                selected.getValue(revision).apply { addAll(nodes); addAll(fallback); addAll(retained) }
+                if (nodes.isNotEmpty() || fallback.isNotEmpty() || retained.isNotEmpty()) matched = true
             }
             val resourceMatched = resourceSelections.values.any { selection ->
                 selection.files.any { it.requested == file && it.status == AndroidResourceImpactFileStatus.MATCHED }
@@ -431,6 +427,62 @@ public object ChangeImpact {
             }),
             resourceSelections = Collections.unmodifiableMap(resourceSelections),
         )
+    }
+
+    /**
+     * 요청 symbol마다 두 시점 정점 중 USR·이름·qualifiedName이 같은 선언을 모은다. 값은 NodeId 순서로 정렬된 중복 없는 집합이다.
+     * symbol마다 전체 정점을 다시 거르면 (symbol 수 × 정점 수)번 qualifiedName을 만들어서, 정점을 한 번만 훑고 요청 집합으로 조회한다.
+     * analyze 밖의 작은 함수로 두어, 거대한 analyze 안에서 이 루프가 JIT 컴파일되지 못하고 인터프리터로 도는 것을 피한다.
+     */
+    private fun symbolCandidates(inputs: Collection<ImpactInput>, symbols: List<String>): Map<String, Set<NodeId>> {
+        if (symbols.isEmpty()) return emptyMap()
+        val requested = symbols.toHashSet()
+        val candidates = HashMap<String, MutableSet<NodeId>>()
+        fun add(key: String, id: NodeId) {
+            if (key in requested) candidates.getOrPut(key) { sortedSetOf() } += id
+        }
+        for (input in inputs) for (node in input.graph.nodes.values) {
+            add(node.id.value, node.id)
+            add(node.name, node.id)
+            add(node.qualifiedName, node.id)
+        }
+        return candidates
+    }
+
+    /**
+     * 한 시점에서 변경 파일을 선언으로 바꾸는 경로 색인이다.
+     * 파일마다 전체 정점과 보존 근거를 다시 거르면 비용이 (파일 수 × (정점 수 + 보존 근거 수))로 늘어서, 시점마다 한 번만 만든다.
+     */
+    private class ChangedFileIndex(input: ImpactInput) {
+        /** 위치 경로별 정점이다. 디렉터리가 없는 옛 위치는 경로가 곧 파일 이름이라, 파일 이름 대체 조회도 이 색인을 쓴다. */
+        private val nodesByPath = HashMap<String, MutableList<NodeId>>()
+
+        /** 이 시점 그래프에 있는 선언을 가리키는 보존 근거만 경로별로 모은다. */
+        private val retainedByPath = HashMap<String, MutableList<NodeId>>()
+
+        init {
+            for (node in input.graph.nodes.values) {
+                val path = node.location?.path ?: continue
+                nodesByPath.getOrPut(path) { mutableListOf() } += node.id
+            }
+            for (evidence in input.retention) {
+                val path = evidence.location?.path ?: continue
+                if (input.graph.contains(evidence.nodeId)) retainedByPath.getOrPut(path) { mutableListOf() } += evidence.nodeId
+            }
+        }
+
+        /** 위치 경로가 요청과 정확히 같은 선언이다. */
+        fun exact(file: String): List<NodeId> = nodesByPath[file].orEmpty()
+
+        /**
+         * 디렉터리가 있는 요청을 파일 이름만 남은 위치에 대응시킨 후보다. 파일 이름에는 '/'가 없어 찾은 정점의 위치에도 디렉터리가 없다.
+         * 디렉터리가 없는 요청은 exact에서 이미 맞으므로 대체 후보로 다시 세지 않는다.
+         */
+        fun filenameOnly(file: String): List<NodeId> =
+            if ('/' in file) nodesByPath[file.substringAfterLast('/')].orEmpty() else emptyList()
+
+        /** 그 경로에서 관측한 보존 근거가 가리키는 선언이다. */
+        fun retained(file: String): List<NodeId> = retainedByPath[file].orEmpty()
     }
 
     private fun matches(item: ImpactNode, filter: ImpactFilter): Boolean {
