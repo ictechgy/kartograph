@@ -88,15 +88,33 @@ unzip -q "cli/build/distributions/kartograph-$VERSION.zip" -d "$TEMPORARY_DIRECT
 BINARY="$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/bin/kartograph"
 [[ "$("$BINARY" --version)" == "kartograph $VERSION" ]]
 Scripts/verify-cli-contract.sh "$BINARY"
-KARTOGRAPH_BINARY="$BINARY" KARTOGRAPH_PR_SCRIPT="$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/Scripts/check-pr.py" \
-    python3 -m unittest discover -s Scripts/tests -v
+# 일반 test 실패(1)만 기록하고 독립적인 배포 검증을 계속한다. 다른 오류는 즉시 종료한다.
+if KARTOGRAPH_BINARY="$BINARY" KARTOGRAPH_PR_SCRIPT="$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/Scripts/check-pr.py" \
+    python3 -m unittest discover -s Scripts/tests -v; then
+    ZIP_DISCOVERY_STATUS=0
+else
+    ZIP_DISCOVERY_STATUS=$?
+fi
+printf '%s\n' "$ZIP_DISCOVERY_STATUS" > "$REPORT_DIRECTORY/zip-discovery-exit.log"
+if (( ZIP_DISCOVERY_STATUS != 0 && ZIP_DISCOVERY_STATUS != 1 )); then
+    exit "$ZIP_DISCOVERY_STATUS"
+fi
 
 tar -xf "cli/build/distributions/kartograph-$VERSION.tar" -C "$TEMPORARY_DIRECTORY"
 TAR_BINARY="$TEMPORARY_DIRECTORY/kartograph-$VERSION/bin/kartograph"
 [[ "$("$TAR_BINARY" --version)" == "kartograph $VERSION" ]]
 Scripts/verify-cli-contract.sh "$TAR_BINARY"
-KARTOGRAPH_BINARY="$TAR_BINARY" KARTOGRAPH_PR_SCRIPT="$TEMPORARY_DIRECTORY/kartograph-$VERSION/Scripts/check-pr.py" \
-    python3 -m unittest discover -s Scripts/tests -v
+# 일반 test 실패(1)만 기록하고 독립적인 배포 검증을 계속한다. 다른 오류는 즉시 종료한다.
+if KARTOGRAPH_BINARY="$TAR_BINARY" KARTOGRAPH_PR_SCRIPT="$TEMPORARY_DIRECTORY/kartograph-$VERSION/Scripts/check-pr.py" \
+    python3 -m unittest discover -s Scripts/tests -v; then
+    TAR_DISCOVERY_STATUS=0
+else
+    TAR_DISCOVERY_STATUS=$?
+fi
+printf '%s\n' "$TAR_DISCOVERY_STATUS" > "$REPORT_DIRECTORY/tar-discovery-exit.log"
+if (( TAR_DISCOVERY_STATUS != 0 && TAR_DISCOVERY_STATUS != 1 )); then
+    exit "$TAR_DISCOVERY_STATUS"
+fi
 
 # 동일 배포본의 collector와 ZIP/TAR CLI로 완료 영수증 기반 enum 비교를 검증한다.
 cat > "$TEMPORARY_DIRECTORY/enum-runtime.gradle" <<'GRADLE'
@@ -226,5 +244,15 @@ for INSTALLATION in "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION" "$TEMPOR
     done
     python3 Scripts/verify-release-documentation.py --root "$INSTALLATION" --version "$VERSION"
 done
+
+# 배포 proof가 통과해도 앞서 실패한 test/smoke 예산을 성공으로 바꾸지 않는다.
+if (( ZIP_DISCOVERY_STATUS != 0 || TAR_DISCOVERY_STATUS != 0 )); then
+    printf 'Release readiness failed: script-test discovery exits zip=%s tar=%s; packaged resource verification passed.\n' \
+        "$ZIP_DISCOVERY_STATUS" "$TAR_DISCOVERY_STATUS" >&2
+    if (( ZIP_DISCOVERY_STATUS != 0 )); then
+        exit "$ZIP_DISCOVERY_STATUS"
+    fi
+    exit "$TAR_DISCOVERY_STATUS"
+fi
 
 echo "release readiness 통과: $VERSION"
