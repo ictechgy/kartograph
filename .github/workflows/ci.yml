@@ -34,6 +34,7 @@ jobs:
       - name: Install fixture Android platform
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
       - name: Test and verify coverage
+        id: candidate-build
         run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
       - name: Preserve failed test details
         if: failure()
@@ -76,6 +77,18 @@ jobs:
           retention-days: 14
       - name: Verify analysis smoke gate and self-analysis contracts
         run: python3 Scripts/verify-analysis-smoke-gate.py --json
+      - name: Diagnose fixed-input index cost without changing the smoke gate
+        if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
+        timeout-minutes: 15
+        run: python3 Scripts/verify-index-cost.py
+      - name: Preserve bounded index cost evidence
+        if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: index-cost
+          path: build/reports/index-cost/result.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify agent query and bridge contracts
         run: Scripts/verify-agent-surface.sh
       - name: Verify runtime blind-spot corpus
