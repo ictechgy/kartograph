@@ -61,7 +61,7 @@ internal object AndroidResourceSnapshotEvidence {
             is AndroidResourceBindingResult.Captured -> {
                 if (bound.evidence.producerArtifact != producerArtifact) unavailable("producer-identity-mismatch", facts)
                 else Result(facts, bound.evidence, listOf(
-                    "android-resource-bindings-captured: retained nonfinal R layout fields; XML impact mapping is unavailable",
+                    "android-resource-bindings-captured: retained nonfinal R layout fields; runtime inflation remains unverified",
                     "android-resource-layout-coverage: custom views, IDs, navigation and data/view binding are unavailable",
                 ))
             }

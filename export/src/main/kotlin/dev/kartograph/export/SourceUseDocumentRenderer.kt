@@ -107,13 +107,19 @@ private fun sourceSnapshotMetadata(
         "source edit snapshots, identities and revisions must match"
     }
     require(summaryLimit == null || summaryLimit in 1..100_000) { "impact summary limit must be 1..100000" }
+    require(report.resourceSelections.isEmpty() ||
+        report.selectedByRevision.keys.map { it.name.lowercase() }.toSet() == originals.keys) {
+        "resource source edits require authoritative revision selections"
+    }
     identities.forEach { (key, input) ->
         val snapshot = originals.getValue(key)
         require(input.toolVersion == snapshot.toolVersion && input.scope == snapshot.scope && input.revision == snapshot.revision) {
             "source edit identity metadata must match its snapshot"
         }
-        require(sections.getValue(key).changed == report.changed.asSequence().map { it.node.id }
-            .filter { it in snapshot.graph.nodes }.toList()) { "source edit changed IDs must preserve ordinary report order" }
+        val revision = dev.kartograph.analysis.ImpactRevision.valueOf(key.uppercase())
+        val expected = report.selectedByRevision[revision]?.sorted() ?: report.changed.asSequence().map { it.node.id }
+            .filter { it in snapshot.graph.nodes }.toList()
+        require(sections.getValue(key).changed == expected) { "source edit changed IDs must preserve revision selections" }
     }
     return Collections.unmodifiableMap(originals.mapValues { (_, snapshot) ->
         SourceSnapshotMetadata(snapshot.toolVersion, snapshot.scope, snapshot.revision)

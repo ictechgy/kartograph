@@ -1,6 +1,6 @@
 # Android layout field ownership evidence
 
-This optional channel records the narrow relationship between captured main-component layout keys and exact retained, static, non-final integer R.layout fields. It does not yet enable XML file impact selection.
+This optional channel records the narrow relationship between captured main-component layout keys and exact retained, static, non-final integer R.layout fields. The impact query can use this recorded ownership for exact layout-file selection and bounded reverse literal-include candidates; runtime inflation remains unverified.
 
 ## Capture boundary
 
@@ -36,7 +36,7 @@ The codec validates recorded cross-field consistency only. It performs no live f
 
 Canonical snapshots reject dangling bound fields or lost required flags. Clients constructing a pruned graph view must explicitly remove the entire binding record and retain an unavailable diagnostic, rather than trim per-key outcomes. Harmless source-location enrichment preserves bindings.
 
-The first real gate is the existing AGP8.7.3/Gradle8.10.2/KGP2.0.21 application fixture with non-final R fields, Java17 and SDK35. It explicitly registers a main resource directory that remains absent and requires its row in facts, bindings and producer inputs in both phases. The AGP SourceDirectories.Layered.all contract supplies registered source folders; the real fixture must confirm absent-root preservation for this supported toolchain. It checks four exact layout fields, caller/test witnesses, unrelated exclusions, literal include facts, unchanged code/test sources and XML-only stale→rebuild→matched behavior. XML impact remains explicitly unmapped at this stage.
+The first real gate is the existing AGP8.7.3/Gradle8.10.2/KGP2.0.21 application fixture with non-final R fields, Java17 and SDK35. It explicitly registers a main resource directory that remains absent and requires its row in facts, bindings and producer inputs in both phases. The AGP SourceDirectories.Layered.all contract supplies registered source folders; the real fixture must confirm absent-root preservation for this supported toolchain. It checks four exact layout fields, caller/test witnesses, unrelated exclusions, literal include facts, unchanged code/test sources and XML-only stale→rebuild→matched behavior. XML impact must select the exact fields and their code/test consumers, including the recorded parent include for a changed child; unrelated layouts remain excluded. See [resource impact semantics](ANDROID-RESOURCE-IMPACT.md).
 
 Final/inlined IDs, configuration/overlay winners, custom-view links, resource IDs, navigation, data binding/view binding and Android inflation are not covered by this channel.
 

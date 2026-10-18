@@ -59,10 +59,20 @@ public object ImpactReportCodec {
             "pathOmissions" to report.budgets.pathOmissions,
         ),
         "unresolved" to report.unresolved.map { sortedMapOf("requested" to it.requested, "reason" to it.reason,
-            "candidates" to it.candidates.map { id -> id.value }) },
+            "candidates" to it.candidates.map { id -> id.value }).also { row ->
+                it.revision?.let { revision -> row["revision"] = revision.name.lowercase() }
+            } },
         "limitations" to report.limitations,
         "truncated" to sortedMapOf("results" to report.truncated.results, "depth" to report.truncated.depth, "budget" to report.truncated.budget),
         )
+        if (report.resourceSelections.isNotEmpty()) {
+            value["selectedByRevision"] = report.selectedByRevision.entries.sortedBy { it.key }.associate { (revision, ids) ->
+                revision.name.lowercase() to ids.sorted().map { it.value }
+            }
+            value["resourceSelections"] = report.resourceSelections.entries.sortedBy { it.key }.associate { (revision, selection) ->
+                revision.name.lowercase() to resourceImpactSelectionValue(selection)
+            }
+        }
         if (summaryLimit != null) {
             value["resultMetadata"] = sortedMapOf(
                 "summary" to "Summary buckets are a deterministic prefix; use CLI impact without --summary-limit for the complete summary or request more buckets.",
@@ -76,6 +86,7 @@ public object ImpactReportCodec {
         }
         return jsonValue(value) + "\n"
     }
+
 
     /** Git 경로의 공백·따옴표를 유지하며 빈 배열도 명시적인 변경 없음으로 읽는다. */
     public fun parseFiles(content: String): List<String> {

@@ -52,13 +52,22 @@ internal fun sourceOrdinaryImpactValue(
             "visitLimitReached" to { sourceJsonItems(report.budgets.visitLimitReached.sortedBy { it.name.lowercase() }) { it.name.lowercase() } },
             "pathEdgesUsed" to { report.budgets.pathEdgesUsed }, "pathOmissions" to { report.budgets.pathOmissions },
         ) })
-        add("unresolved" to { sourceJsonItems(report.unresolved) { unresolved -> sourceJsonObject(
-            "requested" to { unresolved.requested }, "reason" to { unresolved.reason },
-            "candidates" to { sourceJsonItems(unresolved.candidates) { it.value } },
-        ) } })
+        add("unresolved" to { sourceJsonItems(report.unresolved) { unresolved -> sourceJsonObject(*buildList<Pair<String, () -> Any?>> {
+            add("requested" to { unresolved.requested }); add("reason" to { unresolved.reason })
+            add("candidates" to { sourceJsonItems(unresolved.candidates) { it.value } })
+            unresolved.revision?.let { revision -> add("revision" to { revision.name.lowercase() }) }
+        }.toTypedArray()) } })
         add("limitations" to { report.limitations })
         add("truncated" to { sourceJsonObject("results" to { report.truncated.results },
             "depth" to { report.truncated.depth }, "budget" to { report.truncated.budget }) })
+        if (report.resourceSelections.isNotEmpty()) {
+            add("selectedByRevision" to { sourceJsonObject(*report.selectedByRevision.entries.sortedBy { it.key }.map { (revision, ids) ->
+                revision.name.lowercase() to { sourceJsonItems(ids.sorted()) { it.value } }
+            }.toTypedArray()) })
+            add("resourceSelections" to { sourceJsonObject(*report.resourceSelections.entries.sortedBy { it.key }.map { (revision, selection) ->
+                revision.name.lowercase() to { resourceImpactSelectionValue(selection) }
+            }.toTypedArray()) })
+        }
         if (summaryLimit != null) {
             add("resultMetadata" to { sourceJsonObject(
                 "summary" to { "Summary buckets are a deterministic prefix; use CLI impact without --summary-limit for the complete summary or request more buckets." },

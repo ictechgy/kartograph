@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""실물 AGP 8 layout/R field/test 근거와 아직 없는 XML file selection을 구분한다."""
+"""실물 AGP 8 XML 선택·literal include·정확한 R field/test 근거를 각각 검증한다."""
 import hashlib
 import json
 import os
@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 run_process = runpy.run_path(str(Path(__file__).with_name("resource_process_diagnostics.py")))["run"]
 PACKAGE = "dev/kartograph/compat"
 LAYOUTS = ("screen", "child", "parent", "unrelated")
-LIMITATION = "XML identity and exact nonfinal R ownership are captured; XML file impact and include-to-code mapping remain unavailable."
+LIMITATION = "XML impact uses captured exact R ownership and recorded literal includes; runtime inflation and configuration winners remain unmeasured."
 TIMEOUT = 600
 ABSENT_ROOT = "src/declaredAbsent/res"
 
@@ -68,17 +68,84 @@ def verify_field_path(report, name):
     return witnesses
 
 
-def verify_unmapped(report, path):
-    """빈 보고서가 아니라 명시적인 미지원 파일 선택만 근거로 인정한다."""
-    require(report.get("format") == "kartograph-impact" and report.get("version") == 1,
-            "unexpected file-impact format")
-    require(report.get("status") == "notFound", "resource selection behavior changed; review the experiment")
-    require(report.get("changed") == [] and report.get("affected") == [], "unexpected XML mapping")
-    unresolved = report.get("unresolved")
-    require(isinstance(unresolved, list) and len(unresolved) == 1
-            and unresolved[0].get("requested") == path
-            and unresolved[0].get("reason") == "unmappedFile", "missing explicit unmapped resource evidence")
 
+def verify_xml_impact(report, name, xml_sha256):
+    """XML→키→field 기록과 실제 bytecode 소비자 경로를 각각 검증한다."""
+    names = ("child", "parent") if name == "child" else (name,)
+    expected_fields = {field(value) for value in names}
+    require(report.get("format") == "kartograph-impact" and report.get("version") == 1,
+            "unexpected XML impact format")
+    require(report.get("status") == "found" and report.get("unresolved") == [],
+            "admitted XML selection is incomplete")
+    require({row["usr"] for row in report["changed"]} == expected_fields,
+            "XML selected different R fields")
+    require(report.get("selectedByRevision") == {"current": sorted(expected_fields)},
+            "XML fields lost revision-local selection")
+    selection = report.get("resourceSelections", {}).get("current", {})
+    require(selection.get("status") == "admitted" and selection.get("coverage") == "partial"
+            and selection.get("scope") == "::debug" and selection.get("namespace") == PACKAGE.replace("/", "."),
+            "XML resource selection provenance missing")
+    path = "src/main/res/layout/" + name + ".xml"
+    receipts = selection.get("files", [])
+    require(len(receipts) == 1 and receipts[0].get("requested") == path and receipts[0].get("status") == "matched",
+            "XML exact file receipt missing")
+    definitions = receipts[0].get("definitions", [])
+    key = {"namespace": PACKAGE.replace("/", "."), "type": "layout", "name": name}
+    require(len(definitions) == 1 and definitions[0].get("path") == path
+            and definitions[0].get("sourceSha256") == xml_sha256 and definitions[0].get("key") == key,
+            "XML source identity differs from changed fixture")
+    resources = selection.get("resources", [])
+    require(len(resources) == len(names)
+            and {row.get("field") for row in resources} == expected_fields
+            and all(row.get("unavailable") is None and row["key"] == {
+                "namespace": PACKAGE.replace("/", "."), "type": "layout", "name": value}
+                for value in names for row in resources if row.get("field") == field(value)),
+            "resource key-to-field evidence differs")
+    require(selection.get("selectedFields") == sorted(expected_fields),
+            "resource seed inventory differs")
+    binding = selection.get("binding", {})
+    require(binding.get("producerArtifact") == ":processDebugResources"
+            and all(isinstance(binding.get(label), str) and len(binding[label]) == 64
+                    for label in ("resourceFactsSha256", "producerSha256"))
+            and binding.get("output", {}).get("role") == "classes",
+            "resource producer/output identity missing")
+    if name == "child":
+        parent = next(row for row in resources if row["key"]["name"] == "parent")
+        parent_ids = {definition["id"] for definition in parent["definitions"]}
+        require(any(row.get("sourceDefinitionId") in parent_ids and row.get("kind") == "literal"
+                    and row.get("target") == key for row in selection.get("includes", [])),
+                "child XML did not retain literal parent include evidence")
+    by_id = {row["usr"]: row for row in report["affected"]}
+    witnesses = []
+    for value in names:
+        target, caller, test = field(value), accessor(value), test_method(value)
+        for usr, nodes, kinds in ((caller, [caller, target], ["fieldAccess"]),
+                                 (test, [test, caller, target], ["call", "fieldAccess"])):
+            require(usr in by_id, "XML-selected compiled accessor/test is absent")
+            paths = [item for item in by_id[usr]["paths"] if item["revision"] == "current"
+                     and item["nodes"] == nodes and [edge["kind"] for edge in item["edges"]] == kinds]
+            require(bool(paths), "XML-selected bytecode witness missing")
+            require(all(edge["source"] == nodes[index] and edge["target"] == nodes[index + 1]
+                        and edge["origin"] == "bytecode" and edge["traversal"] == "dependency"
+                        for index, edge in enumerate(paths[0]["edges"])), "XML witness origin/direction differs")
+            witnesses.append({"usr": usr, "nodes": nodes, "kinds": kinds})
+    require(not {usr for other in LAYOUTS if other not in names
+                 for usr in (accessor(other), test_method(other))}.intersection(by_id),
+            "unrelated layout accessor/test leaked into XML impact")
+    return {"file": path, "sourceSha256": xml_sha256, "selectedFields": sorted(expected_fields),
+            "witnesses": witnesses, "includeParent": name == "child",
+            "resourceFactsSha256": binding["resourceFactsSha256"], "coverage": "partial"}
+
+
+def verify_resource_unavailable(report, path):
+    """이전 reader가 채널을 잃어도 현재 graph의 동명 R field를 대신 선택하지 않는다."""
+    require(report.get("format") == "kartograph-impact" and report.get("status") == "notFound",
+            "legacy resource selection must be unavailable")
+    require(report.get("changed") == [] and report.get("affected") == [],
+            "legacy graph fabricated XML mapping")
+    require(report.get("unresolved") == [{"requested": path, "reason": "resourceEvidenceUnavailable",
+                                        "candidates": [], "revision": "current"}],
+            "legacy resource coverage refusal missing")
 
 def verify_resource_bindings(snapshot, xml_hashes):
     """실제 AGP main root·생산자·R field 대응과 XML byte identity를 독립적으로 확인한다."""
@@ -153,8 +220,8 @@ def log_summary(report):
             "exactFieldCallTestWitnesses": "verified",
             "resourceFieldOwnership": "captured",
             "otherLayoutAccessorTests": "excluded",
-            "xmlFileSelection": "unmappedFile",
-            "literalIncludeMapping": "unmapped",
+            "xmlFileSelection": "exactCapturedResourceFields",
+            "literalIncludeMapping": "recordedReverseClosure",
             "layoutInflation": "notExecuted",
             "finalInlinedOtherAgpOverlaysBinding": "unmeasured",
             "oldSnapshotAfterXmlEdit": "stale",
@@ -163,7 +230,7 @@ def log_summary(report):
             "phase": phase["phase"], "snapshotSha256": phase["snapshotSha256"],
             "freshness": phase["freshness"], "xmlSha256": phase["xmlSha256"],
             "executedTests": phase["executedTests"], "fieldWitnesses": phase["fieldWitnesses"],
-            "unmappedResources": phase["unmappedResources"], "resourceBindings": phase["resourceBindings"],
+            "xmlImpact": phase["xmlImpact"], "resourceBindings": phase["resourceBindings"],
         } for phase in report["phases"]],
         "sourceHashesUnchanged": report["phases"][0]["sourceSha256"] == report["phases"][1]["sourceSha256"],
     }
@@ -264,26 +331,33 @@ def main():
             admitted = verify_resource_bindings(json.loads(snapshot.read_text(encoding="utf-8")),
                 {name: digest(path) for name, path in layout_paths.items()})
             executed = verify_junit(project / "build/test-results/testDebugUnitTest")
-            witnesses, unmapped = {}, []
+            witnesses, xml_impacts = {}, []
             for name in LAYOUTS:
                 report = json.loads(run([binary, "impact", field(name), "--graph-file", snapshot, "--all"],
                                         ROOT, output, phase + "-" + name + "-field"))
                 witnesses[name] = verify_field_path(report, name)
                 path = str(layout_paths[name].relative_to(project))
                 file_report = json.loads(run([binary, "impact", "--file", path, "--graph-file", snapshot],
-                                             ROOT, output, phase + "-" + name + "-xml", expected=64))
-                verify_unmapped(file_report, path)
-                unmapped.append(path)
+                                             ROOT, output, phase + "-" + name + "-xml"))
+                xml_impacts.append(verify_xml_impact(file_report, name, digest(layout_paths[name])))
             phases.append({"phase": phase, "snapshotSha256": digest(snapshot),
                            "xmlSha256": {name: digest(path) for name, path in layout_paths.items()},
                            "sourceSha256": source_hashes, "freshness": "matched",
                            "executedTests": executed, "fieldWitnesses": witnesses,
-                           "unmappedResources": unmapped, "resourceBindings": admitted})
+                           "xmlImpact": xml_impacts, "resourceBindings": admitted})
+        legacy = json.loads(snapshot.read_text(encoding="utf-8"))
+        legacy.pop("androidResources", None)
+        legacy.pop("androidResourceBindings", None)
+        legacy_path = project / "legacy-snapshot.json"
+        legacy_path.write_text(json.dumps(legacy), encoding="utf-8")
+        legacy_report = json.loads(run([binary, "impact", "--file", "src/main/res/layout/child.xml",
+                                       "--graph-file", legacy_path], ROOT, output, "legacy-resource-unavailable", expected=64))
+        verify_resource_unavailable(legacy_report, "src/main/res/layout/child.xml")
         require(phases[0]["xmlSha256"]["child"] != phases[1]["xmlSha256"]["child"], "XML bytes did not change")
         require(all(phases[0]["xmlSha256"][name] == phases[1]["xmlSha256"][name]
                     for name in LAYOUTS if name != "child"), "unrequested XML changes")
         report = {"format": "kartograph-agp-resource-impact-experiment", "version": 1,
-                  "status": "evidenceEstablishedWithKnownMappingGap",
+                  "status": "capturedLayoutImpactEstablished",
                   "toolchain": {"agp": "8.7.3", "gradle": "8.10.2", "kgp": "2.0.21",
                                 "javaTarget": 17, "compileSdk": 35, "nonFinalResIds": True},
                   "sourceRevision": revision, "fixtureBuildSha256": digest(project / "build.gradle"),
@@ -293,7 +367,7 @@ def main():
                                   "Final/inlined IDs, other AGP versions, overlays and binding XML are unmeasured."]}
         result_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(log_summary(report), sort_keys=True))
-    print("AGP resource experiment established exact R field/test evidence and the explicit XML mapping gap.")
+    print("AGP resource experiment established XML layout/include impact with exact R field/test witnesses and explicit coverage limits.")
 
 
 if __name__ == "__main__":
