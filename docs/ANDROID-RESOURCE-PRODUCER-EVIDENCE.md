@@ -22,7 +22,10 @@ must treat missing resource evidence as unavailable. Use the same analyzer versi
 to capture and verify: older readers do not know this role's absent-directory semantics.
 
 The existing AGP 8 application check invokes a bounded tamper regression after a real
-producer and matched snapshot: XML changes with processResources explicitly excluded
-must cause changed-android-resources rejection and leave the prior snapshot, witness
-and R.jar unchanged. Restoring XML and rebuilding must return matched. This is producer
+producer and matched snapshot: an owned init-script doFirst hook changes XML at the snapshot boundary, after normal
+producer dependencies complete. Only the snapshot task is forced out of up-to-date
+reuse; no producer is excluded or marked successful artificially. A single bounded
+receipt records witness/R.jar hashes immediately before injection and the exact XML
+hash transition. The real snapshot task must reject changed-android-resources and
+leave the prior snapshot, witness and R.jar unchanged. Restoring XML and rebuilding must return matched. This is producer
 input consistency evidence, not XML file-selection support or layout inflation.
