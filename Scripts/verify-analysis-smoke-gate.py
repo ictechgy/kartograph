@@ -407,6 +407,50 @@ class SmokeDiagnostics:
 COUNTER_FIELDS = ("nodes", "findings", "rows")
 
 
+def analysis_failure_receipt(name, result):
+    """실패한 자체 분석에서 공개 JVM identity만 제한적으로 추출한다. 위치·환경·stderr는 내보내지 않는다."""
+    if result.returncode == 0:
+        return None
+    stdout = result.stdout or ""
+    stderr = result.stderr or ""
+    maximum_text = 256 * 1024
+    maximum_ids = 10
+    inspected = stdout[:maximum_text]
+    if len(stdout) > maximum_text:
+        inspected = inspected.rsplit("\n", 1)[0] if "\n" in inspected else ""
+    identities = []
+    rejected = 0
+    observed = 0
+    for line in inspected.splitlines():
+        if not line.startswith("unreachable\t"):
+            continue
+        observed += 1
+        fields = line.split("\t", 2)
+        identity = fields[1] if len(fields) >= 2 else ""
+        if len(identity) > 512 or not re.fullmatch(
+            r"(?:class|method|field):dev/kartograph/[A-Za-z0-9_$/#;:()<>\[\].-]+", identity
+        ):
+            rejected += 1
+        elif len(identities) < maximum_ids:
+            identities.append(identity)
+    return {
+        "format": "kartograph-analysis-process-failure",
+        "command": name if name in {"graph", "dead", "dead_private", "cycles", "rules", "metrics"} else "unknown",
+        "returncode": result.returncode,
+        "stderrBytes": len(stderr.encode("utf-8")),
+        "stderrSha256": hashlib.sha256(stderr.encode("utf-8")).hexdigest(),
+        "stderrContent": "omitted-untrusted-text",
+        "unsupportedOutputShape": observed == 0,
+        "stdoutSha256": hashlib.sha256(stdout.encode("utf-8")).hexdigest(),
+        "hashBasis": "decoded-stream-utf8",
+        "observedUnreachableRows": observed,
+        "identities": identities,
+        "rejectedIdentities": rejected,
+        "inputTruncated": len(stdout) > maximum_text,
+        "identitiesTruncated": observed - rejected > len(identities),
+    }
+
+
 def check_contract(name, contract_kind, res, measurement, contract_failures):
     """한 명령의 출력이 자체 분석 계약을 만족하는지 검사하고, 센 수치를 measurement에 기록한다."""
     if res.returncode != 0:
@@ -471,6 +515,8 @@ def run_measurement_pass(commands, env, samples, counters, contract_failures, di
             cpu_after = observe(diagnostics.cpu_snapshot)
             observe(diagnostics.after_child, cpu_before, cpu_after, len(samples[name]), name)
 
+        if res.returncode != 0:
+            print(json.dumps(analysis_failure_receipt(name, res), sort_keys=True), file=sys.stderr)
         if res.returncode == 2:
             print(f"error: command '{name}' failed with tool failure (exit 2)", file=sys.stderr)
             return 2
