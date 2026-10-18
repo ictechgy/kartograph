@@ -149,6 +149,9 @@ jobs:
         run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
       - name: Install Android snapshot test platform
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
+      - name: Verify owned-directory capture capabilities on Linux
+        timeout-minutes: 2
+        run: java Scripts/VerifySecureDirectoryStream.java
       - name: Verify supported JDK
         run: ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} test :gradle-plugin:validatePlugins
       - name: Preserve failed compatibility test details
