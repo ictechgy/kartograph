@@ -57,6 +57,32 @@ class ResourceExperimentContractTest(unittest.TestCase):
         report["affected"].append({"usr": "class:dev/kartograph/compat/ResourceAccess", "paths": []})
         self.assertEqual(2, len(MODULE.verify_field_path(report, "screen")))
 
+    def test_log_summary_preserves_evidence_without_host_paths_or_raw_output(self):
+        phase = {"phase": "before", "snapshotSha256": "a" * 64, "freshness": "matched",
+                 "xmlSha256": {name: "b" * 64 for name in MODULE.LAYOUTS},
+                 "sourceSha256": {"/host/private/source.java": "c" * 64},
+                 "executedTests": [{"class": "dev.kartograph.compat.ResourceAccessTest", "method": "screen"}],
+                 "fieldWitnesses": {"screen": MODULE.verify_field_path(field_report(), "screen")},
+                 "unmappedResources": ["src/main/res/layout/screen.xml"],
+                 "stdout": "private raw output"}
+        after = copy.deepcopy(phase)
+        after["phase"] = "after"
+        after["xmlSha256"]["child"] = "d" * 64
+        report = {"format": "kartograph-agp-resource-impact-experiment", "version": 1,
+                  "status": "evidenceEstablishedWithKnownMappingGap", "sourceRevision": "e" * 40,
+                  "toolchain": {"agp": "8.7.3"}, "phases": [phase, after],
+                  "environment": "private environment"}
+        summary = MODULE.log_summary(report)
+        self.assertEqual(summary["phases"][0]["fieldWitnesses"], phase["fieldWitnesses"])
+        self.assertEqual(summary["phases"][1]["xmlSha256"]["child"], "d" * 64)
+        self.assertTrue(summary["sourceHashesUnchanged"])
+        self.assertEqual(summary["coverage"]["oldSnapshotAfterXmlEdit"], "stale")
+        self.assertEqual(summary["coverage"]["xmlFileSelection"], "unmappedFile")
+        self.assertNotIn("private", str(summary))
+        self.assertNotIn("sourceSha256", summary["phases"][0])
+        after["sourceSha256"]["/host/private/source.java"] = "f" * 64
+        self.assertFalse(MODULE.log_summary(report)["sourceHashesUnchanged"])
+
     def test_requires_explicit_unmapped_selection(self):
         path = "src/main/res/layout/screen.xml"
         report = {"format": "kartograph-impact", "version": 1, "status": "notFound",

@@ -93,6 +93,30 @@ def verify_junit(directory):
     return [{"class": owner, "method": method} for owner, method in sorted(observed)]
 
 
+def log_summary(report):
+    """검증된 픽스처 식별자와 지문만 출력하고 실행 경로·환경·원시 출력은 제외한다."""
+    return {
+        "format": report["format"], "version": report["version"], "status": report["status"],
+        "sourceRevision": report["sourceRevision"], "toolchain": report["toolchain"],
+        "coverage": {
+            "exactFieldCallTestWitnesses": "verified",
+            "otherLayoutAccessorTests": "excluded",
+            "xmlFileSelection": "unmappedFile",
+            "literalIncludeMapping": "unmapped",
+            "layoutInflation": "notExecuted",
+            "finalInlinedOtherAgpOverlaysBinding": "unmeasured",
+            "oldSnapshotAfterXmlEdit": "stale",
+        },
+        "phases": [{
+            "phase": phase["phase"], "snapshotSha256": phase["snapshotSha256"],
+            "freshness": phase["freshness"], "xmlSha256": phase["xmlSha256"],
+            "executedTests": phase["executedTests"], "fieldWitnesses": phase["fieldWitnesses"],
+            "unmappedResources": phase["unmappedResources"],
+        } for phase in report["phases"]],
+        "sourceHashesUnchanged": report["phases"][0]["sourceSha256"] == report["phases"][1]["sourceSha256"],
+    }
+
+
 def run(arguments, cwd, output, name, expected=0):
     result = subprocess.run(list(map(str, arguments)), cwd=cwd, text=True, capture_output=True, timeout=TIMEOUT)
     # 원시 로그는 이 실행의 진단 디렉터리에만 둔다. 공개 업로드는 result.json만 사용한다.
@@ -212,6 +236,7 @@ def main():
                   "limitations": [LIMITATION, "The unit tests execute accessors, not Android layout inflation.",
                                   "Final/inlined IDs, other AGP versions, overlays and binding XML are unmeasured."]}
         result_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(log_summary(report), sort_keys=True))
     print("AGP resource experiment established exact R field/test evidence and the explicit XML mapping gap.")
 
 
