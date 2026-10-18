@@ -5,11 +5,12 @@ import json
 import os
 from pathlib import Path
 import shutil
-import subprocess
+import runpy
 import tempfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
+run_process = runpy.run_path(str(Path(__file__).with_name("resource_process_diagnostics.py")))["run"]
 PACKAGE = "dev/kartograph/compat"
 LAYOUTS = ("screen", "child", "parent", "unrelated")
 LIMITATION = "XML resource identity and include-to-code mapping are not captured."
@@ -118,7 +119,7 @@ def log_summary(report):
 
 
 def run(arguments, cwd, output, name, expected=0):
-    result = subprocess.run(list(map(str, arguments)), cwd=cwd, text=True, capture_output=True, timeout=TIMEOUT)
+    result = run_process(arguments, cwd=cwd, timeout=TIMEOUT, phase=name, expected=expected)
     # 원시 로그는 이 실행의 진단 디렉터리에만 둔다. 공개 업로드는 result.json만 사용한다.
     (output / (name + ".stdout")).write_text(result.stdout, encoding="utf-8")
     (output / (name + ".stderr")).write_text(result.stderr, encoding="utf-8")

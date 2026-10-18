@@ -299,7 +299,8 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             }
             val limitations = (RuntimeLimitationScanner.scan(indexed, selectedSources) +
                 dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) +
-                compilerLimitations + paths?.limitations.orEmpty() + captureLimitations.get() +
+                compilerLimitations + ResourceProcessWitnesses.resourceLimitations(witnesses) +
+                paths?.limitations.orEmpty() + captureLimitations.get() +
                 if (missingGeneratedRules.isEmpty()) emptyList() else
                     listOf("missing-generated-keep-files: ${missingGeneratedRules.size}")).distinct().sorted()
             val snapshot = QuerySnapshot(located, retention, limitations,
