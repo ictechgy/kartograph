@@ -48,6 +48,13 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+      - name: Accept Android SDK licenses
+        run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
+      - name: Install resource fixture Android toolchain
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"'
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
+        with:
+          gradle-version: '8.10.2'
       - name: Record runner and Java information
         shell: bash
         run: |
@@ -55,6 +62,7 @@ jobs:
       - name: Verify release artifacts without publishing
         shell: bash
         run: |
+          export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
           set +e
           Scripts/verify-release-readiness.sh 2>&1 | tee "$EVIDENCE_DIRECTORY/gate.log"
           statuses=("${PIPESTATUS[@]}")

@@ -183,6 +183,16 @@ for label, cli in (("zip", zip_cli), ("tar", tar_cli)):
 
 PY
 
+# 최종 clean build 산출물과 두 압축 해제 CLI만 소비하며 이후 source build를 하지 않는다.
+python3 Scripts/verify-agp-8-resource-impact.py --packaged \
+    --plugin-jar "$PLUGIN_JAR" \
+    --zip-cli "$BINARY" --tar-cli "$TAR_BINARY" \
+    --zip-archive "cli/build/distributions/kartograph-$VERSION.zip" \
+    --tar-archive "cli/build/distributions/kartograph-$VERSION.tar" \
+    --checksums build/release/SHA256SUMS \
+    --retained-hashes "$REPORT_DIRECTORY/second.sha256" \
+    --version "$VERSION" --evidence "$REPORT_DIRECTORY/packaged-resource-impact"
+
 [[ -f "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION/docs/LIMITATIONS.md" ]]
 python3 - "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION" <<'PY'
 from pathlib import Path
@@ -206,7 +216,15 @@ if grep -R -E -n '(/Users/|~/Desktop|[A-Za-z]:\\Users\\)' \
 fi
 
 # 배포본 문서가 이전 release를 설치하라고 지시하면(버전 하드코딩) 사용자는 이 릴리스에 없는 구버전을 받게 된다.
-python3 Scripts/verify-release-documentation.py \
-    --root "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION" --version "$VERSION"
+for INSTALLATION in "$TEMPORARY_DIRECTORY/unpacked/kartograph-$VERSION" "$TEMPORARY_DIRECTORY/kartograph-$VERSION"; do
+    for DOCUMENT in ANDROID-RESOURCE-BINDINGS ANDROID-RESOURCE-CAPTURE ANDROID-RESOURCE-EVIDENCE \
+                    ANDROID-RESOURCE-IMPACT-EXPERIMENT ANDROID-RESOURCE-IMPACT ANDROID-RESOURCE-PRODUCER-EVIDENCE; do
+        [[ -f "$INSTALLATION/docs/$DOCUMENT.md" ]] || {
+            echo "release resource documentation is missing: $DOCUMENT" >&2
+            exit 1
+        }
+    done
+    python3 Scripts/verify-release-documentation.py --root "$INSTALLATION" --version "$VERSION"
+done
 
 echo "release readiness 통과: $VERSION"

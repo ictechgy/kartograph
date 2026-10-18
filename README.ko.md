@@ -57,12 +57,12 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 - Android graph/dead task: AGP 8.7+, Gradle 8.10+, JDK 17+(AGP 8.7.3 / Gradle 8.10.2와 AGP 9.x에서 검증).
 - 자동 snapshot: JVM Java/Kotlin은 Gradle 9.6.1과 JDK 17/21에서, Android는 [검증된 조합](docs/IMPACT.md#android-variant-자동-캡처)에서 확인했다. Kotlin compiler adapter는 KGP 2.4.10에서 검증했고 다른 버전은 보장하지 않는다. 최소 Android 조합은 Gradle 8.10.2에서 검증했지만, KGP 자체는 8.14.4 이상을 권고한다.
 
-아래 예시는 미출시 0.24.0 준비본용이다. 해당 버전이 Portal에 제공된 뒤 사용하거나
+아래 예시는 미출시 0.25.0 준비본용이다. 해당 버전이 Portal에 제공된 뒤 사용하거나
 같은 source revision에서 matching 모듈을 빌드한다.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.24.0"
+    id("io.github.ictechgy.kartograph") version "0.25.0"
 }
 ```
 
@@ -78,10 +78,12 @@ distribution asset이나 Portal plugin은 발행되지 않았다. 0.20.0에서 �
 CLI·plugin·선택적 collector를 같은 버전으로 설치한다.
 2026-10-17 확인 기준 [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)은
 7개 asset이 공개됐고 [release run](https://github.com/ictechgy/kartograph/actions/runs/38721915580)의
-Gradle plugin publish step도 성공했다. GitHub prerelease 상태이며 latest stable은 0.22.0이다.
+Gradle plugin publish step도 성공했다. GitHub prerelease 상태를 유지한다.
 0.23.0의 공개 asset·Portal consumer 독립 검증은 미완료다. 기존 asset·checksum·archive 문서는
 그대로 보존하며 publish 성공을 독립 설치 성공으로 해석하지 않는다.
-현재 소스는 0.24.0 준비본이며 VERSION 변경만으로 배포나 release 검증이 끝나지 않는다.
+2026-10-18 확인 기준 [v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0)은 7개 asset이 있는 최신 안정 GitHub release다.
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702)의 packaged readiness와 plugin publish가 성공했으며 공개 consumer 검증은 별도다.
+현재 소스는 0.25.0 준비본이며 VERSION 변경만으로 배포나 release 검증이 끝나지 않는다.
 CLI·plugin·collector·library artifact는 같은 버전으로 맞춘다. 새 source-use API와 명시적
 `snapshot --include-source-uses`·`query --source-uses`·`impact --source-edits`는 additive 기능이다.
 saved report는 `currentness: notChecked`인 부분적 과거 관찰이며 ordinary graph 결과와 별도다.
@@ -90,7 +92,7 @@ base/current 비교가 같은 tool version을 요구하면 둘 다 재캡처한�
 기존 compiled-client·descriptor 검사는 선택한 API의 근거이며 모든 client·Kotlin source 호환성 보장이 아니다.
 [업그레이드 안내](CHANGELOG.md)와 [source-use 호환성](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility)을 참고한다.
 
-0.24.0 준비본은 enum 상수 추가가 authored default/else 또는 유한 리터럴 membership/negation에
+0.24.0은 enum 상수 추가가 authored default/else 또는 유한 리터럴 membership/negation에
 흡수될 수 있는 검토 후보를 제공한다. compiler `enumDecisions=true`와
 `snapshot --include-enum-decisions`를 켜고 fresh baseline/current snapshot을
 `impact --enum-expansion`으로 비교한다. current 소스 위치·이유·추가 상수·미해결 coverage를 보존하며
@@ -100,6 +102,10 @@ enum/source-use 캡처를 함께 사용할 수 있다. `GraphNode`·`QuerySnapsh
 [enum 영향 안내](docs/IMPACT.md#opt-in-enum-expansion-candidates)를 따른다.
 실제 runtime 동작이나 버그를 확정하는 결과가 아니며 공개된 0.23.0 artifact에는 이 기능이 없다.
 JDK 17 collector CI의 Java 21 null/pattern 구문 분기는 미실행이다.
+
+0.25.0 준비본은 application layout XML 변경을 정확한 non-final R 필드와 기록된 literal include를 통해 코드·테스트 후보로 연결한다.
+matching CLI/plugin/library와 양쪽 revision 재캡처가 필요하다. coverage는 partial이며 resource 근거가 있는 모듈 snapshot은 병합하지 않는다.
+검증된 AGP8.7.3 조합·신뢰된 build 전제·신선도와 미지원 runtime 경계는 [layout 안내](docs/ANDROID-RESOURCE-IMPACT.md)를 따른다.
 
 ## 사용법
 
