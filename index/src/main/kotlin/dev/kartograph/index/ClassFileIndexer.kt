@@ -437,7 +437,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     }
 
     override fun visitSource(source: String?, debug: String?) {
-        sourceFile = source
+        sourceFile = source?.substringAfterLast('/')?.substringAfterLast('\\')?.takeIf(String::isNotBlank)
         sourceDebugPresent = debug?.startsWith("SMAP") == true
         sourceDebugMapper = if (sourceDebugPresent) SourceDebugMapper.parse(debug) else null
     }
@@ -576,12 +576,13 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                     Opcodes.INVOKEINTERFACE -> InvocationKind.INTERFACE
                     else -> InvocationKind.VIRTUAL
                 }
-                calls += ExternalCall(methodId, owner, targetName, targetDescriptor, invocationKind, sourceLocation(currentLine), callOrdinal++)
+                val call = ExternalCall(methodId, owner, targetName, targetDescriptor, invocationKind, sourceLocation(currentLine), callOrdinal++)
+                calls += call
                 if (owner == "java/lang/Class" && targetName == "forName") reflectionCalls++
                 if (RuntimeLimitationScanner.isDynamicRegistration(owner, targetName)) dynamicRegistrations++
                 edges += GraphEdge(
                     methodId,
-                    JvmNodeId.methodId(owner, targetName, targetDescriptor),
+                    call.target,
                     EdgeKind.CALL,
                     callSiteLines = callSiteLine(currentLine)?.let(::listOf).orEmpty(),
                 )
@@ -605,14 +606,15 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 vararg bootstrapMethodArguments: Any,
             ) {
                 val ordinal = callOrdinal++
+                val bootstrapCall = ExternalCall(methodId, bootstrapMethodHandle.owner, bootstrapMethodHandle.name,
+                    bootstrapMethodHandle.desc, InvocationKind.BOOTSTRAP, sourceLocation(currentLine), ordinal)
                 edges += GraphEdge(
                     methodId,
-                    JvmNodeId.methodId(bootstrapMethodHandle.owner, bootstrapMethodHandle.name, bootstrapMethodHandle.desc),
+                    bootstrapCall.target,
                     EdgeKind.CALL,
                 )
                 edges += GraphEdge(methodId, JvmNodeId.classId(bootstrapMethodHandle.owner), EdgeKind.REFERENCE)
-                calls += ExternalCall(methodId, bootstrapMethodHandle.owner, bootstrapMethodHandle.name,
-                    bootstrapMethodHandle.desc, InvocationKind.BOOTSTRAP, sourceLocation(currentLine), ordinal)
+                calls += bootstrapCall
                 bootstrapMethodArguments.filterIsInstance<Handle>().forEach { handle ->
                     when (handle.tag) {
                         Opcodes.H_GETFIELD, Opcodes.H_GETSTATIC, Opcodes.H_PUTFIELD, Opcodes.H_PUTSTATIC -> {
@@ -635,10 +637,11 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                                 Opcodes.H_INVOKEVIRTUAL -> InvocationKind.VIRTUAL
                                 else -> InvocationKind.SPECIAL
                             }
-                            calls += ExternalCall(methodId, handle.owner, handle.name, handle.desc, kind, sourceLocation(currentLine), ordinal)
+                            val call = ExternalCall(methodId, handle.owner, handle.name, handle.desc, kind, sourceLocation(currentLine), ordinal)
+                            calls += call
                             edges += GraphEdge(
                                 methodId,
-                                JvmNodeId.methodId(handle.owner, handle.name, handle.desc),
+                                call.target,
                                 EdgeKind.CALL,
                             )
                             edges += GraphEdge(methodId, JvmNodeId.classId(handle.owner), EdgeKind.REFERENCE)
@@ -767,16 +770,14 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
      * 로컬 경로가 흘러가지 않게 한다. 남는 이름이 없으면 위치를 만들지 않는다.
      */
     private fun sourceLocation(line: Int? = null): SourceLocation? =
-        sourceFile?.substringAfterLast('/')?.substringAfterLast('\\')
-            ?.takeIf(String::isNotBlank)
-            ?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
+        sourceFile?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
 
     /** 새 호출부 근거만 SMAP으로 확인한다. 같은 basename의 inline body도 caller 위치로 오인하지 않게 identity만 쓴다. */
     private fun callSiteLine(line: Int?): Int? {
         if (line == null || line !in 1..65535) return null
-        if (!sourceDebugPresent) return sourceLocation(line)?.line
+        if (!sourceDebugPresent) return if (sourceFile == null) null else line
         val mapped = sourceDebugMapper?.location(line) ?: return null
-        val ownPath = sourceLocation()?.path ?: return null
+        val ownPath = sourceFile ?: return null
         // primary SMAP의 output/input identity만 확정적인 caller 위치다. KotlinDebug stratum이나 inline 매핑은 추정하지 않는다.
         return mapped.line?.takeIf { mapped.path == ownPath && it == line && it in 1..65535 }
     }

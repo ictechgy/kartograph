@@ -16,6 +16,9 @@ SPEC.loader.exec_module(probe)
 
 
 class IndexCostTest(unittest.TestCase):
+    def test_baseline_is_the_previous_measured_main(self):
+        self.assertEqual("b7ab3e9d654a7ad889bed4b57ed4dc84d4082fd7", probe.BASELINE)
+
     def test_exact_bytes_preserve_order_duplicates_diagnostics_and_exit(self):
         left = {"exit": 0, "stdout": b"a\na\nb\n", "stderr": b"diagnostic\n", "wallNanos": 1}
         self.assertTrue(probe.equivalent(left, {**left, "wallNanos": 99}))

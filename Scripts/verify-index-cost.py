@@ -16,7 +16,7 @@ import tempfile
 import threading
 import time
 
-BASELINE = "465000337131de3fc8e302a9027f6ef417c581e0"
+BASELINE = "b7ab3e9d654a7ad889bed4b57ed4dc84d4082fd7"
 MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
 PROFILES = ("graph", "dead", "architecture")
 LIMIT = 32 * 1024 * 1024
