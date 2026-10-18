@@ -1,5 +1,6 @@
 package dev.kartograph.export
 
+import dev.kartograph.core.AndroidResourceBindingEvidence
 import dev.kartograph.core.AndroidResourceEvidence
 import dev.kartograph.core.CallResolution
 import dev.kartograph.core.CodeGraph
@@ -62,8 +63,14 @@ public data class QuerySnapshot(
     val enumDecisionEvidence: CompilerEnumDecisionEvidence? = null,
     /** 미승인 XML 관측이다. null은 미수집이며 영향 mapping admission을 뜻하지 않는다. */
     val androidResourceEvidence: AndroidResourceEvidence? = null,
+    /** 저장 당시 main resource→선택 R 산출물의 대응이다. 현재 freshness는 별도로 검사한다. */
+    val androidResourceBindings: AndroidResourceBindingEvidence? = null,
 ) {
     init {
+        androidResourceBindings?.requireMatches(
+            requireNotNull(androidResourceEvidence) { "resource bindings require resource facts" },
+            requireNotNull(provenance) { "resource bindings require provenance" },
+            graph, requireNotNull(scope) { "resource bindings require scope" })
         androidResourceEvidence?.let { evidence ->
             require(evidence.scope == scope) { "Android resources require the matching snapshot scope" }
             require(provenance?.memberScopes.isNullOrEmpty()) { "Android resources are not supported in aggregate snapshots" }
@@ -129,6 +136,7 @@ public object QuerySnapshotCodec {
         "provenance" to snapshot.provenance?.let(BuildWitnessCodec::provenanceValue),
         "enumDecisions" to snapshot.enumDecisionEvidence?.let(CompilerEnumDecisionSnapshotCodec::value),
         "androidResources" to snapshot.androidResourceEvidence?.let(AndroidResourceEvidenceSnapshotCodec::value),
+        "androidResourceBindings" to snapshot.androidResourceBindings?.let(AndroidResourceBindingSnapshotCodec::value),
         "externalRetentionContexts" to snapshot.externalRetentionContexts.takeIf { it.isNotEmpty() }
             ?.map { it.canonicalDocument }?.distinct()?.sorted(),
         "processorOutputs" to snapshot.processorOutputs.sortedWith(compareBy({ it.kind }, { it.processor }, { it.processorArtifact }, { it.rawSha256 })).map(ProcessorOutputCodec::value),
@@ -461,7 +469,8 @@ public object QuerySnapshotCodec {
                 } }.context
             }.distinct().sortedBy { it.canonicalDocument } else emptyList(),
             enumDecisionEvidence = if ("enumDecisions" in document) CompilerEnumDecisionSnapshotCodec.parse(document["enumDecisions"]) else null,
-            androidResourceEvidence = if ("androidResources" in document) AndroidResourceEvidenceSnapshotCodec.parse(document["androidResources"]) else null)
+            androidResourceEvidence = if ("androidResources" in document) AndroidResourceEvidenceSnapshotCodec.parse(document["androidResources"]) else null,
+            androidResourceBindings = if ("androidResourceBindings" in document) AndroidResourceBindingSnapshotCodec.parse(document["androidResourceBindings"]) else null)
     }
 
     /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */

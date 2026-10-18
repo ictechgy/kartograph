@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 run_process = runpy.run_path(str(Path(__file__).with_name("resource_process_diagnostics.py")))["run"]
 PACKAGE = "dev/kartograph/compat"
 LAYOUTS = ("screen", "child", "parent", "unrelated")
-LIMITATION = "XML resource identity and include-to-code mapping are not captured."
+LIMITATION = "XML identity and exact nonfinal R ownership are captured; XML file impact and include-to-code mapping remain unavailable."
 TIMEOUT = 600
 
 
@@ -79,6 +79,45 @@ def verify_unmapped(report, path):
             and unresolved[0].get("reason") == "unmappedFile", "missing explicit unmapped resource evidence")
 
 
+def verify_resource_bindings(snapshot, xml_hashes):
+    """실제 AGP main root·생산자·R field 대응과 XML byte identity를 독립적으로 확인한다."""
+    facts = snapshot.get("androidResources")
+    bindings = snapshot.get("androidResourceBindings")
+    require(isinstance(facts, dict) and isinstance(bindings, dict), "resource admission evidence missing")
+    require(facts.get("admission") == "unverified" and facts.get("namespace") == PACKAGE.replace("/", "."),
+            "unexpected raw resource facts namespace or admission")
+    require(bindings.get("scope") == facts.get("scope") == snapshot.get("scope")
+            and bindings.get("namespace") == facts.get("namespace"), "resource scope/namespace mismatch")
+    definitions = {row["path"]: row for row in facts["definitions"]}
+    outcomes = {row["key"]["name"]: row for row in bindings["outcomes"]}
+    require(len(outcomes) == len(bindings["outcomes"])
+            and set(outcomes) == {row["key"]["name"] for row in facts["definitions"]},
+            "resource key outcomes are not exhaustive")
+    for name in LAYOUTS:
+        path = "src/main/res/layout/" + name + ".xml"
+        require(path in definitions and definitions[path]["sourceSha256"] == xml_hashes[name],
+                "captured XML bytes differ from fixture")
+        require(outcomes.get(name, {}).get("field") == field(name)
+                and outcomes[name].get("unavailable") is None, "exact nonfinal R field was not admitted")
+    roots = sorted((row["input"] for row in facts["roots"]), key=lambda row: row["path"])
+    require(roots == bindings["mainRoots"], "captured main inventory differs from admitted inventory")
+    producer = [row for row in snapshot["provenance"]["witnesses"]
+                if row["compiler"] == "agp-process-resources"
+                and row["artifact"] == bindings["producerArtifact"] and row["scope"] == bindings["scope"]]
+    require(len(producer) == 1, "resource producer missing or ambiguous")
+    require(sorted((row for row in producer[0]["inputs"] if row["role"] == "android-resources"),
+                   key=lambda row: row["path"]) == roots, "producer byte roots do not cover captured inventory")
+    require(producer[0]["outputs"] == [bindings["output"]]
+            and bindings["output"] in snapshot["provenance"]["inputs"], "selected output is not witnessed")
+    parent_id = definitions["src/main/res/layout/parent.xml"]["id"]
+    require(any(row["sourceDefinitionId"] == parent_id and row["kind"] == "literal"
+                and row["target"] == {"namespace": PACKAGE.replace("/", "."), "type": "layout", "name": "child"}
+                for row in facts["includes"]), "literal include fact missing")
+    return {"status": "captured", "scope": bindings["scope"], "namespace": bindings["namespace"],
+            "boundFields": [outcomes[name]["field"] for name in LAYOUTS],
+            "mainRootCount": len(roots), "literalInclude": "parent-to-child"}
+
+
 def verify_junit(directory):
     files = sorted(directory.glob("TEST-*.xml"))
     require(bool(files), "JUnit execution reports missing")
@@ -101,6 +140,7 @@ def log_summary(report):
         "sourceRevision": report["sourceRevision"], "toolchain": report["toolchain"],
         "coverage": {
             "exactFieldCallTestWitnesses": "verified",
+            "resourceFieldOwnership": "captured",
             "otherLayoutAccessorTests": "excluded",
             "xmlFileSelection": "unmappedFile",
             "literalIncludeMapping": "unmapped",
@@ -112,7 +152,7 @@ def log_summary(report):
             "phase": phase["phase"], "snapshotSha256": phase["snapshotSha256"],
             "freshness": phase["freshness"], "xmlSha256": phase["xmlSha256"],
             "executedTests": phase["executedTests"], "fieldWitnesses": phase["fieldWitnesses"],
-            "unmappedResources": phase["unmappedResources"],
+            "unmappedResources": phase["unmappedResources"], "resourceBindings": phase["resourceBindings"],
         } for phase in report["phases"]],
         "sourceHashesUnchanged": report["phases"][0]["sourceSha256"] == report["phases"][1]["sourceSha256"],
     }
@@ -208,6 +248,8 @@ def main():
             require(freshness.get("status") == "matched", "resource snapshot is not verified")
             require(source_hashes == {str(path.relative_to(project)): digest(path) for path in source_paths},
                     "code/test sources changed during XML-only experiment")
+            admitted = verify_resource_bindings(json.loads(snapshot.read_text(encoding="utf-8")),
+                {name: digest(path) for name, path in layout_paths.items()})
             executed = verify_junit(project / "build/test-results/testDebugUnitTest")
             witnesses, unmapped = {}, []
             for name in LAYOUTS:
@@ -223,7 +265,7 @@ def main():
                            "xmlSha256": {name: digest(path) for name, path in layout_paths.items()},
                            "sourceSha256": source_hashes, "freshness": "matched",
                            "executedTests": executed, "fieldWitnesses": witnesses,
-                           "unmappedResources": unmapped})
+                           "unmappedResources": unmapped, "resourceBindings": admitted})
         require(phases[0]["xmlSha256"]["child"] != phases[1]["xmlSha256"]["child"], "XML bytes did not change")
         require(all(phases[0]["xmlSha256"][name] == phases[1]["xmlSha256"][name]
                     for name in LAYOUTS if name != "child"), "unrequested XML changes")

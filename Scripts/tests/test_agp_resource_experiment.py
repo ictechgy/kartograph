@@ -64,6 +64,8 @@ class ResourceExperimentContractTest(unittest.TestCase):
                  "executedTests": [{"class": "dev.kartograph.compat.ResourceAccessTest", "method": "screen"}],
                  "fieldWitnesses": {"screen": MODULE.verify_field_path(field_report(), "screen")},
                  "unmappedResources": ["src/main/res/layout/screen.xml"],
+                 "resourceBindings": {"status": "captured", "scope": "::debug", "namespace": "dev.kartograph.compat",
+                                      "boundFields": [MODULE.field(name) for name in MODULE.LAYOUTS]},
                  "stdout": "private raw output"}
         after = copy.deepcopy(phase)
         after["phase"] = "after"
@@ -82,6 +84,56 @@ class ResourceExperimentContractTest(unittest.TestCase):
         self.assertNotIn("sourceSha256", summary["phases"][0])
         after["sourceSha256"]["/host/private/source.java"] = "f" * 64
         self.assertFalse(MODULE.log_summary(report)["sourceHashesUnchanged"])
+
+    def test_binding_receipt_requires_exact_scope_roots_xml_fields_and_include(self):
+        namespace = MODULE.PACKAGE.replace("/", ".")
+        root = {"role": "android-resources", "path": "src/main/res", "sha256": "a" * 64}
+        output = {"role": "classes", "path": "build/R.jar", "sha256": "b" * 64}
+        definitions = [{"id": name, "path": "src/main/res/layout/" + name + ".xml",
+                        "sourceSha256": "c" * 64, "key": {"namespace": namespace, "type": "layout", "name": name}}
+                       for name in MODULE.LAYOUTS]
+        facts = {"admission": "unverified", "scope": "::debug", "namespace": namespace,
+                 "roots": [{"input": root}], "definitions": definitions,
+                 "includes": [{"sourceDefinitionId": "parent", "kind": "literal",
+                               "target": {"namespace": namespace, "type": "layout", "name": "child"}}]}
+        bindings = {"scope": "::debug", "namespace": namespace, "mainRoots": [root],
+                    "producerArtifact": ":processDebugResources", "output": output,
+                    "outcomes": [{"key": row["key"], "field": MODULE.field(row["key"]["name"]), "unavailable": None}
+                                 for row in definitions]}
+        snapshot = {"scope": "::debug", "androidResources": facts, "androidResourceBindings": bindings,
+                    "provenance": {"inputs": [output], "witnesses": [
+                        {"scope": "::debug", "compiler": "agp-process-resources", "artifact": ":processDebugResources",
+                         "inputs": [root], "outputs": [output]}]}}
+        hashes = {name: "c" * 64 for name in MODULE.LAYOUTS}
+        receipt = MODULE.verify_resource_bindings(snapshot, hashes)
+        self.assertEqual(receipt["boundFields"], [MODULE.field(name) for name in MODULE.LAYOUTS])
+        for mutation in ("absent", "namespace", "scope", "field", "missing-key", "duplicate-key",
+                         "xml", "roots", "producer", "output", "include"):
+            with self.subTest(mutation=mutation):
+                value = copy.deepcopy(snapshot)
+                binding = value["androidResourceBindings"]
+                if mutation == "absent":
+                    value["androidResourceBindings"] = None
+                elif mutation in ("namespace", "scope"):
+                    binding[mutation] = "other"
+                elif mutation == "field":
+                    binding["outcomes"][0]["field"] = "field:other/R$layout#screen:I"
+                elif mutation == "missing-key":
+                    binding["outcomes"].pop()
+                elif mutation == "duplicate-key":
+                    binding["outcomes"].append(binding["outcomes"][0])
+                elif mutation == "xml":
+                    value["androidResources"]["definitions"][0]["sourceSha256"] = "d" * 64
+                elif mutation == "roots":
+                    binding["mainRoots"] = []
+                elif mutation == "producer":
+                    value["provenance"]["witnesses"] *= 2
+                elif mutation == "output":
+                    value["provenance"]["inputs"] = []
+                else:
+                    value["androidResources"]["includes"] = []
+                with self.assertRaises(RuntimeError):
+                    MODULE.verify_resource_bindings(value, hashes)
 
     def test_requires_explicit_unmapped_selection(self):
         path = "src/main/res/layout/screen.xml"
