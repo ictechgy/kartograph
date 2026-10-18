@@ -334,3 +334,16 @@ exact bytecode CALL is a correlation fact, not an inline/erased/unused classific
 Captured root/producer/import omissions remain global historical gaps after narrowing; a smaller view cannot improve capture
 coverage or restore removed rows. Source page counts and graph traversal/path truncation are independent. Saved snapshot identity
 hashes are neither producer authentication nor current-build freshness. `verify-snapshot` remains a separate explicit check.
+
+## Captured Android layout impact (0.25.0 preparation)
+
+[Layout impact](ANDROID-RESOURCE-IMPACT.md) uses exact captured paths, admitted non-final R.layout fields
+and recorded literal reverse includes. The demonstrated application fixture is AGP8.7.3/Gradle8.10.2/KGP2.0.21,
+JDK17/SDK35. Other Android snapshot compatibility results do not establish this resource mapping path.
+Coverage stays partial: dynamic/external includes may hide parents; final/inlined IDs, custom views,
+navigation, data/view binding, overlay/device winners and runtime inflation are unmeasured.
+Trusted quiescent build capture is required. Descriptor-relative no-follow observations do not provide
+atomic snapshots or hostile-filesystem time bounds. Unsupported/oversized capture remains unavailable,
+not successful empty selection. Legacy missing channels cannot borrow another revision's binding.
+Resource-bearing snapshots, including captured-empty channels, cannot be aggregated. Keep per-module
+scope/namespace/output ownership and use matching CLI/plugin/library versions with recompiled JVM clients.

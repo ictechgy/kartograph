@@ -10,14 +10,15 @@ Symbolic inputs remain rejected.
 These rows prove the recorded roots' bytes at the producer's completion observation.
 They do not establish completeness of AGP's supplied root inventory, or protect against
 an input changing during the producer execution and changing back before observation.
-The snapshot therefore retains an explicit inventory-unverified limitation. Future
-resource-to-code mapping must separately match the complete selected main-resource
-inventory, namespace options and witnessed R.jar output; a current directory-watch
-fingerprint cannot replace producer evidence.
+The snapshot retains an explicit inventory-unverified limitation unless the separate
+resource binding adapter matches the complete selected main-resource inventory,
+namespace options and witnessed selected R.jar output. Successful binding admission resolves
+that limitation for its recorded scope; unavailable capture or size fallback restores it.
+A current directory-watch fingerprint cannot replace producer evidence.
 
 Legacy producer witnesses without android-resources remain usable for ordinary
 bytecode queries. New snapshot capture reports resource-producer-evidence-unavailable
-for them. Previously serialized snapshots are not rewritten on read; future mapping
+for them. Previously serialized snapshots are not rewritten on read; resource impact
 must treat missing resource evidence as unavailable. Use the same analyzer version
 to capture and verify: older readers do not know this role's absent-directory semantics.
 

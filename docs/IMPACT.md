@@ -220,7 +220,12 @@ snapshot 바이트도 처음과 같다. witness가 없는 R.jar를
   `snapshotIncludeUnitTests.set(false)` 또는 `-Pkartograph.snapshotIncludeUnitTests=false`로 끈다. 끄면 test compiler
   witness를 등록하지 않고 snapshot에 `unit-test-components-excluded:` limitation을 남긴다. androidTest는 원래 캡처하지 않는다.
 
-모듈별 snapshot은 `kartograph snapshot merge`로 하나로 합친다. 모듈 snapshot 그래프에는 다른 모듈로 가는 참조·상속
+resource 사실/필드 소유권이 있는 snapshot은 captured-empty라도 merge/aggregate를 거부한다.
+해당 모듈의 snapshot을 따로 질의한다. 아래 병합 예시는 이 채널을 포함하지 않는 기존 snapshot에 한정한다.
+[0.25.0 layout XML 캡처·업그레이드](ANDROID-RESOURCE-IMPACT.md)는 non-final R 필드와 literal include의
+revision별 영향 후보를 다룬다. 기존 자동 snapshot 지원 조합 전체의 XML mapping을 보장하지 않는다.
+
+지원하는 기존 모듈별 snapshot은 `kartograph snapshot merge`로 하나로 합친다. 모듈 snapshot 그래프에는 다른 모듈로 가는 참조·상속
 간선이 없으므로 문서끼리 합치지 않고, 각 구성원의 검증된 class root·classpath를 함께 다시 인덱싱한다. 결과 그래프는
 같은 class root를 `snapshot --classes`에 모두 준 것과 같고, JVM USR은 모듈과 무관해 그대로다.
 

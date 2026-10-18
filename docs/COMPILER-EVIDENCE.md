@@ -210,7 +210,7 @@ recapture evidence. Use the existing `verify-snapshot` workflow for a separate c
 [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0) was published on 2026-10-15
 as a GitHub prerelease with seven assets. Its [release workflow](https://github.com/ictechgy/kartograph/actions/runs/38721915580)
 and Gradle plugin publishing step succeeded. As of 2026-10-17, independent consumption of those public assets
-and the Portal plugin has not been verified here; v0.22.0 remains the latest stable GitHub release.
+and the Portal plugin has not been verified here. As checked on 2026-10-18, v0.24.0 is the latest stable GitHub release.
 The original v0.23.0 tag, assets, packaged documents and checksums remain unchanged.
 
 - New core/index APIs are `CodeGraph.compilerSourceUseEvidence`, `withCompilerSourceUses`,
@@ -246,8 +246,9 @@ performance superiority, runtime behavior, deletion safety or permission to skip
 
 ## 0.24.0 upgrade and enum migration
 
-0.24.0 is release preparation. A versioned source build, ordinary CI success, packaged readiness,
-publication and independent public installation are separate gates. The enum feature's
+[v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0) was published on 2026-10-17 with seven assets.
+Its [release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702) passed packaged readiness and plugin publication.
+Independent public installation remains a separate result; historical assets and packaged documents are unchanged. The enum feature's
 [source-built Java/Kotlin integration passed](https://github.com/ictechgy/kartograph/actions/runs/38928690616)
 with `KARTOGRAPH_SNAPSHOT_CLI` enabled, including combined enum/source-use capture and saved queries.
 That result predates this version bump and does not establish 0.24.0 packaged readiness or publication.

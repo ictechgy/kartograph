@@ -69,17 +69,19 @@ Java의 non-private/compiler-visible 선언을 ABI 후보로 본다. 의미 기�
 
 ## Gradle
 
-아래 예시는 미출시 0.24.0 준비본용이다. Portal에서 해당 버전이 제공된 뒤 사용하거나
+아래 예시는 미출시 0.25.0 준비본용이다. Portal에서 해당 버전이 제공된 뒤 사용하거나
 같은 source revision에서 matching 모듈을 빌드한다.
 [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)은 일곱 asset이 있는 GitHub prerelease이며
 release workflow의 plugin publish 단계도 성공했다. 공개 asset/Portal plugin의 독립 consumer 검증은 아직 확인하지 못했다.
-2026-10-17 기준 최신 안정 GitHub release는 0.22.0이며 기존
+2026-10-18 기준 최신 안정 GitHub release는 [v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0)이다.
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702)의 packaged readiness와 plugin publish가 성공했다. 독립 공개 설치 검증은 별도다. 기존
 [0.22.0 Portal 페이지](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.22.0)는 그대로 남는다.
+0.25.0 layout XML 기능은 [matching plugin/CLI와 재캡처 조건](ANDROID-RESOURCE-IMPACT.md)을 따른다.
 CLI·plugin·collector 버전을 맞추며 [0.24.0 재캡처·재컴파일 조건](COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration)을 따른다.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.24.0"
+    id("io.github.ictechgy.kartograph") version "0.25.0"
 }
 kartograph {
     reportFormat.set("json")

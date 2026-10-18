@@ -27,3 +27,49 @@ Graph traversal retains its separate existing visit/depth/path/page budgets. The
 The real hosted fixture must prove XML-only child byte changes with unchanged code/test source hashes, old-snapshot stale status, rebuilt matched status, exact resource fields, independent field/call/test paths, parent include selection and unrelated exclusions. A channel-stripped saved snapshot must refuse resource selection instead of guessing from existing R fields.
 
 Synthetic unit/CLI graphs separately exercise same-named keys in different namespaces/scopes, qualifier multiplicity, include cycles, unavailable fields, deletion/rename, and a base-only binding where current contains the same field. These tests do not claim Android inflation execution.
+
+## 0.25.0 capture and migration
+
+Version 0.25.0 is release preparation until its publication and package gates pass. Use CLI, plugin and
+direct-library modules from the same reviewed version/source revision. Rebuild embedded JVM clients:
+the appended QuerySnapshot and resource-impact report fields change public constructor/copy shapes.
+GraphNode JVM modifier metadata is reused from the existing model, not added by this release.
+Defaulted source parameters do not guarantee binary compatibility. Older readers can drop optional
+resource channels on reserialization; retain originals and recapture lost evidence.
+
+Rebuild and recapture both baseline and current revisions with matching tool versions, module scope and
+capture settings. Do not edit a snapshot version label or infer missing channels from a matching JVM R field.
+Keep resource-bearing snapshots per module: aggregate/merge refuses even captured-empty resource facts.
+Namespace identifies resource keys within a capture, not a globally unique module. Duplicate JVM class names
+follow the indexer's selected classpath owner; an output without that selected declaration cannot acquire its binding.
+
+The demonstrated application combination is AGP8.7.3, Gradle8.10.2, KGP2.0.21, JDK17 and SDK35 with
+non-final R IDs. Keep that existing build's trust boundary and quiescent inputs. Enable the existing snapshot task:
+
+```kotlin
+kartograph {
+    snapshotsEnabled.set(true)
+    includeSourcePaths.set(true)
+}
+```
+
+With the matching plugin applied and the application's existing toolchain configured:
+
+```sh
+./gradlew kartographSnapshotDebug
+kartograph verify-snapshot --project . \
+  --graph-file build/reports/kartograph/debug-snapshot.json \
+  --input-bindings build/kartograph/debug-input-bindings.json
+kartograph impact --file src/main/res/layout/child.xml \
+  --graph-file build/reports/kartograph/debug-snapshot.json --all
+```
+
+There is no new resource capture CLI flag. The application task uses complete main resource providers;
+unit-test graph declarations are included by the existing default, but snapshot capture does not execute tests.
+The input-bindings file contains checkout-specific paths and should not be published. Require the separate
+verification result appropriate to the current build before treating it as fresh. The saved impact query itself
+does not repeat that verification.
+
+For a two-revision query, provide the captured baseline with --base-graph. For a rename provide both old and
+new --file paths. Unsupported or absent evidence on either side remains visible even if the other side selects
+code. Do not treat partial resource coverage, an empty page or a selected test list as permission to skip tests.

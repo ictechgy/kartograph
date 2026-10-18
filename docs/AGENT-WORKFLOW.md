@@ -68,3 +68,13 @@ PR CI와 tag workflow 모두 같은 fixture를 실행하며, 이어서 `Scripts/
 시스템 JDK는 배포 runtime inventory에 포함하지 않는다. `verify-release-readiness.sh`는 이 SBOM 두 개와
 배포물 SHA256SUMS까지 두 번 빌드해 재현성을 확인한다. 사용자는 release 파일들을 같은 디렉터리에 받은 후
 `shasum -a 256 -c SHA256SUMS`로 무결성을 확인할 수 있다.
+
+### 0.25.0 resource package readiness
+
+release preparation은 기존 readiness에서 최종 retained plugin JAR와 압축 해제 ZIP/TAR CLI를 사용해
+layout XML→정확한 R 필드→코드/테스트 및 literal include를 재검증해야 한다. 소스 빌드 CI를 package 검증으로
+대신하지 않는다. JDK17, SDK35/build-tools35.0.0 및 GRADLE_8_HOME의 Gradle8.10.2가 필요하다.
+두 archive CLI는 동일 before/after snapshot을 질의하며 의미 결과와 기존 음성 대조군을 비교한다.
+최종 clean build의 SHA256SUMS·artifact 해시와 실제 소비한 plugin/CLI library identity를 보존한다.
+패키지 검증 도중 installDist나 plugin source 재빌드로 검증 대상을 바꾸지 않는다.
+exact-main readiness와 공개 배포/독립 설치는 별도 단계다. resource scope는 partial이며 runtime inflation을 주장하지 않는다.

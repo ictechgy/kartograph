@@ -278,7 +278,7 @@ def prepare(project):
           "package dev.kartograph.compat;\npublic class ResourceAccessTest {\n" + tests + "\n}\n")
 
 
-def main():
+def source_main():
     output = ROOT / "build/reports/agp-8-resource-impact"
     output.mkdir(parents=True, exist_ok=True)
     # 재실행 실패 시 이전 성공 보고서를 공개하지 않는다.
@@ -368,6 +368,177 @@ def main():
         result_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(log_summary(report), sort_keys=True))
     print("AGP resource experiment established XML layout/include impact with exact R field/test witnesses and explicit coverage limits.")
+
+
+
+# 배포 모드는 명시적 파일들만 소비한다. source-mode 준비·installDist 호출은 없다.
+PACKAGED = runpy.run_path(str(Path(__file__).with_name("packaged_resource_artifacts.py")))
+
+
+def packaged_log_summary(report):
+    """검증한 공개 projection과 고정 형식 지문만 stdout에 남긴다."""
+    summary = (log_summary(report) if report["status"] == "passed" else
+               {"format": report["format"], "version": 1, "status": "failed", "stage": report["stage"]})
+    summary["releaseVersion"] = report["releaseVersion"]
+    for name in ("sourceRevision", "sourceTree"):
+        value = report.get(name)
+        if isinstance(value, str) and len(value) == 40 and all(c in "0123456789abcdef" for c in value):
+            summary[name] = value
+    artifacts = report.get("artifacts", {})
+    retained = artifacts.get("plugin", {}).get("sha256")
+    if isinstance(retained, str) and PACKAGED["HASH"].fullmatch(retained):
+        summary["retainedPluginSha256"] = retained
+    summary["loadedRuntime"] = PACKAGED["runtime_diagnostic"](report.get("loadedRuntimeDiagnostic", {}))
+    summary["cliArchives"] = [{"format": row["format"], "sha256": row["sha256"]}
+                              for row in artifacts.get("archives", [])
+                              if row.get("format") in ("zip", "tar")
+                              and isinstance(row.get("sha256"), str) and PACKAGED["HASH"].fullmatch(row["sha256"])]
+    summary["agpBuildCount"] = 2 if report.get("agpBuildCount") == 2 else 0
+    summary["semanticPairCount"] = len(report.get("semanticOutputSha256", {}))
+    summary["artifactsUnchanged"] = report.get("artifactsUnchanged") is True
+    return summary
+
+
+def packaged_main(args):
+    output = Path(args.evidence).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    result_path = output / "verification.json"
+    if result_path.exists():
+        result_path.unlink()
+    report = {"format": "kartograph-packaged-agp-resource-impact", "version": 1,
+              "status": "failed", "releaseVersion": args.version, "stage": "artifact-admission"}
+    try:
+        artifacts = PACKAGED["PackagedArtifacts"](args, ROOT)
+        report["artifacts"] = artifacts.public_identity()
+        report["stage"] = "toolchain-admission"
+        gradle_home = os.environ.get("GRADLE_8_HOME")
+        require(bool(gradle_home), "GRADLE_8_HOME must point to the verified Gradle 8.10.2 installation")
+        gradle = Path(gradle_home) / "bin/gradle"
+        version = run([gradle, "--version"], ROOT, output, "gradle-version")
+        require("Gradle 8.10.2" in version.splitlines(), "the experiment requires Gradle 8.10.2")
+        sdk = os.environ.get("ANDROID_HOME")
+        require(bool(sdk) and (Path(sdk) / "platforms/android-35").is_dir()
+                and (Path(sdk) / "build-tools/35.0.0").is_dir(),
+                "Android platform 35 and build-tools 35.0.0 are required")
+        revision = run(["git", "rev-parse", "HEAD"], ROOT, output, "source-revision").strip()
+        require(len(revision) == 40 and all(c in "0123456789abcdef" for c in revision), "invalid source revision")
+        report["sourceRevision"] = revision
+        tree = run(["git", "rev-parse", "HEAD^{tree}"], ROOT, output, "source-tree").strip()
+        require(len(tree) == 40 and all(c in "0123456789abcdef" for c in tree), "invalid source tree")
+        report["sourceTree"] = tree
+        report["toolchain"] = {"agp": "8.7.3", "gradle": "8.10.2", "kgp": "2.0.21",
+                               "javaTarget": 17, "compileSdk": 35, "nonFinalResIds": True}
+        for label, binary in artifacts.clis.items():
+            observed = run([binary, "--version"], ROOT, output, label + "-version").strip()
+            require(observed == "kartograph " + args.version, "extracted CLI version differs")
+        semantic_hashes = {}
+        with tempfile.TemporaryDirectory(prefix="packaged-resource-impact-", dir=ROOT / "fixtures") as temporary:
+            project = Path(temporary)
+            prepare(project)
+            snapshot = project / "build/reports/kartograph/debug-snapshot.json"
+            bindings = project / "build/kartograph/debug-input-bindings.json"
+            runtime_path = project / "build/reports/kartograph/packaged-runtime.json"
+            gradle_command = [gradle, "--no-daemon", "--console=plain", "--no-configuration-cache",
+                              "-p", project, "-Pkartograph.pluginJar=" + str(artifacts.plugin)]
+            source_paths = sorted([*project.glob("src/**/*.java"), *project.glob("src/**/*.kt")])
+            source_hashes = {str(path.relative_to(project)): digest(path) for path in source_paths}
+            layout_paths = {name: project / ("src/main/res/layout/" + name + ".xml") for name in LAYOUTS}
+            parent = ET.parse(layout_paths["parent"]).getroot()
+            require(parent.find("include").get("layout") == "@layout/child", "literal layout include missing")
+            phases, runtimes = [], []
+
+            def query(arguments, name, expected=0, graph=None):
+                # 두 배포 CLI가 동일한 snapshot/bindings 바이트를 읽었는지 질의 전후 확인한다.
+                guarded = [graph or snapshot, bindings]
+                before = [digest(path) for path in guarded]
+                documents = {}
+                for label, binary in artifacts.clis.items():
+                    require([digest(path) for path in guarded] == before, "shared query inputs mutated")
+                    documents[label] = json.loads(run([binary, *arguments], ROOT, output,
+                                                      name + "-" + label, expected=expected))
+                    require([digest(path) for path in guarded] == before, "shared query inputs mutated")
+                value, sha = PACKAGED["semantic_pair"](documents)
+                semantic_hashes[name] = sha
+                return value
+
+            for phase in ("before", "after"):
+                report["stage"] = phase
+                if phase == "after":
+                    layout_paths["child"].write_text(
+                        layout_paths["child"].read_text(encoding="utf-8").replace('android:text="Before"', 'android:text="After"'),
+                        encoding="utf-8")
+                    stale = query(["verify-snapshot", "--graph-file", snapshot, "--project", project,
+                                   "--input-bindings", bindings], "resource-edit-stale", expected=1)
+                    require(stale.get("status") == "stale", "XML-only edit did not invalidate captured inputs")
+                # 정확히 두 AGP 빌드만 실행한다. 각 빌드가 두 CLI에 공통인 snapshot을 만든다.
+                run(gradle_command + ["verifyPackagedKartographRuntime", "kartographSnapshotDebug",
+                                     "testDebugUnitTest", "--rerun-tasks"],
+                    ROOT, output, phase + "-build-tests")
+                require(runtime_path.is_file() and runtime_path.stat().st_size <= 256 * 1024,
+                        "bounded loaded-runtime receipt is missing")
+                runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+                report["loadedRuntimeDiagnostic"] = PACKAGED["runtime_diagnostic"](runtime)
+                runtimes.append(PACKAGED["verify_runtime"](runtime, artifacts))
+                require(all(item == runtimes[0] for item in runtimes), "loaded runtime changed between captures")
+                artifacts.unchanged()
+                freshness = query(["verify-snapshot", "--graph-file", snapshot, "--project", project,
+                                   "--input-bindings", bindings], phase + "-freshness")
+                require(freshness.get("status") == "matched", "resource snapshot is not verified")
+                require(source_hashes == {str(path.relative_to(project)): digest(path) for path in source_paths},
+                        "code/test sources changed during XML-only experiment")
+                require(not (project / ABSENT_ROOT).exists(), "declared absent fixture root unexpectedly exists")
+                admitted = verify_resource_bindings(json.loads(snapshot.read_text(encoding="utf-8")),
+                    {name: digest(path) for name, path in layout_paths.items()})
+                executed = verify_junit(project / "build/test-results/testDebugUnitTest")
+                witnesses, xml_impacts = {}, []
+                for name in LAYOUTS:
+                    field_value = query(["impact", field(name), "--graph-file", snapshot, "--all"],
+                                        phase + "-" + name + "-field")
+                    witnesses[name] = verify_field_path(field_value, name)
+                    path = str(layout_paths[name].relative_to(project))
+                    file_value = query(["impact", "--file", path, "--graph-file", snapshot, "--all"],
+                                       phase + "-" + name + "-xml")
+                    xml_impacts.append(verify_xml_impact(file_value, name, digest(layout_paths[name])))
+                phases.append({"phase": phase, "snapshotSha256": digest(snapshot),
+                               "xmlSha256": {name: digest(path) for name, path in layout_paths.items()},
+                               "sourceSha256": source_hashes, "freshness": "matched",
+                               "executedTests": executed, "fieldWitnesses": witnesses,
+                               "xmlImpact": xml_impacts, "resourceBindings": admitted})
+            legacy = json.loads(snapshot.read_text(encoding="utf-8"))
+            legacy.pop("androidResources", None)
+            legacy.pop("androidResourceBindings", None)
+            legacy_path = project / "legacy-snapshot.json"
+            legacy_path.write_text(json.dumps(legacy), encoding="utf-8")
+            legacy_report = query(["impact", "--file", "src/main/res/layout/child.xml",
+                                   "--graph-file", legacy_path, "--all"],
+                                  "legacy-resource-unavailable", expected=64, graph=legacy_path)
+            verify_resource_unavailable(legacy_report, "src/main/res/layout/child.xml")
+            require(phases[0]["xmlSha256"]["child"] != phases[1]["xmlSha256"]["child"], "XML bytes did not change")
+            require(all(phases[0]["xmlSha256"][name] == phases[1]["xmlSha256"][name]
+                        for name in LAYOUTS if name != "child"), "unrequested XML changes")
+            report.update({"status": "passed", "stage": "complete", "agpBuildCount": len(phases),
+                           "loadedRuntime": runtimes[0], "phases": phases,
+                           "semanticOutputSha256": semantic_hashes,
+                           "cliComparison": "complete-json-equality-on-identical-snapshots",
+                           "limitations": [LIMITATION, "The unit tests execute accessors, not Android layout inflation.",
+                                           "Final/inlined IDs, other AGP versions, overlays and binding XML are unmeasured."]})
+        artifacts.unchanged()
+        report["artifactsUnchanged"] = True
+    except BaseException:
+        report["status"] = "failed"
+        raise
+    finally:
+        PACKAGED["write_receipt"](result_path, report)
+        summary = json.dumps(packaged_log_summary(report), sort_keys=True)
+        require(len(summary.encode("utf-8")) <= 64 * 1024, "packaged stdout summary exceeds bound")
+        print(summary, flush=True)
+
+
+def main(argv=None):
+    args = PACKAGED["parse_arguments"](argv)
+    if args.packaged:
+        return packaged_main(args)
+    return source_main()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 # Bounded Android resource-impact experiment
 
-This experiment establishes the input evidence for a future resource-identity mapping.
-It does not add XML resource mapping to the product.
+This experiment exercises the product's bounded layout-file and literal-include mapping,
+with separate producer, exact R-field and bytecode consumer witnesses.
 
 ## Scope
 
@@ -23,24 +23,28 @@ Both before and after an XML-only child text change must have:
   and a snapshot whose captured inputs verify as matched.
 - The exact generated R field selected by impact, with bytecode FIELD_ACCESS from the accessor
   and CALL then FIELD_ACCESS from the compiled test.
-- Explicit unmappedFile output for each XML file. An empty or missing report is rejected.
+- Exact XML file→resource key→non-final R field receipts, with revision-local selected fields.
+  Child XML must select child and its recorded parent include; other layouts must select only their own field.
+  Exact accessor/test witnesses and unrelated-layout exclusions are required.
+- A declared absent main root in facts, bindings and producer inventories while the directory remains absent.
+- A channel-stripped snapshot must return resourceEvidenceUnavailable/exit64 instead of guessing from R fields.
 - Identical code/test source hashes and changed child XML bytes, with other XML bytes unchanged.
 
 The old snapshot must become stale after the XML edit and before rebuilding. The experiment
-does not compare a stale snapshot as if current. No inferred resource relationship is inserted.
-The parent include is recorded as an input fact, while include-to-code traversal remains absent.
+does not compare a stale snapshot as if current. Only admitted saved resource facts and exact field ownership supply seeds.
+The recorded parent include supplies a bounded reverse-include candidate; bytecode paths remain separate evidence.
 
 Only the bounded result.json is uploaded. Raw logs and checkout-specific input bindings are
 not public artifacts. The result records the source revision, CLI library hashes, snapshot hashes,
 source/XML hashes, exact graph witnesses, executed test inventory and explicit limitations.
 
-## Interpretation and next slice
+## Interpretation
 
-`evidenceEstablishedWithKnownMappingGap` means the compiler/test prerequisites were observed
-and XML file selection was explicitly unmapped. It is not passing resource-impact coverage.
-When a supported mapping is implemented, deliberately replace the unmapped expectation with
-positive resource-to-code/test witnesses and negative unrelated-resource checks.
-Do not weaken the prerequisite evidence to get a green result.
+`capturedLayoutImpactEstablished` means these fixture-specific XML selection, literal include,
+producer and code/test oracles passed. The earlier unmapped baseline is preserved in historical runs.
+[PR188 CI](https://github.com/ictechgy/kartograph/actions/runs/39159309408) passed the new positive mapping
+and negative controls. Coverage remains partial; this result does not establish a 0.25.0 installed package
+or Android layout inflation. Release readiness must separately use retained packaged artifacts.
 
 Final/inlined resource IDs, other AGP versions, overlays, navigation, data/view binding and
 Android UI behavior are outside this experiment. Missing support remains unknown rather than

@@ -6,7 +6,36 @@
 
 ## [Unreleased]
 
-## [0.24.0] - Unreleased (준비 중)
+## [0.25.0] - Unreleased (준비 중)
+
+### Added
+
+- 신뢰되고 정지한 Gradle application build에서 main resource inventory와 생산자 byte 지문,
+  namespace 및 실제 선택된 R.jar 선언을 함께 검증한다. 선택적 layout 사실과 필드 소유권을 별도로 저장한다.
+- 정확한 layout XML 경로의 변경을 non-final static int R.layout 필드와 코드·테스트 후보로 연결한다.
+  기록된 literal include의 역방향 closure를 포함하고 qualifier 정의를 보존한다.
+- base/current resource seed를 revision별로 분리한다. 삭제·이름 변경·없는 legacy 채널과
+  같은 이름의 다른 namespace/scope를 구분하고 불충분한 근거를 unavailable/partial로 남긴다.
+- XML parser의 DTD/외부 entity 거부, descriptor-relative no-follow 관측, 명시적 입력 상한,
+  선택적 snapshot 크기 fallback 및 Gradle8.10.2 host Kotlin ABI 회귀를 추가한다.
+
+### 업그레이드와 검증 범위
+
+- matching 0.25.0 CLI/plugin/library를 사용하고 직접 JVM client를 다시 컴파일한다.
+  양쪽 revision을 같은 도구·scope·설정으로 다시 빌드·캡처한다. resource-bearing snapshot 병합은 거부한다.
+- [PR188의 전체 CI](https://github.com/ictechgy/kartograph/actions/runs/39159309408)는
+  AGP8.7.3/Gradle8.10.2/KGP2.0.21/JDK17/SDK35 non-final R fixture의 실제 XML-only 변경,
+  child/include-parent 필드·호출자·테스트, 관련 없는 layout 배제 및 stale→matched를 검증했다.
+  Linux17/21 descriptor capability도 확인했다. 이는 0.25.0 배포 package 검증이나 공개 설치 성공을 뜻하지 않는다.
+- partial coverage이며 final/inlined ID, overlay/device winner, custom view, navigation,
+  data/view binding과 Android inflation은 미검증이다. 신뢰된 정지 입력 전제는 악의적 동시 filesystem
+  변경의 원자성·시간 상한을 제공하지 않는다. [캡처·업그레이드 안내](docs/ANDROID-RESOURCE-IMPACT.md)를 따른다.
+
+## [0.24.0] - 2026-10-17
+
+- [GitHub release](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0)의 7개 asset이 공개됐다.
+  [release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702)은 packaged readiness와
+  plugin publish 단계를 통과했다. 공개 asset/Portal의 독립 consumer 검증과는 별도 결과다.
 
 ### Added
 
@@ -45,7 +74,7 @@
 - source-use 기능을 추가한 pre-1.0 minor다.
   [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)은 tag와 7개 asset이 공개됐고,
   [release run](https://github.com/ictechgy/kartograph/actions/runs/38721915580)의 Gradle plugin publish step도 성공했다.
-  2026-10-17 확인 기준 GitHub prerelease 상태이며 latest stable은 0.22.0이다.
+  v0.23.0은 GitHub prerelease로 보존한다. 2026-10-18 확인 기준 latest stable은 v0.24.0이다.
 - 공개 asset·Portal plugin의 독립 consumer 검증은 미완료다. publish step 성공을 독립 설치 성공으로 해석하지 않는다.
   기존 tag·asset·checksum과 발행 당시 archive 문서를 변경하지 않는다. 아래 호환성 근거의 한계도 그대로다.
 
@@ -1052,8 +1081,9 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.23.0...HEAD
-[0.24.0]: https://github.com/ictechgy/kartograph/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.24.0...HEAD
+[0.25.0]: https://github.com/ictechgy/kartograph/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.24.0
 [0.23.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.23.0
 [0.19.0]: https://github.com/ictechgy/kartograph/compare/v0.18.2...v0.19.0
 [0.18.0]: https://github.com/ictechgy/kartograph/compare/v0.17.0...v0.18.0

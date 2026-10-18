@@ -173,7 +173,22 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 result = subprocess.run(["bash", "-n"], input=shell_block(name), text=True, capture_output=True, timeout=20)
                 self.assertEqual(0, result.returncode, result.stderr)
         workflow = WORKFLOW.read_text(encoding="utf-8")
-        self.assertLess(workflow.index("run: Scripts/verify-release-readiness.sh"), workflow.index("      - name: " + ENSURE))
+        self.assertLess(workflow.index("          Scripts/verify-release-readiness.sh"), workflow.index("      - name: " + ENSURE))
+
+    def test_release_readiness_reexports_gradle_home_in_its_own_step(self):
+        # 앞선 Actions step의 export는 다음 step으로 전달되지 않는다.
+        gradle = self.bin / "gradle"
+        gradle.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        gradle.chmod(0o755)
+        scripts = self.root / "Scripts"
+        scripts.mkdir()
+        gate = scripts / "verify-release-readiness.sh"
+        gate.write_text('#!/bin/sh\ntest "$GRADLE_8_HOME" = "$MOCK_GRADLE_HOME"\n', encoding="utf-8")
+        gate.chmod(0o755)
+        self.env["MOCK_GRADLE_HOME"] = str(self.root)
+        self.env.pop("GRADLE_8_HOME", None)
+        result = self.run_steps("Verify release artifacts without publishing")
+        self.assertEqual(0, result.returncode, result.stderr)
 
     def test_manual_sha_and_ref_admission_fails_before_external_commands(self):
         for changes in (

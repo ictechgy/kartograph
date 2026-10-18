@@ -56,12 +56,12 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 - Android graph/dead tasks: AGP 8.7+, Gradle 8.10+, JDK 17+ (verified with AGP 8.7.3 / Gradle 8.10.2 and with AGP 9.x).
 - Automatic snapshots: JVM Java/Kotlin on Gradle 9.6.1 and JDK 17/21, plus the [tested Android combinations](docs/IMPACT.md#android-variant-자동-캡처). The Kotlin compiler adapter is verified with KGP 2.4.10; other KGP versions are not guaranteed. The minimum Android combination was tested on Gradle 8.10.2, although KGP itself recommends 8.14.4 or later.
 
-The following example targets the unreleased 0.24.0 preparation version. Use it only after that version
+The following example targets the unreleased 0.25.0 preparation version. Use it only after that version
 is available from the Portal, or build matching modules from the same source revision.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.24.0"
+    id("io.github.ictechgy.kartograph") version "0.25.0"
 }
 ```
 
@@ -76,10 +76,12 @@ When upgrading from 0.20.0, rebuild direct JVM library consumers for the `GraphN
 `QuerySnapshot` ABI changes and use matching CLI, plugin and optional collector versions.
 As checked on 2026-10-17, [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)
 has its seven assets and its [release run](https://github.com/ictechgy/kartograph/actions/runs/38721915580)
-completed the Gradle plugin publish step. It remains a GitHub prerelease; latest stable is 0.22.0.
+completed the Gradle plugin publish step. It remains a GitHub prerelease.
 Independent public-asset/Portal-consumer verification of 0.23.0 is still pending. Those assets and their
 original documentation are unchanged. Publication and successful independent installation are separate results.
-The current source prepares 0.24.0; changing VERSION does not create a released artifact or complete release validation.
+As checked on 2026-10-18, [v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0) is the latest stable GitHub release with seven assets.
+Its [release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702) passed packaged readiness and plugin publication; independent public consumption is a separate check.
+The current source prepares 0.25.0; changing VERSION does not create a released artifact or complete release validation.
 Use matching CLI, plugin, collector and library artifacts. The new source-use APIs and explicit
 `snapshot --include-source-uses`, `query --source-uses` and `impact --source-edits` flags are additive.
 Saved source-use reports are partial/historical evidence with `currentness: notChecked`, separate from ordinary graph results.
@@ -88,7 +90,7 @@ base/current snapshots with the same tool version when required; do not relabel 
 Old compiled-client and descriptor checks cover selected APIs, not every client or Kotlin source compatibility.
 See the [upgrade notes](CHANGELOG.md) and [source-use compatibility guide](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility).
 
-The 0.24.0 preparation adds enum expansion candidates for explicit fallback and finite literal membership decisions.
+Version 0.24.0 adds enum expansion candidates for explicit fallback and finite literal membership decisions.
 Enable compiler `enumDecisions=true` and `snapshot --include-enum-decisions`, then compare fresh compatible
 baseline/current snapshots with `impact --enum-expansion`. Results retain current source locations,
 added constants, reasons and unresolved coverage. Both enum and source-use capture flags can be enabled together.
@@ -98,6 +100,11 @@ builds, and rebuild clients when their enum definitions change. Follow the
 [enum expansion guide](docs/IMPACT.md#opt-in-enum-expansion-candidates).
 These are review candidates, not runtime behavior proof. The published 0.23.0 artifacts do not contain this feature.
 The JDK 17 collector suite does not execute the conditional Java 21 null/pattern syntax branch.
+
+The 0.25.0 preparation adds captured application layout XML impact through exact non-final R fields and recorded literal includes.
+Use matching CLI/plugin/library builds and recapture both revisions. Coverage remains partial; module snapshots with resource
+evidence cannot be aggregated. See [layout capture and migration](docs/ANDROID-RESOURCE-IMPACT.md) for the tested AGP8.7.3
+combination, trusted-build boundary, freshness checks and unsupported runtime/dynamic cases.
 
 ## Usage
 
