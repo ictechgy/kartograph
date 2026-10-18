@@ -242,7 +242,7 @@ class RenderDeadCommentTest(unittest.TestCase):
         self.assertEqual([
             "- &lt;sub&gt;tiny&lt;/sub&gt; \\[l\\](https://evil.example)",
             "- &lt;/details&gt;  \\#\\# kartograph dead — no unreachable declarations",
-            "- !\\[x\\](https://evil.example/p.png) \\*\\*b\\*\\* \\_i\\_ \\~\\~s\\~\\~ \\`c\\` \\@someone "
+            "- !\\[x\\](https://evil.example/p.png) \\*\\*b\\*\\* \\_i\\_ \\~\\~s\\~\\~ \\`c\\` <span>@</span>someone "
             "&amp;amp; \\\\\\[x\\\\\\](y)",
         ], [line for line in body.split("\n") if line.startswith("- ")])
         self.assertTrue(body.endswith("\n\n</details>\n"))
@@ -260,6 +260,31 @@ class RenderDeadCommentTest(unittest.TestCase):
                           "- 2\\) paren", "- 1\\.", "- \\- lead", "- 12\\. lead", "- code", "- \\- tab"], items)
         for item in items:
             self.assertFalse(opens_another_block(item), item)
+        self.assertTrue(body.endswith("\n\n</details>\n"))
+
+    def test_limitations_cannot_form_github_math_or_mentions(self):
+        limitations = [
+            "$\\Huge{FAKE}$",
+            "x $a$, $$b$$ and $`c`$",
+            "\\$d\\$ @someone @org/team a@b.example",
+            'external-retentions source: {"class":"a.Foo$Bar","annotation":"@Keep"}',
+        ]
+        returncode, body, stderr = render_bytes(report_with([], limitations))
+
+        self.assertEqual(0, returncode, stderr)
+        items = [line for line in body.split("\n") if line.startswith("- ")]
+        self.assertEqual([
+            "- <span>$</span>\\Huge{FAKE}<span>$</span>",
+            "- x <span>$</span>a<span>$</span>, <span>$</span><span>$</span>b<span>$</span><span>$</span> and "
+            "<span>$</span>\\`c\\`<span>$</span>",
+            "- \\\\<span>$</span>d\\\\<span>$</span> <span>@</span>someone <span>@</span>org/team "
+            "a<span>@</span>b.example",
+            '- external-retentions source: {"class":"a.Foo<span>$</span>Bar","annotation":"<span>@</span>Keep"}',
+        ], items)
+        for item in items:
+            # GitHub은 `\$`·`&#36;`·`\@`도 수식·멘션으로 읽으므로 span 밖에 `$`·`@`가 남으면 안 된다.
+            self.assertNotIn("$", item.replace("<span>$</span>", ""), item)
+            self.assertNotIn("@", item.replace("<span>@</span>", ""), item)
         self.assertTrue(body.endswith("\n\n</details>\n"))
 
     def test_malformed_fields_fail_as_tool_errors_without_echoing_them(self):

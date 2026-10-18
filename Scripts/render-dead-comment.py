@@ -12,9 +12,15 @@ from pathlib import Path
 CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
 # README에 문서화된 confidence 등급이다. 셀 밖에 그대로 들어가므로 다른 값은 렌더링하지 않는다.
 CONFIDENCE_TIERS = ("static", "needs-runtime-review", "runtime-observed", "unmeasured")
-# 한 글자만으로 HTML·링크·강조·제목·code span·멘션·표 구분을 열 수 있는 문자다. `!`·`(`·`)`는 `[`가
+# 한 글자만으로 HTML·링크·강조·제목·code span·표 구분·수식·멘션을 열 수 있는 문자다. `!`·`(`·`)`는 `[`가
 # escape되면 이미지·링크를 만들지 못하므로 그대로 두어 `document(s)` 같은 정상 한계 문구의 바이트를 지킨다.
-TEXT_ESCAPES = {"&": "&amp;", "<": "&lt;", ">": "&gt;", **{character: "\\" + character for character in "[]`*_~#@|"}}
+# GitHub에서는 `\$`·`&#36;`·`\@`도 수식·멘션이 되므로(GitHub Markdown API로 확인) `$`·`@`는 backslash 대신
+# GitHub 문서가 수식 밖 `$`에 권하는 `<span>`으로 감싼다. 보이는 글자는 그대로다.
+TEXT_ESCAPES = {
+    "&": "&amp;", "<": "&lt;", ">": "&gt;",
+    **{character: "\\" + character for character in "[]`*_~#|"},
+    **{character: f"<span>{character}</span>" for character in "$@"},
+}
 ASCII_PUNCTUATION = frozenset(string.punctuation)
 PIPE_WITH_BACKSLASHES = re.compile(r"(\\*)\|")
 # 목록 항목 내용 첫머리에서 블록을 여는 bullet(`-`·`+`)과 ordered(숫자열 뒤 `.`·`)`) 표지다. `- ---`는 줄 전체가
@@ -69,6 +75,9 @@ def text_cell(value):
 
     앞 공백은 지운다. 4칸 이상이면 항목 안의 들여쓴 code block이 되고(CommonMark 4.4, 5.2), 문단의 앞 공백은
     렌더링에서도 사라지므로 보이는 글자는 같다. 그다음 첫머리의 목록 표지를 escape한다.
+
+    남은 한계: 맨 URL과 `#1` 같은 이슈 참조(`\\#1`로 escape해도 링크된다)는 GitHub 자동 링크가 되고, `:rocket:` 같은
+    단축어는 emoji로 보인다. 링크는 실제 URL과 번호를 그대로 보여 주며, 구조나 숨은 링크를 만들지 않는다.
     """
     text = CONTROL_CHARACTERS.sub(" ", str(value)).lstrip(" ")
     escaped = []
