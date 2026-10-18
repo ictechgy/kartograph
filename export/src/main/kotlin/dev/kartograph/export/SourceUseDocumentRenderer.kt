@@ -107,9 +107,34 @@ private fun sourceSnapshotMetadata(
         "source edit snapshots, identities and revisions must match"
     }
     require(summaryLimit == null || summaryLimit in 1..100_000) { "impact summary limit must be 1..100000" }
-    require(report.resourceSelections.isEmpty() ||
-        report.selectedByRevision.keys.map { it.name.lowercase() }.toSet() == originals.keys) {
-        "resource source edits require authoritative revision selections"
+    if (report.selectedByRevision.isNotEmpty()) {
+        require(report.selectedByRevision.keys.map { it.name.lowercase() }.toSet() == originals.keys) {
+            "source edits require the exact revision selection inventory"
+        }
+        require(report.selectedByRevision.values.flatten().toSet() == report.changed.map { it.node.id }.toSet()) {
+            "source edit selected seeds do not match changed declarations"
+        }
+        report.selectedByRevision.forEach { (revision, ids) ->
+            val graph = originals.getValue(revision.name.lowercase()).graph
+            require(ids.all(graph::contains)) { "source edit seed is absent from its revision graph" }
+        }
+    }
+    if (report.resourceSelections.isNotEmpty()) {
+        require(report.resourceSelections.keys.map { it.name.lowercase() }.toSet() == originals.keys &&
+            report.selectedByRevision.keys == report.resourceSelections.keys) {
+            "resource source edits require authoritative revision selections"
+        }
+        report.resourceSelections.forEach { (revision, selection) ->
+            val snapshot = originals.getValue(revision.name.lowercase())
+            val binding = snapshot.androidResourceBindings
+            val expectedBinding = binding?.let { dev.kartograph.analysis.AndroidResourceImpactBinding(
+                it.resourceFactsSha256, it.producerArtifact, it.producerSha256, it.output) }
+            require(selection.scope == snapshot.scope && selection.namespace == snapshot.androidResourceEvidence?.namespace &&
+                selection.binding == expectedBinding &&
+                selection.selectedFields.all { it in report.selectedByRevision.getValue(revision) }) {
+                "resource impact selection does not match its snapshot channels"
+            }
+        }
     }
     identities.forEach { (key, input) ->
         val snapshot = originals.getValue(key)

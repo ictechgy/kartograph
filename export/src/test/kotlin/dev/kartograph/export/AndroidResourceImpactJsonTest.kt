@@ -46,6 +46,59 @@ class AndroidResourceImpactJsonTest {
         assertEquals(before, SourceUseDocumentRenderer.impact(document))
     }
 
+    @Test
+    fun `authoritative revision maps reject missing seeds wrong inventories and changed unions`() {
+        val snapshot = fixture()
+        val facts = requireNotNull(snapshot.androidResourceEvidence)
+        val report = ChangeImpact.analyze(ImpactInput(snapshot.graph, androidResources =
+            AndroidResourceImpactContext(facts, snapshot.androidResourceBindings, snapshot.provenance, snapshot.scope)),
+            files = listOf(facts.definitions.single().file.path))
+        val ids = report.selectedByRevision.getValue(ImpactRevision.CURRENT)
+        val inspection = SourceEditImpact.analyze(snapshot.graph, ids)
+        fun document(value: ImpactReport) = SourceEditImpactDocument(value, mapOf("current" to snapshot),
+            mapOf("current" to SourceSnapshotInput(snapshot.toolVersion, snapshot.scope, null, "5".repeat(64))),
+            mapOf("current" to SourceEditImpactRevision("resolved", inspection.changed, inspection.coverage, inspection)))
+        assertFailsWith<IllegalArgumentException> {
+            document(report.copy(selectedByRevision = mapOf(ImpactRevision.BASE to ids)))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            document(report.copy(selectedByRevision = mapOf(ImpactRevision.CURRENT to setOf(NodeId("field:missing/R#screen:I")))))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            document(report.copy(changed = emptyList()))
+        }
+        // union과 section을 함께 조작해도 없는 seed는 snapshot graph에 대해 거부한다.
+        val absent = NodeId("field:missing/R#screen:I")
+        val forgedNode = GraphNode(absent, "screen", NodeKind.FIELD)
+        val forgedGraph = CodeGraph(listOf(forgedNode), emptyList())
+        val forgedInspection = SourceEditImpact.analyze(forgedGraph, setOf(absent))
+        assertFailsWith<IllegalArgumentException> {
+            SourceEditImpactDocument(report.copy(changed = listOf(ImpactNode(forgedNode, setOf(ImpactRevision.CURRENT))),
+                selectedByRevision = mapOf(ImpactRevision.CURRENT to setOf(absent)), resourceSelections = emptyMap()),
+                mapOf("current" to snapshot),
+                mapOf("current" to SourceSnapshotInput(snapshot.toolVersion, snapshot.scope, null, "5".repeat(64))),
+                mapOf("current" to SourceEditImpactRevision("resolved", forgedInspection.changed,
+                    forgedInspection.coverage, forgedInspection)))
+        }
+    }
+
+    @Test
+    fun `resource receipts from a different snapshot cannot be relabeled`() {
+        val snapshot = fixture()
+        val facts = requireNotNull(snapshot.androidResourceEvidence)
+        val report = ChangeImpact.analyze(ImpactInput(snapshot.graph, androidResources =
+            AndroidResourceImpactContext(facts, snapshot.androidResourceBindings, snapshot.provenance, snapshot.scope)),
+            files = listOf(facts.definitions.single().file.path))
+        val field = report.selectedByRevision.getValue(ImpactRevision.CURRENT)
+        val inspection = SourceEditImpact.analyze(snapshot.graph, field)
+        val unavailable = snapshot.copy(androidResourceEvidence = null, androidResourceBindings = null)
+        assertFailsWith<IllegalArgumentException> {
+            SourceEditImpactDocument(report, mapOf("current" to unavailable),
+                mapOf("current" to SourceSnapshotInput(unavailable.toolVersion, unavailable.scope, null, "5".repeat(64))),
+                mapOf("current" to SourceEditImpactRevision("resolved", inspection.changed, inspection.coverage, inspection)))
+        }
+    }
+
     private fun fixture(): QuerySnapshot {
         val scope = ":app:debug"
         val namespace = "dev.example"
