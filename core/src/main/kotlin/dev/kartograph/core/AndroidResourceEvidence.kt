@@ -15,7 +15,7 @@ public data class AndroidResourceRoot(val input: InputFingerprint) {
     init {
         SourceUseCanonical.input(input, "android-resources")
         require(input.path.length <= 4_096) { "Android resource root path exceeds limit" }
-        id = SourceUseCanonical.hash(sequenceOf("kartograph-android-resource-root-v1") + SourceUseCanonical.fields(input))
+        id = SourceUseCanonical.hash(listOf("kartograph-android-resource-root-v1").asSequence() + SourceUseCanonical.fields(input))
     }
 }
 
@@ -35,7 +35,7 @@ public data class AndroidLayoutDefinition(
         require(qualifier.length <= 256 && (qualifier.isEmpty() || Regex("[A-Za-z0-9+_-]+").matches(qualifier))) { "invalid layout qualifier" }
         val directory = if (qualifier.isEmpty()) "layout" else "layout-$qualifier"
         require(relativePath == "$directory/${key.name}.xml") { "layout key does not match its relative XML path" }
-        id = SourceUseCanonical.hash(sequenceOf("kartograph-android-layout-definition-v1") + key.fields +
+        id = SourceUseCanonical.hash(listOf("kartograph-android-layout-definition-v1").asSequence() + key.fields +
             listOf(rootId, file.path, file.sha256, relativePath, qualifier))
     }
 }

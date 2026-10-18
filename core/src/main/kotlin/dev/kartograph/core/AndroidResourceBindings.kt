@@ -138,5 +138,5 @@ public object AndroidResourceBindingIdentity {
 
     /** AGP 생산자가 사용한 namespace 옵션 지문과 같은 길이 구분 방식을 쓴다. */
     public fun namespaceOptions(namespace: String): String =
-        SourceUseCanonical.hash(sequenceOf("namespace=$namespace"))
+        SourceUseCanonical.hash(listOf("namespace=$namespace").asSequence())
 }
