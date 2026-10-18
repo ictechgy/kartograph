@@ -162,7 +162,7 @@ jobs:
 
   agp-minimum:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -194,3 +194,18 @@ jobs:
         run: |
           export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
           bash Scripts/verify-agp-8-app-snapshot.sh
+
+      - name: Establish layout resource field and test evidence on minimum AGP
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
+          python3 Scripts/verify-agp-8-resource-impact.py
+      - name: Preserve bounded resource experiment evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: agp-8-resource-impact
+          path: build/reports/agp-8-resource-impact/result.json
+          if-no-files-found: warn
+          retention-days: 14
