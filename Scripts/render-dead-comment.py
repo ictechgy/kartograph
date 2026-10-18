@@ -17,6 +17,9 @@ CONFIDENCE_TIERS = ("static", "needs-runtime-review", "runtime-observed", "unmea
 TEXT_ESCAPES = {"&": "&amp;", "<": "&lt;", ">": "&gt;", **{character: "\\" + character for character in "[]`*_~#@|"}}
 ASCII_PUNCTUATION = frozenset(string.punctuation)
 PIPE_WITH_BACKSLASHES = re.compile(r"(\\*)\|")
+# 목록 항목 내용 첫머리에서 블록을 여는 bullet(`-`·`+`)과 ordered(숫자열 뒤 `.`·`)`) 표지다. `- ---`는 줄 전체가
+# thematic break가 되고, 나머지는 항목 안에 중첩 목록을 연다(CommonMark 4.1, 5.2). `*`는 TEXT_ESCAPES가 escape한다.
+LEADING_LIST_MARKER = re.compile(r"[-+]|[0-9]+[.)]")
 
 
 def escape_table_pipe(match):
@@ -44,21 +47,37 @@ def code_cell(value):
     return f"{fence}{text}{fence}"
 
 
+def escape_leading_list_marker(text):
+    """항목 내용이 목록 표지로 시작하면 표지의 마지막 글자를 backslash로 escape한다.
+
+    뒤에 공백이 오는지와 관계없이 escape한다. `--`는 표지가 아니지만 바깥 `- `와 합쳐 thematic break가 되고,
+    backslash 뒤 문장부호는 그 글자로 보이므로 렌더링 결과는 같다.
+    """
+    marker = LEADING_LIST_MARKER.match(text)
+    if marker is None:
+        return text
+    end = marker.end() - 1
+    return text[:end] + "\\" + text[end:]
+
+
 def text_cell(value):
     """한계 문구를 목록 항목 하나 안의 일반 텍스트로 만든다.
 
     HTML로 해석될 문자는 엔티티로, 마크다운 구문 문자는 backslash로 바꾼다. 원래 있던 backslash는 ASCII
     문장부호 앞에서만 escape로 읽히므로(CommonMark 2.4) 그때만 겹쳐 써서 뒤 문자의 escape가 풀리지 않게 한다.
     safe()가 남기는 `\\u005f` 같은 표기는 그대로 둔다.
+
+    앞 공백은 지운다. 4칸 이상이면 항목 안의 들여쓴 code block이 되고(CommonMark 4.4, 5.2), 문단의 앞 공백은
+    렌더링에서도 사라지므로 보이는 글자는 같다. 그다음 첫머리의 목록 표지를 escape한다.
     """
-    text = CONTROL_CHARACTERS.sub(" ", str(value))
+    text = CONTROL_CHARACTERS.sub(" ", str(value)).lstrip(" ")
     escaped = []
     for index, character in enumerate(text):
         if character == "\\":
             escaped.append("\\\\" if text[index + 1:index + 2] in ASCII_PUNCTUATION else "\\")
         else:
             escaped.append(TEXT_ESCAPES.get(character, character))
-    return "".join(escaped)
+    return escape_leading_list_marker("".join(escaped))
 
 
 def diagnostics_of(report):

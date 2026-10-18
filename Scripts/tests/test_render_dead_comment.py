@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -138,6 +139,17 @@ def cell_delimiters(row):
     return strict, lenient
 
 
+# CommonMark 4.1의 thematic break 줄이다. `- ---`처럼 목록 항목 줄 전체가 여기에 맞으면 항목 대신 가로줄이 된다.
+THEMATIC_BREAK = re.compile(r" {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*")
+# 목록 항목 내용 첫머리에서 들여쓴 code block(CommonMark 4.4)이나 중첩 목록(5.2)을 여는 형태다.
+NESTED_BLOCK_START = re.compile(r" {4}| {0,3}(?:[-+*]|[0-9]{1,9}[.)])(?:[ \t]|$)")
+
+
+def opens_another_block(item):
+    """`- `로 시작하는 목록 항목 줄이 가로줄이 되거나 항목 안에 다른 블록을 여는지 본다."""
+    return bool(THEMATIC_BREAK.fullmatch(item) or NESTED_BLOCK_START.match(item[2:]))
+
+
 def run_with(arguments, payload):
     return subprocess.run(
         [sys.executable, str(SCRIPT), *arguments],
@@ -233,6 +245,21 @@ class RenderDeadCommentTest(unittest.TestCase):
             "- !\\[x\\](https://evil.example/p.png) \\*\\*b\\*\\* \\_i\\_ \\~\\~s\\~\\~ \\`c\\` \\@someone "
             "&amp;amp; \\\\\\[x\\\\\\](y)",
         ], [line for line in body.split("\n") if line.startswith("- ")])
+        self.assertTrue(body.endswith("\n\n</details>\n"))
+
+    def test_limitations_cannot_open_blocks_at_the_start_of_their_item(self):
+        limitations = ["---", "- - -", "--", "-", "+ plus", "+", "1. nested", "2) paren", "1.",
+                       "  - lead", "   12. lead", "    code", "\t- tab"]
+        # 렌더러는 탭을 공백으로 바꾼다. escape 없이 그대로 붙인 수정 전 출력은 모두 다른 블록을 연다.
+        self.assertTrue(all(opens_another_block("- " + limitation.replace("\t", " ")) for limitation in limitations))
+        returncode, body, stderr = render_bytes(report_with([], limitations))
+
+        self.assertEqual(0, returncode, stderr)
+        items = [line for line in body.split("\n") if line.startswith("- ")]
+        self.assertEqual(["- \\---", "- \\- - -", "- \\--", "- \\-", "- \\+ plus", "- \\+", "- 1\\. nested",
+                          "- 2\\) paren", "- 1\\.", "- \\- lead", "- 12\\. lead", "- code", "- \\- tab"], items)
+        for item in items:
+            self.assertFalse(opens_another_block(item), item)
         self.assertTrue(body.endswith("\n\n</details>\n"))
 
     def test_malformed_fields_fail_as_tool_errors_without_echoing_them(self):
