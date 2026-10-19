@@ -303,6 +303,9 @@ python3 Scripts/check-impact.py --binary /path/to/kartograph --project . \
 helper는 commit 간 변경 파일을 NUL 구분으로 읽는다. rename의 이전·이후 경로, 삭제 경로도 포함한다.
 snapshot 라벨과 실제 비교 commit, 두 scope, analyzer version이 다르면 실패한다. 동일 버전 문자열만으로 서로 다른
 로컬 빌드를 식별할 수는 없으므로 CI가 사용하는 배포 artifact도 고정한다. tracked 미커밋 변경은 거부한다.
+분석 대상 git 설정의 filter는 실행하지 않으므로 시각만 바뀌었거나 git-lfs처럼 filter로 정규화되는 파일도 변경으로
+보고(신뢰하는 checkout이면 먼저 `git update-index --refresh`), 서브모듈 안의 커밋하지 않은 변경은 보지 않는다
+([SECURITY.md](../SECURITY.md)).
 snapshot 파일 자체는 Git 밖의 CI artifact/cache로 관리하며 기존 미사용 baseline과 별개다.
 helper 기본 모드는 보고용이다. 문서·설정 등 매핑되지 않은 파일도 `unresolved`에 남기되 유효한 보고서를 만들면 0을 반환한다.
 확장자만으로 파일을 자동 무시하지 않는다. `--strict`는 선택/탐색이 partial/notFound일 때 종료 코드 1을 준다.

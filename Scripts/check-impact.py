@@ -4,14 +4,58 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
+
+# 분석 대상 저장소 설정이 정한 명령(fsmonitor 훅, log 계열의 서명 확인)을 모든 git 호출에서 끈다(설계 결정 D1).
+GIT_ISOLATION = ("-c", "core.fsmonitor=false", "-c", "log.showSignature=false")
+# -c로 넘겨도 같은 이름이 되는 filter 드라이버 이름이다(빈 이름 포함). '='는 git이 -c 값을 나누는 자리라 덮을 수 없고,
+# 비ASCII·공백·따옴표는 argv 인코딩과 인용에 따라 다른 이름이 될 수 있다.
+OVERRIDABLE_FILTER_DRIVER = re.compile(rb"[A-Za-z0-9._+-]*")
+FILTER_DRIVER_COMMANDS = (b"clean", b"smudge", b"process")
 
 
 class UsageParser(argparse.ArgumentParser):
     def error(self, message):
         raise ValueError("invalid arguments")
+
+
+def filter_driver_names(keys):
+    """`git config -z --name-only --list` 출력(bytes)에서 명령을 가진 filter 드라이버 이름을 모은다.
+
+    `filter.`과 마지막 `.` 사이 전체(점·빈 이름 포함)가 이름이다. 덮을 수 없는 이름이 있으면 git을 실행하지 않도록
+    멈춘다(fail-closed). 신뢰하지 않는 설정 값이므로 이름 원문은 오류에 싣지 않는다.
+    """
+    names = set()
+    for key in keys.split(b"\0"):
+        if not key.startswith(b"filter."):
+            continue
+        name, dot, command = key[len(b"filter."):].rpartition(b".")
+        if not dot or command not in FILTER_DRIVER_COMMANDS:
+            continue
+        if not OVERRIDABLE_FILTER_DRIVER.fullmatch(name):
+            raise RuntimeError("the repository Git configuration defines a filter driver whose name cannot be safely "
+                               "overridden; rename or remove that driver")
+        names.add(name.decode("ascii"))
+    return sorted(names)
+
+
+def git_command(project, arguments, environment):
+    """분석 대상 설정의 filter·fsmonitor·서명 확인 명령을 끈 git argv다.
+
+    호출마다 바로 앞에서 같은 설정·디렉터리로 드라이버 이름을 다시 모아, 이름마다 세 명령을 빈 값으로, required를 false로
+    덮는다. git은 빈 명령을 실행하지 않는다.
+    """
+    query = subprocess.run(["git", *GIT_ISOLATION, "-C", str(project), "config", "-z", "--name-only", "--includes", "--list"],
+                           env=environment, capture_output=True, timeout=30)
+    if query.returncode:
+        raise RuntimeError("cannot read the repository Git configuration to disable its filter drivers; verify the repository config")
+    overrides = [option for name in filter_driver_names(query.stdout)
+                 for option in ("-c", "filter." + name + ".clean=", "-c", "filter." + name + ".smudge=",
+                                "-c", "filter." + name + ".process=", "-c", "filter." + name + ".required=false")]
+    return ["git", *GIT_ISOLATION, *overrides, "-C", str(project), *arguments]
 
 
 def main():
@@ -50,7 +94,7 @@ def main():
     env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_NO_REPLACE_OBJECTS="1", GIT_OPTIONAL_LOCKS="0")
 
     def git(*arguments):
-        result = subprocess.run(["git", "-C", str(project), *arguments], env=env, capture_output=True, timeout=30)
+        result = subprocess.run(git_command(project, arguments, env), env=env, capture_output=True, timeout=30)
         if result.returncode:
             raise RuntimeError("unable to read committed Git inputs; verify the repository and base commit")
         return result.stdout.decode("utf-8")
@@ -59,8 +103,14 @@ def main():
         raise ValueError("project must be the Git repository root")
     base = git("rev-parse", "--verify", "--end-of-options", args.base + "^{commit}").strip()
     current = git("rev-parse", "--verify", "HEAD^{commit}").strip()
-    if git("diff", "--name-only", "--no-ext-diff", "--no-textconv", "HEAD", "--"):
-        raise RuntimeError("tracked working tree changes are not represented by HEAD; commit them before CI impact checks")
+    # diff.autoRefreshIndex=false: stat만 바뀐 파일의 내용을 다시 읽어 걸러 내며 index를 고쳐 쓰는(그때 저장소 hook이 도는)
+    # 단계를 끈다. 그런 파일과 filter로 정규화되던 파일(git-lfs 등)은 변경으로 남는다(fail-safe).
+    # --ignore-submodules=dirty: 서브모듈 안에서 git을 띄우지 않는다. 서브모듈이 가리키는 커밋의 변화는 계속 본다.
+    if git("-c", "diff.autoRefreshIndex=false", "diff", "--name-only", "--no-ext-diff", "--no-textconv", "--ignore-submodules=dirty",
+           "HEAD", "--"):
+        raise RuntimeError("tracked working tree changes are not represented by HEAD; commit them before CI impact checks "
+                           "(if only timestamps changed or a Git filter such as git-lfs normalizes the files, "
+                           "run git update-index --refresh in the trusted checkout first)")
     # rename을 D/A로 표현하면 이전 경로와 이후 경로가 모두 남고 공백/탭은 NUL 구분으로 보존된다.
     files = git("diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", "--no-textconv", base, current, "--").split("\0")
     files = sorted(set(files) - {""})

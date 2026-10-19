@@ -4,9 +4,17 @@
 import argparse
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
+
+# 분석 대상 저장소 설정이 정한 명령(fsmonitor 훅, log 계열의 서명 확인)을 모든 git 호출에서 끈다(설계 결정 D1).
+GIT_ISOLATION = ("-c", "core.fsmonitor=false", "-c", "log.showSignature=false")
+# -c로 넘겨도 같은 이름이 되는 filter 드라이버 이름이다(빈 이름 포함). '='는 git이 -c 값을 나누는 자리라 덮을 수 없고,
+# 비ASCII·공백·따옴표는 argv 인코딩과 인용에 따라 다른 이름이 될 수 있다.
+OVERRIDABLE_FILTER_DRIVER = re.compile(rb"[A-Za-z0-9._+-]*")
+FILTER_DRIVER_COMMANDS = (b"clean", b"smudge", b"process")
 
 
 class UsageError(Exception):
@@ -18,10 +26,47 @@ class Parser(argparse.ArgumentParser):
         raise UsageError("invalid arguments; use --help and put dead options after --")
 
 
+def filter_driver_names(keys):
+    """`git config -z --name-only --list` 출력(bytes)에서 명령을 가진 filter 드라이버 이름을 모은다.
+
+    `filter.`과 마지막 `.` 사이 전체(점·빈 이름 포함)가 이름이다. 덮을 수 없는 이름이 있으면 git을 실행하지 않도록
+    멈춘다(fail-closed). 신뢰하지 않는 설정 값이므로 이름 원문은 오류에 싣지 않는다.
+    """
+    names = set()
+    for key in keys.split(b"\0"):
+        if not key.startswith(b"filter."):
+            continue
+        name, dot, command = key[len(b"filter."):].rpartition(b".")
+        if not dot or command not in FILTER_DRIVER_COMMANDS:
+            continue
+        if not OVERRIDABLE_FILTER_DRIVER.fullmatch(name):
+            raise RuntimeError("the Git configuration defines a filter driver whose name cannot be safely overridden; "
+                               "rename or remove that driver")
+        names.add(name.decode("ascii"))
+    return sorted(names)
+
+
+def git_command(project, arguments, environment):
+    """분석 대상 설정의 filter·fsmonitor·서명 확인 명령을 끈 git argv다.
+
+    호출마다 바로 앞에서 같은 설정·디렉터리로 드라이버 이름을 다시 모아, 이름마다 세 명령을 빈 값으로, required를 false로
+    덮는다. git은 빈 명령을 실행하지 않는다.
+    """
+    query = subprocess.run(["git", *GIT_ISOLATION, "-C", str(project), "config", "-z", "--name-only", "--includes", "--list"],
+                           capture_output=True, timeout=30, env=environment)
+    if query.returncode:
+        raise RuntimeError("cannot read the Git configuration to disable its filter drivers; verify the repository config")
+    overrides = [option for name in filter_driver_names(query.stdout)
+                 for option in ("-c", "filter." + name + ".clean=", "-c", "filter." + name + ".smudge=",
+                                "-c", "filter." + name + ".process=", "-c", "filter." + name + ".required=false")]
+    return ["git", *GIT_ISOLATION, *overrides, "-C", str(project), *arguments]
+
+
 def git_output(project, *arguments, failure_message):
-    """Git의 raw stderr에 ref·경로를 노출하지 않는다."""
+    """Git의 raw stderr에 ref·경로를 노출하지 않는다. 분석 대상 설정의 명령은 실행하지 않는다(git_command)."""
     git_environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-    result = subprocess.run(["git", "-C", str(project), *arguments], capture_output=True, timeout=30, env=git_environment)
+    result = subprocess.run(git_command(project, arguments, git_environment), capture_output=True, timeout=30,
+                            env=git_environment)
     if result.returncode:
         raise RuntimeError(failure_message)
     return result.stdout
@@ -70,7 +115,7 @@ def main(arguments=None):
         commit = git_output(project, "rev-parse", "--verify", "--end-of-options",
                             options.base + "^{commit}",
                             failure_message="cannot resolve base commit; fetch the required history first").decode().strip()
-        baseline = git_output(project, "show", commit + ":" + baseline_path,
+        baseline = git_output(project, "show", "--no-ext-diff", "--no-textconv", commit + ":" + baseline_path,
                               failure_message="cannot read base baseline; commit the baseline at the selected base path first")
         with tempfile.TemporaryDirectory(prefix="kartograph-pr-") as temporary:
             baseline_file = Path(temporary) / "baseline.json"

@@ -49,3 +49,11 @@ filter를 실행하지 않으므로 git-lfs처럼 filter로 정규화되는 파�
 상관없이 따른다. 예를 들어 partial clone에서 빠진 객체를 받아 와야 하면 git은 저장소에 설정된 원격 전송 설정
 (예: `remote.<name>.uploadpack`)이 고른 명령을 실행할 수 있다. 그러니 출처를 모르는 `.git`이 든 checkout에서는
 여전히 `--revision`을 명시하고 `--since`를 쓰지 않는다.
+
+배포본에 든 PR 도우미 `Scripts/check-pr.py`·`Scripts/check-impact.py`도 git을 부를 때마다 같은 방식으로 filter
+드라이버를 덮고 `core.fsmonitor`·서명 표시를 끄며, `git show`와 diff에서는 textconv·외부 diff를 끈다.
+`check-impact.py`의 작업 트리 검사는 index 자동 갱신도 끄고 서브모듈 안에서 git을 실행하지 않는다. 그래서 서브모듈이
+가리키는 커밋의 변화는 계속 거부하지만 서브모듈 안의 커밋하지 않은 변경은 보지 않고, filter로 정규화되거나 시각만
+바뀐 파일은 작업 트리 변경으로 보고 exit 2로 끝난다(신뢰하는 checkout이면 먼저 `git update-index --refresh`).
+덮을 수 없는 드라이버 이름이 있거나 설정을 읽지 못하면 두 도우미 모두 git을 실행하지 않고 exit 2로 끝난다. partial
+clone의 원격 전송 설정은 위와 같이 따른다.
