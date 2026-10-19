@@ -330,12 +330,13 @@ class ChangeImpactTest {
 
     @Test fun `changed file and symbol selection keeps exact fallback retention and unresolved results`() {
         // 정확한 경로, 파일 이름만 남은 옛 위치(대체 매칭), 보존 근거, 그래프 밖 선언의 보존 근거, 대응 없는 파일을 섞는다.
+        // layout 디렉터리의 XML은 Android resource 선택이 resource 근거로 따로 판정하므로, 대응 없는 파일은 그 밖의 XML 경로로 만든다.
         val base = ImpactInput(
             CodeGraph(listOf(node("A", "src/main/kotlin/p/A.kt"), node("B", "B.kt"), node("Gone", "src/main/kotlin/p/Gone.kt"),
                 node("C").copy(id = NodeId("class:other/C"))), emptyList()),
             retention = listOf(
                 RetentionEvidence(NodeId("class:p/A"), RetentionReason.MANIFEST_COMPONENT, SourceLocation("AndroidManifest.xml", 3)),
-                RetentionEvidence(NodeId("class:p/Absent"), RetentionReason.MANIFEST_COMPONENT, SourceLocation("res/layout/main.xml", 1)),
+                RetentionEvidence(NodeId("class:p/Absent"), RetentionReason.MANIFEST_COMPONENT, SourceLocation("res/xml/main.xml", 1)),
             ),
         )
         val current = ImpactInput(CodeGraph(listOf(node("A", "src/main/kotlin/p/A.kt"), node("B", "B.kt"), node("B2", "B.kt"), node("C")), emptyList()))
@@ -343,7 +344,7 @@ class ChangeImpactTest {
         val result = ChangeImpact.analyze(
             current,
             symbols = listOf("p.Gone", "C", "class:p/A", "Nope", "B"),
-            files = listOf("src/main/kotlin/q/B.kt", "B.kt", "AndroidManifest.xml", "res/layout/main.xml", "src/main/kotlin/p/A.kt", "src/main/kotlin/q/B.kt"),
+            files = listOf("src/main/kotlin/q/B.kt", "B.kt", "AndroidManifest.xml", "res/xml/main.xml", "src/main/kotlin/p/A.kt", "src/main/kotlin/q/B.kt"),
             base = base,
         )
 
@@ -351,7 +352,7 @@ class ChangeImpactTest {
         assertEquals(listOf(
             ImpactUnresolved("C", "ambiguous", listOf(NodeId("class:other/C"), NodeId("class:p/C"))),
             ImpactUnresolved("Nope", "notFound"),
-            ImpactUnresolved("res/layout/main.xml", "unmappedFile"),
+            ImpactUnresolved("res/xml/main.xml", "unmappedFile"),
         ), result.unresolved)
         // q/B.kt는 base의 B와 current의 B·B2를 파일 이름으로만 찾는다(3건). 디렉터리가 없는 B.kt 요청은 정확한 일치라 세지 않는다.
         assertEquals(3, fallbackCount(result))
@@ -488,11 +489,14 @@ class ChangeImpactTest {
     }
 
     private companion object {
-        /** 무작위 그래프의 위치 후보다. null은 위치 없는 선언, 디렉터리 없는 이름은 bytecode의 옛 위치다. */
-        val PATH_POOL = listOf(null, "A.kt", "B.kt", "AndroidManifest.xml", "src/main/kotlin/p/A.kt", "src/test/kotlin/p/A.kt", "x/B.kt", "res/layout/main.xml")
+        /**
+         * 무작위 그래프의 위치 후보다. null은 위치 없는 선언, 디렉터리 없는 이름은 bytecode의 옛 위치다.
+         * layout 디렉터리의 XML은 Android resource 선택으로 따로 판정되어 선형 기준 구현과 비교할 수 없으므로 넣지 않는다.
+         */
+        val PATH_POOL = listOf(null, "A.kt", "B.kt", "AndroidManifest.xml", "src/main/kotlin/p/A.kt", "src/test/kotlin/p/A.kt", "x/B.kt", "res/xml/main.xml")
         val NAME_POOL = listOf("A", "B", "N1", "app", "Shared")
         val FILE_POOL = listOf("A.kt", "B.kt", "C.kt", "AndroidManifest.xml", "src/main/kotlin/p/A.kt", "src/main/kotlin/q/A.kt",
-            "src/test/kotlin/p/B.kt", "x/B.kt", "res/layout/main.xml", "res/layout/other.xml", "src/")
+            "src/test/kotlin/p/B.kt", "x/B.kt", "res/xml/main.xml", "res/xml/other.xml", "src/")
         val SYMBOL_POOL = listOf("A", "B", "N1", "app", "Shared", "Missing", "class:p/N1", "class:p/N7", "p.N3", "app.p.N3", "p.N13")
 
         /** 보존 근거 읽기 횟수 비교에 쓰는 근거 수다. 요청 파일 수와 같게 둔다. */
