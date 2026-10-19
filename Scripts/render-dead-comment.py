@@ -22,7 +22,9 @@ TEXT_ESCAPES = {
     **{character: f"<span>{character}</span>" for character in "$@"},
 }
 ASCII_PUNCTUATION = frozenset(string.punctuation)
-PIPE_WITH_BACKSLASHES = re.compile(r"(\\*)\|")
+# `|`와 그 앞 backslash 연속이다. lookbehind로 연속의 첫 글자에서만 매치를 시작한다. 연속 안의 위치마다 다시
+# 시도하면 `|`로 끝나지 않는 긴 연속에서 이차 시간이 된다. 매치 결과는 lookbehind가 없을 때와 같다.
+PIPE_WITH_BACKSLASHES = re.compile(r"(?<!\\)(\\*)\|")
 # 목록 항목 내용 첫머리에서 블록을 여는 bullet(`-`·`+`)과 ordered(숫자열 뒤 `.`·`)`) 표지다. `- ---`는 줄 전체가
 # thematic break가 되고, 나머지는 항목 안에 중첩 목록을 연다(CommonMark 4.1, 5.2). `*`는 TEXT_ESCAPES가 escape한다.
 LEADING_LIST_MARKER = re.compile(r"[-+]|[0-9]+[.)]")

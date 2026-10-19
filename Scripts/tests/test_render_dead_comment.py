@@ -160,10 +160,10 @@ def run_with(arguments, payload):
     )
 
 
-def render_bytes(report):
-    """stdout을 줄바꿈 변환 없이 받는다. text 모드는 CR을 LF로 바꿔 남은 CR을 가린다."""
+def render_bytes(report, timeout=30):
+    """stdout을 줄바꿈 변환 없이 받는다. text 모드는 CR을 LF로 바꿔 남은 CR을 가린다. timeout은 실행 상한(초)이다."""
     result = subprocess.run([sys.executable, str(SCRIPT)], input=json.dumps(report).encode("utf-8"),
-                            capture_output=True, timeout=30)
+                            capture_output=True, timeout=timeout)
     return result.returncode, result.stdout.decode("utf-8"), result.stderr.decode("utf-8")
 
 
@@ -229,6 +229,21 @@ class RenderDeadCommentTest(unittest.TestCase):
         ], rows)
         for row in rows:
             self.assertEqual((4, 4), cell_delimiters(row), row)
+
+    def test_long_backslash_runs_render_in_linear_time(self):
+        # JVM 이름은 backslash를 허용하므로 bytecode에서 온 nodeId에도 긴 연속이 올 수 있다. 연속 안의 위치마다
+        # `|` 매치를 다시 시도하면 `|`로 끝나지 않는 연속에서 이차 시간이 되어 이 상한을 크게 넘는다.
+        run = "\\" * 200_000
+        report = report_with([finding(run, line=None, node="class:a/" + run + "|")])
+        try:
+            returncode, body, stderr = render_bytes(report, timeout=10)
+        except subprocess.TimeoutExpired:
+            self.fail("a long backslash run made comment rendering superlinear")
+
+        self.assertEqual(0, returncode, stderr)
+        rows = table_rows(body)[2:]
+        self.assertEqual([f"| `{run}` | `class:a/{run}\\|` | static |"], rows)
+        self.assertEqual((4, 4), cell_delimiters(rows[0]))
 
     def test_limitations_stay_plain_text_inside_their_list_item(self):
         limitations = [
