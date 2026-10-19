@@ -16,18 +16,30 @@ public object SourcePathIndex {
      *
      * 돌려주는 값은 대조에 쓰는 **절대 정규화 경로**다. 보고서나 교환 문서에 그대로 실으면 로컬 경로가
      * 노출되므로, 노출 표면으로 나가는 값은 [resolve]처럼 project 기준으로 상대화한 뒤에 쓴다.
+     * 순회가 실패하면 부분 색인 대신 빈 색인이다. 실패를 구분해야 하면 [byFileNameOrNull]을 쓴다.
      */
-    public fun byFileName(projectRoot: Path): Map<String, Set<Path>> {
+    public fun byFileName(projectRoot: Path): Map<String, Set<Path>> = byFileNameOrNull(projectRoot) ?: emptyMap()
+
+    /**
+     * [byFileName]과 같지만 순회 실패를 빈 색인과 구분한다.
+     *
+     * 프로젝트 밖으로 해석되는 `.kt`/`.java` 링크, 끊긴 링크, 읽을 수 없는 디렉터리를 만나면
+     * [ProjectTraversal.walkSources]가 순회 전체를 멈춘다. 부분 색인을 확정 근거로 쓰지 않기 위해서다. 그때 null을
+     * 돌려 [resolve]가 실제 원인을 한계로 알리게 한다. 예외 문구는 절대경로를 담으므로 싣지 않는다.
+     *
+     * @return 파일명별 절대 정규화 경로. 순회가 실패하면 null, project root가 디렉터리가 아니면 빈 맵이다
+     */
+    internal fun byFileNameOrNull(projectRoot: Path): Map<String, Set<Path>>? {
         if (!Files.isDirectory(projectRoot)) return emptyMap()
         val pathsByFileName = mutableMapOf<String, MutableSet<Path>>()
         try {
             ProjectTraversal.walkSources(projectRoot, includeTests = true) { file ->
                 pathsByFileName.getOrPut(file.fileName.toString()) { mutableSetOf() }.add(file)
             }
-        } catch (error: IOException) {
-            return emptyMap()
-        } catch (error: SecurityException) {
-            return emptyMap()
+        } catch (_: IOException) {
+            return null
+        } catch (_: SecurityException) {
+            return null
         }
         return pathsByFileName.mapValues { entry -> entry.value.toSet() }
     }
@@ -36,7 +48,8 @@ public object SourcePathIndex {
      * 그래프 정점의 source file 이름을 project 기준 상대경로로 해석한다.
      *
      * 유일하게 일치하는 source가 있을 때만 확정하고, 모호하거나 project 밖에서 컴파일된 class는
-     * 추측하지 않는다. 확정하지 못한 수는 계량된 한계로 함께 돌려준다.
+     * 추측하지 않는다. 확정하지 못한 수는 계량된 한계로 함께 돌려준다. source 순회가 실패하면 아무 경로도
+     * 확정하지 않고, 그 한계의 원인을 생성·외부 source 부재가 아니라 순회 실패로 적는다.
      */
     public fun resolve(graph: CodeGraph, projectRoot: Path): SourcePathResolution {
         // byFileName은 절대 정규화 경로를 모으므로 symlink를 지나는 project root도 같은 기준으로 맞춘다.
@@ -47,7 +60,8 @@ public object SourcePathIndex {
         } catch (error: SecurityException) {
             projectRoot
         }
-        return resolvePaths(graph, root, byFileName(root))
+        val index = byFileNameOrNull(root)
+        return resolvePaths(graph, root, index.orEmpty(), traversalFailed = index == null)
     }
 
     /** 선택된 compiler 소스만 대조한다. 생성 디렉터리도 명시됐으면 포함하고 외부 경로는 확정하지 않는다. */
@@ -55,7 +69,13 @@ public object SourcePathIndex {
         resolvePaths(graph, projectRoot.toRealPath(), sourceInventoryFiles(sourceFiles)
             .groupBy { it.fileName.toString() }.mapValues { it.value.toSet() })
 
-    private fun resolvePaths(graph: CodeGraph, root: Path, pathsByFileName: Map<String, Set<Path>>): SourcePathResolution {
+    /** @param traversalFailed 참이면 [pathsByFileName]이 비어 있는 이유가 source 순회 실패다 */
+    private fun resolvePaths(
+        graph: CodeGraph,
+        root: Path,
+        pathsByFileName: Map<String, Set<Path>>,
+        traversalFailed: Boolean = false,
+    ): SourcePathResolution {
         val byNodeId = mutableMapOf<NodeId, String>()
         val declaredPackages = mutableMapOf<Path, String?>()
         fun packageOf(path: Path): String? {
@@ -90,14 +110,23 @@ public object SourcePathIndex {
             byNodeId = byNodeId,
             limitations = buildList {
                 if (unresolved > 0) add(
-                    "unresolved-source-paths: $unresolved of $located located node(s) did not match exactly one project source file",
+                    "unresolved-source-paths: $unresolved of $located located node(s) did not match exactly one project source file" +
+                        if (traversalFailed) " because $TRAVERSAL_FAILURE" else "",
                 )
                 if (ambiguous > 0) add("ambiguous-source-paths: $ambiguous located node(s) have multiple package-compatible source files")
-                if (unavailable > 0) add("unavailable-source-paths: $unavailable located node(s) have no package-compatible source file; generated, external or omitted sources may be absent")
+                if (unavailable > 0) add(
+                    "unavailable-source-paths: $unavailable located node(s) have no package-compatible source file" +
+                        if (traversalFailed) " because $TRAVERSAL_FAILURE" else "; generated, external or omitted sources may be absent",
+                )
                 addAll(missingSourcePaths(graph))
             },
         )
     }
+
+    /** 순회 실패의 원인 설명이다. 예외 문구에는 절대경로가 들어 있으므로 가능한 원인만 일반화해 적는다. */
+    private const val TRAVERSAL_FAILURE =
+        "project source traversal failed (a .kt/.java link outside the project, a broken link, or an unreadable directory); " +
+            "no source paths were resolved"
 
     /** 패키지 header만 corroborate하며 크기·링크·decode 불확실성은 경로 suffix 기준으로 남긴다. */
     private fun readDeclaredPackage(root: Path, path: Path): String? = try {

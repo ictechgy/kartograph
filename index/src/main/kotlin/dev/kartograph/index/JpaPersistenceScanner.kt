@@ -43,6 +43,9 @@ internal class JpaPersistenceScanner(
 
     /** `owner#name` → 메서드 정점 색인이다 — 저장소 메서드마다 전체 정점을 훑지 않게 한 번만 만든다. */
     private var methodIndex: Map<String?, List<dev.kartograph.core.GraphNode>>? = null
+
+    /** EntityManager 호출 위치의 신원 부착 색인이다 — 호출마다 전체 정점을 훑거나 소스를 다시 읽지 않게 한 번만 만든다. */
+    private var symbolAttacher: SnapshotSymbolAttacher? = null
     private val consumed = mutableMapOf<String, MutableList<IntRange>>()
     private val stats = Stats()
 
@@ -220,8 +223,10 @@ internal class JpaPersistenceScanner(
     }
 
     /** 소스 위치를 감싼 함수의 스냅샷 id다 — 다른 schema 사실과 같은 규칙이다. */
-    private fun snapshotSymbol(location: BridgeLocation, graph: CodeGraph): BridgeSymbol? =
-        attachSnapshotSymbol(placeholder(location), graph, projectRoot).symbol
+    private fun snapshotSymbol(location: BridgeLocation, graph: CodeGraph): BridgeSymbol? {
+        val attacher = symbolAttacher ?: SnapshotSymbolAttacher(graph, projectRoot).also { symbolAttacher = it }
+        return attacher.attach(placeholder(location)).symbol
+    }
 
     private fun placeholder(location: BridgeLocation): BridgeFact =
         BridgeFact(kind = "relation-use", channel = "", dynamic = false, location = location, target = "persistence")

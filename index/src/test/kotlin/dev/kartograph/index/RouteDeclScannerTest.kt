@@ -2,6 +2,10 @@ package dev.kartograph.index
 
 import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
+import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RouteLimitationScope
 import dev.kartograph.core.RouteParamConstraint
 import java.nio.file.Path
@@ -245,6 +249,123 @@ class RouteDeclScannerTest {
         assertEquals("demo.KotlinApiController.iface", document.fact("GET /iface/{}").symbol!!.qualifiedName)
         assertEquals("demo.BaseController.base", document.fact("GET /child/base").symbol!!.qualifiedName)
         assertEquals(1, document.facts.count { it.channel == "/" })
+    }
+
+    @Test
+    fun `cyclic alias chains are cut and leave their mappings dynamic`() {
+        boot()
+        // Spring은 시작할 때 거부하지만 컴파일은 되는 선언이다. 순환을 끊은 뒤 메타 매핑을 확정 경로로 내면 실제로는 없는 경로를
+        // 사실로 내고 사용자가 쓴 경로(`/loop`·`/mirror`)를 표시 없이 버린다. 그래서 dynamic 사실과 원인을 적은 한계로 남긴다.
+        write("src/main/java/demo/LoopMappings.java", """
+            package demo;
+
+            import org.springframework.core.annotation.AliasFor;
+            import org.springframework.web.bind.annotation.RequestMapping;
+
+            @RequestMapping("/meta-a")
+            @interface LoopA {
+                @AliasFor(annotation = LoopB.class, attribute = "path")
+                String[] path() default {};
+            }
+
+            @RequestMapping("/meta-b")
+            @interface LoopB {
+                @AliasFor(annotation = LoopA.class, attribute = "path")
+                String[] path() default {};
+            }
+
+            @RequestMapping("/meta-mirror")
+            @interface MirrorA {
+                @AliasFor("path")
+                String[] value() default {};
+
+                @AliasFor(annotation = MirrorB.class, attribute = "path")
+                String[] path() default {};
+            }
+
+            @RequestMapping
+            @interface MirrorB {
+                @AliasFor(annotation = MirrorA.class, attribute = "value")
+                String[] path() default {};
+            }
+        """)
+        write("src/main/java/demo/LoopController.java", """
+            package demo;
+            $javaImports
+
+            @RestController
+            public class LoopController {
+                @LoopA(path = "/loop")
+                public String loop() { return ""; }
+
+                @MirrorA("/mirror")
+                public String mirror() { return ""; }
+
+                @GetMapping("/plain")
+                public String plain() { return ""; }
+            }
+        """)
+        // 상호 별칭(LoopA↔LoopB)과 같은 타입 거울을 거쳐 돌아오는 별칭(MirrorA.value → path → MirrorB.path → MirrorA.value)이다.
+        val document = scan()
+        assertEquals(setOf("GET /plain"), document.keys())
+        val cyclic = document.facts.filter { it.dynamic }
+        assertEquals(listOf("ANY" to null, "ANY" to null), cyclic.map { it.method to it.channel })
+        assertEquals(setOf("demo.LoopController.loop", "demo.LoopController.mirror"), cyclic.mapTo(sortedSetOf()) { it.symbol!!.qualifiedName })
+        assertTrue(document.limitations.any { it.startsWith("route-coverage: 2 handler method(s) use mapping annotations whose @AliasFor chain loops back") },
+            document.limitations.toString())
+        // 순환은 dynamic 경로의 일반 원인(상수·패턴 모양)으로 세지 않는다.
+        assertTrue(document.limitations.none { it.contains("could not be converted to a canonical template") }, document.limitations.toString())
+    }
+
+    @Test
+    fun `expansion fan-out beyond the per-call budget leaves mapping paths unresolved`() {
+        boot()
+        // 리뷰 지적 재현(index-security#0): 단계마다 다음 이름을 여러 번 참조하는 설정 키·Java 상수·Kotlin 상수다. 펼침이 최상위
+        // 호출당 예산(1만 번)을 수십 배 넘는다. 예전 코드는 이 크기를 1초 안팎에 끝까지 펼쳤지만, 깊이를 몇 단계만 늘려도 끝나지 않았다.
+        write("src/main/resources/application.properties", (0 until 7).joinToString("") { level ->
+            "fan.k$level=" + "\${fan.k${level + 1}}".repeat(8) + "\n"
+        } + "fan.k7=\nsmall.k0=\${small.k1}\${small.k1}\nsmall.k1=/small")
+        write("src/main/java/demo/Fan.java", "package demo;\npublic interface Fan {\n" + (0 until 5).joinToString("") { level ->
+            "    String C$level = " + List(16) { "C${level + 1}" }.joinToString(" + ") + ";\n"
+        } + "    String C5 = \"\";\n}")
+        write("src/main/kotlin/demo/KotlinFan.kt", "package demo\n\n" + (0 until 3).joinToString("") { level ->
+            "const val K$level = \"" + "\$K${level + 1}".repeat(64) + "\"\n"
+        } + "const val K3 = \"\"")
+        write("src/main/java/demo/FanController.java", """
+            package demo;
+            $javaImports
+
+            @RestController
+            public class FanController {
+                @GetMapping("${'$'}{fan.k0}/placeholders")
+                public String placeholders() { return ""; }
+
+                @GetMapping(Fan.C0 + "/java")
+                public String java() { return ""; }
+
+                @GetMapping("${'$'}{small.k0}/ok")
+                public String small() { return ""; }
+            }
+        """)
+        write("src/main/kotlin/demo/KotlinFanController.kt", """
+            package demo
+
+            import org.springframework.web.bind.annotation.GetMapping
+            import org.springframework.web.bind.annotation.RestController
+
+            @RestController
+            class KotlinFanController {
+                @GetMapping("${'$'}K0/kotlin")
+                fun kotlin(): String = ""
+            }
+        """)
+        val document = scan()
+        // 예산 안의 펼침(같은 키를 두 번 쓰는 설정)은 그대로 푼다.
+        assertEquals(setOf("GET /small/small/ok"), document.keys())
+        assertEquals(listOf(null, null, "\${fan.k0}/placeholders"), document.facts.filter { it.dynamic }.map { it.channel }.sortedBy { it.orEmpty() })
+        val limitations = document.limitations.joinToString("\n")
+        assertTrue("route-coverage: 1 mapping path(s) use placeholders without a default-profile value" in limitations, limitations)
+        assertTrue("route-coverage: 2 mapping path(s) could not be converted" in limitations, limitations)
     }
 
     @Test
@@ -663,5 +784,47 @@ class RouteDeclScannerTest {
         write("lib/src/main/resources/application.properties", "server.servlet.context-path=/lib")
         write("lib/src/main/java/demo/Shared.java", "package demo;\n$javaImports\n@RestController public class Shared { @GetMapping(\"/shared\") public String a() { return \"\"; } }")
         assertEquals(setOf("GET /app/shared"), scan().keys())
+    }
+
+    @Test
+    fun `source-only handlers attach snapshot methods by owner, name and parameter count`() {
+        boot()
+        write("src/main/kotlin/demo/Items.kt", """
+            package demo
+
+            import org.springframework.web.bind.annotation.GetMapping
+            import org.springframework.web.bind.annotation.RestController
+
+            @RestController
+            class Items {
+                @GetMapping("/items")
+                fun items(): String = ""
+
+                @GetMapping("/items/{id}")
+                fun item(id: String): String = ""
+
+                @GetMapping("/counts")
+                fun count(): String = ""
+            }
+        """)
+        fun node(id: String) = GraphNode(NodeId(id), id.substringAfter('#').substringBefore('('), NodeKind.METHOD)
+        val graph = CodeGraph(listOf(
+            node("method:demo/Items#items()Ljava/lang/String;"),
+            // 이름이 접두사로 겹치는 메서드와 다른 owner의 동명 메서드는 후보가 아니다.
+            node("method:demo/Items#itemsCount()I"),
+            node("method:demo/Other#items()Ljava/lang/String;"),
+            node("method:demo/Items#item(Ljava/lang/String;)Ljava/lang/String;"),
+            node("method:demo/Items#item(Ljava/lang/String;I)Ljava/lang/String;"),
+            // continuation을 빼면 매개변수 수가 같은 오버로드가 둘이라 신원을 정하지 않는다.
+            node("method:demo/Items#count()Ljava/lang/String;"),
+            node("method:demo/Items#count(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;"),
+        ), emptyList())
+
+        val document = RouteDeclScanner(project).scan(generatedAt = "2026-01-01T00:00:00Z", graph = graph)
+
+        assertEquals("method:demo/Items#items()Ljava/lang/String;", document.fact("GET /items").symbol?.usr)
+        assertEquals("method:demo/Items#item(Ljava/lang/String;)Ljava/lang/String;", document.fact("GET /items/{}").symbol?.usr)
+        assertEquals("demo.Items.count", document.fact("GET /counts").symbol?.qualifiedName)
+        assertNull(document.fact("GET /counts").symbol?.usr)
     }
 }

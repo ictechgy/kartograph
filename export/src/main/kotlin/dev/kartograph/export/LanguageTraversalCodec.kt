@@ -3,6 +3,7 @@ package dev.kartograph.export
 import dev.kartograph.analysis.LanguageTraversalResult
 import dev.kartograph.analysis.TraversalDirection
 import dev.kartograph.analysis.TraversalReached
+import dev.kartograph.analysis.TraversalEdge
 import dev.kartograph.analysis.TraversalEdges
 import dev.kartograph.analysis.TraversalRoot
 import dev.kartograph.analysis.isUnresolvedTarget
@@ -10,7 +11,6 @@ import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.KartographVersion
 import dev.kartograph.core.qualifiedName
-import java.security.MessageDigest
 
 /**
  * `language-traversal` v1 문서의 문서 수준 값이다(isthmus docs/LANGUAGE-TRAVERSAL.md).
@@ -73,22 +73,36 @@ public object LanguageTraversalCodec {
      * @param callbackFactsCaptured snapshot이 콜백 값 흐름 관측을 실었는지다. 콜백 간선 유무와 한계 문구가 달라지므로 넣는다
      * @return `sha256:` 뒤에 소문자 hex 64자가 붙은 문자열이다
      */
-    public fun graphRevision(graph: CodeGraph, enclosuresCaptured: Boolean, callbackFactsCaptured: Boolean = true): String {
-        val traversal = TraversalEdges.build(graph, enclosuresCaptured, callbackFactsCaptured)
+    public fun graphRevision(graph: CodeGraph, enclosuresCaptured: Boolean, callbackFactsCaptured: Boolean = true): String =
+        graphRevision(graph, TraversalEdges.build(graph, enclosuresCaptured, callbackFactsCaptured), enclosuresCaptured, callbackFactsCaptured)
+
+    /**
+     * 이미 조립한 순회 간선으로 위 [graphRevision]과 같은 값을 낸다. 같은 그래프로 순회한 명령이 간선을 다시 조립하지 않게 한다.
+     *
+     * 내용 문서는 String으로 만들지 않고 SHA-256에 바로 흘리며, 정점·간선·어휘적 소속 행은 쓸 때 만든다. 큰 snapshot에서 해시
+     * 단계가 문서 크기의 몇 배를 할당해 순회를 마친 결과를 OOM으로 잃지 않게 하려는 것이다.
+     *
+     * @param traversalEdges [graph]와 같은 두 캡처 여부로 조립한 순회 간선이다([TraversalEdges.build] 또는
+     *   [dev.kartograph.analysis.AssembledTraversalEdges.edges])
+     */
+    public fun graphRevision(
+        graph: CodeGraph, traversalEdges: List<TraversalEdge>, enclosuresCaptured: Boolean, callbackFactsCaptured: Boolean = true,
+    ): String {
+        val traversal = traversalEdges
             .map { listOf(it.source.value, it.target.value, it.relationship, it.tier.name) + if (it.terminal) listOf("terminal") else emptyList() }
             .distinct().sortedWith(::compareRows)
         val unresolved = graph.externalCalls.filter { it.isUnresolvedTarget() }.groupingBy { it.caller.value }.eachCount()
             .toSortedMap().map { (caller, count) -> listOf(caller, count.toString()) }
         val content = sortedMapOf<String, Any?>(
-            "nodes" to graph.nodeIds.map { listOf(it.value, graph.nodes.getValue(it).kind.name) },
-            "edges" to graph.edges.map { listOf(it.source.value, it.target.value, it.kind.name, it.origin.name) },
-            "traversalEdges" to traversal, "enclosures" to graph.enclosures.map { listOf(it.localClass.value, it.enclosing.value) },
+            "nodes" to graph.nodeIds.asSequence().map { listOf(it.value, graph.nodes.getValue(it).kind.name) }.asIterable(),
+            "edges" to graph.edges.asSequence().map { listOf(it.source.value, it.target.value, it.kind.name, it.origin.name) }.asIterable(),
+            "traversalEdges" to traversal,
+            "enclosures" to graph.enclosures.asSequence().map { listOf(it.localClass.value, it.enclosing.value) }.asIterable(),
             "enclosuresCaptured" to enclosuresCaptured, "unresolvedCalls" to unresolved,
             // 콜백 간선은 traversalEdges에 들어 있다. 옛 snapshot과 관측 0건을 구별하려고 캡처 여부만 따로 넣는다.
             "callbackFactsCaptured" to callbackFactsCaptured,
         )
-        val digest = MessageDigest.getInstance("SHA-256").digest(jsonValue(content).toByteArray(Charsets.UTF_8))
-        return "sha256:" + digest.joinToString("") { "%02x".format(it) }
+        return "sha256:" + jsonSha256(content).joinToString("") { "%02x".format(it) }
     }
 
     private fun compareRows(left: List<String>, right: List<String>): Int {

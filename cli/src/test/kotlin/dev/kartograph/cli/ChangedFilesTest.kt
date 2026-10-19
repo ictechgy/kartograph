@@ -12,6 +12,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.condition.DisabledOnOs
+import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 
 class ChangedFilesTest {
@@ -150,6 +152,31 @@ class ChangedFilesTest {
         val finding = Finding(NodeId("class:fixture/Foo"), SourceLocation("src/main/Foo.kt"))
 
         assertEquals(true, finding.matchesChangedFiles(changed, project.toRealPath()))
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the fsmonitor marker hook is a POSIX shell script")
+    fun `since keeps the changed set without running the repository fsmonitor command`(@TempDir root: Path) {
+        val repository = root.resolve("repository").createDirectories()
+        git(repository, "init")
+        git(repository, "config", "user.email", "test@example.invalid")
+        git(repository, "config", "user.name", "Test")
+        repository.resolve("committed.kt").writeText("base")
+        repository.resolve("edited.kt").writeText("base")
+        git(repository, "add", ".")
+        git(repository, "commit", "-m", "base")
+        val base = git(repository, "rev-parse", "HEAD").trim()
+        repository.resolve("committed.kt").writeText("branch")
+        git(repository, "commit", "-am", "branch")
+        repository.resolve("edited.kt").writeText("changed")
+        repository.resolve("untracked.kt").writeText("new")
+        // 압축본으로 받은 저장소의 .git/config에 실린 명령을 흉내 낸다. status·diff·ls-files가 index를 읽을 때 실행된다.
+        val probe = FsmonitorHookProbe(root, repository)
+
+        val changed = ChangedFiles.since(base, repository)
+
+        assertEquals(setOf("committed.kt", "edited.kt", "untracked.kt").map(repository.toRealPath()::resolve).toSet(), changed)
+        assertFalse(probe.hookRan, "kartograph must not run the analyzed repository's core.fsmonitor command")
     }
 
     private fun git(root: Path, vararg arguments: String): String {

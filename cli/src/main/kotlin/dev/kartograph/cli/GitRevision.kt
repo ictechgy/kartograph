@@ -31,14 +31,12 @@ internal object GitRevision {
     /** SHA-1(40자)·SHA-256(64자) 소문자 hex 커밋 id인지다. */
     private fun isObjectId(value: String): Boolean = Regex("[0-9a-f]{40}|[0-9a-f]{64}").matches(value)
 
-    /** 실패하면 null이다. stderr는 버린다 — 저장소 밖 경로 같은 원시 git 메시지를 사용자 출력에 섞지 않는다. */
+    /** 실패하면 null이다. stderr는 [GitCommand.start]가 버린다. */
     private fun runGit(workingDirectory: Path, arguments: List<String>): String? {
         val process = try {
-            ProcessBuilder(listOf("git", "-C", workingDirectory.toString()) + arguments)
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start()
+            GitCommand.start(workingDirectory, arguments)
         } catch (_: IOException) {
-            // git이 설치되지 않은 환경이다. revision을 모른다고 두고 순회는 계속한다.
+            // PATH의 절대경로 항목에 git이 없거나 시작할 수 없는 환경이다. revision을 모른다고 두고 순회는 계속한다.
             return null
         }
         val stdout = process.inputStream.readAllBytes()
