@@ -798,7 +798,8 @@ class BridgeFactScannerTest {
         assertEquals(listOf("method:app/Plugin#register(Ljava/lang/Object;)V", "method:app/Plugin#register(Ljava/lang/Object;)V",
             "method:app/Plugin#quoted(C)Z", "method:app/Plugin#outer\$inner(Ljava/lang/Object;)V",
             "method:app/OtherKt#register(Ljava/lang/Object;)V", "method:app/Plugin#outer(Ljava/lang/Object;)V"), shared)
-        assertEquals(probes.map { attachSnapshotSymbol(it, graph, project).symbol?.usr }, shared)
+        // 사실마다 attacher를 새로 만든 결과와 같다 — 색인·memo를 공유해도 사실별 선택은 바뀌지 않는다.
+        assertEquals(probes.map { SnapshotSymbolAttacher(graph, project).attach(it).symbol?.usr }, shared)
     }
 
     @Test
@@ -840,7 +841,7 @@ class BridgeFactScannerTest {
         // 구 구현처럼 정점 전체를 훑는 기준이다 — 정점 하나짜리 그래프로 후보인지 하나씩 확인하고 같은 선택 규칙을 적용한다.
         fun linear(probe: BridgeFact): String? {
             val candidates = graph.nodes.values.filter { node ->
-                attachSnapshotSymbol(probe, CodeGraph(listOf(node), emptyList()), project).symbol != null
+                SnapshotSymbolAttacher(CodeGraph(listOf(node), emptyList()), project).attach(probe).symbol != null
             }
             val preceding = candidates.filter { (it.location?.line ?: Int.MAX_VALUE) <= probe.location.line }
             return (preceding.singleOrNull() ?: candidates.singleOrNull())?.id?.value

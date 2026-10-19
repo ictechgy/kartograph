@@ -305,14 +305,8 @@ internal val EVENT_CHANNEL_SPEC = ChannelScanSpec(
 )
 
 /**
- * Snapshot의 실제 source location이 한 정점으로만 해석될 때만 JVM identity를 붙인다.
- * 사실 하나만 붙일 때 쓴다. 한 스캔의 사실 여러 개는 [SnapshotSymbolAttacher] 하나를 공유한다.
- */
-internal fun attachSnapshotSymbol(fact: BridgeFact, graph: CodeGraph, projectRoot: Path): BridgeFact =
-    SnapshotSymbolAttacher(graph, projectRoot).attach(fact)
-
-/**
- * 한 스캔의 사실들을 snapshot 정점에 붙이는 색인이다.
+ * 한 스캔의 사실들을 snapshot 정점에 붙이는 색인이다. Snapshot의 실제 source location이 한 정점으로만 해석될 때만
+ * JVM identity를 붙인다. 생산자는 스캔마다 하나를 만들어 그 스캔의 사실 전부에 공유한다.
  *
  * 사실마다 정점 전체를 훑고 소스를 다시 읽어 선언 범위를 계산하면 비용이 사실 수 × 정점 수로 커진다.
  * 그래서 위치가 있는 함수·메서드 정점을 경로별로 한 번 묶고, 경로별 선언 범위도 한 번만 계산해 기억한다.
