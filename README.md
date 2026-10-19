@@ -56,7 +56,7 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 - Android graph/dead tasks: AGP 8.7+, Gradle 8.10+, JDK 17+ (verified with AGP 8.7.3 / Gradle 8.10.2 and with AGP 9.x).
 - Automatic snapshots: JVM Java/Kotlin on Gradle 9.6.1 and JDK 17/21, plus the [tested Android combinations](docs/IMPACT.md#android-variant-자동-캡처). The Kotlin compiler adapter is verified with KGP 2.4.10; other KGP versions are not guaranteed. The minimum Android combination was tested on Gradle 8.10.2, although KGP itself recommends 8.14.4 or later.
 
-The following example targets the unreleased 0.25.0 preparation version. Use it only after that version
+The following example targets 0.25.0, published on GitHub on 2026-10-19. Use the plugin once that version
 is available from the Portal, or build matching modules from the same source revision.
 
 ```kotlin
@@ -79,9 +79,16 @@ has its seven assets and its [release run](https://github.com/ictechgy/kartograp
 completed the Gradle plugin publish step. It remains a GitHub prerelease.
 Independent public-asset/Portal-consumer verification of 0.23.0 is still pending. Those assets and their
 original documentation are unchanged. Publication and successful independent installation are separate results.
-As checked on 2026-10-18, [v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0) is the latest stable GitHub release with seven assets.
+As checked on 2026-10-18, [v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0) was the latest stable GitHub release with seven assets.
 Its [release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702) passed packaged readiness and plugin publication; independent public consumption is a separate check.
-The current source prepares 0.25.0; changing VERSION does not create a released artifact or complete release validation.
+As checked on 2026-10-19, [v0.25.0](https://github.com/ictechgy/kartograph/releases/tag/v0.25.0) is the latest stable GitHub release with seven assets,
+from tag commit `d7238cd5d6465219d0c1378a99e7394258b8577b`.
+Its [exact-source readiness](https://github.com/ictechgy/kartograph/actions/runs/39183549453) and
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39186955097) passed. All 20 ZIP/TAR semantic pairs
+passed against two retained-plugin AGP8.7.3 fixture builds: 17 impact pairs are strict; three freshness pairs
+omit only the validated root `hashNanos` timing field. ZIP, TAR and plugin hashes match release metadata.
+The `publishPlugins` task succeeded; public Portal visibility and independent Portal installation remain separate checks.
+Published assets retain their original documentation.
 Use matching CLI, plugin, collector and library artifacts. The new source-use APIs and explicit
 `snapshot --include-source-uses`, `query --source-uses` and `impact --source-edits` flags are additive.
 Saved source-use reports are partial/historical evidence with `currentness: notChecked`, separate from ordinary graph results.
@@ -101,7 +108,7 @@ builds, and rebuild clients when their enum definitions change. Follow the
 These are review candidates, not runtime behavior proof. The published 0.23.0 artifacts do not contain this feature.
 The JDK 17 collector suite does not execute the conditional Java 21 null/pattern syntax branch.
 
-The 0.25.0 preparation adds captured application layout XML impact through exact non-final R fields and recorded literal includes.
+Version 0.25.0 adds captured application layout XML impact through exact non-final R fields and recorded literal includes.
 Use matching CLI/plugin/library builds and recapture both revisions. Coverage remains partial; module snapshots with resource
 evidence cannot be aggregated. See [layout capture and migration](docs/ANDROID-RESOURCE-IMPACT.md) for the tested AGP8.7.3
 combination, trusted-build boundary, freshness checks and unsupported runtime/dynamic cases.

@@ -6,7 +6,7 @@
 
 ## [Unreleased]
 
-## [0.25.0] - Unreleased (준비 중)
+## [0.25.0] - 2026-10-19
 
 ### Added
 
@@ -26,7 +26,18 @@
 - [PR188의 전체 CI](https://github.com/ictechgy/kartograph/actions/runs/39159309408)는
   AGP8.7.3/Gradle8.10.2/KGP2.0.21/JDK17/SDK35 non-final R fixture의 실제 XML-only 변경,
   child/include-parent 필드·호출자·테스트, 관련 없는 layout 배제 및 stale→matched를 검증했다.
-  Linux17/21 descriptor capability도 확인했다. 이는 0.25.0 배포 package 검증이나 공개 설치 성공을 뜻하지 않는다.
+  Linux17/21 descriptor capability도 확인했다. 이 소스 CI와 아래 배포 package 검증은 별도 근거다.
+- [GitHub release](https://github.com/ictechgy/kartograph/releases/tag/v0.25.0)의 7개 asset이 공개됐다.
+  태그 commit은 `d7238cd5d6465219d0c1378a99e7394258b8577b`이며
+  [exact-source readiness](https://github.com/ictechgy/kartograph/actions/runs/39183549453)와
+  [release run](https://github.com/ictechgy/kartograph/actions/runs/39186955097)이 성공했다.
+  retained plugin으로 실행한 AGP8.7.3 fixture build 두 번에서 ZIP/TAR 의미 비교 20쌍이 모두 통과했다.
+  impact 17쌍은 strict 비교이며 freshness 3쌍은 검증된 root `hashNanos` 시간 필드만 제외한다.
+  ZIP·TAR·plugin 해시는 release metadata와 일치한다. `publishPlugins` task는 성공했으며
+  공개 Portal 표시와 독립 Portal 설치 검증은 별도다. 기존 공개 asset과 내장 문서는 변경하지 않는다.
+- 제어된 성능 probe에서 current-thread allocated bytes는 감소했다. wall time과 process-lifetime peak RSS는
+  혼재하며 architecture probe의 RSS 증가도 포함한다. 전체 속도·메모리 우위를 주장하지 않고,
+  이전 20초 smoke gate 실패 기록을 유지한다.
 - partial coverage이며 final/inlined ID, overlay/device winner, custom view, navigation,
   data/view binding과 Android inflation은 미검증이다. 신뢰된 정지 입력 전제는 악의적 동시 filesystem
   변경의 원자성·시간 상한을 제공하지 않는다. [캡처·업그레이드 안내](docs/ANDROID-RESOURCE-IMPACT.md)를 따른다.
@@ -1081,8 +1092,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.24.0...HEAD
-[0.25.0]: https://github.com/ictechgy/kartograph/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.25.0
 [0.24.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.24.0
 [0.23.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.23.0
 [0.19.0]: https://github.com/ictechgy/kartograph/compare/v0.18.2...v0.19.0
