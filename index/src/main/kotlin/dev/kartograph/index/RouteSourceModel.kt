@@ -85,14 +85,18 @@ internal class RouteSourceFile(
 
     /**
      * 같은 함수 안에서 [offset]보다 앞서고 그 위치까지 블록이 열려 있는 `val`·`var` 선언을 찾는다.
+     * 함수 머리(매개변수 어노테이션·기본값) 안의 위치에서는 몸체의 지역 선언이 보이지 않으므로 null이다.
      *
      * @return 선언 정보, 없으면 null
      */
     fun localDeclaration(name: String, offset: Int): RouteLocal? {
         val function = enclosingFunction(offset) ?: return null
+        val searchStart = function.bodyStart.coerceAtLeast(function.start)
+        val prefix = masked.substring(0, offset.coerceAtMost(masked.length))
+        // 검색 시작이 입력 밖이면 findAll이 IndexOutOfBoundsException을 던진다.
+        if (searchStart > prefix.length) return null
         val pattern = Regex("\\b(val|var)\\s+${Regex.escape(name)}\\b\\s*(?::[^=\\n]+)?=(?!=)")
-        val match = pattern.findAll(masked.substring(0, offset.coerceAtMost(masked.length)), function.bodyStart.coerceAtLeast(function.start))
-            .lastOrNull { inScope(it.range.first, offset) } ?: return null
+        val match = pattern.findAll(prefix, searchStart).lastOrNull { inScope(it.range.first, offset) } ?: return null
         val initializerStart = match.range.last + 1
         return RouteLocal(match.groupValues[1] == "val", code.substring(initializerStart, statementEnd(initializerStart)).trim())
     }

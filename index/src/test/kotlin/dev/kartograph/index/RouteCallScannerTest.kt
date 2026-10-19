@@ -655,6 +655,32 @@ class RouteCallScannerTest {
     }
 
     @Test
+    fun `encoded path names read from constants in a parameter list keep the scan alive`() {
+        // 매개변수 어노테이션은 함수 머리 안이다. 그 위치에서 지역 선언을 찾을 때 함수 몸체 시작이 검색 입력(위치 앞까지) 밖이라
+        // IndexOutOfBoundsException이 났고, routes --role client가 exit 2로 끝났다. 머리에서는 몸체의 지역 선언이 보이지 않는다.
+        write(
+            "src/main/kotlin/dev/example/api/Encoded.kt",
+            """
+            package dev.example.api
+
+            import retrofit2.http.GET
+            import retrofit2.http.Path
+
+            const val DOC = "path"
+
+            interface Encoded {
+                @GET("docs/{path}/raw")
+                fun doc(@Path(value = DOC, encoded = true) path: String): Any
+            }
+            """,
+        )
+        val doc = scan().at(9)
+        // 상수로 읽은 이름도 리터럴 이름(`retrofit paths that cannot be proven ...`)과 같게 그 자리부터 dynamic이다.
+        assertTrue(doc.dynamic)
+        assertEquals("/docs/", doc.channelPrefix)
+    }
+
+    @Test
     fun `retrofit constant fan-out beyond the per-call budget stays dynamic`() {
         // 리뷰 지적 재현(index-security#0): 단계마다 다음 상수를 64번 잇는 Kotlin 상수다. 펼침이 최상위 호출당 예산(1만 번)을 넘는다.
         // 예전 코드는 이 크기를 1초 안에 끝까지 펼쳤지만, 한 단계만 늘려도 수 초, 두 단계면 끝나지 않았다.
