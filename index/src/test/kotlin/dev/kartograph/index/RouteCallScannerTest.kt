@@ -9,13 +9,16 @@ import dev.kartograph.core.HttpWrapperDeclaration
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.SourceLocation
+import java.lang.management.ManagementFactory
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.io.TempDir
 
 /** 합성 Kotlin/Java 표본으로 route-call 수확 규칙을 하나씩 고정한다. 공개 저장소라 실제 앱 코드는 쓰지 않는다. */
@@ -927,5 +930,72 @@ class RouteCallScannerTest {
         val document = scan(broken)
         assertTrue(document.facts.isEmpty())
         assertTrue(document.limitations.any { it.startsWith("http-wrapper-unresolved:") })
+    }
+
+    @Test
+    fun `kotlin statement ends are found without copying the rest of the file`() {
+        // 리뷰 지적 재현(index-security#3): 깊이 0의 줄바꿈마다 파일 앞뒤를 통째로 복사해, 상수 수 × 파일 크기만큼 할당했다.
+        // 시간 대신 같은 모양의 파일에서 상수 수만 두 배로 늘린 스레드 할당량을 비교한다. 선형이면 두 배 안팎이고 예전에는 네 배였다.
+        val threads = ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean
+        assumeTrue(threads != null && threads.isThreadAllocatedMemorySupported && threads.isThreadAllocatedMemoryEnabled,
+            "thread allocation accounting is unavailable on this JVM")
+        fun allocated(count: Int): Long {
+            val source = "package demo\n\nobject Keys {\n" + (0 until count).joinToString("") { "    const val KEY_$it = \"value-$it\"\n" } + "}\n"
+            fun model() = RouteSourceFile("src/main/kotlin/demo/Keys.kt", isJava = false, isTest = false, source = source)
+            // 첫 실행의 클래스 적재 할당을 빼려고 한 번 먼저 만든다.
+            model()
+            val before = threads!!.currentThreadAllocatedBytes
+            val constants = model().constants
+            val bytes = threads.currentThreadAllocatedBytes - before
+            assertEquals(count, constants.size)
+            assertEquals("\"value-${count - 1}\"", constants.getValue("KEY_${count - 1}").single().expression)
+            return bytes
+        }
+        val small = allocated(STATEMENT_CONSTANTS)
+        val large = allocated(STATEMENT_CONSTANTS * 2)
+        assertTrue(large < small * 3, "doubling $STATEMENT_CONSTANTS constants grew allocation from $small to $large bytes")
+    }
+
+    @Test
+    fun `statement ends match the copying implementation on random kotlin text`() {
+        // index-security#3 수정의 보존 대조: 위치로 공백을 건너뛰는 판정이 예전처럼 앞뒤를 복사해 trimEnd·trimStart한 판정과 같아야 한다.
+        // 공백 술어(Char.isWhitespace)가 같은지 보려고 NBSP·EM SPACE·CR을 섞는다.
+        val random = Random(20_261_019)
+        val tokens = listOf("a", "x1", "+", "-", "*", "/", ".", "(", ")", "[", "]", "{", "}", ",", "=", "?", ":", "?.", "?:", "&", "|",
+            "%", "<", ">", "!", ";", " ", "\t", "\u00A0", "\u2003", "\r", "\n", "\n", "\n  ", "\n\n")
+        repeat(200) { sample ->
+            val source = buildString { repeat(random.nextInt(1, 80)) { append(tokens[random.nextInt(tokens.size)]) } }
+            val file = RouteSourceFile("src/main/kotlin/demo/R.kt", isJava = false, isTest = false, source = source)
+            for (start in 0..file.masked.length) {
+                assertEquals(copyingStatementEnd(file.masked, start), file.statementEnd(start), "sample $sample start $start")
+            }
+        }
+    }
+
+    /** 수정 전 [RouteSourceFile.statementEnd]를 그대로 옮긴 대조용 구현이다. 연산자 집합도 그때 값이다. */
+    private fun copyingStatementEnd(masked: String, start: Int): Int {
+        fun continuesAfter(newline: Int): Boolean {
+            val before = masked.substring(0, newline).trimEnd()
+            if (before.isEmpty() || before.last() in "+-*/.(,=?:&|%<>!") return true
+            val after = masked.substring(newline + 1).trimStart()
+            return after.startsWith("?.") || after.startsWith("?:") || (after.isNotEmpty() && after.first() in ".+-*/?:&|%)]")
+        }
+        var depth = 0
+        var index = start
+        while (index < masked.length) {
+            when (masked[index]) {
+                '(', '[', '{' -> depth++
+                ')', ']', '}' -> { if (depth == 0) return index; depth-- }
+                ';' -> if (depth == 0) return index
+                '\n' -> if (depth == 0 && !continuesAfter(index)) return index
+            }
+            index++
+        }
+        return masked.length
+    }
+
+    private companion object {
+        /** 할당량 비교의 작은 쪽 상수 수다. 예전 구현은 이 크기에서도 상수마다 약 80KB를 복사했다. */
+        const val STATEMENT_CONSTANTS = 2_000
     }
 }

@@ -128,12 +128,23 @@ internal class RouteSourceFile(
         return masked.length
     }
 
-    /** 줄바꿈 뒤에도 식이 이어지는지 본다. */
+    /**
+     * 줄바꿈 뒤에도 식이 이어지는지 본다. 앞뒤 공백은 위치로 건너뛴다 — 줄바꿈마다 파일 앞뒤를 복사하면 상수가 많은 파일에서
+     * 비용이 상수 수 × 파일 크기가 된다. 공백 판정은 `trimEnd`·`trimStart`와 같은 [Char.isWhitespace]다.
+     */
     private fun continuesAfter(newline: Int): Boolean {
-        val before = masked.substring(0, newline).trimEnd()
-        if (before.isEmpty() || before.last() in CONTINUATION_END) return true
-        val after = masked.substring(newline + 1).trimStart()
-        return after.startsWith("?.") || after.startsWith("?:") || (after.isNotEmpty() && after.first() in CONTINUATION_START)
+        var before = newline - 1
+        while (before >= 0 && masked[before].isWhitespace()) before--
+        if (before < 0 || masked[before] in CONTINUATION_END) return true
+        val after = skipWhitespace(newline + 1)
+        return masked.startsWith("?.", after) || masked.startsWith("?:", after) || masked.getOrNull(after)?.let { it in CONTINUATION_START } == true
+    }
+
+    /** [from]부터 공백([Char.isWhitespace])을 건너뛴 첫 위치다. 끝까지 공백이면 [masked]의 길이다. */
+    private fun skipWhitespace(from: Int): Int {
+        var index = from
+        while (index < masked.length && masked[index].isWhitespace()) index++
+        return index
     }
 
     private fun collectTypes(): List<RouteTypeDecl> {
@@ -218,9 +229,9 @@ internal class RouteSourceFile(
                 ')', '>' -> depth--
                 '{' -> if (depth <= 0) return index to braceEnd(index).let { if (it < 0) masked.length else it }
                 '=' -> if (depth <= 0 && masked.getOrNull(index + 1) != '=') return index to expressionBodyEnd(index + 1)
-                '\n' -> if (depth <= 0 && !typeHeaderContinues(index) && masked.substring(index + 1).trimStart().let {
-                        !it.startsWith('=') && !it.startsWith('{')
-                    }) return index to index
+                '\n' -> if (depth <= 0 && !typeHeaderContinues(index) && masked.getOrNull(skipWhitespace(index + 1)).let { it != '=' && it != '{' }) {
+                    return index to index
+                }
                 '}', ';' -> if (depth <= 0) return index to index
             }
             index++
@@ -236,7 +247,7 @@ internal class RouteSourceFile(
             when (masked[index]) {
                 '(', '[', '{' -> depth++
                 ')', ']', '}' -> { if (depth == 0) return index; depth-- }
-                '\n' -> if (depth == 0 && DECLARATION_START.containsMatchIn(masked.substring(index + 1).take(64))) return index
+                '\n' -> if (depth == 0 && DECLARATION_START.containsMatchIn(masked.substring(index + 1, minOf(masked.length, index + 65)))) return index
             }
             index++
         }
