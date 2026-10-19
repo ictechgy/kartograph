@@ -20,17 +20,23 @@ internal object FreshnessCommand {
             output.println("Exit 0: matching compiler evidence; 1: stale or unverified; 2: invalid input; 64: usage error. Saved queries remain offline.")
             return 0
         }
-        if (arguments.size % 2 != 0 || arguments.chunked(2).any { it[0] !in setOf("--graph-file", "--project", "--scope", "--input", "--input-bindings", "--classes", "--classpath", "--artifact", "--compiler", "--snapshot-max-mib") }) return 64
+        argumentProblem(arguments)?.let { return usage(error, it) }
         val options = arguments.chunked(2).groupBy({ it[0] }, { it[1] })
-        if (listOf("--graph-file", "--project").any { options[it]?.size != 1 } ||
-            listOf("--scope", "--input-bindings", "--snapshot-max-mib").any { (options[it]?.size ?: 0) > 1 }) return 64
-        val snapshotLimit = SnapshotFiles.limit(options["--snapshot-max-mib"].orEmpty()) ?: return 64
+        if (listOf("--graph-file", "--project").any { options[it]?.size != 1 }) {
+            return usage(error, "--graph-file and --project are required exactly once")
+        }
+        listOf("--scope", "--input-bindings", "--snapshot-max-mib").firstOrNull { (options[it]?.size ?: 0) > 1 }
+            ?.let { return usage(error, "duplicate $it; give it at most once") }
+        val snapshotLimit = SnapshotFiles.limit(options["--snapshot-max-mib"].orEmpty())
+            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128")
         return try {
-            val explicit = try { inputBindings(options["--input"].orEmpty()) } catch (_: IllegalArgumentException) { return 64 }
+            val explicit = try { inputBindings(options["--input"].orEmpty()) } catch (_: IllegalArgumentException) {
+                return usage(error, "--input must be external/<slot>=<path>, with each slot given once")
+            }
             val local = options["--input-bindings"]?.single()?.let { path ->
                 ExternalInputBindingsCodec.parse(SnapshotFiles.readText(path, 1024 * 1024)).mapValues { Path.of(it.value) }
             }.orEmpty()
-            if (explicit.keys.any(local::containsKey)) return 64
+            if (explicit.keys.any(local::containsKey)) return usage(error, "--input duplicates a slot from --input-bindings")
             val external = local + explicit
             val snapshot = SnapshotFiles.read(options.getValue("--graph-file").single(), snapshotLimit.maximumBytes)
             val started = System.nanoTime()
@@ -60,6 +66,35 @@ internal object FreshnessCommand {
             error.println("error: unable to verify snapshot inputs; supply a valid snapshot (maximum ${snapshotLimit.maximumMiB} MiB), project and external input bindings")
             2
         }
+    }
+
+    private val OPTIONS = setOf(
+        "--graph-file", "--project", "--scope", "--input", "--input-bindings", "--classes", "--classpath", "--artifact",
+        "--compiler", "--snapshot-max-mib",
+    )
+
+    /** 옵션 이름 모양의 낱말이다. 경로·바인딩 값(`/`, `=`가 든 낱말)은 이 모양이 아니라 오류 문구에 싣지 않는다. */
+    private val OPTION_NAME = Regex("--?[A-Za-z][A-Za-z0-9-]*")
+
+    /**
+     * 모든 옵션이 값 하나를 받는 `--option value` 쌍으로 읽히지 않는 이유다. 읽히면 null이다.
+     *
+     * 값 자리에는 경로가 올 수 있으므로 알려진 옵션 이름과 옵션 모양의 낱말만 문구에 싣는다.
+     */
+    private fun argumentProblem(arguments: List<String>): String? {
+        val unknown = arguments.chunked(2).map { it[0] }.firstOrNull { it !in OPTIONS }
+        return when {
+            unknown != null && OPTION_NAME.matches(unknown) -> "unknown verify-snapshot option: $unknown (see kartograph verify-snapshot --help)"
+            unknown != null -> "unexpected argument; verify-snapshot takes --option value pairs (see kartograph verify-snapshot --help)"
+            arguments.size % 2 != 0 -> "missing value for ${arguments.last()}"
+            else -> null
+        }
+    }
+
+    /** 다른 명령처럼 원인을 stderr에 알리고 사용 오류(64)로 끝낸다. 경로나 원시 값은 싣지 않는다. */
+    private fun usage(error: PrintStream, message: String): Int {
+        error.println("error: $message")
+        return ExitStatus.USAGE.code
     }
 
     internal fun inputBindings(values: List<String>): Map<String, Path> {
