@@ -1,5 +1,6 @@
 """배포 검증의 파일 identity·fail-closed 경계·공통 두 캡처 질의 조립을 검증한다."""
 import copy
+import hashlib
 import importlib.util
 import io
 import json
@@ -286,24 +287,146 @@ class PackagedResourceTest(unittest.TestCase):
 
     def test_complete_semantic_outputs_are_compared_without_projection(self):
         value = {"status": "found", "affected": [], "extra": {"newSemanticField": [1, 2]}}
-        matched, digest = HELPER["semantic_pair"]({"zip": value, "tar": copy.deepcopy(value)})
+        matched, digest, comparison = HELPER["semantic_pair"]({"zip": value, "tar": copy.deepcopy(value)}, "impact")
         self.assertEqual(value, matched)
         self.assertEqual(64, len(digest))
         changed = copy.deepcopy(value)
         changed["extra"]["newSemanticField"][1] = 3
         with self.assertRaisesRegex(RuntimeError, "complete semantic outputs"):
-            HELPER["semantic_pair"]({"zip": value, "tar": changed})
+            HELPER["semantic_pair"]({"zip": value, "tar": changed}, "impact")
         with self.assertRaisesRegex(RuntimeError, "both extracted CLIs"):
-            HELPER["semantic_pair"]({"zip": value})
+            HELPER["semantic_pair"]({"zip": value}, "impact")
         for left, right in ((True, 1), (1, 1.0), (False, 0), ([True], [1])):
             with self.subTest(left=left, right=right), self.assertRaisesRegex(RuntimeError, "complete semantic outputs"):
-                HELPER["semantic_pair"]({"zip": {"value": left}, "tar": {"value": right}})
+                HELPER["semantic_pair"]({"zip": {"value": left}, "tar": {"value": right}}, "impact")
         with self.assertRaises(ValueError):
-            HELPER["semantic_pair"]({"zip": {"value": float("nan")}, "tar": {"value": float("nan")}})
+            HELPER["semantic_pair"]({"zip": {"value": float("nan")}, "tar": {"value": float("nan")}}, "impact")
 
     def test_receipt_size_bound_is_enforced(self):
         with self.assertRaisesRegex(RuntimeError, "exceeds bound"):
             HELPER["write_receipt"](self.root / "oversized.json", {"value": "x" * HELPER["MAX_RECEIPT"]})
+
+
+class SemanticPairTest(unittest.TestCase):
+    def freshness(self, nanos=1):
+        return {"format": "kartograph-freshness", "version": 1, "status": "matched",
+                "hashNanos": nanos, "reasons": []}
+
+    def pair(self, left, right, command="verify-snapshot"):
+        return HELPER["semantic_pair"]({"zip": left, "tar": right}, command)
+
+    def diagnostic(self, left, right, command="impact"):
+        with self.assertRaises(HELPER["SemanticComparisonError"]) as error:
+            self.pair(left, right, command)
+        return error.exception.diagnostic
+
+    def test_only_validated_root_elapsed_time_is_excluded_and_raw_hashes_are_retained(self):
+        left, right = self.freshness(0), self.freshness(2**63 - 1)
+        original = copy.deepcopy((left, right))
+        matched, sha, comparison = self.pair(left, right)
+        self.assertEqual(original, (left, right))
+        self.assertEqual(left, matched)
+        self.assertEqual(["hashNanos"], comparison["excludedRootFields"])
+        self.assertEqual({"zip": 0, "tar": 2**63 - 1}, comparison["hashNanos"])
+        self.assertNotEqual(comparison["canonicalJsonSha256"]["zip"], comparison["canonicalJsonSha256"]["tar"])
+        semantic = {key: value for key, value in left.items() if key != "hashNanos"}
+        self.assertEqual(hashlib.sha256(HELPER["canonical_json"](semantic)).hexdigest(), sha)
+        self.assertEqual(sha, self.pair(self.freshness(100), self.freshness(200))[1])
+
+    def test_missing_invalid_or_nested_only_time_fails_on_either_or_both_sides(self):
+        for invalid in (None, True, False, -1, 1.0, "1", 2**63, "missing", "nested"):
+            for labels in (("zip",), ("tar",), ("zip", "tar")):
+                with self.subTest(invalid=invalid, labels=labels):
+                    documents = {"zip": self.freshness(), "tar": self.freshness()}
+                    for label in labels:
+                        if invalid in ("missing", "nested"):
+                            documents[label].pop("hashNanos")
+                            if invalid == "nested":
+                                documents[label]["nested"] = {"hashNanos": 1}
+                        else:
+                            documents[label]["hashNanos"] = invalid
+                    diagnostic = self.diagnostic(documents["zip"], documents["tar"], "verify-snapshot")
+                    self.assertEqual("invalidFreshnessSchema", diagnostic["reason"])
+                    self.assertEqual(set(labels), set(diagnostic["invalidFields"]))
+                    self.assertTrue(all("hashNanos" in fields for fields in diagnostic["invalidFields"].values()))
+
+    def test_explicit_command_and_exact_freshness_identity_are_required(self):
+        with self.assertRaisesRegex(RuntimeError, "unexpected packaged comparison command"):
+            self.pair(self.freshness(), self.freshness(), "query")
+        self.diagnostic(self.freshness(1), self.freshness(2), "impact")
+        for key, value in (("format", "kartograph-impact"), ("version", 2), ("version", True),
+                           ("version", 1.0), ("status", "found"), ("reasons", None), ("reasons", [1])):
+            left = self.freshness()
+            left[key] = value
+            with self.subTest(key=key, value=value):
+                diagnostic = self.diagnostic(left, copy.deepcopy(left), "verify-snapshot")
+                self.assertEqual("invalidFreshnessSchema", diagnostic["reason"])
+
+    def test_all_other_fields_types_nested_values_and_array_order_remain_exact(self):
+        for change in ("status", "reasons", "reason-order", "extra", "nested", "extra-type"):
+            left, right = self.freshness(1), self.freshness(2)
+            if change == "status":
+                right["status"] = "stale"
+            elif change == "reasons":
+                right["reasons"] = ["changed-resources"]
+            elif change == "reason-order":
+                left["reasons"], right["reasons"] = ["a", "b"], ["b", "a"]
+            elif change == "extra":
+                right["extra"] = {"newSemanticField": 1}
+            elif change == "nested":
+                left["extra"], right["extra"] = {"hashNanos": 1}, {"hashNanos": 2}
+            else:
+                left["extra"], right["extra"] = True, 1
+            with self.subTest(change=change):
+                diagnostic = self.diagnostic(left, right, "verify-snapshot")
+                self.assertEqual("semanticMismatch", diagnostic["reason"])
+                self.assertNotEqual(diagnostic["semanticSha256"]["zip"], diagnostic["semanticSha256"]["tar"])
+
+    def test_missing_null_boolean_number_and_array_order_have_distinct_diagnostics(self):
+        for left, right, path, kinds in (
+                ({}, {"status": None}, "/status", ("missing", "null")),
+                ({"version": True}, {"version": 1}, "/version", ("boolean", "integer")),
+                ({"version": 1}, {"version": 1.0}, "/version", ("integer", "number")),
+                ({"reasons": ["a", "b"]}, {"reasons": ["b", "a"]}, "/reasons/0", ("string", "string")),
+                ([], {}, "$", ("array", "object"))):
+            with self.subTest(left=left, right=right):
+                diagnostic = self.diagnostic(left, right)
+                row = next(row for row in diagnostic["differences"] if row["path"] == path)
+                self.assertEqual(kinds, (row["zip"]["type"], row["tar"]["type"]))
+                self.assertNotEqual(diagnostic["zip"]["sha256"], diagnostic["tar"]["sha256"])
+
+    def test_diagnostics_are_capped_and_never_reflect_unknown_keys_or_string_values(self):
+        left = {"status": "/private/alice", "reasons": ["/private/left-" + str(i) for i in range(100)],
+                "/secret/key": {"secretToken": "left"}}
+        right = {"status": "/private/bob", "reasons": ["/private/right-" + str(i) for i in range(100)],
+                 "/secret/other": {"secretToken": "right"}}
+        diagnostic = self.diagnostic(left, right)
+        encoded = json.dumps(diagnostic)
+        for private in ("private", "alice", "bob", "secret", "Token"):
+            self.assertNotIn(private, encoded)
+        self.assertTrue(diagnostic["truncated"])
+        self.assertLessEqual(len(diagnostic["differences"]), HELPER["MAX_DIFFERENCES"])
+        self.assertLess(len(encoded.encode("utf-8")), 16 * 1024)
+        self.assertEqual(diagnostic, HELPER["public_semantic_diagnostic"](diagnostic))
+        small = self.diagnostic({"/private/key": 1}, {"/private/key": 2})
+        self.assertEqual("$otherRootFields", small["differences"][0]["path"])
+        poisoned = copy.deepcopy(small)
+        poisoned["private"] = "/private/user"
+        with self.assertRaisesRegex(RuntimeError, "diagnostic key"):
+            HELPER["public_semantic_diagnostic"](poisoned)
+        poisoned = copy.deepcopy(small)
+        poisoned["differences"][0]["path"] = "/private/user"
+        with self.assertRaisesRegex(RuntimeError, "diagnostic string"):
+            HELPER["public_semantic_diagnostic"](poisoned)
+
+    def test_only_bounded_integer_root_timing_values_are_disclosed(self):
+        for value in (True, -1, 1.0, 2**63, "/private/timing"):
+            diagnostic = self.diagnostic({"hashNanos": value}, {"hashNanos": 2})
+            row = diagnostic["differences"][0]
+            self.assertNotIn("value", row["zip"])
+            self.assertEqual(2, row["tar"]["value"])
+        diagnostic = self.diagnostic({"nested": {"hashNanos": 1}}, {"nested": {"hashNanos": 2}})
+        self.assertNotIn('"value"', json.dumps(diagnostic))
 
 
 class PackagedOrchestrationTest(PackagedResourceTest):
@@ -317,6 +440,7 @@ class PackagedOrchestrationTest(PackagedResourceTest):
         if wrong_origin:
             runtime["plugin"]["jarSha256"] = "f" * 64
         builds, queries = [], []
+        self.query_stdout, self.stdout = {}, io.StringIO()
         def prepare(project):
             for name in MODULE.LAYOUTS:
                 text = '<LinearLayout><include layout="@layout/child"/></LinearLayout>' if name == "parent" else '<TextView android:text="Before"/>'
@@ -352,9 +476,13 @@ class PackagedOrchestrationTest(PackagedResourceTest):
                 graph.write_text('{"mutated":true}')
             value = {"status": "stale" if name.startswith("resource-edit-stale") else "matched",
                      "complete": {"extra": 1}}
+            if values[1] == "verify-snapshot":
+                value.update({"format": "kartograph-freshness", "version": 1,
+                              "hashNanos": 100 if name.endswith("-zip") else 200, "reasons": []})
             if divergence and name.endswith("-tar"):
                 value["complete"]["extra"] = 2
-            return json.dumps(value)
+            self.query_stdout[name] = json.dumps(value)
+            return self.query_stdout[name]
         with mock.patch.object(MODULE, "ROOT", self.root), \
              mock.patch.object(MODULE, "prepare", side_effect=prepare), \
              mock.patch.object(MODULE, "run", side_effect=run), \
@@ -364,7 +492,7 @@ class PackagedOrchestrationTest(PackagedResourceTest):
              mock.patch.object(MODULE, "verify_xml_impact", return_value={"includeParent": True}), \
              mock.patch.object(MODULE, "verify_resource_unavailable") as unavailable, \
              mock.patch.dict(os.environ, {"GRADLE_8_HOME": str(self.root / "gradle"), "ANDROID_HOME": str(sdk)}), \
-             mock.patch("sys.stdout", new=io.StringIO()):
+             mock.patch("sys.stdout", new=self.stdout):
             MODULE.packaged_main(self.args)
         return builds, queries, unavailable
 
@@ -384,6 +512,19 @@ class PackagedOrchestrationTest(PackagedResourceTest):
         self.assertEqual("e" * 40, receipt["sourceRevision"])
         self.assertEqual("a" * 40, receipt["sourceTree"])
         self.assertEqual(20, len(receipt["semanticOutputSha256"]))
+        self.assertEqual(20, len(receipt["semanticComparisons"]))
+        for name, comparison in receipt["semanticComparisons"].items():
+            self.assertEqual("matched", comparison["status"])
+            for label in ("zip", "tar"):
+                self.assertEqual(hashlib.sha256(self.query_stdout[name + "-" + label].encode("utf-8")).hexdigest(),
+                                 comparison["decodedStdoutSha256"][label])
+            if comparison["command"] == "verify-snapshot":
+                self.assertEqual(["hashNanos"], comparison["excludedRootFields"])
+                self.assertEqual({"zip": 100, "tar": 200}, comparison["hashNanos"])
+                self.assertNotEqual(comparison["canonicalJsonSha256"]["zip"], comparison["canonicalJsonSha256"]["tar"])
+            else:
+                self.assertEqual([], comparison["excludedRootFields"])
+                self.assertEqual(comparison["canonicalJsonSha256"]["zip"], comparison["canonicalJsonSha256"]["tar"])
         self.assertTrue(receipt["artifactsUnchanged"])
         self.assertNotIn(str(self.root), json.dumps(receipt))
         receipt["private"] = "/private/user"
@@ -391,6 +532,9 @@ class PackagedOrchestrationTest(PackagedResourceTest):
         summary = MODULE.packaged_log_summary(receipt)
         self.assertEqual("a" * 40, summary["sourceTree"])
         self.assertEqual(20, summary["semanticPairCount"])
+        self.assertEqual({"before-freshness", "resource-edit-stale", "after-freshness"},
+                         set(summary["freshnessComparisons"]))
+        self.assertEqual({"zip": 100, "tar": 200}, summary["freshnessComparisons"]["before-freshness"]["hashNanos"])
         self.assertEqual(self.version, summary["loadedRuntime"]["plugin"]["version"])
         self.assertEqual(receipt["artifacts"]["plugin"]["sha256"], summary["retainedPluginSha256"])
         self.assertEqual(2, len(summary["cliArchives"]))
@@ -406,6 +550,22 @@ class PackagedOrchestrationTest(PackagedResourceTest):
             receipt = json.loads((self.root / "evidence/verification.json").read_text())
             self.assertEqual("failed", receipt["status"])
             self.assertNotIn(str(self.root), json.dumps(receipt))
+            if change == "divergence":
+                self.assertEqual({}, receipt["semanticOutputSha256"])
+                self.assertEqual("before-freshness", receipt["lastQuery"])
+                self.assertEqual("semanticMismatch", receipt["semanticMismatch"]["reason"])
+                comparison = receipt["semanticComparisons"]["before-freshness"]
+                self.assertEqual("failed", comparison["status"])
+                self.assertEqual({"zip", "tar"}, set(comparison["decodedStdoutSha256"]))
+                summary = json.loads(self.stdout.getvalue())
+                self.assertEqual(0, summary["semanticPairCount"])
+                self.assertEqual("before-freshness", summary["lastQuery"])
+                self.assertEqual(receipt["semanticMismatch"], summary["semanticMismatch"])
+                self.assertEqual(comparison["decodedStdoutSha256"], summary["lastQueryDecodedStdoutSha256"])
+                self.assertEqual({}, summary["freshnessComparisons"])
+                receipt["semanticMismatch"]["private"] = "/private/user"
+                with self.assertRaisesRegex(RuntimeError, "diagnostic key"):
+                    MODULE.packaged_log_summary(receipt)
 
 
 if __name__ == "__main__":
