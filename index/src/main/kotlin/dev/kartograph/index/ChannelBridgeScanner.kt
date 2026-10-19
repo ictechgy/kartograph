@@ -233,7 +233,7 @@ internal class ChannelBridgeScanner(private val projectRoot: Path, private val s
 /**
  * 문자열 리터럴 내용을 공백으로 마스킹한 뷰를 만든다 — 이벤트 regex와 JNI 표식
  * 판정이 코드처럼 생긴 문자열 텍스트를 사실·선언으로 오인하지 않기 위해서다.
- * v1·v2 브리지 스캐너가 공유한다.
+ * v1·v2 브리지 스캐너가 공유한다. 백틱 이름은 식별자라 그대로 둔다([backtickNameEnd]).
  */
 internal fun maskStringContents(source: String): String {
     val out = StringBuilder(source.length)
@@ -247,6 +247,10 @@ internal fun maskStringContents(source: String): String {
         }
         if (rawQuote && source.startsWith("\"\"\"", index)) {
             rawQuote = false; quote = null; out.append("   "); index += 3; continue
+        }
+        if (quote == null && source[index] == '`') {
+            val end = backtickNameEnd(source, index)
+            out.append(source, index, end); index = end; continue
         }
         val c = source[index]
         when {
@@ -554,8 +558,19 @@ internal fun literalOrDynamicChannel(expression: String): Pair<String, Boolean> 
     else (if (triple) decodeRawLiteral(body) else decodeLiteral(body)) to false
 }
 
+/**
+ * [start]의 백틱에서 시작하는 Kotlin 백틱 이름(`` `isn't ready` ``)의 끝 다음 위치다. 백틱 이름은 식별자라 그 안의 `'`·`"`·`//`는
+ * 인용이나 주석을 열지 않는다. 문자 리터럴로 읽으면 다음 `'`까지 파일이 문자열이 되어 뒤 선언·호출을 가린다. 이름은 줄을 넘지
+ * 않으므로 닫히지 않으면 줄 끝에서 멈춘다. 이 뷰를 함께 쓰는 SQLDelight(`.sq`)의 백틱 식별자도 그 안의 `'`가 문자열을 열지 않는다.
+ */
+internal fun backtickNameEnd(source: String, start: Int): Int {
+    var index = start + 1
+    while (index < source.length && source[index] != '`' && source[index] != '\n') index++
+    return if (index < source.length && source[index] == '`') index + 1 else index
+}
+
 // 문자열을 거스르지 않고 주석만 공백으로 지우는 전체 파일 뷰다 — channel과
-// schema 스캐너가 같은 어휘 경계를 공유해 결과가 어긋나지 않게 한다.
+// schema 스캐너가 같은 어휘 경계를 공유해 결과가 어긋나지 않게 한다. 백틱 이름은 [backtickNameEnd]로 건너뛴다.
 internal fun stripComments(source: String): String {
     val out = StringBuilder(source.length)
     var block = false
@@ -584,6 +599,7 @@ internal fun stripComments(source: String): String {
                 when { escaped -> escaped = false; c == '\\' -> escaped = true; c == quote -> quote = null }
                 index++
             }
+            c == '`' -> backtickNameEnd(source, index).let { end -> out.append(source, index, end); index = end }
             c == '"' || c == '\'' -> { quote = c; out.append(c); index++ }
             c == '/' && next == '*' -> { out.append("  "); block = true; index += 2 }
             c == '/' && next == '/' -> {

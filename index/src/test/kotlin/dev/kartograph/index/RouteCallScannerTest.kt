@@ -480,6 +480,37 @@ class RouteCallScannerTest {
     }
 
     @Test
+    fun `calls after an apostrophe inside a backtick name are still scanned`() {
+        // 백틱 이름 속 `'`를 문자 리터럴 시작으로 읽으면 가린 뷰에서 파일 끝까지가 문자열이 되어, 뒤의 호출을 사실로 내지 못했다.
+        val path = "src/main/kotlin/dev/example/net/Direct.kt"
+        write(
+            path,
+            """
+            package dev.example.net
+            import java.net.*
+
+            class Direct {
+                fun `isn't ready`(): Boolean = false
+                fun post() {
+                    val connection = URL("https://api.example.com/v1/items").openConnection() as HttpURLConnection
+                    connection.requestMethod = "POST"
+                }
+            }
+            """,
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:dev/example/net/Direct#post()V"), "post", NodeKind.METHOD, location = SourceLocation(path, 7)),
+        ), emptyList())
+
+        val fact = RouteCallScanner(project).scan(generatedAt = "2026-01-01T00:00:00Z", graph = graph).facts.single()
+
+        assertEquals("/v1/items", fact.channel)
+        assertEquals("POST", fact.method)
+        assertEquals("dev.example.net.Direct.post", fact.symbol?.qualifiedName)
+        assertEquals("method:dev/example/net/Direct#post()V", fact.symbol?.usr)
+    }
+
+    @Test
     fun `retrofit annotations map paths through rfc 3986 anchors`() {
         write(
             "src/main/kotlin/dev/example/api/Service.kt",

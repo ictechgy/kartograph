@@ -707,6 +707,31 @@ class BridgeFactScannerTest {
         }
     }
 
+    @Test
+    fun `snapshot symbol follows a header after quotes inside backtick names`(@TempDir project: Path) {
+        // 리뷰 지적 재현: 선언 범위 뷰가 백틱 이름 속 `'`를 문자 리터럴 시작으로 읽어 뒤 함수 머리를 모두 가렸다. v1 사실은 줄마다
+        // 인용을 새로 읽으므로 사실은 남고 USR만 빠졌다. 백틱 이름은 식별자라 그 안의 `'`·`"`는 인용을 열지 않는다.
+        val names = mapOf("apostrophe" to "`isn't ready`", "double quote" to "`say \"hi`")
+        for ((label, name) in names) {
+            project.resolve("Plugin.kt").writeText(
+                "class Plugin {\n" +
+                    "  fun $name(): Boolean = false\n" +
+                    "  fun register(messenger: Any) {\n" +
+                    "    MethodChannel(messenger, \"camera\").setMethodCallHandler(handler)\n" +
+                    "  }\n" +
+                    "}\n",
+            )
+            val graph = CodeGraph(listOf(
+                GraphNode(NodeId("method:app/Plugin#register(Ljava/lang/Object;)V"), "register", NodeKind.METHOD,
+                    location = SourceLocation("Plugin.kt", 4, 5)),
+            ), emptyList())
+
+            val fact = BridgeFactScanner(project).scan(graph = graph).facts.single()
+
+            assertEquals("method:app/Plugin#register(Ljava/lang/Object;)V", fact.symbol?.usr, label)
+        }
+    }
+
     private fun attachProbe(path: String, line: Int) =
         BridgeFact(kind = "channel-register", channel = "probe", dynamic = false, location = BridgeLocation(path, line, 3), target = "flutter")
 
