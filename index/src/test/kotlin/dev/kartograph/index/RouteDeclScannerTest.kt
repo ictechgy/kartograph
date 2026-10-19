@@ -252,6 +252,63 @@ class RouteDeclScannerTest {
     }
 
     @Test
+    fun `cyclic alias chains are cut and keep the meta mapping`() {
+        boot()
+        // Spring은 시작할 때 거부하지만 컴파일은 되는 선언이다. 별칭이 root 속성에 닿지 않으면 덮어쓰지 않는다.
+        write("src/main/java/demo/LoopMappings.java", """
+            package demo;
+
+            import org.springframework.core.annotation.AliasFor;
+            import org.springframework.web.bind.annotation.RequestMapping;
+
+            @RequestMapping("/meta-a")
+            @interface LoopA {
+                @AliasFor(annotation = LoopB.class, attribute = "path")
+                String[] path() default {};
+            }
+
+            @RequestMapping("/meta-b")
+            @interface LoopB {
+                @AliasFor(annotation = LoopA.class, attribute = "path")
+                String[] path() default {};
+            }
+
+            @RequestMapping("/meta-mirror")
+            @interface MirrorA {
+                @AliasFor("path")
+                String[] value() default {};
+
+                @AliasFor(annotation = MirrorB.class, attribute = "path")
+                String[] path() default {};
+            }
+
+            @RequestMapping
+            @interface MirrorB {
+                @AliasFor(annotation = MirrorA.class, attribute = "value")
+                String[] path() default {};
+            }
+        """)
+        write("src/main/java/demo/LoopController.java", """
+            package demo;
+            $javaImports
+
+            @RestController
+            public class LoopController {
+                @LoopA(path = "/loop")
+                public String loop() { return ""; }
+
+                @MirrorA("/mirror")
+                public String mirror() { return ""; }
+
+                @GetMapping("/plain")
+                public String plain() { return ""; }
+            }
+        """)
+        // 상호 별칭(LoopA↔LoopB)과 같은 타입 거울을 거쳐 돌아오는 별칭(MirrorA.value → path → MirrorB.path → MirrorA.value)이다.
+        assertEquals(setOf("ANY /meta-a", "ANY /meta-mirror", "GET /plain"), scan().keys())
+    }
+
+    @Test
     fun `placeholders profiles and dynamic templates are reported as server limitations`() {
         boot()
         write("src/main/resources/application.yml", """

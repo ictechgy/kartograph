@@ -232,14 +232,17 @@ internal class SpringMappingResolver(types: Collection<SpringType>, private val 
 
     private fun SpringAliasTarget.withDefaultName(name: String): SpringAliasTarget = if (attribute.isEmpty()) copy(attribute = name) else this
 
-    /** 별칭 대상을 root 계열(`@RequestMapping`·`@HttpExchange`)의 정규 속성 이름까지 따라간다. */
+    /**
+     * 별칭 대상을 root 계열(`@RequestMapping`·`@HttpExchange`)의 정규 속성 이름까지 따라간다. 이미 거친 어노테이션으로
+     * 돌아오는 사슬(Spring이 시작할 때 거부하는 순환 별칭)은 root에 닿지 않은 별칭처럼 끊는다.
+     */
     private fun canonical(target: SpringAliasTarget, memberName: String, family: String, visiting: Set<String>): String? {
         val annotationType = target.annotation ?: return null
         val attribute = target.attribute.ifEmpty { memberName }
         if (annotationType == SpringAnnotations.REQUEST_MAPPING || annotationType == SpringAnnotations.HTTP_EXCHANGE) {
             return if (annotationType == family) canonicalRoot(family, attribute) else null
         }
-        if (annotationType in visiting && annotationType !in types) return null
+        if (annotationType in visiting) return null
         val declaration = types[annotationType] ?: return null
         val member = declaration.methods.firstOrNull { it.name == attribute } ?: return null
         return aliasTargets(declaration, member).firstNotNullOfOrNull { canonical(it, member.name, family, visiting + annotationType) }

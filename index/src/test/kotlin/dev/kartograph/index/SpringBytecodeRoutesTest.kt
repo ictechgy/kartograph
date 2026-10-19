@@ -120,6 +120,54 @@ class SpringBytecodeRoutesTest {
         assertTrue(document.limitations.any { it.startsWith("route-framework-version-unknown:") })
     }
 
+    @Test
+    fun `bytecode alias cycles are cut and keep the meta mapping`() {
+        // 순환 별칭 어노테이션은 class root에만 둔다 — 소스 모델이 아니라 바이트코드 aliases가 별칭을 준다.
+        val stubs = listOf(
+            "org/springframework/core/annotation/AliasFor.java" to "package org.springframework.core.annotation; " +
+                "import java.lang.annotation.Annotation; import java.lang.annotation.Retention; import java.lang.annotation.RetentionPolicy; " +
+                "@Retention(RetentionPolicy.RUNTIME) public @interface AliasFor { String value() default \"\"; String attribute() default \"\"; " +
+                "Class<? extends Annotation> annotation() default Annotation.class; }",
+            "org/springframework/web/bind/annotation/RequestMapping.java" to STUB_HEADER +
+                "@Retention(RetentionPolicy.RUNTIME) public @interface RequestMapping { String[] value() default {}; String[] path() default {}; }",
+            "org/springframework/web/bind/annotation/RestController.java" to STUB_HEADER +
+                "@Retention(RetentionPolicy.RUNTIME) public @interface RestController {}",
+            "demo/LoopMappings.java" to "package demo; import java.lang.annotation.Retention; import java.lang.annotation.RetentionPolicy; " +
+                "import org.springframework.core.annotation.AliasFor; import org.springframework.web.bind.annotation.RequestMapping; " +
+                "@Retention(RetentionPolicy.RUNTIME) @RequestMapping(\"/meta-a\") @interface LoopA { " +
+                "@AliasFor(annotation = LoopB.class, attribute = \"path\") String[] path() default {}; } " +
+                "@Retention(RetentionPolicy.RUNTIME) @RequestMapping(\"/meta-b\") @interface LoopB { " +
+                "@AliasFor(annotation = LoopA.class, attribute = \"path\") String[] path() default {}; } " +
+                "@Retention(RetentionPolicy.RUNTIME) @RequestMapping(\"/meta-mirror\") @interface MirrorA { @AliasFor(\"path\") String[] value() default {}; " +
+                "@AliasFor(annotation = MirrorB.class, attribute = \"path\") String[] path() default {}; } " +
+                "@Retention(RetentionPolicy.RUNTIME) @RequestMapping @interface MirrorB { " +
+                "@AliasFor(annotation = MirrorA.class, attribute = \"value\") String[] path() default {}; }",
+        ).map { (relative, text) -> write(outside, "stubs/$relative", text) }
+        val controller = write(project, "src/main/java/demo/LoopController.java", """
+            package demo;
+            import org.springframework.web.bind.annotation.*;
+
+            @RestController
+            public class LoopController {
+                @LoopA(path = "/loop")
+                public String loop() { return ""; }
+
+                @MirrorA("/mirror")
+                public String mirror() { return ""; }
+
+                @RequestMapping("/plain")
+                public String plain() { return ""; }
+            }
+        """)
+        val classes = outside.resolve("classes").createDirectories()
+        val errors = java.io.ByteArrayOutputStream()
+        val sources = (stubs + listOf(controller)).map(Path::toString)
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, errors, *(listOf("-g", "-d", classes.toString()) + sources).toTypedArray()), errors.toString())
+
+        val document = RouteDeclScanner(project, classRoots = listOf(classes)).scan(generatedAt = "2026-01-01T00:00:00Z")
+        assertEquals(setOf("ANY /meta-a", "ANY /meta-mirror", "ANY /plain"), document.facts.filter { !it.dynamic }.mapTo(sortedSetOf()) { "${it.method} ${it.channel}" })
+    }
+
     private companion object {
         const val STUB_HEADER = "package org.springframework.web.bind.annotation; " +
             "import java.lang.annotation.Retention; import java.lang.annotation.RetentionPolicy; "
