@@ -671,6 +671,51 @@ class RouteCallScannerTest {
     }
 
     @Test
+    fun `query tail proofs over self or mutually referencing locals stop at the depth limit`() {
+        // 리뷰 지적 재현: query 꼬리 증명은 joinToString의 prefix 식을 깊이 0부터 다시 풀었다. 지역 val은 사용 위치에서 찾으므로
+        // 자기 이름을 가린 val이나 서로를 가리키는 val에서 증명이 끝없이 돌았고, 펼침 예산(1만 번)보다 스택이 먼저 고갈됐다.
+        write(
+            "src/main/kotlin/dev/example/net/Loop.kt",
+            """
+            package dev.example.net
+            import java.net.*
+
+            class Loop(private val b: String) {
+                fun shadowed(suffix: String) {
+                    val suffix = listOf("a").joinToString(prefix = suffix)
+                    val connection = URL("https://api.example.com/v1/items${'$'}suffix").openConnection() as HttpURLConnection
+                    connection.requestMethod = "POST"
+                }
+                fun mutual() {
+                    val a = listOf("x").joinToString(prefix = b)
+                    val b = listOf("y").joinToString(prefix = a)
+                    val connection = URL("https://api.example.com/v1/pairs${'$'}a").openConnection() as HttpURLConnection
+                    connection.requestMethod = "POST"
+                }
+                fun proven() {
+                    val suffix = listOf("a").joinToString(prefix = "?")
+                    val connection = URL("https://api.example.com/v1/proven${'$'}suffix").openConnection() as HttpURLConnection
+                    connection.requestMethod = "POST"
+                }
+            }
+            """,
+        )
+        val document = scan()
+
+        // 증명하지 못한 꼬리는 경로를 지어내지 않고 dynamic으로 남는다.
+        val shadowed = document.at(7)
+        assertTrue(shadowed.dynamic)
+        assertEquals("/v1/items", shadowed.channelPrefix)
+        assertEquals("POST", shadowed.method)
+        val mutual = document.at(13)
+        assertTrue(mutual.dynamic)
+        assertEquals("/v1/pairs", mutual.channelPrefix)
+        // 대조: prefix가 증명되는 꼬리는 그대로 떼어 낸다.
+        assertEquals("/v1/proven", document.at(18).channel)
+        assertEquals(true, document.at(18).route?.queryTailStripped)
+    }
+
+    @Test
     fun `test source sets are excluded by default and marked when included`() {
         val call = """
             package dev.example.net

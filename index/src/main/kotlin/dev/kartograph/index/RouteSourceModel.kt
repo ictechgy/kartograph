@@ -412,11 +412,15 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
     }
 
     /** 문자열 리터럴 인자 값을 푼다 — 보간이 있거나 리터럴이 아니면 null이다. 펼침이 예산을 넘어도 null이다. */
-    fun literalValue(expression: String, offset: Int): String? = literalValue(expression, offset, ExpansionBudget())
+    fun literalValue(expression: String, offset: Int): String? = literalValue(expression, offset, 0, ExpansionBudget())
 
-    /** 펼침 도중의 증명(query 꼬리 접두사)은 바깥 호출의 [budget]을 이어 쓴다. */
-    private fun literalValue(expression: String, offset: Int, budget: ExpansionBudget): String? {
-        val resolved = parts(expression, offset, 0, budget)
+    /**
+     * 펼침 도중의 증명(query 꼬리 접두사)은 바깥 호출의 [depth]와 [budget]을 이어 쓴다. 지역 `val`은 사용 위치에서 찾으므로
+     * 자기 이름을 가린 `val`이나 서로를 가리키는 `val`은 증명이 같은 선언으로 돌아온다. 깊이를 0으로 되돌리면 [MAX_DEPTH]가
+     * 그 순환을 끊지 못하고, 펼침 예산은 횟수만 세므로 예산보다 스택이 먼저 고갈된다.
+     */
+    private fun literalValue(expression: String, offset: Int, depth: Int, budget: ExpansionBudget): String? {
+        val resolved = parts(expression, offset, depth, budget)
         if (budget.exhausted) return null
         return resolved.singleOrNull()?.let { it as? UrlPart.Literal }?.text
             ?: if (resolved.isNotEmpty() && resolved.all { it is UrlPart.Literal }) {
@@ -440,7 +444,7 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
     /** 같은 함수 `val`은 query 꼬리 증명을 먼저 하고, 아니면 초기식을 따라간다. `var`는 값이 바뀔 수 있다. */
     private fun localParts(expression: String, local: RouteLocal, offset: Int, depth: Int, budget: ExpansionBudget): List<UrlPart> {
         if (!local.isVal) return listOf(UrlPart.Value(expression))
-        if (provesQueryTail(local.initializer, offset, budget)) return listOf(UrlPart.QueryTail(expression))
+        if (provesQueryTail(local.initializer, offset, depth, budget)) return listOf(UrlPart.QueryTail(expression))
         val resolved = parts(local.initializer, offset, depth + 1, budget)
         val opaque = resolved.size == 1 && resolved.single() is UrlPart.Value
         return if (opaque) listOf(UrlPart.Value(expression)) else resolved
@@ -464,14 +468,15 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
      * 받는 모양: `"?..."` 리터럴, `"?" + ...` 연결, `prefix = "?"`인 `joinToString`, `let { "?..." }`
      * 람다, 두 가지가 모두 증명되는 `if … else …`. `?.` 사슬은 `.orEmpty()`·`?: ""` 대체값이 있어야 한다.
      *
+     * @param depth 이 증명을 부른 펼침의 깊이다. 접두사 식은 한 단계 더 깊은 곳에서 풀어 [MAX_DEPTH]가 순환을 끊게 한다
      * @param budget 이 증명을 부른 펼침의 예산이다. 접두사 식을 푸는 일도 같은 예산에서 쓴다
      */
-    fun provesQueryTail(initializer: String, offset: Int, budget: ExpansionBudget): Boolean {
+    fun provesQueryTail(initializer: String, offset: Int, depth: Int, budget: ExpansionBudget): Boolean {
         val text = initializer.trim()
         val (core, fallback) = splitEmptyFallback(text)
         if (isEmptyLiteral(core)) return true
         if ("?." in core && !fallback) return false
-        return startsWithQuestionMark(core, offset, budget) || provesConditional(core, offset, budget)
+        return startsWithQuestionMark(core, offset, depth, budget) || provesConditional(core, offset, depth, budget)
     }
 
     private fun splitEmptyFallback(text: String): Pair<String, Boolean> {
@@ -482,7 +487,7 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
         return if (elvis != null) text.substring(0, elvis.range.first).trim() to true else text to false
     }
 
-    private fun startsWithQuestionMark(core: String, offset: Int, budget: ExpansionBudget): Boolean {
+    private fun startsWithQuestionMark(core: String, offset: Int, depth: Int, budget: ExpansionBudget): Boolean {
         val first = splitConcatenation(unwrapParentheses(core)).first()
         stringLiteralBody(first)?.let { (body, _) -> return body.startsWith('?') }
         JOIN_TO_STRING.find(core)?.let { match ->
@@ -490,20 +495,20 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
             val close = balancedEnd(core, open)
             if (close == core.lastIndex) {
                 val prefix = callArguments(core, open, close).firstNamed("prefix") ?: return false
-                return literalValue(prefix, offset, budget)?.startsWith('?') == true
+                return literalValue(prefix, offset, depth + 1, budget)?.startsWith('?') == true
             }
         }
         val lambda = LAMBDA_OPEN.findAll(core).lastOrNull { templateExpressionEnd(core, it.range.last) == core.lastIndex }
         if (lambda != null) {
             val inside = core.substring(lambda.range.last + 1, core.length - 1).trim()
             val body = LAMBDA_PARAMETER.find(inside)?.let { inside.substring(it.range.last + 1) } ?: inside
-            return body.isNotBlank() && startsWithQuestionMark(body.trim(), offset, budget)
+            return body.isNotBlank() && startsWithQuestionMark(body.trim(), offset, depth, budget)
         }
         return false
     }
 
     /** `if (c) A else B`의 두 가지가 모두 `?` 시작이거나 빈 문자열인지 본다. */
-    private fun provesConditional(core: String, offset: Int, budget: ExpansionBudget): Boolean {
+    private fun provesConditional(core: String, offset: Int, depth: Int, budget: ExpansionBudget): Boolean {
         if (!core.startsWith("if")) return false
         val open = core.indexOf('(')
         val close = balancedEnd(core, open).takeIf { open >= 0 && it > open } ?: return false
@@ -511,7 +516,7 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
         if (branches.size != 2) return false
         return branches.all { branch ->
             val value = branch.trim().removeSurrounding("{", "}").trim()
-            isEmptyLiteral(value) || startsWithQuestionMark(value, offset, budget)
+            isEmptyLiteral(value) || startsWithQuestionMark(value, offset, depth, budget)
         }
     }
 
