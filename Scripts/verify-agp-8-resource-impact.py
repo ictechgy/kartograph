@@ -396,6 +396,25 @@ def packaged_log_summary(report):
     summary["agpBuildCount"] = 2 if report.get("agpBuildCount") == 2 else 0
     summary["semanticPairCount"] = len(report.get("semanticOutputSha256", {}))
     summary["artifactsUnchanged"] = report.get("artifactsUnchanged") is True
+    queries = {phase + "-" + suffix for phase in ("before", "after")
+               for suffix in ("freshness", *(name + "-" + kind for name in LAYOUTS for kind in ("field", "xml")))}
+    queries.update(("resource-edit-stale", "legacy-resource-unavailable"))
+    if report.get("lastQuery") in queries:
+        summary["lastQuery"] = report["lastQuery"]
+        current = report.get("semanticComparisons", {}).get(report["lastQuery"], {})
+        summary["lastQueryDecodedStdoutSha256"] = {
+            label: value for label, value in current.get("decodedStdoutSha256", {}).items()
+            if label in ("zip", "tar") and isinstance(value, str) and PACKAGED["HASH"].fullmatch(value)}
+    summary["freshnessComparisons"] = {}
+    for name in ("before-freshness", "resource-edit-stale", "after-freshness"):
+        comparison = report.get("semanticComparisons", {}).get(name, {})
+        if comparison.get("command") == "verify-snapshot" and comparison.get("status") == "matched":
+            # 알려진 세 질의의 검증된 시간과 원본 JSON 지문만 공개한다.
+            summary["freshnessComparisons"][name] = PACKAGED["public_semantic_diagnostic"]({
+                key: comparison[key] for key in ("command", "canonicalJsonSha256", "excludedRootFields", "hashNanos")})
+    # 이 객체는 semantic_pair의 고정 경로/타입/지문 생성기로만 작성한다.
+    if "semanticMismatch" in report:
+        summary["semanticMismatch"] = PACKAGED["public_semantic_diagnostic"](report["semanticMismatch"])
     return summary
 
 
@@ -431,7 +450,9 @@ def packaged_main(args):
         for label, binary in artifacts.clis.items():
             observed = run([binary, "--version"], ROOT, output, label + "-version").strip()
             require(observed == "kartograph " + args.version, "extracted CLI version differs")
-        semantic_hashes = {}
+        semantic_hashes, comparisons = {}, {}
+        report["semanticOutputSha256"] = semantic_hashes
+        report["semanticComparisons"] = comparisons
         with tempfile.TemporaryDirectory(prefix="packaged-resource-impact-", dir=ROOT / "fixtures") as temporary:
             project = Path(temporary)
             prepare(project)
@@ -452,12 +473,22 @@ def packaged_main(args):
                 guarded = [graph or snapshot, bindings]
                 before = [digest(path) for path in guarded]
                 documents = {}
+                report["lastQuery"] = name
+                comparison = {"command": arguments[0], "status": "failed", "decodedStdoutSha256": {}}
+                comparisons[name] = comparison
                 for label, binary in artifacts.clis.items():
                     require([digest(path) for path in guarded] == before, "shared query inputs mutated")
-                    documents[label] = json.loads(run([binary, *arguments], ROOT, output,
-                                                      name + "-" + label, expected=expected))
+                    stdout = run([binary, *arguments], ROOT, output, name + "-" + label, expected=expected)
+                    comparison["decodedStdoutSha256"][label] = hashlib.sha256(stdout.encode("utf-8")).hexdigest()
+                    documents[label] = json.loads(stdout)
                     require([digest(path) for path in guarded] == before, "shared query inputs mutated")
-                value, sha = PACKAGED["semantic_pair"](documents)
+                try:
+                    value, sha, identity = PACKAGED["semantic_pair"](documents, arguments[0])
+                except PACKAGED["SemanticComparisonError"] as error:
+                    report["semanticMismatch"] = error.diagnostic
+                    raise
+                comparison.update(identity)
+                comparison["status"] = "matched"
                 semantic_hashes[name] = sha
                 return value
 
@@ -519,7 +550,7 @@ def packaged_main(args):
             report.update({"status": "passed", "stage": "complete", "agpBuildCount": len(phases),
                            "loadedRuntime": runtimes[0], "phases": phases,
                            "semanticOutputSha256": semantic_hashes,
-                           "cliComparison": "complete-json-equality-on-identical-snapshots",
+                           "cliComparison": "canonical-json-equality-except-validated-verify-snapshot-root-hashNanos",
                            "limitations": [LIMITATION, "The unit tests execute accessors, not Android layout inflation.",
                                            "Final/inlined IDs, other AGP versions, overlays and binding XML are unmeasured."]})
         artifacts.unchanged()

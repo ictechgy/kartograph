@@ -301,14 +301,148 @@ def verify_runtime(document, artifacts):
     return document
 
 
-def semantic_pair(documents):
-    require(set(documents) == {"zip", "tar"}, "both extracted CLIs must be queried")
-    canonical = {label: json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
-                                   allow_nan=False).encode("utf-8")
-                 for label, document in documents.items()}
-    require(canonical["zip"] == canonical["tar"], "ZIP/TAR complete semantic outputs differ")
-    return documents["zip"], hashlib.sha256(canonical["zip"]).hexdigest()
+MAX_DIFFERENCES = 16
+FRESHNESS_FIELDS = ("format", "version", "status", "hashNanos", "reasons")
+MISSING = object()
 
+
+def canonical_json(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+                      allow_nan=False).encode("utf-8")
+
+
+def json_identity(value):
+    """임의 값/키 대신 JSON 타입·크기·내용 지문만 공개한다."""
+    if value is MISSING:
+        return {"type": "missing"}
+    kind = {dict: "object", list: "array", str: "string", int: "integer",
+            float: "number", bool: "boolean", type(None): "null"}[type(value)]
+    encoded = canonical_json(value)
+    result = {"type": kind, "sha256": hashlib.sha256(encoded).hexdigest(), "bytes": len(encoded)}
+    if isinstance(value, (dict, list)):
+        result["count"] = len(value)
+    return result
+
+
+def semantic_diagnostic(documents):
+    """고정 freshness 경로만 펼치며 그 밖의 구조는 하나의 불투명 지문으로 남긴다."""
+    result = {"zip": json_identity(documents["zip"]), "tar": json_identity(documents["tar"]),
+              "differences": [], "truncated": False}
+    rows = result["differences"]
+
+    def add(path, left, right):
+        if json_identity(left) == json_identity(right):
+            return
+        if len(rows) == MAX_DIFFERENCES:
+            result["truncated"] = True
+            return
+        row = {"path": path, "zip": json_identity(left), "tar": json_identity(right)}
+        if path == "/hashNanos":
+            for label, value in (("zip", left), ("tar", right)):
+                if type(value) is int and 0 <= value <= 2**63 - 1:
+                    row[label]["value"] = value
+        rows.append(row)
+
+    left, right = documents["zip"], documents["tar"]
+    if type(left) is not dict or type(right) is not dict:
+        add("$", left, right)
+        return result
+    for key in FRESHNESS_FIELDS:
+        add("/" + key, left.get(key, MISSING), right.get(key, MISSING))
+    # 동적 object key는 경로에 넣지 않는다. 배열 index만 한정해서 공개한다.
+    reasons = left.get("reasons"), right.get("reasons")
+    if all(type(value) is list for value in reasons):
+        count = max(map(len, reasons))
+        for index in range(min(count, MAX_DIFFERENCES)):
+            add("/reasons/" + str(index),
+                reasons[0][index] if index < len(reasons[0]) else MISSING,
+                reasons[1][index] if index < len(reasons[1]) else MISSING)
+        if count > MAX_DIFFERENCES and canonical_json(reasons[0]) != canonical_json(reasons[1]):
+            result["truncated"] = True
+    add("$otherRootFields", {key: value for key, value in left.items() if key not in FRESHNESS_FIELDS},
+        {key: value for key, value in right.items() if key not in FRESHNESS_FIELDS})
+    return result
+
+
+def public_semantic_diagnostic(document):
+    """stdout 재투영에서도 고정 어휘·지문·정수 외의 문자열은 거부한다."""
+    keys = {"zip", "tar", "type", "sha256", "bytes", "count", "value", "differences",
+            "truncated", "path", "reason", "invalidFields", "comparison", "semanticSha256",
+            "command", "canonicalJsonSha256", "excludedRootFields", "hashNanos"}
+    strings = {"missing", "object", "array", "string", "integer", "number", "boolean", "null",
+               "invalidFreshnessSchema", "semanticMismatch", "verify-snapshot", "impact",
+               "$", "$otherRootFields", *FRESHNESS_FIELDS, *("/" + key for key in FRESHNESS_FIELDS),
+               *("/reasons/" + str(index) for index in range(MAX_DIFFERENCES))}
+    remaining = 512
+
+    def check(value, depth=0):
+        nonlocal remaining
+        remaining -= 1
+        require(remaining >= 0 and depth <= 6, "semantic diagnostic exceeds structural bound")
+        if type(value) is dict:
+            require(set(value) <= keys, "unexpected semantic diagnostic key")
+            for item in value.values():
+                check(item, depth + 1)
+        elif type(value) is list:
+            require(len(value) <= MAX_DIFFERENCES, "semantic diagnostic exceeds row bound")
+            for item in value:
+                check(item, depth + 1)
+        elif type(value) is str:
+            require(value in strings or HASH.fullmatch(value), "unsafe semantic diagnostic string")
+        else:
+            require(type(value) is bool or type(value) is int and 0 <= value <= 2**63 - 1,
+                    "invalid semantic diagnostic value")
+
+    check(document)
+    require(len(canonical_json(document)) <= 16 * 1024, "semantic diagnostic exceeds byte bound")
+    return document
+
+
+class SemanticComparisonError(RuntimeError):
+    def __init__(self, message, diagnostic):
+        super().__init__(message)
+        self.diagnostic = public_semantic_diagnostic(diagnostic)
+
+
+def semantic_pair(documents, command):
+    require(set(documents) == {"zip", "tar"}, "both extracted CLIs must be queried")
+    require(command in ("verify-snapshot", "impact"), "unexpected packaged comparison command")
+    raw = {label: canonical_json(document) for label, document in documents.items()}
+    comparison = {"command": command,
+                  "canonicalJsonSha256": {label: hashlib.sha256(value).hexdigest() for label, value in raw.items()},
+                  "excludedRootFields": []}
+    semantic = dict(raw)
+    if command == "verify-snapshot":
+        invalid = {}
+        for label, value in documents.items():
+            if type(value) is not dict:
+                invalid[label] = ["$"]
+                continue
+            checks = {
+                "format": value.get("format") == "kartograph-freshness",
+                "version": type(value.get("version")) is int and value["version"] == 1,
+                "status": value.get("status") in ("matched", "stale", "unverified"),
+                "hashNanos": type(value.get("hashNanos")) is int and 0 <= value["hashNanos"] <= 2**63 - 1,
+                "reasons": type(value.get("reasons")) is list
+                           and all(type(reason) is str for reason in value["reasons"]),
+            }
+            if not all(checks.values()):
+                invalid[label] = [key for key in FRESHNESS_FIELDS if not checks[key]]
+        if invalid:
+            diagnostic = semantic_diagnostic(documents)
+            diagnostic.update({"reason": "invalidFreshnessSchema", "invalidFields": invalid, "comparison": comparison})
+            raise SemanticComparisonError("invalid verify-snapshot freshness schema or hashNanos", diagnostic)
+        # FreshnessCommand의 호출별 경과 시간만 제외한다. 나머지/추가 필드는 전부 비교한다.
+        semantic = {label: canonical_json({key: value for key, value in document.items() if key != "hashNanos"})
+                    for label, document in documents.items()}
+        comparison["excludedRootFields"] = ["hashNanos"]
+        comparison["hashNanos"] = {label: document["hashNanos"] for label, document in documents.items()}
+    if semantic["zip"] != semantic["tar"]:
+        diagnostic = semantic_diagnostic(documents)
+        diagnostic.update({"reason": "semanticMismatch", "comparison": comparison,
+                           "semanticSha256": {label: hashlib.sha256(value).hexdigest() for label, value in semantic.items()}})
+        raise SemanticComparisonError("ZIP/TAR complete semantic outputs differ", diagnostic)
+    return documents["zip"], hashlib.sha256(semantic["zip"]).hexdigest(), comparison
 
 def write_receipt(path, document):
     encoded = json.dumps(document, sort_keys=True, indent=2, ensure_ascii=True) + "\n"
