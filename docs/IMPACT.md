@@ -391,6 +391,9 @@ kartograph reach <usr>... --graph-file graph.json --project .
 - **`revision`**: `--revision <rev>`를 주면 그 값이다. 없으면 snapshot의 commit 라벨(`snapshot --revision`)이고, 그것도
   없으면 `--project` 디렉터리 아래에 커밋하지 않은 변경·추적되지 않은 파일이 없을 때만 git `HEAD`다. 작업 트리가
   더럽거나 저장소가 아니면 싣지 않는다 — 고친 소스 위에서 `HEAD`를 실으면 isthmus가 낡은 분석을 최신으로 본다.
+  분석 대상 git 설정의 filter·서브모듈 명령은 실행하지 않으므로, 프로젝트 아래에 서브모듈이 있거나 git-lfs처럼
+  filter로 정규화되는 파일의 stat이 낡았거나 덮을 수 없는 filter 드라이버 이름이 있어도 깨끗함을 증명하지 못해 싣지
+  않는다([SECURITY.md](../SECURITY.md)).
   snapshot에 라벨이 있는데 `--revision`이 다르면 도구 실패(2)다. git은 CLI만 부르고 분석·렌더링은 부르지 않는다.
   저장한 snapshot을 읽으므로 `HEAD` 자동 감지는 snapshot을 지금 작업 트리에서 캡처했다고 가정한다. 다른 커밋에서
   캡처했다면 `snapshot --revision`으로 라벨을 남긴다.
