@@ -13,41 +13,11 @@ fi
 
 TEMPORARY_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/kartograph-release.XXXXXX")"
 
-build_artifacts() {
-    ./gradlew --no-daemon clean \
-        :cli:distZip :cli:distTar \
-        :gradle-plugin:jar :gradle-plugin:generatePomFileForPluginMavenPublication \
-        :gradle-plugin:validatePlugins :cli:runtimeSbom :gradle-plugin:runtimeSbom
-    ./gradlew --no-daemon -p compiler-collectors clean distZip
-    python3 Scripts/prepare-release-metadata.py
-}
-
-artifact_paths() {
-    printf '%s\n' \
-        "cli/build/distributions/kartograph-$VERSION.zip" \
-        "cli/build/distributions/kartograph-$VERSION.tar" \
-        "gradle-plugin/build/libs/kartograph-gradle-plugin-$VERSION.jar" \
-        "compiler-collectors/build/distributions/kartograph-compiler-collectors-$VERSION.zip" \
-        "gradle-plugin/build/publications/pluginMaven/pom-default.xml" \
-        "build/release/kartograph-$VERSION.cdx.json" \
-        "build/release/kartograph-gradle-plugin-$VERSION.cdx.json" \
-        "build/release/SHA256SUMS"
-}
-
-hash_artifacts() {
-    while IFS= read -r artifact; do
-        [[ -f "$artifact" ]] || {
-            echo "release 산출물이 없습니다: $artifact" >&2
-            exit 2
-        }
-        shasum -a 256 "$artifact"
-    done < <(artifact_paths)
-}
-
-build_artifacts
-hash_artifacts > "$TEMPORARY_DIRECTORY/first.sha256"
-build_artifacts
-hash_artifacts > "$TEMPORARY_DIRECTORY/second.sha256"
+# 배포물 빌드와 해시 목록은 release workflow의 publish job이 다시 계산할 때와 같은 공용 스크립트로 만든다.
+Scripts/release-artifacts.sh build
+Scripts/release-artifacts.sh hashes > "$TEMPORARY_DIRECTORY/first.sha256"
+Scripts/release-artifacts.sh build
+Scripts/release-artifacts.sh hashes > "$TEMPORARY_DIRECTORY/second.sha256"
 
 REPORT_DIRECTORY="build/reports/release-readiness"
 mkdir -p "$REPORT_DIRECTORY"

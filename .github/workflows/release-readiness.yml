@@ -41,7 +41,7 @@ jobs:
           mkdir -p "$EVIDENCE_DIRECTORY"
           git rev-parse HEAD HEAD^{tree} > "$EVIDENCE_DIRECTORY/source.txt"
           printf '%s\n' "$GITHUB_WORKFLOW_REF" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$EVIDENCE_DIRECTORY/workflow.txt"
-          sha256sum Scripts/verify-release-readiness.sh Scripts/verify-analysis-smoke-gate.py > "$EVIDENCE_DIRECTORY/gates.sha256"
+          sha256sum Scripts/verify-release-readiness.sh Scripts/release-artifacts.sh Scripts/verify-analysis-smoke-gate.py > "$EVIDENCE_DIRECTORY/gates.sha256"
       - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:

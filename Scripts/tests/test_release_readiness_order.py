@@ -1,4 +1,7 @@
-"""실제 readiness shell의 독립 검증 순서와 지연된 test 실패의 종료 전파를 검증한다."""
+"""실제 readiness shell의 독립 검증 순서와 지연된 test 실패의 종료 전파를 검증한다.
+
+readiness가 봉인한 배포물 해시 목록이 release publish job이 다시 계산할 공용 목록과 같은지도 확인한다.
+"""
 import json
 import os
 from pathlib import Path
@@ -9,6 +12,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "Scripts/verify-release-readiness.sh"
+# readiness와 release publish job이 함께 쓰는 배포물 빌드·경로·해시 스크립트다.
+ARTIFACTS = ROOT / "Scripts/release-artifacts.sh"
 
 # 외부 빌드/CLI만 대체한다. 실제 shell 조건·set -e·hash 비교·최종 종료는 실행한다.
 MOCK = r'''
@@ -181,6 +186,9 @@ class ReleaseReadinessOrderTest(unittest.TestCase):
         (root / "VERSION").write_text("1.2.3\n")
         script = root / "Scripts/verify-release-readiness.sh"
         script.write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+        artifacts = root / "Scripts/release-artifacts.sh"
+        artifacts.write_text(ARTIFACTS.read_text(encoding="utf-8"), encoding="utf-8")
+        artifacts.chmod(0o755)
         state = root / "state.json"
         state.write_text(json.dumps({"events": []}))
         for path in [root / "gradlew", root / "Scripts/verify-cli-contract.sh",
@@ -196,6 +204,16 @@ class ReleaseReadinessOrderTest(unittest.TestCase):
                                 env=env, text=True, capture_output=True, timeout=30)
         events = [row["name"] for row in json.loads(state.read_text())["events"]]
         return result, events, root
+
+    def run_artifacts(self, root, *arguments):
+        """readiness를 마친 임시 root에서 공용 배포물 스크립트를 같은 mock 빌드·해시 도구로 실행한다."""
+        env = {"PATH": str(root / "bin") + os.pathsep + os.defpath, "HOME": str(root),
+               "TMPDIR": str(root / "tmp"), "LC_ALL": "C", "MOCK_STATE": str(root / "state.json")}
+        return subprocess.run(["bash", "--noprofile", "--norc", str(root / "Scripts/release-artifacts.sh"), *arguments],
+                              cwd=root, env=env, text=True, capture_output=True, timeout=30)
+
+    def event_count(self, root):
+        return len(json.loads((root / "state.json").read_text())["events"])
 
     def test_success_keeps_all_prerequisites_and_both_discoveries_before_package_proof(self):
         result, events, root = self.run_readiness()
@@ -271,6 +289,32 @@ class ReleaseReadinessOrderTest(unittest.TestCase):
         self.assertEqual("package-proof", events[-1])
         self.assertFalse((root / "build/reports/release-readiness/packaged-resource-impact/verification.json").exists())
         self.assertNotIn("release readiness 통과", result.stdout)
+
+    def test_sealed_hashes_are_the_shared_artifact_list_publish_recomputes(self):
+        # publish job은 공용 스크립트로 다시 계산한 목록을 verify job이 넘긴 목록과 문자 그대로 비교한다.
+        result, events, root = self.run_readiness()
+        self.assertEqual(0, result.returncode, result.stderr)
+        sealed = (root / "build/reports/release-readiness/second.sha256").read_text()
+        hashes = self.run_artifacts(root, "hashes")
+        self.assertEqual((0, sealed), (hashes.returncode, hashes.stdout), hashes.stderr)
+        paths = self.run_artifacts(root, "paths")
+        self.assertEqual(0, paths.returncode, paths.stderr)
+        self.assertEqual([line.split("  ", 1)[1] for line in sealed.split("\n")[:-1]], paths.stdout.split("\n")[:-1])
+
+    def test_shared_artifact_script_rejects_unknown_requests_and_missing_artifacts(self):
+        result, events, root = self.run_readiness()
+        self.assertEqual(0, result.returncode, result.stderr)
+        for arguments in ((), ("publish",), ("hashes", "extra")):
+            with self.subTest(arguments=arguments):
+                before = self.event_count(root)
+                rejected = self.run_artifacts(root, *arguments)
+                self.assertEqual((64, ""), (rejected.returncode, rejected.stdout), rejected.stderr)
+                self.assertEqual(before, self.event_count(root))
+        missing = "gradle-plugin/build/libs/kartograph-gradle-plugin-1.2.3.jar"
+        (root / missing).unlink()
+        result = self.run_artifacts(root, "hashes")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn(missing, result.stderr)
 
 
 if __name__ == "__main__":
