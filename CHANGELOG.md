@@ -5,6 +5,44 @@
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)을 따른다.
 
 ## [Unreleased]
+### Added
+
+- language-traversal 간선을 한 번 조립해 순회와 `graphRevision`에 함께 쓰는 라이브러리 API
+  `TraversalEdges.prepare`, `LanguageTraversal.traverse(prepared, ...)`,
+  `LanguageTraversalCodec.graphRevision(graph, traversalEdges, ...)`와 이름·한정 이름 root를 한 번 만든
+  색인으로 해석하는 `TraversalRootResolver`를 추가한다. 기존 공개 시그니처와 data class 형태는 그대로다.
+
+### Fixed
+
+- bridges·`routes --role client`·schema의 snapshot USR 부착과 React Native 이벤트의 주석 판정이
+  `'"'` 같은 문자 리터럴 뒤에서 어긋나던 문제를 고친다. 주석 속 emit을 사실로 내거나, 함수 머리를 놓쳐
+  USR을 빠뜨리거나, 다른 함수의 USR을 한계 표시 없이 붙이던 경우다.
+- Windows에서 `bridges --rn-events` 문서의 `project`만 `\` 구분자로 남아 다른 교환 문서와 조인되지 않던
+  문제를 고친다. POSIX 출력은 그대로다.
+- 서로를 가리키는 `@AliasFor` 사슬에서 `routes --role server`가 StackOverflowError(exit 2)로 끝나던 문제를
+  고친다. source·class root 모두 순환하는 별칭으로 값을 덮어쓰지 않고 메타 어노테이션의 매핑을 쓴다.
+- 서로를 여러 번 참조하는 설정 플레이스홀더·어노테이션 상수·경로 식 때문에 `routes`가 끝나지 않거나
+  OutOfMemoryError로 끝나던 문제를 고친다. 최상위 해석마다 펼침 1만 번·새로 만든 문자 64KiB를 넘으면
+  기존 placeholder·dynamic·unresolved 한계로 남긴다. 상한 안의 입력은 출력이 그대로다.
+- `reach`·`impact --format language-traversal`의 revision 확인과 `dead --since`가 현재 디렉터리나 상대 PATH
+  항목의 git을 실행하지 않도록 PATH의 절대경로 항목에서 찾은 git만 실행하고, 분석 대상 저장소 config의
+  `core.fsmonitor` 명령을 끈다. 그 밖의 대상 저장소 git 설정은 따른다([SECURITY.md](SECURITY.md)).
+- `verify-snapshot`의 사용 오류가 stderr 없이 64로 끝나던 것을 원인별 `error: ...` 문구로 알린다.
+  거부 조건과 종료 코드는 그대로이며 경로·값은 싣지 않는다.
+- source 경로 해석 중 프로젝트 순회가 밖을 가리키는 `.kt`/`.java` 링크·끊긴 링크·읽을 수 없는 디렉터리로
+  실패하면 `unresolved-source-paths`·`unavailable-source-paths` 한계가 생성·외부 source 부재 대신 순회
+  실패를 원인으로 적는다. 접두사는 그대로다.
+- [SECURITY.md](SECURITY.md)가 bridge-facts의 `project`를 `.`로 설명하던 것을 고친다. bridges·routes·schema와
+  `reach`·`impact --format language-traversal` 문서의 `project`는 사용자 홈이나 계정 이름을 드러낼 수 있는
+  canonical POSIX 절대 realpath이므로 공개 전에 치환하거나 지운다.
+
+### Changed
+
+- impact의 `--files-from`·`--symbol` 선택, language-traversal의 root 해석·root 목록·`graphRevision`,
+  query 이웃 탐색, bridges·routes·schema의 snapshot 신원 부착, 저장 snapshot의 processor 출력 검증,
+  JPA 명명 감지, Android resource XML 읽기, Kotlin route 소스의 문장 끝 판정에서 요청·사실·정점 수에
+  비례해 반복하던 스캔·재읽기·복사를 줄인다. 출력은 바뀌지 않으며 측정한 입력 밖의 속도·메모리 향상을
+  보장하지 않는다.
 
 ## [0.25.0] - 2026-10-19
 
