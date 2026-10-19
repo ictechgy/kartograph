@@ -374,4 +374,25 @@ class JpaPersistenceScannerTest {
         assertFailsWith<IllegalArgumentException> { SchemaFactScanner(project, "spring-boot-2") }
         assertEquals(listOf("spring-boot-3", "spring-boot-4", "hibernate-6", "hibernate-7"), JPA_NAMING_PROFILES)
     }
+
+    @Test
+    fun `custom naming strategy evidence from the scanned sources matches the source walk`() {
+        // index-performance#2 수정의 보존 대조: 명명 감지가 schema 스캔이 이미 가린 .kt·.java 뷰를 받아도, 소스를 직접 순회하던 감지와
+        // 근거 문구가 같아야 한다. 문자열·주석 속 전략 이름은 세지 않고 .sq는 보지 않으며, symlink는 링크가 아니라 실제 경로로 적는다.
+        write("src/main/kotlin/app/Job.kt", job)
+        write("src/main/kotlin/app/Naming.kt", "package app\nclass Naming : CamelCaseToUnderscoresNamingStrategy()")
+        write("src/main/java/app/JavaNaming.java", "package app;\npublic class JavaNaming extends PhysicalNamingStrategyStandardImpl {}")
+        write("src/main/kotlin/app/Quoted.kt", "package app\nval text = \"class Fake : PhysicalNamingStrategyStandardImpl()\" // class Fake2 : ImplicitNamingStrategy")
+        write("src/main/sqldelight/app/Queries.sq", "-- class Fake3 : PhysicalNamingStrategyStandardImpl()\nselectAll:\nSELECT * FROM jobs;")
+        Files.createSymbolicLink(project.resolve("src/main/kotlin/app/NamingAlias.kt"), project.resolve("src/main/kotlin/app/Naming.kt"))
+        val walked = JpaNamingDetector(project).detect().evidence
+        // 대조 기준이 비지 않았는지 먼저 본다 — 전략을 선언한 두 파일만 실제 경로로 적힌다.
+        assertTrue(walked.startsWith("custom naming strategy declared in src/main/java/app/JavaNaming.java, src/main/kotlin/app/Naming.kt"), walked)
+        assertTrue(listOf("NamingAlias", "Quoted", "Queries").none { it in walked }, walked)
+
+        val document = scan(naming = null)
+
+        assertTrue(document.limitations.any { it.startsWith("jpa-naming-assumed: JPA table and column names follow $walked;") }, document.limitations.toString())
+        assertTrue(document.limitations.any { it.startsWith("jpa-naming-unresolved: ") })
+    }
 }
