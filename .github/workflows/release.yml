@@ -79,7 +79,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
+          # 비밀을 쓰는 job은 dispatch 검증이 저장할 수 있는 기본 브랜치 Gradle·JDK 캐시를 복원하지 않는다.
+          cache-jdk: false
       - name: Accept Android SDK licenses
         run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
       - name: Install fixture Android platform
@@ -102,6 +103,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
         with:
           gradle-version: '8.10.2'
+          # 같은 이유로 Gradle User Home 캐시를 읽거나 쓰지 않는다.
+          cache-disabled: true
       - name: Verify minimum supported AGP and Gradle
         shell: bash
         run: |

@@ -69,8 +69,8 @@ JSON·SARIF·markdown 보고의 finding은 같은 소스 파일(파일 이름)�
 
 ## PR comment rendering
 
-배포본 `Scripts/render-dead-comment.py`는 dead JSON 리포트를 리뷰 코멘트용 마크다운 본문으로 바꾼다.
-게시(gh 등)는 호출자가 소유한다. 같은 리포트는 같은 본문을 만든다.
+저장소의 `Scripts/render-dead-comment.py`는 dead JSON 리포트를 리뷰 코멘트용 마크다운 본문으로 바꾼다.
+CLI 배포본에는 들어 있지 않으므로 저장소에서 가져다 쓴다. 게시(gh 등)는 호출자가 소유한다. 같은 리포트는 같은 본문을 만든다.
 
 ```bash
 kartograph dead ... --report-format json | python3 Scripts/render-dead-comment.py > comment.md

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target_sha:
-        description: Full commit SHA to validate without publishing
+        description: Full reviewed commit SHA to validate without publishing
         required: true
         type: string
 
@@ -48,6 +48,8 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+          # 입력 SHA의 코드를 실행한 뒤 기본 브랜치 범위 캐시를 저장하지 않도록 복원만 한다.
+          cache-read-only: true
       - name: Accept Android SDK licenses
         run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
       - name: Install resource fixture Android toolchain
@@ -55,6 +57,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
         with:
           gradle-version: '8.10.2'
+          # 입력 SHA의 코드를 실행한 뒤 기본 브랜치 범위 캐시를 저장하지 않도록 복원만 한다.
+          cache-read-only: true
       - name: Record runner and Java information
         shell: bash
         run: |
