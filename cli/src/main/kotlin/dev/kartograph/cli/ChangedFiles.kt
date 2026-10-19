@@ -28,9 +28,7 @@ internal object ChangedFiles {
         nulSeparated: Boolean,
     ): List<String> {
         val process = try {
-            ProcessBuilder(listOf("git", "-C", workingDirectory.toString()) + arguments)
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start()
+            GitCommand.start(workingDirectory, arguments)
         } catch (error: IOException) {
             throw ChangedFilesException("unable to run git; verify that Git is installed", error)
         }

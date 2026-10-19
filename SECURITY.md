@@ -30,3 +30,8 @@ artifact로 올리기 전에는 `project` 값을 치환하거나 지운다(예: 
 
 분석 대상은 신뢰된 build output이어야 한다. 조작된 class/JAR/resource를 처리하는 것은 보안 격리가 아니며,
 CLI를 sandbox로 취급해서는 안 된다.
+
+`reach`·`impact --format language-traversal`의 revision 확인과 `dead --since`는 PATH의 절대경로 항목에서 찾은
+git만 실행하고(빈 항목·`.`·상대경로와, Windows에서는 실행 위치·분석 대상 디렉터리를 건너뛴다) 저장소 config의
+`core.fsmonitor` 명령은 끈다. 그 밖의 대상 저장소 git 설정(filter·textconv·diff 드라이버 등)은 따르므로, 출처를
+모르는 `.git`이 든 checkout에서는 `--revision`을 명시하고 `--since`를 쓰지 않는다.

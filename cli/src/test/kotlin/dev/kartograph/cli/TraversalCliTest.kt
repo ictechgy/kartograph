@@ -19,6 +19,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.condition.DisabledOnOs
+import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 
 /** `impact --format language-traversal`과 `reach`의 교환 문서·옵션·호환 계약이다. */
@@ -225,6 +227,27 @@ class TraversalCliTest {
         root.resolve("src/p/Http.java").toFile().appendText("\n// outside sub\n")
         assertEquals(git(root, "rev-parse", "HEAD"), document(traverse(graph, nested))["revision"],
             "changes outside the project directory do not affect its revision")
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the fsmonitor marker hook is a POSIX shell script")
+    fun `reach reads a clean HEAD without running the repository fsmonitor command`(@TempDir root: Path) {
+        val project = Files.createDirectories(root.resolve("project"))
+        val graph = capture(project)
+        Files.writeString(project.resolve(".gitignore"), "classes/\n*.json\n")
+        git(project, "init", "-q")
+        git(project, "add", "-A")
+        git(project, "commit", "-q", "-m", "fixture")
+        val head = git(project, "rev-parse", "HEAD")
+        // 압축본으로 받은 저장소의 .git/config에 실린 명령을 흉내 낸다. revision 확인의 git status가 index를 읽을 때 실행된다.
+        val probe = FsmonitorHookProbe(root, project)
+
+        val forward = run("reach", "method:p/Main#main([Ljava/lang/String;)V", "--graph-file", graph.toString(),
+            "--project", project.toString(), "--generated-at", "2026-09-27T00:00:00Z")
+
+        assertEquals(0, forward.status, forward.error)
+        assertEquals(head, document(forward)["revision"])
+        assertFalse(probe.hookRan, "kartograph must not run the analyzed repository's core.fsmonitor command")
     }
 
     @Test
