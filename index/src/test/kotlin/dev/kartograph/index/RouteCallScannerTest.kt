@@ -9,6 +9,7 @@ import dev.kartograph.core.HttpWrapperDeclaration
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.SourceLocation
+import dev.kartograph.index.RouteUrlRules.UrlPart
 import java.lang.management.ManagementFactory
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -1065,8 +1066,93 @@ class RouteCallScannerTest {
         return masked.length
     }
 
+    @Test
+    fun `budget exhausting path expressions do not repeat work proportional to the file`() {
+        // 리뷰 지적 재현: 한정자 없는 이름을 따라갈 때마다 지역 선언을 찾으며 이름별 정규식을 만들고, 파일을 사용 위치까지 복사해
+        // 함수 몸체를 다시 훑었다. 그래서 펼침 예산(1만 번)을 다 쓰는 호출 지점 하나가 예산 × 파일 크기만큼 일했다.
+        // 시간 대신 해석 한 번의 스레드 할당량을 채움 없는 파일과 비교한다. 채움과 무관해야 하고, 예전에는 수백 배였다.
+        val threads = ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean
+        assumeTrue(threads != null && threads.isThreadAllocatedMemorySupported && threads.isThreadAllocatedMemoryEnabled,
+            "thread allocation accounting is unavailable on this JVM")
+        val expression = "\"https://api.example.com/x\$C0\""
+        fun source(classPadding: Int, closedLocals: Int): String = buildString {
+            append("package dev.example.net\n\nimport java.net.*\n\n")
+            // 단계마다 다음 상수를 16번 잇는다 — 16^5번 펼쳐야 해서 예산을 다 쓴다.
+            (0 until 5).forEach { level -> append("const val C$level = \"" + "\$C${level + 1}".repeat(16) + "\"\n") }
+            append("const val C5 = \"\"\n\nclass Calls {\n")
+            repeat(classPadding) { append("    // padding line $it keeps the call far from the start of the file\n") }
+            append("    fun call() {\n")
+            // 닫힌 블록의 같은 이름 지역 선언은 사용 위치에서 보이지 않지만, 이름별 정규식은 펼침마다 이 선언들을 다시 찾았다.
+            repeat(closedLocals) { append("        run { val C${it % 6} = \"local-$it\"; println(C${it % 6}) }\n") }
+            append("        URL($expression).openConnection()\n    }\n}\n")
+        }
+        fun allocated(text: String): Long {
+            val file = RouteSourceFile("src/main/kotlin/dev/example/net/Calls.kt", isJava = false, isTest = false, source = text)
+            val offset = file.masked.indexOf("URL(")
+            val before = threads!!.currentThreadAllocatedBytes
+            val parts = RoutePathResolver(file).parts(expression, offset)
+            val bytes = threads.currentThreadAllocatedBytes - before
+            // 예산을 다 쓴 식은 식 전체가 값 조각 하나다(`retrofit constant fan-out beyond the per-call budget stays dynamic`).
+            assertEquals(listOf<UrlPart>(UrlPart.Value(expression)), parts)
+            return bytes
+        }
+        // 첫 실행의 클래스 적재 할당을 빼려고 한 번 먼저 푼다.
+        allocated(source(0, 0))
+        val plain = allocated(source(0, 0))
+        val padded = allocated(source(BUDGET_PADDING_LINES, 0))
+        val locals = allocated(source(0, BUDGET_CLOSED_LOCALS))
+        assertTrue(padded < plain * 3, "$BUDGET_PADDING_LINES padding lines grew allocation from $plain to $padded bytes")
+        assertTrue(locals < plain * 3, "$BUDGET_CLOSED_LOCALS closed local blocks grew allocation from $plain to $locals bytes")
+    }
+
+    @Test
+    fun `local declarations match the per-name regex lookup on random kotlin text`() {
+        // 지역 선언 색인의 보존 대조: 함수마다 한 번 만든 색인이 예전처럼 이름마다 정규식으로 사용 위치 앞까지 훑은 결과와 같아야 한다.
+        // 한 줄의 같은 이름 선언(예전 정규식의 겹치지 않는 찾기), 닫힌 블록, 중첩 함수, 식 몸체, 함수 머리 안 위치를 섞는다.
+        val random = Random(20_261_020)
+        val tokens = listOf("fun f(x: String) {", "fun g() = run {", "fun h(y: Int)", " = ", "{", "}", "\n", "; ", " ", "val x = ", "var x = ",
+            "val y: Int = ", "var y: Map<K, V> = ", "val z = ", "val x: T; ", "x", "y", "z", "==", "\"s\"", "(", ")", "if (x == y) ", "1", ",")
+        val names = listOf("x", "y", "z", "f")
+        var found = 0
+        var hidden = 0
+        repeat(300) { sample ->
+            val source = buildString { repeat(random.nextInt(1, 60)) { append(tokens[random.nextInt(tokens.size)]) } }
+            val file = RouteSourceFile("src/main/kotlin/demo/L.kt", isJava = false, isTest = false, source = source)
+            for (offset in 0..file.masked.length) {
+                // 사용 위치가 `==`의 둘째 `=`일 때만 다르다. 예전 정규식은 잘라 낸 끝에서 `(?!=)`가 통과해 `x =`를 선언으로 읽었다.
+                // 해석기가 묻는 위치는 식의 시작이고, 식은 `=`로 시작하지 않는다.
+                if (file.masked.getOrNull(offset) == '=') continue
+                for (name in names) {
+                    val expected = regexLocalDeclaration(file, name, offset)
+                    assertEquals(expected, file.localDeclaration(name, offset), "sample $sample offset $offset name $name")
+                    if (expected != null) found++ else if (file.enclosingFunction(offset) != null && "val $name" in file.masked.substring(0, offset)) hidden++
+                }
+            }
+        }
+        // 대조가 비지 않았는지 본다: 선언을 찾은 경우와, 앞에 같은 이름 선언이 있어도 범위·위치 때문에 못 찾는 경우가 모두 많아야 한다.
+        assertTrue(found > 5_000 && hidden > 5_000, "found $found, hidden $hidden")
+    }
+
+    /** 색인 전 [RouteSourceFile.localDeclaration]을 그대로 옮긴 대조용 구현이다. */
+    private fun regexLocalDeclaration(file: RouteSourceFile, name: String, offset: Int): RouteLocal? {
+        val function = file.enclosingFunction(offset) ?: return null
+        val searchStart = function.bodyStart.coerceAtLeast(function.start)
+        val prefix = file.masked.substring(0, offset.coerceAtMost(file.masked.length))
+        if (searchStart > prefix.length) return null
+        val pattern = Regex("\\b(val|var)\\s+${Regex.escape(name)}\\b\\s*(?::[^=\\n]+)?=(?!=)")
+        val match = pattern.findAll(prefix, searchStart).lastOrNull { file.inScope(it.range.first, offset) } ?: return null
+        val initializerStart = match.range.last + 1
+        return RouteLocal(match.groupValues[1] == "val", file.code.substring(initializerStart, file.statementEnd(initializerStart)).trim())
+    }
+
     private companion object {
         /** 할당량 비교의 작은 쪽 상수 수다. 예전 구현은 이 크기에서도 상수마다 약 80KB를 복사했다. */
         const val STATEMENT_CONSTANTS = 2_000
+
+        /** 예산 소진 호출 앞의 채움 줄 수다(약 140KB). 예전 구현은 펼침마다 이만큼을 두 번 복사했다. */
+        const val BUDGET_PADDING_LINES = 2_000
+
+        /** 예산 소진 호출 앞의 닫힌 블록 수다. 예전 구현은 펼침마다 같은 이름 선언 약 100개를 다시 찾았다. */
+        const val BUDGET_CLOSED_LOCALS = 600
     }
 }

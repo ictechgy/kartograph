@@ -7,6 +7,7 @@ import dev.kartograph.index.RouteUrlRules.UrlPart
  *
  * 컴파일러를 실행하지 않고 주석 제거 뷰와 문자열 마스킹 뷰(길이·오프셋 보존) 위에서 패키지·import·
  * 타입/함수 범위·상수를 복원한다. 증명하지 못한 구조는 추측으로 채우지 않고 호출자에게 null로 알린다.
+ * 지역 선언·감싸는 함수 조회는 결과를 기억하므로 한 객체를 한 스레드에서만 쓴다(스캐너는 파일을 차례로 읽는다).
  *
  * @property relative 프로젝트 기준 상대 경로(`/` 구분)
  * @property isJava `.java` 파일이면 참이다 — 문자열 보간과 명명 인자가 없다
@@ -40,6 +41,16 @@ internal class RouteSourceFile(
     var parameterScanIncomplete: Boolean = false
         private set
 
+    /**
+     * 마지막 [enclosingFunction] 질의의 위치와 답이다. 경로 해석기([RoutePathResolver])는 한 호출 지점의 같은 위치를 펼침마다
+     * 다시 묻는다. 상수 수집([constants])도 이 함수를 부르므로 그보다 먼저 초기화되게 여기 둔다.
+     */
+    private var lastEnclosingOffset = -1
+    private var lastEnclosingFunction: RouteFunctionDecl? = null
+
+    /** 함수 시작 위치 → 그 함수 몸체의 지역 선언 색인(이름 → 위치 오름차순)이다. [localDeclaration]이 함수를 처음 볼 때 만든다. */
+    private val localIndexes = HashMap<Int, Map<String, List<LocalSite>>>()
+
     /** 타입 선언(class·interface·object·companion)이다. */
     val types: List<RouteTypeDecl> = collectTypes()
 
@@ -50,8 +61,13 @@ internal class RouteSourceFile(
     val constants: Map<String, List<RouteConstant>> = collectConstants().groupBy { it.name }
 
     /** [offset]을 감싸는 가장 안쪽 함수다. */
-    fun enclosingFunction(offset: Int): RouteFunctionDecl? =
-        functions.filter { offset in it.start..it.end }.maxByOrNull { it.start }
+    fun enclosingFunction(offset: Int): RouteFunctionDecl? {
+        if (offset == lastEnclosingOffset) return lastEnclosingFunction
+        val function = functions.filter { offset in it.start..it.end }.maxByOrNull { it.start }
+        lastEnclosingOffset = offset
+        lastEnclosingFunction = function
+        return function
+    }
 
     /** [offset]을 감싸는 타입 사슬이다(바깥 → 안쪽). */
     fun enclosingTypes(offset: Int): List<RouteTypeDecl> =
@@ -87,18 +103,76 @@ internal class RouteSourceFile(
      * 같은 함수 안에서 [offset]보다 앞서고 그 위치까지 블록이 열려 있는 `val`·`var` 선언을 찾는다.
      * 함수 머리(매개변수 어노테이션·기본값) 안의 위치에서는 몸체의 지역 선언이 보이지 않으므로 null이다.
      *
+     * 함수마다 한 번 만든 색인([indexLocals])에서 찾는다. 예전에는 부를 때마다 이름별 정규식을 만들고 파일을 사용 위치까지
+     * 복사해 함수 몸체를 다시 훑었다. 그래서 펼침 예산(1만 번)을 다 쓰는 호출 지점 하나가 예산 × 파일 크기만큼 일했다.
+     *
      * @return 선언 정보, 없으면 null
      */
     fun localDeclaration(name: String, offset: Int): RouteLocal? {
         val function = enclosingFunction(offset) ?: return null
+        val use = offset.coerceAtMost(masked.length)
+        val sites = localIndexes.getOrPut(function.start) { indexLocals(function) }[name] ?: return null
+        // 사용 위치 앞에서 끝나고 그 위치까지 블록이 열려 있는 마지막 선언이다([inScope]와 같은 판정).
+        val site = sites.lastOrNull { it.end <= use && it.scopeEnd >= use } ?: return null
+        return site.local ?: RouteLocal(site.isVal, code.substring(site.end, statementEnd(site.end)).trim()).also { site.local = it }
+    }
+
+    /**
+     * [function] 몸체의 지역 선언을 한 번 훑어 모은다. 예전에 이름마다 만들던 정규식
+     * `\b(val|var)\s+NAME\b\s*(?::[^=\n]+)?=(?!=)`과 같은 선언을 고른다. 머리(`val NAME`)를 먼저 찾고 그 자리에서 꼬리를 맞춰 본다.
+     * 같은 이름의 앞 선언 범위 안에서 시작한 머리는 그 정규식의 겹치지 않는 찾기처럼 건너뛴다.
+     *
+     * 함수 밖은 훑지 않는다. 경계는 투명하게 둬서 `\b`·`(?!=)`가 함수 경계 너머 문자를 원문 그대로 본다. 예전 구현은 사용
+     * 위치에서 잘라 낸 끝을 입력 끝으로 봤으므로 `x ==`의 둘째 `=`에서 묻는 경우만 다르다. 해석기가 묻는 위치는 식의 시작이라
+     * 그런 위치가 없다.
+     */
+    private fun indexLocals(function: RouteFunctionDecl): Map<String, List<LocalSite>> {
         val searchStart = function.bodyStart.coerceAtLeast(function.start)
-        val prefix = masked.substring(0, offset.coerceAtMost(masked.length))
-        // 검색 시작이 입력 밖이면 findAll이 IndexOutOfBoundsException을 던진다.
-        if (searchStart > prefix.length) return null
-        val pattern = Regex("\\b(val|var)\\s+${Regex.escape(name)}\\b\\s*(?::[^=\\n]+)?=(?!=)")
-        val match = pattern.findAll(prefix, searchStart).lastOrNull { inScope(it.range.first, offset) } ?: return null
-        val initializerStart = match.range.last + 1
-        return RouteLocal(match.groupValues[1] == "val", code.substring(initializerStart, statementEnd(initializerStart)).trim())
+        // 사용 위치는 함수 끝을 넘지 않으므로, 함수 끝 뒤에서 끝나는 선언은 어느 사용 위치보다도 앞서지 않는다.
+        val limit = (function.end + 1).coerceAtMost(masked.length)
+        if (searchStart >= limit) return emptyMap()
+        val heads = LOCAL_HEAD.matcher(masked).region(searchStart, limit).useTransparentBounds(true)
+        val tail = LOCAL_TAIL.matcher(masked).useTransparentBounds(true)
+        val sites = mutableListOf<LocalSite>()
+        val lastEnd = HashMap<String, Int>()
+        while (heads.find()) {
+            val name = heads.group(2)
+            if (heads.start() < (lastEnd[name] ?: 0)) continue
+            tail.region(heads.end(), limit)
+            if (!tail.lookingAt()) continue
+            sites += LocalSite(name, heads.start(), tail.end(), heads.group(1) == "val")
+            lastEnd[name] = tail.end()
+        }
+        closeScopes(sites, limit)
+        return sites.groupBy { it.name }
+    }
+
+    /**
+     * 선언마다 그 선언을 감싼 블록을 닫는 `}`의 위치([LocalSite.scopeEnd])를 한 번의 전진 스캔으로 정한다. [inScope]처럼 선언
+     * 위치부터 센 깊이가 0 아래로 내려가는 첫 `}`다. 사용 위치마다 선언부터 다시 세면 같은 이름 선언이 많은 함수에서 그 수 ×
+     * 함수 크기가 된다. [limit] 전에 닫히지 않은 선언은 [Int.MAX_VALUE]로 두며, 함수 안의 어느 사용 위치에서도 열려 있다.
+     */
+    private fun closeScopes(sites: List<LocalSite>, limit: Int) {
+        if (sites.isEmpty()) return
+        // 아직 닫히지 않은 선언 번호와 그 선언의 깊이다. 깊이는 아래에서 위로 줄지 않으므로 닫히는 선언은 늘 맨 위에 있다.
+        val pending = IntArray(sites.size)
+        val depths = IntArray(sites.size)
+        var size = 0
+        var depth = 0
+        var next = 0
+        for (index in sites[0].start until limit) {
+            while (next < sites.size && sites[next].start == index) {
+                depths[next] = depth
+                pending[size++] = next++
+            }
+            when (masked[index]) {
+                '{' -> depth++
+                '}' -> {
+                    while (size > 0 && depths[pending[size - 1]] == depth) sites[pending[--size]].scopeEnd = index
+                    depth--
+                }
+            }
+        }
     }
 
     /** 선언 위치의 블록이 사용 위치까지 닫히지 않았는지 본다. */
@@ -328,6 +402,20 @@ internal class RouteSourceFile(
         return -1
     }
 
+    /**
+     * [localDeclaration] 색인의 선언 하나다.
+     *
+     * @property start `val`·`var`의 위치다
+     * @property end `=` 다음 위치(초기식 시작)다
+     */
+    private class LocalSite(val name: String, val start: Int, val end: Int, val isVal: Boolean) {
+        /** 선언을 감싼 블록을 닫는 `}`의 위치다. 함수 안에서 닫히지 않으면 [Int.MAX_VALUE]다. */
+        var scopeEnd: Int = Int.MAX_VALUE
+
+        /** 처음 찾았을 때 만든 결과다. 초기식의 끝은 사용 위치와 무관하므로 다시 계산하지 않는다. */
+        var local: RouteLocal? = null
+    }
+
     private companion object {
         val WHITESPACE = Regex("\\s+")
         val PACKAGE = Regex("(?m)^\\s*package\\s+([A-Za-z_][\\w.\\s]*?)\\s*;?\\s*$")
@@ -356,6 +444,12 @@ internal class RouteSourceFile(
         )
         const val CONTINUATION_END = "+-*/.(,=?:&|%<>!"
         const val CONTINUATION_START = ".+-*/?:&|%)]"
+
+        /** 지역 선언의 머리(`val`·`var`와 이름)다. 해석기가 묻는 이름은 참조 모양(ASCII 식별자)이다. */
+        val LOCAL_HEAD: java.util.regex.Pattern = Regex("\\b(val|var)\\s+([A-Za-z_]\\w*)\\b").toPattern()
+
+        /** 머리 뒤의 꼬리(타입 표기와 `=`)다. [LOCAL_HEAD]의 끝에서 [java.util.regex.Matcher.lookingAt]으로 맞춘다. */
+        val LOCAL_TAIL: java.util.regex.Pattern = Regex("\\s*(?::[^=\\n]+)?=(?!=)").toPattern()
     }
 }
 
