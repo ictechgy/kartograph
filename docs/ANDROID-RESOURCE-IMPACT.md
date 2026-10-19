@@ -30,7 +30,16 @@ Synthetic unit/CLI graphs separately exercise same-named keys in different names
 
 ## 0.25.0 capture and migration
 
-Version 0.25.0 is release preparation until its publication and package gates pass. Use CLI, plugin and
+Version 0.25.0 was [published on GitHub](https://github.com/ictechgy/kartograph/releases/tag/v0.25.0) on 2026-10-19
+with seven assets from tag commit `d7238cd5d6465219d0c1378a99e7394258b8577b`.
+[Exact-source readiness](https://github.com/ictechgy/kartograph/actions/runs/39183549453) and the
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39186955097) passed all 20 ZIP/TAR semantic pairs
+against two retained-plugin AGP8.7.3 fixture builds. The 17 impact pairs use strict comparison; the three
+freshness pairs omit only the validated root `hashNanos` timing field. ZIP, TAR and plugin hashes match
+release metadata. The `publishPlugins` task succeeded; public Portal visibility and independent Portal
+installation are separate checks. Published assets retain their original documentation.
+
+Use CLI, plugin and
 direct-library modules from the same reviewed version/source revision. Rebuild embedded JVM clients:
 the appended QuerySnapshot and resource-impact report fields change public constructor/copy shapes.
 GraphNode JVM modifier metadata is reused from the existing model, not added by this release.
