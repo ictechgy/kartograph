@@ -1,4 +1,4 @@
-"""실제 release workflow shell을 실행해 외부 쓰기 전 실패 경계를 확인한다."""
+"""실제 release workflow shell을 실행해 외부 쓰기 전 실패 경계를, step 구조로 캐시 경계를 확인한다."""
 
 import json
 import os
@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github/workflows/release.yml"
+WORKFLOWS = WORKFLOW.parent
 SOURCE = "1" * 40
 OTHER = "2" * 40
 TAG = "v1.2.3"
@@ -97,6 +98,88 @@ def shell_block(name):
     while end < len(lines) and (not lines[end] or lines[end].startswith("          ")):
         end += 1
     return "\n".join(line[10:] for line in lines[run + 1:end]) + "\n"
+
+
+def scalar(value):
+    """step 값 하나를 읽는다. 따옴표를 벗기고, 따옴표 밖의 줄 끝 주석은 버린다."""
+    text = value.strip()
+    if text[:1] in ("'", '"'):
+        end = text.find(text[0], 1)
+        return text[1:end] if end > 0 else text
+    return text.split(" #", 1)[0].rstrip()
+
+
+def workflow_steps(path):
+    """PyYAML 없이 job step의 최상위 키와 with 입력을 읽는다.
+
+    이 저장소 workflow의 2칸 들여쓰기(`    steps:` 아래 `      - `)만 다룬다. 다른 배치를 만나면
+    빈 with로 조용히 통과시키지 않도록 ValueError로 멈춘다. run 본문·env·여러 줄 값은 판정에 쓰지 않는다.
+    """
+    steps, step, section, in_steps = [], None, None, False
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        content = raw.lstrip(" ")
+        if not content or content.startswith("#"):
+            continue
+        indent = len(raw) - len(content)
+        if indent <= 4:
+            in_steps, step = indent == 4 and content == "steps:", None
+            continue
+        if not in_steps:
+            continue
+        if indent == 6:
+            if not content.startswith("- "):
+                raise ValueError(f"{path.name}: unexpected steps layout: {content}")
+            step = {"with": {}}
+            steps.append(step)
+            content, indent = content[2:], 8
+        if indent == 8:
+            key, _, value = content.partition(":")
+            section = None if value.strip() else key
+            if key != "with":
+                step[key] = scalar(value)
+        elif indent == 10 and section == "with":
+            key, _, value = content.partition(":")
+            step["with"][key] = scalar(value)
+    return steps
+
+
+class WorkflowCacheBoundaryTest(unittest.TestCase):
+    """비밀을 쓰는 release job과 입력 SHA의 코드를 실행하는 dispatch 검증의 캐시 경계를 확인한다.
+
+    dispatch 검증은 기본 브랜치 캐시 범위에서 검토 전 코드를 실행할 수 있다. 그 job이 저장한 Gradle·JDK 캐시를
+    release job이 복원하면, 다시 검증되지 않는 wrapper 배포본의 init 스크립트가 publish 단계까지 적용된다.
+    """
+
+    def steps_using(self, workflow, action):
+        steps = [step for step in workflow_steps(WORKFLOWS / workflow) if step.get("uses", "").split("@", 1)[0] == action]
+        self.assertTrue(steps, f"{workflow} has no {action} step")
+        return steps
+
+    def cache_actions(self, workflow):
+        actions = [step.get("uses", "").split("@", 1)[0] for step in workflow_steps(WORKFLOWS / workflow)]
+        return [action for action in actions if action in ("actions/cache", "actions/cache/restore", "actions/cache/save")]
+
+    def test_release_job_neither_restores_nor_saves_build_caches(self):
+        for step in self.steps_using("release.yml", "actions/setup-java"):
+            self.assertEqual(("temurin", "17"), (step["with"].get("distribution"), step["with"].get("java-version")))
+            self.assertNotIn("cache", step["with"])
+            self.assertEqual("false", step["with"].get("cache-jdk"))
+        for step in self.steps_using("release.yml", "gradle/actions/setup-gradle"):
+            self.assertEqual("8.10.2", step["with"].get("gradle-version"))
+            self.assertEqual("true", step["with"].get("cache-disabled"))
+        self.assertEqual([], self.cache_actions("release.yml"))
+
+    def test_dispatch_validation_restores_caches_without_saving_them(self):
+        for workflow in ("release-readiness.yml", "cli-repeatability.yml"):
+            with self.subTest(workflow=workflow):
+                for step in self.steps_using(workflow, "actions/setup-java"):
+                    self.assertEqual(("temurin", "17"), (step["with"].get("distribution"), step["with"].get("java-version")))
+                    self.assertEqual("gradle", step["with"].get("cache"))
+                    self.assertEqual("true", step["with"].get("cache-read-only"))
+                for step in workflow_steps(WORKFLOWS / workflow):
+                    if step.get("uses", "").split("@", 1)[0] == "gradle/actions/setup-gradle":
+                        self.assertIn("true", (step["with"].get("cache-read-only"), step["with"].get("cache-disabled")))
+                self.assertFalse([action for action in self.cache_actions(workflow) if action != "actions/cache/restore"])
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
