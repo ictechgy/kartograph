@@ -1106,6 +1106,31 @@ class RouteCallScannerTest {
     }
 
     @Test
+    fun `path expressions that read more than the scan budget stay unresolved`() {
+        // 리뷰 지적 재현: 펼침 예산은 횟수만 셌다. 펼침 한 번은 식 길이만큼 읽으므로, 큰 식을 여러 번 따라가는 입력은 횟수 상한 안에서도
+        // 횟수 × 식 길이만큼 일했다(380KB 식을 5천 번 따라가는 호출 하나가 4.8초). 여기서는 2천 자 식을 천 번 따라간다.
+        // 펼침은 2천 번이라 횟수 상한 안이지만 읽는 양은 2백만 자로 읽기 상한(1MiB)을 넘는다.
+        val big = "listOf(" + (0 until 280).joinToString(", ") { "arg$it" } + ")"
+        write(
+            "src/main/kotlin/dev/example/net/Wide.kt",
+            "package dev.example.net\n\nimport java.net.*\n\nconst val WIDE = \"" + "\$BIG".repeat(1_000) + "\"\nval BIG = $big\n" +
+                "const val NARROW = \"" + "\$SMALL".repeat(1_000) + "\"\nval SMALL = listOf(arg).first()\n\n" +
+                "class Wide {\n    fun wide() = URL(\"https://api.example.com/x\$WIDE\").readText()\n" +
+                "    fun narrow() = URL(\"https://api.example.com/y\$NARROW\").readText()\n}",
+        )
+        assertTrue(big.length in 2_000..2_200, big.length.toString())
+        val facts = scan().facts.associateBy { it.symbol?.qualifiedName }
+        val wide = facts.getValue("dev.example.net.Wide.wide")
+        assertTrue(wide.dynamic)
+        // 상한을 넘긴 식은 앞부분만 읽은 조각을 남기지 않고 식 전체를 모르는 값으로 둔다.
+        assertNull(wide.channelPrefix)
+        // 대조: 같은 모양이라도 읽는 양이 상한 안이면 증명된 접두사를 남긴다.
+        val narrow = facts.getValue("dev.example.net.Wide.narrow")
+        assertTrue(narrow.dynamic)
+        assertEquals("/y", narrow.channelPrefix)
+    }
+
+    @Test
     fun `local declarations match the per-name regex lookup on random kotlin text`() {
         // 지역 선언 색인의 보존 대조: 함수마다 한 번 만든 색인이 예전처럼 이름마다 정규식으로 사용 위치 앞까지 훑은 결과와 같아야 한다.
         // 한 줄의 같은 이름 선언(예전 정규식의 겹치지 않는 찾기), 닫힌 블록, 중첩 함수, 식 몸체, 함수 머리 안 위치를 섞는다.

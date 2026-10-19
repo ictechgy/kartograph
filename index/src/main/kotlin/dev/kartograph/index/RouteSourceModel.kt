@@ -497,8 +497,12 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
         return if (budget.exhausted) listOf(UrlPart.Value(unwrapParentheses(expression.trim()))) else resolved
     }
 
-    /** 식 하나가 펼침 한 번이고, 문자열 리터럴 본문은 [budget]의 문자 수로 센다. */
+    /**
+     * 식 하나가 펼침 한 번이다. 식을 나누고 읽는 일은 식 길이만큼 들므로 그 길이를 [budget]의 읽은 문자 수로 센다. 문자열 리터럴
+     * 본문은 새로 만든 문자 수로 센다.
+     */
     private fun parts(expression: String, offset: Int, depth: Int, budget: ExpansionBudget): List<UrlPart> {
+        if (!budget.scan(expression.length)) return listOf(UrlPart.Value(expression))
         val trimmed = unwrapParentheses(expression.trim())
         if (depth > MAX_DEPTH || trimmed.isEmpty() || !budget.step()) return listOf(UrlPart.Value(trimmed))
         val terms = splitConcatenation(trimmed)
@@ -542,6 +546,8 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
     /** 같은 함수 `val`은 query 꼬리 증명을 먼저 하고, 아니면 초기식을 따라간다. `var`는 값이 바뀔 수 있다. */
     private fun localParts(expression: String, local: RouteLocal, offset: Int, depth: Int, budget: ExpansionBudget): List<UrlPart> {
         if (!local.isVal) return listOf(UrlPart.Value(expression))
+        // query 꼬리 증명은 초기식을 처음부터 읽는다.
+        if (!budget.scan(local.initializer.length)) return listOf(UrlPart.Value(expression))
         if (provesQueryTail(local.initializer, offset, depth, budget)) return listOf(UrlPart.QueryTail(expression))
         val resolved = parts(local.initializer, offset, depth + 1, budget)
         val opaque = resolved.size == 1 && resolved.single() is UrlPart.Value
@@ -679,12 +685,15 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
  *
  * 해석기는 재귀 깊이만 제한하므로, 단계마다 다음 이름을 여러 번 참조하는 입력에서는 펼침이 fan-out^깊이 번으로 늘어난다.
  * 잎이 빈 문자열이면 메모리는 늘지 않고 CPU만 오래 쓴다. 그래서 펼침 횟수와 펼치며 새로 만든 문자 수(결과와 중간 조각)에
- * 상한을 둔다. 넘으면 해석기는 그 값을 기존의 풀지 못한 표현으로 돌려주고, 호출자는 이미 있는 dynamic·unresolved 한계로
- * 집계한다. 정상 경로 식은 상한에 한참 못 미친다. 최상위 호출마다 새로 만들고 다른 호출과 나눠 쓰지 않는다.
+ * 상한을 둔다. 경로 식 해석기는 펼치며 읽은 식 문자 수도 센다. 펼침 한 번은 식 길이만큼 일하므로, 큰 식을 여러 번 따라가는
+ * 입력은 횟수 상한 안에서도 횟수 × 식 길이만큼 일할 수 있다. 넘으면 해석기는 그 값을 기존의 풀지 못한 표현으로 돌려주고,
+ * 호출자는 이미 있는 dynamic·unresolved 한계로 집계한다. 정상 경로 식은 상한에 한참 못 미친다. 최상위 호출마다 새로 만들고
+ * 다른 호출과 나눠 쓰지 않는다.
  */
 internal class ExpansionBudget {
     private var steps = 0
     private var chars = 0
+    private var scanned = 0
 
     /** 상한을 넘었다. 한 번 넘으면 같은 최상위 호출의 남은 펼침도 모두 거절한다. */
     var exhausted: Boolean = false
@@ -704,12 +713,23 @@ internal class ExpansionBudget {
         return !exhausted
     }
 
+    /** 펼치며 읽을 식 문자 [count]개를 쓴다. 상한을 넘었으면 거짓이다. */
+    fun scan(count: Int): Boolean {
+        if (!exhausted) {
+            if (count > MAX_SCANNED - scanned) exhausted = true else scanned += count
+        }
+        return !exhausted
+    }
+
     private companion object {
         /** 정상 매핑·호출 경로는 펼침 수십 번이면 끝난다. */
         const val MAX_STEPS = 10_000
 
         /** 경로 템플릿 상한([RouteUrlRules.MAX_TEMPLATE_LENGTH])을 한참 넘는 크기다. */
         const val MAX_CHARS = 64 * 1024
+
+        /** 정상 경로 식은 한 번 풀 때 수십~수백 자를 읽는다. 큰 식을 여러 번 따라가는 입력만 이 상한에 닿는다. */
+        const val MAX_SCANNED = 1024 * 1024
     }
 }
 
