@@ -121,7 +121,7 @@ class SpringBytecodeRoutesTest {
     }
 
     @Test
-    fun `bytecode alias cycles are cut and keep the meta mapping`() {
+    fun `bytecode alias cycles are cut and leave their mappings dynamic`() {
         // 순환 별칭 어노테이션은 class root에만 둔다 — 소스 모델이 아니라 바이트코드 aliases가 별칭을 준다.
         val stubs = listOf(
             "org/springframework/core/annotation/AliasFor.java" to "package org.springframework.core.annotation; " +
@@ -165,7 +165,11 @@ class SpringBytecodeRoutesTest {
         assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, errors, *(listOf("-g", "-d", classes.toString()) + sources).toTypedArray()), errors.toString())
 
         val document = RouteDeclScanner(project, classRoots = listOf(classes)).scan(generatedAt = "2026-01-01T00:00:00Z")
-        assertEquals(setOf("ANY /meta-a", "ANY /meta-mirror", "ANY /plain"), document.facts.filter { !it.dynamic }.mapTo(sortedSetOf()) { "${it.method} ${it.channel}" })
+        assertEquals(setOf("ANY /plain"), document.facts.filter { !it.dynamic }.mapTo(sortedSetOf()) { "${it.method} ${it.channel}" })
+        assertEquals(setOf("demo.LoopController.loop", "demo.LoopController.mirror"),
+            document.facts.filter { it.dynamic }.mapTo(sortedSetOf()) { it.symbol!!.qualifiedName })
+        assertTrue(document.limitations.any { it.startsWith("route-coverage: 2 handler method(s) use mapping annotations whose @AliasFor chain loops back") },
+            document.limitations.toString())
     }
 
     private companion object {

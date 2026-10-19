@@ -252,9 +252,10 @@ class RouteDeclScannerTest {
     }
 
     @Test
-    fun `cyclic alias chains are cut and keep the meta mapping`() {
+    fun `cyclic alias chains are cut and leave their mappings dynamic`() {
         boot()
-        // Spring은 시작할 때 거부하지만 컴파일은 되는 선언이다. 별칭이 root 속성에 닿지 않으면 덮어쓰지 않는다.
+        // Spring은 시작할 때 거부하지만 컴파일은 되는 선언이다. 순환을 끊은 뒤 메타 매핑을 확정 경로로 내면 실제로는 없는 경로를
+        // 사실로 내고 사용자가 쓴 경로(`/loop`·`/mirror`)를 표시 없이 버린다. 그래서 dynamic 사실과 원인을 적은 한계로 남긴다.
         write("src/main/java/demo/LoopMappings.java", """
             package demo;
 
@@ -305,7 +306,15 @@ class RouteDeclScannerTest {
             }
         """)
         // 상호 별칭(LoopA↔LoopB)과 같은 타입 거울을 거쳐 돌아오는 별칭(MirrorA.value → path → MirrorB.path → MirrorA.value)이다.
-        assertEquals(setOf("ANY /meta-a", "ANY /meta-mirror", "GET /plain"), scan().keys())
+        val document = scan()
+        assertEquals(setOf("GET /plain"), document.keys())
+        val cyclic = document.facts.filter { it.dynamic }
+        assertEquals(listOf("ANY" to null, "ANY" to null), cyclic.map { it.method to it.channel })
+        assertEquals(setOf("demo.LoopController.loop", "demo.LoopController.mirror"), cyclic.mapTo(sortedSetOf()) { it.symbol!!.qualifiedName })
+        assertTrue(document.limitations.any { it.startsWith("route-coverage: 2 handler method(s) use mapping annotations whose @AliasFor chain loops back") },
+            document.limitations.toString())
+        // 순환은 dynamic 경로의 일반 원인(상수·패턴 모양)으로 세지 않는다.
+        assertTrue(document.limitations.none { it.contains("could not be converted to a canonical template") }, document.limitations.toString())
     }
 
     @Test

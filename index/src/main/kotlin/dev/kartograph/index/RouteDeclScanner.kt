@@ -136,6 +136,7 @@ internal class SpringRouteEmitter(
     private val applicationRoots: Set<String> = emptySet(),
 ) {
     private var dynamicPaths = 0
+    private var cyclicAliasPaths = 0
     private var cappedPaths = 0
     private var placeholderPaths = 0
     private var profilePlaceholders = 0
@@ -218,6 +219,8 @@ internal class SpringRouteEmitter(
         profilePrefixes += decision.profileKeys
         val prefix = decision.prefix
         if (prefix.anchor == NO_WEB) { webDisabled++; return emptyList() }
+        // 순환 별칭은 Spring이 시작할 때 거부하는 선언이다 — 메타 매핑을 확정 경로로 내면 없는 경로를 사실로 낸다.
+        if (handler.methodMapping.cyclicAlias || handler.typeMapping?.cyclicAlias == true) { cyclicAliasPaths++; return listOf(Route(null, null, prefix.anchor)) }
         val typePaths = paths(handler.typeMapping)
         val methodPaths = paths(handler.methodMapping)
         if (typePaths == null || methodPaths == null) { dynamicPaths++; return listOf(Route(null, null, prefix.anchor)) }
@@ -452,6 +455,7 @@ internal class SpringRouteEmitter(
     /** 사실이 싣지 못한 것을 서버 측 접두사 한계로 센다. */
     fun limitations(stats: SpringMappingResolver.Stats): List<String> = buildList {
         if (dynamicPaths > 0) add("route-coverage: $dynamicPaths mapping path(s) could not be converted to a canonical template (unresolved constants or pattern shapes such as ?, several variables or wildcards in one segment, or a non-final **); their facts are dynamic")
+        if (cyclicAliasPaths > 0) add("route-coverage: $cyclicAliasPaths handler method(s) use mapping annotations whose @AliasFor chain loops back to an annotation already on the chain, which Spring rejects at startup; their facts are dynamic")
         if (cappedPaths > 0) add("route-template-expansion-capped: $cappedPaths mapping path(s) accept empty values in more places than ${SpringPathPatterns.MAX_VARIANTS} variant templates can list; their facts are dynamic")
         if (placeholderPaths > 0) add("route-coverage: $placeholderPaths mapping path(s) use placeholders without a default-profile value, or overridden only in other profiles; their facts are dynamic")
         if (profilePlaceholders > 0) add("route-coverage: $profilePlaceholders mapping path(s) use placeholder values that other profiles override; templates use the default profile")
