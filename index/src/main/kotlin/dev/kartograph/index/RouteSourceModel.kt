@@ -376,23 +376,37 @@ internal data class RouteLocal(val isVal: Boolean, val initializer: String)
  */
 internal class RoutePathResolver(private val file: RouteSourceFile) {
     /**
-     * [expression]을 [offset] 위치 문맥에서 조각으로 푼다.
+     * [expression]을 [offset] 위치 문맥에서 조각으로 푼다. 펼침이 [ExpansionBudget]을 넘으면 식 전체가 값 조각 하나다 — 서로를
+     * 여러 번 잇는 상수가 펼침을 fan-out^깊이 번으로 늘리지 못하게 하고, 앞부분만 펼친 조각을 증명된 접두사로 남기지 않는다.
      *
      * @param expression 인자·초기식 원문
      * @param offset 식이 쓰인 소스 위치(가림·지역 선언 판정용)
      */
-    fun parts(expression: String, offset: Int, depth: Int = 0): List<UrlPart> {
-        val trimmed = unwrapParentheses(expression.trim())
-        if (depth > MAX_DEPTH || trimmed.isEmpty()) return listOf(UrlPart.Value(trimmed))
-        val terms = splitConcatenation(trimmed)
-        if (terms.size > 1) return terms.flatMap { parts(it, offset, depth + 1) }
-        stringLiteralBody(trimmed)?.let { (body, raw) -> return templateParts(body, raw, offset, depth) }
-        return reference(trimmed, offset, depth) ?: listOf(UrlPart.Value(trimmed))
+    fun parts(expression: String, offset: Int): List<UrlPart> {
+        val budget = ExpansionBudget()
+        val resolved = parts(expression, offset, 0, budget)
+        return if (budget.exhausted) listOf(UrlPart.Value(unwrapParentheses(expression.trim()))) else resolved
     }
 
-    /** 문자열 리터럴 인자 값을 푼다 — 보간이 있거나 리터럴이 아니면 null이다. */
-    fun literalValue(expression: String, offset: Int): String? {
-        val resolved = parts(expression, offset)
+    /** 식 하나가 펼침 한 번이고, 문자열 리터럴 본문은 [budget]의 문자 수로 센다. */
+    private fun parts(expression: String, offset: Int, depth: Int, budget: ExpansionBudget): List<UrlPart> {
+        val trimmed = unwrapParentheses(expression.trim())
+        if (depth > MAX_DEPTH || trimmed.isEmpty() || !budget.step()) return listOf(UrlPart.Value(trimmed))
+        val terms = splitConcatenation(trimmed)
+        if (terms.size > 1) return terms.flatMap { parts(it, offset, depth + 1, budget) }
+        stringLiteralBody(trimmed)?.let { (body, raw) ->
+            return if (budget.produce(body.length)) templateParts(body, raw, offset, depth, budget) else listOf(UrlPart.Value(trimmed))
+        }
+        return reference(trimmed, offset, depth, budget) ?: listOf(UrlPart.Value(trimmed))
+    }
+
+    /** 문자열 리터럴 인자 값을 푼다 — 보간이 있거나 리터럴이 아니면 null이다. 펼침이 예산을 넘어도 null이다. */
+    fun literalValue(expression: String, offset: Int): String? = literalValue(expression, offset, ExpansionBudget())
+
+    /** 펼침 도중의 증명(query 꼬리 접두사)은 바깥 호출의 [budget]을 이어 쓴다. */
+    private fun literalValue(expression: String, offset: Int, budget: ExpansionBudget): String? {
+        val resolved = parts(expression, offset, 0, budget)
+        if (budget.exhausted) return null
         return resolved.singleOrNull()?.let { it as? UrlPart.Literal }?.text
             ?: if (resolved.isNotEmpty() && resolved.all { it is UrlPart.Literal }) {
                 resolved.joinToString("") { (it as UrlPart.Literal).text }
@@ -400,23 +414,23 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
     }
 
     /** 식별자·`Owner.NAME` 참조를 상수·지역 `val`로 따라간다. */
-    private fun reference(expression: String, offset: Int, depth: Int): List<UrlPart>? {
+    private fun reference(expression: String, offset: Int, depth: Int, budget: ExpansionBudget): List<UrlPart>? {
         if (!REFERENCE.matches(expression)) return null
         val name = expression.substringAfterLast('.')
         val qualifier = expression.substringBeforeLast('.', "")
         if (qualifier.isEmpty()) {
-            file.localDeclaration(name, offset)?.let { local -> return localParts(expression, local, offset, depth) }
+            file.localDeclaration(name, offset)?.let { local -> return localParts(expression, local, offset, depth, budget) }
             if (file.isShadowed(name, offset)) return null
         }
         val constant = constantFor(name, qualifier) ?: return null
-        return parts(constant.expression, offset, depth + 1).takeIf { resolved -> resolved.none { it is UrlPart.QueryTail } }
+        return parts(constant.expression, offset, depth + 1, budget).takeIf { resolved -> resolved.none { it is UrlPart.QueryTail } }
     }
 
     /** 같은 함수 `val`은 query 꼬리 증명을 먼저 하고, 아니면 초기식을 따라간다. `var`는 값이 바뀔 수 있다. */
-    private fun localParts(expression: String, local: RouteLocal, offset: Int, depth: Int): List<UrlPart> {
+    private fun localParts(expression: String, local: RouteLocal, offset: Int, depth: Int, budget: ExpansionBudget): List<UrlPart> {
         if (!local.isVal) return listOf(UrlPart.Value(expression))
-        if (provesQueryTail(local.initializer, offset)) return listOf(UrlPart.QueryTail(expression))
-        val resolved = parts(local.initializer, offset, depth + 1)
+        if (provesQueryTail(local.initializer, offset, budget)) return listOf(UrlPart.QueryTail(expression))
+        val resolved = parts(local.initializer, offset, depth + 1, budget)
         val opaque = resolved.size == 1 && resolved.single() is UrlPart.Value
         return if (opaque) listOf(UrlPart.Value(expression)) else resolved
     }
@@ -438,13 +452,15 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
      *
      * 받는 모양: `"?..."` 리터럴, `"?" + ...` 연결, `prefix = "?"`인 `joinToString`, `let { "?..." }`
      * 람다, 두 가지가 모두 증명되는 `if … else …`. `?.` 사슬은 `.orEmpty()`·`?: ""` 대체값이 있어야 한다.
+     *
+     * @param budget 이 증명을 부른 펼침의 예산이다. 접두사 식을 푸는 일도 같은 예산에서 쓴다
      */
-    fun provesQueryTail(initializer: String, offset: Int): Boolean {
+    fun provesQueryTail(initializer: String, offset: Int, budget: ExpansionBudget): Boolean {
         val text = initializer.trim()
         val (core, fallback) = splitEmptyFallback(text)
         if (isEmptyLiteral(core)) return true
         if ("?." in core && !fallback) return false
-        return startsWithQuestionMark(core, offset) || provesConditional(core, offset)
+        return startsWithQuestionMark(core, offset, budget) || provesConditional(core, offset, budget)
     }
 
     private fun splitEmptyFallback(text: String): Pair<String, Boolean> {
@@ -455,7 +471,7 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
         return if (elvis != null) text.substring(0, elvis.range.first).trim() to true else text to false
     }
 
-    private fun startsWithQuestionMark(core: String, offset: Int): Boolean {
+    private fun startsWithQuestionMark(core: String, offset: Int, budget: ExpansionBudget): Boolean {
         val first = splitConcatenation(unwrapParentheses(core)).first()
         stringLiteralBody(first)?.let { (body, _) -> return body.startsWith('?') }
         JOIN_TO_STRING.find(core)?.let { match ->
@@ -463,20 +479,20 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
             val close = balancedEnd(core, open)
             if (close == core.lastIndex) {
                 val prefix = callArguments(core, open, close).firstNamed("prefix") ?: return false
-                return literalValue(prefix, offset)?.startsWith('?') == true
+                return literalValue(prefix, offset, budget)?.startsWith('?') == true
             }
         }
         val lambda = LAMBDA_OPEN.findAll(core).lastOrNull { templateExpressionEnd(core, it.range.last) == core.lastIndex }
         if (lambda != null) {
             val inside = core.substring(lambda.range.last + 1, core.length - 1).trim()
             val body = LAMBDA_PARAMETER.find(inside)?.let { inside.substring(it.range.last + 1) } ?: inside
-            return body.isNotBlank() && startsWithQuestionMark(body.trim(), offset)
+            return body.isNotBlank() && startsWithQuestionMark(body.trim(), offset, budget)
         }
         return false
     }
 
     /** `if (c) A else B`의 두 가지가 모두 `?` 시작이거나 빈 문자열인지 본다. */
-    private fun provesConditional(core: String, offset: Int): Boolean {
+    private fun provesConditional(core: String, offset: Int, budget: ExpansionBudget): Boolean {
         if (!core.startsWith("if")) return false
         val open = core.indexOf('(')
         val close = balancedEnd(core, open).takeIf { open >= 0 && it > open } ?: return false
@@ -484,14 +500,14 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
         if (branches.size != 2) return false
         return branches.all { branch ->
             val value = branch.trim().removeSurrounding("{", "}").trim()
-            isEmptyLiteral(value) || startsWithQuestionMark(value, offset)
+            isEmptyLiteral(value) || startsWithQuestionMark(value, offset, budget)
         }
     }
 
     private fun isEmptyLiteral(text: String): Boolean = text == "\"\"" || text == "\"\"\"\"\"\""
 
     /** Kotlin 템플릿 본문을 리터럴·보간 조각으로 나눈다. Java 문자열에는 보간이 없다. */
-    private fun templateParts(body: String, raw: Boolean, offset: Int, depth: Int): List<UrlPart> {
+    private fun templateParts(body: String, raw: Boolean, offset: Int, depth: Int, budget: ExpansionBudget): List<UrlPart> {
         if (file.isJava) return listOf(UrlPart.Literal(decodeLiteral(body)))
         val result = mutableListOf<UrlPart>()
         val text = StringBuilder()
@@ -509,13 +525,13 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
                 character == '$' && body.getOrNull(index + 1) == '{' -> {
                     val close = templateExpressionEnd(body, index + 1)
                     flush()
-                    result += interpolation(body.substring(index + 2, close), offset, depth)
+                    result += interpolation(body.substring(index + 2, close), offset, depth, budget)
                     index = close + 1
                 }
                 character == '$' && body.getOrNull(index + 1)?.let { it == '_' || it.isLetter() } == true -> {
                     val name = IDENTIFIER_HEAD.find(body, index + 1)!!.value
                     flush()
-                    result += interpolation(name, offset, depth)
+                    result += interpolation(name, offset, depth, budget)
                     index += 1 + name.length
                 }
                 else -> { text.append(character); index++ }
@@ -525,10 +541,11 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
         return result
     }
 
-    /** 보간 식 하나를 따라간다 — 참조가 아니면 값 조각이다. */
-    private fun interpolation(expression: String, offset: Int, depth: Int): List<UrlPart> {
+    /** 보간 식 하나를 따라간다 — 참조가 아니면 값 조각이다. 보간 하나가 펼침 한 번이다. */
+    private fun interpolation(expression: String, offset: Int, depth: Int, budget: ExpansionBudget): List<UrlPart> {
         val trimmed = expression.trim()
-        return reference(trimmed, offset, depth + 1) ?: listOf(UrlPart.Value(trimmed))
+        if (!budget.step()) return listOf(UrlPart.Value(trimmed))
+        return reference(trimmed, offset, depth + 1, budget) ?: listOf(UrlPart.Value(trimmed))
     }
 
     private companion object {
@@ -540,6 +557,45 @@ internal class RoutePathResolver(private val file: RouteSourceFile) {
         val LAMBDA_PARAMETER = Regex("^[A-Za-z_]\\w*\\s*->")
         val ELSE = Regex("\\belse\\b")
         val ORDER_EMPTY_SUFFIXES = listOf(".orEmpty()", "?.orEmpty()")
+    }
+}
+
+/**
+ * 값 해석기(설정 플레이스홀더·어노테이션 상수 식·경로 식)의 최상위 호출 하나가 쓸 수 있는 작업량이다.
+ *
+ * 해석기는 재귀 깊이만 제한하므로, 단계마다 다음 이름을 여러 번 참조하는 입력에서는 펼침이 fan-out^깊이 번으로 늘어난다.
+ * 잎이 빈 문자열이면 메모리는 늘지 않고 CPU만 오래 쓴다. 그래서 펼침 횟수와 펼치며 새로 만든 문자 수(결과와 중간 조각)에
+ * 상한을 둔다. 넘으면 해석기는 그 값을 기존의 풀지 못한 표현으로 돌려주고, 호출자는 이미 있는 dynamic·unresolved 한계로
+ * 집계한다. 정상 경로 식은 상한에 한참 못 미친다. 최상위 호출마다 새로 만들고 다른 호출과 나눠 쓰지 않는다.
+ */
+internal class ExpansionBudget {
+    private var steps = 0
+    private var chars = 0
+
+    /** 상한을 넘었다. 한 번 넘으면 같은 최상위 호출의 남은 펼침도 모두 거절한다. */
+    var exhausted: Boolean = false
+        private set
+
+    /** 펼침(식 하나를 계산하거나 이름 하나를 따라가는 일) 한 번을 쓴다. 상한을 넘었으면 거짓이다. */
+    fun step(): Boolean {
+        if (!exhausted && ++steps > MAX_STEPS) exhausted = true
+        return !exhausted
+    }
+
+    /** 펼치며 새로 만든 문자 [count]개를 쓴다. 상한을 넘었으면 거짓이다. */
+    fun produce(count: Int): Boolean {
+        if (!exhausted) {
+            if (count > MAX_CHARS - chars) exhausted = true else chars += count
+        }
+        return !exhausted
+    }
+
+    private companion object {
+        /** 정상 매핑·호출 경로는 펼침 수십 번이면 끝난다. */
+        const val MAX_STEPS = 10_000
+
+        /** 경로 템플릿 상한([RouteUrlRules.MAX_TEMPLATE_LENGTH])을 한참 넘는 크기다. */
+        const val MAX_CHARS = 64 * 1024
     }
 }
 

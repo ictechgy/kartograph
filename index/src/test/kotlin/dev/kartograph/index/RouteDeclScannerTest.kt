@@ -309,6 +309,57 @@ class RouteDeclScannerTest {
     }
 
     @Test
+    fun `expansion fan-out beyond the per-call budget leaves mapping paths unresolved`() {
+        boot()
+        // 리뷰 지적 재현(index-security#0): 단계마다 다음 이름을 여러 번 참조하는 설정 키·Java 상수·Kotlin 상수다. 펼침이 최상위
+        // 호출당 예산(1만 번)을 수십 배 넘는다. 예전 코드는 이 크기를 1초 안팎에 끝까지 펼쳤지만, 깊이를 몇 단계만 늘려도 끝나지 않았다.
+        write("src/main/resources/application.properties", (0 until 7).joinToString("") { level ->
+            "fan.k$level=" + "\${fan.k${level + 1}}".repeat(8) + "\n"
+        } + "fan.k7=\nsmall.k0=\${small.k1}\${small.k1}\nsmall.k1=/small")
+        write("src/main/java/demo/Fan.java", "package demo;\npublic interface Fan {\n" + (0 until 5).joinToString("") { level ->
+            "    String C$level = " + List(16) { "C${level + 1}" }.joinToString(" + ") + ";\n"
+        } + "    String C5 = \"\";\n}")
+        write("src/main/kotlin/demo/KotlinFan.kt", "package demo\n\n" + (0 until 3).joinToString("") { level ->
+            "const val K$level = \"" + "\$K${level + 1}".repeat(64) + "\"\n"
+        } + "const val K3 = \"\"")
+        write("src/main/java/demo/FanController.java", """
+            package demo;
+            $javaImports
+
+            @RestController
+            public class FanController {
+                @GetMapping("${'$'}{fan.k0}/placeholders")
+                public String placeholders() { return ""; }
+
+                @GetMapping(Fan.C0 + "/java")
+                public String java() { return ""; }
+
+                @GetMapping("${'$'}{small.k0}/ok")
+                public String small() { return ""; }
+            }
+        """)
+        write("src/main/kotlin/demo/KotlinFanController.kt", """
+            package demo
+
+            import org.springframework.web.bind.annotation.GetMapping
+            import org.springframework.web.bind.annotation.RestController
+
+            @RestController
+            class KotlinFanController {
+                @GetMapping("${'$'}K0/kotlin")
+                fun kotlin(): String = ""
+            }
+        """)
+        val document = scan()
+        // 예산 안의 펼침(같은 키를 두 번 쓰는 설정)은 그대로 푼다.
+        assertEquals(setOf("GET /small/small/ok"), document.keys())
+        assertEquals(listOf(null, null, "\${fan.k0}/placeholders"), document.facts.filter { it.dynamic }.map { it.channel }.sortedBy { it.orEmpty() })
+        val limitations = document.limitations.joinToString("\n")
+        assertTrue("route-coverage: 1 mapping path(s) use placeholders without a default-profile value" in limitations, limitations)
+        assertTrue("route-coverage: 2 mapping path(s) could not be converted" in limitations, limitations)
+    }
+
+    @Test
     fun `placeholders profiles and dynamic templates are reported as server limitations`() {
         boot()
         write("src/main/resources/application.yml", """

@@ -114,6 +114,41 @@ class SpringProjectConfigTest {
         ))
         assertNull(disagreeing.resolve("\${k:0}").text)
         assertEquals(SpringPlaceholderResult("0", usedDefault = true), SpringPlaceholders(emptyList()).resolve("\${k:0}"))
+        // 뒤의 플레이스홀더를 풀지 못해도 앞에서 쓴 값의 표시는 그대로 전한다.
+        assertEquals(SpringPlaceholderResult(null, profileDependent = true), placeholders.resolve("\${app.base}\${missing}"))
+        assertEquals(SpringPlaceholderResult(null, usedDefault = true), placeholders.resolve("\${missing:/d}\${unclosed"))
+    }
+
+    @Test
+    fun `placeholder expansion stops at a per-call budget instead of growing with fan-out`() {
+        // 리뷰 지적 재현(index-security#0): 단계마다 다음 키를 8번 참조하는 16단 설정은 펼침이 8^16번이라 끝나지 않았다.
+        // 시간 대신 설정 조회 횟수를 센다. 예산을 다 쓰면 더 펼치지 않고 풀지 못한 값으로 끝나야 한다.
+        val fanOut = (0 until 16).associate { level -> "fan.k$level" to "\${fan.k${level + 1}}".repeat(8) } + ("fan.k16" to "")
+        val module = SpringModuleConfig.of("", listOf(SpringConfigDocuments.Document(emptyList(), fanOut)))
+        var lookups = 0
+        val counted = object : AbstractList<SpringModuleConfig>() {
+            override val size = 1
+
+            override fun get(index: Int): SpringModuleConfig {
+                check(++lookups <= LOOKUP_CEILING) { "placeholder expansion was still looking up keys after $LOOKUP_CEILING lookups" }
+                return module
+            }
+        }
+        assertNull(SpringPlaceholders(counted).resolve("\${fan.k0}/items").text)
+        // 같은 키를 여러 번 써도 펼침이 예산 안이면 그대로 푼다.
+        assertEquals(SpringPlaceholderResult("/items"), SpringPlaceholders(listOf(module)).resolve("\${fan.k14}\${fan.k15}/items"))
+
+        // 펼친 결과가 64KiB를 넘으면 펼침 수가 적어도 풀지 못한 값이다.
+        val big = "x".repeat(40 * 1024)
+        val sized = SpringPlaceholders(listOf(SpringModuleConfig.of("", listOf(SpringConfigDocuments.Document(emptyList(), mapOf("big" to big))))))
+        assertEquals(big, sized.resolve("\${big}").text)
+        assertNull(sized.resolve("\${big}\${big}").text)
+
+        // 한 값의 플레이스홀더는 개수만큼 재귀하지 않는다. 예산 안이면 수천 개도 풀고, 넘으면 스택을 넘기기 전에 멈춘다.
+        val wide = SpringPlaceholders(listOf(SpringModuleConfig.of("", listOf(SpringConfigDocuments.Document(emptyList(),
+            mapOf("e" to "", "within" to "\${e}".repeat(5_000) + "/w", "beyond" to "\${e}".repeat(50_000)))))))
+        assertEquals(SpringPlaceholderResult("/w"), wide.resolve("\${within}"))
+        assertNull(wide.resolve("\${beyond}").text)
     }
 
     @Test
@@ -218,5 +253,10 @@ class SpringProjectConfigTest {
         assertEquals("x = 1\n", SpringProjectConfig.withoutComments("libs.versions.toml", "x = 1\n# web = 2"))
         val gradle = SpringProjectConfig.withoutComments("build.gradle", "include(\"**/*.java\")\nimplementation(\"web\")\n/* flux */ keep // flux")
         assertTrue("implementation(\"web\")" in gradle && "**/*.java" in gradle && "keep" in gradle && "flux" !in gradle, gradle)
+    }
+
+    private companion object {
+        /** 플레이스홀더 해석 한 번이 하는 설정 조회 상한이다. 해석기 예산(펼침 1만 번)의 두 배로 넉넉히 둔다. */
+        const val LOOKUP_CEILING = 20_000
     }
 }

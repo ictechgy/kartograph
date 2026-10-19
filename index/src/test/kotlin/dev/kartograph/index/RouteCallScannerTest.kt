@@ -652,6 +652,22 @@ class RouteCallScannerTest {
     }
 
     @Test
+    fun `retrofit constant fan-out beyond the per-call budget stays dynamic`() {
+        // 리뷰 지적 재현(index-security#0): 단계마다 다음 상수를 64번 잇는 Kotlin 상수다. 펼침이 최상위 호출당 예산(1만 번)을 넘는다.
+        // 예전 코드는 이 크기를 1초 안에 끝까지 펼쳤지만, 한 단계만 늘려도 수 초, 두 단계면 끝나지 않았다.
+        write("src/main/kotlin/dev/example/api/Fan.kt", "package dev.example.api\n\nimport retrofit2.http.GET\n\n" +
+            (0 until 3).joinToString("") { level -> "const val K$level = \"" + "\$K${level + 1}".repeat(64) + "\"\n" } +
+            "const val K3 = \"\"\nconst val SMALL = \"\$K3\$K3/small\"\n\ninterface Fan {\n    @GET(\"/fan\$K0\")\n    fun fan(): Any\n\n" +
+            "    @GET(SMALL)\n    fun small(): Any\n}")
+        val facts = scan().facts.associateBy { it.symbol?.qualifiedName }
+        val fan = facts.getValue("dev.example.api.Fan.fan")
+        assertTrue(fan.dynamic)
+        // 예산을 넘긴 식은 앞부분만 펼친 조각을 남기지 않고 식 전체를 모르는 값으로 둔다.
+        assertNull(fan.channelPrefix)
+        assertEquals("/small", facts.getValue("dev.example.api.Fan.small").channel)
+    }
+
+    @Test
     fun `test source sets are excluded by default and marked when included`() {
         val call = """
             package dev.example.net

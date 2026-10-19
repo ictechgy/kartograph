@@ -113,32 +113,53 @@ internal data class SpringPlaceholderResult(val text: String?, val usedDefault: 
  * `#{…}` SpEL은 풀지 않는다.
  */
 internal class SpringPlaceholders(private val candidates: List<SpringModuleConfig>) {
-    /** [text]의 모든 플레이스홀더를 푼다. 플레이스홀더가 없으면 그대로다. */
-    fun resolve(text: String, depth: Int = 0): SpringPlaceholderResult {
+    /**
+     * [text]의 모든 플레이스홀더를 푼다. 플레이스홀더가 없으면 그대로다. 펼침이 [ExpansionBudget]을 넘으면 풀지 못한 것이다 —
+     * 서로를 여러 번 참조하는 키가 펼침을 fan-out^깊이 번으로 늘리지 못하게 한다.
+     */
+    fun resolve(text: String): SpringPlaceholderResult = resolve(text, 0, ExpansionBudget())
+
+    /**
+     * 같은 문자열의 플레이스홀더는 앞에서부터 차례로 푼다. 플레이스홀더 수만큼 재귀하거나 나머지 문자열을 매번 복사하지 않는다.
+     * 풀지 못하면 그때까지 쓴 값의 [SpringPlaceholderResult.usedDefault]·[SpringPlaceholderResult.profileDependent]를 함께 돌려준다.
+     */
+    private fun resolve(text: String, depth: Int, budget: ExpansionBudget): SpringPlaceholderResult {
         if ("#{" in text) return SpringPlaceholderResult(null)
-        val start = text.indexOf("\${")
+        var start = text.indexOf("\${")
         if (start < 0) return SpringPlaceholderResult(text)
         if (depth > MAX_DEPTH) return SpringPlaceholderResult(null)
-        val end = placeholderEnd(text, start) ?: return SpringPlaceholderResult(null)
-        val inner = resolveInner(text.substring(start + 2, end), depth)
-        if (inner.text == null) return inner
-        val rest = resolve(text.substring(end + 1), depth)
-        return SpringPlaceholderResult(rest.text?.let { text.substring(0, start) + inner.text + it },
-            inner.usedDefault || rest.usedDefault, inner.profileDependent || rest.profileDependent)
+        val resolved = StringBuilder()
+        var cursor = 0
+        var usedDefault = false
+        var profileDependent = false
+        while (start >= 0) {
+            val end = placeholderEnd(text, start) ?: return SpringPlaceholderResult(null, usedDefault, profileDependent)
+            val inner = resolveInner(text.substring(start + 2, end), depth, budget)
+            usedDefault = usedDefault || inner.usedDefault
+            profileDependent = profileDependent || inner.profileDependent
+            val value = inner.text?.takeIf { budget.produce(start - cursor + it.length) }
+                ?: return SpringPlaceholderResult(null, usedDefault, profileDependent)
+            resolved.append(text, cursor, start).append(value)
+            cursor = end + 1
+            start = text.indexOf("\${", cursor)
+        }
+        if (!budget.produce(text.length - cursor)) return SpringPlaceholderResult(null, usedDefault, profileDependent)
+        return SpringPlaceholderResult(resolved.append(text, cursor, text.length).toString(), usedDefault, profileDependent)
     }
 
-    /** `key:default` 본문 하나를 푼다. 키 안의 중첩 플레이스홀더도 푼다. */
-    private fun resolveInner(body: String, depth: Int): SpringPlaceholderResult {
+    /** `key:default` 본문 하나를 푼다. 키 안의 중첩 플레이스홀더도 푼다. 플레이스홀더 하나가 펼침 한 번이다. */
+    private fun resolveInner(body: String, depth: Int, budget: ExpansionBudget): SpringPlaceholderResult {
+        if (!budget.step()) return SpringPlaceholderResult(null)
         val separator = separatorIndex(body)
-        val keyResult = resolve(if (separator < 0) body else body.substring(0, separator), depth + 1)
+        val keyResult = resolve(if (separator < 0) body else body.substring(0, separator), depth + 1, budget)
         val key = keyResult.text ?: return keyResult
         val fallback = if (separator < 0) null else body.substring(separator + 1)
         return when (val found = lookupAll(key)) {
-            is SpringModuleConfig.Lookup.Value -> resolve(found.text, depth + 1).let { value ->
+            is SpringModuleConfig.Lookup.Value -> resolve(found.text, depth + 1, budget).let { value ->
                 value.copy(profileDependent = value.profileDependent || found.profileDependent || keyResult.profileDependent)
             }
             SpringModuleConfig.Lookup.OtherProfilesOnly, SpringModuleConfig.Lookup.Unknown -> SpringPlaceholderResult(null)
-            SpringModuleConfig.Lookup.Absent -> fallback?.let { resolve(it, depth + 1).copy(usedDefault = true) } ?: SpringPlaceholderResult(null)
+            SpringModuleConfig.Lookup.Absent -> fallback?.let { resolve(it, depth + 1, budget).copy(usedDefault = true) } ?: SpringPlaceholderResult(null)
         }
     }
 
