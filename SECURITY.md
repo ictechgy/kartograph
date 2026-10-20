@@ -46,7 +46,8 @@ clean·smudge·process 명령을 빈 값으로 덮고, `core.fsmonitor`, 서명 
 아래에 서브모듈(gitlink)이 있으면 깨끗함을 증명할 수 없어 revision을 생략하고, `dead --since`는 서브모듈이 가리키는
 커밋의 변화만 보고 서브모듈 안의 커밋하지 않은 변경은 보지 않는다. `-c`로 그대로 덮을 수 없는 드라이버 이름
 (`A-Z a-z 0-9 . _ + -` 밖의 문자가 든 이름)이 있거나 설정을 읽지 못하면 git을 실행하지 않는다. 이때 revision은
-생략하고 `dead --since`는 exit 2로 끝난다.
+생략하고 `dead --since`는 exit 2로 끝난다. 서브모듈이나 덮을 수 없는 설정 때문에 revision을 생략한 순회 문서에는
+`revision-unverified:`로 시작하는 limitation을 남겨, 작업 트리가 더러워 생략한 경우와 구분한다.
 
 partial clone(`--filter`로 받은 clone)이 빠진 객체를 받는 lazy fetch는 저장소에 설정된 원격 전송 설정(예:
 `remote.<name>.uploadpack`·`core.sshCommand`)이 고른 명령을 실행한다. 그래서 git을 어떤 전송 프로토콜도 허용하지 않고

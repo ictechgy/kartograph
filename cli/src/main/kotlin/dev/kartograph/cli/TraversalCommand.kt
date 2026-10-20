@@ -186,8 +186,10 @@ internal object TraversalCommand {
         val assembled = TraversalEdges.prepare(scope.graph, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured)
         val traversal = LanguageTraversal.traverse(assembled, options.roots, direction, options.dispatch, options.depth, options.maxReached,
             rootGraph = snapshot.graph, classHops = options.classHops, modeledCalls = PersistenceModeledCalls.select(scope.graph, persistence))
-        val limitations = traversal.limitations + scope.limitations + snapshot.limitations + listOfNotNull(freshness)
-        val revision = options.revision ?: snapshot.revision ?: GitRevision.cleanHead(Path.of(options.project))
+        // --revision도 snapshot 라벨도 없을 때만 git으로 확인한다. git 격리 때문에 확인하지 못했으면 그 사실을 한계로 남긴다.
+        val inspection = if (options.revision == null && snapshot.revision == null) GitRevision.inspect(Path.of(options.project)) else null
+        val limitations = traversal.limitations + scope.limitations + snapshot.limitations + listOfNotNull(freshness, inspection?.limitation)
+        val revision = options.revision ?: snapshot.revision ?: inspection?.revision
         val metadata = LanguageTraversalMetadata(options.generatedAt, options.project, revision,
             LanguageTraversalCodec.graphRevision(scope.graph, assembled.edges, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured))
         output.print(LanguageTraversalCodec.render(traversal.copy(limitations = limitations), metadata))

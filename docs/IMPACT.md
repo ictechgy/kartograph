@@ -402,6 +402,8 @@ kartograph reach <usr>... --graph-file graph.json --project .
   분석 대상 git 설정의 filter·서브모듈 명령은 실행하지 않으므로, 프로젝트 아래에 서브모듈이 있거나 git-lfs처럼
   filter로 정규화되는 파일의 stat이 낡았거나 덮을 수 없는 filter 드라이버 이름이 있어도 깨끗함을 증명하지 못해 싣지
   않는다. partial clone에서 빠진 객체를 받아야 확인할 수 있을 때도 받지 않고 싣지 않는다([SECURITY.md](../SECURITY.md)).
+  서브모듈이나 덮을 수 없는 설정 때문에 뺐으면 `limitations`에 `revision-unverified:`로 시작하는 문구를 남긴다.
+  작업 트리가 더럽거나 저장소가 아니어서 뺀 경우에는 남기지 않는다.
   snapshot에 라벨이 있는데 `--revision`이 다르면 도구 실패(2)다. git은 CLI만 부르고 분석·렌더링은 부르지 않는다.
   저장한 snapshot을 읽으므로 `HEAD` 자동 감지는 snapshot을 지금 작업 트리에서 캡처했다고 가정한다. 다른 커밋에서
   캡처했다면 `snapshot --revision`으로 라벨을 남긴다.

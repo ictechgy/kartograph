@@ -181,10 +181,15 @@ class TraversalCliTest {
         "--format", "language-traversal", "--graph-file", graph.toString(), "--project", root.toString(),
         "--generated-at", "2026-09-27T00:00:00Z", *extra)
 
+    /** git 격리 때문에 revision을 확인하지 못했다는 한계 문구다. */
+    private fun revisionLimitations(document: Map<*, *>): List<String> =
+        (document["limitations"] as List<*>).map { it as String }.filter { it.startsWith("revision-unverified:") }
+
     @Test
     fun `revision comes from the option or the snapshot label and conflicting labels fail`(@TempDir root: Path) {
         val graph = capture(root)
         assertFalse("revision" in document(traverse(graph, root)), "no repository and no label leaves revision unknown")
+        assertEquals(emptyList(), revisionLimitations(document(traverse(graph, root))), "a directory outside git is not a limitation")
         val given = traverse(graph, root, "--revision", "release-1.2")
         assertEquals(0, given.status, given.error)
         assertEquals("release-1.2", document(given)["revision"])
@@ -216,6 +221,8 @@ class TraversalCliTest {
         assertEquals("pinned", document(traverse(graph, root, "--revision", "pinned"))["revision"], "--revision wins over HEAD")
         Files.writeString(root.resolve("notes.txt"), "untracked")
         assertFalse("revision" in document(traverse(graph, root)), "an untracked file makes HEAD unreliable")
+        // 작업 트리가 더러워 뺀 revision은 문서화된 생략이라 한계를 남기지 않는다.
+        assertEquals(emptyList(), revisionLimitations(document(traverse(graph, root))))
         Files.delete(root.resolve("notes.txt"))
         root.resolve("src/p/Http.java").toFile().appendText("\n// edited\n")
         assertFalse("revision" in document(traverse(graph, root)), "an uncommitted edit makes HEAD unreliable")
@@ -318,7 +325,8 @@ class TraversalCliTest {
         GitFixture.stale(listOf(project.resolve("notes.txt")), GitFixture.STALE_TIME)
 
         // filter를 돌리지 않으면 내용이 blob과 달라 보인다. 깨끗하다고 주장하지 않고 revision을 뺀다(fail-safe).
-        assertNull(GitRevision.cleanHead(project.toRealPath()))
+        // 실제로 고친 파일과 구분할 수 없으므로 더러운 작업 트리처럼 한계 없이 뺀다.
+        assertEquals(GitRevision.Inspection(null, null), GitRevision.inspect(project.toRealPath()))
     }
 
     @Test
@@ -330,7 +338,11 @@ class TraversalCliTest {
             GitFixture.commit(project, mapOf("src/A.kt" to "class A\n"))
             val probe = FilterDriverProbe(root, project, name, infoAttributes = true, stale = listOf(project.resolve("src/A.kt")))
 
-            assertNull(GitRevision.cleanHead(project.toRealPath()), name)
+            val inspection = GitRevision.inspect(project.toRealPath())
+            assertNull(inspection.revision, name)
+            // 막은 사실을 한계로 알린다. 신뢰하지 않는 드라이버 이름은 싣지 않는다.
+            assertContains(inspection.limitation.orEmpty(), "filter driver whose name cannot be safely overridden", message = name)
+            assertFalse(inspection.limitation.orEmpty().contains(name), name)
             assertFalse(probe.ran, "kartograph must not run git while it cannot override the driver ($name)")
         }
     }
@@ -353,7 +365,33 @@ class TraversalCliTest {
         assertNull(GitRevision.cleanHead(repository.resolve("app").toRealPath()))
         assertNull(GitRevision.cleanHead(repository.toRealPath()))
         assertEquals(head, GitRevision.cleanHead(repository.resolve("tools").toRealPath()), "a project without submodules keeps HEAD")
+        assertContains(GitRevision.inspect(repository.toRealPath()).limitation.orEmpty(), "submodules")
+        assertNull(GitRevision.inspect(repository.resolve("tools").toRealPath()).limitation)
         assertFalse(probe.ran, "kartograph must not run git inside the submodule")
+    }
+
+    @Test
+    fun `a revision the git boundary cannot verify leaves a limitation instead of a silent omission`(@TempDir root: Path) {
+        val library = root.resolve("library")
+        GitFixture.commit(library, mapOf("inner.txt" to "inner\n"))
+        val project = root.resolve("project")
+        val graph = capture(project)
+        GitFixture.commit(project, mapOf(".gitignore" to "classes/\n*.json\n"))
+        GitFixture.git(project, "submodule", "--quiet", "add", library.toString(), "sub")
+        GitFixture.git(project, "commit", "-q", "-m", "submodule")
+
+        val traversal = traverse(graph, project)
+
+        assertEquals(0, traversal.status, traversal.error)
+        val document = document(traversal)
+        assertFalse("revision" in document, "a submodule keeps the project from proving a clean HEAD")
+        // 작업 트리가 더러워 뺀 경우와 구분되도록, git 격리 때문에 확인하지 못했다는 사실과 해결 방향을 한계로 남긴다.
+        val limitation = revisionLimitations(document).single()
+        assertContains(limitation, "submodule")
+        assertContains(limitation, "--revision")
+        assertFalse(limitation.contains(project.toString()), "the limitation carries no absolute path")
+        // --revision을 주면 git으로 확인하지 않으므로 한계도 없다.
+        assertEquals(emptyList(), revisionLimitations(document(traverse(graph, project, "--revision", "pinned"))))
     }
 
     @Test
