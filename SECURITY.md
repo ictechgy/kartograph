@@ -31,6 +31,12 @@ artifact로 올리기 전에는 `project` 값을 치환하거나 지운다(예: 
 분석 대상은 신뢰된 build output이어야 한다. 조작된 class/JAR/resource를 처리하는 것은 보안 격리가 아니며,
 CLI를 sandbox로 취급해서는 안 된다.
 
+저장 snapshot(`--graph-file`·`--base-graph`·MCP 시작)은 byte 상한(기본 64 MiB, 최대 128 MiB) 안에서 읽는다. compact v2는
+문자열 하나를 여러 행이 참조하므로, 문자열 사전 참조와 정점 위치 참조가 펼치는 문자열이 합계 2,147,483,648자·33,554,432개를
+넘으면 검증 전에 거부한다(exit 2). 상한 안의 문서라도 읽기 비용은 모양에 따라 다르다. 상한 바로 아래로 만든 적대 문서는
+기본 heap에서 읽기만 해도 JDK 21은 약 50초, JDK 17은 약 80초가 걸렸고 RSS는 5 GB 가까이 썼다. 질의 결과가 공유 문자열을 다시
+실으면 출력이 2 GB를 넘을 수도 있다. 출처를 모르는 snapshot은 시간·메모리 제한을 둔 환경에서 읽는다.
+
 `reach`·`impact --format language-traversal`의 revision 확인과 `dead --since`는 PATH의 절대경로 항목에서 찾은
 git만 실행하고(빈 항목·`.`·상대경로와, Windows에서는 실행 위치·분석 대상 디렉터리를 건너뛴다) 분석 대상 저장소의
 git 설정이 고른 명령을 실행하지 않는다. git을 부를 때마다 바로 앞에서 설정된 filter 드라이버 이름을 읽어
