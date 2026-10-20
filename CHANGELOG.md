@@ -33,7 +33,8 @@
   `@Path(value = 상수, encoded = true)`처럼 함수 머리 안에서 이름을 풀던 경우다.
 - `reach`·`impact --format language-traversal`의 revision 확인과 `dead --since`가 현재 디렉터리나 상대 PATH
   항목의 git을 실행하지 않도록 PATH의 절대경로 항목에서 찾은 git만 실행하고, 분석 대상 저장소 config의
-  `core.fsmonitor` 명령을 끈다. 그 밖의 대상 저장소 git 설정은 따른다([SECURITY.md](SECURITY.md)).
+  `core.fsmonitor` 명령을 끈다. filter·서명 확인·서브모듈 등 나머지 git 설정의 경계는 아래 Security 절과
+  [SECURITY.md](SECURITY.md)를 본다.
 - `verify-snapshot`의 사용 오류가 stderr 없이 64로 끝나던 것을 원인별 `error: ...` 문구로 알린다.
   거부 조건과 종료 코드는 그대로이며 경로·값은 싣지 않는다.
 - source 경로 해석 중 프로젝트 순회가 밖을 가리키는 `.kt`/`.java` 링크·끊긴 링크·읽을 수 없는 디렉터리로
@@ -45,11 +46,58 @@
 
 ### Changed
 
+- 아래 Security 절의 git 경계 때문에 filter를 실행하지 않으므로, git-lfs처럼 filter로 정규화되는 파일은 stat
+  정보가 index와 다르면 커밋과 내용이 달라 보인다. 그때 `reach`·`impact --format language-traversal`은
+  `--revision`·snapshot 라벨이 없을 때 싣던 `HEAD` revision을 생략하고, `dead --since`는 그런 파일과 시각만 바뀐
+  파일도 범위에 넣는다. `Scripts/check-impact.py`는 그런 파일을 작업 트리 변경으로 보고 exit 2로 끝난다. 신뢰하는
+  checkout이면 먼저 `git update-index --refresh`로 stat 정보를 갱신한다.
+- 프로젝트 아래에 서브모듈(gitlink)이 있으면 깨끗함을 증명할 수 없어 `HEAD` revision을 생략한다(`--revision`으로
+  준다). `dead --since`와 `Scripts/check-impact.py`는 서브모듈이 가리키는 커밋의 변화만 보고 서브모듈 안의 커밋하지
+  않은 변경은 보지 않는다.
+- `-c`로 그대로 덮을 수 없는 filter 드라이버 이름(`A-Z a-z 0-9 . _ + -` 밖의 문자가 든 이름)이 있거나 git 설정을
+  읽지 못하면 git을 실행하지 않는다. `HEAD` revision은 생략하고, `dead --since`와 PR 도우미(`Scripts/check-pr.py`·
+  `Scripts/check-impact.py`)는 exit 2로 끝난다.
+- `schema`의 persistence `relation-use`가 관계 이름이 아닌 세 SQL 자리를 더는 사실로 내지 않는다. 같은 문장 안에서
+  한정자 없이 쓴 CTE 이름(`WITH recent AS (…) SELECT * FROM recent`), 함수 인자 안의 `FROM`
+  (`EXTRACT(YEAR FROM created_at)`·`TRIM(BOTH ' ' FROM name)`), `IS [NOT] DISTINCT FROM`의 피연산자(`$1` 포함)다.
+  Room `@Query`, JDBC·Spring JDBC·jOOQ plain-SQL 인자, JPA native 질의, SQL 모양 문자열 리터럴, SQLDelight
+  `.sq`/`.sqm`이 모두 해당한다. isthmus가 완전한 카탈로그와 맞출 때 거짓 `relation-use-without-decl` error를 내던
+  원인이며, 계열의 persistence 생산자들과 같은 규칙이다. 그 자리의 자리표시자(`EXTRACT(EPOCH FROM ?)`·
+  `IS DISTINCT FROM ?`)는 dynamic 사실과 `unjoined-dynamic-relations` 수에서도 빠진다. CTE 규칙은 문장 단위라 CTE와
+  같은 이름의 테이블을 같은 문장에서 쓰면 그 사용도 내지 않는다. 그 밖의 출력은 그대로다.
+- Gradle `kartographDependencies*` task의 build cache 키가 checkout·`GRADLE_USER_HOME` 위치와 무관해져, 같은
+  의존성·class 입력이면 다른 checkout·CI agent에서도 `FROM-CACHE`로 결과를 재사용한다. task 입력
+  `declarations`·`resolved`의 artifact 열은 root project·Gradle user home 기준 위치 키(`{root}/…`,
+  `{gradle-user-home}/…`)가 되고, 실제 파일 위치는 새 `artifactLocations`(입력 아님)에, 키와 파일의 대응은 새
+  `artifactLocationPositions`(입력)에 둔다. 두 디렉터리 밖의 artifact는 배치가 같을 때만, Android AAR 같은 Gradle
+  transform 출력은 Gradle이 정한 작업 디렉터리 이름이 같을 때만 재사용한다. 보고서의 artifact 열은 예전처럼 파일
+  이름이고, artifact 열에 경로를 적는 수동 task 설정도 그대로 동작한다([docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)).
+- **Breaking**: Gradle task가 내는 file 의존성 coordinate `file:<이름>#<해시>`의 해시를 절대경로 대신 위 위치 키로
+  만든다. 보고서 coordinate와 `dependencies-v1` 지문이 checkout마다 달라지던 문제가 없어지는 대신, 0.25.0 이하에서
+  저장한 dependency baseline·suppress의 `file:` 항목은 맞지 않으므로 다시 capture한다. CLI `dependencies`(TSV
+  입력)의 출력은 그대로다.
 - impact의 `--files-from`·`--symbol` 선택, language-traversal의 root 해석·root 목록·`graphRevision`,
   query 이웃 탐색, bridges·routes·schema의 snapshot 신원 부착, 저장 snapshot의 processor 출력 검증,
   JPA 명명 감지, Android resource XML 읽기, Kotlin route 소스의 문장 끝 판정, routes 경로 식의 지역 선언
   조회에서 요청·사실·정점·펼침 수에 비례해 반복하던 스캔·재읽기·복사를 줄인다. 출력은 바뀌지 않으며
   측정한 입력 밖의 속도·메모리 향상을 보장하지 않는다.
+
+### Security
+
+- `reach`·`impact --format language-traversal`의 revision 확인, `dead --since`, 배포본의 PR 도우미
+  (`Scripts/check-pr.py`·`Scripts/check-impact.py`)가 분석 대상 저장소의 git 설정이 고른 명령을 실행하지 않는다.
+  git을 부를 때마다 바로 앞에서 설정된 filter 드라이버 이름을 읽어 clean·smudge·process 명령을 빈 값으로 덮고,
+  `core.fsmonitor`·서명 확인(`log.showSignature`)·textconv·외부 diff와 작업 트리 diff의 index 자동 갱신(그때
+  실행되는 hook 포함)을 끄며, 서브모듈 안에서는 git을 실행하지 않는다. 여기 적지 않은 설정(예: partial clone이
+  빠진 객체를 받을 때의 원격 전송 설정)은 여전히 따르므로, 출처를 모르는 checkout에서는 `--revision`을 명시하고
+  `--since`를 쓰지 않는다([SECURITY.md](SECURITY.md)).
+- compact(v2) snapshot을 읽을 때 문자열 사전 참조와 정점 위치 참조가 펼치는 문자열을 문서마다 합계
+  2,147,483,648자·33,554,432개까지만 허용하고, 넘으면 검증 전에 거부한다(exit 2). 같은 문자열을 많은 행이 참조한
+  작은 문서가 경로 검사·식별자 연결·정렬 비교를 참조 수만큼 반복시켜 CPU·메모리를 오래 쓰게 하던 문제다.
+  `--graph-file`·`--base-graph`·MCP 시작처럼 저장 snapshot을 읽는 모든 경로에 적용하며 byte 상한과 달리 옵션으로
+  바꾸지 않는다. 실측한 대형 capture(AGP 9.2.0 jar의 93 MiB v2: 약 3.7억 자·549만 개)는 영향이 없다. 상한 안의
+  적대 문서도 읽는 데 JDK 21에서 약 50초, JDK 17에서 약 80초와 5 GB 가까운 RSS를 쓸 수 있다
+  ([SECURITY.md](SECURITY.md)).
 
 ## [0.25.0] - 2026-10-19
 
