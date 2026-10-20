@@ -6,6 +6,12 @@
 
 set -euo pipefail
 
+# 요청 형태는 VERSION을 읽기 전에 확인한다. VERSION이 없거나 틀려도 잘못된 요청은 아무것도 하지 않고 64로 끝난다.
+if (( $# != 1 )) || [[ ! "$1" =~ ^(build|paths|hashes)$ ]]; then
+    echo "Usage: Scripts/release-artifacts.sh build|paths|hashes" >&2
+    exit 64
+fi
+
 cd "$(dirname "$0")/.."
 
 VERSION="$(tr -d '[:space:]' < VERSION)"
@@ -48,10 +54,6 @@ hash_artifacts() {
     done < <(artifact_paths)
 }
 
-if (( $# != 1 )); then
-    echo "Usage: Scripts/release-artifacts.sh build|paths|hashes" >&2
-    exit 64
-fi
 case "$1" in
     build) build_artifacts ;;
     paths) artifact_paths ;;

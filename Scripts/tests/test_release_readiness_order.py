@@ -304,12 +304,24 @@ class ReleaseReadinessOrderTest(unittest.TestCase):
     def test_shared_artifact_script_rejects_unknown_requests_and_missing_artifacts(self):
         result, events, root = self.run_readiness()
         self.assertEqual(0, result.returncode, result.stderr)
-        for arguments in ((), ("publish",), ("hashes", "extra")):
-            with self.subTest(arguments=arguments):
-                before = self.event_count(root)
-                rejected = self.run_artifacts(root, *arguments)
-                self.assertEqual((64, ""), (rejected.returncode, rejected.stdout), rejected.stderr)
-                self.assertEqual(before, self.event_count(root))
+        version = root / "VERSION"
+        # 요청 형태는 VERSION보다 먼저 확인한다. VERSION이 틀리거나 없어도 잘못된 요청은 아무것도 하지 않고 64로 끝난다.
+        for content in ("1.2.3\n", "1.2\n", None):
+            if content is None:
+                version.unlink()
+            else:
+                version.write_text(content)
+            for arguments in ((), ("publish",), ("hashes", "extra")):
+                with self.subTest(version=content, arguments=arguments):
+                    before = self.event_count(root)
+                    rejected = self.run_artifacts(root, *arguments)
+                    self.assertEqual((64, ""), (rejected.returncode, rejected.stdout), rejected.stderr)
+                    self.assertEqual(before, self.event_count(root))
+        # 정상 요청은 계속 VERSION을 먼저 검증한다.
+        version.write_text("1.2\n")
+        invalid = self.run_artifacts(root, "paths")
+        self.assertEqual((2, ""), (invalid.returncode, invalid.stdout), invalid.stderr)
+        version.write_text("1.2.3\n")
         missing = "gradle-plugin/build/libs/kartograph-gradle-plugin-1.2.3.jar"
         (root / missing).unlink()
         result = self.run_artifacts(root, "hashes")
