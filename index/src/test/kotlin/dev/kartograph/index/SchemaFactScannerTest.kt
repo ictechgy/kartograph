@@ -252,6 +252,27 @@ class SchemaFactScannerTest {
     }
 
     @Test
+    fun `cte names and function or comparison operands are not relation uses`() {
+        // 게이트 없는 리터럴(strict)과 SQLDelight 파일 모두 CTE 이름, 함수 인자 안의 FROM,
+        // IS DISTINCT FROM 피연산자를 관계·미해석 근거로 내지 않는다.
+        project.resolve("Report.kt").writeText(
+            """
+            val recent = "WITH recent AS (SELECT * FROM orders) SELECT EXTRACT(YEAR FROM created_at) FROM recent WHERE kind IS DISTINCT FROM ?"
+            """.trimIndent(),
+        )
+        project.resolve("Archive.sq").writeText(
+            """
+            archiveStaged:
+            WITH staged AS (SELECT * FROM imports) INSERT INTO archive SELECT * FROM staged;
+            """.trimIndent(),
+        )
+        val doc = scan()
+        assertEquals(setOf("orders", "imports", "archive"), doc.facts.map { it.channel }.toSet())
+        assertTrue(doc.facts.none { it.dynamic })
+        assertTrue(doc.limitations.none { it.startsWith("unjoined-dynamic-relations") })
+    }
+
+    @Test
     fun `empty project emits null target`() {
         project.resolve("Empty.kt").writeText("class Empty")
         val doc = scan()

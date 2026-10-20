@@ -25,6 +25,8 @@ Git 출력은 NUL delimiter로 읽으므로 공백·줄바꿈·Unicode 파일명
 조용히 놓치지 않도록 변경 범위에 보수적으로 포함한다.
 
 Git 실행 실패와 shallow history의 누락은 경로나 raw ref를 출력하지 않고 exit 2와 해결 방향으로 반환한다.
+partial clone에서 빠진 객체가 필요하면 받아 오지 않고 같은 방식으로 실패한다. 받아 오는 일이 저장소 설정의 원격
+명령을 실행하기 때문이다([SECURITY.md](../SECURITY.md)).
 
 ## Suppression with expiry
 

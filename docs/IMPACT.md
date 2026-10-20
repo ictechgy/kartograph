@@ -60,6 +60,11 @@ module·file·test 필터는 각 축이 base 또는 current 사실에 맞으면 
 `--snapshot-max-mib 128`을 지정해 최대 128 MiB까지 허용할 수 있다(1..128). 이 옵션은 그래프 사실이나
 신선도 증거를 바꾸지 않는다. 일반 compiled query에는 적용하지 않는다. 메모리에 파싱한 그래프와 분석 작업은
 파일 크기보다 많은 heap을 사용할 수 있다.
+v2를 읽을 때는 문자열 사전 참조와 정점 위치 참조가 펼치는 문자열을 문서마다 합계 2,147,483,648자·33,554,432개까지만
+허용하고, 넘으면 검증 전에 실패한다(exit 2). 같은 문자열을 많은 행이 참조해 검증 비용을 파일 크기보다 크게 부풀린 문서를
+막는 상한이며, byte 상한과 달리 옵션으로 바꾸지 않는다. 실측한 대형 capture(AGP 9.2.0 jar의 93 MiB v2)는 약 3.7억 자·
+549만 개로 펼쳐졌다. 상한을 넘으면 CLI는 원인을 따로 밝히지 않고 명령마다의 일반 snapshot 읽기 오류(일부는 byte 상한을
+함께 적는다)를 낸다. `--snapshot-max-mib`를 올려도 풀리지 않으므로 snapshot을 다시 capture한다.
 
 Gradle 자동 캡처에는 `kartograph { snapshotMaxMiB.set(128) }`을 설정한다. 기본값은 64이며
 JVM·Android snapshot task에 같은 범위 검증을 적용한다. CI에서 만든 큰 파일을 읽는 명령에도 한도를 명시한다.
@@ -303,6 +308,11 @@ python3 Scripts/check-impact.py --binary /path/to/kartograph --project . \
 helper는 commit 간 변경 파일을 NUL 구분으로 읽는다. rename의 이전·이후 경로, 삭제 경로도 포함한다.
 snapshot 라벨과 실제 비교 commit, 두 scope, analyzer version이 다르면 실패한다. 동일 버전 문자열만으로 서로 다른
 로컬 빌드를 식별할 수는 없으므로 CI가 사용하는 배포 artifact도 고정한다. tracked 미커밋 변경은 거부한다.
+분석 대상 git 설정의 filter는 실행하지 않으므로 시각만 바뀌었거나 git-lfs처럼 filter로 정규화되는 파일도 변경으로
+보고(신뢰하는 checkout이면 먼저 `git update-index --refresh`), 서브모듈 안의 커밋하지 않은 변경은 보지 않는다.
+서브모듈이 있으면 보지 않았다는 사실을 보고서 `limitations`에 `current: working-tree-submodules-unchecked:`로 남긴다.
+partial clone에 없는 객체(예: `--filter=tree:0` clone의 기준 commit tree)가 필요하면 받아 오지 않고 exit 2로 끝난다
+([SECURITY.md](../SECURITY.md)).
 snapshot 파일 자체는 Git 밖의 CI artifact/cache로 관리하며 기존 미사용 baseline과 별개다.
 helper 기본 모드는 보고용이다. 문서·설정 등 매핑되지 않은 파일도 `unresolved`에 남기되 유효한 보고서를 만들면 0을 반환한다.
 확장자만으로 파일을 자동 무시하지 않는다. `--strict`는 선택/탐색이 partial/notFound일 때 종료 코드 1을 준다.
@@ -391,6 +401,11 @@ kartograph reach <usr>... --graph-file graph.json --project .
 - **`revision`**: `--revision <rev>`를 주면 그 값이다. 없으면 snapshot의 commit 라벨(`snapshot --revision`)이고, 그것도
   없으면 `--project` 디렉터리 아래에 커밋하지 않은 변경·추적되지 않은 파일이 없을 때만 git `HEAD`다. 작업 트리가
   더럽거나 저장소가 아니면 싣지 않는다 — 고친 소스 위에서 `HEAD`를 실으면 isthmus가 낡은 분석을 최신으로 본다.
+  분석 대상 git 설정의 filter·서브모듈 명령은 실행하지 않으므로, 프로젝트 아래에 서브모듈이 있거나 git-lfs처럼
+  filter로 정규화되는 파일의 stat이 낡았거나 덮을 수 없는 filter 드라이버 이름이 있어도 깨끗함을 증명하지 못해 싣지
+  않는다. partial clone에서 빠진 객체를 받아야 확인할 수 있을 때도 받지 않고 싣지 않는다([SECURITY.md](../SECURITY.md)).
+  서브모듈이나 덮을 수 없는 설정 때문에 뺐으면 `limitations`에 `revision-unverified:`로 시작하는 문구를 남긴다.
+  작업 트리가 더럽거나 저장소가 아니어서 뺀 경우에는 남기지 않는다.
   snapshot에 라벨이 있는데 `--revision`이 다르면 도구 실패(2)다. git은 CLI만 부르고 분석·렌더링은 부르지 않는다.
   저장한 snapshot을 읽으므로 `HEAD` 자동 감지는 snapshot을 지금 작업 트리에서 캡처했다고 가정한다. 다른 커밋에서
   캡처했다면 `snapshot --revision`으로 라벨을 남긴다.
