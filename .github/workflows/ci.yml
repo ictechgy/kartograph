@@ -38,7 +38,7 @@ jobs:
         run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
       - name: Preserve failed test details
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: failed-tests
           path: '*/build/test-results/test/*.xml'
@@ -56,7 +56,7 @@ jobs:
           python3 experiments/ai-utility-v8/verify_observer.py --jdk "$JAVA_HOME" --download-junit --output build/reports/ai-utility-v8-observer
       - name: Preserve native JUnit observer evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ai-utility-v8-observer
           path: |
@@ -69,7 +69,7 @@ jobs:
       - name: Verify automatic Gradle snapshots and CI impact
         run: python3 Scripts/verify-gradle-impact-ci.py
       - name: Preserve Gradle impact CI evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: gradle-impact-ci
           path: build/reports/gradle-impact-ci/result.json
@@ -83,7 +83,7 @@ jobs:
         run: python3 Scripts/verify-index-cost.py
       - name: Preserve bounded index cost evidence
         if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: index-cost
           path: build/reports/index-cost/result.json
@@ -110,7 +110,7 @@ jobs:
         run: python3 Scripts/verify-compiler-call-positions.py
       - name: Preserve compiler evidence validation
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: compiler-evidence-validation
           path: |
@@ -125,7 +125,7 @@ jobs:
       - name: Compare callgraph precision
         run: python3 experiments/callgraph-precision/run.py
       - name: Preserve precision comparison evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: callgraph-precision
           path: |
@@ -169,7 +169,7 @@ jobs:
         run: ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} test :gradle-plugin:validatePlugins
       - name: Preserve failed compatibility test details
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: failed-tests-jdk-${{ matrix.java }}
           path: '*/build/test-results/test/*.xml'
@@ -219,7 +219,7 @@ jobs:
           python3 Scripts/verify-agp-8-resource-impact.py
       - name: Preserve bounded resource experiment evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: agp-8-resource-impact
           path: build/reports/agp-8-resource-impact/result.json
