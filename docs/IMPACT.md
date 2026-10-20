@@ -63,7 +63,8 @@ module·file·test 필터는 각 축이 base 또는 current 사실에 맞으면 
 v2를 읽을 때는 문자열 사전 참조와 정점 위치 참조가 펼치는 문자열을 문서마다 합계 2,147,483,648자·33,554,432개까지만
 허용하고, 넘으면 검증 전에 실패한다(exit 2). 같은 문자열을 많은 행이 참조해 검증 비용을 파일 크기보다 크게 부풀린 문서를
 막는 상한이며, byte 상한과 달리 옵션으로 바꾸지 않는다. 실측한 대형 capture(AGP 9.2.0 jar의 93 MiB v2)는 약 3.7억 자·
-549만 개로 펼쳐졌다.
+549만 개로 펼쳐졌다. 상한을 넘으면 CLI는 원인을 따로 밝히지 않고 명령마다의 일반 snapshot 읽기 오류(일부는 byte 상한을
+함께 적는다)를 낸다. `--snapshot-max-mib`를 올려도 풀리지 않으므로 snapshot을 다시 capture한다.
 
 Gradle 자동 캡처에는 `kartograph { snapshotMaxMiB.set(128) }`을 설정한다. 기본값은 64이며
 JVM·Android snapshot task에 같은 범위 검증을 적용한다. CI에서 만든 큰 파일을 읽는 명령에도 한도를 명시한다.
