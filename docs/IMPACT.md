@@ -309,6 +309,7 @@ snapshot 라벨과 실제 비교 commit, 두 scope, analyzer version이 다르�
 로컬 빌드를 식별할 수는 없으므로 CI가 사용하는 배포 artifact도 고정한다. tracked 미커밋 변경은 거부한다.
 분석 대상 git 설정의 filter는 실행하지 않으므로 시각만 바뀌었거나 git-lfs처럼 filter로 정규화되는 파일도 변경으로
 보고(신뢰하는 checkout이면 먼저 `git update-index --refresh`), 서브모듈 안의 커밋하지 않은 변경은 보지 않는다.
+서브모듈이 있으면 보지 않았다는 사실을 보고서 `limitations`에 `current: working-tree-submodules-unchecked:`로 남긴다.
 partial clone에 없는 객체(예: `--filter=tree:0` clone의 기준 commit tree)가 필요하면 받아 오지 않고 exit 2로 끝난다
 ([SECURITY.md](../SECURITY.md)).
 snapshot 파일 자체는 Git 밖의 CI artifact/cache로 관리하며 기존 미사용 baseline과 별개다.

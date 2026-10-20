@@ -106,6 +106,11 @@ def plant_lazy_fetch_remote(scratch, source, clone, filter_spec, observe, prepar
     return marker
 
 
+def unchecked_submodule_limitations(report):
+    """보고서 limitations 중 서브모듈 작업 트리를 검사하지 않았다는 문구다."""
+    return [item for item in report.get("limitations", []) if "working-tree-submodules-unchecked:" in item]
+
+
 def commit_change(source):
     """기준 커밋 뒤에 Old.kt를 New.kt로 옮겨 고치고 Keep.kt를 고친 저장소를 만들고 기준 커밋 id를 돌려준다."""
     lines = "".join(str(number) + "\n" for number in range(1, 201))
@@ -205,6 +210,8 @@ class ImpactGateTest(unittest.TestCase):
                 # 드라이버 없이 대조해도 내용이 그대로라 작업 트리 변경이 없다. 보고서는 지금처럼 나온다.
                 self.assertEqual(0, result.returncode, result.stderr)
                 self.assertEqual("noChanges", json.loads(result.stdout)["status"])
+                # 서브모듈이 없으면 보고서에 한계를 더하지 않는다.
+                self.assertNotIn("limitations", json.loads(result.stdout))
                 self.assertEqual(["impact", "verify-snapshot"], [json.loads(line)[0] for line in calls.read_text().splitlines()])
 
     def test_unoverridable_filter_driver_name_fails_closed(self):
@@ -245,6 +252,11 @@ class ImpactGateTest(unittest.TestCase):
             # 서브모듈 안의 커밋하지 않은 변경은 보지 않는다. 그것을 보려면 서브모듈 저장소의 설정을 따르는 git을 띄워야 한다.
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertFalse(marker.exists(), "check-impact must not run git inside the submodule")
+            # 보지 않았다는 사실은 보고서의 limitation으로 남겨 조용히 통과시키지 않는다. 경로는 싣지 않는다.
+            limitations = unchecked_submodule_limitations(json.loads(result.stdout))
+            self.assertEqual(1, len(limitations), result.stdout)
+            self.assertTrue(limitations[0].startswith("current: "), limitations[0])
+            self.assertNotIn(str(project), limitations[0])
             fixture_git(submodule, "-c", "filter.evil.clean=", "commit", "-qam", "moved")
             moved, _ = self.run_with_fixture_cli(scratch, project, base)
             # 기록과 다른 커밋을 가리키는 서브모듈은 지금처럼 HEAD에 없는 작업 트리 변경이다.

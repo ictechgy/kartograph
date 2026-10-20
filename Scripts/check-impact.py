@@ -22,6 +22,12 @@ GIT_TRANSPORT_ISOLATION = {"GIT_ALLOW_PROTOCOL": "", "GIT_NO_LAZY_FETCH": "1"}
 # partial clone에서 git이 실패했을 때 오류에 덧붙이는 원인과 해결 방향이다.
 PARTIAL_CLONE_HINT = (" (this partial clone lacks Git objects that kartograph does not fetch, because fetching runs commands "
                       "from the repository configuration; fetch them in a trusted step first or clone without --filter)")
+# 작업 트리 검사가 서브모듈 안을 보지 않았을 때 보고서 limitations에 더하는 문구다. 보고서의 다른 한계처럼 시점 접두를 단다.
+UNCHECKED_SUBMODULES = ("current: working-tree-submodules-unchecked: uncommitted changes inside submodules were not checked, "
+                        "because that would run Git with each submodule repository's configuration; commit them or check them "
+                        "in a trusted checkout")
+# `git ls-files --stage` 항목(`<mode> <object> <stage>\t<path>`) 중 gitlink(서브모듈)의 mode다.
+GITLINK_MODE = b"160000 "
 
 
 class UsageParser(argparse.ArgumentParser):
@@ -125,11 +131,14 @@ def main():
     env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_NO_REPLACE_OBJECTS="1", GIT_OPTIONAL_LOCKS="0",
                **GIT_TRANSPORT_ISOLATION)
 
-    def git(*arguments):
+    def git_bytes(*arguments):
         result = subprocess.run(git_command(project, arguments, env), env=env, capture_output=True, timeout=30)
         if result.returncode:
             raise RuntimeError("unable to read committed Git inputs; verify the repository and base commit" + partial_clone_hint(project, env))
-        return result.stdout.decode("utf-8")
+        return result.stdout
+
+    def git(*arguments):
+        return git_bytes(*arguments).decode("utf-8")
 
     if Path(git("rev-parse", "--show-toplevel").strip()).resolve() != project:
         raise ValueError("project must be the Git repository root")
@@ -145,6 +154,10 @@ def main():
         raise RuntimeError("tracked working tree changes are not represented by HEAD; commit them before CI impact checks "
                            "(if only timestamps changed or a Git filter such as git-lfs normalizes the files, "
                            "run git update-index --refresh in the trusted checkout first)")
+    # 위 검사는 서브모듈 안의 커밋하지 않은 변경을 보지 않는다(보려면 서브모듈 저장소의 설정을 따르는 git을 띄워야 한다).
+    # index에 gitlink가 있으면 그 사실을 보고서 limitation으로 남긴다(설계 원칙 1). ls-files는 작업 트리 내용을 읽지 않고,
+    # 경로를 디코드하지 않아 UTF-8이 아닌 이름도 그대로 지난다.
+    unchecked_submodules = any(entry.startswith(GITLINK_MODE) for entry in git_bytes("ls-files", "--stage", "-z", "--").split(b"\0"))
     # rename을 D/A로 표현하면 이전 경로와 이후 경로가 모두 남고 공백/탭은 NUL 구분으로 보존된다.
     files = git("diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", "--no-textconv", base, current, "--").split("\0")
     files = sorted(set(files) - {""})
@@ -166,6 +179,11 @@ def main():
     inputs = report.get("inputs")
     if not isinstance(inputs, dict) or not all(isinstance(inputs.get(side), dict) and inputs[side].get("scope") for side in ("base", "current")):
         raise RuntimeError("CI impact requires snapshots labeled with --scope project:variant")
+    if unchecked_submodules:
+        limitations = report.get("limitations", [])
+        if not isinstance(limitations, list):
+            raise RuntimeError("unexpected impact report; use a compatible CLI")
+        report["limitations"] = limitations + [UNCHECKED_SUBMODULES]
 
     def verify(graph, checkout, bindings, scope, binding_file=None):
         command = [str(binary), "verify-snapshot", "--graph-file", str(graph), "--project", str(checkout),
