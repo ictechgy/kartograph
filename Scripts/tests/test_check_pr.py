@@ -22,6 +22,12 @@ STALE_TIME, RESTALE_TIME = 978307200, 1009843200
 ISOLATION = ["-c", "core.fsmonitor=false", "-c", "log.showSignature=false"]
 
 
+def driver_overrides(name):
+    """도우미가 filter 드라이버 하나를 끄려고 -C 앞에 두는 네 덮기 옵션이다(세 명령은 빈 값, required는 false)."""
+    return ["-c", "filter." + name + ".clean=", "-c", "filter." + name + ".smudge=", "-c", "filter." + name + ".process=",
+            "-c", "filter." + name + ".required=false"]
+
+
 def plant_filter_driver(scratch, repository, name, stale):
     """분석 대상 config에 표식을 남기는 filter 드라이버를 걸고 표식 경로를 돌려준다.
 
@@ -244,18 +250,25 @@ class CheckPrTest(unittest.TestCase):
         calls = [json.loads(line) for line in log.read_text().splitlines()]
         project = str(self.project.resolve())
         query = ISOLATION + ["-C", project, "config", "-z", "--name-only", "--includes", "--list"]
-        overrides = ["-c", "filter.evil.name.clean=", "-c", "filter.evil.name.smudge=", "-c", "filter.evil.name.process=",
-                     "-c", "filter.evil.name.required=false"]
+        overrides = driver_overrides("evil.name")
         # 분석용 git 호출마다 바로 앞에서 드라이버를 다시 조회하고, 조회한 드라이버를 덮은 채로 실행한다.
         self.assertEqual([query] * 3, calls[0::2])
         analysis = calls[1::2]
         self.assertEqual(3, len(analysis))
-        prefix = ISOLATION + overrides + ["-C", project]
+        subcommands = []
         for call in analysis:
-            self.assertEqual(prefix, call[:len(prefix)])
-        self.assertEqual(["rev-parse", "rev-parse", "show"], [call[len(prefix)] for call in analysis])
+            separator = call.index("-C")
+            self.assertEqual(ISOLATION, call[:len(ISOLATION)])
+            self.assertEqual(project, call[separator + 1])
+            # 시스템·전역 설정의 드라이버(예: CI runner의 git-lfs)도 함께 덮으므로 덮기 옵션 수는 환경마다 다르다. 공통 설정과
+            # -C 사이가 드라이버마다 네 옵션인 묶음으로만 이루어졌는지 보고, 심은 드라이버의 묶음이 그 안에 있는지 본다.
+            groups = [call[start:start + len(overrides)] for start in range(len(ISOLATION), separator, len(overrides))]
+            self.assertEqual([driver_overrides(group[1][len("filter."):-len(".clean=")]) for group in groups], groups)
+            self.assertIn(overrides, groups)
+            subcommands.append(call[separator + 2:])
+        self.assertEqual(["rev-parse", "rev-parse", "show"], [arguments[0] for arguments in subcommands])
         # show는 log 계열이라 외부 diff·textconv를 끈다(blob 읽기에는 원래 쓰이지 않지만 설정이 바꿀 여지를 없앤다).
-        self.assertEqual(["--no-ext-diff", "--no-textconv"], analysis[2][len(prefix) + 1:len(prefix) + 3])
+        self.assertEqual(["--no-ext-diff", "--no-textconv"], subcommands[2][1:3])
 
     def test_unoverridable_filter_driver_name_fails_closed(self):
         scratch = Path(tempfile.mkdtemp(prefix="kartograph-pr-scratch-"))
