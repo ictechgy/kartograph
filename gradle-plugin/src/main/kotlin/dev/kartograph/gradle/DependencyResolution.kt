@@ -83,7 +83,9 @@ internal data class DependencyResolution(
 
         /**
          * file 의존성 coordinate다. 파일 이름과 위치 키의 SHA-256 앞 6바이트로 같은 이름의 다른 파일을 구분한다.
-         * 키가 checkout·Gradle user home 위치를 담지 않으므로 보고서 coordinate와 baseline 지문도 그 위치와 무관하다.
+         * 키가 checkout·Gradle user home 위치를 담지 않으므로 두 디렉터리 안 파일의 보고서 coordinate와 baseline 지문은
+         * 그 위치와 무관하다. 두 디렉터리 밖 파일은 root와의 상대 배치가 같을 때만 같다([ArtifactLocationKeys]).
+         * coordinate는 cache 출력이라 task 입력인 위치 키로만 만든다. 절대 경로를 섞으면 다른 배치의 결과가 복원된다.
          */
         internal fun fileCoordinate(fileName: String, locationKey: String): String =
             "file:" + URLEncoder.encode(fileName, StandardCharsets.UTF_8) + "#" +
