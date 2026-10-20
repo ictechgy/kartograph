@@ -55,9 +55,10 @@ internal object GitRevision {
         val index = runGit(project, listOf("ls-files", "--stage", "-z", "--", ".")) ?: return UNKNOWN
         if (index.split('\u0000').any { entry -> entry.startsWith(GITLINK_MODE) }) return Inspection(null, UNINSPECTED_SUBMODULES)
         // --no-optional-locks: 읽기 전용 질의가 index를 갱신하려고 잠그지 않게 한다.
-        // --ignore-submodules=all: 서브모듈 안에서 git을 띄우지 않는다(위에서 gitlink가 없음을 확인했다).
+        // --ignore-submodules=dirty: 서브모듈 안에서 git을 띄우지 않는다(위에서 index에 gitlink가 없음을 확인했다). all과
+        // 달리 HEAD에 있던 gitlink를 커밋하지 않고 지운 변경은 남겨, 그 상태를 깨끗하다고 보지 않는다([ChangedFiles]와 같은 값).
         val dirty = runGit(project, listOf("--no-optional-locks", "status", "--porcelain", "--untracked-files=normal",
-            "--ignore-submodules=all", "-z", "--", ".")) ?: return UNKNOWN
+            "--ignore-submodules=dirty", "-z", "--", ".")) ?: return UNKNOWN
         return Inspection(head.takeIf { dirty.isEmpty() }, null)
     }
 

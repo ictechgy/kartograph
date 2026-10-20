@@ -371,6 +371,21 @@ class TraversalCliTest {
     }
 
     @Test
+    fun `an uncommitted submodule removal under the project omits the revision`(@TempDir root: Path) {
+        val library = root.resolve("library")
+        GitFixture.commit(library, mapOf("inner.txt" to "inner\n"))
+        val repository = root.resolve("repository")
+        GitFixture.commit(repository, mapOf("app/src/A.kt" to "class A\n"))
+        GitFixture.git(repository, "submodule", "--quiet", "add", library.toString(), "app/sub")
+        GitFixture.git(repository, "commit", "-q", "-m", "submodule")
+        // index에서 gitlink가 빠지고, 함께 바뀐 .gitmodules는 프로젝트(app) 밖에 있다.
+        GitFixture.git(repository, "rm", "-q", "app/sub")
+
+        // HEAD의 gitlink 삭제도 커밋하지 않은 변경이라 깨끗하다고 주장하지 않는다. 더러운 작업 트리처럼 한계 없이 뺀다.
+        assertEquals(GitRevision.Inspection(null, null), GitRevision.inspect(repository.resolve("app").toRealPath()))
+    }
+
+    @Test
     fun `a revision the git boundary cannot verify leaves a limitation instead of a silent omission`(@TempDir root: Path) {
         val library = root.resolve("library")
         GitFixture.commit(library, mapOf("inner.txt" to "inner\n"))
