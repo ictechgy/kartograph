@@ -57,6 +57,20 @@ class DependencyResolutionTest {
     }
 
     @Test
+    fun `file coordinates outside both bases follow the placement relative to the root`(@TempDir root: Path) {
+        fun coordinate(checkout: String, artifact: String): String {
+            val keys = ArtifactLocationKeys(root.resolve(checkout).toFile(), root.resolve("home").toFile())
+            return DependencyResolution.fileCoordinate("vendor.jar", keys.of(root.resolve(artifact).toFile()))
+        }
+        // root와 함께 옮겨지는 배치(monorepo의 형제 디렉터리)는 checkout 위치가 달라도 같은 좌표다.
+        assertEquals(coordinate("a/mono/app", "a/mono/libs/vendor.jar"), coordinate("b/c/mono/app", "b/c/mono/libs/vendor.jar"))
+        // 고정 위치의 jar는 root와의 상대 배치가 checkout 깊이에 따라 달라지므로 좌표도 달라진다. 0.25.0까지는 절대 경로가
+        // 같으면 같은 좌표였다. 좌표는 task 입력인 위치 키로만 만들어야 cache가 다른 배치의 결과를 복원하지 않는다
+        // (docs/DEPENDENCIES.md에 적은 예외).
+        assertNotEquals(coordinate("a/app", "opt/libs/vendor.jar"), coordinate("b/c/app", "opt/libs/vendor.jar"))
+    }
+
+    @Test
     fun `aliased artifact paths are matched against the real base directories`(@TempDir root: Path) {
         val home = Files.createDirectories(root.resolve("home"))
         val alias = Files.createSymbolicLink(root.resolve("home-alias"), home)
