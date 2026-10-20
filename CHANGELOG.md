@@ -51,12 +51,19 @@
   `--revision`·snapshot 라벨이 없을 때 싣던 `HEAD` revision을 생략하고, `dead --since`는 그런 파일과 시각만 바뀐
   파일도 범위에 넣는다. `Scripts/check-impact.py`는 그런 파일을 작업 트리 변경으로 보고 exit 2로 끝난다. 신뢰하는
   checkout이면 먼저 `git update-index --refresh`로 stat 정보를 갱신한다.
-- 프로젝트 아래에 서브모듈(gitlink)이 있으면 깨끗함을 증명할 수 없어 `HEAD` revision을 생략한다(`--revision`으로
-  준다). `dead --since`와 `Scripts/check-impact.py`는 서브모듈이 가리키는 커밋의 변화만 보고 서브모듈 안의 커밋하지
-  않은 변경은 보지 않는다.
+- 프로젝트 아래에 서브모듈(gitlink)이 있으면 깨끗함을 증명할 수 없어 `HEAD` revision을 생략하고(`--revision`으로
+  준다) 순회 문서에 `revision-unverified:` limitation을 남긴다. `dead --since`와 `Scripts/check-impact.py`는 서브모듈이
+  가리키는 커밋의 변화만 보고 서브모듈 안의 커밋하지 않은 변경은 보지 않는다. `check-impact.py`는 서브모듈이 있으면
+  보고서 `limitations`에 `current: working-tree-submodules-unchecked:` 문구를 더한다.
 - `-c`로 그대로 덮을 수 없는 filter 드라이버 이름(`A-Z a-z 0-9 . _ + -` 밖의 문자가 든 이름)이 있거나 git 설정을
-  읽지 못하면 git을 실행하지 않는다. `HEAD` revision은 생략하고, `dead --since`와 PR 도우미(`Scripts/check-pr.py`·
-  `Scripts/check-impact.py`)는 exit 2로 끝난다.
+  읽지 못하면 git을 실행하지 않는다. `HEAD` revision은 생략하고(순회 문서에 `revision-unverified:` limitation),
+  `dead --since`와 PR 도우미(`Scripts/check-pr.py`·`Scripts/check-impact.py`)는 exit 2로 끝난다.
+- partial clone(`--filter`로 받은 clone)에서 빠진 객체가 필요하면 받아 오지 않는다(아래 Security 절). `dead --since`와
+  `check-impact.py`의 diff는 rename을 판정하지 않아 blobless clone(`--filter=blob:none`)에서도 지금처럼 동작한다. 기준
+  commit의 tree가 없는 `--filter=tree:0` clone처럼 객체가 꼭 필요하면 `dead --since`는 partial clone임을 알리는 오류로,
+  `check-impact.py`는 같은 안내를 덧붙인 오류로 exit 2가 되고 revision 확인은 revision을 생략한다. `Scripts/check-pr.py`는
+  PR이 baseline을 고쳐 기준 commit의 baseline blob이 blobless clone에 없으면 exit 2로 끝난다. `--filter` 없이 clone하거나
+  신뢰하는 단계에서 객체를 먼저 받는다.
 - `schema`의 persistence `relation-use`가 관계 이름이 아닌 세 SQL 자리를 더는 사실로 내지 않는다. 같은 문장 안에서
   한정자 없이 쓴 CTE 이름(`WITH recent AS (…) SELECT * FROM recent`), 함수 인자 안의 `FROM`
   (`EXTRACT(YEAR FROM created_at)`·`TRIM(BOTH ' ' FROM name)`), `IS [NOT] DISTINCT FROM`의 피연산자(`$1` 포함)다.
@@ -73,9 +80,11 @@
   transform 출력은 Gradle이 정한 작업 디렉터리 이름이 같을 때만 재사용한다. 보고서의 artifact 열은 예전처럼 파일
   이름이고, artifact 열에 경로를 적는 수동 task 설정도 그대로 동작한다([docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)).
 - **Breaking**: Gradle task가 내는 file 의존성 coordinate `file:<이름>#<해시>`의 해시를 절대경로 대신 위 위치 키로
-  만든다. 보고서 coordinate와 `dependencies-v1` 지문이 checkout마다 달라지던 문제가 없어지는 대신, 0.25.0 이하에서
-  저장한 dependency baseline·suppress의 `file:` 항목은 맞지 않으므로 다시 capture한다. CLI `dependencies`(TSV
-  입력)의 출력은 그대로다.
+  만든다. root project·Gradle user home 안의 파일은 보고서 coordinate와 `dependencies-v1` 지문이 checkout 위치와
+  무관해진다. 두 디렉터리 밖의 파일은 root와의 상대 배치가 같을 때만 같은 지문이라, monorepo 형제 디렉터리의 jar는
+  checkout마다 같아지고 `/opt/libs/vendor.jar`처럼 위치가 고정된 jar는 checkout 깊이가 다르면 달라진다(0.25.0까지는
+  절대 경로가 같으면 같았다). 0.25.0 이하에서 저장한 dependency baseline·suppress의 `file:` 항목은 맞지 않으므로 다시
+  capture한다. CLI `dependencies`(TSV 입력)의 출력은 그대로다.
 - impact의 `--files-from`·`--symbol` 선택, language-traversal의 root 해석·root 목록·`graphRevision`,
   query 이웃 탐색, bridges·routes·schema의 snapshot 신원 부착, 저장 snapshot의 processor 출력 검증,
   JPA 명명 감지, Android resource XML 읽기, Kotlin route 소스의 문장 끝 판정, routes 경로 식의 지역 선언
@@ -88,11 +97,14 @@
   (`Scripts/check-pr.py`·`Scripts/check-impact.py`)가 분석 대상 저장소의 git 설정이 고른 명령을 실행하지 않는다.
   git을 부를 때마다 바로 앞에서 설정된 filter 드라이버 이름을 읽어 clean·smudge·process 명령을 빈 값으로 덮고,
   `core.fsmonitor`·서명 확인(`log.showSignature`)·textconv·외부 diff와 작업 트리 diff의 index 자동 갱신(그때
-  실행되는 hook 포함)을 끄며, 서브모듈 안에서는 git을 실행하지 않는다. 여기 적지 않은 설정(예: partial clone이
-  빠진 객체를 받을 때의 원격 전송 설정)은 여전히 따르므로, 출처를 모르는 checkout에서는 `--revision`을 명시하고
-  `--since`를 쓰지 않는다([SECURITY.md](SECURITY.md)).
+  실행되는 hook 포함)을 끄며, 서브모듈 안에서는 git을 실행하지 않는다. partial clone이 빠진 객체를 받는 lazy fetch도
+  저장소에 설정된 원격 전송 명령(`remote.<name>.uploadpack` 등)을 실행하므로, 모든 git을 어떤 전송도 허용하지 않고
+  (`GIT_ALLOW_PROTOCOL` 빈 값) lazy fetch를 끈(`GIT_NO_LAZY_FETCH=1`) 환경으로 실행한다. 여기 적지 않은 설정은 여전히
+  따르므로, 출처를 모르는 checkout에서는 `--revision`을 명시하고 `--since`를 쓰지 않는 편이 안전하다
+  ([SECURITY.md](SECURITY.md)).
 - compact(v2) snapshot을 읽을 때 문자열 사전 참조와 정점 위치 참조가 펼치는 문자열을 문서마다 합계
-  2,147,483,648자·33,554,432개까지만 허용하고, 넘으면 검증 전에 거부한다(exit 2). 같은 문자열을 많은 행이 참조한
+  2,147,483,648자·33,554,432개까지만 허용하고, 넘으면 검증 전에 거부한다(exit 2, 명령마다의 일반 snapshot 읽기 오류로
+  나오며 byte 상한을 올려도 풀리지 않으므로 다시 capture한다). 같은 문자열을 많은 행이 참조한
   작은 문서가 경로 검사·식별자 연결·정렬 비교를 참조 수만큼 반복시켜 CPU·메모리를 오래 쓰게 하던 문제다.
   `--graph-file`·`--base-graph`·MCP 시작처럼 저장 snapshot을 읽는 모든 경로에 적용하며 byte 상한과 달리 옵션으로
   바꾸지 않는다. 실측한 대형 capture(AGP 9.2.0 jar의 93 MiB v2: 약 3.7억 자·549만 개)는 영향이 없다. 상한 안의
