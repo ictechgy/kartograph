@@ -120,7 +120,11 @@ kartograph dependencies --classes build/classes/java/main --project . \
 공통 baseline JSON의 정확한 `dependencies-v1|...` 지문을 사용한다. JSON/SARIF에 지문을
 내보내며, 좌표·버전·선언 scope·제안 scope·관찰한 클래스가 바뀌면 다시 검토해야 한다.
 artifact cache 절대경로와 클래스 목록 순서는 지문에 영향을 주지 않는다. Gradle task의 file 의존성
-좌표 `file:<이름>#<해시>`는 위 위치 키로 해시를 만들어 checkout 위치와 무관하다. 0.25.0까지는
+좌표 `file:<이름>#<해시>`는 위 위치 키로 해시를 만든다. 그래서 root project·Gradle user home 안의 파일은
+checkout 위치와 무관하게 같은 좌표다. 두 디렉터리 밖의 파일은 root와의 상대 배치가 같을 때만 같은 좌표다.
+monorepo의 형제 디렉터리처럼 root와 함께 옮겨지는 파일은 같고, `/opt/libs/vendor.jar`처럼 위치가 고정된
+파일은 checkout 깊이가 다르면 달라진다. 좌표는 build cache 출력이라 task 입력인 위치 키로만 만든다. 그런
+파일의 지문을 agent끼리 맞추려면 같은 깊이에 checkout하거나 파일을 root 아래로 옮긴다. 0.25.0까지는
 절대경로로 만들었으므로 그때 저장한 baseline·suppress의 `file:` 지문은 다시 capture한다. 임시 억제는
 공통 suppress 형식의 `fingerprint`, 비어 있지 않은 `reason`, `expires`가 필요하다.
 만료일은 해당 UTC 날짜까지 유효하다. strict는 필터 뒤 진단만 세며, 억제·만료 수와
