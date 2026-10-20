@@ -3,8 +3,10 @@
 verify job은 검증 메타데이터 밖의 fixture 빌드와 전체 테스트를 비밀·쓰기 토큰·environment 없이 돌리고 배포물 해시 목록만
 넘긴다. publish job은 그 목록을 믿지 않는다. source를 스스로 다시 확인하고, 다시 빌드한 배포물의 목록이 넘겨받은 목록과
 문자 그대로 같을 때만 tag·release·Portal에 쓴다. 두 job은 checkout과 GITHUB_ENV를 공유하지 않으므로 테스트도 job마다 새로 둔다.
+release-readiness의 증거 step도 실제 shell로 실행해, 공용 배포물 스크립트가 없는 이전 target에서도 gate 전에 멈추지 않는지 본다.
 """
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -54,6 +56,23 @@ PLUGIN_JAR = ARTIFACTS[2]
 # harness가 흉내 내는 job·run step 키다. 다른 키(예: continue-on-error, working-directory)는 실행 의미가 달라 멈춘다.
 JOB_KEYS = {"runs-on", "timeout-minutes", "permissions", "environment", "needs", "outputs", "steps"}
 RUN_STEP_KEYS = {"name", "id", "if", "shell", "env", "with", "run"}
+READINESS_WORKFLOW = WORKFLOWS / "release-readiness.yml"
+READINESS_ADMIT = "Require a full commit SHA"
+READINESS_SOURCE = "Verify and record the requested source"
+# release-readiness가 gate 증거로 해시하는 스크립트다. 앞의 둘은 이 workflow가 생길 때부터 있었고, 공용 배포물 스크립트는
+# 그 도입 뒤의 target에만 있다. 그 전 target의 readiness는 배포물 빌드를 스스로 정의한다.
+READINESS_GATES = ("Scripts/verify-release-readiness.sh", "Scripts/verify-analysis-smoke-gate.py")
+SHARED_GATE = RELEASE_SCRIPTS[0]
+# source 기록 step이 묻는 git 질의만 답하고, 다른 인자는 실패한다.
+READINESS_GIT = r"""#!/bin/sh
+if [ "$*" = "rev-parse HEAD" ]; then
+  echo "$MOCK_HEAD"
+elif [ "$*" = "rev-parse HEAD HEAD^{tree}" ]; then
+  printf '%s\n%s\n' "$MOCK_HEAD" "$MOCK_TREE"
+else
+  exit 1
+fi
+"""
 
 # 실제 네트워크·빌드·게시 명령 대신 job별 인자와 상태 전이를 기록하며, 모르는 명령은 실패한다.
 # 호출마다 새 Python 프로세스가 뜨므로 빌드·게시 경로에서만 쓰는 모듈은 그때 import한다.
@@ -351,6 +370,76 @@ class WorkflowCacheBoundaryTest(unittest.TestCase):
                     if action(step) == "gradle/actions/setup-gradle":
                         self.assertIn("true", (step["with"].get("cache-read-only"), step["with"].get("cache-disabled")))
                 self.assertFalse([name for name in self.cache_actions(workflow) if name != "actions/cache/restore"])
+
+
+class ReleaseReadinessEvidenceTest(unittest.TestCase):
+    """release-readiness의 SHA 확인·증거 기록 step을 실제 shell과 sha256sum으로 실행한다.
+
+    이 workflow는 dispatch한 ref의 정의로 입력 target_sha를 checkout해 검증한다. target은 main에 rebase하지 않은 PR head나
+    이전 release commit일 수 있고, 그 commit의 readiness는 공용 배포물 스크립트 없이 자기 완결이라 gate를 돌릴 수 있다.
+    그래서 증거 기록이 그 파일이 없다는 이유로 gate 전에 실패하면 안 된다. 처음부터 있던 gate 파일은 계속 필수다.
+    """
+
+    def setUp(self):
+        sha256sum = shutil.which("sha256sum")
+        if sha256sum is None:
+            self.skipTest("sha256sum is required to run the evidence step as the Ubuntu runner does")
+        temporary = tempfile.TemporaryDirectory(prefix="kartograph-readiness-evidence-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        install(self.root / "bin/git", READINESS_GIT)
+        (self.root / "bin/sha256sum").symlink_to(sha256sum)
+        self.job = workflow_jobs(READINESS_WORKFLOW)["validate"]
+        # target SHA는 job env로만 들어온다. 테스트는 그 값을 직접 준다.
+        self.assertEqual({"TARGET_SHA": "${{ inputs.target_sha }}"}, self.job.get("env"))
+
+    def record(self, gates):
+        """gates 파일만 둔 새 target checkout에서 두 step을 runner처럼 차례로 실행한다.
+
+        step마다 새 GITHUB_ENV 파일을 주고 앞 step이 기록한 값을 다음 step 환경에 잇는다. 첫 실패에서 멈추며, 결과와 checkout,
+        끝까지 성공했을 때의 증거 디렉터리(실패하면 None)를 돌려준다.
+        """
+        call = Path(tempfile.mkdtemp(prefix="target-", dir=self.root))
+        checkout, commands = call / "checkout", call / "github-env"
+        for name in gates:
+            install(checkout / name, "gate " + name + "\n")
+        env = {"PATH": str(self.root / "bin") + os.pathsep + os.defpath, "HOME": str(self.root), "LC_ALL": "C",
+               "TARGET_SHA": SOURCE, "MOCK_HEAD": SOURCE, "MOCK_TREE": OTHER, "RUNNER_TEMP": str(call / "runner")}
+        for name in (READINESS_ADMIT, READINESS_SOURCE):
+            step = step_named(self.job, name)
+            self.assertEqual("bash", step.get("shell"))
+            commands.write_text("")
+            result = subprocess.run(
+                ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", step["run"]],
+                cwd=checkout, env=dict(env, GITHUB_ENV=str(commands)), text=True, capture_output=True, timeout=30,
+            )
+            if result.returncode:
+                return result, checkout, None
+            env.update(file_commands(commands))
+        return result, checkout, Path(env["EVIDENCE_DIRECTORY"])
+
+    def expected(self, checkout, gates):
+        return "".join(f"{hashlib.sha256((checkout / name).read_bytes()).hexdigest()}  {name}\n" for name in gates)
+
+    def test_target_before_the_shared_release_script_records_its_own_gates(self):
+        result, checkout, evidence = self.record(READINESS_GATES)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(self.expected(checkout, READINESS_GATES), (evidence / "gates.sha256").read_text())
+
+    def test_target_with_the_shared_release_script_records_it_with_the_gates(self):
+        gates = (*READINESS_GATES, SHARED_GATE)
+        result, checkout, evidence = self.record(gates)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(self.expected(checkout, gates), (evidence / "gates.sha256").read_text())
+
+    def test_missing_original_gate_still_fails_the_evidence_step(self):
+        for missing in READINESS_GATES:
+            with self.subTest(missing=missing):
+                result, _, evidence = self.record([name for name in (*READINESS_GATES, SHARED_GATE) if name != missing])
+                self.assertNotEqual(0, result.returncode)
+                self.assertIsNone(evidence)
+                # mock git이나 다른 명령이 아니라 빠진 gate 파일 때문에 멈췄다.
+                self.assertIn(missing, result.stderr)
 
 
 class ReleaseJobBoundaryTest(unittest.TestCase):
