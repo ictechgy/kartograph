@@ -48,18 +48,25 @@ clean·smudge·process 명령을 빈 값으로 덮고, `core.fsmonitor`, 서명 
 (`A-Z a-z 0-9 . _ + -` 밖의 문자가 든 이름)이 있거나 설정을 읽지 못하면 git을 실행하지 않는다. 이때 revision은
 생략하고 `dead --since`는 exit 2로 끝난다.
 
+partial clone(`--filter`로 받은 clone)이 빠진 객체를 받는 lazy fetch는 저장소에 설정된 원격 전송 설정(예:
+`remote.<name>.uploadpack`·`core.sshCommand`)이 고른 명령을 실행한다. 그래서 git을 어떤 전송 프로토콜도 허용하지 않고
+(`GIT_ALLOW_PROTOCOL`을 빈 값으로 둔다. 저장소의 `protocol.*.allow`보다 우선한다) lazy fetch도 끈(`GIT_NO_LAZY_FETCH=1`)
+환경으로 실행한다. `dead --since`의 diff는 rename을 판정하지 않으므로 blobless clone(`--filter=blob:none`)에서도 빠진
+blob 없이 범위를 읽는다. 빠진 객체가 꼭 필요하면(예: 기준 커밋의 tree가 없는 `--filter=tree:0` clone) git이 실패한다.
+그때 revision은 생략하고, `dead --since`는 partial clone임을 알리는 오류로 exit 2가 된다. 신뢰하는 checkout이면 객체를
+먼저 받아 두거나 `--filter` 없이 clone한다.
+
 filter를 실행하지 않으므로 git-lfs처럼 filter로 정규화되는 파일은 stat 정보가 index와 다르면 내용이 커밋과 달라
 보인다. 그때 revision은 생략한다(깨끗하다고 주장하지 않는다). `dead --since`는 stat이 index와 다른 파일의 내용을
 다시 읽지 않으므로 그런 파일과 내용 없이 시각만 바뀐 파일도 범위에 넣는다. 신뢰하는 checkout이면 먼저
 `git update-index --refresh`로 stat 정보를 갱신한다. 위에 적지 않은 설정은 범위(사용자 전역·시스템·저장소)와
-상관없이 따른다. 예를 들어 partial clone에서 빠진 객체를 받아 와야 하면 git은 저장소에 설정된 원격 전송 설정
-(예: `remote.<name>.uploadpack`)이 고른 명령을 실행할 수 있다. 그러니 출처를 모르는 `.git`이 든 checkout에서는
-여전히 `--revision`을 명시하고 `--since`를 쓰지 않는다.
+상관없이 따른다. 이 경계가 git의 모든 경로를 막는다고 보장하지는 않으므로, 출처를 모르는 `.git`이 든 checkout에서는
+`--revision`을 명시하고 `--since`를 쓰지 않는 편이 안전하다.
 
 배포본에 든 PR 도우미 `Scripts/check-pr.py`·`Scripts/check-impact.py`도 git을 부를 때마다 같은 방식으로 filter
 드라이버를 덮고 `core.fsmonitor`·서명 표시를 끄며, `git show`와 diff에서는 textconv·외부 diff를 끈다.
 `check-impact.py`의 작업 트리 검사는 index 자동 갱신도 끄고 서브모듈 안에서 git을 실행하지 않는다. 그래서 서브모듈이
 가리키는 커밋의 변화는 계속 거부하지만 서브모듈 안의 커밋하지 않은 변경은 보지 않고, filter로 정규화되거나 시각만
 바뀐 파일은 작업 트리 변경으로 보고 exit 2로 끝난다(신뢰하는 checkout이면 먼저 `git update-index --refresh`).
-덮을 수 없는 드라이버 이름이 있거나 설정을 읽지 못하면 두 도우미 모두 git을 실행하지 않고 exit 2로 끝난다. partial
-clone의 원격 전송 설정은 위와 같이 따른다.
+덮을 수 없는 드라이버 이름이 있거나 설정을 읽지 못하면 두 도우미 모두 git을 실행하지 않고 exit 2로 끝난다. 두 도우미는
+아직 partial clone의 원격 전송 설정을 따른다.

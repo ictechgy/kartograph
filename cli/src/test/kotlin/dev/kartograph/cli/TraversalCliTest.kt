@@ -357,6 +357,27 @@ class TraversalCliTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the upload-pack marker is a POSIX shell script")
+    fun `revision checks do not fetch objects a partial clone lacks through the repository remote`(@TempDir root: Path) {
+        val source = root.resolve("source")
+        val lines = (1..200).joinToString("\n", postfix = "\n")
+        GitFixture.commit(source, mapOf("src/Old.kt" to lines))
+        val base = GitFixture.git(source, "rev-parse", "HEAD")
+        GitFixture.git(source, "mv", "src/Old.kt", "src/New.kt")
+        Files.writeString(source.resolve("src/New.kt"), lines + "tail\n")
+        GitFixture.git(source, "commit", "-q", "-am", "rename")
+        val clone = root.resolve("clone")
+        // HEAD만 기준 커밋으로 옮겨(--soft) index에 staged rename을 남긴다. 일반 git status는 rename을 판정하려고 기준 쪽의
+        // 빠진 blob을 lazy fetch하며 clone config의 upload-pack을 실행한다.
+        val probe = LazyFetchProbe(root, source, clone, "blob:none", listOf("--no-optional-locks", "status", "--porcelain")) { target ->
+            GitFixture.git(target, "reset", "-q", "--soft", base)
+        }
+
+        assertNull(GitRevision.cleanHead(clone.toRealPath()))
+        assertFalse(probe.ran, "kartograph must not fetch missing objects through the analyzed repository's remote")
+    }
+
+    @Test
     fun `graph revision is shared by both directions and ignores snapshot layout`(@TempDir root: Path) {
         val graph = capture(root)
         val reverse = document(traverse(graph, root))["graphRevision"] as String

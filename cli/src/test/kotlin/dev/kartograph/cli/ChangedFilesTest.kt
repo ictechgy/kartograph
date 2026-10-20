@@ -319,6 +319,52 @@ class ChangedFilesTest {
         assertFalse(probe.ran, "kartograph must not run git inside the submodule")
     }
 
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the upload-pack marker is a POSIX shell script")
+    fun `since reads a blobless partial clone without fetching objects through the repository remote`(@TempDir root: Path) {
+        val source = root.resolve("source")
+        val base = commitRename(source)
+        val clone = root.resolve("clone")
+        // 일반 git diff는 rename을 판정하려고 기준 쪽의 빠진 blob을 lazy fetch하며 clone config의 upload-pack을 실행한다.
+        val probe = LazyFetchProbe(root, source, clone, "blob:none", listOf("diff", "--name-only", "$base...HEAD"))
+
+        val changed = ChangedFiles.since(base, clone)
+
+        assertFalse(probe.ran, "kartograph must not fetch missing objects through the analyzed repository's remote")
+        // 이름만 내는 diff라 rename 판정 없이도 전체 clone과 같은 경로를 낸다.
+        assertEquals(setOf("New.kt", "Keep.kt"), changed.map { clone.toRealPath().relativize(it).toString() }.toSet())
+        assertEquals(setOf("New.kt", "Keep.kt"), ChangedFiles.since(base, source).map { source.toRealPath().relativize(it).toString() }.toSet())
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the upload-pack marker is a POSIX shell script")
+    fun `since fails closed when a partial clone lacks the objects it needs`(@TempDir root: Path) {
+        val source = root.resolve("source")
+        val base = commitRename(source)
+        val clone = root.resolve("clone")
+        // tree:0 clone에는 기준 커밋의 tree가 없어 범위 diff가 lazy fetch를 띄워야 한다.
+        val probe = LazyFetchProbe(root, source, clone, "tree:0", listOf("diff", "--name-only", "--no-renames", "$base...HEAD"))
+
+        val error = assertFailsWith<ChangedFilesException> { ChangedFiles.since(base, clone) }
+
+        assertFalse(probe.ran, "kartograph must not fetch missing objects through the analyzed repository's remote")
+        assertContains(error.message.orEmpty(), "partial clone")
+        assertContains(error.message.orEmpty(), "--since")
+        assertFalse(error.message.orEmpty().contains(base), "the reference stays out of the message")
+    }
+
+    /** 기준 커밋 뒤에 Old.kt를 New.kt로 옮겨 고치고 Keep.kt를 고친 저장소를 만들고 기준 커밋 id를 돌려준다. */
+    private fun commitRename(source: Path): String {
+        val lines = (1..200).joinToString("\n", postfix = "\n")
+        GitFixture.commit(source, mapOf("Old.kt" to lines, "Keep.kt" to "keep\n"))
+        val base = GitFixture.git(source, "rev-parse", "HEAD")
+        GitFixture.git(source, "mv", "Old.kt", "New.kt")
+        Files.writeString(source.resolve("New.kt"), lines + "tail\n")
+        Files.writeString(source.resolve("Keep.kt"), "changed\n")
+        GitFixture.git(source, "commit", "-q", "-am", "rename")
+        return base
+    }
+
     /** `dead`가 읽을 class root다. CLI 자신의 class 출력이다(KartographCliTest와 같은 입력). */
     private val cliClasses: Path
         get() = Path.of(requireNotNull(KartographCli::class.java.protectionDomain.codeSource).location.toURI())

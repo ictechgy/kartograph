@@ -8,6 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import org.junit.jupiter.api.condition.DisabledOnOs
 import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
@@ -104,6 +105,35 @@ class GitCommandTest {
         val error = assertFailsWith<GitIsolationException> { GitCommand.start(failing.toString(), root, listOf("status")) }
         assertContains(error.message.orEmpty(), "unable to read the git configuration")
         assertEquals(1, Files.readAllLines(log).size, "only the lookup ran")
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the fake git is a POSIX shell script")
+    fun `every git process runs with transports and lazy fetch turned off`(@TempDir root: Path) {
+        val log = root.resolve("environment.txt")
+        // 환경 변수가 비어 있으면 빈 칸, 없으면 unset을 남긴다. 드라이버 조회와 분석용 git 모두 같아야 한다.
+        val git = root.resolve("environment-git")
+        Files.writeString(git, "#!/bin/sh\nprintf '[%s] [%s] %s\\n' \"\${GIT_ALLOW_PROTOCOL-unset}\" \"\${GIT_NO_LAZY_FETCH-unset}\" " +
+            "\"\$*\" >> '$log'\nexit 0\n")
+        check(git.toFile().setExecutable(true)) { "cannot mark the fake git executable" }
+
+        assertEquals(0, GitCommand.start(git.toString(), root, listOf("status", "--porcelain")).waitFor())
+
+        val calls = Files.readAllLines(log)
+        assertEquals(2, calls.size, calls.toString())
+        calls.forEach { call -> assertContains(call, "[] [1] ") }
+    }
+
+    @Test
+    fun `promisor remotes are recognized from the configuration key names`() {
+        fun keys(vararg names: String): ByteArray = names.joinToString("\u0000", postfix = "\u0000").toByteArray(Charsets.UTF_8)
+
+        assertTrue(GitCommand.promisorRemote(keys("core.bare", "extensions.partialclone")))
+        // 원격 이름(subsection)은 대소문자를 그대로 두고 나온다.
+        assertTrue(GitCommand.promisorRemote(keys("remote.Upstream.promisor")))
+        assertTrue(GitCommand.promisorRemote(keys("remote.origin.url", "remote.origin.partialclonefilter")))
+        assertFalse(GitCommand.promisorRemote(keys("remote.origin.url", "remote.origin.fetch", "extensions.objectformat")))
+        assertFalse(GitCommand.promisorRemote(ByteArray(0)))
     }
 
     /** 인자를 [log]에 한 줄로 남기고, `config` 하위 명령이면 [onConfig]를 실행하는 가짜 git이다. */

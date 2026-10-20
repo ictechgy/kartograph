@@ -18,9 +18,11 @@ internal object ChangedFiles {
      *   단계를 끈다. 고쳐 쓸 때 저장소의 post-index-change hook이 실행된다. 전역 옵션이라 하위 명령 앞에 둔다.
      * - `--no-ext-diff --no-textconv`: 저장소 설정의 외부 diff·textconv 명령을 끈다.
      * - `--ignore-submodules=dirty`: 서브모듈 안에서 git을 띄우지 않는다. 기록과 다른 커밋을 가리키는 서브모듈 경로는 남는다.
+     * - `--no-renames`: 이름만 내는 diff라 rename 판정은 결과를 바꾸지 않는다(새 경로는 추가로 남고 옛 경로는 `--diff-filter=d`가
+     *   뺀다). 판정을 빼면 blob을 읽지 않으므로 blobless partial clone도 빠진 객체를 받지 않고([GitCommand]가 막는다) 범위를 읽는다.
      */
     private val DIFF = listOf("-c", "diff.autoRefreshIndex=false", "diff", "--name-only", "--diff-filter=d", "-z",
-        "--no-ext-diff", "--no-textconv", "--ignore-submodules=dirty")
+        "--no-ext-diff", "--no-textconv", "--ignore-submodules=dirty", "--no-renames")
 
     fun since(reference: String, workingDirectory: Path): Set<Path> {
         val root = runGit(workingDirectory, listOf("rev-parse", "--show-toplevel"), nulSeparated = false)
@@ -62,10 +64,19 @@ internal object ChangedFiles {
             throw ChangedFilesException("git operation was interrupted", error)
         }
         if (status != 0) {
-            throw ChangedFilesException("changed files unavailable; verify the Git reference and fetch full history")
+            // partial clone이면 막아 둔 lazy fetch 때문에 빠진 객체를 읽지 못했을 수 있다. 그 사실과 해결 방향을 함께 알린다.
+            throw ChangedFilesException(if (GitCommand.hasPromisorRemote(workingDirectory)) PARTIAL_CLONE_UNAVAILABLE else UNAVAILABLE)
         }
         return stdout.toString(Charsets.UTF_8).split(if (nulSeparated) '\u0000' else '\n').filter(String::isNotEmpty)
     }
+
+    /** git이 실패했을 때의 기존 문구다. 기준 ref가 없거나 얕은 clone이라 history가 모자란 경우가 흔하다. */
+    private const val UNAVAILABLE = "changed files unavailable; verify the Git reference and fetch full history"
+
+    /** promisor 원격이 있는 저장소에서 git이 실패했을 때의 문구다. 빠진 객체를 받지 않는 이유와 우회 방법을 덧붙인다. */
+    private const val PARTIAL_CLONE_UNAVAILABLE = "$UNAVAILABLE (kartograph does not fetch objects missing from this partial clone, " +
+        "because that runs commands from the repository's configuration; fetch them in a trusted checkout first, " +
+        "clone without --filter, or run without --since)"
 }
 
 internal class ChangedFilesException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)

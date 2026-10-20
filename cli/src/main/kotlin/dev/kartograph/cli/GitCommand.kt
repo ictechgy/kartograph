@@ -20,6 +20,10 @@ import java.util.Locale
  *   덮는다. git은 빈 명령을 실행하지 않는다. `.gitattributes`와 `.git/info/attributes` 어느 쪽이 드라이버를 골라도
  *   막힌다(`--attr-source`는 `.git/info/attributes`를 막지 못한다).
  * - 이름을 덮을 수 없거나 조회가 실패하면 git을 시작하지 않는다(fail-closed, [GitIsolationException]).
+ * - partial clone(promisor 원격)이 빠진 객체를 받는 lazy fetch는 저장소 config의 원격 전송 설정(`remote.<이름>.uploadpack`,
+ *   `core.sshCommand`, `credential.helper`, `ext::` 원격 등)이 고른 명령을 실행한다. 그래서 모든 git(조회 포함)을 어떤 전송도
+ *   허용하지 않고 lazy fetch도 끈 환경([TRANSPORT_ISOLATION])으로 시작한다. 빠진 객체가 필요한 git은 실패해 호출자의 기존
+ *   실패 경로를 탄다. 호출자는 [hasPromisorRemote]로 그 실패가 partial clone 때문일 수 있음을 알린다.
  *
  * textconv·외부 diff·작업 트리 diff의 index 자동 갱신·서브모듈은 하위 명령마다 옵션이 달라 호출자가 붙인다.
  * 그 밖의 설정은 범위(시스템·사용자 전역·저장소)와 상관없이 따른다.
@@ -32,12 +36,38 @@ internal object GitCommand {
      * @throws InterruptedIOException 드라이버 이름 조회를 기다리다 중단됐을 때. 스레드의 중단 표시는 다시 세워 둔다
      * @throws IOException PATH에서 git을 찾지 못했거나 시작하지 못했을 때. 호출자는 기존의 "git 사용 불가" 경로를 탄다
      */
-    fun start(workingDirectory: Path, arguments: List<String>): Process {
+    fun start(workingDirectory: Path, arguments: List<String>): Process = start(executable(workingDirectory), workingDirectory, arguments)
+
+    /**
+     * [workingDirectory]의 git 설정에 promisor 원격(partial clone)이 있는지다.
+     *
+     * 분석용 git이 실패했을 때 그 실패가 막아 둔 lazy fetch 때문일 수 있는지 알리려고 호출자가 실패 뒤에만 부른다. 같은 격리로
+     * 설정 키 이름만 다시 읽는다. 이 값은 안내 문구만 고르고 막는 일은 [TRANSPORT_ISOLATION]이 맡으므로, 읽지 못하면 false다.
+     */
+    fun hasPromisorRemote(workingDirectory: Path): Boolean = try {
+        promisorRemote(configurationKeys(executable(workingDirectory), workingDirectory))
+    } catch (_: IOException) {
+        // git을 찾지 못했거나 조회가 실패·중단됐다. 호출자는 원래 실패를 partial clone 안내 없이 그대로 알린다.
+        false
+    }
+
+    /**
+     * `git config -z --name-only --list` 출력에 promisor 원격을 만드는 키가 있는지다. git(promisor-remote.c)은
+     * `extensions.partialClone`, `remote.<이름>.promisor`, `remote.<이름>.partialCloneFilter`가 있는 원격을 promisor로 쓴다.
+     * 키의 section·변수 이름은 소문자로 나온다. 값은 보지 않는다. 거짓 양성(`promisor = false`)은 안내 문구만 바꾼다.
+     */
+    fun promisorRemote(configurationKeys: ByteArray): Boolean =
+        String(configurationKeys, Charsets.ISO_8859_1).split('\u0000').any { key ->
+            key == "extensions.partialclone" ||
+                key.startsWith("remote.") && (key.endsWith(".promisor") || key.endsWith(".partialclonefilter"))
+        }
+
+    /** PATH의 절대경로 항목에서 찾은 git이다. */
+    private fun executable(workingDirectory: Path): String {
         val windows = System.getProperty("os.name").startsWith("Windows")
         val excluded = if (windows) excludedDirectories(workingDirectory) else emptyList()
-        val executable = locate(System.getenv("PATH"), windows, excluded, ::isExecutableFile)
+        return locate(System.getenv("PATH"), windows, excluded, ::isExecutableFile)
             ?: throw IOException("git is not in an absolute PATH entry")
-        return start(executable, workingDirectory, arguments)
     }
 
     /**
@@ -114,10 +144,20 @@ internal object GitCommand {
         return keys
     }
 
-    private fun launch(argv: List<String>): Process = ProcessBuilder(argv).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+    private fun launch(argv: List<String>): Process = ProcessBuilder(argv).redirectError(ProcessBuilder.Redirect.DISCARD)
+        .apply { environment().putAll(TRANSPORT_ISOLATION) }.start()
 
     /** 모든 git 호출(드라이버 조회 포함)이 `-C` 앞에 두는 설정이다. fsmonitor 훅과 log 계열의 서명 확인 명령을 끈다. */
     private val ISOLATION = listOf("-c", "core.fsmonitor=false", "-c", "log.showSignature=false")
+
+    /**
+     * 모든 git 호출(드라이버 조회 포함)의 환경이다. partial clone의 lazy fetch가 저장소 config의 원격 전송 명령을 실행하지 않게 한다.
+     * - `GIT_ALLOW_PROTOCOL`(빈 목록): 어떤 전송 프로토콜도 허용하지 않는다. 저장소 config의 `protocol.<이름>.allow`보다 우선하고
+     *   git 2.6.1부터 읽는다. 명령줄 `-c protocol.allow=never`는 저장소의 프로토콜별 설정을 이기지 못해 쓰지 않는다.
+     * - `GIT_NO_LAZY_FETCH=1`: lazy fetch 자체를 띄우지 않는다(git 2.44+). 옛 git은 무시하지만 위 변수가 그 fetch의 전송을 막는다.
+     * 분석용 git은 원격에 접속할 일이 없으므로 정상 입력의 결과는 같다.
+     */
+    private val TRANSPORT_ISOLATION = mapOf("GIT_ALLOW_PROTOCOL" to "", "GIT_NO_LAZY_FETCH" to "1")
 
     private const val FILTER_SECTION = "filter."
 
