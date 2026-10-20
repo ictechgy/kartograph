@@ -6,6 +6,7 @@ verify job은 검증 메타데이터 밖의 fixture 빌드와 전체 테스트�
 release-readiness의 증거 step도 실제 shell로 실행해, 공용 배포물 스크립트가 없는 이전 target에서도 gate 전에 멈추지 않는지 본다.
 """
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -39,6 +40,9 @@ VERIFY_BLOCKS = (ADMIT, RESOLVE, READINESS, RECORD)
 # publish job의 run step 전체다. 테스트는 publish job의 run step을 빠짐없이 실행한다.
 PUBLISH_BLOCKS = (ADMIT, RESOLVE, REBUILD, MATCH, ENSURE, CREATE, PUBLISH)
 WRITE_BOUNDARIES = (ENSURE, CREATE, PUBLISH)
+# 두 job이 대조한 배포물 바이트를 남기는 upload step이다. publish job의 것은 실패했을 때만 돈다.
+EVIDENCE = "Preserve release readiness evidence"
+REBUILT_EVIDENCE = "Preserve rebuilt release artifacts after a failure"
 DISPATCH_ONLY = "github.event_name == 'workflow_dispatch'"
 # Scripts/release-artifacts.sh가 해시 목록을 내는 순서다. POM은 해시로만 대조하고 release asset으로 올리지 않는다.
 ARTIFACTS = (
@@ -213,8 +217,8 @@ def scalar(value):
     return text.split(" #", 1)[0].rstrip()
 
 
-def run_body(lines):
-    """`run: |` 본문 줄을 shell 입력 하나로 잇는다. 다음 step 앞의 빈 줄은 본문에 넣지 않는다."""
+def block_body(lines):
+    """`키: |` 본문 줄을 값 하나로 잇는다. 다음 키 앞의 빈 줄은 본문에 넣지 않는다."""
     while lines and not lines[-1].strip():
         lines.pop()
     return "\n".join(lines) + "\n"
@@ -224,18 +228,20 @@ def workflow_jobs(path):
     """PyYAML 없이 job별 최상위 값, permissions·outputs 같은 한 단계 map, step 목록을 읽는다.
 
     이 저장소 workflow의 2칸 들여쓰기(`jobs:` 아래 `  <job>:`, `    steps:` 아래 `      - `)만 다룬다. step에서는 최상위
-    키, with·env 입력, `run: |` 본문을 읽는다. 다른 배치를 만나면 빈 값으로 조용히 통과시키지 않도록 ValueError로 멈춘다.
-    여러 줄 with 값과 더 깊은 job 설정(예: strategy.matrix)은 판정에 쓰지 않는다.
+    키, with·env 입력, `run: |` 본문과 with·env의 `키: |` 본문(예: upload-artifact의 path 목록)을 읽는다. 다른 배치를
+    만나면 빈 값으로 조용히 통과시키지 않도록 ValueError로 멈춘다. 더 깊은 job 설정(예: strategy.matrix)은 판정에 쓰지 않는다.
     """
-    jobs, job, step, section, step_section, body, in_jobs = {}, None, None, None, None, None, False
+    # block은 읽는 중인 `키: |` 본문의 (값을 넣을 map, 키, 본문 들여쓰기, 줄 목록)이다.
+    jobs, job, step, section, step_section, block, in_jobs = {}, None, None, None, None, None, False
     for raw in path.read_text(encoding="utf-8").split("\n"):
         content = raw.lstrip(" ")
         indent = len(raw) - len(content)
-        if body is not None:
-            if not content or indent >= 10:
-                body.append(raw[10:])
+        if block is not None:
+            target, key, depth, body = block
+            if not content or indent >= depth:
+                body.append(raw[depth:])
                 continue
-            step["run"], body = run_body(body), None
+            target[key], block = block_body(body), None
         if not content or content.startswith("#"):
             continue
         if indent == 0:
@@ -267,17 +273,21 @@ def workflow_jobs(path):
                 key, _, value = content.partition(":")
                 step_section = None if value.strip() else key
                 if key == "run" and value.strip() == "|":
-                    body = []
+                    block = (step, "run", 10, [])
                 elif step_section is None:
                     step[key] = scalar(value)
             elif indent == 10 and step_section in ("with", "env"):
                 key, _, value = content.partition(":")
-                step[step_section][key] = scalar(value)
+                if value.strip() == "|":
+                    block = (step[step_section], key, 12, [])
+                else:
+                    step[step_section][key] = scalar(value)
         elif section is not None and indent == 6:
             key, _, value = content.partition(":")
             job[section][key] = scalar(value)
-    if body is not None:
-        step["run"] = run_body(body)
+    if block is not None:
+        target, key, _, body = block
+        target[key] = block_body(body)
     return jobs
 
 
@@ -296,6 +306,21 @@ def step_named(job, name):
 def action(step):
     """step이 쓰는 action 이름을 고정 SHA 없이 돌려준다. run step이면 빈 문자열이다."""
     return step.get("uses", "").split("@", 1)[0]
+
+
+def upload_patterns(step):
+    """upload-artifact step의 path 입력을 줄마다 pattern 하나로 읽는다. 빈 줄은 뺀다."""
+    return [line.strip() for line in step["with"].get("path", "").split("\n") if line.strip()]
+
+
+def pattern_matches(pattern, path):
+    """@actions/glob처럼 `*`·`?`가 경로 구분자를 넘지 않게 pattern 하나로 path를 판정한다.
+
+    `**`가 든 pattern은 판정하지 않고 맞지 않는 것으로 본다. 그런 pattern으로만 덮인 배포물은 덮이지 않은 것으로 보고된다.
+    """
+    parts, names = pattern.split("/"), path.split("/")
+    return "**" not in parts and len(parts) == len(names) and all(
+        fnmatch.fnmatchcase(name, part) for name, part in zip(names, parts))
 
 
 def file_commands(path):
@@ -470,7 +495,8 @@ class ReleaseJobBoundaryTest(unittest.TestCase):
         self.assertEqual("verify", self.publish.get("needs"))
         self.assertEqual("release", self.publish.get("environment"))
         self.assertEqual({"contents": "write"}, self.publish.get("permissions"))
-        self.assertEqual(["actions/checkout", "gradle/actions/wrapper-validation", "actions/setup-java"],
+        self.assertEqual(["actions/checkout", "gradle/actions/wrapper-validation", "actions/setup-java",
+                          "actions/upload-artifact"],
                          [action(step) for step in self.publish["steps"] if "uses" in step])
         self.assertEqual(list(PUBLISH_BLOCKS), [step.get("name") for step in self.publish["steps"] if "run" in step])
         self.assertEqual({"VERIFIED_HASHES": "${{ needs.verify.outputs.artifact-hashes }}"},
@@ -483,6 +509,28 @@ class ReleaseJobBoundaryTest(unittest.TestCase):
         for name in (ADMIT, RESOLVE):
             with self.subTest(name=name):
                 self.assertEqual(step_named(self.verify, name), step_named(self.publish, name))
+
+    def test_both_jobs_keep_the_compared_artifact_bytes(self):
+        # 재빌드 해시가 다르면 어느 파일이 다른지는 로그로 알 수 있다. 원인(러너의 JDK 패치, 권한 비트, 환경 의존 바이트,
+        # 오염된 verify output)은 두 job이 만든 바이트를 비교해야 가를 수 있다. publish job은 verify job의 파일을 받지 않으므로
+        # 두 job이 각자 자기 배포물을 남긴다.
+        uploads = {"verify": step_named(self.verify, EVIDENCE), "publish": step_named(self.publish, REBUILT_EVIDENCE)}
+        for name, step in uploads.items():
+            with self.subTest(job=name):
+                self.assertEqual("actions/upload-artifact", action(step))
+                patterns = upload_patterns(step)
+                # 제외 pattern이 없어야 아래 포함 판정이 실제 upload 대상과 같다.
+                self.assertEqual([], [pattern for pattern in patterns if pattern.startswith("!")])
+                self.assertEqual([], [path for path in ARTIFACTS
+                                      if not any(pattern_matches(pattern, path) for pattern in patterns)])
+                self.assertEqual("14", step["with"].get("retention-days"))
+        self.assertNotEqual(uploads["verify"]["with"].get("name"), uploads["publish"]["with"].get("name"))
+        # publish job의 upload는 실패했을 때만, 모든 쓰기 step 뒤에서 돈다. 빌드 전에 실패해 배포물이 없어도 그 자체로는 실패하지
+        # 않고, 비밀·토큰을 받지 않는다.
+        rebuilt = uploads["publish"]
+        self.assertIs(rebuilt, self.publish["steps"][-1])
+        self.assertEqual(("failure()", "ignore"), (rebuilt.get("if"), rebuilt["with"].get("if-no-files-found")))
+        self.assertEqual({}, rebuilt["env"])
 
     def test_secrets_and_workflow_token_reach_only_publish_write_steps(self):
         expressions = re.findall(r"\$\{\{(.*?)\}\}", WORKFLOW.read_text(encoding="utf-8"))
@@ -501,10 +549,11 @@ class ReleaseJobBoundaryTest(unittest.TestCase):
         self.assertTrue(step_named(self.verify, READINESS))
         self.assertTrue(step_named(self.publish, ENSURE))
         self.assertEqual([], [step for step in self.verify["steps"] if step.get("name") in WRITE_BOUNDARIES])
-        # 실패 뒤에도 도는 조건은 verify job의 증거 upload뿐이다.
+        # 실패 뒤에도 도는 조건은 두 job의 증거 upload뿐이다. publish job의 upload는 실패했을 때만 돈다.
         self.assertEqual({ADMIT: DISPATCH_ONLY, "Preserve release readiness evidence": "always()"},
                          {step.get("name"): step["if"] for step in self.verify["steps"] if "if" in step})
-        self.assertEqual({ADMIT: DISPATCH_ONLY}, {step.get("name"): step["if"] for step in self.publish["steps"] if "if" in step})
+        self.assertEqual({ADMIT: DISPATCH_ONLY, REBUILT_EVIDENCE: "failure()"},
+                         {step.get("name"): step["if"] for step in self.publish["steps"] if "if" in step})
         for name, job in self.jobs.items():
             # job 조건이나 실패 무시가 있으면 verify 실패나 해시 불일치를 넘어 쓰기 단계가 실행될 수 있다.
             self.assertEqual(set(), (set(job) - JOB_KEYS), name)

@@ -131,6 +131,7 @@ jobs:
             exit 1
           fi
           printf 'artifact-hashes<<KARTOGRAPH_ARTIFACT_HASHES\n%s\nKARTOGRAPH_ARTIFACT_HASHES\n' "$hashes" >> "$GITHUB_OUTPUT"
+      # publish job의 재빌드와 해시가 다를 때 원인을 바이트로 가를 수 있게, 넘긴 목록의 배포물도 함께 남긴다.
       - name: Preserve release readiness evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -143,6 +144,13 @@ jobs:
             build/reports/release-readiness/**/build.stdout
             build/reports/release-readiness/**/build.stderr
             build/reports/release-readiness/**/verification.json
+            cli/build/distributions/kartograph-*.zip
+            cli/build/distributions/kartograph-*.tar
+            gradle-plugin/build/libs/kartograph-gradle-plugin-*.jar
+            compiler-collectors/build/distributions/kartograph-compiler-collectors-*.zip
+            gradle-plugin/build/publications/pluginMaven/pom-default.xml
+            build/release/*.cdx.json
+            build/release/SHA256SUMS
           if-no-files-found: ignore
           retention-days: 14
 
@@ -320,3 +328,20 @@ jobs:
             test "$main_ref" = "$SOURCE_SHA"$'\trefs/heads/main'
           fi
           ./gradlew --no-daemon :gradle-plugin:publishPlugins
+      # 재빌드가 verify 목록과 다르거나 뒤 step이 실패하면, verify 증거의 배포물과 바이트로 비교할 수 있게 이 job의 재빌드를 남긴다.
+      # 실패했을 때만 돌고 tag·release·Portal에는 쓰지 않는다. 다시 실행한 attempt의 upload와 이름이 겹치지 않게 attempt 번호를 붙인다.
+      - name: Preserve rebuilt release artifacts after a failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-publish-rebuild-${{ github.run_attempt }}
+          path: |
+            cli/build/distributions/kartograph-*.zip
+            cli/build/distributions/kartograph-*.tar
+            gradle-plugin/build/libs/kartograph-gradle-plugin-*.jar
+            compiler-collectors/build/distributions/kartograph-compiler-collectors-*.zip
+            gradle-plugin/build/publications/pluginMaven/pom-default.xml
+            build/release/*.cdx.json
+            build/release/SHA256SUMS
+          if-no-files-found: ignore
+          retention-days: 14
