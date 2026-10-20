@@ -78,6 +78,46 @@ def plant_filter_driver(scratch, repository, name, stale, key="clean", info_attr
     return marker
 
 
+def plant_lazy_fetch_remote(scratch, source, clone, filter_spec, observe, prepare=lambda target: None):
+    """source에서 filter_spec으로 file:// partial clone을 만들고 그 원격 명령을 표식을 남기는 명령으로 바꾼다.
+
+    압축본으로 받은 checkout의 .git/config가 고른 원격 명령(remote.origin.uploadpack)을 흉내 낸다. 같은 방법으로 만든
+    확인용 clone에서 일반 git이 observe로 lazy fetch를 띄워 표식을 남기는지 먼저 확인해 헛통과를 막는다. prepare는 원격
+    명령을 걸기 전에 두 clone에 똑같이 하는 준비이며 빠진 객체를 받아 오면 안 된다. 표식 경로를 돌려준다.
+    """
+    fixture_git(source, "config", "uploadpack.allowFilter", "true")
+    directory = Path(tempfile.mkdtemp(prefix="upload-pack-", dir=scratch))
+    marker = directory / "ran"
+    command = directory / "upload-pack.sh"
+    command.write_text("#!/bin/sh\n: > '" + str(marker) + "'\nexec git-upload-pack \"$@\"\n")
+    command.chmod(0o700)
+    witness = directory / "witness"
+    for target in (witness, clone):
+        subprocess.run([*FIXTURE_GIT, "clone", "-q", "--no-local", "--filter=" + filter_spec, source.as_uri(), str(target)],
+                       env=FIXTURE_ENV, capture_output=True, timeout=60, check=True)
+        prepare(target)
+        if not any(line.startswith("?") for line in fixture_git(target, "rev-list", "--objects", "--missing=print", "--all").splitlines()):
+            raise AssertionError("the partial clone has no missing objects; the fixture cannot observe a lazy fetch")
+        fixture_git(target, "config", "remote.origin.uploadpack", command)
+    subprocess.run([*FIXTURE_GIT, "-C", str(witness), *observe], env=FIXTURE_ENV, capture_output=True, timeout=60)
+    if not marker.exists():
+        raise AssertionError("plain git did not fetch through the configured upload-pack; the fixture cannot observe the boundary")
+    marker.unlink()
+    return marker
+
+
+def commit_change(source):
+    """기준 커밋 뒤에 Old.kt를 New.kt로 옮겨 고치고 Keep.kt를 고친 저장소를 만들고 기준 커밋 id를 돌려준다."""
+    lines = "".join(str(number) + "\n" for number in range(1, 201))
+    commit_fixture(source, {"src/Old.kt": lines, "src/Keep.kt": "keep\n"})
+    base = fixture_git(source, "rev-parse", "HEAD")
+    fixture_git(source, "mv", "src/Old.kt", "src/New.kt")
+    (source / "src" / "New.kt").write_text(lines + "tail\n", encoding="utf-8")
+    (source / "src" / "Keep.kt").write_text("changed\n", encoding="utf-8")
+    fixture_git(source, "commit", "-qam", "change")
+    return base
+
+
 class ImpactGateTest(unittest.TestCase):
     def run_with_fixture_cli(self, scratch, project, base, environment=None):
         """호출만 기록하는 대역 CLI로 check-impact를 실행한다. git 경계만 시험하므로 javac·배포 CLI가 필요 없다.
@@ -211,6 +251,50 @@ class ImpactGateTest(unittest.TestCase):
             self.assertEqual(2, moved.returncode, moved.stderr)
             self.assertIn("tracked working tree changes", moved.stderr)
             self.assertFalse(marker.exists(), "check-impact must not run git inside the submodule")
+
+    def run_partial_clone(self, filter_spec, observe, soft_reset):
+        """기준 커밋 뒤에 rename·수정이 있는 원본의 partial clone에서 check-impact를 실행한다.
+
+        observe의 "{base}"는 기준 커밋 id로 바꾼다. soft_reset이면 두 clone 모두 HEAD만 기준 커밋으로 옮겨 index에 staged
+        rename을 남긴다. (결과, 대역 CLI 호출 기록, 표식, clone 경로)를 돌려준다.
+        """
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        scratch = Path(directory.name)
+        source = scratch / "source"
+        base = commit_change(source)
+        clone = scratch / "clone"
+        prepare = (lambda target: fixture_git(target, "reset", "-q", "--soft", base)) if soft_reset else (lambda target: None)
+        marker = plant_lazy_fetch_remote(scratch, source, clone, filter_spec,
+                                         [argument.replace("{base}", base) for argument in observe], prepare)
+        result, calls = self.run_with_fixture_cli(scratch, clone, base)
+        return result, calls, marker, clone
+
+    def test_partial_clone_objects_are_not_fetched_through_the_repository_remote(self):
+        # tree:0 clone에는 기준 커밋의 tree가 없어 커밋 사이 diff가 객체를 받아야 한다. 받지 않고 원인을 알리며 실패한다.
+        result, calls, marker, clone = self.run_partial_clone(
+            "tree:0", ["diff", "--name-only", "--no-renames", "{base}", "HEAD", "--"], soft_reset=False)
+
+        self.assertFalse(marker.exists(), "check-impact must not fetch missing objects through the analyzed repository's remote")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("partial clone", result.stderr)
+        self.assertNotIn(str(clone), result.stderr)
+        self.assertFalse(calls.exists(), "the impact CLI must not run")
+
+    def test_blobless_clone_reads_paths_without_fetching_blobs(self):
+        # 커밋 사이 diff는 rename을 판정하지 않으므로 blobless clone에서도 빠진 blob 없이 지금처럼 보고서를 만든다.
+        result, calls, marker, _ = self.run_partial_clone("blob:none", ["diff", "--name-only", "{base}", "HEAD", "--"], soft_reset=False)
+
+        self.assertFalse(marker.exists(), "check-impact must not fetch missing objects through the analyzed repository's remote")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["impact", "verify-snapshot"], [json.loads(line)[0] for line in calls.read_text().splitlines()])
+
+        # staged rename이 남은 작업 트리도 rename을 판정하지 않고, 빠진 blob 없이 변경이 있다고 알린다.
+        dirty, _, marker, _ = self.run_partial_clone("blob:none", ["diff", "--name-only", "HEAD", "--"], soft_reset=True)
+
+        self.assertFalse(marker.exists(), "check-impact must not fetch missing objects through the analyzed repository's remote")
+        self.assertEqual(2, dirty.returncode, dirty.stderr)
+        self.assertIn("tracked working tree changes", dirty.stderr)
 
     def test_snapshot_size_budget_reaches_impact_and_both_freshness_checks(self):
         with tempfile.TemporaryDirectory() as directory:

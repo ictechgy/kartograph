@@ -40,7 +40,8 @@ baseline이 기준 commit에 없거나 손상되면 빈 baseline으로 대체하
 limitations는 보존한다. baseline은 런타임 안전성 증명이 아니며 삭제 승인도 아니다.
 CLI 실행은 기본 300초로 제한하고 `--timeout <양의 초>`로 조절한다. Git 조회는 각각 30초 제한이다.
 Git 조회는 분석 대상 저장소의 git 설정이 고른 명령(filter 드라이버·fsmonitor 등)을 실행하지 않는다. 그 드라이버
-이름을 덮을 수 없거나 설정을 읽지 못하면 `2`로 끝난다([SECURITY.md](../SECURITY.md)).
+이름을 덮을 수 없거나 설정을 읽지 못하면 `2`로 끝난다. partial clone(`--filter`)에 기준 commit의 baseline이 없어도
+원격 명령을 실행하는 lazy fetch를 하지 않고 `2`로 끝난다. 아래처럼 `--filter` 없이 받는다([SECURITY.md](../SECURITY.md)).
 전달 옵션은 class/test-class/manifest/resource/namespace/keep/classpath/report-format 및 private/strict만 허용한다.
 기존 CLI와 동일하게 `-`로 시작하는 옵션 값은 거부한다. 해당 상대경로는 `./-name`처럼 전달한다.
 

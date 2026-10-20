@@ -49,6 +49,36 @@ def plant_filter_driver(scratch, repository, name, stale):
     return marker
 
 
+def plant_lazy_fetch_remote(scratch, source, clone, filter_spec, observe):
+    """source에서 filter_spec으로 file:// partial clone을 만들고 그 원격 명령을 표식을 남기는 명령으로 바꾼다.
+
+    압축본으로 받은 checkout의 .git/config가 고른 원격 명령(remote.origin.uploadpack)을 흉내 낸다. 같은 방법으로 만든
+    확인용 clone에서 일반 git이 observe로 lazy fetch를 띄워 표식을 남기는지 먼저 확인해 헛통과를 막는다. 표식 경로를 돌려준다.
+    """
+    def git(directory, *arguments):
+        return subprocess.run(["git", "-c", "protocol.file.allow=always", "-C", str(directory), *arguments], env=FIXTURE_ENV,
+                              capture_output=True, text=True, timeout=60, check=True).stdout
+
+    git(source, "config", "uploadpack.allowFilter", "true")
+    directory = Path(tempfile.mkdtemp(prefix="upload-pack-", dir=scratch))
+    marker = directory / "ran"
+    command = directory / "upload-pack.sh"
+    command.write_text("#!/bin/sh\n: > '" + str(marker) + "'\nexec git-upload-pack \"$@\"\n")
+    command.chmod(0o700)
+    witness = directory / "witness"
+    for target in (witness, clone):
+        git(scratch, "clone", "-q", "--no-local", "--filter=" + filter_spec, source.as_uri(), str(target))
+        if not any(line.startswith("?") for line in git(target, "rev-list", "--objects", "--missing=print", "--all").splitlines()):
+            raise AssertionError("the partial clone has no missing objects; the fixture cannot observe a lazy fetch")
+        git(target, "config", "remote.origin.uploadpack", str(command))
+    subprocess.run(["git", "-c", "protocol.file.allow=always", "-C", str(witness), *observe], env=FIXTURE_ENV,
+                   capture_output=True, timeout=60)
+    if not marker.exists():
+        raise AssertionError("plain git did not fetch through the configured upload-pack; the fixture cannot observe the boundary")
+    marker.unlink()
+    return marker
+
+
 def git_shim(directory, log, fail_configuration=False):
     """argv를 log에 한 줄(JSON)씩 남기고 실제 git으로 넘기는 shim을 directory에 만든다. 도우미는 PATH의 git을 쓴다.
 
@@ -252,6 +282,44 @@ class CheckPrTest(unittest.TestCase):
         self.assertIn("cannot read the Git configuration", result.stderr)
         self.assertNotIn(str(self.project), result.stderr)
         self.assertEqual(["config"], [call[call.index("-C") + 2] for call in map(json.loads, log.read_text().splitlines())])
+
+    def partial_clone(self, observe):
+        """이 저장소의 blobless clone을 만들어 커밋하지 않은 빌드 입력을 옮긴다. (clone, 표식)을 돌려준다."""
+        scratch = Path(tempfile.mkdtemp(prefix="kartograph-pr-scratch-"))
+        self.addCleanup(shutil.rmtree, scratch)
+        clone = scratch / "clone"
+        marker = plant_lazy_fetch_remote(scratch, self.project, clone, "blob:none", observe)
+        # class 출력은 ignore되고 빈 resource 디렉터리는 커밋되지 않으므로 clone에 그대로 준비한다.
+        shutil.copytree(self.project / "classes", clone / "classes")
+        (clone / "res").mkdir()
+        return clone, marker
+
+    def test_base_baseline_missing_from_a_partial_clone_is_not_fetched(self):
+        baseline = self.project / ".kartograph-baseline.json"
+        # PR이 baseline을 고치면 blobless clone에는 기준 커밋의 baseline blob이 없다.
+        baseline.write_text(baseline.read_text() + "\n")
+        self.run_command("git", "commit", "-qam", "touch baseline")
+        clone, marker = self.partial_clone(["show", self.base + ":.kartograph-baseline.json"])
+
+        result = self.gate(helper_options=("--project", str(clone)))
+
+        self.assertFalse(marker.exists(), "check-pr must not fetch missing objects through the analyzed repository's remote")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("read base baseline", result.stderr)
+        self.assertIn("partial clone", result.stderr)
+        self.assertNotIn(str(clone), result.stderr)
+
+    def test_blobless_clone_with_an_unchanged_baseline_keeps_the_result(self):
+        (self.project / "Existing.java").write_text("public class Existing { }\n")
+        self.run_command("git", "commit", "-qam", "touch source")
+        # 기준 커밋의 다른 파일 blob은 clone에 없다. 확인용 clone에서 그 파일을 읽어 원격 명령이 관측되는지 본다.
+        clone, marker = self.partial_clone(["show", self.base + ":Existing.java"])
+
+        result = self.gate(helper_options=("--project", str(clone)))
+
+        self.assertFalse(marker.exists(), "check-pr must not fetch missing objects through the analyzed repository's remote")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(1, json.loads(result.stdout)["suppressedCount"])
 
     def test_unexpected_cli_exit_maps_to_tool_failure(self):
         binary = self.project / "failing-cli"

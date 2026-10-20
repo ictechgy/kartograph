@@ -68,5 +68,8 @@ filter를 실행하지 않으므로 git-lfs처럼 filter로 정규화되는 파�
 `check-impact.py`의 작업 트리 검사는 index 자동 갱신도 끄고 서브모듈 안에서 git을 실행하지 않는다. 그래서 서브모듈이
 가리키는 커밋의 변화는 계속 거부하지만 서브모듈 안의 커밋하지 않은 변경은 보지 않고, filter로 정규화되거나 시각만
 바뀐 파일은 작업 트리 변경으로 보고 exit 2로 끝난다(신뢰하는 checkout이면 먼저 `git update-index --refresh`).
-덮을 수 없는 드라이버 이름이 있거나 설정을 읽지 못하면 두 도우미 모두 git을 실행하지 않고 exit 2로 끝난다. 두 도우미는
-아직 partial clone의 원격 전송 설정을 따른다.
+덮을 수 없는 드라이버 이름이 있거나 설정을 읽지 못하면 두 도우미 모두 git을 실행하지 않고 exit 2로 끝난다. 두 도우미도
+위와 같은 환경(`GIT_ALLOW_PROTOCOL` 빈 값, `GIT_NO_LAZY_FETCH=1`)으로 git을 실행해 partial clone의 빠진 객체를 받지 않는다.
+커밋 사이 diff와 작업 트리 검사는 rename을 판정하지 않아 blobless clone에서도 동작하지만, `check-pr.py`가 읽는 기준
+커밋의 baseline처럼 clone에 없는 객체가 꼭 필요하면 partial clone임을 알리는 오류로 exit 2가 된다. 신뢰하는 단계에서
+그 객체를 먼저 받아 두거나 `--filter` 없이 clone한다.
