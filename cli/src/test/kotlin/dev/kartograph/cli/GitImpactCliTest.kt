@@ -4,6 +4,8 @@ import dev.kartograph.core.*
 import dev.kartograph.export.McpJsonCodec
 import dev.kartograph.export.QuerySnapshot
 import dev.kartograph.export.QuerySnapshotCodec
+import dev.kartograph.export.BuildWitnessCodec
+import dev.kartograph.index.ContentFingerprint
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.nio.file.Files
@@ -13,6 +15,51 @@ import kotlin.test.*
 import org.junit.jupiter.api.io.TempDir
 
 class GitImpactCliTest {
+    @Test fun `witnessed inputs match while working tree null revision and MCP scope remain explicit`(@TempDir root: Path) {
+        val project = repository(root)
+        Files.writeString(project.resolve(".gitignore"), "classes/\n.capture/\n")
+        val source = Files.createDirectories(project.resolve("src"))
+        Files.writeString(source.resolve("Target.java"), "class Target { static int value() { return 1; } }")
+        Files.writeString(project.resolve("compile.args"), "-g -d classes src/Target.java\n")
+        git(project, "add", "."); git(project, "commit", "-qm", "before")
+        val head = git(project, "rev-parse", "HEAD").trim()
+        val compiler = Path.of(System.getProperty("java.home"), "bin", if (System.getProperty("os.name").startsWith("Windows")) "javac.exe" else "javac")
+        val compilerInput = ContentFingerprint.capture(project, compiler, "compiler", "javac")
+        // 성공한 실제 javac 호출 전 입력과 호출 후 출력으로 이 fixture의 빌드 기록을 만든다.
+        val inputs = listOf(ContentFingerprint.capture(project, source, "sources", "sources"),
+            ContentFingerprint.capture(project, project.resolve("compile.args"), "buildConfig", "build-config"), compilerInput,
+            InputFingerprint("options", "compile-options", ContentFingerprint.values(listOf("-g"))))
+        capture(project, root.resolve("unwitnessed.json"), head)
+        val output = ContentFingerprint.capture(project, project.resolve("classes"), "classes", "classes")
+        val witness = Files.createDirectories(project.resolve(".capture")).resolve("witness.json")
+        Files.writeString(witness, BuildWitnessCodec.render(BuildWitness("app:main", "javac", ":compileJava", inputs, listOf(output))))
+        val captured = run("snapshot", "--classes", project.resolve("classes").toString(), "--project", project.toString(),
+            "--source-root", source.toString(), "--build-input", "compile.args", "--build-witness", witness.toString(),
+            "--include-paths", "--scope", "app:main", "--revision", head)
+        assertEquals(0, captured.first, captured.third)
+        val old = Files.writeString(root.resolve("base.json"), captured.second)
+        val current = Files.writeString(root.resolve("current.json"), QuerySnapshotCodec.render(QuerySnapshotCodec.parse(captured.second).copy(revision = null)))
+        val options = arrayOf("--graph-file", current.toString(), "--base-graph", old.toString(), "--project", project.toString(),
+            "--base-project", project.toString(), "--input", "${compilerInput.path}=$compiler", "--base-input", "${compilerInput.path}=$compiler")
+        val result = run("impact", "--git-base", head, "--working-tree", *options)
+        assertEquals(0, result.first, result.third)
+        val freshness = (McpJsonCodec.parse(result.second) as Map<*, *>)["freshness"] as Map<*, *>
+        assertEquals("matched", (freshness["base"] as Map<*, *>)["status"])
+        assertEquals("matched", (freshness["current"] as Map<*, *>)["status"])
+        assertEquals(2, run("impact", "--git-base", head, *options).first)
+        McpTestClient { input, stdout, error -> KartographCli.runWithInput(arrayOf("mcp", *options, "--scope", "different:main"), stdout, error, input) }.use { client ->
+            client.initialize()
+            val response = client.call("change_impact", mapOf("base" to head, "workingTree" to true))
+            assertEquals(false, response["isError"], response.toString())
+            val document = (response["structuredContent"] as Map<*, *>)["document"] as Map<*, *>
+            val checked = document["freshness"] as Map<*, *>
+            for (side in listOf("base", "current")) {
+                assertEquals("stale", (checked[side] as Map<*, *>)["status"])
+                assertContains((checked[side] as Map<*, *>)["reasons"] as List<*>, "snapshot-scope-mismatch")
+            }
+        }
+    }
+
     @Test fun `git rename selects both captured paths and preserves historical caller`(@TempDir root: Path) {
         val project = repository(root)
         val source = Files.createDirectories(project.resolve("src"))

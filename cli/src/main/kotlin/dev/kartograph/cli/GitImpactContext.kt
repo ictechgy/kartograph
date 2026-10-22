@@ -14,6 +14,8 @@ internal object GitImpactContext {
         fun document(): Map<String, Any?> = mapOf("origin" to "git", "mode" to if (workingTree) "workingTree" else "commits",
             "baseRevision" to baseRevision, "headRevision" to headRevision, "files" to files,
             "selection" to "wholeFileDeclarations", "renamePolicy" to "oldAndNewPaths",
+            "limits" to mapOf("changedPaths" to MAX_CHANGED_PATHS, "gitOutputBytesPerCommand" to MAX_GIT_BYTES,
+                "gitSecondsPerCommand" to GIT_SECONDS, "gitConfigurationLookupIncluded" to false),
             "workingTreeIncludes" to if (workingTree) listOf("staged", "unstaged", "untrackedNonIgnored") else emptyList<String>())
     }
 
@@ -37,7 +39,7 @@ internal object GitImpactContext {
         val files = (git(root, diff).split('\u0000') + if (workingTree)
             git(root, listOf("ls-files", "--others", "--exclude-standard", "--full-name", "-z", "--")).split('\u0000')
             else emptyList()).filter(String::isNotEmpty).distinct().sorted()
-        require(files.size <= 20_000 && files.all(ImpactCommand::portable)) { "Git changed paths exceed supported portable path bounds" }
+        require(files.size <= MAX_CHANGED_PATHS && files.all(ImpactCommand::portable)) { "Git changed paths exceed supported portable path bounds" }
         val submodules = git(root, listOf("ls-files", "--stage", "-z", "--")).split('\u0000').any { it.startsWith("160000 ") }
         return Change(base, head, workingTree, files, submodules)
     }
@@ -88,7 +90,7 @@ internal object GitImpactContext {
         val process = GitCommand.start(project, arguments)
         val output = CompletableFuture.supplyAsync { process.inputStream.use { it.readNBytes(MAX_GIT_BYTES + 1) } }
         try {
-            require(process.waitFor(30, TimeUnit.SECONDS)) { "Git impact selection timed out" }
+            require(process.waitFor(GIT_SECONDS, TimeUnit.SECONDS)) { "Git impact selection timed out" }
             require(process.exitValue() == 0) { "Git impact input unavailable; verify local history (no objects are fetched)" }
             val bytes = output.get(1, TimeUnit.SECONDS)
             require(bytes.size <= MAX_GIT_BYTES) { "Git impact selection exceeds 4 MiB" }
@@ -101,4 +103,6 @@ internal object GitImpactContext {
     }
 
     private const val MAX_GIT_BYTES = 4 * 1024 * 1024
+    private const val MAX_CHANGED_PATHS = 20_000
+    private const val GIT_SECONDS = 30L
 }
