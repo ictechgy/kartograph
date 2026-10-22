@@ -332,7 +332,8 @@ def main() -> None:
              "dev.kartograph.collectors.EnumDecisionProtocolTest", work / "enum-protocol"], work)
         java_test(javac, args.collector, work)
         kotlin_test(java, args.collector, args.kotlin_classpath, work, kotlin_version=args.kotlin_version)
-        enum_decisions_test(javac, java, args.collector, args.kotlin_classpath, work, run, encoded, sha256, content_fingerprint)
+        enum_decisions_test(javac, java, args.collector, args.kotlin_classpath, work, run, encoded, sha256, content_fingerprint,
+                            stdlib=kotlin_artifact(args.kotlin_classpath, "kotlin-stdlib", args.kotlin_version))
         dagger_test(javac, java, args.collector, dagger_classpath, work)
         processor_outputs_test(javac, args.collector, work, run, encoded, sha256, content_fingerprint, dagger_classpath)
     print("compiler collectors verified: javac constants, Kotlin JVM identities, Dagger selected bindings, processor source attribution, enum decisions, failures rejected")

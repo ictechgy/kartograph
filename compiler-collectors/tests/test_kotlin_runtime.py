@@ -87,9 +87,21 @@ class KotlinRuntimeTests(unittest.TestCase):
         with mock.patch.object(sys, "argv", arguments), mock.patch.object(collectors, "java_home", return_value=self.root), \
              mock.patch.object(collectors, "run"), mock.patch.object(collectors, "java_test"), \
              mock.patch.object(collectors, "kotlin_test") as kotlin, mock.patch.object(collectors, "dagger_test"), \
-             mock.patch.object(collectors, "processor_outputs_test"), contextlib.redirect_stdout(io.StringIO()):
+             mock.patch.object(collectors, "processor_outputs_test"), \
+             mock.patch.object(collectors, "enum_decisions_test") as enums, contextlib.redirect_stdout(io.StringIO()):
             collectors.main()
         self.assertEqual(kotlin.call_args.kwargs, {"kotlin_version": self.version})
+        self.assertEqual(enums.call_args.kwargs, {"stdlib": self.stdlib})
+
+    def test_enum_compiler_uses_the_validated_build_stdlib(self):
+        compile = mock.Mock(side_effect=RuntimeError("enum compiler reached"))
+        with self.assertRaisesRegex(RuntimeError, "enum compiler reached"):
+            collectors.enum_decisions_test(Path("/unused/bin/javac"), Path("/unused/bin/java"),
+                                           self.collector, self.classpath, self.root, compile,
+                                           collectors.encoded, collectors.sha256, collectors.content_fingerprint,
+                                           stdlib=self.stdlib)
+        command = compile.call_args.args[0]
+        self.assertEqual(command[command.index("-classpath") + 1], self.stdlib)
 
 
 if __name__ == "__main__":
