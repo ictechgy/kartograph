@@ -17,9 +17,9 @@ SPEC.loader.exec_module(probe)
 
 
 class IndexCostTest(unittest.TestCase):
-    def test_baseline_is_the_previous_measured_main(self):
-        self.assertEqual("b7ab3e9d654a7ad889bed4b57ed4dc84d4082fd7", probe.SOURCE_BASELINE)
-        self.assertEqual("c7b59fef4d0c8051326747f3bee6da5b04026181", probe.BASELINE)
+    def test_baseline_is_the_exact_pr_base(self):
+        self.assertEqual("bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1", probe.SOURCE_BASELINE)
+        self.assertEqual(probe.SOURCE_BASELINE, probe.BASELINE)
 
     def test_baseline_metadata_update_cannot_change_executable_sources(self):
         env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
@@ -49,13 +49,20 @@ class IndexCostTest(unittest.TestCase):
             auxiliary = git("rev-parse", "HEAD")
             with mock.patch.object(probe, "successful", side_effect=execute):
                 probe.require_baseline_source(repo, original, auxiliary, env)
+                probe.require_baseline_source(repo, original, original, env)
+                git("commit", "--allow-empty", "-qm", "same tree, different revision")
                 with self.assertRaisesRegex(probe.DiagnosticError, "baseline-executable-source-changed"):
-                    probe.require_baseline_source(repo, original, original, env)
+                    probe.require_baseline_source(repo, auxiliary, git("rev-parse", "HEAD"), env)
                 source.write_text("class Main { int changed; }\n")
                 git("add", ".")
                 git("commit", "-qm", "changed executable source")
                 with self.assertRaisesRegex(probe.DiagnosticError, "baseline-executable-source-changed"):
                     probe.require_baseline_source(repo, original, git("rev-parse", "HEAD"), env)
+
+    def test_equal_baseline_refs_still_require_empty_diff(self):
+        with mock.patch.object(probe, "successful", return_value={"stdout": b"gradle/verification-metadata.xml\n"}):
+            with self.assertRaisesRegex(probe.DiagnosticError, "baseline-executable-source-changed"):
+                probe.require_baseline_source(ROOT, probe.BASELINE, probe.BASELINE, {})
 
     def test_exact_bytes_preserve_order_duplicates_diagnostics_and_exit(self):
         left = {"exit": 0, "stdout": b"a\na\nb\n", "stderr": b"diagnostic\n", "wallNanos": 1}

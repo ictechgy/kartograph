@@ -16,9 +16,9 @@ import tempfile
 import threading
 import time
 
-SOURCE_BASELINE = "b7ab3e9d654a7ad889bed4b57ed4dc84d4082fd7"
-# 측정한 main의 실행 소스는 그대로 두고 기존 dependency 두 POM의 검증 해시만 동기화했다.
-BASELINE = "c7b59fef4d0c8051326747f3bee6da5b04026181"
+# Compare this patch with its exact main base on the same frozen candidate input.
+SOURCE_BASELINE = "bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1"
+BASELINE = "bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1"
 MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
 PROFILES = ("graph", "dead", "architecture")
 LIMIT = 32 * 1024 * 1024
@@ -238,7 +238,8 @@ def require_baseline_source(repo, source, baseline, env):
     """보조 baseline이 원본의 실행 소스·빌드 스크립트를 바꾸지 않았는지 Git tree로 확인한다."""
     changed = successful(["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only",
                           source, baseline, "--"], repo, env, phase="baseline-source-diff")
-    require_equal(changed["stdout"], b"gradle/verification-metadata.xml\n", "baseline-executable-source-changed")
+    expected = b"" if source == baseline else b"gradle/verification-metadata.xml\n"
+    require_equal(changed["stdout"], expected, "baseline-executable-source-changed")
 
 
 def identity_digest(value):
