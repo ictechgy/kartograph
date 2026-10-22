@@ -57,12 +57,12 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 - Android graph/dead task: AGP 8.7+, Gradle 8.10+, JDK 17+(AGP 8.7.3 / Gradle 8.10.2와 AGP 9.x에서 검증).
 - 자동 snapshot: JVM Java/Kotlin은 Gradle 9.6.1과 JDK 17/21에서, Android는 [검증된 조합](docs/IMPACT.md#android-variant-자동-캡처)에서 확인했다. Kotlin compiler adapter는 KGP 2.4.10에서 검증했고 다른 버전은 보장하지 않는다. 최소 Android 조합은 Gradle 8.10.2에서 검증했지만, KGP 자체는 8.14.4 이상을 권고한다.
 
-아래 예시는 2026-10-19 GitHub에 공개된 0.25.0용이다. plugin은 해당 버전이 Portal에 제공된 뒤 사용하거나
+아래 예시는 0.26.0 릴리스 준비본용이다. plugin은 해당 버전이 Portal에 제공된 뒤 사용하거나
 같은 source revision에서 matching 모듈을 빌드한다.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.25.0"
+    id("io.github.ictechgy.kartograph") version "0.26.0"
 }
 ```
 
@@ -109,6 +109,13 @@ enum/source-use 캡처를 함께 사용할 수 있다. `GraphNode`·`QuerySnapsh
 [enum 영향 안내](docs/IMPACT.md#opt-in-enum-expansion-candidates)를 따른다.
 실제 runtime 동작이나 버그를 확정하는 결과가 아니며 공개된 0.23.0 artifact에는 이 기능이 없다.
 JDK 17 collector CI의 Java 21 null/pattern 구문 분기는 미실행이다.
+
+0.26.0은 Git base/head 또는 작업 트리 변경을 받는 native `impact --git-base`와 MCP `change_impact`를 추가한다.
+동일한 CLI/plugin/library 버전으로 양쪽을 빌드·캡처하고 소스와 빌드 입력을 연결한다. revision 라벨만으로 신선도를
+입증하지 않는다. 기존 impact 출력은 유지하며 새 opt-in 보고서는 과거 호출자, revision별 경로, 파일 전체 seed의
+정밀도 한계, stale/unknown 입력과 순회 예산을 보존한다. [변경 분석·이전 안내](docs/IMPACT.md)와
+[범위를 제한한 실제 변경 검증](docs/GIT-IMPACT-VALIDATION.md)을 참고한다. 정적 테스트 후보는 실패 예측이나 생략 허가가 아니다.
+공개 0.26.0 asset과 Portal 설치 검증은 아직 완료되지 않았다. 릴리스 준비와 공개 배포는 별개다.
 
 0.25.0은 application layout XML 변경을 정확한 non-final R 필드와 기록된 literal include를 통해 코드·테스트 후보로 연결한다.
 matching CLI/plugin/library와 양쪽 revision 재캡처가 필요하다. coverage는 partial이며 resource 근거가 있는 모듈 snapshot은 병합하지 않는다.

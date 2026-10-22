@@ -358,7 +358,8 @@ class ImpactGateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             def run(*args, expected=0):
-                result = subprocess.run(list(map(str, args)), cwd=project, capture_output=True, text=True, timeout=30)
+                result = subprocess.run(list(map(str, args)), cwd=project, env=FIXTURE_ENV,
+                                        capture_output=True, text=True, timeout=30)
                 self.assertEqual(expected, result.returncode, result.stderr)
                 return result.stdout
             run("git", "init", "-q")
@@ -387,6 +388,18 @@ class ImpactGateTest(unittest.TestCase):
             after = project / "current.json"
             after.write_text(run(BINARY, "snapshot", "--classes", fresh, "--project", project,
                 "--include-paths", "--revision", current, "--scope", "fixture:main"))
+            # 같은 실제 Git/compiler fixture를 설치된 ZIP/TAR의 native 진입점에서도 확인한다.
+            release_version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+            self.assertEqual("kartograph " + release_version, run(BINARY, "--version").strip())
+            native = json.loads(run(BINARY, "impact", "--git-base", base, "--git-head", current,
+                "--project", project, "--base-graph", before, "--graph-file", after))
+            self.assertEqual("kartograph-change-impact", native["format"])
+            self.assertEqual(release_version, native["snapshots"]["current"]["toolVersion"])
+            self.assertEqual(["source space/Changed.java"], native["change"]["files"])
+            self.assertIn("method:Caller#run()V", [item["usr"] for item in native["graphImpact"]["affected"]])
+            self.assertEqual("unverified", native["freshness"]["base"]["status"])
+            self.assertEqual("stale", native["freshness"]["current"]["status"])
+            self.assertIn("checkout-differs-from-selected-commit", native["freshness"]["current"]["reasons"])
             command = [sys.executable, ROOT / "Scripts/check-impact.py", "--binary", BINARY, "--project", project,
                 "--base", base, "--base-graph", before, "--graph-file", after]
             report = json.loads(run(*command))

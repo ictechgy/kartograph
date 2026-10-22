@@ -52,6 +52,7 @@ distributions {
                 "PUBLIC-VALIDATION.md",
                 "IMPACT-PLAN.md",
                 "IMPACT.md",
+                "GIT-IMPACT-VALIDATION.md",
                 "ANDROID-RESOURCE-EVIDENCE.md",
                 "ANDROID-RESOURCE-CAPTURE.md",
                 "ANDROID-RESOURCE-PRODUCER-EVIDENCE.md",

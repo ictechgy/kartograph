@@ -56,12 +56,12 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 - Android graph/dead tasks: AGP 8.7+, Gradle 8.10+, JDK 17+ (verified with AGP 8.7.3 / Gradle 8.10.2 and with AGP 9.x).
 - Automatic snapshots: JVM Java/Kotlin on Gradle 9.6.1 and JDK 17/21, plus the [tested Android combinations](docs/IMPACT.md#android-variant-자동-캡처). The Kotlin compiler adapter is verified with KGP 2.4.10; other KGP versions are not guaranteed. The minimum Android combination was tested on Gradle 8.10.2, although KGP itself recommends 8.14.4 or later.
 
-The following example targets 0.25.0, published on GitHub on 2026-10-19. Use the plugin once that version
+The following example targets the 0.26.0 release preparation. Use the plugin once that version
 is available from the Portal, or build matching modules from the same source revision.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.25.0"
+    id("io.github.ictechgy.kartograph") version "0.26.0"
 }
 ```
 
@@ -107,6 +107,14 @@ builds, and rebuild clients when their enum definitions change. Follow the
 [enum expansion guide](docs/IMPACT.md#opt-in-enum-expansion-candidates).
 These are review candidates, not runtime behavior proof. The published 0.23.0 artifacts do not contain this feature.
 The JDK 17 collector suite does not execute the conditional Java 21 null/pattern syntax branch.
+
+Version 0.26.0 adds native `impact --git-base` and MCP `change_impact` for Git base/head or working-tree changes.
+Build and capture both revisions with matching CLI/plugin/library versions, then connect their source and build inputs;
+revision labels alone do not establish freshness. Existing impact output remains compatible. The opt-in report retains
+historical callers, separate revision paths, file-wide seed precision, stale/unknown inputs and traversal budgets.
+See [change analysis and migration](docs/IMPACT.md) and the [bounded real-change validation](docs/GIT-IMPACT-VALIDATION.md).
+These are review and static test candidates, not failure predictions or permission to skip tests.
+Public 0.26.0 assets and Portal installation have not yet been verified; release preparation is not publication.
 
 Version 0.25.0 adds captured application layout XML impact through exact non-final R fields and recorded literal includes.
 Use matching CLI/plugin/library builds and recapture both revisions. Coverage remains partial; module snapshots with resource

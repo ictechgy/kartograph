@@ -5,6 +5,13 @@
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)을 따른다.
 
 ## [Unreleased]
+
+## [0.26.0] - 2026-10-22
+
+이 항목은 릴리스 준비 기록이다. GitHub asset 및 Gradle Portal publication/설치 검증은 별도 절차이며,
+태그나 문서만으로 배포 완료를 의미하지 않는다. CLI/plugin/collector/library를 같은 버전으로 맞추고
+before/current snapshot을 다시 캡처한다. 기존 impact JSON/API는 유지되며 Git 문맥은 opt-in wrapper로 추가된다.
+
 ### Added
 
 - opt-in `impact --git-base`와 MCP `change_impact`가 실제 Git base/head 또는 작업 트리 변경의
@@ -1202,7 +1209,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/ictechgy/kartograph/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.25.0
 [0.24.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.24.0
 [0.23.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.23.0
