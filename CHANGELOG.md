@@ -7,6 +7,11 @@
 ## [Unreleased]
 ### Added
 
+- opt-in `impact --git-base`와 MCP `change_impact`가 실제 Git base/head 또는 작업 트리 변경의
+  삭제·rename 양쪽 경로를 기존 before/current 영향 탐색에 연결한다. 새 `kartograph-change-impact` v1은
+  원래 graphImpact, exact snapshot SHA-256, 전체 파일 seed 정밀도, 별도 current/base freshness를 보존한다.
+  commit 라벨을 source/build freshness로 대신하지 않으며 기존 기본 impact 출력·탐색 API는 유지한다.
+
 - language-traversal 간선을 한 번 조립해 순회와 `graphRevision`에 함께 쓰는 라이브러리 API
   `TraversalEdges.prepare`, `LanguageTraversal.traverse(prepared, ...)`,
   `LanguageTraversalCodec.graphRevision(graph, traversalEdges, ...)`와 이름·한정 이름 root를 한 번 만든
