@@ -81,13 +81,13 @@ class ExternalCallOrderingTest {
         for (value in copies) {
             assertEquals(NodeId("method:${value.owner}#${value.name}${value.descriptor}"), value.target)
             val reconstructed = ExternalCall(value.caller, value.owner, value.name, value.descriptor, value.kind,
-                value.location, value.ordinal, value.resolvedTargets, value.resolution, value.model)
+                value.location, value.ordinal, value.resolvedTargets, value.resolution, value.model, value.declaration)
             assertEquals(reconstructed, value)
             val fields: List<Any?> = listOf(value.caller, value.owner, value.name, value.descriptor, value.kind,
-                value.location, value.ordinal, value.resolvedTargets, value.resolution, value.model)
+                value.location, value.ordinal, value.resolvedTargets, value.resolution, value.model, value.declaration)
             assertEquals(fields.fold(0) { hash, field -> hash * 31 + (field?.hashCode() ?: 0) }, value.hashCode())
-            val (caller, owner, name, descriptor, kind, location, ordinal, targets, resolution, model) = value
-            assertEquals(fields, listOf(caller, owner, name, descriptor, kind, location, ordinal, targets, resolution, model))
+            val (caller, owner, name, descriptor, kind, location, ordinal, targets, resolution, model, declaration) = value
+            assertEquals(fields, listOf(caller, owner, name, descriptor, kind, location, ordinal, targets, resolution, model, declaration))
         }
         assertEquals(NodeId("method:lib/Owner#run()V"), original.target)
         assertEquals(1, setOf(original, original.copy()).size)

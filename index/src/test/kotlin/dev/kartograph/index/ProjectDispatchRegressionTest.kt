@@ -69,6 +69,8 @@ class ProjectDispatchRegressionTest {
         assertEquals(cold.graph.edges, warm.graph.edges)
         assertEquals(cold.graph.externalCalls, warm.graph.externalCalls)
         assertEquals(warm.statistics.classFiles, warm.statistics.cacheHits)
+        assertEquals(warm.graph.edges, warm.withHierarchy(warm.hierarchy).graph.edges)
+        assertEquals(warm.graph.externalCalls, warm.withHierarchy(warm.hierarchy).graph.externalCalls)
         val graph = warm.graph
         fun method(owner: String, name: String = "m", descriptor: String = "()Ljava/lang/String;") =
             JvmNodeId.methodId(owner, name, descriptor)

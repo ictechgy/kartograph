@@ -80,9 +80,10 @@ public object SourceDeclarationLocations {
             nodes, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures,
             graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes,
         ).preserveCompilerSourceUsesFrom(graph)
-        return if (graph.compilerCallPositionsCaptured) {
+        val located = if (graph.compilerCallPositionsCaptured) {
             enriched.withCompilerCallPositions(graph.locatedCompilerReferences)
         } else enriched
+        return located.withCompilerSourceFactsFrom(graph)
     }
 
     private enum class DeclarationKind { TYPE, JAVA_FIELD, KOTLIN_PROPERTY, METHOD, CONSTRUCTOR }

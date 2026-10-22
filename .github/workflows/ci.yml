@@ -45,6 +45,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Verify CLI contract
+        id: cli_contract
         run: Scripts/verify-cli-contract.sh
       - name: Verify PR gate against real Git and compiler outputs
         run: python3 -m unittest discover -s Scripts/tests -v
@@ -97,15 +98,24 @@ jobs:
         run: python3 Scripts/verify-runtime-contracts.py
       - name: Compare compiler references before constant inlining
         run: python3 experiments/compiler-references/run.py
+      # 시간 게이트 실패 뒤에도 성공한 설치물을 쓰는 독립 정확성 검증은 남긴다.
       - name: Verify Dagger selected binding evidence
+        id: dagger_evidence
+        if: ${{ !cancelled() && steps.candidate-build.outcome == 'success' && steps.cli_contract.outcome == 'success' }}
         run: python3 experiments/dagger-bindings/run.py
       - name: Verify compiler collectors and product evidence lifecycle
+        id: collector_lifecycle
+        if: ${{ !cancelled() && steps.candidate-build.outcome == 'success' && steps.cli_contract.outcome == 'success' }}
         run: |
-          KARTOGRAPH_SNAPSHOT_CLI="$PWD/cli/build/install/kartograph/bin/kartograph" ./gradlew --no-daemon -p compiler-collectors integrationTest distZip
+          KARTOGRAPH_SNAPSHOT_CLI="$PWD/cli/build/install/kartograph/bin/kartograph" ./gradlew --no-daemon -p compiler-collectors \
+            -Pkartograph.consumerDistribution="$PWD/cli/build/install/kartograph" integrationTest distZip
           python3 Scripts/verify-collector-installation.py \
             --archive "compiler-collectors/build/distributions/kartograph-compiler-collectors-$(cat VERSION).zip" \
             --version "$(cat VERSION)" --evidence build/reports/collector-installation
-          python3 Scripts/verify-compiler-evidence.py
+      # Dagger 검증이 만드는 fixture JAR와 collector 설치 검증을 모두 요구한다.
+      - name: Verify Gradle compiler evidence lifecycle
+        if: ${{ !cancelled() && steps.candidate-build.outcome == 'success' && steps.cli_contract.outcome == 'success' && steps.dagger_evidence.outcome == 'success' && steps.collector_lifecycle.outcome == 'success' }}
+        run: python3 Scripts/verify-compiler-evidence.py
       - name: Verify exact compiler call positions without skipped checks
         run: python3 Scripts/verify-compiler-call-positions.py
       - name: Preserve compiler evidence validation
@@ -120,6 +130,7 @@ jobs:
             build/reports/collector-installation/**/build.stdout
             build/reports/collector-installation/**/build.stderr
             build/reports/collector-installation/verification.json
+            compiler-collectors/build/reports/public-authored-api/public-report.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Compare callgraph precision

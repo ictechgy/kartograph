@@ -217,6 +217,10 @@ public object QuerySnapshotCodec {
                 if (bridges.isEmpty()) graph else graph + ("kotlinDefaultBridges" to bridges)
             }
             .let { graph ->
+                val declarations = CallDeclarationCodec.records(snapshot.graph.externalCalls)
+                if (declarations.isEmpty()) graph else graph + ("callDeclarations" to declarations)
+            }
+            .let { graph ->
                 val declarations = snapshot.graph.nodes.values.mapNotNull { node ->
                     node.sourceDeclaration?.let { it.toJsonValue() + ("usr" to node.id.value) }
                 }.sortedBy { it["usr"] as String }
@@ -224,6 +228,10 @@ public object QuerySnapshotCodec {
             }
             .let { graph -> if (snapshot.graph.nodes.values.any { it.enumConstants != null }) graph else graph - "enumInventories" }
             .let { graph -> if (snapshot.graph.compilerCallPositionsCaptured) graph else graph - "compilerCallEvidence" }
+            .let { graph -> if (snapshot.graph.compilerAuthoredCallers.isEmpty()) graph else
+                graph + ("compilerAuthoredCalls" to CompilerAuthoredCallCodec.value(snapshot.graph.compilerAuthoredCallers)) }
+            .let { graph -> if (snapshot.graph.compilerCallerInventories.isEmpty()) graph else
+                graph + ("compilerCallerInventories" to CompilerCallerInventoryCodec.value(snapshot.graph.compilerCallerInventories)) }
             .let { graph -> snapshot.graph.compilerSourceUseEvidence?.let {
                 graph + ("compilerSourceUses" to CompilerSourceUseSnapshotCodec.value(it))
             } ?: graph }
@@ -365,13 +373,16 @@ public object QuerySnapshotCodec {
         val compilerCallEvidence = if (rawGraph.containsKey("compilerCallEvidence")) {
             parseCompilerCallEvidence(rawGraph, version, nodes)
         } else null
-        val calls = list(graph["externalCalls"]).map { raw ->
+        val rawCalls = list(graph["externalCalls"]).map { raw ->
             val call = objectValue(raw)
             ExternalCall(NodeId(string(call["caller"])), string(call["owner"]), string(call["name"]), string(call["descriptor"]),
                 enumValue(call["kind"]), location(call["location"]), integer(call["ordinal"]),
                 strings(call["resolvedTargets"]).map(::NodeId), enumValue(call["resolution"]), optionalString(call["model"]))
         }
-        require(calls.all { it.caller in ids && it.target !in ids && it.ordinal >= 0 && it.resolvedTargets.all(ids::contains) }) {
+        val calls = CallDeclarationCodec.parse(rawGraph["callDeclarations"], rawCalls, nodes, rawGraph.containsKey("callDeclarations"))
+        val externalStubIds = nodes.filter { NodeAttribute.EXTERNAL_STUB in it.attributes }.mapTo(mutableSetOf()) { it.id }
+        require(calls.all { it.caller in ids && (it.target !in ids || it.target in externalStubIds) &&
+            it.ordinal >= 0 && it.resolvedTargets.all(ids::contains) }) {
             "query snapshot contains invalid external calls"
         }
         val providers = list(graph["serviceProviders"]).map { raw ->
@@ -440,7 +451,12 @@ public object QuerySnapshotCodec {
         val baseGraph = CodeGraph(nodes.map { node -> node.copy(sourceDeclaration = declarations[node.id],
             kotlinDefaultBridge = bridgeFacts[node.id], enumConstants = enumInventories[node.id]) }, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
             lambdaEscapes.orEmpty())
-        val positionedGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
+        val locatedGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
+        val authoredGraph = if (rawGraph.containsKey("compilerAuthoredCalls")) locatedGraph.withCompilerAuthoredCalls(
+            CompilerAuthoredCallCodec.parse(rawGraph["compilerAuthoredCalls"], nodes)) else locatedGraph
+        val inventoriedGraph = if (rawGraph.containsKey("compilerCallerInventories")) authoredGraph.withCompilerCallerInventories(
+            CompilerCallerInventoryCodec.parse(rawGraph["compilerCallerInventories"])) else authoredGraph
+
         val provenance = document["provenance"]?.let(BuildWitnessCodec::provenance)
         val scope = optionalString(document["scope"])
         // 새 확장은 compact string table과 독립적이며 원래 graph에서만 존재 여부를 판단한다.
@@ -448,8 +464,8 @@ public object QuerySnapshotCodec {
             val evidence = CompilerSourceUseSnapshotCodec.parse(rawGraph["compilerSourceUses"])
             evidence.requireMatchesProvenance(requireNotNull(provenance) { "compiler source uses require snapshot provenance" },
                 requireNotNull(scope) { "compiler source uses require snapshot scope" })
-            positionedGraph.withCompilerSourceUses(evidence)
-        } else positionedGraph
+            inventoriedGraph.withCompilerSourceUses(evidence)
+        } else inventoriedGraph
         return QuerySnapshot(restoredGraph, retention, strings(document["limitations"]), suppressed,
             boolean(document["includePrivateMembers"]), string(document["toolVersion"]),
             optionalString(document["revision"]), scope, provenance,

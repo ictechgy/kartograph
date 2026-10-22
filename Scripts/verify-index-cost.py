@@ -16,7 +16,9 @@ import tempfile
 import threading
 import time
 
-BASELINE = "b7ab3e9d654a7ad889bed4b57ed4dc84d4082fd7"
+SOURCE_BASELINE = "b7ab3e9d654a7ad889bed4b57ed4dc84d4082fd7"
+# 측정한 main의 실행 소스는 그대로 두고 기존 dependency 두 POM의 검증 해시만 동기화했다.
+BASELINE = "c7b59fef4d0c8051326747f3bee6da5b04026181"
 MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
 PROFILES = ("graph", "dead", "architecture")
 LIMIT = 32 * 1024 * 1024
@@ -232,6 +234,13 @@ def source_identity(repo, ref, env):
     return {"commit": commit, "tree": tree}
 
 
+def require_baseline_source(repo, source, baseline, env):
+    """보조 baseline이 원본의 실행 소스·빌드 스크립트를 바꾸지 않았는지 Git tree로 확인한다."""
+    changed = successful(["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only",
+                          source, baseline, "--"], repo, env, phase="baseline-source-diff")
+    require_equal(changed["stdout"], b"gradle/verification-metadata.xml\n", "baseline-executable-source-changed")
+
+
 def identity_digest(value):
     return digest(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8"))
 
@@ -322,13 +331,16 @@ def experiment(repo, work, env, report):
     baseline = work / "baseline"
     baseline.mkdir()
     # shallow checkout에서도 요청한 고정 object만 확보한다.
-    found = run(["git", "cat-file", "-e", BASELINE + "^{commit}"], repo, env, phase="baseline-presence")
-    if found["exit"] != 0:
-        successful(["git", "fetch", "--no-tags", "--depth=1", "origin", BASELINE], repo, env, phase="baseline-fetch")
+    for ref in (SOURCE_BASELINE, BASELINE):
+        found = run(["git", "cat-file", "-e", ref + "^{commit}"], repo, env, phase="baseline-presence")
+        if found["exit"] != 0:
+            successful(["git", "fetch", "--no-tags", "--depth=1", "origin", ref], repo, env, phase="baseline-fetch")
+    require_baseline_source(repo, SOURCE_BASELINE, BASELINE, env)
     baseline_source = source_identity(repo, BASELINE, env)
     if baseline_source["commit"] != BASELINE:
         raise DiagnosticError("baseline-resolution-mismatch")
-    sources_before = {"baseline": baseline_source, "candidate": candidate_source}
+    sources_before = {"baselineSource": source_identity(repo, SOURCE_BASELINE, env),
+                      "baseline": baseline_source, "candidate": candidate_source}
     report["sourcesBefore"] = sources_before
     archive = work / "baseline.tar"
     successful(["git", "archive", "--format=tar", "--output", archive, BASELINE], repo, env, phase="baseline-archive")
@@ -376,7 +388,8 @@ def experiment(repo, work, env, report):
         if not all_equal:
             raise DiagnosticError("cli-byte-mismatch-or-unsuccessful-exit")
     finally:
-        report["sourcesAfter"] = {"baseline": source_identity(repo, BASELINE, env),
+        report["sourcesAfter"] = {"baselineSource": source_identity(repo, SOURCE_BASELINE, env),
+                                  "baseline": source_identity(repo, BASELINE, env),
                                   "candidate": source_identity(repo, "HEAD", env)}
         report["launchersAfter"] = {arm: inventory(dist / "bin") for arm, dist in distributions.items()}
         report["probeSourceAfter"] = file_record(repo / "Scripts/IndexCostProbe.java", "IndexCostProbe.java")
@@ -399,7 +412,7 @@ def experiment(repo, work, env, report):
 def main():
     repo = Path(__file__).resolve().parents[1]
     output = repo / "build/reports/index-cost/result.json"
-    report = {"format": "kartograph-index-cost-v1", "baseline": BASELINE, "status": "FAIL",
+    report = {"format": "kartograph-index-cost-v1", "baselineSource": SOURCE_BASELINE, "baseline": BASELINE, "status": "FAIL",
               "scope": "frozen-class-and-config-diagnostic; original-source-tree-omitted; separate-from-mandatory-smoke",
               "residualScope": "process-minus-index-includes-startup-loading-probe-and-shutdown; not-query-only"}
     try:

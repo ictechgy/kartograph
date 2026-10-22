@@ -354,9 +354,10 @@ internal object AgentCommand {
             paths[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
         }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures,
             graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes).preserveCompilerSourceUsesFrom(graph)
-        return if (graph.compilerCallPositionsCaptured) {
+        val located = if (graph.compilerCallPositionsCaptured) {
             relocated.withCompilerCallPositions(graph.locatedCompilerReferences)
         } else relocated
+        return located.withCompilerSourceFactsFrom(graph)
     }
 
     private fun savedQuery(requested: String, arguments: List<String>, output: PrintStream, error: PrintStream): Int {

@@ -78,6 +78,22 @@ public final class EnumDecisionProtocolTest {
         rejected(() -> EvidenceProtocol.parse("javac-constants", "root=" + root, "output=" + output, "token=" + token,
             "collector=kotlin-constants", "enumDecisions=true"));
         check(options.withCollector("javac-constants").enumDecisions(), "opt-in survives collector change");
+        Path classes = Files.createDirectory(root.resolve("combined-classes"));
+        EvidenceProtocol.Options all = EvidenceProtocol.parse("javac-constants", "root=" + root,
+            "output=" + output, "token=" + token, "enumDecisions=true", "callPositions=true",
+            "authoredCalls=true", "callerInventory=true", "classOutput=" + classes);
+        for (EvidenceProtocol.Options selected : List.of(all, all.withCollector("kotlin-constants"))) {
+            check(selected.enumDecisions() && selected.callPositions() && selected.authoredCalls() &&
+                selected.callerInventory() && selected.classOutput().equals(classes.toRealPath()),
+                "all independent evidence options survive collector changes");
+        }
+        EvidenceProtocol.Options authoredOnly = new EvidenceProtocol.Options(root, output, token,
+            "javac-constants", false, true, true, classes);
+        check(authoredOnly.authoredCalls() && authoredOnly.callerInventory() && !authoredOnly.enumDecisions(),
+            "authored inventory overload does not enable enum capture");
+        check(!options.authoredCalls() && !options.callerInventory(),
+            "published enum overload does not enable authored capture");
+
 
         EvidenceProtocol.EnumDecisionBuffer missing = new EvidenceProtocol.EnumDecisionBuffer();
         missing.observe();

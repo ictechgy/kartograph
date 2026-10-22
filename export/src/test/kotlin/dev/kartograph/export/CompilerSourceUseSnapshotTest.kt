@@ -4,6 +4,10 @@ import dev.kartograph.analysis.ChangeImpact
 import dev.kartograph.analysis.ImpactInput
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.analysis.SymbolQuery
+import dev.kartograph.core.CompilerAuthoredCaller
+import dev.kartograph.core.CompilerAuthoredCall
+import dev.kartograph.core.AuthoredCallCoverage
+import dev.kartograph.core.AuthoredCallOrigin
 import dev.kartograph.core.BuildWitness
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.CompilerEvidenceSource
@@ -302,6 +306,27 @@ class CompilerSourceUseSnapshotTest {
             assertEquals(encoded, QuerySnapshotCodec.render(snapshot, compact, bytes))
             assertFailsWith<QuerySnapshotSizeException> { QuerySnapshotCodec.render(snapshot, compact, bytes - 1) }
             assertFailsWith<QuerySnapshotSizeException> { QuerySnapshotCodec.parse(encoded, bytes - 1) }
+        }
+    }
+
+    @Test
+    fun `authored callers coexist with source selections and located facts in both encodings`() {
+        val original = fixture()
+        val authored = CompilerAuthoredCaller(CONTROL, SOURCE, 270, 310,
+            CompilerSourceCoordinateBasis.KOTLIN_UTF16_NORMALIZED_SOURCE, "2.4.20", 1, 1,
+            AuthoredCallCoverage.COMPLETE, emptyList(),
+            listOf(CompilerAuthoredCall(ORDINARY, AuthoredCallOrigin.PROJECT, SOURCE.path, 285, 300)),
+            "c".repeat(64), "d".repeat(64), "f".repeat(64))
+        val graph = original.graph.withCompilerAuthoredCalls(listOf(authored))
+        for (compact in listOf(false, true)) {
+            val snapshot = original.copy(graph = graph)
+            val encoded = QuerySnapshotCodec.render(snapshot, compact)
+            val restored = QuerySnapshotCodec.parse(encoded)
+            assertEquals(graph.compilerAuthoredCallers, restored.graph.compilerAuthoredCallers)
+            assertEquals(graph.compilerSourceUseEvidence, restored.graph.compilerSourceUseEvidence)
+            assertEquals(graph.locatedCompilerReferences, restored.graph.locatedCompilerReferences)
+            assertEquals(graph.edges, restored.graph.edges)
+            assertEquals(encoded, QuerySnapshotCodec.render(restored, compact))
         }
     }
 

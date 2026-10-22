@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""실제 javac/Kotlin 2.4.10/Dagger 2.59 collector 계약을 검증한다."""
+"""실제 javac/빌드가 고정한 Kotlin/Dagger 2.59 collector 계약을 검증한다."""
 
 from __future__ import annotations
 
 import argparse
 import base64
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -79,12 +80,14 @@ def evidence(path: Path) -> list[list[str]]:
     return rows
 
 
-def assert_evidence(path: Path, collector: str, source: Path, expected_edges: set[tuple[str, str, str]], artifact: Path, compiler_prefix: str) -> None:
+def assert_evidence(path: Path, collector: str, source: Path, expected_edges: set[tuple[str, str, str]], artifact: Path, compiler_prefix: str, *, exact_compiler: bool = False) -> None:
     rows = evidence(path)
     headers = {row[0]: row[1] for row in rows[1:] if row[0] in {"collector", "compiler", "token", "artifact", "unmapped"}}
     if headers.get("collector") != collector:
         raise AssertionError(f"collector header mismatch: {headers}")
-    if not headers.get("compiler", "").startswith(compiler_prefix):
+    compiler = headers.get("compiler", "")
+    version_matches = compiler == compiler_prefix if exact_compiler else compiler.startswith(compiler_prefix)
+    if not version_matches:
         raise AssertionError(f"compiler version mismatch: {headers.get('compiler')}")
     if headers.get("artifact") != content_fingerprint(artifact):
         raise AssertionError("collector artifact fingerprint mismatch")
@@ -151,7 +154,23 @@ def java_test(javac: Path, collector: Path, work: Path) -> None:
         raise AssertionError("class-less source unit was omitted from compiler inventory")
 
 
-def kotlin_test(java: Path, collector: Path, kotlin_classpath: str, work: Path) -> None:
+def kotlin_artifact(kotlin_classpath: str, artifact: str, version: str) -> Path:
+    candidates = [Path(path) for path in kotlin_classpath.split(os.pathsep)
+                  if Path(path).name.startswith(f"{artifact}-") and Path(path).suffix == ".jar"]
+    expected = f"{artifact}-{version}.jar"
+    if len(candidates) != 1 or candidates[0].name != expected or not candidates[0].is_file():
+        raise AssertionError(f"expected exactly one {expected} file in the test classpath; found {[path.name for path in candidates]}")
+    return candidates[0]
+
+
+def kotlin_test(java: Path, collector: Path, kotlin_classpath: str, work: Path, *, kotlin_version: str) -> None:
+    compiler = kotlin_artifact(kotlin_classpath, "kotlin-compiler-embeddable", kotlin_version)
+    stdlib = kotlin_artifact(kotlin_classpath, "kotlin-stdlib", kotlin_version)
+    print(json.dumps({
+        "kind": "kotlin-test-runtime", "compilerVersion": kotlin_version,
+        **{name: {"artifact": path.name, "sha256": sha256(path)}
+           for name, path in (("compiler", compiler), ("stdlib", stdlib), ("collector", collector))},
+    }, sort_keys=True), flush=True)
     root = work / "kotlin"
     root.mkdir()
     source = root / "KotlinConstants.kt"
@@ -160,10 +179,6 @@ def kotlin_test(java: Path, collector: Path, kotlin_classpath: str, work: Path) 
     sidecar = root / "kotlin.tsv"
     token = root / "token"
     token.write_text("2" * 64, encoding="utf-8")
-    classpath = kotlin_classpath.split(os.pathsep)
-    stdlib = next((Path(path) for path in classpath if Path(path).name.startswith("kotlin-stdlib-2.4.10")), None)
-    if stdlib is None:
-        raise AssertionError("Kotlin 2.4.10 stdlib is missing from the test classpath")
     run([
         java, "-cp", kotlin_classpath, "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
         "-no-reflect", "-jvm-target", "17", "-jdk-home", java.parent.parent,
@@ -181,7 +196,7 @@ def kotlin_test(java: Path, collector: Path, kotlin_classpath: str, work: Path) 
         ("method:fixture/RenamedConstants#overloaded(I)Ljava/lang/String;", "field:fixture/Constants#USED:Ljava/lang/String;", "constant"),
         ("method:fixture/RenamedConstants#overloaded(Ljava/lang/String;)Ljava/lang/String;", "field:fixture/RenamedConstants#TOP_USED:Ljava/lang/String;", "constant"),
     }
-    assert_evidence(sidecar, "kotlin-constants", source, expected, collector, "2.4.10")
+    assert_evidence(sidecar, "kotlin-constants", source, expected, collector, kotlin_version, exact_compiler=True)
 
     members = root / "KotlinMembers.kt"
     shutil.copyfile(FIXTURES / members.name, members)
@@ -196,7 +211,7 @@ def kotlin_test(java: Path, collector: Path, kotlin_classpath: str, work: Path) 
         ("method:fixture/KotlinMembersKt#readNamed()Ljava/lang/String;", "field:fixture/NamedHolder#USED:Ljava/lang/String;", "constant"),
         ("method:fixture/KotlinMembersKt#readPrivate()Ljava/lang/String;", "field:fixture/MemberConstants#USED:Ljava/lang/String;", "constant"),
     }
-    assert_evidence(member_output, "kotlin-constants", members, member_edges, collector, "2.4.10")
+    assert_evidence(member_output, "kotlin-constants", members, member_edges, collector, kotlin_version, exact_compiler=True)
 
     library_root = work / "constant-library"
     library_root.mkdir()
@@ -293,6 +308,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--collector", type=Path, required=True)
     parser.add_argument("--kotlin-classpath", required=True)
+    parser.add_argument("--kotlin-version", required=True)
     parser.add_argument("--dagger-classpath", required=True)
     args = parser.parse_args()
     if not args.collector.is_file():
@@ -315,8 +331,9 @@ def main() -> None:
         run([java, "-cp", os.pathsep.join([str(staging_classes), str(args.collector)]),
              "dev.kartograph.collectors.EnumDecisionProtocolTest", work / "enum-protocol"], work)
         java_test(javac, args.collector, work)
-        kotlin_test(java, args.collector, args.kotlin_classpath, work)
-        enum_decisions_test(javac, java, args.collector, args.kotlin_classpath, work, run, encoded, sha256, content_fingerprint)
+        kotlin_test(java, args.collector, args.kotlin_classpath, work, kotlin_version=args.kotlin_version)
+        enum_decisions_test(javac, java, args.collector, args.kotlin_classpath, work, run, encoded, sha256, content_fingerprint,
+                            stdlib=kotlin_artifact(args.kotlin_classpath, "kotlin-stdlib", args.kotlin_version))
         dagger_test(javac, java, args.collector, dagger_classpath, work)
         processor_outputs_test(javac, args.collector, work, run, encoded, sha256, content_fingerprint, dagger_classpath)
     print("compiler collectors verified: javac constants, Kotlin JVM identities, Dagger selected bindings, processor source attribution, enum decisions, failures rejected")

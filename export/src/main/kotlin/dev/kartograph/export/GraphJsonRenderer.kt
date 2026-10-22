@@ -100,6 +100,7 @@ public object GraphJsonRenderer {
             )
             call.location?.toJsonValue(projectRelativePaths[call.caller])?.let { value["location"] = it }
             call.model?.let { value["model"] = it }
+            call.declaration?.let { value["declaration"] = CallDeclarationCodec.value(it) }
             record("externalCall", value)
         }
     }
@@ -137,6 +138,7 @@ public object GraphJsonRenderer {
                 ).apply {
                     call.location?.toJsonValue(projectRelativePaths[call.caller])?.let { put("location", it) }
                     call.model?.let { put("model", it) }
+                    call.declaration?.let { put("declaration", CallDeclarationCodec.value(it)) }
                 }
             })
         }

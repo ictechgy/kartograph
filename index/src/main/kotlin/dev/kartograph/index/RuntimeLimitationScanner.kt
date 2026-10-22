@@ -18,10 +18,13 @@ public class IndexedClasses internal constructor(
     public val declarationsByRoot: List<Set<NodeId>> = emptyList(),
     public val selectedRootByNode: Map<NodeId, Int> = emptyMap(),
     public val statistics: IndexingStatistics = IndexingStatistics(),
+    /** 공개 externalCalls에서 제거된 내부 virtual/interface opcode를 재보강 때 재사용한다. */
+    private val projectCalls: List<dev.kartograph.core.ExternalCall> = emptyList(),
 ) {
     /** 1회 파싱한 그래프에 dependency header를 보강하며 관측값과 호출 위치는 재사용한다. */
     public fun withHierarchy(hierarchy: ClassHierarchy): IndexedClasses =
-        IndexedClasses(ExternalDispatchIndexer.enrich(graph, hierarchy), observations, hierarchy, declarationsByRoot, selectedRootByNode, statistics)
+        IndexedClasses(CallDeclarationIndexer(ExternalDispatchIndexer.enrichBounded(graph, hierarchy, null, projectCalls).graph, hierarchy).enrich(),
+            observations, hierarchy, declarationsByRoot, selectedRootByNode, statistics, projectCalls)
 }
 
 /** 한 인덱싱 실행에서 관측한 캐시 수명주기와 주요 phase 시간이다. */

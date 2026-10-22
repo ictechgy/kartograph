@@ -92,13 +92,11 @@ def check_sites(decisions, source, expected, collector="kotlin-constants"):
         assert row["constants"] == constants and row["host"] == host and row["lambda_"] == lexical_lambda and row["enum"] == enum, (key, row)
 
 
-def exercise(javac, java, collector, kotlin_classpath, work, run, encoded, sha256, fingerprint):
+def exercise(javac, java, collector, kotlin_classpath, work, run, encoded, sha256, fingerprint, *, stdlib):
     root = work / "enum-decisions"
     root.mkdir()
     token = root / "input.token"
     token.write_text("4" * 64, encoding="utf-8")
-    stdlib = next(Path(path) for path in kotlin_classpath.split(os.pathsep)
-                  if Path(path).name.startswith("kotlin-stdlib-2.4.10"))
 
     def kotlin(sources, sidecar, classes, enums=True, calls=False, extra=(), classpath=None, expected=0):
         command = [java, "-cp", kotlin_classpath, "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
