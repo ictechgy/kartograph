@@ -15,6 +15,19 @@ import kotlin.test.*
 import org.junit.jupiter.api.io.TempDir
 
 class GitImpactCliTest {
+    @Test fun `restoring a base file as untracked is an empty net working tree patch`(@TempDir root: Path) {
+        val project = repository(root)
+        val file = project.resolve("Target.java")
+        Files.writeString(file, "class Target {}\n")
+        git(project, "add", "."); git(project, "commit", "-qm", "base")
+        val base = git(project, "rev-parse", "HEAD").trim()
+        git(project, "rm", "Target.java"); git(project, "commit", "-qm", "delete")
+        Files.writeString(file, "class Target {}\n")
+        assertEquals(emptyList(), GitImpactContext.inspect(project, base, null, true).files)
+        Files.writeString(file, "class Target { int value; }\n")
+        assertEquals(listOf("Target.java"), GitImpactContext.inspect(project, base, null, true).files)
+    }
+
     @Test fun `witnessed inputs match while working tree null revision and MCP scope remain explicit`(@TempDir root: Path) {
         val project = repository(root)
         Files.writeString(project.resolve(".gitignore"), "classes/\n.capture/\n")

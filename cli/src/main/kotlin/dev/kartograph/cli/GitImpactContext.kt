@@ -4,6 +4,9 @@ import dev.kartograph.export.QuerySnapshot
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.file.Path
+import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
@@ -36,13 +39,40 @@ internal object GitImpactContext {
         val diff = listOf("-c", "diff.autoRefreshIndex=false", "diff", "--name-only", "-z", "--no-renames",
             "--no-ext-diff", "--no-textconv", "--ignore-submodules=dirty", base) +
             (if (workingTree) emptyList() else listOf(head)) + "--"
-        val files = (git(root, diff).split('\u0000') + if (workingTree)
-            git(root, listOf("ls-files", "--others", "--exclude-standard", "--full-name", "-z", "--")).split('\u0000')
-            else emptyList()).filter(String::isNotEmpty).distinct().sorted()
-        require(files.size <= MAX_CHANGED_PATHS && files.all(ImpactCommand::portable)) { "Git changed paths exceed supported portable path bounds" }
+        val untracked = if (workingTree) git(root,
+            listOf("ls-files", "--others", "--exclude-standard", "--full-name", "-z", "--")).split('\u0000').filter(String::isNotEmpty)
+            else emptyList()
+        val selected = (git(root, diff).split('\u0000') + untracked).filter(String::isNotEmpty).distinct().sorted()
+        require(selected.size <= MAX_CHANGED_PATHS && selected.all(ImpactCommand::portable)) { "Git changed paths exceed supported portable path bounds" }
+        // HEAD에서 삭제한 파일을 비추적으로 복원하면 index 기반 diff는 D/A를 보고한다.
+        // 기준 blob과 실제 바이트·모드가 같은 복원만 제외해 base→작업 트리의 빈 변경을 보존한다.
+        val restored = if (untracked.isEmpty()) emptySet() else restoredBaseFiles(root, base, untracked.toSet())
+        val files = selected.filterNot(restored::contains)
         val submodules = git(root, listOf("ls-files", "--stage", "-z", "--")).split('\u0000').any { it.startsWith("160000 ") }
         return Change(base, head, workingTree, files, submodules)
     }
+
+    private fun restoredBaseFiles(root: Path, base: String, untracked: Set<String>): Set<String> =
+        git(root, listOf("ls-tree", "-rz", "--full-tree", base)).split('\u0000').mapNotNull { entry ->
+            val split = entry.indexOf('\t')
+            if (split < 0) return@mapNotNull null
+            val name = entry.substring(split + 1)
+            if (name !in untracked) return@mapNotNull null
+            val metadata = entry.substring(0, split).split(' ')
+            if (metadata.size != 3 || metadata[1] != "blob" || metadata[0] !in setOf("100644", "100755")) return@mapNotNull null
+            val file = root.resolve(name)
+            if (!Files.isRegularFile(file, NOFOLLOW_LINKS) || generateSequence(file.parent) { it.parent }
+                    .takeWhile { it != root }.any(Files::isSymbolicLink)) return@mapNotNull null
+            val executable = if (file.fileSystem.supportedFileAttributeViews().contains("posix"))
+                OWNER_EXECUTE in Files.getPosixFilePermissions(file, NOFOLLOW_LINKS) else {
+                // Windows에서 복원된 실행 비트의 동일성을 증명하지 못하면 후보를 남긴다.
+                if (metadata[0] == "100755") return@mapNotNull null
+                false
+            }
+            if (executable != (metadata[0] == "100755")) return@mapNotNull null
+            val hash = git(root, listOf("hash-object", "--no-filters", "--", name)).trim()
+            name.takeIf { hash == metadata[2] }
+        }.toSet()
 
     fun validate(change: Change, current: QuerySnapshot, base: QuerySnapshot?) {
         require(base != null && current.scope != null && base.scope != null) { "Git impact requires scoped base/current snapshots" }
@@ -81,6 +111,7 @@ internal object GitImpactContext {
         "limitations" to listOfNotNull(
             "file-selection: all captured declarations in changed paths are candidates; unchanged declarations in those files may be included",
             "capture: build each revision with the same tool and scope; Git labels alone do not prove source or compiler freshness",
+            "restored-files: byte-identical untracked restorations are omitted only when their Git file mode can be verified; unknown modes remain candidates",
             "observation: Git selection and input hashing are sequential, not an atomic filesystem snapshot; keep builds and edits quiescent",
             "static-candidates: results do not predict test failures, authorize test skipping or prove an empty change safe",
             if (change.submodules) "submodules: uncommitted changes inside submodules were not inspected" else null))
