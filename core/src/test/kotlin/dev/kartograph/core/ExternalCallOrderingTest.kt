@@ -3,90 +3,126 @@ package dev.kartograph.core
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
+/** 최적화 전 selector와 identity 조합을 독립 oracle로 고정한다. */
 class ExternalCallOrderingTest {
-    private val base = ExternalCall(NodeId("method:app/Caller#run()V"), "lib/Api", "value", "()I", InvocationKind.VIRTUAL)
-
-    // 최적화 전 comparator를 별도 oracle로 남겨 키 순서·null·동률 계약을 고정한다.
-    private fun original(a: ExternalCall, b: ExternalCall): Int = compareValuesBy(a, b,
-        { it.caller.value }, { it.target.value }, { it.kind.name },
-        { it.ordinal }, { it.location?.path.orEmpty() }, { it.location?.line ?: 0 })
+    private val legacyOrder = Comparator<ExternalCall> { first, second ->
+        compareValuesBy(first, second,
+            { it.caller.value }, { "method:${it.owner}#${it.name}${it.descriptor}" }, { it.kind.name },
+            { it.ordinal }, { it.location?.path.orEmpty() }, { it.location?.line ?: 0 })
+    }
 
     @Test
-    fun `all kind name location line and ordinal combinations match original exact comparisons`() {
+    fun `seeded pair comparisons and sorts preserve exact legacy ordering`() {
+        val values = calls()
+        for (first in values) for (second in values) {
+            val actual = first.compareTo(second)
+            assertEquals(legacyOrder.compare(first, second), actual)
+            assertEquals(-actual.compareTo(0), second.compareTo(first).compareTo(0))
+        }
+        repeat(12) { seed ->
+            val shuffled = values.shuffled(Random(seed))
+            assertEquals(shuffled.sortedWith(legacyOrder), shuffled.sorted())
+        }
+        val random = Random(190)
+        repeat(10_000) {
+            val first = values.random(random)
+            val second = values.random(random)
+            val third = values.random(random)
+            if (first <= second && second <= third) assertTrue(first <= third)
+        }
+    }
+
+    @Test
+    fun `lexical kind concatenated identity and integer extrema retain their old order`() {
+        val first = call()
+        val kinds = InvocationKind.entries.map { first.copy(kind = it) }
+        assertEquals(kinds.sortedBy { it.kind.name }, kinds.sorted())
+        val ordinals = listOf(Int.MAX_VALUE, 0, Int.MIN_VALUE, -1, 1).map { first.copy(ordinal = it) }
+        assertEquals(ordinals.sortedBy { it.ordinal }, ordinals.sorted())
+        // owner를 독립 비교하면 '#'(35)와 '!'(33)의 경계에서 기존 순서가 뒤집힌다.
+        val prefix = first.copy(owner = "a")
+        val suffix = first.copy(owner = "a!")
+        assertTrue(prefix.owner < suffix.owner)
+        assertTrue(prefix > suffix)
+        // 구분자가 다른 인자에서 와도 합쳐진 identity가 같으면 동률이다.
+        val delimiter = first.copy(owner = "a#b", name = "c")
+        val sameIdentity = first.copy(owner = "a", name = "b#c")
+        assertEquals(0, delimiter.compareTo(sameIdentity))
+        assertFalse(delimiter == sameIdentity)
+    }
+
+    @Test
+    fun `resolution model targets and source column remain outside comparison identity`() {
+        val first = call().copy(location = SourceLocation("Caller.kt", 7, 1))
+        val ties = listOf(first, first.copy(resolution = CallResolution.RUNTIME_MODEL),
+            first.copy(model = "model.v1"), first.copy(resolvedTargets = listOf(first.caller)),
+            first.copy(location = SourceLocation("Caller.kt", 7, 2)))
+        ties.forEach { assertEquals(0, first.compareTo(it)) }
+        assertEquals(ties.reversed(), ties.reversed().sorted())
+        val locations = listOf(SourceLocation("Caller.kt", Int.MAX_VALUE), SourceLocation("Caller.kt", 1),
+            SourceLocation("Caller.kt"), null)
+        val values = locations.map { first.copy(location = it) }
+        assertEquals(values.sortedWith(legacyOrder), values.sorted())
+        // 빈 경로·0 줄은 public 모델이 허용하지 않으므로 가짜 비교 입력으로 만들지 않는다.
+        assertFailsWith<IllegalArgumentException> { SourceLocation("") }
+        assertFailsWith<IllegalArgumentException> { SourceLocation("Caller.kt", 0) }
+    }
+
+    @Test
+    fun `copy recomputes target without changing constructor equality hash or components`() {
+        val original = call()
+        val copies = listOf(original.copy(), original.copy(owner = "other/Owner"),
+            original.copy(name = "renamed"), original.copy(descriptor = "(I)Ljava/lang/String;"),
+            original.copy(owner = "Ω/Owner", name = "renamed", descriptor = "()I"))
+        for (value in copies) {
+            assertEquals(NodeId("method:${value.owner}#${value.name}${value.descriptor}"), value.target)
+            val reconstructed = ExternalCall(value.caller, value.owner, value.name, value.descriptor, value.kind,
+                value.location, value.ordinal, value.resolvedTargets, value.resolution, value.model, value.declaration)
+            assertEquals(reconstructed, value)
+            val fields: List<Any?> = listOf(value.caller, value.owner, value.name, value.descriptor, value.kind,
+                value.location, value.ordinal, value.resolvedTargets, value.resolution, value.model, value.declaration)
+            assertEquals(fields.fold(0) { hash, field -> hash * 31 + (field?.hashCode() ?: 0) }, value.hashCode())
+            val (caller, owner, name, descriptor, kind, location, ordinal, targets, resolution, model, declaration) = value
+            assertEquals(fields, listOf(caller, owner, name, descriptor, kind, location, ordinal, targets, resolution, model, declaration))
+        }
+        assertEquals(NodeId("method:lib/Owner#run()V"), original.target)
+        assertEquals(1, setOf(original, original.copy()).size)
+    }
+
+    @Test
+    fun `graph normalization keeps stable distinct calls across repeated enrichment`() {
+        val caller = GraphNode(call().caller, "call", NodeKind.METHOD)
+        val base = call()
+        val tied = base.copy(model = "different")
+        val local = base.copy(owner = "app/Caller", name = "call")
+        val absent = base.copy(caller = NodeId("method:missing/Caller#call()V"))
+        val inputs = listOf(tied, base.copy(ordinal = 2), base, tied, local, absent)
+        val expected = listOf(tied, base.copy(ordinal = 2), base).distinct().sortedWith(legacyOrder)
+        val graph = CodeGraph(listOf(caller), emptyList(), inputs)
+        assertEquals(expected, graph.externalCalls)
+        assertEquals(expected, graph.enrichedWith(emptyList()).externalCalls)
+        assertEquals(expected, graph.enrichedWith(emptyList(), inputs).externalCalls)
+    }
+
+    private fun call(): ExternalCall = ExternalCall(
+        NodeId("method:app/Caller#call()V"), "lib/Owner", "run", "()V", InvocationKind.VIRTUAL,
+    )
+
+    private fun calls(): List<ExternalCall> {
+        val random = Random(190)
+        val names = listOf("a", "aa", "a!", "a#", "a$", "a/", "Ω", "😀", "\uD800")
+        val descriptors = listOf("()V", "()I", "(I)V", "(Ljava/lang/String;)V")
         val locations = listOf(null, SourceLocation("A.kt"), SourceLocation("A.kt", 1),
-            SourceLocation("A.kt", Int.MAX_VALUE), SourceLocation("a.kt", 1), SourceLocation("한글.kt", 2))
-        val values = InvocationKind.entries.flatMap { kind ->
-            listOf("<init>", "value", "value\$default", "값").flatMap { name ->
-                listOf(Int.MIN_VALUE, 0, Int.MAX_VALUE).flatMap { ordinal ->
-                    locations.map { base.copy(kind = kind, name = name, ordinal = ordinal, location = it) }
-                }
-            }
-        }
-        for (a in values) for (b in values) assertEquals(original(a, b), a.compareTo(b))
-        assertEquals(values.sortedWith(::original), values.sorted())
+            SourceLocation("A.kt", Int.MAX_VALUE), SourceLocation("Ω.kt", 1))
+        return List(256) {
+            call().copy(caller = NodeId(names.random(random)), owner = names.random(random),
+                name = names.random(random), descriptor = descriptors.random(random),
+                kind = InvocationKind.entries.random(random), location = locations.random(random),
+                ordinal = listOf(Int.MIN_VALUE, -1, 0, 1, Int.MAX_VALUE).random(random))
+        } + listOf(call(), call().copy(model = "tie"))
     }
-
-    @Test
-    fun `target concatenation and enum names retain lexical rather than component or ordinal order`() {
-        val targets = listOf("a/A", "a/A!", "a/A\$Nested", "a/AA", "a/A_", "한/클래스")
-            .flatMap { owner -> listOf("a", "a!", "a_", "z", "값").flatMap { name ->
-                listOf("()I", "(I)V", "(Ljava/lang/String;)V").map { base.copy(owner = owner, name = name, descriptor = it) }
-            } }
-        for (a in targets) for (b in targets) assertEquals(original(a, b), a.compareTo(b))
-        assertTrue(base.copy(owner = "a/A!") < base.copy(owner = "a/A"))
-        assertTrue(base.copy(kind = InvocationKind.BOOTSTRAP) < base.copy(kind = InvocationKind.STATIC))
-        assertTrue(base.copy(kind = InvocationKind.SPECIAL) < base.copy(kind = InvocationKind.STATIC))
-    }
-
-    @Test
-    fun `nonordering evidence fields remain stable ties and equality still implies zero`() {
-        val call = base.copy(location = SourceLocation("A.kt", 1))
-        val values = listOf(call,
-            call.copy(location = SourceLocation("A.kt", 1, 99)),
-            call.copy(model = "model"),
-            call.copy(resolution = CallResolution.NO_PROJECT_TARGET),
-            call.copy(resolvedTargets = listOf(NodeId("method:app/Target#value()I"))),
-            call.copy(declaration = CallDeclaration(call.target, CallDeclarationScope.EXTERNAL, listOf(call.owner))))
-        assertNotEquals(values.first(), values.last())
-        for (a in values) for (b in values) {
-            assertEquals(0, original(a, b))
-            assertEquals(0, a.compareTo(b))
-            assertEquals(0, a.compareTo(a.copy()))
-        }
-        assertEquals(values, values.sorted())
-        assertEquals(values.reversed(), values.reversed().sorted())
-    }
-
-    @Test
-    fun `fixed randomized pairs triples and stable sorting retain original ordering`() {
-        val random = Random(0x4b415254)
-        val values = List(256) {
-            base.copy(caller = NodeId("method:app/C${random.nextInt(6)}#m${random.nextInt(4)}()V"),
-                owner = listOf("a/A", "a/A!", "a/A_", "lib/Api", "한/클래스").random(random),
-                name = listOf("<init>", "value", "value\$default", "값").random(random),
-                descriptor = listOf("()I", "()V", "(I)V").random(random),
-                kind = InvocationKind.entries.random(random), ordinal = random.nextInt(),
-                location = if (random.nextBoolean()) null else SourceLocation(
-                    listOf("A.kt", "a.kt", "dir/File.java", "한글.kt").random(random),
-                    if (random.nextBoolean()) null else random.nextInt(1, Int.MAX_VALUE)),
-                model = if (random.nextBoolean()) null else "model${random.nextInt(3)}")
-        }
-        repeat(4096) {
-            val a = values.random(random); val b = values.random(random); val c = values.random(random)
-            assertEquals(original(a, b), a.compareTo(b))
-            assertEquals(original(b, c), b.compareTo(c))
-            assertEquals(a.compareTo(b).sign(), -b.compareTo(a).sign())
-            if (a <= b && b <= c) assertTrue(a <= c)
-            if (a == b) assertEquals(0, a.compareTo(b))
-        }
-        repeat(8) {
-            val shuffled = values.shuffled(random)
-            assertEquals(shuffled.sortedWith(::original), shuffled.sorted())
-        }
-    }
-
-    private fun Int.sign(): Int = compareTo(0)
 }

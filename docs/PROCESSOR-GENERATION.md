@@ -8,10 +8,16 @@
 
 ## 수집과 확인
 
-0.20.1의 collector JAR·runner·cache adapter는 별도
-[collector ZIP](https://github.com/ictechgy/kartograph/releases/tag/v0.20.1)으로 배포하며,
-CLI ZIP/TAR나 Portal plugin runtime에 포함하지 않는다. 소스로 빌드하려면
-[v0.20.1 소스](https://github.com/ictechgy/kartograph/tree/v0.20.1)를 checkout하고 JDK 17로 실행한다.
+현재 소스의 0.24.0 collector JAR·runner·cache adapter는 미출시 준비본이다.
+collector ZIP은 CLI ZIP/TAR나 Portal plugin runtime과 별도이며, VERSION 변경은 공개·설치 가능성을 뜻하지 않는다.
+[v0.23.0 GitHub prerelease](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)에는 collector ZIP을 포함한
+일곱 asset이 공개되어 있고 release workflow의 plugin publish 단계도 성공했다.
+공개 asset/Portal plugin의 독립 consumer 검증은 아직 확인하지 못했다.
+기존 0.23.0과 [0.22.0](https://github.com/ictechgy/kartograph/releases/tag/v0.22.0)의 asset·checksum은 그대로 유지한다.
+0.21.0 태그의 실패한 배포에는 collector ZIP이 없다. 0.24.0을 소스로 빌드하려면
+CLI/plugin과 같은 source revision을 checkout하고 JDK 17로 실행한다.
+collector·CLI/plugin·직접 사용하는 library artifact를 같은 버전으로 맞추고,
+source-use와 enum base/current 비교의 [재캡처·재컴파일 조건](COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration)을 따른다.
 
 ```bash
 ./gradlew --no-daemon -p compiler-collectors integrationTest
@@ -165,7 +171,8 @@ KAPT/Kotlin2.4.10, KSP2.3.12에서 각 4종류 출력을 확인한다. source/cl
 ## v3 task 입력과 JVM 선언 귀속
 
 이 절의 기능은 0.15.0부터 제공한다. 기존 0.14.0 ZIP·Portal plugin은 v2까지
-지원하며, v3를 사용하려면 같은 버전(현재 0.20.1)의 collector runner/cache adapter와 CLI/plugin을 함께 설치한다.
+지원한다. 현재 0.24.0 준비본에서도 v3를 제공하며 collector runner/cache adapter와 CLI/plugin을
+같은 0.24.0 소스에서 빌드한다. 공개 artifact로 설치하는 절차는 해당 버전 발행 후에 적용한다.
 기존 설정에 다음 선택 필드만 추가하고, 위의 `registerProcessorOutputCache`로 실제 native task를 선택한다.
 
 ```json

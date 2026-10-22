@@ -7,6 +7,27 @@ import kotlin.test.assertTrue
 
 class ExternalRetentionReportingTest {
     @Test
+    fun `legacy reporter JVM descriptors and default calls remain available`() {
+        val type = AdoptionReporter::class.java
+        val oldArguments = arrayOf(ReportFormat::class.java, Collection::class.java, Collection::class.java,
+            Int::class.javaPrimitiveType!!, Map::class.java, Int::class.javaPrimitiveType!!,
+            Collection::class.java, Collection::class.java)
+        val oldMethod = type.getDeclaredMethod("render", *oldArguments)
+        assertEquals(String::class.java, oldMethod.returnType)
+        val oldDefault = type.getDeclaredMethod("render\$default", type, *oldArguments,
+            Int::class.javaPrimitiveType!!, Any::class.java)
+        val expected = AdoptionReporter.render(ReportFormat.TEXT, emptyList(), emptyList(), 0)
+        assertEquals(expected, AdoptionReporter.render(ReportFormat.TEXT, emptyList(), emptyList(), 0,
+            emptyMap(), 0, emptyList(), emptyList()))
+        assertEquals(expected, AdoptionReporter.render(format = ReportFormat.TEXT, findings = emptyList(),
+            limitations = emptyList(), suppressedCount = 0, inputHints = emptyList()))
+        assertEquals(expected, oldMethod.invoke(AdoptionReporter, ReportFormat.TEXT, emptyList<Any>(), emptyList<Any>(),
+            0, emptyMap<Any, Any>(), 0, emptyList<Any>(), emptyList<Any>()))
+        assertEquals(expected, oldDefault.invoke(null, AdoptionReporter, ReportFormat.TEXT, emptyList<Any>(), emptyList<Any>(),
+            0, null, 0, null, null, 0xf0, null))
+    }
+
+    @Test
     fun `every format reports global caveats with no findings and no retained entries`() {
         val context = ExternalRetentionCodec.parseDocument("""{
             "format":"external-retentions","version":0,"producedBy":{"name":"isthmus","version":"test"},

@@ -2,15 +2,24 @@ package dev.kartograph.index
 
 import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
 import dev.kartograph.core.HttpWrapperArgument
 import dev.kartograph.core.HttpWrapperDeclaration
+import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
+import dev.kartograph.core.SourceLocation
+import dev.kartograph.index.RouteUrlRules.UrlPart
+import java.lang.management.ManagementFactory
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.io.TempDir
 
 /** 합성 Kotlin/Java 표본으로 route-call 수확 규칙을 하나씩 고정한다. 공개 저장소라 실제 앱 코드는 쓰지 않는다. */
@@ -439,6 +448,69 @@ class RouteCallScannerTest {
     }
 
     @Test
+    fun `snapshot symbol follows the enclosing function after a double quote character literal`() {
+        val path = "src/main/kotlin/dev/example/net/Direct.kt"
+        write(
+            path,
+            """
+            package dev.example.net
+            import java.net.*
+
+            class Direct {
+                fun isQuote(c: Char): Boolean {
+                    return c == '"'
+                }
+                fun post() {
+                    val connection = URL("https://api.example.com/v1/items").openConnection() as HttpURLConnection
+                    connection.requestMethod = "POST"
+                }
+            }
+            """,
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:dev/example/net/Direct#isQuote(C)Z"), "isQuote", NodeKind.METHOD, location = SourceLocation(path, 6)),
+            GraphNode(NodeId("method:dev/example/net/Direct#post()V"), "post", NodeKind.METHOD, location = SourceLocation(path, 9)),
+        ), emptyList())
+
+        val fact = RouteCallScanner(project).scan(generatedAt = "2026-01-01T00:00:00Z", graph = graph).facts.single()
+
+        assertEquals("/v1/items", fact.channel)
+        // `'"'`를 문자열 시작으로 읽으면 isQuote 범위가 파일 끝까지 늘어나 호출이 isQuote에 붙는다.
+        assertEquals("method:dev/example/net/Direct#post()V", fact.symbol?.usr)
+    }
+
+    @Test
+    fun `calls after an apostrophe inside a backtick name are still scanned`() {
+        // 백틱 이름 속 `'`를 문자 리터럴 시작으로 읽으면 가린 뷰에서 파일 끝까지가 문자열이 되어, 뒤의 호출을 사실로 내지 못했다.
+        val path = "src/main/kotlin/dev/example/net/Direct.kt"
+        write(
+            path,
+            """
+            package dev.example.net
+            import java.net.*
+
+            class Direct {
+                fun `isn't ready`(): Boolean = false
+                fun post() {
+                    val connection = URL("https://api.example.com/v1/items").openConnection() as HttpURLConnection
+                    connection.requestMethod = "POST"
+                }
+            }
+            """,
+        )
+        val graph = CodeGraph(listOf(
+            GraphNode(NodeId("method:dev/example/net/Direct#post()V"), "post", NodeKind.METHOD, location = SourceLocation(path, 7)),
+        ), emptyList())
+
+        val fact = RouteCallScanner(project).scan(generatedAt = "2026-01-01T00:00:00Z", graph = graph).facts.single()
+
+        assertEquals("/v1/items", fact.channel)
+        assertEquals("POST", fact.method)
+        assertEquals("dev.example.net.Direct.post", fact.symbol?.qualifiedName)
+        assertEquals("method:dev/example/net/Direct#post()V", fact.symbol?.usr)
+    }
+
+    @Test
     fun `retrofit annotations map paths through rfc 3986 anchors`() {
         write(
             "src/main/kotlin/dev/example/api/Service.kt",
@@ -612,6 +684,93 @@ class RouteCallScannerTest {
         assertEquals("/users/{}", document.at(15).channel)
         assertEquals("/search", document.at(17).channel)
         assertEquals(true, document.at(17).route?.queryTailStripped)
+    }
+
+    @Test
+    fun `encoded path names read from constants in a parameter list keep the scan alive`() {
+        // 매개변수 어노테이션은 함수 머리 안이다. 그 위치에서 지역 선언을 찾을 때 함수 몸체 시작이 검색 입력(위치 앞까지) 밖이라
+        // IndexOutOfBoundsException이 났고, routes --role client가 exit 2로 끝났다. 머리에서는 몸체의 지역 선언이 보이지 않는다.
+        write(
+            "src/main/kotlin/dev/example/api/Encoded.kt",
+            """
+            package dev.example.api
+
+            import retrofit2.http.GET
+            import retrofit2.http.Path
+
+            const val DOC = "path"
+
+            interface Encoded {
+                @GET("docs/{path}/raw")
+                fun doc(@Path(value = DOC, encoded = true) path: String): Any
+            }
+            """,
+        )
+        val doc = scan().at(9)
+        // 상수로 읽은 이름도 리터럴 이름(`retrofit paths that cannot be proven ...`)과 같게 그 자리부터 dynamic이다.
+        assertTrue(doc.dynamic)
+        assertEquals("/docs/", doc.channelPrefix)
+    }
+
+    @Test
+    fun `retrofit constant fan-out beyond the per-call budget stays dynamic`() {
+        // 리뷰 지적 재현(index-security#0): 단계마다 다음 상수를 64번 잇는 Kotlin 상수다. 펼침이 최상위 호출당 예산(1만 번)을 넘는다.
+        // 예전 코드는 이 크기를 1초 안에 끝까지 펼쳤지만, 한 단계만 늘려도 수 초, 두 단계면 끝나지 않았다.
+        write("src/main/kotlin/dev/example/api/Fan.kt", "package dev.example.api\n\nimport retrofit2.http.GET\n\n" +
+            (0 until 3).joinToString("") { level -> "const val K$level = \"" + "\$K${level + 1}".repeat(64) + "\"\n" } +
+            "const val K3 = \"\"\nconst val SMALL = \"\$K3\$K3/small\"\n\ninterface Fan {\n    @GET(\"/fan\$K0\")\n    fun fan(): Any\n\n" +
+            "    @GET(SMALL)\n    fun small(): Any\n}")
+        val facts = scan().facts.associateBy { it.symbol?.qualifiedName }
+        val fan = facts.getValue("dev.example.api.Fan.fan")
+        assertTrue(fan.dynamic)
+        // 예산을 넘긴 식은 앞부분만 펼친 조각을 남기지 않고 식 전체를 모르는 값으로 둔다.
+        assertNull(fan.channelPrefix)
+        assertEquals("/small", facts.getValue("dev.example.api.Fan.small").channel)
+    }
+
+    @Test
+    fun `query tail proofs over self or mutually referencing locals stop at the depth limit`() {
+        // 리뷰 지적 재현: query 꼬리 증명은 joinToString의 prefix 식을 깊이 0부터 다시 풀었다. 지역 val은 사용 위치에서 찾으므로
+        // 자기 이름을 가린 val이나 서로를 가리키는 val에서 증명이 끝없이 돌았고, 펼침 예산(1만 번)보다 스택이 먼저 고갈됐다.
+        write(
+            "src/main/kotlin/dev/example/net/Loop.kt",
+            """
+            package dev.example.net
+            import java.net.*
+
+            class Loop(private val b: String) {
+                fun shadowed(suffix: String) {
+                    val suffix = listOf("a").joinToString(prefix = suffix)
+                    val connection = URL("https://api.example.com/v1/items${'$'}suffix").openConnection() as HttpURLConnection
+                    connection.requestMethod = "POST"
+                }
+                fun mutual() {
+                    val a = listOf("x").joinToString(prefix = b)
+                    val b = listOf("y").joinToString(prefix = a)
+                    val connection = URL("https://api.example.com/v1/pairs${'$'}a").openConnection() as HttpURLConnection
+                    connection.requestMethod = "POST"
+                }
+                fun proven() {
+                    val suffix = listOf("a").joinToString(prefix = "?")
+                    val connection = URL("https://api.example.com/v1/proven${'$'}suffix").openConnection() as HttpURLConnection
+                    connection.requestMethod = "POST"
+                }
+            }
+            """,
+        )
+        val document = scan()
+
+        // 증명하지 못한 꼬리는 경로를 지어내지 않고 dynamic으로 남는다.
+        val shadowed = document.at(7)
+        assertTrue(shadowed.dynamic)
+        assertEquals("/v1/items", shadowed.channelPrefix)
+        assertEquals("POST", shadowed.method)
+        val mutual = document.at(13)
+        assertTrue(mutual.dynamic)
+        assertEquals("/v1/pairs", mutual.channelPrefix)
+        // 대조: prefix가 증명되는 꼬리는 그대로 떼어 낸다.
+        assertEquals("/v1/proven", document.at(18).channel)
+        assertEquals(true, document.at(18).route?.queryTailStripped)
     }
 
     @Test
@@ -874,5 +1033,182 @@ class RouteCallScannerTest {
         val document = scan(broken)
         assertTrue(document.facts.isEmpty())
         assertTrue(document.limitations.any { it.startsWith("http-wrapper-unresolved:") })
+    }
+
+    @Test
+    fun `kotlin statement ends are found without copying the rest of the file`() {
+        // 리뷰 지적 재현(index-security#3): 깊이 0의 줄바꿈마다 파일 앞뒤를 통째로 복사해, 상수 수 × 파일 크기만큼 할당했다.
+        // 시간 대신 같은 모양의 파일에서 상수 수만 두 배로 늘린 스레드 할당량을 비교한다. 선형이면 두 배 안팎이고 예전에는 네 배였다.
+        val threads = ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean
+        assumeTrue(threads != null && threads.isThreadAllocatedMemorySupported && threads.isThreadAllocatedMemoryEnabled,
+            "thread allocation accounting is unavailable on this JVM")
+        fun allocated(count: Int): Long {
+            val source = "package demo\n\nobject Keys {\n" + (0 until count).joinToString("") { "    const val KEY_$it = \"value-$it\"\n" } + "}\n"
+            fun model() = RouteSourceFile("src/main/kotlin/demo/Keys.kt", isJava = false, isTest = false, source = source)
+            // 첫 실행의 클래스 적재 할당을 빼려고 한 번 먼저 만든다.
+            model()
+            val before = threads!!.currentThreadAllocatedBytes
+            val constants = model().constants
+            val bytes = threads.currentThreadAllocatedBytes - before
+            assertEquals(count, constants.size)
+            assertEquals("\"value-${count - 1}\"", constants.getValue("KEY_${count - 1}").single().expression)
+            return bytes
+        }
+        val small = allocated(STATEMENT_CONSTANTS)
+        val large = allocated(STATEMENT_CONSTANTS * 2)
+        assertTrue(large < small * 3, "doubling $STATEMENT_CONSTANTS constants grew allocation from $small to $large bytes")
+    }
+
+    @Test
+    fun `statement ends match the copying implementation on random kotlin text`() {
+        // index-security#3 수정의 보존 대조: 위치로 공백을 건너뛰는 판정이 예전처럼 앞뒤를 복사해 trimEnd·trimStart한 판정과 같아야 한다.
+        // 공백 술어(Char.isWhitespace)가 같은지 보려고 NBSP·EM SPACE·CR을 섞는다.
+        val random = Random(20_261_019)
+        val tokens = listOf("a", "x1", "+", "-", "*", "/", ".", "(", ")", "[", "]", "{", "}", ",", "=", "?", ":", "?.", "?:", "&", "|",
+            "%", "<", ">", "!", ";", " ", "\t", "\u00A0", "\u2003", "\r", "\n", "\n", "\n  ", "\n\n")
+        repeat(200) { sample ->
+            val source = buildString { repeat(random.nextInt(1, 80)) { append(tokens[random.nextInt(tokens.size)]) } }
+            val file = RouteSourceFile("src/main/kotlin/demo/R.kt", isJava = false, isTest = false, source = source)
+            for (start in 0..file.masked.length) {
+                assertEquals(copyingStatementEnd(file.masked, start), file.statementEnd(start), "sample $sample start $start")
+            }
+        }
+    }
+
+    /** 수정 전 [RouteSourceFile.statementEnd]를 그대로 옮긴 대조용 구현이다. 연산자 집합도 그때 값이다. */
+    private fun copyingStatementEnd(masked: String, start: Int): Int {
+        fun continuesAfter(newline: Int): Boolean {
+            val before = masked.substring(0, newline).trimEnd()
+            if (before.isEmpty() || before.last() in "+-*/.(,=?:&|%<>!") return true
+            val after = masked.substring(newline + 1).trimStart()
+            return after.startsWith("?.") || after.startsWith("?:") || (after.isNotEmpty() && after.first() in ".+-*/?:&|%)]")
+        }
+        var depth = 0
+        var index = start
+        while (index < masked.length) {
+            when (masked[index]) {
+                '(', '[', '{' -> depth++
+                ')', ']', '}' -> { if (depth == 0) return index; depth-- }
+                ';' -> if (depth == 0) return index
+                '\n' -> if (depth == 0 && !continuesAfter(index)) return index
+            }
+            index++
+        }
+        return masked.length
+    }
+
+    @Test
+    fun `budget exhausting path expressions do not repeat work proportional to the file`() {
+        // 리뷰 지적 재현: 한정자 없는 이름을 따라갈 때마다 지역 선언을 찾으며 이름별 정규식을 만들고, 파일을 사용 위치까지 복사해
+        // 함수 몸체를 다시 훑었다. 그래서 펼침 예산(1만 번)을 다 쓰는 호출 지점 하나가 예산 × 파일 크기만큼 일했다.
+        // 시간 대신 해석 한 번의 스레드 할당량을 채움 없는 파일과 비교한다. 채움과 무관해야 하고, 예전에는 수백 배였다.
+        val threads = ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean
+        assumeTrue(threads != null && threads.isThreadAllocatedMemorySupported && threads.isThreadAllocatedMemoryEnabled,
+            "thread allocation accounting is unavailable on this JVM")
+        val expression = "\"https://api.example.com/x\$C0\""
+        fun source(classPadding: Int, closedLocals: Int): String = buildString {
+            append("package dev.example.net\n\nimport java.net.*\n\n")
+            // 단계마다 다음 상수를 16번 잇는다 — 16^5번 펼쳐야 해서 예산을 다 쓴다.
+            (0 until 5).forEach { level -> append("const val C$level = \"" + "\$C${level + 1}".repeat(16) + "\"\n") }
+            append("const val C5 = \"\"\n\nclass Calls {\n")
+            repeat(classPadding) { append("    // padding line $it keeps the call far from the start of the file\n") }
+            append("    fun call() {\n")
+            // 닫힌 블록의 같은 이름 지역 선언은 사용 위치에서 보이지 않지만, 이름별 정규식은 펼침마다 이 선언들을 다시 찾았다.
+            repeat(closedLocals) { append("        run { val C${it % 6} = \"local-$it\"; println(C${it % 6}) }\n") }
+            append("        URL($expression).openConnection()\n    }\n}\n")
+        }
+        fun allocated(text: String): Long {
+            val file = RouteSourceFile("src/main/kotlin/dev/example/net/Calls.kt", isJava = false, isTest = false, source = text)
+            val offset = file.masked.indexOf("URL(")
+            val before = threads!!.currentThreadAllocatedBytes
+            val parts = RoutePathResolver(file).parts(expression, offset)
+            val bytes = threads.currentThreadAllocatedBytes - before
+            // 예산을 다 쓴 식은 식 전체가 값 조각 하나다(`retrofit constant fan-out beyond the per-call budget stays dynamic`).
+            assertEquals(listOf<UrlPart>(UrlPart.Value(expression)), parts)
+            return bytes
+        }
+        // 첫 실행의 클래스 적재 할당을 빼려고 한 번 먼저 푼다.
+        allocated(source(0, 0))
+        val plain = allocated(source(0, 0))
+        val padded = allocated(source(BUDGET_PADDING_LINES, 0))
+        val locals = allocated(source(0, BUDGET_CLOSED_LOCALS))
+        assertTrue(padded < plain * 3, "$BUDGET_PADDING_LINES padding lines grew allocation from $plain to $padded bytes")
+        assertTrue(locals < plain * 3, "$BUDGET_CLOSED_LOCALS closed local blocks grew allocation from $plain to $locals bytes")
+    }
+
+    @Test
+    fun `path expressions that read more than the scan budget stay unresolved`() {
+        // 리뷰 지적 재현: 펼침 예산은 횟수만 셌다. 펼침 한 번은 식 길이만큼 읽으므로, 큰 식을 여러 번 따라가는 입력은 횟수 상한 안에서도
+        // 횟수 × 식 길이만큼 일했다(380KB 식을 5천 번 따라가는 호출 하나가 4.8초). 여기서는 2천 자 식을 천 번 따라간다.
+        // 펼침은 2천 번이라 횟수 상한 안이지만 읽는 양은 2백만 자로 읽기 상한(1MiB)을 넘는다.
+        val big = "listOf(" + (0 until 280).joinToString(", ") { "arg$it" } + ")"
+        write(
+            "src/main/kotlin/dev/example/net/Wide.kt",
+            "package dev.example.net\n\nimport java.net.*\n\nconst val WIDE = \"" + "\$BIG".repeat(1_000) + "\"\nval BIG = $big\n" +
+                "const val NARROW = \"" + "\$SMALL".repeat(1_000) + "\"\nval SMALL = listOf(arg).first()\n\n" +
+                "class Wide {\n    fun wide() = URL(\"https://api.example.com/x\$WIDE\").readText()\n" +
+                "    fun narrow() = URL(\"https://api.example.com/y\$NARROW\").readText()\n}",
+        )
+        assertTrue(big.length in 2_000..2_200, big.length.toString())
+        val facts = scan().facts.associateBy { it.symbol?.qualifiedName }
+        val wide = facts.getValue("dev.example.net.Wide.wide")
+        assertTrue(wide.dynamic)
+        // 상한을 넘긴 식은 앞부분만 읽은 조각을 남기지 않고 식 전체를 모르는 값으로 둔다.
+        assertNull(wide.channelPrefix)
+        // 대조: 같은 모양이라도 읽는 양이 상한 안이면 증명된 접두사를 남긴다.
+        val narrow = facts.getValue("dev.example.net.Wide.narrow")
+        assertTrue(narrow.dynamic)
+        assertEquals("/y", narrow.channelPrefix)
+    }
+
+    @Test
+    fun `local declarations match the per-name regex lookup on random kotlin text`() {
+        // 지역 선언 색인의 보존 대조: 함수마다 한 번 만든 색인이 예전처럼 이름마다 정규식으로 사용 위치 앞까지 훑은 결과와 같아야 한다.
+        // 한 줄의 같은 이름 선언(예전 정규식의 겹치지 않는 찾기), 닫힌 블록, 중첩 함수, 식 몸체, 함수 머리 안 위치를 섞는다.
+        val random = Random(20_261_020)
+        val tokens = listOf("fun f(x: String) {", "fun g() = run {", "fun h(y: Int)", " = ", "{", "}", "\n", "; ", " ", "val x = ", "var x = ",
+            "val y: Int = ", "var y: Map<K, V> = ", "val z = ", "val x: T; ", "x", "y", "z", "==", "\"s\"", "(", ")", "if (x == y) ", "1", ",")
+        val names = listOf("x", "y", "z", "f")
+        var found = 0
+        var hidden = 0
+        repeat(300) { sample ->
+            val source = buildString { repeat(random.nextInt(1, 60)) { append(tokens[random.nextInt(tokens.size)]) } }
+            val file = RouteSourceFile("src/main/kotlin/demo/L.kt", isJava = false, isTest = false, source = source)
+            for (offset in 0..file.masked.length) {
+                // 사용 위치가 `==`의 둘째 `=`일 때만 다르다. 예전 정규식은 잘라 낸 끝에서 `(?!=)`가 통과해 `x =`를 선언으로 읽었다.
+                // 해석기가 묻는 위치는 식의 시작이고, 식은 `=`로 시작하지 않는다.
+                if (file.masked.getOrNull(offset) == '=') continue
+                for (name in names) {
+                    val expected = regexLocalDeclaration(file, name, offset)
+                    assertEquals(expected, file.localDeclaration(name, offset), "sample $sample offset $offset name $name")
+                    if (expected != null) found++ else if (file.enclosingFunction(offset) != null && "val $name" in file.masked.substring(0, offset)) hidden++
+                }
+            }
+        }
+        // 대조가 비지 않았는지 본다: 선언을 찾은 경우와, 앞에 같은 이름 선언이 있어도 범위·위치 때문에 못 찾는 경우가 모두 많아야 한다.
+        assertTrue(found > 5_000 && hidden > 5_000, "found $found, hidden $hidden")
+    }
+
+    /** 색인 전 [RouteSourceFile.localDeclaration]을 그대로 옮긴 대조용 구현이다. */
+    private fun regexLocalDeclaration(file: RouteSourceFile, name: String, offset: Int): RouteLocal? {
+        val function = file.enclosingFunction(offset) ?: return null
+        val searchStart = function.bodyStart.coerceAtLeast(function.start)
+        val prefix = file.masked.substring(0, offset.coerceAtMost(file.masked.length))
+        if (searchStart > prefix.length) return null
+        val pattern = Regex("\\b(val|var)\\s+${Regex.escape(name)}\\b\\s*(?::[^=\\n]+)?=(?!=)")
+        val match = pattern.findAll(prefix, searchStart).lastOrNull { file.inScope(it.range.first, offset) } ?: return null
+        val initializerStart = match.range.last + 1
+        return RouteLocal(match.groupValues[1] == "val", file.code.substring(initializerStart, file.statementEnd(initializerStart)).trim())
+    }
+
+    private companion object {
+        /** 할당량 비교의 작은 쪽 상수 수다. 예전 구현은 이 크기에서도 상수마다 약 80KB를 복사했다. */
+        const val STATEMENT_CONSTANTS = 2_000
+
+        /** 예산 소진 호출 앞의 채움 줄 수다(약 140KB). 예전 구현은 펼침마다 이만큼을 두 번 복사했다. */
+        const val BUDGET_PADDING_LINES = 2_000
+
+        /** 예산 소진 호출 앞의 닫힌 블록 수다. 예전 구현은 펼침마다 같은 이름 선언 약 100개를 다시 찾았다. */
+        const val BUDGET_CLOSED_LOCALS = 600
     }
 }

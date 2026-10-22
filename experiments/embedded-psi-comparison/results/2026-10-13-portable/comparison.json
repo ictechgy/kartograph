@@ -1,0 +1,197 @@
+{
+  "comparisonQualified": true,
+  "crossEnginePrimaryEdgeEquality": true,
+  "excluded": [
+    "implicit constructors",
+    "library/synthetic calls",
+    "whole-program reachability",
+    "runtime dispatch completeness",
+    "Android generated sources",
+    "performance ranking"
+  ],
+  "expectationsFrozenBeforeExecution": true,
+  "kartograph": {
+    "declaredMethodsFound": 8,
+    "declaredMethodsMissing": [],
+    "exactExpectedSet": true,
+    "exactNameColumnMatches": 0,
+    "expected": 4,
+    "foundExpected": 4,
+    "graphSha256": "db9d232cbeb1c27e327b2163558637cc97896dc59d07ca2726640d5780718cd6",
+    "locationQualification": "Observed independently; not a required primary edge-quality gate",
+    "missing": [],
+    "observed": [
+      [
+        "method:probe/PsiJava#caller()Ljava/lang/String;",
+        "method:probe/PsiJava#leaf(Ljava/lang/String;)Ljava/lang/String;"
+      ],
+      [
+        "method:probe/PsiJava#caller()Ljava/lang/String;",
+        "method:probe/PsiKotlin#leaf(Ljava/lang/String;)Ljava/lang/String;"
+      ],
+      [
+        "method:probe/PsiKotlin#caller()I",
+        "method:probe/PsiJava#leaf(I)I"
+      ],
+      [
+        "method:probe/PsiKotlin#caller()I",
+        "method:probe/PsiKotlin#leaf(I)I"
+      ]
+    ],
+    "sourceFileAndLineMatches": 8,
+    "sourceLocations": [
+      {
+        "actual": {
+          "line": 4,
+          "path": "probe/PsiKotlin.kt",
+          "pathKind": "projectRelative"
+        },
+        "expectedFile": "probe/PsiKotlin.kt",
+        "expectedLine": 4,
+        "expectedNameColumnUtf16": 9,
+        "usr": "method:probe/PsiKotlin#leaf(I)I"
+      },
+      {
+        "actual": {
+          "line": 5,
+          "path": "probe/PsiKotlin.kt",
+          "pathKind": "projectRelative"
+        },
+        "expectedFile": "probe/PsiKotlin.kt",
+        "expectedLine": 5,
+        "expectedNameColumnUtf16": 9,
+        "usr": "method:probe/PsiKotlin#leaf(Ljava/lang/String;)Ljava/lang/String;"
+      },
+      {
+        "actual": {
+          "line": 6,
+          "path": "probe/PsiKotlin.kt",
+          "pathKind": "projectRelative"
+        },
+        "expectedFile": "probe/PsiKotlin.kt",
+        "expectedLine": 6,
+        "expectedNameColumnUtf16": 9,
+        "usr": "method:probe/PsiKotlin#caller()I"
+      },
+      {
+        "actual": {
+          "line": 7,
+          "path": "probe/PsiKotlin.kt",
+          "pathKind": "projectRelative"
+        },
+        "expectedFile": "probe/PsiKotlin.kt",
+        "expectedLine": 7,
+        "expectedNameColumnUtf16": 9,
+        "usr": "method:probe/PsiKotlin#unused()I"
+      },
+      {
+        "actual": {
+          "line": 4,
+          "path": "probe/PsiJava.java",
+          "pathKind": "projectRelative"
+        },
+        "expectedFile": "probe/PsiJava.java",
+        "expectedLine": 4,
+        "expectedNameColumnUtf16": 23,
+        "usr": "method:probe/PsiJava#leaf(I)I"
+      },
+      {
+        "actual": {
+          "line": 5,
+          "path": "probe/PsiJava.java",
+          "pathKind": "projectRelative"
+        },
+        "expectedFile": "probe/PsiJava.java",
+        "expectedLine": 5,
+        "expectedNameColumnUtf16": 26,
+        "usr": "method:probe/PsiJava#leaf(Ljava/lang/String;)Ljava/lang/String;"
+      },
+      {
+        "actual": {
+          "line": 6,
+          "path": "probe/PsiJava.java",
+          "pathKind": "projectRelative"
+        },
+        "expectedFile": "probe/PsiJava.java",
+        "expectedLine": 6,
+        "expectedNameColumnUtf16": 26,
+        "usr": "method:probe/PsiJava#caller()Ljava/lang/String;"
+      },
+      {
+        "actual": {
+          "line": 7,
+          "path": "probe/PsiJava.java",
+          "pathKind": "projectRelative"
+        },
+        "expectedFile": "probe/PsiJava.java",
+        "expectedLine": 7,
+        "expectedNameColumnUtf16": 23,
+        "usr": "method:probe/PsiJava#unused()I"
+      }
+    ],
+    "tool": {
+      "name": "kartograph",
+      "version": "0.20.1"
+    },
+    "totalGraphEdges": 27,
+    "totalGraphNodes": 12,
+    "unexpected": []
+  },
+  "psi": {
+    "constructorBoundary": [
+      {
+        "callEndUtf16Exclusive": 215,
+        "callStartUtf16": 200,
+        "caller": {
+          "file": "probe/PsiJava.java",
+          "name": "caller",
+          "nameStartUtf16": 182
+        },
+        "engine": "java-psi",
+        "file": "probe/PsiJava.java",
+        "kind": "constructor",
+        "resolved": true,
+        "target": {
+          "file": "probe/PsiKotlin.kt",
+          "name": "PsiKotlin",
+          "nameStartUtf16": 21
+        }
+      }
+    ],
+    "exactExpectedSet": true,
+    "expected": 4,
+    "foundExpected": 4,
+    "methodCallSites": 4,
+    "methodCallSitesByEngine": {
+      "java-psi": 2,
+      "kotlin-aa": 2
+    },
+    "missing": [],
+    "observed": [
+      [
+        "method:probe/PsiJava#caller()Ljava/lang/String;",
+        "method:probe/PsiJava#leaf(Ljava/lang/String;)Ljava/lang/String;"
+      ],
+      [
+        "method:probe/PsiJava#caller()Ljava/lang/String;",
+        "method:probe/PsiKotlin#leaf(Ljava/lang/String;)Ljava/lang/String;"
+      ],
+      [
+        "method:probe/PsiKotlin#caller()I",
+        "method:probe/PsiJava#leaf(I)I"
+      ],
+      [
+        "method:probe/PsiKotlin#caller()I",
+        "method:probe/PsiKotlin#leaf(I)I"
+      ]
+    ],
+    "qualified": true,
+    "unexpected": [],
+    "unresolvedOrUnmappedMethodCalls": []
+  },
+  "scope": "Eight explicit methods in exactly two source files; direct method-call target edges between those methods",
+  "sourceSha256": {
+    "probe/PsiJava.java": "4084c63c440e76c2b27cab74fee27f32c0f2038540ef469a816a81a04ec6ea6c",
+    "probe/PsiKotlin.kt": "09e2da7b473e7661b7b374571b1fb80074821023747661db33a328770d4f8a8b"
+  }
+}

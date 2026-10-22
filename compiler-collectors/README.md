@@ -149,3 +149,21 @@ adds separately versioned source/backend inventory. It records no-class sources 
 every emitted method, including unknown generated methods, without changing v3 or raw
 CALL. [The inventory contract](../docs/COMPILER-CALLER-INVENTORY.md) documents its fresh
 output requirement, successful receipts and explicit module/file/body-kind scope.
+
+## Optional enum decisions
+
+This feature is part of the unreleased 0.24.0 preparation; published v0.23.0
+collectors do not include it. Use matching collector/CLI/plugin artifacts from
+the same revision and recompile clients after a library enum changes. Capture
+fresh compatible baseline and current snapshots rather than relabeling an old
+snapshot. Direct JVM clients also need recompilation for the changed public
+GraphNode/QuerySnapshot data-class shapes.
+
+The constants collectors accept a separate `enumDecisions=true` option. Java
+places it inside the existing KartographEvidence plugin argument; Kotlin uses
+`-P plugin:kartograph.compiler-evidence:enumDecisions=true`. Enabled capture writes
+v4 typed fallback/finite-membership sites and explicit observation counters.
+It can coexist with call positions. Omitted/false preserves prior formats.
+See the [capture and coverage guide](../docs/COMPILER-EVIDENCE.md#opt-in-enum-expansion-decisions)
+for completed-witness prerequisites and unsupported cases. Raw rows are not build
+success evidence or runtime behavior claims.

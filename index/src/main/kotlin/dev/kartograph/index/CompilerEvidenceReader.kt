@@ -5,6 +5,7 @@ import dev.kartograph.core.CompilerEvidenceSource
 import dev.kartograph.core.CompilerReference
 import dev.kartograph.core.CompilerReferenceKind
 import dev.kartograph.core.NodeId
+import dev.kartograph.core.EnumDecisionKind
 import dev.kartograph.core.ProcessorGeneration
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -17,6 +18,7 @@ import java.util.Base64
 internal class BoundedCompilerEvidenceInput(
     val text: String,
     val fingerprint: String,
+    val byteCount: Int,
 )
 
 /** receipt와 parser가 공유하는 내부 file adapter다. 공개 reader ABI에는 포함하지 않는다. */
@@ -25,9 +27,25 @@ internal object BoundedCompilerEvidenceReader {
         require(Files.isRegularFile(file) && !Files.isSymbolicLink(file)) { "compiler evidence must be a regular file" }
         val bytes = Files.newInputStream(file).use { it.readNBytes(CompilerEvidenceReader.MAX_BYTES + 1) }
         require(bytes.size <= CompilerEvidenceReader.MAX_BYTES) { "compiler evidence exceeds the byte limit" }
+        return input(bytes)
+    }
+
+    /** 새 source-use 경로만 실제 남은 예산과 open 시점의 symlink 거부를 적용한다. */
+    fun read(file: Path, maximumBytes: Int): BoundedCompilerEvidenceInput = readForSourceUses(file, maximumBytes, null)
+
+    /** open 직전 race를 재현하는 내부 관찰 지점이며 실제 open의 NOFOLLOW_LINKS는 바꾸지 않는다. */
+    internal fun readForSourceUses(file: Path, maximumBytes: Int, beforeOpen: (() -> Unit)?): BoundedCompilerEvidenceInput {
+        require(maximumBytes in 0..CompilerEvidenceReader.MAX_BYTES) { "invalid compiler evidence byte budget" }
+        require(Files.isRegularFile(file) && !Files.isSymbolicLink(file)) { "compiler evidence must be a regular file" }
+        beforeOpen?.invoke()
+        val bytes = Files.newInputStream(file, java.nio.file.LinkOption.NOFOLLOW_LINKS).use { it.readNBytes(maximumBytes + 1) }
+        require(bytes.size <= maximumBytes) { "compiler evidence exceeds the byte limit" }
+        return input(bytes)
+    }
+
+    private fun input(bytes: ByteArray): BoundedCompilerEvidenceInput {
         val raw = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        return BoundedCompilerEvidenceInput(strictUtf8(bytes),
-            ContentFingerprint.values(listOf("file", raw)))
+        return BoundedCompilerEvidenceInput(strictUtf8(bytes), ContentFingerprint.values(listOf("file", raw)), bytes.size)
     }
 }
 
@@ -39,7 +57,7 @@ public object CompilerEvidenceReader {
     /** 파일이 늘어나거나 손상돼도 무제한 읽기나 부분 문서 수락으로 바꾸지 않는다. */
     public fun read(file: Path): CompilerEvidence {
         val envelope = parseEnvelope(BoundedCompilerEvidenceReader.read(file).text)
-        require(envelope.callStats == null) { "extended compiler evidence requires the envelope reader" }
+        require(envelope.callStats == null && envelope.enumStats == null) { "extended compiler evidence requires the envelope reader" }
         return envelope.evidence
     }
 
@@ -51,7 +69,7 @@ public object CompilerEvidenceReader {
     /** 버전·행 종류·개수·중복·인코딩을 검증하며 미지원 필드를 조용히 무시하지 않는다. */
     public fun parse(text: String): CompilerEvidence {
         val envelope = parseEnvelope(text)
-        require(envelope.callStats == null) { "extended compiler evidence requires the envelope reader" }
+        require(envelope.callStats == null && envelope.enumStats == null) { "extended compiler evidence requires the envelope reader" }
         return envelope.evidence
     }
 
@@ -61,7 +79,7 @@ public object CompilerEvidenceReader {
         val rows = text.lineSequence().filter(String::isNotEmpty).take(MAX_ROWS + 1).toList()
         require(rows.size <= MAX_ROWS) { "compiler evidence exceeds the row limit" }
         val version = rows.firstOrNull()?.substringAfter("format\tkartograph-compiler-evidence\t", "")
-        require(version in setOf("1", "2", "3")) { "unsupported compiler evidence format" }
+        require(version in setOf("1", "2", "3", "4")) { "unsupported compiler evidence format" }
         val headers = mutableMapOf<String, String>()
         val sources = mutableListOf<CompilerEvidenceSource>()
         val references = mutableListOf<CompilerReference>()
@@ -69,6 +87,9 @@ public object CompilerEvidenceReader {
         var callStats: CompilerCallPositionStats? = null
         val callPositions = mutableListOf<UnverifiedCompilerCallPosition>()
         val callKeys = mutableSetOf<CallPositionKey>()
+        var enumStats: CompilerEnumDecisionStats? = null
+        val enumDecisions = mutableListOf<UnverifiedCompilerEnumDecision>()
+        val enumKeys = mutableSetOf<EnumDecisionKey>()
         for (row in rows.drop(1)) {
             val fields = row.split('\t')
             when (fields[0]) {
@@ -79,7 +100,7 @@ public object CompilerEvidenceReader {
                 "source" -> {
                     require(fields.size == 3) { "invalid compiler source inventory row" }
                     val source = CompilerEvidenceSource(decode(fields[1]), fields[2])
-                    if (version == "3") requireCanonicalV3SourcePath(source.path)
+                    if (version in setOf("3", "4")) requireCanonicalV3SourcePath(source.path)
                     sources += source
                 }
                 "processor", "processorArtifact" -> {
@@ -100,13 +121,13 @@ public object CompilerEvidenceReader {
                     references += CompilerReference(NodeId(decode(fields[1])), NodeId(decode(fields[2])), kind)
                 }
                 "callStats" -> {
-                    require(version == "3" && fields.size == 5 && callStats == null) { "invalid compiler call position stats row" }
+                    require(version in setOf("3", "4") && fields.size == 5 && callStats == null) { "invalid compiler call position stats row" }
                     callStats = CompilerCallPositionStats(
                         canonicalInt(fields[1]), canonicalInt(fields[2]), canonicalInt(fields[3]), canonicalInt(fields[4]),
                     )
                 }
                 "call" -> {
-                    require(version == "3" && fields.size == 9) { "invalid compiler call position row" }
+                    require(version in setOf("3", "4") && fields.size == 9) { "invalid compiler call position row" }
                     val position = UnverifiedCompilerCallPosition(
                         NodeId(decode(fields[1])), NodeId(decode(fields[2])), CompilerEvidenceSource(decode(fields[3]), fields[4]),
                         canonicalInt(fields[5]), canonicalInt(fields[6]), canonicalInt(fields[7]), canonicalInt(fields[8]),
@@ -116,6 +137,31 @@ public object CompilerEvidenceReader {
                     require(callKeys.add(key)) { "duplicate or conflicting compiler call position" }
                     callPositions += position
                 }
+                "enumStats" -> {
+                    require(version == "4" && fields.size == 5 && enumStats == null) { "invalid compiler enum decision stats row" }
+                    enumStats = CompilerEnumDecisionStats(canonicalInt(fields[1]), canonicalInt(fields[2]),
+                        canonicalInt(fields[3]), canonicalInt(fields[4]))
+                }
+                "enumDecision" -> {
+                    require(version == "4" && fields.size >= 12) { "invalid compiler enum decision row" }
+                    val count = canonicalInt(fields[11])
+                    require(count <= 4_096 && fields.size == 12 + count) { "invalid compiler enum decision constant count" }
+                    val decision = UnverifiedCompilerEnumDecision(
+                        CompilerEvidenceSource(decode(fields[1]), fields[2]),
+                        canonicalInt(fields[3]), canonicalInt(fields[4]), canonicalInt(fields[5]), canonicalInt(fields[6]),
+                        if (fields[7] == "-") null else NodeId(decode(fields[7])),
+                        NodeId(decode(fields[8])), EnumDecisionKind.entries.singleOrNull { it.name == fields[9] }
+                            ?: throw IllegalArgumentException("unsupported compiler enum decision kind"),
+                        when (fields[10]) { "true" -> true; "false" -> false
+                            else -> throw IllegalArgumentException("invalid compiler enum decision lambda flag") },
+                        fields.drop(12).map { NodeId(decode(it)) },
+                    )
+                    requireCanonicalV3SourcePath(decision.file.path)
+                    require(enumKeys.add(EnumDecisionKey(decision.file.path, decision.offsetUtf16, decision.endOffsetUtf16))) {
+                        "duplicate or conflicting compiler enum decision"
+                    }
+                    enumDecisions += decision
+                }
                 else -> throw IllegalArgumentException("unsupported compiler evidence row")
             }
         }
@@ -123,25 +169,32 @@ public object CompilerEvidenceReader {
         require((headers["collector"] == "javac-processors") == processorFormat) { "compiler evidence version does not match collector" }
         require(headers.keys == setOf("collector", "compiler", "token", "artifact", "unmapped") +
             if (processorFormat) setOf("processor", "processorArtifact") else emptySet()) { "incomplete compiler evidence headers" }
-        val unmapped = if (version == "3") canonicalInt(headers.getValue("unmapped")) else
+        val unmapped = if (version in setOf("3", "4")) canonicalInt(headers.getValue("unmapped")) else
             headers.getValue("unmapped").toIntOrNull()
                 ?: throw IllegalArgumentException("invalid unmapped compiler reference count")
         val evidence = CompilerEvidence(headers.getValue("collector"), headers.getValue("compiler"), headers.getValue("token"),
             headers.getValue("artifact"), sources.sortedBy { it.path }, unmapped,
             references.distinct().sortedWith(compareBy({ it.source }, { it.target }, { it.kind.name })),
             if (processorFormat) ProcessorGeneration(headers.getValue("processor"), headers.getValue("processorArtifact"), generated.sortedBy { it.path }) else null)
-        if (version == "3") {
-            require(evidence.collector in setOf("javac-constants", "kotlin-constants")) { "v3 requires a constants collector" }
-            val stats = requireNotNull(callStats) { "v3 requires compiler call position stats" }
-            require(stats.emitted == callPositions.size) { "emitted compiler call position count does not match rows" }
+        if (version in setOf("3", "4")) {
+            require(evidence.collector in setOf("javac-constants", "kotlin-constants")) { "extended evidence requires a constants collector" }
+            if (version == "3") requireNotNull(callStats) { "v3 requires compiler call position stats" }
+            if (version == "4") requireNotNull(enumStats) { "v4 requires compiler enum decision stats" }
+            require(callStats != null || callPositions.isEmpty()) { "call positions require their stats" }
+            require(callStats == null || callStats.emitted == callPositions.size) { "emitted compiler call position count does not match rows" }
+            require(enumStats == null || enumStats.emitted == enumDecisions.size) { "emitted compiler enum decision count does not match rows" }
             val inventory = evidence.sources.associateBy { it.path }
             callPositions.forEach { position ->
                 require(inventory[position.file.path] == position.file) { "compiler call position source does not match inventory" }
             }
+            enumDecisions.forEach { decision ->
+                require(inventory[decision.file.path] == decision.file) { "compiler enum decision source does not match inventory" }
+            }
         } else {
             require(callStats == null && callPositions.isEmpty()) { "legacy compiler evidence cannot contain call positions" }
         }
-        return CompilerEvidenceEnvelope(evidence, callStats, callPositions.sortedWith(CALL_POSITION_COMPARATOR))
+        return CompilerEvidenceEnvelope(evidence, callStats, callPositions.sortedWith(CALL_POSITION_COMPARATOR),
+            enumStats, enumDecisions.sortedWith(ENUM_DECISION_COMPARATOR))
     }
 
     private fun canonicalInt(value: String): Int {
@@ -162,6 +215,12 @@ public object CompilerEvidenceReader {
     }
 
     private data class CallPositionKey(val source: NodeId, val target: NodeId, val path: String, val offset: Int)
+
+    private data class EnumDecisionKey(val path: String, val start: Int, val end: Int)
+
+    private val ENUM_DECISION_COMPARATOR = compareBy<UnverifiedCompilerEnumDecision>(
+        { it.file.path }, { it.offsetUtf16 }, { it.endOffsetUtf16 }, { it.kind.name }, { it.enumOwner },
+    )
 
     private val CALL_POSITION_COMPARATOR = compareBy<UnverifiedCompilerCallPosition>(
         { it.source }, { it.target }, { it.file.path }, { it.offsetUtf16 }, { it.endOffsetUtf16 },

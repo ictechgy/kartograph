@@ -153,6 +153,24 @@ class JpaNamingTest {
     }
 
     @Test
+    fun `supplied masked sources replace walking and reading the sources`() {
+        // schema 스캔이 이미 읽어 가린 .kt·.java 뷰를 넘기면 그 뷰만 본다 — 설정 파일은 그대로 읽고, 소스는 다시 순회하지 않는다.
+        write("build.gradle.kts", """plugins { id("org.springframework.boot") version "3.5.6" }""")
+        write("src/main/kotlin/Naming.kt", "class Naming : PhysicalNamingStrategyStandardImpl()")
+        write("src/main/kotlin/Plain.kt", "class Plain")
+        val naming = project.resolve("src/main/kotlin/Naming.kt")
+        val plain = project.resolve("src/main/kotlin/Plain.kt")
+
+        val withoutStrategy = JpaNamingDetector(project).detect(maskedSources = listOf(naming to "class Naming", plain to "class Plain"))
+        val withStrategy = JpaNamingDetector(project).detect(maskedSources = listOf(plain to "class Plain : PhysicalNamingStrategyStandardImpl()"))
+
+        // 디스크의 전략 클래스라도 뷰에 없으면 근거가 아니고, 설정 파일의 Boot 버전이 쓰인다.
+        assertEquals(listOf(JpaNamingProfile.SPRING_BOOT_3), withoutStrategy.candidates)
+        assertTrue("build.gradle.kts" in withoutStrategy.evidence)
+        assertEquals("custom naming strategy declared in src/main/kotlin/Plain.kt", withStrategy.evidence)
+    }
+
+    @Test
     fun `explicit override skips detection`() {
         write("src/main/resources/application.properties", "spring.jpa.hibernate.naming.physical-strategy=com.example.MyStrategy")
         val context = JpaNamingDetector(project).detect("spring-boot-4")

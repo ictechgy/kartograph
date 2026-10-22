@@ -9,6 +9,64 @@ import java.security.MessageDigest
 
 class ExternalRetentionProvenanceTest {
     @Test
+    fun `unicode escape tokens require ASCII hexadecimal digits for every envelope version`() {
+        for (version in listOf(1, 2)) {
+            for (escape in listOf("\\u００００", "\\uＦＦＦＦ", "\\u٠٠٠٠")) {
+                for (field in listOf("\"opaque\":\"$escape\"", "\"$escape\":0")) {
+                    assertFailsWith<IllegalArgumentException>("version=$version field=$field") {
+                        ExternalRetentionCodec.parseDocument(document("""{"version":$version,"limitations":[],$field}"""))
+                    }
+                }
+            }
+        }
+        // 유효한 ASCII escape와 원본 Unicode 문자열은 동일한 scalar 값으로 계속 읽는다.
+        val escaped = ExternalRetentionCodec.parseDocument(document("""{"version":2,"opaque":"\u00e9"}""")).context
+        val literal = ExternalRetentionCodec.parseDocument(document("""{"version":2,"opaque":"é"}""")).context
+        assertEquals(literal, escaped)
+    }
+
+    @Test
+    fun `known source and limitation arrays preserve order duplicates and nested scopes`() {
+        val source = """{"format":"bridge-facts","version":1,"tool":{"name":"z","version":"1"},
+            "platform":"kotlin","project":"/original/é","target":null,"generatedAt":"2024-02-29t00:00:00.123456789012z"}"""
+        val limitation = """{"platform":"kotlin","target":null,"tool":"z","message":"e\u0301",
+            "origin":"future","channels":["z","a","z"],"routeScope":{"methods":["POST","GET","POST"],"withheldElements":2}}"""
+        val value = """{"version":1,"sources":[$source,${source.replace("\"z\"", "\"a\"")},$source],
+            "limitations":[$limitation,${limitation.replace("\"tool\":\"z\"", "\"tool\":\"a\"")},$limitation]}"""
+        val expected = SnapshotJsonParser(value, strictRetentionRoot = true).parse()
+        val parsed = ExternalRetentionCodec.parseDocument(document(value))
+        assertEquals(expected, SnapshotJsonParser(parsed.context.provenanceJson!!, strictRetentionRoot = true).parse())
+        val snapshot = QuerySnapshot(dev.kartograph.core.CodeGraph(emptyList(), emptyList()), emptyList(), emptyList(),
+            externalRetentionContexts = listOf(parsed.context))
+        for (compact in listOf(false, true)) {
+            val restored = QuerySnapshotCodec.parse(QuerySnapshotCodec.render(snapshot, compact)).externalRetentionContexts.single()
+            assertEquals(expected, SnapshotJsonParser(restored.provenanceJson!!, strictRetentionRoot = true).parse())
+        }
+        for ((key, row, count) in listOf(Triple("sources", source, 257), Triple("limitations", limitation, 4097))) {
+            val over = """{"version":1,"limitations":[],"$key":[${List(count) { row }.joinToString(",")}]}"""
+                .replace("\"limitations\":[],\"limitations\":", "\"limitations\":")
+            assertFailsWith<IllegalArgumentException> { ExternalRetentionCodec.parseDocument(document(over)) }
+        }
+    }
+
+    @Test
+    fun `missing envelope absent sources empty sources and unknown stay distinct`() {
+        val contexts = listOf(fixture("legacy"), document("""{"version":1,"limitations":[]}"""),
+            document("""{"version":1,"sources":[],"limitations":[]}"""), document("""{"version":2}"""))
+            .map { ExternalRetentionCodec.parseDocument(it).context }
+        assertEquals(4, contexts.toSet().size)
+        assertEquals(listOf(ExternalRetentionContextStatus.UNAVAILABLE, ExternalRetentionContextStatus.UNAVAILABLE,
+            ExternalRetentionContextStatus.UNAVAILABLE, ExternalRetentionContextStatus.UNSUPPORTED), contexts.map { it.status })
+        val snapshot = QuerySnapshot(dev.kartograph.core.CodeGraph(emptyList(), emptyList()), emptyList(), emptyList(),
+            externalRetentionContexts = contexts)
+        for (compact in listOf(false, true)) {
+            assertEquals(contexts.toSet(), QuerySnapshotCodec.parse(QuerySnapshotCodec.render(snapshot, compact)).externalRetentionContexts.toSet())
+            val legacy = QuerySnapshotCodec.parse(QuerySnapshotCodec.render(snapshot.copy(externalRetentionContexts = emptyList()), compact))
+            assertTrue(legacy.externalRetentionContexts.isEmpty())
+        }
+    }
+
+    @Test
     fun `malformed provenance cannot silently become legacy retention`() {
         for (name in listOf("null-provenance", "string-version", "v2-without-transport")) {
             assertFailsWith<IllegalArgumentException>(name) { ExternalRetentionCodec.parse(fixture(name)) }

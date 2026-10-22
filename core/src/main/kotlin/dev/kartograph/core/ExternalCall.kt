@@ -32,12 +32,11 @@ public data class ExternalCall(
         }
     }
 
-    /** 기존 JVM identity 규칙과 동일한 외부 메서드 식별자다. */
-    public val target: NodeId get() = NodeId("method:$owner#$name$descriptor")
+    /** 기존 JVM identity 규칙과 동일한 외부 메서드 식별자다. 불변 생성 인자에서 한 번 계산하며 copy는 새로 계산한다. */
+    public val target: NodeId = NodeId("method:$owner#$name$descriptor")
 
-    /** 동일한 줄의 여러 호출도 명령 순서로 구분해 결정적으로 정렬한다. */
+    /** 동일한 줄의 여러 호출도 명령 순서로 구분하며 비교마다 selector 배열·identity 문자열을 만들지 않는다. */
     override fun compareTo(other: ExternalCall): Int {
-        // selector 배열을 매 비교마다 만들지 않되 기존 문자열 순서와 null 대체값은 그대로 유지한다.
         var comparison = caller.value.compareTo(other.caller.value)
         if (comparison != 0) return comparison
         comparison = target.value.compareTo(other.target.value)

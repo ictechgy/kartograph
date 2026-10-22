@@ -350,3 +350,25 @@ null/필드 누락은 미확정이다. 이름만 같은 사용자 함수는 연�
 ClassFacts cache binary v8은 재사용하지 않고 v9로 재파싱한다.
 그래프 선택/가지치기 또는 origin 제외로 원본 정점이나 BYTECODE CALL 근거가 사라지면 연관도 null로
 정규화한다. 원본 그래프의 사실과 raw CALL은 변경하지 않는다.
+
+### Direct compiler-source observations
+
+Opt-in saved query/impact source reports expose only admitted direct compiler selections. They do not cover source transitivity,
+unobserved syntax, local/lambda/ambiguous mappings, external targets/consumers, unbuilt variants or dynamic execution. A missing
+exact bytecode CALL is a correlation fact, not an inline/erased/unused classification. Querying a class does not expand its members.
+Captured root/producer/import omissions remain global historical gaps after narrowing; a smaller view cannot improve capture
+coverage or restore removed rows. Source page counts and graph traversal/path truncation are independent. Saved snapshot identity
+hashes are neither producer authentication nor current-build freshness. `verify-snapshot` remains a separate explicit check.
+
+## Captured Android layout impact (0.25.0 preparation)
+
+[Layout impact](ANDROID-RESOURCE-IMPACT.md) uses exact captured paths, admitted non-final R.layout fields
+and recorded literal reverse includes. The demonstrated application fixture is AGP8.7.3/Gradle8.10.2/KGP2.0.21,
+JDK17/SDK35. Other Android snapshot compatibility results do not establish this resource mapping path.
+Coverage stays partial: dynamic/external includes may hide parents; final/inlined IDs, custom views,
+navigation, data/view binding, overlay/device winners and runtime inflation are unmeasured.
+Trusted quiescent build capture is required. Descriptor-relative no-follow observations do not provide
+atomic snapshots or hostile-filesystem time bounds. Unsupported/oversized capture remains unavailable,
+not successful empty selection. Legacy missing channels cannot borrow another revision's binding.
+Resource-bearing snapshots, including captured-empty channels, cannot be aggregated. Keep per-module
+scope/namespace/output ownership and use matching CLI/plugin/library versions with recompiled JVM clients.

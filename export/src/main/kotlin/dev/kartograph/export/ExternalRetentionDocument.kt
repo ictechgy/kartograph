@@ -78,7 +78,7 @@ internal object ExternalRetentionProvenance {
         var status = ExternalRetentionContextStatus.UNAVAILABLE
         val diagnostics = mutableListOf<String>()
         val canonical = value?.let {
-            // 중복 제거 전 크기·개수 검사를 하므로 중복값으로 admission 상한을 우회할 수 없다.
+            // 표시용 변환 전에 상한을 적용하고 원본 배열의 순서·중복은 그대로 보존한다.
             RetentionCanonicalJson.render(it)
             listLimit(it["sources"], 256)
             listLimit(it["limitations"], 4096)
@@ -89,17 +89,14 @@ internal object ExternalRetentionProvenance {
                 val sources = if ("sources" in it) (it["sources"] as? List<*> ?: invalid()) else emptyList<Any>()
                 sources.forEach(::source)
                 status = if (sources.isEmpty()) ExternalRetentionContextStatus.UNAVAILABLE else ExternalRetentionContextStatus.CAPTURED
-                val normalized = it.entries.associate { entry -> entry.key as String to entry.value }.toMutableMap()
-                if ("sources" in it) normalized["sources"] = canonicalRows(sources)
-                normalized["limitations"] = canonicalRows(limitations)
-                (normalized["sources"] as? List<*>)?.forEach { raw ->
+                sources.forEach { raw ->
                     val source = raw as Map<*, *>
                     diagnostics += "external-retentions source: " + ExternalRetentionCaveats.safe(RetentionCanonicalJson.render(source))
                 }
-                (normalized["limitations"] as List<*>).forEach { raw ->
+                limitations.forEach { raw ->
                     diagnostics += "external-retentions limitation: " + ExternalRetentionCaveats.safe(RetentionCanonicalJson.render(raw))
                 }
-                RetentionCanonicalJson.render(normalized)
+                RetentionCanonicalJson.render(it)
             } else {
                 status = ExternalRetentionContextStatus.UNSUPPORTED
                 diagnostics += "external-retentions: provenance version $version is unsupported; opaque context is retained"
@@ -111,9 +108,6 @@ internal object ExternalRetentionProvenance {
         return ExternalRetentionDocumentContext(producer["version"] as String, document["generatedAt"] as String,
             omitted, canonical, version, status, Collections.unmodifiableList(diagnostics.toList()))
     }
-
-    private fun canonicalRows(rows: List<*>): List<Any?> = rows.associateBy { RetentionCanonicalJson.render(it) }
-        .toSortedMap().values.toList()
 
     private fun listLimit(value: Any?, maximum: Int) { if (value is List<*>) require(value.size <= maximum) }
     private fun record(value: Any?): Map<*, *> = value as? Map<*, *> ?: invalid()

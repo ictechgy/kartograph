@@ -151,11 +151,14 @@ public object SymbolQuery {
             val visit = queue.removeFirst()
             if (!seen.add(visit.id)) continue
             graph.node(visit.id)?.let { found += it.toNeighbor(visit.edgeFacts, visit.depth, graph) }
+            // 응답은 BFS 순서의 앞 limit개와 잘림 여부뿐이라, limit+1번째 이웃을 찾으면 남은 depth 범위를 방문하지 않는다.
+            if (found.size > limit) break
             if (visit.depth >= depth) continue
             val edges = if (incoming) graph.incomingEdgesTo(visit.id) else graph.outgoingEdgesFrom(visit.id)
             edges.filter { it.kind.impliesUsage }.groupBy { if (incoming) it.source else it.target }
                 .toSortedMap().forEach { (id, grouped) ->
-                    queue += Visit(id, visit.depth + 1, grouped)
+                    // 이미 꺼낸 정점은 다시 꺼내도 건너뛰므로 큐에 넣지 않는다. 방문 표시는 꺼낼 때 그대로 해 순서와 간선 근거가 같다.
+                    if (id !in seen) queue += Visit(id, visit.depth + 1, grouped)
                 }
         }
         return NeighborPage(found.take(limit), found.size > limit)

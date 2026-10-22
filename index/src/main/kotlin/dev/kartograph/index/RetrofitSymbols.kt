@@ -12,7 +12,7 @@ import org.objectweb.asm.Type
  * Retrofit 동사 어노테이션이 붙은 서비스 메서드의 소스 선언이다.
  *
  * Retrofit route-call 사실은 호출 지점이 아니라 인터페이스 선언에서 나온다. 추상 메서드는 bytecode에 줄 번호가 없어
- * 위치 기반 부착([attachSnapshotSymbol])으로는 JVM 정점을 찾을 수 없으므로, 소스에서 복원한 소유 타입·이름·동사로
+ * 위치 기반 부착([SnapshotSymbolAttacher])으로는 JVM 정점을 찾을 수 없으므로, 소스에서 복원한 소유 타입·이름·동사로
  * 정점을 찾는다.
  *
  * @property owner 선언을 담은 타입의 JVM internal name이다(`pkg/Outer$Api`). 중첩 타입은 `$`로 잇는다

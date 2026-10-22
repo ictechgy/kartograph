@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,90 @@ ROOT = Path(__file__).resolve().parents[2]
 BINARY = Path(os.environ.get("KARTOGRAPH_BINARY", ROOT / "cli/build/install/kartograph/bin/kartograph")).resolve()
 SCRIPT = Path(os.environ.get("KARTOGRAPH_PR_SCRIPT", ROOT / "Scripts/check-pr.py")).resolve()
 TEST_ENV = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+# 설계 결정 D1 회귀 고정물의 git 환경이다. 사용자 전역·시스템 설정이 끼어들지 않게 한다.
+FIXTURE_ENV = {**TEST_ENV, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+# stat을 낡게 만드는 두 시각(2001·2002-01-01 UTC)이다. 같은 초의 racy 재검사를 피하려고 먼 과거를 쓴다.
+STALE_TIME, RESTALE_TIME = 978307200, 1009843200
+# 도우미가 모든 git 호출의 -C 앞에 두어야 하는 공통 설정이다.
+ISOLATION = ["-c", "core.fsmonitor=false", "-c", "log.showSignature=false"]
+
+
+def driver_overrides(name):
+    """도우미가 filter 드라이버 하나를 끄려고 -C 앞에 두는 네 덮기 옵션이다(세 명령은 빈 값, required는 false)."""
+    return ["-c", "filter." + name + ".clean=", "-c", "filter." + name + ".smudge=", "-c", "filter." + name + ".process=",
+            "-c", "filter." + name + ".required=false"]
+
+
+def plant_filter_driver(scratch, repository, name, stale):
+    """분석 대상 config에 표식을 남기는 filter 드라이버를 걸고 표식 경로를 돌려준다.
+
+    git은 stat이 index와 다른 추적 파일의 내용을 다시 읽을 때 드라이버를 실행한다. 일반 git status로 실제 실행을 먼저
+    확인해 헛통과를 막고, 그 뒤 stale 파일 시각을 다른 과거로 한 번 더 돌린다. 설정은 config 파일에 바이트로 쓴다.
+    """
+    directory = Path(tempfile.mkdtemp(prefix="filter-driver-", dir=scratch))
+    marker = directory / "ran"
+    driver = directory / "driver.sh"
+    driver.write_text("#!/bin/sh\n: > '" + str(marker) + "'\ncat\n")
+    driver.chmod(0o700)
+    with (repository / ".git" / "config").open("ab") as config:
+        config.write(('[filter "' + name + '"]\n\tclean = "' + str(driver) + '"\n').encode("utf-8"))
+    (repository / ".git" / "info").mkdir(exist_ok=True)
+    (repository / ".git" / "info" / "attributes").write_bytes(("* filter=" + name + "\n").encode("utf-8"))
+    for path in stale:
+        os.utime(path, (STALE_TIME, STALE_TIME))
+    subprocess.run(["git", "-C", str(repository), "--no-optional-locks", "status", "--porcelain"], env=FIXTURE_ENV,
+                   capture_output=True, timeout=30, check=True)
+    if not marker.exists():
+        raise AssertionError("plain git status did not run the filter driver; the fixture cannot observe the boundary")
+    marker.unlink()
+    for path in stale:
+        os.utime(path, (RESTALE_TIME, RESTALE_TIME))
+    return marker
+
+
+def plant_lazy_fetch_remote(scratch, source, clone, filter_spec, observe):
+    """source에서 filter_spec으로 file:// partial clone을 만들고 그 원격 명령을 표식을 남기는 명령으로 바꾼다.
+
+    압축본으로 받은 checkout의 .git/config가 고른 원격 명령(remote.origin.uploadpack)을 흉내 낸다. 같은 방법으로 만든
+    확인용 clone에서 일반 git이 observe로 lazy fetch를 띄워 표식을 남기는지 먼저 확인해 헛통과를 막는다. 표식 경로를 돌려준다.
+    """
+    def git(directory, *arguments):
+        return subprocess.run(["git", "-c", "protocol.file.allow=always", "-C", str(directory), *arguments], env=FIXTURE_ENV,
+                              capture_output=True, text=True, timeout=60, check=True).stdout
+
+    git(source, "config", "uploadpack.allowFilter", "true")
+    directory = Path(tempfile.mkdtemp(prefix="upload-pack-", dir=scratch))
+    marker = directory / "ran"
+    command = directory / "upload-pack.sh"
+    command.write_text("#!/bin/sh\n: > '" + str(marker) + "'\nexec git-upload-pack \"$@\"\n")
+    command.chmod(0o700)
+    witness = directory / "witness"
+    for target in (witness, clone):
+        git(scratch, "clone", "-q", "--no-local", "--filter=" + filter_spec, source.as_uri(), str(target))
+        if not any(line.startswith("?") for line in git(target, "rev-list", "--objects", "--missing=print", "--all").splitlines()):
+            raise AssertionError("the partial clone has no missing objects; the fixture cannot observe a lazy fetch")
+        git(target, "config", "remote.origin.uploadpack", str(command))
+    subprocess.run(["git", "-c", "protocol.file.allow=always", "-C", str(witness), *observe], env=FIXTURE_ENV,
+                   capture_output=True, timeout=60)
+    if not marker.exists():
+        raise AssertionError("plain git did not fetch through the configured upload-pack; the fixture cannot observe the boundary")
+    marker.unlink()
+    return marker
+
+
+def git_shim(directory, log, fail_configuration=False):
+    """argv를 log에 한 줄(JSON)씩 남기고 실제 git으로 넘기는 shim을 directory에 만든다. 도우미는 PATH의 git을 쓴다.
+
+    fail_configuration이면 `config` 하위 명령만 129로 끝낸다(조회 옵션을 모르는 옛 git처럼).
+    """
+    real_git = shutil.which("git", path=TEST_ENV.get("PATH"))
+    directory.mkdir()
+    (directory / "git").write_text("#!" + sys.executable + "\nimport json, os, sys\n" +
+        "with open(" + repr(str(log)) + ", 'a') as log: log.write(json.dumps(sys.argv[1:]) + '\\n')\n" +
+        ("if 'config' in sys.argv[1:]: sys.exit(129)\n" if fail_configuration else "") +
+        "os.execv(" + repr(real_git) + ", [" + repr(real_git) + "] + sys.argv[1:])\n")
+    (directory / "git").chmod(0o700)
+    return {**TEST_ENV, "PATH": str(directory) + os.pathsep + TEST_ENV.get("PATH", "")}
 
 
 class CheckPrTest(unittest.TestCase):
@@ -150,6 +235,104 @@ class CheckPrTest(unittest.TestCase):
         result = self.gate(helper_options=("--binary", str(binary), "--timeout", "1"))
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("timed out", result.stderr)
+
+    def test_git_calls_disable_repository_commands_and_keep_the_result(self):
+        scratch = Path(tempfile.mkdtemp(prefix="kartograph-pr-scratch-"))
+        self.addCleanup(shutil.rmtree, scratch)
+        marker = plant_filter_driver(scratch, self.project, "evil.name", [self.project / "Entry.java"])
+        log = scratch / "git-calls.jsonl"
+
+        result = self.gate(environment=git_shim(scratch / "shim", log))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["suppressedCount"], 1)
+        self.assertFalse(marker.exists(), "check-pr must not run the analyzed repository's filter driver")
+        calls = [json.loads(line) for line in log.read_text().splitlines()]
+        project = str(self.project.resolve())
+        query = ISOLATION + ["-C", project, "config", "-z", "--name-only", "--includes", "--list"]
+        overrides = driver_overrides("evil.name")
+        # 분석용 git 호출마다 바로 앞에서 드라이버를 다시 조회하고, 조회한 드라이버를 덮은 채로 실행한다.
+        self.assertEqual([query] * 3, calls[0::2])
+        analysis = calls[1::2]
+        self.assertEqual(3, len(analysis))
+        subcommands = []
+        for call in analysis:
+            separator = call.index("-C")
+            self.assertEqual(ISOLATION, call[:len(ISOLATION)])
+            self.assertEqual(project, call[separator + 1])
+            # 시스템·전역 설정의 드라이버(예: CI runner의 git-lfs)도 함께 덮으므로 덮기 옵션 수는 환경마다 다르다. 공통 설정과
+            # -C 사이가 드라이버마다 네 옵션인 묶음으로만 이루어졌는지 보고, 심은 드라이버의 묶음이 그 안에 있는지 본다.
+            groups = [call[start:start + len(overrides)] for start in range(len(ISOLATION), separator, len(overrides))]
+            self.assertEqual([driver_overrides(group[1][len("filter."):-len(".clean=")]) for group in groups], groups)
+            self.assertIn(overrides, groups)
+            subcommands.append(call[separator + 2:])
+        self.assertEqual(["rev-parse", "rev-parse", "show"], [arguments[0] for arguments in subcommands])
+        # show는 log 계열이라 외부 diff·textconv를 끈다(blob 읽기에는 원래 쓰이지 않지만 설정이 바꿀 여지를 없앤다).
+        self.assertEqual(["--no-ext-diff", "--no-textconv"], subcommands[2][1:3])
+
+    def test_unoverridable_filter_driver_name_fails_closed(self):
+        scratch = Path(tempfile.mkdtemp(prefix="kartograph-pr-scratch-"))
+        self.addCleanup(shutil.rmtree, scratch)
+        # git은 -c 값을 첫 '='에서 나누므로 이 이름은 덮을 수 없다.
+        marker = plant_filter_driver(scratch, self.project, "a=b", [self.project / "Entry.java"])
+
+        result = self.gate()
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("filter driver whose name cannot be safely overridden", result.stderr)
+        self.assertNotIn("a=b", result.stderr)
+        self.assertFalse(marker.exists(), "check-pr must not run git while it cannot override the driver")
+
+    def test_unreadable_git_configuration_fails_closed(self):
+        scratch = Path(tempfile.mkdtemp(prefix="kartograph-pr-scratch-"))
+        self.addCleanup(shutil.rmtree, scratch)
+        log = scratch / "git-calls.jsonl"
+
+        result = self.gate(environment=git_shim(scratch / "shim", log, fail_configuration=True))
+
+        # 드라이버 이름을 모르면 덮을 수 없으므로 분석용 git을 하나도 실행하지 않고 도구 실패로 끝낸다.
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("cannot read the Git configuration", result.stderr)
+        self.assertNotIn(str(self.project), result.stderr)
+        self.assertEqual(["config"], [call[call.index("-C") + 2] for call in map(json.loads, log.read_text().splitlines())])
+
+    def partial_clone(self, observe):
+        """이 저장소의 blobless clone을 만들어 커밋하지 않은 빌드 입력을 옮긴다. (clone, 표식)을 돌려준다."""
+        scratch = Path(tempfile.mkdtemp(prefix="kartograph-pr-scratch-"))
+        self.addCleanup(shutil.rmtree, scratch)
+        clone = scratch / "clone"
+        marker = plant_lazy_fetch_remote(scratch, self.project, clone, "blob:none", observe)
+        # class 출력은 ignore되고 빈 resource 디렉터리는 커밋되지 않으므로 clone에 그대로 준비한다.
+        shutil.copytree(self.project / "classes", clone / "classes")
+        (clone / "res").mkdir()
+        return clone, marker
+
+    def test_base_baseline_missing_from_a_partial_clone_is_not_fetched(self):
+        baseline = self.project / ".kartograph-baseline.json"
+        # PR이 baseline을 고치면 blobless clone에는 기준 커밋의 baseline blob이 없다.
+        baseline.write_text(baseline.read_text() + "\n")
+        self.run_command("git", "commit", "-qam", "touch baseline")
+        clone, marker = self.partial_clone(["show", self.base + ":.kartograph-baseline.json"])
+
+        result = self.gate(helper_options=("--project", str(clone)))
+
+        self.assertFalse(marker.exists(), "check-pr must not fetch missing objects through the analyzed repository's remote")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("read base baseline", result.stderr)
+        self.assertIn("partial clone", result.stderr)
+        self.assertNotIn(str(clone), result.stderr)
+
+    def test_blobless_clone_with_an_unchanged_baseline_keeps_the_result(self):
+        (self.project / "Existing.java").write_text("public class Existing { }\n")
+        self.run_command("git", "commit", "-qam", "touch source")
+        # 기준 커밋의 다른 파일 blob은 clone에 없다. 확인용 clone에서 그 파일을 읽어 원격 명령이 관측되는지 본다.
+        clone, marker = self.partial_clone(["show", self.base + ":Existing.java"])
+
+        result = self.gate(helper_options=("--project", str(clone)))
+
+        self.assertFalse(marker.exists(), "check-pr must not fetch missing objects through the analyzed repository's remote")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(1, json.loads(result.stdout)["suppressedCount"])
 
     def test_unexpected_cli_exit_maps_to_tool_failure(self):
         binary = self.project / "failing-cli"

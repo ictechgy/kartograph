@@ -56,13 +56,62 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 - Android graph/dead tasks: AGP 8.7+, Gradle 8.10+, JDK 17+ (verified with AGP 8.7.3 / Gradle 8.10.2 and with AGP 9.x).
 - Automatic snapshots: JVM Java/Kotlin on Gradle 9.6.1 and JDK 17/21, plus the [tested Android combinations](docs/IMPACT.md#android-variant-자동-캡처). The Kotlin compiler adapter is verified with KGP 2.4.10; other KGP versions are not guaranteed. The minimum Android combination was tested on Gradle 8.10.2, although KGP itself recommends 8.14.4 or later.
 
+The following example targets 0.25.0, published on GitHub on 2026-10-19. Use the plugin once that version
+is available from the Portal, or build matching modules from the same source revision.
+
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.20.1"
+    id("io.github.ictechgy.kartograph") version "0.25.0"
 }
 ```
 
 Download `kartograph-<version>.zip` or `.tar` from a GitHub release. For 0.5.0 and later, check its SHA256 against the matching entry in `SHA256SUMS` before unpacking, then run `bin/kartograph`. Releases also include CycloneDX runtime SBOMs. Detached signatures are not published.
+
+0.22.0 is published on [GitHub Releases](https://github.com/ictechgy/kartograph/releases/tag/v0.22.0)
+and the [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.22.0).
+The public CLI archives, collector ZIP and Portal plugin passed independent installation checks.
+The published archives retain their original preparation-era documentation.
+The 0.21.0 tag and release page exist, but its failed release produced no distribution assets or Portal plugin.
+When upgrading from 0.20.0, rebuild direct JVM library consumers for the `GraphNode` and
+`QuerySnapshot` ABI changes and use matching CLI, plugin and optional collector versions.
+As checked on 2026-10-17, [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)
+has its seven assets and its [release run](https://github.com/ictechgy/kartograph/actions/runs/38721915580)
+completed the Gradle plugin publish step. It remains a GitHub prerelease.
+Independent public-asset/Portal-consumer verification of 0.23.0 is still pending. Those assets and their
+original documentation are unchanged. Publication and successful independent installation are separate results.
+As checked on 2026-10-18, [v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0) was the latest stable GitHub release with seven assets.
+Its [release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702) passed packaged readiness and plugin publication; independent public consumption is a separate check.
+As checked on 2026-10-19, [v0.25.0](https://github.com/ictechgy/kartograph/releases/tag/v0.25.0) is the latest stable GitHub release with seven assets,
+from tag commit `d7238cd5d6465219d0c1378a99e7394258b8577b`.
+Its [exact-source readiness](https://github.com/ictechgy/kartograph/actions/runs/39183549453) and
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39186955097) passed. All 20 ZIP/TAR semantic pairs
+passed against two retained-plugin AGP8.7.3 fixture builds: 17 impact pairs are strict; three freshness pairs
+omit only the validated root `hashNanos` timing field. ZIP, TAR and plugin hashes match release metadata.
+The `publishPlugins` task succeeded; public Portal visibility and independent Portal installation remain separate checks.
+Published assets retain their original documentation.
+Use matching CLI, plugin, collector and library artifacts. The new source-use APIs and explicit
+`snapshot --include-source-uses`, `query --source-uses` and `impact --source-edits` flags are additive.
+Saved source-use reports are partial/historical evidence with `currentness: notChecked`, separate from ordinary graph results.
+A 0.22 reader drops the optional source-use extension when reserializing. Recapture missing evidence, and recapture both
+base/current snapshots with the same tool version when required; do not relabel old snapshots or mix module versions.
+Old compiled-client and descriptor checks cover selected APIs, not every client or Kotlin source compatibility.
+See the [upgrade notes](CHANGELOG.md) and [source-use compatibility guide](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility).
+
+Version 0.24.0 adds enum expansion candidates for explicit fallback and finite literal membership decisions.
+Enable compiler `enumDecisions=true` and `snapshot --include-enum-decisions`, then compare fresh compatible
+baseline/current snapshots with `impact --enum-expansion`. Results retain current source locations,
+added constants, reasons and unresolved coverage. Both enum and source-use capture flags can be enabled together.
+Rebuild direct library clients for the changed `GraphNode`/`QuerySnapshot` public shape, use matching collector/CLI
+builds, and rebuild clients when their enum definitions change. Follow the
+[0.24.0 migration](docs/COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration) and
+[enum expansion guide](docs/IMPACT.md#opt-in-enum-expansion-candidates).
+These are review candidates, not runtime behavior proof. The published 0.23.0 artifacts do not contain this feature.
+The JDK 17 collector suite does not execute the conditional Java 21 null/pattern syntax branch.
+
+Version 0.25.0 adds captured application layout XML impact through exact non-final R fields and recorded literal includes.
+Use matching CLI/plugin/library builds and recapture both revisions. Coverage remains partial; module snapshots with resource
+evidence cannot be aggregated. See [layout capture and migration](docs/ANDROID-RESOURCE-IMPACT.md) for the tested AGP8.7.3
+combination, trusted-build boundary, freshness checks and unsupported runtime/dynamic cases.
 
 ## Usage
 
@@ -243,6 +292,10 @@ unavailable context; it does not mean complete coverage. Nonempty unmatched iden
 fail the entire analysis, with caveats and no partial findings. Zero-retention documents retain
 all document context.
 
+Source and limitation arrays retain their original order and duplicate entries; canonicalization
+sorts object keys only. Absent source metadata remains distinct from an explicitly empty source
+array in saved context.
+
 `query` and `snapshot` also accept one `--external-retentions <file>`. Snapshot capture fingerprints
 the document and reads it inside the capture checks. Plain/compact snapshots preserve the admitted
 context as canonical raw document strings and validate it again when loading. Snapshot merge keeps
@@ -260,6 +313,13 @@ fraction digits; leap seconds are unsupported. The CLI reads at most 16 MiB from
 non-symlink document with before/after identity checks. JDK file APIs do not provide a portable
 nonblocking open, so these checks do not claim atomic protection against hostile concurrent
 replacement by a special file. Supply a completed, stable input.
+
+This addition is included in 0.22.0 and is absent from the 0.21.0 tag. It changes the public JVM constructor
+and generated `copy`/default-call signatures of `QuerySnapshot`; clients compiled against an
+earlier `QuerySnapshot` must be rebuilt together with the updated export library. Source-level
+default arguments and existing snapshot wire versions remain compatible. The existing
+`ExternalRetentionCodec.parse(String)` and `AdoptionReporter.render` JVM entry points are retained.
+This public shape uses the published pre-1.0 minor version 0.22.0.
 
 `bridges --rn-events [--target react-native]` exports explicit
 `getJSModule(...RCTDeviceEventEmitter::class.java).emit(...)` calls (Java `.class` is also supported)

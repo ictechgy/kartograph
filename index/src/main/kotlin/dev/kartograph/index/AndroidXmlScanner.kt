@@ -6,6 +6,7 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.isDirectory
+import javax.xml.stream.XMLInputFactory
 import javax.xml.stream.XMLStreamReader
 
 /**
@@ -23,13 +24,21 @@ public class AndroidXmlScanner @JvmOverloads constructor(
         if (!resourceRoot.isDirectory()) {
             throw AndroidResourceScanningException("Android resource root does not exist")
         }
-        return discoverXmlFiles(resourceRoot).flatMap { xmlFile -> scanFile(xmlFile) }
+        // root realpath와 XML factory는 스캔 한 번에 하나씩만 만든다 — 파일마다 다시 풀고 만들면 resource 수만큼 비용이 는다.
+        // 모두 처음 필요할 때 만들어 파일마다 만들던 때와 오류 순서가 같다. 스캔은 단일 스레드라 factory를 공유해도 된다.
+        val realRoot by lazy(LazyThreadSafetyMode.NONE) { realProjectRoot(projectRoot) }
+        val realBuild = lazy(LazyThreadSafetyMode.NONE) { realBuildRoot(buildRoot) }
+        val factory = lazy(LazyThreadSafetyMode.NONE, ::secureXmlInputFactory)
+        return discoverXmlFiles(resourceRoot).flatMap { xmlFile ->
+            scanFile(xmlFile, projectRelativePath(realRoot, xmlFile, realBuild), factory)
+        }
     }
 
-    private fun scanFile(xmlFile: Path): List<RetentionEvidence> {
-        val sourcePath = projectRelativePath(projectRoot, xmlFile, buildRoot)
-        val sourceLines = xmlSourceLines(xmlFile)
-        return readXml(xmlFile) { reader ->
+    /** 파일을 한 번 읽어 줄 위치용 줄 목록과 StAX 입력에 같이 쓴다. 참조가 없는 파일도 엄격한 UTF-8 디코딩을 거친다. */
+    private fun scanFile(xmlFile: Path, sourcePath: String, factory: Lazy<XMLInputFactory>): List<RetentionEvidence> {
+        val content = readXmlBytes(xmlFile)
+        val sourceLines = xmlSourceLines(content)
+        return readXml(content, factory.value) { reader ->
             val className = reader.referencedClassName() ?: return@readXml null
             XmlReference(className, reader.location.lineNumber)
         }.map { reference ->

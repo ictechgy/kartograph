@@ -17,6 +17,36 @@ class CompilerSourceFactsTest {
             CompilerSourceCoordinateBasis.JAVAC_UTF16_CHAR_SEQUENCE, "17.0.20", "c".repeat(64), "d".repeat(64), "e".repeat(64), "f".repeat(64))
         return base.withCompilerAuthoredCalls(listOf(caller)).withCompilerCallerInventories(listOf(inventory))
     }
+    @Test fun `source uses authored calls and inventory survive every attachment and projection order`() {
+        val authored = graph()
+        val output = InputFingerprint("classes", "classes", "1".repeat(64))
+        val sourceRoot = CompilerSourceUseRoot(0, output, listOf(id))
+        val claim = CompilerSourceUseClaim("main", "javac", "compileJava", listOf(output))
+        val unit = CompilerSourceUseUnit(InputFingerprint("compilerEvidence", "calls.tsv", "2".repeat(64)),
+            "javac-constants", "17.0.20", "c".repeat(64), "d".repeat(64), listOf(claim),
+            CompilerSourceUseProducerCounts(0, 0, 0, 0), CompilerSourceUseImportCounts(0, 0, 0, 0, 0, 0), 0)
+        val evidence = CompilerSourceUseEvidence(listOf(sourceRoot), listOf(unit), emptyList())
+        val first = authored.withCompilerSourceUses(evidence).withCompilerCallPositions(emptyList())
+        val second = CodeGraph(authored.nodes.values, authored.edges).withCompilerSourceUses(evidence)
+            .withCompilerCallerInventories(authored.compilerCallerInventories)
+            .withCompilerAuthoredCalls(authored.compilerAuthoredCallers).withCompilerCallPositions(emptyList())
+        for (captured in listOf(first, second, first.enrichedWith(emptyList()),
+            first.enrichedWith(listOf(GraphEdge(id, owner, EdgeKind.REFERENCE))))) {
+            assertEquals(evidence, captured.compilerSourceUseEvidence)
+            assertEquals(authored.compilerAuthoredCallers, captured.compilerAuthoredCallers)
+            assertEquals(authored.compilerCallerInventories, captured.compilerCallerInventories)
+            assertTrue(captured.compilerCallPositionsCaptured)
+        }
+        for (sourceUsesFirst in listOf(false, true)) {
+            val selected = CodeGraph(listOf(authored.nodes.getValue(owner)), emptyList())
+            val projected = if (sourceUsesFirst) selected.preserveCompilerSourceUsesFrom(first).withCompilerSourceFactsFrom(first)
+                else selected.withCompilerSourceFactsFrom(first).preserveCompilerSourceUsesFrom(first)
+            assertEquals(evidence.select(setOf(owner)), projected.compilerSourceUseEvidence)
+            assertTrue(projected.compilerAuthoredCallers.isEmpty())
+            assertFalse(projected.compilerCallerInventories.single().projectionComplete)
+            assertEquals(authored.compilerCallerInventories.single().methods, projected.compilerCallerInventories.single().methods)
+        }
+    }
     @Test fun `presentation changes retain capture identity but cannot replace another capture`() {
         val original = graph()
         val displayed = CodeGraph(original.nodes.values.map { it.copy(moduleName = "display", location = SourceLocation("display/Calls.java")) }, original.edges)

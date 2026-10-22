@@ -3,10 +3,17 @@ package dev.kartograph.gradle
 /** 실제 compiler 인자에서 token-bound call-position marker 포함 여부만 결정한다. */
 internal object CompilerCallPositionOptionParser {
     fun enabled(compilerKind: String, effectiveArguments: List<String>, compilerEvidence: Boolean): Boolean {
+        return enabledOption(compilerKind, effectiveArguments, compilerEvidence, "callPositions")
+    }
+
+    fun enumDecisionsEnabled(compilerKind: String, effectiveArguments: List<String>, compilerEvidence: Boolean): Boolean =
+        enabledOption(compilerKind, effectiveArguments, compilerEvidence, "enumDecisions")
+
+    private fun enabledOption(compilerKind: String, effectiveArguments: List<String>, compilerEvidence: Boolean, option: String): Boolean {
         if (!compilerEvidence) return false
         return when (compilerKind) {
-            "javac" -> javac(effectiveArguments, "callPositions")
-            "kotlin" -> kotlin(effectiveArguments, "callPositions")
+            "javac" -> javac(effectiveArguments, option)
+            "kotlin" -> kotlin(effectiveArguments, option)
             else -> throw IllegalArgumentException("unsupported compiler witness kind")
         }
     }
@@ -52,6 +59,8 @@ internal object CompilerCallPositionOptionParser {
         var authoredSeen = false
         var inventorySeen = false
         var classOutputSeen = false
+        var decisions = false
+        var decisionsSeen = false
         val values = configured.single().removePrefix(JAVAC_PLUGIN).trim { it in JAVAC_WHITESPACE }
             .takeIf(String::isNotEmpty)?.split(WHITESPACE).orEmpty()
         for (argument in values) {
@@ -78,16 +87,22 @@ internal object CompilerCallPositionOptionParser {
                     val enabled = strictBoolean(value)
                     if (key == option) positions = enabled
                 }
+                "enumDecisions" -> {
+                    require(!decisionsSeen) { "compiler enum decisions option may be configured only once" }
+                    decisionsSeen = true
+                    decisions = strictBoolean(value)
+                }
                 else -> throw IllegalArgumentException("unsupported compiler evidence option")
             }
         }
         require(root && output && token) { "compiler evidence root, output and token are required" }
         require(!positions || collector == "javac-constants") { "call positions require a constants collector" }
-        return positions && collector == "javac-constants"
+        require(!decisions || collector == "javac-constants") { "enum decisions require a constants collector" }
+        return (if (option == "enumDecisions") decisions else positions) && collector == "javac-constants"
     }
 
-    private fun kotlin(arguments: List<String>, name: String): Boolean {
-        val kotlinOption = "plugin:kartograph.compiler-evidence:$name"
+    private fun kotlin(arguments: List<String>, optionName: String): Boolean {
+        val optionKey = "plugin:kartograph.compiler-evidence:$optionName"
         var found: Boolean? = null
         var index = 0
         while (index < arguments.size) {
@@ -98,8 +113,8 @@ internal object CompilerCallPositionOptionParser {
                 else -> null
             } ?: continue
             for (option in payload.split(',')) {
-                if (option != kotlinOption && !option.startsWith("$kotlinOption=")) continue
-                require(option.startsWith("$kotlinOption=")) { "Kotlin call positions option requires a value" }
+                if (option != optionKey && !option.startsWith("$optionKey=")) continue
+                require(option.startsWith("$optionKey=")) { "Kotlin call positions option requires a value" }
                 require(found == null) { "Kotlin call positions option may be configured only once" }
                 found = strictBoolean(option.substringAfter('='))
             }

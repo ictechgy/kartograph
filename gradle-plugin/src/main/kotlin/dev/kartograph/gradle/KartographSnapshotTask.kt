@@ -122,6 +122,13 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val androidResourceDirectories: ConfigurableFileCollection
 
+    /** application main provider의 전체 root 목록이다. unit-test retention 목록과 합치지 않는다. */
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val androidMainResourceDirectories: ConfigurableFileCollection
+
+    /** 지원 adapter가 같은 main provider를 producer에 연결했을 때만 설정한다. */
+    @get:Input @get:Optional public abstract val androidResourceProducerArtifact: Property<String>
+
     /** adapter가 캡처 범위에서 의도적으로 뺀 입력(예: unit-test component)을 snapshot limitation으로 알린다. */
     @get:Input public abstract val captureLimitations: ListProperty<String>
 
@@ -297,16 +304,28 @@ public abstract class KartographSnapshotTask : DefaultTask() {
                 if (compilerFacts.outsideGraphReferences > 0) add("compiler-evidence-outside-graph: ${compilerFacts.outsideGraphReferences}")
                 if (compilerFacts.shadowedReferences > 0) add("compiler-evidence-shadowed-references: ${compilerFacts.shadowedReferences}")
             }
+            val resourceEvidence = androidResourceProducerArtifact.orNull?.let { producer ->
+                namespace.orNull?.let { resourceNamespace ->
+                    AndroidResourceSnapshotEvidence.capture(project, scope.get(), resourceNamespace,
+                        androidMainResourceDirectories.files.map { it.toPath() }, producer, before, indexed, located)
+                } ?: AndroidResourceSnapshotEvidence.Result(limitations =
+                    listOf("android-resource-bindings-unavailable: namespace-unavailable"))
+            } ?: AndroidResourceSnapshotEvidence.Result()
+            val resourceProducerLimitations = ResourceProcessWitnesses.resourceLimitations(witnesses).filterNot {
+                resourceEvidence.bindings != null && it == ResourceProcessWitnesses.INVENTORY_UNVERIFIED
+            }
             val limitations = (RuntimeLimitationScanner.scan(indexed, selectedSources) +
                 dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) +
-                compilerLimitations + paths?.limitations.orEmpty() + captureLimitations.get() +
+                compilerLimitations + resourceProducerLimitations + resourceEvidence.limitations +
+                paths?.limitations.orEmpty() + captureLimitations.get() +
                 if (missingGeneratedRules.isEmpty()) emptyList() else
                     listOf("missing-generated-keep-files: ${missingGeneratedRules.size}")).distinct().sorted()
             val snapshot = QuerySnapshot(located, retention, limitations,
                 suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
                 scope = scope.get(), provenance = before, processorGenerations = compilerFacts.processorGenerations,
-                processorOutputs = outputObservations)
-            val content = QuerySnapshotCodec.render(snapshot, compact = true, maximumBytes = snapshotMaximumBytes)
+                processorOutputs = outputObservations, androidResourceEvidence = resourceEvidence.facts,
+                androidResourceBindings = resourceEvidence.bindings)
+            val content = AndroidResourceSnapshotEvidence.render(snapshot, snapshotMaximumBytes)
             SnapshotOutput(content, indexed, before, located)
         }
         val finalVerification = ProvenanceVerifier.verify(prepared.provenance, project, scope.get(), bindings)
@@ -443,7 +462,7 @@ internal fun relocateSnapshotSourcePaths(graph: CodeGraph, paths: Map<NodeId, St
     val relocated = CodeGraph(graph.nodes.values.map { node ->
         paths[node.id]?.let { path -> node.copy(location = node.location?.copy(path = path)) } ?: node
     }, graph.edges, graph.externalCalls, graph.serviceProviders, graph.enclosures,
-        graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes)
+        graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes).preserveCompilerSourceUsesFrom(graph)
     val located = if (graph.compilerCallPositionsCaptured) relocated.withCompilerCallPositions(graph.locatedCompilerReferences) else relocated
     return located.withCompilerSourceFactsFrom(graph)
 }

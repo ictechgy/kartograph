@@ -1,0 +1,12 @@
+{
+  "status": "publication-only pure validation passed; no JVM/compiler/Gradle execution",
+  "purePythonTests": 10,
+  "retainedEvidenceRegrade": "qualified-scoped-readback",
+  "psiAndProductObjectsMatchOriginal": true,
+  "onlyChangedTopLevelFields": [
+    "fixtureManifestSha256",
+    "javapSha256"
+  ],
+  "copiedArtifactHashesChecked": 43,
+  "executedPythonImplementationBytesUnchanged": true
+}

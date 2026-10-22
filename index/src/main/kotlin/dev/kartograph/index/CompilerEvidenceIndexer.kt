@@ -1,6 +1,7 @@
 package dev.kartograph.index
 
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.CompilerEnumDecisionEvidence
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.GraphEdge
@@ -35,6 +36,7 @@ public data class CompilerEvidenceResult(
 public data class CompilerEvidenceEnrichment(
     val result: CompilerEvidenceResult,
     val limitations: List<String>,
+    val enumDecisions: CompilerEnumDecisionEvidence? = null,
 )
 
 /** 명시적으로 요청하고 성공한 compiler 증거에 묶인 참조만 그래프에 추가한다. */
@@ -54,12 +56,30 @@ public object CompilerEvidenceIndexer {
         context: CompilerEvidenceContext? = null): CompilerEvidenceEnrichment =
         enrichInternal(indexed, classRoots, explicit, context, callPositions = true)
 
+    /** 명시적으로 요청한 v3 source 선택을 매 호출 새로 검증하며 class cache에는 보관하지 않는다. */
+    public fun enrichWithSourceUses(indexed: IndexedClasses, classRoots: List<Path>, explicit: List<Path>,
+        context: CompilerEvidenceContext? = null): CompilerEvidenceEnrichment =
+        enrichInternal(indexed, classRoots, explicit, context, callPositions = true, sourceUses = true)
+
+    /** 실행·의존 간선과 분리해 opt-in으로 수집하는 타입 기반 enum 소스 분기다. */
+    public fun enrichWithEnumDecisions(indexed: IndexedClasses, classRoots: List<Path>, explicit: List<Path>,
+        context: CompilerEvidenceContext? = null, includeSourceUses: Boolean = false): CompilerEvidenceEnrichment =
+        enrichInternal(indexed, classRoots, explicit, context, callPositions = true,
+            sourceUses = includeSourceUses, enumDecisions = true)
+
     private fun enrichInternal(indexed: IndexedClasses, classRoots: List<Path>, explicit: List<Path>,
-        context: CompilerEvidenceContext?, callPositions: Boolean): CompilerEvidenceEnrichment {
+        context: CompilerEvidenceContext?, callPositions: Boolean, sourceUses: Boolean = false, enumDecisions: Boolean = false): CompilerEvidenceEnrichment {
+        require(!enumDecisions || explicit.isNotEmpty()) { "compiler enum decisions require a completed v4 document" }
+        require(!sourceUses || explicit.isNotEmpty()) { "compiler source uses require a completed v3 document" }
         if (explicit.isEmpty()) return CompilerEvidenceEnrichment(CompilerEvidenceResult(indexed.graph), emptyList())
         val verified = requireNotNull(context) { "compiler evidence requires a completed compiler receipt context" }
         require(indexed.declarationsByRoot.size == classRoots.size) { "compiler evidence requires original class root observations" }
-        val freshness = ProvenanceVerifier.verify(verified.provenance, verified.project, verified.scope, verified.externalInputs)
+        val enumCapture = if (enumDecisions) CompilerEnumDecisionImport(indexed, classRoots, explicit, verified) else null
+        val sourceCapture = if (sourceUses) CompilerSourceUseImport(indexed, classRoots, explicit, verified,
+            enumCapture?.receiptPass ?: CompilerSourceUseReceiptPass()) else null
+        val freshness = enumCapture?.verifyFreshness(recheckReceipts = false)
+            ?: sourceCapture?.verifyFreshness(recheckReceipts = false)
+            ?: ProvenanceVerifier.verify(verified.provenance, verified.project, verified.scope, verified.externalInputs)
         require(freshness.status == "matched") { "compiler evidence requires matched build inputs" }
         val root = verified.project.toRealPath()
         val locatedInputs = mutableMapOf<InputFingerprint, Path>()
@@ -100,7 +120,8 @@ public object CompilerEvidenceIndexer {
             require(!Files.isSymbolicLink(file)) { "symbolic compiler evidence inputs are not supported" }
             val evidencePath = file.toRealPath()
             if (!seen.add(evidencePath)) continue
-            val bounded = BoundedCompilerEvidenceReader.read(file)
+            val bounded = enumCapture?.receiptPass?.byPhysical?.getValue(evidencePath)
+                ?: sourceCapture?.read(evidencePath) ?: BoundedCompilerEvidenceReader.read(file)
             val fingerprint = bounded.fingerprint
             val claims = verified.provenance.witnesses.filter { witness -> witness.compilerEvidence.any {
                 it.role == "compilerEvidence" && it.sha256 == fingerprint && locate(it) == evidencePath
@@ -115,6 +136,11 @@ public object CompilerEvidenceIndexer {
             require(claims.all { witness -> witness.inputs.any { input ->
                 input.role in setOf("processor", "compiler") && input.sha256 == document.artifactSha256
             } }) { "compiler evidence collector is not a recorded compiler input" }
+            if (envelope.enumStats != null) {
+                require(claims.all { CompilerEnumDecisionOptions.isEnabled(it.inputs) }) {
+                    "v4 compiler enum decisions require the recorded enum decisions option"
+                }
+            }
             if (envelope.callStats != null) {
                 require(claims.all { CompilerCallPositionOptions.isEnabled(it.inputs) }) {
                     "v3 compiler evidence requires a recorded call positions option"
@@ -163,6 +189,8 @@ public object CompilerEvidenceIndexer {
                     .map(::locate)
                     .toSet()
             }
+            sourceCapture?.record(evidencePath, envelope, claims, positions, sourcePaths, generatedSourcePaths)
+            enumCapture?.record(evidencePath, envelope, claims, positions, sourcePaths, generatedSourcePaths)
             val sourceInCompilerOutput = mutableMapOf<NodeId, Boolean>()
             fun belongsToCompilerOutput(source: NodeId): Boolean =
                 sourceInCompilerOutput.getOrPut(source) { positions.any { source in indexed.declarationsByRoot[it] } }
@@ -232,6 +260,7 @@ public object CompilerEvidenceIndexer {
         } else 0
         var graph = indexed.graph.enrichedWith(references.sorted(), indexed.graph.externalCalls)
         if (callPositionsCaptured) graph = graph.withCompilerCallPositions(locatedReferences)
+        if (sourceCapture != null) graph = sourceCapture.attach(graph)
         val result = CompilerEvidenceResult(graph, outside, shadowed, unmapped,
             generations.distinct().sortedWith(compareBy({ it.processor }, { it.artifactSha256 })))
         val limitations = buildList {
@@ -244,7 +273,7 @@ public object CompilerEvidenceIndexer {
             if (legacyDocumentsOnUncoveredRoots > 0) add("compiler-call-positions-legacy-documents: $legacyDocumentsOnUncoveredRoots")
             if (positionSourceUnverified > 0) add("compiler-call-positions-source-unverified: $positionSourceUnverified")
         }
-        return CompilerEvidenceEnrichment(result, limitations)
+        return CompilerEvidenceEnrichment(result, limitations, enumCapture?.finish(graph))
     }
 
     /** compiler가 읽은 원본의 원시 SHA-256을 비교한다. 원문은 결과로 내보내지 않는다. */

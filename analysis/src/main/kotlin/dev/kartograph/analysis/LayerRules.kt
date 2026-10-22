@@ -3,6 +3,7 @@ package dev.kartograph.analysis
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
+import dev.kartograph.core.NodeId
 import dev.kartograph.core.SourceLocation
 
 /** 이름, 모듈 또는 source 경로에 적용할 레이어 패턴 묶음이다. */
@@ -38,16 +39,14 @@ public class LayerRuleEvaluator(
     private val layers: List<LayerDefinition>,
     private val rules: List<LayerRule>,
 ) {
-    // 생성 당시의 문자열만 보존하고 실제 첫 사용 때 컴파일한다. 호출자가 목록에 나중에 넣은 패턴은 캐시하지 않는다.
-    private val compiledPatterns = layers.flatMap { it.patterns }.distinct().associateWith { pattern ->
-        lazy { compileGlob(pattern) }
-    }
-
     /** 이름, 모듈, source 경로 중 실제로 먼저 맞은 값을 근거와 함께 반환한다. */
-    public fun assignment(node: GraphNode): LayerAssignment {
+    public fun assignment(node: GraphNode): LayerAssignment = assignment(node, mutableMapOf())
+
+    private fun assignment(node: GraphNode, patterns: MutableMap<String, Regex>): LayerAssignment {
         val candidates = listOfNotNull(node.name, node.moduleName, ArchitectureGraph.unitOf(node), node.location?.path).distinct()
         for (layer in layers) for (pattern in layer.patterns) {
-            candidates.firstOrNull { globMatches(pattern, it) }?.let { candidate ->
+            val regex = patterns.getOrPut(pattern) { compileGlob(pattern) }
+            candidates.firstOrNull(regex::matches)?.let { candidate ->
                 return LayerAssignment(layer.name, pattern, candidate)
             }
         }
@@ -56,7 +55,8 @@ public class LayerRuleEvaluator(
 
     /** 선언 의존 간선에 걸린 모든 위반을 간선의 결정적 순서로 반환한다. */
     public fun evaluate(graph: CodeGraph): List<LayerViolation> {
-        val assignments = graph.nodes.mapValues { assignment(it.value).layer }
+        val patterns = mutableMapOf<String, Regex>()
+        val assignments = graph.nodes.mapValues { assignment(it.value, patterns).layer }
         return graph.edges.filter(ArchitectureGraph::isDependency).flatMap { edge ->
             val source = assignments[edge.source] ?: return@flatMap emptyList()
             val target = assignments[edge.target] ?: return@flatMap emptyList()
@@ -68,13 +68,13 @@ public class LayerRuleEvaluator(
     }
 
     /** 설정이 덮지 못해 규칙 판정에서 제외된 선언을 숨기지 않는다. */
-    public fun unassignedNodes(graph: CodeGraph) = graph.nodeIds.filter { assignment(graph.nodes.getValue(it)).layer == null }
+    public fun unassignedNodes(graph: CodeGraph): List<NodeId> {
+        val patterns = mutableMapOf<String, Regex>()
+        return graph.nodeIds.filter { assignment(graph.nodes.getValue(it), patterns).layer == null }
+    }
 
     private fun violates(rule: LayerRule, target: String): Boolean =
         rule.deny?.contains(target) == true || (rule.allow != null && target !in rule.allow)
-
-    private fun globMatches(pattern: String, candidate: String): Boolean =
-        (compiledPatterns[pattern]?.value ?: compileGlob(pattern)).matches(candidate)
 
     private fun compileGlob(pattern: String): Regex {
         val regex = buildString {

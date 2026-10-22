@@ -36,16 +36,14 @@ public object DotGraphRenderer {
 
     private fun escape(value: String): String = buildString {
         value.forEach { character ->
-            append(
-                when (character) {
-                    '\\' -> "\\\\"
-                    '"' -> "\\\""
-                    '\n' -> "\\n"
-                    '\r' -> "\\r"
-                    '\t' -> "\\t"
-                    else -> character
-                },
-            )
+            when (character) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(character)
+            }
         }
     }
 }

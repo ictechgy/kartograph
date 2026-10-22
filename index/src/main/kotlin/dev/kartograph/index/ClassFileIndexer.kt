@@ -186,7 +186,15 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
                     val selected = if (generatedInput) facts.copy(nodes = facts.nodes.map { node ->
                         node.copy(synthesized = true, attributes = node.attributes + NodeAttribute.GENERATED_INPUT)
                     }) else facts
-                    if (factsByClass.putIfAbsent(facts.internalName, selected) == null) rootByClass[facts.internalName] = rootIndex
+                    val previous = factsByClass.putIfAbsent(facts.internalName, selected)
+                    if (previous == null) {
+                        rootByClass[facts.internalName] = rootIndex
+                    } else {
+                        // 첫 root의 구현 선택은 유지하지만 shadowed class의 capture를 완전한 enum 근거로 쓰지 않는다.
+                        factsByClass[facts.internalName] = previous.copy(nodes = previous.nodes.map { node ->
+                            if (node.enumConstants == null) node else node.copy(enumConstants = null)
+                        })
+                    }
                 }
             }
         } finally {
@@ -258,10 +266,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
                 "${exportOptions!!.maximumDispatchCandidates} distinct targets; all candidates for those calls were omitted"
         val declared = CallDeclarationIndexer(dispatchResult.graph, hierarchy).enrich()
         val expanded = if (exportOptions?.includeExternalStubs == true) externalStubs(declared, classFacts) else declared
-        val selected = if (exportOptions == null || exportOptions.excludedOrigins.isEmpty()) expanded else
-            CodeGraph(expanded.nodes.values, expanded.edges.filter { it.origin !in exportOptions.excludedOrigins },
-                expanded.externalCalls, expanded.serviceProviders, expanded.enclosures,
-                expanded.callbackArguments, expanded.parameterUses, expanded.lambdaEscapes)
+        val selected = selectForGraphExport(expanded, exportOptions)
         val dispatched = IndexedClasses(selected, observations, hierarchy, declarationsByRoot.toList(), selectedRootByNode)
         val dispatchNanos = System.nanoTime() - dispatchStart
         val statistics = IndexingStatistics(classFiles, cacheHits, cacheMisses, parsedClasses, invalidEntries, writeFailures,
@@ -275,6 +280,17 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics,
             inheritedMembers.calls.filter { it.target in graph.nodes &&
                 (it.kind == InvocationKind.VIRTUAL || it.kind == InvocationKind.INTERFACE) })
+    }
+
+    /** 전체 필터를 한 번 평가한 뒤 제거와 compiler 위치 상태가 없을 때만 정규화된 그래프를 재사용한다. */
+    private fun selectForGraphExport(expanded: CodeGraph, exportOptions: GraphExportIndexOptions?): CodeGraph {
+        if (exportOptions == null || exportOptions.excludedOrigins.isEmpty()) return expanded
+        val edges = expanded.edges.filter { it.origin !in exportOptions.excludedOrigins }
+        return if (edges.size == expanded.edgeCount && expanded.locatedCompilerReferences.isEmpty() &&
+            !expanded.compilerCallPositionsCaptured) expanded else
+            CodeGraph(expanded.nodes.values, edges,
+                expanded.externalCalls, expanded.serviceProviders, expanded.enclosures,
+                expanded.callbackArguments, expanded.parameterUses, expanded.lambdaEscapes)
     }
 
     /** 실제 classfile 참조의 identity만 복원한다. SDK 구현이나 source 위치를 만들어내지 않는다. */
@@ -398,6 +414,8 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     // EnclosingMethod 속성의 감싼 메서드(초기화 문맥이면 class)다. 지역·익명 class에만 있다.
     private var enclosingDeclaration: NodeId? = null
     private var classAccess: Int = 0
+    private var capturesEnumInventory = false
+    private val enumConstants = mutableListOf<NodeId>()
     private var innerClassAccess: Int? = null
     private var sourceFile: String? = null
     private var sourceDebugMapper: SourceDebugMapper? = null
@@ -424,6 +442,8 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     ) {
         internalName = name
         classAccess = access
+        // 상수별 익명 subclass와 Kotlin metadata의 enum-entry kind만으로 빈 enum을 확정하지 않는다.
+        capturesEnumInventory = access and Opcodes.ACC_ENUM != 0 && superName == "java/lang/Enum"
         if (superName != null && superName != "java/lang/Object") supertypes += superName
         supertypes += interfaces
         if (superName != null && superName != "java/lang/Object") {
@@ -439,7 +459,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     }
 
     override fun visitSource(source: String?, debug: String?) {
-        sourceFile = source
+        sourceFile = source?.substringAfterLast('/')?.substringAfterLast('\\')?.takeIf(String::isNotBlank)
         sourceDebugPresent = debug?.startsWith("SMAP") == true
         sourceDebugMapper = if (sourceDebugPresent) SourceDebugMapper.parse(debug) else null
     }
@@ -474,6 +494,14 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         value: Any?,
     ): FieldVisitor {
         val fieldId = JvmNodeId.fieldId(internalName, name, descriptor)
+        val enumConstant = access and Opcodes.ACC_ENUM != 0
+        require(!enumConstant || capturesEnumInventory && descriptor == "L$internalName;") {
+            "enum constant does not match its enum owner"
+        }
+        if (enumConstant) {
+            require(fieldId !in enumConstants) { "duplicate enum constant field" }
+            enumConstants += fieldId
+        }
         if (value is String && descriptor == "Ljava/lang/String;" && access and Opcodes.ACC_STATIC != 0) {
             constantStringFields[fieldId] = value
         }
@@ -500,7 +528,10 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                     visibility = access.toVisibility(),
                     jvmVisibility = access.toVisibility(),
                     jvmModifiers = access.toJvmModifiers(),
-                    attributes = if (value != null) setOf(NodeAttribute.COMPILE_TIME_CONSTANT) else emptySet(),
+                    attributes = buildSet {
+                        if (value != null) add(NodeAttribute.COMPILE_TIME_CONSTANT)
+                        if (enumConstant) add(NodeAttribute.ENUM_CONSTANT)
+                    },
                     annotations = annotations,
                     synthesized = access.isSynthetic() || internalName.isAndroidGeneratedClass(),
                 )
@@ -567,12 +598,13 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                     Opcodes.INVOKEINTERFACE -> InvocationKind.INTERFACE
                     else -> InvocationKind.VIRTUAL
                 }
-                calls += ExternalCall(methodId, owner, targetName, targetDescriptor, invocationKind, sourceLocation(currentLine), callOrdinal++)
+                val call = ExternalCall(methodId, owner, targetName, targetDescriptor, invocationKind, sourceLocation(currentLine), callOrdinal++)
+                calls += call
                 if (owner == "java/lang/Class" && targetName == "forName") reflectionCalls++
                 if (RuntimeLimitationScanner.isDynamicRegistration(owner, targetName)) dynamicRegistrations++
                 edges += GraphEdge(
                     methodId,
-                    JvmNodeId.methodId(owner, targetName, targetDescriptor),
+                    call.target,
                     EdgeKind.CALL,
                     callSiteLines = callSiteLine(currentLine)?.let(::listOf).orEmpty(),
                 )
@@ -596,14 +628,15 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 vararg bootstrapMethodArguments: Any,
             ) {
                 val ordinal = callOrdinal++
+                val bootstrapCall = ExternalCall(methodId, bootstrapMethodHandle.owner, bootstrapMethodHandle.name,
+                    bootstrapMethodHandle.desc, InvocationKind.BOOTSTRAP, sourceLocation(currentLine), ordinal)
                 edges += GraphEdge(
                     methodId,
-                    JvmNodeId.methodId(bootstrapMethodHandle.owner, bootstrapMethodHandle.name, bootstrapMethodHandle.desc),
+                    bootstrapCall.target,
                     EdgeKind.CALL,
                 )
                 edges += GraphEdge(methodId, JvmNodeId.classId(bootstrapMethodHandle.owner), EdgeKind.REFERENCE)
-                calls += ExternalCall(methodId, bootstrapMethodHandle.owner, bootstrapMethodHandle.name,
-                    bootstrapMethodHandle.desc, InvocationKind.BOOTSTRAP, sourceLocation(currentLine), ordinal)
+                calls += bootstrapCall
                 bootstrapMethodArguments.filterIsInstance<Handle>().forEach { handle ->
                     when (handle.tag) {
                         Opcodes.H_GETFIELD, Opcodes.H_GETSTATIC, Opcodes.H_PUTFIELD, Opcodes.H_PUTSTATIC -> {
@@ -626,10 +659,11 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                                 Opcodes.H_INVOKEVIRTUAL -> InvocationKind.VIRTUAL
                                 else -> InvocationKind.SPECIAL
                             }
-                            calls += ExternalCall(methodId, handle.owner, handle.name, handle.desc, kind, sourceLocation(currentLine), ordinal)
+                            val call = ExternalCall(methodId, handle.owner, handle.name, handle.desc, kind, sourceLocation(currentLine), ordinal)
+                            calls += call
                             edges += GraphEdge(
                                 methodId,
-                                JvmNodeId.methodId(handle.owner, handle.name, handle.desc),
+                                call.target,
                                 EdgeKind.CALL,
                             )
                             edges += GraphEdge(methodId, JvmNodeId.classId(handle.owner), EdgeKind.REFERENCE)
@@ -700,6 +734,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             annotations = classAnnotations,
             supertypes = supertypes,
             synthesized = effectiveClassAccess.isSynthetic() || internalName.isAndroidGeneratedClass(),
+            enumConstants = if (capturesEnumInventory) enumConstants.sorted() else null,
         )
     }
 
@@ -757,16 +792,14 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
      * 로컬 경로가 흘러가지 않게 한다. 남는 이름이 없으면 위치를 만들지 않는다.
      */
     private fun sourceLocation(line: Int? = null): SourceLocation? =
-        sourceFile?.substringAfterLast('/')?.substringAfterLast('\\')
-            ?.takeIf(String::isNotBlank)
-            ?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
+        sourceFile?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
 
     /** 새 호출부 근거만 SMAP으로 확인한다. 같은 basename의 inline body도 caller 위치로 오인하지 않게 identity만 쓴다. */
     private fun callSiteLine(line: Int?): Int? {
         if (line == null || line !in 1..65535) return null
-        if (!sourceDebugPresent) return sourceLocation(line)?.line
+        if (!sourceDebugPresent) return if (sourceFile == null) null else line
         val mapped = sourceDebugMapper?.location(line) ?: return null
-        val ownPath = sourceLocation()?.path ?: return null
+        val ownPath = sourceFile ?: return null
         // primary SMAP의 output/input identity만 확정적인 caller 위치다. KotlinDebug stratum이나 inline 매핑은 추정하지 않는다.
         return mapped.line?.takeIf { mapped.path == ownPath && it == line && it in 1..65535 }
     }

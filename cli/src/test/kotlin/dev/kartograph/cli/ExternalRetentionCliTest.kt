@@ -187,6 +187,114 @@ class ExternalRetentionCliTest {
         }
     }
 
+    @Test
+    fun `current producer captures and explicit derived controls compose through snapshot aggregation`(@TempDir root: Path) {
+        val arguments = fixture(root)
+        fun resource(name: String): ByteArray = checkNotNull(javaClass.getResourceAsStream(
+            "/external-retention-current-producer/$name")).use { it.readBytes() }
+        fun hash(bytes: ByteArray): String = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val manifestBytes = resource("manifest.json")
+        assertEquals("9e62b05cba8f0abc439637d414c1cd4219826adc8582f8b3bfd0379d20a5e7be", hash(manifestBytes))
+        val manifest = McpJsonCodec.parse(manifestBytes.toString(Charsets.UTF_8)) as Map<*, *>
+        val producerBytes = resource(manifest["producerCapture"] as String)
+        assertEquals(manifest["producerCaptureSha256"], hash(producerBytes))
+        val producer = McpJsonCodec.parse(producerBytes.toString(Charsets.UTF_8)) as Map<*, *>
+        assertEquals("bdbdd589a8159b13d25dc23e11e1586bc0125ffb", producer["source_commit"])
+        assertEquals("f6c67f495864395b7c75ecfe76b3d2f5628f5e5c", producer["source_tree"])
+        val controls = (manifest["cases"] as List<*>).associate { raw ->
+            val case = raw as Map<*, *>
+            assertEquals(0L, case["producerExitCode"])
+            (case["inputs"] as Map<*, *>).forEach { (file, digest) -> assertEquals(digest, hash(resource(file as String))) }
+            val bytes = resource(case["file"] as String)
+            assertEquals(case["sha256"], hash(bytes))
+            case["scenario"] as String to bytes
+        }.toMutableMap()
+        val baseline = ExternalRetentionCodec.parseDocument(controls.getValue("baseline"))
+        val stale = McpJsonCodec.parse(controls.getValue("stale").toString(Charsets.UTF_8)) as Map<*, *>
+        // 미지원 버전은 실제 생산자 출력이 아닌, 알려진 캡처에서 명시적으로 파생한 소비자 호환성 대조군이다.
+        controls["derived-unknown"] = McpJsonCodec.render(stale + ("provenance" to
+            ((stale["provenance"] as Map<*, *>) + ("version" to 2L)))).toByteArray(Charsets.UTF_8)
+        val flags = listOf("--external-retentions", "retentions.json")
+        val symbol = "method:sample/Camera#handle()V"
+        for ((name, bytes) in controls) {
+            val document = ExternalRetentionCodec.parseDocument(bytes)
+            if (name == "zero") assertTrue(document.retentions.isEmpty()) else assertEquals(baseline.retentions, document.retentions)
+            Files.write(root.resolve("retentions.json"), bytes)
+            val dead = run(arguments + flags)
+            assertEquals(0, dead.status, dead.error)
+            assertContains(dead.output, "capture context")
+            assertEquals(name == "zero", dead.output.contains("unreachable\tclass:sample/Camera"))
+            assertContains(dead.output, "unreachable\tclass:sample/Unused")
+            if (name == "derived-unknown") assertContains(dead.output, "unsupported")
+            else if (name != "baseline") assertContains(dead.output, "index-freshness")
+            if (name != "zero") {
+                val explanation = run(arguments + flags + listOf("--explain", symbol))
+                assertEquals(0, explanation.status, explanation.error)
+                assertContains(explanation.output, "dart:lib/bridge.dart:4")
+                assertContains(explanation.output, "channel camera")
+                assertContains(explanation.output, "method photo")
+            }
+            val live = agent(listOf("query", symbol) + arguments + flags)
+            assertEquals(0, live.status, live.error)
+            assertContains(live.output, "capture context")
+            for (compact in listOf(false, true)) {
+                val capture = agent(listOf("snapshot") + arguments + flags + if (compact) listOf("--compact") else emptyList())
+                assertEquals(0, capture.status, capture.error)
+                val snapshot = QuerySnapshotCodec.parse(capture.output)
+                assertEquals(document.context, snapshot.externalRetentionContexts.single())
+                val external = snapshot.retention.filter { it.externalBridge != null }
+                external.forEach { evidence ->
+                    assertEquals("lib/bridge.dart", evidence.location!!.path)
+                    assertEquals("lib/bridge.dart", evidence.externalBridge!!.caller.path)
+                    assertEquals(listOf("lib/bridge.dart"), evidence.externalBridge!!.callers.map { it.path })
+                }
+                val member = AggregateMember(root, "feature/receiver", "member-1", snapshot, emptyMap())
+                val merged = snapshot.copy(retention = SnapshotAggregation.retention(listOf(member)),
+                    externalRetentionContexts = SnapshotAggregation.externalRetentionContexts(listOf(member)))
+                val restored = QuerySnapshotCodec.parse(QuerySnapshotCodec.render(merged, compact))
+                assertEquals(external, restored.retention.filter { it.externalBridge != null })
+                assertEquals(document.context, restored.externalRetentionContexts.single())
+                assertEquals((McpJsonCodec.parse(bytes.toString(Charsets.UTF_8)) as Map<*, *>)["provenance"],
+                    McpJsonCodec.parse(restored.externalRetentionContexts.single().provenanceJson!!))
+                assertContains(SavedSnapshotOperations.query(restored, symbol, 1, 20).json, "capture context")
+                assertContains(SavedSnapshotOperations.query(restored, "method:sample/Absent#missing()V", 1, 20).json, "capture context")
+            }
+        }
+        // 식별자만 바꾼 불일치 대조군도 실제 생산자로부터 얻은 결과로 주장하지 않는다.
+        Files.writeString(root.resolve("retentions.json"), controls.getValue("stale").toString(Charsets.UTF_8)
+            .replace(symbol, "method:sample/Absent#missing()V"))
+        for (result in listOf(run(arguments + flags), agent(listOf("snapshot") + arguments + flags),
+            agent(listOf("query", symbol) + arguments + flags))) {
+            assertEquals(2, result.status); assertEquals("", result.output); assertContains(result.error, "index-freshness")
+        }
+    }
+
+    @Test
+    fun `verified capture does not return context paired with a changed external input`(@TempDir root: Path) {
+        val file = root.resolve("retentions.json")
+        Files.writeString(file, withContext(retentions))
+        var result: ExternalRetentionDocument? = null
+        val failure = assertFailsWith<IllegalStateException> {
+            result = dev.kartograph.index.ContentFingerprint.withVerifiedCapture(
+                capture = { scope -> FreshnessCommand.capture(root, listOf("external-retentions" to file), emptyList(), emptyList(), scope) },
+                action = { _, _ -> ExternalRetentionFiles.read(file).also {
+                    Files.writeString(file, withContext(retentions).replace("source changed after capture", "another observed limitation"))
+                } },
+            )
+        }
+        assertContains(failure.message.orEmpty(), "changed")
+        assertEquals(null, result)
+        val arguments = fixture(root)
+        for (content in listOf("{}", "{\"provenance\":null}")) {
+            Files.writeString(file, content)
+            val rejected = agent(listOf("snapshot") + arguments + listOf("--external-retentions", "retentions.json"))
+            assertEquals(2, rejected.status); assertEquals("", rejected.output)
+        }
+        assertEquals(64, agent(listOf("snapshot") + arguments + listOf("--external-retentions", "retentions.json",
+            "--external-retentions", "retentions.json")).status)
+    }
+
     private fun withContext(document: String): String = document.trim().dropLast(1) + """,
         "provenance":{"version":1,"limitations":[{"platform":"swift","target":null,"tool":"cartograph",
         "message":"index-freshness: source changed after capture","origin":"opaque-future"}],

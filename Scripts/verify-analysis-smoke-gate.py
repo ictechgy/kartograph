@@ -2,14 +2,19 @@
 """자체 컴파일 그래프의 분석 불변식(contracts)과 실행 시간(time budget) smoke 게이트를 검증한다."""
 
 import argparse
+import hashlib
 import json
+import math
 import os
+import re
+import stat
 import statistics
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
+import threading
 
 
 MODULES = ["core", "index", "analysis", "export", "cli", "gradle-plugin"]
@@ -99,8 +104,366 @@ def has_working_java(env: dict) -> bool:
     return False
 
 
+# 관측은 판정 입력이 아니다. 읽기 실패에는 원문/경로 대신 고정된 상태만 남긴다.
+class ObservationUnavailable(Exception):
+    """부가 관측을 생략한 이유를 고정된 코드로 표현한다."""
+
+    def __init__(self, reason):
+        codes = ("unsupported", "unsupported-file-type", "oversized", "malformed", "out-of-range",
+                 "unavailable-count", "missing", "unsupported-cgroup", "unsafe-path",
+                 "selected-java-home-unavailable", "selected-java-layout-unavailable",
+                 "ownership-unavailable", "invalid-counter")
+        self.reason = reason if type(reason) is str and reason in codes else "observation-error"
+        super().__init__(self.reason)
+
+
+def unavailable(reason):
+    return {"status": "unavailable", "reason": reason}
+
+
+def observe(function, *args):
+    """부가 관측 실패를 격리하되 사용자 중단/프로세스 종료는 가로채지 않는다."""
+    try:
+        return {"status": "observed", "value": function(*args)}
+    except ObservationUnavailable as error:
+        return unavailable(error.reason)
+    except FileNotFoundError:
+        return unavailable("missing")
+    except PermissionError:
+        return unavailable("denied")
+    except (NotImplementedError, ImportError):
+        return unavailable("unsupported")
+    except (ValueError, UnicodeError):
+        return unavailable("malformed")
+    except Exception:
+        return unavailable("observation-error")
+
+
+def bounded_read(path, limit=4096):
+    """고정 파일의 최대 바이트만 읽고 특수 파일/초과 데이터는 생략한다."""
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    with os.fdopen(descriptor, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ObservationUnavailable("unsupported-file-type")
+        data = stream.read(limit + 1)
+    if len(data) > limit:
+        raise ObservationUnavailable("oversized")
+    return data
+
+
+def safe_string(value, pattern):
+    if not isinstance(value, str) or not re.fullmatch(pattern, value):
+        raise ObservationUnavailable("malformed")
+    return value
+
+
+def unsigned(value):
+    safe_string(value, r"[0-9]{1,19}")
+    number = int(value)
+    if number > 2 ** 63 - 1:
+        raise ObservationUnavailable("out-of-range")
+    return number
+
+
+def positive_count(value):
+    if type(value) is not int or not 0 < value <= 2 ** 31 - 1:
+        raise ObservationUnavailable("unavailable-count")
+    return value
+
+
+def runner_context(env):
+    """공개 CI 필드만 형태를 검사하여 기록한다."""
+    patterns = {
+        "RUNNER_OS": r"Linux|Windows|macOS",
+        "RUNNER_ARCH": r"X86|X64|ARM|ARM64",
+        "ImageOS": r"(?:ubuntu|macos|win)[0-9]{2,4}(?:-arm64)?",
+        "ImageVersion": r"[0-9][0-9.]{0,63}",
+        "GITHUB_SHA": r"[0-9a-fA-F]{40}",
+        "GITHUB_RUN_ID": r"[0-9]{1,20}",
+        "GITHUB_RUN_ATTEMPT": r"[0-9]{1,20}",
+    }
+    return {key: observe(safe_string, env[key], pattern) if key in env else unavailable("missing")
+            for key, pattern in patterns.items()}
+
+
+def selected_numbers(text, names, units=""):
+    rows = {}
+    for line in text.splitlines():
+        fields = line.replace(":", " ").split()
+        if fields and fields[0] in names:
+            key = fields[0]
+            if key in rows or len(fields) != (3 if units else 2) or (units and fields[-1] != units):
+                raise ObservationUnavailable("malformed")
+            rows[key] = observe(unsigned, fields[1])
+    return {name: rows.get(name, unavailable("missing")) for name in names}
+
+
+def cpu_model():
+    for line in bounded_read(Path("/proc/cpuinfo"), 128 * 1024).decode("utf-8").splitlines():
+        key, separator, value = line.partition(":")
+        if separator and key.strip() in ("model name", "Hardware", "Processor"):
+            return safe_string(value.strip(), r"[A-Za-z0-9 ().@+,_-]{1,160}")
+    raise ObservationUnavailable("missing")
+
+
+def cpu_policy(text):
+    fields = text.split()
+    if len(fields) != 2:
+        raise ObservationUnavailable("malformed")
+    quota = fields[0] if fields[0] == "max" else unsigned(fields[0])
+    period = unsigned(fields[1])
+    if quota == 0 or period == 0:
+        raise ObservationUnavailable("out-of-range")
+    return {"quotaMicros": quota, "periodMicros": period}
+
+
+def cpuset_policy(text):
+    value = text.strip()
+    safe_string(value, r"[0-9,-]{1,4096}")
+    previous = -1
+    for item in value.split(","):
+        bounds = item.split("-")
+        if len(bounds) not in (1, 2):
+            raise ObservationUnavailable("malformed")
+        start, end = unsigned(bounds[0]), unsigned(bounds[-1])
+        if not previous < start <= end < 2 ** 31:
+            raise ObservationUnavailable("out-of-range")
+        previous = end
+    return value
+
+
+def memory_policy(text):
+    value = text.strip()
+    return value if value == "max" else unsigned(value)
+
+
+def cgroup_context():
+    """매 snapshot마다 unified leaf를 다시 해석한다. 상위 정책/여유 용량을 추정하지 않는다."""
+    lines = bounded_read(Path("/proc/self/cgroup")).decode("utf-8").splitlines()
+    unified = [line[3:] for line in lines if line.startswith("0::")]
+    if len(unified) != 1:
+        raise ObservationUnavailable("unsupported-cgroup")
+    relative = unified[0]
+    if not relative.startswith("/") or "\\" in relative or "\x00" in relative:
+        raise ObservationUnavailable("unsafe-path")
+    parts = relative[1:].split("/") if relative != "/" else []
+    if any(part in ("", ".", "..") for part in parts):
+        raise ObservationUnavailable("unsafe-path")
+    root = Path("/sys/fs/cgroup").resolve(strict=True)
+    leaf = root.joinpath(*parts).resolve(strict=True)
+    if not leaf.is_relative_to(root):
+        raise ObservationUnavailable("unsafe-path")
+
+    def read_policy(name, parser):
+        path = (leaf / name).resolve(strict=True)
+        if path.parent != leaf:
+            raise ObservationUnavailable("unsafe-path")
+        return parser(bounded_read(path).decode("utf-8"))
+
+    return {
+        "scope": "observed-unified-leaf-only; ancestors-and-available-capacity-unobserved",
+        "identitySha256": hashlib.sha256(relative.encode("utf-8")).hexdigest(),
+        "cpu.max": observe(read_policy, "cpu.max", cpu_policy),
+        "cpuset.cpus.effective": observe(read_policy, "cpuset.cpus.effective", cpuset_policy),
+        "memory.max": observe(read_policy, "memory.max", memory_policy),
+        "cpu.stat": observe(read_policy, "cpu.stat", lambda text: selected_numbers(text, (
+            "usage_usec", "user_usec", "system_usec", "nr_periods", "nr_throttled", "throttled_usec"))),
+        "memory.events": observe(read_policy, "memory.events", lambda text: selected_numbers(text, (
+            "low", "high", "max", "oom", "oom_kill", "oom_group_kill"))),
+    }
+
+
+def java_identity(env):
+    """검증 후 선택된 JAVA_HOME의 파일만 관측하며 JVM을 추가 실행하지 않는다."""
+    home = env.get("JAVA_HOME")
+    if not home:
+        raise ObservationUnavailable("selected-java-home-unavailable")
+    if len(home) > 4096:
+        raise ObservationUnavailable("oversized")
+    java = (Path(home) / "bin/java").resolve(strict=True)
+    if java.name not in ("java", "java.exe") or java.parent.name != "bin":
+        raise ObservationUnavailable("selected-java-layout-unavailable")
+    release = bounded_read(java.parent.parent / "release")
+    patterns = {
+        "JAVA_VERSION": r"[0-9][A-Za-z0-9.+_-]{0,63}",
+        "JAVA_RUNTIME_VERSION": r"[0-9][A-Za-z0-9.+_-]{0,63}",
+        "IMPLEMENTOR": r"[A-Za-z0-9 .()_-]{1,96}",
+        "OS_ARCH": r"[A-Za-z0-9_-]{1,32}",
+    }
+    fields = {}
+    for line in release.decode("utf-8").splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key in patterns:
+            if key in fields or not (value.startswith('"') and value.endswith('"')):
+                raise ObservationUnavailable("malformed")
+            fields[key] = observe(safe_string, value[1:-1], patterns[key])
+    return {
+        "scope": "selected-java-path-and-release-file-only; not-runtime-distribution-identity",
+        "basename": java.name,
+        "resolvedPathSha256": hashlib.sha256(os.fsencode(java)).hexdigest(),
+        "releaseSha256": hashlib.sha256(release).hexdigest(),
+        "release": {key: fields.get(key, unavailable("missing")) for key in patterns},
+    }
+
+
+def affinity_count():
+    if not hasattr(os, "sched_getaffinity"):
+        raise ObservationUnavailable("unsupported")
+    return positive_count(len(os.sched_getaffinity(0)))
+
+
+def context_snapshot(env):
+    """타이머 밖에서 유한한 runner/resource/JDK 사실만 수집한다."""
+    result = {
+        "runner": runner_context(env),
+        "cpuCount": observe(lambda: positive_count(os.cpu_count())),
+        "java": observe(java_identity, env),
+        "javaOptionPresence": {key: key in env for key in (
+            "JAVA_OPTS", "KARTOGRAPH_OPTS", "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS")},
+    }
+    if sys.platform != "linux":
+        result["linux"] = unavailable("unsupported")
+        return result
+    result["linux"] = {
+        "affinityCpuCount": observe(affinity_count),
+        "kernelRelease": observe(lambda: safe_string(os.uname().release, r"[A-Za-z0-9.+_-]{1,128}")),
+        "cpuModel": observe(cpu_model),
+        "memoryKiB": observe(lambda: selected_numbers(
+            bounded_read(Path("/proc/meminfo")).decode("utf-8"), ("MemTotal", "MemAvailable"), "kB")),
+        "cgroup": observe(cgroup_context),
+    }
+    return result
+
+
+_CPU_OWNER_PID = None
+_CPU_CLAIMED = False
+
+
+def dedicated_entry():
+    """보통의 파일 직접 실행만 허용한다. import/runpy/-c/-m 등의 귀속은 생략한다."""
+    original = getattr(sys, "orig_argv", ())
+    return (__name__ == "__main__" and len(original) > 1
+            and Path(original[1]).resolve() == Path(__file__).resolve()
+            and threading.current_thread() is threading.main_thread()
+            and threading.active_count() == 1)
+
+
+class SmokeDiagnostics:
+    """관측 receipt를 판정 수치와 분리하고 단독 순차 실행의 waited-child CPU만 기록한다."""
+
+    def __init__(self, env):
+        global _CPU_CLAIMED
+        self.cpu_reason = None
+        if (_CPU_OWNER_PID != os.getpid() or _CPU_CLAIMED
+                or threading.current_thread() is not threading.main_thread()
+                or threading.active_count() != 1):
+            self.cpu_reason = "ownership-unavailable"
+        else:
+            _CPU_CLAIMED = True
+        self.document = {
+            "before": observe(context_snapshot, env),
+            "childCpu": {
+                "scope": "waited-child-tree-cpu-for-gate-owned-launch; includes-launcher-and-os-accounted-descendants",
+                "attribution": unavailable(self.cpu_reason) if self.cpu_reason else {"status": "eligible"},
+                "observations": [],
+            },
+            "unobserved": ["per-command-rss", "effective-child-heap", "effective-child-gc",
+                           "effective-child-processor-count", "complete-jvm-flags", "measured-input-identity"],
+        }
+
+    def cpu_snapshot(self):
+        if (self.cpu_reason or _CPU_OWNER_PID != os.getpid()
+                or threading.current_thread() is not threading.main_thread()
+                or threading.active_count() != 1):
+            self.cpu_reason = "ownership-unavailable"
+            raise ObservationUnavailable(self.cpu_reason)
+        import resource
+
+        if not hasattr(resource, "RUSAGE_CHILDREN") or not hasattr(resource, "getrusage"):
+            raise ObservationUnavailable("unsupported")
+        usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+        values = (usage.ru_utime, usage.ru_stime)
+        if any(type(value) not in (float, int) or not math.isfinite(value) or value < 0 for value in values):
+            raise ObservationUnavailable("invalid-counter")
+        return values
+
+    def after_child(self, before, after, run, command):
+        if before["status"] != "observed" or after["status"] != "observed":
+            value = before if before["status"] != "observed" else after
+        else:
+            values = [end - start for start, end in zip(before["value"], after["value"])]
+            if any(not math.isfinite(value) or value < 0 for value in values):
+                value = unavailable("invalid-delta")
+            else:
+                value = {"status": "observed", "userSeconds": values[0], "systemSeconds": values[1]}
+        self.document["childCpu"]["observations"].append({"run": run, "command": command, **value})
+
+    def finish(self, env):
+        self.document["after"] = observe(context_snapshot, env)
+        return self.document
+
+
 # 명령마다 결과에서 세는 수치 필드. 반복마다 값이 달라지면 분석이 비결정적이라는 뜻이다.
 COUNTER_FIELDS = ("nodes", "findings", "rows")
+
+
+def public_jvm_identity(value):
+    """공개 자체 코드의 정규 owner와 JVM field/method descriptor만 허용한다."""
+    segment = r"[A-Za-z0-9_$-]+"
+    owner = segment + r"(?:/" + segment + r")*"
+    project_owner = r"dev/kartograph/" + owner
+    scalar = r"(?:[BCDFIJSZ]|L" + owner + r";)"
+    field_type = r"\[*" + scalar
+    method_name = r"(?:<init>|<clinit>|[A-Za-z_$][A-Za-z0-9_$-]*)"
+    patterns = (
+        r"class:" + project_owner,
+        r"field:" + project_owner + r"#[A-Za-z_$][A-Za-z0-9_$-]*:" + field_type,
+        r"method:" + project_owner + r"#" + method_name + r"\((?:" + field_type + r")*\)(?:V|" + field_type + r")",
+    )
+    return len(value) <= 512 and any(re.fullmatch(pattern, value) for pattern in patterns)
+
+
+def analysis_failure_receipt(name, result):
+    """실패한 자체 분석에서 공개 JVM identity만 제한적으로 추출한다. 위치·환경·stderr는 내보내지 않는다."""
+    if result.returncode == 0:
+        return None
+    stdout = result.stdout or ""
+    stderr = result.stderr or ""
+    maximum_text = 256 * 1024
+    maximum_ids = 10
+    stdout_bytes = stdout.encode("utf-8")
+    inspected = stdout_bytes[:maximum_text].decode("utf-8", errors="ignore")
+    if len(stdout_bytes) > maximum_text:
+        inspected = inspected.rsplit("\n", 1)[0] if "\n" in inspected else ""
+    identities = []
+    rejected = 0
+    observed = 0
+    for line in inspected.splitlines():
+        if not line.startswith("unreachable\t"):
+            continue
+        observed += 1
+        fields = line.split("\t", 2)
+        identity = fields[1] if len(fields) >= 2 else ""
+        if not public_jvm_identity(identity):
+            rejected += 1
+        elif len(identities) < maximum_ids:
+            identities.append(identity)
+    return {
+        "format": "kartograph-analysis-process-failure",
+        "command": name if name in {"graph", "dead", "dead_private", "cycles", "rules", "metrics"} else "unknown",
+        "returncode": result.returncode,
+        "stderrBytes": len(stderr.encode("utf-8")),
+        "stderrSha256": hashlib.sha256(stderr.encode("utf-8")).hexdigest(),
+        "stderrContent": "omitted-untrusted-text",
+        "unsupportedOutputShape": observed == 0,
+        "stdoutSha256": hashlib.sha256(stdout_bytes).hexdigest(),
+        "hashBasis": "decoded-stream-utf8",
+        "observedUnreachableRows": observed,
+        "identities": identities,
+        "rejectedIdentities": rejected,
+        "inputTruncated": len(stdout_bytes) > maximum_text,
+        "identitiesTruncated": observed - rejected > len(identities),
+    }
 
 
 def check_contract(name, contract_kind, res, measurement, contract_failures):
@@ -147,13 +510,15 @@ def check_contract(name, contract_kind, res, measurement, contract_failures):
             )
 
 
-def run_measurement_pass(commands, env, samples, counters, contract_failures):
+def run_measurement_pass(commands, env, samples, counters, contract_failures, diagnostics=None):
     """명령 묶음을 한 번 실행해 소요 시간·수치를 누적한다.
 
     도구 실패(2)·사용법 오류(64)는 반복을 이어갈 의미가 없으므로 해당 종료 코드를 즉시 돌려주고,
     정상 종료면 None을 돌려준다. 같은 계약 실패 문구는 한 번만 남긴다.
     """
     for name, cmd, contract_kind in commands:
+        if diagnostics is not None:
+            cpu_before = observe(diagnostics.cpu_snapshot)
         t0 = time.perf_counter()
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=120)
@@ -161,7 +526,12 @@ def run_measurement_pass(commands, env, samples, counters, contract_failures):
             print(f"error: command '{name}' timed out", file=sys.stderr)
             return 2
         samples[name].append(time.perf_counter() - t0)
+        if diagnostics is not None:
+            cpu_after = observe(diagnostics.cpu_snapshot)
+            observe(diagnostics.after_child, cpu_before, cpu_after, len(samples[name]), name)
 
+        if res.returncode != 0:
+            print(json.dumps(analysis_failure_receipt(name, res), sort_keys=True), file=sys.stderr)
         if res.returncode == 2:
             print(f"error: command '{name}' failed with tool failure (exit 2)", file=sys.stderr)
             return 2
@@ -246,6 +616,10 @@ def verify_self_analysis(
             file=sys.stderr,
         )
         return 2
+
+    # 일반 텍스트 경로는 부가 관측을 전혀 하지 않는다. 선택된 Java 환경을 그대로 읽는다.
+    diagnostic_init = observe(SmokeDiagnostics, env) if as_json else None
+    diagnostics = diagnostic_init["value"] if diagnostic_init and diagnostic_init["status"] == "observed" else None
 
     class_args = []
     for r in roots:
@@ -345,9 +719,11 @@ def verify_self_analysis(
         counters = {}
         contract_failures = []
         for _ in range(runs):
-            exit_code = run_measurement_pass(commands, env, samples, counters, contract_failures)
+            exit_code = run_measurement_pass(commands, env, samples, counters, contract_failures, diagnostics)
             if exit_code is not None:
                 return exit_code
+
+        diagnostic_result = observe(diagnostics.finish, env) if diagnostics is not None else diagnostic_init
 
         measurements = summarize_measurements(samples, counters, contract_failures)
         # 예산은 반올림 전 원시 중앙값으로 판정해 경계값이 반올림으로 통과하지 않게 한다.
@@ -379,6 +755,11 @@ def verify_self_analysis(
                 "measurements": measurements,
                 "contractFailures": contract_failures,
                 "budgetFailures": budget_failures,
+            }
+            result_doc["diagnostics"] = {
+                "version": 1,
+                "scope": "observation-only; never-used-for-gate-acceptance",
+                **diagnostic_result,
             }
             print(json.dumps(result_doc, indent=2))
         else:
@@ -472,6 +853,12 @@ def main(argv=None):
         if options.binary
         else repo_root / "cli/build/install/kartograph/bin/kartograph"
     )
+
+    if options.json and __name__ == "__main__":
+        # 부가 관측 실패는 CLI 진입/종료를 막지 않으며 텍스트 경로는 관측하지 않는다.
+        global _CPU_OWNER_PID
+        if observe(dedicated_entry).get("value") is True:
+            _CPU_OWNER_PID = os.getpid()
 
     return verify_self_analysis(
         binary=binary,

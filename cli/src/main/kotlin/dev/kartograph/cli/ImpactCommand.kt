@@ -14,19 +14,36 @@ import java.io.PrintStream
 internal object ImpactCommand {
     fun run(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
         if (arguments == listOf("--help") || arguments == listOf("-h")) { output.print(HELP); return 0 }
+        if (arguments.count { it == "--format" } > 1) return usage(error, "duplicate impact option")
+        if ("--enum-expansion" in arguments) {
+            if (arguments.count { it == "--enum-expansion" } != 1 ||
+                arguments.any { it in setOf("--source-edits", "--source-limit", "--source-offset") } ||
+                arguments.windowed(2).any { it == listOf("--format", "language-traversal") })
+                return usage(error, "enum expansion cannot be combined with source edits or language traversal")
+            return EnumImpactCommand.run(arguments, output, error)
+        }
         // 새 교환 형식은 별도 생산자가 맡는다. 기본 kartograph-impact v1 경로와 출력은 그대로 둔다.
         val formatIndex = arguments.indexOf("--format")
         val format = if (formatIndex >= 0) arguments.getOrNull(formatIndex + 1) else null
+        val sourceOptions = setOf("--source-edits", "--source-limit", "--source-offset")
+        if (format == "language-traversal" && arguments.any { it in sourceOptions })
+            return usage(error, "source edits require json format")
         if (format == "language-traversal") return TraversalCommand.run(arguments, TraversalDirection.DEPENDENTS, output, error)
         if (formatIndex >= 0 && format != "json") return usage(error, "invalid impact format: use json or language-traversal")
         if (formatIndex >= 0) return run(arguments.filterIndexed { index, _ -> index != formatIndex && index != formatIndex + 1 }, output, error)
         val values = mutableMapOf<String, MutableList<String>>()
         val symbols = mutableListOf<String>()
         var all = false
+        var sourceEdits = false
         var index = 0
         while (index < arguments.size) {
             val option = arguments[index++]
             if (!option.startsWith('-')) { symbols += option; continue }
+            if (option == "--source-edits") {
+                if (sourceEdits) return usage(error, "duplicate --source-edits")
+                sourceEdits = true
+                continue
+            }
             if (option == "--all") {
                 if (all) return usage(error, "duplicate impact option")
                 all = true
@@ -38,8 +55,17 @@ internal object ImpactCommand {
             values.getOrPut(option) { mutableListOf() } += value
         }
         if (values["--graph-file"]?.size != 1) return usage(error, "provide exactly one --graph-file")
+        if (!sourceEdits && ("--source-limit" in values || "--source-offset" in values))
+            return usage(error, "source pagination requires --source-edits")
+        if (sourceEdits && (all || values.keys.any { it in setOf("--sort", "--module", "--affected-file", "--filter-file",
+                "--kind", "--test-status", "--relation", "--path-status") }))
+            return usage(error, "source edits do not support all, sort or affected-result filters")
         val repeatable = setOf("--symbol", "--file", "--module", "--affected-file", "--filter-file", "--kind")
         if (values.any { (key, value) -> key !in repeatable && value.size != 1 }) return usage(error, "duplicate impact option")
+        val sourceLimit = values["--source-limit"]?.single()?.toIntOrNull() ?: if ("--source-limit" in values) 0 else 100
+        val sourceOffset = values["--source-offset"]?.single()?.toIntOrNull() ?: if ("--source-offset" in values) -1 else 0
+        if (sourceLimit !in 1..1000 || sourceOffset !in 0..200000)
+            return usage(error, "source-limit must be 1..1000 and source-offset must be 0..200000")
         val snapshotLimit = SnapshotFiles.limit(values["--snapshot-max-mib"].orEmpty())
             ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128")
         if (all && "--limit" in values) return usage(error, "--all cannot be combined with --limit")
@@ -78,8 +104,10 @@ internal object ImpactCommand {
             val affectedFiles = values["--affected-file"].orEmpty() + values["--filter-file"].orEmpty()
             if ((files + affectedFiles).any { !portable(it) }) return usage(error, "impact files must be portable project-relative paths")
             if (values["--module"].orEmpty().any { it.isBlank() || it.any(Char::isISOControl) }) return usage(error, "impact modules must be non-empty")
-            val current = SnapshotFiles.read(values.getValue("--graph-file").single(), snapshotLimit.maximumBytes)
-            val base = values["--base-graph"]?.single()?.let { SnapshotFiles.read(it, snapshotLimit.maximumBytes) }
+            val currentLoaded = if (sourceEdits) SnapshotFiles.readWithIdentity(values.getValue("--graph-file").single(), snapshotLimit.maximumBytes) else null
+            val baseLoaded = if (sourceEdits) values["--base-graph"]?.single()?.let { SnapshotFiles.readWithIdentity(it, snapshotLimit.maximumBytes) } else null
+            val current = currentLoaded?.snapshot ?: SnapshotFiles.read(values.getValue("--graph-file").single(), snapshotLimit.maximumBytes)
+            val base = if (sourceEdits) baseLoaded?.snapshot else values["--base-graph"]?.single()?.let { SnapshotFiles.read(it, snapshotLimit.maximumBytes) }
             try { SavedSnapshotOperations.compatible(current, base) } catch (invalid: IllegalArgumentException) {
                 error.println("error: ${invalid.message}")
                 return 2
@@ -91,7 +119,11 @@ internal object ImpactCommand {
             }
             val effectiveLimit = if (all) Int.MAX_VALUE else limit
             val effectivePathLimit = pathLimit ?: if (all) 500_000 else maxOf(100_000, minOf(500_000, limit * 10))
-            val report = SavedSnapshotOperations.impact(
+            val report = if (sourceEdits) SavedSnapshotOperations.sourceImpact(
+                current = requireNotNull(currentLoaded), base = baseLoaded, symbols = symbols, files = files,
+                depth = depth, limit = effectiveLimit, visitLimit = visitLimit, pathLimit = effectivePathLimit, offset = offset,
+                summaryLimit = summaryLimit, request = dev.kartograph.analysis.SourceUsePageRequest(sourceLimit, sourceOffset),
+            ) else SavedSnapshotOperations.impact(
                 current = current,
                 symbols = symbols,
                 files = files,
@@ -114,6 +146,9 @@ internal object ImpactCommand {
             )
             output.print(report.json)
             report.status
+        } catch (_: dev.kartograph.export.SourceUseDocumentSizeException) {
+            error.println("error: source report exceeds 16 MiB; reduce graph/source pages or use a narrower snapshot")
+            2
         } catch (_: Exception) {
             error.println("error: unable to read impact inputs; use valid UTF-8 snapshots (${snapshotLimit.maximumMiB} MiB max) and a JSON file list (1 MiB max)")
             2
@@ -148,7 +183,7 @@ internal object ImpactCommand {
         "--graph-file", "--base-graph", "--symbol", "--file", "--files-from", "--depth", "--limit", "--offset",
         "--module", "--affected-file", "--filter-file", "--kind", "--test-status", "--relation", "--path-status", "--sort",
         "--visit-limit", "--path-limit", "--revision", "--base-revision",
-        "--snapshot-max-mib", "--summary-limit",
+        "--snapshot-max-mib", "--summary-limit", "--source-limit", "--source-offset",
     )
     private val HELP = """
         Inspect potential change impact using captured graphs.
@@ -158,6 +193,10 @@ internal object ImpactCommand {
           kartograph impact --file <project-relative-path> --graph-file <current.json> --base-graph <base.json>
 
         Options:
+          --enum-expansion         compare enum additions and current source decision candidates (json|text)
+          --source-edits           separate direct compiler-selection observations (JSON only)
+          --source-limit <n>       per-revision source page size, 1..1000 (default 100)
+          --source-offset <n>      per-revision source offset, 0..200000 (default 0)
           --symbol <symbol>        additional symbol or exact JVM USR, repeatable
           --file <path>            changed source or retention file, repeatable
           --files-from <file>      UTF-8 JSON array of project-relative changed files (may be empty)
@@ -188,6 +227,8 @@ internal object ImpactCommand {
         invalid snapshots return 2. Partial traversal and path omissions are explicit in the JSON. Baselines never hide impact.
         Review order places direct and transitive paths before structural and unknown paths, then uses path depth and USR.
         This changes presentation only; structural and unknown candidates remain part of the complete observed set.
+        Source edits reject --all, explicit --sort and affected-result filters. Graph budgets remain graph-only.
+        Saved source observations are historical; captured coverage is unknown or partial, never complete.
         Candidates do not prove behavior changes, safe deletion or permission to skip tests.
     """.trimIndent() + "\n"
 }

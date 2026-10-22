@@ -69,6 +69,17 @@ public object TraversalEdges {
     public fun build(graph: CodeGraph, enclosuresCaptured: Boolean = true, callbackFactsCaptured: Boolean = true): List<TraversalEdge> =
         assemble(graph, enclosuresCaptured, callbackFactsCaptured).edges
 
+    /**
+     * [build]와 같은 간선을 콜백 흐름 집계와 함께 한 번 조립해 둔다. 같은 그래프로 순회([LanguageTraversal.traverse])하고
+     * 그래프 해시(export의 `graphRevision`)도 내는 호출부가 이 값을 함께 써서 조립을 두 번 하지 않는다.
+     *
+     * @param graph 순회할 그래프다
+     * @param enclosuresCaptured 그래프가 어휘적 소속 사실을 실었는지다([build]와 같다)
+     * @param callbackFactsCaptured 그래프가 콜백 관측 사실을 실었는지다. 거짓이면 콜백 간선을 만들지 않는다
+     */
+    public fun prepare(graph: CodeGraph, enclosuresCaptured: Boolean = true, callbackFactsCaptured: Boolean = true): AssembledTraversalEdges =
+        AssembledTraversalEdges(graph, enclosuresCaptured, callbackFactsCaptured, assemble(graph, enclosuresCaptured, callbackFactsCaptured))
+
     /** 간선과 콜백 흐름 집계를 함께 만든다. 콜백 간선은 [CallbackFlows]가 그래프의 콜백 관측 사실에서 만든다. */
     internal fun assemble(graph: CodeGraph, enclosuresCaptured: Boolean = true, callbackFactsCaptured: Boolean = true): TraversalGraph {
         val classifier = DispatchClassifier(graph, enclosuresCaptured)
@@ -149,6 +160,26 @@ public object TraversalEdges {
 
 /** 순회 간선과 콜백 흐름 집계다. */
 internal data class TraversalGraph(val edges: List<TraversalEdge>, val callbacks: CallbackFlowSummary)
+
+/**
+ * 한 그래프에서 한 번 조립한 순회 간선이다([TraversalEdges.prepare]).
+ *
+ * 간선 조립은 dispatch 등급 판정과 콜백 흐름 분석을 포함해 그래프 크기에 비례한다. `reach`·`impact --format
+ * language-traversal`은 같은 그래프로 순회하고 그래프 해시도 내므로, 둘이 이 값을 함께 써서 조립을 한 번만 한다.
+ *
+ * @property graph 간선을 조립한 그래프다
+ * @property enclosuresCaptured 조립에 쓴 어휘적 소속 캡처 여부다
+ * @property callbackFactsCaptured 조립에 쓴 콜백 관측 캡처 여부다
+ */
+public class AssembledTraversalEdges internal constructor(
+    public val graph: CodeGraph,
+    public val enclosuresCaptured: Boolean,
+    public val callbackFactsCaptured: Boolean,
+    internal val assembled: TraversalGraph,
+) {
+    /** 조립한 순회 간선이다. 같은 그래프·캡처 여부의 [TraversalEdges.build]와 같은 목록이다. */
+    public val edges: List<TraversalEdge> get() = assembled.edges
+}
 
 /**
  * OVERRIDE(dispatch) 간선의 등급을 정한다.

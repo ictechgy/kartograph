@@ -37,11 +37,13 @@ public final class EvidenceProtocol {
     private static final String OUTPUT_OPTION = "output";
     private static final String TOKEN_OPTION = "token";
     private static final String CALL_POSITIONS_OPTION = "callPositions";
+    private static final String ENUM_DECISIONS_OPTION = "enumDecisions";
+    static final int MAX_ENUM_CONSTANTS = 4096;
 
     private EvidenceProtocol() {}
 
     /** compiler가 읽을 절대 경로 옵션이다. 이 값들은 raw 문서에 직렬화하지 않는다. */
-    public record Options(Path root, Path output, Path token, String collector, boolean callPositions, boolean authoredCalls, boolean callerInventory, Path classOutput) {
+    public record Options(Path root, Path output, Path token, String collector, boolean callPositions, boolean enumDecisions, boolean authoredCalls, boolean callerInventory, Path classOutput) {
         public Options {
             Objects.requireNonNull(root, "root");
             Objects.requireNonNull(output, "output");
@@ -55,24 +57,31 @@ public final class EvidenceProtocol {
                 if (!classOutput.startsWith(root) || classOutput.equals(root)) throw new IllegalArgumentException("caller inventory output must be inside the project");
             } else if (classOutput != null) throw new IllegalArgumentException("classOutput requires callerInventory");
             if (!COLLECTOR.matcher(collector).matches()) throw new IllegalArgumentException("unsupported compiler evidence collector");
+            if (enumDecisions && !(collector.equals("javac-constants") || collector.equals("kotlin-constants"))) {
+                throw new IllegalArgumentException("enum decisions require a constants collector");
+            }
             if ((callPositions || authoredCalls) && !(collector.equals("javac-constants") || collector.equals("kotlin-constants"))) {
                 throw new IllegalArgumentException("call positions require a constants collector");
             }
+        }
+
+        public Options(Path root, Path output, Path token, String collector, boolean callPositions) {
+            this(root, output, token, collector, callPositions, false);
         }
 
         public Options(Path root, Path output, Path token, String collector) {
             this(root, output, token, collector, false, false, false, null);
         }
 
-        public Options(Path root, Path output, Path token, String collector, boolean callPositions) {
-            this(root, output, token, collector, callPositions, false, false, null);
+        public Options(Path root, Path output, Path token, String collector, boolean callPositions, boolean enumDecisions) {
+            this(root, output, token, collector, callPositions, enumDecisions, false, false, null);
         }
 
-        public Options(Path root, Path output, Path token, String collector, boolean callPositions, boolean authoredCalls) {
-            this(root, output, token, collector, callPositions, authoredCalls, false, null);
+        public Options(Path root, Path output, Path token, String collector, boolean callPositions, boolean authoredCalls, boolean callerInventory, Path classOutput) {
+            this(root, output, token, collector, callPositions, false, authoredCalls, callerInventory, classOutput);
         }
 
-        public Options withCollector(String value) { return new Options(root, output, token, value, callPositions, authoredCalls, callerInventory, classOutput); }
+        public Options withCollector(String value) { return new Options(root, output, token, value, callPositions, enumDecisions, authoredCalls, callerInventory, classOutput); }
     }
 
     public record Source(String path, String sha256) {
@@ -108,6 +117,144 @@ public final class EvidenceProtocol {
                 throw new IllegalArgumentException("invalid compiler call position");
             }
         }
+    }
+
+    /** 렉시컬 람다를 포함해, 방출된 JVM 메서드와 독립적인 소스 분기 판단이다. */
+    public record EnumDecision(Source source, int start, int end, int line, int column,
+        String lexicalClass, String enumClass, String kind, boolean lexicalLambda, List<String> constants) {
+        public EnumDecision {
+            Objects.requireNonNull(source, "source");
+            Objects.requireNonNull(constants, "constants");
+            if (start < 0 || end <= start || line < 1 || column < 1 ||
+                !classIdentity(enumClass) || lexicalClass != null && !classIdentity(lexicalClass) ||
+                !("EXPLICIT_FALLBACK".equals(kind) || "FINITE_MEMBERSHIP".equals(kind) ||
+                    "NEGATED_FINITE_MEMBERSHIP".equals(kind)) || constants.size() > MAX_ENUM_CONSTANTS) {
+                throw new IllegalArgumentException("invalid compiler enum decision");
+            }
+            String owner = enumClass.substring("class:".length());
+            String prefix = "field:" + owner + "#", suffix = ":L" + owner + ";";
+            String previous = null;
+            for (String constant : constants) {
+                if (constant == null || !constant.startsWith(prefix) || !constant.endsWith(suffix) ||
+                    constant.length() <= prefix.length() + suffix.length() ||
+                    constant.chars().anyMatch(c -> c < 32) ||
+                    previous != null && previous.compareTo(constant) >= 0) {
+                    throw new IllegalArgumentException("enum decision constants must be sorted, unique and owned by its enum");
+                }
+                previous = constant;
+            }
+            constants = List.copyOf(constants);
+        }
+    }
+
+    private static boolean classIdentity(String value) {
+        if (value == null || !value.startsWith("class:")) return false;
+        String owner = value.substring(6);
+        return !owner.isEmpty() && !owner.startsWith("/") && !owner.endsWith("/") && !owner.contains("//") &&
+            owner.chars().noneMatch(c -> c < 32 || c == '.' || c == ';' || c == '[' || c == ':' || c == '#');
+    }
+
+    static final class EnumDecisionLimitException extends IllegalArgumentException {
+        EnumDecisionLimitException(String message) { super(message); }
+    }
+
+    /** 다음 관찰 전에 현재 관찰의 결과를 정확히 하나 기록해야 한다. */
+    static final class EnumDecisionBuffer {
+        private final ArrayList<EnumDecision> decisions = new ArrayList<>();
+        private final Map<String, EnumDecision> sites = new HashMap<>();
+        private int observed;
+        private int unsupported;
+        private int ignored;
+        private long retainedBytes;
+        private boolean pending;
+        private boolean failed;
+
+        void observe() {
+            requireActive();
+            if (pending) fail("enum decision observation has no outcome");
+            if (observed == MAX_ROWS) limit("compiler enum decision count exceeds the observation limit");
+            observed++;
+            pending = true;
+        }
+
+        void unsupported() {
+            requirePending();
+            unsupported++;
+            pending = false;
+        }
+
+        void ignored() {
+            requirePending();
+            ignored++;
+            pending = false;
+        }
+
+        void add(EnumDecision decision) {
+            requirePending();
+            Objects.requireNonNull(decision, "decision");
+            long bytes = encodedEnumBytes(decision);
+            if (decisions.size() == MAX_ROWS) limit("compiler evidence exceeds the row limit");
+            if (bytes > MAX_ENCODED_BYTES - retainedBytes) limit("compiler evidence exceeds the byte limit");
+            if (sites.putIfAbsent(enumSiteKey(decision), decision) != null) fail("duplicate compiler enum decision");
+            decisions.add(decision);
+            retainedBytes += bytes;
+            pending = false;
+        }
+
+        private void requirePending() {
+            requireActive();
+            if (!pending) fail("enum decision outcome has no observation");
+        }
+
+        private void requireActive() {
+            if (failed) throw new IllegalArgumentException("compiler enum decision collection already failed");
+        }
+
+        private void requireComplete() {
+            requireActive();
+            if (pending || (long) decisions.size() + unsupported + ignored != observed) {
+                fail("compiler enum decision counts do not add up");
+            }
+        }
+
+        private void fail(String message) {
+            abort();
+            throw new IllegalArgumentException(message);
+        }
+
+        private void limit(String message) {
+            abort();
+            throw new EnumDecisionLimitException(message);
+        }
+
+        private void abort() {
+            decisions.clear();
+            sites.clear();
+            retainedBytes = 0;
+            pending = false;
+            failed = true;
+        }
+
+        List<EnumDecision> decisionsList() { requireComplete(); return List.copyOf(decisions); }
+        int observedCount() { requireComplete(); return observed; }
+        int unsupportedCount() { requireComplete(); return unsupported; }
+        int ignoredCount() { requireComplete(); return ignored; }
+    }
+
+    private static String enumSiteKey(EnumDecision decision) {
+        return decision.source().path() + "\u0000" + decision.start() + "\u0000" + decision.end();
+    }
+
+    private static long encodedEnumBytes(EnumDecision decision) {
+        // 고정 필드 12개에 각각 구분자 또는 줄바꿈 1바이트를 계산한다.
+        long bytes = 12L + "enumDecision".length() + encodedLength(decision.source().path()) +
+            decision.source().sha256().length() + decimalLength(decision.start()) + decimalLength(decision.end()) +
+            decimalLength(decision.line()) + decimalLength(decision.column()) +
+            (decision.lexicalClass() == null ? 1L : encodedLength(decision.lexicalClass())) +
+            encodedLength(decision.enumClass()) + decision.kind().length() +
+            Boolean.toString(decision.lexicalLambda()).length() + decimalLength(decision.constants().size());
+        for (String constant : decision.constants()) bytes += 1L + encodedLength(constant);
+        return bytes;
     }
 
     static final class CallPositionLimitException extends IllegalArgumentException {
@@ -252,6 +399,8 @@ public final class EvidenceProtocol {
         boolean authoredSeen = false;
         boolean callerInventory = false, inventorySeen = false;
         Path classOutput = null;
+        boolean enumDecisions = false;
+        boolean enumDecisionsSeen = false;
         for (String argument : arguments) {
             int separator = argument.indexOf('=');
             if (separator <= 0) throw new IllegalArgumentException("compiler evidence options must be key=value");
@@ -285,6 +434,14 @@ public final class EvidenceProtocol {
                     }
                     callPositions = Boolean.parseBoolean(value);
                 }
+                case ENUM_DECISIONS_OPTION -> {
+                    if (enumDecisionsSeen) throw new IllegalArgumentException("duplicate compiler enum decisions option");
+                    enumDecisionsSeen = true;
+                    if (!value.equals("true") && !value.equals("false")) {
+                        throw new IllegalArgumentException("compiler enum decisions option must be true or false");
+                    }
+                    enumDecisions = Boolean.parseBoolean(value);
+                }
                 default -> throw new IllegalArgumentException("unsupported compiler evidence option");
             }
         }
@@ -292,7 +449,10 @@ public final class EvidenceProtocol {
         if (callPositions && !(collector.equals("javac-constants") || collector.equals("kotlin-constants"))) {
             throw new IllegalArgumentException("call positions require a constants collector");
         }
-        return new Options(root, output, token, collector, callPositions, authoredCalls, callerInventory, classOutput);
+        if (enumDecisions && !collector.equals("javac-constants")) {
+            throw new IllegalArgumentException("javac enum decisions require the javac constants collector");
+        }
+        return new Options(root, output, token, collector, callPositions, enumDecisions, authoredCalls, callerInventory, classOutput);
     }
 
     /** Dagger SPI가 전달한 -A 옵션의 짧은 이름과 정식 이름을 모두 허용한다. */
@@ -382,6 +542,15 @@ public final class EvidenceProtocol {
     public static void write(Options options, String compiler, String artifact, Collection<Source> sourceValues,
         int unmapped, Collection<Edge> edgeValues, Generation generation, Collection<CallPosition> callPositions,
         int observedCalls, int unmappedCalls, int ambiguousCalls) {
+        if (options.enumDecisions()) throw new IllegalArgumentException("enum decisions require explicit accounting");
+        write(options, compiler, artifact, sourceValues, unmapped, edgeValues, generation,
+            callPositions, observedCalls, unmappedCalls, ambiguousCalls, List.of(), 0, 0, 0);
+    }
+
+    public static void write(Options options, String compiler, String artifact, Collection<Source> sourceValues,
+        int unmapped, Collection<Edge> edgeValues, Generation generation, Collection<CallPosition> callPositions,
+        int observedCalls, int unmappedCalls, int ambiguousCalls, Collection<EnumDecision> enumDecisions,
+        int observedEnums, int unsupportedEnums, int ignoredEnums) {
         if (options.collector().equals("javac-processors") != (generation != null)) throw new IllegalArgumentException("processor evidence identity is missing or misplaced");
         if (!SAFE_VERSION.matcher(compiler).matches() || !FINGERPRINT.matcher(artifact).matches()) {
             throw new IllegalArgumentException("invalid compiler evidence identity");
@@ -397,6 +566,12 @@ public final class EvidenceProtocol {
         if (observedCalls < 0 || unmappedCalls < 0 || ambiguousCalls < 0) {
             throw new IllegalArgumentException("invalid compiler call position counts");
         }
+        if (!options.enumDecisions() && (!enumDecisions.isEmpty() || observedEnums != 0 || unsupportedEnums != 0 || ignoredEnums != 0)) {
+            throw new IllegalArgumentException("enum decisions were supplied without opt-in");
+        }
+        if (options.enumDecisions() && generation != null) throw new IllegalArgumentException("enum decisions require a constants collector");
+        if (observedEnums < 0 || observedEnums > MAX_ROWS || unsupportedEnums < 0 || unsupportedEnums > MAX_ROWS ||
+            ignoredEnums < 0 || ignoredEnums > MAX_ROWS) throw new IllegalArgumentException("invalid compiler enum decision counts");
         String token = readToken(options);
         Map<String, Source> sources = new TreeMap<>();
         for (Source source : sourceValues) {
@@ -420,10 +595,26 @@ public final class EvidenceProtocol {
         if (options.callPositions() && observedCalls != accountedCalls) {
             throw new IllegalArgumentException("compiler call position counts do not add up");
         }
+        Map<String, EnumDecision> uniqueDecisions = new HashMap<>();
+        for (EnumDecision decision : enumDecisions) {
+            if (!decision.source().equals(sources.get(decision.source().path()))) {
+                throw new IllegalArgumentException("compiler enum decision source does not match inventory");
+            }
+            if (uniqueDecisions.putIfAbsent(enumSiteKey(decision), decision) != null) {
+                throw new IllegalArgumentException("duplicate compiler enum decision");
+            }
+        }
+        List<EnumDecision> sortedDecisions = new ArrayList<>(uniqueDecisions.values());
+        sortedDecisions.sort(Comparator.comparing((EnumDecision decision) -> decision.source().path())
+            .thenComparingInt(EnumDecision::start).thenComparingInt(EnumDecision::end));
+        if (options.enumDecisions() && observedEnums != (long) sortedDecisions.size() + unsupportedEnums + ignoredEnums) {
+            throw new IllegalArgumentException("compiler enum decision counts do not add up");
+        }
         long rows = 8L + sources.size() + edges.size() + (generation == null ? 0 : generation.sources().size()) +
-            (options.callPositions() ? 1L + sortedPositions.size() : 0L);
+            (options.callPositions() ? 1L + sortedPositions.size() : 0L) +
+            (options.enumDecisions() ? 1L + sortedDecisions.size() : 0L);
         if (rows > MAX_ROWS) throw new IllegalArgumentException("compiler evidence exceeds the row limit");
-        String documentVersion = options.callPositions() ? "3" : generation == null ? VERSION : "2";
+        String documentVersion = options.enumDecisions() ? "4" : options.callPositions() ? "3" : generation == null ? VERSION : "2";
         long documentBytes = 0;
         documentBytes = addDocumentBytes(documentBytes, rawRowBytes("format", FORMAT, documentVersion));
         documentBytes = addDocumentBytes(documentBytes, rawRowBytes("collector", options.collector()));
@@ -455,6 +646,11 @@ public final class EvidenceProtocol {
                 documentBytes = addDocumentBytes(documentBytes, encodedCallBytes(position));
             }
         }
+        if (options.enumDecisions()) {
+            documentBytes = addDocumentBytes(documentBytes, rawRowBytes("enumStats", Integer.toString(observedEnums),
+                Integer.toString(sortedDecisions.size()), Integer.toString(unsupportedEnums), Integer.toString(ignoredEnums)));
+            for (EnumDecision decision : sortedDecisions) documentBytes = addDocumentBytes(documentBytes, encodedEnumBytes(decision));
+        }
         StringBuilder document = new StringBuilder();
         document.append("format\t").append(FORMAT).append('\t').append(documentVersion).append('\n');
         document.append("collector\t").append(options.collector()).append('\n');
@@ -483,6 +679,19 @@ public final class EvidenceProtocol {
                     .append(encode(position.source().path())).append('\t').append(position.source().sha256()).append('\t')
                     .append(position.start()).append('\t').append(position.end()).append('\t').append(position.line()).append('\t')
                     .append(position.column()).append('\n');
+            }
+        }
+        if (options.enumDecisions()) {
+            document.append("enumStats\t").append(observedEnums).append('\t').append(sortedDecisions.size()).append('\t')
+                .append(unsupportedEnums).append('\t').append(ignoredEnums).append('\n');
+            for (EnumDecision decision : sortedDecisions) {
+                document.append("enumDecision\t").append(encode(decision.source().path())).append('\t').append(decision.source().sha256()).append('\t')
+                    .append(decision.start()).append('\t').append(decision.end()).append('\t').append(decision.line()).append('\t')
+                    .append(decision.column()).append('\t').append(decision.lexicalClass() == null ? "-" : encode(decision.lexicalClass())).append('\t')
+                    .append(encode(decision.enumClass())).append('\t').append(decision.kind()).append('\t')
+                    .append(decision.lexicalLambda()).append('\t').append(decision.constants().size());
+                for (String constant : decision.constants()) document.append('\t').append(encode(constant));
+                document.append('\n');
             }
         }
         byte[] encodedDocument = document.toString().getBytes(StandardCharsets.UTF_8);

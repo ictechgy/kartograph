@@ -8,6 +8,7 @@ import dev.kartograph.index.CompilerEvidenceReceipts
 import dev.kartograph.index.CompilerEvidenceToken
 import dev.kartograph.index.CompilerCallPositionOptions
 import dev.kartograph.index.CompilerAuthoredCallOptions
+import dev.kartograph.index.CompilerEnumDecisionOptions
 import org.gradle.api.Action
 import org.gradle.api.Project
 import org.gradle.api.Task
@@ -213,9 +214,11 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
             .map { it to "project" }).sortedByDescending { it.first.length }
         val normalized = observed.options.map { value -> replacements.fold(value) { text, (path, identity) -> text.replace(path, identity) } }
         val observedInputs = fingerprints + InputFingerprint("options", "$artifact-options", ContentFingerprint.values(normalized))
-        val positionInputs = if (CompilerCallPositionOptionParser.enabled(kind, observed.options, compilerEvidence)) {
+        val callPositionInputs = if (CompilerCallPositionOptionParser.enabled(kind, observed.options, compilerEvidence)) {
             observedInputs + CompilerCallPositionOptions.enabledInput()
         } else observedInputs
+        val positionInputs = callPositionInputs + (if (CompilerCallPositionOptionParser.enumDecisionsEnabled(kind, observed.options, compilerEvidence))
+            listOf(CompilerEnumDecisionOptions.enabledInput()) else emptyList())
         if (!CompilerCallPositionOptionParser.authoredEnabled(kind, observed.options, compilerEvidence)) return positionInputs
         if (task is JavaCompile) {
             require(task.options.encoding.equals("UTF-8", ignoreCase = true)) { "authored evidence requires explicit UTF-8 javac encoding" }

@@ -77,19 +77,28 @@ class LayerGlobEquivalenceTest {
             patterns[0] = "later-$it*"
             assertEquals(oldAssignment(layers, target), evaluator.assignment(target))
         }
-        val cache = evaluator.javaClass.getDeclaredField("compiledPatterns").apply { isAccessible = true }.get(evaluator) as Map<*, *>
-        assertEquals(setOf("old*"), cache.keys)
+        // 최신 구현은 초기 키도 보관하지 않는다. 호출 사이에 어떤 pattern map도 누적되지 않아야 한다.
+        assertEquals(emptyList(), evaluator.javaClass.declaredFields.filter {
+            Map::class.java.isAssignableFrom(it.type)
+        }.map { it.name })
         layers.clear()
         assertEquals(LayerAssignment(null, null, null), evaluator.assignment(source))
     }
 
     @Test
     fun `unused patterns stay lazy and repeated graph evaluations preserve all outputs`() {
-        val layers = listOf(LayerDefinition("all", listOf("*", "unvisited-[\\E")))
+        var reads = 0
+        val patterns = object : AbstractList<String>() {
+            override val size = 2
+            override fun get(index: Int): String {
+                check(index == 0) { "an unused pattern must not even be read" }
+                reads++
+                return "*"
+            }
+        }
+        val layers = listOf(LayerDefinition("all", patterns))
         val evaluator = LayerRuleEvaluator(layers, listOf(LayerRule("allow none", "all", allow = emptyList())))
-        val cache = evaluator.javaClass.getDeclaredField("compiledPatterns").apply { isAccessible = true }.get(evaluator) as Map<*, *>
-        assertEquals(false, (cache["*"] as Lazy<*>).isInitialized())
-        assertEquals(false, (cache["unvisited-[\\E"] as Lazy<*>).isInitialized())
+        assertEquals(0, reads)
         val source = node("source")
         val target = node("target")
         val graph = CodeGraph(listOf(source, target), listOf(GraphEdge(source.id, target.id, EdgeKind.CALL)))
@@ -97,8 +106,7 @@ class LayerGlobEquivalenceTest {
             assertEquals(emptyList(), evaluator.evaluate(graph))
             assertEquals(emptyList(), evaluator.unassignedNodes(graph))
         }
-        assertEquals(true, (cache["*"] as Lazy<*>).isInitialized())
-        assertEquals(false, (cache["unvisited-[\\E"] as Lazy<*>).isInitialized())
+        kotlin.test.assertTrue(reads > 0)
     }
 
     @Test

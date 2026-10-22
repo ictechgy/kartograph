@@ -34,7 +34,8 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         sources.sorted().forEach { scanFile(it, facts, stats) }
         val ordered = facts.sortedWith(compareBy({ it.location.path }, { it.location.line }, { it.kind }, { it.method.orEmpty() }))
         val filtered = targetFilter?.let { target -> ordered.filter { it.target == target } } ?: ordered
-        val withSymbols = filtered.map { graph?.let { snapshot -> attachSnapshotSymbol(it, snapshot, projectRoot) } ?: it }
+        val attacher = graph?.let { SnapshotSymbolAttacher(it, projectRoot) }
+        val withSymbols = filtered.map { attacher?.attach(it) ?: it }
         val counts = filtered.groupingBy(BridgeFact::target).eachCount()
         val target = counts.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .firstOrNull()?.key
@@ -73,7 +74,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
             sourceModifiedAt = sources.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() }?.let(::bridgeTimestamp),
             target = target,
-            project = projectRoot.toRealPath().toString().replace('\\', '/'),
+            project = projectIdentity(projectRoot.toRealPath()),
             facts = withSymbols,
             limitations = limitations,
         )

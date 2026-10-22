@@ -237,5 +237,63 @@ class AnalysisSmokeGateTest(unittest.TestCase):
         self.assertIn("error: invalid argument:", res.stderr)
 
 
+class AnalysisSmokeFailureJsonTest(unittest.TestCase):
+    def test_default_budget_failure_retains_all_samples_and_exit_one(self):
+        import contextlib
+        import importlib.util
+        import io
+        from unittest.mock import patch
+
+        spec = importlib.util.spec_from_file_location("smoke_gate_failure", SCRIPT)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        observed_passes = []
+
+        def measure(commands, env, samples, counters, failures, diagnostics=None):
+            duration = (3.0, 3.5, 4.0)[len(observed_passes)]
+            observed_passes.append([name for name, _, _ in commands])
+            for name, _, _ in commands:
+                samples[name].append(duration)
+                counters.setdefault(name, []).append({"returncode": 0})
+
+        with tempfile.TemporaryDirectory(prefix="kartograph-smoke-json-") as tmp:
+            root = Path(tmp)
+            binary = root / "kartograph"
+            binary.write_text("unused fixture")
+            for module in mod.MODULES:
+                classes = root / module / "build/classes/kotlin/main"
+                classes.mkdir(parents=True)
+                (classes / "Fixture.class").write_bytes(b"fixture")
+            (root / ".kartograph-self.pro").write_text("")
+            (root / ".kartograph.yml").write_text("")
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with patch.object(mod.os, "access", return_value=True), \
+                    patch.object(mod, "check_java_environment", return_value={}), \
+                    patch.object(mod, "has_working_java", return_value=True), \
+                    patch.object(mod, "run_measurement_pass", side_effect=measure), \
+                    contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                status = mod.main(["--json", "--no-warmup", "--repo-root", str(root),
+                                   "--binary", str(binary)])
+        self.assertEqual(status, 1)
+        result = json.loads(stdout.getvalue())
+        self.assertEqual(result["status"], "FAIL")
+        self.assertEqual(result["runs"], 3)
+        self.assertEqual(result["perCommandBudget"], 5.0)
+        self.assertEqual(result["totalBudget"], 20.0)
+        self.assertEqual(result["totalSeconds"], 21.0)
+        self.assertEqual(result["runTotals"], [18.0, 21.0, 24.0])
+        names = ["graph", "dead", "dead_private", "cycles", "rules", "metrics"]
+        self.assertEqual(observed_passes, [names] * 3)
+        self.assertEqual(list(result["measurements"]), names)
+        for measurement in result["measurements"].values():
+            self.assertEqual(measurement, {"seconds": 3.5, "samples": [3.0, 3.5, 4.0],
+                                           "returncode": 0})
+        self.assertEqual(result["contractFailures"], [])
+        self.assertEqual(result["budgetFailures"], [
+            "total analysis time was 21.000s (sum of per-command medians over 3 runs), exceeding total budget of 20.000s"
+        ])
+        self.assertEqual(stderr.getvalue(), "")
+
+
 if __name__ == "__main__":
     unittest.main()

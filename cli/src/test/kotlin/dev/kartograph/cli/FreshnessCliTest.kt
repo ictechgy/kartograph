@@ -34,8 +34,13 @@ class FreshnessCliTest {
         assertContains(connected.second, "missing-build-witness")
         assertFalse(connected.second.contains("missing-external-input"))
         assertFalse(connected.second.contains(root.toString()))
-        assertEquals(64, run(*arguments, "--input", "$slot=$classes").first)
-        assertEquals(64, run(*arguments, "--input-bindings", bindings.toString()).first)
+        val collision = run(*arguments, "--input", "$slot=$classes")
+        assertEquals(64, collision.first)
+        assertContains(collision.second, "error: --input duplicates a slot from --input-bindings")
+        assertFalse(collision.second.contains(root.toString()))
+        val duplicateBindings = run(*arguments, "--input-bindings", bindings.toString())
+        assertEquals(64, duplicateBindings.first)
+        assertContains(duplicateBindings.second, "error: duplicate --input-bindings")
         Files.writeString(classes.resolve("new-resource.txt"), "changed input")
         assertContains(run(*arguments).second, "changed-classes")
         Files.writeString(bindings, "{}")
@@ -171,6 +176,38 @@ class FreshnessCliTest {
         assertContains(run("verify-snapshot", "--project", root.toString(), "--graph-file", snapshot.toString()).second, "changed-buildConfig")
         Files.delete(dependency.resolve("Example.class"))
         assertContains(run("verify-snapshot", "--project", root.toString(), "--graph-file", snapshot.toString()).second, "changed-classpath")
+    }
+
+    @Test
+    fun `usage errors name the rejected option without echoing paths or values`(@TempDir root: Path) {
+        val secret = root.resolve("private-checkout").toString()
+        val base = arrayOf("verify-snapshot", "--graph-file", "$secret/snapshot.json", "--project", secret)
+        val cases = listOf(
+            arrayOf(*base, "--bogus", "value") to "unknown verify-snapshot option: --bogus",
+            arrayOf("verify-snapshot", "-h") to "unknown verify-snapshot option: -h",
+            arrayOf(*base, "--input=external/classes=$secret", "value") to "unexpected argument",
+            arrayOf("verify-snapshot", "$secret/snapshot.json", "--project", secret) to "unexpected argument",
+            arrayOf(*base, "--scope") to "missing value for --scope",
+            arrayOf("verify-snapshot") to "--graph-file and --project are required exactly once",
+            arrayOf("verify-snapshot", "--graph-file", "$secret/snapshot.json") to "--graph-file and --project are required exactly once",
+            arrayOf(*base, "--project", secret) to "--graph-file and --project are required exactly once",
+            arrayOf(*base, "--scope", "sample:main", "--scope", "sample:test") to "duplicate --scope",
+            arrayOf(*base, "--snapshot-max-mib", "1", "--snapshot-max-mib", "2") to "duplicate --snapshot-max-mib",
+            arrayOf(*base, "--snapshot-max-mib", "129") to "--snapshot-max-mib must be one integer from 1 to 128",
+            arrayOf(*base, "--input", "classes=$secret") to "--input must be external/<slot>=<path>",
+            arrayOf(*base, "--input", "external/classes=$secret", "--input", "external/classes=$secret") to
+                "--input must be external/<slot>=<path>",
+        )
+        for ((arguments, expected) in cases) {
+            val out = ByteArrayOutputStream()
+            val err = ByteArrayOutputStream()
+            val status = KartographCli.run(arguments, PrintStream(out), PrintStream(err))
+            val error = err.toString(Charsets.UTF_8)
+            assertEquals(64, status, expected)
+            assertEquals("", out.toString(Charsets.UTF_8), expected)
+            assertContains(error, "error: $expected")
+            assertFalse(error.contains(secret), error)
+        }
     }
 
     private fun run(vararg args: String): Pair<Int, String> {

@@ -89,7 +89,7 @@ public class CodeGraph private constructor(
         }.sortedBy { it.caller }
         return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
             state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses, state.lambdaEscapes,
-            state.locatedCompilerReferences, state.compilerCallPositionsCaptured, state.outgoing, state.incoming, normalized, state.compilerCallerInventories))
+            state.locatedCompilerReferences, state.compilerCallPositionsCaptured, state.outgoing, state.incoming, normalized, state.compilerCallerInventories, state.compilerSourceUseEvidence))
     }
 
     /** source/body와 실제 output method의 전체 accounting이다. CALL이 없는 method도 포함한다. */
@@ -113,7 +113,7 @@ public class CodeGraph private constructor(
         return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
             state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses, state.lambdaEscapes,
             state.locatedCompilerReferences, state.compilerCallPositionsCaptured, state.outgoing, state.incoming,
-            state.compilerAuthoredCallers, normalized))
+            state.compilerAuthoredCallers, normalized, state.compilerSourceUseEvidence))
     }
 
     /**
@@ -121,6 +121,9 @@ public class CodeGraph private constructor(
      * 제거·변경된 선언과 source 모순은 완전성을 잃는다. 현재 input/output 신선도 검증을 대신하지 않는다.
      */
     public fun withCompilerSourceFactsFrom(original: CodeGraph): CodeGraph = CompilerSourceFacts.retain(original, this)
+    /** 명시적으로 수집한 원본 선택이며 runtime 간선/분석 정책에 참여하지 않는다. */
+    public val compilerSourceUseEvidence: CompilerSourceUseEvidence?
+        get() = state.compilerSourceUseEvidence
 
     public val edges: List<GraphEdge>
         get() = state.edges
@@ -183,8 +186,25 @@ public class CodeGraph private constructor(
             state.incoming,
             state.compilerAuthoredCallers,
             state.compilerCallerInventories,
+            state.compilerSourceUseEvidence,
         ))
     }
+
+    /** 새 channel은 전부 검증한 뒤 한 번 붙이며 다른 capture로 덮어쓰지 않는다. */
+    public fun withCompilerSourceUses(evidence: CompilerSourceUseEvidence): CodeGraph {
+        evidence.requireMatchesGraph(this)
+        val previous = state.compilerSourceUseEvidence
+        require(previous == null || previous == evidence) { "conflicting compiler source use attachment" }
+        if (previous != null) return this
+        return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
+            state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses,
+            state.lambdaEscapes, state.locatedCompilerReferences, state.compilerCallPositionsCaptured,
+            state.outgoing, state.incoming, state.compilerAuthoredCallers, state.compilerCallerInventories, evidence))
+    }
+
+    /** graph 복사/가지치기가 원래 capture의 근거와 view 계수를 보존하도록 한다. */
+    public fun preserveCompilerSourceUsesFrom(original: CodeGraph): CodeGraph =
+        original.compilerSourceUseEvidence?.let { withCompilerSourceUses(it.select(nodes.keys)) } ?: this
 
     /**
      * 이미 정규화된 그래프에 간선 delta를 더해 새 불변 그래프를 만든다.
@@ -228,6 +248,7 @@ public class CodeGraph private constructor(
                 state.incoming,
                 state.compilerAuthoredCallers,
                 state.compilerCallerInventories,
+                state.compilerSourceUseEvidence,
             ))
         }
 
@@ -251,6 +272,7 @@ public class CodeGraph private constructor(
             incoming,
             state.compilerAuthoredCallers,
             state.compilerCallerInventories,
+            state.compilerSourceUseEvidence,
         ))
     }
 
@@ -326,6 +348,7 @@ public class CodeGraph private constructor(
         val incoming: Map<NodeId, List<GraphEdge>>,
         val compilerAuthoredCallers: List<CompilerAuthoredCaller> = emptyList(),
         val compilerCallerInventories: List<CompilerCallerInventory> = emptyList(),
+        val compilerSourceUseEvidence: CompilerSourceUseEvidence? = null,
     ) {
         val compilerAuthoredCallersById: Map<NodeId, CompilerAuthoredCaller> = compilerAuthoredCallers.associateBy { it.caller }
     }
@@ -365,7 +388,16 @@ public class CodeGraph private constructor(
             lambdaEscapeInputs: Iterable<LambdaEscape>,
         ): CanonicalState {
             val nodes = buildMap {
-                nodeInputs.forEach { node -> putIfAbsent(node.id, node) }
+                nodeInputs.forEach { node ->
+                    val previous = putIfAbsent(node.id, node)
+                    // 첫 입력의 일반 정점 사실은 그대로 두되 서로 다른 capture를 완전한 enum 목록으로 합치지 않는다.
+                    if (previous != null && previous.enumConstants != null &&
+                        (previous.enumConstants != node.enumConstants || previous.kind != node.kind ||
+                            previous.moduleName != node.moduleName || previous.location?.path != node.location?.path ||
+                            previous.sourceDeclaration != node.sourceDeclaration)) {
+                        put(node.id, previous.copy(enumConstants = null))
+                    }
+                }
             }
             val externalCalls = normalizeExternalCalls(externalCallInputs, nodes)
             val serviceProviders = serviceProviderInputs.distinct().sorted()

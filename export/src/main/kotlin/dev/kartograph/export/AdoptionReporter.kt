@@ -35,7 +35,20 @@ public object AdoptionReporter {
         expiredSuppressions: Int = 0,
         unmatchedKeepRules: Collection<KeepRule> = emptyList(),
         inputHints: Collection<InputHint> = emptyList(),
-        externalRetentionContexts: Collection<ExternalRetentionDocumentContext> = emptyList(),
+    ): String = render(format, findings, limitations, suppressedCount, confidence, expiredSuppressions,
+        unmatchedKeepRules, inputHints, externalRetentionContexts = emptyList())
+
+    /** 기존 JVM 진입점을 유지하면서 선택한 외부 보존 문서의 관측 한계를 함께 출력한다. */
+    public fun render(
+        format: ReportFormat,
+        findings: Collection<Finding>,
+        limitations: Collection<AnalysisLimitation>,
+        suppressedCount: Int,
+        confidence: Map<NodeId, FindingConfidence> = emptyMap(),
+        expiredSuppressions: Int = 0,
+        unmatchedKeepRules: Collection<KeepRule> = emptyList(),
+        inputHints: Collection<InputHint> = emptyList(),
+        externalRetentionContexts: Collection<ExternalRetentionDocumentContext>,
     ): String {
         val sortedRules = unmatchedKeepRules.sortedWith(
             compareBy({ it.location.path }, { it.location.line ?: 0 }),

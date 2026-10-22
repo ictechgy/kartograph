@@ -34,7 +34,7 @@ jobs:
       - name: Install fixture Android platform
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
       - name: Test and verify coverage
-        id: build_install
+        id: candidate-build
         run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
       - name: Preserve failed test details
         if: failure()
@@ -77,7 +77,19 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Verify analysis smoke gate and self-analysis contracts
-        run: python3 Scripts/verify-analysis-smoke-gate.py
+        run: python3 Scripts/verify-analysis-smoke-gate.py --json
+      - name: Diagnose fixed-input index cost without changing the smoke gate
+        if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
+        timeout-minutes: 15
+        run: python3 Scripts/verify-index-cost.py
+      - name: Preserve bounded index cost evidence
+        if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: index-cost
+          path: build/reports/index-cost/result.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify agent query and bridge contracts
         run: Scripts/verify-agent-surface.sh
       - name: Verify runtime blind-spot corpus
@@ -89,11 +101,11 @@ jobs:
       # 시간 게이트 실패 뒤에도 성공한 설치물을 쓰는 독립 정확성 검증은 남긴다.
       - name: Verify Dagger selected binding evidence
         id: dagger_evidence
-        if: ${{ !cancelled() && steps.build_install.outcome == 'success' && steps.cli_contract.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.candidate-build.outcome == 'success' && steps.cli_contract.outcome == 'success' }}
         run: python3 experiments/dagger-bindings/run.py
       - name: Verify compiler collectors and product evidence lifecycle
         id: collector_lifecycle
-        if: ${{ !cancelled() && steps.build_install.outcome == 'success' && steps.cli_contract.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.candidate-build.outcome == 'success' && steps.cli_contract.outcome == 'success' }}
         run: |
           KARTOGRAPH_SNAPSHOT_CLI="$PWD/cli/build/install/kartograph/bin/kartograph" ./gradlew --no-daemon -p compiler-collectors \
             -Pkartograph.consumerDistribution="$PWD/cli/build/install/kartograph" integrationTest distZip
@@ -102,7 +114,7 @@ jobs:
             --version "$(cat VERSION)" --evidence build/reports/collector-installation
       # Dagger 검증이 만드는 fixture JAR와 collector 설치 검증을 모두 요구한다.
       - name: Verify Gradle compiler evidence lifecycle
-        if: ${{ !cancelled() && steps.build_install.outcome == 'success' && steps.cli_contract.outcome == 'success' && steps.dagger_evidence.outcome == 'success' && steps.collector_lifecycle.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.candidate-build.outcome == 'success' && steps.cli_contract.outcome == 'success' && steps.dagger_evidence.outcome == 'success' && steps.collector_lifecycle.outcome == 'success' }}
         run: python3 Scripts/verify-compiler-evidence.py
       - name: Verify exact compiler call positions without skipped checks
         run: python3 Scripts/verify-compiler-call-positions.py
@@ -161,6 +173,9 @@ jobs:
         run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
       - name: Install Android snapshot test platform
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
+      - name: Verify owned-directory capture capabilities on Linux
+        timeout-minutes: 2
+        run: java Scripts/VerifySecureDirectoryStream.java
       - name: Verify supported JDK
         run: ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} test :gradle-plugin:validatePlugins
       - name: Preserve failed compatibility test details
@@ -174,7 +189,7 @@ jobs:
 
   agp-minimum:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -206,3 +221,18 @@ jobs:
         run: |
           export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
           bash Scripts/verify-agp-8-app-snapshot.sh
+
+      - name: Establish layout resource field and test evidence on minimum AGP
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
+          python3 Scripts/verify-agp-8-resource-impact.py
+      - name: Preserve bounded resource experiment evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: agp-8-resource-impact
+          path: build/reports/agp-8-resource-impact/result.json
+          if-no-files-found: warn
+          retention-days: 14

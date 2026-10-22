@@ -4,6 +4,7 @@ import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
+import dev.kartograph.core.SourceLocation
 import dev.kartograph.export.QuerySnapshot
 import dev.kartograph.export.QuerySnapshotCodec
 import java.io.ByteArrayInputStream
@@ -59,6 +60,25 @@ class SnapshotSizeOptionCliTest {
             val document = wrapper["document"] as Map<*, *>
             assertEquals("found", document["status"])
         }
+    }
+
+    @Test
+    fun `saved snapshot readers reject compact string references that expand beyond the budget`(@TempDir root: Path) {
+        // 1 MiB 경로 하나를 2,100개 정점 위치가 공유한다. 파일은 약 1 MiB라 기본 64 MiB 상한 안이지만
+        // 펼친 문자 수가 예산(2^31자)을 넘는다. 예산이 없으면 참조마다 경로 검사가 공유 경로 전체를 다시 훑는다.
+        val nodes = listOf(GraphNode(NodeId("class:Target"), "Target", NodeKind.CLASS, location = SourceLocation("Shared.kt"))) +
+            (1 until 2_100).map { GraphNode(NodeId("class:p/C$it"), "C$it", NodeKind.CLASS, location = SourceLocation("Shared.kt")) }
+        val compact = QuerySnapshotCodec.render(QuerySnapshot(CodeGraph(nodes, emptyList()), emptyList(), emptyList()), compact = true)
+        val file = root.resolve("amplified.json")
+        Files.writeString(file, compact.replace("\"Shared.kt\"", "\"" + "a".repeat(MIB) + ".kt\""))
+        assertTrue(Files.size(file) < 2L * MIB)
+
+        val query = execute("query", "Target", "--graph-file", file.toString())
+        assertEquals(2, query.status)
+        assertContains(query.error, "unable to read query snapshot")
+        assertEquals(2, execute("impact", "Target", "--graph-file", file.toString()).status)
+        assertEquals(2, execute("verify-snapshot", "--graph-file", file.toString(), "--project", root.toString()).status)
+        assertEquals(2, executeMcp(file, "64"))
     }
 
     @Test
