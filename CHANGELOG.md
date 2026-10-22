@@ -26,6 +26,9 @@ before/current snapshot을 다시 캡처한다. 기존 impact JSON/API는 유지
 
 ### Fixed
 
+- 호출 선언 보강에서 모든 호출을 재검증하되 값이 바뀐 행만 복사하고, 변경이 없으면 기존 불변 그래프를
+  재사용한다. 누락된 header의 오래된 선언은 계속 제거하며 분석 범위와 성능 게이트 예산은 바꾸지 않는다.
+
 - bridges·`routes --role client`·schema의 snapshot USR 부착과 React Native 이벤트의 주석 판정이
   `'"'` 같은 문자 리터럴 뒤에서 어긋나던 문제를 고친다. 주석 속 emit을 사실로 내거나, 함수 머리를 놓쳐
   USR을 빠뜨리거나, 다른 함수의 USR을 한계 표시 없이 붙이던 경우다.
