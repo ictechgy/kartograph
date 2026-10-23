@@ -11,6 +11,7 @@ import dev.kartograph.export.QuerySnapshotCodec
 import dev.kartograph.index.ProvenanceVerifier
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -57,6 +58,18 @@ class AndroidDataBindingIntegrationTest {
         assertTrue(NodeId("class:p/MainActivity") in reachability.reachableNodeIds)
         assertTrue(bindingOwner in uncalled.graph.nodes)
         assertTrue(bindingExecute in uncalled.graph.nodes)
+        val entry = NodeId("method:p/MainActivity#onCreate(Landroid/os/Bundle;)V")
+        assertTrue(debug.graph.externalCalls.any { it.caller == entry && it.owner == "androidx/databinding/DataBindingUtil" })
+        assertFalse(uncalled.graph.externalCalls.any { it.caller == entry && it.owner == "androidx/databinding/DataBindingUtil" })
+        val ownerPath = reachability.pathFromRootTo(bindingOwner)
+        val rootEvidence = ownerPath?.firstOrNull()?.let { id -> uncalled.retention.filter { it.nodeId == id } }.orEmpty()
+        val sourceHash = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(root.resolve("src/main/java/p/MainActivity.java")))
+            .joinToString("") { "%02x".format(it) }
+        println("data-binding-native noInflation sourceSha256=$sourceHash snapshotFreshness=matched entryCallAbsent=true")
+        println("data-binding-native noInflation bindingOwnerPath=$ownerPath rootEvidence=$rootEvidence")
+        for ((source, target) in ownerPath.orEmpty().zipWithNext()) {
+            println("data-binding-native noInflation pathEdges=" + uncalled.graph.outgoingEdgesFrom(source).filter { it.target == target })
+        }
         assertFalse(bindingOwner in reachability.reachableNodeIds)
         assertFalse(bindingExecute in reachability.reachableNodeIds)
         for (id in calledAdapters(uncalled)) assertFalse(id in reachability.reachableNodeIds, id.value)

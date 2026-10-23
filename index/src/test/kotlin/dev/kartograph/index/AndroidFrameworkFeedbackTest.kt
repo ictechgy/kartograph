@@ -1,6 +1,7 @@
 package dev.kartograph.index
 
 import dev.kartograph.analysis.ReachabilityAnalyzer
+import dev.kartograph.analysis.DefaultRetention
 import dev.kartograph.analysis.InputHints
 import dev.kartograph.core.InputHint
 import dev.kartograph.core.EdgeOrigin
@@ -24,6 +25,40 @@ import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
 class AndroidFrameworkFeedbackTest {
+    @Test
+    fun `private mapper constant retains callback closure independently of inflation call`(@TempDir root: Path) {
+        val dependency = compile(root, "dependency", mapOf(
+            "android/view/View" to "public class View {}",
+            "androidx/databinding/ViewDataBinding" to "public abstract class ViewDataBinding { protected abstract void executeBindings(); }",
+            "androidx/databinding/DataBindingComponent" to "public interface DataBindingComponent {}",
+            "androidx/databinding/DataBinderMapper" to "public abstract class DataBinderMapper { public abstract ViewDataBinding getDataBinder(DataBindingComponent c, android.view.View v, int id); }",
+        ))
+        val classes = compile(root, "app", mapOf(
+            "fixture/AppMapper" to "public class AppMapper extends androidx.databinding.DataBinderMapper { private static final int LAYOUT_SCREEN = 1; public androidx.databinding.ViewDataBinding getDataBinder(androidx.databinding.DataBindingComponent c, android.view.View v, int id) { return id == LAYOUT_SCREEN ? new ScreenBindingImpl() : null; } }",
+            "fixture/ScreenBindingImpl" to "public class ScreenBindingImpl extends androidx.databinding.ViewDataBinding { protected void executeBindings() { Adapters.used(); } }",
+            "fixture/OrphanBinding" to "public class OrphanBinding extends androidx.databinding.ViewDataBinding { protected void executeBindings() { Adapters.orphan(); } }",
+            "fixture/Adapters" to "public class Adapters { public static void used() {} public static void orphan() {} }",
+            "fixture/Entry" to "public class Entry { public static void run() {} }",
+        ), dependency)
+        val graph = ClassFileIndexer().indexWithObservations(listOf(classes), listOf(dependency)).graph
+        val retention = DefaultRetention.find(graph, emptyList(), emptyList())
+        val reached = ReachabilityAnalyzer.analyze(graph, retention)
+        val binding = JvmNodeId.classId("fixture/ScreenBindingImpl")
+        val mapper = JvmNodeId.classId("fixture/AppMapper")
+        assertTrue(retention.any { it.nodeId == mapper && it.reason == RetentionReason.INLINE_CONSTANT })
+        assertEquals(listOf(mapper, JvmNodeId.methodId("fixture/AppMapper", "getDataBinder",
+            "(Landroidx/databinding/DataBindingComponent;Landroid/view/View;I)Landroidx/databinding/ViewDataBinding;"), binding),
+            reached.pathFromRootTo(binding))
+        assertTrue(JvmNodeId.methodId("fixture/Adapters", "used", "()V") in reached.reachableNodeIds)
+        assertFalse(JvmNodeId.classId("fixture/OrphanBinding") in reached.reachableNodeIds)
+        assertFalse(JvmNodeId.methodId("fixture/Adapters", "orphan", "()V") in reached.reachableNodeIds)
+        // 전체 보존 집합과 특정 Activity 호출에서 시작하는 closure는 다른 질문이다.
+        val entry = JvmNodeId.methodId("fixture/Entry", "run", "()V")
+        val entryOnly = ReachabilityAnalyzer.analyze(graph, listOf(RetentionEvidence(entry, RetentionReason.KEEP_RULE, null)))
+        assertFalse(binding in entryOnly.reachableNodeIds)
+        assertFalse(graph.externalCalls.any { it.owner == "androidx/databinding/DataBindingUtil" })
+    }
+
     @Test
     fun `changing callback hierarchy removes old derivations and restores fresh results`(@TempDir root: Path) {
         val dependency = compile(root, "dependency", mapOf(
