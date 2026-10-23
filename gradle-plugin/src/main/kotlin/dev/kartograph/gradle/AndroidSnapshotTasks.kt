@@ -135,7 +135,7 @@ internal object AndroidSnapshotTasks {
         }
         // AGP callback은 onVariants 중 등록해야 compiler task 생성에 반영된다.
         AndroidCompilerInputs.javaCompilers(project, components) { component, compiler ->
-            val arguments = AndroidCompilerInputs.argumentProviderInputs(project, compiler)
+            val arguments = AndroidCompilerInputs.argumentProviderInputs(project, compiler, AndroidCompilerInputs.metadataProviderType())
             val additionalInputs = project.files(AndroidCompilerInputs.systemImages(project, compiler),
                 AndroidCompilerInputs.metadataInputs(project, compiler), arguments.files)
             val witness = CompilerWitnesses.automaticJavaCompile(project, compiler, scope,

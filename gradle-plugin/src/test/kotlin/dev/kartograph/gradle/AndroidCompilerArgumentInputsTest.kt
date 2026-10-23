@@ -17,6 +17,43 @@ import kotlin.test.*
 
 class AndroidCompilerArgumentInputsTest {
     @Test
+    fun `known metadata provider still requires complete independent byte coverage`(@TempDir root: Path) {
+        val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        project.pluginManager.apply("java")
+        val task = project.tasks.named("compileJava", JavaCompile::class.java).get()
+        val sources = Files.createDirectories(root.resolve("src/main/java"))
+        Files.writeString(sources.resolve("Example.java"), "public class Example {}")
+        val build = Files.writeString(root.resolve("build.gradle"), "plugins { id 'java' }")
+        val metadata = Files.writeString(root.resolve("annotation-processors.json"), "{}")
+        val value = project.objects.fileProperty().fileValue(metadata.toFile())
+        val provider = dev.kartograph.gradle.fixtures.PrivateArgumentProvider.room(value)
+        task.options.compilerArgumentProviders.add(provider)
+        // 타입을 위임하지 않으면 이 비공개 provider도 일반 비공개 구현과 같이 거부한다.
+        assertEquals(WitnessRejection.UNSUPPORTED_ARGUMENT_PROVIDER,
+            AndroidCompilerInputs.argumentProviderInputs(project, task).rejection)
+        val captured = AndroidCompilerInputs.argumentProviderInputs(project, task, provider.javaClass)
+        assertNull(captured.rejection)
+        assertTrue(captured.files.isEmpty)
+        val modules = task.javaCompiler.get().metadata.installationPath.file("lib/modules")
+        fun spec(known: java.io.File) = WitnessSpec(root.toFile(), "sample:main", task.name, task.path, "javac",
+            project.files(sources), project.files(build), project.files(sources, build, modules, known),
+            project.files(known), project.layout.buildDirectory.file("witness.json"), null, automaticSourceInventory = true)
+        val before = spec(metadata.toFile()).observe(task)
+        assertTrue(before.any { it.role == "compilerInput" && it.path.endsWith("annotation-processors.json") })
+        val different = Files.writeString(root.resolve("different.json"), "{}")
+        assertContains(assertFailsWith<IllegalArgumentException> { spec(different.toFile()).observe(task) }.message.orEmpty(),
+            "byte inputs omit declared compiler files")
+        task.inputs.file(different)
+        assertContains(assertFailsWith<IllegalArgumentException> { spec(metadata.toFile()).observe(task) }.message.orEmpty(),
+            "byte inputs omit declared compiler files")
+        task.options.compilerArgumentProviders.clear()
+        val expanded = dev.kartograph.gradle.fixtures.PrivateArgumentProvider.roomWithExtra(value, different.toFile())
+        task.options.compilerArgumentProviders.add(expanded)
+        assertEquals(WitnessRejection.UNSUPPORTED_ARGUMENT_PROVIDER,
+            AndroidCompilerInputs.argumentProviderInputs(project, task, expanded.javaClass).rejection)
+    }
+
+    @Test
     fun `nonpublic provider does not break ordinary task configuration`(@TempDir root: Path) {
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
         project.pluginManager.apply("java")

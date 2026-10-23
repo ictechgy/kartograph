@@ -114,5 +114,9 @@ through Gradle's public file-input annotations. Processor outputs and compiler o
 directories are excluded. Inaccessible provider inputs are an explicit rejection in
 the compiler task's input identity: ordinary compilation can succeed, but the witness
 and snapshot remain unavailable. Unknown compiler inputs are never treated as fresh.
+The exact AGP-owned Room argument helper's single processor-list input uses the
+existing public JavaPreCompileTask metadata output adapter. Its recognized schema
+does not bypass the final check that every declared compiler input has captured bytes;
+extra, changed or mismatched inputs still reject the witness.
 The separate Hilt processor fixture distinguishes a matched snapshot from a precise
 capture refusal; refusal verifies the guard, not usable transformed snapshot support.

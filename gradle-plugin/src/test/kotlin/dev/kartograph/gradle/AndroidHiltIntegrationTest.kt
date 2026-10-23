@@ -202,13 +202,17 @@ class AndroidHiltIntegrationTest {
                     ]), 'UTF-8')
                 }
             }
+            def rawCompilerOutputs = objects.fileCollection()
             def probe = tasks.register('captureHiltInputs', CaptureHiltInputs) {
+                rawRoots.from(rawCompilerOutputs)
                 evidenceFile.set(layout.buildDirectory.file('reports/hilt-inputs.json'))
             }
             androidComponents.onVariants(androidComponents.selector().withBuildType('debug')) { variant ->
                 // AGP 9 공개 compiler callback이며 임시 javac/ASM 출력 경로를 만들지 않는다.
                 variant.configureJavaCompileTask { compiler ->
-                    probe.configure { rawRoots.from(compiler.destinationDirectory); dependsOn(compiler) }
+                    // compiler 생성 callback에서 다른 task provider를 configure하지 않는다.
+                    rawCompilerOutputs.from(compiler.destinationDirectory)
+                    rawCompilerOutputs.builtBy(compiler)
                 }
                 def graphTask = tasks.named('kartographGraphDebug')
                 def deadTask = tasks.named('kartographDeadDebug')

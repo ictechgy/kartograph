@@ -13,17 +13,20 @@ internal object AndroidCompilerInputs {
     data class ArgumentInputs(val files: FileCollection, val rejection: WitnessRejection? = null)
 
     /** argument provider가 Gradle에 선언한 파일 입력만 연결한다. processor 출력은 입력으로 재분류하지 않는다. */
-    fun argumentProviderInputs(project: Project, compiler: JavaCompile): ArgumentInputs = try {
-        ArgumentInputs(readArgumentProviderInputs(project, compiler))
+    fun argumentProviderInputs(project: Project, compiler: JavaCompile, metadataProviderType: Class<*>? = null): ArgumentInputs = try {
+        ArgumentInputs(readArgumentProviderInputs(project, compiler, metadataProviderType))
     } catch (_: ReflectiveOperationException) {
         // 공개 getter라도 구현 클래스에 접근할 수 없으면 compiler 설정은 보존하고 witness만 거부한다.
         ArgumentInputs(project.files(), WitnessRejection.UNSUPPORTED_ARGUMENT_PROVIDER)
     }
 
-    private fun readArgumentProviderInputs(project: Project, compiler: JavaCompile): FileCollection {
+    private fun readArgumentProviderInputs(project: Project, compiler: JavaCompile, metadataProviderType: Class<*>?): FileCollection {
         val inputs = mutableListOf<Any?>()
         val outputs = mutableListOf<Any?>()
         for (argument in compiler.options.compilerArgumentProviders) {
+            // AGP Room helper의 단일 입력은 기존 공개 JavaPreCompileTask output adapter가 이미 연결한다.
+            // 이 예외 뒤에도 WitnessSpec의 실제 task 입력 전체 byte-coverage 검사는 생략하지 않는다.
+            if (isCoveredMetadataProvider(argument.javaClass, metadataProviderType)) continue
             // Gradle의 decorated getter는 annotation을 복제하지 않을 수 있으므로 공개 원래 선언도 읽는다.
             val pending = ArrayDeque<Class<*>>()
             val seen = mutableSetOf<Class<*>>()
@@ -73,6 +76,22 @@ internal object AndroidCompilerInputs {
         "org.gradle.api.tasks.OutputFile", "org.gradle.api.tasks.OutputFiles", "org.gradle.api.tasks.OutputDirectory",
         "org.gradle.api.tasks.OutputDirectories",
     )
+
+    /** Component와 같은 AGP classloader의 정확한 타입만 기존 metadata adapter에 위임한다. */
+    fun metadataProviderType(): Class<*>? = try {
+        Class.forName("com.android.build.gradle.tasks.JavaCompileOptionsForRoom", false, Component::class.java.classLoader)
+    } catch (_: ClassNotFoundException) { null }
+
+    private fun isCoveredMetadataProvider(type: Class<*>, expected: Class<*>?): Boolean {
+        if (expected == null || type != expected || type.superclass != Any::class.java ||
+            type.interfaces.toList() != listOf(org.gradle.process.CommandLineArgumentProvider::class.java)) return false
+        val getters = type.declaredMethods.filter { java.lang.reflect.Modifier.isPublic(it.modifiers) && it.parameterCount == 0 }
+        val inputs = getters.filter { method -> method.annotations.any { it.annotationClass.java.name in FILE_INPUT_ANNOTATIONS } }
+        if (inputs.size != 1 || inputs.single().name != "getAnnotationProcessorListFile" ||
+            inputs.single().returnType != Provider::class.java ||
+            inputs.single().annotations.none { it.annotationClass.java.name == "org.gradle.api.tasks.InputFile" }) return false
+        return getters.none { method -> method.annotations.any { it.annotationClass.java.name in FILE_OUTPUT_ANNOTATIONS } }
+    }
 
     /** javac의 선언된 입력 생산자에서 AGP metadata task를 선택하며 task/output 이름을 만들지 않는다. */
     fun metadataInputs(project: Project, compiler: JavaCompile): FileCollection {
