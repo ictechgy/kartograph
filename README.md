@@ -119,6 +119,8 @@ Public 0.26.0 assets and Portal installation have not yet been verified; release
 See [0.26.0 input/reporting migration](docs/FEEDBACK-026.md),
 [Android CLI and plugin input setup](docs/ANDROID-CLI-INPUTS.md), and
 [bounded Android callback evidence](docs/ANDROID-CALLBACK-INPUTS.md) for the feedback fixes and remaining limits.
+For DataBinding `requireAll`, overload and explicit overlay observations, see
+[DataBinding candidate evidence](docs/DATA-BINDING-EVIDENCE.md). XML candidates retain runtime uncertainty in `dead` and `why`.
 
 Version 0.25.0 adds captured application layout XML impact through exact non-final R fields and recorded literal includes.
 Use matching CLI/plugin/library builds and recapture both revisions. Coverage remains partial; module snapshots with resource

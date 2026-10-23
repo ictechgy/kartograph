@@ -156,10 +156,13 @@ internal object DeadCommand {
         } else {
             RuntimeEvidenceScanner().scan(options.runtimeClasses, options.coverageReports)
         }
+        val bindingReviewIds = analysis.bindingReview?.let { it.unresolvedAdapters + it.unresolvedOwners }.orEmpty()
         val confidence = findings.associate { finding ->
-            finding.nodeId to RetentionPipeline.confidenceOf(
+            val observed = RetentionPipeline.confidenceOf(
                 finding, graph, analysis.unresolvedChannelsBySource, observedClasses,
             )
+            finding.nodeId to if (observed != dev.kartograph.export.FindingConfidence.RUNTIME_OBSERVED &&
+                finding.nodeId in bindingReviewIds) dev.kartograph.export.FindingConfidence.REVIEW else observed
         }
         output.print(
             AdoptionReporter.render(

@@ -271,7 +271,11 @@ internal object AgentCommand {
                 val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, classRoots, processorOutputs.verify(options.single("--scope")))
                 val keepLimitations = keepScanner.diagnostics.map { "unknown-keep-rule: $it" } +
                     if (evidence.any { it.reason == dev.kartograph.core.RetentionReason.UNKNOWN_KEEP_RULE }) listOf("unknown-keep-rules: retained conservatively because rules or hierarchy are unresolved; not proof of reachability") else emptyList()
-                val limitations = keepLimitations + RuntimeLimitationScanner.scan(indexed, project) +
+                val bindingReview = dev.kartograph.analysis.AndroidBindingReview.analyze(graph, hierarchy,
+                    dev.kartograph.index.AndroidBindingScanner.scan(graph, classRoots,
+                        options.values("--resources").map { resolveProjectPath(project, it) }, project),
+                    evidence)
+                val limitations = keepLimitations + bindingReview.diagnostics + RuntimeLimitationScanner.scan(indexed, project) +
                     sourcePaths?.limitations.orEmpty() +
                     dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) + compilerEnrichment.limitations + buildList {
                     if (compilerFacts.unmappedReferences > 0) add("compiler-evidence-unmapped-references: ${compilerFacts.unmappedReferences}")

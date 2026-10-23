@@ -328,7 +328,12 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val resourceProducerLimitations = ResourceProcessWitnesses.resourceLimitations(witnesses).filterNot {
                 resourceEvidence.bindings != null && it == ResourceProcessWitnesses.INVENTORY_UNVERIFIED
             }
-            val limitations = (RuntimeLimitationScanner.scan(indexed, selectedSources) +
+            val bindingReview = dev.kartograph.analysis.AndroidBindingReview.analyze(graph, indexed.hierarchy,
+                dev.kartograph.index.AndroidBindingScanner.scan(graph, roots,
+                    androidResourceDirectories.files.filter { it.isDirectory }.map { it.toPath() }, project,
+                    buildRoot = buildDirectory.get().asFile.toPath()),
+                retention)
+            val limitations = (bindingReview.diagnostics + RuntimeLimitationScanner.scan(indexed, selectedSources) +
                 dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) +
                 compilerLimitations + resourceProducerLimitations + resourceEvidence.limitations +
                 paths?.limitations.orEmpty() + captureLimitations.get() +

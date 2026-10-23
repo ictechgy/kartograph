@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Bounded DataBinding annotation/XML candidate evidence for same-element `requireAll`,
+  multiple attributes, overload ambiguity and explicit resource-priority assertions.
+  `dead`/`why` preserve exact unresolved adapter diagnostics, snapshot/MCP preserve the
+  limitations, and `bindings` exposes independent compiled caller paths without adding
+  retention roots. See [scope and migration](docs/DATA-BINDING-EVIDENCE.md).
+
 ## [0.26.0] - 2026-10-22
 
 이 항목은 릴리스 준비 기록이다. GitHub asset 및 Gradle Portal publication/설치 검증은 별도 절차이며,

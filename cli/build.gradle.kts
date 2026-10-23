@@ -56,6 +56,7 @@ distributions {
                 "FEEDBACK-026.md",
                 "ANDROID-CLI-INPUTS.md",
                 "ANDROID-CALLBACK-INPUTS.md",
+                "DATA-BINDING-EVIDENCE.md",
                 "ANDROID-RESOURCE-EVIDENCE.md",
                 "ANDROID-RESOURCE-CAPTURE.md",
                 "ANDROID-RESOURCE-PRODUCER-EVIDENCE.md",

@@ -56,6 +56,7 @@ internal object KartographCli {
         "bridges" -> AgentCommand.bridges(arguments.drop(1), output, error)
         "schema" -> AgentCommand.schema(arguments.drop(1), output, error)
         "routes" -> RoutesCommand.run(arguments.drop(1), output, error)
+        "bindings" -> BindingEvidenceCommand.run(arguments.drop(1), output, error)
         "skill" -> AgentCommand.skill(arguments.drop(1), output, error)
         "dependencies" -> DependenciesCommand.run(arguments.drop(1), output, error)
         "cycles" -> ArchitectureCommand.cycles(arguments.drop(1), output, error)
@@ -371,6 +372,7 @@ internal object KartographCli {
           kartograph schema --project <directory> [--format json] [--graph-file <snapshot>]
           kartograph routes --role client --project <directory> [--wrappers <file>] [--include-tests] [<source-root>...]
           kartograph routes --role server --project <directory> [--graph-file <snapshot>] [--service <name>] [--include-tests] [<source-root>...]
+          kartograph bindings --project <directory> --classes <directory-or-jar> --manifest <file> --resources <directory> --namespace <name> [options]
           kartograph mcp --graph-file <snapshot.json> [--snapshot-max-mib <1..1024>] [options]
           kartograph skill
           kartograph dependencies --classes <directory> --project <directory> --dependencies <file> [options]

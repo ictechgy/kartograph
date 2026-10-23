@@ -13,6 +13,10 @@ Reaching an adapter or listener owner does not prove it was registered with a vi
 these edges conservatively preserve possible invocation for review. Other callback
 families remain unresolved unless separate compiled or retention evidence exists.
 
+The follow-up [DataBinding evidence report](DATA-BINDING-EVIDENCE.md) adds bounded
+same-element attribute/requireAll observations and unresolved adapter diagnostics.
+It preserves the callback and owner conditions below and never adds XML-only roots.
+
 Supply the dependency hierarchy, including the selected Android SDK and AndroidX
 classes. A class named `ScreenFragment` or a method named `onViewCreated` does not
 suffice. Missing headers leave the callback unresolved. Existing keep/manifest/XML

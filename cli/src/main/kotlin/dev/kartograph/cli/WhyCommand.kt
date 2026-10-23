@@ -114,7 +114,8 @@ internal object WhyCommand {
             output.println("used-by-tests\t${node.id}")
         }
         if (state == "unreachable") {
-            val confidence = RetentionPipeline.confidenceOf(node.location, analysis.unresolvedChannelsBySource)
+            val confidence = if (node.id in analysis.bindingReview?.let { it.unresolvedAdapters + it.unresolvedOwners }.orEmpty()) dev.kartograph.export.FindingConfidence.REVIEW
+                else RetentionPipeline.confidenceOf(node.location, analysis.unresolvedChannelsBySource)
             output.println("confidence\t${confidence.label}")
         }
         AnalysisLimitation.entries.sortedBy { it.name }.forEach { limitation ->
@@ -123,7 +124,7 @@ internal object WhyCommand {
         return ExitStatus.SUCCESS.code
     }
 
-    private fun parseInputs(arguments: List<String>, error: PrintStream): RetentionInputs? {
+    internal fun parseInputs(arguments: List<String>, error: PrintStream): RetentionInputs? {
         val classRoots = mutableListOf<Path>()
         val generatedClassRoots = mutableListOf<Path>()
         val testClassRoots = mutableListOf<Path>()

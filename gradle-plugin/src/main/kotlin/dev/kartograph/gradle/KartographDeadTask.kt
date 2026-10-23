@@ -158,13 +158,18 @@ public abstract class KartographDeadTask : DefaultTask() {
             graph = graph,
         ) + if (retention.evidence.any { it.reason == dev.kartograph.core.RetentionReason.UNKNOWN_KEEP_RULE }) listOf(InputHint.UNKNOWN_KEEP_RULES) else emptyList()
         val unknown = InputHint.UNKNOWN_KEEP_RULES in inputHints
-        val diagnostics = retention.diagnostics + sourcePaths.limitations
+        val bindingReview = dev.kartograph.analysis.AndroidBindingReview.analyze(graph, hierarchy,
+            dev.kartograph.index.AndroidBindingScanner.scan(graph, classRoots,
+                resourceDirectories.files.filter { it.isDirectory }.map { it.toPath() }, projectRoot,
+                buildRoot = buildDirectory.get().asFile.toPath()), result)
+        val diagnostics = retention.diagnostics + sourcePaths.limitations + bindingReview.diagnostics
         fun report(findings: List<Finding>, suppressed: Int) = writeReport(findings.map { finding ->
             val declaration = graph.node(finding.nodeId)?.sourceDeclaration
             val path = declaration?.path ?: sourcePaths.byNodeId[finding.nodeId]
             finding.copy(location = path?.let { dev.kartograph.core.SourceLocation(it, declaration?.line ?: finding.location?.line,
                 declaration?.column ?: finding.location?.column) } ?: finding.location)
-        }, suppressed, retention.unmatchedKeepRules, inputHints, diagnostics)
+        }, suppressed, retention.unmatchedKeepRules, inputHints, diagnostics,
+            (bindingReview.unresolvedAdapters + bindingReview.unresolvedOwners).associateWith { dev.kartograph.export.FindingConfidence.REVIEW })
         if (baselineWriteFile.isPresent) {
             if (unknown) throw GradleException("cannot write a baseline from unknown keep rules")
             val path = baselineWriteFile.get().asFile.toPath()
@@ -234,6 +239,7 @@ public abstract class KartographDeadTask : DefaultTask() {
         unmatchedKeepRules: List<KeepRule>,
         inputHints: List<InputHint>,
         diagnostics: List<String>,
+        confidence: Map<dev.kartograph.core.NodeId, dev.kartograph.export.FindingConfidence>,
     ) {
         val report = reportFile.get().asFile.toPath()
         Files.createDirectories(requireNotNull(report.parent))
@@ -244,7 +250,7 @@ public abstract class KartographDeadTask : DefaultTask() {
             findings,
             AnalysisLimitation.entries,
             suppressedCount,
-            confidence = emptyMap(),
+            confidence = confidence,
             expiredSuppressions = 0,
             unmatchedKeepRules = unmatchedKeepRules,
             inputHints = inputHints,
