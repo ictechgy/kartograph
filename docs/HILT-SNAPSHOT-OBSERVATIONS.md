@@ -5,6 +5,15 @@ Android snapshot capture can compare original compiler outputs with final public
 It retains the original compiler witness and indexes only the selected final artifacts.
 Raw javac/Kotlin directories are never substituted into the graph to make capture pass.
 
+Additional JavaCompile contributors are discovered through the selected public artifact
+provider's task dependencies in the same project. Each receives its own completed
+source/options/classpath/toolchain/output witness; a Hilt-looking task name or path is
+insufficient. The dependency walk is bounded to 10,000 tasks. Byte-identical selected
+roots keep ordinary witness matching. Unselected resource outputs remain freshness
+inputs and are not added to the transformation inventory. Unknown producer scope or
+unsupported compiler inputs still reject capture. An explicit
+`hiltArtifactObservation.set(false)` on the snapshot task keeps original-only capture.
+
 The bounded `hilt-superclass-v1` policy compares both class inventories and their actual
 bytes. An annotated entry point may change its superclass to the exact generated Hilt
 superclass, its generic superclass signature, and the super `invokespecial` references

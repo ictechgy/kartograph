@@ -32,7 +32,10 @@ public object HiltClassTransforms {
     public fun verify(originalRoots: List<Path>, selectedRoots: List<Path>, primarySources: Set<String>): List<TransformedClass> {
         val original = readClasses(originalRoots)
         val selected = readClasses(selectedRoots)
-        require(original.isNotEmpty() && original.keys == selected.keys) { "transformed class inventory differs from compiler outputs" }
+        require(original.isNotEmpty() && original.keys == selected.keys) {
+            "transformed class inventory differs from compiler outputs: original=${original.size}, selected=${selected.size}; " +
+                "missing=${(original.keys - selected.keys).sorted().take(8)}; extra=${(selected.keys - original.keys).sorted().take(8)}"
+        }
         return original.keys.sorted().mapNotNull { name ->
             val before = original.getValue(name)
             val after = selected.getValue(name)

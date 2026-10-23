@@ -87,7 +87,7 @@ internal object AndroidSnapshotTasks {
         unitTest?.artifacts?.forScope(ScopedArtifacts.Scope.ALL)?.use(task)
             ?.toGet(ScopedArtifact.CLASSES, KartographAndroidSnapshotTask::testClasspathJars, KartographAndroidSnapshotTask::testClasspathDirectories)
         project.pluginManager.withPlugin("com.google.dagger.hilt.android") {
-            task.configure { it.hiltArtifactObservation.set(true) }
+            task.configure { it.hiltArtifactObservation.convention(true) }
         }
 
         // 같은 variant compiler의 선언 출력은 NO-SOURCE로 생성되지 않을 수 있다(예: Java만 있는 unit test의 Kotlin 출력).
@@ -174,6 +174,9 @@ internal object AndroidSnapshotTasks {
                             jdk.map { it.metadata.installationPath.file("lib/modules") })
                     }
                 }
+            }
+            if (project.pluginManager.hasPlugin("com.google.dagger.hilt.android")) {
+                AndroidArtifactCompilers.attach(project, task.get(), scope, buildInputs, optionalOutputs)
             }
         }
     }

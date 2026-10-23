@@ -381,8 +381,15 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     private fun observeHiltArtifacts(provenance: SnapshotProvenance, bindings: Map<String, Path>): SnapshotProvenance {
         val project = projectDirectory.get().asFile.toPath()
         fun locate(input: InputFingerprint): Path = if (input.path.startsWith("external/")) bindings.getValue(input.path) else project.resolve(input.path)
-        val originals = provenance.witnesses.flatMap { it.outputs }.distinct()
-        val selected = provenance.inputs.filter { it.role == "classes" }
+        val classes = provenance.inputs.filter { it.role == "classes" }
+        val outputs = provenance.witnesses.flatMap { it.outputs }.distinct()
+        fun same(left: InputFingerprint, right: InputFingerprint) =
+            left.sha256 == right.sha256 && locate(left).toRealPath() == locate(right).toRealPath()
+        // Byte-identical roots keep their ordinary witness. Resource outputs not selected by
+        // PROJECT CLASSES are still freshness inputs, not invented transform participants.
+        val selected = classes.filter { input -> outputs.none { same(it, input) } }
+        val originals = provenance.witnesses.filter { it.compiler in setOf("javac", "kotlin") }
+            .flatMap { it.outputs }.distinct().filter { output -> classes.none { same(output, it) } }
         val primary = dev.kartograph.index.HiltClassTransforms.primarySourceNames(provenance.witnesses
             .filter { it.compiler in setOf("javac", "kotlin") }.flatMap { it.inputs }.filter { it.role == "sources" }.map(::locate))
         val changed = dev.kartograph.index.HiltClassTransforms.verify(originals.map(::locate), selected.map(::locate), primary)

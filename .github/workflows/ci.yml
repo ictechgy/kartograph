@@ -49,6 +49,8 @@ jobs:
             build/reports/databinding-processor-test.json
             gradle-plugin/build/test-results/test/TEST-dev.kartograph.gradle.AndroidDataBindingIntegrationTest.xml
             gradle-plugin/build/test-results/test/TEST-dev.kartograph.gradle.AndroidHiltIntegrationTest.xml
+            gradle-plugin/build/reports/hilt-transform/hilt-snapshot-*.json
+            gradle-plugin/build/reports/hilt-transform/observations.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Preserve POSIX permission evidence

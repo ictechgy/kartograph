@@ -14,6 +14,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.ClassReader
 import org.objectweb.asm.Opcodes
 
 /** ASM 단위 fixture는 실제 Hilt processor 소비 통합 검증을 대체하지 않는다. */
@@ -115,6 +116,37 @@ class HiltClassTransformsTest {
         Files.writeString(sources.resolve("Other.kt"), "class Other")
         Files.writeString(sources.resolve("metadata.txt"), "ignored")
         assertEquals(setOf("App.java", "Other.kt"), HiltClassTransforms.primarySourceNames(listOf(root.resolve("src"))))
+    }
+
+    @Test
+    fun `compressed oversized classes truncated jars and misplaced definitions reject`(@TempDir root: Path) {
+        val (raw, selected) = fixture(root)
+        val jar = root.resolve("large.jar")
+        ZipOutputStream(Files.newOutputStream(jar)).use { zip ->
+            zip.putNextEntry(ZipEntry("p/App.class"))
+            zip.write(ByteArray(8 * 1024 * 1024 + 1))
+            zip.closeEntry()
+        }
+        assertTrue(Files.size(jar) < 100_000, "compressed size does not substitute for the expanded class budget")
+        val oversized = assertFailsWith<IllegalArgumentException> {
+            HiltClassTransforms.verify(listOf(raw), listOf(jar), emptySet())
+        }
+        assertTrue(oversized.message!!.contains("byte budget"))
+        Files.write(jar, byteArrayOf(0x50, 0x4b, 3, 4))
+        assertFailsWith<java.io.IOException> { HiltClassTransforms.verify(listOf(raw), listOf(jar), emptySet()) }
+        Files.write(selected.resolve("p/Wrong.class"), Files.readAllBytes(selected.resolve("p/App.class")))
+        assertFailsWith<IllegalArgumentException> { HiltClassTransforms.verify(listOf(raw), listOf(selected), emptySet()) }
+    }
+
+    @Test
+    fun `unused constant pool layout changes retain raw hashes without claiming semantic changes`(@TempDir root: Path) {
+        val (raw, selected) = fixture(root)
+        val source = Files.readAllBytes(raw.resolve("p/Hilt_App.class"))
+        val rewritten = ClassWriter(0).apply { newConst("unused entry"); ClassReader(source).accept(this, 0) }.toByteArray()
+        Files.write(selected.resolve("p/Hilt_App.class"), rewritten)
+        val observed = HiltClassTransforms.verify(listOf(raw), listOf(selected), setOf("App.java"))
+        assertEquals(listOf("p/App", "p/Hilt_App"), observed.map { it.name })
+        assertTrue(observed.all { it.beforeSha256 != it.afterSha256 })
     }
 
     private fun fixture(root: Path): Pair<Path, Path> {
