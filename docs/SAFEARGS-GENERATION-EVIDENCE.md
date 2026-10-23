@@ -31,8 +31,19 @@ original origin-context sidecar and matching current providers, actions, options
 mapping, whole output inventory, compiler source and selected class bytes. It
 records `historical-byte-equivalence` and `UP_TO_DATE`; it does not call this a new
 successful generation. FROM-CACHE, skipped/excluded tasks, failed attempts and
-missing contexts remain unverified. Ordinary live graph/dead consumption remains
-a separate follow-up path. No user clean or forced regeneration is performed.
+missing contexts remain unverified. No user clean or forced regeneration is performed.
+
+When `snapshotsEnabled=true` and Java SafeArgs are present, ordinary Android
+`kartographGraph<Variant>` and `kartographDead<Variant>` depend on the existing
+variant snapshot. Its existing `snapshotIncludeUnitTests` selection controls the
+additional preparation cost; snapshots disabled does not add these dependencies.
+The live task retains its own selected roots, graph filters and retention policy.
+It revalidates the complete snapshot proof before indexing and after attribution,
+and rechecks it immediately before output. A main-only live root subset does not
+silently discard the extra snapshot roots from freshness verification. Generated
+declarations are joined again to the live class bytes, and diagnostics report the
+live count, full proof scope, receipt and current cold/warm status. Missing or stale
+proof leaves classification unverified rather than copying saved graph markers.
 
 Saved CLI/MCP query and impact outputs preserve a bounded `generationSummary`.
 It describes admitted evidence across the entire loaded snapshot, independently

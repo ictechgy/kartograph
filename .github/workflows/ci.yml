@@ -208,7 +208,15 @@ jobs:
         timeout-minutes: 2
         run: java Scripts/VerifySecureDirectoryStream.java
       - name: Verify supported JDK
-        run: ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} test :gradle-plugin:validatePlugins
+        shell: bash
+        run: |
+          compiler_args=()
+          if [[ "${{ matrix.java }}" == "21" ]]; then
+            # Kotlin 컴파일 daemon의 heap 부족만 다룬다. 테스트·CLI JVM 한도와 분리한다.
+            compiler_args+=("-Pkotlin.daemon.jvmargs=-Xmx1g")
+            printf '%s\n' 'Requested JDK 21 Kotlin daemon maximum heap: 1 GiB (effective process flags not observed here).'
+          fi
+          ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} "${compiler_args[@]}" test :gradle-plugin:validatePlugins
       - name: Preserve failed compatibility test details
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

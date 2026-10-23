@@ -97,13 +97,15 @@ class AndroidSafeArgsIntegrationTest {
         fixture(root)
         val results = root.resolve("build/safeargs-product"); Files.createDirectories(results)
         val result = SafeArgsBuildEvidence.build(results) {
-            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographSnapshotDebug", "kartographSnapshotRelease",
+            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographGraphDebug", "kartographDeadDebug", "kartographGraphRelease", "kartographDeadRelease",
                 "--stacktrace", "--no-configuration-cache", "--no-build-cache").build()
         }
         val rows = mutableListOf<Map<String, Any?>>()
         for (variant in listOf("Debug", "Release")) {
             assertEquals(TaskOutcome.SUCCESS, result.task(":generateSafeArgs$variant")?.outcome)
             assertEquals(TaskOutcome.SUCCESS, result.task(":kartographVerifySafeArgs$variant")?.outcome)
+            assertEquals(TaskOutcome.SUCCESS, result.task(":kartographGraph$variant")?.outcome)
+            assertEquals(TaskOutcome.SUCCESS, result.task(":kartographDead$variant")?.outcome)
             val snap = snapshot(root, variant.lowercase())
             val old = snapshot(baselineRoot, variant.lowercase())
             val evidence = requireNotNull(snap.generationEvidence) { "cold generation evidence missing: ${snap.limitations}" }
@@ -122,6 +124,7 @@ class AndroidSafeArgsIntegrationTest {
             for (name in manual) assertFalse(snap.graph.nodes.getValue(NodeId("class:$name")).synthesized, name)
             assertEquals(old.graph.edges, snap.graph.edges, "generation classification must not add calls or dispatch")
             assertEquals(old.retention, snap.retention, "generation classification must not create roots")
+            assertLiveReports(root, variant, evidence, "current-cold-success/SUCCEEDED", results.resolve("live-$variant"))
             val classes = root.resolve(evidence.declarations.first().originalRoot)
             val publicHome = System.getenv("KARTOGRAPH_PUBLIC_025_HOME")
             if (publicHome != null) {
@@ -147,14 +150,15 @@ class AndroidSafeArgsIntegrationTest {
                 "declarations" to evidence.declarations.map { it.owner.value }, "publicVersion" to if (publicHome != null) "0.25.0" else null,
                 "publicGenerated" to if (publicHome != null) false else null,
                 "coldGenerated" to true, "manualUnchanged" to true, "callsUnchanged" to true, "retentionUnchanged" to true,
-                "queryExit" to if (currentHome != null) 0 else null, "scope" to "actual cold Java SafeArgs 2.10.2; live graph/dead are not assessed")
+                "queryExit" to if (currentHome != null) 0 else null, "liveGraph" to true, "liveDead" to true,
+                "scope" to "actual cold Java SafeArgs 2.10.2; current task roots independently attributed")
             rows += row
             Files.writeString(results.resolve("receipt.json"), dev.kartograph.export.McpJsonCodec.render(mapOf("variants" to rows)))
             println("safe-args-product complete=$variant source-class=matched public025=${publicHome != null} query=${currentHome != null}")
         }
         // 실제 UP-TO-DATE에서 과거 출처와 새 소비 invocation을 각각 검증한다.
         val warm = SafeArgsBuildEvidence.build(results.resolve("warm")) {
-            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographSnapshotDebug", "--stacktrace",
+            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographGraphDebug", "kartographDeadDebug", "--stacktrace",
                 "--no-configuration-cache", "--no-build-cache").build()
         }
         assertEquals(TaskOutcome.UP_TO_DATE, warm.task(":generateSafeArgsDebug")?.outcome)
@@ -171,6 +175,7 @@ class AndroidSafeArgsIntegrationTest {
         assertTrue(coldEvidence.observations.single().invocation != observed.invocation)
         assertEquals(coldSnapshot.graph.nodes, warmSnapshot.graph.nodes)
         assertEquals(coldSnapshot.graph.edges, warmSnapshot.graph.edges)
+        assertLiveReports(root, "Debug", warmEvidence, "historical-byte-equivalence/UP_TO_DATE", results.resolve("live-warm"))
         val warmPath = root.resolve("build/reports/kartograph/debug-snapshot.json")
         Files.copy(warmPath, results.resolve("Debug-warm-snapshot.json"))
         val currentHome = System.getenv("KARTOGRAPH_CURRENT_CLI_HOME")
@@ -183,18 +188,58 @@ class AndroidSafeArgsIntegrationTest {
         Files.writeString(results.resolve("warm.json"), dev.kartograph.export.McpJsonCodec.render(mapOf(
             "originBasis" to observed.originBasis, "currentGenerationStatus" to observed.currentGenerationStatus,
             "currentAttempt" to observed.currentAttempt, "sameOrigin" to true, "newInvocation" to true,
-            "snapshotSha256" to sha(warmPath), "queryExit" to if (currentHome != null) 0 else null)))
+            "snapshotSha256" to sha(warmPath), "queryExit" to if (currentHome != null) 0 else null, "liveGraph" to true, "liveDead" to true)))
         // 전체 출력에 수기 파일이 추가되면 원래 receipt가 이 파일까지 소유한다고 확대하지 않는다.
         Files.writeString(root.resolve(warmEvidence.receipts.single().outputRoot).resolve("p/HandwrittenExtra.java"),
             "package p; public class HandwrittenExtra {}")
         SafeArgsBuildEvidence.build(results.resolve("warm-extra")) {
-            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographSnapshotDebug", "--stacktrace",
+            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographGraphDebug", "kartographDeadDebug", "--stacktrace",
                 "--no-configuration-cache", "--no-build-cache").build()
         }
         val extraSnapshot = snapshot(root, "debug")
         assertEquals(null, extraSnapshot.generationEvidence)
         assertTrue(extraSnapshot.limitations.any { it.startsWith("generation-unverified:") })
+        val extraGraphPath = root.resolve("build/reports/kartograph/debug-graph.json")
+        val extraGraph = dev.kartograph.export.McpJsonCodec.parse(Files.readString(extraGraphPath)) as Map<*, *>
+        val extraNodes = (extraGraph["nodes"] as List<*>).map { it as Map<*, *> }.associateBy { it["usr"] }
+        assertEquals(false, extraNodes.getValue("class:p/StartFragmentArgs")["synthesized"])
+        assertTrue(Files.readString(extraGraphPath).contains("generation-live-unverified:"))
+        Files.copy(extraGraphPath, results.resolve("live-extra-graph.json"))
         Files.writeString(results.resolve("warm-extra.txt"), "whole inventory changed; generation-unverified\n")
+        val disabled = SafeArgsBuildEvidence.build(results.resolve("disabled-dry-run")) {
+            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographGraphDebug", "--dry-run", "-PdisableSnapshots=true").build()
+        }
+        assertTrue(disabled.tasks.none { it.path.startsWith(":kartographSnapshot") || it.path.contains("DebugUnitTest") || it.path.startsWith(":kartographVerifySafeArgs") })
+        Files.writeString(results.resolve("live-disabled.txt"), "snapshots disabled: no snapshot, generation verification or unit-test task dependency\n")
+    }
+
+    private fun assertLiveReports(root: Path, variant: String, evidence: dev.kartograph.core.GenerationEvidence, state: String, prefix: Path) {
+        val graphPath = root.resolve("build/reports/kartograph/${variant.lowercase()}-graph.json")
+        val deadPath = root.resolve("build/reports/kartograph/${variant.lowercase()}.txt")
+        val graph = dev.kartograph.export.McpJsonCodec.parse(Files.readString(graphPath)) as Map<*, *>
+        val nodes = (graph["nodes"] as List<*>).map { it as Map<*, *> }.associateBy { it["usr"] }
+        val dead = dev.kartograph.export.McpJsonCodec.parse(Files.readString(deadPath)) as Map<*, *>
+        val findings = (dead["diagnostics"] as List<*>).map { it as Map<*, *> }.map { it["nodeId"] }.toSet()
+        evidence.declarations.forEach { declaration ->
+            assertEquals(true, nodes.getValue(declaration.owner.value)["synthesized"])
+            assertFalse(declaration.owner.value in findings)
+        }
+        for (manual in listOf("class:p/ManualArgs", "class:p/ManualDirections", "class:other/StartFragmentArgs")) {
+            assertEquals(false, nodes.getValue(manual)["synthesized"])
+            assertTrue(manual in findings)
+        }
+        val edges = (graph["edges"] as List<*>).map { it as Map<*, *> }
+        assertFalse(edges.any { it["origin"] == "dispatchModel" })
+        assertTrue(edges.any { it["source"] == "method:p/MainActivity#onCreate(Landroid/os/Bundle;)V" &&
+            it["target"] == "method:p/StartFragmentDirections#go(I)Lp/StartFragmentDirections\$Go;" && it["kind"] == "call" })
+        assertFalse(edges.any { it["target"] == "method:p/StartFragmentDirections#idle(I)Lp/StartFragmentDirections\$Idle;" && it["kind"] == "call" })
+        for (path in listOf(graphPath, deadPath)) {
+            val text = Files.readString(path)
+            assertTrue(text.contains("generation-live-observation: $state"))
+            assertTrue(text.contains("liveRevalidated=true"))
+        }
+        Files.copy(graphPath, prefix.resolveSibling(prefix.fileName.toString() + "-graph.json"))
+        Files.copy(deadPath, prefix.resolveSibling(prefix.fileName.toString() + "-dead.json"))
     }
 
     private fun assertGenerationSummary(query: Map<*, *>, evidence: dev.kartograph.core.GenerationEvidence, basis: String, status: String) {
@@ -390,7 +435,8 @@ class AndroidSafeArgsIntegrationTest {
                 compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 }
             }
             kartograph {
-                snapshotsEnabled = true; includeSourcePaths = true
+                snapshotsEnabled = !project.hasProperty('disableSnapshots'); includeSourcePaths = true
+                reportFormat = 'json'; excludeOrigins = ['dispatchModel']
                 snapshotKotlinToolchain = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(${Runtime.version().feature()}) }
             }
             androidComponents.onVariants(androidComponents.selector().all()) { selected ->

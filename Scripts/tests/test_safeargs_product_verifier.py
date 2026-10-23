@@ -26,17 +26,31 @@ class SafeArgsProductVerifierTest(unittest.TestCase):
                 self.write(f'{prefix}-{variant}-command.json', {'exit': 0, 'timeout': False, 'jars': {'cli.jar': 'a' * 64}})
             rows.append(dict(variant=variant, sources=3, publicVersion='0.25.0', publicGenerated=False,
                              queryExit=0, coldGenerated=True, manualUnchanged=True, callsUnchanged=True,
-                             retentionUnchanged=True, snapshotSha256=hashlib.sha256(snapshot).hexdigest()))
+                             retentionUnchanged=True, liveGraph=True, liveDead=True, snapshotSha256=hashlib.sha256(snapshot).hexdigest()))
+            self.live(f'live-{variant}', 'current-cold-success/SUCCEEDED')
         self.write('receipt.json', {'variants': rows})
         (self.evidence / 'product/Debug-warm-snapshot.json').write_bytes(snapshot)
         self.write('warm.json', dict(originBasis='historical-byte-equivalence', currentGenerationStatus='UP_TO_DATE',
-                   currentAttempt=None, sameOrigin=True, newInvocation=True, queryExit=0, snapshotSha256=hashlib.sha256(snapshot).hexdigest()))
+                   currentAttempt=None, sameOrigin=True, newInvocation=True, queryExit=0, liveGraph=True, liveDead=True,
+                   snapshotSha256=hashlib.sha256(snapshot).hexdigest()))
+        self.live('live-warm', 'historical-byte-equivalence/UP_TO_DATE')
+        self.write('live-extra-graph.json', {'nodes': [{'usr': 'class:p/StartFragmentArgs', 'synthesized': False}],
+                                          'limitations': ['generation-live-unverified: fixture']})
+        (self.evidence / 'product/live-disabled.txt').write_text('snapshots disabled: no snapshot, generation verification or unit-test task dependency\n', encoding='utf-8')
         self.write('query-warm-command.json', {'exit': 0, 'timeout': False, 'jars': {'cli.jar': 'a' * 64}})
         (self.evidence / 'product/warm-extra.txt').write_text('whole inventory changed; generation-unverified\n', encoding='utf-8')
         self.capture()
 
     def write(self, name, value):
         (self.evidence / 'product' / name).write_text(json.dumps(value), encoding='utf-8')
+
+    def live(self, prefix, state):
+        generated = ['p/StartFragmentArgs', 'p/StartFragmentDirections', 'p/StartFragmentDirections$Idle']
+        manual = ['p/ManualArgs', 'p/ManualDirections', 'other/StartFragmentArgs']
+        limitations = [f'generation-live-observation: {state}; liveRevalidated=true']
+        self.write(prefix + '-graph.json', {'nodes': [{'usr': 'class:' + name, 'synthesized': name in generated}
+                                                     for name in generated + manual], 'limitations': limitations})
+        self.write(prefix + '-dead.json', {'diagnostics': [{'nodeId': 'class:' + name} for name in manual], 'limitations': limitations})
 
     def capture(self, omit=None):
         rows = []
@@ -80,6 +94,25 @@ class SafeArgsProductVerifierTest(unittest.TestCase):
         self.write('warm.json', warm)
         self.capture()
         with self.assertRaisesRegex(ValueError, 'warm historical origin/current status'):
+            VERIFIER.verify(self.evidence)
+
+    def test_live_handwritten_promotion_is_rejected(self):
+        graph = json.loads((self.evidence / 'product/live-Debug-graph.json').read_text())
+        next(row for row in graph['nodes'] if row['usr'] == 'class:p/ManualArgs')['synthesized'] = True
+        self.write('live-Debug-graph.json', graph); self.capture()
+        with self.assertRaisesRegex(ValueError, 'live handwritten'):
+            VERIFIER.verify(self.evidence)
+
+    def test_warm_live_current_status_is_required(self):
+        self.live('live-warm', 'current-cold-success/SUCCEEDED'); self.capture()
+        with self.assertRaisesRegex(ValueError, 'live generation current status'):
+            VERIFIER.verify(self.evidence)
+
+    def test_changed_output_must_not_be_live_generated(self):
+        self.write('live-extra-graph.json', {'nodes': [{'usr': 'class:p/StartFragmentArgs', 'synthesized': True}],
+                                          'limitations': ['generation-live-unverified: fixture']})
+        self.capture()
+        with self.assertRaisesRegex(ValueError, 'changed output inventory promoted'):
             VERIFIER.verify(self.evidence)
 
 

@@ -45,6 +45,8 @@ import org.gradle.work.DisableCachingByDefault
 /** Android variant artifact를 직접 받아 CLI와 독립적으로 dead report를 생성한다. */
 @DisableCachingByDefault(because = "Keep-rule include files are discovered while the task executes")
 public abstract class KartographDeadTask : DefaultTask() {
+    @get:Internal internal var safeArgsLive: SafeArgsLiveCapture? = null
+    @get:Internal internal var safeArgsUnavailable: String? = null
     /** Member 진단 opt-in도 task 입력으로 기록해 보고 범위를 명확히 한다. */
     @get:Input
     public abstract val includePrivateMembers: Property<Boolean>
@@ -142,11 +144,14 @@ public abstract class KartographDeadTask : DefaultTask() {
             addAll(classpathJars.get().map { jar -> jar.asFile.toPath() })
             addAll(platformClasspath.files.sorted().map { it.toPath() })
         }
+        val generationInput = safeArgsLive?.prepare()
         val indexed = ClassFileIndexer().indexWithObservations(classRoots, classpath,
             serviceResourceDirectories.files.filter(java.io.File::isDirectory).sorted().map(java.io.File::toPath),
             generatedClassRoots.files.sorted().map(java.io.File::toPath))
-        val sourcePaths = dev.kartograph.index.SourcePathIndex.resolve(indexed.graph, projectRoot)
-        val graph = dev.kartograph.index.SourceDeclarationLocations.enrich(indexed.graph, projectRoot, sourcePaths.byNodeId, false)
+        val generation = generationInput?.attribute(indexed, indexed.graph, classRoots)
+        val classified = generation?.graph ?: indexed.graph
+        val sourcePaths = dev.kartograph.index.SourcePathIndex.resolve(classified, projectRoot)
+        val graph = dev.kartograph.index.SourceDeclarationLocations.enrich(classified, projectRoot, sourcePaths.byNodeId, false)
         val hierarchy = indexed.hierarchy
         val retention = retentionEvidence(projectRoot, graph, hierarchy)
         val result = ReachabilityAnalyzer.analyze(graph, retention.evidence)
@@ -162,19 +167,23 @@ public abstract class KartographDeadTask : DefaultTask() {
             dev.kartograph.index.AndroidBindingScanner.scan(graph, classRoots,
                 resourceDirectories.files.filter { it.isDirectory }.map { it.toPath() }, projectRoot,
                 buildRoot = buildDirectory.get().asFile.toPath()), result)
-        val diagnostics = retention.diagnostics + sourcePaths.limitations + bindingReview.diagnostics
+        val diagnostics = retention.diagnostics + sourcePaths.limitations + bindingReview.diagnostics +
+            generation?.limitations.orEmpty() + listOfNotNull(safeArgsUnavailable)
         fun report(findings: List<Finding>, suppressed: Int) = writeReport(findings.map { finding ->
             val declaration = graph.node(finding.nodeId)?.sourceDeclaration
             val path = declaration?.path ?: sourcePaths.byNodeId[finding.nodeId]
             finding.copy(location = path?.let { dev.kartograph.core.SourceLocation(it, declaration?.line ?: finding.location?.line,
                 declaration?.column ?: finding.location?.column) } ?: finding.location)
         }, suppressed, retention.unmatchedKeepRules, inputHints, diagnostics,
-            findings.filter { bindingReview.requiresReview(it.nodeId) }.associate { it.nodeId to dev.kartograph.export.FindingConfidence.REVIEW })
+            findings.filter { bindingReview.requiresReview(it.nodeId) }.associate { it.nodeId to dev.kartograph.export.FindingConfidence.REVIEW },
+            generation?.verifyBeforeWrite)
         if (baselineWriteFile.isPresent) {
             if (unknown) throw GradleException("cannot write a baseline from unknown keep rules")
             val path = baselineWriteFile.get().asFile.toPath()
             path.parent?.let { parent -> Files.createDirectories(parent) }
-            Files.writeString(path, BaselineCodec.render(allFindings))
+            val content = BaselineCodec.render(allFindings)
+            generation?.verifyBeforeWrite?.invoke()
+            Files.writeString(path, content)
             report(allFindings, 0)
             logger.lifecycle("kartograph ${variantName.get()}: captured ${allFindings.size} unreachable declarations")
             return
@@ -240,6 +249,7 @@ public abstract class KartographDeadTask : DefaultTask() {
         inputHints: List<InputHint>,
         diagnostics: List<String>,
         confidence: Map<dev.kartograph.core.NodeId, dev.kartograph.export.FindingConfidence>,
+        beforeWrite: (() -> Unit)? = null,
     ) {
         val report = reportFile.get().asFile.toPath()
         Files.createDirectories(requireNotNull(report.parent))
@@ -257,6 +267,7 @@ public abstract class KartographDeadTask : DefaultTask() {
             externalRetentionContexts = emptyList(),
             diagnostics = diagnostics,
         )
+        beforeWrite?.invoke()
         Files.writeString(report, content)
     }
 

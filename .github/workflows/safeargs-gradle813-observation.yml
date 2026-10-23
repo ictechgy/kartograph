@@ -1,0 +1,54 @@
+name: Safe Args Gradle 8.13 action observation
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/safeargs-gradle813-observation.yml
+      - Scripts/observe-safeargs-gradle813.py
+      - Scripts/tests/test_safeargs_gradle813_observation.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: safeargs-gradle813-observation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  observe-action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify bounded observation failure controls
+        run: python3 -m unittest discover -s Scripts/tests -p test_safeargs_gradle813_observation.py -v
+      - name: Record exact observation source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p build/reports/safeargs-gradle813-source
+          git rev-parse HEAD HEAD^{tree} HEAD^@ > build/reports/safeargs-gradle813-source/source.txt
+          printf '%s\n' "$GITHUB_SHA" "$PR_HEAD_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > build/reports/safeargs-gradle813-source/run.txt
+      - name: Observe actual pinned task on checksum-verified Gradle 8.13
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/kartograph-safeargs-gradle813
+        run: python3 Scripts/observe-safeargs-gradle813.py --output build/reports/safeargs-gradle813
+      - name: Preserve success or failure observation
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: safeargs-gradle813-observation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/reports/safeargs-gradle813-source/
+            build/reports/safeargs-gradle813/receipt.json
+            build/reports/safeargs-gradle813/*.stdout.log
+            build/reports/safeargs-gradle813/*.stderr.log
+          if-no-files-found: error
+          retention-days: 14

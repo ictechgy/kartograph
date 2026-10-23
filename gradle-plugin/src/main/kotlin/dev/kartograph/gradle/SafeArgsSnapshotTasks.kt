@@ -11,12 +11,18 @@ import org.gradle.api.tasks.TaskProvider
 internal object SafeArgsSnapshotTasks {
     fun register(project: Project, variant: String, scope: String, snapshot: TaskProvider<KartographAndroidSnapshotTask>) {
         project.pluginManager.withPlugin("androidx.navigation.safeargs") {
+            val suffix = variant.replaceFirstChar(Char::titlecase)
             // 복원된 action 객체의 소유권은 아직 검증하지 않았다. 일반 빌드/cache 정책은 그대로 둔다.
             if (project.gradle.startParameter.isConfigurationCacheRequested) {
                 snapshot.configure { it.captureLimitations.add("generation-unverified: configuration-cache hook identity is not supported") }
+                project.tasks.named("kartographGraph$suffix", KartographGraphTask::class.java).configure {
+                    it.safeArgsUnavailable = "generation-live-unverified: configuration-cache hook identity is not supported"
+                }
+                project.tasks.named("kartographDead$suffix", KartographDeadTask::class.java).configure {
+                    it.safeArgsUnavailable = "generation-live-unverified: configuration-cache hook identity is not supported"
+                }
                 return@withPlugin
             }
-            val suffix = variant.replaceFirstChar(Char::titlecase)
             val taskName = "generateSafeArgs$suffix"
             var lifecycle: SafeArgsGenerationLifecycle? = null
             var unavailable = "generation-task-unavailable"
@@ -35,6 +41,21 @@ internal object SafeArgsSnapshotTasks {
                 task.safeArgsCapture = current
                 task.inputs.files(project.provider { current().files.map { it.second.toFile() } })
                     .withPropertyName("kartographSafeArgsGenerationInputs").withPathSensitivity(PathSensitivity.NONE)
+            }
+            val live = SafeArgsLiveCapture(project.layout.projectDirectory.asFile.toPath(), scope,
+                { snapshot.get().snapshotFile.get().asFile.toPath() }, { snapshot.get().localBindingsFile.get().asFile.toPath() },
+                { dev.kartograph.export.QuerySnapshotCodec.maximumBytes(snapshot.get().snapshotMaxMiB.get()) }, current)
+            fun inputs(task: org.gradle.api.Task) {
+                task.dependsOn(snapshot)
+                task.inputs.files(snapshot.flatMap { it.snapshotFile }, snapshot.flatMap { it.localBindingsFile })
+                    .withPropertyName("kartographSafeArgsCompilerProof").withPathSensitivity(PathSensitivity.NONE)
+                task.outputs.upToDateWhen { false }
+            }
+            project.tasks.named("kartographGraph$suffix", KartographGraphTask::class.java).configure {
+                inputs(it); it.safeArgsLive = live
+            }
+            project.tasks.named("kartographDead$suffix", KartographDeadTask::class.java).configure {
+                inputs(it); it.safeArgsLive = live
             }
             project.tasks.matching { it.name == taskName }.configureEach { generator ->
                 if (generateSequence(generator.javaClass as Class<*>?) { it.superclass }.none { it.name == SafeArgsTaskBytes.TASK_CLASS }) {
