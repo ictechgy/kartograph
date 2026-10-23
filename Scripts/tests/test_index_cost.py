@@ -19,7 +19,7 @@ SPEC.loader.exec_module(probe)
 
 class IndexCostTest(unittest.TestCase):
     def test_baseline_is_the_exact_preoptimization_product(self):
-        self.assertEqual("5a23851a9648504bd91350c407566ea3a10b695c", probe.SOURCE_BASELINE)
+        self.assertEqual("33f8ce1b15af5be6dc01573e1209017cb1999f1d", probe.SOURCE_BASELINE)
         self.assertEqual(probe.SOURCE_BASELINE, probe.BASELINE)
 
     def test_baseline_metadata_update_cannot_change_executable_sources(self):

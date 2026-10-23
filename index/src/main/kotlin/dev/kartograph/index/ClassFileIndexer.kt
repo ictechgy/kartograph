@@ -149,6 +149,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         val rootByClass = linkedMapOf<String, Int>()
         val declarationsByRoot = mutableListOf<Set<NodeId>>()
         val loader = cache?.let { CachedClassBatchLoader(it, ::parse) }
+        val uncachedLoader = if (loader == null) UncachedClassBatchLoader(::parse) else null
         fun readMany(inputs: List<() -> ClassInput>): List<ClassFacts> {
             if (loader != null) {
                 val loaded = loader.load(inputs)
@@ -166,17 +167,12 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
                 cacheWriteNanos += measured.cacheWriteNanos
                 return loaded.facts
             }
-            return inputs.map { read ->
-                var phaseStart = System.nanoTime()
-                val input = read()
-                readNanos += System.nanoTime() - phaseStart
-                phaseStart = System.nanoTime()
-                val facts = parse(input.bytes)
-                parseNanos += System.nanoTime() - phaseStart
-                classFiles++
-                parsedClasses++
-                facts.copy(runtime = facts.runtime.copy(modified = input.modified))
-            }
+            val loaded = requireNotNull(uncachedLoader).load(inputs)
+            readNanos += loaded.statistics.readNanos
+            parseNanos += loaded.statistics.parseNanos
+            classFiles += loaded.statistics.classFiles
+            parsedClasses += loaded.statistics.parsedClasses
+            return loaded.facts
         }
         try {
             roots.forEachIndexed { rootIndex, root ->
@@ -200,6 +196,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
             }
         } finally {
             loader?.close()
+            uncachedLoader?.close()
         }
         if (factsByClass.isEmpty()) throw ClassIndexingException("no compiled declarations found; check class roots and build the project")
         val generatedSiblingNames = factsByClass.values.flatMapTo(mutableSetOf(), ClassFacts::generatedSiblingNames)
