@@ -21,7 +21,8 @@ class SnapshotAggregationTest {
         val selected = InputFingerprint("classes", "build/transformed", "b".repeat(64))
         val observed = dev.kartograph.core.ClassTransformObservation(":feature:debug", ":feature:kartographSnapshotDebug",
             "hilt-superclass-v1", listOf(original), listOf(selected),
-            listOf(dev.kartograph.core.TransformedClass("p/App", "a".repeat(64), "b".repeat(64))))
+              listOf(dev.kartograph.core.TransformedClass("p/App", "a".repeat(64), "b".repeat(64))),
+              listOf(InputFingerprint("classes", "external/resources", "c".repeat(64))))
         val prepared = member.copy(snapshot = member.snapshot.copy(provenance = member.snapshot.provenance!!.copy(
             transformations = listOf(observed))), bindings = mapOf("external/raw" to Path.of("/cache/raw")))
         val result = SnapshotAggregation.provenance(listOf(prepared)).transformations.single()
@@ -29,6 +30,7 @@ class SnapshotAggregationTest {
         assertEquals(observed.observerTask, result.observerTask)
         assertEquals(listOf("external/member-2/raw"), result.originalOutputs.map { it.path })
         assertEquals(listOf("feature/build/transformed"), result.selectedOutputs.map { it.path })
+        assertEquals(listOf("external/member-2/resources"), result.passthroughOutputs.map { it.path })
         assertEquals(observed.changedClasses, result.changedClasses)
         assertEquals(mapOf("external/member-2/raw" to Path.of("/cache/raw")), SnapshotAggregation.bindings(listOf(prepared)))
     }

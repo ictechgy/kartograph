@@ -9,8 +9,11 @@ Additional JavaCompile contributors are discovered through the selected public a
 provider's task dependencies in the same project. Each receives its own completed
 source/options/classpath/toolchain/output witness; a Hilt-looking task name or path is
 insufficient. The dependency walk is bounded to 10,000 tasks. Byte-identical selected
-roots keep ordinary witness matching. Unselected resource outputs remain freshness
-inputs and are not added to the transformation inventory. Unknown producer scope or
+roots keep ordinary witness matching. Resource roots merged into a selected artifact
+are recorded separately as `passthroughOutputs` only when every class is present with
+identical bytes. Partial, mutated or overlapping inventories reject capture; no Hilt
+rewrite is permitted for a passthrough class. Unselected resource outputs remain
+freshness inputs outside the observation. Unknown producer scope or
 unsupported compiler inputs still reject capture. An explicit
 `hiltArtifactObservation.set(false)` on the snapshot task keeps original-only capture.
 
@@ -35,7 +38,7 @@ a particular Hilt transform task executed**, nor runtime completeness. The
 ## Compatibility and freshness
 
 Only transformed captures use **nested provenance version 2**, with a separate
-`transformations` array. This is independent of the enclosing plain snapshot version 1
+`transformations` array (including an explicit `passthroughOutputs` list). This is independent of the enclosing plain snapshot version 1
 or compact snapshot version 2. Original BuildWitness documents and compiler evidence
 tokens remain unchanged. Captures without transformations retain provenance version 1.
 Older readers reject provenance version 2. New readers reject version 1 with a
@@ -43,7 +46,7 @@ transformations key, including an empty array, so downgrading cannot silently ig
 the observation. Upgrade consumers together; recapture from supported original inputs
 when an older reader is required.
 
-`verify-snapshot` rechecks original compiler inputs, original outputs, selected outputs,
+`verify-snapshot` rechecks original compiler inputs, original outputs, resource passthroughs, selected outputs,
 both class inventories, recorded deltas and scope. Source/configuration or artifact
 byte changes remain stale. Aggregation rebinds both sets of paths and external slots,
 retaining each observation's member scope. `matched` means content correspondence with

@@ -385,17 +385,20 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val outputs = provenance.witnesses.flatMap { it.outputs }.distinct()
         fun same(left: InputFingerprint, right: InputFingerprint) =
             left.sha256 == right.sha256 && locate(left).toRealPath() == locate(right).toRealPath()
-        // Byte-identical roots keep their ordinary witness. Resource outputs not selected by
-        // PROJECT CLASSES are still freshness inputs, not invented transform participants.
+        // 같은 root는 기존 witness로 검증한다. 합쳐진 resource 클래스는 별도 바이트 복사 관측이다.
         val selected = classes.filter { input -> outputs.none { same(it, input) } }
         val originals = provenance.witnesses.filter { it.compiler in setOf("javac", "kotlin") }
             .flatMap { it.outputs }.distinct().filter { output -> classes.none { same(output, it) } }
         val primary = dev.kartograph.index.HiltClassTransforms.primarySourceNames(provenance.witnesses
             .filter { it.compiler in setOf("javac", "kotlin") }.flatMap { it.inputs }.filter { it.role == "sources" }.map(::locate))
-        val changed = dev.kartograph.index.HiltClassTransforms.verify(originals.map(::locate), selected.map(::locate), primary)
+        val resources = provenance.witnesses.filter { it.compiler == "agp-process-resources" }.flatMap { it.outputs }
+            .distinct().filter { output -> classes.none { same(output, it) } }
+        val included = dev.kartograph.index.HiltClassTransforms.selectPassthroughRoots(selected.map(::locate), resources.map(::locate)).toSet()
+        val passthrough = resources.filter { locate(it) in included }
+        val changed = dev.kartograph.index.HiltClassTransforms.verify(originals.map(::locate), selected.map(::locate), primary, passthrough.map(::locate))
         require(changed.isNotEmpty()) { "selected artifact relocation has no supported Hilt transformation" }
         return provenance.copy(transformations = listOf(dev.kartograph.core.ClassTransformObservation(scope.get(), path,
-            dev.kartograph.index.HiltClassTransforms.POLICY, originals, selected, changed)))
+            dev.kartograph.index.HiltClassTransforms.POLICY, originals, selected, changed, passthrough)))
     }
 
     /** Gradle input으로 선언된 managed 후보 중 완료 receipt가 지목한 문서만 반환한다. */

@@ -63,6 +63,55 @@ class HiltClassTransformsTest {
     }
 
     @Test
+    fun `merged resource roots require separate complete byte identical passthrough`(@TempDir root: Path) {
+        val (raw, selected) = fixture(root)
+        val resources = Files.createDirectories(root.resolve("resources/p")).parent
+        val bytes = type("p/R", "java/lang/Object", "R.java")
+        Files.write(resources.resolve("p/R.class"), bytes)
+        Files.write(selected.resolve("p/R.class"), bytes)
+        val unrelated = Files.createDirectories(root.resolve("unrelated/q")).parent
+        Files.write(unrelated.resolve("q/R.class"), type("q/R", "java/lang/Object", "R.java"))
+        assertEquals(listOf(resources), HiltClassTransforms.selectPassthroughRoots(listOf(selected), listOf(resources, unrelated)))
+        assertFailsWith<IllegalArgumentException> { HiltClassTransforms.verify(listOf(raw), listOf(selected), emptySet()) }
+        val changes = HiltClassTransforms.verify(listOf(raw), listOf(selected), emptySet(), listOf(resources))
+        assertEquals(listOf("p/App"), changes.map { it.name }, "resource copies are not compiler rewrite observations")
+        assertFailsWith<IllegalArgumentException> { HiltClassTransforms.verify(listOf(raw), listOf(selected), emptySet(), listOf(raw)) }
+        assertFailsWith<IllegalArgumentException> { HiltClassTransforms.verify(listOf(raw), listOf(selected), emptySet(), listOf(resources, resources)) }
+        Files.delete(selected.resolve("p/R.class"))
+        assertFailsWith<IllegalArgumentException> { HiltClassTransforms.verify(listOf(raw), listOf(selected), emptySet(), listOf(resources)) }
+        Files.write(selected.resolve("p/R.class"), bytes)
+        Files.writeString(root.resolve("source.java"), "class Source {}")
+        Files.writeString(root.resolve("build.gradle"), "config")
+        Files.writeString(root.resolve("compiler"), "compiler")
+        Files.writeString(root.resolve("witness"), "receipt")
+        Files.writeString(root.resolve("resource-witness"), "resource receipt")
+        fun fp(role: String, name: String) = ContentFingerprint.capture(root, root.resolve(name), role, name)
+        val compiler = BuildWitness("app:debug", "javac", ":compile", listOf(fp("sources", "source.java"),
+            fp("buildConfig", "build.gradle"), fp("compiler", "compiler"), InputFingerprint("options", "options", "a".repeat(64))),
+            listOf(fp("classes", "raw")))
+        val resource = compiler.copy(compiler = "agp-process-resources", artifact = ":resources", outputs = listOf(fp("classes", "resources")))
+        val observation = ClassTransformObservation("app:debug", ":capture", HiltClassTransforms.POLICY,
+            compiler.outputs, listOf(fp("classes", "selected")), changes, resource.outputs)
+        val provenance = SnapshotProvenance(observation.selectedOutputs + listOf(fp("witness", "witness"), fp("witness", "resource-witness")),
+            listOf(compiler, resource), transformations = listOf(observation))
+        assertEquals("matched", ProvenanceVerifier.verify(provenance, root, "app:debug").status)
+        assertEquals("unverified", ProvenanceVerifier.verify(provenance.copy(witnesses =
+            listOf(compiler, resource.copy(compiler = "javac"))), root, "app:debug").status)
+        assertEquals("unverified", ProvenanceVerifier.verify(provenance.copy(witnesses =
+            listOf(compiler, resource.copy(scope = "app:release"))), root, "app:debug").status)
+        Files.write(resources.resolve("p/R.class"), bytes + 0)
+        assertEquals("stale", ProvenanceVerifier.verify(provenance, root, "app:debug").status)
+        Files.write(resources.resolve("p/R.class"), bytes)
+        val reordered = ClassWriter(0).apply { newConst("unused"); ClassReader(bytes).accept(this, 0) }.toByteArray()
+        Files.write(selected.resolve("p/R.class"), reordered)
+        assertFailsWith<IllegalArgumentException> { HiltClassTransforms.verify(listOf(raw), listOf(selected), emptySet(), listOf(resources)) }
+        assertFailsWith<IllegalArgumentException> { HiltClassTransforms.selectPassthroughRoots(listOf(selected), listOf(resources)) }
+        Files.write(selected.resolve("p/R.class"), bytes)
+        Files.write(resources.resolve("p/Extra.class"), type("p/Extra", "java/lang/Object", "Extra.java"))
+        assertFailsWith<IllegalArgumentException> { HiltClassTransforms.selectPassthroughRoots(listOf(selected), listOf(resources)) }
+    }
+
+    @Test
     fun `method changes manual superclass and absent generated outputs cannot be certified`(@TempDir root: Path) {
         val (raw, selected) = fixture(root)
         fun reject() = assertFailsWith<IllegalArgumentException> {

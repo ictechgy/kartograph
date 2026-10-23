@@ -39,6 +39,7 @@ public object BuildWitnessCodec {
     private fun transformationValue(value: ClassTransformObservation): Any = sortedMapOf(
         "scope" to value.scope, "observerTask" to value.observerTask, "policy" to value.policy,
         "originalOutputs" to value.originalOutputs.map(::inputValue), "selectedOutputs" to value.selectedOutputs.map(::inputValue),
+        "passthroughOutputs" to value.passthroughOutputs.map(::inputValue),
         "changedClasses" to value.changedClasses.map { sortedMapOf("name" to it.name,
             "beforeSha256" to it.beforeSha256, "afterSha256" to it.afterSha256) },
     )
@@ -48,7 +49,7 @@ public object BuildWitnessCodec {
             list(map["originalOutputs"]).map(::input), list(map["selectedOutputs"]).map(::input),
             list(map["changedClasses"]).map { obj(it).let { row ->
                 TransformedClass(str(row["name"]), str(row["beforeSha256"]), str(row["afterSha256"]))
-            } })
+            } }, list(map["passthroughOutputs"]).map(::input))
     }
 
     private fun inputValue(input: InputFingerprint): Any = sortedMapOf("role" to input.role, "path" to input.path, "sha256" to input.sha256)

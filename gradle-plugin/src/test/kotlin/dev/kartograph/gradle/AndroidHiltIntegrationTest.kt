@@ -128,6 +128,10 @@ class AndroidHiltIntegrationTest {
         assertTrue(observation.originalOutputs.all { original -> provenance.witnesses.any {
             it.compiler in setOf("javac", "kotlin") && original in it.outputs
         } }, "resource outputs are not silently promoted to compiler transformation inputs")
+        assertTrue(observation.passthroughOutputs.isNotEmpty(), "merged R classes require a distinct resource witness")
+        assertTrue(observation.passthroughOutputs.all { passthrough -> provenance.witnesses.any {
+            it.compiler == "agp-process-resources" && passthrough in it.outputs
+        } })
         assertEquals("matched", ProvenanceVerifier.verify(provenance, root, snapshot.scope, bindings).status)
         fun recordedPath(path: String) = (bindings[path] ?: root.resolve(path)).toRealPath()
         val capturedRoots = provenance.inputs.filter { it.role == "classes" }.map { recordedPath(it.path) }.toSet()
@@ -160,7 +164,12 @@ class AndroidHiltIntegrationTest {
             if (Files.isDirectory(artifact)) artifact.resolve("$name.class").takeIf(Files::isRegularFile)
             else JarFile(artifact.toFile()).use { jar -> if (jar.getJarEntry("$name.class") != null) artifact else null }
         }
-        for (file in listOf(artifactContaining(raw, "p/App"), artifactContaining(graphRoots, "p/App"),
+        val extraCompiler = provenance.witnesses.single { it.artifact == ":hiltJavaCompileDebug" }
+        val extraRoot = recordedPath(extraCompiler.outputs.single().path)
+        val extraClass = Files.walk(extraRoot).use { paths -> paths.filter { it.toString().endsWith(".class") }.findFirst().orElseThrow() }
+        val extraSource = recordedPath(extraCompiler.inputs.first { it.role == "sources" }.path)
+        for (file in listOf(artifactContaining(raw, "p/App"), artifactContaining(graphRoots, "p/App"), extraClass, extraSource,
+            recordedPath(observation.passthroughOutputs.first().path),
             root.resolve("src/main/java/p/ProbeService.java"), root.resolve("build.gradle"))) {
             val original = Files.readAllBytes(file)
             try {

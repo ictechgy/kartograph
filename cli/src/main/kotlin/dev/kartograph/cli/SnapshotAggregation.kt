@@ -51,7 +51,8 @@ internal object SnapshotAggregation {
         memberScopes = members.map { requireNotNull(it.snapshot.scope) },
         transformations = members.flatMap { member -> requireNotNull(member.snapshot.provenance).transformations.map { observed ->
             observed.copy(originalOutputs = observed.originalOutputs.map { member.rebase(it) },
-                selectedOutputs = observed.selectedOutputs.map { member.rebase(it) })
+                selectedOutputs = observed.selectedOutputs.map { member.rebase(it) },
+                passthroughOutputs = observed.passthroughOutputs.map { member.rebase(it) })
         } },
     )
 

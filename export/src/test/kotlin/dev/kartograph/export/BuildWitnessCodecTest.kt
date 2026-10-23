@@ -19,7 +19,8 @@ class BuildWitnessCodecTest {
         val selected = InputFingerprint("classes", "selected", "c".repeat(64))
         val observation = dev.kartograph.core.ClassTransformObservation("sample:main", ":snapshot",
             "hilt-superclass-v1", witness.outputs, listOf(selected),
-            listOf(dev.kartograph.core.TransformedClass("p/App", "b".repeat(64), "c".repeat(64))))
+              listOf(dev.kartograph.core.TransformedClass("p/App", "b".repeat(64), "c".repeat(64))),
+              listOf(InputFingerprint("classes", "resources", "d".repeat(64))))
         val provenance = SnapshotProvenance(listOf(selected), listOf(witness), transformations = listOf(observation))
         val snapshot = QuerySnapshot(CodeGraph(emptyList(), emptyList()), emptyList(), emptyList(), provenance = provenance)
         for (compact in listOf(false, true)) {

@@ -8,6 +8,7 @@ public data class ClassTransformObservation(
     val originalOutputs: List<InputFingerprint>,
     val selectedOutputs: List<InputFingerprint>,
     val changedClasses: List<TransformedClass>,
+    val passthroughOutputs: List<InputFingerprint> = emptyList(),
 ) {
     init {
         require(listOf(scope, observerTask).all { it.length in 1..200 && Regex("[A-Za-z0-9_.:-]+").matches(it) }) {
@@ -15,8 +16,8 @@ public data class ClassTransformObservation(
         }
         require(policy == "hilt-superclass-v1") { "unsupported class transformation policy" }
         require(originalOutputs.isNotEmpty() && selectedOutputs.isNotEmpty() &&
-            (originalOutputs + selectedOutputs).all { it.role == "classes" }) { "invalid artifact observation roots" }
-        require(originalOutputs.map { it.path }.distinct().size == originalOutputs.size &&
+            (originalOutputs + selectedOutputs + passthroughOutputs).all { it.role == "classes" }) { "invalid artifact observation roots" }
+        require((originalOutputs + passthroughOutputs).map { it.path }.distinct().size == originalOutputs.size + passthroughOutputs.size &&
             selectedOutputs.map { it.path }.distinct().size == selectedOutputs.size) { "duplicate artifact observation roots" }
         require(changedClasses.size in 1..100_000 && changedClasses.map { it.name }.distinct().size == changedClasses.size) {
             "invalid changed class inventory"

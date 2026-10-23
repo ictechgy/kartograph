@@ -29,12 +29,23 @@ public object HiltClassTransforms {
     private const val MAX_TOTAL_BYTES = 256L * 1024 * 1024
 
     /** 원본과 선택된 class 목록이 같고 허용된 재작성만 있으면 원시 변경 목록을 반환한다. */
-    public fun verify(originalRoots: List<Path>, selectedRoots: List<Path>, primarySources: Set<String>): List<TransformedClass> {
+    public fun verify(originalRoots: List<Path>, selectedRoots: List<Path>, primarySources: Set<String>,
+        passthroughRoots: List<Path> = emptyList()): List<TransformedClass> {
         val original = readClasses(originalRoots)
+        val passthrough = readClasses(passthroughRoots)
+        require(original.keys.intersect(passthrough.keys).isEmpty()) { "duplicate compiler and passthrough class" }
+        require(original.size + passthrough.size <= MAX_CLASSES &&
+            original.values.sumOf { it.size.toLong() } + passthrough.values.sumOf { it.size.toLong() } <= MAX_TOTAL_BYTES) {
+            "combined original artifact inventory exceeds budget"
+        }
         val selected = readClasses(selectedRoots)
-        require(original.isNotEmpty() && original.keys == selected.keys) {
-            "transformed class inventory differs from compiler outputs: original=${original.size}, selected=${selected.size}; " +
-                "missing=${(original.keys - selected.keys).sorted().take(8)}; extra=${(selected.keys - original.keys).sorted().take(8)}"
+        val expected = original.keys + passthrough.keys
+        require(original.isNotEmpty() && expected == selected.keys) {
+            "transformed class inventory differs from witnessed outputs: original=${original.size}, passthrough=${passthrough.size}, selected=${selected.size}; " +
+                "missing=${(expected - selected.keys).sorted().take(8)}; extra=${(selected.keys - expected).sorted().take(8)}"
+        }
+        require(passthrough.all { (name, bytes) -> bytes.contentEquals(selected.getValue(name)) }) {
+            "resource passthrough class bytes changed"
         }
         return original.keys.sorted().mapNotNull { name ->
             val before = original.getValue(name)
@@ -58,6 +69,20 @@ public object HiltClassTransforms {
                 }
             }
             TransformedClass(name, digest(before), digest(after))
+        }
+    }
+
+    /** 선택 artifact에 온전히 같은 바이트로 포함된 resource root만 고른다. 일부만 같으면 거부한다. */
+    public fun selectPassthroughRoots(selectedRoots: List<Path>, candidates: List<Path>): List<Path> {
+        val selected = readClasses(selectedRoots)
+        return candidates.filter { path ->
+            val classes = readClasses(listOf(path))
+            if (classes.keys.none { it in selected }) false else {
+                require(classes.all { (name, bytes) -> selected[name]?.contentEquals(bytes) == true }) {
+                    "selected resource passthrough is partial or changed"
+                }
+                true
+            }
         }
     }
 
