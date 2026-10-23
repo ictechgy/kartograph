@@ -24,7 +24,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
-import org.gradle.testkit.runner.UnexpectedBuildFailure
+import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.io.TempDir
 
 /**
@@ -33,10 +33,12 @@ import org.junit.jupiter.api.io.TempDir
  * 모든 Hilt 생성물의 도달성 또는 사내 앱 정확도를 검증하는 fixture는 아니다.
  */
 class AndroidHiltIntegrationTest {
+    private val timings = mutableListOf<Map<String, Any>>()
+
     @Test
     fun `actual Hilt transform preserves distinct compiler and variant inputs`(@TempDir root: Path) {
         fixture(root)
-        val built = runner(root, "captureHiltInputs").build()
+        val built = measured("fixture-build-transform-graph-dead") { runner(root, "captureHiltInputs").build() }
         for (task in listOf("compileDebugJavaWithJavac", "kartographGraphDebug", "kartographDeadDebug", "captureHiltInputs")) {
             assertEquals(TaskOutcome.SUCCESS, built.task(":$task")?.outcome, task)
         }
@@ -100,29 +102,36 @@ class AndroidHiltIntegrationTest {
         assertSnapshotBoundary(root, raw, graphRoots)
     }
 
-    /** 변환 witness 미지원 시 원래 javac와 변환 artifact를 섞지 않고 구체적인 입력 불일치로 거부한다. */
+    /** 원본 compiler 지문을 바꾸지 않은 채 실제 선택 artifact의 snapshot 소비까지 검사한다. */
     private fun assertSnapshotBoundary(root: Path, raw: List<Path>, graphRoots: List<Path>) {
         val snapshotFile = root.resolve("build/reports/kartograph/debug-snapshot.json")
         assertFalse(Files.exists(snapshotFile))
-        val failure = try {
-            runner(root, "kartographSnapshotDebug").build()
-            null
-        } catch (error: UnexpectedBuildFailure) {
-            error.buildResult
+        val failure = measured("snapshot-refusal-control") {
+            runner(root, "kartographSnapshotDebug", "-PdisableHiltObservation=true").buildAndFail()
         }
-        if (failure != null) {
-            assertEquals(TaskOutcome.FAILED, failure.task(":kartographSnapshotDebug")?.outcome)
-            assertTrue(failure.output.contains("missing compiler output for :compileDebugJavaWithJavac"), failure.output)
-            assertFalse(Files.exists(snapshotFile), "a rejected transform capture must not publish a usable snapshot")
-            println("hilt-native snapshot=refused reason=compiler-output-not-in-selected-variant-artifacts")
-            return
-        }
-        // 향후 별도 transform witness가 지원되어도 원래 javac 그래프로 조용히 돌아가는 성공은 허용하지 않는다.
+        assertTrue(failure.output.contains("missing compiler output for :compileDebugJavaWithJavac"), failure.output)
+        assertFalse(Files.exists(snapshotFile), "a rejected capture must not publish a usable snapshot")
+        val built = measured("snapshot-capture") { runner(root, "kartographSnapshotDebug").build() }
+        assertEquals(TaskOutcome.SUCCESS, built.task(":kartographSnapshotDebug")?.outcome)
         val text = Files.readString(snapshotFile)
         val snapshot = QuerySnapshotCodec.parse(text)
         val bindings = ExternalInputBindingsCodec.parse(Files.readString(root.resolve("build/kartograph/debug-input-bindings.json")))
             .mapValues { Path.of(it.value) }
         val provenance = requireNotNull(snapshot.provenance)
+        assertTrue(provenance.witnesses.any { it.artifact == ":hiltJavaCompileDebug" && it.compiler == "javac" },
+            "the actual selected artifact's additional compiler must have its own completed input/output witness")
+        assertFalse(provenance.witnesses.any { it.artifact.contains("Release") }, "unselected variants are not witnesses")
+        val observation = provenance.transformations.single()
+        assertEquals(snapshot.scope, observation.scope)
+        assertEquals(":kartographSnapshotDebug", observation.observerTask)
+        assertTrue(observation.changedClasses.map { it.name }.containsAll(listOf("p/App", "p/ProbeService")))
+        assertTrue(observation.originalOutputs.all { original -> provenance.witnesses.any {
+            it.compiler in setOf("javac", "kotlin") && original in it.outputs
+        } }, "resource outputs are not silently promoted to compiler transformation inputs")
+        assertTrue(observation.passthroughOutputs.isNotEmpty(), "merged R classes require a distinct resource witness")
+        assertTrue(observation.passthroughOutputs.all { passthrough -> provenance.witnesses.any {
+            it.compiler == "agp-process-resources" && passthrough in it.outputs
+        } })
         assertEquals("matched", ProvenanceVerifier.verify(provenance, root, snapshot.scope, bindings).status)
         fun recordedPath(path: String) = (bindings[path] ?: root.resolve(path)).toRealPath()
         val capturedRoots = provenance.inputs.filter { it.role == "classes" }.map { recordedPath(it.path) }.toSet()
@@ -134,7 +143,55 @@ class AndroidHiltIntegrationTest {
         assertTrue("p/Hilt_ProbeService" in snapshot.graph.nodes.getValue(service).supertypes)
         assertFalse(InputHint.HILT_TRANSFORM_NOT_OBSERVED in InputHints.detect(0, 0, 0, snapshot.graph))
         assertFalse(text.contains(root.toString()))
-        println("hilt-native snapshot=matched transformed-superclass-preserved=true")
+        val saved = arrayOf("--graph-file", snapshotFile.toString())
+        val fresh = saved + arrayOf("--project", root.toString(), "--input-bindings",
+            root.resolve("build/kartograph/debug-input-bindings.json").toString())
+        assertTrue(cli(root, 0, "verify-snapshot", *fresh).contains("\"matched\""))
+        val wrongScope = cli(root, 1, "verify-snapshot", *fresh, "--scope", "::release")
+        assertTrue(wrongScope.contains("snapshot-scope-mismatch"), wrongScope)
+        val query = cli(root, 0, "query", service.value, *saved, "--depth", "2")
+        val impact = cli(root, 0, "impact", "class:p/Hilt_ProbeService", *saved)
+        val reach = cli(root, 0, "reach", service.value, *fresh)
+        for (document in listOf(query, impact, reach)) {
+            assertTrue(document.contains("hilt-artifact-byte-relation"), document)
+            assertTrue(document.contains("class:p/ProbeService"), document)
+            assertTrue(document.contains("class:p/Hilt_ProbeService"), document)
+        }
+        // 변환된 superclass 간선에 원본 compiler가 관측하지 않은 exact source 사실을 붙이지 않는다.
+        assertFalse(snapshot.graph.compilerCallPositionsCaptured)
+        assertTrue(snapshot.graph.locatedCompilerReferences.isEmpty())
+        assertEquals(null, snapshot.graph.compilerSourceUseEvidence)
+        fun artifactContaining(roots: List<Path>, name: String): Path = roots.firstNotNullOf { artifact ->
+            if (Files.isDirectory(artifact)) artifact.resolve("$name.class").takeIf(Files::isRegularFile)
+            else JarFile(artifact.toFile()).use { jar -> if (jar.getJarEntry("$name.class") != null) artifact else null }
+        }
+        val extraCompiler = provenance.witnesses.single { it.artifact == ":hiltJavaCompileDebug" }
+        val extraRoot = recordedPath(extraCompiler.outputs.single().path)
+        val extraClass = Files.walk(extraRoot).use { paths -> paths.filter { it.toString().endsWith(".class") }.findFirst().orElseThrow() }
+        val extraSource = recordedPath(extraCompiler.inputs.first { it.role == "sources" }.path)
+        for (file in listOf(artifactContaining(raw, "p/App"), artifactContaining(graphRoots, "p/App"), extraClass, extraSource,
+            recordedPath(observation.passthroughOutputs.first().path),
+            root.resolve("src/main/java/p/ProbeService.java"), root.resolve("build.gradle"))) {
+            val original = Files.readAllBytes(file)
+            try {
+                Files.write(file, original + 0)
+                assertTrue(cli(root, 1, "verify-snapshot", *fresh).contains("\"stale\""))
+            } finally { Files.write(file, original) }
+        }
+        val repeated = measured("snapshot-configuration-cache-reuse") { runner(root, "kartographSnapshotDebug").build() }
+        assertTrue(repeated.output.contains("Configuration cache entry reused"), repeated.output)
+        val reused = QuerySnapshotCodec.parse(Files.readString(snapshotFile))
+        assertEquals(observation, reused.provenance!!.transformations.single())
+        assertTrue(cli(root, 0, "verify-snapshot", *fresh).contains("\"matched\""))
+        // portable 문서만 보존한다. 로컬 external bindings와 임시 프로젝트 경로는 게시하지 않는다.
+        val evidence = Files.createDirectories(Path.of("build/reports/hilt-transform"))
+        for (compact in listOf(false, true)) Files.writeString(evidence.resolve(
+            if (compact) "hilt-snapshot-compact.json" else "hilt-snapshot-plain.json"), QuerySnapshotCodec.render(reused, compact))
+        Files.writeString(evidence.resolve("observations.json"), McpJsonCodec.render(mapOf(
+            "format" to "hilt-artifact-test", "version" to 1, "agp" to "9.3.2", "hilt" to "2.60.1",
+            "jdk" to Runtime.version().feature(), "timings" to timings,
+            "scope" to "Synthetic build/transform/graph/dead preparation and CLI startup costs included in labeled observations; not a benchmark or private-app measurement")))
+        println("hilt-native snapshot=matched query=passed impact=passed reach=passed stale-controls=passed config-cache=passed")
     }
 
     private fun fixture(root: Path) {
@@ -184,6 +241,9 @@ class AndroidHiltIntegrationTest {
                 snapshotKotlinToolchain = javaToolchains.launcherFor {
                     languageVersion = JavaLanguageVersion.of(${Runtime.version().feature()})
                 }
+            }
+            if (providers.gradleProperty('disableHiltObservation').isPresent()) {
+                tasks.withType(dev.kartograph.gradle.KartographSnapshotTask).configureEach { hiltArtifactObservation = false }
             }
             tasks.withType(Test).configureEach { doFirst { throw new GradleException('capture must not run app tests') } }
 
@@ -261,6 +321,33 @@ class AndroidHiltIntegrationTest {
 
     private fun runner(root: Path, vararg tasks: String) = GradleRunner.create().withProjectDir(root.toFile())
         .withArguments(tasks.toList() + listOf("--stacktrace", "--configuration-cache"))
+
+    /** 공개 CLI를 별도 JVM에서 실행하며 pipe 정체와 무한 대기를 피한다. */
+    private fun cli(root: Path, expected: Int, vararg arguments: String): String = measured("cli-${arguments.first()}-expected-$expected") {
+        val output = Files.createTempFile(root, "hilt-cli-", ".out")
+        val error = Files.createTempFile(root, "hilt-cli-", ".err")
+        val process = ProcessBuilder(listOf(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+            "-cp", System.getProperty("java.class.path"), "dev.kartograph.cli.MainKt") + arguments)
+            .redirectOutput(output.toFile()).redirectError(error.toFile()).start()
+        try {
+            assertTrue(process.waitFor(90, TimeUnit.SECONDS), "snapshot CLI consumer exceeded its test budget")
+            assertEquals(expected, process.exitValue(), Files.readString(error))
+            Files.readString(output)
+        } finally {
+            if (process.isAlive) process.destroyForcibly()
+            Files.deleteIfExists(output)
+            Files.deleteIfExists(error)
+        }
+    }
+
+    private fun <T> measured(phase: String, action: () -> T): T {
+        val start = System.nanoTime()
+        try { return action() } finally {
+            val elapsed = System.nanoTime() - start
+            timings += mapOf("phase" to phase, "elapsedNanos" to elapsed)
+            println("hilt-native timing phase=$phase elapsedNanos=$elapsed")
+        }
+    }
 
     private fun document(path: Path) = McpJsonCodec.parse(Files.readString(path)) as Map<*, *>
     private fun rows(document: Map<*, *>, field: String) = (document[field] as List<*>).map { it as Map<*, *> }

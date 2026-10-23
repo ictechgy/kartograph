@@ -39,6 +39,10 @@ documents owner-conditioned framework callbacks and the bounded mapper chain.
 XML `requireAll`, runtime overload/variant selection and unused attributes are not
 claimed as resolved. Name suffixes alone do not establish generated provenance.
 
+Hilt post-transform snapshots use a separate bounded artifact observation while
+preserving original compiler witnesses. [The migration and validation boundary](HILT-SNAPSHOT-OBSERVATIONS.md)
+distinguishes usable selected-artifact snapshots from exact compiler source evidence.
+
 An unreadable source directory no longer discards readable sibling mappings.
 `unreadable-source-directories` remains in the result; a unique observed file may
 have an unseen namesake in the omitted directory. Excluded build directories are

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 공개 fixture의 호출 스택만 관측한다. 환경 변수·JVM 인자·프로세스 목록은 수집하지 않는다. -->
+<configuration version="2.0" label="Kartograph bounded index samples" description="Diagnostic samples, never performance acceptance" provider="Kartograph">
+  <event name="jdk.ExecutionSample">
+    <setting name="enabled">true</setting>
+    <setting name="period">10 ms</setting>
+  </event>
+  <event name="jdk.ObjectAllocationSample">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">true</setting>
+    <setting name="throttle">150/s</setting>
+  </event>
+</configuration>

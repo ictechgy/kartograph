@@ -49,6 +49,8 @@ jobs:
             build/reports/databinding-processor-test.json
             gradle-plugin/build/test-results/test/TEST-dev.kartograph.gradle.AndroidDataBindingIntegrationTest.xml
             gradle-plugin/build/test-results/test/TEST-dev.kartograph.gradle.AndroidHiltIntegrationTest.xml
+            gradle-plugin/build/reports/hilt-transform/hilt-snapshot-*.json
+            gradle-plugin/build/reports/hilt-transform/observations.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Preserve POSIX permission evidence
@@ -116,6 +118,7 @@ jobs:
           path: |
             build/reports/index-cost/result.json
             build/reports/index-cost/raw/*.gz
+            build/reports/index-cost/jfr/*.jfr
           if-no-files-found: error
           retention-days: 14
       - name: Verify agent query and bridge contracts

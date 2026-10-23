@@ -18,8 +18,8 @@ SPEC.loader.exec_module(probe)
 
 
 class IndexCostTest(unittest.TestCase):
-    def test_baseline_is_the_exact_pr_base(self):
-        self.assertEqual("bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1", probe.SOURCE_BASELINE)
+    def test_baseline_is_the_exact_preoptimization_product(self):
+        self.assertEqual("33f8ce1b15af5be6dc01573e1209017cb1999f1d", probe.SOURCE_BASELINE)
         self.assertEqual(probe.SOURCE_BASELINE, probe.BASELINE)
 
     def test_baseline_metadata_update_cannot_change_executable_sources(self):
@@ -80,25 +80,52 @@ class IndexCostTest(unittest.TestCase):
         result = {"exit": 0, "stdout": b"ok", "stderr": b""}
         self.assertTrue(probe.successful_pair(result, result))
 
-    def test_only_exact_pinned_dead_contract_expansion_is_accepted(self):
-        baseline, candidate = probe.expected_dead_outputs(20459)
-        self.assertEqual("a7fa37f3b32ca0fc1af67ebf197ddab2448414105132deb6494c08fa693a97b1", probe.digest(baseline))
-        left = dict(exit=0, stdout=baseline, stderr=b"")
-        right = dict(exit=0, stdout=candidate, stderr=b"")
-        for command in ("dead", "dead_private"):
-            self.assertTrue(probe.expected_dead_contract_delta(command, left, right, 20459))
-            self.assertFalse(probe.equivalent(left, right))
-            for altered in (left, {**right, "stdout": candidate + b"extra\n"},
-                            {**right, "stdout": candidate.split(b"\n", 1)[1]},
-                            {**right, "stdout": candidate + candidate.splitlines(keepends=True)[0]},
-                            {**right, "stdout": candidate.replace(b"20459", b"20458")},
-                            {**right, "stdout": candidate.replace(b"\n", b"\r\n")},
-                            {**right, "exit": 2}, {**right, "stderr": b"warning"}):
-                self.assertFalse(probe.expected_dead_contract_delta(command, left, altered, 20459))
-            self.assertFalse(probe.expected_dead_contract_delta(command, {**left, "stdout": baseline + b"extra"}, right, 20459))
-        self.assertFalse(probe.expected_dead_contract_delta("graph", left, right, 20459))
-        with mock.patch.object(probe, "BASELINE", "different"):
-            self.assertFalse(probe.expected_dead_contract_delta("dead", left, right, 20459))
+    def test_semantic_comparison_preserves_engine_and_rejects_fact_or_graph_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            outputs = {arm: Path(temporary) / arm for arm in ("baseline", "candidate")}
+            facts = {"format": "class-facts-v10-payload-sha256", "engine": "a" * 64,
+                     "payloads": {"c" * 64: "d" * 64}}
+            graphs = {name: {"bytes": 100, "sha256": "e" * 64} for name in ("json", "ndjson")}
+            for arm, directory in outputs.items():
+                directory.mkdir()
+                (directory / "raw-facts.json").write_text(json.dumps({**facts, "engine": ("a" if arm == "baseline" else "b") * 64}))
+                (directory / "graphs.json").write_text(json.dumps(graphs))
+            report = {}
+            probe.compare_semantic_outputs(outputs, report)
+            self.assertTrue(report["semantic"]["enginesDiffer"])
+            self.assertEqual("a" * 64, report["semantic"]["arms"]["baseline"]["engine"])
+            candidate = outputs["candidate"]
+            for name in ("json", "ndjson"):
+                changed = {**graphs, name: {"bytes": 100, "sha256": "f" * 64}}
+                (candidate / "graphs.json").write_text(json.dumps(changed))
+                with self.assertRaisesRegex(probe.DiagnosticError, "semantic-graph-or-raw-payload-mismatch"):
+                    probe.compare_semantic_outputs(outputs, {})
+                (candidate / "graphs.json").write_text(json.dumps(graphs))
+            for document, reason in (
+                ({**facts, "engine": "b" * 64, "payloads": {"c" * 64: "e" * 64}}, "semantic-graph-or-raw-payload-mismatch"),
+                (facts, "semantic-engine-did-not-change"),
+                ({**facts, "payloads": {}}, "invalid-semantic-facts"),
+                ({**facts, "engine": "unknown"}, "invalid-semantic-facts"),
+            ):
+                (candidate / "raw-facts.json").write_text(json.dumps(document))
+                with self.assertRaisesRegex(probe.DiagnosticError, reason):
+                    probe.compare_semantic_outputs(outputs, {})
+
+    def test_exact_dead_pair_rejects_an_added_diagnostic(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            commands = {arm: probe.cli_commands(arm, [root / "classes"], root)
+                        for arm in ("baseline", "candidate")}
+            def execute(arguments, cwd, env, **kwargs):
+                arm, command = arguments[:2]
+                body = b"same\n" + (b"extra diagnostic\n" if arm == "candidate" and command == "dead" else b"")
+                return {"phase": kwargs["phase"], "exit": 0, "stdout": body, "stderr": b"", "wallNanos": 1, "rss": {}}
+            report = {}
+            with mock.patch.object(probe, "run", side_effect=execute), mock.patch.object(probe, "host_load_snapshot", return_value={}):
+                with self.assertRaisesRegex(probe.DiagnosticError, "cli-byte-mismatch-or-unsuccessful-exit"):
+                    probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(root / "raw"))
+            self.assertTrue(all(not row["contractAccepted"] and not row["expectedContractDelta"]
+                                for row in report["cli"] if row["command"] in ("dead", "dead_private")))
 
     def test_alternation_is_three_samples_per_profile_and_arm(self):
         rows = probe.schedule()
@@ -119,7 +146,7 @@ class IndexCostTest(unittest.TestCase):
             def execute(arguments, cwd, env, **kwargs):
                 calls.append(arguments[0])
                 arm, name = arguments[:2]
-                body = probe.expected_dead_outputs(10)[arm == "candidate"] if name == "dead" else b"a\r\nb\x00"
+                body = b"a\r\nb\x00"
                 # 느린 관측도 버리지 않고 중앙값과 전체 원시 값에 함께 남긴다.
                 wall = 100_000_000_000 if len(calls) == 2 else 1_000_000_000
                 return {"phase": kwargs["phase"], "exit": 0, "stdout": body, "stderr": b"",
@@ -162,7 +189,7 @@ class IndexCostTest(unittest.TestCase):
                 nonlocal count
                 count += 1
                 arm, name = arguments[:2]
-                body = probe.expected_dead_outputs(10)[arm == "candidate"] if name == "dead" else b"x"
+                body = b"x"
                 return {"phase": kwargs["phase"], "exit": 1 if count == 35 else 0,
                         "stdout": body, "stderr": b"", "wallNanos": 1, "rss": {}}
             report = {}
@@ -291,6 +318,66 @@ class IndexCostTest(unittest.TestCase):
             with self.assertRaisesRegex(probe.DiagnosticError, "missing-candidate-distribution"):
                 probe.experiment(root, root, {"JAVA_HOME": str(jdk)}, {})
 
+    def test_jfr_summary_preserves_samples_weights_and_recursive_frame_semantics(self):
+        def frame(owner, method):
+            return {"method": {"type": {"name": owner}, "name": method}}
+        frames = [frame("java/util/HashMap", "put"), frame("dev/kartograph/index/Parser", "parse"),
+                  frame("dev/kartograph/index/Parser", "parse"), frame("dev/kartograph/index/Index", "index")]
+        events = [{"type": "jdk.ExecutionSample", "values": {"stackTrace": {"frames": frames}}},
+                  {"type": "jdk.ObjectAllocationSample", "values": {"weight": 4096, "stackTrace": {"frames": frames}}},
+                  {"type": "jdk.ObjectAllocationSample", "values": {"weight": 20, "stackTrace": None}}]
+        result = probe.summarize_jfr(json.dumps({"recording": {"events": events}}))
+        self.assertEqual(2, result["jdk.ObjectAllocationSample"]["events"])
+        self.assertEqual(4116, result["jdk.ObjectAllocationSample"]["weight"])
+        self.assertEqual([("dev/kartograph/index/Parser.parse", 4096)], result["jdk.ObjectAllocationSample"]["nearest"])
+        self.assertEqual({"dev/kartograph/index/Parser.parse": 4096, "dev/kartograph/index/Index.index": 4096},
+                         dict(result["jdk.ObjectAllocationSample"]["inclusive"]))
+        for changed in [{"type": "jdk.InitialEnvironmentVariable", "values": {}},
+                        {"type": "jdk.ObjectAllocationSample", "values": {"weight": -1}},
+                        {"type": "jdk.ObjectAllocationSample", "values": {"weight": True}},
+                        {"type": "jdk.ExecutionSample", "values": {"stackTrace": {"frames": [frame("dev/kartograph/private\nvalue", "run")]}}}]:
+            with self.assertRaisesRegex(probe.DiagnosticError, "invalid-jfr-events"):
+                probe.summarize_jfr(json.dumps({"recording": {"events": [changed]}}))
+
+    def test_jfr_unexpected_event_refuses_before_public_copy(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = root / "samples.jfc"
+            config.write_text("<configuration/>")
+            jdk = root / "jdk"
+            tool = jdk / "bin" / ("jfr.exe" if os.name == "nt" else "jfr")
+            tool.parent.mkdir(parents=True)
+            tool.write_bytes(b"fixture tool identity")
+            expected = {"exit": 0, "stdout": b"ok", "stderr": b""}
+            def execute(arguments, cwd, env, **kwargs):
+                if kwargs["phase"] == "jfr-candidate":
+                    (cwd / "capture.jfr").write_bytes(b"fixture recording")
+                    return expected
+                return {"stdout": b"jdk.ExecutionSample 2 100\njdk.InitialEnvironmentVariable 1 80\n"}
+            with mock.patch.object(probe, "successful", side_effect=execute):
+                with self.assertRaisesRegex(probe.DiagnosticError, "unexpected-jfr-event-type"):
+                    probe.capture_jfr(jdk, ["Fixture"], {}, root / "work", root / "public", config, expected)
+            self.assertFalse((root / "public").exists())
+
+    def test_real_jfr_capture_has_only_allowed_events_and_unchanged_output(self):
+        # 설치된 JDK의 실제 recording/summary/print를 검증한다. 작은 fixture는 성능 근거가 아니다.
+        java_home = Path(os.environ["JAVA_HOME"]).resolve(strict=True)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "Sample.java"
+            source.write_text('package dev.kartograph.fixture; public class Sample { '
+                'static volatile Object value; public static void main(String[] args) { '
+                'long until=System.nanoTime()+700000000L; while(System.nanoTime()<until) '
+                '{ value=new byte[1024]; } System.out.print("fixture-ok"); }}')
+            probe.successful([java_home / "bin/javac", "-d", root, source], root, dict(os.environ))
+            report = probe.capture_jfr(java_home, ["-Xmx64m", "-cp", str(root), "dev.kartograph.fixture.Sample"],
+                dict(os.environ), root / "work", root / "public", ROOT / "Scripts/IndexCostCapture.jfc",
+                {"exit": 0, "stdout": b"fixture-ok", "stderr": b""})
+            self.assertTrue(report["outputMatchesUnprofiledCandidate"])
+            self.assertGreater(sum(row["events"] for row in report["samples"].values()), 0)
+            self.assertGreater(report["recording"]["size"], 0)
+            self.assertLessEqual(report["recording"]["size"], probe.JFR_LIMIT)
+
     def test_real_java_probe_against_installed_distribution(self):
         # CI의 선행 installDist/JDK가 없으면 skip 대신 실패한다.
         java_home = Path(os.environ["JAVA_HOME"]).resolve(strict=True)
@@ -323,6 +410,34 @@ class IndexCostTest(unittest.TestCase):
                     altered = {**value, key: invalid}
                     with self.assertRaisesRegex(probe.DiagnosticError, "invalid-probe-output"):
                         probe.validate_probe({**result, "stdout": json.dumps(altered).encode()}, profile)
+
+    def test_real_semantic_probe_consumes_cache_and_detects_raw_method_changes(self):
+        java_home = Path(os.environ["JAVA_HOME"]).resolve(strict=True)
+        distribution = ROOT / "cli/build/install/kartograph"
+        self.assertTrue((distribution / "lib").is_dir())
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            classes = root / "classes"
+            classes.mkdir()
+            subprocess.run([java_home / "bin/javac", "-encoding", "UTF-8", "-cp", str(distribution / "lib/*"),
+                            "-d", root, ROOT / "Scripts/IndexEquivalenceProbe.java"], check=True, capture_output=True, timeout=30)
+            documents = []
+            for label in ("before", "after"):
+                source = root / "Tiny.java"
+                source.write_text('public final class Tiny { public static String value() { return "' + label + '"; } }\n')
+                subprocess.run([java_home / "bin/javac", "-g", "-d", classes, source], check=True, capture_output=True, timeout=30)
+                output = root / label
+                result = subprocess.run([java_home / "bin/java", "-cp", str(root) + os.pathsep + str(distribution / "lib/*"),
+                                         "IndexEquivalenceProbe", output, classes], check=True, capture_output=True, timeout=30)
+                self.assertEqual({"classes": 1, "cacheHits": 1}, json.loads(result.stdout))
+                facts = json.loads((output / "raw-facts.json").read_bytes())
+                self.assertEqual(1, len(facts["payloads"]))
+                graphs = json.loads((output / "graphs.json").read_bytes())
+                self.assertEqual({"json", "ndjson"}, set(graphs))
+                self.assertTrue(all(row["bytes"] > 0 and len(row["sha256"]) == 64 for row in graphs.values()))
+                documents.append(facts)
+            self.assertEqual(documents[0]["engine"], documents[1]["engine"])
+            self.assertNotEqual(list(documents[0]["payloads"].values()), list(documents[1]["payloads"].values()))
 
 
 if __name__ == "__main__":
