@@ -97,7 +97,7 @@ internal object TraversalCommand {
         val graphFile = values["--graph-file"]?.single() ?: return null.also { usage(error, "provide exactly one --graph-file") }
         val project = projectPath(values["--project"]?.single(), error) ?: return null
         val limit = SnapshotFiles.limit(values["--snapshot-max-mib"].orEmpty())
-            ?: return null.also { usage(error, "--snapshot-max-mib must be one integer from 1 to 128") }
+            ?: return null.also { usage(error, "--snapshot-max-mib must be one integer from 1 to 1024") }
         val depth = values["--depth"]?.single()?.let { it.toIntOrNull() ?: 0 } ?: LanguageTraversal.MAX_DEPTH
         val maxReached = values["--max-reached"]?.single()?.let { it.toIntOrNull() ?: 0 } ?: LanguageTraversal.MAX_REACHED
         if (depth !in 1..LanguageTraversal.MAX_DEPTH || maxReached !in 1..LanguageTraversal.MAX_REACHED) {
@@ -237,7 +237,7 @@ internal object TraversalCommand {
           --revision <rev>         source revision to record; must equal the snapshot's revision label when it has one.
                                    Default: the snapshot's label, else the git HEAD when the project directory has no
                                    uncommitted or untracked changes, else omitted
-          --snapshot-max-mib <n>   snapshot read maximum in MiB, 1..128 (default 64)
+          --snapshot-max-mib <n>   snapshot read maximum in MiB, 1..1024 (default 64)
           --include-tests          also traverse test-source declarations (src/test, src/androidTest, src/testFixtures, ...)
           --input-bindings <file>  local input bindings written with the snapshot (Gradle plugin or `snapshot merge`) so
                                    inputs outside --project can be verified, as in routes

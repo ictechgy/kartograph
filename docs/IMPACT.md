@@ -7,6 +7,42 @@ AI 클라이언트에서는 [MCP 서버](MCP.md)의 `query_symbol`, `impact`, `f
 
 ## 수정 전에 조사
 
+### Git 변경과 snapshot 신선도를 한 번에 조사
+
+기존 한쪽 snapshot `impact`는 그대로 유지한다. 새 opt-in Git 모드는 실제 base/head 경로와
+before/current 내용 검증을 같은 응답에 보존한다. 각 checkout에서 같은 버전·scope·variant로 빌드한 뒤
+`snapshot --include-paths --revision <full-commit> --scope app:main`으로 캡처한다.
+등록 compiler task의 `--build-witness`와 `--source-root`·`--build-input`도 포함해야 compiler freshness를 확인할 수 있다.
+빌드 명령은 앱마다 다르므로 이 명령은 빌드·checkout·fetch를 대신 실행하지 않는다.
+
+```sh
+kartograph impact --git-base <base-ref> --git-head <head-ref> \
+  --project <head-checkout> --base-project <base-checkout> \
+  --base-graph before.json --graph-file after.json
+
+# 새 소스·컴파일 결과를 다시 capture한 working-tree snapshot을 사용한다 (current revision은 없거나 HEAD).
+kartograph impact --git-base HEAD --working-tree --project . \
+  --base-project <clean-base-checkout> --base-graph before.json --graph-file after.json
+```
+
+`kartograph-change-impact` v1 wrapper의 `graphImpact`는 기존 보고서다. `change`는 실제 resolved commit과
+작업 트리 모드, old/new 경로를 함께 보존한다. rename은 삭제/추가 경로로 선택하며 revision 간 간선을 합치지 않는다.
+staged·unstaged·non-ignored untracked를 작업 트리 모드에 포함한다. 파일 seed는 변경 줄뿐 아니라 해당 파일의
+모든 캡처된 선언을 고르므로 과잉 후보가 있을 수 있다. 지원 경로는 20,000개, Git 출력은 4 MiB, 최종 JSON은 16 MiB로
+제한하며 초과 시 성공한 부분 JSON을 내보내지 않는다. 기존 graph depth/visit/path/page/summary 제한은 `graphImpact`에 남는다.
+
+`snapshots`는 실제 파싱한 bytes의 SHA-256·scope·tool version·revision을 담는다. `freshness`는 before/current를
+별도로 rehash하며 필요한 외부 입력은 `--input external/slot=path`, `--base-input external/slot=path`로 전달한다.
+base checkout이 없으면 `unverified`다. commit 비교의 checkout 내용이 해당 commit과 다르면 `stale`이며,
+작업 트리 비교는 의도된 dirty source와 캡처 지문을 비교한다. 같은 HEAD 라벨, 빈 후보, `noChanges`는 안전 보장이 아니다.
+Git 선택과 해시는 원자적 capture가 아니므로 실행 중 편집과 빌드를 멈춰야 한다. 서브모듈 내부의 미커밋 변경은 검사하지 않는다.
+정적 테스트 후보는 실패 예측이나 실행 생략 허가가 아니다. 실제 compiler·source-use·runtime 한계도 원래 보고서에 남는다.
+
+MCP는 고정 startup 입력에 `--base-project`와 `--base-input`을 추가하고 `change_impact`의
+`base`, 선택 `head` 또는 `workingTree: true`를 사용한다. 각 호출이 신선도를 다시 확인하며 요청이 파일시스템
+경로나 빌드 명령을 선택할 수는 없다. snapshot은 시작 시 로드하므로 recapture 후 서버를 다시 시작한다.
+16 KiB interactive 제한이 context까지 담지 못하면 오류로 남기며 전체 Git context를 버려 성공처럼 응답하지 않는다.
+
 해당 variant를 먼저 빌드하고 기존 query와 같은 class·classpath·manifest/XML·keep 입력으로 capture한다.
 반복 질의에서는 같은 파일을 재사용한다. 테스트의 영향도 조사하려면 관련 컴파일된 test root도 `--classes`로 포함한다.
 
@@ -57,7 +93,7 @@ module·file·test 필터는 각 축이 base 또는 current 사실에 맞으면 
 대형 입력에는 `snapshot --compact`를 사용한다. v2는 문자열 사전과 node/call/edge 배열의 참조 인덱스로 반복 정보를 줄인다.
 정점·간선·외부 호출·보존 근거를 버리지 않으며 기존 v1과 같은 검증을 거친다. 기본 출력은 v1이고 query/impact는 두 형식을 읽는다.
 저장·읽기 한도는 기본 64 MiB다. 큰 그래프는 capture와 saved query·impact·verify-snapshot·MCP 시작 시
-`--snapshot-max-mib 128`을 지정해 최대 128 MiB까지 허용할 수 있다(1..128). 이 옵션은 그래프 사실이나
+`--snapshot-max-mib 128`을 지정해 최대 1024 MiB까지 허용할 수 있다(1..1024). 이 옵션은 그래프 사실이나
 신선도 증거를 바꾸지 않는다. 일반 compiled query에는 적용하지 않는다. 메모리에 파싱한 그래프와 분석 작업은
 파일 크기보다 많은 heap을 사용할 수 있다.
 v2를 읽을 때는 문자열 사전 참조와 정점 위치 참조가 펼치는 문자열을 문서마다 합계 2,147,483,648자·33,554,432개까지만

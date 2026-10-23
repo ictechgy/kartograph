@@ -41,7 +41,7 @@ internal object SnapshotMergeCommand {
         val scope = values["--scope"]?.single()
         if (scope != null && (scope.length > 200 || !Regex("[A-Za-z0-9_.:-]+").matches(scope))) return usage(error, "scope must be a portable label")
         val limit = SnapshotFiles.limit(values["--snapshot-max-mib"].orEmpty())
-            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128")
+            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 1024")
         return try {
             val project = Path.of(values.getValue("--project").single()).toAbsolutePath().normalize()
             if (!Files.isDirectory(project)) return failure(error, "project root does not exist")
@@ -226,7 +226,7 @@ internal object SnapshotMergeCommand {
           kartograph snapshot merge --project <root> \
             --module <module-directory> --graph-file <snapshot.json> [--input-bindings <bindings.json>] \
             --module <module-directory> --graph-file <snapshot.json> [--input-bindings <bindings.json>] ... \
-            [--input-bindings-output <file>] [--scope <label>] [--include-paths] [--compact] [--snapshot-max-mib <1..128>]
+            [--input-bindings-output <file>] [--scope <label>] [--include-paths] [--compact] [--snapshot-max-mib <1..1024>]
 
         Each --module group names the directory a member snapshot was captured for (inside --project), its snapshot
         and the local input bindings written next to it (the Gradle plugin writes build/kartograph/<variant>-input-bindings.json).

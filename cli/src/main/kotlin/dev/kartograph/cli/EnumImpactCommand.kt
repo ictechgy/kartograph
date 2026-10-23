@@ -39,7 +39,7 @@ internal object EnumImpactCommand {
         if (limit !in 1..1_000 || offset !in 0..200_000)
             return usage(error, "enum expansion limit must be 1..1000 and offset 0..200000")
         val maximum = SnapshotFiles.limit(values["--snapshot-max-mib"].orEmpty())
-            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128")
+            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 1024")
         val owners = try {
             values["--symbol"].orEmpty().map(::NodeId).onEach {
                 require(EnumConstantIds.isOwner(it)) { "enum expansion requires exact class: JVM identities" }

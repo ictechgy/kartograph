@@ -1,5 +1,6 @@
 """격리 비교의 byte 계약·입력 identity·실제 javac/JVM 진입을 검증한다."""
 import importlib.util
+import gzip
 import json
 import os
 from pathlib import Path
@@ -17,9 +18,9 @@ SPEC.loader.exec_module(probe)
 
 
 class IndexCostTest(unittest.TestCase):
-    def test_baseline_is_the_previous_measured_main(self):
-        self.assertEqual("b7ab3e9d654a7ad889bed4b57ed4dc84d4082fd7", probe.SOURCE_BASELINE)
-        self.assertEqual("c7b59fef4d0c8051326747f3bee6da5b04026181", probe.BASELINE)
+    def test_baseline_is_the_exact_pr_base(self):
+        self.assertEqual("bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1", probe.SOURCE_BASELINE)
+        self.assertEqual(probe.SOURCE_BASELINE, probe.BASELINE)
 
     def test_baseline_metadata_update_cannot_change_executable_sources(self):
         env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
@@ -49,13 +50,20 @@ class IndexCostTest(unittest.TestCase):
             auxiliary = git("rev-parse", "HEAD")
             with mock.patch.object(probe, "successful", side_effect=execute):
                 probe.require_baseline_source(repo, original, auxiliary, env)
+                probe.require_baseline_source(repo, original, original, env)
+                git("commit", "--allow-empty", "-qm", "same tree, different revision")
                 with self.assertRaisesRegex(probe.DiagnosticError, "baseline-executable-source-changed"):
-                    probe.require_baseline_source(repo, original, original, env)
+                    probe.require_baseline_source(repo, auxiliary, git("rev-parse", "HEAD"), env)
                 source.write_text("class Main { int changed; }\n")
                 git("add", ".")
                 git("commit", "-qm", "changed executable source")
                 with self.assertRaisesRegex(probe.DiagnosticError, "baseline-executable-source-changed"):
                     probe.require_baseline_source(repo, original, git("rev-parse", "HEAD"), env)
+
+    def test_equal_baseline_refs_still_require_empty_diff(self):
+        with mock.patch.object(probe, "successful", return_value={"stdout": b"gradle/verification-metadata.xml\n"}):
+            with self.assertRaisesRegex(probe.DiagnosticError, "baseline-executable-source-changed"):
+                probe.require_baseline_source(ROOT, probe.BASELINE, probe.BASELINE, {})
 
     def test_exact_bytes_preserve_order_duplicates_diagnostics_and_exit(self):
         left = {"exit": 0, "stdout": b"a\na\nb\n", "stderr": b"diagnostic\n", "wallNanos": 1}
@@ -72,6 +80,26 @@ class IndexCostTest(unittest.TestCase):
         result = {"exit": 0, "stdout": b"ok", "stderr": b""}
         self.assertTrue(probe.successful_pair(result, result))
 
+    def test_only_exact_pinned_dead_contract_expansion_is_accepted(self):
+        baseline, candidate = probe.expected_dead_outputs(20459)
+        self.assertEqual("a7fa37f3b32ca0fc1af67ebf197ddab2448414105132deb6494c08fa693a97b1", probe.digest(baseline))
+        left = dict(exit=0, stdout=baseline, stderr=b"")
+        right = dict(exit=0, stdout=candidate, stderr=b"")
+        for command in ("dead", "dead_private"):
+            self.assertTrue(probe.expected_dead_contract_delta(command, left, right, 20459))
+            self.assertFalse(probe.equivalent(left, right))
+            for altered in (left, {**right, "stdout": candidate + b"extra\n"},
+                            {**right, "stdout": candidate.split(b"\n", 1)[1]},
+                            {**right, "stdout": candidate + candidate.splitlines(keepends=True)[0]},
+                            {**right, "stdout": candidate.replace(b"20459", b"20458")},
+                            {**right, "stdout": candidate.replace(b"\n", b"\r\n")},
+                            {**right, "exit": 2}, {**right, "stderr": b"warning"}):
+                self.assertFalse(probe.expected_dead_contract_delta(command, left, altered, 20459))
+            self.assertFalse(probe.expected_dead_contract_delta(command, {**left, "stdout": baseline + b"extra"}, right, 20459))
+        self.assertFalse(probe.expected_dead_contract_delta("graph", left, right, 20459))
+        with mock.patch.object(probe, "BASELINE", "different"):
+            self.assertFalse(probe.expected_dead_contract_delta("dead", left, right, 20459))
+
     def test_alternation_is_three_samples_per_profile_and_arm(self):
         rows = probe.schedule()
         self.assertEqual(18, len(rows))
@@ -79,6 +107,83 @@ class IndexCostTest(unittest.TestCase):
             selected = [(sample, arm) for p, sample, arm in rows if p == profile]
             self.assertEqual([(1, "baseline"), (1, "candidate"), (2, "candidate"),
                               (2, "baseline"), (3, "baseline"), (3, "candidate")], selected)
+
+    def test_cli_pairs_preserve_every_sample_raw_bytes_and_order(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            commands = {arm: probe.cli_commands(arm, [root / "classes"], root)
+                        for arm in ("baseline", "candidate")}
+            report = {"format": "kartograph-index-cost-v1", "status": "PASS",
+                      "scope": "diagnostic", "residualScope": "not-query-only"}
+            calls = []
+            def execute(arguments, cwd, env, **kwargs):
+                calls.append(arguments[0])
+                arm, name = arguments[:2]
+                body = probe.expected_dead_outputs(10)[arm == "candidate"] if name == "dead" else b"a\r\nb\x00"
+                # 느린 관측도 버리지 않고 중앙값과 전체 원시 값에 함께 남긴다.
+                wall = 100_000_000_000 if len(calls) == 2 else 1_000_000_000
+                return {"phase": kwargs["phase"], "exit": 0, "stdout": body, "stderr": b"",
+                        "wallNanos": wall, "rss": {"status": "unavailable"}}
+            with mock.patch.object(probe, "run", side_effect=execute), mock.patch.object(
+                    probe, "host_load_snapshot", return_value={"loadAverage": [1, 2, 3]}):
+                probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(root / "raw"))
+            self.assertEqual([arm for _, _, order in probe.cli_schedule() for arm in order], calls)
+            self.assertEqual(36, len(calls))
+            self.assertEqual(18, len(report["cli"]))
+            self.assertEqual(36, len(report["cliLoad"]))
+            for index in range(6):
+                self.assertEqual([(1, ("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline")),
+                                  (2, ("candidate", "baseline") if index % 2 == 0 else ("baseline", "candidate")),
+                                  (3, ("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline"))],
+                                 [(sample, order) for command, sample, order in probe.cli_schedule() if command == index])
+            self.assertEqual(100_000_000_000, report["cli"][0]["candidate"]["wallNanos"])
+            for arm in ("baseline", "candidate"):
+                self.assertEqual(6, report["cliTiming"]["arms"][arm]["sumMedianSeconds"])
+            for row in report["cli"]:
+                self.assertTrue(row["contractAccepted"])
+                for arm in ("baseline", "candidate"):
+                    for stream in ("stdout", "stderr"):
+                        receipt = row["raw"][arm][stream]
+                        data = gzip.decompress((root / receipt["path"]).read_bytes())
+                        self.assertEqual(len(data), receipt["bytes"])
+                        self.assertEqual(probe.digest(data), receipt["sha256"])
+                        self.assertEqual(receipt["sha256"], row[arm][stream]["sha256"])
+            public = json.loads(probe.public_summary(report))
+            self.assertEqual(report["cliTiming"], public["cliTiming"])
+            self.assertNotIn("cliLoad", public)
+
+    def test_late_cli_failure_is_not_replaced_by_successful_samples(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            commands = {arm: probe.cli_commands(arm, [root / "classes"], root)
+                        for arm in ("baseline", "candidate")}
+            count = 0
+            def execute(arguments, cwd, env, **kwargs):
+                nonlocal count
+                count += 1
+                arm, name = arguments[:2]
+                body = probe.expected_dead_outputs(10)[arm == "candidate"] if name == "dead" else b"x"
+                return {"phase": kwargs["phase"], "exit": 1 if count == 35 else 0,
+                        "stdout": body, "stderr": b"", "wallNanos": 1, "rss": {}}
+            report = {}
+            with mock.patch.object(probe, "run", side_effect=execute), mock.patch.object(
+                    probe, "host_load_snapshot", return_value={}):
+                with self.assertRaisesRegex(probe.DiagnosticError, "cli-byte-mismatch-or-unsuccessful-exit"):
+                    probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(root / "raw"))
+            self.assertEqual(36, count)
+            self.assertFalse(report["cli"][-1]["contractAccepted"])
+            self.assertEqual(72, len(list((root / "raw").glob("*.gz"))))
+
+    def test_raw_retention_has_total_budget_and_does_not_overwrite(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            with mock.patch.object(probe, "RAW_LIMIT", 3):
+                raw.retain("graph", 1, "baseline", {"stdout": b"abc", "stderr": b""})
+                with self.assertRaisesRegex(probe.DiagnosticError, "raw-evidence-limit"):
+                    raw.retain("graph", 1, "candidate", {"stdout": b"a", "stderr": b""})
+            with self.assertRaises(FileExistsError):
+                raw.retain("graph", 1, "baseline", {"stdout": b"changed", "stderr": b""})
+            self.assertEqual(b"abc", gzip.decompress((raw.directory / "graph-1-baseline-stdout.gz").read_bytes()))
 
     def test_inventory_detects_same_size_byte_change_and_mtime_change(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -141,7 +246,7 @@ class IndexCostTest(unittest.TestCase):
                     self.assertEqual("test-wait", caught.exception.receipt["phase"])
 
     def test_structural_count_change_is_rejected(self):
-        rows = [dict(profile=profile, nodes=1, edges=2, externalCalls=3, classFiles=4,
+        rows = [dict(profile=profile, nodes=1, locatedNodes=1, edges=2, externalCalls=3, classFiles=4,
                      parsedClasses=4, cacheHits=0, cacheMisses=0)
                 for profile, _, _ in probe.schedule()]
         probe.check_profile_counts(rows)

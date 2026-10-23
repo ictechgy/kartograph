@@ -30,6 +30,9 @@ internal object AndroidTasks {
             deadTask.namespace.set(variant.namespace)
             deadTask.strict.set(extension.strict)
             deadTask.includePrivateMembers.set(extension.includePrivateMembers)
+            deadTask.keepRuleMode.set(extension.keepRuleMode)
+            deadTask.useVariantKeepRules.set(extension.useVariantKeepRules)
+            deadTask.excludedKeepRuleFiles.from(extension.excludedKeepRules)
             deadTask.generatedClassRoots.from(extension.generatedClassRoots)
             deadTask.platformClasspath.from(
                 project.extensions.getByType(AndroidComponentsExtension::class.java).sdkComponents.bootClasspath,
@@ -44,7 +47,7 @@ internal object AndroidTasks {
             }
             variant.sources.resources?.all?.let { deadTask.serviceResourceDirectories.from(it) }
             deadTask.keepRuleFiles.from(extension.keepRules)
-            deadTask.keepRuleFiles.from(variant.proguardFiles)
+            deadTask.variantKeepRuleFiles.from(variant.proguardFiles)
             deadTask.reportFile.set(project.layout.buildDirectory.file("reports/kartograph/${variant.name}.txt"))
             // include 대상은 실행 중 발견되므로 누락된 file snapshot으로 report를 재사용하지 않는다.
             deadTask.outputs.upToDateWhen { false }
@@ -61,19 +64,29 @@ internal object AndroidTasks {
             .toGet(ScopedArtifact.CLASSES, KartographDeadTask::classpathJars, KartographDeadTask::classpathDirectories)
     }
 
-    /** 그래프 문서는 dependency가 아니라 이 project가 컴파일한 선언만 담으므로 PROJECT scope만 받는다. */
+    /** PROJECT 선언과 ALL hierarchy를 분리하고 output provider에는 직렬화 가능한 이름만 캡처한다. */
     private fun registerGraphTask(project: Project, extension: KartographExtension, variant: Variant) {
-        val taskName = "kartographGraph${variant.name.replaceFirstChar(Char::titlecase)}"
+        val variantName = variant.name
+        val taskName = "kartographGraph${variantName.replaceFirstChar(Char::titlecase)}"
         val task = project.tasks.register(taskName, KartographGraphTask::class.java) { graphTask ->
             graphTask.group = "reporting"
-            graphTask.description = "Writes the ${variant.name} dependency graph as a code-graph JSON document."
-            graphTask.variantName.set(variant.name)
+            graphTask.description = "Writes the $variantName dependency graph as a code-graph JSON or NDJSON document."
+            graphTask.variantName.set(variantName)
             graphTask.includeSourcePaths.set(extension.includeSourcePaths)
+            graphTask.graphFormat.set(extension.graphFormat)
+            graphTask.excludeOrigins.set(extension.excludeOrigins)
+            graphTask.dispatchCandidateLimit.set(extension.dispatchCandidateLimit)
+            graphTask.includeExternalStubs.set(extension.includeExternalStubs)
+            graphTask.platformClasspath.from(
+                project.extensions.getByType(AndroidComponentsExtension::class.java).sdkComponents.bootClasspath,
+            )
             graphTask.generatedClassRoots.from(extension.generatedClassRoots)
             variant.sources.resources?.all?.let { graphTask.serviceResourceDirectories.from(it) }
             graphTask.projectDirectory.set(project.layout.projectDirectory)
             graphTask.graphFile.set(
-                project.layout.buildDirectory.file("reports/kartograph/${variant.name}-graph.json"),
+                project.layout.buildDirectory.file(extension.graphFormat.map { format ->
+                    "reports/kartograph/$variantName-graph.$format"
+                }),
             )
             // 경로 해석은 선언되지 않은 project source를 읽으므로 그때만 stale 문서를 재사용하지 않는다.
             graphTask.outputs.upToDateWhen { !graphTask.includeSourcePaths.get() }
@@ -85,5 +98,8 @@ internal object AndroidTasks {
                 KartographGraphTask::projectJars,
                 KartographGraphTask::projectDirectories,
             )
+        variant.artifacts.forScope(ScopedArtifacts.Scope.ALL)
+            .use(task)
+            .toGet(ScopedArtifact.CLASSES, KartographGraphTask::classpathJars, KartographGraphTask::classpathDirectories)
     }
 }

@@ -193,7 +193,7 @@ class FreshnessCliTest {
             arrayOf(*base, "--project", secret) to "--graph-file and --project are required exactly once",
             arrayOf(*base, "--scope", "sample:main", "--scope", "sample:test") to "duplicate --scope",
             arrayOf(*base, "--snapshot-max-mib", "1", "--snapshot-max-mib", "2") to "duplicate --snapshot-max-mib",
-            arrayOf(*base, "--snapshot-max-mib", "129") to "--snapshot-max-mib must be one integer from 1 to 128",
+            arrayOf(*base, "--snapshot-max-mib", "1025") to "--snapshot-max-mib must be one integer from 1 to 1024",
             arrayOf(*base, "--input", "classes=$secret") to "--input must be external/<slot>=<path>",
             arrayOf(*base, "--input", "external/classes=$secret", "--input", "external/classes=$secret") to
                 "--input must be external/<slot>=<path>",

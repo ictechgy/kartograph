@@ -127,6 +127,45 @@ class AnalysisSmokeGateTest(unittest.TestCase):
         mod.summarize_measurements(samples, counters, failures)
         self.assertEqual(failures, ["'graph' nodes varied across runs: [2100, 2100, 2099]"])
 
+    def test_known_input_hints_preserve_incomplete_analysis_without_findings(self):
+        mod = self.load_module()
+        hints = list(mod.SELF_ANALYSIS_INPUT_HINTS)
+        limitation = "limitation\tDYNAMIC_REGISTRATION\tmanifest-absent runtime component registration is not resolved"
+        result = subprocess.CompletedProcess([], 0, "\n".join(hints + [limitation]) + "\n", "")
+        measurement = {"returncode": 0}
+        failures = []
+        mod.check_contract("dead", "zero_findings", result, measurement, failures)
+        self.assertEqual(failures, [])
+        self.assertEqual(measurement["findings"], 0)
+        self.assertEqual(measurement["inputHints"], hints)
+        self.assertEqual(measurement["limitations"], [limitation])
+        summary = mod.summarize_measurements({"dead": [1.0]}, {"dead": [measurement]}, failures)
+        self.assertEqual(summary["dead"]["inputHints"], hints)
+        self.assertEqual(summary["dead"]["limitations"], [limitation])
+
+    def test_input_hints_cannot_hide_findings_unknown_output_or_failure(self):
+        mod = self.load_module()
+        hints = "\n".join(mod.SELF_ANALYSIS_INPUT_HINTS) + "\n"
+        for extra in ("unreachable\tjvm://fixture.Example#unused()V\n",
+                      "input-hint\tunknown-kind\tnew evidence\n",
+                      "input-hint\tmissing-classpath\tchanged message\n",
+                      "input-hint\tmissing-classpath\n", "unexpected output\n"):
+            with self.subTest(extra=extra):
+                failures, measurement = [], {}
+                mod.check_contract("dead", "zero_findings", subprocess.CompletedProcess([], 0, hints + extra, ""),
+                                   measurement, failures)
+                self.assertEqual(measurement["findings"], 1)
+                self.assertEqual(len(failures), 1)
+        for code, output in ((2, hints), (0, hints + mod.SELF_ANALYSIS_INPUT_HINTS[0] + "\n")):
+            failures = []
+            mod.check_contract("dead", "zero_findings", subprocess.CompletedProcess([], code, output, ""), {}, failures)
+            self.assertEqual(len(failures), 1)
+        failures = []
+        mod.summarize_measurements({"dead": [1.0, 1.0]}, {"dead": [
+            {"returncode": 0, "findings": 0, "inputHints": list(mod.SELF_ANALYSIS_INPUT_HINTS)},
+            {"returncode": 0, "findings": 0, "inputHints": []}]}, failures)
+        self.assertEqual(failures, ["'dead' inputHints varied across runs"])
+
     def test_smoke_gate_fails_on_missing_classes(self):
         with tempfile.TemporaryDirectory(prefix="kartograph-empty-repo-") as tmpdir:
             res = self.run_gate("--repo-root", tmpdir, "--binary", str(BINARY))

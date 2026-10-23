@@ -252,7 +252,9 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         } else ClassHierarchy.EMPTY
         hierarchyNanos = System.nanoTime() - hierarchyStart
         val runtimeStart = System.nanoTime()
-        val (modeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
+        val (runtimeModeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
+        val android = AndroidFrameworkCallbacks.enrich(runtimeModeled, hierarchy)
+        val modeled = android.graph
         runtimeNanos = System.nanoTime() - runtimeStart
         val selectedRootByNode = classFacts.flatMap { facts -> facts.nodes.map { it.id to rootByClass.getValue(facts.internalName) } }.toMap()
         val dispatchStart = System.nanoTime()
@@ -279,7 +281,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         targetJdkFingerprint = hierarchyIndexer.targetJdkFingerprint
         return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics,
             inheritedMembers.calls.filter { it.target in graph.nodes &&
-                (it.kind == InvocationKind.VIRTUAL || it.kind == InvocationKind.INTERFACE) })
+                (it.kind == InvocationKind.VIRTUAL || it.kind == InvocationKind.INTERFACE) }, android.derivation)
     }
 
     /** 전체 필터를 한 번 평가한 뒤 제거와 compiler 위치 상태가 없을 때만 정규화된 그래프를 재사용한다. */

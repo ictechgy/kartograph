@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """고정 baseline과 이미 빌드한 후보를 같은 입력으로 관측한다. smoke 판정은 바꾸지 않는다."""
 
+import gzip
 import hashlib
 import json
 import os
@@ -9,6 +10,7 @@ import re
 import shutil
 import signal
 import stat
+import statistics
 import subprocess
 import sys
 import tarfile
@@ -16,12 +18,13 @@ import tempfile
 import threading
 import time
 
-SOURCE_BASELINE = "b7ab3e9d654a7ad889bed4b57ed4dc84d4082fd7"
-# 측정한 main의 실행 소스는 그대로 두고 기존 dependency 두 POM의 검증 해시만 동기화했다.
-BASELINE = "c7b59fef4d0c8051326747f3bee6da5b04026181"
+# Compare this patch with its exact main base on the same frozen candidate input.
+SOURCE_BASELINE = "bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1"
+BASELINE = "bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1"
 MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
 PROFILES = ("graph", "dead", "architecture")
 LIMIT = 32 * 1024 * 1024
+RAW_LIMIT = 256 * 1024 * 1024
 
 
 class DiagnosticError(Exception):
@@ -198,7 +201,7 @@ def validate_probe(result, profile):
     if not isinstance(data, dict):
         raise DiagnosticError("invalid-probe-output")
     numeric = ("entryUptimeMillis", "invocationNanos", "currentThreadAllocatedBytes",
-               "nodes", "edges", "externalCalls", "classFiles", "parsedClasses", "cacheHits",
+               "nodes", "locatedNodes", "edges", "externalCalls", "classFiles", "parsedClasses", "cacheHits",
                "cacheMisses", "readNanos", "cacheReadNanos", "parseNanos", "assemblyNanos",
                "hierarchyNanos", "runtimeNanos", "dispatchNanos", "cacheWriteNanos", "totalNanos")
     expected_keys = set(numeric) | {"profile", "allocationScope"}
@@ -213,7 +216,7 @@ def validate_probe(result, profile):
 
 def check_profile_counts(records):
     for profile in PROFILES:
-        values = [tuple(row[key] for key in ("nodes", "edges", "externalCalls", "classFiles",
+        values = [tuple(row[key] for key in ("nodes", "locatedNodes", "edges", "externalCalls", "classFiles",
                                             "parsedClasses", "cacheHits", "cacheMisses"))
                   for row in records if row["profile"] == profile]
         if len(values) != 6 or any(value != values[0] for value in values):
@@ -222,6 +225,35 @@ def check_profile_counts(records):
 
 def successful_pair(left, right):
     return left["exit"] == 0 and right["exit"] == 0 and equivalent(left, right)
+
+
+def expected_dead_outputs(located_nodes):
+    baseline = (
+        "limitation\tANNOTATION_VALUE_REFERENCES\tclass references in SOURCE-retention annotations are not available in compiled inputs\n"
+        "limitation\tDYNAMIC_REGISTRATION\tmanifest-absent runtime component registration is not resolved\n"
+        "limitation\tGENERATED_CODE_COVERAGE\tonly supported generation markers and sibling relationships identify generated code\n"
+        "limitation\tINLINE_CONSTANT_REFERENCES\tcompile-time constant owners are retained because inlined use sites are unavailable\n"
+        "limitation\tREFLECTION_STRINGS\truntime reflection beyond bounded intra-method class and constructor values is not fully resolved\n"
+        "limitation\tTOP_LEVEL_DECLARATIONS\tfile-facade top-level properties and their accessors are conservatively not reported\n"
+    )
+    candidate = (
+        "input-hint\tmissing-classpath\tno dependency classpath inputs were supplied; reachability may be under-measured for dependency supertype and framework annotation retention\n"
+        "input-hint\tmanifest-without-components\tthe manifest scan produced no component retention evidence; reachability may be under-measured for declarations rooted at manifest components\n"
+        + baseline +
+        f"limitation\tEXTERNAL_RETENTIONS\tunavailable-source-paths: {located_nodes} located node(s) have no package-compatible source file; generated, external or omitted sources may be absent\n"
+        f"limitation\tEXTERNAL_RETENTIONS\tunresolved-source-paths: {located_nodes} of {located_nodes} located node(s) did not match exactly one project source file\n"
+    )
+    return baseline.encode(), candidate.encode()
+
+
+def expected_dead_contract_delta(command, left, right, located_nodes):
+    # 빈 source/manifest/classpath 고정 fixture의 정확한 계약 확장만 허용한다. 정규화는 하지 않는다.
+    if (command not in ("dead", "dead_private") or type(located_nodes) is not int or located_nodes <= 0
+            or SOURCE_BASELINE != "bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1" or BASELINE != SOURCE_BASELINE):
+        return False
+    baseline, candidate = expected_dead_outputs(located_nodes)
+    return (left["exit"] == right["exit"] == 0 and left["stderr"] == right["stderr"] == b""
+            and left["stdout"] == baseline and right["stdout"] == candidate)
 
 
 def source_identity(repo, ref, env):
@@ -238,7 +270,8 @@ def require_baseline_source(repo, source, baseline, env):
     """보조 baseline이 원본의 실행 소스·빌드 스크립트를 바꾸지 않았는지 Git tree로 확인한다."""
     changed = successful(["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only",
                           source, baseline, "--"], repo, env, phase="baseline-source-diff")
-    require_equal(changed["stdout"], b"gradle/verification-metadata.xml\n", "baseline-executable-source-changed")
+    expected = b"" if source == baseline else b"gradle/verification-metadata.xml\n"
+    require_equal(changed["stdout"], expected, "baseline-executable-source-changed")
 
 
 def identity_digest(value):
@@ -259,6 +292,8 @@ def public_summary(report):
         "probeSourceBefore", "probesBefore") if key in report}
     result["profiles"] = report.get("profiles", [])
     result["cli"] = report.get("cli", [])
+    if "cliTiming" in report:
+        result["cliTiming"] = report["cliTiming"]
     encoded = json.dumps(result, sort_keys=True)
     if len(encoded.encode("utf-8")) > 65536:
         raise DiagnosticError("public-summary-too-large")
@@ -274,6 +309,83 @@ def schedule():
     return [(profile, sample, arm) for profile in PROFILES
             for sample, order in enumerate((("baseline", "candidate"), ("candidate", "baseline"),
                                             ("baseline", "candidate")), 1) for arm in order]
+
+
+def cli_schedule():
+    # 각 명령을 세 쌍씩 관측하고 첫 실행 위치도 번갈아 배치한다. 성공 표본을 고르지 않는다.
+    return [(index, sample, ("baseline", "candidate") if (index + sample) % 2 else
+             ("candidate", "baseline")) for sample in range(1, 4) for index in range(6)]
+
+
+def host_load_snapshot():
+    # 실행 인자·환경·다른 프로세스 신원은 수집하지 않는다. 동일 부하를 보장하는 값도 아니다.
+    return {"loadAverage": list(os.getloadavg()), "logicalCpus": os.cpu_count(),
+            "monotonicNanos": time.monotonic_ns()}
+
+
+class RawStreams:
+    """제한된 공개 fixture 출력만 손실 없이 보존한다. 기존 실행의 파일은 덮어쓰지 않는다."""
+
+    def __init__(self, directory):
+        self.directory = directory
+        directory.mkdir()
+        self.bytes = 0
+
+    def retain(self, command, sample, arm, result):
+        records = {}
+        for stream in ("stdout", "stderr"):
+            data = result[stream]
+            if self.bytes + len(data) > RAW_LIMIT:
+                raise DiagnosticError("raw-evidence-limit")
+            name = f"{command}-{sample}-{arm}-{stream}.gz"
+            with (self.directory / name).open("xb") as destination:
+                with gzip.GzipFile(fileobj=destination, mode="wb", mtime=0, filename="") as archive:
+                    archive.write(data)
+            self.bytes += len(data)
+            records[stream] = {"path": "raw/" + name, "bytes": len(data), "sha256": digest(data)}
+        return records
+
+
+def paired_cli(commands, project, env, located_nodes, report, raw):
+    all_accepted = True
+    report["cli"] = []
+    report["cliLoad"] = []
+    for index, sample, order in cli_schedule():
+        name = commands["baseline"][index][0]
+        results, retained = {}, {}
+        for arm in order:
+            before = host_load_snapshot()
+            results[arm] = run(commands[arm][index][1], project, env,
+                               phase="cli-" + name.replace("_", "-"))
+            after = host_load_snapshot()
+            retained[arm] = raw.retain(name, sample, arm, results[arm])
+            report["cliLoad"].append({"command": name, "sample": sample, "arm": arm,
+                                      "before": before, "after": after})
+        left, right = results["baseline"], results["candidate"]
+        expected_delta = expected_dead_contract_delta(name, left, right, located_nodes)
+        accepted = expected_delta if name in ("dead", "dead_private") else successful_pair(left, right)
+        all_accepted = all_accepted and accepted
+        report["cli"].append({"command": name, "sample": sample, "order": list(order),
+                              "exactEqual": equivalent(left, right),
+                              "expectedContractDelta": expected_delta, "contractAccepted": accepted,
+                              "comparisonScope": "same-input-intentionally-expanded-output" if expected_delta else "exact-byte-comparison",
+                              "raw": retained, **{arm: summary(result) for arm, result in results.items()}})
+    report["cliTiming"] = {
+        "scope": "three-paired-fresh-processes-per-command; no-performance-pass-or-budget-change",
+        "loadScope": "same-runner-sequential-children; host-load-observed-not-controlled",
+        "arms": {arm: {
+            "medianSeconds": {name: statistics.median(
+                row[arm]["wallNanos"] / 1e9 for row in report["cli"] if row["command"] == name)
+                for name, _ in commands[arm]},
+        } for arm in ("baseline", "candidate")},
+        "pairedDeltasNanos": [{"command": row["command"], "sample": row["sample"],
+                               "candidateMinusBaseline": row["candidate"]["wallNanos"] - row["baseline"]["wallNanos"]}
+                              for row in report["cli"]],
+    }
+    for values in report["cliTiming"]["arms"].values():
+        values["sumMedianSeconds"] = sum(values["medianSeconds"].values())
+    if not all_accepted:
+        raise DiagnosticError("cli-byte-mismatch-or-unsuccessful-exit")
 
 
 def cli_commands(binary, roots, project):
@@ -298,7 +410,7 @@ def compile_probe(repo, distribution, destination, java_home, env):
     return str(destination) + os.pathsep + str(distribution / "lib/*")
 
 
-def experiment(repo, work, env, report):
+def experiment(repo, work, env, report, raw_directory=None):
     java_home = Path(env["JAVA_HOME"]).resolve(strict=True)
     jdk_before = java_identity(java_home)
     report["jdkBefore"] = jdk_before
@@ -349,7 +461,8 @@ def experiment(repo, work, env, report):
     for name in ("gradlew", "gradle/wrapper/gradle-wrapper.jar",
                  "gradle/wrapper/gradle-wrapper.properties", "gradle/verification-metadata.xml"):
         require_equal((repo / name).read_bytes(), (baseline / name).read_bytes(), "build-tool-identity-mismatch")
-    successful([baseline / "gradlew", "--no-daemon", ":cli:installDist"], baseline, env, timeout=600, phase="baseline-build")
+    report["baselinePreparation"] = summary(successful(
+        [baseline / "gradlew", "--no-daemon", ":cli:installDist"], baseline, env, timeout=600, phase="baseline-build"))
     distributions = {"baseline": baseline / "cli/build/install/kartograph", "candidate": candidate}
     libs_before = {arm: inventory(dist / "lib") for arm, dist in distributions.items()}
     require_equal(candidate_before, libs_before["candidate"], "candidate-rebuilt-or-changed")
@@ -376,17 +489,9 @@ def experiment(repo, work, env, report):
         check_profile_counts(report["profiles"])
         commands = {arm: cli_commands(dist / "bin/kartograph", roots, project)
                     for arm, dist in distributions.items()}
-        all_equal = True
-        for index in range(6):
-            name = commands["baseline"][index][0]
-            results = {arm: run(commands[arm][index][1], project, env, phase="cli-" + name.replace("_", "-"))
-                       for arm in (("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline"))}
-            equal = equivalent(results["baseline"], results["candidate"])
-            all_equal = all_equal and successful_pair(results["baseline"], results["candidate"])
-            report["cli"].append({"command": name, "exactEqual": equal,
-                                 **{arm: summary(result) for arm, result in results.items()}})
-        if not all_equal:
-            raise DiagnosticError("cli-byte-mismatch-or-unsuccessful-exit")
+        located_nodes = next(row["locatedNodes"] for row in report["profiles"] if row["profile"] == "dead")
+        raw = RawStreams(raw_directory if raw_directory is not None else work / "raw")
+        paired_cli(commands, project, env, located_nodes, report, raw)
     finally:
         report["sourcesAfter"] = {"baselineSource": source_identity(repo, SOURCE_BASELINE, env),
                                   "baseline": source_identity(repo, BASELINE, env),
@@ -412,6 +517,7 @@ def experiment(repo, work, env, report):
 def main():
     repo = Path(__file__).resolve().parents[1]
     output = repo / "build/reports/index-cost/result.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
     report = {"format": "kartograph-index-cost-v1", "baselineSource": SOURCE_BASELINE, "baseline": BASELINE, "status": "FAIL",
               "scope": "frozen-class-and-config-diagnostic; original-source-tree-omitted; separate-from-mandatory-smoke",
               "residualScope": "process-minus-index-includes-startup-loading-probe-and-shutdown; not-query-only"}
@@ -423,7 +529,7 @@ def main():
                                          "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS")):
             raise DiagnosticError("injected-java-options")
         with tempfile.TemporaryDirectory(prefix="kartograph-index-cost-", dir=env["RUNNER_TEMP"]) as name:
-            experiment(repo, Path(name), env, report)
+            experiment(repo, Path(name), env, report, output.parent / "raw")
         report["status"] = "PASS"
     except DiagnosticError as error:
         report["reason"] = str(error)

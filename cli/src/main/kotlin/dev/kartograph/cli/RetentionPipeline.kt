@@ -37,6 +37,10 @@ internal data class RetentionInputs(
     val includePrivateMembers: Boolean,
     val externalRetentions: List<RetentionEvidence> = emptyList(),
     val externalRetentionContexts: List<dev.kartograph.export.ExternalRetentionDocumentContext> = emptyList(),
+    val resourceRoots: List<Path> = listOf(resources),
+    val lenientKeepRules: Boolean = false,
+    val bindingOverlayRoots: List<Path> = emptyList(),
+    val bindingLimit: Int = 1_000,
 )
 
 /** 보존 분석 결과와 소스 파일별로 측정한 미해결 runtime 채널 관측을 함께 운반한다. */
@@ -47,6 +51,10 @@ internal data class RetentionAnalysisResult(
     val unmatchedKeepRules: List<KeepRule>,
     val inputHints: List<InputHint>,
     val externalRetentionContexts: List<dev.kartograph.export.ExternalRetentionDocumentContext> = emptyList(),
+    val keepDiagnostics: List<String> = emptyList(),
+    val sourceDiagnostics: List<String> = emptyList(),
+    val sourcePaths: Map<NodeId, String> = emptyMap(),
+    val bindingReview: dev.kartograph.analysis.AndroidBindingReviewResult? = null,
 )
 
 /** dead와 why가 같은 그래프·같은 근거를 만들게 하는 공통 조립 단계다. */
@@ -58,34 +66,45 @@ internal object RetentionPipeline {
             inputs.serviceResources,
             inputs.generatedClassRoots,
         )
-        val graph = indexed.graph
+        val paths = dev.kartograph.index.SourcePathIndex.resolve(indexed.graph, inputs.projectRoot)
+        val graph = dev.kartograph.index.SourceDeclarationLocations.enrich(indexed.graph, inputs.projectRoot, paths.byNodeId, false)
         ExternalRetentionFiles.requireMatches(graph, inputs.externalRetentions, inputs.externalRetentionContexts)
         val manifestEvidence = AndroidManifestScanner(inputs.projectRoot).scan(inputs.manifest, inputs.namespace)
         val inputEvidence = buildList {
             addAll(manifestEvidence)
-            addAll(AndroidXmlScanner(inputs.projectRoot).scan(inputs.resources))
+            inputs.resourceRoots.distinct().sorted().forEach { addAll(AndroidXmlScanner(inputs.projectRoot).scan(it)) }
             addAll(inputs.externalRetentions)
         }
-        val keepRules = KeepRuleScanner(inputs.projectRoot, inputs.includePrivateMembers)
-            .scan(inputs.keepRules)
+        val scanner = KeepRuleScanner(inputs.projectRoot, inputs.includePrivateMembers, inputs.lenientKeepRules)
+        val keepRules = scanner.scan(inputs.keepRules)
         val evidence = DefaultRetention.find(
             graph,
             inputEvidence,
             keepRules,
             indexed.hierarchy,
             includePrivateMembers = inputs.includePrivateMembers,
+            lenientKeepRules = inputs.lenientKeepRules,
         )
+        val reachability = ReachabilityAnalyzer.analyze(graph, evidence)
+        val bindings = dev.kartograph.analysis.AndroidBindingReview.analyze(graph, indexed.hierarchy,
+            dev.kartograph.index.AndroidBindingScanner.scan(graph, inputs.classRoots, inputs.resourceRoots, inputs.projectRoot,
+                inputs.bindingOverlayRoots), reachability, inputs.bindingLimit)
         return RetentionAnalysisResult(
             graph,
-            ReachabilityAnalyzer.analyze(graph, evidence),
+            reachability,
             RuntimeLimitationScanner.sourceChannelCounts(indexed),
             KeepRuleRetention.unmatched(keepRules, evidence),
             InputHints.detect(
                 keepRuleInputs = inputs.keepRules.size,
                 classpathInputs = inputs.classpath.size,
                 manifestEvidenceCount = manifestEvidence.size,
-            ),
+                graph = graph,
+            ) + if (evidence.any { it.reason == RetentionReason.UNKNOWN_KEEP_RULE }) listOf(InputHint.UNKNOWN_KEEP_RULES) else emptyList(),
             inputs.externalRetentionContexts,
+            scanner.diagnostics,
+            paths.limitations + bindings.diagnostics,
+            paths.byNodeId,
+            bindings,
         )
     }
 

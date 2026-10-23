@@ -96,6 +96,8 @@ internal object DeadCommand {
                 projectRoot = options.projectRoot,
                 manifest = options.manifest,
                 resources = options.resources,
+                resourceRoots = options.resourceRoots,
+                lenientKeepRules = options.lenientKeepRules,
                 namespace = options.namespace,
                 keepRules = options.keepRules,
                 classpath = options.classpath,
@@ -105,12 +107,17 @@ internal object DeadCommand {
                 externalRetentionContexts = listOfNotNull(externalDocument?.context),
             ),
         )
+        analysis.keepDiagnostics.forEach { error.println("warning: unknown-keep-rule: $it") }
+        val keepUnknown = dev.kartograph.core.InputHint.UNKNOWN_KEEP_RULES in analysis.inputHints
+        if (keepUnknown && options.writeBaseline != null) return toolFailure(error, "cannot write a baseline from unknown keep rules")
         val graph = analysis.graph
         val result = analysis.reachability
         if (options.explainNodeId != null) {
             val status = explain(options.explainNodeId, graph, result, output, error)
             if (status == ExitStatus.SUCCESS.code) printLimitations(output)
             val caveatOutput = if (status == ExitStatus.SUCCESS.code) output else error
+            analysis.inputHints.forEach { caveatOutput.println("input-hint\t${it.id}\t${it.description}") }
+            (analysis.keepDiagnostics + analysis.sourceDiagnostics).forEach { caveatOutput.println("limitation\t$it") }
             ExternalRetentionCaveats.messages(analysis.externalRetentionContexts).forEach { caveatOutput.println("limitation\t$it") }
             return status
         }
@@ -131,6 +138,8 @@ internal object DeadCommand {
             target.parent?.let { parent -> Files.createDirectories(parent) }
             Files.writeString(target, BaselineCodec.render(allFindings))
             output.println("baseline\twritten\t${allFindings.size}")
+            analysis.inputHints.forEach { output.println("input-hint\t${it.id}\t${it.description}") }
+            (analysis.keepDiagnostics + analysis.sourceDiagnostics).forEach { output.println("limitation\t$it") }
             ExternalRetentionCaveats.messages(analysis.externalRetentionContexts).forEach { output.println("limitation\t$it") }
             return ExitStatus.SUCCESS.code
         }
@@ -148,23 +157,32 @@ internal object DeadCommand {
             RuntimeEvidenceScanner().scan(options.runtimeClasses, options.coverageReports)
         }
         val confidence = findings.associate { finding ->
-            finding.nodeId to RetentionPipeline.confidenceOf(
+            val observed = RetentionPipeline.confidenceOf(
                 finding, graph, analysis.unresolvedChannelsBySource, observedClasses,
             )
+            finding.nodeId to if (observed != dev.kartograph.export.FindingConfidence.RUNTIME_OBSERVED &&
+                analysis.bindingReview?.requiresReview(finding.nodeId) == true) dev.kartograph.export.FindingConfidence.REVIEW else observed
         }
         output.print(
             AdoptionReporter.render(
                 options.reportFormat,
-                findings,
+                findings.map { finding ->
+                    val declaration = graph.node(finding.nodeId)?.sourceDeclaration
+                    val path = declaration?.path ?: analysis.sourcePaths[finding.nodeId]
+                    finding.copy(location = path?.let { dev.kartograph.core.SourceLocation(it,
+                        declaration?.line ?: finding.location?.line, declaration?.column ?: finding.location?.column) } ?: finding.location)
+                },
                 AnalysisLimitation.entries,
                 scoped.size - findings.size,
                 confidence,
                 expiredSuppressions,
                 analysis.unmatchedKeepRules,
-                inputHints = analysis.inputHints.takeIf { findings.isNotEmpty() }.orEmpty(),
+                inputHints = analysis.inputHints,
                 externalRetentionContexts = analysis.externalRetentionContexts,
+                diagnostics = analysis.sourceDiagnostics + analysis.keepDiagnostics.map { "unknown-keep-rule: $it" },
             ),
         )
+        if (options.strict && keepUnknown) return toolFailure(error, "keep-rule analysis is unknown; strict check cannot pass")
         return if (options.strict && findings.isNotEmpty()) ExitStatus.FINDINGS.code else ExitStatus.SUCCESS.code
     }
 
@@ -198,7 +216,8 @@ internal object DeadCommand {
         val testClassRoots = mutableListOf<Path>()
         var projectRoot: Path? = null
         var manifestPath: String? = null
-        var resourcesPath: String? = null
+        val resourcesPaths = mutableListOf<String>()
+        var lenientKeepRules = false
         var namespace: String? = null
         var explainNodeId: NodeId? = null
         val keepRulePaths = mutableListOf<String>()
@@ -234,7 +253,11 @@ internal object DeadCommand {
                 "--test-classes" -> testClassRoots.add(Path.of(value))
                 "--project" -> projectRoot = Path.of(value).toAbsolutePath().normalize()
                 "--manifest" -> manifestPath = value
-                "--resources" -> resourcesPath = value
+                "--resources" -> resourcesPaths += value
+                "--keep-rule-mode" -> {
+                    if (value !in setOf("strict", "lenient")) return missingOption(error, "--keep-rule-mode strict|lenient")
+                    lenientKeepRules = value == "lenient"
+                }
                 "--namespace" -> namespace = value
                 "--explain" -> explainNodeId = NodeId(value)
                 "--keep-rules" -> keepRulePaths += value
@@ -282,7 +305,9 @@ internal object DeadCommand {
             testClassRoots = testClassRoots,
             projectRoot = project,
             manifest = resolveProjectPath(project, manifestPath ?: return missingOption(error, "--manifest")),
-            resources = resolveProjectPath(project, resourcesPath ?: return missingOption(error, "--resources")),
+            resources = resolveProjectPath(project, resourcesPaths.firstOrNull() ?: return missingOption(error, "--resources")),
+            resourceRoots = resourcesPaths.map { resolveProjectPath(project, it) }.distinct().sorted(),
+            lenientKeepRules = lenientKeepRules,
             namespace = namespace?.takeIf(String::isNotBlank) ?: return missingOption(error, "--namespace"),
             keepRules = keepRulePaths.map { value -> resolveProjectPath(project, value) },
             classpath = classpathPaths.map { value -> resolveProjectPath(project, value) },
@@ -332,7 +357,7 @@ internal object DeadCommand {
     }
 
     private fun RetentionEvidence.explanation(): String =
-        "retained\t$nodeId\t${reason.name}\t${location.toPlainTextLocation()}\t${reason.description}" +
+        "${if (reason == dev.kartograph.core.RetentionReason.UNKNOWN_KEEP_RULE) "unknown" else "retained"}\t$nodeId\t${reason.name}\t${location.toPlainTextLocation()}\t${reason.description}" +
             (externalBridge?.let { bridge ->
                 "; channel " + bridge.channel + (bridge.method?.let { "; method " + it } ?: "") +
                     "; callers " + bridge.callers.joinToString(", ") { it.platform + ":" + it.path + ":" + it.line } +
@@ -346,6 +371,8 @@ internal object DeadCommand {
         val projectRoot: Path,
         val manifest: Path,
         val resources: Path,
+        val resourceRoots: List<Path>,
+        val lenientKeepRules: Boolean,
         val namespace: String,
         val keepRules: List<Path>,
         val classpath: List<Path>,
@@ -379,7 +406,7 @@ internal object DeadCommand {
         Usage:
           kartograph dead --classes <directory> [--classes <directory>]... --project <directory> \
             --manifest <file> --resources <directory> --namespace <name> \
-            [--keep-rules <file>]... [--classpath <directory-or-jar>] [--service-resources <directory-or-jar>]... \
+            [--keep-rules <file>]... [--keep-rule-mode strict|lenient] [--classpath <directory-or-jar>] [--service-resources <directory-or-jar>]... \
             [--test-classes <directory-or-jar>]... \
             [--strict] [--explain <node-id>]
             [--include-private-members]

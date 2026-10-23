@@ -99,13 +99,13 @@ public object QuerySnapshotCodec {
     /** 저장 snapshot의 호환 기본 상한이며 opt-in하지 않은 호출에 적용한다. */
     public const val DEFAULT_MAX_MIB: Int = 64
     /** 명시적 저장 snapshot 상한이 넘을 수 없는 절대 경계다. */
-    public const val MAX_MIB: Int = 128
+    public const val MAX_MIB: Int = 1024
     /** 한 번에 읽는 질의 문서의 상한이다. */
     public const val MAX_BYTES: Int = DEFAULT_MAX_MIB * 1024 * 1024
 
     /** CLI/adapter의 MiB 설정을 overflow 없는 byte 상한으로 검증한다. */
     public fun maximumBytes(maximumMiB: Int): Int {
-        require(maximumMiB in 1..MAX_MIB) { "snapshot maximum must be 1..128 MiB" }
+        require(maximumMiB in 1..MAX_MIB) { "snapshot maximum must be 1..1024 MiB" }
         return maximumMiB * 1024 * 1024
     }
 
@@ -161,7 +161,7 @@ public object QuerySnapshotCodec {
                 }
             },
             "edges" to snapshot.graph.edges.map { edge ->
-                if (encoding != null) listOf(positions.getValue(edge.source), positions.getValue(edge.target),
+                if (encoding != null) listOf(encoding.reference(edge.source.value), encoding.reference(edge.target.value),
                     encoding.text(edge.kind.name.lowerCamel()), encoding.text(edge.origin.name.lowerCamel()), edge.weight)
                 else sortedMapOf<String, Any?>("source" to edge.source.value, "target" to edge.target.value,
                     "kind" to edge.kind.name.lowerCamel(), "origin" to edge.origin.name.lowerCamel(), "weight" to edge.weight)
@@ -190,7 +190,7 @@ public object QuerySnapshotCodec {
             ).filterValues { it != null } },
             "compilerCallEvidence" to if (snapshot.graph.compilerCallPositionsCaptured) snapshot.graph.locatedCompilerReferences.map { item ->
                 if (encoding == null) compilerCallEvidenceValue(item) else listOf(
-                    positions.getValue(item.source), positions.getValue(item.target),
+                    encoding.reference(item.source.value), encoding.reference(item.target.value),
                     encoding.text(compilerEvidencePath(item.file.path)), encoding.text(item.file.sha256),
                     encoding.text(item.collector), encoding.text(item.compilerVersion), encoding.text(item.coordinateBasis.name.lowerCamel()),
                     item.offsetUtf16, item.endOffsetUtf16, item.line, item.column, item.generated,
@@ -497,7 +497,7 @@ public object QuerySnapshotCodec {
 
     private fun requireValidMaximum(maximumBytes: Int) {
         require(maximumBytes in 1..QuerySnapshotCodec.maximumBytes(MAX_MIB)) {
-            "query snapshot byte maximum must be between 1 byte and 128 MiB"
+            "query snapshot byte maximum must be between 1 byte and 1024 MiB"
         }
     }
 

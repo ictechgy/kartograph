@@ -4,9 +4,47 @@ import dev.kartograph.core.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 
 /** 불완전하거나 모순된 header에서 후보를 선언으로 승격하지 않는 경계다. */
 class CallDeclarationSafetyTest {
+    @Test
+    fun `unknown declarations retain the immutable graph without copying every call`() {
+        val caller = method("p/Caller", name = "run")
+        val graph = CodeGraph(listOf(type("p/Caller"), caller), emptyList(), (0 until 256).map { ordinal ->
+            ExternalCall(caller.id, "missing/Boundary", "m", "()V", InvocationKind.VIRTUAL, ordinal = ordinal)
+        }).withCompilerCallPositions(emptyList())
+        val enriched = CallDeclarationIndexer(graph, ClassHierarchy.EMPTY).enrich()
+        assertSame(graph, enriched)
+        assertEquals(256, enriched.externalCalls.size)
+        assertEquals(true, enriched.compilerCallPositionsCaptured)
+        enriched.externalCalls.forEach { assertNull(it.declaration) }
+    }
+
+    @Test
+    fun `unchanged graph reuse still clears stale declarations and preserves confirmed declarations`() {
+        val caller = method("p/Caller", name = "run")
+        val stale = ExternalCall(caller.id, "missing/Boundary", "m", "()V", InvocationKind.VIRTUAL,
+            resolvedTargets = listOf(caller.id), resolution = CallResolution.UNRESOLVED,
+            declaration = CallDeclaration(NodeId("method:missing/Boundary#m()V"), CallDeclarationScope.EXTERNAL,
+                listOf("missing/Boundary")))
+        val known = ExternalCall(caller.id, "lib/Known", "m", "()V", InvocationKind.VIRTUAL)
+        val graph = CodeGraph(listOf(type("p/Caller"), caller), emptyList(), listOf(stale, known))
+            .withCompilerCallPositions(emptyList())
+        val headers = hierarchy(mapOf("lib/Known" to emptySet()),
+            mapOf("lib/Known" to listOf(HierarchyMethod("m", "()V", Visibility.PUBLIC))))
+        val enriched = CallDeclarationIndexer(graph, headers).enrich()
+        assertNull(enriched.externalCalls.single { it.owner == "missing/Boundary" }.declaration)
+        assertEquals(stale.copy(declaration = null), enriched.externalCalls.single { it.owner == "missing/Boundary" })
+        assertEquals("method:lib/Known#m()V", enriched.externalCalls.single { it.owner == "lib/Known" }.declaration?.target?.value)
+        assertEquals(graph.nodes, enriched.nodes)
+        assertEquals(graph.edges, enriched.edges)
+        assertEquals(true, enriched.compilerCallPositionsCaptured)
+        assertSame(enriched, CallDeclarationIndexer(enriched, headers).enrich())
+        assertNull(CallDeclarationIndexer(enriched, ClassHierarchy.EMPTY).enrich()
+            .externalCalls.single { it.owner == "lib/Known" }.declaration)
+    }
+
     @Test
     fun `abstract project declaration differs from concrete dispatch candidates`() {
         val declaration = resolve(

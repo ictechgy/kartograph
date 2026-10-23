@@ -7,6 +7,7 @@ import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.SourceLocation
 import dev.kartograph.core.qualifiedName
+import dev.kartograph.core.matchesQualifiedName
 
 /** 실패한 machine selector를 exact USR로 다시 시도할 수 있게 하는 결정적 discovery 결과다. */
 public data class SymbolSuggestion(
@@ -37,7 +38,7 @@ public object SymbolDiscovery {
         val sourceName = if (open > 0 && requested.endsWith(')')) requested.substring(0, open) else requested
         val ownerQualified = '.' in sourceName
         val candidates = graphs.flatMap { graph -> graph.nodes.values.filter { node ->
-                node.id.value == requested || node.name == requested || node.qualifiedName == requested ||
+                node.id.value == requested || node.name == requested || node.matchesQualifiedName(requested) ||
                     (ownerQualified && (node.qualifiedName == sourceName || node.qualifiedName.endsWith(".$sourceName"))) ||
                     packageFunction(graph, node) == sourceName
             } }
