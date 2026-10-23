@@ -1,6 +1,7 @@
 package dev.kartograph.gradle
 
 import dev.kartograph.analysis.ReachabilityAnalyzer
+import dev.kartograph.analysis.ReachabilityResult
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.NodeId
@@ -24,7 +25,7 @@ import org.junit.jupiter.api.io.TempDir
 /** 실제 AGP processor의 선택과 정적 도달성을 검사한다. Android 실행이나 XML 대응 인증은 아니다. */
 class AndroidDataBindingIntegrationTest {
     @Test
-    fun `실제 DataBinding 생성 호출은 overload와 variant를 구분하고 도달하지 않은 owner를 살리지 않는다`(@TempDir root: Path) {
+    fun `실제 DataBinding 생성 호출과 보존 경로를 Activity 진입 경로와 구분한다`(@TempDir root: Path) {
         fixture(root)
         val compiled = build(root, "kartographSnapshotDebug", "kartographSnapshotRelease")
         for (variant in listOf("Debug", "Release")) {
@@ -47,7 +48,7 @@ class AndroidDataBindingIntegrationTest {
         println("data-binding-native releaseCalls=${calledAdapters(release).sorted()}")
 
         // 생성물을 직접 지우거나 graph를 잘라내지 않고 진짜 진입 호출만 제거하여 재컴파일한다.
-        // 생성 BindingImpl의 동일 CALL이 남아도 owner에 도달하지 못하면 adapter도 도달하면 안 된다.
+        // 전체 보존은 mapper의 상수도 root로 삼으므로 Activity 진입 경로와 따로 검사한다.
         write(root, "src/main/java/p/MainActivity.java", activity(inflate = false))
         val uncalledBuild = build(root, "kartographSnapshotDebug")
         assertEquals(TaskOutcome.SUCCESS, uncalledBuild.task(":compileDebugJavaWithJavac")?.outcome)
@@ -58,7 +59,6 @@ class AndroidDataBindingIntegrationTest {
         assertTrue(NodeId("class:p/MainActivity") in reachability.reachableNodeIds)
         assertTrue(bindingOwner in uncalled.graph.nodes)
         assertTrue(bindingExecute in uncalled.graph.nodes)
-        val entry = NodeId("method:p/MainActivity#onCreate(Landroid/os/Bundle;)V")
         assertTrue(debug.graph.externalCalls.any { it.caller == entry && it.owner == "androidx/databinding/DataBindingUtil" })
         assertFalse(uncalled.graph.externalCalls.any { it.caller == entry && it.owner == "androidx/databinding/DataBindingUtil" })
         val ownerPath = reachability.pathFromRootTo(bindingOwner)
@@ -70,10 +70,18 @@ class AndroidDataBindingIntegrationTest {
         for ((source, target) in ownerPath.orEmpty().zipWithNext()) {
             println("data-binding-native noInflation pathEdges=" + uncalled.graph.outgoingEdgesFrom(source).filter { it.target == target })
         }
-        assertFalse(bindingOwner in reachability.reachableNodeIds)
-        assertFalse(bindingExecute in reachability.reachableNodeIds)
-        for (id in calledAdapters(uncalled)) assertFalse(id in reachability.reachableNodeIds, id.value)
-        println("data-binding-native uncalledOwner=${bindingOwner.value} reachable=false compiledCallsPreserved=true")
+        assertEquals(listOf(NodeId("class:p/DataBinderMapperImpl"), NodeId("method:p/DataBinderMapperImpl#getDataBinder(Landroidx/databinding/DataBindingComponent;Landroid/view/View;I)Landroidx/databinding/ViewDataBinding;"), bindingOwner), ownerPath)
+        assertTrue(rootEvidence.any { it.reason == RetentionReason.INLINE_CONSTANT }, rootEvidence.toString())
+        assertTrue(bindingExecute in reachability.reachableNodeIds)
+        val entryReachability = activityClosure(uncalled)
+        assertFalse(bindingOwner in entryReachability.reachableNodeIds)
+        assertFalse(bindingExecute in entryReachability.reachableNodeIds)
+        for (id in calledAdapters(uncalled)) {
+            assertTrue(id in reachability.reachableNodeIds, id.value)
+            assertFalse(id in entryReachability.reachableNodeIds, id.value)
+        }
+        println("data-binding-native defaultRetention owner=${bindingOwner.value} reachable=true reason=INLINE_CONSTANT")
+        println("data-binding-native uncalledOwner=${bindingOwner.value} scope=activity-entry reachable=false compiledCallsPreserved=true")
     }
 
     private fun fixture(root: Path) {
@@ -232,6 +240,7 @@ class AndroidDataBindingIntegrationTest {
 
     private fun assertReachedMapperChain(snapshot: QuerySnapshot) {
         val reached = ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention)
+        val entryReached = activityClosure(snapshot)
         assertTrue(snapshot.retention.any { it.nodeId == NodeId("class:p/MainActivity") && it.reason == RetentionReason.MANIFEST_COMPONENT })
         assertTrue(NodeId("class:androidx/databinding/DataBinderMapperImpl") in reached.reachableNodeIds)
         assertTrue(NodeId("class:p/DataBinderMapperImpl") in reached.reachableNodeIds)
@@ -244,11 +253,24 @@ class AndroidDataBindingIntegrationTest {
             val path = assertNotNull(reached.pathFromRootTo(id), id.value)
             assertTrue(bindingExecute in path, path.toString())
             assertFalse(snapshot.retention.any { it.nodeId == id }, "adapter became an unconditional root: ${id.value}")
+            val entryPath = assertNotNull(entryReached.pathFromRootTo(id), id.value)
+            assertEquals(entry, entryPath.first())
+            assertTrue(NodeId("class:androidx/databinding/DataBinderMapperImpl") in entryPath ||
+                NodeId("method:androidx/databinding/DataBinderMapperImpl#<init>()V") in entryPath, entryPath.toString())
+            assertTrue(NodeId("class:p/DataBinderMapperImpl") in entryPath, entryPath.toString())
+            assertTrue(bindingOwner in entryPath && bindingExecute in entryPath, entryPath.toString())
         }
         for (id in listOf(adapter("overloaded", "Ljava/lang/String;"), adapter("split", "II"),
             adapter("literalRequired", "II"), adapter("unused"))) {
             assertFalse(id in reached.reachableNodeIds, id.value)
         }
+    }
+
+    // 저장된 manifest 보존 중 실제 Activity 진입 하나만 선택한 질문이다. 제품 root는 바꾸지 않는다.
+    private fun activityClosure(snapshot: QuerySnapshot): ReachabilityResult {
+        val roots = snapshot.retention.filter { it.nodeId == entry && it.reason == RetentionReason.MANIFEST_COMPONENT }
+        assertTrue(roots.isNotEmpty(), "manifest-expanded Activity entry must be present")
+        return ReachabilityAnalyzer.analyze(snapshot.graph, roots)
     }
 
     private fun calledAdapters(snapshot: QuerySnapshot): Set<NodeId> = snapshot.graph.outgoingEdgesFrom(bindingExecute)
@@ -264,6 +286,7 @@ class AndroidDataBindingIntegrationTest {
     }
 
     private companion object {
+        val entry = NodeId("method:p/MainActivity#onCreate(Landroid/os/Bundle;)V")
         val bindingOwner = NodeId("class:p/databinding/ScreenBindingImpl")
         val bindingExecute = NodeId("method:p/databinding/ScreenBindingImpl#executeBindings()V")
     }

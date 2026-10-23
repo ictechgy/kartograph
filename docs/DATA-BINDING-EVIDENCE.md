@@ -5,6 +5,16 @@ adapter runs. The existing graph still needs a reached binding owner, a captured
 framework callback header, and an actual compiled CALL to reach an adapter.
 An unrelated overload or an unreached owner receives no new retention root.
 
+Reachability uses all configured retention roots. A generated mapper's compile-time
+constant can retain its owner independently of an Activity's inflation call, so
+removing that call does not necessarily make the binding unreachable in the full
+graph. This retained static path does not prove runtime execution. The native
+processor fixture records the full retention reason/path separately from the
+unchanged graph's Activity-entry-only closure before and after removing inflation.
+An actual javac orphan-owner control also checks that the callback model does not
+root an otherwise unretained binding. These distinctions preserve existing keep
+and constant retention rather than suppressing them to obtain a negative result.
+
 `dead` and `why` now attach `data-binding-xml-candidate` diagnostics to exact adapter
 IDs and XML locations. When XML makes an adapter eligible but no reached compiled
 caller is observed, its finding needs runtime review. The graph can still say

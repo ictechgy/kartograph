@@ -29,6 +29,7 @@ class DataBindingProcessorEvidenceTest(unittest.TestCase):
             self.assertEqual(1, result["executed"])
             self.assertEqual(64, len(result["xmlSha256"]))
             self.assertEqual(list(MODULE.MARKERS), result["observations"])
+            self.assertIn("full default-retention closure and Activity-entry-only closure are separate", result["scope"])
 
     def test_absent_skipped_failed_duplicate_or_missing_observation_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -43,6 +44,8 @@ class DataBindingProcessorEvidenceTest(unittest.TestCase):
                 lambda s: ET.SubElement(s, "testcase", name=MODULE.CASE, classname=MODULE.SUITE),
                 lambda s: setattr(s.find("system-out"), "text", MODULE.MARKERS[0]),
                 lambda s: setattr(s.find("system-out"), "text", "\n".join(MODULE.MARKERS + (MODULE.MARKERS[0],))),
+                lambda s: setattr(s.find("system-out"), "text", "\n".join(MODULE.MARKERS).replace(" scope=activity-entry", "")),
+                lambda s: setattr(s.find("system-out"), "text", "\n".join(MODULE.MARKERS[:2] + MODULE.MARKERS[3:])),
             ):
                 suite = self.fixture(root)
                 change(suite)
