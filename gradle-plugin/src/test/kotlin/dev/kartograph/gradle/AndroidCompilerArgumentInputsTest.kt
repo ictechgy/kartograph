@@ -17,6 +17,45 @@ import kotlin.test.*
 
 class AndroidCompilerArgumentInputsTest {
     @Test
+    fun `external processor inputs bind without becoming graph roots and changed bytes refuse capture`(@TempDir root: Path) {
+        val module = Files.createDirectories(root.resolve("module"))
+        val project = ProjectBuilder.builder().withProjectDir(module.toFile()).build()
+        project.pluginManager.apply("java")
+        val sources = Files.createDirectories(module.resolve("src/main/java"))
+        Files.writeString(sources.resolve("Example.java"), "public class Example {}")
+        val build = Files.writeString(module.resolve("build.gradle"), "plugins { id 'java' }")
+        val processor = Files.writeString(root.resolve("processor.jar"), "independent processor bytes")
+        val task = project.tasks.named("compileJava", JavaCompile::class.java).get()
+        task.options.annotationProcessorPath = project.files(processor)
+        val modules = task.javaCompiler.get().metadata.installationPath.file("lib/modules")
+        val spec = WitnessSpec(module.toFile(), "sample:main", task.name, task.path, "javac",
+            project.files(sources), project.files(build), project.files(sources, build, modules, processor),
+            project.files(), project.layout.buildDirectory.file("witness.json"), null, automaticSourceInventory = true)
+        val observed = spec.observe(task)
+        val input = observed.single { it.role == "processor" }
+        assertTrue(input.path.startsWith("external/"))
+        val witness = dev.kartograph.core.BuildWitness("sample:main", "javac", task.path, observed,
+            listOf(dev.kartograph.core.InputFingerprint("classes", "build/classes", "b".repeat(64))))
+        val capture = project.tasks.create("capture", KartographSnapshotTask::class.java)
+        capture.classRoots.from(task.destinationDirectory)
+        capture.dependencyClasspath.from(task.classpath)
+        capture.compilerInputFiles.from(AndroidCompilerInputs.snapshotInputs(project, task, project.files()))
+        fun binder() = CompilerInputBinder(module, listOf(capture.compilerInputFiles.files.map { it.toPath() }))
+        assertContains(assertFailsWith<IllegalArgumentException> {
+            CompilerInputBinder(module, listOf(emptyList())).bind(witness, input, null, emptySet())
+        }.message.orEmpty(), "no selected input matches the recorded processor input")
+        assertEquals(processor, binder().bind(witness, input, null, emptySet()))
+        assertEquals(setOf(task.destinationDirectory.get().asFile), capture.classRoots.files)
+        assertTrue(capture.dependencyClasspath.isEmpty)
+        Files.writeString(processor, "changed processor bytes")
+        assertContains(assertFailsWith<IllegalArgumentException> {
+            binder().bind(witness, input, null, emptySet())
+        }.message.orEmpty(), "no selected input matches the recorded processor input")
+        assertNotEquals(CompilerEvidenceToken.create("sample:main", "javac", task.path, observed),
+            CompilerEvidenceToken.create("sample:main", "javac", task.path, spec.observe(task)))
+    }
+
+    @Test
     fun `known metadata provider still requires complete independent byte coverage`(@TempDir root: Path) {
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
         project.pluginManager.apply("java")

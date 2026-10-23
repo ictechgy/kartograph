@@ -12,6 +12,11 @@ import java.io.File
 internal object AndroidCompilerInputs {
     data class ArgumentInputs(val files: FileCollection, val rejection: WitnessRejection? = null)
 
+    /** witness 외부 경로를 다시 연결할 compiler 입력이다. 분석 classpath나 정점 root에는 추가하지 않는다. */
+    fun snapshotInputs(project: Project, compiler: JavaCompile, additional: FileCollection): FileCollection =
+        project.files(additional, compiler.classpath, compiler.options.annotationProcessorPath,
+            compiler.javaCompiler.map { it.metadata.installationPath.file("lib/modules") })
+
     /** argument provider가 Gradle에 선언한 파일 입력만 연결한다. processor 출력은 입력으로 재분류하지 않는다. */
     fun argumentProviderInputs(project: Project, compiler: JavaCompile, metadataProviderType: Class<*>? = null): ArgumentInputs = try {
         ArgumentInputs(readArgumentProviderInputs(project, compiler, metadataProviderType))

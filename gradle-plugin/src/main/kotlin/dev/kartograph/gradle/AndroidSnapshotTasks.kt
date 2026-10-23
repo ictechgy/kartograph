@@ -147,7 +147,7 @@ internal object AndroidSnapshotTasks {
             // 출력 property를 map하면 producer 완료 전 조회가 되어 configuration cache가 거부한다. 위치만 읽는다.
             declaredClassOutputs.from(project.provider { compiler.destinationDirectory.get().asFile })
             input.witnessFiles.from(witness)
-            compilerInputs.from(additionalInputs, compiler.classpath, compiler.javaCompiler.map { it.metadata.installationPath.file("lib/modules") })
+            compilerInputs.from(AndroidCompilerInputs.snapshotInputs(project, compiler, additionalInputs))
         }
         project.afterEvaluate {
             val kotlin = KotlinJvmInputs.androidCompilations(project, roots)

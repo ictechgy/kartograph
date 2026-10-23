@@ -118,5 +118,8 @@ The exact AGP-owned Room argument helper's single processor-list input uses the
 existing public JavaPreCompileTask metadata output adapter. Its recognized schema
 does not bypass the final check that every declared compiler input has captured bytes;
 extra, changed or mismatched inputs still reject the witness.
+Declared annotation processor paths also join the compiler-input binding inventory;
+they do not become analysis classpaths or graph roots. Changed processor bytes still
+invalidate the recorded input fingerprint.
 The separate Hilt processor fixture distinguishes a matched snapshot from a precise
 capture refusal; refusal verifies the guard, not usable transformed snapshot support.
