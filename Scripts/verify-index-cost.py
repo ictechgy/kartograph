@@ -19,9 +19,9 @@ import tempfile
 import threading
 import time
 
-# Compare this patch with its exact main base on the same frozen candidate input.
-SOURCE_BASELINE = "bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1"
-BASELINE = "bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1"
+# 같은 runner에서 최적화 직전 제품과 비교한다. 이전 bb13 호환 실험의 기록은 별도 보존한다.
+SOURCE_BASELINE = "5a23851a9648504bd91350c407566ea3a10b695c"
+BASELINE = "5a23851a9648504bd91350c407566ea3a10b695c"
 MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
 PROFILES = ("graph", "dead", "architecture")
 LIMIT = 32 * 1024 * 1024
@@ -230,35 +230,6 @@ def successful_pair(left, right):
     return left["exit"] == 0 and right["exit"] == 0 and equivalent(left, right)
 
 
-def expected_dead_outputs(located_nodes):
-    baseline = (
-        "limitation\tANNOTATION_VALUE_REFERENCES\tclass references in SOURCE-retention annotations are not available in compiled inputs\n"
-        "limitation\tDYNAMIC_REGISTRATION\tmanifest-absent runtime component registration is not resolved\n"
-        "limitation\tGENERATED_CODE_COVERAGE\tonly supported generation markers and sibling relationships identify generated code\n"
-        "limitation\tINLINE_CONSTANT_REFERENCES\tcompile-time constant owners are retained because inlined use sites are unavailable\n"
-        "limitation\tREFLECTION_STRINGS\truntime reflection beyond bounded intra-method class and constructor values is not fully resolved\n"
-        "limitation\tTOP_LEVEL_DECLARATIONS\tfile-facade top-level properties and their accessors are conservatively not reported\n"
-    )
-    candidate = (
-        "input-hint\tmissing-classpath\tno dependency classpath inputs were supplied; reachability may be under-measured for dependency supertype and framework annotation retention\n"
-        "input-hint\tmanifest-without-components\tthe manifest scan produced no component retention evidence; reachability may be under-measured for declarations rooted at manifest components\n"
-        + baseline +
-        f"limitation\tEXTERNAL_RETENTIONS\tunavailable-source-paths: {located_nodes} located node(s) have no package-compatible source file; generated, external or omitted sources may be absent\n"
-        f"limitation\tEXTERNAL_RETENTIONS\tunresolved-source-paths: {located_nodes} of {located_nodes} located node(s) did not match exactly one project source file\n"
-    )
-    return baseline.encode(), candidate.encode()
-
-
-def expected_dead_contract_delta(command, left, right, located_nodes):
-    # 빈 source/manifest/classpath 고정 fixture의 정확한 계약 확장만 허용한다. 정규화는 하지 않는다.
-    if (command not in ("dead", "dead_private") or type(located_nodes) is not int or located_nodes <= 0
-            or SOURCE_BASELINE != "bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1" or BASELINE != SOURCE_BASELINE):
-        return False
-    baseline, candidate = expected_dead_outputs(located_nodes)
-    return (left["exit"] == right["exit"] == 0 and left["stderr"] == right["stderr"] == b""
-            and left["stdout"] == baseline and right["stdout"] == candidate)
-
-
 def source_identity(repo, ref, env):
     result = successful(["git", "rev-parse", "--verify", ref + "^{commit}"], repo, env)
     commit = result["stdout"].decode("ascii").strip()
@@ -292,11 +263,13 @@ def public_summary(report):
         result["sources"] = report["sourcesBefore"]
     result["identitySha256"] = {key: identity_digest(report[key]) for key in (
         "rootsBefore", "projectBefore", "libsBefore", "launchersBefore", "jdkBefore",
-        "probeSourceBefore", "probesBefore") if key in report}
+        "probeSourceBefore", "semanticSourceBefore", "probesBefore") if key in report}
     result["profiles"] = report.get("profiles", [])
     result["cli"] = report.get("cli", [])
     if "cliTiming" in report:
         result["cliTiming"] = report["cliTiming"]
+    if "semantic" in report:
+        result["semantic"] = report["semantic"]
     encoded = json.dumps(result, sort_keys=True)
     if len(encoded.encode("utf-8")) > 65536:
         raise DiagnosticError("public-summary-too-large")
@@ -365,13 +338,12 @@ def paired_cli(commands, project, env, located_nodes, report, raw):
             report["cliLoad"].append({"command": name, "sample": sample, "arm": arm,
                                       "before": before, "after": after})
         left, right = results["baseline"], results["candidate"]
-        expected_delta = expected_dead_contract_delta(name, left, right, located_nodes)
-        accepted = expected_delta if name in ("dead", "dead_private") else successful_pair(left, right)
+        accepted = successful_pair(left, right)
         all_accepted = all_accepted and accepted
         report["cli"].append({"command": name, "sample": sample, "order": list(order),
                               "exactEqual": equivalent(left, right),
-                              "expectedContractDelta": expected_delta, "contractAccepted": accepted,
-                              "comparisonScope": "same-input-intentionally-expanded-output" if expected_delta else "exact-byte-comparison",
+                              "expectedContractDelta": False, "contractAccepted": accepted,
+                              "comparisonScope": "exact-byte-comparison",
                               "raw": retained, **{arm: summary(result) for arm, result in results.items()}})
     report["cliTiming"] = {
         "scope": "three-paired-fresh-processes-per-command; no-performance-pass-or-budget-change",
@@ -411,6 +383,73 @@ def compile_probe(repo, distribution, destination, java_home, env):
     successful([java_home / "bin/javac", "-cp", str(distribution / "lib/*"), "-d", destination,
                 repo / "Scripts/IndexCostProbe.java"], repo, env, phase="compile-probe")
     return str(destination) + os.pathsep + str(distribution / "lib/*")
+
+
+def compare_semantic_outputs(outputs, report):
+    """engine 지문은 보존하고 v10 raw payload와 두 전체 graph 형식의 바이트를 비교한다."""
+    records, payloads, graphs = {}, {}, {}
+    for arm, directory in outputs.items():
+        files = {}
+        for name in ("raw-facts.json", "graphs.json"):
+            path = directory / name
+            if path.is_symlink() or not path.is_file() or not 0 < path.stat().st_size <= LIMIT:
+                raise DiagnosticError("semantic-output-bound")
+            files[name] = file_record(path, name)
+        path = directory / "raw-facts.json"
+        if path.stat().st_size > LIMIT:
+            raise DiagnosticError("semantic-facts-bound")
+        try:
+            document = json.loads(path.read_bytes())
+            graph = json.loads((directory / "graphs.json").read_bytes())
+            if (not isinstance(graph, dict) or set(graph) != {"json", "ndjson"} or any(
+                    not isinstance(row, dict) or set(row) != {"bytes", "sha256"} or type(row["bytes"]) is not int
+                    or not 0 < row["bytes"] <= 512 * 1024 * 1024 or not isinstance(row["sha256"], str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", row["sha256"]) for row in graph.values())):
+                raise ValueError()
+            if (set(document) != {"format", "engine", "payloads"}
+                    or document["format"] != "class-facts-v10-payload-sha256"
+                    or not isinstance(document["engine"], str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", document["engine"])
+                    or not isinstance(document["payloads"], dict) or not document["payloads"]
+                    or any(not re.fullmatch(r"[0-9a-f]{64}", key) or not isinstance(value, str)
+                           or not re.fullmatch(r"[0-9a-f]{64}", value)
+                           for key, value in document["payloads"].items())):
+                raise ValueError()
+        except (ValueError, TypeError, KeyError):
+            raise DiagnosticError("invalid-semantic-facts") from None
+        payloads[arm] = document["payloads"]
+        graphs[arm] = graph
+        records[arm] = {"engine": document["engine"], "entries": len(payloads[arm]), "files": files, "graphs": graph}
+    left, right = records["baseline"], records["candidate"]
+    equal_graphs = graphs["baseline"] == graphs["candidate"]
+    report["semantic"] = {"scope": "non-timed-full-graph-JSON-NDJSON-and-v10-raw-payload; graph-bytes-not-retained",
+                          "arms": records, "graphsEqual": equal_graphs,
+                          "rawPayloadsEqual": payloads["baseline"] == payloads["candidate"],
+                          "enginesDiffer": left["engine"] != right["engine"],
+                          "engineScope": "recorded separately; implementation JAR identities change; each cache consumed by its own reader"}
+    if not equal_graphs or payloads["baseline"] != payloads["candidate"]:
+        raise DiagnosticError("semantic-graph-or-raw-payload-mismatch")
+    if left["engine"] == right["engine"]:
+        raise DiagnosticError("semantic-engine-did-not-change")
+
+
+def semantic_oracle(repo, distributions, roots, java_home, env, work, report, raw):
+    outputs = {}
+    report["semanticProcesses"] = {}
+    for arm, distribution in distributions.items():
+        classes = work / ("semantic-probe-" + arm)
+        classes.mkdir()
+        successful([java_home / "bin/javac", "-encoding", "UTF-8", "-cp", str(distribution / "lib/*"), "-d", classes,
+                    repo / "Scripts/IndexEquivalenceProbe.java"], repo, env, phase="compile-semantic-probe")
+        outputs[arm] = work / ("semantic-output-" + arm)
+        result = successful([java_home / "bin/java", "-cp", str(classes) + os.pathsep + str(distribution / "lib/*"),
+                             "IndexEquivalenceProbe", outputs[arm], *roots], work, env, phase="semantic-oracle")
+        report["semanticProcesses"][arm] = summary(result)
+        if (outputs[arm] / "raw-facts.json").stat().st_size > LIMIT:
+            raise DiagnosticError("semantic-facts-bound")
+        raw.retain("semantic-facts", 1, arm,
+                   {"stdout": (outputs[arm] / "raw-facts.json").read_bytes(), "stderr": result["stdout"]})
+    compare_semantic_outputs(outputs, report)
 
 
 def summarize_jfr(data):
@@ -510,6 +549,8 @@ def experiment(repo, work, env, report, raw_directory=None):
     candidate_source = source_identity(repo, "HEAD", env)
     probe_source_before = file_record(repo / "Scripts/IndexCostProbe.java", "IndexCostProbe.java")
     report["probeSourceBefore"] = probe_source_before
+    semantic_source_before = file_record(repo / "Scripts/IndexEquivalenceProbe.java", "IndexEquivalenceProbe.java")
+    report["semanticSourceBefore"] = semantic_source_before
     source_before = root_inventory(repo)
     frozen = work / "input"
     for module in MODULES:
@@ -592,16 +633,19 @@ def experiment(repo, work, env, report, raw_directory=None):
         report["jfr"] = capture_jfr(java_home,
             ["-cp", str(candidate / "lib/*"), "dev.kartograph.cli.MainKt", *commands["candidate"][1][1][1:]],
             env, work / "jfr-capture", raw.directory.parent / "jfr", repo / "Scripts/IndexCostCapture.jfc", expected)
+        semantic_oracle(repo, distributions, roots, java_home, env, work, report, raw)
     finally:
         report["sourcesAfter"] = {"baselineSource": source_identity(repo, SOURCE_BASELINE, env),
                                   "baseline": source_identity(repo, BASELINE, env),
                                   "candidate": source_identity(repo, "HEAD", env)}
         report["launchersAfter"] = {arm: inventory(dist / "bin") for arm, dist in distributions.items()}
         report["probeSourceAfter"] = file_record(repo / "Scripts/IndexCostProbe.java", "IndexCostProbe.java")
+        report["semanticSourceAfter"] = file_record(repo / "Scripts/IndexEquivalenceProbe.java", "IndexEquivalenceProbe.java")
         report["probesAfter"] = {arm: inventory(work / ("probe-" + arm)) for arm in distributions}
         require_equal(sources_before, report["sourcesAfter"], "source-commit-or-tree-changed")
         require_equal(launchers_before, report["launchersAfter"], "distribution-launchers-changed")
         require_equal(probe_source_before, report["probeSourceAfter"], "probe-source-changed")
+        require_equal(semantic_source_before, report["semanticSourceAfter"], "semantic-source-changed")
         require_equal(probes_before, report["probesAfter"], "compiled-probes-changed")
         report["rootsAfter"] = root_inventory(frozen)
         report["libsAfter"] = {arm: inventory(dist / "lib") for arm, dist in distributions.items()}

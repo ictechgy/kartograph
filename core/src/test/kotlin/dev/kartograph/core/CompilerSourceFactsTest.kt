@@ -31,6 +31,7 @@ class CompilerSourceFactsTest {
             .withCompilerCallerInventories(authored.compilerCallerInventories)
             .withCompilerAuthoredCalls(authored.compilerAuthoredCallers).withCompilerCallPositions(emptyList())
         for (captured in listOf(first, second, first.enrichedWith(emptyList()),
+            first.enrichedWith(List(3) { GraphEdge(id, owner, EdgeKind.REFERENCE) }),
             first.enrichedWith(listOf(GraphEdge(id, owner, EdgeKind.REFERENCE))))) {
             assertEquals(evidence, captured.compilerSourceUseEvidence)
             assertEquals(authored.compilerAuthoredCallers, captured.compilerAuthoredCallers)
