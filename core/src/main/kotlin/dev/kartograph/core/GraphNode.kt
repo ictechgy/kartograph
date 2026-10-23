@@ -35,6 +35,8 @@ public enum class NodeAttribute {
     FILE_FACADE,
     PROPERTY_ACCESSOR,
     GENERATED_INPUT,
+    /** 성공한 생성 receipt·source mapping·compiler class 바이트로 연결한 신원이다. 보존 root가 아니다. */
+    GENERATED_SOURCE_EVIDENCE,
     /** 그래프 내보내기를 위해 참조 identity만 붙인 외부 선언이다. 프로젝트 구현으로 취급하지 않는다. */
     EXTERNAL_STUB,
     /** compiler line이 없을 때 현재 project source header에서 유일하게 보강한 선언 위치다. */

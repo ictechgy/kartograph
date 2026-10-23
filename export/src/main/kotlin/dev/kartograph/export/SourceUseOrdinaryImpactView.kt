@@ -13,6 +13,7 @@ internal fun sourceOrdinaryImpactValue(
     report: ImpactReport,
     snapshots: Map<String, SourceSnapshotMetadata>,
     summaryLimit: Int?,
+    generationSummaries: Map<String, GenerationSummary> = emptyMap(),
 ): Map<String, Any?> {
     require(summaryLimit == null || summaryLimit in 1..100_000)
     val summaryTruncated = summaryLimit != null && listOf(report.navigation.observed, report.navigation.filtered)
@@ -21,7 +22,10 @@ internal fun sourceOrdinaryImpactValue(
         add("format" to { "kartograph-impact" })
         add("version" to { 1 })
         add("inputs" to { sourceJsonObject(*snapshots.entries.map { (name, snapshot) -> name to {
-            sourceJsonObject("revision" to { snapshot.revision }, "scope" to { snapshot.scope }, "toolVersion" to { snapshot.toolVersion })
+            sourceJsonObject(*buildList<Pair<String, () -> Any?>> {
+                add("revision" to { snapshot.revision }); add("scope" to { snapshot.scope }); add("toolVersion" to { snapshot.toolVersion })
+                generationSummaries[name]?.let { add("generationSummary" to { it.value() }) }
+            }.toTypedArray())
         } }.toTypedArray()) })
         add("status" to { when {
             report.unresolved.isNotEmpty() && report.changed.isEmpty() -> "notFound"

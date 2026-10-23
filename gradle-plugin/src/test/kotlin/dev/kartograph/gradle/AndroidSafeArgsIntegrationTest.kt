@@ -90,7 +90,149 @@ class AndroidSafeArgsIntegrationTest {
             assertTrue(observation.contains("\\\"seed\\\", $expectedDefault"), observation)
             println("safe-args-native complete=$variant freshness=matched controls=checked")
         }
+        observeColdProduct(root.resolve("cold-product"), root)
     }
+
+    private fun observeColdProduct(root: Path, baselineRoot: Path) {
+        fixture(root)
+        val results = root.resolve("build/safeargs-product"); Files.createDirectories(results)
+        val result = SafeArgsBuildEvidence.build(results) {
+            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographSnapshotDebug", "kartographSnapshotRelease",
+                "--stacktrace", "--no-configuration-cache", "--no-build-cache").build()
+        }
+        val rows = mutableListOf<Map<String, Any?>>()
+        for (variant in listOf("Debug", "Release")) {
+            assertEquals(TaskOutcome.SUCCESS, result.task(":generateSafeArgs$variant")?.outcome)
+            assertEquals(TaskOutcome.SUCCESS, result.task(":kartographVerifySafeArgs$variant")?.outcome)
+            val snap = snapshot(root, variant.lowercase())
+            val old = snapshot(baselineRoot, variant.lowercase())
+            val evidence = requireNotNull(snap.generationEvidence) { "cold generation evidence missing: ${snap.limitations}" }
+            assertEquals(1, evidence.receipts.size)
+            assertEquals(3, evidence.receipts.single().sources.size)
+            assertEquals("current-cold-success", evidence.observations.single().originBasis)
+            assertEquals("SUCCEEDED", evidence.observations.single().currentGenerationStatus)
+            val generated = listOf("p/StartFragmentArgs", "p/StartFragmentDirections", "p/StartFragmentDirections\$Go", "p/StartFragmentDirections\$Idle")
+            val manual = listOf("p/ManualArgs", "p/ManualDirections", "other/StartFragmentArgs")
+            for (name in generated) {
+                val node = snap.graph.nodes.getValue(NodeId("class:$name"))
+                assertTrue(node.synthesized, name)
+                assertTrue(NodeAttribute.GENERATED_SOURCE_EVIDENCE in node.attributes, name)
+                assertTrue(evidence.declarations.any { it.owner == node.id }, name)
+            }
+            for (name in manual) assertFalse(snap.graph.nodes.getValue(NodeId("class:$name")).synthesized, name)
+            assertEquals(old.graph.edges, snap.graph.edges, "generation classification must not add calls or dispatch")
+            assertEquals(old.retention, snap.retention, "generation classification must not create roots")
+            val classes = root.resolve(evidence.declarations.first().originalRoot)
+            val publicHome = System.getenv("KARTOGRAPH_PUBLIC_025_HOME")
+            if (publicHome != null) {
+            val public = runCli(publicHome, listOf("graph", "--classes", classes.toString(), "--format", "json"), results.resolve("public-$variant"))
+            val publicNodes = (public["nodes"] as List<*>).map { it as Map<*, *> }.associateBy { it["usr"] }
+            for (name in generated + manual) assertEquals(false, publicNodes["class:$name"]?.get("synthesized"), name)
+            val publicEdges = (public["edges"] as List<*>).map { it as Map<*, *> }
+            assertTrue(publicEdges.any { it["source"] == "method:p/MainActivity#onCreate(Landroid/os/Bundle;)V" &&
+                it["target"] == "method:p/StartFragmentDirections#go(I)Lp/StartFragmentDirections\$Go;" && it["kind"] == "call" })
+            assertFalse(publicEdges.any { it["target"] == "method:p/StartFragmentDirections#idle(I)Lp/StartFragmentDirections\$Idle;" && it["kind"] == "call" })
+            }
+            val snapshotPath = root.resolve("build/reports/kartograph/${variant.lowercase()}-snapshot.json")
+            Files.copy(snapshotPath, results.resolve("$variant-cold-snapshot.json"))
+            val currentHome = System.getenv("KARTOGRAPH_CURRENT_CLI_HOME")
+            if (currentHome != null) {
+            val query = runCli(currentHome,
+                listOf("query", "class:p/StartFragmentArgs", "--graph-file", snapshotPath.toString()), results.resolve("query-$variant"))
+            assertEquals("found", query["status"])
+            assertEquals("class:p/StartFragmentArgs", ((query["result"] as Map<*, *>)["subject"] as Map<*, *>)["usr"])
+            assertGenerationSummary(query, evidence, "current-cold-success", "SUCCEEDED")
+            }
+            val row = mapOf("variant" to variant, "snapshotSha256" to sha(snapshotPath), "sources" to evidence.receipts.single().sources.size,
+                "declarations" to evidence.declarations.map { it.owner.value }, "publicVersion" to if (publicHome != null) "0.25.0" else null,
+                "publicGenerated" to if (publicHome != null) false else null,
+                "coldGenerated" to true, "manualUnchanged" to true, "callsUnchanged" to true, "retentionUnchanged" to true,
+                "queryExit" to if (currentHome != null) 0 else null, "scope" to "actual cold Java SafeArgs 2.10.2; live graph/dead are not assessed")
+            rows += row
+            Files.writeString(results.resolve("receipt.json"), dev.kartograph.export.McpJsonCodec.render(mapOf("variants" to rows)))
+            println("safe-args-product complete=$variant source-class=matched public025=${publicHome != null} query=${currentHome != null}")
+        }
+        // 실제 UP-TO-DATE에서 과거 출처와 새 소비 invocation을 각각 검증한다.
+        val warm = SafeArgsBuildEvidence.build(results.resolve("warm")) {
+            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographSnapshotDebug", "--stacktrace",
+                "--no-configuration-cache", "--no-build-cache").build()
+        }
+        assertEquals(TaskOutcome.UP_TO_DATE, warm.task(":generateSafeArgsDebug")?.outcome)
+        val warmSnapshot = snapshot(root, "debug")
+        val coldSnapshot = QuerySnapshotCodec.parse(Files.readString(results.resolve("Debug-cold-snapshot.json")))
+        val coldEvidence = requireNotNull(coldSnapshot.generationEvidence)
+        val warmEvidence = requireNotNull(warmSnapshot.generationEvidence)
+        val observed = warmEvidence.observations.single()
+        assertEquals("historical-byte-equivalence", observed.originBasis)
+        assertEquals("UP_TO_DATE", observed.currentGenerationStatus)
+        assertEquals(null, observed.currentAttempt)
+        assertEquals(coldEvidence.receipts, warmEvidence.receipts)
+        assertEquals(coldEvidence.observations.single().originContext, observed.originContext)
+        assertTrue(coldEvidence.observations.single().invocation != observed.invocation)
+        assertEquals(coldSnapshot.graph.nodes, warmSnapshot.graph.nodes)
+        assertEquals(coldSnapshot.graph.edges, warmSnapshot.graph.edges)
+        val warmPath = root.resolve("build/reports/kartograph/debug-snapshot.json")
+        Files.copy(warmPath, results.resolve("Debug-warm-snapshot.json"))
+        val currentHome = System.getenv("KARTOGRAPH_CURRENT_CLI_HOME")
+        if (currentHome != null) {
+            val query = runCli(currentHome, listOf("query", "class:p/StartFragmentArgs", "--graph-file", warmPath.toString()), results.resolve("query-warm"))
+            assertEquals("found", query["status"])
+            assertEquals("class:p/StartFragmentArgs", ((query["result"] as Map<*, *>)["subject"] as Map<*, *>)["usr"])
+            assertGenerationSummary(query, warmEvidence, "historical-byte-equivalence", "UP_TO_DATE")
+        }
+        Files.writeString(results.resolve("warm.json"), dev.kartograph.export.McpJsonCodec.render(mapOf(
+            "originBasis" to observed.originBasis, "currentGenerationStatus" to observed.currentGenerationStatus,
+            "currentAttempt" to observed.currentAttempt, "sameOrigin" to true, "newInvocation" to true,
+            "snapshotSha256" to sha(warmPath), "queryExit" to if (currentHome != null) 0 else null)))
+        // 전체 출력에 수기 파일이 추가되면 원래 receipt가 이 파일까지 소유한다고 확대하지 않는다.
+        Files.writeString(root.resolve(warmEvidence.receipts.single().outputRoot).resolve("p/HandwrittenExtra.java"),
+            "package p; public class HandwrittenExtra {}")
+        SafeArgsBuildEvidence.build(results.resolve("warm-extra")) {
+            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographSnapshotDebug", "--stacktrace",
+                "--no-configuration-cache", "--no-build-cache").build()
+        }
+        val extraSnapshot = snapshot(root, "debug")
+        assertEquals(null, extraSnapshot.generationEvidence)
+        assertTrue(extraSnapshot.limitations.any { it.startsWith("generation-unverified:") })
+        Files.writeString(results.resolve("warm-extra.txt"), "whole inventory changed; generation-unverified\n")
+    }
+
+    private fun assertGenerationSummary(query: Map<*, *>, evidence: dev.kartograph.core.GenerationEvidence, basis: String, status: String) {
+        val summary = query["generationSummary"] as Map<*, *>
+        assertEquals(false, summary["liveRevalidated"])
+        assertEquals("snapshotCapture", summary["observationTime"])
+        assertEquals("entireLoadedSnapshot", summary["summaryScope"])
+        assertEquals(evidence.receipts.size.toLong(), summary["totalReceipts"])
+        assertEquals(evidence.declarations.size.toLong(), summary["totalDeclarations"])
+        assertEquals(0L, summary["omittedReceipts"])
+        val row = (summary["receipts"] as List<*>).single() as Map<*, *>
+        assertEquals(basis, row["originBasis"])
+        assertEquals(status, row["currentGenerationStatus"])
+        assertEquals(evidence.observations.single().currentAttempt, row["currentAttempt"])
+    }
+
+    private fun runCli(home: String, arguments: List<String>, prefix: Path): Map<*, *> {
+        val directory = Path.of(home)
+        val executable = Path.of(System.getProperty("java.home"), "bin", if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java")
+        val jars = Files.list(directory.resolve("lib")).use { it.filter { p -> p.fileName.toString().endsWith(".jar") }.sorted().toList() }
+        require(jars.isNotEmpty()) { "actual CLI distribution is missing" }
+        val argv = listOf(executable.toString(), "-cp", jars.joinToString(java.io.File.pathSeparator), "dev.kartograph.cli.MainKt") + arguments
+        Files.createDirectories(requireNotNull(prefix.parent))
+        val out = Path.of("$prefix.json"); val err = Path.of("$prefix.stderr")
+        val start = System.nanoTime()
+        val process = ProcessBuilder(argv).redirectOutput(out.toFile()).redirectError(err.toFile()).start()
+        val exited = process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)
+        if (!exited) { process.destroyForcibly(); process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS) }
+        Files.writeString(Path.of("$prefix-command.json"), dev.kartograph.export.McpJsonCodec.render(mapOf("argv" to argv,
+            "exit" to if (exited) process.exitValue() else null, "timeout" to !exited, "elapsedNanos" to System.nanoTime() - start,
+            "jars" to jars.associate { it.fileName.toString() to sha(it) })))
+        assertTrue(exited, "CLI command timed out")
+        assertEquals(0, process.exitValue(), Files.readString(err).take(2048))
+        require(Files.size(out) <= 10 * 1024 * 1024 && Files.size(err) <= 1024 * 1024) { "CLI fixture evidence exceeds budget" }
+        return dev.kartograph.export.McpJsonCodec.parse(Files.readString(out)) as Map<*, *>
+    }
+
+    private fun sha(file: Path) = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)).joinToString("") { "%02x".format(it) }
 
     /** 이 테스트가 만든 작은 입력/관측만 보존한다. 실패 시 원래 실패도 유지한다. */
     private fun preserveEvidence(root: Path) {
@@ -102,7 +244,8 @@ class AndroidSafeArgsIntegrationTest {
         var total = 0L
         for ((relative, prefix) in listOf("src" to "fixture/src", "build.gradle" to "fixture/build.gradle",
             "settings.gradle" to "fixture/settings.gradle", "gradle.properties" to "fixture/gradle.properties",
-            "build/safeargs-observations" to "observations", "build/reports/kartograph" to "snapshots")) {
+            "build/safeargs-observations" to "observations", "build/reports/kartograph" to "snapshots",
+            "cold-product/build/safeargs-product" to "product", "cold-product/build/reports/kartograph" to "product-snapshots")) {
             val source = root.resolve(relative)
             if (!Files.exists(source)) continue
             Files.walk(source).use { paths -> paths.sorted().forEach { file ->

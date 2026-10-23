@@ -1,0 +1,51 @@
+# Safe Args generation evidence
+
+The snapshot adapter supports a bounded Java Safe Args 2.10.2 profile with
+Gradle 9.7.1. The Android fixture uses AGP 9.3.2; the ordinary minimum-AGP gate
+does not establish compatibility for this adapter. Other generator artifacts,
+Kotlin generation, additional or replaced generator actions, configuration-cache
+hook restoration, and missing providers remain `generation-unverified`.
+
+An initially empty output and mapping inventory, the supported original action
+and this invocation's owned hooks, and a successful task completion establish a
+cold generation receipt. The per-input mapping identifies candidate Java sources;
+the whole output inventory also records unmapped files. Mapping or a directory
+name alone does not establish ownership. Journal failures leave ordinary
+generation and compilation running and make generation evidence unavailable.
+An original generator failure still fails the build.
+
+Snapshot attribution requires the mapped source bytes to match one actual javac
+source witness, the class SourceFile and owner identity, and the selected class
+bytes. Nested classes require classfile ownership evidence. Handwritten classes,
+same-basename sources in another package, ambiguous inputs, missing debug data,
+and changed transformed classes are not admitted. Generation classification adds
+`generatedSourceEvidence` and `synthesized`; it does not add CALL edges or roots.
+Because dead findings omit synthesized declarations, this changes classification,
+not a prediction that the declaration executes or may safely be removed.
+
+Generation snapshots use mandatory plain version 3 or compact version 4. Older
+readers must reject them. Snapshots without generation evidence retain versions
+1 and 2. The current adapter separates this invocation's successful cold work
+from historical origin during an actual UP-TO-DATE task. Reuse requires the
+original origin-context sidecar and matching current providers, actions, options,
+mapping, whole output inventory, compiler source and selected class bytes. It
+records `historical-byte-equivalence` and `UP_TO_DATE`; it does not call this a new
+successful generation. FROM-CACHE, skipped/excluded tasks, failed attempts and
+missing contexts remain unverified. Ordinary live graph/dead consumption remains
+a separate follow-up path. No user clean or forced regeneration is performed.
+
+Saved CLI/MCP query and impact outputs preserve a bounded `generationSummary`.
+It describes admitted evidence across the entire loaded snapshot, independently
+for before/current revisions, and keeps status totals when detail rows are
+omitted. `observationTime=snapshotCapture` and `liveRevalidated=false` distinguish
+captured observations from a new build verification. Full records remain in the
+original snapshot. No evidence means unavailable classification, not zero
+generated declarations.
+
+The native fixture compares the same generated class bytes with the pinned public
+0.25.0 CLI and consumes the new snapshot with the current installed CLI. It checks
+manual lookalikes, an unused generated action, unchanged calls and retention, and
+both debug/release navigation inputs. Its JSON receipts distinguish execution
+from unavailable baseline tools; the dedicated CI verifier requires both CLIs.
+Local JVM source/class tests and SDK-free task lifecycle checks do not replace
+this Android execution, and none of these fixtures remeasure a private app.

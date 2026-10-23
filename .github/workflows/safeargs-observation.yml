@@ -8,6 +8,11 @@ on:
       - gradle-plugin/src/test/kotlin/dev/kartograph/gradle/SafeArgsBuildEvidence*.kt
       - Scripts/verify-safeargs-native-test.py
       - Scripts/tests/test_safeargs_native_verifier.py
+      - Scripts/verify-safeargs-product-test.py
+      - Scripts/tests/test_safeargs_product_verifier.py
+      - gradle-plugin/src/main/kotlin/dev/kartograph/gradle/SafeArgs*.kt
+      - gradle-plugin/src/main/kotlin/dev/kartograph/gradle/GenerationAttemptJournal.kt
+      - index/src/main/kotlin/dev/kartograph/index/GeneratedSourceIndexer.kt
   workflow_dispatch:
 
 permissions:
@@ -44,11 +49,20 @@ jobs:
       - name: Install the existing fixture platform selection
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
       - name: Verify observation gate rejection cases
-        run: python3 -m unittest discover -s Scripts/tests -p test_safeargs_native_verifier.py -v
+        run: python3 -m unittest discover -s Scripts/tests -p '*safeargs*' -v
+      - name: Prepare pinned public and current CLI distributions
+        run: |
+          mkdir -p build/reports/safeargs-workflow/public-cli
+          curl --fail --location --max-time 90 https://github.com/ictechgy/kartograph/releases/download/v0.25.0/kartograph-0.25.0.zip -o build/reports/safeargs-workflow/public-cli/kartograph-0.25.0.zip
+          echo 'a7a55b35a0bbcab93230d1364482ef781b9ab060ed35f1c1f359b5f972361978  build/reports/safeargs-workflow/public-cli/kartograph-0.25.0.zip' | sha256sum --check
+          unzip -q build/reports/safeargs-workflow/public-cli/kartograph-0.25.0.zip -d build/reports/safeargs-workflow/public-cli
+          ./gradlew --no-daemon :cli:installDist
       - name: Execute the single Safe Args TestKit observation
         timeout-minutes: 20
         env:
           KARTOGRAPH_SAFEARGS_EVIDENCE_DIR: ${{ github.workspace }}/build/reports/safeargs-native
+          KARTOGRAPH_PUBLIC_025_HOME: ${{ github.workspace }}/build/reports/safeargs-workflow/public-cli/kartograph-0.25.0
+          KARTOGRAPH_CURRENT_CLI_HOME: ${{ github.workspace }}/cli/build/install/kartograph
         run: |
           set +e
           ./gradlew --no-daemon :gradle-plugin:test --tests dev.kartograph.gradle.AndroidSafeArgsIntegrationTest --rerun --no-build-cache --stacktrace 2>&1 | tee build/reports/safeargs-workflow/gradle.log
@@ -60,6 +74,9 @@ jobs:
       - name: Require actual unskipped execution and complete observation receipts
         if: ${{ always() && !cancelled() }}
         run: python3 Scripts/verify-safeargs-native-test.py
+      - name: Require actual cold product and public baseline consumption
+        if: ${{ always() && !cancelled() }}
+        run: python3 Scripts/verify-safeargs-product-test.py
       - name: Preserve successful or failed observation evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -69,6 +86,7 @@ jobs:
             build/reports/safeargs-native/
             build/reports/safeargs-workflow/
             build/reports/safeargs-native-verification.json
+            build/reports/safeargs-product-verification.json
             gradle-plugin/build/test-results/test/TEST-dev.kartograph.gradle.AndroidSafeArgsIntegrationTest.xml
           if-no-files-found: error
           retention-days: 14

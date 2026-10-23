@@ -23,6 +23,7 @@ import dev.kartograph.export.SourceUseDocumentRenderer
 import dev.kartograph.export.AgentDocumentRenderer
 import dev.kartograph.export.ImpactReportCodec
 import dev.kartograph.export.QuerySnapshot
+import dev.kartograph.export.GenerationSummary
 import dev.kartograph.index.ProvenanceVerifier
 import java.nio.file.Path
 
@@ -33,17 +34,18 @@ internal object SavedSnapshotOperations {
     /** 한 번 로드한 snapshot에만 묶인 반복 질의 문맥이다. live 파일이나 다른 generation과 공유하지 않는다. */
     class QuerySession(private val snapshot: QuerySnapshot) {
         private val reachability by lazy { ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention) }
+        private val generationSummary by lazy { GenerationSummary.from(snapshot) }
         fun query(requested: String, depth: Int, limit: Int): Document =
-            SavedSnapshotOperations.query(snapshot, requested, depth, limit, reachability)
+            SavedSnapshotOperations.query(snapshot, requested, depth, limit, reachability, generationSummary)
     }
 
     fun query(snapshot: QuerySnapshot, requested: String, depth: Int, limit: Int): Document =
         query(snapshot, requested, depth, limit, ReachabilityAnalyzer.analyze(snapshot.graph, snapshot.retention))
 
     private fun query(snapshot: QuerySnapshot, requested: String, depth: Int, limit: Int,
-        reachability: dev.kartograph.analysis.ReachabilityResult): Document {
+        reachability: dev.kartograph.analysis.ReachabilityResult, generationSummary: GenerationSummary? = GenerationSummary.from(snapshot)): Document {
         val document = queryDocument(snapshot, requested, depth, limit, reachability)
-        return Document(AgentDocumentRenderer.query(document, snapshot.graph), if (document.status == "found") 0 else 64)
+        return Document(AgentDocumentRenderer.query(document, snapshot.graph, generationSummary), if (document.status == "found") 0 else 64)
     }
 
     private fun queryDocument(snapshot: QuerySnapshot, requested: String, depth: Int, limit: Int,
@@ -71,7 +73,7 @@ internal object SavedSnapshotOperations {
             NodeId(requireNotNull(ordinary.result?.subject?.usr)), request) else null
         val document = SourceUseQueryDocument(ordinary, loaded.sourceInput(),
             inspection?.coverage ?: SourceUseCoverage.from(snapshot.graph), inspection)
-        return Document(SourceUseDocumentRenderer.query(document, snapshot.graph), if (ordinary.status == "found") 0 else 64)
+        return Document(SourceUseDocumentRenderer.query(document, snapshot.graph, GenerationSummary.from(snapshot)), if (ordinary.status == "found") 0 else 64)
     }
 
     private fun SnapshotFiles.Loaded.sourceInput(): SourceSnapshotInput = SourceSnapshotInput(

@@ -90,6 +90,10 @@ public class SourceEditImpactDocument(
     public val snapshots: Map<String, SourceSnapshotMetadata> = sourceSnapshotMetadata(
         snapshots, this.graphImpact, this.inputs, this.revisions, summaryLimit,
     )
+    /** 원본 receipt/graph 참조 없이 revision별 불변 scalar 요약만 보존한다. */
+    public val generationSummaries: Map<String, GenerationSummary> = Collections.unmodifiableMap(
+        snapshots.mapNotNull { (revision, snapshot) -> GenerationSummary.from(snapshot)?.let { revision to it } }.toMap(),
+    )
 }
 
 /** 원본 graph는 생성 시 seed 검증에만 쓰고 반환 값에는 scalar metadata만 남긴다. */
@@ -164,14 +168,20 @@ public object SourceUseDocumentRenderer {
     /** 기존 query 값과 선택 위치를 유지하며 전체 결과를 제한된 버퍼에서 완성한다. */
     public fun query(document: SourceUseQueryDocument, graph: CodeGraph? = null): String = query(document, graph, MAX_BYTES)
 
+    /** 새 요약은 같은 snapshot의 capture 관측이며 live freshness를 재검증하지 않는다. */
+    public fun query(document: SourceUseQueryDocument, graph: CodeGraph?, generationSummary: GenerationSummary?): String =
+        query(document, graph, MAX_BYTES, generationSummary)
+
     /** revision별 page와 provenance를 보존하며 기존 영향 JSON을 지연 투영한다. */
     public fun impact(document: SourceEditImpactDocument): String = impact(document, MAX_BYTES)
 
-    internal fun query(document: SourceUseQueryDocument, graph: CodeGraph?, maximumBytes: Int): String = sourceBoundedDocument(
+    internal fun query(document: SourceUseQueryDocument, graph: CodeGraph?, maximumBytes: Int): String = query(document, graph, maximumBytes, null)
+
+    internal fun query(document: SourceUseQueryDocument, graph: CodeGraph?, maximumBytes: Int, generationSummary: GenerationSummary?): String = sourceBoundedDocument(
         sourceJsonObject(
             "format" to { "kartograph-source-use-query" }, "version" to { 1 },
             "inputs" to { sourceJsonObject("current" to { input(document.input) }) },
-            "warnings" to { SOURCE_WARNINGS }, "query" to { sourceOrdinaryQueryValue(document.query, graph) },
+            "warnings" to { SOURCE_WARNINGS }, "query" to { sourceOrdinaryQueryValue(document.query, graph, generationSummary) },
             "sourceUses" to { sourceJsonObject(
                 "selectionStatus" to { document.query.status }, "subject" to { document.inspection?.subject?.value },
                 "coverage" to { coverage(document.coverage) },
@@ -185,7 +195,7 @@ public object SourceUseDocumentRenderer {
             "format" to { "kartograph-source-edit-impact" }, "version" to { 1 },
             "inputs" to { sourceJsonObject(*document.inputs.entries.map { (key, value) -> key to { input(value) } }.toTypedArray()) },
             "warnings" to { SOURCE_WARNINGS },
-            "graphImpact" to { sourceOrdinaryImpactValue(document.graphImpact, document.snapshots, document.summaryLimit) },
+            "graphImpact" to { sourceOrdinaryImpactValue(document.graphImpact, document.snapshots, document.summaryLimit, document.generationSummaries) },
             "sourceEdit" to { sourceJsonObject(
                 "policy" to { "directObservedSelections" }, "pageScope" to { "perRevision" },
                 "revisions" to { sourceJsonObject(*document.revisions.entries.map { (key, revision) -> key to { sourceJsonObject(
