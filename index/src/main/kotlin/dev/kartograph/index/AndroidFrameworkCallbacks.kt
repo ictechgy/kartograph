@@ -94,6 +94,9 @@ internal object AndroidFrameworkCallbacks {
         "bind(Landroid/view/View;Landroidx/databinding/DataBindingComponent;)Landroidx/databinding/ViewDataBinding;",
     )
     private val CALLBACK_NAMES = mapOf(
+        "android/app/Activity" to setOf("onCreate"),
+        "androidx/recyclerview/widget/RecyclerView\$Adapter" to setOf("onBindViewHolder"),
+        "android/view/View\$OnClickListener" to setOf("onClick"),
         "android/app/Fragment" to FRAGMENT_CALLBACKS,
         "androidx/fragment/app/Fragment" to FRAGMENT_CALLBACKS,
         "android/databinding/ViewDataBinding" to BINDING_CALLBACKS,

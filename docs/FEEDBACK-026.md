@@ -8,8 +8,10 @@ external stub options remain in place.
 ## Keep inputs
 
 `dead`, `why`, and live `query`/`snapshot` accept `--keep-rule-mode strict|lenient`.
-Strict is the default and reports independent parse failures together. Concrete
-static/final members and the `***` field type are supported. `-dontshrink` disables
+Strict is the default and reports independent parse failures together. Missing
+dependency hierarchy failures are also collected across applicable parsed rules;
+parser failures and missing dependency headers remain separate failure stages.
+Concrete static/final members and the `***` field type are supported. `-dontshrink` disables
 shrinking for the whole graph: retained nodes carry `SHRINKING_DISABLED`, which is
 not a runtime entry-point assertion. This follows the [ProGuard definition](https://www.guardsquare.com/manual/configuration/usage#dontshrink).
 

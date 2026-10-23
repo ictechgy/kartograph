@@ -79,6 +79,26 @@ class IndexCostTest(unittest.TestCase):
         result = {"exit": 0, "stdout": b"ok", "stderr": b""}
         self.assertTrue(probe.successful_pair(result, result))
 
+    def test_only_exact_pinned_dead_contract_expansion_is_accepted(self):
+        baseline, candidate = probe.expected_dead_outputs(20459)
+        self.assertEqual("a7fa37f3b32ca0fc1af67ebf197ddab2448414105132deb6494c08fa693a97b1", probe.digest(baseline))
+        left = dict(exit=0, stdout=baseline, stderr=b"")
+        right = dict(exit=0, stdout=candidate, stderr=b"")
+        for command in ("dead", "dead_private"):
+            self.assertTrue(probe.expected_dead_contract_delta(command, left, right, 20459))
+            self.assertFalse(probe.equivalent(left, right))
+            for altered in (left, {**right, "stdout": candidate + b"extra\n"},
+                            {**right, "stdout": candidate.split(b"\n", 1)[1]},
+                            {**right, "stdout": candidate + candidate.splitlines(keepends=True)[0]},
+                            {**right, "stdout": candidate.replace(b"20459", b"20458")},
+                            {**right, "stdout": candidate.replace(b"\n", b"\r\n")},
+                            {**right, "exit": 2}, {**right, "stderr": b"warning"}):
+                self.assertFalse(probe.expected_dead_contract_delta(command, left, altered, 20459))
+            self.assertFalse(probe.expected_dead_contract_delta(command, {**left, "stdout": baseline + b"extra"}, right, 20459))
+        self.assertFalse(probe.expected_dead_contract_delta("graph", left, right, 20459))
+        with mock.patch.object(probe, "BASELINE", "different"):
+            self.assertFalse(probe.expected_dead_contract_delta("dead", left, right, 20459))
+
     def test_alternation_is_three_samples_per_profile_and_arm(self):
         rows = probe.schedule()
         self.assertEqual(18, len(rows))
@@ -148,7 +168,7 @@ class IndexCostTest(unittest.TestCase):
                     self.assertEqual("test-wait", caught.exception.receipt["phase"])
 
     def test_structural_count_change_is_rejected(self):
-        rows = [dict(profile=profile, nodes=1, edges=2, externalCalls=3, classFiles=4,
+        rows = [dict(profile=profile, nodes=1, locatedNodes=1, edges=2, externalCalls=3, classFiles=4,
                      parsedClasses=4, cacheHits=0, cacheMisses=0)
                 for profile, _, _ in probe.schedule()]
         probe.check_profile_counts(rows)

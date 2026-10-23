@@ -1,12 +1,17 @@
 # Android callback and generated input boundaries
 
 The 0.26 candidate connects reached Fragment, ViewDataBinding and DataBinderMapper
-owners to a bounded set of callback implementations. The selected project or
+owners to a bounded set of callback implementations. It also includes Activity
+`onCreate`, RecyclerView.Adapter `onBindViewHolder`, and View.OnClickListener
+`onClick` under the same owner and exact-header conditions. The selected project or
 dependency classfile must contain the matching framework method header with the
 same JVM name and descriptor and an overridable visibility. Non-callback methods,
 unrelated overloads and unreached owners receive no new root. These edges have
 `runtimeModel` origin: they describe possible framework invocation, not an observed
 execution or a guarantee that a callback executes.
+Reaching an adapter or listener owner does not prove it was registered with a view;
+these edges conservatively preserve possible invocation for review. Other callback
+families remain unresolved unless separate compiled or retention evidence exists.
 
 Supply the dependency hierarchy, including the selected Android SDK and AndroidX
 classes. A class named `ScreenFragment` or a method named `onViewCreated` does not

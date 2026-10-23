@@ -4,6 +4,30 @@ import dev.kartograph.core.*
 import kotlin.test.*
 
 class KeepRuleFeedbackTest {
+    @Test fun `strict hierarchy failures report every applicable rule once`() {
+        val nodes = listOf("Example", "ExampleSibling", "Other").map { name ->
+            GraphNode(NodeId("class:$name"), name, NodeKind.CLASS,
+                supertypes = setOf(if (name == "Other") "external/MissingB" else "external/MissingA"))
+        }
+        val inherited = CodeGraph(nodes, emptyList())
+        val rules = listOf(
+            KeepRule(KeepDeclarationKind.CLASS, "Example*", "external.ContractA", SourceLocation("keep.pro", 3)),
+            KeepRule(KeepDeclarationKind.CLASS, "Other", "external.ContractB", SourceLocation("consumer.pro", 7)),
+            KeepRule(KeepDeclarationKind.CLASS, "Absent", "external.Unknown", SourceLocation("unused.pro", 9)),
+        )
+        val failure = assertFailsWith<IncompleteKeepRuleHierarchyException> { KeepRuleRetention.find(inherited, rules) }
+        val message = failure.message.orEmpty()
+        assertEquals(1, Regex("keep\\.pro:3").findAll(message).count())
+        assertEquals(1, Regex("consumer\\.pro:7").findAll(message).count())
+        assertFalse("unused.pro" in message)
+        val unknown = KeepRuleRetention.find(inherited, rules, lenient = true)
+        assertEquals(2 * nodes.size, unknown.size)
+        assertTrue(unknown.all { it.reason == RetentionReason.UNKNOWN_KEEP_RULE })
+        val hierarchy = ClassHierarchy(mapOf("external/MissingA" to setOf("external/ContractA"),
+            "external/MissingB" to setOf("external/ContractB"), "external/ContractA" to emptySet(),
+            "external/ContractB" to emptySet()))
+        assertTrue(KeepRuleRetention.find(inherited, rules, hierarchy).all { it.reason == RetentionReason.KEEP_RULE })
+    }
     private val owner = GraphNode(NodeId("class:Example"), "Example", NodeKind.CLASS)
     private val method = GraphNode(NodeId("method:Example#work()V"), "work", NodeKind.METHOD)
     private val graph = CodeGraph(listOf(owner, method), listOf(GraphEdge(owner.id, method.id, EdgeKind.MEMBER)))

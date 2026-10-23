@@ -33,7 +33,8 @@ public object KeepRuleRetention {
     ): List<RetentionEvidence> {
         val compiledRules = rules.map(::CompiledKeepRule)
         val unknownLocations = linkedSetOf<dev.kartograph.core.SourceLocation>()
-        return graph.nodeIds.flatMap { nodeId ->
+        val incompleteRules = linkedSetOf<KeepRule>()
+        val evidence = graph.nodeIds.flatMap { nodeId ->
             val node = graph.nodes.getValue(nodeId)
             compiledRules.flatMap { rule ->
                 val reason = when {
@@ -44,8 +45,8 @@ public object KeepRuleRetention {
                 val matched = if (rule.source.shrinkingDisabled || rule.source.unresolved) listOf(nodeId) else try {
                     rule.matchingNodeIds(node, graph, dependencyHierarchy)
                 } catch (problem: IncompleteKeepRuleHierarchyException) {
-                    if (!lenient) throw problem
-                    unknownLocations.add(rule.source.location)
+                    if (lenient) unknownLocations.add(rule.source.location)
+                    else incompleteRules.add(rule.source)
                     emptyList()
                 }
                 matched.map { retainedNodeId ->
@@ -55,6 +56,9 @@ public object KeepRuleRetention {
         }.plus(unknownLocations.flatMap { location ->
             graph.nodeIds.map { RetentionEvidence(it, RetentionReason.UNKNOWN_KEEP_RULE, location) }
         }).distinct()
+        // 한 노드에서 실패해도 나머지 규칙의 누락 근거를 모아 한 번에 보고한다.
+        if (incompleteRules.isNotEmpty()) throw IncompleteKeepRuleHierarchyException(incompleteRules.toList())
+        return evidence
     }
 
     /**
@@ -232,7 +236,10 @@ public object KeepRuleRetention {
 }
 
 /** 외부 classpath 없이는 상속 keep 규칙의 일치 여부를 확정할 수 없음을 나타낸다. */
-public class IncompleteKeepRuleHierarchyException(rule: KeepRule) : IllegalStateException(
-    "dependency hierarchy is incomplete for keep rule at ${rule.location.path}:${rule.location.line}; " +
-        "pass every dependency directory or JAR with --classpath",
-)
+public class IncompleteKeepRuleHierarchyException private constructor(message: String) : IllegalStateException(message) {
+    public constructor(rule: KeepRule) : this(listOf(rule))
+    public constructor(rules: List<KeepRule>) : this(rules.distinctBy { it.location }.joinToString("\n") { rule ->
+        "dependency hierarchy is incomplete for keep rule at ${rule.location.path}:${rule.location.line}; " +
+            "pass every dependency directory or JAR with --classpath"
+    })
+}

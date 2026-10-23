@@ -36,6 +36,19 @@ jobs:
       - name: Test and verify coverage
         id: candidate-build
         run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
+      - name: Verify non-privileged POSIX permission regressions
+        run: python3 Scripts/verify-posix-permission-tests.py
+      - name: Preserve POSIX permission evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: posix-permission-tests
+          path: |
+            build/reports/posix-permission-tests.json
+            index/build/test-results/test/TEST-dev.kartograph.index.SourceDirectoryFailureTest.xml
+            index/build/test-results/test/TEST-dev.kartograph.index.AndroidXmlScannerTest.xml
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Preserve failed test details
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

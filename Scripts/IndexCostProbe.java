@@ -1,4 +1,5 @@
 import dev.kartograph.core.EdgeOrigin;
+import dev.kartograph.core.NodeAttribute;
 import dev.kartograph.index.ClassFileIndexer;
 import dev.kartograph.index.GraphExportIndexOptions;
 import dev.kartograph.index.IndexedClasses;
@@ -43,6 +44,8 @@ public final class IndexCostProbe {
             + ",\"currentThreadAllocatedBytes\":" + allocation
             + ",\"allocationScope\":\"index-invocation-current-thread-only; excludes-other-threads-and-startup\""
             + ",\"nodes\":" + indexed.getGraph().getNodeCount()
+            + ",\"locatedNodes\":" + indexed.getGraph().getNodes().values().stream()
+                .filter(node -> node.getLocation() != null && !node.getAttributes().contains(NodeAttribute.EXTERNAL_STUB)).count()
             + ",\"edges\":" + indexed.getGraph().getEdgeCount()
             + ",\"externalCalls\":" + indexed.getGraph().getExternalCalls().size()
             + ",\"classFiles\":" + s.getClassFiles()
