@@ -86,6 +86,9 @@ internal object AndroidSnapshotTasks {
             ?.toGet(ScopedArtifact.CLASSES, KartographAndroidSnapshotTask::testJars, KartographAndroidSnapshotTask::testDirectories)
         unitTest?.artifacts?.forScope(ScopedArtifacts.Scope.ALL)?.use(task)
             ?.toGet(ScopedArtifact.CLASSES, KartographAndroidSnapshotTask::testClasspathJars, KartographAndroidSnapshotTask::testClasspathDirectories)
+        project.pluginManager.withPlugin("com.google.dagger.hilt.android") {
+            task.configure { it.hiltArtifactObservation.set(true) }
+        }
 
         // 같은 variant compiler의 선언 출력은 NO-SOURCE로 생성되지 않을 수 있다(예: Java만 있는 unit test의 Kotlin 출력).
         // javac classpath에 들어간 이 디렉터리는 부재까지 추적하는 watch로 기록한다. JVM 경로와 같이 provider로 감싸

@@ -14,6 +14,25 @@ import kotlin.test.assertEquals
 
 /** 구성원 경로·슬롯·보존 근거·한계를 aggregate project 기준으로 옮기는 규칙을 고정한다. */
 class SnapshotAggregationTest {
+    @Test
+    fun `transformation observations keep member scope and separately rebase original and selected artifacts`() {
+        val member = member("feature", 2, ":feature:debug", emptyList())
+        val original = InputFingerprint("classes", "external/raw", "a".repeat(64))
+        val selected = InputFingerprint("classes", "build/transformed", "b".repeat(64))
+        val observed = dev.kartograph.core.ClassTransformObservation(":feature:debug", ":feature:kartographSnapshotDebug",
+            "hilt-superclass-v1", listOf(original), listOf(selected),
+            listOf(dev.kartograph.core.TransformedClass("p/App", "a".repeat(64), "b".repeat(64))))
+        val prepared = member.copy(snapshot = member.snapshot.copy(provenance = member.snapshot.provenance!!.copy(
+            transformations = listOf(observed))), bindings = mapOf("external/raw" to Path.of("/cache/raw")))
+        val result = SnapshotAggregation.provenance(listOf(prepared)).transformations.single()
+        assertEquals(observed.scope, result.scope)
+        assertEquals(observed.observerTask, result.observerTask)
+        assertEquals(listOf("external/member-2/raw"), result.originalOutputs.map { it.path })
+        assertEquals(listOf("feature/build/transformed"), result.selectedOutputs.map { it.path })
+        assertEquals(observed.changedClasses, result.changedClasses)
+        assertEquals(mapOf("external/member-2/raw" to Path.of("/cache/raw")), SnapshotAggregation.bindings(listOf(prepared)))
+    }
+
     private fun member(prefix: String, index: Int, scope: String, limitations: List<String>): AggregateMember {
         val provenance = SnapshotProvenance(listOf(
             InputFingerprint("classes", "build/classes", "a".repeat(64)),
