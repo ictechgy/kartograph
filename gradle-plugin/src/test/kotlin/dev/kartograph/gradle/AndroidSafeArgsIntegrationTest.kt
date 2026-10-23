@@ -174,7 +174,7 @@ class AndroidSafeArgsIntegrationTest {
                         if (!path.startsWith(base)) throw new GradleException('fixture input outside project')
                         base.relativize(path).toString().replace('\\','/')
                     }
-                    def descriptor = JsonOutput.toJson([applicationId:applicationId.get(), rFilePackage:rFilePackage.get(),
+                    def descriptor = JsonOutput.toJson([applicationId:applicationId.get(), rFilePackage:getRFilePackage().get(),
                         useAndroidX:useAndroidX.get(), generateKotlin:generateKotlin.get(),
                         generatorTask:generatorTask.get(), compilerTask:compilerTask.get(),
                         generatedSourceRoot:relative(generatedSources.get().asFile), compiledClassRoot:relative(compiledClasses.get().asFile)])
@@ -222,20 +222,28 @@ class AndroidSafeArgsIntegrationTest {
                     fixtureRoot.set(layout.projectDirectory)
                     generatorTask.set(generation.map { it.path })
                     applicationId.set(generation.flatMap { it.applicationId })
-                    rFilePackage.set(generation.flatMap { it.rFilePackage })
+                    getRFilePackage().set(generation.flatMap { it.getRFilePackage() })
                     useAndroidX.set(generation.flatMap { it.useAndroidX })
                     generateKotlin.set(generation.flatMap { it.generateKotlin })
                     navigationFiles.from(generation.map { it.navigationFiles })
                     generatedSources.set(generation.flatMap { it.outputDir })
                     observationFile.set(layout.buildDirectory.file('safeargs-observations/' + variant + '.json'))
                 }
-                tasks.withType(JavaCompile).configureEach { compiler ->
-                    if (compiler.name == 'compile' + variant + 'JavaWithJavac') {
-                        observation.configure {
-                            compilerTask.set(compiler.path); compilerSources.from(compiler.source)
-                            compiledClasses.set(compiler.destinationDirectory); dependsOn(compiler)
-                        }
-                    }
+                def compilerName = 'compile' + variant + 'JavaWithJavac'
+                def actualCompilerSources = objects.fileCollection()
+                def actualCompilerClasses = objects.directoryProperty()
+                def actualCompilerPath = objects.property(String)
+                selected.configureJavaCompileTask { compiler ->
+                    if (compiler.name != compilerName) throw new GradleException('unexpected fixture JavaCompile task')
+                    actualCompilerPath.set(compiler.path)
+                    actualCompilerSources.from(compiler.source); actualCompilerSources.builtBy(compiler)
+                    actualCompilerClasses.set(compiler.destinationDirectory)
+                }
+                observation.configure {
+                    compilerTask.set(actualCompilerPath); compilerSources.from(actualCompilerSources)
+                    compiledClasses.set(actualCompilerClasses)
+                    // 고정 AGP fixture의 실행 선택이다. 증거 경로는 위 공개 callback에서만 받는다.
+                    dependsOn(compilerName)
                 }
             }
             tasks.withType(Test).configureEach { doFirst { throw new GradleException('snapshot must not run tests') } }
