@@ -27,7 +27,7 @@ fun main(arguments: Array<String>) {
     output.flush()
     // 잘린 문서를 성공으로 보고하지 않도록, 쓰기 실패는 도구 실패로 올린다.
     if (output.checkError()) {
-        error.println("error: unable to write the complete output; check the destination for available space")
+        error.println("error: ${outputFailureMessage(output)}")
         error.flush()
         exitProcess(ExitStatus.FAILURE.code)
     }
@@ -36,4 +36,4 @@ fun main(arguments: Array<String>) {
 }
 
 private fun utf8Stream(descriptor: FileDescriptor): PrintStream =
-    PrintStream(FileOutputStream(descriptor), false, StandardCharsets.UTF_8)
+    TrackedPrintStream(OutputFailureTracker(FileOutputStream(descriptor)))

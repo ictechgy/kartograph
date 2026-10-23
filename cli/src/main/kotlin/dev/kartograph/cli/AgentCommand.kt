@@ -138,7 +138,7 @@ internal object AgentCommand {
             arguments,
             setOf(
                 "--classes", "--project", "--manifest", "--resources", "--namespace",
-                "--keep-rules", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes", "--external-retentions",
+                "--keep-rules", "--keep-rule-mode", "--classpath", "--service-resources", "--baseline", "--include-private-members", "--generated-classes", "--external-retentions",
             ) + if (requested != null) setOf("--depth", "--limit") else setOf("--include-paths", "--revision", "--scope", "--compact", "--build-witness", "--source-root", "--build-input", "--timings", "--compiler-evidence", "--processor-output-config", "--input", "--index-cache", "--snapshot-max-mib", "--include-source-uses", "--include-enum-decisions"),
             error,
         )
@@ -155,7 +155,7 @@ internal object AgentCommand {
                 options.values("--build-witness").isEmpty()))
             return usage(error, "--include-source-uses requires --compiler-evidence, --scope and completed --build-witness inputs")
         val snapshotLimit = if (requested == null) SnapshotFiles.limit(options.values("--snapshot-max-mib"))
-            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128") else null
+            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 1024") else null
         if (requested == null) {
             if (options.values("--revision").size > 1 || options.values("--scope").size > 1) return usage(error, "duplicate snapshot context option")
             if (options.values("--index-cache").size > 1 || options.single("--index-cache")?.isBlank() == true)
@@ -191,7 +191,9 @@ internal object AgentCommand {
             catch (_: IllegalArgumentException) { return usage(error, "invalid --input binding") }
         return try {
             val classpath = options.values("--classpath").map { resolveProjectPath(project, it) }
-            val keepScanner = KeepRuleScanner(project, options.values("--include-private-members").isNotEmpty())
+            val keepMode = options.single("--keep-rule-mode") ?: "strict"
+            if (keepMode !in setOf("strict", "lenient")) return usage(error, "--keep-rule-mode must be strict or lenient")
+            val keepScanner = KeepRuleScanner(project, options.values("--include-private-members").isNotEmpty(), keepMode == "lenient")
             val keepRules = keepScanner.scan(options.values("--keep-rules").map { resolveProjectPath(project, it) })
             val generatedRoots = options.values("--generated-classes").map(Path::of)
             val compilerEvidence = options.values("--compiler-evidence").map { resolveProjectPath(project, it) }
@@ -204,7 +206,7 @@ internal object AgentCommand {
                     val role = when (option) { "--source-root" -> "sources"; "--build-input" -> "buildConfig"; else -> option.removePrefix("--") }
                     options.values(option).map { role to resolveProjectPath(project, it) }
                 } + keepScanner.inputFiles.map { "keepRules" to it }
-            val context = listOf("--namespace", "--include-private-members", "--include-paths", "--scope").flatMap { listOf(it) + options.values(it) } +
+            val context = listOf("--namespace", "--include-private-members", "--include-paths", "--scope", "--keep-rule-mode").flatMap { listOf(it) + options.values(it) } +
                 (if (includeSourceUses) listOf("--include-source-uses", "true") else emptyList()) +
                 (if (includeEnumDecisions) listOf("--include-enum-decisions", "true") else emptyList())
             val witnessPaths = options.values("--build-witness").map { resolveProjectPath(project, it) }
@@ -259,7 +261,7 @@ internal object AgentCommand {
                     }
                 }
                 val evidence = DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,
-                    includePrivateMembers = options.values("--include-private-members").isNotEmpty())
+                    includePrivateMembers = options.values("--include-private-members").isNotEmpty(), lenientKeepRules = keepMode == "lenient")
                 val baseline = options.single("--baseline")?.let { path ->
                     BaselineCodec.parse(Files.readString(resolveProjectPath(project, path)))
                 }.orEmpty()
@@ -267,7 +269,9 @@ internal object AgentCommand {
                     .filter { node -> Finding(node.id, node.location).fingerprint in baseline }
                     .mapTo(mutableSetOf()) { node -> node.id }
                 val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, classRoots, processorOutputs.verify(options.single("--scope")))
-                val limitations = RuntimeLimitationScanner.scan(indexed, project) +
+                val keepLimitations = keepScanner.diagnostics.map { "unknown-keep-rule: $it" } +
+                    if (evidence.any { it.reason == dev.kartograph.core.RetentionReason.UNKNOWN_KEEP_RULE }) listOf("unknown-keep-rules: retained conservatively because rules or hierarchy are unresolved; not proof of reachability") else emptyList()
+                val limitations = keepLimitations + RuntimeLimitationScanner.scan(indexed, project) +
                     sourcePaths?.limitations.orEmpty() +
                     dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) + compilerEnrichment.limitations + buildList {
                     if (compilerFacts.unmappedReferences > 0) add("compiler-evidence-unmapped-references: ${compilerFacts.unmappedReferences}")
@@ -374,7 +378,7 @@ internal object AgentCommand {
         if (sourceLimit !in 1..1000 || sourceOffset !in 0..200000)
             return usage(error, "source-limit must be 1..1000 and source-offset must be 0..200000")
         val snapshotLimit = SnapshotFiles.limit(options.values("--snapshot-max-mib"))
-            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128")
+            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 1024")
         val depth = options.positiveInt("--depth", 1, error) ?: return ExitStatus.USAGE.code
         val limit = options.positiveInt("--limit", 50, error) ?: return ExitStatus.USAGE.code
         return try {
@@ -529,7 +533,7 @@ internal object AgentCommand {
 
         Usage:
           kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
-          kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>] [--snapshot-max-mib <1..128>]
+          kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>] [--snapshot-max-mib <1..1024>]
 
         Options:
           --depth <n>               neighbor depth, a positive integer (default 1)
@@ -548,7 +552,7 @@ internal object AgentCommand {
           --source-limit <n>        source page size, 1..1000 (default 100; requires --source-uses)
           --source-offset <n>       source page offset, 0..200000 (default 0; requires --source-uses)
           --graph-file <file>       query a saved snapshot without reading live inputs
-          --snapshot-max-mib <n>    saved snapshot read maximum in MiB, 1..128 (default 64)
+          --snapshot-max-mib <n>    saved snapshot read maximum in MiB, 1..1024 (default 64)
 
         --classes and --generated-classes resolve from the working directory. Other live-input paths resolve
         from --project. Saved queries accept no live-input overrides.
@@ -569,7 +573,7 @@ internal object AgentCommand {
         --build-witness <file> attaches a successful supported Gradle compiler-task record (repeatable).
         --source-root <directory> and --build-input <file> capture additional explicit source/config inputs.
         --index-cache <directory> reuses content-verified class parse facts; relative paths use --project.
-        --snapshot-max-mib <n> sets the output maximum to 1..128 MiB (default 64).
+        --snapshot-max-mib <n> sets the output maximum to 1..1024 MiB (default 64).
         Global analysis, retention and current input checks still run on every capture.
         --timings reports fingerprint, index/cache phases and render time to stderr.
         verify-snapshot reports comparison time. Cache and timing settings do not change snapshot facts.

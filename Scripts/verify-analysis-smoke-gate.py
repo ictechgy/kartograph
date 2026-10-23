@@ -466,6 +466,12 @@ def analysis_failure_receipt(name, result):
     }
 
 
+SELF_ANALYSIS_INPUT_HINTS = (
+    "input-hint\tmissing-classpath\tno dependency classpath inputs were supplied; reachability may be under-measured for dependency supertype and framework annotation retention",
+    "input-hint\tmanifest-without-components\tthe manifest scan produced no component retention evidence; reachability may be under-measured for declarations rooted at manifest components",
+)
+
+
 def check_contract(name, contract_kind, res, measurement, contract_failures):
     """한 명령의 출력이 자체 분석 계약을 만족하는지 검사하고, 센 수치를 measurement에 기록한다."""
     if res.returncode != 0:
@@ -478,12 +484,15 @@ def check_contract(name, contract_kind, res, measurement, contract_failures):
                 f"'{name}' produced {len(node_lines)} nodes, expected >= 2000"
             )
     elif contract_kind == "zero_findings":
-        findings = [
-            l
-            for l in res.stdout.splitlines()
-            if l.startswith("unreachable\t")
-            or (l and not l.startswith("limitation\t"))
-        ]
+        # 이 자기 분석 입력의 알려진 힌트만 구분하고, 미지/중복 진단은 실패로 남긴다.
+        lines = res.stdout.splitlines()
+        hints = [line for line in lines if line in SELF_ANALYSIS_INPUT_HINTS]
+        measurement["inputHints"] = hints
+        measurement["limitations"] = [line for line in lines if line.startswith("limitation\t")]
+        findings = [line for line in lines if line and not line.startswith("limitation\t")
+                    and line not in SELF_ANALYSIS_INPUT_HINTS]
+        if len(hints) != len(set(hints)):
+            contract_failures.append(f"'{name}' repeated known input hints")
         measurement["findings"] = len(findings)
         if findings:
             contract_failures.append(
@@ -573,6 +582,12 @@ def summarize_measurements(samples, counters, contract_failures):
                 contract_failures.append(
                     f"'{name}' {field} varied across runs: {observed}"
                 )
+        for field in ("inputHints", "limitations"):
+            observed = [run[field] for run in runs_for_command if field in run]
+            if observed:
+                data[field] = observed[-1]
+                if any(value != observed[0] for value in observed):
+                    contract_failures.append(f"'{name}' {field} varied across runs")
         measurements[name] = data
     return measurements
 

@@ -17,9 +17,9 @@ SPEC.loader.exec_module(probe)
 
 
 class IndexCostTest(unittest.TestCase):
-    def test_baseline_is_the_previous_measured_main(self):
-        self.assertEqual("b7ab3e9d654a7ad889bed4b57ed4dc84d4082fd7", probe.SOURCE_BASELINE)
-        self.assertEqual("c7b59fef4d0c8051326747f3bee6da5b04026181", probe.BASELINE)
+    def test_baseline_is_the_exact_pr_base(self):
+        self.assertEqual("bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1", probe.SOURCE_BASELINE)
+        self.assertEqual(probe.SOURCE_BASELINE, probe.BASELINE)
 
     def test_baseline_metadata_update_cannot_change_executable_sources(self):
         env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
@@ -49,13 +49,20 @@ class IndexCostTest(unittest.TestCase):
             auxiliary = git("rev-parse", "HEAD")
             with mock.patch.object(probe, "successful", side_effect=execute):
                 probe.require_baseline_source(repo, original, auxiliary, env)
+                probe.require_baseline_source(repo, original, original, env)
+                git("commit", "--allow-empty", "-qm", "same tree, different revision")
                 with self.assertRaisesRegex(probe.DiagnosticError, "baseline-executable-source-changed"):
-                    probe.require_baseline_source(repo, original, original, env)
+                    probe.require_baseline_source(repo, auxiliary, git("rev-parse", "HEAD"), env)
                 source.write_text("class Main { int changed; }\n")
                 git("add", ".")
                 git("commit", "-qm", "changed executable source")
                 with self.assertRaisesRegex(probe.DiagnosticError, "baseline-executable-source-changed"):
                     probe.require_baseline_source(repo, original, git("rev-parse", "HEAD"), env)
+
+    def test_equal_baseline_refs_still_require_empty_diff(self):
+        with mock.patch.object(probe, "successful", return_value={"stdout": b"gradle/verification-metadata.xml\n"}):
+            with self.assertRaisesRegex(probe.DiagnosticError, "baseline-executable-source-changed"):
+                probe.require_baseline_source(ROOT, probe.BASELINE, probe.BASELINE, {})
 
     def test_exact_bytes_preserve_order_duplicates_diagnostics_and_exit(self):
         left = {"exit": 0, "stdout": b"a\na\nb\n", "stderr": b"diagnostic\n", "wallNanos": 1}
@@ -71,6 +78,26 @@ class IndexCostTest(unittest.TestCase):
             self.assertFalse(probe.successful_pair(result, result))
         result = {"exit": 0, "stdout": b"ok", "stderr": b""}
         self.assertTrue(probe.successful_pair(result, result))
+
+    def test_only_exact_pinned_dead_contract_expansion_is_accepted(self):
+        baseline, candidate = probe.expected_dead_outputs(20459)
+        self.assertEqual("a7fa37f3b32ca0fc1af67ebf197ddab2448414105132deb6494c08fa693a97b1", probe.digest(baseline))
+        left = dict(exit=0, stdout=baseline, stderr=b"")
+        right = dict(exit=0, stdout=candidate, stderr=b"")
+        for command in ("dead", "dead_private"):
+            self.assertTrue(probe.expected_dead_contract_delta(command, left, right, 20459))
+            self.assertFalse(probe.equivalent(left, right))
+            for altered in (left, {**right, "stdout": candidate + b"extra\n"},
+                            {**right, "stdout": candidate.split(b"\n", 1)[1]},
+                            {**right, "stdout": candidate + candidate.splitlines(keepends=True)[0]},
+                            {**right, "stdout": candidate.replace(b"20459", b"20458")},
+                            {**right, "stdout": candidate.replace(b"\n", b"\r\n")},
+                            {**right, "exit": 2}, {**right, "stderr": b"warning"}):
+                self.assertFalse(probe.expected_dead_contract_delta(command, left, altered, 20459))
+            self.assertFalse(probe.expected_dead_contract_delta(command, {**left, "stdout": baseline + b"extra"}, right, 20459))
+        self.assertFalse(probe.expected_dead_contract_delta("graph", left, right, 20459))
+        with mock.patch.object(probe, "BASELINE", "different"):
+            self.assertFalse(probe.expected_dead_contract_delta("dead", left, right, 20459))
 
     def test_alternation_is_three_samples_per_profile_and_arm(self):
         rows = probe.schedule()
@@ -141,7 +168,7 @@ class IndexCostTest(unittest.TestCase):
                     self.assertEqual("test-wait", caught.exception.receipt["phase"])
 
     def test_structural_count_change_is_rejected(self):
-        rows = [dict(profile=profile, nodes=1, edges=2, externalCalls=3, classFiles=4,
+        rows = [dict(profile=profile, nodes=1, locatedNodes=1, edges=2, externalCalls=3, classFiles=4,
                      parsedClasses=4, cacheHits=0, cacheMisses=0)
                 for profile, _, _ in probe.schedule()]
         probe.check_profile_counts(rows)

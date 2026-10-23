@@ -268,6 +268,16 @@ public object SourceDeclarationLocations {
             if (file.isJava) {
                 JAVA_FIELD.findAll(file.masked).forEach { match ->
                     add(RawDeclaration(match.groups[1]!!.range.first, DeclarationKind.JAVA_FIELD, match.groupValues[1]))
+                    // 초기화 식 없는 다중 선언만 추가한다. 식 안의 쉼표·지역 변수는 추측하지 않는다.
+                    val tailStart = match.range.last + 1
+                    val tailEnd = file.masked.indexOf(';', tailStart).takeIf { it >= 0 } ?: tailStart
+                    val tail = file.masked.substring(tailStart, tailEnd)
+                    if (JAVA_FIELD_TAIL.matches(tail)) {
+                        JAVA_FIELD_NAME.findAll(tail).forEach { extra ->
+                            add(RawDeclaration(match.range.last + 1 + extra.groups[1]!!.range.first,
+                                DeclarationKind.JAVA_FIELD, extra.groupValues[1]))
+                        }
+                    }
                 }
                 JAVA_CONSTRUCTOR.findAll(file.masked).mapNotNullTo(this) { constructorDeclaration(file, it, true)
                     ?.takeUnless { declaration -> declaration.offset in methodOffsets } }
@@ -611,9 +621,12 @@ public object SourceDeclarationLocations {
     )
     private val JAVA_CONSTRUCTOR_TAIL = Regex("^\\s*(?:throws\\s+[\\w.$,\\s]+)?\\{")
     private val JAVA_FIELD = Regex(
-        "(?m)^[ \\t]*(?:(?:public|protected|private|static|final|transient|volatile)[ \\t]+)*" +
+        "(?m)(?:^|(?<=[;{}]))[ \\t]*(?:@[A-Za-z_$][\\w.$]*(?:[ \\t]*\\([^()\\n]*\\))?[ \\t]+)*" +
+            "(?:(?:public|protected|private|static|final|transient|volatile)[ \\t]+)*" +
             "(?:[A-Za-z_$][\\w$]*(?:[ \\t]*\\.[ \\t]*[A-Za-z_$][\\w$]*)*" +
             "(?:[ \\t]*<[^;={}()\\n]*>)?(?:[ \\t]*\\[[ \\t]*\\])*)[ \\t]+" +
-            "([A-Za-z_$][\\w$]*)[ \\t]*(?:\\[[ \\t]*\\])?[ \\t]*(?==|;)",
+            "([A-Za-z_$][\\w$]*)[ \\t]*(?:\\[[ \\t]*\\])?[ \\t]*(?==|;|,)",
     )
+    private val JAVA_FIELD_TAIL = Regex("(?:,[ \\t]*[A-Za-z_$][\\w$]*[ \\t]*(?:\\[[ \\t]*\\])?[ \\t]*)+")
+    private val JAVA_FIELD_NAME = Regex(",[ \\t]*([A-Za-z_$][\\w$]*)")
 }

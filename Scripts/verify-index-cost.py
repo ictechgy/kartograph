@@ -16,9 +16,9 @@ import tempfile
 import threading
 import time
 
-SOURCE_BASELINE = "b7ab3e9d654a7ad889bed4b57ed4dc84d4082fd7"
-# 측정한 main의 실행 소스는 그대로 두고 기존 dependency 두 POM의 검증 해시만 동기화했다.
-BASELINE = "c7b59fef4d0c8051326747f3bee6da5b04026181"
+# Compare this patch with its exact main base on the same frozen candidate input.
+SOURCE_BASELINE = "bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1"
+BASELINE = "bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1"
 MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
 PROFILES = ("graph", "dead", "architecture")
 LIMIT = 32 * 1024 * 1024
@@ -198,7 +198,7 @@ def validate_probe(result, profile):
     if not isinstance(data, dict):
         raise DiagnosticError("invalid-probe-output")
     numeric = ("entryUptimeMillis", "invocationNanos", "currentThreadAllocatedBytes",
-               "nodes", "edges", "externalCalls", "classFiles", "parsedClasses", "cacheHits",
+               "nodes", "locatedNodes", "edges", "externalCalls", "classFiles", "parsedClasses", "cacheHits",
                "cacheMisses", "readNanos", "cacheReadNanos", "parseNanos", "assemblyNanos",
                "hierarchyNanos", "runtimeNanos", "dispatchNanos", "cacheWriteNanos", "totalNanos")
     expected_keys = set(numeric) | {"profile", "allocationScope"}
@@ -213,7 +213,7 @@ def validate_probe(result, profile):
 
 def check_profile_counts(records):
     for profile in PROFILES:
-        values = [tuple(row[key] for key in ("nodes", "edges", "externalCalls", "classFiles",
+        values = [tuple(row[key] for key in ("nodes", "locatedNodes", "edges", "externalCalls", "classFiles",
                                             "parsedClasses", "cacheHits", "cacheMisses"))
                   for row in records if row["profile"] == profile]
         if len(values) != 6 or any(value != values[0] for value in values):
@@ -222,6 +222,35 @@ def check_profile_counts(records):
 
 def successful_pair(left, right):
     return left["exit"] == 0 and right["exit"] == 0 and equivalent(left, right)
+
+
+def expected_dead_outputs(located_nodes):
+    baseline = (
+        "limitation\tANNOTATION_VALUE_REFERENCES\tclass references in SOURCE-retention annotations are not available in compiled inputs\n"
+        "limitation\tDYNAMIC_REGISTRATION\tmanifest-absent runtime component registration is not resolved\n"
+        "limitation\tGENERATED_CODE_COVERAGE\tonly supported generation markers and sibling relationships identify generated code\n"
+        "limitation\tINLINE_CONSTANT_REFERENCES\tcompile-time constant owners are retained because inlined use sites are unavailable\n"
+        "limitation\tREFLECTION_STRINGS\truntime reflection beyond bounded intra-method class and constructor values is not fully resolved\n"
+        "limitation\tTOP_LEVEL_DECLARATIONS\tfile-facade top-level properties and their accessors are conservatively not reported\n"
+    )
+    candidate = (
+        "input-hint\tmissing-classpath\tno dependency classpath inputs were supplied; reachability may be under-measured for dependency supertype and framework annotation retention\n"
+        "input-hint\tmanifest-without-components\tthe manifest scan produced no component retention evidence; reachability may be under-measured for declarations rooted at manifest components\n"
+        + baseline +
+        f"limitation\tEXTERNAL_RETENTIONS\tunavailable-source-paths: {located_nodes} located node(s) have no package-compatible source file; generated, external or omitted sources may be absent\n"
+        f"limitation\tEXTERNAL_RETENTIONS\tunresolved-source-paths: {located_nodes} of {located_nodes} located node(s) did not match exactly one project source file\n"
+    )
+    return baseline.encode(), candidate.encode()
+
+
+def expected_dead_contract_delta(command, left, right, located_nodes):
+    # 빈 source/manifest/classpath 고정 fixture의 정확한 계약 확장만 허용한다. 정규화는 하지 않는다.
+    if (command not in ("dead", "dead_private") or type(located_nodes) is not int or located_nodes <= 0
+            or SOURCE_BASELINE != "bb13a7d8b8e48a2d61ed090e4c8dfe761685bdb1" or BASELINE != SOURCE_BASELINE):
+        return False
+    baseline, candidate = expected_dead_outputs(located_nodes)
+    return (left["exit"] == right["exit"] == 0 and left["stderr"] == right["stderr"] == b""
+            and left["stdout"] == baseline and right["stdout"] == candidate)
 
 
 def source_identity(repo, ref, env):
@@ -238,7 +267,8 @@ def require_baseline_source(repo, source, baseline, env):
     """보조 baseline이 원본의 실행 소스·빌드 스크립트를 바꾸지 않았는지 Git tree로 확인한다."""
     changed = successful(["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only",
                           source, baseline, "--"], repo, env, phase="baseline-source-diff")
-    require_equal(changed["stdout"], b"gradle/verification-metadata.xml\n", "baseline-executable-source-changed")
+    expected = b"" if source == baseline else b"gradle/verification-metadata.xml\n"
+    require_equal(changed["stdout"], expected, "baseline-executable-source-changed")
 
 
 def identity_digest(value):
@@ -376,16 +406,21 @@ def experiment(repo, work, env, report):
         check_profile_counts(report["profiles"])
         commands = {arm: cli_commands(dist / "bin/kartograph", roots, project)
                     for arm, dist in distributions.items()}
-        all_equal = True
+        all_accepted = True
+        located_nodes = next(row["locatedNodes"] for row in report["profiles"] if row["profile"] == "dead")
         for index in range(6):
             name = commands["baseline"][index][0]
             results = {arm: run(commands[arm][index][1], project, env, phase="cli-" + name.replace("_", "-"))
                        for arm in (("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline"))}
             equal = equivalent(results["baseline"], results["candidate"])
-            all_equal = all_equal and successful_pair(results["baseline"], results["candidate"])
+            expected_delta = expected_dead_contract_delta(name, results["baseline"], results["candidate"], located_nodes)
+            accepted = expected_delta if name in ("dead", "dead_private") else successful_pair(results["baseline"], results["candidate"])
+            all_accepted = all_accepted and accepted
             report["cli"].append({"command": name, "exactEqual": equal,
+                                 "expectedContractDelta": expected_delta, "contractAccepted": accepted,
+                                 "comparisonScope": "same-input-intentionally-expanded-output" if expected_delta else "exact-byte-comparison",
                                  **{arm: summary(result) for arm, result in results.items()}})
-        if not all_equal:
+        if not all_accepted:
             raise DiagnosticError("cli-byte-mismatch-or-unsuccessful-exit")
     finally:
         report["sourcesAfter"] = {"baselineSource": source_identity(repo, SOURCE_BASELINE, env),

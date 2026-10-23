@@ -5,7 +5,29 @@
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)을 따른다.
 
 ## [Unreleased]
+
+## [0.26.0] - 2026-10-22
+
+이 항목은 릴리스 준비 기록이다. GitHub asset 및 Gradle Portal publication/설치 검증은 별도 절차이며,
+태그나 문서만으로 배포 완료를 의미하지 않는다. CLI/plugin/collector/library를 같은 버전으로 맞추고
+before/current snapshot을 다시 캡처한다. 기존 impact JSON/API는 유지되며 Git 문맥은 opt-in wrapper로 추가된다.
+
 ### Added
+
+- 0.25.0 feedback: aggregate strict/lenient keep diagnostics, shrinking-disabled and unknown
+  retention evidence; repeated resource roots; bounded framework callback/mapper evidence;
+  Hilt input hints and verified generation markers. See [migration and limits](docs/FEEDBACK-026.md).
+- Gradle graph export options now match CLI JSON/NDJSON, origin filtering, dispatch candidate
+  limits and external stubs. Snapshot limits remain 64 MiB by default and accept explicit
+  values up to 1024 MiB, with matching compact write/read expansion budgets.
+- Partial source traversal preserves readable siblings; declaration locations and recoverable
+  fields avoid fabricated coordinates. Module metadata no longer prefixes language qualified
+  names. Closed output consumers and storage failures have distinct diagnostics.
+
+- opt-in `impact --git-base`와 MCP `change_impact`가 실제 Git base/head 또는 작업 트리 변경의
+  삭제·rename 양쪽 경로를 기존 before/current 영향 탐색에 연결한다. 새 `kartograph-change-impact` v1은
+  원래 graphImpact, exact snapshot SHA-256, 전체 파일 seed 정밀도, 별도 current/base freshness를 보존한다.
+  commit 라벨을 source/build freshness로 대신하지 않으며 기존 기본 impact 출력·탐색 API는 유지한다.
 
 - language-traversal 간선을 한 번 조립해 순회와 `graphRevision`에 함께 쓰는 라이브러리 API
   `TraversalEdges.prepare`, `LanguageTraversal.traverse(prepared, ...)`,
@@ -13,6 +35,9 @@
   색인으로 해석하는 `TraversalRootResolver`를 추가한다. 기존 공개 시그니처와 data class 형태는 그대로다.
 
 ### Fixed
+
+- 호출 선언 보강에서 모든 호출을 재검증하되 값이 바뀐 행만 복사하고, 변경이 없으면 기존 불변 그래프를
+  재사용한다. 누락된 header의 오래된 선언은 계속 제거하며 분석 범위와 성능 게이트 예산은 바꾸지 않는다.
 
 - bridges·`routes --role client`·schema의 snapshot USR 부착과 React Native 이벤트의 주석 판정이
   `'"'` 같은 문자 리터럴 뒤에서 어긋나던 문제를 고친다. 주석 속 emit을 사실로 내거나, 함수 머리를 놓쳐
@@ -1197,7 +1222,8 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/ictechgy/kartograph/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.25.0
 [0.24.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.24.0
 [0.23.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.23.0
