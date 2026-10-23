@@ -1,4 +1,6 @@
 """합성 Android 실행의 고정 도구 조합과 실제 artifact를 대조한다."""
+import json
+
 PLUGIN_SHA = "5e585dfe55474ce5361f2759faf9afd4a12a7e6a8259c7371bab1b7e8a846c56"
 GENERATOR_SHA = "d4eb204430ce5e350799981cbac0941cea76cf6feeffd959878363bfc13b5c3d"
 PROFILES = {
@@ -16,8 +18,17 @@ def expected_profile(name):
 
 def verify_profile(observed, name):
     gradle, agp, _ = expected_profile(name)
-    if not isinstance(observed, dict) or any(observed.get(k) != v for k, v in {"id": name, "gradle": gradle, "agp": agp, "java": 17}.items()):
-        raise ValueError("actual native toolchain profile missing or mismatched")
+    expected = {"id": name, "gradle": gradle, "agp": agp, "java": 17}
+    if not isinstance(observed, dict) or any(observed.get(k) != v for k, v in expected.items()):
+        # 판정은 그대로 두고 고정 신원 필드만 제한하여 실패 원인을 보존한다.
+        actual = {}
+        for key in expected:
+            value = observed.get(key) if isinstance(observed, dict) else None
+            if isinstance(value, str):
+                actual[key] = value[:128]
+            else:
+                actual[key] = value if value is None or type(value) is int and 0 <= value < 100000 else "<invalid-value>"
+        raise ValueError("actual native toolchain profile missing or mismatched: " + json.dumps({"expected": expected, "observed": actual}, ensure_ascii=True))
     if any(not isinstance(observed.get(k), str) or not 0 < len(observed[k]) <= 128 for k in ("javaRuntime", "javaVendor")):
         raise ValueError("actual Java runtime identity missing or unbounded")
     return observed

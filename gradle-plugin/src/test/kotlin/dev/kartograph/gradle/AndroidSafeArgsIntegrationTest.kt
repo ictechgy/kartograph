@@ -463,7 +463,7 @@ class AndroidSafeArgsIntegrationTest {
                 def observation = tasks.register('observeSafeArgs' + variant, SafeArgsObservation) {
                     nativeProfile.set('${profile.id}')
                     observedGradle.set(gradle.gradleVersion)
-                    observedAgp.set(androidComponents.pluginVersion.toString())
+                    observedAgp.set(androidComponents.pluginVersion.version)
                     observedJava.set(Runtime.version().feature())
                     observedJavaRuntime.set(System.getProperty('java.runtime.version'))
                     observedJavaVendor.set(System.getProperty('java.vendor'))
@@ -488,16 +488,17 @@ class AndroidSafeArgsIntegrationTest {
                 def actualCompilerSources = objects.fileCollection()
                 def actualCompilerClasses = objects.directoryProperty()
                 def actualCompilerPath = objects.property(String)
-                selected.configureJavaCompileTask { compiler ->
+                def recordCompiler = { compiler ->
                     if (compiler.name != compilerName) throw new GradleException('unexpected fixture JavaCompile task')
                     actualCompilerPath.set(compiler.path)
                     actualCompilerSources.from(compiler.source); actualCompilerSources.builtBy(compiler)
                     actualCompilerClasses.set(compiler.destinationDirectory)
                 }
+                ${profile.compilerBindingDsl()}
                 observation.configure {
                     compilerTask.set(actualCompilerPath); compilerSources.from(actualCompilerSources)
                     compiledClasses.set(actualCompilerClasses)
-                    // 고정 AGP fixture의 실행 선택이다. 증거 경로는 위 공개 callback에서만 받는다.
+                    // 고정 fixture의 실행 선택이다. 증거 경로는 위 공개 callback/provider에서만 받는다.
                     dependsOn(compilerName)
                 }
             }

@@ -13,6 +13,16 @@ spec.loader.exec_module(gate)
 
 
 class SafeArgsNativeVerifierTest(unittest.TestCase):
+    def test_profile_mismatch_reports_bounded_observation_without_relaxing_identity(self):
+        observed = {"id": "gradle971-agp932", "gradle": "9.7.1", "agp": "Android Gradle Plugin version 9.3.2", "java": 17}
+        with self.assertRaisesRegex(ValueError, "Android Gradle Plugin version 9.3.2"):
+            gate.profiles.verify_profile(observed, "gradle971-agp932")
+        observed["agp"] = "x" * 10000
+        observed["java"] = 10 ** 10000
+        with self.assertRaises(ValueError) as failure:
+            gate.profiles.verify_profile(observed, "gradle971-agp932")
+        self.assertLess(len(str(failure.exception)), 600)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

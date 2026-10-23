@@ -30,6 +30,18 @@ internal enum class SafeArgsNativeProfile(val id: String, val gradleVersion: Str
     fun kotlinSnapshotDsl(javaFeature: Int): String = if (builtinKotlin)
         "snapshotKotlinToolchain = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of($javaFeature) }" else ""
 
+    /** 같은 관측 closure에 공개 compiler 입력만 연결한다. AGP 8에는 새 callback이 없다. */
+    fun compilerBindingDsl(): String = when (this) {
+        CURRENT -> "selected.configureJavaCompileTask(recordCompiler)"
+        JAVA_813 -> """
+            afterEvaluate {
+                def matches = android.applicationVariants.findAll { it.name == selected.name }
+                if (matches.size() != 1) throw new IllegalStateException('fixture compiler variant missing or ambiguous')
+                matches[0].javaCompileProvider.configure(recordCompiler)
+            }
+        """.trimIndent()
+    }
+
     companion object {
         fun select(value: String?): SafeArgsNativeProfile = entries.singleOrNull { it.id == (value ?: CURRENT.id) }
             ?: throw IllegalArgumentException("unknown SafeArgs native profile")

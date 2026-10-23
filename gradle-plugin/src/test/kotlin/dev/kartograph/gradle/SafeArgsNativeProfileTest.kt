@@ -1,6 +1,7 @@
 package dev.kartograph.gradle
 
 import java.nio.file.Path
+import groovy.lang.GroovyShell
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -36,6 +37,60 @@ class SafeArgsNativeProfileTest {
     fun `임의 버전과 빈 선택은 허용하지 않는다`() {
         for (value in listOf("", "8.13", "latest", "gradle813-agp932")) {
             assertFailsWith<IllegalArgumentException> { SafeArgsNativeProfile.select(value) }
+        }
+    }
+
+    @Test
+    fun `관측 버전은 AGP 표시 문구가 아닌 공개 version 값이다`() {
+        for (profile in SafeArgsNativeProfile.entries) {
+            val parts = profile.agpVersion.split('.').map(String::toInt)
+            GroovyShell().evaluate("""
+                def observed = new com.android.build.api.AndroidPluginVersion(${parts[0]}, ${parts[1]}, ${parts[2]})
+                assert observed.version == '${profile.agpVersion}'
+                assert observed.toString() == 'Android Gradle Plugin version ${profile.agpVersion}'
+            """.trimIndent())
+        }
+    }
+
+    @Test
+    fun `8 계열은 평가 후 같은 이름의 공개 provider만 연결한다`() {
+        val script = """
+            def pending = []; def consumed = []
+            def compiler = new Object()
+            binding.setVariable('selected', [name:'debug'])
+            binding.setVariable('recordCompiler', { consumed.add(it) })
+            binding.setVariable('afterEvaluate', { pending.add(it) })
+            binding.setVariable('android', [applicationVariants:[
+                [name:'release', javaCompileProvider:[configure:{ throw new AssertionError('wrong variant') }]],
+                [name:'debug', javaCompileProvider:[configure:{ action -> action(compiler) }]]]])
+            ${SafeArgsNativeProfile.JAVA_813.compilerBindingDsl()}
+            assert consumed.empty
+            assert pending.size() == 1
+            pending[0]()
+            assert consumed.size() == 1 && consumed[0].is(compiler)
+        """.trimIndent()
+        GroovyShell().evaluate(script)
+    }
+
+    @Test
+    fun `공개 callback과 누락 모호 provider 대조군을 유지한다`() {
+        GroovyShell().evaluate("""
+            def compiler = new Object(); def consumed = []
+            binding.setVariable('selected', [configureJavaCompileTask:{ action -> action(compiler) }])
+            binding.setVariable('recordCompiler', { consumed.add(it) })
+            ${SafeArgsNativeProfile.CURRENT.compilerBindingDsl()}
+            assert consumed.size() == 1 && consumed[0].is(compiler)
+        """.trimIndent())
+        for (variants in listOf("[]", "[[name:'debug'],[name:'debug']]")) {
+            assertFailsWith<IllegalStateException> {
+                GroovyShell().evaluate("""
+                    binding.setVariable('selected', [name:'debug'])
+                    binding.setVariable('recordCompiler', { throw new AssertionError('unexpected compiler') })
+                    binding.setVariable('afterEvaluate', { it() })
+                    binding.setVariable('android', [applicationVariants:$variants])
+                    ${SafeArgsNativeProfile.JAVA_813.compilerBindingDsl()}
+                """.trimIndent())
+            }
         }
     }
 }
