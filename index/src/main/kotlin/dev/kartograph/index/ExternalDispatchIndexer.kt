@@ -9,6 +9,7 @@ import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.HierarchyMethod
 import dev.kartograph.core.InvocationKind
 import dev.kartograph.core.JvmModifier
+import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.Visibility
 
@@ -39,7 +40,7 @@ internal object ExternalDispatchIndexer {
         fun isInterface(owner: String): Boolean? = types[owner]?.let { it.kind in INTERFACE_KINDS } ?: hierarchy.isInterface(owner)
         val targetCache = mutableMapOf<dev.kartograph.core.NodeId, DispatchTargets>()
         var overLimitCalls = 0
-        val derived = mutableListOf<GraphEdge>()
+        val dispatchCounts = mutableMapOf<Pair<NodeId, NodeId>, Int>()
         // CodeGraph는 내부 target 호출을 externalCalls에서 제거한다. assembly의 원래 opcode 사실을 별도로 받는다.
         val internalVirtualCalls = projectCalls.filter { call ->
             if (call.kind !in VIRTUAL_KINDS) return@filter false
@@ -137,12 +138,20 @@ internal object ExternalDispatchIndexer {
                 }
             }
             if (resolved.overLimit) overLimitCalls++
-            resolved.targets.forEach { target ->
-                if (target != callTarget) {
-                    derived += GraphEdge(call.caller, target, EdgeKind.OVERRIDE, origin = EdgeOrigin.DISPATCH_MODEL)
-                }
+            // 호출 위치와 예산은 그대로 두고, 이미 가중치로 합쳐질 파생 간선만 묶는다.
+            if (resolved.targets.any { it != callTarget }) {
+                val key = call.caller to callTarget
+                dispatchCounts[key] = Math.addExact(dispatchCounts[key] ?: 0, 1)
             }
             call.copy(resolvedTargets = resolved.targets, resolution = resolved.resolution)
+        }
+        val derived = mutableListOf<GraphEdge>()
+        dispatchCounts.forEach { (key, count) ->
+            targetCache.getValue(key.second).targets.forEach { target ->
+                if (target != key.second) {
+                    derived += GraphEdge(key.first, target, EdgeKind.OVERRIDE, count, EdgeOrigin.DISPATCH_MODEL)
+                }
+            }
         }
         return DispatchEnrichment(graph.enrichedWith(derived, calls, replacingOrigin = EdgeOrigin.DISPATCH_MODEL), overLimitCalls)
     }

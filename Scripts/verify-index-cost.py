@@ -19,9 +19,9 @@ import tempfile
 import threading
 import time
 
-# 같은 runner에서 최적화 직전 제품과 비교한다. 이전 bb13 호환 실험의 기록은 별도 보존한다.
-SOURCE_BASELINE = "5a23851a9648504bd91350c407566ea3a10b695c"
-BASELINE = "5a23851a9648504bd91350c407566ea3a10b695c"
+# 이번 간선 묶기의 추가 효과를 같은 runner에서 비교한다. 이전 bb13/5a 실험의 기록은 별도 보존한다.
+SOURCE_BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
+BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
 MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
 PROFILES = ("graph", "dead", "architecture")
 LIMIT = 32 * 1024 * 1024
