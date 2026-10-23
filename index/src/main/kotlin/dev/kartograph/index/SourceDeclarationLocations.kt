@@ -23,6 +23,9 @@ public object SourceDeclarationLocations {
     @JvmOverloads
     public fun enrich(graph: CodeGraph, projectRoot: Path, paths: Map<NodeId, String>, fillMissingLines: Boolean = true): CodeGraph {
         val root = projectRoot.toRealPath()
+        // C1/C2의 source 충돌 검증은 기존 projection 경로에 남기며, 일반 bytecode의 무변경 복사만 생략한다.
+        if (paths.isEmpty() && graph.compilerAuthoredCallers.isEmpty() && graph.compilerCallerInventories.isEmpty() &&
+            graph.nodes.values.none { it.sourceDeclaration != null }) return graph
         val localClassOwners = graph.enclosures.mapNotNullTo(mutableSetOf()) { enclosure ->
             enclosure.localClass.value.removePrefix("class:")
                 .takeIf { it.length < enclosure.localClass.value.length }
