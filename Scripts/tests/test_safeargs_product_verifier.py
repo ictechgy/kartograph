@@ -17,20 +17,26 @@ class SafeArgsProductVerifierTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.evidence = Path(self.temporary.name)
         (self.evidence / 'product').mkdir()
+        self.profile = dict(id='gradle971-agp932', gradle='9.7.1', agp='9.3.2', java=17, javaRuntime='17.fixture', javaVendor='fixture')
+        self.action = '470ae06ceef38cf2c69f1a20838bc80ece735bc92c2615f5bad77a50ab379d25'
+        for name in ['gradle-result.properties', 'warm/gradle-result.properties']:
+            path = self.evidence / 'product' / name
+            path.parent.mkdir(exist_ok=True)
+            path.write_text('buildResult=succeeded\nelapsedNanos=12345\noutputTruncated=false\ntaskOutcomesTruncated=false\ntimingScope=TestKit build; excludes external tool setup\n')
         rows = []
         for variant in ['Debug', 'Release']:
-            snapshot = json.dumps({'version': 4, 'generationEvidence': {'receipts': []}}).encode()
+            snapshot = json.dumps({'version': 4, 'generationEvidence': {'receipts': [{'inputs': [{'role': 'generatorActionArtifact', 'sha256': self.action}]}]}}).encode()
             (self.evidence / f'product/{variant}-cold-snapshot.json').write_bytes(snapshot)
             self.write(f'public-{variant}.json', {'tool': {'version': '0.25.0'}})
             for prefix in ['public', 'query']:
                 self.write(f'{prefix}-{variant}-command.json', {'exit': 0, 'timeout': False, 'jars': {'cli.jar': 'a' * 64}})
-            rows.append(dict(variant=variant, sources=3, publicVersion='0.25.0', publicGenerated=False,
+            rows.append(dict(profile=self.profile, profileObservationTaskOutcome='SUCCESS', actionHashes=[self.action], variant=variant, sources=3, publicVersion='0.25.0', publicGenerated=False,
                              queryExit=0, coldGenerated=True, manualUnchanged=True, callsUnchanged=True,
                              retentionUnchanged=True, liveGraph=True, liveDead=True, snapshotSha256=hashlib.sha256(snapshot).hexdigest()))
             self.live(f'live-{variant}', 'current-cold-success/SUCCEEDED')
         self.write('receipt.json', {'variants': rows})
         (self.evidence / 'product/Debug-warm-snapshot.json').write_bytes(snapshot)
-        self.write('warm.json', dict(originBasis='historical-byte-equivalence', currentGenerationStatus='UP_TO_DATE',
+        self.write('warm.json', dict(profile=self.profile, profileObservationTaskOutcome='UP_TO_DATE', actionHashes=[self.action], originBasis='historical-byte-equivalence', currentGenerationStatus='UP_TO_DATE',
                    currentAttempt=None, sameOrigin=True, newInvocation=True, queryExit=0, liveGraph=True, liveDead=True,
                    snapshotSha256=hashlib.sha256(snapshot).hexdigest()))
         self.live('live-warm', 'historical-byte-equivalence/UP_TO_DATE')
@@ -54,15 +60,36 @@ class SafeArgsProductVerifierTest(unittest.TestCase):
 
     def capture(self, omit=None):
         rows = []
-        for path in sorted((self.evidence / 'product').iterdir()):
-            if path.name == omit:
+        for path in sorted((self.evidence / 'product').rglob('*')):
+            if not path.is_file() or path.name == omit:
                 continue
             raw = path.read_bytes()
-            rows.append(f'{hashlib.sha256(raw).hexdigest()}\t{len(raw)}\tproduct/{path.name}')
+            rows.append(f'{hashlib.sha256(raw).hexdigest()}\t{len(raw)}\tproduct/{path.relative_to(self.evidence / 'product').as_posix()}')
         (self.evidence / 'capture.tsv').write_text('\n'.join(rows) + '\n', encoding='utf-8')
 
     def test_complete_bounded_synthetic_receipt_passes(self):
         self.assertTrue(VERIFIER.verify(self.evidence)['complete'])
+
+    def test_profile_and_preparation_cannot_be_missing_or_relabelled(self):
+        receipt = json.loads((self.evidence / 'product/receipt.json').read_text())
+        receipt['variants'][0]['profile']['gradle'] = '8.13'
+        self.write('receipt.json', receipt); self.capture()
+        with self.assertRaisesRegex(ValueError, 'profile'):
+            VERIFIER.verify(self.evidence)
+
+    def test_warm_action_does_not_accept_other_profile(self):
+        warm = json.loads((self.evidence / 'product/warm.json').read_text())
+        warm['actionHashes'] = ['0a69dc9e20abce45bbe11135351dca180dd6b98b77274fd2b347655d0cd6fa41']
+        self.write('warm.json', warm); self.capture()
+        with self.assertRaisesRegex(ValueError, 'action artifact'):
+            VERIFIER.verify(self.evidence)
+
+    def test_truncated_or_zero_preparation_is_rejected(self):
+        path = self.evidence / 'product/gradle-result.properties'
+        path.write_text(path.read_text().replace('elapsedNanos=12345', 'elapsedNanos=0'))
+        self.capture()
+        with self.assertRaisesRegex(ValueError, 'elapsed timing'):
+            VERIFIER.verify(self.evidence)
 
     def test_present_but_not_captured_evidence_is_rejected(self):
         self.capture(omit='public-Debug.json')

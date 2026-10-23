@@ -50,7 +50,7 @@ internal class SafeArgsTaskBytes(private val project: Path, private val task: Ta
         val action = task.actions.singleOrNull { it.javaClass.name == DEFAULT_ACTION }
             ?: throw IllegalArgumentException("unsupported SafeArgs generator action")
         val actionArtifact = artifact(action.javaClass, "generatorActionArtifact", paths)
-        require(actionArtifact.sha256 == ACTION_SHA) { "unsupported Gradle generator action artifact" }
+        requireSupportedActionArtifact(actionArtifact.sha256)
         var total = 0L
         val navigation = nav.map { file ->
             val data = bytes(file, 4 * MIB)
@@ -136,6 +136,11 @@ internal class SafeArgsTaskBytes(private val project: Path, private val task: Ta
         const val PLUGIN_SHA = "5e585dfe55474ce5361f2759faf9afd4a12a7e6a8259c7371bab1b7e8a846c56"
         const val GENERATOR_SHA = "d4eb204430ce5e350799981cbac0941cea76cf6feeffd959878363bfc13b5c3d"
         const val ACTION_SHA = "470ae06ceef38cf2c69f1a20838bc80ece735bc92c2615f5bad77a50ab379d25"
+        // 실제 Gradle 8.13 SDK-less task에서 CodeSource JAR 전체 바이트를 대조한 값이다.
+        const val ACTION_813_SHA = "0a69dc9e20abce45bbe11135351dca180dd6b98b77274fd2b347655d0cd6fa41"
+        internal fun requireSupportedActionArtifact(sha: String) {
+            require(sha == ACTION_SHA || sha == ACTION_813_SHA) { "unsupported Gradle generator action artifact" }
+        }
         private const val MIB = 1024 * 1024
         private val QUALIFIED = Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*")
         private fun ByteArray.sha(): String = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(this))

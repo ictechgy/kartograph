@@ -12,13 +12,15 @@ internal object SafeArgsBuildEvidence {
     internal const val MAX_TASKS = 10_000
 
     fun build(directory: Path, run: () -> BuildResult): BuildResult {
+        val started = System.nanoTime()
         val result = try {
             run()
         } catch (failure: UnexpectedBuildFailure) {
-            captureSecondary(failure, "failed-build-result") { save(directory, failure.buildResult, "failed") }
+            val elapsed = System.nanoTime() - started
+            captureSecondary(failure, "failed-build-result") { save(directory, failure.buildResult, "failed", elapsed) }
             throw failure
         }
-        save(directory, result, "succeeded")
+        save(directory, result, "succeeded", System.nanoTime() - started)
         return result
     }
 
@@ -45,7 +47,7 @@ internal object SafeArgsBuildEvidence {
         }
     }
 
-    private fun save(directory: Path, result: BuildResult, outcome: String) {
+    private fun save(directory: Path, result: BuildResult, outcome: String, elapsedNanos: Long) {
         Files.createDirectories(directory)
         val output = result.output
         var length = minOf(output.length, MAX_OUTPUT_CHARS)
@@ -65,6 +67,8 @@ internal object SafeArgsBuildEvidence {
         // 이 상태는 Gradle 결과만 설명한다. native 관측/검증 완료 표식으로 사용하지 않는다.
         Files.writeString(directory.resolve("gradle-result.properties"), """
             buildResult=$outcome
+            elapsedNanos=$elapsedNanos
+            timingScope=TestKit build including configuration and generation/compiler/analysis preparation; excludes external tool setup and separate CLI consumption
             outputOriginalUtf16Units=${output.length}
             outputCapturedUtf16Units=$length
             outputTruncated=${length != output.length}

@@ -35,7 +35,12 @@ jobs:
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
       - name: Test and verify coverage
         id: candidate-build
-        run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
+        # Kotlin 컴파일 daemon만 늘린다. 테스트·CLI JVM과 분석 시간 예산은 그대로 둔다.
+        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g clean test :koverVerify :cli:installDist
+      - name: Observe Kotlin compiler heap after primary build
+        if: always()
+        timeout-minutes: 1
+        run: python3 Scripts/observe-kotlin-daemon-heap.py
       - name: Verify non-privileged POSIX permission regressions
         run: python3 Scripts/verify-posix-permission-tests.py
       - name: Verify actual DataBinding processor regression execution
@@ -210,13 +215,13 @@ jobs:
       - name: Verify supported JDK
         shell: bash
         run: |
-          compiler_args=()
-          if [[ "${{ matrix.java }}" == "21" ]]; then
-            # Kotlin 컴파일 daemon의 heap 부족만 다룬다. 테스트·CLI JVM 한도와 분리한다.
-            compiler_args+=("-Pkotlin.daemon.jvmargs=-Xmx1g")
-            printf '%s\n' 'Requested JDK 21 Kotlin daemon maximum heap: 1 GiB (effective process flags not observed here).'
-          fi
-          ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} "${compiler_args[@]}" test :gradle-plugin:validatePlugins
+          # 양쪽 JDK에서 관측한 Kotlin 컴파일 heap 부족만 다룬다.
+          printf '%s\n' 'Requested Kotlin daemon maximum heap: 1 GiB; a separate observation records available process flags.'
+          ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} -Pkotlin.daemon.jvmargs=-Xmx1g test :gradle-plugin:validatePlugins
+      - name: Observe Kotlin compiler heap after compatibility build
+        if: always()
+        timeout-minutes: 1
+        run: python3 Scripts/observe-kotlin-daemon-heap.py
       - name: Preserve failed compatibility test details
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

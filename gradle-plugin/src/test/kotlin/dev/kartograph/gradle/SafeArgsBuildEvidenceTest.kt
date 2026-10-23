@@ -52,6 +52,7 @@ class SafeArgsBuildEvidenceTest {
         assertTrue(output.contains("intentional-fixture-failure"))
         assertEquals(":beforeFailure=SUCCESS\n:expectedFailure=FAILED\n", Files.readString(directory.resolve("task-outcomes.txt")))
         assertEquals("failed", metadata(directory).getProperty("buildResult"))
+        assertTrue(metadata(directory).getProperty("elapsedNanos").toLong() > 0)
         assertEquals("false", metadata(directory).getProperty("outputTruncated"))
         assertFalse(output.contains("safe-args-native complete="))
     }
@@ -96,6 +97,8 @@ class SafeArgsBuildEvidenceTest {
         assertEquals("true", properties.getProperty("taskOutcomesTruncated"))
         assertEquals(SafeArgsBuildEvidence.MAX_TASKS.toString(), properties.getProperty("tasksCaptured"))
         assertEquals("succeeded", properties.getProperty("buildResult"))
+        assertTrue(properties.getProperty("elapsedNanos").toLong() > 0)
+        assertTrue(properties.getProperty("timingScope").contains("excludes external tool setup"))
         assertFalse(Files.readString(root.resolve("gradle-output.txt")).contains("safe-args-native complete="))
     }
 

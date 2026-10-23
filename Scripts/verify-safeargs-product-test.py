@@ -3,17 +3,19 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def verify(evidence):
+def verify(evidence, profile="gradle971-agp932"):
     spec = importlib.util.spec_from_file_location('native_observation', ROOT / 'Scripts/verify-safeargs-native-test.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    module.profiles.expected_profile(profile)
     captured = module.inventory(evidence)
-    required = {'product/receipt.json', 'product/warm.json', 'product/warm-extra.txt',
+    required = {'product/gradle-result.properties', 'product/warm/gradle-result.properties', 'product/receipt.json', 'product/warm.json', 'product/warm-extra.txt',
                 'product/Debug-warm-snapshot.json', 'product/query-warm-command.json',
                 'product/live-warm-graph.json', 'product/live-warm-dead.json',
                 'product/live-extra-graph.json', 'product/live-disabled.txt'}
@@ -24,12 +26,18 @@ def verify(evidence):
                     for variant in ['Debug', 'Release'] for prefix in ['public', 'query'])
     if not required.issubset(captured):
         raise ValueError('product evidence is outside the capture inventory')
+    preparation = {name: module.profiles.verify_build_timing(evidence / relative) for name, relative in [
+        ('cold', 'product/gradle-result.properties'), ('warm', 'product/warm/gradle-result.properties')]}
     receipt = json.loads((evidence / 'product/receipt.json').read_text(encoding='utf-8'))
     rows = receipt['variants']
     if len(rows) != 2 or {row['variant'] for row in rows} != {'Debug', 'Release'}:
         raise ValueError('both actual cold variants are required')
     for row in rows:
         variant = row['variant']
+        module.profiles.verify_profile(row.get('profile'), profile)
+        module.profiles.verify_action_hashes(row.get('actionHashes'), profile)
+        if row.get('profileObservationTaskOutcome') != 'SUCCESS':
+            raise ValueError('cold actual profile observation did not execute')
         if row['sources'] != 3 or row['publicVersion'] != '0.25.0' or row['publicGenerated'] is not False or row['queryExit'] != 0:
             raise ValueError('actual public/current CLI comparison is missing')
         if any(row[key] is not True for key in ['coldGenerated', 'manualUnchanged', 'callsUnchanged', 'retentionUnchanged']):
@@ -43,6 +51,10 @@ def verify(evidence):
         snapshot = json.loads(raw)
         if snapshot['version'] != 4 or 'generationEvidence' not in snapshot:
             raise ValueError('mandatory generation snapshot contract is missing')
+        receipts = snapshot['generationEvidence'].get('receipts', [])
+        if len(receipts) != 1:
+            raise ValueError('one actual generation receipt required')
+        module.profiles.verify_action_hashes([v['sha256'] for v in receipts[0]['inputs'] if v['role'] == 'generatorActionArtifact'], profile)
         public = json.loads((evidence / f'product/public-{variant}.json').read_text(encoding='utf-8'))
         if public['tool']['version'] != '0.25.0':
             raise ValueError('wrong public baseline tool version')
@@ -54,9 +66,17 @@ def verify(evidence):
     if (warm['originBasis'] != 'historical-byte-equivalence' or warm['currentGenerationStatus'] != 'UP_TO_DATE'
             or warm['currentAttempt'] is not None or warm['sameOrigin'] is not True or warm['newInvocation'] is not True or warm['queryExit'] != 0):
         raise ValueError('warm historical origin/current status is not separated')
+    module.profiles.verify_profile(warm.get('profile'), profile)
+    module.profiles.verify_action_hashes(warm.get('actionHashes'), profile)
+    if warm.get('profileObservationTaskOutcome') not in ('SUCCESS', 'UP_TO_DATE'):
+        raise ValueError('warm profile observation state is unavailable')
     raw = (evidence / 'product/Debug-warm-snapshot.json').read_bytes()
     if hashlib.sha256(raw).hexdigest() != warm['snapshotSha256']:
         raise ValueError('warm snapshot receipt mismatch')
+    warm_receipts = json.loads(raw)['generationEvidence'].get('receipts', [])
+    if len(warm_receipts) != 1:
+        raise ValueError('one actual warm generation receipt required')
+    module.profiles.verify_action_hashes([v['sha256'] for v in warm_receipts[0]['inputs'] if v['role'] == 'generatorActionArtifact'], profile)
     command = json.loads((evidence / 'product/query-warm-command.json').read_text(encoding='utf-8'))
     if command['exit'] != 0 or command['timeout'] or not command['jars']:
         raise ValueError('warm CLI process failed')
@@ -72,7 +92,7 @@ def verify(evidence):
     if (evidence / 'product/live-disabled.txt').read_text(encoding='utf-8') != 'snapshots disabled: no snapshot, generation verification or unit-test task dependency\n':
         raise ValueError('snapshot disabled task dependency control failed')
     return {'complete': True, 'scope': 'cold and unchanged UP-TO-DATE Java SafeArgs source/class attribution; no runtime or private-app claim',
-            'variants': rows, 'warm': warm}
+            'variants': rows, 'warm': warm, 'preparation': preparation}
 
 
 def verify_live(evidence, prefix, state):
@@ -93,7 +113,7 @@ def verify_live(evidence, prefix, state):
 
 
 if __name__ == '__main__':
-    report = verify(ROOT / 'build/reports/safeargs-native')
+    report = verify(ROOT / 'build/reports/safeargs-native', os.environ.get('KARTOGRAPH_SAFEARGS_NATIVE_PROFILE', 'gradle971-agp932'))
     rendered = json.dumps(report, ensure_ascii=False) + '\n'
     if len(rendered.encode('utf-8')) > 16 * 1024:
         raise ValueError('incomplete product evidence: output budget exceeded')

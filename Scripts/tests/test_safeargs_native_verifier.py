@@ -26,6 +26,7 @@ class SafeArgsNativeVerifierTest(unittest.TestCase):
             f"safe-args-native complete={variant} freshness=matched controls=checked" for variant in ("Debug", "Release"))
         self.xml.write_bytes(ET.tostring(suite))
         self.files = {}
+        self.put('observations/gradle-result.properties', 'buildResult=succeeded\nelapsedNanos=12345\noutputTruncated=false\ntaskOutcomesTruncated=false\ntimingScope=TestKit build; excludes external tool setup\n')
         for prefix in ("debug", "main"):
             self.put(f"fixture/src/{prefix}/res/navigation/graph.xml", prefix)
         for name in ("p/ManualArgs.java", "p/ManualDirections.java", "other/StartFragmentArgs.java"):
@@ -54,9 +55,9 @@ class SafeArgsNativeVerifierTest(unittest.TestCase):
                 "navigation": {nav: gate.digest(self.files["fixture/" + nav])}, "compilerSources": sources, "generated": generated,
                 "generatedSourceTexts": texts, "compiled": {name: "a" * 64 for name in gate.CLASSES},
                 "mapping": {"path": f"build/mapping/{variant}/file_mappings.json", "text": mapping, "sha256": gate.digest(mapping.encode())},
-                "generatorArtifacts": {"plugin.jar": "b" * 64, "generator.jar": "c" * 64}, "classHeaders": headers,
+                "profile": {"id": "gradle971-agp932", "gradle": "9.7.1", "agp": "9.3.2", "java": 17, "javaRuntime": "17.fixture", "javaVendor": "fixture"}, "generatorArtifacts": {"plugin.jar": gate.profiles.PLUGIN_SHA, "generator.jar": gate.profiles.GENERATOR_SHA}, "classHeaders": headers,
                 "generatorActionTypes": ["org.gradle.api.internal.project.taskfactory.IncrementalTaskAction"],
-                "generatorActionArtifacts": {"gradle-core.jar": "d" * 64}}))
+                "generatorActionArtifacts": {"gradle-core.jar": gate.profiles.PROFILES["gradle971-agp932"][2]}}))
             self.put(f"snapshots/{variant.lower()}-snapshot.json", "{}")
         self.put("observations/task-outcomes.txt", "\n".join(outcomes))
         self.manifest()
@@ -81,6 +82,29 @@ class SafeArgsNativeVerifierTest(unittest.TestCase):
 
     def test_synthetic_complete_receipt_schema_passes(self):
         self.assertEqual("passed", gate.verify(self.xml, self.evidence)["status"])
+
+    def test_observed_profile_and_action_are_required(self):
+        for key, wrong in [('profile', None), ('profile', {'id': 'gradle813-agp813-java'}),
+                           ('generatorActionArtifacts', {'gradle-core-8.13.jar': '0' * 64})]:
+            with self.subTest(key=key, wrong=wrong):
+                self.setUp()
+                self.change_observation(lambda value: value.update({key: wrong}))
+                with self.assertRaisesRegex(ValueError, 'profile|artifact'):
+                    gate.verify(self.xml, self.evidence)
+
+    def test_813_requires_matching_actual_versions_and_action(self):
+        for variant in ('Debug', 'Release'):
+            name = f'observations/{variant}.json'
+            value = json.loads(self.files[name])
+            value['profile'].update(id='gradle813-agp813-java', gradle='8.13', agp='8.13.0')
+            value['generatorActionArtifacts'] = {'gradle-core-8.13.jar': gate.profiles.PROFILES['gradle813-agp813-java'][2]}
+            self.put(name, json.dumps(value))
+        self.manifest()
+        self.assertEqual('passed', gate.verify(self.xml, self.evidence, 'gradle813-agp813-java')['status'])
+        with self.assertRaisesRegex(ValueError, 'profile'):
+            gate.verify(self.xml, self.evidence)
+        with self.assertRaisesRegex(ValueError, 'unknown'):
+            gate.verify(self.xml, self.evidence, 'latest')
 
     def test_skipped_execution_is_rejected(self):
         suite = ET.fromstring(self.xml.read_bytes())

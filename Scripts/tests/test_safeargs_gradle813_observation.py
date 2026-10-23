@@ -49,6 +49,23 @@ class Gradle813ObservationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.validate_observation(self.observation, self.home, "cold")
 
+    def test_archive_parent_and_new_unpack_destination_are_separate(self):
+        # workflow의 실제 디렉터리 순서를 작은 ZIP으로 실행한다. 다운로드/Gradle 실행은 하지 않는다.
+        root = self.root / "distribution"; root.mkdir()
+        archive = root / "gradle-8.13-bin.zip"
+        with zipfile.ZipFile(archive, "w") as zipped:
+            zipped.writestr("gradle-8.13/bin/gradle", b"synthetic launcher, not executable")
+        expected = MODULE.digest(archive)
+        with self.assertRaises(FileExistsError):
+            MODULE.unpack(archive, root, expected)
+        home = MODULE.unpack(archive, root / "installation", expected)
+        self.assertEqual(root / "installation/gradle-8.13", home)
+        self.assertEqual(b"synthetic launcher, not executable", (home / "bin/gradle").read_bytes())
+        self.assertEqual(expected, MODULE.digest(archive))
+        with self.assertRaisesRegex(ValueError, "checksum"):
+            MODULE.unpack(archive, root / "wrong-checksum", "0" * 64)
+        self.assertFalse((root / "wrong-checksum").exists())
+
     def test_toolchain_and_generator_artifacts(self):
         for key, value in [("gradle", "9.7.1"), ("java", "21"), ("task", ":generateSafeArgsRelease"), ("taskType", "FakeTask")]:
             with self.subTest(key=key): self.reject(lambda x: x.update({key: value}))

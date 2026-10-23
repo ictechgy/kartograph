@@ -20,12 +20,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
 import org.junit.jupiter.api.io.TempDir
 
 /** 실제 생성기/컴파일러의 출처 공백 재현이다. generated를 runtime root로 가정하지 않는다. */
 class AndroidSafeArgsIntegrationTest {
+    private val profile = SafeArgsNativeProfile.select(System.getenv("KARTOGRAPH_SAFEARGS_NATIVE_PROFILE"))
+    private fun runner(root: Path) = profile.runner(root, System.getenv("KARTOGRAPH_SAFEARGS_GRADLE_HOME"), Runtime.version().feature())
     @Test
     fun `SafeArgs 실제 생성물과 수기 대조군의 출처 및 bytecode 호출을 구분한다`(@TempDir root: Path) {
         SafeArgsBuildEvidence.withFinalCapture({ preserveEvidence(root) }) { observe(root) }
@@ -34,7 +35,7 @@ class AndroidSafeArgsIntegrationTest {
     private fun observe(root: Path) {
         fixture(root)
         val result = SafeArgsBuildEvidence.build(root.resolve("build/safeargs-observations")) {
-            GradleRunner.create().withProjectDir(root.toFile()).withArguments(
+            runner(root).withArguments(
                 "observeSafeArgsDebug", "observeSafeArgsRelease", "kartographSnapshotDebug", "kartographSnapshotRelease",
                 "--stacktrace", "--configuration-cache", "--no-build-cache",
             ).build()
@@ -97,11 +98,12 @@ class AndroidSafeArgsIntegrationTest {
         fixture(root)
         val results = root.resolve("build/safeargs-product"); Files.createDirectories(results)
         val result = SafeArgsBuildEvidence.build(results) {
-            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographGraphDebug", "kartographDeadDebug", "kartographGraphRelease", "kartographDeadRelease",
+            runner(root).withArguments("observeSafeArgsDebug", "observeSafeArgsRelease", "kartographGraphDebug", "kartographDeadDebug", "kartographGraphRelease", "kartographDeadRelease",
                 "--stacktrace", "--no-configuration-cache", "--no-build-cache").build()
         }
         val rows = mutableListOf<Map<String, Any?>>()
         for (variant in listOf("Debug", "Release")) {
+            assertEquals(TaskOutcome.SUCCESS, result.task(":observeSafeArgs$variant")?.outcome)
             assertEquals(TaskOutcome.SUCCESS, result.task(":generateSafeArgs$variant")?.outcome)
             assertEquals(TaskOutcome.SUCCESS, result.task(":kartographVerifySafeArgs$variant")?.outcome)
             assertEquals(TaskOutcome.SUCCESS, result.task(":kartographGraph$variant")?.outcome)
@@ -146,7 +148,11 @@ class AndroidSafeArgsIntegrationTest {
             assertEquals("class:p/StartFragmentArgs", ((query["result"] as Map<*, *>)["subject"] as Map<*, *>)["usr"])
             assertGenerationSummary(query, evidence, "current-cold-success", "SUCCEEDED")
             }
-            val row = mapOf("variant" to variant, "snapshotSha256" to sha(snapshotPath), "sources" to evidence.receipts.single().sources.size,
+            val observedProfile = (dev.kartograph.export.McpJsonCodec.parse(Files.readString(
+                root.resolve("build/safeargs-observations/$variant.json"))) as Map<*, *>)["profile"]
+            val actionHashes = evidence.receipts.single().inputs.filter { it.role == "generatorActionArtifact" }.map { it.sha256 }
+            val row = mapOf("profile" to observedProfile, "profileObservationTaskOutcome" to "SUCCESS",
+                "actionHashes" to actionHashes, "variant" to variant, "snapshotSha256" to sha(snapshotPath), "sources" to evidence.receipts.single().sources.size,
                 "declarations" to evidence.declarations.map { it.owner.value }, "publicVersion" to if (publicHome != null) "0.25.0" else null,
                 "publicGenerated" to if (publicHome != null) false else null,
                 "coldGenerated" to true, "manualUnchanged" to true, "callsUnchanged" to true, "retentionUnchanged" to true,
@@ -158,10 +164,12 @@ class AndroidSafeArgsIntegrationTest {
         }
         // 실제 UP-TO-DATE에서 과거 출처와 새 소비 invocation을 각각 검증한다.
         val warm = SafeArgsBuildEvidence.build(results.resolve("warm")) {
-            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographGraphDebug", "kartographDeadDebug", "--stacktrace",
+            runner(root).withArguments("observeSafeArgsDebug", "kartographGraphDebug", "kartographDeadDebug", "--stacktrace",
                 "--no-configuration-cache", "--no-build-cache").build()
         }
         assertEquals(TaskOutcome.UP_TO_DATE, warm.task(":generateSafeArgsDebug")?.outcome)
+        val profileObservationOutcome = requireNotNull(warm.task(":observeSafeArgsDebug")).outcome
+        assertTrue(profileObservationOutcome in setOf(TaskOutcome.SUCCESS, TaskOutcome.UP_TO_DATE))
         val warmSnapshot = snapshot(root, "debug")
         val coldSnapshot = QuerySnapshotCodec.parse(Files.readString(results.resolve("Debug-cold-snapshot.json")))
         val coldEvidence = requireNotNull(coldSnapshot.generationEvidence)
@@ -186,6 +194,10 @@ class AndroidSafeArgsIntegrationTest {
             assertGenerationSummary(query, warmEvidence, "historical-byte-equivalence", "UP_TO_DATE")
         }
         Files.writeString(results.resolve("warm.json"), dev.kartograph.export.McpJsonCodec.render(mapOf(
+            "profileObservationTaskOutcome" to profileObservationOutcome.name,
+            "profile" to (dev.kartograph.export.McpJsonCodec.parse(Files.readString(
+                root.resolve("build/safeargs-observations/Debug.json"))) as Map<*, *>)["profile"],
+            "actionHashes" to warmEvidence.receipts.single().inputs.filter { it.role == "generatorActionArtifact" }.map { it.sha256 },
             "originBasis" to observed.originBasis, "currentGenerationStatus" to observed.currentGenerationStatus,
             "currentAttempt" to observed.currentAttempt, "sameOrigin" to true, "newInvocation" to true,
             "snapshotSha256" to sha(warmPath), "queryExit" to if (currentHome != null) 0 else null, "liveGraph" to true, "liveDead" to true)))
@@ -193,7 +205,7 @@ class AndroidSafeArgsIntegrationTest {
         Files.writeString(root.resolve(warmEvidence.receipts.single().outputRoot).resolve("p/HandwrittenExtra.java"),
             "package p; public class HandwrittenExtra {}")
         SafeArgsBuildEvidence.build(results.resolve("warm-extra")) {
-            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographGraphDebug", "kartographDeadDebug", "--stacktrace",
+            runner(root).withArguments("kartographGraphDebug", "kartographDeadDebug", "--stacktrace",
                 "--no-configuration-cache", "--no-build-cache").build()
         }
         val extraSnapshot = snapshot(root, "debug")
@@ -207,7 +219,7 @@ class AndroidSafeArgsIntegrationTest {
         Files.copy(extraGraphPath, results.resolve("live-extra-graph.json"))
         Files.writeString(results.resolve("warm-extra.txt"), "whole inventory changed; generation-unverified\n")
         val disabled = SafeArgsBuildEvidence.build(results.resolve("disabled-dry-run")) {
-            GradleRunner.create().withProjectDir(root.toFile()).withArguments("kartographGraphDebug", "--dry-run", "-PdisableSnapshots=true").build()
+            runner(root).withArguments("kartographGraphDebug", "--dry-run", "-PdisableSnapshots=true").build()
         }
         assertTrue(disabled.tasks.none { it.path.startsWith(":kartographSnapshot") || it.path.contains("DebugUnitTest") || it.path.startsWith(":kartographVerifySafeArgs") })
         Files.writeString(results.resolve("live-disabled.txt"), "snapshots disabled: no snapshot, generation verification or unit-test task dependency\n")
@@ -290,7 +302,8 @@ class AndroidSafeArgsIntegrationTest {
         for ((relative, prefix) in listOf("src" to "fixture/src", "build.gradle" to "fixture/build.gradle",
             "settings.gradle" to "fixture/settings.gradle", "gradle.properties" to "fixture/gradle.properties",
             "build/safeargs-observations" to "observations", "build/reports/kartograph" to "snapshots",
-            "cold-product/build/safeargs-product" to "product", "cold-product/build/reports/kartograph" to "product-snapshots")) {
+            "cold-product/build/safeargs-product" to "product", "cold-product/build/reports/kartograph" to "product-snapshots",
+            "cold-product/build/safeargs-observations" to "product-observations")) {
             val source = root.resolve(relative)
             if (!Files.exists(source)) continue
             Files.walk(source).use { paths -> paths.sorted().forEach { file ->
@@ -351,6 +364,12 @@ class AndroidSafeArgsIntegrationTest {
                 }
             }
             abstract class SafeArgsObservation extends DefaultTask {
+                @Input abstract Property<String> getNativeProfile()
+                @Input abstract Property<String> getObservedGradle()
+                @Input abstract Property<String> getObservedAgp()
+                @Input abstract Property<Integer> getObservedJava()
+                @Input abstract Property<String> getObservedJavaRuntime()
+                @Input abstract Property<String> getObservedJavaVendor()
                 @Input abstract Property<String> getApplicationId()
                 @Input abstract Property<String> getRFilePackage()
                 @Input abstract Property<Boolean> getUseAndroidX()
@@ -384,7 +403,9 @@ class AndroidSafeArgsIntegrationTest {
                         useAndroidX:useAndroidX.get(), generateKotlin:generateKotlin.get(),
                         generatorTask:generatorTask.get(), compilerTask:compilerTask.get(),
                         generatedSourceRoot:relative(generatedSources.get().asFile), compiledClassRoot:relative(compiledClasses.get().asFile)])
-                    def value = [providerDescriptor:descriptor,
+                    def value = [profile:[id:nativeProfile.get(), gradle:observedGradle.get(), agp:observedAgp.get(),
+                         java:observedJava.get(), javaRuntime:observedJavaRuntime.get(), javaVendor:observedJavaVendor.get()],
+                         providerDescriptor:descriptor,
                         providerSha256:MessageDigest.getInstance('SHA-256').digest(descriptor.getBytes('UTF-8')).encodeHex().toString(),
                         navigation:navigationFiles.files.collectEntries { [(relative(it)):sha(it)] },
                         compilerSources:compilerSources.files.collectEntries { [(relative(it)):sha(it)] },
@@ -415,7 +436,7 @@ class AndroidSafeArgsIntegrationTest {
             buildscript {
                 repositories { google(); mavenCentral() }
                 dependencies {
-                    classpath 'com.android.tools.build:gradle:9.3.2'
+                    classpath 'com.android.tools.build:gradle:${profile.agpVersion}'
                     classpath 'androidx.navigation:navigation-safe-args-gradle-plugin:2.10.2'
                     classpath files('$pluginJar')
                 }
@@ -430,19 +451,22 @@ class AndroidSafeArgsIntegrationTest {
                 defaultConfig { applicationId 'p.safeargs'; minSdk 24; targetSdk 36; versionCode 1; versionName '1' }
                 compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
             }
-            kotlin {
-                jvmToolchain(${Runtime.version().feature()})
-                compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 }
-            }
+            ${profile.kotlinDsl(Runtime.version().feature())}
             kartograph {
                 snapshotsEnabled = !project.hasProperty('disableSnapshots'); includeSourcePaths = true
                 reportFormat = 'json'; excludeOrigins = ['dispatchModel']
-                snapshotKotlinToolchain = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(${Runtime.version().feature()}) }
+                ${profile.kotlinSnapshotDsl(Runtime.version().feature())}
             }
             androidComponents.onVariants(androidComponents.selector().all()) { selected ->
                 def variant = selected.name.capitalize()
                 def generation = tasks.named('generateSafeArgs' + variant, ArgumentsGenerationTask)
                 def observation = tasks.register('observeSafeArgs' + variant, SafeArgsObservation) {
+                    nativeProfile.set('${profile.id}')
+                    observedGradle.set(gradle.gradleVersion)
+                    observedAgp.set(androidComponents.pluginVersion.toString())
+                    observedJava.set(Runtime.version().feature())
+                    observedJavaRuntime.set(System.getProperty('java.runtime.version'))
+                    observedJavaVendor.set(System.getProperty('java.vendor'))
                     fixtureRoot.set(layout.projectDirectory)
                     generatorTask.set(generation.map { it.path })
                     applicationId.set(generation.flatMap { it.applicationId })

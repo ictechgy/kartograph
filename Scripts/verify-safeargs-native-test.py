@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Safe Args 단일 native 실행과 보존된 hash receipt를 확인한다. runtime 완전성 검사는 아니다."""
 import hashlib
+import importlib.util
+import os
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -8,6 +10,9 @@ import subprocess
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
+profile_spec = importlib.util.spec_from_file_location('safe_args_profiles', ROOT / 'Scripts/safeargs_native_profiles.py')
+profiles = importlib.util.module_from_spec(profile_spec)
+profile_spec.loader.exec_module(profiles)
 SUITE = "dev.kartograph.gradle.AndroidSafeArgsIntegrationTest"
 CASE = "SafeArgs 실제 생성물과 수기 대조군의 출처 및 bytecode 호출을 구분한다(Path)"
 HASH = re.compile(r"[0-9a-f]{64}\Z")
@@ -16,7 +21,7 @@ CLASSES = ("p/StartFragmentArgs.class", "p/StartFragmentDirections.class",
            "p/ManualArgs.class", "p/ManualDirections.class", "other/StartFragmentArgs.class")
 
 
-def bounded_generation_observation(observed, providers, nav):
+def bounded_generation_observation(observed, providers, nav, profile=profiles.DEFAULT_PROFILE):
     """고정 합성 fixture의 관측만 출력한다. 일반 입력에 대한 생성물 인증기가 아니다."""
     mapping = observed["mapping"]
     raw = mapping["text"].encode("utf-8")
@@ -27,12 +32,14 @@ def bounded_generation_observation(observed, providers, nav):
     if len(rows) != 1 or rows[0].get("navFile") != nav or set(rows[0].get("javaFiles", [])) != names or len(rows[0]["javaFiles"]) != 3:
         raise ValueError("per-input generator mapping mismatch")
     artifacts = observed["generatorArtifacts"]
-    if len(artifacts) != 2 or any(not HASH.fullmatch(sha) for sha in artifacts.values()):
+    if len(artifacts) != 2 or set(artifacts.values()) != {profiles.PLUGIN_SHA, profiles.GENERATOR_SHA}:
         raise ValueError("executing generator artifact evidence missing")
     actions = observed["generatorActionTypes"]
     action_artifacts = observed["generatorActionArtifacts"]
     if actions != ["org.gradle.api.internal.project.taskfactory.IncrementalTaskAction"] or len(action_artifacts) != 1 or any(not HASH.fullmatch(sha) for sha in action_artifacts.values()):
         raise ValueError("fixture default generator action shape changed or unavailable")
+    profiles.verify_profile(observed.get("profile"), profile)
+    profiles.verify_action_hashes(list(action_artifacts.values()), profile)
     selected = {}
     for name in CLASSES:
         header = observed["classHeaders"].get(name)
@@ -45,7 +52,7 @@ def bounded_generation_observation(observed, providers, nav):
             raise ValueError("class header bytes mismatch")
         selected[name] = header
     value = {"scope": "successful cold synthetic observation only; no source ownership admission",
-             "complete": True, "truncated": False,
+             "complete": True, "truncated": False, "profile": observed["profile"],
              "mappingSha256": mapping["sha256"], "mapping": rows, "executingArtifacts": artifacts,
              "actionTypes": actions, "actionArtifacts": action_artifacts,
              "compilerTask": providers["compilerTask"], "compiledClassRoot": providers["compiledClassRoot"],
@@ -89,7 +96,8 @@ def inventory(directory):
     return rows
 
 
-def verify(xml_path, evidence):
+def verify(xml_path, evidence, profile=profiles.DEFAULT_PROFILE):
+    profiles.expected_profile(profile)
     raw = xml_path.read_bytes()
     suite = ET.fromstring(raw)
     if suite.tag != "testsuite" or suite.get("name") != SUITE or suite.get("tests") != "1":
@@ -104,6 +112,9 @@ def verify(xml_path, evidence):
     lines = (suite.findtext("system-out") or "").splitlines()
     rows = inventory(evidence)
     outcomes = (evidence / "observations/task-outcomes.txt").read_text(encoding="utf-8").splitlines()
+    if "observations/gradle-result.properties" not in rows:
+        raise ValueError("build timing outside capture inventory")
+    preparation = profiles.verify_build_timing(evidence / "observations/gradle-result.properties")
     variants = []
     for variant, seed in (("Debug", 11), ("Release", 22)):
         marker = f"safe-args-native complete={variant} freshness=matched controls=checked"
@@ -147,8 +158,8 @@ def verify(xml_path, evidence):
         variants.append({"variant": variant, "providerSha256": observed["providerSha256"],
                          "observationSha256": rows[relative], "generatedSources": len(observed["generated"]),
                          "mixedClassControls": len(CLASSES),
-                         "generationObservation": bounded_generation_observation(observed, providers, nav)})
-    return {"status": "passed", "executed": 1, "skipped": 0, "xmlSha256": digest(raw), "variants": variants,
+                         "generationObservation": bounded_generation_observation(observed, providers, nav, profile)})
+    return {"status": "passed", "executed": 1, "skipped": 0, "xmlSha256": digest(raw), "variants": variants, "preparation": preparation,
             "scope": "cold synthetic AGP/SafeArgs compilation and current-baseline classification; no device runtime, cached admission, private-app accuracy or completeness claim"}
 
 
@@ -157,7 +168,7 @@ def main():
     output.parent.mkdir(parents=True, exist_ok=True)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     try:
-        result = verify(ROOT / f"gradle-plugin/build/test-results/test/TEST-{SUITE}.xml", ROOT / "build/reports/safeargs-native")
+        result = verify(ROOT / f"gradle-plugin/build/test-results/test/TEST-{SUITE}.xml", ROOT / "build/reports/safeargs-native", os.environ.get("KARTOGRAPH_SAFEARGS_NATIVE_PROFILE", profiles.DEFAULT_PROFILE))
         result["commit"] = commit
         rendered = bounded_report(result)
     except Exception as error:

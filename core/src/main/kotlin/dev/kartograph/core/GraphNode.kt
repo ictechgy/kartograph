@@ -26,7 +26,7 @@ public enum class Visibility {
     UNKNOWN,
 }
 
-/** JVM/Kotlin 선언의 추가 특징과 명시적 입력 출처다. */
+/** JVM/Kotlin 선언의 추가 특징과 명시적 입력 출처다. v10 cache ordinal 보존을 위해 새 항목은 끝에 더한다. */
 public enum class NodeAttribute {
     DATA_CLASS,
     EXTENSION_FUNCTION,
@@ -35,14 +35,14 @@ public enum class NodeAttribute {
     FILE_FACADE,
     PROPERTY_ACCESSOR,
     GENERATED_INPUT,
-    /** 성공한 생성 receipt·source mapping·compiler class 바이트로 연결한 신원이다. 보존 root가 아니다. */
-    GENERATED_SOURCE_EVIDENCE,
     /** 그래프 내보내기를 위해 참조 identity만 붙인 외부 선언이다. 프로젝트 구현으로 취급하지 않는다. */
     EXTERNAL_STUB,
     /** compiler line이 없을 때 현재 project source header에서 유일하게 보강한 선언 위치다. */
     SOURCE_DECLARATION_LOCATION,
     /** enum 소유 class의 ACC_ENUM 필드이며 descriptor가 소유 enum 자신이다. */
     ENUM_CONSTANT,
+    /** 성공한 생성 receipt·source mapping·compiler class 바이트로 연결한 신원이다. 보존 root가 아니다. */
+    GENERATED_SOURCE_EVIDENCE,
 }
 
 /** ProGuard/R8 class specification과 직접 비교하는 JVM access flag다. */

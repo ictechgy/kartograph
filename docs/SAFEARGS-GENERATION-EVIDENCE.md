@@ -1,8 +1,11 @@
 # Safe Args generation evidence
 
 The snapshot adapter supports a bounded Java Safe Args 2.10.2 profile with
-Gradle 9.7.1. The Android fixture uses AGP 9.3.2; the ordinary minimum-AGP gate
-does not establish compatibility for this adapter. Other generator artifacts,
+Gradle 9.7.1 and the observed Gradle 8.13 action artifact. The Android fixture
+has two explicit profiles: Gradle 9.7.1 / AGP 9.3.2 and Gradle 8.13 / AGP 8.13.0,
+both with JDK 17 and Java generation. The ordinary minimum-AGP gate does not
+establish compatibility for this adapter. Each profile requires its own actual
+Android execution; an SDK-free action observation alone is insufficient. Other generator artifacts,
 Kotlin generation, additional or replaced generator actions, configuration-cache
 hook restoration, and missing providers remain `generation-unverified`.
 
@@ -60,3 +63,16 @@ both debug/release navigation inputs. Its JSON receipts distinguish execution
 from unavailable baseline tools; the dedicated CI verifier requires both CLIs.
 Local JVM source/class tests and SDK-free task lifecycle checks do not replace
 this Android execution, and none of these fixtures remeasure a private app.
+
+The dedicated native workflow runs the same fixture body once for each profile.
+Its verifier checks the consumer's actual Gradle, AGP and Java runtime identity,
+the exact generator/action JAR hashes, and both variants' source/compiler bytes.
+The separate profile-observation task records SUCCESS or UP-TO-DATE explicitly;
+an unchanged observation is not reported as a new generator execution.
+The Gradle 8.13 fixture uses a separately checksum-verified official distribution;
+the repository wrapper still builds the plugin and CLI. The Java-only profile
+does not establish Kotlin 2.1, Hilt, or other Safe Args versions' compatibility.
+Build receipts record elapsed preparation for each TestKit invocation separately
+from CLI process timings. Preparation includes configuration, dependency work,
+generation, compiler and analysis tasks actually run in that invocation; external
+workflow downloads and tool setup remain separate costs.
