@@ -215,7 +215,7 @@ class AndroidSafeArgsIntegrationTest {
                 snapshotsEnabled = true; includeSourcePaths = true
                 snapshotKotlinToolchain = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(${Runtime.version().feature()}) }
             }
-            androidComponents.onVariants { selected ->
+            androidComponents.onVariants(androidComponents.selector().all()) { selected ->
                 def variant = selected.name.capitalize()
                 def generation = tasks.named('generateSafeArgs' + variant, ArgumentsGenerationTask)
                 def observation = tasks.register('observeSafeArgs' + variant, SafeArgsObservation) {
