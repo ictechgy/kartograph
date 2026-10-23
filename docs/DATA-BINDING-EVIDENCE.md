@@ -18,6 +18,27 @@ that an adapter cannot run.
 Snapshots retain these diagnostics, so their query/MCP consumers see them too.
 These facts do not authorize deletion or skipping tests.
 
+Unresolved adapters also carry uncertainty forward along observed `BYTECODE CALL`
+edges, including calls into another source file. Those callees and their owning
+classes need review in CLI and Gradle dead reports. Ownership does not traverse
+the owner's other members. `why` shows the adapter and representative bytecode
+call steps (including observed call lines); `bindings.callUncertainty` exposes
+the same predecessor evidence. This changes confidence only: an `unreachable`
+callee stays unreachable, and no retention root is added. Explicit runtime class
+observations still take precedence over review confidence. Modeled dispatch,
+field dependencies and unobserved runtime paths are outside this bounded proof;
+absence from the displayed chain is not a deletion guarantee.
+
+Call uncertainty has separate limits of 20,000 recorded declarations/owners and
+200,000 examined graph edges. Exhausting either emits
+`data-binding-call-uncertainty-truncated` and lowers all otherwise unreachable
+findings to review because remaining paths are unknown. This fallback does not
+claim that every declaration is a callback candidate: declarations without an
+observed path receive no invented provenance. Detailed JSON steps share the
+`--limit` row bound and explicitly report `rowsTruncated`; `why` limits its path
+to 64 calls and labels a truncated sink-side suffix. Saved snapshots retain the
+aggregate limitation; they do not add these candidate paths as graph edges.
+
 For a detailed JSON report, use the same compiled inputs as `why`:
 
 ```sh
@@ -87,3 +108,11 @@ Synthetic javac/XML regressions cover the boundaries above. The separate Android
 integration fixture exercises the actual AGP DataBinding processor; its CI result
 must be checked before claiming it ran. Neither fixture remeasures the private app's
 reported 83%, 589 or 88 counts, or proves runtime execution on a device.
+
+Android snapshot capture includes file inputs declared by compiler argument providers
+through Gradle's public file-input annotations. Processor outputs and compiler output
+directories are excluded. Inaccessible provider inputs are an explicit rejection in
+the compiler task's input identity: ordinary compilation can succeed, but the witness
+and snapshot remain unavailable. Unknown compiler inputs are never treated as fresh.
+The separate Hilt processor fixture distinguishes a matched snapshot from a precise
+capture refusal; refusal verifies the guard, not usable transformed snapshot support.

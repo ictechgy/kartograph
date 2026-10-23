@@ -62,8 +62,25 @@ internal object BindingEvidenceCommand {
                 "inputs" to before.map { mapOf("role" to it.role, "path" to it.path, "sha256" to it.sha256) },
                 "overlay" to mapOf("basis" to if (ordered.isEmpty()) "union" else "inputPriorityAssertion",
                     "roots" to ordered.map { inputs.projectRoot.relativize(it).toString().replace('\\', '/') }),
-                "limits" to mapOf("rows" to limit, "pairs" to 200_000, "xmlBytes" to 2 * 1024 * 1024, "aggregateBytes" to 64 * 1024 * 1024),
-                "truncated" to review.truncated, "unresolvedAdapters" to review.unresolvedAdapters.sorted().map { it.value },
+                "limits" to mapOf("rows" to limit, "pairs" to 200_000, "xmlBytes" to 2 * 1024 * 1024, "aggregateBytes" to 64 * 1024 * 1024,
+                    "uncertaintyNodes" to review.uncertainty.nodeBudget, "uncertaintyEdges" to review.uncertainty.edgeBudget),
+                "truncated" to (review.truncated || review.uncertainty.steps.size + review.uncertainty.ownerMembers.size > limit),
+                "unresolvedAdapters" to review.unresolvedAdapters.sorted().map { it.value },
+                "callUncertainty" to mapOf(
+                    "basis" to "unresolvedAdapterBytecodeCalls", "runtimeSelection" to "unknown",
+                    "declarations" to review.uncertainty.steps.size, "owners" to review.uncertainty.ownerMembers.size,
+                    "examinedEdges" to review.uncertainty.examinedEdges, "truncated" to review.uncertainty.truncated,
+                    "unreachableConfidenceFallback" to if (review.uncertainty.truncated) "needs-runtime-review" else null,
+                    "rowsTruncated" to (review.uncertainty.steps.size + review.uncertainty.ownerMembers.size > limit),
+                    "steps" to (review.uncertainty.steps.keys + review.uncertainty.ownerMembers.keys).sorted().take(limit).map { id ->
+                        val step = review.uncertainty.steps[id]
+                        val member = review.uncertainty.ownerMembers[id]
+                        mapOf("node" to id.value, "adapter" to (step ?: review.uncertainty.steps[member])?.adapter?.value,
+                            "ownerOf" to if (step == null) member?.value else null,
+                            "incomingCall" to step?.incomingCall?.let { edge -> mapOf("source" to edge.source.value,
+                                "target" to edge.target.value, "kind" to edge.kind.name, "origin" to edge.origin.name,
+                                "callSiteLines" to edge.callSiteLines) })
+                    }),
                 "candidates" to review.candidates.map { row -> mapOf(
                     "adapter" to row.adapter.method.value, "attributes" to row.adapter.attributes, "requireAll" to row.adapter.requireAll,
                     "valueDescriptors" to row.adapter.parameterTypes, "signatureSupported" to row.adapter.supportedSignature,

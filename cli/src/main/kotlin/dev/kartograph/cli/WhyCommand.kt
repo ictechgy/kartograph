@@ -114,9 +114,19 @@ internal object WhyCommand {
             output.println("used-by-tests\t${node.id}")
         }
         if (state == "unreachable") {
-            val confidence = if (node.id in analysis.bindingReview?.let { it.unresolvedAdapters + it.unresolvedOwners }.orEmpty()) dev.kartograph.export.FindingConfidence.REVIEW
+            val confidence = if (analysis.bindingReview?.requiresReview(node.id) == true) dev.kartograph.export.FindingConfidence.REVIEW
                 else RetentionPipeline.confidenceOf(node.location, analysis.unresolvedChannelsBySource)
             output.println("confidence\t${confidence.label}")
+            val uncertainty = analysis.bindingReview?.uncertainty
+            val proof = uncertainty?.proofFor(node.id)
+            if (proof != null) {
+                output.println("binding-uncertainty\t${proof.adapter}\truntime selection unknown; observed calls are not retention roots")
+                proof.calls.forEach { edge -> output.println("binding-uncertainty-call\t${edge.source}\t${edge.target}\t${edge.origin}\t${edge.callSiteLines.joinToString(",")}") }
+                proof.ownerOf?.let { output.println("binding-uncertainty-owner-of\t$it") }
+                if (proof.truncated) output.println("binding-uncertainty-path-truncated\ttrue")
+            } else if (uncertainty?.truncated == true) {
+                output.println("binding-uncertainty\tunknown\tbudget exhausted; no observed call path to this declaration is claimed")
+            }
         }
         AnalysisLimitation.entries.sortedBy { it.name }.forEach { limitation ->
             output.println("limitation\t${limitation.name}\t${limitation.description}")

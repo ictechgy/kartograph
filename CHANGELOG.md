@@ -13,6 +13,10 @@
   `dead`/`why` preserve exact unresolved adapter diagnostics, snapshot/MCP preserve the
   limitations, and `bindings` exposes independent compiled caller paths without adding
   retention roots. See [scope and migration](docs/DATA-BINDING-EVIDENCE.md).
+- Unresolved adapter evidence follows bounded observed bytecode calls to helper
+  findings without changing graph reachability. Android compiler snapshots include
+  declared processor metadata inputs; inaccessible provider inputs reject the witness
+  while preserving ordinary compilation.
 
 ## [0.26.0] - 2026-10-22
 

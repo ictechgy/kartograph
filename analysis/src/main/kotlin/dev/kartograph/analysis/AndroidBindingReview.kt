@@ -19,7 +19,11 @@ public data class AndroidBindingReviewResult(
     val diagnostics: List<String>,
     val truncated: Boolean,
     val unresolvedOwners: Set<NodeId> = emptySet(),
-)
+    val uncertainty: AndroidBindingUncertainty = AndroidBindingUncertainty(),
+) {
+    /** callback 자체와 관측 호출 후보를 검토 대상으로 남기며 실제 retention은 바꾸지 않는다. */
+    public fun requiresReview(id: NodeId): Boolean = id in unresolvedAdapters || id in unresolvedOwners || uncertainty.requiresReview(id)
+}
 
 /** 부재·overload·overlay를 보수적으로 설명하며 그래프나 보존 root를 바꾸지 않는다. */
 public object AndroidBindingReview {
@@ -36,6 +40,8 @@ public object AndroidBindingReview {
     public fun analyze(
         graph: CodeGraph, hierarchy: ClassHierarchy, observations: AndroidBindingObservations,
         reachability: ReachabilityResult, limit: Int = 1_000,
+        uncertaintyNodeBudget: Int = AndroidBindingUncertainty.DEFAULT_NODE_BUDGET,
+        uncertaintyEdgeBudget: Int = AndroidBindingUncertainty.DEFAULT_EDGE_BUDGET,
     ): AndroidBindingReviewResult {
         require(limit in 1..10_000) { "binding report limit must be between 1 and 10000" }
         require(observations.overlayOrder.distinct().size == observations.overlayOrder.size &&
@@ -104,8 +110,15 @@ public object AndroidBindingReview {
         diagnostics += "data-binding-scope: resources=${observations.roots.size}; overlay=" +
             (if (order.isEmpty()) "union-unresolved" else "explicit-input-order-assertion") +
             "; XML-to-generated-method linkage, conversions, device configuration and runtime invocation are not proven"
-        val owners = unresolved.flatMap { id -> graph.incomingEdgesTo(id).filter { it.kind == EdgeKind.MEMBER }.map { it.source } }.toSet()
-        return AndroidBindingReviewResult(rows, unresolved, diagnostics, truncated, owners)
+        val uncertainty = AndroidBindingUncertainty.collect(graph, unresolved, uncertaintyNodeBudget, uncertaintyEdgeBudget)
+        val owners = uncertainty.ownerMembers.filterValues { it in unresolved }.keys
+        if (unresolved.isNotEmpty()) diagnostics += "data-binding-call-uncertainty: ${uncertainty.steps.size} declaration(s), " +
+            "${uncertainty.ownerMembers.size} owner(s) have unresolved adapter / BYTECODE CALL evidence; " +
+            "only confidence is lowered, no retention roots are added; modeled dispatch, field dependencies and unobserved runtime paths are not proven"
+        if (uncertainty.truncated) diagnostics += "data-binding-call-uncertainty-truncated: nodeBudget=${uncertainty.nodeBudget}, " +
+            "edgeBudget=${uncertainty.edgeBudget}, examinedEdges=${uncertainty.examinedEdges}; all unreachable findings require review " +
+            "because omitted paths remain unknown; declarations without observed paths are not confirmed call candidates"
+        return AndroidBindingReviewResult(rows, unresolved, diagnostics, truncated || uncertainty.truncated, owners, uncertainty)
     }
 
     private fun viewMatch(graph: CodeGraph, hierarchy: ClassHierarchy, actual: String?, expected: String?): String {

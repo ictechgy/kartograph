@@ -169,7 +169,7 @@ public abstract class KartographDeadTask : DefaultTask() {
             finding.copy(location = path?.let { dev.kartograph.core.SourceLocation(it, declaration?.line ?: finding.location?.line,
                 declaration?.column ?: finding.location?.column) } ?: finding.location)
         }, suppressed, retention.unmatchedKeepRules, inputHints, diagnostics,
-            (bindingReview.unresolvedAdapters + bindingReview.unresolvedOwners).associateWith { dev.kartograph.export.FindingConfidence.REVIEW })
+            findings.filter { bindingReview.requiresReview(it.nodeId) }.associate { it.nodeId to dev.kartograph.export.FindingConfidence.REVIEW })
         if (baselineWriteFile.isPresent) {
             if (unknown) throw GradleException("cannot write a baseline from unknown keep rules")
             val path = baselineWriteFile.get().asFile.toPath()

@@ -10,6 +10,70 @@ import java.io.File
 
 /** AGP 공개 compiler callback 또는 이전 공개 variant provider로 compiler를 선택한다. */
 internal object AndroidCompilerInputs {
+    data class ArgumentInputs(val files: FileCollection, val rejection: WitnessRejection? = null)
+
+    /** argument provider가 Gradle에 선언한 파일 입력만 연결한다. processor 출력은 입력으로 재분류하지 않는다. */
+    fun argumentProviderInputs(project: Project, compiler: JavaCompile): ArgumentInputs = try {
+        ArgumentInputs(readArgumentProviderInputs(project, compiler))
+    } catch (_: ReflectiveOperationException) {
+        // 공개 getter라도 구현 클래스에 접근할 수 없으면 compiler 설정은 보존하고 witness만 거부한다.
+        ArgumentInputs(project.files(), WitnessRejection.UNSUPPORTED_ARGUMENT_PROVIDER)
+    }
+
+    private fun readArgumentProviderInputs(project: Project, compiler: JavaCompile): FileCollection {
+        val inputs = mutableListOf<Any?>()
+        val outputs = mutableListOf<Any?>()
+        for (argument in compiler.options.compilerArgumentProviders) {
+            // Gradle의 decorated getter는 annotation을 복제하지 않을 수 있으므로 공개 원래 선언도 읽는다.
+            val pending = ArrayDeque<Class<*>>()
+            val seen = mutableSetOf<Class<*>>()
+            pending += argument.javaClass
+            while (pending.isNotEmpty()) {
+                val type = pending.removeFirst()
+                if (!seen.add(type)) continue
+                require(seen.size <= 64) { "compiler argument provider hierarchy exceeds capture budget" }
+                type.superclass?.let(pending::add)
+                pending.addAll(type.interfaces)
+                for (method in type.declaredMethods.filter { java.lang.reflect.Modifier.isPublic(it.modifiers) && it.parameterCount == 0 }) {
+                    val annotations = method.annotations.map { it.annotationClass.java.name }.toSet()
+                    val input = annotations.any(FILE_INPUT_ANNOTATIONS::contains)
+                    val output = annotations.any(FILE_OUTPUT_ANNOTATIONS::contains)
+                    require(!input || !output) { "compiler argument provider cannot declare the same property as input and output" }
+                    val optional = "org.gradle.api.tasks.Optional" in annotations
+                    if (input) inputs += fileValue(method.invoke(argument), optional)
+                    if (output) outputs += outputValue(project, method.invoke(argument), optional)
+                }
+            }
+        }
+        val selected = project.files(inputs)
+        val destinations = project.files(outputs, outputValue(project, compiler.destinationDirectory, false),
+            outputValue(project, compiler.options.generatedSourceOutputDirectory, true),
+            outputValue(project, compiler.options.headerOutputDirectory, true))
+        return selected.filter { input ->
+            val path = input.canonicalFile.toPath()
+            require(destinations.none { output -> val target = output.canonicalFile.toPath()
+                path.startsWith(target) || target.startsWith(path)
+            }) { "compiler argument provider input overlaps compiler outputs" }
+            true
+        }
+    }
+
+    private fun fileValue(value: Any?, optional: Boolean): Any? =
+        if (optional && value is Provider<*>) value.map { listOf(it) }.orElse(emptyList()) else value
+
+    // 출력 내용이나 producer dependency를 입력에 연결하지 않고 위치만 읽어 중첩을 거부한다.
+    private fun outputValue(project: Project, value: Any?, optional: Boolean): Any? =
+        if (value is Provider<*>) project.providers.provider { listOfNotNull(if (optional) value.orNull else value.get()) } else value
+
+    private val FILE_INPUT_ANNOTATIONS = setOf(
+        "org.gradle.api.tasks.InputFile", "org.gradle.api.tasks.InputFiles", "org.gradle.api.tasks.InputDirectory",
+        "org.gradle.api.tasks.Classpath", "org.gradle.api.tasks.CompileClasspath",
+    )
+    private val FILE_OUTPUT_ANNOTATIONS = setOf(
+        "org.gradle.api.tasks.OutputFile", "org.gradle.api.tasks.OutputFiles", "org.gradle.api.tasks.OutputDirectory",
+        "org.gradle.api.tasks.OutputDirectories",
+    )
+
     /** javac의 선언된 입력 생산자에서 AGP metadata task를 선택하며 task/output 이름을 만들지 않는다. */
     fun metadataInputs(project: Project, compiler: JavaCompile): FileCollection {
         val api = Class.forName("com.android.build.gradle.tasks.JavaPreCompileTask", false, Component::class.java.classLoader)
