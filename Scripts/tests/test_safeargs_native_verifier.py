@@ -43,9 +43,20 @@ class SafeArgsNativeVerifierTest(unittest.TestCase):
             nav = f"src/{'debug' if variant == 'Debug' else 'main'}/res/navigation/graph.xml"
             sources = {providers["generatedSourceRoot"] + "/" + name: sha for name, sha in generated.items()}
             sources.update({name.removeprefix("fixture/"): gate.digest(raw) for name, raw in self.files.items() if name.endswith(".java")})
+            mapping = json.dumps([{"navFile": nav, "javaFiles": ["p.StartFragmentArgs", "p.EndFragmentArgs", "p.StartFragmentDirections"]}])
+            headers = {}
+            for name in gate.CLASSES:
+                owner = name.removesuffix(".class")
+                outer = owner.split("$")[0] if "$" in owner else None
+                headers[name] = {"owner": owner, "sourceFile": (outer or owner).split("/")[-1] + ".java",
+                                 "innerOwner": outer, "enclosingOwner": None, "sha256": "a" * 64}
             self.put(f"observations/{variant}.json", json.dumps({"providerDescriptor": descriptor, "providerSha256": gate.digest(descriptor.encode()),
                 "navigation": {nav: gate.digest(self.files["fixture/" + nav])}, "compilerSources": sources, "generated": generated,
-                "generatedSourceTexts": texts, "compiled": {name: "a" * 64 for name in gate.CLASSES}}))
+                "generatedSourceTexts": texts, "compiled": {name: "a" * 64 for name in gate.CLASSES},
+                "mapping": {"path": f"build/mapping/{variant}/file_mappings.json", "text": mapping, "sha256": gate.digest(mapping.encode())},
+                "generatorArtifacts": {"plugin.jar": "b" * 64, "generator.jar": "c" * 64}, "classHeaders": headers,
+                "generatorActionTypes": ["org.gradle.api.internal.project.taskfactory.IncrementalTaskAction"],
+                "generatorActionArtifacts": {"gradle-core.jar": "d" * 64}}))
             self.put(f"snapshots/{variant.lower()}-snapshot.json", "{}")
         self.put("observations/task-outcomes.txt", "\n".join(outcomes))
         self.manifest()
@@ -121,6 +132,68 @@ class SafeArgsNativeVerifierTest(unittest.TestCase):
         self.change_observation(lambda value: value.update(providerSha256="0" * 64))
         with self.assertRaisesRegex(ValueError, "provider descriptor hash"):
             gate.verify(self.xml, self.evidence)
+
+    def test_mapping_for_other_variant_is_rejected(self):
+        def change(value):
+            text = value["mapping"]["text"].replace("src/debug/", "src/main/")
+            value["mapping"].update(text=text, sha256=gate.digest(text.encode()))
+        self.change_observation(change)
+        with self.assertRaisesRegex(ValueError, "per-input generator mapping"):
+            gate.verify(self.xml, self.evidence)
+
+    def test_mapping_bytes_changed_without_digest_is_rejected(self):
+        self.change_observation(lambda value: value["mapping"].update(text="[]"))
+        with self.assertRaisesRegex(ValueError, "mapping bytes"):
+            gate.verify(self.xml, self.evidence)
+
+    def test_same_basename_wrong_owner_is_rejected(self):
+        self.change_observation(lambda value: value["classHeaders"]["other/StartFragmentArgs.class"].update(owner="p/StartFragmentArgs"))
+        with self.assertRaisesRegex(ValueError, "header identity"):
+            gate.verify(self.xml, self.evidence)
+
+    def test_missing_sourcefile_is_not_a_proved_join(self):
+        self.change_observation(lambda value: value["classHeaders"]["p/StartFragmentArgs.class"].update(sourceFile=None))
+        with self.assertRaisesRegex(ValueError, "header identity"):
+            gate.verify(self.xml, self.evidence)
+
+    def test_nested_class_header_bytes_must_match(self):
+        self.change_observation(lambda value: value["classHeaders"]["p/StartFragmentDirections$Idle.class"].update(sha256="b" * 64))
+        with self.assertRaisesRegex(ValueError, "header bytes"):
+            gate.verify(self.xml, self.evidence)
+
+    def test_executing_artifacts_are_required(self):
+        self.change_observation(lambda value: value.update(generatorArtifacts={}))
+        with self.assertRaisesRegex(ValueError, "artifact evidence"):
+            gate.verify(self.xml, self.evidence)
+
+    def test_custom_action_is_not_default_generator_observation(self):
+        self.change_observation(lambda value: value["generatorActionTypes"].append("org.gradle.api.internal.AbstractTask$ClosureTaskAction"))
+        with self.assertRaisesRegex(ValueError, "default generator action"):
+            gate.verify(self.xml, self.evidence)
+
+    def test_two_individually_bounded_variants_must_fit_one_global_log(self):
+        for variant in ("Debug", "Release"):
+            name = f"observations/{variant}.json"
+            value = json.loads(self.files[name])
+            providers = json.loads(value["providerDescriptor"])
+            providers["compiledClassRoot"] = "build/classes/" + "x" * 6500
+            value["providerDescriptor"] = json.dumps(providers)
+            value["providerSha256"] = gate.digest(value["providerDescriptor"].encode())
+            self.put(name, json.dumps(value))
+        self.manifest()
+        result = gate.verify(self.xml, self.evidence)
+        for variant in result["variants"]:
+            self.assertLess(len(json.dumps(variant["generationObservation"]).encode()), 16 * 1024)
+        with self.assertRaisesRegex(ValueError, "combined log budget"):
+            gate.bounded_report(result)
+
+    def test_log_budget_counts_unicode_utf8_bytes_and_final_newline(self):
+        result = {"text": "\U0001f600" * 4080}
+        rendered = gate.bounded_report(result)
+        self.assertLessEqual(len((rendered + "\n").encode()), 16 * 1024)
+        result["text"] += "\U0001f600" * 16
+        with self.assertRaisesRegex(ValueError, "combined log budget"):
+            gate.bounded_report(result)
 
 
 if __name__ == "__main__":

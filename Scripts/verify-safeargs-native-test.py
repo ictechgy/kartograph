@@ -16,8 +16,56 @@ CLASSES = ("p/StartFragmentArgs.class", "p/StartFragmentDirections.class",
            "p/ManualArgs.class", "p/ManualDirections.class", "other/StartFragmentArgs.class")
 
 
+def bounded_generation_observation(observed, providers, nav):
+    """고정 합성 fixture의 관측만 출력한다. 일반 입력에 대한 생성물 인증기가 아니다."""
+    mapping = observed["mapping"]
+    raw = mapping["text"].encode("utf-8")
+    if len(raw) > 1024 * 1024 or digest(raw) != mapping["sha256"]:
+        raise ValueError("mapping bytes mismatch or budget exceeded")
+    rows = json.loads(mapping["text"])
+    names = {"p.StartFragmentArgs", "p.EndFragmentArgs", "p.StartFragmentDirections"}
+    if len(rows) != 1 or rows[0].get("navFile") != nav or set(rows[0].get("javaFiles", [])) != names or len(rows[0]["javaFiles"]) != 3:
+        raise ValueError("per-input generator mapping mismatch")
+    artifacts = observed["generatorArtifacts"]
+    if len(artifacts) != 2 or any(not HASH.fullmatch(sha) for sha in artifacts.values()):
+        raise ValueError("executing generator artifact evidence missing")
+    actions = observed["generatorActionTypes"]
+    action_artifacts = observed["generatorActionArtifacts"]
+    if actions != ["org.gradle.api.internal.project.taskfactory.IncrementalTaskAction"] or len(action_artifacts) != 1 or any(not HASH.fullmatch(sha) for sha in action_artifacts.values()):
+        raise ValueError("fixture default generator action shape changed or unavailable")
+    selected = {}
+    for name in CLASSES:
+        header = observed["classHeaders"].get(name)
+        owner = name.removesuffix(".class")
+        outer = owner.split("$")[0] if "$" in owner else None
+        source = (outer or owner).split("/")[-1] + ".java"
+        if header is None or header.get("owner") != owner or header.get("sourceFile") != source or header.get("innerOwner") != outer:
+            raise ValueError("actual class header identity mismatch")
+        if header.get("sha256") != observed["compiled"].get(name):
+            raise ValueError("class header bytes mismatch")
+        selected[name] = header
+    value = {"scope": "successful cold synthetic observation only; no source ownership admission",
+             "complete": True, "truncated": False,
+             "mappingSha256": mapping["sha256"], "mapping": rows, "executingArtifacts": artifacts,
+             "actionTypes": actions, "actionArtifacts": action_artifacts,
+             "compilerTask": providers["compilerTask"], "compiledClassRoot": providers["compiledClassRoot"],
+             "generatedSourceRoot": providers["generatedSourceRoot"], "generatedSources": observed["generated"],
+             "classHeaders": selected}
+    if len(json.dumps(value).encode("utf-8")) > 16 * 1024:
+        raise ValueError("incomplete generation observation: bounded log budget exceeded")
+    return value
+
+
 def digest(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def bounded_report(value):
+    # stdout와 같은 UTF-8/ensure_ascii 및 마지막 newline까지 하나의 전역 예산으로 검사한다.
+    rendered = json.dumps(value, ensure_ascii=False)
+    if len((rendered + "\n").encode("utf-8")) > 16 * 1024:
+        raise ValueError("incomplete generation observation: combined log budget exceeded")
+    return rendered
 
 
 def inventory(directory):
@@ -98,7 +146,8 @@ def verify(xml_path, evidence):
             raise ValueError("mixed compiled-root controls missing")
         variants.append({"variant": variant, "providerSha256": observed["providerSha256"],
                          "observationSha256": rows[relative], "generatedSources": len(observed["generated"]),
-                         "mixedClassControls": len(CLASSES)})
+                         "mixedClassControls": len(CLASSES),
+                         "generationObservation": bounded_generation_observation(observed, providers, nav)})
     return {"status": "passed", "executed": 1, "skipped": 0, "xmlSha256": digest(raw), "variants": variants,
             "scope": "cold synthetic AGP/SafeArgs compilation and current-baseline classification; no device runtime, cached admission, private-app accuracy or completeness claim"}
 
@@ -106,15 +155,17 @@ def verify(xml_path, evidence):
 def main():
     output = ROOT / "build/reports/safeargs-native-verification.json"
     output.parent.mkdir(parents=True, exist_ok=True)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     try:
         result = verify(ROOT / f"gradle-plugin/build/test-results/test/TEST-{SUITE}.xml", ROOT / "build/reports/safeargs-native")
+        result["commit"] = commit
+        rendered = bounded_report(result)
     except Exception as error:
-        result = {"status": "failed", "error": f"{type(error).__name__}: {error}"}
+        result = {"status": "failed", "complete": False, "commit": commit, "error": f"{type(error).__name__}: {error}"}
+        output.write_text(json.dumps(result, ensure_ascii=False) + "\n", encoding="utf-8")
         raise
-    finally:
-        result["commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-        output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(result, ensure_ascii=False))
+    output.write_text(rendered + "\n", encoding="utf-8")
+    print(rendered)
 
 
 if __name__ == "__main__":

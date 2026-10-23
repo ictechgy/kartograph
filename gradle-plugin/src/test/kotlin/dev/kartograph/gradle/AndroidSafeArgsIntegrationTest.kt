@@ -80,7 +80,7 @@ class AndroidSafeArgsIntegrationTest {
                     " dead=${dead.any { it.nodeId == id }}")
             }
             val observation = Files.readString(root.resolve("build/safeargs-observations/$variant.json"))
-            println("safe-args-native observation=$observation")
+            println("safe-args-native observation=$variant bytes=${observation.toByteArray(Charsets.UTF_8).size}")
             assertTrue(observation.contains("StartFragmentArgs.java"))
             assertTrue(observation.contains("ManualArgs.class"))
             assertTrue(observation.contains("p/StartFragmentArgs.class"))
@@ -146,8 +146,22 @@ class AndroidSafeArgsIntegrationTest {
         write(root, "gradle.properties", "android.useAndroidX=true\n")
         write(root, "build.gradle", """
             import androidx.navigation.safeargs.gradle.ArgumentsGenerationTask
+            import androidx.navigation.safe.args.generator.NavSafeArgsGenerator
             import groovy.json.JsonOutput
             import java.security.MessageDigest
+            import org.objectweb.asm.ClassReader
+            import org.objectweb.asm.ClassVisitor
+            import org.objectweb.asm.Opcodes
+            class SafeArgsClassHeader extends ClassVisitor {
+                final Map value = [owner:null, sourceFile:null, enclosingOwner:null, innerOwner:null]
+                SafeArgsClassHeader() { super(Opcodes.ASM9) }
+                void visit(int version, int access, String name, String signature, String parent, String[] interfaces) { value.owner = name }
+                void visitSource(String source, String debug) { value.sourceFile = source }
+                void visitOuterClass(String owner, String name, String descriptor) { value.enclosingOwner = owner }
+                void visitInnerClass(String name, String outerName, String innerName, int access) {
+                    if (name == value.owner) value.innerOwner = outerName
+                }
+            }
             abstract class SafeArgsObservation extends DefaultTask {
                 @Input abstract Property<String> getApplicationId()
                 @Input abstract Property<String> getRFilePackage()
@@ -160,6 +174,10 @@ class AndroidSafeArgsIntegrationTest {
                 @InputFiles @PathSensitive(PathSensitivity.RELATIVE) abstract ConfigurableFileCollection getCompilerSources()
                 @InputDirectory @PathSensitive(PathSensitivity.RELATIVE) abstract DirectoryProperty getGeneratedSources()
                 @InputDirectory @PathSensitive(PathSensitivity.RELATIVE) abstract DirectoryProperty getCompiledClasses()
+                @InputFile @PathSensitive(PathSensitivity.RELATIVE) abstract RegularFileProperty getMappingFile()
+                @InputFiles @PathSensitive(PathSensitivity.NONE) abstract ConfigurableFileCollection getGeneratorArtifacts()
+                @Input abstract ListProperty<String> getGeneratorActionTypes()
+                @InputFiles @PathSensitive(PathSensitivity.NONE) abstract ConfigurableFileCollection getGeneratorActionArtifacts()
                 @OutputFile abstract RegularFileProperty getObservationFile()
                 static String sha(File file) { MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString() }
                 static Map inventory(File root) {
@@ -183,6 +201,23 @@ class AndroidSafeArgsIntegrationTest {
                         navigation:navigationFiles.files.collectEntries { [(relative(it)):sha(it)] },
                         compilerSources:compilerSources.files.collectEntries { [(relative(it)):sha(it)] },
                         generated:inventory(generatedSources.get().asFile), compiled:inventory(compiledClasses.get().asFile)]
+                    def mapping = mappingFile.get().asFile
+                    if (mapping.length() > 1024 * 1024) throw new GradleException('fixture mapping exceeds evidence budget')
+                    value.mapping = [path:relative(mapping), sha256:sha(mapping), text:mapping.getText('UTF-8')]
+                    value.generatorArtifacts = generatorArtifacts.files.sort { it.name }.collectEntries { [(it.name):sha(it)] }
+                    value.generatorActionTypes = generatorActionTypes.get()
+                    value.generatorActionArtifacts = generatorActionArtifacts.files.sort { it.name }.collectEntries { [(it.name):sha(it)] }
+                    def headers = new TreeMap()
+                    compiledClasses.get().asFile.eachFileRecurse { file ->
+                        if (file.isFile() && file.name.endsWith('.class')) {
+                            if (headers.size() >= 1000 || file.length() > 4 * 1024 * 1024) throw new GradleException('fixture class evidence exceeds budget')
+                            def visitor = new SafeArgsClassHeader()
+                            new ClassReader(file.bytes).accept(visitor, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES)
+                            def name = compiledClasses.get().asFile.toPath().relativize(file.toPath()).toString().replace('\\','/')
+                            headers[name] = visitor.value + [sha256:sha(file)]
+                        }
+                    }
+                    value.classHeaders = headers
                     def sourceTexts = new TreeMap()
                     generatedSources.get().asFile.eachFileRecurse { file -> if (file.isFile() && file.name.endsWith('.java')) sourceTexts[file.name] = file.getText('UTF-8') }
                     value.generatedSourceTexts = sourceTexts
@@ -227,6 +262,13 @@ class AndroidSafeArgsIntegrationTest {
                     generateKotlin.set(generation.flatMap { it.generateKotlin })
                     navigationFiles.from(generation.map { it.navigationFiles })
                     generatedSources.set(generation.flatMap { it.outputDir })
+                    mappingFile.set(generation.flatMap { it.getIncrementalFolder().file('file_mappings.json') })
+                    generatorArtifacts.from(ArgumentsGenerationTask.class.protectionDomain.codeSource.location,
+                        NavSafeArgsGenerator.class.protectionDomain.codeSource.location)
+                    generatorActionTypes.set(generation.map { task -> task.actions.collect { it.class.name } })
+                    generatorActionArtifacts.from(generation.map { task -> task.actions.collect {
+                        it.class.protectionDomain.codeSource?.location
+                    }.findAll { it != null } })
                     observationFile.set(layout.buildDirectory.file('safeargs-observations/' + variant + '.json'))
                 }
                 def compilerName = 'compile' + variant + 'JavaWithJavac'
