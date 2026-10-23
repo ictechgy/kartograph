@@ -147,7 +147,8 @@ class AndroidHiltIntegrationTest {
         val fresh = saved + arrayOf("--project", root.toString(), "--input-bindings",
             root.resolve("build/kartograph/debug-input-bindings.json").toString())
         assertTrue(cli(root, 0, "verify-snapshot", *fresh).contains("\"matched\""))
-        assertTrue(cli(root, 1, "verify-snapshot", *fresh, "--scope", "::release").contains("build-scope-mismatch"))
+        val wrongScope = cli(root, 1, "verify-snapshot", *fresh, "--scope", "::release")
+        assertTrue(wrongScope.contains("snapshot-scope-mismatch"), wrongScope)
         val query = cli(root, 0, "query", service.value, *saved, "--depth", "2")
         val impact = cli(root, 0, "impact", "class:p/Hilt_ProbeService", *saved)
         val reach = cli(root, 0, "reach", service.value, *fresh)
