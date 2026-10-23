@@ -29,7 +29,7 @@ internal class OutputFailureTracker(private val destination: OutputStream) : Out
                 "output consumer closed the pipe before the complete output was written"
             message.contains("no space left on device") || message.contains("not enough space on the disk") || message.contains("disk full") ->
                 "output destination has insufficient space; the output is incomplete"
-            else -> "unable to write the complete output; check destination permissions, capacity, and availability"
+            else -> "output could not be written completely; check destination permissions, capacity, and availability"
         }
     }
 }
@@ -39,4 +39,4 @@ internal class TrackedPrintStream(val tracker: OutputFailureTracker) :
 
 internal fun outputFailureMessage(output: PrintStream): String =
     (output as? TrackedPrintStream)?.tracker?.diagnostic()
-        ?: "unable to write the complete output; check the output destination"
+        ?: "output could not be written completely; check the output destination"

@@ -14,6 +14,7 @@ class OutputFailuresTest {
             output.print("payload")
             assertTrue(output.checkError())
             assertContains(outputFailureMessage(output), expected)
+            if (message == "Access denied") assertContains(outputFailureMessage(output), "output could not be written")
             assertEquals(message, tracker.failure?.message)
         }
         val bytes = ByteArrayOutputStream()
@@ -33,6 +34,8 @@ class OutputFailuresTest {
         output.print("x")
         output.flush()
         assertContains(outputFailureMessage(output), "consumer closed")
-        assertContains(outputFailureMessage(java.io.PrintStream(ByteArrayOutputStream())), "output destination")
+        val generic = outputFailureMessage(java.io.PrintStream(ByteArrayOutputStream()))
+        assertContains(generic, "output destination")
+        assertContains(generic, "output could not be written")
     }
 }
