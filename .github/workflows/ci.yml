@@ -118,6 +118,7 @@ jobs:
           path: |
             build/reports/index-cost/result.json
             build/reports/index-cost/raw/*.gz
+            build/reports/index-cost/jfr/*.jfr
           if-no-files-found: error
           retention-days: 14
       - name: Verify agent query and bridge contracts

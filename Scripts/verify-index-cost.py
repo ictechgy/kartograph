@@ -2,6 +2,7 @@
 """고정 baseline과 이미 빌드한 후보를 같은 입력으로 관측한다. smoke 판정은 바꾸지 않는다."""
 
 import gzip
+from collections import Counter
 import hashlib
 import json
 import os
@@ -25,6 +26,8 @@ MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
 PROFILES = ("graph", "dead", "architecture")
 LIMIT = 32 * 1024 * 1024
 RAW_LIMIT = 256 * 1024 * 1024
+JFR_LIMIT = 16 * 1024 * 1024
+JFR_EVENTS = ("jdk.ExecutionSample", "jdk.ObjectAllocationSample")
 
 
 class DiagnosticError(Exception):
@@ -410,6 +413,91 @@ def compile_probe(repo, distribution, destination, java_home, env):
     return str(destination) + os.pathsep + str(distribution / "lib/*")
 
 
+def summarize_jfr(data):
+    """샘플의 가중치를 실제 heap 크기나 실행 시간으로 바꾸지 않는다."""
+    result = {name: {"events": 0, "weight": 0, "inclusive": Counter(), "nearest": Counter()}
+              for name in JFR_EVENTS}
+    try:
+        events = json.loads(data)["recording"]["events"]
+        if not isinstance(events, list) or len(events) > 20000:
+            raise ValueError()
+        for event in events:
+            kind, values = event["type"], event["values"]
+            if kind not in result:
+                raise ValueError()
+            weight = values["weight"] if kind == "jdk.ObjectAllocationSample" else 1
+            if type(weight) is not int or weight < 0:
+                raise ValueError()
+            row = result[kind]
+            row["events"] += 1
+            row["weight"] += weight
+            frames = (values.get("stackTrace") or {}).get("frames", [])
+            if len(frames) > 256:
+                raise ValueError()
+            product = []
+            for frame in frames:
+                method = frame["method"]
+                owner = method["type"]["name"]
+                name = owner + "." + method["name"]
+                if owner.startswith("dev/kartograph/"):
+                    if len(name) > 1024 or not re.fullmatch(r"[A-Za-z0-9_$/.<>-]+", name):
+                        raise ValueError()
+                    product.append(name)
+            for name in set(product):
+                row["inclusive"][name] += weight
+            if product:
+                row["nearest"][product[0]] += weight
+        return {name: {**row, **{field: sorted(row[field].items(), key=lambda item: (-item[1], item[0]))[:30]
+                                 for field in ("inclusive", "nearest")}} for name, row in result.items()}
+    except (ValueError, KeyError, TypeError, AttributeError):
+        raise DiagnosticError("invalid-jfr-events") from None
+
+
+def capture_jfr(java_home, arguments, env, work, output, config, expected):
+    """별도 단회 실행이며 paired 중앙값·정식 gate 예산에는 포함하지 않는다."""
+    work.mkdir()
+    configuration = config.read_bytes()
+    (work / "capture.jfc").write_bytes(configuration)
+    tool = java_home / "bin" / ("jfr.exe" if os.name == "nt" else "jfr")
+    tool_before = file_record(tool, "bin/jfr")
+    result = successful([java_home / "bin/java", "-Xlog:jfr+startup=off",
+                         "-XX:StartFlightRecording=settings=capture.jfc,filename=capture.jfr,maxsize=16m,dumponexit=true",
+                         *arguments], work, env, phase="jfr-candidate")
+    if not equivalent(result, expected):
+        raise DiagnosticError("jfr-cli-byte-mismatch", summary(result))
+    recording = work / "capture.jfr"
+    if not recording.is_file() or recording.is_symlink() or not 0 < recording.stat().st_size <= JFR_LIMIT:
+        raise DiagnosticError("jfr-recording-size")
+    # 알려진 두 샘플과 내부 metadata 이외의 event가 있으면 원본을 공개 artifact로 복사하지 않는다.
+    listing = successful([tool, "summary", recording], work, env, phase="jfr-summary")
+    counts = {}
+    for line in listing["stdout"].decode("utf-8").splitlines():
+        match = re.fullmatch(r"\s*(\S+)\s+(\d+)\s+\d+\s*", line)
+        if match and int(match[2]):
+            counts[match[1]] = int(match[2])
+    if not counts or set(counts) - {*JFR_EVENTS, "jdk.CheckPoint", "jdk.Metadata"}:
+        raise DiagnosticError("unexpected-jfr-event-type")
+    events = successful([tool, "print", "--json", "--events", ",".join(JFR_EVENTS), recording],
+                        work, env, phase="jfr-events")
+    samples = summarize_jfr(events["stdout"])
+    for name in JFR_EVENTS:
+        if samples[name]["events"] != counts.get(name, 0):
+            raise DiagnosticError("jfr-event-count-mismatch")
+    if not sum(row["events"] for row in samples.values()):
+        raise DiagnosticError("jfr-no-samples")
+    require_equal(tool_before, file_record(tool, "bin/jfr"), "jfr-tool-changed")
+    require_equal(configuration, config.read_bytes(), "jfr-configuration-changed")
+    output.mkdir()
+    with (output / "candidate.jfr").open("xb") as destination:
+        destination.write(recording.read_bytes())
+    return {"scope": "single-profiled-candidate; sampled-stacks-and-weighted-allocations; not-timing-acceptance",
+            "command": "dead", "launcher": "direct-java-same-main-class-and-arguments; startup-not-equivalent",
+            "configurationSha256": digest(configuration), "tool": tool_before,
+            "recording": file_record(output / "candidate.jfr", "jfr/candidate.jfr"),
+            "eventCounts": counts, "samples": samples, "process": summary(result),
+            "outputMatchesUnprofiledCandidate": True}
+
+
 def experiment(repo, work, env, report, raw_directory=None):
     java_home = Path(env["JAVA_HOME"]).resolve(strict=True)
     jdk_before = java_identity(java_home)
@@ -492,6 +580,18 @@ def experiment(repo, work, env, report, raw_directory=None):
         located_nodes = next(row["locatedNodes"] for row in report["profiles"] if row["profile"] == "dead")
         raw = RawStreams(raw_directory if raw_directory is not None else work / "raw")
         paired_cli(commands, project, env, located_nodes, report, raw)
+        # 이미 보존한 paired 출력과 비교한다. 새 unprofiled 성공 표본을 만들지 않는다.
+        prior = next(row for row in report["cli"] if row["command"] == "dead")
+        expected = {"exit": prior["candidate"]["exit"]}
+        for stream in ("stdout", "stderr"):
+            receipt = prior["raw"]["candidate"][stream]
+            value = gzip.decompress((raw.directory / Path(receipt["path"]).name).read_bytes())
+            if len(value) != receipt["bytes"] or digest(value) != receipt["sha256"]:
+                raise DiagnosticError("jfr-reference-changed")
+            expected[stream] = value
+        report["jfr"] = capture_jfr(java_home,
+            ["-cp", str(candidate / "lib/*"), "dev.kartograph.cli.MainKt", *commands["candidate"][1][1][1:]],
+            env, work / "jfr-capture", raw.directory.parent / "jfr", repo / "Scripts/IndexCostCapture.jfc", expected)
     finally:
         report["sourcesAfter"] = {"baselineSource": source_identity(repo, SOURCE_BASELINE, env),
                                   "baseline": source_identity(repo, BASELINE, env),

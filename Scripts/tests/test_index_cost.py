@@ -291,6 +291,66 @@ class IndexCostTest(unittest.TestCase):
             with self.assertRaisesRegex(probe.DiagnosticError, "missing-candidate-distribution"):
                 probe.experiment(root, root, {"JAVA_HOME": str(jdk)}, {})
 
+    def test_jfr_summary_preserves_samples_weights_and_recursive_frame_semantics(self):
+        def frame(owner, method):
+            return {"method": {"type": {"name": owner}, "name": method}}
+        frames = [frame("java/util/HashMap", "put"), frame("dev/kartograph/index/Parser", "parse"),
+                  frame("dev/kartograph/index/Parser", "parse"), frame("dev/kartograph/index/Index", "index")]
+        events = [{"type": "jdk.ExecutionSample", "values": {"stackTrace": {"frames": frames}}},
+                  {"type": "jdk.ObjectAllocationSample", "values": {"weight": 4096, "stackTrace": {"frames": frames}}},
+                  {"type": "jdk.ObjectAllocationSample", "values": {"weight": 20, "stackTrace": None}}]
+        result = probe.summarize_jfr(json.dumps({"recording": {"events": events}}))
+        self.assertEqual(2, result["jdk.ObjectAllocationSample"]["events"])
+        self.assertEqual(4116, result["jdk.ObjectAllocationSample"]["weight"])
+        self.assertEqual([("dev/kartograph/index/Parser.parse", 4096)], result["jdk.ObjectAllocationSample"]["nearest"])
+        self.assertEqual({"dev/kartograph/index/Parser.parse": 4096, "dev/kartograph/index/Index.index": 4096},
+                         dict(result["jdk.ObjectAllocationSample"]["inclusive"]))
+        for changed in [{"type": "jdk.InitialEnvironmentVariable", "values": {}},
+                        {"type": "jdk.ObjectAllocationSample", "values": {"weight": -1}},
+                        {"type": "jdk.ObjectAllocationSample", "values": {"weight": True}},
+                        {"type": "jdk.ExecutionSample", "values": {"stackTrace": {"frames": [frame("dev/kartograph/private\nvalue", "run")]}}}]:
+            with self.assertRaisesRegex(probe.DiagnosticError, "invalid-jfr-events"):
+                probe.summarize_jfr(json.dumps({"recording": {"events": [changed]}}))
+
+    def test_jfr_unexpected_event_refuses_before_public_copy(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = root / "samples.jfc"
+            config.write_text("<configuration/>")
+            jdk = root / "jdk"
+            tool = jdk / "bin" / ("jfr.exe" if os.name == "nt" else "jfr")
+            tool.parent.mkdir(parents=True)
+            tool.write_bytes(b"fixture tool identity")
+            expected = {"exit": 0, "stdout": b"ok", "stderr": b""}
+            def execute(arguments, cwd, env, **kwargs):
+                if kwargs["phase"] == "jfr-candidate":
+                    (cwd / "capture.jfr").write_bytes(b"fixture recording")
+                    return expected
+                return {"stdout": b"jdk.ExecutionSample 2 100\njdk.InitialEnvironmentVariable 1 80\n"}
+            with mock.patch.object(probe, "successful", side_effect=execute):
+                with self.assertRaisesRegex(probe.DiagnosticError, "unexpected-jfr-event-type"):
+                    probe.capture_jfr(jdk, ["Fixture"], {}, root / "work", root / "public", config, expected)
+            self.assertFalse((root / "public").exists())
+
+    def test_real_jfr_capture_has_only_allowed_events_and_unchanged_output(self):
+        # 설치된 JDK의 실제 recording/summary/print를 검증한다. 작은 fixture는 성능 근거가 아니다.
+        java_home = Path(os.environ["JAVA_HOME"]).resolve(strict=True)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "Sample.java"
+            source.write_text('package dev.kartograph.fixture; public class Sample { '
+                'static volatile Object value; public static void main(String[] args) { '
+                'long until=System.nanoTime()+700000000L; while(System.nanoTime()<until) '
+                '{ value=new byte[1024]; } System.out.print("fixture-ok"); }}')
+            probe.successful([java_home / "bin/javac", "-d", root, source], root, dict(os.environ))
+            report = probe.capture_jfr(java_home, ["-Xmx64m", "-cp", str(root), "dev.kartograph.fixture.Sample"],
+                dict(os.environ), root / "work", root / "public", ROOT / "Scripts/IndexCostCapture.jfc",
+                {"exit": 0, "stdout": b"fixture-ok", "stderr": b""})
+            self.assertTrue(report["outputMatchesUnprofiledCandidate"])
+            self.assertGreater(sum(row["events"] for row in report["samples"].values()), 0)
+            self.assertGreater(report["recording"]["size"], 0)
+            self.assertLessEqual(report["recording"]["size"], probe.JFR_LIMIT)
+
     def test_real_java_probe_against_installed_distribution(self):
         # CI의 선행 installDist/JDK가 없으면 skip 대신 실패한다.
         java_home = Path(os.environ["JAVA_HOME"]).resolve(strict=True)
