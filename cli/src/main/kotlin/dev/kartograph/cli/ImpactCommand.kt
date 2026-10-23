@@ -84,7 +84,7 @@ internal object ImpactCommand {
         if (sourceLimit !in 1..1000 || sourceOffset !in 0..200000)
             return usage(error, "source-limit must be 1..1000 and source-offset must be 0..200000")
         val snapshotLimit = SnapshotFiles.limit(values["--snapshot-max-mib"].orEmpty())
-            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128")
+            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 1024")
         if (all && "--limit" in values) return usage(error, "--all cannot be combined with --limit")
         if (listOf("--revision", "--base-revision").any { key -> values[key]?.single()?.let { !Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(it) } == true }) return usage(error, "revision must be a full commit hash")
         if ("--base-revision" in values && "--base-graph" !in values) return usage(error, "base-revision requires base-graph")
@@ -257,7 +257,7 @@ internal object ImpactCommand {
           --summary-limit <n>      buckets retained per summary axis, 1..100000 (default unbounded)
           --revision <hash>        require the current snapshot to carry this commit label
           --base-revision <hash>   require the base snapshot to carry this commit label
-          --snapshot-max-mib <n>  current/base snapshot read maximum in MiB, 1..128 (default 64)
+          --snapshot-max-mib <n>  current/base snapshot read maximum in MiB, 1..1024 (default 64)
           --format <format>        json (default, kartograph-impact v1) or language-traversal (isthmus trace input;
                                    see `kartograph impact --format language-traversal --help`)
 

@@ -14,6 +14,16 @@ before/current snapshot을 다시 캡처한다. 기존 impact JSON/API는 유지
 
 ### Added
 
+- 0.25.0 feedback: aggregate strict/lenient keep diagnostics, shrinking-disabled and unknown
+  retention evidence; repeated resource roots; bounded framework callback/mapper evidence;
+  Hilt input hints and verified generation markers. See [migration and limits](docs/FEEDBACK-026.md).
+- Gradle graph export options now match CLI JSON/NDJSON, origin filtering, dispatch candidate
+  limits and external stubs. Snapshot limits remain 64 MiB by default and accept explicit
+  values up to 1024 MiB, with matching compact write/read expansion budgets.
+- Partial source traversal preserves readable siblings; declaration locations and recoverable
+  fields avoid fabricated coordinates. Module metadata no longer prefixes language qualified
+  names. Closed output consumers and storage failures have distinct diagnostics.
+
 - opt-in `impact --git-base`와 MCP `change_impact`가 실제 Git base/head 또는 작업 트리 변경의
   삭제·rename 양쪽 경로를 기존 before/current 영향 탐색에 연결한다. 새 `kartograph-change-impact` v1은
   원래 graphImpact, exact snapshot SHA-256, 전체 파일 seed 정밀도, 별도 current/base freshness를 보존한다.

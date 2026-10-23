@@ -93,7 +93,7 @@ module·file·test 필터는 각 축이 base 또는 current 사실에 맞으면 
 대형 입력에는 `snapshot --compact`를 사용한다. v2는 문자열 사전과 node/call/edge 배열의 참조 인덱스로 반복 정보를 줄인다.
 정점·간선·외부 호출·보존 근거를 버리지 않으며 기존 v1과 같은 검증을 거친다. 기본 출력은 v1이고 query/impact는 두 형식을 읽는다.
 저장·읽기 한도는 기본 64 MiB다. 큰 그래프는 capture와 saved query·impact·verify-snapshot·MCP 시작 시
-`--snapshot-max-mib 128`을 지정해 최대 128 MiB까지 허용할 수 있다(1..128). 이 옵션은 그래프 사실이나
+`--snapshot-max-mib 128`을 지정해 최대 1024 MiB까지 허용할 수 있다(1..1024). 이 옵션은 그래프 사실이나
 신선도 증거를 바꾸지 않는다. 일반 compiled query에는 적용하지 않는다. 메모리에 파싱한 그래프와 분석 작업은
 파일 크기보다 많은 heap을 사용할 수 있다.
 v2를 읽을 때는 문자열 사전 참조와 정점 위치 참조가 펼치는 문자열을 문서마다 합계 2,147,483,648자·33,554,432개까지만

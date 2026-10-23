@@ -7,6 +7,7 @@ import dev.kartograph.core.NodeId
 import dev.kartograph.core.RetentionReason
 import dev.kartograph.core.SourceLocation
 import dev.kartograph.core.qualifiedName
+import dev.kartograph.core.matchesQualifiedName
 
 /** cartograph의 SymbolQueryDocument와 같은 필드 계약을 쓰는 심볼 질의 응답이다. */
 public data class SymbolQueryDocument(
@@ -93,7 +94,7 @@ public object SymbolQuery {
         val effectiveLimitations = if (callSiteLinesCaptured) limitations
         else (limitations + "call-site-lines: saved graph predates direct call-site evidence; line references are unavailable").distinct().sorted()
         val matches = graph.nodes.values.filter { node ->
-            node.id.value == requested || node.name == requested || node.qualifiedName == requested
+            node.id.value == requested || node.name == requested || node.matchesQualifiedName(requested)
         }.sortedBy { it.id }
         if (matches.isEmpty()) return SymbolQueryDocument("notFound", requested, "symbol", effectiveLimitations)
         if (matches.size > 1) return SymbolQueryDocument(
@@ -109,10 +110,12 @@ public object SymbolQuery {
         val members = memberEdges.mapNotNull { edge -> graph.node(edge.target)?.toNeighborWithoutReferences(listOf("member"), 1) }
         val owner = graph.incomingEdgesTo(node.id).firstOrNull { it.kind == EdgeKind.MEMBER }
             ?.source?.let(graph::node)?.toNeighborWithoutReferences(listOf("member"), 1)
-        val direct = reachability.retentionEvidenceFor(node.id).firstOrNull()
+        val evidence = reachability.retentionEvidenceFor(node.id)
+        val direct = evidence.firstOrNull { it.reason != RetentionReason.UNKNOWN_KEEP_RULE } ?: evidence.firstOrNull()
         val reachable = node.id in reachability.reachableNodeIds
         val path = reachability.pathFromRootTo(node.id)?.mapNotNull(graph::node)?.map { it.qualifiedName }
         val state = when {
+            direct?.reason == RetentionReason.UNKNOWN_KEEP_RULE -> "unknown"
             direct?.reason == RetentionReason.KEEP_ANNOTATED_MEMBER -> "retainedByMember"
             direct != null -> "retained"
             reachable -> "reachable"

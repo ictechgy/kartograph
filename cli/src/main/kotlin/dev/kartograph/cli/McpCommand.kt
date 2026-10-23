@@ -61,9 +61,9 @@ internal object McpCommand {
         Serve legacy MCP 2025-11-25 over stdio.
         Usage: kartograph mcp --graph-file <snapshot.json> [--base-graph <snapshot.json>]
           [--project <directory>] [--scope <project:variant>] [--input-bindings <local.json>]
-          [--input <external/slot=path>]... [--snapshot-max-mib <1..128>]
+          [--input <external/slot=path>]... [--snapshot-max-mib <1..1024>]
           [--base-project <directory>] [--base-input <external/slot=path>]...
-        Snapshots are loaded once at the selected bound (default 64 MiB, maximum 128 MiB);
+        Snapshots are loaded once at the selected bound (default 64 MiB, maximum 1024 MiB);
         restart to use a new generation.
         No project default. freshness without --project reports unverified.
         Tools: discover_symbols, query_symbol, impact, change_impact, freshness. Requests cannot select filesystem inputs or run builds.

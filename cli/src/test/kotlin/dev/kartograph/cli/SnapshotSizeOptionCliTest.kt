@@ -112,7 +112,7 @@ class SnapshotSizeOptionCliTest {
         val file = root.resolve("snapshot.json").also {
             Files.writeString(it, QuerySnapshotCodec.render(QuerySnapshot(CodeGraph(emptyList(), emptyList()), emptyList(), emptyList())))
         }
-        for (value in listOf("0", "129", "invalid")) {
+        for (value in listOf("0", "1025", "invalid")) {
             assertEquals(64, execute("snapshot", "--snapshot-max-mib", value).status)
             assertEquals(64, execute("query", "Missing", "--graph-file", file.toString(), "--snapshot-max-mib", value).status)
             assertEquals(64, execute("impact", "Missing", "--graph-file", file.toString(), "--snapshot-max-mib", value).status)
@@ -139,7 +139,7 @@ class SnapshotSizeOptionCliTest {
             val result = execute(command, "--help")
             assertEquals(0, result.status)
             assertContains(result.output, "--snapshot-max-mib")
-            assertContains(result.output, "128")
+            assertContains(result.output, "1024")
         }
     }
 

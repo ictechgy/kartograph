@@ -3,6 +3,7 @@ package dev.kartograph.index
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.RetentionReason
 import java.io.IOException
+import java.io.UncheckedIOException
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.isDirectory
@@ -38,10 +39,19 @@ public class AndroidXmlScanner @JvmOverloads constructor(
     private fun scanFile(xmlFile: Path, sourcePath: String, factory: Lazy<XMLInputFactory>): List<RetentionEvidence> {
         val content = readXmlBytes(xmlFile)
         val sourceLines = xmlSourceLines(content)
+        var rootSeen = false
+        var bindingLayout = false
         return readXml(content, factory.value) { reader ->
-            val className = reader.referencedClassName() ?: return@readXml null
-            XmlReference(className, reader.location.lineNumber)
-        }.map { reference ->
+            if (!rootSeen) {
+                bindingLayout = reader.localName == "layout"
+                rootSeen = true
+            }
+            val classNames = if (bindingLayout && reader.localName in setOf("variable", "import")) {
+                // XML에 명시된 타입만 기록한다. alias·generic 타입의 compiler 선택을 추측하지 않는다.
+                QUALIFIED_TYPE.findAll(reader.getAttributeValue(null, "type").orEmpty()).map { it.value }.toList()
+            } else listOfNotNull(reader.referencedClassName())
+            classNames.map { XmlReference(it, reader.location.lineNumber) }
+        }.flatten().map { reference ->
             RetentionEvidence(
                 nodeId = JvmNodeId.classId(reference.className.replace('.', '/')),
                 reason = RetentionReason.XML_LAYOUT,
@@ -53,12 +63,21 @@ public class AndroidXmlScanner @JvmOverloads constructor(
     private fun discoverXmlFiles(resourceRoot: Path): List<Path> = try {
         Files.walk(resourceRoot).use { paths ->
             paths
-                .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".xml") }
+                .filter { path ->
+                    if (!Files.isRegularFile(path)) false else {
+                        if (path.fileName.toString().endsWith(".flat")) throw AndroidResourceScanningException(
+                            "compiled Android .flat resources are unsupported; supply unpacked merged or source XML resources",
+                        )
+                        path.fileName.toString().endsWith(".xml")
+                    }
+                }
                 .sorted()
                 .toList()
         }
     } catch (error: IOException) {
-        throw AndroidResourceScanningException("Android resource root cannot be read", error)
+        throw AndroidResourceScanningException("Android resource root cannot be read; supply readable XML resource directories", error)
+    } catch (error: UncheckedIOException) {
+        throw AndroidResourceScanningException("Android resource root cannot be read; supply readable XML resource directories", error)
     }
 
     private fun XMLStreamReader.referencedClassName(): String? {
@@ -79,5 +98,6 @@ public class AndroidXmlScanner @JvmOverloads constructor(
         const val ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android"
         const val FRAGMENT_CONTAINER_VIEW = "androidx.fragment.app.FragmentContainerView"
         val NAMED_COMPONENT_ELEMENTS = setOf("activity", "dialog", "fragment")
+        val QUALIFIED_TYPE = Regex("[A-Za-z_\\$][A-Za-z0-9_\\$]*(?:\\.[A-Za-z_\\$][A-Za-z0-9_\\$]*)+")
     }
 }

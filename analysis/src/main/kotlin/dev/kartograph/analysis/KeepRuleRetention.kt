@@ -23,16 +23,38 @@ public object KeepRuleRetention {
         graph: CodeGraph,
         rules: Iterable<KeepRule>,
         dependencyHierarchy: ClassHierarchy = ClassHierarchy.EMPTY,
+    ): List<RetentionEvidence> = find(graph, rules, dependencyHierarchy, false)
+
+    public fun find(
+        graph: CodeGraph,
+        rules: Iterable<KeepRule>,
+        dependencyHierarchy: ClassHierarchy = ClassHierarchy.EMPTY,
+        lenient: Boolean,
     ): List<RetentionEvidence> {
         val compiledRules = rules.map(::CompiledKeepRule)
+        val unknownLocations = linkedSetOf<dev.kartograph.core.SourceLocation>()
         return graph.nodeIds.flatMap { nodeId ->
             val node = graph.nodes.getValue(nodeId)
             compiledRules.flatMap { rule ->
-                rule.matchingNodeIds(node, graph, dependencyHierarchy).map { retainedNodeId ->
-                    RetentionEvidence(retainedNodeId, RetentionReason.KEEP_RULE, rule.source.location)
+                val reason = when {
+                    rule.source.shrinkingDisabled -> RetentionReason.SHRINKING_DISABLED
+                    rule.source.unresolved -> RetentionReason.UNKNOWN_KEEP_RULE
+                    else -> RetentionReason.KEEP_RULE
+                }
+                val matched = if (rule.source.shrinkingDisabled || rule.source.unresolved) listOf(nodeId) else try {
+                    rule.matchingNodeIds(node, graph, dependencyHierarchy)
+                } catch (problem: IncompleteKeepRuleHierarchyException) {
+                    if (!lenient) throw problem
+                    unknownLocations.add(rule.source.location)
+                    emptyList()
+                }
+                matched.map { retainedNodeId ->
+                    RetentionEvidence(retainedNodeId, reason, rule.source.location)
                 }
             }
-        }.distinct()
+        }.plus(unknownLocations.flatMap { location ->
+            graph.nodeIds.map { RetentionEvidence(it, RetentionReason.UNKNOWN_KEEP_RULE, location) }
+        }).distinct()
     }
 
     /**
@@ -42,7 +64,7 @@ public object KeepRuleRetention {
      */
     public fun unmatched(rules: Iterable<KeepRule>, evidence: Iterable<RetentionEvidence>): List<KeepRule> {
         val matchedLocations = evidence.asSequence()
-            .filter { item -> item.reason == RetentionReason.KEEP_RULE }
+            .filter { item -> item.reason in setOf(RetentionReason.KEEP_RULE, RetentionReason.SHRINKING_DISABLED, RetentionReason.UNKNOWN_KEEP_RULE) }
             .mapNotNull { item -> item.location }
             .toSet()
         return rules.filter { rule -> rule.location !in matchedLocations }

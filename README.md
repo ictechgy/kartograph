@@ -116,6 +116,10 @@ See [change analysis and migration](docs/IMPACT.md) and the [bounded real-change
 These are review and static test candidates, not failure predictions or permission to skip tests.
 Public 0.26.0 assets and Portal installation have not yet been verified; release preparation is not publication.
 
+See [0.26.0 input/reporting migration](docs/FEEDBACK-026.md),
+[Android CLI and plugin input setup](docs/ANDROID-CLI-INPUTS.md), and
+[bounded Android callback evidence](docs/ANDROID-CALLBACK-INPUTS.md) for the feedback fixes and remaining limits.
+
 Version 0.25.0 adds captured application layout XML impact through exact non-final R fields and recorded literal includes.
 Use matching CLI/plugin/library builds and recapture both revisions. Coverage remains partial; module snapshots with resource
 evidence cannot be aggregated. See [layout capture and migration](docs/ANDROID-RESOURCE-IMPACT.md) for the tested AGP8.7.3

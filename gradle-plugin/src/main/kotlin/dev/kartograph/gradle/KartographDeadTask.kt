@@ -48,6 +48,12 @@ public abstract class KartographDeadTask : DefaultTask() {
     /** Member 진단 opt-in도 task 입력으로 기록해 보고 범위를 명확히 한다. */
     @get:Input
     public abstract val includePrivateMembers: Property<Boolean>
+    @get:Input public abstract val keepRuleMode: Property<String>
+    @get:Input public abstract val useVariantKeepRules: Property<Boolean>
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val excludedKeepRuleFiles: ConfigurableFileCollection
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val variantKeepRuleFiles: ConfigurableFileCollection
 
     /** Android framework 상속 규칙도 dependency hierarchy에 포함한다. */
     @get:Classpath
@@ -55,6 +61,8 @@ public abstract class KartographDeadTask : DefaultTask() {
 
     init {
         includePrivateMembers.convention(false)
+        keepRuleMode.convention("strict")
+        useVariantKeepRules.convention(true)
     }
     @get:Classpath
     public abstract val projectJars: ListProperty<RegularFile>
@@ -137,7 +145,8 @@ public abstract class KartographDeadTask : DefaultTask() {
         val indexed = ClassFileIndexer().indexWithObservations(classRoots, classpath,
             serviceResourceDirectories.files.filter(java.io.File::isDirectory).sorted().map(java.io.File::toPath),
             generatedClassRoots.files.sorted().map(java.io.File::toPath))
-        val graph = indexed.graph
+        val sourcePaths = dev.kartograph.index.SourcePathIndex.resolve(indexed.graph, projectRoot)
+        val graph = dev.kartograph.index.SourceDeclarationLocations.enrich(indexed.graph, projectRoot, sourcePaths.byNodeId, false)
         val hierarchy = indexed.hierarchy
         val retention = retentionEvidence(projectRoot, graph, hierarchy)
         val result = ReachabilityAnalyzer.analyze(graph, retention.evidence)
@@ -146,19 +155,30 @@ public abstract class KartographDeadTask : DefaultTask() {
             keepRuleInputs = retention.keepRuleInputCount,
             classpathInputs = classpath.size,
             manifestEvidenceCount = retention.manifestEvidenceCount,
-        )
+            graph = graph,
+        ) + if (retention.evidence.any { it.reason == dev.kartograph.core.RetentionReason.UNKNOWN_KEEP_RULE }) listOf(InputHint.UNKNOWN_KEEP_RULES) else emptyList()
+        val unknown = InputHint.UNKNOWN_KEEP_RULES in inputHints
+        val diagnostics = retention.diagnostics + sourcePaths.limitations
+        fun report(findings: List<Finding>, suppressed: Int) = writeReport(findings.map { finding ->
+            val declaration = graph.node(finding.nodeId)?.sourceDeclaration
+            val path = declaration?.path ?: sourcePaths.byNodeId[finding.nodeId]
+            finding.copy(location = path?.let { dev.kartograph.core.SourceLocation(it, declaration?.line ?: finding.location?.line,
+                declaration?.column ?: finding.location?.column) } ?: finding.location)
+        }, suppressed, retention.unmatchedKeepRules, inputHints, diagnostics)
         if (baselineWriteFile.isPresent) {
+            if (unknown) throw GradleException("cannot write a baseline from unknown keep rules")
             val path = baselineWriteFile.get().asFile.toPath()
             path.parent?.let { parent -> Files.createDirectories(parent) }
             Files.writeString(path, BaselineCodec.render(allFindings))
-            writeReport(allFindings, 0, retention.unmatchedKeepRules, inputHints.takeIf { allFindings.isNotEmpty() }.orEmpty())
+            report(allFindings, 0)
             logger.lifecycle("kartograph ${variantName.get()}: captured ${allFindings.size} unreachable declarations")
             return
         }
         val baseline = baselineFile.orNull?.asFile?.toPath()?.let { path -> BaselineCodec.parse(Files.readString(path)) }.orEmpty()
         val findings = allFindings.filterNot { finding -> finding.fingerprint in baseline }
-        writeReport(findings, allFindings.size - findings.size, retention.unmatchedKeepRules, inputHints.takeIf { findings.isNotEmpty() }.orEmpty())
+        report(findings, allFindings.size - findings.size)
         logger.lifecycle("kartograph ${variantName.get()}: ${findings.size} unreachable declarations")
+        if (strict.get() && unknown) throw GradleException("keep-rule analysis is unknown; strict check cannot pass; see the task report")
         if (strict.get() && findings.isNotEmpty()) {
             throw GradleException("kartograph found ${findings.size} unreachable declarations; see the task report")
         }
@@ -178,15 +198,21 @@ public abstract class KartographDeadTask : DefaultTask() {
                 addAll(AndroidXmlScanner(projectRoot, buildRoot).scan(resourceRoot.toPath()))
             }
         }
-        val ruleFiles = existingRuleFiles(keepRuleFiles.files.sorted().map(java.io.File::toPath))
-        val keepRules = KeepRuleScanner(projectRoot, includePrivateMembers.get()).scan(ruleFiles)
+        require(keepRuleMode.get() in setOf("strict", "lenient")) { "keepRuleMode must be strict or lenient" }
+        val excluded = excludedKeepRuleFiles.files.mapTo(mutableSetOf()) { it.canonicalFile }
+        val selected = keepRuleFiles.files + if (useVariantKeepRules.get()) variantKeepRuleFiles.files else emptySet()
+        val ruleFiles = existingRuleFiles(selected.filter { it.canonicalFile !in excluded }.sorted().map(java.io.File::toPath))
+        val scanner = KeepRuleScanner(projectRoot, includePrivateMembers.get(), keepRuleMode.get() == "lenient")
+        val keepRules = scanner.scan(ruleFiles)
         val evidence = DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,
-            includePrivateMembers = includePrivateMembers.get())
+            includePrivateMembers = includePrivateMembers.get(), lenientKeepRules = keepRuleMode.get() == "lenient")
         return RetentionOutcome(
             evidence,
             KeepRuleRetention.unmatched(keepRules, evidence),
             ruleFiles.size,
             manifestEvidence.size,
+            scanner.diagnostics.map { "unknown-keep-rule: $it" } +
+                if (!useVariantKeepRules.get() || excluded.isNotEmpty()) listOf("keep-rule-inputs-excluded: explicitly selected subset; omitted shrinker inputs are not assessed") else emptyList(),
         )
     }
 
@@ -207,6 +233,7 @@ public abstract class KartographDeadTask : DefaultTask() {
         suppressedCount: Int,
         unmatchedKeepRules: List<KeepRule>,
         inputHints: List<InputHint>,
+        diagnostics: List<String>,
     ) {
         val report = reportFile.get().asFile.toPath()
         Files.createDirectories(requireNotNull(report.parent))
@@ -217,8 +244,12 @@ public abstract class KartographDeadTask : DefaultTask() {
             findings,
             AnalysisLimitation.entries,
             suppressedCount,
+            confidence = emptyMap(),
+            expiredSuppressions = 0,
             unmatchedKeepRules = unmatchedKeepRules,
             inputHints = inputHints,
+            externalRetentionContexts = emptyList(),
+            diagnostics = diagnostics,
         )
         Files.writeString(report, content)
     }
@@ -228,6 +259,7 @@ public abstract class KartographDeadTask : DefaultTask() {
         val unmatchedKeepRules: List<KeepRule>,
         val keepRuleInputCount: Int,
         val manifestEvidenceCount: Int,
+        val diagnostics: List<String>,
     )
 
 }

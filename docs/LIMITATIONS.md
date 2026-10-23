@@ -125,7 +125,7 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   원본 class/source/규칙 파일을 읽지 않으며 `saved-graph` 한계를 추가한다. 현재 source와 일치하는지는 확인하지
   않으므로 변경 후에는 새 snapshot을 만든다. live 입력이나 baseline을 섞어 저장된 의미를 바꿀 수 없다.
   일반 `graph --format json` 문서에는 보존 문맥이 없으므로 질의 snapshot으로 읽지 않는다. 입력은 UTF-8 JSON,
-  기본 64 MiB이며 `--snapshot-max-mib`로 명시한 경우 최대 128 MiB다. 출력도 인코딩 중 같은 byte 상한으로 제한한다. 지원하지 않는 버전·손상·중복 정점·dangling edge를 오류로 거부한다.
+  기본 64 MiB이며 `--snapshot-max-mib`로 명시한 경우 최대 1024 MiB다. 출력도 인코딩 중 같은 byte 상한으로 제한한다. 지원하지 않는 버전·손상·중복 정점·dangling edge를 오류로 거부한다.
 - `snapshot --compact` v2는 반복 문자열과 graph 행을 인덱스로 저장한다. 사실을 생략하지 않으며 v1도 계속 읽는다.
   `--revision`/`--scope`는 호출자의 입력 라벨이고 내용 지문이나 빌드 신선도 증명이 아니다.
 - `impact`는 잠재적 사용/계약 의존을 역방향으로 조사하며 실제 동작 변화나 테스트 생략을 승인하지 않는다.

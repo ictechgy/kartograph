@@ -101,6 +101,10 @@ public abstract class KartographSnapshotTask : DefaultTask() {
 
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val keepRuleFiles: ConfigurableFileCollection
+    @get:Input public abstract val keepRuleMode: Property<String>
+    @get:Input public abstract val useVariantKeepRules: Property<Boolean>
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val excludedKeepRuleFiles: ConfigurableFileCollection
 
     /** AGP가 선언한 rule 중 build 출력 아래의 미생성 파일만 선택적으로 처리한다. */
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -148,6 +152,8 @@ public abstract class KartographSnapshotTask : DefaultTask() {
 
     init {
         snapshotMaxMiB.convention(QuerySnapshotCodec.DEFAULT_MAX_MIB)
+        keepRuleMode.convention("strict")
+        useVariantKeepRules.convention(true)
         indexCacheEnabled.convention(false)
         captureLimitations.convention(emptyList())
         indexCacheDirectory.convention(buildDirectory.dir("kartograph/index-cache"))
@@ -213,11 +219,14 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val classpath = dependencyClasspath.files.filter { it.exists() }.map { it.toPath() }
         val resources = serviceResourceRoots.files.filter { it.exists() }.map { it.toPath() }
         val generated = generatedClassRoots.files.map { it.toPath() }
-        val scanner = KeepRuleScanner(project, includePrivateMembers.get())
-        val generatedRules = generatedKeepRuleFiles.files.map { it.toPath() }
+        require(keepRuleMode.get() in setOf("strict", "lenient")) { "keepRuleMode must be strict or lenient" }
+        val scanner = KeepRuleScanner(project, includePrivateMembers.get(), keepRuleMode.get() == "lenient")
+        val excluded = excludedKeepRuleFiles.files.mapTo(mutableSetOf()) { it.canonicalFile.toPath() }
+        val generatedRules = if (useVariantKeepRules.get()) generatedKeepRuleFiles.files.map { it.toPath() }
+            .filter { it.toFile().canonicalFile.toPath() !in excluded } else emptyList()
         val existingGeneratedRules = AndroidKeepRules.existing(generatedRules, buildDirectory.get().asFile.toPath())
         val missingGeneratedRules = generatedRules - existingGeneratedRules.toSet()
-        val rules = scanner.scan(keepRuleFiles.files.map { it.toPath() } + existingGeneratedRules)
+        val rules = scanner.scan(keepRuleFiles.files.filter { it.canonicalFile.toPath() !in excluded }.map { it.toPath() } + existingGeneratedRules)
         val files = roots.map { "classes" to it } + classpath.map { "classpath" to it } +
             processorOutputs.files +
             resources.map { "service-resources" to it } + generated.map { "generated-classes" to it } +
@@ -239,6 +248,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
                 if (captured.path.startsWith("external/")) bindings[captured.path] = requested[index].path.toFile().canonicalFile.toPath()
             } + InputFingerprint("options", "snapshot-options", ContentFingerprint.values(listOf(
                 scope.get(), includeSourcePaths.get().toString(), includePrivateMembers.get().toString(), namespace.orNull.orEmpty(),
+                keepRuleMode.get(), useVariantKeepRules.get().toString(), excluded.size.toString(),
             )))
             return SnapshotProvenance(inputs, witnesses)
         }
@@ -291,7 +301,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
                 }
             }
             val retention = DefaultRetention.find(graph, entryPoints, rules, indexed.hierarchy,
-                includePrivateMembers = includePrivateMembers.get())
+                includePrivateMembers = includePrivateMembers.get(), lenientKeepRules = keepRuleMode.get() == "lenient")
             val baseline = baselineFile.orNull?.asFile?.toPath()?.let { BaselineCodec.parse(Files.readString(it)) }.orEmpty()
             val suppressed = graph.nodes.values.filter { Finding(it.id, it.location).fingerprint in baseline }
                 .mapTo(mutableSetOf()) { it.id }
@@ -299,7 +309,11 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             // 경로만 옮기는 재조립이다. 콜백 사실 세 목록을 빠뜨리면 캡처 표식은 참인데 사실이 비어 콜백 간선이 사라진다.
             val located = if (paths == null) graph else relocateSnapshotSourcePaths(graph, paths.byNodeId)
             val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, roots, processorOutputs.verify(scope.get()))
-            val compilerLimitations = compilerEnrichment.limitations + buildList {
+            val compilerLimitations = compilerEnrichment.limitations + scanner.diagnostics.map { "unknown-keep-rule: $it" } + buildList {
+                if (retention.any { it.reason == dev.kartograph.core.RetentionReason.UNKNOWN_KEEP_RULE })
+                    add("unknown-keep-rules: conservative retention because a keep rule or hierarchy is unresolved; not proof of reachability")
+                if (!useVariantKeepRules.get() || excluded.isNotEmpty())
+                    add("keep-rule-inputs-excluded: explicitly selected subset; omitted shrinker inputs are not assessed")
                 if (compilerFacts.unmappedReferences > 0) add("compiler-evidence-unmapped-references: ${compilerFacts.unmappedReferences}")
                 if (compilerFacts.outsideGraphReferences > 0) add("compiler-evidence-outside-graph: ${compilerFacts.outsideGraphReferences}")
                 if (compilerFacts.shadowedReferences > 0) add("compiler-evidence-shadowed-references: ${compilerFacts.shadowedReferences}")
