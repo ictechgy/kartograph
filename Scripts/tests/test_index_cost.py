@@ -448,6 +448,40 @@ class IndexCostTest(unittest.TestCase):
         child.wait.assert_not_called()
         kill.assert_called_once()
 
+    def test_reader_late_completion_after_snapshot_cannot_turn_partial_output_into_success(self):
+        # stdout snapshot 직후 마지막 append와 thread 종료를 강제한다. 실제 scheduling이나
+        # 다른 PID 신호 없이 join의 미완료 관측이 최종 판정까지 유지되는지 확인한다.
+        readers, joins = [], []
+        class FakeReader:
+            def __init__(self, target, args, daemon=False):
+                self.alive = args[0] == 0
+                readers.append(self)
+            def start(self):
+                pass
+            def join(self, timeout):
+                joins.append(timeout)
+            def is_alive(self):
+                return self.alive
+        class LateBuffer(bytearray):
+            def __bytes__(self):
+                snapshot = bytes(memoryview(self))
+                self.extend(b"late")
+                readers[0].alive = False
+                return snapshot
+        stdout, stderr = LateBuffer(b"early"), bytearray()
+        child = types.SimpleNamespace(pid=4242, returncode=None, stdout=io.BytesIO(), stderr=io.BytesIO())
+        observation = types.SimpleNamespace(si_pid=child.pid, si_signo=probe.signal.SIGCHLD, si_code=probe.os.CLD_EXITED)
+        with mock.patch.object(probe.subprocess, "Popen", return_value=child), mock.patch.object(
+                probe.os, "waitid", return_value=observation, create=True), mock.patch.object(
+                probe.os, "wait4", return_value=(child.pid, 0, types.SimpleNamespace(ru_maxrss=4096))), mock.patch.object(
+                probe, "group_census", return_value=lambda pid: True), mock.patch.object(probe.os, "killpg"), mock.patch.object(
+                probe.threading, "Thread", FakeReader), mock.patch.object(probe, "bytearray", side_effect=[stdout, stderr], create=True):
+            with self.assertRaisesRegex(probe.DiagnosticError, "child-stream-not-closed"):
+                probe.run(["synthetic-child"], ROOT, {})
+        self.assertEqual([10, 10], joins)
+        self.assertEqual(b"earlylate", bytes(memoryview(stdout)))
+        self.assertFalse(readers[0].alive)
+
     def test_structural_count_change_is_rejected(self):
         rows = [dict(profile=profile, nodes=1, locatedNodes=1, edges=2, externalCalls=3, classFiles=4,
                      parsedClasses=4, cacheHits=0, cacheMisses=0)

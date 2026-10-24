@@ -272,6 +272,7 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
         reader.start()
     timed_out = False
     wait_failed = False
+    reader_unclosed = False
     rss = {"status": "unavailable", "reason": "owned-wait4-rusage-not-observed"}
     def wait_owned():
         deadline = time.monotonic() + timeout
@@ -324,9 +325,11 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
                         wait_failed = True  # 실패 receipt를 보존하며 신호 경로를 다시 열지 않는다.
         for reader in readers:
             reader.join(timeout=10)
+            if reader.is_alive():
+                reader_unclosed = True  # 이후 늦게 종료해도 부분 snapshot을 성공으로 바꾸지 않는다.
     result = {"exit": process.returncode, "stdout": bytes(streams[0]), "stderr": bytes(streams[1]),
               "wallNanos": time.monotonic_ns() - started, "rss": rss, "phase": phase}
-    reason = ("child-stream-not-closed" if any(reader.is_alive() for reader in readers) else
+    reason = ("child-stream-not-closed" if reader_unclosed else
               "child-timeout" if timed_out else "child-output-limit" if overflow.is_set() else
               "child-stream-failed" if failures else "child-wait-failed" if wait_failed else None)
     if reason:
