@@ -10,6 +10,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
+import org.junit.jupiter.api.condition.DisabledOnOs
+import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 
 class GenerationAttemptJournalTest {
@@ -20,7 +23,7 @@ class GenerationAttemptJournalTest {
     private val output = "b".repeat(64)
 
     @Test fun `과거 성공 뒤 실패한 시도는 같은 최종 바이트여도 현재 성공이 아니다`(@TempDir directory: Path) {
-        val journal = GenerationAttemptJournal(directory)
+        val journal = fixture(directory)
         complete(journal)
         val historical = Files.readAllBytes(directory.resolve("$first.final"))
         journal.begin(second, inputs, output, cold = false, supportedActions = true)
@@ -32,7 +35,7 @@ class GenerationAttemptJournalTest {
     }
 
     @Test fun `뒤늦은 과거 provisional은 새 pending을 완료할 수 없다`(@TempDir directory: Path) {
-        val journal = GenerationAttemptJournal(directory)
+        val journal = fixture(directory)
         journal.begin(first, inputs, empty, true, true)
         journal.provisional(first, inputs, output, "old", true)
         journal.begin(second, inputs, empty, true, true)
@@ -41,7 +44,7 @@ class GenerationAttemptJournalTest {
     }
 
     @Test fun `첫 warm 또는 cache는 성공 receipt를 만들지 않는다`(@TempDir directory: Path) {
-        val journal = GenerationAttemptJournal(directory)
+        val journal = fixture(directory)
         assertNull(journal.finish(GenerationTaskResult.FROM_CACHE, null, inputs, output, true))
         journal.begin(first, inputs, output, false, true)
         journal.provisional(first, inputs, output, "not proved", true)
@@ -49,7 +52,7 @@ class GenerationAttemptJournalTest {
     }
 
     @Test fun `성공한 과거 출력은 현재 cache 상태와 전체 바이트 일치에서만 재사용한다`(@TempDir directory: Path) {
-        val journal = GenerationAttemptJournal(directory)
+        val journal = fixture(directory)
         complete(journal)
         assertEquals("cold receipt", journal.finish(GenerationTaskResult.EXECUTED, first, inputs, output, true))
         assertNull(journal.finish(GenerationTaskResult.EXECUTED, null, inputs, output, true))
@@ -65,7 +68,7 @@ class GenerationAttemptJournalTest {
     }
 
     @Test fun `미지원 action과 중간 입력 변경은 cold 성공으로 승격하지 않는다`(@TempDir directory: Path) {
-        val journal = GenerationAttemptJournal(directory)
+        val journal = fixture(directory)
         journal.begin(first, inputs, empty, true, false)
         journal.provisional(first, inputs, output, "not proved", true)
         assertNull(journal.finish(GenerationTaskResult.EXECUTED, first, inputs, output, true))
@@ -75,12 +78,12 @@ class GenerationAttemptJournalTest {
     }
 
     @Test fun `provisional 내용 변경과 후속 변경 입력 실행은 과거 증거를 재사용하지 않는다`(@TempDir directory: Path) {
-        val journal = GenerationAttemptJournal(directory)
+        val journal = fixture(directory)
         journal.begin(first, inputs, empty, true, true)
         journal.provisional(first, inputs, output, "cold receipt", true)
         Files.writeString(directory.resolve("$first.provisional"), "modified receipt")
         assertNull(journal.finish(GenerationTaskResult.EXECUTED, first, inputs, output, true))
-        val separate = GenerationAttemptJournal(directory.resolve("separate"))
+        val separate = GenerationAttemptJournal(directory.toRealPath().resolve("separate"))
         complete(separate)
         separate.begin(second, "c".repeat(64), output, false, true)
         separate.provisional(second, "c".repeat(64), output, "incremental not proved", true)
@@ -88,7 +91,7 @@ class GenerationAttemptJournalTest {
     }
 
     @Test fun `성공 및 중단 시도의 nonce는 재사용할 수 없다`(@TempDir directory: Path) {
-        val journal = GenerationAttemptJournal(directory)
+        val journal = fixture(directory)
         complete(journal)
         val historical = Files.readAllBytes(directory.resolve("$first.final"))
         assertFailsWith<IllegalArgumentException> { journal.begin(first, inputs, output, false, true) }
@@ -102,13 +105,30 @@ class GenerationAttemptJournalTest {
     }
 
     @Test fun `동시 build 잠금이 있으면 기존 성공 pointer를 덮지 않는다`(@TempDir directory: Path) {
-        val journal = GenerationAttemptJournal(directory)
+        val journal = fixture(directory)
         complete(journal)
         val pointer = Files.readAllBytes(directory.resolve("current"))
         FileChannel.open(directory.resolve("lock"), WRITE).use { channel -> channel.lock().use {
             assertFailsWith<OverlappingFileLockException> { journal.begin(second, inputs, output, false, true) }
         } }
         assertTrue(pointer.contentEquals(Files.readAllBytes(directory.resolve("current"))))
+    }
+
+    /** 양성 입력은 제품이 요구하는 물리 디렉터리로 만든다. 링크 거부 정책은 별도 대조한다. */
+    private fun fixture(directory: Path): GenerationAttemptJournal =
+        GenerationAttemptJournal(directory.toRealPath())
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "directory symlinks require privileges on Windows")
+    fun `상태 디렉터리 별칭은 물리 경로와 같아도 거부한다`(@TempDir directory: Path) {
+        val physical = directory.toRealPath()
+        val state = Files.createDirectory(physical.resolve("state"))
+        val alias = Files.createSymbolicLink(physical.resolve("alias"), state)
+        assertFailsWith<IllegalArgumentException> {
+            GenerationAttemptJournal(alias).begin(first, inputs, empty, true, true)
+        }
+        assertFalse(Files.exists(state.resolve("current")))
+        assertFalse(Files.exists(state.resolve("lock")))
     }
 
     private fun complete(journal: GenerationAttemptJournal) {
@@ -118,7 +138,7 @@ class GenerationAttemptJournalTest {
     }
 
     @Test fun `origin 문맥은 성공 후 고정되며 과거 실패나 다른 receipt로 재사용하지 않는다`(@TempDir directory: Path) {
-        val journal = GenerationAttemptJournal(directory)
+        val journal = fixture(directory)
         assertFailsWith<IllegalArgumentException> { journal.bindOrigin(first, "cold receipt", "context") }
         complete(journal)
         assertNull(journal.origin(first, "cold receipt"))
