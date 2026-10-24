@@ -206,7 +206,8 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   저장소 AOP advice처럼 프레임워크가 끼워 넣는 프로젝트 코드는 모델링하지 않는다.
 - `snapshot merge`는 구성원 class root를 다시 인덱싱하지만 보존 근거는 구성원별 결과를 합친다. 한 모듈의 keep rule·manifest가
   다른 모듈 선언을 보존하는 관계는 다시 평가하지 않으며 `aggregate-retention:`으로 알린다. processor 관측과 compiler-evidence
-  witness가 있는 구성원은 아직 합치지 않는다.
+  witness가 있는 구성원은 아직 합치지 않는다. 생성 출처(`generationEvidence`)가 있는 구성원도 선언 0개인 capture를 포함해
+  거부하므로, 생성 분류·관측 요약은 원래 모듈 snapshot에서 각각 확인해야 한다.
 - package/module architecture는 JVM 이름과 입력 root를 기준으로 하며 Gradle dependency resolution model 자체는 아니다.
 - Java와 Kotlin bytecode를 함께 읽지만 reflection configuration, runtime class loading과 외부 서비스 설정은 별도 입력이다.
 

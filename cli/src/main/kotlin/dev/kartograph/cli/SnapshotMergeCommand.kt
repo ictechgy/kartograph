@@ -117,6 +117,9 @@ internal object SnapshotMergeCommand {
         if (snapshots.any { it.androidResourceEvidence != null }) {
             throw MergeException("members with captured Android resources are not supported by snapshot merge")
         }
+        if (snapshots.any { it.generationEvidence != null }) {
+            throw MergeException("members with captured generation evidence are not supported by snapshot merge; query the member snapshots separately")
+        }
         if (snapshots.any { it.graph.compilerSourceUseEvidence != null }) {
             throw MergeException("members with captured compiler source uses are not supported by snapshot merge")
         }
@@ -237,6 +240,8 @@ internal object SnapshotMergeCommand {
         --input-bindings-output is required when members have inputs outside --project; the file holds absolute paths
         and must not be published. --scope defaults to aggregate:<variant> when all members share a variant.
         --include-paths resolves node source paths against --project, as `snapshot --include-paths` does.
+        Members with captured generation evidence, including captures with zero admitted declarations, are refused.
+        Query those original member snapshots separately; generation provenance is not rebased by this command.
         Retention evidence is combined per member; keep rules and manifests are not re-evaluated across modules.
     """.trimIndent() + "\n"
 }

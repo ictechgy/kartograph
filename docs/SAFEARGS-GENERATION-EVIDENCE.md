@@ -36,6 +36,11 @@ records `historical-byte-equivalence` and `UP_TO_DATE`; it does not call this a 
 successful generation. FROM-CACHE, skipped/excluded tasks, failed attempts and
 missing contexts remain unverified. No user clean or forced regeneration is performed.
 
+`snapshot merge` refuses members with generation evidence, including a captured
+receipt with zero admitted declarations. The generation proof requires one matching
+capture scope and is not rebased or discarded by aggregation. Query each original
+member snapshot separately to retain its classification and `generationSummary`.
+
 When `snapshotsEnabled=true` and Java SafeArgs are present, ordinary Android
 `kartographGraph<Variant>` and `kartographDead<Variant>` depend on the existing
 variant snapshot. Its existing `snapshotIncludeUnitTests` selection controls the

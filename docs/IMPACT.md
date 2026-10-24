@@ -292,6 +292,8 @@ kartograph routes --role client --project . --graph-file aggregate-snapshot.json
   있으면 이 옵션은 필수이고, 파일에는 절대 경로가 있으므로 공개하지 않는다.
 - 보존 근거는 구성원별 결과를 합친다. 모듈 경계를 넘는 keep rule·manifest는 다시 평가하지 않으며
   `aggregate-retention:` limitation으로 알린다. processor 관측이나 compiler-evidence witness가 있는 구성원은 아직 합치지 않는다.
+- 생성 출처(`generationEvidence`)가 있는 구성원도 선언 0개인 capture를 포함해 명시적으로 거부한다.
+  단일 scope의 생성 증거를 옮기거나 버리지 않으며, 생성 분류와 `generationSummary`는 원래 모듈 snapshot을 각각 질의한다.
 
 `routes`는 `--input-bindings`로 snapshot과 함께 만든 로컬 연결을 받는다. 없으면 project 밖 입력(의존성 JAR, 옮긴 build
 디렉터리)이 있는 snapshot은 `graph-file-freshness-unverified: missing-external-input`이다. plugin capture와 그 병합본은
