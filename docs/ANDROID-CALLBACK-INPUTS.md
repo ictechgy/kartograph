@@ -57,6 +57,9 @@ the graph and remain unsynthesized unless a supported marker or an explicitly
 supplied generated-only class root establishes provenance. The
 `android-generated-provenance-unverified` hint explains this boundary. Never mark
 a mixed handwritten/generated output directory as generated-only.
+The bounded [Safe Args snapshot adapter](SAFEARGS-GENERATION-EVIDENCE.md) adds a
+separate successful-generation/source/class byte contract; it does not infer
+runtime reachability from these names.
 
 Repeat `--resources` for each relevant XML resource root. `dead` and `why` accumulate
 the normalized roots, so their order and repeated identical paths do not alter the

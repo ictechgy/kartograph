@@ -49,6 +49,7 @@ import org.gradle.work.DisableCachingByDefault
 /** 성공한 compiler provider의 main/test 그래프·보존 근거·내용 지문을 저장한다. */
 @DisableCachingByDefault(because = "Keep-rule includes and captured timestamp diagnostics require cache lifecycle validation")
 public abstract class KartographSnapshotTask : DefaultTask() {
+    @get:Internal internal var safeArgsCapture: (() -> SafeArgsGenerationLifecycle.Result)? = null
     @get:Nested
     public abstract val compilations: ListProperty<SnapshotCompilation>
 
@@ -188,6 +189,8 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     public fun captureSnapshot() {
         val snapshotMaximumBytes = QuerySnapshotCodec.maximumBytes(snapshotMaxMiB.get())
         val project = projectDirectory.get().asFile.toPath()
+        val generation = safeArgsCapture?.invoke()
+        val generationReceipts = listOfNotNull(generation?.receipt?.let(dev.kartograph.export.GenerationReceiptCodec::parse))
         val processorOutputs = ProcessorOutputInputs(project, processorOutputConfigs.files.map { it.toPath() })
         val witnessPaths = buildWitnessFiles.files.filter { it.isFile }.map { it.toPath() }
         val witnesses = witnessPaths.map { path ->
@@ -232,6 +235,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val missingGeneratedRules = generatedRules - existingGeneratedRules.toSet()
         val rules = scanner.scan(keepRuleFiles.files.filter { it.canonicalFile.toPath() !in excluded }.map { it.toPath() } + existingGeneratedRules)
         val files = roots.map { "classes" to it } + classpath.map { "classpath" to it } +
+            generation?.files.orEmpty() +
             processorOutputs.files +
             resources.map { "service-resources" to it } + generated.map { "generated-classes" to it } +
             sourceDirectories.files.map { "source-watch" to it.toPath() } +
@@ -296,7 +300,19 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val compilerEnrichment = CompilerEvidenceIndexer.enrichWithCallPositions(indexed, roots, compilerEvidence,
                 if (compilerEvidence.isEmpty()) null else CompilerEvidenceContext(project, scope.get(), before, bindings))
             val compilerFacts = compilerEnrichment.result
-            val graph = compilerFacts.graph
+            val generationResult = if (generationReceipts.isEmpty()) null else dev.kartograph.index.GeneratedSourceIndexer.attribute(
+                project, indexed, compilerFacts.graph, roots, before, scope.get(), generationReceipts, bindings)
+            val graph = generationResult?.graph ?: compilerFacts.graph
+            val generationEvidence = generationResult?.let { attributed ->
+                val current = requireNotNull(generation)
+                val observations = attributed.receipts.map { receipt -> dev.kartograph.core.GenerationConsumptionObservation(
+                    requireNotNull(current.originContext), requireNotNull(current.currentContext), requireNotNull(current.invocation),
+                    current.currentAttempt, requireNotNull(current.originBasis), requireNotNull(current.currentGenerationStatus),
+                    dev.kartograph.core.GenerationDigests.inventory(receipt),
+                    dev.kartograph.core.GenerationDigests.declarations(attributed.declarations.filter { it.generatorTask == receipt.task }, before)) }
+                dev.kartograph.core.GenerationEvidence(attributed.receipts, attributed.declarations, observations)
+                    .also { it.requireMatches(graph, before, scope.get()) }
+            }
             val entryPoints = buildList {
                 manifestFile.orNull?.asFile?.toPath()?.let { manifest ->
                     require(namespace.isPresent) { "snapshot manifest requires its Android namespace" }
@@ -341,6 +357,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
                     buildRoot = buildDirectory.get().asFile.toPath()),
                 retention)
             val limitations = (bindingReview.diagnostics + RuntimeLimitationScanner.scan(indexed, selectedSources) +
+                generationResult?.limitations.orEmpty() + listOfNotNull(generation?.reason?.let { "generation-unverified: $it" }) +
                 dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) +
                 compilerLimitations + resourceProducerLimitations + resourceEvidence.limitations +
                 paths?.limitations.orEmpty() + captureLimitations.get() +
@@ -351,12 +368,13 @@ public abstract class KartographSnapshotTask : DefaultTask() {
                 suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
                 scope = scope.get(), provenance = before, processorGenerations = compilerFacts.processorGenerations,
                 processorOutputs = outputObservations, androidResourceEvidence = resourceEvidence.facts,
-                androidResourceBindings = resourceEvidence.bindings)
+                androidResourceBindings = resourceEvidence.bindings, generationEvidence = generationEvidence)
             val content = AndroidResourceSnapshotEvidence.render(snapshot, snapshotMaximumBytes)
             SnapshotOutput(content, indexed, before, located)
         }
         val finalVerification = ProvenanceVerifier.verify(prepared.provenance, project, scope.get(), bindings)
         require(finalVerification.status == "matched") { "compiler inputs changed during snapshot capture" }
+        require(safeArgsCapture?.invoke() == generation) { "generation evidence changed during snapshot capture" }
         val output = snapshotFile.get().asFile.toPath()
         val local = localBindingsFile.get().asFile.toPath()
         Files.createDirectories(requireNotNull(local.parent))

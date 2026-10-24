@@ -103,12 +103,30 @@ tasks.jar {
     }
 }
 
+val testKitNativeDirectory = layout.buildDirectory.dir("testkit-native")
+val expectedTestKitNativeDirectory = layout.projectDirectory.asFile.canonicalFile.resolve("build/testkit-native")
+// worker 수명인 native DLL은 실패한 테스트 뒤에도 worker 종료 후 정리한다.
+val cleanTestKitNativeLibraries = tasks.register<Delete>("cleanTestKitNativeLibraries") {
+    delete(testKitNativeDirectory)
+    isFollowSymlinks = false
+    doFirst {
+        check(testKitNativeDirectory.get().asFile.canonicalFile == expectedTestKitNativeDirectory) {
+            "Refusing to clean a native-library directory outside the isolated test output"
+        }
+    }
+}
+
 // Android 소비 검증은 AGP와 같은 buildscript classloader에서 실제 배포 JAR를 적용한다.
 tasks.test {
     val pluginJar = tasks.jar.flatMap { it.archiveFile }
     inputs.file(pluginJar)
     inputs.file(rootProject.file(".kartograph-self.pro")).withPropertyName("selfAnalysisKeepRules")
     systemProperty("kartograph.pluginJar", pluginJar.get().asFile.absolutePath)
+    // TestKit 임시 홈의 daemon만 종료할 때 현재 테스트와 같은 Gradle 설치를 사용한다.
+    systemProperty("kartograph.test.gradleHome", requireNotNull(gradle.gradleHomeDir).absolutePath)
+    // Tooling API client가 로드한 DLL은 테스트 worker가 끝날 때 해제되므로 메서드 TempDir에 두지 않는다.
+    systemProperty("org.gradle.native.dir", testKitNativeDirectory.get().asFile.absolutePath)
+    finalizedBy(cleanTestKitNativeLibraries)
     // 명시적인 in-process 통합 테스트는 Gradle도 같은 JVM에서 실행하므로 여유 heap을 준다.
     maxHeapSize = "2g"
     testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

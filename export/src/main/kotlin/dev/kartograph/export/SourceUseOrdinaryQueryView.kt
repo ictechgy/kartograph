@@ -9,13 +9,14 @@ import dev.kartograph.core.LocatedCompilerReference
 import dev.kartograph.core.SourceLocation
 
 /** 기존 query JSON 값·생략 규칙을 새 bounded wrapper에만 투영한다. */
-internal fun sourceOrdinaryQueryValue(document: SymbolQueryDocument, graph: CodeGraph?): Map<String, Any?> {
+internal fun sourceOrdinaryQueryValue(document: SymbolQueryDocument, graph: CodeGraph?, generationSummary: GenerationSummary? = null): Map<String, Any?> {
     val references by lazy {
         if (document.result == null) emptyMap() else graph?.locatedCompilerReferences.orEmpty()
             .groupBy { it.source.value to it.target.value }
             .mapValues { (_, values) -> values.sortedWith(SOURCE_QUERY_REFERENCE_ORDER) }
     }
     return sourceJsonObject(*buildList<Pair<String, () -> Any?>> {
+        generationSummary?.let { add("generationSummary" to { it.value() }) }
         document.candidates?.let { candidates -> add("candidates" to {
             sourceJsonItems(candidates) { candidate -> sourceJsonObject(*buildList<Pair<String, () -> Any?>> {
                 add("qualifiedName" to { candidate.qualifiedName })

@@ -36,6 +36,8 @@ import org.gradle.work.DisableCachingByDefault
  */
 @DisableCachingByDefault(because = "Opting into source path resolution reads project sources that cannot be declared as inputs")
 public abstract class KartographGraphTask : DefaultTask() {
+    @get:Internal internal var safeArgsLive: SafeArgsLiveCapture? = null
+    @get:Internal internal var safeArgsUnavailable: String? = null
     @get:Classpath
     public abstract val projectJars: ListProperty<RegularFile>
 
@@ -115,11 +117,13 @@ public abstract class KartographGraphTask : DefaultTask() {
         val classRoots = inputRoots().map(java.io.File::toPath)
         val classpath = classpathDirectories.get().map { it.asFile.toPath() } +
             classpathJars.get().map { it.asFile.toPath() } + platformClasspath.files.sorted().map(java.io.File::toPath)
+        val generationInput = safeArgsLive?.prepare()
         val indexed = ClassFileIndexer(callbackFacts = false).indexForGraphExport(classRoots,
             classpath.takeIf { it.isNotEmpty() },
             serviceResourceDirectories.files.filter(java.io.File::isDirectory).sorted().map(java.io.File::toPath),
             generatedClassRoots.files.sorted().map(java.io.File::toPath), options)
-        val original = indexed.indexed.graph
+        val generation = generationInput?.attribute(indexed.indexed, indexed.indexed.graph, classRoots)
+        val original = generation?.graph ?: indexed.indexed.graph
         // 경로 해석은 opt-in이다. CLI와 같은 기본값을 유지해 요청하지 않은 경로 노출을 만들지 않는다.
         val paths = if (includeSourcePaths.get()) {
             SourcePathIndex.resolve(original, projectDirectory.get().asFile.toPath())
@@ -130,10 +134,11 @@ public abstract class KartographGraphTask : DefaultTask() {
         val graph = if (includeSourcePaths.get()) {
             SourceDeclarationLocations.enrich(original, projectDirectory.get().asFile.toPath(), paths.byNodeId)
         } else original
-        val limitations = (paths.limitations + indexed.limitations + excludeOrigins.get().map {
+        val limitations = (paths.limitations + indexed.limitations + generation?.limitations.orEmpty() + listOfNotNull(safeArgsUnavailable) + excludeOrigins.get().map {
             "edge-origin-excluded: $it was explicitly excluded from graph export"
         }).distinct().sorted()
         val target = graphFile.get().asFile.toPath()
+        generation?.verifyBeforeWrite?.invoke()
         Files.createDirectories(requireNotNull(target.parent))
         Files.newBufferedWriter(target, StandardCharsets.UTF_8).use { writer ->
             if (format == "ndjson") {

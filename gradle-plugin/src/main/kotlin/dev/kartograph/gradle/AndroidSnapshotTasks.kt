@@ -89,6 +89,7 @@ internal object AndroidSnapshotTasks {
         project.pluginManager.withPlugin("com.google.dagger.hilt.android") {
             task.configure { it.hiltArtifactObservation.convention(true) }
         }
+        SafeArgsSnapshotTasks.register(project, variant.name, scope, task)
 
         // 같은 variant compiler의 선언 출력은 NO-SOURCE로 생성되지 않을 수 있다(예: Java만 있는 unit test의 Kotlin 출력).
         // javac classpath에 들어간 이 디렉터리는 부재까지 추적하는 watch로 기록한다. JVM 경로와 같이 provider로 감싸

@@ -22,8 +22,10 @@ public object ImpactReportCodec {
             .any { value -> summaryAxes(value).any { it.size > summaryLimit } }
         val value = sortedMapOf<String, Any?>(
         "format" to "kartograph-impact", "version" to 1,
-        "inputs" to snapshots.toSortedMap().mapValues { (_, snapshot) -> sortedMapOf(
-            "revision" to snapshot.revision, "scope" to snapshot.scope, "toolVersion" to snapshot.toolVersion) },
+        "inputs" to snapshots.toSortedMap().mapValues { (_, snapshot) -> sortedMapOf<String, Any?>(
+            "revision" to snapshot.revision, "scope" to snapshot.scope, "toolVersion" to snapshot.toolVersion).also { input ->
+                GenerationSummary.from(snapshot)?.let { input["generationSummary"] = it.value() }
+            } },
         "status" to when {
             report.unresolved.isNotEmpty() && report.changed.isEmpty() -> "notFound"
             report.unresolved.isNotEmpty() || report.truncated.results || report.truncated.depth || report.truncated.budget || summaryTruncated -> "partial"
