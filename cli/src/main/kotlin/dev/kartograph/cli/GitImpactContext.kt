@@ -24,8 +24,9 @@ internal object GitImpactContext {
 
     fun inspect(project: Path, baseRef: String, headRef: String?, workingTree: Boolean): Change {
         require(!workingTree || headRef == null) { "working-tree cannot be combined with git-head" }
-        val root = project.toAbsolutePath().normalize()
-        require(Path.of(git(root, listOf("rev-parse", "--show-toplevel")).trim()).toAbsolutePath().normalize() == root) {
+        // macOS의 /var·/private/var 같은 별칭도 실제 디렉터리 신원으로 대조한다.
+        val root = project.toRealPath()
+        require(Path.of(git(root, listOf("rev-parse", "--show-toplevel")).trim()).toRealPath() == root) {
             "Git impact project must be the repository root"
         }
         fun commit(ref: String): String {

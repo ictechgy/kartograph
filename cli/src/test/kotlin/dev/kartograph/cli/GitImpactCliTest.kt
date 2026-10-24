@@ -13,8 +13,26 @@ import java.nio.file.Path
 import javax.tools.ToolProvider
 import kotlin.test.*
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.condition.DisabledOnOs
+import org.junit.jupiter.api.condition.OS
 
 class GitImpactCliTest {
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "directory symlinks require privileges on Windows")
+    fun `repository root aliases use filesystem identity but nested directories stay invalid`(@TempDir root: Path) {
+        val project = repository(Files.createDirectories(root.resolve("fixture")))
+        Files.writeString(project.resolve("Target.java"), "class Target {}\n")
+        git(project, "add", "."); git(project, "commit", "-qm", "base")
+        val head = git(project, "rev-parse", "HEAD").trim()
+        val alias = Files.createSymbolicLink(root.resolve("alias"), project.toRealPath())
+        assertEquals(emptyList(), GitImpactContext.inspect(alias, head, head, false).files)
+        val nested = Files.createDirectories(alias.resolve("nested"))
+        val failure = assertFailsWith<IllegalArgumentException> {
+            GitImpactContext.inspect(nested, head, head, false)
+        }
+        assertContains(failure.message.orEmpty(), "repository root")
+    }
+
     @Test fun `restoring a base file as untracked is an empty net working tree patch`(@TempDir root: Path) {
         val project = repository(root)
         val file = project.resolve("Target.java")
