@@ -5,6 +5,7 @@ import gzip
 from collections import Counter
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -274,6 +275,126 @@ def public_summary(report):
     if len(encoded.encode("utf-8")) > 65536:
         raise DiagnosticError("public-summary-too-large")
     return encoded
+
+
+def public_observation_summary(report):
+    """이미 수집한 관측만 별도 제한 로그로 공개한다. 경로·환경·원시 stack은 복사하지 않는다."""
+    def integer(value, maximum=2**63 - 1):
+        if type(value) is not int or not 0 <= value <= maximum:
+            raise DiagnosticError("invalid-public-observation")
+        return value
+
+    def checksum(value):
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise DiagnosticError("invalid-public-observation")
+        return value
+
+    def load(value):
+        averages = value["loadAverage"]
+        if (not isinstance(averages, list) or len(averages) != 3 or any(
+                type(number) not in (int, float) or not math.isfinite(number)
+                or not 0 <= number <= 1_000_000 for number in averages)):
+            raise DiagnosticError("invalid-public-observation")
+        cpus = value["logicalCpus"]
+        if cpus is not None and integer(cpus, 65536) == 0:
+            raise DiagnosticError("invalid-public-observation")
+        return {"loadAverage": averages, "logicalCpus": cpus,
+                "monotonicNanos": integer(value["monotonicNanos"])}
+
+    result = {"format": "kartograph-index-observations-v1", "diagnosticStatus": report["status"],
+              "reportIdentitySha256": identity_digest(report),
+              "scope": "already-collected-observations; no-new-processes; no-performance-acceptance",
+              "jfr": {"status": "unavailable"}, "cliLoad": {"status": "unavailable"}}
+    try:
+        if report["status"] not in ("PASS", "FAIL"):
+            raise DiagnosticError("invalid-public-observation")
+        if "jfr" in report:
+            original = report["jfr"]
+            samples = original["samples"]
+            if (set(samples) != set(JFR_EVENTS) or original["command"] != "dead"
+                    or original["outputMatchesUnprofiledCandidate"] is not True
+                    or original["scope"] != "single-profiled-candidate; sampled-stacks-and-weighted-allocations; not-timing-acceptance"
+                    or original["launcher"] != "direct-java-same-main-class-and-arguments; startup-not-equivalent"):
+                raise DiagnosticError("invalid-public-observation")
+            selected = {}
+            for kind in JFR_EVENTS:
+                row = samples[kind]
+                total = integer(row["weight"])
+                count = integer(row["events"], 20000)
+                if kind == "jdk.ExecutionSample" and total != count:
+                    raise DiagnosticError("invalid-public-observation")
+                selected[kind] = {"events": count, "weight": total}
+                for field in ("inclusive", "nearest"):
+                    ranks = row[field]
+                    if not isinstance(ranks, list) or len(ranks) > 30:
+                        raise DiagnosticError("invalid-public-observation")
+                    checked = []
+                    for name, weight in ranks:
+                        if (not isinstance(name, str) or len(name) > 1024 or not re.fullmatch(
+                                r"dev/kartograph/(?:[A-Za-z0-9_$-]+/)*[A-Za-z0-9_$-]+\.(?:[A-Za-z0-9_$-]+|<init>|<clinit>)", name)):
+                            raise DiagnosticError("invalid-public-observation")
+                        checked.append([name, integer(weight, total)])
+                    if (len({name for name, _ in checked}) != len(checked)
+                            or checked != sorted(checked, key=lambda item: (-item[1], item[0]))):
+                        raise DiagnosticError("invalid-public-observation")
+                    selected[kind][field] = checked[:10]
+                    selected[kind][field + "OmittedFromStoredTop30"] = max(0, len(checked) - 10)
+            recording = original["recording"]
+            size = integer(recording["size"], JFR_LIMIT)
+            if size == 0:
+                raise DiagnosticError("invalid-public-observation")
+            result["jfr"] = {
+                "status": "observed", "command": "dead", "samples": selected,
+                "scope": "single-profiled-candidate; all-thread-samples; not-wall-time-or-total-heap",
+                "launcher": "direct-java-same-main-class-and-arguments; startup-not-equivalent",
+                "rankingScope": "top-10-of-stored-top-30-product-methods; full-tail-count-not-recorded; inclusive-rows-overlap",
+                "gcJitAttribution": "not-recorded", "outputMatchesUnprofiledCandidate": True,
+                "configurationSha256": checksum(original["configurationSha256"]),
+                "recording": {"size": size, "sha256": checksum(recording["sha256"])}}
+        if "cliLoad" in report:
+            rows = report["cliLoad"]
+            if not isinstance(rows, list) or len(rows) > 36:
+                raise DiagnosticError("invalid-public-observation")
+            selected, seen = [], set()
+            for row in rows:
+                key = (row["command"], row["sample"], row["arm"])
+                if (key[0] not in ("graph", "dead", "dead_private", "cycles", "rules", "metrics")
+                        or type(key[1]) is not int or key[1] not in (1, 2, 3)
+                        or key[2] not in ("baseline", "candidate") or key in seen):
+                    raise DiagnosticError("invalid-public-observation")
+                seen.add(key)
+                before, after = load(row["before"]), load(row["after"])
+                if before["monotonicNanos"] > after["monotonicNanos"]:
+                    raise DiagnosticError("invalid-public-observation")
+                selected.append({"command": key[0], "sample": key[1], "arm": key[2],
+                                 "before": before, "after": after})
+            result["cliLoad"] = {"status": "observed" if len(rows) == 36 else "partial",
+                                 "scope": "same-runner-sequential-children; host-load-observed-not-controlled; not-process-cpu-or-gc",
+                                 "expectedRows": 36, "observedRows": len(rows), "rows": selected}
+        encoded = json.dumps(result, sort_keys=True, allow_nan=False)
+    except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
+        raise DiagnosticError("invalid-public-observation") from None
+    if len(encoded.encode("utf-8")) > 65536:
+        raise DiagnosticError("public-observations-too-large")
+    return encoded
+
+
+def write_report(report, output):
+    # 관측 공개 오류도 실패로 남기며 원본 관측은 result.json에서 보존한다.
+    try:
+        observations = public_observation_summary(report)
+    except DiagnosticError as error:
+        report["status"] = "FAIL"
+        report.setdefault("reason", str(error))
+        report["observationSummaryFailure"] = str(error)
+        observations = json.dumps({"format": "kartograph-index-observations-v1",
+                                   "diagnosticStatus": "FAIL", "status": "invalid",
+                                   "reason": str(error)}, sort_keys=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(public_summary(report))
+    print(observations)
+    return 0 if report["status"] == "PASS" else 1
 
 
 def equivalent(left, right):
@@ -681,10 +802,7 @@ def main():
             report["failure"] = error.receipt
     except Exception:
         report["reason"] = "unexpected-diagnostic-error"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(public_summary(report))
-    return 0 if report["status"] == "PASS" else 1
+    return write_report(report, output)
 
 
 if __name__ == "__main__":
