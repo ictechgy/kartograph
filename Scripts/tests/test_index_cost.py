@@ -1,6 +1,8 @@
 """격리 비교의 byte 계약·입력 identity·실제 javac/JVM 진입을 검증한다."""
 import importlib.util
 import gzip
+import io
+import errno
 import json
 import os
 from pathlib import Path
@@ -8,6 +10,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import types
 import unittest
 from unittest import mock
 
@@ -261,16 +265,188 @@ class IndexCostTest(unittest.TestCase):
                                temporary, dict(os.environ))
             self.assertEqual((3, b"a\r\nb", b"x"), (result["exit"], result["stdout"], result["stderr"]))
 
-    def test_wait4_failure_kills_and_reaps_owned_child(self):
+    def test_fake_final_reap_closes_all_numeric_group_signals(self):
+        # 실제 PID 재사용이나 타 프로세스 신호 없이 커널 호출의 순서만 계측한다.
+        events = []
+        child = types.SimpleNamespace(pid=4242, returncode=None,
+                                      stdout=io.BytesIO(b"a\r\nb"), stderr=io.BytesIO(b"x"))
+        def reap(pid, flags):
+            self.assertEqual(child.pid, pid)
+            events.append("reap")
+            return pid, 0, types.SimpleNamespace(ru_maxrss=4096)
+        def signal_group(pid, number):
+            self.assertEqual(child.pid, pid)
+            events.append("kill-after-reap" if "reap" in events else "kill-owned")
+        with mock.patch.object(probe.subprocess, "Popen", return_value=child), mock.patch.object(
+                probe.os, "waitid", return_value=types.SimpleNamespace(si_pid=child.pid, si_signo=probe.signal.SIGCHLD, si_code=probe.os.CLD_EXITED), create=True), mock.patch.object(
+                probe.os, "wait4", side_effect=reap), mock.patch.object(probe.os, "killpg", side_effect=signal_group), mock.patch.object(
+                probe, "group_census", return_value=lambda pid: True, create=True):
+            result = probe.run(["synthetic-child"], ROOT, {}, phase="fake-order")
+        self.assertEqual((0, b"a\r\nb", b"x"), (result["exit"], result["stdout"], result["stderr"]))
+        self.assertNotIn("kill-after-reap", events)
+        self.assertLess(events.index("kill-owned"), events.index("reap"))
+
+    def test_fake_late_reader_overflow_cannot_signal_after_reap(self):
+        events, reaped = [], threading.Event()
+        class LateStream:
+            def read(self, size):
+                self.assert_reaped = reaped.wait(timeout=2)
+                return b"overflow" if self.assert_reaped else b""
+            def close(self):
+                pass
+        child = types.SimpleNamespace(pid=4242, returncode=None, stdout=LateStream(), stderr=io.BytesIO())
+        def reap(pid, flags):
+            events.append("reap")
+            reaped.set()
+            return pid, 0, types.SimpleNamespace(ru_maxrss=4096)
+        def signal_group(pid, number):
+            events.append("kill-after-reap" if reaped.is_set() else "kill-owned")
+        with mock.patch.object(probe.subprocess, "Popen", return_value=child), mock.patch.object(
+                probe.os, "waitid", return_value=types.SimpleNamespace(si_pid=child.pid, si_signo=probe.signal.SIGCHLD, si_code=probe.os.CLD_EXITED), create=True), mock.patch.object(
+                probe.os, "wait4", side_effect=reap), mock.patch.object(probe.os, "killpg", side_effect=signal_group), mock.patch.object(
+                probe, "group_census", return_value=lambda pid: True, create=True):
+            with self.assertRaisesRegex(probe.DiagnosticError, "child-output-limit"):
+                probe.run(["synthetic-child"], ROOT, {}, limit=1, phase="fake-overflow")
+        self.assertTrue(reaped.is_set())
+        self.assertNotIn("kill-after-reap", events)
+
+    def test_wait4_failure_reaps_owned_child_without_reopening_signals(self):
+        original_popen, children = probe.subprocess.Popen, []
+        def spawn(*arguments, **options):
+            child = original_popen(*arguments, **options)
+            children.append(child)
+            return child
         with tempfile.TemporaryDirectory() as temporary:
-            with mock.patch.object(probe.os, "wait4", side_effect=OSError("synthetic")):
+            with mock.patch.object(probe.os, "wait4", side_effect=OSError("synthetic")), mock.patch.object(
+                    probe.subprocess, "Popen", side_effect=spawn):
                 with mock.patch.object(probe, "kill_group", wraps=probe.kill_group) as kill:
                     with self.assertRaisesRegex(probe.DiagnosticError, "child-wait-failed") as caught:
-                        probe.run([sys.executable, "-c", "import time; time.sleep(5)"],
+                        probe.run([sys.executable, "-c", "pass"],
                                   temporary, dict(os.environ), phase="test-wait")
-                    process = kill.call_args.args[0]
-                    self.assertIsNotNone(process.returncode)
+                    self.assertEqual(0, children[0].returncode)
+                    self.assertTrue(all(call.args[0] is children[0] for call in kill.call_args_list))
                     self.assertEqual("test-wait", caught.exception.receipt["phase"])
+                    self.assertEqual("owned-wait4-rusage-not-observed", caught.exception.receipt["rss"]["reason"])
+
+    def test_fake_linux_nonreaping_flags_rss_and_reap_order(self):
+        child = types.SimpleNamespace(pid=4242, returncode=None, stdout=io.BytesIO(), stderr=io.BytesIO())
+        with mock.patch.object(probe.sys, "platform", "linux"), mock.patch.object(
+                probe.subprocess, "Popen", return_value=child), mock.patch.object(
+                probe.os, "waitid", side_effect=[None, types.SimpleNamespace(si_pid=child.pid, si_signo=probe.signal.SIGCHLD, si_code=probe.os.CLD_EXITED),
+                                                types.SimpleNamespace(si_pid=child.pid, si_signo=probe.signal.SIGCHLD, si_code=probe.os.CLD_EXITED)], create=True) as observe, mock.patch.object(
+                probe.os, "wait4", return_value=(child.pid, 0, types.SimpleNamespace(ru_maxrss=4096))), mock.patch.object(
+                probe.os, "killpg") as kill:
+            result = probe.run(["synthetic-child"], ROOT, {})
+        self.assertEqual(3, observe.call_count)
+        for call in observe.call_args_list:
+            self.assertEqual((probe.os.P_PID, child.pid, probe.os.WEXITED | probe.os.WNOHANG | probe.os.WNOWAIT), call.args)
+        kill.assert_called_once()
+        self.assertEqual(4096 * 1024, result["rss"]["peakBytes"])
+        self.assertEqual("owned-wait4-child-peak-rss; kernel-accounting-not-live-heap", result["rss"]["scope"])
+
+    def test_fake_lost_ownership_closes_signal_and_reap_paths(self):
+        child = types.SimpleNamespace(pid=4242, returncode=None, stdout=io.BytesIO(), stderr=io.BytesIO())
+        with mock.patch.object(probe.subprocess, "Popen", return_value=child), mock.patch.object(
+                probe.os, "waitid", side_effect=ChildProcessError(errno.ECHILD, "synthetic"), create=True), mock.patch.object(
+                probe.os, "wait4") as reap, mock.patch.object(probe.os, "killpg") as kill:
+            with self.assertRaisesRegex(probe.DiagnosticError, "child-wait-failed"):
+                probe.run(["synthetic-child"], ROOT, {})
+        reap.assert_not_called()
+        kill.assert_not_called()
+
+    def test_unsupported_observer_fails_before_spawn(self):
+        with mock.patch.object(probe.sys, "platform", "unsupported"), mock.patch.object(probe.subprocess, "Popen") as spawn:
+            with self.assertRaisesRegex(probe.DiagnosticError, "child-ownership-not-supported"):
+                probe.run(["must-not-spawn"], ROOT, {})
+        spawn.assert_not_called()
+
+    def test_sigchld_auto_reaping_fails_before_spawn(self):
+        with mock.patch.object(probe.signal, "getsignal", return_value=probe.signal.SIG_IGN), mock.patch.object(
+                probe.subprocess, "Popen") as spawn:
+            with self.assertRaisesRegex(probe.DiagnosticError, "child-ownership-not-supported"):
+                probe.run(["must-not-spawn"], ROOT, {})
+        spawn.assert_not_called()
+
+    def test_fake_terminal_empty_group_needs_no_signal(self):
+        child = types.SimpleNamespace(pid=4242, returncode=None, stdout=io.BytesIO(), stderr=io.BytesIO())
+        with mock.patch.object(probe.subprocess, "Popen", return_value=child), mock.patch.object(
+                probe.os, "waitid", return_value=types.SimpleNamespace(si_pid=child.pid, si_signo=probe.signal.SIGCHLD, si_code=probe.os.CLD_EXITED), create=True), mock.patch.object(
+                probe.os, "wait4", return_value=(child.pid, 0, types.SimpleNamespace(ru_maxrss=4096))), mock.patch.object(
+                probe, "group_census", return_value=lambda pid: False), mock.patch.object(probe.os, "killpg") as kill:
+            self.assertEqual(0, probe.run(["synthetic-child"], ROOT, {})["exit"])
+        kill.assert_not_called()
+
+    def test_fake_unknown_group_census_fails_without_group_signal(self):
+        child = types.SimpleNamespace(pid=4242, returncode=None, stdout=io.BytesIO(), stderr=io.BytesIO())
+        def unknown(pid):
+            raise OSError(errno.EIO, "synthetic")
+        with mock.patch.object(probe.subprocess, "Popen", return_value=child), mock.patch.object(
+                probe.os, "waitid", return_value=types.SimpleNamespace(si_pid=child.pid, si_signo=probe.signal.SIGCHLD, si_code=probe.os.CLD_EXITED), create=True), mock.patch.object(
+                probe.os, "wait4", return_value=(child.pid, 0, types.SimpleNamespace(ru_maxrss=4096))), mock.patch.object(
+                probe, "group_census", return_value=unknown), mock.patch.object(probe.os, "killpg") as kill:
+            with self.assertRaisesRegex(probe.DiagnosticError, "child-wait-failed"):
+                probe.run(["synthetic-child"], ROOT, {})
+        kill.assert_not_called()
+
+    def test_real_tail_rss_and_owned_descendant_pipe_cleanup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            stdout, stderr = b"a\r\n" * 40000, b"z\r\n" * 45000
+            result = probe.run([sys.executable, "-c", "import sys; "
+                                "sys.stdout.buffer.write(b'a\\r\\n' * 40000); "
+                                "sys.stderr.buffer.write(b'z\\r\\n' * 45000); sys.exit(3)"],
+                               temporary, dict(os.environ))
+            self.assertEqual((3, stdout, stderr), (result["exit"], result["stdout"], result["stderr"]))
+            self.assertEqual("observed", result["rss"]["status"])
+            self.assertGreater(result["rss"]["peakBytes"], 0)
+            self.assertLess(result["rss"]["peakBytes"], 2**63)
+            # 새 session 안의 자손만 pipe를 유지한다. PID를 출력하거나 다른 그룹을 조회하지 않는다.
+            code = ("import os,sys,time\nchild=os.fork()\n"
+                    "if child == 0:\n time.sleep(5)\n os._exit(0)\n"
+                    "sys.stdout.buffer.write(b'leader\\r\\n'); sys.stdout.flush()\n")
+            result = probe.run([sys.executable, "-c", code], temporary, dict(os.environ))
+            self.assertEqual((0, b"leader\r\n", b""), (result["exit"], result["stdout"], result["stderr"]))
+            self.assertLess(result["wallNanos"], 2_000_000_000)
+
+    def test_fake_group_census_is_bounded_and_unknown_is_not_empty(self):
+        def check(count, error, members):
+            def list_group(pid, buffer, size):
+                probe.ctypes.set_errno(error)
+                for index, member in enumerate(members):
+                    buffer[index] = member
+                return count
+            library = types.SimpleNamespace(proc_listpgrppids=mock.Mock(side_effect=list_group))
+            with mock.patch.object(probe.sys, "platform", "darwin"), mock.patch.object(probe.ctypes, "CDLL", return_value=library):
+                return probe.group_census()(4242)
+        self.assertFalse(check(1, 0, [4242]))
+        self.assertTrue(check(2, 0, [4242, 4243]))
+        for count, error in ((4096, 0), (0, errno.EACCES), (-1, errno.EIO)):
+            with self.assertRaises(OSError):
+                check(count, error, [])
+
+    def test_fake_invalid_terminal_observation_loses_lease(self):
+        for pid, signo, code in ((4243, probe.signal.SIGCHLD, probe.os.CLD_EXITED),
+                                  (4242, 0, probe.os.CLD_EXITED), (4242, probe.signal.SIGCHLD, 0)):
+            child = types.SimpleNamespace(pid=4242, returncode=None, stdout=io.BytesIO(), stderr=io.BytesIO())
+            observation = types.SimpleNamespace(si_pid=pid, si_signo=signo, si_code=code)
+            with mock.patch.object(probe.subprocess, "Popen", return_value=child), mock.patch.object(
+                    probe.os, "waitid", return_value=observation, create=True), mock.patch.object(
+                    probe.os, "wait4") as reap, mock.patch.object(probe.os, "killpg") as kill:
+                with self.assertRaisesRegex(probe.DiagnosticError, "child-wait-failed"):
+                    probe.run(["synthetic-child"], ROOT, {})
+            reap.assert_not_called()
+            kill.assert_not_called()
+
+    def test_fake_final_echild_never_reopens_or_falls_back(self):
+        child = types.SimpleNamespace(pid=4242, returncode=None, stdout=io.BytesIO(), stderr=io.BytesIO(), wait=mock.Mock())
+        observation = types.SimpleNamespace(si_pid=child.pid, si_signo=probe.signal.SIGCHLD, si_code=probe.os.CLD_EXITED)
+        with mock.patch.object(probe.subprocess, "Popen", return_value=child), mock.patch.object(
+                probe.os, "waitid", return_value=observation, create=True), mock.patch.object(
+                probe.os, "wait4", side_effect=ChildProcessError(errno.ECHILD, "synthetic")), mock.patch.object(
+                probe, "group_census", return_value=lambda pid: True), mock.patch.object(probe.os, "killpg") as kill:
+            with self.assertRaisesRegex(probe.DiagnosticError, "child-wait-failed"):
+                probe.run(["synthetic-child"], ROOT, {})
+        child.wait.assert_not_called()
+        kill.assert_called_once()
 
     def test_structural_count_change_is_rejected(self):
         rows = [dict(profile=profile, nodes=1, locatedNodes=1, edges=2, externalCalls=3, classFiles=4,

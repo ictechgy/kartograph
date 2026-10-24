@@ -3,6 +3,8 @@
 
 import gzip
 from collections import Counter
+import ctypes
+import errno
 import hashlib
 import json
 import math
@@ -100,20 +102,152 @@ def java_identity(home):
 
 
 def kill_group(process):
+    """호출자가 unreaped child 소유권 lock을 잡은 동안에만 group에 신호를 보낸다."""
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
 
 
+def nonreaping_waiter():
+    """PID를 고정한 채 종료만 관측한다. 지원을 증명하지 못하면 spawn 전에 거부한다."""
+    names = ("P_PID", "WEXITED", "WNOHANG", "WNOWAIT", "CLD_EXITED", "CLD_KILLED", "CLD_DUMPED")
+    if (os.name != "posix" or sys.platform not in ("linux", "darwin") or not hasattr(os, "wait4") or
+            any(not hasattr(os, name) for name in names) or
+            signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL):
+        raise DiagnosticError("child-ownership-not-supported")
+    options = os.WEXITED | os.WNOHANG | os.WNOWAIT
+    if callable(getattr(os, "waitid", None)):
+        def observe(pid):
+            result = os.waitid(os.P_PID, pid, options)
+            if result is None:
+                return False
+            if (result.si_pid != pid or result.si_signo != signal.SIGCHLD or
+                    result.si_code not in (os.CLD_EXITED, os.CLD_KILLED, os.CLD_DUMPED)):
+                raise ChildProcessError(errno.ECHILD, "child-ownership-lost")
+            return True
+        return observe
+    if sys.platform != "darwin":
+        raise DiagnosticError("child-ownership-not-supported")
+    # macOS system Python 3.9는 waitid를 노출하지 않는다. Darwin 64-bit의
+    # sys/signal.h siginfo_t / sys/wait.h waitid(idtype_t, id_t, siginfo_t *, int) ABI다.
+    class Sigval(ctypes.Union):
+        _fields_ = [("integer", ctypes.c_int), ("pointer", ctypes.c_void_p)]
+    class Siginfo(ctypes.Structure):
+        _fields_ = [("signo", ctypes.c_int), ("error", ctypes.c_int), ("code", ctypes.c_int),
+                    ("pid", ctypes.c_int), ("uid", ctypes.c_uint), ("status", ctypes.c_int),
+                    ("address", ctypes.c_void_p), ("value", Sigval), ("band", ctypes.c_long),
+                    ("padding", ctypes.c_ulong * 7)]
+    if (ctypes.sizeof(ctypes.c_void_p), ctypes.sizeof(ctypes.c_long), ctypes.sizeof(Siginfo),
+            Siginfo.pid.offset, os.P_PID, os.WEXITED, os.WNOHANG, os.WNOWAIT) != (8, 8, 104, 12, 1, 4, 1, 32):
+        raise DiagnosticError("child-ownership-not-supported")
+    try:
+        waitid = ctypes.CDLL(None, use_errno=True).waitid
+        waitid.argtypes = [ctypes.c_int, ctypes.c_uint, ctypes.POINTER(Siginfo), ctypes.c_int]
+        waitid.restype = ctypes.c_int
+    except (AttributeError, OSError):
+        raise DiagnosticError("child-ownership-not-supported")
+    def observe(pid):
+        information = Siginfo()
+        if waitid(os.P_PID, pid, ctypes.byref(information), options) != 0:
+            raise OSError(ctypes.get_errno(), "nonreaping-wait-failed")
+        if information.pid == 0:
+            return False
+        if (information.pid != pid or information.signo != signal.SIGCHLD or
+                information.code not in (os.CLD_EXITED, os.CLD_KILLED, os.CLD_DUMPED)):
+            raise ChildProcessError(errno.ECHILD, "child-ownership-lost")
+        return True
+    return observe
+
+
+def group_census():
+    """Darwin의 waitable 좀비만 남은 그룹을 bounded PID 목록으로 확인한다."""
+    if sys.platform != "darwin":
+        return lambda pid: True  # Linux는 zombie-only group 신호의 ESRCH를 처리한다.
+    try:
+        list_group = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True).proc_listpgrppids
+        # SDK libproc.h: int proc_listpgrppids(pid_t, void *, int); 반환값은 PID 개수다.
+        list_group.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_int]
+        list_group.restype = ctypes.c_int
+    except (AttributeError, OSError):
+        raise DiagnosticError("child-ownership-not-supported")
+    def has_other_members(pid):
+        members = (ctypes.c_int * 4096)()
+        ctypes.set_errno(0)
+        count = list_group(pid, members, ctypes.sizeof(members))
+        error = ctypes.get_errno()
+        if (count < 0 or count >= len(members) or
+                (count == 0 and error not in (0, errno.ESRCH)) or
+                any(member <= 0 for member in members[:max(0, count)])):
+            raise OSError(error or errno.EIO, "owned-group-census-failed")
+        return any(member != pid for member in members[:count])
+    return has_other_members
+
+
+class OwnedProcessGroup:
+    """reader 신호·종료 관측·최종 신호 폐쇄를 같은 lock으로 직렬화한다."""
+
+    def __init__(self, process, observe, has_other_members):
+        self.process, self.observe = process, observe
+        self.has_other_members = has_other_members
+        self.lock = threading.Lock()
+        self.signal_open, self.lost = True, False
+
+    def ready(self):
+        with self.lock:
+            if not self.signal_open or self.process.returncode is not None:
+                self.signal_open, self.lost = False, True
+                raise ChildProcessError(errno.ECHILD, "child-ownership-lost")
+            try:
+                return self.observe(self.process.pid)
+            except InterruptedError:
+                return False
+            except OSError:
+                self.signal_open, self.lost = False, True
+                raise
+
+    def signal_group(self):
+        with self.lock:
+            self._signal_locked()
+
+    def _signal_locked(self):
+        if not self.signal_open:
+            return
+        if self.process.returncode is not None:
+            self.signal_open, self.lost = False, True
+            return
+        try:
+            terminal = self.observe(self.process.pid)
+        except OSError:
+            self.signal_open, self.lost = False, True
+            raise
+        # Darwin은 zombie-only group에 EPERM을 반환한다. EPERM을 무시하지 않고,
+        # WNOWAIT lease와 같은 그룹의 다른 PID가 없다는 조회를 함께 증명한 때만 생략한다.
+        if terminal and not self.has_other_members(self.process.pid):
+            return
+        kill_group(self.process)
+
+    def close_signals(self):
+        # zombie 또는 살아 있는 direct child가 아직 PID를 소유한다. cleanup 후 모든
+        # reader 신호를 먼저 폐쇄하고, 이 메서드가 반환된 뒤에만 wait4로 최종 reap한다.
+        with self.lock:
+            try:
+                self._signal_locked()
+            finally:
+                self.signal_open = False
+
+
 def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
     """각 child의 두 stream을 제한하고 timeout에는 소유한 process group을 끝낸다."""
     if not re.fullmatch(r"[a-z-]{1,64}", phase):
         raise DiagnosticError("invalid-process-phase")
+    observe = nonreaping_waiter()
+    has_other_members = group_census()
     started = time.monotonic_ns()
     process = subprocess.Popen(list(map(str, arguments)), cwd=cwd, env=env,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                start_new_session=True)
+    owned = OwnedProcessGroup(process, observe, has_other_members)
     streams = [bytearray(), bytearray()]
     overflow = threading.Event()
     failures = []
@@ -125,36 +259,24 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
                     break
                 if len(streams[index]) + len(chunk) > limit:
                     overflow.set()
-                    kill_group(process)
+                    owned.signal_group()
                     break
                 streams[index].extend(chunk)
         except OSError:
             failures.append("stream-read-failed")
         finally:
             stream.close()
-    readers = [threading.Thread(target=drain, args=(i, stream))
+    readers = [threading.Thread(target=drain, args=(i, stream), daemon=True)
                for i, stream in enumerate((process.stdout, process.stderr))]
     for reader in readers:
         reader.start()
     timed_out = False
     wait_failed = False
-    rss = {"status": "unavailable", "reason": "wait4-not-supported"}
+    rss = {"status": "unavailable", "reason": "owned-wait4-rusage-not-observed"}
     def wait_owned():
-        nonlocal rss
-        if not hasattr(os, "wait4"):
-            process.wait(timeout=timeout)
-            return
         deadline = time.monotonic() + timeout
         while True:
-            pid, status, usage = os.wait4(process.pid, os.WNOHANG)
-            if pid:
-                process.returncode = os.waitstatus_to_exitcode(status)
-                if sys.platform in ("linux", "darwin") and 0 < usage.ru_maxrss < 2**63:
-                    rss = {"status": "observed", "peakBytes": int(usage.ru_maxrss) *
-                           (1024 if sys.platform == "linux" else 1),
-                           "scope": "owned-wait4-child-peak-rss; kernel-accounting-not-live-heap"}
-                else:
-                    rss = {"status": "unavailable", "reason": "unknown-rusage-units"}
+            if owned.ready():
                 return
             if time.monotonic() >= deadline:
                 raise subprocess.TimeoutExpired(arguments, timeout)
@@ -163,15 +285,43 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
         wait_owned()
     except subprocess.TimeoutExpired:
         timed_out = True
-        kill_group(process)
-        process.wait(timeout=10)
     except OSError:
         wait_failed = True
     finally:
-        # 정상 종료 뒤 남은 자손도 pipe를 계속 잡지 못하게 한다.
-        kill_group(process)
-        if process.returncode is None:
-            process.wait(timeout=10)
+        try:
+            owned.close_signals()
+        except OSError:
+            wait_failed = True
+        if not owned.lost:
+            # close_signals 이후에는 main·reader 어느 쪽도 numeric PGID를 사용하지 않는다.
+            deadline = time.monotonic() + 10
+            try:
+                while True:
+                    try:
+                        pid, status, usage = os.wait4(process.pid, os.WNOHANG)
+                    except InterruptedError:
+                        if time.monotonic() >= deadline:
+                            raise ChildProcessError(errno.ECHILD, "final-child-wait-failed")
+                        continue
+                    if pid == process.pid:
+                        process.returncode = os.waitstatus_to_exitcode(status)
+                        if sys.platform in ("linux", "darwin") and 0 < usage.ru_maxrss < 2**63:
+                            rss = {"status": "observed", "peakBytes": int(usage.ru_maxrss) *
+                                   (1024 if sys.platform == "linux" else 1),
+                                   "scope": "owned-wait4-child-peak-rss; kernel-accounting-not-live-heap"}
+                        else:
+                            rss = {"status": "unavailable", "reason": "unknown-rusage-units"}
+                        break
+                    if pid != 0 or time.monotonic() >= deadline:
+                        raise ChildProcessError(errno.ECHILD, "final-child-wait-failed")
+                    time.sleep(0.005)
+            except OSError as error:
+                wait_failed = True
+                if error.errno != errno.ECHILD:
+                    try:
+                        process.wait(timeout=10)
+                    except (OSError, subprocess.TimeoutExpired):
+                        wait_failed = True  # 실패 receipt를 보존하며 신호 경로를 다시 열지 않는다.
         for reader in readers:
             reader.join(timeout=10)
     result = {"exit": process.returncode, "stdout": bytes(streams[0]), "stderr": bytes(streams[1]),
