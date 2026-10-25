@@ -10,6 +10,34 @@ import kotlin.random.Random
 
 class CodeGraphTest {
     @Test
+    fun `packed accumulators keep colliding identities distinct across reused lookup and streams`() {
+        val a = NodeId("Aa")
+        val b = NodeId("BB")
+        val x = NodeId("targetAa")
+        val y = NodeId("targetBB")
+        assertEquals(a.hashCode(), b.hashCode())
+        assertEquals(x.hashCode(), y.hashCode())
+        val nodes = listOf(a, b, x, y).map { GraphNode(it, it.value, NodeKind.CLASS) }
+        val pattern = listOf(
+            GraphEdge(a, x, EdgeKind.CALL, callSiteLines = listOf(1)),
+            GraphEdge(b, y, EdgeKind.CALL, callSiteLines = listOf(2)),
+            GraphEdge(a, y, EdgeKind.OVERRIDE, origin = EdgeOrigin.DISPATCH_MODEL),
+            GraphEdge(b, x, EdgeKind.OVERRIDE, origin = EdgeOrigin.RUNTIME_MODEL),
+        )
+        val expected = pattern.map { it.copy(weight = 401) }.sorted()
+        val input = List(401) { pattern }.flatten().shuffled(Random(713)) +
+            GraphEdge(a, NodeId("missing"), EdgeKind.CALL)
+        for (rows in listOf(input, input.asSequence().constrainOnce().asIterable())) {
+            val initial = CodeGraph(nodes, rows)
+            assertEquals(expected, initial.edges)
+            assertEquals(2, initial.outgoingEdgesFrom(a).size)
+            assertEquals(2, initial.incomingEdgesTo(x).size)
+        }
+        val enriched = CodeGraph(nodes, pattern).enrichedWith(input)
+        assertEquals(expected.map { it.copy(weight = 402) }, enriched.edges)
+    }
+
+    @Test
     fun `duplicate edges merge their weights and keep distinct kinds`() {
         val graph = CodeGraph(
             nodes = listOf(node("a"), node("b")),

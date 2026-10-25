@@ -6,6 +6,7 @@ from collections import Counter
 import ctypes
 import errno
 import hashlib
+from itertools import zip_longest
 import json
 import math
 import os
@@ -21,6 +22,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import zlib
 
 # 이번 간선 묶기의 추가 효과를 같은 runner에서 비교한다. 이전 bb13/5a 실험의 기록은 별도 보존한다.
 SOURCE_BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
@@ -237,7 +239,7 @@ class OwnedProcessGroup:
                 self.signal_open = False
 
 
-def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
+def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child", capture=None):
     """각 child의 두 stream을 제한하고 timeout에는 소유한 process group을 끝낸다."""
     if not re.fullmatch(r"[a-z-]{1,64}", phase):
         raise DiagnosticError("invalid-process-phase")
@@ -257,13 +259,19 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
                 chunk = stream.read(65536)
                 if not chunk:
                     break
-                if len(streams[index]) + len(chunk) > limit:
+                if not (capture is not None and index == 0) and len(streams[index]) + len(chunk) > limit:
                     overflow.set()
                     owned.signal_group()
                     break
-                streams[index].extend(chunk)
+                if capture is not None:
+                    capture.append(index, chunk)
+                if capture is None or index == 1:
+                    streams[index].extend(chunk)
+        except DiagnosticError as error:
+            failures.append(str(error))
+            owned.signal_group()
         except OSError:
-            failures.append("stream-read-failed")
+            failures.append("child-stream-failed")
         finally:
             stream.close()
     readers = [threading.Thread(target=drain, args=(i, stream), daemon=True)
@@ -327,11 +335,16 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
             reader.join(timeout=10)
             if reader.is_alive():
                 reader_unclosed = True  # 이후 늦게 종료해도 부분 snapshot을 성공으로 바꾸지 않는다.
-    result = {"exit": process.returncode, "stdout": bytes(streams[0]), "stderr": bytes(streams[1]),
+    if capture is not None:
+        try:
+            capture.finish()
+        except DiagnosticError as error:
+            failures.append(str(error))
+    result = {"exit": process.returncode, "stdout": capture.output() if capture is not None else bytes(streams[0]), "stderr": bytes(streams[1]),
               "wallNanos": time.monotonic_ns() - started, "rss": rss, "phase": phase}
     reason = ("child-stream-not-closed" if reader_unclosed else
               "child-timeout" if timed_out else "child-output-limit" if overflow.is_set() else
-              "child-stream-failed" if failures else "child-wait-failed" if wait_failed else None)
+              failures[0] if failures else "child-wait-failed" if wait_failed else None)
     if reason:
         raise DiagnosticError(reason, summary(result))
     return result
@@ -339,7 +352,7 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
 
 def summary(result):
     return {"phase": result.get("phase", "child"), "exit": result["exit"], "wallNanos": result["wallNanos"], "rss": result["rss"],
-            **{stream: {"bytes": len(result[stream]), "sha256": digest(result[stream])}
+            **{stream: stream_record(result[stream])
                for stream in ("stdout", "stderr")}}
 
 
@@ -552,7 +565,100 @@ def write_report(report, output):
 
 def equivalent(left, right):
     # 순서·중복·진단·줄바꿈·종료 코드를 있는 그대로 비교한다.
-    return all(left[key] == right[key] for key in ("exit", "stdout", "stderr"))
+    same = left["exit"] == right["exit"]
+    for key in ("stdout", "stderr"):
+        for a, b in zip_longest(stream_chunks(left[key]), stream_chunks(right[key])):
+            same = (a == b) and same
+    return same
+
+
+class FileOutput:
+    """완료된 원시 또는 gzip 출력이다. 매 읽기에서 길이·해시·EOF를 다시 검증한다."""
+
+    def __init__(self, path, size, checksum, compressed=False):
+        self.path, self.size, self.checksum, self.compressed = path, size, checksum, compressed
+
+
+def stream_record(data):
+    return ({"bytes": data.size, "sha256": data.checksum} if isinstance(data, FileOutput)
+            else {"bytes": len(data), "sha256": digest(data)})
+
+
+def stream_chunks(data):
+    if not isinstance(data, FileOutput):
+        for start in range(0, len(data), 65536):
+            yield data[start:start + 65536]
+        return
+    if not 0 <= data.size <= RAW_LIMIT:
+        raise DiagnosticError("raw-evidence-limit")
+    size, checksum = 0, hashlib.sha256()
+    try:
+        opener = gzip.open if data.compressed else open
+        with opener(data.path, "rb") as source:
+            while True:
+                chunk = source.read(65536)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > data.size:
+                    raise DiagnosticError("raw-stream-size-mismatch")
+                checksum.update(chunk)
+                yield chunk
+    except (OSError, EOFError, zlib.error):
+        raise DiagnosticError("raw-stream-read-failed")
+    if size != data.size or checksum.hexdigest() != data.checksum:
+        raise DiagnosticError("raw-stream-receipt-mismatch")
+
+
+class GraphCapture:
+    """graph stdout만 디스크로 옮기며 두 reader의 총예산 예약을 함께 관리한다."""
+
+    def __init__(self, raw):
+        self.raw, self.lock = raw, threading.Lock()
+        descriptor, name = tempfile.mkstemp(prefix=".graph-", dir=raw.directory)
+        self.path, self.destination = Path(name), os.fdopen(descriptor, "wb")
+        self.reserved, self.size, self.checksum = [0, 0], 0, hashlib.sha256()
+        self.closed = False
+
+    def append(self, index, chunk):
+        with self.lock:
+            if self.closed:
+                raise DiagnosticError("raw-capture-closed")
+            self.raw.reserve(len(chunk))
+            self.reserved[index] += len(chunk)
+            if index == 0:
+                if self.destination.write(chunk) != len(chunk):
+                    raise DiagnosticError("raw-stream-write-failed")
+                self.size += len(chunk)
+                self.checksum.update(chunk)
+
+    def finish(self):
+        with self.lock:
+            self.closed = True
+            try:
+                self.destination.close()
+            except OSError:
+                raise DiagnosticError("raw-stream-write-failed")
+
+    def output(self):
+        return FileOutput(self.path, self.size, self.checksum.hexdigest())
+
+    def cleanup(self):
+        failures = []
+        try:
+            self.finish()
+        except DiagnosticError:
+            failures.append("spool-close-failed")
+        finally:
+            with self.lock:
+                self.raw.release(sum(self.reserved))
+                self.reserved = [0, 0]
+                try:
+                    self.path.unlink(missing_ok=True)
+                except OSError:
+                    failures.append("spool-unlink-failed")
+        if failures:
+            raise DiagnosticError("raw-capture-cleanup-failed", {"cleanupFailures": failures})
 
 
 def schedule():
@@ -580,19 +686,64 @@ class RawStreams:
         self.directory = directory
         directory.mkdir()
         self.bytes = 0
+        self.pending = 0
+        self.lock = threading.Lock()
 
-    def retain(self, command, sample, arm, result):
-        records = {}
-        for stream in ("stdout", "stderr"):
-            data = result[stream]
-            if self.bytes + len(data) > RAW_LIMIT:
+    def reserve(self, size):
+        with self.lock:
+            if self.bytes + self.pending + size > RAW_LIMIT:
                 raise DiagnosticError("raw-evidence-limit")
+            self.pending += size
+
+    def release(self, size):
+        with self.lock:
+            self.pending -= size
+
+    def commit(self, size):
+        with self.lock:
+            self.pending -= size
+            self.bytes += size
+
+    def retain(self, command, sample, arm, result, capture=None):
+        records = {}
+        for index, stream in enumerate(("stdout", "stderr")):
+            data = result[stream]
+            receipt = stream_record(data)
+            size = receipt["bytes"]
+            reserved = capture.reserved[index] if capture is not None else 0
+            if reserved != size:
+                if reserved:
+                    raise DiagnosticError("raw-reservation-mismatch")
+                self.reserve(size)
             name = f"{command}-{sample}-{arm}-{stream}.gz"
-            with (self.directory / name).open("xb") as destination:
-                with gzip.GzipFile(fileobj=destination, mode="wb", mtime=0, filename="") as archive:
-                    archive.write(data)
-            self.bytes += len(data)
-            records[stream] = {"path": "raw/" + name, "bytes": len(data), "sha256": digest(data)}
+            path = self.directory / name
+            created = False
+            try:
+                with path.open("xb") as destination:
+                    created = True
+                    with gzip.GzipFile(fileobj=destination, mode="wb", mtime=0, filename="") as archive:
+                        for chunk in stream_chunks(data):
+                            archive.write(chunk)
+            except BaseException as error:
+                if not reserved:
+                    self.release(size)
+                cleanup = None
+                if created:
+                    try:
+                        path.unlink()
+                    except OSError:
+                        cleanup = "archive-unlink-failed"
+                if isinstance(error, OSError) and not isinstance(error, FileExistsError):
+                    error = DiagnosticError("raw-evidence-write-failed")
+                if cleanup and isinstance(error, DiagnosticError):
+                    error.receipt = {**(error.receipt or {}), "archiveCleanupFailure": cleanup}
+                raise error
+            self.commit(size)
+            if capture is not None:
+                capture.reserved[index] = 0
+            if isinstance(data, FileOutput):
+                result[stream] = FileOutput(path, size, receipt["sha256"], compressed=True)
+            records[stream] = {"path": "raw/" + name, **receipt}
         return records
 
 
@@ -604,11 +755,28 @@ def paired_cli(commands, project, env, located_nodes, report, raw):
         name = commands["baseline"][index][0]
         results, retained = {}, {}
         for arm in order:
-            before = host_load_snapshot()
-            results[arm] = run(commands[arm][index][1], project, env,
-                               phase="cli-" + name.replace("_", "-"))
-            after = host_load_snapshot()
-            retained[arm] = raw.retain(name, sample, arm, results[arm])
+            capture = GraphCapture(raw) if name == "graph" else None
+            primary = None
+            try:
+                before = host_load_snapshot()
+                options = {"capture": capture} if capture is not None else {}
+                results[arm] = run(commands[arm][index][1], project, env,
+                                   phase="cli-" + name.replace("_", "-"), **options)
+                after = host_load_snapshot()
+                retained[arm] = raw.retain(name, sample, arm, results[arm], capture)
+            except BaseException as error:
+                primary = error
+                raise
+            finally:
+                if capture is not None:
+                    try:
+                        capture.cleanup()
+                    except DiagnosticError as cleanup:
+                        if primary is None:
+                            raise
+                        if isinstance(primary, DiagnosticError):
+                            primary.receipt = {**(primary.receipt or {}),
+                                               "cleanupFailure": str(cleanup), **(cleanup.receipt or {})}
             report["cliLoad"].append({"command": name, "sample": sample, "arm": arm,
                                       "before": before, "after": after})
         left, right = results["baseline"], results["candidate"]
@@ -622,6 +790,7 @@ def paired_cli(commands, project, env, located_nodes, report, raw):
     report["cliTiming"] = {
         "scope": "three-paired-fresh-processes-per-command; no-performance-pass-or-budget-change",
         "loadScope": "same-runner-sequential-children; host-load-observed-not-controlled",
+        "captureScope": "graph-stdout-file-spool; process-and-drain-wall-time; compression-after-timing",
         "arms": {arm: {
             "medianSeconds": {name: statistics.median(
                 row[arm]["wallNanos"] / 1e9 for row in report["cli"] if row["command"] == name)
