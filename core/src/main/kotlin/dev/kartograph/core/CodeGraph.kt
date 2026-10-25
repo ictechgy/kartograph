@@ -276,24 +276,10 @@ public class CodeGraph private constructor(
         ))
     }
 
-    private fun collectDelta(edges: Iterable<GraphEdge>): List<DeltaEntry> {
-        // 큰 Collection에서 endpoint마다 NodeId를 boxing하는 대신 현재 key 값만 한 번 복사한다.
-        // O(nodes) 메모리와 준비 비용을 쓰므로 작은/크기 미상의 iterable은 기존 조회를 유지한다.
-        val nodeValues: Set<String>? = if (edges is Collection<*> && edges.size > state.nodes.size) {
-            state.nodes.keys.mapTo(HashSet(state.nodes.size)) { it.value }
-        } else null
-        val merged = mutableMapOf<EdgeSignature, EdgeAccumulator>()
-        for (edge in edges) {
-            if (nodeValues != null) {
-                if (edge.source.value !in nodeValues || edge.target.value !in nodeValues) continue
-            } else if (edge.source !in state.nodes || edge.target !in state.nodes) continue
-            val signature = EdgeSignature(edge.source, edge.target, edge.kind, edge.origin)
-            merged.getOrPut(signature, ::EdgeAccumulator).add(edge)
-        }
-        return merged.entries.sortedWith(DELTA_ENTRY_COMPARATOR).map { (signature, value) -> DeltaEntry(signature, value) }
-    }
+    private fun collectDelta(edges: Iterable<GraphEdge>): List<EdgeAccumulator> =
+        accumulateEdges(edges, state.nodes).sortedWith(DELTA_ENTRY_COMPARATOR)
 
-    private fun mergeSortedEdges(base: List<GraphEdge>, delta: List<DeltaEntry>): List<GraphEdge> {
+    private fun mergeSortedEdges(base: List<GraphEdge>, delta: List<EdgeAccumulator>): List<GraphEdge> {
         if (delta.isEmpty()) return base
         val merged = ArrayList<GraphEdge>(base.size + delta.size)
         var baseIndex = 0
@@ -301,21 +287,21 @@ public class CodeGraph private constructor(
         while (baseIndex < base.size && deltaIndex < delta.size) {
             val baseEdge = base[baseIndex]
             val deltaEntry = delta[deltaIndex]
-            val comparison = compareEdgeToSignature(baseEdge, deltaEntry.signature)
+            val comparison = compareEdgeToSignature(baseEdge, deltaEntry)
             when {
                 comparison < 0 -> {
                     merged += baseEdge
                     baseIndex++
                 }
                 comparison > 0 -> {
-                    merged += materialize(deltaEntry.signature, deltaEntry.accumulator.weight, deltaEntry.accumulator.callSiteLines)
+                    merged += materialize(deltaEntry, deltaEntry.weight, deltaEntry.callSiteLines)
                     deltaIndex++
                 }
                 else -> {
                     merged += materialize(
-                        deltaEntry.signature,
-                        baseEdge.weight + deltaEntry.accumulator.weight,
-                        mergeCallSiteLines(baseEdge.callSiteLines, deltaEntry.accumulator.callSiteLines),
+                        deltaEntry,
+                        baseEdge.weight + deltaEntry.weight,
+                        mergeCallSiteLines(baseEdge.callSiteLines, deltaEntry.callSiteLines),
                     )
                     baseIndex++
                     deltaIndex++
@@ -325,7 +311,7 @@ public class CodeGraph private constructor(
         while (baseIndex < base.size) merged += base[baseIndex++]
         while (deltaIndex < delta.size) {
             val entry = delta[deltaIndex++]
-            merged += materialize(entry.signature, entry.accumulator.weight, entry.accumulator.callSiteLines)
+            merged += materialize(entry, entry.weight, entry.callSiteLines)
         }
         return merged
     }
@@ -360,17 +346,44 @@ public class CodeGraph private constructor(
         val compilerAuthoredCallersById: Map<NodeId, CompilerAuthoredCaller> = compilerAuthoredCallers.associateBy { it.caller }
     }
 
-    private data class EdgeSignature(
-        val source: NodeId,
-        val target: NodeId,
-        val kind: EdgeKind,
-        val origin: EdgeOrigin,
-    )
+    // lookup은 map에 넣지 않는다. 저장된 accumulator의 identity는 고정되고 weight/줄은 hash에 참여하지 않는다.
+    private sealed class EdgeSignature {
+        abstract val source: NodeId
+        abstract val target: NodeId
+        abstract val kind: EdgeKind
+        abstract val origin: EdgeOrigin
 
-    private data class DeltaEntry(val signature: EdgeSignature, val accumulator: EdgeAccumulator)
+        final override fun equals(other: Any?): Boolean = other is EdgeSignature &&
+            source == other.source && target == other.target && kind == other.kind && origin == other.origin
+
+        final override fun hashCode(): Int {
+            var result = source.hashCode()
+            result = 31 * result + target.hashCode()
+            result = 31 * result + kind.hashCode()
+            return 31 * result + origin.hashCode()
+        }
+    }
+
+    private class EdgeLookup : EdgeSignature() {
+        override var source: NodeId = NodeId("lookup")
+        override var target: NodeId = NodeId("lookup")
+        override var kind: EdgeKind = EdgeKind.CALL
+        override var origin: EdgeOrigin = EdgeOrigin.BYTECODE
+
+        fun select(edge: GraphEdge) {
+            source = edge.source
+            target = edge.target
+            kind = edge.kind
+            origin = edge.origin
+        }
+    }
 
     /** 호출 줄이 없는 관계는 별도 set을 할당하지 않는다. */
-    private class EdgeAccumulator {
+    private class EdgeAccumulator(edge: GraphEdge) : EdgeSignature() {
+        override val source: NodeId = edge.source
+        override val target: NodeId = edge.target
+        override val kind: EdgeKind = edge.kind
+        override val origin: EdgeOrigin = edge.origin
         var weight: Int = 0
         var callSiteLines: MutableSet<Int>? = null
 
@@ -471,8 +484,7 @@ public class CodeGraph private constructor(
                         val retained = targets.filter(nodes::containsKey).distinct().sorted()
                         if (retained.size < 2) retained else CanonicalTargets(retained)
                     }
-                    call.copy(resolvedTargets = canonical,
-                        declaration = call.declaration?.takeUnless { declaration ->
+                    val declaration = call.declaration?.takeUnless { declaration ->
                             declaration.scope == CallDeclarationScope.PROJECT &&
                                 (declaration.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(declaration.target).attributes) ||
                                 call.kind == InvocationKind.INTERFACE && declaration.scope == CallDeclarationScope.EXTERNAL &&
@@ -480,7 +492,11 @@ public class CodeGraph private constructor(
                         }?.let { declaration ->
                             require(declaration.ownerChain.size in 1..CallDeclaration.MAX_OWNER_CHAIN) { "invalid call declaration chain size" }
                             declaration.copy(ownerChain = declaration.ownerChain.toList())
-                        })
+                        }
+                    // 이미 같은 불변 빈 후보 목록/선언이면 새 target identity까지 다시 만들지 않는다.
+                    // 호출자가 전달한 mutable 목록과 선언 chain의 방어 복사는 위 정규화를 그대로 따른다.
+                    if (canonical === call.resolvedTargets && declaration === call.declaration) call
+                    else call.copy(resolvedTargets = canonical, declaration = declaration)
                 }
                 .distinct().sorted()
         }
@@ -494,16 +510,28 @@ public class CodeGraph private constructor(
         }
 
         private fun mergeAllEdges(edges: Iterable<GraphEdge>, nodes: Map<NodeId, GraphNode>): List<GraphEdge> {
-            val merged = mutableMapOf<EdgeSignature, EdgeAccumulator>()
-            for (edge in edges) {
-                if (edge.source !in nodes || edge.target !in nodes) continue
-                val signature = EdgeSignature(edge.source, edge.target, edge.kind, edge.origin)
-                merged.getOrPut(signature, ::EdgeAccumulator).add(edge)
-            }
-            return merged.map { (signature, value) ->
-                GraphEdge(signature.source, signature.target, signature.kind, value.weight,
-                    signature.origin, value.callSiteLines?.sorted().orEmpty())
+            return accumulateEdges(edges, nodes).map { value ->
+                GraphEdge(value.source, value.target, value.kind, value.weight,
+                    value.origin, value.callSiteLines?.sorted().orEmpty())
             }.sorted()
+        }
+
+        private fun accumulateEdges(edges: Iterable<GraphEdge>, nodes: Map<NodeId, GraphNode>): Collection<EdgeAccumulator> {
+            // 큰 Collection은 현재 key 값만 한 번 복사해 endpoint별 NodeId boxing을 피한다.
+            val nodeValues: Set<String>? = if (edges is Collection<*> && edges.size > nodes.size) {
+                nodes.keys.mapTo(HashSet(nodes.size)) { it.value }
+            } else null
+            val merged = mutableMapOf<EdgeSignature, EdgeAccumulator>()
+            val lookup = EdgeLookup()
+            for (edge in edges) {
+                if (nodeValues != null) {
+                    if (edge.source.value !in nodeValues || edge.target.value !in nodeValues) continue
+                } else if (edge.source !in nodes || edge.target !in nodes) continue
+                lookup.select(edge)
+                val accumulator = merged[lookup] ?: EdgeAccumulator(edge).also { merged[it] = it }
+                accumulator.add(edge)
+            }
+            return merged.values
         }
 
         private data class CompilerPositionKey(
@@ -554,8 +582,8 @@ public class CodeGraph private constructor(
             return if (retained.size == references.size) references else retained
         }
 
-        private val DELTA_ENTRY_COMPARATOR = Comparator<Map.Entry<EdgeSignature, EdgeAccumulator>> { left, right ->
-            compareSignatures(left.key, right.key)
+        private val DELTA_ENTRY_COMPARATOR = Comparator<EdgeAccumulator> { left, right ->
+            compareSignatures(left, right)
         }
 
         private fun compareEdgeToSignature(edge: GraphEdge, signature: EdgeSignature): Int {
