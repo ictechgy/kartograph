@@ -60,8 +60,17 @@ public object SourcePathIndex {
         } catch (error: SecurityException) {
             projectRoot
         }
-        val index = byFileNameOrNull(root)
-        return resolvePaths(graph, root, index.orEmpty(), traversalFailed = index == null)
+        val paths = mutableMapOf<String, MutableSet<Path>>()
+        var unreadable = 0
+        val failed = try {
+            ProjectTraversal.walkSourceDirectories(root, { unreadable++ }) { file ->
+                paths.getOrPut(file.fileName.toString()) { mutableSetOf() }.add(file)
+            }
+            false
+        } catch (_: IOException) { true } catch (_: SecurityException) { true }
+        val resolved = resolvePaths(graph, root, if (failed) emptyMap() else paths, traversalFailed = failed)
+        return if (unreadable == 0) resolved else resolved.copy(limitations = resolved.limitations +
+            "unreadable-source-directories: $unreadable directory(s) were not scanned; resolved paths are unique only among observed sources and omitted directories may contain additional matches")
     }
 
     /** 선택된 compiler 소스만 대조한다. 생성 디렉터리도 명시됐으면 포함하고 외부 경로는 확정하지 않는다. */

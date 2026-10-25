@@ -277,9 +277,16 @@ public class CodeGraph private constructor(
     }
 
     private fun collectDelta(edges: Iterable<GraphEdge>): List<DeltaEntry> {
+        // 큰 Collection에서 endpoint마다 NodeId를 boxing하는 대신 현재 key 값만 한 번 복사한다.
+        // O(nodes) 메모리와 준비 비용을 쓰므로 작은/크기 미상의 iterable은 기존 조회를 유지한다.
+        val nodeValues: Set<String>? = if (edges is Collection<*> && edges.size > state.nodes.size) {
+            state.nodes.keys.mapTo(HashSet(state.nodes.size)) { it.value }
+        } else null
         val merged = mutableMapOf<EdgeSignature, EdgeAccumulator>()
         for (edge in edges) {
-            if (edge.source !in state.nodes || edge.target !in state.nodes) continue
+            if (nodeValues != null) {
+                if (edge.source.value !in nodeValues || edge.target.value !in nodeValues) continue
+            } else if (edge.source !in state.nodes || edge.target !in state.nodes) continue
             val signature = EdgeSignature(edge.source, edge.target, edge.kind, edge.origin)
             merged.getOrPut(signature, ::EdgeAccumulator).add(edge)
         }

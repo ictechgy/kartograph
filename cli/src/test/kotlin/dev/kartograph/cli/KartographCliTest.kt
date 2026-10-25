@@ -1275,7 +1275,7 @@ class KartographCliTest {
     }
 
     @Test
-    fun `dead reports missing input hints only when findings are reported`(@TempDir root: Path) {
+    fun `dead retains missing input hints when findings are empty or suppressed`(@TempDir root: Path) {
         val classes = root.resolve("classes").createDirectories()
         val source = root.resolve("HintEntry.java")
         source.writeText(
@@ -1315,16 +1315,16 @@ class KartographCliTest {
         root.resolve("rules.pro").writeText("-keep class dev.kartograph.cli.** { *; }\n")
         val retained = execute(*configured)
         assertEquals(ExitStatus.SUCCESS.code, retained.status)
-        kotlin.test.assertFalse(retained.output.contains("input-hint\t"))
+        assertContains(retained.output, "input-hint\tmissing-classpath\t")
 
         // baseline이 모든 finding을 억제하면 보고 finding이 0건이므로 hint도 나오지 않는다.
         val capture = execute("baseline", "--write", "hints-baseline.json", *stub.drop(1).toTypedArray())
         assertEquals(ExitStatus.SUCCESS.code, capture.status)
-        kotlin.test.assertFalse(capture.output.contains("input-hint\t"))
+        assertContains(capture.output, "input-hint\tmissing-classpath\t")
         val suppressed = execute(*stub, "--baseline", "hints-baseline.json")
         assertEquals(ExitStatus.SUCCESS.code, suppressed.status)
         kotlin.test.assertFalse(suppressed.output.contains("unreachable\t"))
-        kotlin.test.assertFalse(suppressed.output.contains("input-hint\t"))
+        assertContains(suppressed.output, "input-hint\tmissing-classpath\t")
     }
 
     @Test

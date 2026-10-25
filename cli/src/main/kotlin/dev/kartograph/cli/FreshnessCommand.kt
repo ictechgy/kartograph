@@ -13,10 +13,10 @@ import java.nio.file.Path
 internal object FreshnessCommand {
     fun run(arguments: List<String>, output: PrintStream, error: PrintStream): Int {
         if (arguments == listOf("--help")) {
-            output.println("Usage: kartograph verify-snapshot --graph-file <file> --project <directory> [--snapshot-max-mib <1..128>] [--scope <project:variant>] [--input <external/slot=path>]...")
+            output.println("Usage: kartograph verify-snapshot --graph-file <file> --project <directory> [--snapshot-max-mib <1..1024>] [--scope <project:variant>] [--input <external/slot=path>]...")
             output.println("Optional ordered comparisons: --classes <root>, --classpath <root>, --artifact <Gradle-task-path>, --compiler <javac|kotlin> (repeatable).")
             output.println("--input-bindings <file> reads a generated local binding document; do not publish this file with snapshots.")
-            output.println("--snapshot-max-mib bounds the saved snapshot read to 1..128 MiB (default 64).")
+            output.println("--snapshot-max-mib bounds the saved snapshot read to 1..1024 MiB (default 64).")
             output.println("Exit 0: matching compiler evidence; 1: stale or unverified; 2: invalid input; 64: usage error. Saved queries remain offline.")
             return 0
         }
@@ -28,7 +28,7 @@ internal object FreshnessCommand {
         listOf("--scope", "--input-bindings", "--snapshot-max-mib").firstOrNull { (options[it]?.size ?: 0) > 1 }
             ?.let { return usage(error, "duplicate $it; give it at most once") }
         val snapshotLimit = SnapshotFiles.limit(options["--snapshot-max-mib"].orEmpty())
-            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 128")
+            ?: return usage(error, "--snapshot-max-mib must be one integer from 1 to 1024")
         return try {
             val explicit = try { inputBindings(options["--input"].orEmpty()) } catch (_: IllegalArgumentException) {
                 return usage(error, "--input must be external/<slot>=<path>, with each slot given once")

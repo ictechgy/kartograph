@@ -49,6 +49,7 @@ import org.gradle.work.DisableCachingByDefault
 /** 성공한 compiler provider의 main/test 그래프·보존 근거·내용 지문을 저장한다. */
 @DisableCachingByDefault(because = "Keep-rule includes and captured timestamp diagnostics require cache lifecycle validation")
 public abstract class KartographSnapshotTask : DefaultTask() {
+    @get:Internal internal var safeArgsCapture: (() -> SafeArgsGenerationLifecycle.Result)? = null
     @get:Nested
     public abstract val compilations: ListProperty<SnapshotCompilation>
 
@@ -101,6 +102,10 @@ public abstract class KartographSnapshotTask : DefaultTask() {
 
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val keepRuleFiles: ConfigurableFileCollection
+    @get:Input public abstract val keepRuleMode: Property<String>
+    @get:Input public abstract val useVariantKeepRules: Property<Boolean>
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    public abstract val excludedKeepRuleFiles: ConfigurableFileCollection
 
     /** AGP가 선언한 rule 중 build 출력 아래의 미생성 파일만 선택적으로 처리한다. */
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -132,6 +137,9 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     /** adapter가 캡처 범위에서 의도적으로 뺀 입력(예: unit-test component)을 snapshot limitation으로 알린다. */
     @get:Input public abstract val captureLimitations: ListProperty<String>
 
+    /** AGP PROJECT provider에서 선택한 Hilt artifact의 제한된 바이트 관계 검증을 허용한다. */
+    @get:Input public abstract val hiltArtifactObservation: Property<Boolean>
+
     @get:Input public abstract val scope: Property<String>
     @get:Input @get:Optional public abstract val revision: Property<String>
     @get:Input public abstract val includeSourcePaths: Property<Boolean>
@@ -148,8 +156,11 @@ public abstract class KartographSnapshotTask : DefaultTask() {
 
     init {
         snapshotMaxMiB.convention(QuerySnapshotCodec.DEFAULT_MAX_MIB)
+        keepRuleMode.convention("strict")
+        useVariantKeepRules.convention(true)
         indexCacheEnabled.convention(false)
         captureLimitations.convention(emptyList())
+        hiltArtifactObservation.convention(false)
         indexCacheDirectory.convention(buildDirectory.dir("kartograph/index-cache"))
         inferredCompilerEvidenceFiles.from(buildWitnessFiles.elements.map { files ->
             files.mapNotNull { managedCompilerEvidenceDirectory(it.asFile.toPath())?.toFile() }.filter { it.isDirectory }
@@ -178,6 +189,8 @@ public abstract class KartographSnapshotTask : DefaultTask() {
     public fun captureSnapshot() {
         val snapshotMaximumBytes = QuerySnapshotCodec.maximumBytes(snapshotMaxMiB.get())
         val project = projectDirectory.get().asFile.toPath()
+        val generation = safeArgsCapture?.invoke()
+        val generationReceipts = listOfNotNull(generation?.receipt?.let(dev.kartograph.export.GenerationReceiptCodec::parse))
         val processorOutputs = ProcessorOutputInputs(project, processorOutputConfigs.files.map { it.toPath() })
         val witnessPaths = buildWitnessFiles.files.filter { it.isFile }.map { it.toPath() }
         val witnesses = witnessPaths.map { path ->
@@ -200,7 +213,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val witness = witnesses.singleOrNull { it.artifact == identity && it.compiler == compilation.compiler.get() }
             require(witness != null) { "compiler witness identity does not match $identity" }
             val outputs = compilation.classDirectories.files.map { it.canonicalFile }
-            require(outputs.isNotEmpty() && outputs.all { it.isDirectory && it in selectedRoots }) {
+            require(outputs.isNotEmpty() && outputs.all { it.isDirectory && (it in selectedRoots || hiltArtifactObservation.get()) }) {
                 "missing compiler output for $identity; include and rebuild the selected compilation"
             }
             witness to outputs
@@ -213,12 +226,16 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val classpath = dependencyClasspath.files.filter { it.exists() }.map { it.toPath() }
         val resources = serviceResourceRoots.files.filter { it.exists() }.map { it.toPath() }
         val generated = generatedClassRoots.files.map { it.toPath() }
-        val scanner = KeepRuleScanner(project, includePrivateMembers.get())
-        val generatedRules = generatedKeepRuleFiles.files.map { it.toPath() }
+        require(keepRuleMode.get() in setOf("strict", "lenient")) { "keepRuleMode must be strict or lenient" }
+        val scanner = KeepRuleScanner(project, includePrivateMembers.get(), keepRuleMode.get() == "lenient")
+        val excluded = excludedKeepRuleFiles.files.mapTo(mutableSetOf()) { it.canonicalFile.toPath() }
+        val generatedRules = if (useVariantKeepRules.get()) generatedKeepRuleFiles.files.map { it.toPath() }
+            .filter { it.toFile().canonicalFile.toPath() !in excluded } else emptyList()
         val existingGeneratedRules = AndroidKeepRules.existing(generatedRules, buildDirectory.get().asFile.toPath())
         val missingGeneratedRules = generatedRules - existingGeneratedRules.toSet()
-        val rules = scanner.scan(keepRuleFiles.files.map { it.toPath() } + existingGeneratedRules)
+        val rules = scanner.scan(keepRuleFiles.files.filter { it.canonicalFile.toPath() !in excluded }.map { it.toPath() } + existingGeneratedRules)
         val files = roots.map { "classes" to it } + classpath.map { "classpath" to it } +
+            generation?.files.orEmpty() +
             processorOutputs.files +
             resources.map { "service-resources" to it } + generated.map { "generated-classes" to it } +
             sourceDirectories.files.map { "source-watch" to it.toPath() } +
@@ -239,8 +256,12 @@ public abstract class KartographSnapshotTask : DefaultTask() {
                 if (captured.path.startsWith("external/")) bindings[captured.path] = requested[index].path.toFile().canonicalFile.toPath()
             } + InputFingerprint("options", "snapshot-options", ContentFingerprint.values(listOf(
                 scope.get(), includeSourcePaths.get().toString(), includePrivateMembers.get().toString(), namespace.orNull.orEmpty(),
-            )))
-            return SnapshotProvenance(inputs, witnesses)
+                keepRuleMode.get(), useVariantKeepRules.get().toString(), excluded.size.toString(),
+            ) + if (hiltArtifactObservation.get()) listOf("hilt-artifact-observation", dev.kartograph.index.HiltClassTransforms.POLICY) else emptyList()))
+            val provenance = SnapshotProvenance(inputs, witnesses)
+            if (!hiltArtifactObservation.get() || compiledOutputs.all { (_, outputs) -> outputs.all { it in selectedRoots } }) return provenance
+            bindCompilerInputs(provenance, bindings)
+            return observeHiltArtifacts(provenance, bindings)
         }
         val indexCache = if (indexCacheEnabled.get()) ClassIndexCache(indexCacheDirectory.get().asFile.toPath()) else null
         val prepared = ContentFingerprint.withVerifiedCapture(::capture, indexCache) { observation, before ->
@@ -279,7 +300,19 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val compilerEnrichment = CompilerEvidenceIndexer.enrichWithCallPositions(indexed, roots, compilerEvidence,
                 if (compilerEvidence.isEmpty()) null else CompilerEvidenceContext(project, scope.get(), before, bindings))
             val compilerFacts = compilerEnrichment.result
-            val graph = compilerFacts.graph
+            val generationResult = if (generationReceipts.isEmpty()) null else dev.kartograph.index.GeneratedSourceIndexer.attribute(
+                project, indexed, compilerFacts.graph, roots, before, scope.get(), generationReceipts, bindings)
+            val graph = generationResult?.graph ?: compilerFacts.graph
+            val generationEvidence = generationResult?.let { attributed ->
+                val current = requireNotNull(generation)
+                val observations = attributed.receipts.map { receipt -> dev.kartograph.core.GenerationConsumptionObservation(
+                    requireNotNull(current.originContext), requireNotNull(current.currentContext), requireNotNull(current.invocation),
+                    current.currentAttempt, requireNotNull(current.originBasis), requireNotNull(current.currentGenerationStatus),
+                    dev.kartograph.core.GenerationDigests.inventory(receipt),
+                    dev.kartograph.core.GenerationDigests.declarations(attributed.declarations.filter { it.generatorTask == receipt.task }, before)) }
+                dev.kartograph.core.GenerationEvidence(attributed.receipts, attributed.declarations, observations)
+                    .also { it.requireMatches(graph, before, scope.get()) }
+            }
             val entryPoints = buildList {
                 manifestFile.orNull?.asFile?.toPath()?.let { manifest ->
                     require(namespace.isPresent) { "snapshot manifest requires its Android namespace" }
@@ -291,7 +324,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
                 }
             }
             val retention = DefaultRetention.find(graph, entryPoints, rules, indexed.hierarchy,
-                includePrivateMembers = includePrivateMembers.get())
+                includePrivateMembers = includePrivateMembers.get(), lenientKeepRules = keepRuleMode.get() == "lenient")
             val baseline = baselineFile.orNull?.asFile?.toPath()?.let { BaselineCodec.parse(Files.readString(it)) }.orEmpty()
             val suppressed = graph.nodes.values.filter { Finding(it.id, it.location).fingerprint in baseline }
                 .mapTo(mutableSetOf()) { it.id }
@@ -299,7 +332,11 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             // 경로만 옮기는 재조립이다. 콜백 사실 세 목록을 빠뜨리면 캡처 표식은 참인데 사실이 비어 콜백 간선이 사라진다.
             val located = if (paths == null) graph else relocateSnapshotSourcePaths(graph, paths.byNodeId)
             val outputObservations = dev.kartograph.index.ProcessorOutputIndexer.attribute(project, indexed, roots, processorOutputs.verify(scope.get()))
-            val compilerLimitations = compilerEnrichment.limitations + buildList {
+            val compilerLimitations = compilerEnrichment.limitations + scanner.diagnostics.map { "unknown-keep-rule: $it" } + buildList {
+                if (retention.any { it.reason == dev.kartograph.core.RetentionReason.UNKNOWN_KEEP_RULE })
+                    add("unknown-keep-rules: conservative retention because a keep rule or hierarchy is unresolved; not proof of reachability")
+                if (!useVariantKeepRules.get() || excluded.isNotEmpty())
+                    add("keep-rule-inputs-excluded: explicitly selected subset; omitted shrinker inputs are not assessed")
                 if (compilerFacts.unmappedReferences > 0) add("compiler-evidence-unmapped-references: ${compilerFacts.unmappedReferences}")
                 if (compilerFacts.outsideGraphReferences > 0) add("compiler-evidence-outside-graph: ${compilerFacts.outsideGraphReferences}")
                 if (compilerFacts.shadowedReferences > 0) add("compiler-evidence-shadowed-references: ${compilerFacts.shadowedReferences}")
@@ -314,22 +351,30 @@ public abstract class KartographSnapshotTask : DefaultTask() {
             val resourceProducerLimitations = ResourceProcessWitnesses.resourceLimitations(witnesses).filterNot {
                 resourceEvidence.bindings != null && it == ResourceProcessWitnesses.INVENTORY_UNVERIFIED
             }
-            val limitations = (RuntimeLimitationScanner.scan(indexed, selectedSources) +
+            val bindingReview = dev.kartograph.analysis.AndroidBindingReview.analyze(graph, indexed.hierarchy,
+                dev.kartograph.index.AndroidBindingScanner.scan(graph, roots,
+                    androidResourceDirectories.files.filter { it.isDirectory }.map { it.toPath() }, project,
+                    buildRoot = buildDirectory.get().asFile.toPath()),
+                retention)
+            val limitations = (bindingReview.diagnostics + RuntimeLimitationScanner.scan(indexed, selectedSources) +
+                generationResult?.limitations.orEmpty() + listOfNotNull(generation?.reason?.let { "generation-unverified: $it" }) +
                 dev.kartograph.index.ProcessorOutputIndexer.limitations(outputObservations) +
                 compilerLimitations + resourceProducerLimitations + resourceEvidence.limitations +
                 paths?.limitations.orEmpty() + captureLimitations.get() +
+                (if (before.transformations.isEmpty()) emptyList() else listOf(dev.kartograph.index.HiltClassTransforms.LIMITATION)) +
                 if (missingGeneratedRules.isEmpty()) emptyList() else
                     listOf("missing-generated-keep-files: ${missingGeneratedRules.size}")).distinct().sorted()
             val snapshot = QuerySnapshot(located, retention, limitations,
                 suppressed = suppressed, includePrivateMembers = includePrivateMembers.get(), revision = revision.orNull,
                 scope = scope.get(), provenance = before, processorGenerations = compilerFacts.processorGenerations,
                 processorOutputs = outputObservations, androidResourceEvidence = resourceEvidence.facts,
-                androidResourceBindings = resourceEvidence.bindings)
+                androidResourceBindings = resourceEvidence.bindings, generationEvidence = generationEvidence)
             val content = AndroidResourceSnapshotEvidence.render(snapshot, snapshotMaximumBytes)
             SnapshotOutput(content, indexed, before, located)
         }
         val finalVerification = ProvenanceVerifier.verify(prepared.provenance, project, scope.get(), bindings)
         require(finalVerification.status == "matched") { "compiler inputs changed during snapshot capture" }
+        require(safeArgsCapture?.invoke() == generation) { "generation evidence changed during snapshot capture" }
         val output = snapshotFile.get().asFile.toPath()
         val local = localBindingsFile.get().asFile.toPath()
         Files.createDirectories(requireNotNull(local.parent))
@@ -349,6 +394,30 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val provenance: SnapshotProvenance,
         val graph: CodeGraph,
     )
+
+    /** compiler 출력은 원래 지문으로 남기고 선택 artifact와 검증된 관계만 별도로 기록한다. */
+    private fun observeHiltArtifacts(provenance: SnapshotProvenance, bindings: Map<String, Path>): SnapshotProvenance {
+        val project = projectDirectory.get().asFile.toPath()
+        fun locate(input: InputFingerprint): Path = if (input.path.startsWith("external/")) bindings.getValue(input.path) else project.resolve(input.path)
+        val classes = provenance.inputs.filter { it.role == "classes" }
+        val outputs = provenance.witnesses.flatMap { it.outputs }.distinct()
+        fun same(left: InputFingerprint, right: InputFingerprint) =
+            left.sha256 == right.sha256 && locate(left).toRealPath() == locate(right).toRealPath()
+        // 같은 root는 기존 witness로 검증한다. 합쳐진 resource 클래스는 별도 바이트 복사 관측이다.
+        val selected = classes.filter { input -> outputs.none { same(it, input) } }
+        val originals = provenance.witnesses.filter { it.compiler in setOf("javac", "kotlin") }
+            .flatMap { it.outputs }.distinct().filter { output -> classes.none { same(output, it) } }
+        val primary = dev.kartograph.index.HiltClassTransforms.primarySourceNames(provenance.witnesses
+            .filter { it.compiler in setOf("javac", "kotlin") }.flatMap { it.inputs }.filter { it.role == "sources" }.map(::locate))
+        val resources = provenance.witnesses.filter { it.compiler == "agp-process-resources" }.flatMap { it.outputs }
+            .distinct().filter { output -> classes.none { same(output, it) } }
+        val included = dev.kartograph.index.HiltClassTransforms.selectPassthroughRoots(selected.map(::locate), resources.map(::locate)).toSet()
+        val passthrough = resources.filter { locate(it) in included }
+        val changed = dev.kartograph.index.HiltClassTransforms.verify(originals.map(::locate), selected.map(::locate), primary, passthrough.map(::locate))
+        require(changed.isNotEmpty()) { "selected artifact relocation has no supported Hilt transformation" }
+        return provenance.copy(transformations = listOf(dev.kartograph.core.ClassTransformObservation(scope.get(), path,
+            dev.kartograph.index.HiltClassTransforms.POLICY, originals, selected, changed, passthrough)))
+    }
 
     /** Gradle input으로 선언된 managed 후보 중 완료 receipt가 지목한 문서만 반환한다. */
     private fun bindCompilerEvidence(provenance: SnapshotProvenance, candidates: List<Path>,
@@ -424,7 +493,8 @@ public abstract class KartographSnapshotTask : DefaultTask() {
         val project = projectDirectory.get().asFile.toPath()
         // resource producer witness는 res 디렉터리와 merged manifest를 기록한다. build 디렉터리가 project 밖이면 이들도 external이다.
         val resourceInputs = androidResourceDirectories.files + listOfNotNull(manifestFile.orNull?.asFile)
-        val groups = listOf(compilerInputFiles.files, sourceFiles.files, buildInputFiles.files, resourceInputs, classRoots.files,
+        val originalOutputs = compilations.get().flatMap { it.classDirectories.files }
+        val groups = listOf(compilerInputFiles.files, sourceFiles.files, buildInputFiles.files, resourceInputs, classRoots.files, originalOutputs,
             dependencyClasspath.files).map { group -> group.map { it.canonicalFile.toPath() } }
         val binder = CompilerInputBinder(project, groups)
         val candidates = groups.flatten().distinct()

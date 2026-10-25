@@ -3,13 +3,21 @@ package dev.kartograph.export
 /** v2의 고정 field 순서와 문자열 사전을 한곳에서 관리한다. 해제 뒤에는 v1과 같은 검증 경로를 쓴다. */
 internal class CompactSnapshotGraph(private val positions: Map<String, Int>) {
     private val strings = linkedMapOf<String, Int>()
+    private val expansionBudget = ExpansionBudget()
     val table: List<String> get() = strings.keys.toList()
-    fun text(value: String): Int = strings.getOrPut(value) { strings.size }
+    fun text(value: String): Int {
+        expansionBudget.spend(value)
+        return strings.getOrPut(value) { strings.size }
+    }
+    fun reference(value: String): Int {
+        expansionBudget.spend(value)
+        return positions.getValue(value)
+    }
 
     fun node(value: Map<String, Any?>): List<Any?> = NODE_FIELDS.map { key -> encode(key, value[key]) }
     fun call(value: Map<String, Any?>): List<Any?> = CALL_FIELDS.map { key -> when (key) {
-        "caller" -> positions.getValue(value.getValue(key) as String)
-        "resolvedTargets" -> (value.getValue(key) as List<*>).map { positions.getValue(it as String) }
+        "caller" -> reference(value.getValue(key) as String)
+        "resolvedTargets" -> (value.getValue(key) as List<*>).map { reference(it as String) }
         "ordinal" -> value[key]
         else -> encode(key, value[key])
     } }

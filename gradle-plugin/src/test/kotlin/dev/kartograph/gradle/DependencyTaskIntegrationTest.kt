@@ -108,7 +108,7 @@ class DependencyTaskIntegrationTest {
                   apply plugin: 'java-library'
                   java { toolchain { languageVersion = JavaLanguageVersion.of(${Runtime.version().feature()}) } }
                 }
-            """.trimIndent())
+            """.trimIndent() + "\n" + OwnedTestKitHome.identityTask)
             write(checkout, "library/src/main/java/library/Library.java", "package library; public class Library {}")
             write(checkout, "consumer/build.gradle", """
                 plugins { id 'io.github.ictechgy.kartograph' }
@@ -128,33 +128,37 @@ class DependencyTaskIntegrationTest {
             copy(shared, home.resolve("kartograph-fixture/shared.jar"))
             return checkout to home
         }
-        fun build(checkout: Path, home: Path, vararg options: String): TaskOutcome? = GradleRunner.create()
-            .withProjectDir(checkout.toFile()).withTestKitDir(home.toFile()).withPluginClasspath()
-            .withArguments(listOf(":consumer:kartographDependencies") + options +
-                listOf("--build-cache", "--offline", "--configuration-cache", "--stacktrace"))
-            .build().task(":consumer:kartographDependencies")?.outcome
+        fun build(checkout: Path, home: OwnedTestKitHome, vararg options: String): TaskOutcome? = home.build(GradleRunner.create()
+            .withProjectDir(checkout.toFile()).withPluginClasspath()
+            .withArguments(listOf(OwnedTestKitHome.IDENTITY_TASK, ":consumer:kartographDependencies") + options +
+                listOf("--build-cache", "--offline", "--configuration-cache", "--stacktrace")))
+            .task(":consumer:kartographDependencies")?.outcome
         fun outputs(checkout: Path): List<String> = listOf("consumer/build/reports/kartograph/jvm-dependencies.txt",
             "consumer/build/kartograph/captured-dependencies.json").map { Files.readString(checkout.resolve(it)) }
         val (first, firstHome) = checkout("first")
-        assertEquals(TaskOutcome.SUCCESS, build(first, firstHome))
-        val original = outputs(first)
-        val (second, secondHome) = checkout("second")
-        val restored = build(second, secondHome)
-        val restoredOutputs = outputs(second)
-        val rerun = build(second, secondHome, "--rerun")
-        val fresh = outputs(second)
-        val locations = listOf(first, firstHome, second, secondHome).map(Path::toString)
-        val diagnostics = ((McpJsonCodec.parse(original[0]) as Map<*, *>)["diagnostics"] as List<*>).map { it as Map<*, *> }
-        assertAll(
-            { assertEquals(TaskOutcome.FROM_CACHE, restored, "the relocated checkout must reuse the cached dependency review") },
-            { assertEquals(TaskOutcome.SUCCESS, rerun) },
-            { assertEquals(original, fresh, "a fresh run in another checkout must write the same report and fingerprints") },
-            { assertEquals(fresh, restoredOutputs) },
-            { assertTrue(original[0].contains("file:local.jar#") && original[0].contains("file:shared.jar#"), original[0]) },
-            // 보고서의 artifact 열은 예전처럼 실제 파일 이름이다(project 의존성은 class 디렉터리 이름).
-            { assertEquals(listOf("local.jar", "main", "shared.jar"), diagnostics.map { it["artifact"] }.sortedBy(Any?::toString)) },
-            { assertTrue(original.none { text -> locations.any(text::contains) }, original.toString()) },
-        )
+        OwnedTestKitHome(root, firstHome, first).use { firstDaemon ->
+            assertEquals(TaskOutcome.SUCCESS, build(first, firstDaemon))
+            val original = outputs(first)
+            val (second, secondHome) = checkout("second")
+            OwnedTestKitHome(root, secondHome, second).use { secondDaemon ->
+                val restored = build(second, secondDaemon)
+                val restoredOutputs = outputs(second)
+                val rerun = build(second, secondDaemon, "--rerun")
+                val fresh = outputs(second)
+                val locations = listOf(first, firstHome, second, secondHome).map(Path::toString)
+                val diagnostics = ((McpJsonCodec.parse(original[0]) as Map<*, *>)["diagnostics"] as List<*>).map { it as Map<*, *> }
+                assertAll(
+                    { assertEquals(TaskOutcome.FROM_CACHE, restored, "the relocated checkout must reuse the cached dependency review") },
+                    { assertEquals(TaskOutcome.SUCCESS, rerun) },
+                    { assertEquals(original, fresh, "a fresh run in another checkout must write the same report and fingerprints") },
+                    { assertEquals(fresh, restoredOutputs) },
+                    { assertTrue(original[0].contains("file:local.jar#") && original[0].contains("file:shared.jar#"), original[0]) },
+                    // 보고서의 artifact 열은 예전처럼 실제 파일 이름이다(project 의존성은 class 디렉터리 이름).
+                    { assertEquals(listOf("local.jar", "main", "shared.jar"), diagnostics.map { it["artifact"] }.sortedBy(Any?::toString)) },
+                    { assertTrue(original.none { text -> locations.any(text::contains) }, original.toString()) },
+                )
+            }
+        }
     }
 
     @Test

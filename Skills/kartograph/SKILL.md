@@ -73,6 +73,16 @@ counts in the assessment; default retention still applies. See
 
 ## Change impact preflight
 
+For an actual patch, use `impact --git-base <ref> --git-head <ref> --project <head-checkout>` with matching scoped
+`--base-graph` and `--graph-file` captures. Use `--working-tree` instead of `--git-head` for staged, unstaged and
+non-ignored untracked edits. Supply `--base-project` and separate external `--input` / `--base-input` bindings.
+The additive `kartograph-change-impact` wrapper preserves the original `graphImpact`, resolved Git endpoints,
+whole-file seed precision, exact snapshot-byte identities and separate before/current freshness. Rebuild and capture
+both sides with the same tool version; a revision label alone cannot establish compiler freshness. The mode never builds,
+checks out or fetches. Keep the files quiescent during sequential Git selection and hashing. Empty/stale/unverified results
+cannot approve edits or test skipping. With fixed MCP startup projects, `change_impact` accepts `base` and optional `head`
+or `workingTree: true`; it rechecks freshness on each call, while loaded graphs still require server restart after recapture.
+
 Before an authorized edit, capture the matching compiled inputs with `kartograph snapshot ... --include-paths`
 and run `kartograph impact '<symbol-or-usr>' --graph-file snapshot.json`. Repeat `--symbol` for multiple declarations.
 For large inputs, add `snapshot --compact` to store the same facts with a v2 string table and indexed rows; query/impact read both versions.

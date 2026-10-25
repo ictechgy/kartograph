@@ -49,13 +49,28 @@ public object AdoptionReporter {
         unmatchedKeepRules: Collection<KeepRule> = emptyList(),
         inputHints: Collection<InputHint> = emptyList(),
         externalRetentionContexts: Collection<ExternalRetentionDocumentContext>,
+    ): String = render(format, findings, limitations, suppressedCount, confidence, expiredSuppressions,
+        unmatchedKeepRules, inputHints, externalRetentionContexts, emptyList())
+
+    /** 입력 탐색·규칙 해석의 부분 실패도 빈 findings와 독립적으로 모든 형식에 보존한다. */
+    public fun render(
+        format: ReportFormat,
+        findings: Collection<Finding>,
+        limitations: Collection<AnalysisLimitation>,
+        suppressedCount: Int,
+        confidence: Map<NodeId, FindingConfidence>,
+        expiredSuppressions: Int,
+        unmatchedKeepRules: Collection<KeepRule>,
+        inputHints: Collection<InputHint>,
+        externalRetentionContexts: Collection<ExternalRetentionDocumentContext>,
+        diagnostics: Collection<String>,
     ): String {
         val sortedRules = unmatchedKeepRules.sortedWith(
             compareBy({ it.location.path }, { it.location.line ?: 0 }),
         )
         // 호출자의 컬렉션 종류와 무관하게 enum 선언 순서로 고정해 결정적 출력을 만든다.
         val sortedHints = inputHints.distinct().sortedBy { hint -> hint.ordinal }
-        val externalCaveats = ExternalRetentionCaveats.messages(externalRetentionContexts)
+        val externalCaveats = (ExternalRetentionCaveats.messages(externalRetentionContexts) + diagnostics).distinct().sorted()
         return when (format) {
             ReportFormat.TEXT -> text(findings, limitations, sortedRules, sortedHints, externalCaveats)
             ReportFormat.GRADLE -> gradle(findings, limitations, sortedRules, sortedHints, externalCaveats)
@@ -235,7 +250,7 @@ public object AdoptionReporter {
 
     private fun StringBuilder.appendLocation(location: SourceLocation?) {
         if (location == null) append("null") else {
-            append("{\"column\": ${location.column ?: 1}, \"line\": ${location.line ?: 1}, \"path\": \"")
+            append("{\"column\": ${location.column}, \"line\": ${location.line}, \"path\": \"")
             append(jsonEscape(location.path)).append("\"}")
         }
     }
@@ -249,7 +264,9 @@ public object AdoptionReporter {
         externalCaveats: List<String>,
     ): String = buildString {
         append("{\n  \"${'$'}schema\": \"https://json.schemastore.org/sarif-2.1.0.json\",\n  \"runs\": [\n    {\n")
-        append("      \"invocations\": [{\"executionSuccessful\": true, \"toolExecutionNotifications\": [")
+        append("      \"invocations\": [{\"executionSuccessful\": ")
+        append(InputHint.UNKNOWN_KEEP_RULES !in inputHints)
+        append(", \"toolExecutionNotifications\": [")
         val sortedLimitations = limitations.sortedBy(AnalysisLimitation::name)
         sortedLimitations.forEachIndexed { index, limitation ->
             if (index > 0) append(',')
@@ -289,8 +306,13 @@ public object AdoptionReporter {
                 append("        {\"level\": \"warning\", \"locations\": [")
                 finding.location?.let { location ->
                     append("{\"physicalLocation\": {\"artifactLocation\": {\"uri\": \"")
-                    append(jsonEscape(uriReference(location.path))).append("\"}, \"region\": {\"startColumn\": ")
-                    append(location.column ?: 1).append(", \"startLine\": ").append(location.line ?: 1).append("}}}")
+                    append(jsonEscape(uriReference(location.path))).append("\"}")
+                    location.line?.let { line ->
+                        append(", \"region\": {\"startLine\": ").append(line)
+                        location.column?.let { append(", \"startColumn\": ").append(it) }
+                        append('}')
+                    }
+                    append("}}")
                 }
                 append("], \"message\": {\"text\": \"").append(jsonEscape(finding.unreachableMessage()))
                 append("\"}, \"ruleId\": \"dead\"")
@@ -350,7 +372,7 @@ public object AdoptionReporter {
             unmatchedKeepRules.forEach { rule ->
                 append("- `").append(markdownCell(rule.location.toPlainTextLocation()))
                 append("` — keep rule ").append(rule.declarationKind.name.lowercase())
-                append(" `").append(markdownCell(rule.classNamePattern))
+                append(" `").append(markdownCell(rule.rawSpecification ?: rule.classNamePattern))
                 append("` matched no declarations in the indexed graph\n")
             }
             append("\nUnmatched rules may target declarations outside the indexed inputs; ")
@@ -383,5 +405,6 @@ public object AdoptionReporter {
 
     // 규칙이 무용하다는 판정이 아니라 색인된 그래프 입력에서 매칭이 없었다는 측정 사실만 담는다.
     private fun KeepRule.unmatchedMessage(): String =
-        "keep rule ${declarationKind.name.lowercase()} $classNamePattern matched no declarations in the indexed graph"
+        "keep rule ${declarationKind.name.lowercase()} $classNamePattern matched no declarations in the indexed graph" +
+            (rawSpecification?.let { "; specification: $it" } ?: (extendsPattern?.let { "; extends $it" } ?: ""))
 }

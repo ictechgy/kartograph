@@ -65,8 +65,16 @@ public data class QuerySnapshot(
     val androidResourceEvidence: AndroidResourceEvidence? = null,
     /** 저장 당시 main resource→선택 R 산출물의 대응이다. 현재 freshness는 별도로 검사한다. */
     val androidResourceBindings: AndroidResourceBindingEvidence? = null,
+    /** 생성 task의 관측과 compiler 바이트로 결박한 신원이다. 런타임 보존 사실과 독립적이다. */
+    val generationEvidence: dev.kartograph.core.GenerationEvidence? = null,
 ) {
     init {
+        if (generationEvidence == null) {
+            require(graph.nodes.values.none { NodeAttribute.GENERATED_SOURCE_EVIDENCE in it.attributes }) {
+                "generated graph marker requires generation evidence"
+            }
+        } else generationEvidence.requireMatches(graph, requireNotNull(provenance) { "generation evidence requires provenance" },
+            requireNotNull(scope) { "generation evidence requires scope" })
         androidResourceBindings?.requireMatches(
             requireNotNull(androidResourceEvidence) { "resource bindings require resource facts" },
             requireNotNull(provenance) { "resource bindings require provenance" },
@@ -99,13 +107,13 @@ public object QuerySnapshotCodec {
     /** 저장 snapshot의 호환 기본 상한이며 opt-in하지 않은 호출에 적용한다. */
     public const val DEFAULT_MAX_MIB: Int = 64
     /** 명시적 저장 snapshot 상한이 넘을 수 없는 절대 경계다. */
-    public const val MAX_MIB: Int = 128
+    public const val MAX_MIB: Int = 1024
     /** 한 번에 읽는 질의 문서의 상한이다. */
     public const val MAX_BYTES: Int = DEFAULT_MAX_MIB * 1024 * 1024
 
     /** CLI/adapter의 MiB 설정을 overflow 없는 byte 상한으로 검증한다. */
     public fun maximumBytes(maximumMiB: Int): Int {
-        require(maximumMiB in 1..MAX_MIB) { "snapshot maximum must be 1..128 MiB" }
+        require(maximumMiB in 1..MAX_MIB) { "snapshot maximum must be 1..1024 MiB" }
         return maximumMiB * 1024 * 1024
     }
 
@@ -116,6 +124,7 @@ public object QuerySnapshotCodec {
     public fun render(snapshot: QuerySnapshot, compact: Boolean): String = render(snapshot, compact, MAX_BYTES)
 
     private fun renderContent(snapshot: QuerySnapshot, compact: Boolean, maximumBytes: Int): String {
+        snapshot.generationEvidence?.requireMatches(snapshot.graph, requireNotNull(snapshot.provenance), requireNotNull(snapshot.scope))
         snapshot.graph.compilerSourceUseEvidence?.let { evidence ->
             evidence.requireMatchesGraph(snapshot.graph)
             evidence.requireMatchesProvenance(requireNotNull(snapshot.provenance) { "compiler source uses require snapshot provenance" },
@@ -130,7 +139,8 @@ public object QuerySnapshotCodec {
         val encoding = if (compact) CompactSnapshotGraph(positions.mapKeys { it.key.value }) else null
         return boundedJsonValue(sortedMapOf(
         "format" to FORMAT,
-        "version" to if (compact) 2 else 1,
+        "version" to (if (compact) 2 else 1) + (if (snapshot.generationEvidence != null) 2 else 0),
+        "generationEvidence" to snapshot.generationEvidence?.let(GenerationEvidenceSnapshotCodec::value),
         "toolVersion" to snapshot.toolVersion,
         "revision" to snapshot.revision, "scope" to snapshot.scope,
         "provenance" to snapshot.provenance?.let(BuildWitnessCodec::provenanceValue),
@@ -161,7 +171,7 @@ public object QuerySnapshotCodec {
                 }
             },
             "edges" to snapshot.graph.edges.map { edge ->
-                if (encoding != null) listOf(positions.getValue(edge.source), positions.getValue(edge.target),
+                if (encoding != null) listOf(encoding.reference(edge.source.value), encoding.reference(edge.target.value),
                     encoding.text(edge.kind.name.lowerCamel()), encoding.text(edge.origin.name.lowerCamel()), edge.weight)
                 else sortedMapOf<String, Any?>("source" to edge.source.value, "target" to edge.target.value,
                     "kind" to edge.kind.name.lowerCamel(), "origin" to edge.origin.name.lowerCamel(), "weight" to edge.weight)
@@ -190,7 +200,7 @@ public object QuerySnapshotCodec {
             ).filterValues { it != null } },
             "compilerCallEvidence" to if (snapshot.graph.compilerCallPositionsCaptured) snapshot.graph.locatedCompilerReferences.map { item ->
                 if (encoding == null) compilerCallEvidenceValue(item) else listOf(
-                    positions.getValue(item.source), positions.getValue(item.target),
+                    encoding.reference(item.source.value), encoding.reference(item.target.value),
                     encoding.text(compilerEvidencePath(item.file.path)), encoding.text(item.file.sha256),
                     encoding.text(item.collector), encoding.text(item.compilerVersion), encoding.text(item.coordinateBasis.name.lowerCamel()),
                     item.offsetUtf16, item.endOffsetUtf16, item.line, item.column, item.generated,
@@ -253,11 +263,13 @@ public object QuerySnapshotCodec {
         requireMaximum(content, maximumBytes)
         val document = objectValue(SnapshotJsonParser(content).parse())
         val version = integer(document["version"])
-        require(document["format"] == FORMAT && version in 1..2) {
+        require(document["format"] == FORMAT && version in 1..4) {
             "unsupported query snapshot; capture it with `kartograph snapshot`"
         }
+        require((version >= 3) == document.containsKey("generationEvidence")) { "generation evidence requires snapshot version 3 or 4" }
+        val generationEvidence = if (version >= 3) GenerationEvidenceSnapshotCodec.parse(document["generationEvidence"]) else null
         val rawGraph = objectValue(document["graph"])
-        val graph = if (version == 2) CompactSnapshotGraph.expand(rawGraph) else rawGraph
+        val graph = if (version % 2 == 0) CompactSnapshotGraph.expand(rawGraph) else rawGraph
         val sourceNames = rawGraph["kotlinSourceNames"]?.let { value ->
             list(value).map { raw ->
                 val item = objectValue(raw)
@@ -486,7 +498,8 @@ public object QuerySnapshotCodec {
             }.distinct().sortedBy { it.canonicalDocument } else emptyList(),
             enumDecisionEvidence = if ("enumDecisions" in document) CompilerEnumDecisionSnapshotCodec.parse(document["enumDecisions"]) else null,
             androidResourceEvidence = if ("androidResources" in document) AndroidResourceEvidenceSnapshotCodec.parse(document["androidResources"]) else null,
-            androidResourceBindings = if ("androidResourceBindings" in document) AndroidResourceBindingSnapshotCodec.parse(document["androidResourceBindings"]) else null)
+            androidResourceBindings = if ("androidResourceBindings" in document) AndroidResourceBindingSnapshotCodec.parse(document["androidResourceBindings"]) else null,
+            generationEvidence = generationEvidence)
     }
 
     /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */
@@ -497,7 +510,7 @@ public object QuerySnapshotCodec {
 
     private fun requireValidMaximum(maximumBytes: Int) {
         require(maximumBytes in 1..QuerySnapshotCodec.maximumBytes(MAX_MIB)) {
-            "query snapshot byte maximum must be between 1 byte and 128 MiB"
+            "query snapshot byte maximum must be between 1 byte and 1024 MiB"
         }
     }
 
@@ -552,7 +565,7 @@ public object QuerySnapshotCodec {
         nodes: List<GraphNode>,
     ): List<LocatedCompilerReference> {
         val rows = list(rawGraph["compilerCallEvidence"])
-        val evidence = if (version == 1) rows.map { raw ->
+        val evidence = if (version % 2 == 1) rows.map { raw ->
             val item = objectValue(raw)
             require(item.keys == COMPILER_CALL_EVIDENCE_FIELDS) { "query snapshot contains invalid compiler call evidence" }
             LocatedCompilerReference(
@@ -689,6 +702,7 @@ internal class SnapshotJsonParser(
             val key = stringValue(retentionDepth != null)
             checkInput(key !in result)
             expect(':')
+            if (depth == 1 && key == "generationEvidence") requireGenerationSubtreeBudget()
             val envelope = externalRetentionEnvelope && retentionDepth == null && depth == 1 && key == "provenance"
             val limit = if (retentionDepth == 1) when (key) {
                 "sources" -> 256
@@ -710,6 +724,36 @@ internal class SnapshotJsonParser(
             result += value(depth, retentionDepth)
             if (consume(']')) return result
             expect(',')
+        }
+    }
+
+    // root의 실제 key를 해독한 뒤 해당 값만 미리 훑는다. 전체 graph나 문자열 속 가짜 key는 검사하지 않는다.
+    private fun requireGenerationSubtreeBudget() {
+        var cursor = offset
+        var depth = 0
+        var quoted = false
+        var escaped = false
+        var bytes = 0
+        var started = false
+        while (cursor < text.length) {
+            val character = text[cursor]
+            if (!quoted && depth == 0 && started && (character == ',' || character == '}')) return
+            val width = if (Character.isHighSurrogate(character) && text.getOrNull(cursor + 1)?.let(Character::isLowSurrogate) == true) 2 else 1
+            bytes += when { width == 2 -> 4; character.code <= 0x7f -> 1; character.code <= 0x7ff -> 2; Character.isSurrogate(character) -> 1; else -> 3 }
+            require(bytes <= GenerationReceiptCodec.MAX_BYTES) { "generation evidence subtree is too large" }
+            cursor += width
+            if (quoted) {
+                when { escaped -> escaped = false; character == '\\' -> escaped = true; character == '"' -> {
+                    quoted = false
+                    if (depth == 0) return
+                } }
+            } else when (character) {
+                '"' -> { quoted = true; started = true }
+                '{', '[' -> { depth++; started = true }
+                '}', ']' -> { depth--; if (depth <= 0) return }
+                ' ', '\t', '\r', '\n' -> Unit
+                else -> started = true
+            }
         }
     }
 

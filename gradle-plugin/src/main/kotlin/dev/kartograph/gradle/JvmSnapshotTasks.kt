@@ -43,6 +43,8 @@ internal object JvmSnapshotTasks {
             task.indexCacheEnabled.set(extension.snapshotIndexCacheEnabled)
             task.indexCacheDirectory.set(extension.snapshotIndexCacheDirectory)
             task.keepRuleFiles.from(extension.keepRules)
+            task.keepRuleMode.set(extension.keepRuleMode)
+            task.excludedKeepRuleFiles.from(extension.excludedKeepRules)
             task.baselineFile.set(extension.baseline)
             task.generatedClassRoots.from(extension.generatedClassRoots)
             // test runtime의 test-before-main 순서를 그래프의 첫 root 우선 정책에도 유지한다.

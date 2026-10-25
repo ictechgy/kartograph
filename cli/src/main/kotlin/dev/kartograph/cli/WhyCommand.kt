@@ -4,6 +4,7 @@ import dev.kartograph.analysis.IncompleteKeepRuleHierarchyException
 import dev.kartograph.core.AnalysisLimitation
 import dev.kartograph.core.RetentionReason
 import dev.kartograph.core.qualifiedName
+import dev.kartograph.core.matchesQualifiedName
 import dev.kartograph.export.toPlainTextLocation
 import dev.kartograph.index.AndroidResourceScanningException
 import dev.kartograph.index.ClassHierarchyIndexingException
@@ -63,7 +64,7 @@ internal object WhyCommand {
         val analysis = RetentionPipeline.analyze(inputs)
         val graph = analysis.graph
         val matches = graph.nodes.values.filter { node ->
-            node.id.value == requested || node.name == requested || node.qualifiedName == requested
+            node.id.value == requested || node.name == requested || node.matchesQualifiedName(requested)
         }.sortedBy { it.id }
         if (matches.isEmpty()) {
             output.println("status\tnotFound")
@@ -79,6 +80,7 @@ internal object WhyCommand {
         val node = matches.single()
         val evidence = analysis.reachability.retentionEvidenceFor(node.id)
         val state = when {
+            evidence.any { it.reason == RetentionReason.UNKNOWN_KEEP_RULE } -> "unknown"
             evidence.firstOrNull()?.reason == RetentionReason.KEEP_ANNOTATED_MEMBER -> "retainedByMember"
             evidence.isNotEmpty() -> "retained"
             node.id in analysis.reachability.reachableNodeIds -> "reachable"
@@ -86,6 +88,8 @@ internal object WhyCommand {
         }
         output.println("subject\t${node.id}\t${node.qualifiedName}\t${node.kind.name.lowerCamel()}\t${node.location.toPlainTextLocation()}")
         output.println("state\t$state")
+        (analysis.keepDiagnostics + analysis.sourceDiagnostics).forEach { output.println("limitation\t$it") }
+        analysis.inputHints.forEach { output.println("input-hint\t${it.id}\t${it.description}") }
         evidence.forEach { item ->
             output.println("reason\t${item.reason.name}\t${item.location.toPlainTextLocation()}\t${item.reason.description}")
         }
@@ -110,8 +114,19 @@ internal object WhyCommand {
             output.println("used-by-tests\t${node.id}")
         }
         if (state == "unreachable") {
-            val confidence = RetentionPipeline.confidenceOf(node.location, analysis.unresolvedChannelsBySource)
+            val confidence = if (analysis.bindingReview?.requiresReview(node.id) == true) dev.kartograph.export.FindingConfidence.REVIEW
+                else RetentionPipeline.confidenceOf(node.location, analysis.unresolvedChannelsBySource)
             output.println("confidence\t${confidence.label}")
+            val uncertainty = analysis.bindingReview?.uncertainty
+            val proof = uncertainty?.proofFor(node.id)
+            if (proof != null) {
+                output.println("binding-uncertainty\t${proof.adapter}\truntime selection unknown; observed calls are not retention roots")
+                proof.calls.forEach { edge -> output.println("binding-uncertainty-call\t${edge.source}\t${edge.target}\t${edge.origin}\t${edge.callSiteLines.joinToString(",")}") }
+                proof.ownerOf?.let { output.println("binding-uncertainty-owner-of\t$it") }
+                if (proof.truncated) output.println("binding-uncertainty-path-truncated\ttrue")
+            } else if (uncertainty?.truncated == true) {
+                output.println("binding-uncertainty\tunknown\tbudget exhausted; no observed call path to this declaration is claimed")
+            }
         }
         AnalysisLimitation.entries.sortedBy { it.name }.forEach { limitation ->
             output.println("limitation\t${limitation.name}\t${limitation.description}")
@@ -119,13 +134,14 @@ internal object WhyCommand {
         return ExitStatus.SUCCESS.code
     }
 
-    private fun parseInputs(arguments: List<String>, error: PrintStream): RetentionInputs? {
+    internal fun parseInputs(arguments: List<String>, error: PrintStream): RetentionInputs? {
         val classRoots = mutableListOf<Path>()
         val generatedClassRoots = mutableListOf<Path>()
         val testClassRoots = mutableListOf<Path>()
         var projectRoot: Path? = null
         var manifestPath: String? = null
-        var resourcesPath: String? = null
+        val resourcesPaths = mutableListOf<String>()
+        var lenientKeepRules = false
         var namespace: String? = null
         val keepRulePaths = mutableListOf<String>()
         val classpathPaths = mutableListOf<String>()
@@ -146,7 +162,11 @@ internal object WhyCommand {
                 "--test-classes" -> testClassRoots.add(Path.of(value))
                 "--project" -> projectRoot = Path.of(value).toAbsolutePath().normalize()
                 "--manifest" -> manifestPath = value
-                "--resources" -> resourcesPath = value
+                "--resources" -> resourcesPaths += value
+                "--keep-rule-mode" -> {
+                    if (value !in setOf("strict", "lenient")) return missingOption(error, "--keep-rule-mode strict|lenient")
+                    lenientKeepRules = value == "lenient"
+                }
                 "--namespace" -> namespace = value
                 "--keep-rules" -> keepRulePaths += value
                 "--classpath" -> classpathPaths += value
@@ -165,7 +185,9 @@ internal object WhyCommand {
             testClassRoots = testClassRoots,
             projectRoot = project,
             manifest = resolveProjectPath(project, manifestPath ?: return missingOption(error, "--manifest")),
-            resources = resolveProjectPath(project, resourcesPath ?: return missingOption(error, "--resources")),
+            resources = resolveProjectPath(project, resourcesPaths.firstOrNull() ?: return missingOption(error, "--resources")),
+            resourceRoots = resourcesPaths.map { resolveProjectPath(project, it) }.distinct().sorted(),
+            lenientKeepRules = lenientKeepRules,
             namespace = namespace?.takeIf(String::isNotBlank) ?: return missingOption(error, "--namespace"),
             keepRules = keepRulePaths.map { value -> resolveProjectPath(project, value) },
             classpath = classpathPaths.map { value -> resolveProjectPath(project, value) },

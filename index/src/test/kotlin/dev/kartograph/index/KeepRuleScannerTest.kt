@@ -76,7 +76,7 @@ class KeepRuleScannerTest {
             """.trimIndent(),
         )
 
-        val parsedRules = KeepRuleScanner(projectRoot).scan(listOf(rules))
+        val parsedRules = KeepRuleScanner(projectRoot).scan(listOf(rules)).map { it.copy(rawSpecification = null) }
 
         assertEquals(
             listOf(
@@ -149,7 +149,7 @@ class KeepRuleScannerTest {
         )
         nestedDirectory.resolve("second.pro").writeText("-keep class dev.fixture.Second")
 
-        val parsedRules = KeepRuleScanner(projectRoot).scan(listOf(rules))
+        val parsedRules = KeepRuleScanner(projectRoot).scan(listOf(rules)).map { it.copy(rawSpecification = null) }
 
         assertEquals(
             listOf(
@@ -319,15 +319,12 @@ class KeepRuleScannerTest {
     }
 
     @Test
-    fun `rejects global dontshrink instead of reporting dead code`(@TempDir projectRoot: Path) {
+    fun `global dontshrink records explicit retention instead of reporting dead code`(@TempDir projectRoot: Path) {
         val rules = projectRoot.resolve("proguard-rules.pro")
         rules.writeText("-dontshrink")
-
-        val error = assertFailsWith<KeepRuleScanningException> {
-            KeepRuleScanner(projectRoot).scan(listOf(rules))
-        }
-
-        assertEquals("unsupported directive at proguard-rules.pro:1", error.message)
+        val rule = KeepRuleScanner(projectRoot).scan(listOf(rules)).single()
+        assertEquals(true, rule.shrinkingDisabled)
+        assertEquals("-dontshrink", rule.rawSpecification)
     }
 
     @Test
@@ -361,7 +358,7 @@ class KeepRuleScannerTest {
 
         assertEquals(
             listOf(KeepRule(KeepDeclarationKind.CLASS, "dev.fixture.Entry", location = locationAtRoot(5))),
-            KeepRuleScanner(projectRoot).scan(listOf(rules)),
+            KeepRuleScanner(projectRoot).scan(listOf(rules)).map { it.copy(rawSpecification = null) },
         )
     }
 
@@ -376,7 +373,7 @@ class KeepRuleScannerTest {
             """.trimIndent(),
         )
 
-        val parsedRule = KeepRuleScanner(projectRoot).scan(listOf(rules)).single()
+        val parsedRule = KeepRuleScanner(projectRoot).scan(listOf(rules)).single().copy(rawSpecification = null)
 
         assertEquals(
             KeepRule(
@@ -424,7 +421,7 @@ class KeepRuleScannerTest {
             KeepRuleScanner(projectRoot).scan(listOf(rules))
         }
 
-        assertEquals("unsupported conditional member specification at proguard-rules.pro:1", error.message)
+        assertEquals("unsupported member specification at proguard-rules.pro:1", error.message)
     }
 
     @Test

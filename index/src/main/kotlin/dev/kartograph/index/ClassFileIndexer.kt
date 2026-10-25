@@ -23,6 +23,7 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.FileTime
+import java.util.BitSet
 import java.util.jar.JarFile
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
@@ -148,6 +149,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         val rootByClass = linkedMapOf<String, Int>()
         val declarationsByRoot = mutableListOf<Set<NodeId>>()
         val loader = cache?.let { CachedClassBatchLoader(it, ::parse) }
+        val uncachedLoader = if (loader == null) UncachedClassBatchLoader(::parse) else null
         fun readMany(inputs: List<() -> ClassInput>): List<ClassFacts> {
             if (loader != null) {
                 val loaded = loader.load(inputs)
@@ -165,17 +167,12 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
                 cacheWriteNanos += measured.cacheWriteNanos
                 return loaded.facts
             }
-            return inputs.map { read ->
-                var phaseStart = System.nanoTime()
-                val input = read()
-                readNanos += System.nanoTime() - phaseStart
-                phaseStart = System.nanoTime()
-                val facts = parse(input.bytes)
-                parseNanos += System.nanoTime() - phaseStart
-                classFiles++
-                parsedClasses++
-                facts.copy(runtime = facts.runtime.copy(modified = input.modified))
-            }
+            val loaded = requireNotNull(uncachedLoader).load(inputs)
+            readNanos += loaded.statistics.readNanos
+            parseNanos += loaded.statistics.parseNanos
+            classFiles += loaded.statistics.classFiles
+            parsedClasses += loaded.statistics.parsedClasses
+            return loaded.facts
         }
         try {
             roots.forEachIndexed { rootIndex, root ->
@@ -199,6 +196,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
             }
         } finally {
             loader?.close()
+            uncachedLoader?.close()
         }
         if (factsByClass.isEmpty()) throw ClassIndexingException("no compiled declarations found; check class roots and build the project")
         val generatedSiblingNames = factsByClass.values.flatMapTo(mutableSetOf(), ClassFacts::generatedSiblingNames)
@@ -252,7 +250,9 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         } else ClassHierarchy.EMPTY
         hierarchyNanos = System.nanoTime() - hierarchyStart
         val runtimeStart = System.nanoTime()
-        val (modeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
+        val (runtimeModeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
+        val android = AndroidFrameworkCallbacks.enrich(runtimeModeled, hierarchy)
+        val modeled = android.graph
         runtimeNanos = System.nanoTime() - runtimeStart
         val selectedRootByNode = classFacts.flatMap { facts -> facts.nodes.map { it.id to rootByClass.getValue(facts.internalName) } }.toMap()
         val dispatchStart = System.nanoTime()
@@ -279,7 +279,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         targetJdkFingerprint = hierarchyIndexer.targetJdkFingerprint
         return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics,
             inheritedMembers.calls.filter { it.target in graph.nodes &&
-                (it.kind == InvocationKind.VIRTUAL || it.kind == InvocationKind.INTERFACE) })
+                (it.kind == InvocationKind.VIRTUAL || it.kind == InvocationKind.INTERFACE) }, android.derivation)
     }
 
     /** 전체 필터를 한 번 평가한 뒤 제거와 compiler 위치 상태가 없을 때만 정규화된 그래프를 재사용한다. */
@@ -461,7 +461,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     override fun visitSource(source: String?, debug: String?) {
         sourceFile = source?.substringAfterLast('/')?.substringAfterLast('\\')?.takeIf(String::isNotBlank)
         sourceDebugPresent = debug?.startsWith("SMAP") == true
-        sourceDebugMapper = if (sourceDebugPresent) SourceDebugMapper.parse(debug) else null
+        sourceDebugMapper = if (sourceDebugPresent) SourceDebugMapper.parse(debug, sourceFile) else null
     }
 
     override fun visitInnerClass(name: String, outerName: String?, innerName: String?, access: Int) {
@@ -798,30 +798,32 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private fun callSiteLine(line: Int?): Int? {
         if (line == null || line !in 1..65535) return null
         if (!sourceDebugPresent) return if (sourceFile == null) null else line
-        val mapped = sourceDebugMapper?.location(line) ?: return null
-        val ownPath = sourceFile ?: return null
+        if (sourceDebugMapper?.isIdentity(line) != true) return null
         // primary SMAP의 output/input identity만 확정적인 caller 위치다. KotlinDebug stratum이나 inline 매핑은 추정하지 않는다.
-        return mapped.line?.takeIf { mapped.path == ownPath && it == line && it in 1..65535 }
+        return line
     }
 }
 
-/** Kotlin SMAP의 output line을 input source basename과 line으로만 복원한다. */
-private class SourceDebugMapper private constructor(private val lines: Map<Int, SourceLocation?>) {
-    fun location(outputLine: Int): SourceLocation? = lines[outputLine]
+/** Kotlin SMAP에서 자기 source의 output/input identity만 저장하며 다른 위치로 재귀속하지 않는다. */
+private class SourceDebugMapper private constructor(private val identityLines: BitSet) {
+    fun isIdentity(outputLine: Int): Boolean = identityLines[outputLine]
 
     companion object {
         private const val MAX_DEBUG_BYTES = 1_048_576
         private const val MAX_MAPPED_LINES = 100_000
         private val linePattern = Regex("^(\\d+)#(\\d+)(?:,(\\d+))?:(\\d+)(?:,(\\d+))?$")
 
-        fun parse(debug: String?): SourceDebugMapper? {
+        fun parse(debug: String?, ownSource: String?): SourceDebugMapper? {
             if (debug == null || debug.toByteArray(Charsets.UTF_8).size > MAX_DEBUG_BYTES || !debug.startsWith("SMAP")) return null
             val rows = debug.split(Regex("\\r?\\n"))
             val defaultStratum = rows.getOrNull(2)?.trimEnd('\r')?.takeIf(String::isNotBlank) ?: return null
             val files = mutableMapOf<Int, SmapFile>()
             val basenames = mutableMapOf<String, String>()
             val ambiguousBasenames = mutableSetOf<String>()
-            val mapped = mutableMapOf<Int, SourceLocation?>()
+            // JVM line 범위만 저장한다. seen은 충돌/null도 세어 기존 mapped.size 예산을 보존한다.
+            val seen = BitSet(65536)
+            val identityLines = BitSet(65536)
+            var mappedSize = 0
             var section = ""
             var hasStratum = false
             var activeStratum = false
@@ -864,14 +866,23 @@ private class SourceDebugMapper private constructor(private val lines: Map<Int, 
                             val outputStart = match.groupValues[4].toLongOrNull() ?: return null
                             val outputIncrement = match.groupValues[5].takeIf(String::isNotEmpty)?.toLongOrNull() ?: 1L
                             val file = files[fileId] ?: return null
-                            if (repeat < 1 || repeat > MAX_MAPPED_LINES || outputIncrement < 1 || mapped.size + repeat > MAX_MAPPED_LINES) return null
+                            if (repeat < 1 || repeat > MAX_MAPPED_LINES || outputIncrement < 1 || mappedSize + repeat > MAX_MAPPED_LINES) return null
                             repeat(repeat.toInt()) { offset ->
                                 val output = outputStart + offset.toLong() * outputIncrement
                                 val input = inputStart + offset
                                 if (output in 1..65535 && input in 1..65535 && file.basename !in ambiguousBasenames) {
-                                    val location = SourceLocation(file.basename, input.toInt())
-                                    if (mapped.containsKey(output.toInt()) && mapped[output.toInt()] != location) mapped[output.toInt()] = null
-                                    else mapped[output.toInt()] = location
+                                    // SourceLocation 생성이 거부하던 잘못된 입력은 ownSource가 없어도 거부한다.
+                                    require(file.basename.isNotBlank()) { "source path must not be blank" }
+                                    val outputLine = output.toInt()
+                                    val identity = file.basename == ownSource && input == output
+                                    if (!seen[outputLine]) {
+                                        seen.set(outputLine)
+                                        mappedSize++
+                                        if (identity) identityLines.set(outputLine)
+                                    } else if (!identity) {
+                                        // 한 번 충돌하거나 비identity였던 위치는 이후 identity로 복구하지 않는다.
+                                        identityLines.clear(outputLine)
+                                    }
                                 }
                             }
                         }
@@ -879,7 +890,7 @@ private class SourceDebugMapper private constructor(private val lines: Map<Int, 
                 }
                 index++
             }
-            return SourceDebugMapper(mapped)
+            return SourceDebugMapper(identityLines)
         }
 
         private data class SmapFile(val fullPath: String, val basename: String)

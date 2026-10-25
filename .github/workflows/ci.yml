@@ -35,7 +35,40 @@ jobs:
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
       - name: Test and verify coverage
         id: candidate-build
-        run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
+        # Kotlin 컴파일 daemon만 늘린다. 테스트·CLI JVM과 분석 시간 예산은 그대로 둔다.
+        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g clean test :koverVerify :cli:installDist
+      - name: Observe Kotlin compiler heap after primary build
+        if: always()
+        timeout-minutes: 1
+        run: python3 Scripts/observe-kotlin-daemon-heap.py
+      - name: Verify non-privileged POSIX permission regressions
+        run: python3 Scripts/verify-posix-permission-tests.py
+      - name: Verify actual DataBinding processor regression execution
+        run: python3 Scripts/verify-databinding-processor-test.py
+      - name: Preserve DataBinding processor evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: databinding-processor-test
+          path: |
+            build/reports/databinding-processor-test.json
+            gradle-plugin/build/test-results/test/TEST-dev.kartograph.gradle.AndroidDataBindingIntegrationTest.xml
+            gradle-plugin/build/test-results/test/TEST-dev.kartograph.gradle.AndroidHiltIntegrationTest.xml
+            gradle-plugin/build/reports/hilt-transform/hilt-snapshot-*.json
+            gradle-plugin/build/reports/hilt-transform/observations.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve POSIX permission evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: posix-permission-tests
+          path: |
+            build/reports/posix-permission-tests.json
+            index/build/test-results/test/TEST-dev.kartograph.index.SourceDirectoryFailureTest.xml
+            index/build/test-results/test/TEST-dev.kartograph.index.AndroidXmlScannerTest.xml
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Preserve failed test details
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -87,7 +120,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: index-cost
-          path: build/reports/index-cost/result.json
+          path: |
+            build/reports/index-cost/result.json
+            build/reports/index-cost/raw/*.gz
+            build/reports/index-cost/jfr/*.jfr
           if-no-files-found: error
           retention-days: 14
       - name: Verify agent query and bridge contracts
@@ -177,7 +213,15 @@ jobs:
         timeout-minutes: 2
         run: java Scripts/VerifySecureDirectoryStream.java
       - name: Verify supported JDK
-        run: ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} test :gradle-plugin:validatePlugins
+        shell: bash
+        run: |
+          # 양쪽 JDK에서 관측한 Kotlin 컴파일 heap 부족만 다룬다.
+          printf '%s\n' 'Requested Kotlin daemon maximum heap: 1 GiB; a separate observation records available process flags.'
+          ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} -Pkotlin.daemon.jvmargs=-Xmx1g test :gradle-plugin:validatePlugins
+      - name: Observe Kotlin compiler heap after compatibility build
+        if: always()
+        timeout-minutes: 1
+        run: python3 Scripts/observe-kotlin-daemon-heap.py
       - name: Preserve failed compatibility test details
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

@@ -42,10 +42,10 @@ public object CompilerWitnesses {
     /** AGP의 compiler 생성 callback에서는 현재 task를 직접 설정하고 task container를 다시 변경하지 않는다. */
     internal fun automaticJavaCompile(project: Project, compiler: JavaCompile, scope: String,
         sourceRoots: FileCollection, buildInputs: FileCollection, optionalClasspathDirectories: FileCollection,
-        additionalInputs: FileCollection = project.files()): Provider<RegularFile> =
+        additionalInputs: FileCollection = project.files(), captureRejection: WitnessRejection? = null): Provider<RegularFile> =
         register(project, project.tasks.named(compiler.name, JavaCompile::class.java), scope, sourceRoots, buildInputs,
             "javac", additionalInputs, optionalClasspathDirectories = optionalClasspathDirectories,
-            automaticSourceInventory = true, configuredTask = compiler)
+            automaticSourceInventory = true, configuredTask = compiler, captureRejection = captureRejection)
 
     /** 수집기는 compiler action 중에만 이 요청 토큰을 읽는다. 성공 증거나 cache output은 아니다. */
     public fun inputTokenFile(project: Project, compiler: TaskProvider<out Task>): Provider<RegularFile> =
@@ -61,19 +61,21 @@ public object CompilerWitnesses {
         kotlinJdk: Provider<org.gradle.jvm.toolchain.JavaLauncher>? = null,
         compilerEvidence: Boolean = false,
         optionalClasspathDirectories: FileCollection = project.files(),
-        automaticSourceInventory: Boolean = false, configuredTask: Task? = null): Provider<RegularFile> {
+        automaticSourceInventory: Boolean = false, configuredTask: Task? = null,
+        captureRejection: WitnessRejection? = null): Provider<RegularFile> {
         val witnessDirectory = project.layout.buildDirectory.dir("kartograph/witnesses/${compiler.name}")
         val witness = witnessDirectory.map { it.file("witness.json") }
         val taskIdentity = if (project.path == ":") ":${compiler.name}" else "${project.path}:${compiler.name}"
         val byteInputs = project.objects.fileCollection().from(buildInputs, additionalInputs)
         if (!automaticSourceInventory) byteInputs.from(sourceRoots)
-        val spec = WitnessSpec(project.layout.projectDirectory.asFile, scope, compiler.name, taskIdentity, kind, sourceRoots, buildInputs, byteInputs, additionalInputs, witness, kotlinJdk, compilerEvidence, optionalClasspathDirectories, automaticSourceInventory)
+        val spec = WitnessSpec(project.layout.projectDirectory.asFile, scope, compiler.name, taskIdentity, kind, sourceRoots, buildInputs, byteInputs, additionalInputs, witness, kotlinJdk, compilerEvidence, optionalClasspathDirectories, automaticSourceInventory, captureRejection)
         val configure: (Task) -> Unit = { task ->
             val selectedSources = if (automaticSourceInventory) {
                 (if (task is JavaCompile) task.source else KotlinCompilerWitnesses.sourceFiles(task)).also { byteInputs.from(it) }
             } else sourceRoots
             task.inputs.files(selectedSources).withPropertyName("kartographSourceRoots").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             task.inputs.property("kartographAutomaticSourceInventory", automaticSourceInventory)
+            task.inputs.property("kartographCaptureRejection", captureRejection?.name.orEmpty())
             task.inputs.files(buildInputs).withPropertyName("kartographBuildInputs").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             task.inputs.property("kartographScope", scope)
             task.inputs.property("kartographCompilerEvidenceEnabled", compilerEvidence)
@@ -161,8 +163,10 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
     val additionalInputs: FileCollection, val witness: Provider<RegularFile>,
     val kotlinJdk: Provider<org.gradle.jvm.toolchain.JavaLauncher>?, val compilerEvidence: Boolean = false,
     val optionalClasspathDirectories: FileCollection? = null,
-    val automaticSourceInventory: Boolean = false) : Serializable {
+    val automaticSourceInventory: Boolean = false,
+    val captureRejection: WitnessRejection? = null) : Serializable {
     fun observe(task: Task): List<InputFingerprint> {
+        require(captureRejection == null) { requireNotNull(captureRejection).description }
         val observed = if (kind == "javac") javaObservation(task as JavaCompile)
             else KotlinCompilerWitnesses.observe(task, requireNotNull(kotlinJdk).get(), additionalInputs)
         val roots = sourceRoots.files.toList()

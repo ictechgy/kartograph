@@ -21,14 +21,27 @@ internal class CallDeclarationIndexer(private val graph: CodeGraph, private val 
     private val declarations = mutableMapOf<Key, CallDeclaration?>()
 
     /** 이전 보강 결과를 재사용하지 않아 dependency 교체와 withHierarchy에도 동일한 경계를 적용한다. */
-    fun enrich(): CodeGraph = graph.enrichedWith(emptyList(), graph.externalCalls.map { call ->
+    fun enrich(): CodeGraph {
+        var changed: MutableList<ExternalCall>? = null
+        graph.externalCalls.forEachIndexed { index, call ->
+            val declaration = declarationFor(call)
+            // Revalidate every call; copy only changed values, including clearing stale declarations.
+            if (declaration != call.declaration) {
+                if (changed == null) changed = graph.externalCalls.toMutableList()
+                changed[index] = call.copy(declaration = declaration)
+            }
+        }
+        return changed?.let { graph.enrichedWith(emptyList(), it) } ?: graph
+    }
+
+    private fun declarationFor(call: ExternalCall): CallDeclaration? {
         val caller = call.caller.value.takeIf { it.startsWith("method:") }?.removePrefix("method:")?.substringBefore('#')
         // caller owner만 공유하는 cache에 개별 node의 kind/stub 자격을 저장하지 않는다.
-        if (call.kind == InvocationKind.INTERFACE && !knownInterfaceCaller(call, caller)) return@map call.copy(declaration = null)
+        if (call.kind == InvocationKind.INTERFACE && !knownInterfaceCaller(call, caller)) return null
         val key = Key(caller, call.owner, call.name, call.descriptor, call.kind)
         if (key !in declarations) declarations[key] = resolve(call, caller)
-        call.copy(declaration = declarations[key])
-    })
+        return declarations[key]
+    }
 
     private fun resolve(call: ExternalCall, caller: String?): CallDeclaration? {
         if (call.kind == InvocationKind.INTERFACE) return directInterface(call)

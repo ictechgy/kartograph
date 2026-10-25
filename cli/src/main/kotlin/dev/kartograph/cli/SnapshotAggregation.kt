@@ -49,6 +49,11 @@ internal object SnapshotAggregation {
         inputs = members.flatMap { member -> requireNotNull(member.snapshot.provenance).inputs.map { member.rebase(it) } },
         witnesses = members.flatMap { member -> requireNotNull(member.snapshot.provenance).witnesses.map { member.rebase(it) } },
         memberScopes = members.map { requireNotNull(it.snapshot.scope) },
+        transformations = members.flatMap { member -> requireNotNull(member.snapshot.provenance).transformations.map { observed ->
+            observed.copy(originalOutputs = observed.originalOutputs.map { member.rebase(it) },
+                selectedOutputs = observed.selectedOutputs.map { member.rebase(it) },
+                passthroughOutputs = observed.passthroughOutputs.map { member.rebase(it) })
+        } },
     )
 
     /** 합친 provenance의 `external/` 슬롯을 구성원 로컬 연결에서 가져온다. 값은 절대 경로이므로 공개하지 않는다. */

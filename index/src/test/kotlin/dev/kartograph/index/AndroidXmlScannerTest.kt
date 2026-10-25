@@ -5,6 +5,8 @@ import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.io.Reader
 import java.nio.file.Path
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermission
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 import javax.xml.stream.EventFilter
@@ -25,8 +27,57 @@ import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class AndroidXmlScannerTest {
+    @Test
+    fun `compiled flat input is not silently treated as an empty resource root`(@TempDir root: Path) {
+        val resources = root.resolve("res").createDirectories()
+        resources.resolve("layout_screen.xml.flat").writeBytes(byteArrayOf(1, 2, 3))
+        val error = assertFailsWith<AndroidResourceScanningException> { AndroidXmlScanner(root).scan(resources) }
+        assertEquals("compiled Android .flat resources are unsupported; supply unpacked merged or source XML resources", error.message)
+    }
+
+    @Test
+    fun `unreadable resource directory fails without returning partial evidence`(@TempDir root: Path) {
+        assumeTrue(Files.getFileStore(root).supportsFileAttributeView("posix"), "requires POSIX permissions")
+        val resources = root.resolve("res").createDirectories()
+        resources.resolve("readable.xml").writeText("<fixture.Visible />")
+        val locked = resources.resolve("locked").createDirectories()
+        locked.resolve("hidden.xml").writeText("<fixture.Hidden />")
+        val permissions = Files.getPosixFilePermissions(locked)
+        try {
+            Files.setPosixFilePermissions(locked, emptySet<PosixFilePermission>())
+            assumeTrue(!Files.isReadable(locked), "must run as a non-privileged POSIX user")
+            val error = assertFailsWith<AndroidResourceScanningException> { AndroidXmlScanner(root).scan(resources) }
+            assertEquals("Android resource root cannot be read; supply readable XML resource directories", error.message)
+        } finally {
+            Files.setPosixFilePermissions(locked, permissions)
+        }
+    }
+
+    @Test
+    fun `binding data imports and variable generic types retain explicit classes only`(@TempDir projectRoot: Path) {
+        val resourceRoot = projectRoot.resolve("res")
+        val layout = resourceRoot.resolve("layout/binding.xml")
+        layout.parent.createDirectories()
+        layout.writeText("""
+            <layout>
+              <data>
+                <import type="fixture.AliasType" alias="Alias" />
+                <variable name="items" type="java.util.List&lt;fixture.Item&gt;" />
+                <variable name="aliased" type="Alias" />
+                <variable name="primitive" type="int" />
+              </data>
+              <LinearLayout />
+            </layout>
+        """.trimIndent())
+        assertEquals(listOf("class:fixture/AliasType", "class:java/util/List", "class:fixture/Item"),
+            AndroidXmlScanner(projectRoot).scan(resourceRoot).map { it.nodeId.value })
+        layout.writeText("<resources><variable type=\"fixture.NotBindingData\" /></resources>")
+        assertEquals(emptyList(), AndroidXmlScanner(projectRoot).scan(resourceRoot))
+    }
+
     @Test
     fun `finds custom views and named fragments while ignoring comments`(@TempDir projectRoot: Path) {
         val resourceRoot = projectRoot.resolve("app/src/main/res")
