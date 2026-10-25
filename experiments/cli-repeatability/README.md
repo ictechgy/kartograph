@@ -136,3 +136,39 @@ and small owned-child timeout/nonzero/overflow/cleanup behavior. Official
 actionlint checks workflow contexts. Exact source/test review, ordinary CI and
 all workflow-validation results must be accepted before a separately authorized
 manual dispatch. A local test pass is not evidence of runner repeatability.
+
+## Optional sealed Linux runtime diagnosis
+
+`runtime_profile: true` selects a separate, reviewed diagnostic for PR #204. It
+accepts only original CI checkout `c8d9ab3e3492afc5dc645dcfa50d7401c58796c2`
+(synthetic merge of head `003d5522` and base `cb8efddd`). The normal default-false
+qualification above is unchanged. Runtime mode runs six adjacent reference/profile
+pairs, twelve CLI launches total; both arms have `/proc` observation and only the
+second enables JFR. Neither is an uninstrumented acceptance observation. It does
+not run or clear the 20 s / 5 s gate.
+The original 22.627 s failure is retained. Diagnostic dispatch may investigate that
+known failing gate; merge and publication still require the acceptance gates.
+
+`LinuxRuntimeReference.json` seals all 1,542 class-root files, eleven runtime
+libraries, both launchers, project inputs, and the selected JDK against artifact
+12604786455 from run 40205795058. Content drift stops before profiling. The runner
+class stays Ubuntu/Temurin 17, but a new host and the in-process setup build do not
+reproduce original CI's ambient Kotlin-daemon state.
+
+JFR and synchronous owned-child `/proc` observations are diagnostic only. CPU
+user/system counters, scheduler runqueue waits, compilation durations, GC pause
+unions, and stack samples overlap and are not an additive wall-time breakdown.
+Native-state Java frames do not identify native C-stack CPU; that remains unknown.
+VM bootstrap before recording and exited-thread tail CPU may be unobserved.
+The synchronous file census and sampling add controller CPU on the same runner;
+controller user/system deltas are reported separately and can affect scheduling.
+
+The controller has an 840 s budget inside a 900 s TERM / 15 s KILL envelope;
+children have 120 s wall/CPU, 3 GiB observed/final-peak RSS, 32 MiB ordinary stream
+limits (64 MiB graph stdout, 256 MiB shared spool reservation), and bounded
+JFR/private storage/events/stacks. Limits and data loss produce failure evidence.
+Only the report and six sanitized event ledgers are uploaded through explicit
+paths. Raw recordings, streams, names, paths, and decoded source events stay in a
+separate private temporary directory and are not retained after the job. Ledger
+hashes and numeric coverage limits are retained; no profiler or permission change
+is installed. An inconclusive result cannot establish a speedup or permit release.

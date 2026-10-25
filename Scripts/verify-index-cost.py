@@ -195,18 +195,22 @@ class OwnedProcessGroup:
         self.lock = threading.Lock()
         self.signal_open, self.lost = True, False
 
-    def ready(self):
+    def ready(self, observer=None):
         with self.lock:
             if not self.signal_open or self.process.returncode is not None:
                 self.signal_open, self.lost = False, True
                 raise ChildProcessError(errno.ECHILD, "child-ownership-lost")
             try:
-                return self.observe(self.process.pid)
+                terminal = self.observe(self.process.pid)
             except InterruptedError:
                 return False
             except OSError:
                 self.signal_open, self.lost = False, True
                 raise
+            # 선택 진단은 WNOWAIT lease 안에서만 조회한다. observer 오류는 lease 상실이 아니다.
+            if observer is not None:
+                observer.sample(self.process.pid, terminal)
+            return terminal
 
     def signal_group(self):
         with self.lock:
@@ -239,7 +243,7 @@ class OwnedProcessGroup:
                 self.signal_open = False
 
 
-def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child", capture=None):
+def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child", capture=None, observer=None):
     """각 child의 두 stream을 제한하고 timeout에는 소유한 process group을 끝낸다."""
     if not re.fullmatch(r"[a-z-]{1,64}", phase):
         raise DiagnosticError("invalid-process-phase")
@@ -285,7 +289,7 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child", capture=No
     def wait_owned():
         deadline = time.monotonic() + timeout
         while True:
-            if owned.ready():
+            if (owned.ready() if observer is None else owned.ready(observer)):
                 return
             if time.monotonic() >= deadline:
                 raise subprocess.TimeoutExpired(arguments, timeout)
@@ -296,6 +300,8 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child", capture=No
         timed_out = True
     except OSError:
         wait_failed = True
+    except DiagnosticError as error:
+        failures.append(str(error))
     finally:
         try:
             owned.close_signals()
@@ -314,6 +320,8 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child", capture=No
                         continue
                     if pid == process.pid:
                         process.returncode = os.waitstatus_to_exitcode(status)
+                        if observer is not None:
+                            observer.reaped(usage)
                         if sys.platform in ("linux", "darwin") and 0 < usage.ru_maxrss < 2**63:
                             rss = {"status": "observed", "peakBytes": int(usage.ru_maxrss) *
                                    (1024 if sys.platform == "linux" else 1),
