@@ -216,6 +216,252 @@ class IndexCostTest(unittest.TestCase):
                 raw.retain("graph", 1, "baseline", {"stdout": b"changed", "stderr": b""})
             self.assertEqual(b"abc", gzip.decompress((raw.directory / "graph-1-baseline-stdout.gz").read_bytes()))
 
+    def test_graph_capture_accepts_above_ordinary_limit_and_retains_every_byte(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            capture = probe.GraphCapture(raw)
+            try:
+                size = probe.LIMIT + 65537
+                result = probe.run([sys.executable, "-c",
+                                    f"import sys; sys.stdout.buffer.write(b'x' * {size}); sys.stderr.buffer.write(b'err')"],
+                                   temporary, dict(os.environ), capture=capture)
+                self.assertIsInstance(result["stdout"], probe.FileOutput)
+                self.assertEqual(size + 3, raw.pending)
+                records = raw.retain("graph", 1, "baseline", result, capture)
+                self.assertEqual(size, records["stdout"]["bytes"])
+                self.assertTrue(probe.equivalent(result, {**result, "stdout": b"x" * size}))
+                self.assertEqual(size + 3, raw.bytes)
+                self.assertEqual(0, raw.pending)
+            finally:
+                capture.cleanup()
+            self.assertFalse(list(raw.directory.glob(".graph-*")))
+
+    def test_graph_capture_budget_accounts_for_retained_pending_and_both_readers(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            with mock.patch.object(probe, "RAW_LIMIT", 12):
+                raw.retain("dead", 1, "baseline", {"stdout": b"abc", "stderr": b""})
+                capture = probe.GraphCapture(raw)
+                try:
+                    capture.append(0, b"12345")
+                    capture.append(1, b"6789")
+                    self.assertEqual((3, 9), (raw.bytes, raw.pending))
+                    with self.assertRaisesRegex(probe.DiagnosticError, "raw-evidence-limit"):
+                        capture.append(0, b"x")
+                finally:
+                    capture.cleanup()
+            self.assertEqual((3, 0), (raw.bytes, raw.pending))
+
+    def test_capture_budget_reservations_are_atomic_between_readers(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            capture = probe.GraphCapture(raw)
+            failures = []
+            def append(index):
+                try:
+                    capture.append(index % 2, b"12345")
+                except probe.DiagnosticError as error:
+                    failures.append(str(error))
+            try:
+                with mock.patch.object(probe, "RAW_LIMIT", 10):
+                    threads = [threading.Thread(target=append, args=(i,)) for i in range(8)]
+                    for thread in threads:
+                        thread.start()
+                    for thread in threads:
+                        thread.join(timeout=2)
+                    self.assertTrue(all(not thread.is_alive() for thread in threads))
+                    self.assertEqual(10, raw.pending)
+                    self.assertEqual(["raw-evidence-limit"] * 6, failures)
+            finally:
+                capture.cleanup()
+            self.assertEqual(0, raw.pending)
+
+    def test_real_graph_capture_overflow_and_timeout_are_failures_with_owned_cleanup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            for code, reason, timeout in (("print('a' * 100000)", "raw-evidence-limit", 10),
+                                          ("import time; time.sleep(5)", "child-timeout", 0.1)):
+                capture = probe.GraphCapture(raw)
+                try:
+                    with mock.patch.object(probe, "RAW_LIMIT", 1024):
+                        with self.assertRaisesRegex(probe.DiagnosticError, reason):
+                            probe.run([sys.executable, "-c", code], temporary, dict(os.environ),
+                                      capture=capture, timeout=timeout)
+                finally:
+                    capture.cleanup()
+                self.assertEqual(0, raw.pending)
+                self.assertFalse(list(raw.directory.glob(".graph-*")))
+
+    def test_streaming_stderr_keeps_the_ordinary_per_stream_limit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            capture = probe.GraphCapture(raw)
+            try:
+                with self.assertRaisesRegex(probe.DiagnosticError, "child-output-limit"):
+                    probe.run([sys.executable, "-c", "import sys; sys.stderr.write('a' * 100000)"],
+                              temporary, dict(os.environ), capture=capture, limit=1024)
+            finally:
+                capture.cleanup()
+
+    def test_file_output_validates_truncated_malformed_gzip_and_late_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            body = b"x" * 65536 + b"a\x00\r\n"
+            path = root / "output.gz"
+            receipt = probe.FileOutput(path, len(body), probe.digest(body), compressed=True)
+            left = {"exit": 0, "stdout": receipt, "stderr": b""}
+            right = {"exit": 0, "stdout": body, "stderr": b""}
+            path.write_bytes(gzip.compress(body, mtime=0))
+            self.assertTrue(probe.equivalent(left, right))
+            self.assertFalse(probe.equivalent(left, {**right, "stdout": body[:-1] + b"!"}))
+            for data, reason in ((gzip.compress(body[:-1]), "raw-stream-receipt-mismatch"),
+                                 (gzip.compress(body)[:-4], "raw-stream-read-failed"),
+                                 (b"not gzip", "raw-stream-read-failed"),
+                                 (gzip.compress(body + b"extra"), "raw-stream-size-mismatch")):
+                path.write_bytes(data)
+                with self.assertRaisesRegex(probe.DiagnosticError, reason):
+                    probe.equivalent(left, right)
+            path.write_bytes(gzip.compress(body[:-1] + b"!"))
+            with self.assertRaisesRegex(probe.DiagnosticError, "raw-stream-receipt-mismatch"):
+                probe.equivalent(left, right)
+
+    def test_stream_comparison_checks_eof_even_after_first_byte_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "output.gz"
+            body = b"a" * 131072
+            path.write_bytes(gzip.compress(body)[:-4])
+            output = probe.FileOutput(path, len(body), probe.digest(body), compressed=True)
+            with self.assertRaisesRegex(probe.DiagnosticError, "raw-stream-read-failed"):
+                probe.equivalent({"exit": 0, "stdout": output, "stderr": b""},
+                                 {"exit": 1, "stdout": b"different", "stderr": b""})
+
+    def test_corrupted_spool_is_not_retained_as_success_and_reservations_release(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            capture = probe.GraphCapture(raw)
+            capture.append(0, b"correct")
+            capture.finish()
+            result = {"stdout": capture.output(), "stderr": b""}
+            capture.path.write_bytes(b"changed")
+            try:
+                with self.assertRaisesRegex(probe.DiagnosticError, "raw-stream-receipt-mismatch"):
+                    raw.retain("graph", 1, "baseline", result, capture)
+            finally:
+                capture.cleanup()
+            self.assertEqual((0, 0), (raw.bytes, raw.pending))
+            self.assertFalse((raw.directory / "graph-1-baseline-stdout.gz").exists())
+
+    def test_graph_capture_late_read_after_close_fails_without_creating_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            capture = probe.GraphCapture(raw)
+            capture.cleanup()
+            with self.assertRaisesRegex(probe.DiagnosticError, "raw-capture-closed"):
+                capture.append(0, b"late")
+            self.assertEqual(0, raw.pending)
+
+    def test_captured_output_no_overwrite_preserves_preexisting_archive(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            existing = raw.directory / "graph-1-baseline-stdout.gz"
+            existing.write_bytes(b"preserve-existing")
+            capture = probe.GraphCapture(raw)
+            capture.append(0, b"new")
+            capture.finish()
+            try:
+                with self.assertRaises(FileExistsError):
+                    raw.retain("graph", 1, "baseline", {"stdout": capture.output(), "stderr": b""}, capture)
+            finally:
+                capture.cleanup()
+            self.assertEqual(b"preserve-existing", existing.read_bytes())
+            self.assertEqual((0, 0), (raw.bytes, raw.pending))
+
+    def test_stream_read_failure_and_retention_failure_are_meaningful(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "missing"
+            output = probe.FileOutput(path, 1, probe.digest(b"a"))
+            with self.assertRaisesRegex(probe.DiagnosticError, "raw-stream-read-failed"):
+                list(probe.stream_chunks(output))
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            with self.assertRaisesRegex(probe.DiagnosticError, "raw-stream-read-failed"):
+                raw.retain("graph", 1, "baseline", {"stdout": output, "stderr": b""})
+            self.assertEqual((0, 0), (raw.bytes, raw.pending))
+
+    def test_cleanup_failure_preserves_primary_child_failure_receipt(self):
+        for child_reason in ("child-timeout", "child-output-limit"):
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                commands = {arm: probe.cli_commands(arm, [root / "classes"], root)
+                            for arm in ("baseline", "candidate")}
+                raw = probe.RawStreams(root / "raw")
+                original = probe.GraphCapture.cleanup
+                def cleanup(capture):
+                    original(capture)
+                    raise probe.DiagnosticError("raw-capture-cleanup-failed", {"cleanupFailures": ["spool-unlink-failed"]})
+                with mock.patch.object(probe, "run", side_effect=probe.DiagnosticError(child_reason, {"exit": -9})), mock.patch.object(
+                        probe.GraphCapture, "cleanup", cleanup):
+                    with self.assertRaisesRegex(probe.DiagnosticError, child_reason) as caught:
+                        probe.paired_cli(commands, root, {}, None, {}, raw)
+                self.assertEqual(-9, caught.exception.receipt["exit"])
+                self.assertEqual("raw-capture-cleanup-failed", caught.exception.receipt["cleanupFailure"])
+                self.assertEqual(["spool-unlink-failed"], caught.exception.receipt["cleanupFailures"])
+
+    def test_cleanup_only_failure_aborts_success_and_is_bounded(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            commands = {arm: probe.cli_commands(arm, [root / "classes"], root)
+                        for arm in ("baseline", "candidate")}
+            raw = probe.RawStreams(root / "raw")
+            result = {"exit": 0, "stdout": b"", "stderr": b"", "wallNanos": 1, "rss": {}}
+            original = probe.GraphCapture.cleanup
+            def cleanup(capture):
+                original(capture)
+                raise probe.DiagnosticError("raw-capture-cleanup-failed")
+            with mock.patch.object(probe, "run", return_value=result), mock.patch.object(
+                    probe.GraphCapture, "cleanup", cleanup):
+                with self.assertRaisesRegex(probe.DiagnosticError, "raw-capture-cleanup-failed"):
+                    probe.paired_cli(commands, root, {}, None, {}, raw)
+
+    def test_cleanup_unlink_error_has_no_private_path_in_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            capture = probe.GraphCapture(raw)
+            capture.append(0, b"x")
+            try:
+                with mock.patch.object(Path, "unlink", side_effect=OSError("private-path-must-not-leak")):
+                    with self.assertRaisesRegex(probe.DiagnosticError, "raw-capture-cleanup-failed") as caught:
+                        capture.cleanup()
+                self.assertEqual({"cleanupFailures": ["spool-unlink-failed"]}, caught.exception.receipt)
+                self.assertEqual(0, raw.pending)
+            finally:
+                capture.cleanup()
+
+    def test_retention_unlink_failure_preserves_primary_stream_error(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            capture = probe.GraphCapture(raw)
+            capture.append(0, b"correct")
+            capture.finish()
+            result = {"stdout": capture.output(), "stderr": b""}
+            capture.path.write_bytes(b"changed")
+            try:
+                with mock.patch.object(Path, "unlink", side_effect=OSError("private-path-must-not-leak")):
+                    with self.assertRaisesRegex(probe.DiagnosticError, "raw-stream-receipt-mismatch") as caught:
+                        raw.retain("graph", 1, "baseline", result, capture)
+                self.assertEqual({"archiveCleanupFailure": "archive-unlink-failed"}, caught.exception.receipt)
+            finally:
+                capture.cleanup()
+            self.assertEqual((0, 0), (raw.bytes, raw.pending))
+
+    def test_archive_write_failure_is_explicit_and_removes_only_new_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = probe.RawStreams(Path(temporary) / "raw")
+            with mock.patch.object(gzip.GzipFile, "write", side_effect=OSError("private-path-must-not-leak")):
+                with self.assertRaisesRegex(probe.DiagnosticError, "raw-evidence-write-failed"):
+                    raw.retain("graph", 1, "baseline", {"stdout": b"data", "stderr": b""})
+            self.assertEqual((0, 0), (raw.bytes, raw.pending))
+            self.assertFalse((raw.directory / "graph-1-baseline-stdout.gz").exists())
+
     def test_inventory_detects_same_size_byte_change_and_mtime_change(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
