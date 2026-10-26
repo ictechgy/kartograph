@@ -53,13 +53,21 @@ internal object ExternalDispatchIndexer {
             if (call.kind !in VIRTUAL_KINDS || call.resolution == CallResolution.RUNTIME_MODEL) return@map call
             val callTarget = call.target
             val resolved = targetCache.getOrPut(callTarget) {
+                // 같은 선언을 여러 subtype의 조상 목록에서 다시 찾는다. 이번 target의 이름·descriptor가
+                // 고정된 동안만 owner별 부재까지 기억해 JVM id 생성과 hierarchy 재탐색을 반복하지 않는다.
+                val methodsByOwner = mutableMapOf<String, HierarchyMethod?>()
                 // 프로젝트 선언을 먼저 확인한다. 외부 hierarchy에는 앱 메서드가 들어 있지 않다.
                 fun declaredMethod(owner: String): HierarchyMethod? {
-                    if (owner !in types) return hierarchy.declaredMethodsOf(owner)
+                    val cached = methodsByOwner[owner]
+                    if (cached != null || methodsByOwner.containsKey(owner)) return cached
+                    val method = if (owner !in types) hierarchy.declaredMethodsOf(owner)
                         ?.firstOrNull { it.name == call.name && it.descriptor == call.descriptor }
-                    val method = graph.node(JvmNodeId.methodId(owner, call.name, call.descriptor)) ?: return null
-                    return HierarchyMethod(call.name, call.descriptor, method.jvmVisibility,
-                        JvmModifier.STATIC in method.jvmModifiers, JvmModifier.FINAL in method.jvmModifiers)
+                    else graph.node(JvmNodeId.methodId(owner, call.name, call.descriptor))?.let {
+                        HierarchyMethod(call.name, call.descriptor, it.jvmVisibility,
+                            JvmModifier.STATIC in it.jvmModifiers, JvmModifier.FINAL in it.jvmModifiers)
+                    }
+                    methodsByOwner[owner] = method
+                    return method
                 }
                 val declarations = ancestorsOf(call.owner).mapNotNull { owner -> declaredMethod(owner)?.let { owner to it } }
                 // class 선언은 인터페이스보다 먼저 해석하며 더 가까운 선언을 건너뛰지 않는다.

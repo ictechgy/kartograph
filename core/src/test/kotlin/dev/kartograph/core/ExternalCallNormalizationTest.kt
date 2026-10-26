@@ -16,6 +16,23 @@ class ExternalCallNormalizationTest {
     private val nodes = listOf(caller, first, second).map { GraphNode(it, "run", NodeKind.METHOD) }
 
     @Test
+    fun `empty candidates still isolate later mutations and declaration chains`() {
+        val candidates = mutableListOf<NodeId>()
+        val chain = mutableListOf("library/Api", "app/A")
+        val raw = call(candidates).copy(kind = InvocationKind.VIRTUAL,
+            declaration = CallDeclaration(first, CallDeclarationScope.PROJECT, chain))
+        val graph = CodeGraph(nodes, emptyList(), listOf(raw, call(candidates, 1), call(emptyList(), 2)))
+        candidates += second
+        chain.clear()
+
+        assertTrue(graph.externalCalls.all { it.resolvedTargets.isEmpty() })
+        assertEquals(listOf("library/Api", "app/A"), graph.externalCalls.single { it.ordinal == 0 }.declaration?.ownerChain)
+        val pruned = CodeGraph(nodes.filter { it.id != first }, emptyList(), graph.externalCalls)
+        assertNull(pruned.externalCalls.single { it.ordinal == 0 }.declaration)
+        assertTrue(pruned.externalCalls.all { it.resolvedTargets.isEmpty() })
+    }
+
+    @Test
     fun `shared candidate input is normalized once to an isolated canonical snapshot`() {
         val mutable = mutableListOf(second, missing, first, second)
         val shared = CountingList(mutable)

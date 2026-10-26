@@ -7,6 +7,16 @@ on:
         description: Full reviewed commit SHA for the same-executable diagnostic
         required: true
         type: string
+      runtime_profile:
+        description: One bounded Linux runtime diagnostic (not repeatability or acceptance)
+        required: false
+        default: false
+        type: boolean
+      jit_attribution:
+        description: One sealed dead-private JIT/OSR attribution pair (not acceptance)
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -24,11 +34,24 @@ jobs:
     steps:
       - name: Validate the requested identity
         shell: bash
+        env:
+          RUNTIME_PROFILE: ${{ inputs.runtime_profile }}
+          JIT_ATTRIBUTION: ${{ inputs.jit_attribution }}
         run: |
           [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || {
             echo "target_sha must be a full lowercase commit SHA" >&2
             exit 64
           }
+          if [[ "$RUNTIME_PROFILE" == 'true' && "$TARGET_SHA" != 'c8d9ab3e3492afc5dc645dcfa50d7401c58796c2' ]]; then
+            echo "runtime profiling requires the sealed PR 204 synthetic merge" >&2
+            exit 64
+          fi
+          if [[ "$JIT_ATTRIBUTION" == 'true' ]]; then
+            if [[ "$RUNTIME_PROFILE" == 'true' || "$TARGET_SHA" != 'c8d9ab3e3492afc5dc645dcfa50d7401c58796c2' ]]; then
+              echo "JIT attribution requires the sealed target and a separate diagnostic run" >&2
+              exit 64
+            fi
+          fi
           printf 'EVIDENCE_DIRECTORY=%s/cli-repeatability\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,6 +94,7 @@ jobs:
           if (( statuses[0] != 0 )); then exit "${statuses[0]}"; fi
           exit "${statuses[1]}"
       - name: Run the fixed same-executable qualification
+        if: ${{ !inputs.runtime_profile && !inputs.jit_attribution }}
         shell: bash
         run: |
           set +e
@@ -80,13 +104,57 @@ jobs:
           rc=$?
           printf '%s\n' "$rc" > "$EVIDENCE_DIRECTORY/outer-exit.txt"
           exit "$rc"
+      - name: Diagnose the sealed PR 204 Linux runtime once
+        if: ${{ inputs.runtime_profile }}
+        timeout-minutes: 16
+        shell: bash
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=15s 900 python3 harness/Scripts/verify-linux-runtime-cost.py \
+            --repo-root "$GITHUB_WORKSPACE/target" --target-sha "$TARGET_SHA" \
+            --output "$EVIDENCE_DIRECTORY/runtime-public"
+          rc=$?
+          exit "$rc"
       - name: Preserve the complete diagnostic outcome
-        if: always()
+        if: ${{ always() && !inputs.runtime_profile && !inputs.jit_attribution }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cli-repeatability-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/cli-repeatability/
             !${{ runner.temp }}/cli-repeatability/capture/tmp/**
+          if-no-files-found: error
+          retention-days: 14
+      - name: Attribute the sealed largest command once
+        if: ${{ inputs.jit_attribution }}
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          timeout --signal=TERM --kill-after=15s 450 python3 harness/Scripts/verify-jit-attribution.py \
+            --repo-root "$GITHUB_WORKSPACE/target" --target-sha "$TARGET_SHA" \
+            --output "$EVIDENCE_DIRECTORY/jit-public"
+      - name: Preserve only allowlisted JIT derivatives
+        if: ${{ always() && inputs.jit_attribution }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: jit-attribution-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/cli-repeatability/jit-public/result.json
+            ${{ runner.temp }}/cli-repeatability/jit-public/events-dead-private.json.gz
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve only allowlisted runtime derivatives
+        if: ${{ always() && inputs.runtime_profile }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/cli-repeatability/runtime-public/result.json
+            ${{ runner.temp }}/cli-repeatability/runtime-public/events-graph.json.gz
+            ${{ runner.temp }}/cli-repeatability/runtime-public/events-dead.json.gz
+            ${{ runner.temp }}/cli-repeatability/runtime-public/events-dead_private.json.gz
+            ${{ runner.temp }}/cli-repeatability/runtime-public/events-cycles.json.gz
+            ${{ runner.temp }}/cli-repeatability/runtime-public/events-rules.json.gz
+            ${{ runner.temp }}/cli-repeatability/runtime-public/events-metrics.json.gz
           if-no-files-found: error
           retention-days: 14

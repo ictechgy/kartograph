@@ -14,6 +14,41 @@ class DispatchExpansionEquivalenceTest {
             "ext/Child" to emptyList(), "ext/Final" to listOf(HierarchyMethod("run", "()V", Visibility.PUBLIC, isFinal = true))),
         emptyMap(), mapOf("ext/Child" to true, "ext/Parent" to true, "ext/Final" to false, "java/lang/Object" to false))
 
+    @Test fun sharedAncestorsPreserveOverloadsMissingDeclarationsAndBudgetBoundaries() {
+        val leaves = (0..11).map { "p/Leaf$it" }
+        val types = listOf("p/Base", "p/Aa", "p/BB", "p/Entry") + leaves
+        val ordinary = JvmNodeId.methodId("p/Base", "run", "()V")
+        val overloaded = JvmNodeId.methodId("p/Aa", "run", "(I)V")
+        val leafBody = JvmNodeId.methodId(leaves.last(), "run", "()V")
+        val nodes = types.map { owner ->
+            GraphNode(JvmNodeId.classId(owner), owner, NodeKind.CLASS, jvmSignature = owner,
+                supertypes = if (owner == "p/Entry") emptySet() else setOf(if (owner == "p/Base") "ext/Parent" else "p/Base"))
+        } + listOf(ordinary, overloaded, leafBody, caller).distinct().map { id ->
+            GraphNode(id, "run", NodeKind.METHOD, jvmVisibility = Visibility.PUBLIC)
+        }
+        val signatures = listOf("run" to "()V", "run" to "(I)V", "missing" to "()V")
+        val calls = signatures.flatMap { (name, descriptor) -> List(13) { ordinal ->
+            ExternalCall(caller, "ext/Parent", name, descriptor, InvocationKind.INTERFACE, ordinal = ordinal)
+        } }
+        val supplied = ClassHierarchy(mapOf("ext/Parent" to emptySet(), "java/lang/Object" to emptySet()),
+            mapOf("ext/Parent" to listOf(HierarchyMethod("run", "()V", Visibility.PUBLIC),
+                HierarchyMethod("run", "(I)V", Visibility.PUBLIC))),
+            emptyMap(), mapOf("ext/Parent" to true, "java/lang/Object" to false))
+        val graph = CodeGraph(nodes, emptyList(), calls)
+        for (limit in listOf(null, 0, 1, 2, 12)) {
+            val expected = LegacyDispatchExpansion.enrichBounded(graph, supplied, limit)
+            val actual = ExternalDispatchIndexer.enrichBounded(graph, supplied, limit)
+            assertEquals(expected.overLimitCalls, actual.overLimitCalls)
+            assertGraph(expected.graph, actual.graph)
+            assertGraph(actual.graph, ExternalDispatchIndexer.enrichBounded(
+                CodeGraph(nodes.reversed(), emptyList(), calls.reversed()), supplied, limit).graph)
+        }
+        val resolved = ExternalDispatchIndexer.enrichBounded(graph, supplied, null).graph.externalCalls
+        assertEquals(listOf(ordinary, leafBody).sorted(), resolved.first { it.descriptor == "()V" && it.name == "run" }.resolvedTargets)
+        assertEquals(listOf(overloaded), resolved.first { it.descriptor == "(I)V" }.resolvedTargets)
+        assertTrue(resolved.filter { it.name == "missing" }.all { it.resolvedTargets.isEmpty() })
+    }
+
     @Test fun repeatedOrdinalsOverlappingTargetsAndBudgetsMatchPerCallExpansion() {
         assertEquals(JvmNodeId.methodId("p/Aa", "run", "()V").hashCode(),
             JvmNodeId.methodId("p/BB", "run", "()V").hashCode())

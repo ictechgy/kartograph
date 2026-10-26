@@ -1,0 +1,21 @@
+{
+  "format": "kartograph-linux-runtime-seal-v1",
+  "origin": {
+    "pr": 204,
+    "head": "003d5522af09d76d71ac7646ecb57628b88937f3",
+    "checkout": "c8d9ab3e3492afc5dc645dcfa50d7401c58796c2",
+    "tree": "d2aa73b0960bf59b7551f112dc811ea4abb61c15",
+    "run": 40205795058,
+    "artifact": 12604786455,
+    "artifactSha256": "a7069f3b3163e91e50e7f9162ee8e5966edd3080c4e8530589765ab8bb2d671b",
+    "acceptance": "FAIL:22.627>20seconds;notreplacedbythisdiagnostic"
+  },
+  "canonicalSha256": {
+    "roots": "7fa5b1641e026fdc90b663c44c243d08b9b22a4be9244121c633ed8b60e15bb2",
+    "libraries": "6356a72bef675cedca72dffef5e9865c4c9dfcf7ab4cdbdd4ddb06579eaafeda",
+    "launchers": "209d06050dcffb5ba84d3fb85e22f256e4549ca371c47ac8e03eee181cd113c5",
+    "project": "74d096afc95bd6a560d25eea7f3081c9c9b325afbae56784e4cb3001d1a6f22c",
+    "jdk": "6b9b353e79ed111e8104503d9166501d408cabdc6415e223ab15e8f8ad8122c8"
+  },
+  "canonicalization": "path/size/sha256; preserve sorted inventory order; omit mtimeNs only"
+}

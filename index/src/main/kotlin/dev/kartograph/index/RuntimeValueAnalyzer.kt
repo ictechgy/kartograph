@@ -180,9 +180,15 @@ internal object RuntimeValueAnalyzer {
         val calls = graph.externalCalls.map { call ->
             val model = RuntimeLibraryModels.find(call.owner, call.name, call.descriptor,
                 call.kind == dev.kartograph.core.InvocationKind.STATIC, ::loader)
-            models[call.caller to call.ordinal]?.let { targets ->
-                call.copy(resolvedTargets = targets, resolution = CallResolution.RUNTIME_MODEL, model = model?.id)
-            } ?: call.copy(model = model?.id)
+            val targets = models[call.caller to call.ordinal]
+            // 값이 같은 호출은 이미 검증된 identity를 재사용한다. 모델 제거와 빈 대상 목록도 변경으로 구분한다.
+            when {
+                targets != null -> if (call.resolvedTargets == targets && call.resolution == CallResolution.RUNTIME_MODEL &&
+                    call.model == model?.id) call else
+                    call.copy(resolvedTargets = targets, resolution = CallResolution.RUNTIME_MODEL, model = model?.id)
+                call.model == model?.id -> call
+                else -> call.copy(model = model?.id)
+            }
         }
         return graph.enrichedWith(derived, calls) to observations
     }
