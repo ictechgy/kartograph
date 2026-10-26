@@ -12,10 +12,28 @@ import dev.kartograph.core.NodeKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertSame
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.tree.MethodNode
 
 class RuntimeEnrichmentBoundaryTest {
+    @Test
+    fun `runtime enrichment reuses unchanged calls but clears stale models`() {
+        val caller = JvmNodeId.methodId("app/Caller", "load", "()V")
+        val ordinary = ExternalCall(caller, "outside/Api", "work", "()V", InvocationKind.STATIC)
+        val stale = ordinary.copy(name = "stale", model = "old-model")
+        val modeled = ExternalCall(caller, "java/lang/Class", "forName", "(Ljava/lang/String;)Ljava/lang/Class;",
+            InvocationKind.STATIC, model = "jdk.class-loading.v1")
+        val graph = CodeGraph(listOf(GraphNode(caller, "load", NodeKind.METHOD)), emptyList(), listOf(ordinary, stale, modeled))
+
+        val (enriched, _) = RuntimeValueAnalyzer.enrich(graph, emptyList(), ClassHierarchy.EMPTY)
+
+        assertSame(graph.externalCalls.single { it.name == "work" }, enriched.externalCalls.single { it.name == "work" })
+        assertSame(graph.externalCalls.single { it.name == "forName" }, enriched.externalCalls.single { it.name == "forName" })
+        assertEquals(stale.copy(model = null), enriched.externalCalls.single { it.name == "stale" })
+        assertEquals("old-model", graph.externalCalls.single { it.name == "stale" }.model)
+    }
+
     @Test
     fun `runtime enrichment validates combined base and derived edge weight`() {
         val caller = JvmNodeId.methodId("app/Caller", "load", "()V")

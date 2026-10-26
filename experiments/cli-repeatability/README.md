@@ -172,3 +172,22 @@ paths. Raw recordings, streams, names, paths, and decoded source events stay in 
 separate private temporary directory and are not retained after the job. Ledger
 hashes and numeric coverage limits are retained; no profiler or permission change
 is installed. An inconclusive result cannot establish a speedup or permit release.
+
+## Optional focused JIT attribution
+
+`jit_attribution: true` is a separate diagnostic mode for the same sealed target.
+It cannot be combined with runtime mode. One adjacent `dead --include-private-members`
+reference/JFR pair preserves exact output and exit equivalence. Compilation uses
+threshold 0 ms, as the earlier runtime mode already did; this mode additionally
+retains compile IDs, OSR/tier/compiler, public method descriptors and numeric OS
+thread IDs. These can be joined to bounded owned-child compiler CPU timelines.
+Compilation duration is elapsed time, not per-method CPU or saved wall time.
+JFR samples omit compiler threads; native compiler C++ stacks remain unavailable.
+
+The 420 s controller uses the existing supervisor and a 450 s outer timeout.
+Recordings are noncircular, with a 32 MiB hard file bound; complete chunk headers,
+recorded settings and DataLoss are checked. Decoded JSON, event counts, stacks and
+sanitized derivatives have explicit limits. VM bootstrap before recording and
+exited-thread tails remain gaps. Only `result.json` and the sanitized event ledger
+are uploaded; raw recordings, failure messages, paths and thread names stay private.
+Both arms include `/proc` observation, so neither replaces the unchanged smoke gate.

@@ -256,7 +256,7 @@ class RuntimeCostTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             for mode, target, expected in (("false", "1" * 40, 0), ("true", "1" * 40, 64),
                                            ("true", "c8d9ab3e3492afc5dc645dcfa50d7401c58796c2", 0)):
-                env = dict(os.environ, RUNTIME_PROFILE=mode, TARGET_SHA=target, RUNNER_TEMP=temporary,
+                env = dict(os.environ, RUNTIME_PROFILE=mode, JIT_ATTRIBUTION="false", TARGET_SHA=target, RUNNER_TEMP=temporary,
                            GITHUB_ENV=str(Path(temporary) / "environment"))
                 result = subprocess.run(["bash", "-c", validate["run"]], env=env, capture_output=True, timeout=5)
                 self.assertEqual(expected, result.returncode, result.stderr.decode())
@@ -266,7 +266,7 @@ class RuntimeCostTest(unittest.TestCase):
         steps = workflow_steps(ROOT / ".github/workflows/cli-repeatability.yml")
         upload = next(s for s in steps if s.get("name") == "Preserve only allowlisted runtime derivatives")
         original = next(s for s in steps if s.get("name") == "Preserve the complete diagnostic outcome")
-        self.assertEqual("${{ always() && !inputs.runtime_profile }}", original["if"])
+        self.assertEqual("${{ always() && !inputs.runtime_profile && !inputs.jit_attribution }}", original["if"])
         self.assertEqual("${{ always() && inputs.runtime_profile }}", upload["if"])
         paths = upload["with"]["path"].splitlines()
         with tempfile.TemporaryDirectory() as temporary:
@@ -281,6 +281,29 @@ class RuntimeCostTest(unittest.TestCase):
                 if Path(actual).is_file():
                     matched.append(Path(actual).name)
             self.assertEqual(["result.json", "events-graph.json.gz"], matched)
+
+    def test_jit_mode_is_separate_sealed_and_uploads_only_two_derivatives(self):
+        from test_release_workflow import workflow_steps
+        steps = workflow_steps(ROOT / ".github/workflows/cli-repeatability.yml")
+        validate = next(s for s in steps if s.get("name") == "Validate the requested identity")
+        upload = next(s for s in steps if s.get("name") == "Preserve only allowlisted JIT derivatives")
+        sealed = "c8d9ab3e3492afc5dc645dcfa50d7401c58796c2"
+        with tempfile.TemporaryDirectory() as temporary:
+            for runtime, jit, target, expected in (("false", "true", sealed, 0), ("true", "true", sealed, 64),
+                                                   ("false", "true", "1" * 40, 64), ("false", "false", "1" * 40, 0)):
+                env = dict(os.environ, RUNTIME_PROFILE=runtime, JIT_ATTRIBUTION=jit, TARGET_SHA=target,
+                           RUNNER_TEMP=temporary, GITHUB_ENV=str(Path(temporary) / "environment"))
+                result = subprocess.run(["bash", "-c", validate["run"]], env=env, capture_output=True, timeout=5)
+                self.assertEqual(expected, result.returncode, result.stderr.decode())
+            public = Path(temporary) / "cli-repeatability/jit-public"
+            public.mkdir(parents=True)
+            for name in ("result.json", "events-dead-private.json.gz", "capture.jfr", "events.json", "stderr"):
+                (public / name).write_text("private seed")
+            paths = upload["with"]["path"].splitlines()
+            matches = [Path(path.replace("${{ runner.temp }}", temporary)).name for path in paths
+                       if Path(path.replace("${{ runner.temp }}", temporary)).is_file()]
+            self.assertEqual(["result.json", "events-dead-private.json.gz"], matches)
+        self.assertEqual("${{ always() && inputs.jit_attribution }}", upload["if"])
 
 
 if __name__ == "__main__":
