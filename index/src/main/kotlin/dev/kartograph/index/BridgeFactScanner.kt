@@ -56,6 +56,21 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             if (stats.unscannedHandlers > 0) add(
                 "unscanned-method-handlers: ${stats.unscannedHandlers} handler callback(s) are not inline lambdas",
             )
+            if (stats.unscannedConditions > 0) add(
+                "unscanned-method-conditions: ${stats.unscannedConditions} inline handler scope(s) exceed leading direct braced literal method equality support",
+            )
+            if (stats.unresolvedWrites.isNotEmpty()) add(
+                "unresolved-channel-writes: ${stats.unresolvedWrites.size} observed write site(s) invalidate channel receiver/name bindings: " +
+                    stats.unresolvedWrites.sorted().take(8).joinToString() +
+                    if (stats.unresolvedWrites.size > 8) " (additional sites omitted)" else "",
+            )
+            if (stats.unscannedBindingFiles.isNotEmpty()) add(
+                "unscanned-channel-bindings: ${stats.unscannedBindingFiles.size} source file(s) contain unsupported declaration, parameter or qualified receiver binding forms: " +
+                    stats.unscannedBindingFiles.sorted().take(8).joinToString(),
+            )
+            if (stats.incompatibleBindings > 0) add(
+                "incompatible-channel-bindings: ${stats.incompatibleBindings} channel registration(s) use a binding of an incompatible value kind",
+            )
             val dynamicExpo = filtered.count { it.mechanism == "expo" && it.dynamic }
             if (dynamicExpo > 0) add(
                 "dynamic-expo-names: $dynamicExpo Expo boundary fact(s) use a non-literal module name",
@@ -86,7 +101,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         // FFI/JNI는 채널 조인 범위 밖의 interop다. 파일 수준으로만 관측해 한계 근거로 남긴다.
         val isJava = path.fileName.toString().endsWith(".java")
         val strippedSource = StringBuilder()
-        val flutterChannels = mutableMapOf<String, Channel>()
+        val flutterChannels = mutableListOf<ChannelBinding>()
         var pendingChainedChannel: Channel? = null
         var pendingChannel: PendingChannel? = null
         val handlerScopes = ArrayDeque<HandlerScope>()
@@ -102,6 +117,197 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         // Expo 게이트는 주석·문자열 내용을 제거한 전체 파일 뷰에서 한 번 판정한다 —
         // 문자열 리터럴 안의 import 텍스트로 게이트가 켜지지 않게 하기 위함이다.
         val sourceLines = ProjectTraversal.readSourceLines(projectRoot, path)
+        var sourceBlockComment = false
+        val sourceCode = sourceLines.map { line ->
+            val stripped = stripComments(line, sourceBlockComment)
+            sourceBlockComment = stripped.inBlockComment
+            stripped.code
+        }.joinToString("\n")
+        val maskedSourceCode = maskStringContents(sourceCode)
+        val guardedAssignments = mutableSetOf<Int>()
+        CONTROL_CONDITION.findAll(maskedSourceCode).forEach { condition ->
+            val open = maskedSourceCode.indexOf('(', condition.range.first)
+            val end = balancedEnd(sourceCode, open)
+            if (end >= 0) {
+                val body = sourceCode.indexOfFirstNonWhitespace(end + 1)
+                if (maskedSourceCode.getOrNull(body) != '{') guardedAssignments += body
+            }
+        }
+        CONTROL_ALTERNATIVE.findAll(maskedSourceCode).forEach { alternative ->
+            val body = sourceCode.indexOfFirstNonWhitespace(alternative.range.last + 1)
+            if (maskedSourceCode.getOrNull(body) != '{') guardedAssignments += body
+        }
+        val companionBodies = COMPANION_BODY.findAll(maskedSourceCode).map { it.range.last }.toSet()
+        val lineStarts = mutableListOf(0)
+        val lineScopes = mutableListOf<List<Int>>(emptyList())
+        val sourceScope = mutableListOf<Int>()
+        val argumentDepth = IntArray(maskedSourceCode.length)
+        val delimiterScopes = ArrayDeque<Int>()
+        var delimiters = 0
+        maskedSourceCode.forEachIndexed { index, character ->
+            argumentDepth[index] = delimiters
+            when (character) {
+                '{' -> {
+                    sourceScope += index
+                    delimiterScopes.addLast(delimiters)
+                    delimiters = 0
+                }
+                '}' -> {
+                    if (sourceScope.isNotEmpty()) sourceScope.removeLast()
+                    delimiters = if (delimiterScopes.isNotEmpty()) delimiterScopes.removeLast() else 0
+                }
+                '(', '[' -> delimiters++
+                ')', ']' -> delimiters = (delimiters - 1).coerceAtLeast(0)
+                '\n' -> {
+                    lineStarts += index + 1
+                    lineScopes += sourceScope.toList()
+                }
+            }
+        }
+        fun scopeAt(offset: Int): List<Int> {
+            val line = lineStarts.binarySearch(offset).let { if (it >= 0) it else -it - 2 }
+            val scope = lineScopes[line].toMutableList()
+            for (index in lineStarts[line] until offset) when (maskedSourceCode[index]) {
+                '{' -> scope += index
+                '}' -> if (scope.isNotEmpty()) scope.removeLast()
+            }
+            return scope
+        }
+        // implicit it와 해석하지 못한 함수 header는 이름을 추측해 이전 binding에 연결하지 않는다.
+        val unscopedParameters = mutableSetOf("it", "field")
+        val functionHeaders = FUNCTION_PARAMETERS.findAll(maskedSourceCode).toList()
+        val functionOffsets = functionHeaders.map { it.range.first }.toSet()
+        val unknownFunctionHeader = FUNCTION_KEYWORD.findAll(maskedSourceCode).any { it.range.first !in functionOffsets }
+        val localOffsets = LOCAL_DECLARATION.findAll(maskedSourceCode).map { it.range.first }.toSet()
+        val unknownLocalDeclaration = LOCAL_KEYWORD.findAll(maskedSourceCode).any { it.range.first !in localOffsets }
+        val classHeaders = CLASS_DECLARATION.findAll(maskedSourceCode).toList() +
+            ANONYMOUS_OBJECT.findAll(maskedSourceCode).toList()
+        val ownerOffsets = classHeaders.map { it.range.first }.toSet()
+        val unknownOwnerHeader = OWNER_KEYWORD.findAll(maskedSourceCode).any { keyword ->
+            if (keyword.range.first in ownerOffsets) false else {
+                var previous = keyword.range.first - 1
+                while (previous >= 0 && maskedSourceCode[previous].isWhitespace()) previous--
+                // Kotlin `Type::class`와 Java `Type.class`는 owner 선언이 아니다.
+                val classLiteral = keyword.value == "class" && previous >= 0 && maskedSourceCode[previous] in ".:"
+                !classLiteral
+            }
+        }
+        fun classBodyOpening(start: Int): Int? {
+            var index = start
+            while (index < maskedSourceCode.length) {
+                when (maskedSourceCode[index]) {
+                    '(' -> {
+                        // 슈퍼 생성자 인자 lambda의 `{`는 클래스 본문이 아니다.
+                        val end = balancedEnd(sourceCode, index)
+                        if (end < 0) return null
+                        index = end + 1
+                    }
+                    '{' -> return index
+                    ';', '}' -> return null
+                    else -> index++
+                }
+            }
+            return null
+        }
+        val classBodies = classHeaders.mapNotNull { declaration ->
+            classBodyOpening(declaration.range.last + 1)
+        } + companionBodies
+        val classScopes = classBodies.map { scopeAt(it + 1) }
+        val unknownClassParameters = classHeaders.any { declaration ->
+            val end = classBodyOpening(declaration.range.last + 1) ?: maskedSourceCode.length
+            val header = maskedSourceCode.substring(declaration.range.last + 1, end)
+            val opening = header.indexOf('(')
+            val colon = header.indexOf(':')
+            header.trimStart().startsWith('<') || (opening >= 0 && (colon < 0 || opening < colon)) ||
+                DELEGATION_KEYWORD.containsMatchIn(header)
+        }
+        val unknownLambdaDeclaration = LAMBDA_PARAMETERS.findAll(maskedSourceCode)
+            .any { it.groupValues[1].trimStart().startsWith('(') }
+        val multipleBindingStatements = maskedSourceCode.lineSequence().any { code ->
+            ';' in code && (LOCAL_KEYWORD.containsMatchIn(code) || METHOD_CHANNEL.containsMatchIn(code))
+        }
+        val unknownAccessor = ACCESSOR_PARAMETERS.findAll(maskedSourceCode).any { accessor ->
+            val end = balancedEnd(sourceCode, maskedSourceCode.indexOf('(', accessor.range.first))
+            end >= 0 && maskedSourceCode.getOrNull(sourceCode.indexOfFirstNonWhitespace(end + 1)) == '{'
+        }
+        val bindingBarrier = unknownFunctionHeader || unknownOwnerHeader || unknownLocalDeclaration || unknownClassParameters ||
+            unknownLambdaDeclaration || multipleBindingStatements || unknownAccessor ||
+            FOR_PARAMETERS.containsMatchIn(maskedSourceCode) || CONSTRUCTOR_KEYWORD.containsMatchIn(maskedSourceCode) ||
+            LABELLED_THIS.containsMatchIn(maskedSourceCode)
+        functionHeaders.forEach { match ->
+            val open = match.range.last
+            val end = balancedEnd(sourceCode, open)
+            if (end < 0) return@forEach
+            val names = PARAMETER_NAME.findAll(maskedSourceCode.substring(open + 1, end)).map { it.groupValues[1] }.toList()
+            val body = maskedSourceCode.indexOfAny(charArrayOf('{', '=', ';', '}'), end + 1)
+            if (body >= 0 && maskedSourceCode[body] == '{') {
+                val scope = scopeAt(body + 1)
+                names.forEach { flutterChannels += ChannelBinding(it, scope, Channel(null, true)) }
+            } else unscopedParameters += names
+        }
+        LAMBDA_PARAMETERS.findAll(maskedSourceCode).forEach { match ->
+            val header = match.groupValues[1]
+            val typed = PARAMETER_NAME.findAll(header).map { it.groupValues[1] }.toList()
+            val names = if (typed.isNotEmpty()) typed else header.split(',').map(String::trim).filter { IDENTIFIER.matches(it) }
+            val scope = scopeAt(match.range.first + 1)
+            names.forEach { flutterChannels += ChannelBinding(it, scope, Channel(null, true)) }
+        }
+        fun visibleBinding(name: String, scope: List<Int>, origin: List<Int>? = null): ChannelBinding? =
+            flutterChannels.asReversed().filter { binding ->
+                binding.name == name && binding.scope.size <= scope.size &&
+                    binding.scope.indices.all { binding.scope[it] == scope[it] } &&
+                    (origin == null || binding.originScope == origin)
+            }.maxByOrNull { it.scope.size }
+        fun ownerScope(scope: List<Int>): List<Int>? = classScopes.filter { owner ->
+            owner.size <= scope.size && owner.indices.all { owner[it] == scope[it] }
+        }.maxByOrNull { it.size }
+        fun channelFor(name: String, scope: List<Int>, kind: BindingKind, ownMember: Boolean = false): Channel? {
+            // 표현식 몸체처럼 매개변수 범위를 증명하지 못한 모양은 파일 안의 동명 채널을 미확정으로 둔다.
+            if (bindingBarrier) return Channel(null, true, BindingGap(unmodeledFile = relative))
+            if (name in unscopedParameters) return Channel(null, true)
+            val origin = if (ownMember) ownerScope(scope) ?: return Channel(null, true) else null
+            val binding = visibleBinding(name, scope, origin) ?: return null
+            if (binding.kind == BindingKind.UNKNOWN) return binding.channel
+            if (binding.kind != kind) return Channel(null, true, BindingGap(incompatible = true))
+            return binding.channel
+        }
+        fun registerHandler(channel: Channel, handlerOffset: Int, lineNumber: Int, line: String) {
+            val afterName = handlerOffset + "setMethodCallHandler".length
+            val argumentStart = sourceCode.indexOfFirstNonWhitespace(afterName)
+            // null은 등록이 아니라 해제다. 다음 줄의 인자도 같은 호출 경계에서 확인한다.
+            if (sourceCode.getOrNull(argumentStart) == '(') {
+                val end = balancedEnd(sourceCode, argumentStart)
+                if (end >= 0 && sourceCode.substring(argumentStart + 1, end).trim() == "null") return
+            }
+            channel.bindingGap?.let { gap ->
+                gap.unknownWrite?.let(stats.unresolvedWrites::add)
+                gap.unmodeledFile?.let(stats.unscannedBindingFiles::add)
+                if (gap.incompatible) stats.incompatibleBindings++
+            }
+            facts += fact("channel-register", channel.value, null, channel.dynamic, relative, lineNumber, line,
+                "setMethodCallHandler", "flutter")
+            val openingBrace = if (sourceCode.getOrNull(argumentStart) == '(') {
+                sourceCode.indexOfFirstNonWhitespace(argumentStart + 1)
+            } else argumentStart
+            if (sourceCode.getOrNull(openingBrace) != '{') {
+                stats.unscannedHandlers++
+                return
+            }
+            // 기존 when 경로는 줄별 깊이를 사용한다. 다음 줄에서 여는 lambda는 그 줄까지의 깊이를 반영한다.
+            val prefix = sourceCode.substring(lineStarts[lineNumber - 1], openingBrace + 1)
+            val openingLine = lineStarts.binarySearch(openingBrace).let { if (it >= 0) it else -it - 2 } + 1
+            handlerScopes.addLast(HandlerScope(channel, braceDepth + braceDelta(prefix), openingLine))
+            val conditions = scanMethodChannelConditions(sourceCode, maskedSourceCode, openingBrace)
+            stats.unscannedConditions += conditions.unsupported
+            conditions.methods.forEach { method ->
+                val zeroBased = lineStarts.binarySearch(method.offset).let { if (it >= 0) it else -it - 2 }
+                val methodLine = zeroBased + 1
+                facts += BridgeFact("method-handle", channel.value, method.name, channel.dynamic,
+                    BridgeLocation(relative, methodLine,
+                        sourceLines[zeroBased].substring(0, method.offset - lineStarts[zeroBased]).toByteArray(Charsets.UTF_8).size + 1),
+                    target = "flutter")
+            }
+        }
         var gateBlockComment = false
         val gateView = buildString {
             sourceLines.forEach { line ->
@@ -119,9 +325,20 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             code: String,
         ) {
             val channelExpression = completed.arguments.getOrNull(1)
-            val channel = channelExpression?.let { flutterChannels[it.trim()] ?: it.literalOrDynamic() } ?: Channel(null, true)
+            val channel = channelExpression?.let { expression ->
+                val literal = expression.literalOrDynamic()
+                if (!literal.dynamic) literal else channelFor(expression.trim(), pending.scope, BindingKind.STRING) ?: literal
+            } ?: Channel(null, true)
             if (pending.variable != null) {
-                flutterChannels[pending.variable] = channel
+                if (pending.bindAllowed) {
+                    flutterChannels += ChannelBinding(pending.variable, pending.scope, channel, BindingKind.CHANNEL, pending.originScope)
+                } else {
+                    // 중괄호 없는 조건/반복문의 생성 식은 분기 뒤 binding 값을 확정하지 못한다.
+                    flutterChannels.filter { it.name == pending.variable && it.originScope == pending.originScope }.forEach { binding ->
+                        binding.kind = BindingKind.UNKNOWN
+                        binding.channel = Channel(null, true, BindingGap(unknownWrite = "$relative:$lineNumber"))
+                    }
+                }
                 return
             }
             val handler = CHAINED_SUFFIX.find(completed.remainder)
@@ -129,18 +346,8 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                 pendingChainedChannel = channel
                 return
             }
-            facts += fact(
-                "channel-register", channel.value, null, channel.dynamic,
-                relative, lineNumber, line, "setMethodCallHandler", "flutter",
-            )
-            val openingBrace = code.indexOf('{', code.length - completed.remainder.length + handler.range.first)
-            if (openingBrace >= 0) {
-                handlerScopes.addLast(
-                    HandlerScope(channel, braceDepth + braceDelta(code.substring(0, openingBrace + 1))),
-                )
-            } else {
-                stats.unscannedHandlers++
-            }
+            registerHandler(channel, lineStarts[lineNumber - 1] +
+                code.indexOf("setMethodCallHandler", code.length - completed.remainder.length + handler.range.first), lineNumber, line)
         }
         sourceLines.forEachIndexed { zeroBased, line ->
             val lineNumber = zeroBased + 1
@@ -151,16 +358,53 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             pendingChainedChannel?.let { channel ->
                 val handler = CHAINED_SUFFIX.find(code)
                 if (handler != null) {
-                    facts += fact("channel-register", channel.value, null, channel.dynamic, relative, lineNumber, line,
-                        "setMethodCallHandler", "flutter")
-                    val openingBrace = code.indexOf('{', handler.range.first)
-                    if (openingBrace >= 0) handlerScopes.addLast(HandlerScope(channel, braceDepth + braceDelta(code.substring(0, openingBrace + 1))))
-                    else stats.unscannedHandlers++
+                    registerHandler(channel, lineStarts[zeroBased] + code.indexOf("setMethodCallHandler", handler.range.first), lineNumber, line)
                 }
                 pendingChainedChannel = null
             }
+            val maskedCode = maskStringContents(code)
+            CHANNEL_WRITE.findAll(maskedCode).forEach { match ->
+                val qualifier = match.groupValues[1].filterNot(Char::isWhitespace)
+                val offset = lineStarts[zeroBased] + match.range.first
+                if (argumentDepth[offset] > 0 || DECLARATION_PREFIX.containsMatchIn(maskedCode.substring(0, match.range.first))) return@forEach
+                var previous = offset - 1
+                while (previous >= 0 && maskedSourceCode[previous].isWhitespace()) previous--
+                if (previous >= 0 && maskedSourceCode[previous] in ".:") return@forEach
+                if (qualifier.isNotEmpty() && qualifier != "this.") return@forEach
+                val name = match.groupValues[2]
+                val scope = scopeAt(offset)
+                val origin = if (qualifier == "this.") ownerScope(scope) else null
+                if (qualifier == "this." && origin == null) {
+                    // owner를 증명하지 못한 `this` 대입 뒤에 이전 리터럴을 확정하지 않는다.
+                    val uncertain = visibleBinding(name, scope)
+                    if (uncertain != null) flutterChannels.filter { it.name == name && it.originScope == uncertain.originScope }.forEach { binding ->
+                        binding.kind = BindingKind.UNKNOWN
+                        binding.channel = Channel(null, true, BindingGap(unmodeledFile = relative))
+                    }
+                    return@forEach
+                }
+                val target = visibleBinding(name, scope, origin) ?: return@forEach
+                // 선언 신원을 공유하는 binding만 무효화한다. 다른 객체의 필드·동명 지역 변수는 바꾸지 않는다.
+                flutterChannels.filter { it.name == name && it.originScope == target.originScope }.forEach { binding ->
+                    binding.kind = BindingKind.UNKNOWN
+                    binding.channel = Channel(null, true, BindingGap(unknownWrite = "$relative:$lineNumber"))
+                }
+            }
+            LOCAL_DECLARATION.findAll(maskedCode).forEach { match ->
+                flutterChannels += ChannelBinding(match.groupValues[1], scopeAt(lineStarts[zeroBased] + match.range.first), Channel(null, true))
+            }
             STRING_LITERAL_ASSIGNMENT.findAll(code).forEach { match ->
-                flutterChannels[match.groupValues[1]] = match.groupValues[2].literalOrDynamic()
+                val scope = scopeAt(lineStarts[zeroBased] + match.range.first)
+                // companion const는 같은 클래스의 메서드에서 비한정 이름으로 보인다. 다른 클래스에는 새지 않는다.
+                val bindingScope = if (scope.lastOrNull() in companionBodies &&
+                    CONST_PREFIX.containsMatchIn(code.substring(0, match.range.first))) scope.dropLast(1) else scope
+                val tail = code.substring(match.range.last + 1).trimStart()
+                val following = sourceCode.substring(lineStarts[zeroBased] + match.range.last + 1).trimStart()
+                val complete = (tail.isEmpty() || tail.startsWith(';') || tail.startsWith('}')) &&
+                    !ALIAS_CONTINUATION.containsMatchIn(following)
+                flutterChannels += ChannelBinding(match.groupValues[1], bindingScope,
+                    if (complete) match.groupValues[2].literalOrDynamic() else Channel(null, true, BindingGap(unmodeledFile = relative)),
+                    if (complete) BindingKind.STRING else BindingKind.UNKNOWN)
             }
             val pending = pendingChannel
             if (pending != null) {
@@ -169,10 +413,18 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                     pendingChannel = null
                 }
             } else {
-                val assignment = METHOD_CHANNEL.find(code)
+                val assignment = METHOD_CHANNEL.find(code)?.takeIf { match ->
+                    var previous = match.range.first - 1
+                    while (previous >= 0 && code[previous].isWhitespace()) previous--
+                    previous < 0 || code[previous] != '.'
+                }
                 val call = assignment ?: METHOD_CHANNEL_CALL.find(code)
                 call?.let { match ->
-                    val channel = PendingChannel(assignment?.groupValues?.get(1), CallArguments())
+                    val channel = PendingChannel(assignment?.groupValues?.get(1), CallArguments(),
+                        scopeAt(lineStarts[zeroBased] + match.range.first),
+                        bindAllowed = lineStarts[zeroBased] + match.range.first !in guardedAssignments).let { pending ->
+                            pending.copy(originScope = pending.variable?.let { visibleBinding(it, pending.scope)?.originScope } ?: pending.scope)
+                        }
                     val remainder = code.substring(match.range.last + 1)
                     channel.collector.consume(remainder)?.let { completed ->
                         recordChannel(channel, completed, line, lineNumber, code)
@@ -180,17 +432,18 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                 }
             }
             SET_HANDLER.findAll(code).forEach { match ->
-                val channel = flutterChannels[match.groupValues[1]] ?: Channel(null, true)
-                facts += fact("channel-register", channel.value, null, channel.dynamic, relative, lineNumber, line, "setMethodCallHandler", "flutter")
-                val openingBrace = code.indexOf('{', match.range.first)
-                if (openingBrace >= 0) {
-                    handlerScopes.addLast(HandlerScope(channel, braceDepth + braceDelta(code.substring(0, openingBrace + 1))))
-                } else {
-                    stats.unscannedHandlers++
-                }
+                val receiver = match.groupValues[1].filterNot(Char::isWhitespace)
+                val scope = scopeAt(lineStarts[zeroBased] + match.range.first)
+                val channel = when {
+                    IDENTIFIER.matches(receiver) -> channelFor(receiver, scope, BindingKind.CHANNEL)
+                    receiver.startsWith("this.") && IDENTIFIER.matches(receiver.removePrefix("this.")) ->
+                        channelFor(receiver.removePrefix("this."), scope, BindingKind.CHANNEL, ownMember = true)
+                    else -> Channel(null, true)
+                } ?: Channel(null, true)
+                registerHandler(channel, lineStarts[zeroBased] + code.indexOf("setMethodCallHandler", match.range.first), lineNumber, line)
             }
 
-            val handler = handlerScopes.lastOrNull()
+            val handler = handlerScopes.lastOrNull()?.takeIf { lineNumber >= it.openingLine }
             if (handler != null) {
                 METHOD_WHEN.findAll(code).forEach { match ->
                     val openingBrace = code.indexOf('{', match.range.first)
@@ -198,7 +451,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                     methodScopes.addLast(MethodScope(handler.channel, depth))
                     WHEN_METHOD.findAll(code.substring(openingBrace + 1)).forEach { methodMatch ->
                         val method = methodMatch.groupValues[1]
-                        facts += fact("method-handle", handler.channel.value, method, false, relative, lineNumber, line, method, "flutter")
+                        facts += fact("method-handle", handler.channel.value, method, handler.channel.dynamic, relative, lineNumber, line, method, "flutter")
                     }
                 }
                 val methodScope = methodScopes.lastOrNull()
@@ -208,7 +461,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                     WHEN_METHOD.findAll(code).forEach { match ->
                         val method = match.groupValues[1]
                         facts += fact(
-                            "method-handle", methodScope.channel.value, method, false,
+                            "method-handle", methodScope.channel.value, method, methodScope.channel.dynamic,
                             relative, lineNumber, line, method, "flutter",
                         )
                     }
@@ -304,7 +557,7 @@ public class BridgeFactScanner(private val projectRoot: Path) {
                 }
             }
             while (methodScopes.lastOrNull()?.let { braceDepth < it.depth } == true) methodScopes.removeLast()
-            while (handlerScopes.lastOrNull()?.let { braceDepth < it.depth } == true) handlerScopes.removeLast()
+            while (handlerScopes.lastOrNull()?.let { lineNumber >= it.openingLine && braceDepth < it.depth } == true) handlerScopes.removeLast()
             reactScope?.let { scope -> if (braceDepth < scope.depth) reactScope = null }
             if (code.isNotBlank()) previousCode = code
         }
@@ -536,13 +789,31 @@ public class BridgeFactScanner(private val projectRoot: Path) {
         return Channel(value, dynamic)
     }
 
-    private data class Channel(val value: String?, val dynamic: Boolean)
+    private data class Channel(val value: String?, val dynamic: Boolean, val bindingGap: BindingGap? = null)
 
-    private data class PendingChannel(val variable: String?, val collector: CallArguments)
+    private data class BindingGap(val unknownWrite: String? = null, val unmodeledFile: String? = null, val incompatible: Boolean = false)
+
+    private enum class BindingKind { STRING, CHANNEL, UNKNOWN }
+
+    private data class ChannelBinding(
+        val name: String,
+        val scope: List<Int>,
+        var channel: Channel,
+        var kind: BindingKind = BindingKind.UNKNOWN,
+        val originScope: List<Int> = scope,
+    )
+
+    private data class PendingChannel(
+        val variable: String?,
+        val collector: CallArguments,
+        val scope: List<Int>,
+        val originScope: List<Int> = scope,
+        val bindAllowed: Boolean = true,
+    )
 
     private data class CompletedCall(val arguments: List<String>, val remainder: String)
 
-    private data class HandlerScope(val channel: Channel, val depth: Int)
+    private data class HandlerScope(val channel: Channel, val depth: Int, val openingLine: Int)
 
     private data class MethodScope(val channel: Channel, val depth: Int)
 
@@ -613,6 +884,10 @@ public class BridgeFactScanner(private val projectRoot: Path) {
 
     private data class ScanStats(
         var unscannedHandlers: Int = 0,
+        var unscannedConditions: Int = 0,
+        val unresolvedWrites: MutableSet<String> = mutableSetOf(),
+        val unscannedBindingFiles: MutableSet<String> = mutableSetOf(),
+        var incompatibleBindings: Int = 0,
         var jniInteropSources: Int = 0,
         var expoJavaSources: Int = 0,
     )
@@ -667,18 +942,39 @@ public class BridgeFactScanner(private val projectRoot: Path) {
 
     private companion object {
         val SOURCE_EXTENSIONS = setOf("kt", "java")
-        val METHOD_CHANNEL = Regex("(?:\\b(?:val|var)\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*MethodChannel\\s*\\(")
+        val METHOD_CHANNEL = Regex("(?<![\\w.])(?:\\b(?:val|var)\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*MethodChannel\\s*\\(")
         val STRING_LITERAL_ASSIGNMENT = Regex("\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*(\"(?:\\\\.|[^\"])*\")")
+        val COMPANION_BODY = Regex("\\bcompanion\\s+object(?:\\s+[A-Za-z_][A-Za-z0-9_]*)?\\s*\\{")
+        val CONST_PREFIX = Regex("\\bconst\\s*$")
+        val LOCAL_DECLARATION = Regex("\\b(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b")
+        val LOCAL_KEYWORD = Regex("\\b(?:val|var)\\b")
+        val CONSTRUCTOR_KEYWORD = Regex("\\bconstructor\\b")
+        val DECLARATION_PREFIX = Regex("\\b(?:val|var)\\s*$")
+        val CONTROL_CONDITION = Regex("\\b(?:if|while|for|when)\\s*\\(")
+        val CONTROL_ALTERNATIVE = Regex("\\b(?:else|do)\\b")
+        val FUNCTION_PARAMETERS = Regex("\\b(?:fun\\s+[A-Za-z_][A-Za-z0-9_]*|catch)\\s*\\(")
+        val FOR_PARAMETERS = Regex("\\bfor\\s*\\(")
+        val ACCESSOR_PARAMETERS = Regex("\\b(?:get|set)\\s*\\(")
+        val LABELLED_THIS = Regex("\\bthis\\s*@")
+        val FUNCTION_KEYWORD = Regex("\\bfun\\b")
+        val PARAMETER_NAME = Regex("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*:")
+        val LAMBDA_PARAMETERS = Regex("\\{([^{}]*?)->")
+        val IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
+        val ALIAS_CONTINUATION = Regex("^(?:[.+*/%?:<>=!&|\\-]|get\\b|as\\b|is\\b|in\\b|@)")
+        val CHANNEL_WRITE = Regex("(?<![\\w.])((?:[A-Za-z_][A-Za-z0-9_]*\\s*(?:\\?\\.|\\.)\\s*)*)([A-Za-z_][A-Za-z0-9_]*)\\s*[+*/%\\-]?=(?!=|>)")
         val METHOD_CHANNEL_CALL = Regex("\\bMethodChannel\\s*\\(")
-        val SET_HANDLER = Regex("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?:!!|\\?)?\\s*\\.\\s*setMethodCallHandler\\s*(?:\\(|\\{)")
+        val SET_HANDLER = Regex("(?<![\\w.])((?:[A-Za-z_][A-Za-z0-9_]*\\s*\\.\\s*)*[A-Za-z_][A-Za-z0-9_]*)\\s*(?:!!|\\?)?\\s*\\.\\s*setMethodCallHandler\\s*(?:\\(|\\{)")
         val WHEN_METHOD = Regex("\\\"([^\\\"]+)\\\"\\s*->")
         val METHOD_WHEN = Regex("\\bwhen\\s*\\(\\s*[A-Za-z_][A-Za-z0-9_]*\\.method\\s*\\)\\s*\\{")
         val ANY_WHEN = Regex("\\bwhen\\s*\\(")
-        val CHAINED_SUFFIX = Regex("\\.\\s*setMethodCallHandler\\s*(?:\\(|\\{)")
+        val CHAINED_SUFFIX = Regex("^\\s*\\.\\s*setMethodCallHandler\\s*(?:\\(|\\{)")
         val REACT_MODULE = Regex("@ReactModule\\s*\\(\\s*name\\s*=\\s*\\\"([^\\\"]+)\\\"")
         val REACT_METHOD = Regex("@ReactMethod\\b")
         val FUNCTION = Regex("\\bfun\\s+([A-Za-z_][A-Za-z0-9_]*)")
         val CLASS_DECLARATION = Regex("\\b(?:class|object)\\s+[A-Za-z_][A-Za-z0-9_]*")
+        val OWNER_KEYWORD = Regex("\\b(?:class|object)\\b")
+        val ANONYMOUS_OBJECT = Regex("\\bobject\\s*(?=[:{])")
+        val DELEGATION_KEYWORD = Regex("\\bby\\b")
         // `expo.modules.kotlin.modules` 패키지 자체에 선언된 서브클래스도 import 없이 Module을 본다.
         val EXPO_MODULE_GATE = Regex(
             "\\bimport\\s+expo\\.modules\\.kotlin\\.modules\\.(?:Module|\\*)\\b" +

@@ -37,6 +37,31 @@ build 이후 수정된 source를 센다. 관측된 항목이 없으면 배열은
 
 `kartograph bridges --project <root>`은 isthmus `bridge-facts` version 1을 출력한다. Kotlin 수신 측에서
 Flutter `MethodChannel` 등록·method handler와 React Native `@ReactModule`·`@ReactMethod`를 수집한다.
+인라인 Flutter callback 선두의 직접 `if (call.method == "name")` 및 동일 매개변수의 `else if` 리터럴 동등
+비교를 수집하며, 리터럴이 왼쪽에 오는 비교도 지원한다. 타입 표기가 없는 두 매개변수와 `->`가 명시된 lambda 및
+중괄호 분기만 지원한다. 완결된 직접 if/else-if 문장의 선두 연속만 읽으며, 미지원 조건·header 또는
+그 밖의 문장을 만나면 남은 if 수집을 중단하고 `unscanned-method-conditions`로 해당 callback scope를
+센다. 새 줄만으로 문장의 소유권을 추측하지 않아 while·대입식·로컬 함수·중괄호 없는 조건의 내부 if를
+직접 라우트로 승격하지 않는다. 중첩 함수·lambda·분기 안의 if는 직접 라우트 범위 밖이며, 이 한계 개수는
+전체 소스의 누락 개수가 아니다. `when (call.method)`의 기존
+리터럴 분기는 유지한다. `setMethodCallHandler(null)`은 해제이므로 등록 사실이나 미스캔 콜백으로 세지
+않는다. 이름 lookup은 lexical block과 알려진 동명 선언·함수/catch/lambda 매개변수를 지킨다. 관측한 문자열
+이름과 MethodChannel 인스턴스를 구분해, handler receiver에는 채널 인스턴스만, 생성자 이름 인자에는 문자열만
+사용한다. 다른 종류의 값으로 shadow되면 바깥 binding으로 되돌아가지 않고 `incompatible-channel-bindings`로
+미확정 사실을 알린다. 이 구분은 compiler type check가 아니라 지원하는 source 모양에서 얻은 값 종류다.
+같은 클래스의 companion const는 클래스 scope에서 보이지만 다른 클래스에는 새지 않는다.
+불명확한 단순/복합 대입은 중괄호 없는 분기·반복문에서도 같은 선언의 이전 값을 무효화한다. `this` 필드와
+동명 지역 변수를 구분하며 다른 객체 필드의 대입을 지역 변수 대입으로 취급하지 않는다. 실제 등록에서 해당
+미확정 값을 사용하면 `unresolved-channel-writes`에 project-relative 대입 위치를 남긴다. null 해제는 세지 않는다.
+일반 anonymous object 본문도 바깥 클래스와 별도 소유권으로 다루며, 생성자 인자 lambda를 클래스 본문으로
+취급하지 않는다. `by` 위임이 있는 클래스/object 헤더는 임의 delegate 표현식을 해석하지 않고 파일 binding을 미확정으로 둔다.
+중괄호 없는 조건부 생성 식도 분기 뒤 값을 확정하지 않는다. 생성자 매개변수·구조 분해·for binding·property
+accessor·labelled `this`·미해석 class/object/함수 header·한 줄의 여러 binding 문장 등 미지원 형태는 binding을 추측하지 않고
+`unscanned-channel-bindings`로 파일 경계를 알린다. 문자열 initializer의 리터럴 접두사만으로 전체 값을 확정하지
+않는다. implicit `it`/backing `field`와 범위를 증명하지 못한 매개변수 이름도 미확정이다. 이 보수적 경계는
+실제 이름을 놓칠 수 있지만 이전 동명 값에 잘못 연결하지 않기 위한 것이다. 실행 순서·분기 도달성·런타임 등록 상태는 보장하지
+않는다. `method-handle`은 source 관찰이며 실제 compiler snapshot이 없으면 JVM USR를 만들지 않는다.
+위치의 column은 주석도 포함한 원본 소스 줄 기준 UTF-8 바이트의 1기준 위치다.
 `import expo.modules.kotlin.modules.Module`이 있는 파일의 `class X : Module()`는 Expo 모듈로 읽어
 `ModuleDefinition { }`의 `Name(…)`·`Function`/`AsyncFunction`·`View(…)`를 모은다. `module-export`·
 `component-export`에는 `"mechanism": "expo"`를 싣고 `method-handle`에는 싣지 않는다. 모듈 이름은
