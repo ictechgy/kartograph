@@ -1,15 +1,42 @@
 package dev.kartograph.index
 
 import java.util.concurrent.Callable
+import java.util.concurrent.CompletionService
 import java.util.concurrent.ExecutionException
+import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 
 /** 독립 입력만 제한된 묶음으로 처리하며 다음 단계에 원래 입력 순서로 넘긴다. */
 internal class IndexWorkPool : AutoCloseable {
     private val parallelism = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
     private var executor: ExecutorService? = null
+
+    private fun pool(): ExecutorService = executor ?: Executors.newFixedThreadPool(parallelism) { runnable ->
+        Thread(runnable, "kartograph-index-worker").apply { isDaemon = true }
+    }.also { executor = it }
+
+    /** 호출자는 미완료 작업의 count/byte를 제한한다. 완료 통지는 load마다 분리하고 같은 worker 상한을 공유한다. */
+    fun <R> completions(): CompletionService<R> = ExecutorCompletionService(pool())
+
+    /** 완료 대기의 interrupt도 일반 map과 같은 취소·정리 경계를 따른다. */
+    fun <R> take(completions: CompletionService<R>): Future<R> = try {
+        completions.take()
+    } catch (error: InterruptedException) {
+        interrupted(error)
+    }
+
+    /** 이미 완료된 future라도 호출자 interrupt를 보존하고 취소 정리를 마친 뒤 실패한다. */
+    fun <R> await(future: Future<R>): R = try {
+        if (Thread.currentThread().isInterrupted) throw InterruptedException()
+        future.get()
+    } catch (error: ExecutionException) {
+        throw error.cause ?: error
+    } catch (error: InterruptedException) {
+        interrupted(error)
+    }
 
     fun <T, R> map(inputs: List<T>, action: (T) -> R): List<R> = map(inputs, 16, action)
 
@@ -20,9 +47,7 @@ internal class IndexWorkPool : AutoCloseable {
     fun <T, R> map(inputs: List<T>, chunkSize: Int?, action: (T) -> R): List<R> {
         if (inputs.size < 2 || parallelism == 1) return inputs.map(action)
         // 모든 작업은 invokeAll로 동기 대기하므로 daemon으로 두어도 잃는 결과가 없고, close를 놓친 경로가 JVM 종료를 막지 않는다.
-        val pool = executor ?: Executors.newFixedThreadPool(parallelism) { runnable ->
-            Thread(runnable, "kartograph-index-worker").apply { isDaemon = true }
-        }.also { executor = it }
+        val pool = pool()
         return try {
             (if (chunkSize == null) listOf(inputs) else inputs.chunked(chunkSize)).flatMap { batch ->
                 // 모든 작업이 끝난 뒤 반환하므로 phase 시간과 ASM 본문 접근이 겹치지 않는다.
@@ -31,16 +56,16 @@ internal class IndexWorkPool : AutoCloseable {
         } catch (error: ExecutionException) {
             throw error.cause ?: error
         } catch (error: InterruptedException) {
-            Thread.currentThread().interrupt()
-            val failure = ClassIndexingException("indexing was interrupted", error)
-            // archive 등의 입력 수명이 끝나기 전에 취소된 읽기 작업의 정리를 기다린다.
-            try {
-                close()
-            } catch (cleanup: RuntimeException) {
-                failure.addSuppressed(cleanup)
-            }
-            throw failure
+            interrupted(error)
         }
+    }
+
+    private fun interrupted(error: InterruptedException): Nothing {
+        Thread.currentThread().interrupt()
+        val failure = ClassIndexingException("indexing was interrupted", error)
+        // archive 등의 입력 수명이 끝나기 전에 취소된 읽기 작업의 정리를 기다린다.
+        try { close() } catch (cleanup: RuntimeException) { failure.addSuppressed(cleanup) }
+        throw failure
     }
 
     /**

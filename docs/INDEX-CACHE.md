@@ -61,7 +61,15 @@ Input fingerprints digest files with at most four workers; the combined digest i
 assembled on the calling thread in input order, so the recorded values equal a
 sequential computation and the before/after comparison is unchanged. Class and
 dependency-header inputs are processed in ordered batches with at most
-four workers. Global analysis starts after those jobs finish. During initial
+four workers. Uncached class parsing uses the same worker limit with a rolling
+window of at most 16 unfinished classes and 4 MiB of admitted raw class bytes.
+One lookahead input may be held to discover its actual size; an oversized class
+is processed alone. Completed facts remain retained for global analysis, so
+these admission limits do not bound total heap. Facts and the first reported
+failure follow input order even when workers finish in another order. A failure
+cancels later work and waits up to the existing 30-second cleanup deadline;
+incomplete cleanup is reported as an error, never a successful partial graph.
+Global analysis starts after those jobs finish. During initial
 header-cache population, a verified capture streams the JAR bytes it fingerprints
 to owned temporary files, bounded to 128 MiB per JAR and 256 MiB in total. This
 avoids retaining whole JARs in the heap. Larger inputs use the direct-read fallback.
@@ -79,8 +87,13 @@ them as local build data rather than uploading them as public report artifacts.
 ## Measuring the result
 
 `--timings` writes fingerprint, parsing/cache, global-index and snapshot-render
-measurements to stderr. Class-stage timings measure elapsed batch time; concurrent
-worker durations are not added together. `indexDispatchNanos` covers external
+measurements to stderr. Class-stage timings measure elapsed wall time; concurrent
+worker durations are not added together. For uncached parsing, `indexReadNanos`
+counts serial caller reads and `indexParseNanos` counts the remaining caller wall
+time, including submission and admission/completion waits. Reads can overlap
+worker parsing, so compare end-to-end time rather than treating the parse counter
+as worker CPU or comparing it alone with earlier batch-only measurements.
+`indexDispatchNanos` covers external
 dispatch enrichment, and `indexTotalNanos` includes that final index step.
 `indexCacheHits` counts reused class parse facts and
 `indexParsedClasses` counts actual class parsing. These counts describe class
