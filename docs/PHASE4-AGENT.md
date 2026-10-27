@@ -45,7 +45,11 @@ Flutter `MethodChannel` 등록·method handler와 React Native `@ReactModule`·`
 직접 라우트로 승격하지 않는다. 중첩 함수·lambda·분기 안의 if는 직접 라우트 범위 밖이며, 이 한계 개수는
 전체 소스의 누락 개수가 아니다. `when (call.method)`의 기존
 리터럴 분기는 유지한다. `setMethodCallHandler(null)`은 해제이므로 등록 사실이나 미스캔 콜백으로 세지
-않는다. 이름 lookup은 lexical block과 알려진 동명 선언·함수/catch/lambda 매개변수를 지킨다. 관측한 문자열
+않는다. 이름 lookup은 lexical block과 알려진 동명 선언·함수/catch/lambda 매개변수를 지킨다. 단순 lambda
+header에서 타입 표기가 섞여도 모든 매개변수 이름을 shadowing에 반영하며, 일부 이름만 읽히는 복잡한 header는
+미지원 binding으로 남긴다. 타입을 증명하지 못한 lambda/DSL 경계를 가로질러 `this`나 암시적 receiver의 바깥
+binding을 확정하지 않고 `unscanned-channel-bindings`를 남긴다. `with`·`apply` 같은 receiver lambda도 포함하며,
+일반 함수·클래스·제어 블록은 이 경계와 구분한다. 관측한 문자열
 이름과 MethodChannel 인스턴스를 구분해, handler receiver에는 채널 인스턴스만, 생성자 이름 인자에는 문자열만
 사용한다. 다른 종류의 값으로 shadow되면 바깥 binding으로 되돌아가지 않고 `incompatible-channel-bindings`로
 미확정 사실을 알린다. 이 구분은 compiler type check가 아니라 지원하는 source 모양에서 얻은 값 종류다.
@@ -54,7 +58,12 @@ Flutter `MethodChannel` 등록·method handler와 React Native `@ReactModule`·`
 동명 지역 변수를 구분하며 다른 객체 필드의 대입을 지역 변수 대입으로 취급하지 않는다. 실제 등록에서 해당
 미확정 값을 사용하면 `unresolved-channel-writes`에 project-relative 대입 위치를 남긴다. null 해제는 세지 않는다.
 일반 anonymous object 본문도 바깥 클래스와 별도 소유권으로 다루며, 생성자 인자 lambda를 클래스 본문으로
-취급하지 않는다. `by` 위임이 있는 클래스/object 헤더는 임의 delegate 표현식을 해석하지 않고 파일 binding을 미확정으로 둔다.
+취급하지 않는다. 확인한 class/함수 header의 본문 경계를 소유권과 매개변수 범위에 함께 쓴다.
+본문 없는 선언과 `Type::class`/`Type.class` literal을 뒤 문장이나 lambda의 소유자로 취급하지 않는다.
+여러 줄 제네릭 반환 타입처럼 해석하지 못한 함수 header는 본문 없는 선언과 구분하며, 매개변수 불확실성과
+`unscanned-channel-bindings` 파일 경계를 보존한다. soft keyword 타입 이름을 새 선언으로 해석하지 않으며,
+백틱으로 인용한 반환 타입은 미지원 header로 남긴다.
+`by` 위임이 있는 클래스/object 헤더는 임의 delegate 표현식을 해석하지 않고 파일 binding을 미확정으로 둔다.
 중괄호 없는 조건부 생성 식도 분기 뒤 값을 확정하지 않는다. 생성자 매개변수·구조 분해·for binding·property
 accessor·labelled `this`·미해석 class/object/함수 header·한 줄의 여러 binding 문장 등 미지원 형태는 binding을 추측하지 않고
 `unscanned-channel-bindings`로 파일 경계를 알린다. 문자열 initializer의 리터럴 접두사만으로 전체 값을 확정하지

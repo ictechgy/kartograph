@@ -40,6 +40,7 @@ public data class IndexingStatistics(
     val writeFailures: Int = 0,
     val readNanos: Long = 0,
     val cacheReadNanos: Long = 0,
+    /** cache 없는 작업 창은 read와 겹친 worker CPU를 더하지 않고 제출·순서 대기의 caller wall만 센다. */
     val parseNanos: Long = 0,
     val assemblyNanos: Long = 0,
     val hierarchyNanos: Long = 0,

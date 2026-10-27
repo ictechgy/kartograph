@@ -9,6 +9,265 @@ import org.junit.jupiter.api.io.TempDir
 
 class MethodChannelIfScannerTest {
     @Test
+    fun `soft keyword return type names never terminate a function header`(@TempDir project: Path) {
+        project.resolve("Types.kt").writeText("typealias init = Unit\ntypealias companion = Unit")
+        for (returnType in listOf("init", "companion")) {
+            project.resolve("Plugin.kt").writeText("""
+                val channel = MethodChannel(messenger, "outer")
+                fun register(channel: MethodChannel): $returnType = channel.setMethodCallHandler { call, result ->
+                    if (call.method == "inner") { result.success(null) }
+                }
+            """.trimIndent())
+            val methods = BridgeFactScanner(project).scan().facts.filter { it.kind == "method-handle" }
+            assertEquals(1, methods.size)
+            assertTrue(methods.single().let { it.channel == null && it.dynamic }, returnType)
+        }
+    }
+
+    @Test
+    fun `quoted return type identifiers retain an explicit unsupported boundary`(@TempDir project: Path) {
+        project.resolve("Types.kt").writeText("typealias `interface` = List<Unit>")
+        project.resolve("Plugin.kt").writeText("""
+            val channel = MethodChannel(messenger, "outer")
+            fun register(channel: MethodChannel): `interface` = listOf(channel.setMethodCallHandler { call, result ->
+                if (call.method == "inner") { result.success(null) }
+            })
+        """.trimIndent())
+        val document = BridgeFactScanner(project).scan()
+        val methods = document.facts.filter { it.kind == "method-handle" }
+        assertEquals(1, methods.size)
+        assertTrue(methods.single().let { it.channel == null && it.dynamic })
+        assertTrue(document.limitations.any { it.startsWith("unscanned-channel-bindings:") })
+    }
+
+    @Test
+    fun `unparsed multiline return headers preserve parameter uncertainty`(@TempDir project: Path) {
+        for (returnType in listOf("List<\nUnit\n>", "List<\nUnit>")) {
+            project.resolve("Plugin.kt").writeText("""
+                val channel = MethodChannel(messenger, "outer")
+                fun register(channel: MethodChannel): $returnType = listOf(channel.setMethodCallHandler { call, result ->
+                    if (call.method == "inner") { result.success(null) }
+                })
+            """.trimIndent())
+            val document = BridgeFactScanner(project).scan()
+            val methods = document.facts.filter { it.kind == "method-handle" }
+            assertEquals(1, methods.size)
+            assertTrue(methods.single().let { it.channel == null && it.dynamic }, returnType)
+            assertTrue(document.limitations.any { it.startsWith("unscanned-channel-bindings:") }, returnType)
+        }
+    }
+
+    @Test
+    fun `bodyless functions never borrow a delegated property receiver body`(@TempDir project: Path) {
+        for (signature in listOf("placeholder()", "placeholder(): Unit", "placeholder(channel: OtherPlugin)", "placeholder(channel: OtherPlugin): Unit")) {
+            project.resolve("Plugin.kt").writeText("""
+                abstract class Plugin {
+                    val channel = MethodChannel(messenger, "outer")
+                    val other = OtherPlugin()
+                    abstract fun $signature
+                    val installed by with(other) {
+                        this.channel.setMethodCallHandler { call, result ->
+                            if (call.method == "inner") { result.success(null) }
+                        }
+                        lazy { Unit }
+                    }
+                    fun ordinary() {
+                        this.channel.setMethodCallHandler { call, result ->
+                            if (call.method == "ordinary") { result.success(null) }
+                        }
+                    }
+                }
+            """.trimIndent())
+            val document = BridgeFactScanner(project).scan()
+            val methods = document.facts.filter { it.kind == "method-handle" }
+            assertEquals(2, methods.size)
+            assertTrue(methods.single { it.method == "inner" }.let { it.channel == null && it.dynamic }, signature)
+            assertTrue(methods.single { it.method == "ordinary" }.let { it.channel == "outer" && !it.dynamic })
+            assertTrue(document.limitations.any { it.startsWith("unscanned-channel-bindings:") })
+        }
+    }
+
+    @Test
+    fun `class literal followed by a receiver lambda is never an owner declaration`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText("""
+            class Plugin {
+                val channel = MethodChannel(messenger, "outer")
+                fun register(other: OtherPlugin) {
+                    val kind = Any::class
+                    other.apply {
+                        val channel = MethodChannel(messenger, "local")
+                        this.channel.setMethodCallHandler { call, result ->
+                            if (call.method == "inner") { result.success(null) }
+                        }
+                    }
+                }
+                fun ordinary() {
+                    this.channel.setMethodCallHandler { call, result ->
+                        if (call.method == "ordinary") { result.success(null) }
+                    }
+                }
+            }
+        """.trimIndent())
+        val document = BridgeFactScanner(project).scan()
+        val methods = document.facts.filter { it.kind == "method-handle" }
+        assertEquals(2, methods.size)
+        assertTrue(methods.single { it.method == "inner" }.let { it.channel == null && it.dynamic })
+        assertTrue(methods.single { it.method == "ordinary" }.let { it.channel == "outer" && !it.dynamic })
+        assertTrue(document.limitations.any { it.startsWith("unscanned-channel-bindings:") })
+    }
+
+    @Test
+    fun `function body and return type may start on the next line`(@TempDir project: Path) {
+        for (header in listOf("fun ordinary()\n", "fun ordinary(): Unit\n", "fun ordinary()\n: Unit\n", "fun ordinary():\nUnit\n")) {
+            project.resolve("Plugin.kt").writeText("""
+                class Plugin {
+                    val channel = MethodChannel(messenger, "outer")
+                    $header{
+                        this.channel.setMethodCallHandler { call, result ->
+                            if (call.method == "ordinary") { result.success(null) }
+                        }
+                    }
+                }
+            """.trimIndent())
+            val methods = BridgeFactScanner(project).scan().facts.filter { it.kind == "method-handle" }
+            assertEquals(1, methods.size)
+            assertTrue(methods.single().let { it.channel == "outer" && !it.dynamic }, header)
+        }
+    }
+
+    @Test
+    fun `mixed typed lambda parameters shadow every channel name`(@TempDir project: Path) {
+        for (parameters in listOf("index: Int, channel", "index, channel: MethodChannel")) {
+            project.resolve("Plugin.kt").writeText("""
+                fun register(channels: List<MethodChannel>) {
+                    val channel = MethodChannel(messenger, "outer")
+                    channels.forEachIndexed { $parameters ->
+                        channel.setMethodCallHandler { call, result ->
+                            if (call.method == "inner") { result.success(null) }
+                        }
+                    }
+                }
+            """.trimIndent())
+            val document = BridgeFactScanner(project).scan()
+            val methods = document.facts.filter { it.kind == "method-handle" }
+            assertEquals(1, methods.size)
+            assertTrue(methods.single().let { it.channel == null && it.dynamic }, parameters)
+        }
+    }
+
+    @Test
+    fun `receiver lambdas never claim the lexical class channel owner`(@TempDir project: Path) {
+        for (opening in listOf("with(other) {", "other.apply {", "other.custom { argument ->")) {
+            for (receiver in listOf("this.channel", "channel")) {
+                project.resolve("Plugin.kt").writeText("""
+                    class Plugin {
+                        val channel = MethodChannel(messenger, "outer")
+                        fun register(other: OtherPlugin) {
+                            $opening
+                                $receiver.setMethodCallHandler { call, result ->
+                                    if (call.method == "inner") { result.success(null) }
+                                }
+                            }
+                        }
+                    }
+                """.trimIndent())
+                val document = BridgeFactScanner(project).scan()
+                val methods = document.facts.filter { it.kind == "method-handle" }
+                assertEquals(1, methods.size)
+                assertTrue(methods.single().let { it.channel == null && it.dynamic }, "$opening $receiver")
+                assertTrue(document.limitations.any { it.startsWith("unscanned-channel-bindings:") })
+            }
+        }
+    }
+
+    @Test
+    fun `soft keyword receiver calls never establish ordinary block ownership`(@TempDir project: Path) {
+        for (opening in listOf("other.init {", "other.catch(argument) {", "other.finally {")) {
+            project.resolve("Plugin.kt").writeText("""
+                class Plugin {
+                    val channel = MethodChannel(messenger, "outer")
+                    fun register(other: OtherPlugin) {
+                        $opening
+                            this.channel.setMethodCallHandler { call, result ->
+                                if (call.method == "inner") { result.success(null) }
+                            }
+                        }
+                    }
+                }
+            """.trimIndent())
+            val document = BridgeFactScanner(project).scan()
+            val methods = document.facts.filter { it.kind == "method-handle" }
+            assertEquals(1, methods.size)
+            assertTrue(methods.single().let { it.channel == null && it.dynamic }, opening)
+            assertTrue(document.limitations.any { it.startsWith("unscanned-channel-bindings:") })
+        }
+    }
+
+    @Test
+    fun `bodyless classes never borrow a following receiver or initializer body`(@TempDir project: Path) {
+        for (body in listOf(
+            "fun register(other: OtherPlugin) {\nclass Marker : java.io.Serializable\nwith(other) {\nchannel.setMethodCallHandler { call, result -> if (call.method == \"inner\") { result.success(null) } }\n}\n}",
+            "class Marker\ninit {\nval channel = MethodChannel(messenger, \"local\")\nthis.channel.setMethodCallHandler { call, result -> if (call.method == \"inner\") { result.success(null) } }\n}",
+        )) {
+            project.resolve("Plugin.kt").writeText("""
+                class Plugin {
+                    val channel = MethodChannel(messenger, "outer")
+                    $body
+                    fun ordinary() {
+                        this.channel.setMethodCallHandler { call, result ->
+                            if (call.method == "ordinary") { result.success(null) }
+                        }
+                    }
+                }
+            """.trimIndent())
+            val document = BridgeFactScanner(project).scan()
+            val methods = document.facts.filter { it.kind == "method-handle" }
+            assertEquals(2, methods.size)
+            assertTrue(methods.single { it.method == "inner" }.let { it.channel == null && it.dynamic }, body)
+            assertTrue(methods.single { it.method == "ordinary" }.let { it.channel == "outer" && !it.dynamic }, body)
+            assertTrue(document.limitations.any { it.startsWith("unscanned-channel-bindings:") })
+        }
+    }
+
+    @Test
+    fun `class bodies and inheritance may start on the next line`(@TempDir project: Path) {
+        for (header in listOf("class Plugin\n", "class Plugin\n: java.io.Serializable\n", "class Plugin :\njava.io.Serializable\n")) {
+            project.resolve("Plugin.kt").writeText("""
+                $header{
+                    val channel = MethodChannel(messenger, "outer")
+                    fun ordinary() {
+                        this.channel.setMethodCallHandler { call, result ->
+                            if (call.method == "ordinary") { result.success(null) }
+                        }
+                    }
+                }
+            """.trimIndent())
+            val methods = BridgeFactScanner(project).scan().facts.filter { it.kind == "method-handle" }
+            assertEquals(1, methods.size)
+            assertTrue(methods.single().let { it.channel == "outer" && !it.dynamic }, header)
+        }
+    }
+
+    @Test
+    fun `receiver guard retains ordinary class member and control block owners`(@TempDir project: Path) {
+        project.resolve("Plugin.kt").writeText("""
+            class Plugin {
+                val channel = MethodChannel(messenger, "outer")
+                fun register() {
+                    if (enabled) {
+                        this.channel.setMethodCallHandler { call, result ->
+                            if (call.method == "inner") { result.success(null) }
+                        }
+                    }
+                }
+            }
+        """.trimIndent())
+        val methods = BridgeFactScanner(project).scan().facts.filter { it.kind == "method-handle" }
+        assertEquals(1, methods.size)
+        assertTrue(methods.single().let { it.channel == "outer" && !it.dynamic })
+    }
+
+    @Test
     fun `unmatched owner declarations and unavailable this owners cannot retain literals`(@TempDir project: Path) {
         for (source in listOf(
             "class `Plugin` {\nvar channel = MethodChannel(messenger, \"old\")\nfun register() {\nthis.channel = obtainChannel()\nchannel.setMethodCallHandler { call, result -> if (call.method == \"after\") { result.success(null) } }\n}\n}",
