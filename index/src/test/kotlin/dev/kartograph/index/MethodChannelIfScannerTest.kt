@@ -402,7 +402,7 @@ class MethodChannelIfScannerTest {
             assertEquals(setOf("take", "outside", "unknown"), methods.keys, header)
             assertTrue(methods.getValue("take").let { it.channel == "camera" && !it.dynamic }, header)
             assertTrue(methods.getValue("outside").let { it.channel == "camera" && !it.dynamic }, header)
-            assertTrue(methods.getValue("unknown").let { it.channel == null && it.dynamic }, header)
+            assertTrue(methods.getValue("unknown").let { it.channel == "CHANNEL" && it.dynamic }, header)
         }
     }
 
