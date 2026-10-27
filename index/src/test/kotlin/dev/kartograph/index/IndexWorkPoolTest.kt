@@ -1,6 +1,7 @@
 package dev.kartograph.index
 
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -8,12 +9,25 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class IndexWorkPoolTest {
+    @Test
+    fun `await preserves caller interruption even for an already completed future`() {
+        try {
+            IndexWorkPool().use { pool ->
+                Thread.currentThread().interrupt()
+                val error = assertFailsWith<ClassIndexingException> { pool.await(CompletableFuture.completedFuture(1)) }
+                assertIs<InterruptedException>(error.cause)
+                assertTrue(Thread.currentThread().isInterrupted)
+            }
+        } finally { Thread.interrupted() }
+    }
+
     @Test
     fun `interrupted map waits for worker cleanup before returning and restores interrupt`() {
         assumeTrue(Runtime.getRuntime().availableProcessors() > 1)

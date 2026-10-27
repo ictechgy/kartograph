@@ -1,6 +1,7 @@
 package dev.kartograph.index
 
 import dev.kartograph.core.ClassHierarchy
+import dev.kartograph.core.CallResolution
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
@@ -16,6 +17,21 @@ import org.objectweb.asm.Opcodes
 import org.objectweb.asm.tree.MethodNode
 
 class RuntimeEnrichmentBoundaryTest {
+    @Test
+    fun `unchanged value evidence still refreshes a stale library model without mutating input`() {
+        val caller = JvmNodeId.methodId("app/Caller", "run", "()V")
+        val target = JvmNodeId.classId("app/Target")
+        val input = CodeGraph(listOf(GraphNode(caller, "run", NodeKind.METHOD), GraphNode(target, "Target", NodeKind.CLASS)),
+            emptyList(), listOf(ExternalCall(caller, "unknown/Api", "run", "()V", InvocationKind.STATIC,
+                resolvedTargets = listOf(target), resolution = CallResolution.RUNTIME_MODEL, model = "old-model")))
+        val (actual, observations) = RuntimeValueAnalyzer.enrich(input, emptyList(), ClassHierarchy.EMPTY)
+        assertEquals(null, actual.externalCalls.single().model)
+        assertEquals(CallResolution.RUNTIME_MODEL, actual.externalCalls.single().resolution)
+        assertEquals(listOf(target), actual.externalCalls.single().resolvedTargets)
+        assertEquals("old-model", input.externalCalls.single().model)
+        assertEquals(emptyList(), observations)
+    }
+
     @Test
     fun `runtime enrichment validates combined base and derived edge weight`() {
         val caller = JvmNodeId.methodId("app/Caller", "load", "()V")

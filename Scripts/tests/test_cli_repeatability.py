@@ -153,7 +153,7 @@ class RepeatabilitySetupTest(unittest.TestCase):
     def test_resource_snapshots_detect_cgroup_migration(self):
         with patch.object(R, "cgroup_directory", side_effect=[Path("/leaf-a"), Path("/leaf-b")]), \
              patch.object(R, "read_small", return_value="unchanged"), \
-             patch.object(R.os, "sched_getaffinity", return_value={0, 1}):
+             patch.object(R.os, "sched_getaffinity", return_value={0, 1}, create=True):
             before, after = R.resources(), R.resources()
         self.assertNotEqual(before["policy"], after["policy"])
         self.assertEqual("/leaf-a", before["policy"]["observed_leaf_cgroup"])

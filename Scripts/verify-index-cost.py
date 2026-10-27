@@ -6,6 +6,7 @@ from collections import Counter
 import ctypes
 import errno
 import hashlib
+from itertools import zip_longest
 import json
 import math
 import os
@@ -237,18 +238,79 @@ class OwnedProcessGroup:
                 self.signal_open = False
 
 
-def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
+class SpooledOutput:
+    """소유한 임시 출력의 끝까지 읽되 메모리에는 한 chunk만 올린다."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        information = self.path.lstat()
+        if not stat.S_ISREG(information.st_mode) or information.st_size > RAW_LIMIT:
+            raise DiagnosticError("invalid-spooled-output")
+        self.identity = (information.st_dev, information.st_ino,
+                         information.st_size, information.st_mtime_ns)
+
+    def __len__(self):
+        return self.identity[2]
+
+    def chunks(self):
+        descriptor = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "rb") as source:
+            def unchanged():
+                information = os.fstat(source.fileno())
+                return (information.st_dev, information.st_ino, information.st_size,
+                        information.st_mtime_ns) == self.identity
+            if not unchanged():
+                raise DiagnosticError("spooled-output-changed")
+            for chunk in iter(lambda: source.read(65536), b""):
+                yield chunk
+            if not unchanged():
+                raise DiagnosticError("spooled-output-changed")
+
+
+def output_chunks(data):
+    if isinstance(data, SpooledOutput):
+        yield from data.chunks()
+    else:
+        for offset in range(0, len(data), 65536):
+            yield data[offset:offset + 65536]
+
+
+def output_digest(data):
+    checksum = hashlib.sha256()
+    for chunk in output_chunks(data):
+        checksum.update(chunk)
+    return checksum.hexdigest()
+
+
+def output_equal(left, right):
+    if isinstance(left, bytes) and isinstance(right, bytes):
+        return left == right
+    return len(left) == len(right) and all(
+        a == b for a, b in zip_longest(output_chunks(left), output_chunks(right)))
+
+
+def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
+        stdout_path=None, stdout_limit=RAW_LIMIT):
     """각 child의 두 stream을 제한하고 timeout에는 소유한 process group을 끝낸다."""
     if not re.fullmatch(r"[a-z-]{1,64}", phase):
         raise DiagnosticError("invalid-process-phase")
     observe = nonreaping_waiter()
     has_other_members = group_census()
+    if type(stdout_limit) is not int or not 0 < stdout_limit <= RAW_LIMIT:
+        raise DiagnosticError("invalid-spooled-output-limit")
+    destination = Path(stdout_path).open("xb") if stdout_path is not None else None
     started = time.monotonic_ns()
-    process = subprocess.Popen(list(map(str, arguments)), cwd=cwd, env=env,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               start_new_session=True)
+    try:
+        process = subprocess.Popen(list(map(str, arguments)), cwd=cwd, env=env,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   start_new_session=True)
+    except BaseException:
+        if destination is not None:
+            destination.close()
+        raise
     owned = OwnedProcessGroup(process, observe, has_other_members)
     streams = [bytearray(), bytearray()]
+    counts = [0, 0]
     overflow = threading.Event()
     failures = []
     def drain(index, stream):
@@ -257,13 +319,19 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
                 chunk = stream.read(65536)
                 if not chunk:
                     break
-                if len(streams[index]) + len(chunk) > limit:
+                stream_limit = stdout_limit if index == 0 and destination is not None else limit
+                if counts[index] + len(chunk) > stream_limit:
                     overflow.set()
                     owned.signal_group()
                     break
-                streams[index].extend(chunk)
+                if index == 0 and destination is not None:
+                    destination.write(chunk)
+                else:
+                    streams[index].extend(chunk)
+                counts[index] += len(chunk)
         except OSError:
             failures.append("stream-read-failed")
+            owned.signal_group()
         finally:
             stream.close()
     readers = [threading.Thread(target=drain, args=(i, stream), daemon=True)
@@ -327,7 +395,11 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
             reader.join(timeout=10)
             if reader.is_alive():
                 reader_unclosed = True  # 이후 늦게 종료해도 부분 snapshot을 성공으로 바꾸지 않는다.
-    result = {"exit": process.returncode, "stdout": bytes(streams[0]), "stderr": bytes(streams[1]),
+    if destination is not None:
+        destination.close()
+    result = {"exit": process.returncode,
+              "stdout": SpooledOutput(stdout_path) if destination is not None else bytes(streams[0]),
+              "stderr": bytes(streams[1]),
               "wallNanos": time.monotonic_ns() - started, "rss": rss, "phase": phase}
     reason = ("child-stream-not-closed" if reader_unclosed else
               "child-timeout" if timed_out else "child-output-limit" if overflow.is_set() else
@@ -339,7 +411,7 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child"):
 
 def summary(result):
     return {"phase": result.get("phase", "child"), "exit": result["exit"], "wallNanos": result["wallNanos"], "rss": result["rss"],
-            **{stream: {"bytes": len(result[stream]), "sha256": digest(result[stream])}
+            **{stream: {"bytes": len(result[stream]), "sha256": output_digest(result[stream])}
                for stream in ("stdout", "stderr")}}
 
 
@@ -552,7 +624,8 @@ def write_report(report, output):
 
 def equivalent(left, right):
     # 순서·중복·진단·줄바꿈·종료 코드를 있는 그대로 비교한다.
-    return all(left[key] == right[key] for key in ("exit", "stdout", "stderr"))
+    return left["exit"] == right["exit"] and all(
+        output_equal(left[key], right[key]) for key in ("stdout", "stderr"))
 
 
 def schedule():
@@ -590,9 +663,10 @@ class RawStreams:
             name = f"{command}-{sample}-{arm}-{stream}.gz"
             with (self.directory / name).open("xb") as destination:
                 with gzip.GzipFile(fileobj=destination, mode="wb", mtime=0, filename="") as archive:
-                    archive.write(data)
+                    for chunk in output_chunks(data):
+                        archive.write(chunk)
             self.bytes += len(data)
-            records[stream] = {"path": "raw/" + name, "bytes": len(data), "sha256": digest(data)}
+            records[stream] = {"path": "raw/" + name, "bytes": len(data), "sha256": output_digest(data)}
         return records
 
 
@@ -602,23 +676,25 @@ def paired_cli(commands, project, env, located_nodes, report, raw):
     report["cliLoad"] = []
     for index, sample, order in cli_schedule():
         name = commands["baseline"][index][0]
-        results, retained = {}, {}
-        for arm in order:
-            before = host_load_snapshot()
-            results[arm] = run(commands[arm][index][1], project, env,
-                               phase="cli-" + name.replace("_", "-"))
-            after = host_load_snapshot()
-            retained[arm] = raw.retain(name, sample, arm, results[arm])
-            report["cliLoad"].append({"command": name, "sample": sample, "arm": arm,
-                                      "before": before, "after": after})
-        left, right = results["baseline"], results["candidate"]
-        accepted = successful_pair(left, right)
-        all_accepted = all_accepted and accepted
-        report["cli"].append({"command": name, "sample": sample, "order": list(order),
-                              "exactEqual": equivalent(left, right),
-                              "expectedContractDelta": False, "contractAccepted": accepted,
-                              "comparisonScope": "exact-byte-comparison",
-                              "raw": retained, **{arm: summary(result) for arm, result in results.items()}})
+        with tempfile.TemporaryDirectory(prefix="cli-streams-", dir=raw.directory.parent) as temporary:
+            results, retained = {}, {}
+            for arm in order:
+                before = host_load_snapshot()
+                results[arm] = run(commands[arm][index][1], project, env,
+                                   phase="cli-" + name.replace("_", "-"),
+                                   stdout_path=Path(temporary) / arm)
+                after = host_load_snapshot()
+                retained[arm] = raw.retain(name, sample, arm, results[arm])
+                report["cliLoad"].append({"command": name, "sample": sample, "arm": arm,
+                                          "before": before, "after": after})
+            left, right = results["baseline"], results["candidate"]
+            accepted = successful_pair(left, right)
+            all_accepted = all_accepted and accepted
+            report["cli"].append({"command": name, "sample": sample, "order": list(order),
+                                  "exactEqual": equivalent(left, right),
+                                  "expectedContractDelta": False, "contractAccepted": accepted,
+                                  "comparisonScope": "exact-byte-comparison",
+                                  "raw": retained, **{arm: summary(result) for arm, result in results.items()}})
     report["cliTiming"] = {
         "scope": "three-paired-fresh-processes-per-command; no-performance-pass-or-budget-change",
         "loadScope": "same-runner-sequential-children; host-load-observed-not-controlled",
