@@ -395,16 +395,18 @@ public class BridgeFactScanner(private val projectRoot: Path) {
             }
             STRING_LITERAL_ASSIGNMENT.findAll(code).forEach { match ->
                 val scope = scopeAt(lineStarts[zeroBased] + match.range.first)
-                // companion const는 같은 클래스의 메서드에서 비한정 이름으로 보인다. 다른 클래스에는 새지 않는다.
+                // companion 내부 선언을 유지하고 같은 클래스에만 별도 가시성 alias를 둔다.
                 val bindingScope = if (scope.lastOrNull() in companionBodies &&
                     CONST_PREFIX.containsMatchIn(code.substring(0, match.range.first))) scope.dropLast(1) else scope
                 val tail = code.substring(match.range.last + 1).trimStart()
                 val following = sourceCode.substring(lineStarts[zeroBased] + match.range.last + 1).trimStart()
                 val complete = (tail.isEmpty() || tail.startsWith(';') || tail.startsWith('}')) &&
                     !ALIAS_CONTINUATION.containsMatchIn(following)
-                flutterChannels += ChannelBinding(match.groupValues[1], bindingScope,
+                val binding = ChannelBinding(match.groupValues[1], scope,
                     if (complete) match.groupValues[2].literalOrDynamic() else Channel(null, true, BindingGap(unmodeledFile = relative)),
                     if (complete) BindingKind.STRING else BindingKind.UNKNOWN)
+                flutterChannels += binding
+                if (bindingScope != scope) flutterChannels += binding.copy(scope = bindingScope)
             }
             val pending = pendingChannel
             if (pending != null) {

@@ -368,6 +368,45 @@ class MethodChannelIfScannerTest {
     }
 
     @Test
+    fun `companion constants stay visible inside companion registration functions`(@TempDir project: Path) {
+        for (header in listOf("companion object", "companion object Channels")) {
+            project.resolve("Plugin.kt").writeText("""
+                class Camera {
+                    $header {
+                        private const val CHANNEL = "camera"
+                        fun register() {
+                            val channel = MethodChannel(messenger, CHANNEL)
+                            channel.setMethodCallHandler { call, result ->
+                                if (call.method == "take") { result.success(null) }
+                            }
+                        }
+                    }
+                    fun registerOutside() {
+                        val channel = MethodChannel(messenger, CHANNEL)
+                        channel.setMethodCallHandler { call, result ->
+                            if (call.method == "outside") { result.success(null) }
+                        }
+                    }
+                }
+                class Unrelated {
+                    fun register() {
+                        val channel = MethodChannel(messenger, CHANNEL)
+                        channel.setMethodCallHandler { call, result ->
+                            if (call.method == "unknown") { result.success(null) }
+                        }
+                    }
+                }
+            """.trimIndent())
+            val document = BridgeFactScanner(project).scan()
+            val methods = document.facts.filter { it.kind == "method-handle" }.associateBy { it.method }
+            assertEquals(setOf("take", "outside", "unknown"), methods.keys, header)
+            assertTrue(methods.getValue("take").let { it.channel == "camera" && !it.dynamic }, header)
+            assertTrue(methods.getValue("outside").let { it.channel == "camera" && !it.dynamic }, header)
+            assertTrue(methods.getValue("unknown").let { it.channel == null && it.dynamic }, header)
+        }
+    }
+
+    @Test
     fun `resolves companion constants within their own enclosing class`(@TempDir project: Path) {
         project.resolve("Plugin.kt").writeText("""
             class Camera {
