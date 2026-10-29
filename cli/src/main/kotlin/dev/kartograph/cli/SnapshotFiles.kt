@@ -26,7 +26,20 @@ internal object SnapshotFiles {
     fun read(path: String, maximumBytes: Int = QuerySnapshotCodec.MAX_BYTES): QuerySnapshot =
         QuerySnapshotCodec.parse(readText(path, maximumBytes), maximumBytes)
 
-    fun readText(value: String, maximum: Int, followLinks: Boolean = true): String {
+    /** 파서가 소비하는 같은 bounded byte 배열의 identity다. live freshness를 검사하지 않는다. */
+    data class Loaded(val snapshot: QuerySnapshot, val sha256: String)
+
+    fun readWithIdentity(path: String, maximumBytes: Int = QuerySnapshotCodec.MAX_BYTES): Loaded {
+        val bytes = readBytes(path, maximumBytes, true)
+        val snapshot = QuerySnapshotCodec.parse(decode(bytes), maximumBytes)
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        return Loaded(snapshot, hash)
+    }
+
+    fun readText(value: String, maximum: Int, followLinks: Boolean = true): String = decode(readBytes(value, maximum, followLinks))
+
+    private fun readBytes(value: String, maximum: Int, followLinks: Boolean): ByteArray {
         require(maximum > 0)
         val path = Path.of(value)
         require(Files.isRegularFile(path))
@@ -37,9 +50,11 @@ internal object SnapshotFiles {
         Files.newInputStream(path, *links).use { input ->
             require(input.readNBytes(bytes, 0, bytes.size) == bytes.size && input.read() == -1)
         }
-        return Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
+        return bytes
     }
+
+    private fun decode(bytes: ByteArray): String = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
 }
 
 internal data class SnapshotFileLimit(val maximumMiB: Int, val maximumBytes: Int)

@@ -3,10 +3,17 @@ buildscript {
     dependencies {
         classpath 'com.android.tools.build:gradle:8.7.3'
         classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21'
-        classpath files("../../gradle-plugin/build/libs/kartograph-gradle-plugin-${file('../../VERSION').text.trim()}.jar")
+        // 명시적인 배포 JAR가 없을 때만 기존 source build 경로를 사용한다.
+        def suppliedJar = project.findProperty('kartograph.pluginJar')
+        if (suppliedJar != null && suppliedJar.toString().trim().isEmpty()) {
+            throw new GradleException('Explicit packaged plugin JAR must not be empty')
+        }
+        classpath files(suppliedJar != null ? suppliedJar.toString() :
+            "../../gradle-plugin/build/libs/kartograph-gradle-plugin-${file('../../VERSION').text.trim()}.jar")
     }
 }
 import org.gradle.jvm.toolchain.JavaLanguageVersion
+import kotlin.KotlinVersion
 
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
@@ -27,4 +34,88 @@ kartograph {
     reportFormat.set('text')
     strict.set(providers.gradleProperty('kartograph.strict').map { it.toBoolean() }.orElse(false))
     includeSourcePaths.set(true)
+}
+
+
+// 배포 검증에서만 실행하며, 절대 경로·환경값 없이 실제 classloader 입력을 기록한다.
+if (project.hasProperty('kartograph.pluginJar')) {
+    tasks.register('verifyPackagedKartographRuntime') {
+        doLast {
+            def retained = file(project.property('kartograph.pluginJar')).canonicalFile
+            if (!retained.isFile() || !gradle.includedBuilds.empty) {
+                throw new GradleException('Packaged plugin requires one retained JAR and no included builds')
+            }
+            def configuration = buildscript.configurations.getByName('classpath')
+            def projectDependencies = configuration.allDependencies.findAll {
+                it instanceof org.gradle.api.artifacts.ProjectDependency
+            }
+            def fileDependencies = configuration.allDependencies.findAll {
+                it instanceof org.gradle.api.artifacts.FileCollectionDependency
+            }.collectMany { it.files.files }.collect { it.canonicalFile }
+            def projectComponents = configuration.incoming.resolutionResult.allDependencies.findAll {
+                it instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult &&
+                    it.selected.id instanceof org.gradle.api.artifacts.component.ProjectComponentIdentifier
+            }
+            if (!projectDependencies.empty || !projectComponents.empty ||
+                fileDependencies != [retained] || allprojects.size() != 1) {
+                throw new GradleException('Packaged plugin must be the sole file dependency without project fallback')
+            }
+            def sha = { input ->
+                def hash = java.security.MessageDigest.getInstance('SHA-256')
+                input.withCloseable { stream ->
+                    byte[] buffer = new byte[1024 * 1024]
+                    int count
+                    while ((count = stream.read(buffer)) != -1) {
+                        hash.update(buffer, 0, count)
+                    }
+                }
+                hash.digest().encodeHex().toString()
+            }
+            def identity = { Class type, String version ->
+                def location = type.protectionDomain?.codeSource?.location
+                if (location == null || location.protocol != 'file') {
+                    throw new GradleException('Loaded class has no regular JAR origin')
+                }
+                def origin = new File(location.toURI()).canonicalFile
+                if (!origin.isFile()) {
+                    throw new GradleException('Loaded class origin is not a regular JAR')
+                }
+                def resource = type.getResource('/' + type.name.replace('.', '/') + '.class')
+                if (resource == null || resource.protocol != 'jar') {
+                    throw new GradleException('Loaded class resource is not JAR-bound')
+                }
+                def connection = resource.openConnection()
+                connection.useCaches = false
+                def resourceOrigin = connection.jarFileURL
+                if (resourceOrigin.protocol != 'file' ||
+                    new File(resourceOrigin.toURI()).canonicalFile != origin) {
+                    throw new GradleException('Loaded class resource differs from its code-source JAR')
+                }
+                [version: version, jarSha256: sha(origin.newInputStream()),
+                 classSha256: sha(connection.inputStream)]
+            }
+            def pluginType = Class.forName('dev.kartograph.gradle.KartographPlugin', false,
+                plugins.findPlugin('io.github.ictechgy.kartograph').class.classLoader)
+            def resolved = configuration.resolvedConfiguration.resolvedArtifacts.collect { artifact ->
+                def id = artifact.moduleVersion.id
+                def coordinate = "${id.group}:${id.name}:${id.version}"
+                if (artifact.classifier) {
+                    coordinate += ':' + artifact.classifier
+                }
+                [coordinate: coordinate.toString(), file: artifact.file.name,
+                 sha256: sha(artifact.file.newInputStream())]
+            }.sort { a, b -> (a.coordinate <=> b.coordinate) ?: (a.file <=> b.file) }
+            if (resolved.size() > 256) {
+                throw new GradleException('Packaged buildscript inventory exceeds its bound')
+            }
+            def receipt = [version: 1, includedBuilds: 0, projectDependencies: 0,
+                pluginFileDependencySha256: sha(retained.newInputStream()),
+                plugin: identity(pluginType, pluginType.package.implementationVersion),
+                resolvedBuildscriptArtifacts: resolved,
+                hostKotlin: identity(KotlinVersion, KotlinVersion.CURRENT.toString())]
+            def destination = layout.buildDirectory.file('reports/kartograph/packaged-runtime.json').get().asFile
+            destination.parentFile.mkdirs()
+            destination.text = groovy.json.JsonOutput.toJson(receipt)
+        }
+    }
 }

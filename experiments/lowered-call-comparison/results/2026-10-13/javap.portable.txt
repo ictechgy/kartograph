@@ -1,0 +1,544 @@
+Classfile fixture-classes/lowered/LoweredJava.class
+  Last modified Oct 14, 2026; size 1757 bytes
+  SHA-256 checksum c540fc7273a879ed9a273f8ce3578c4f0e31626e470fcdb28687357e9fb93019
+  Compiled from "LoweredJava.java"
+public class lowered.LoweredJava
+  minor version: 0
+  major version: 61
+  flags: (0x0021) ACC_PUBLIC, ACC_SUPER
+  this_class: #29                         // lowered/LoweredJava
+  super_class: #2                         // java/lang/Object
+  interfaces: 0, fields: 0, methods: 9, attributes: 3
+Constant pool:
+   #1 = Methodref          #2.#3          // java/lang/Object."<init>":()V
+   #2 = Class              #4             // java/lang/Object
+   #3 = NameAndType        #5:#6          // "<init>":()V
+   #4 = Utf8               java/lang/Object
+   #5 = Utf8               <init>
+   #6 = Utf8               ()V
+   #7 = InterfaceMethodref #8.#9          // java/util/function/IntUnaryOperator.applyAsInt:(I)I
+   #8 = Class              #10            // java/util/function/IntUnaryOperator
+   #9 = NameAndType        #11:#12        // applyAsInt:(I)I
+  #10 = Utf8               java/util/function/IntUnaryOperator
+  #11 = Utf8               applyAsInt
+  #12 = Utf8               (I)I
+  #13 = Methodref          #14.#15        // lowered/LoweredKotlin.inlineStep:(I)I
+  #14 = Class              #16            // lowered/LoweredKotlin
+  #15 = NameAndType        #17:#12        // inlineStep:(I)I
+  #16 = Utf8               lowered/LoweredKotlin
+  #17 = Utf8               inlineStep
+  #18 = Methodref          #14.#19        // lowered/LoweredKotlin.withDefault:(I)I
+  #19 = NameAndType        #20:#12        // withDefault:(I)I
+  #20 = Utf8               withDefault
+  #21 = InvokeDynamic      #0:#22         // #0:applyAsInt:()Ljava/util/function/IntUnaryOperator;
+  #22 = NameAndType        #11:#23        // applyAsInt:()Ljava/util/function/IntUnaryOperator;
+  #23 = Utf8               ()Ljava/util/function/IntUnaryOperator;
+  #24 = Methodref          #14.#25        // lowered/LoweredKotlin.acceptJavaLambda:(Ljava/util/function/IntUnaryOperator;)I
+  #25 = NameAndType        #26:#27        // acceptJavaLambda:(Ljava/util/function/IntUnaryOperator;)I
+  #26 = Utf8               acceptJavaLambda
+  #27 = Utf8               (Ljava/util/function/IntUnaryOperator;)I
+  #28 = Methodref          #29.#30        // lowered/LoweredJava.lambdaLeaf:(I)I
+  #29 = Class              #31            // lowered/LoweredJava
+  #30 = NameAndType        #32:#12        // lambdaLeaf:(I)I
+  #31 = Utf8               lowered/LoweredJava
+  #32 = Utf8               lambdaLeaf
+  #33 = Utf8               Code
+  #34 = Utf8               LineNumberTable
+  #35 = Utf8               LocalVariableTable
+  #36 = Utf8               this
+  #37 = Utf8               Llowered/LoweredJava;
+  #38 = Utf8               inlineLeaf
+  #39 = Utf8               value
+  #40 = Utf8               I
+  #41 = Utf8               defaultSeed
+  #42 = Utf8               ()I
+  #43 = Utf8               acceptKotlinLambda
+  #44 = Utf8               operation
+  #45 = Utf8               Ljava/util/function/IntUnaryOperator;
+  #46 = Utf8               javaInline
+  #47 = Utf8               (Llowered/LoweredKotlin;)I
+  #48 = Utf8               kotlin
+  #49 = Utf8               Llowered/LoweredKotlin;
+  #50 = Utf8               javaExplicitDefault
+  #51 = Utf8               javaToKotlinLambda
+  #52 = Utf8               lambda$javaToKotlinLambda$0
+  #53 = Utf8               SourceFile
+  #54 = Utf8               LoweredJava.java
+  #55 = Utf8               BootstrapMethods
+  #56 = MethodHandle       6:#57          // REF_invokeStatic java/lang/invoke/LambdaMetafactory.metafactory:(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;
+  #57 = Methodref          #58.#59        // java/lang/invoke/LambdaMetafactory.metafactory:(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;
+  #58 = Class              #60            // java/lang/invoke/LambdaMetafactory
+  #59 = NameAndType        #61:#62        // metafactory:(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;
+  #60 = Utf8               java/lang/invoke/LambdaMetafactory
+  #61 = Utf8               metafactory
+  #62 = Utf8               (Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;
+  #63 = MethodType         #12            //  (I)I
+  #64 = MethodHandle       6:#65          // REF_invokeStatic lowered/LoweredJava.lambda$javaToKotlinLambda$0:(I)I
+  #65 = Methodref          #29.#66        // lowered/LoweredJava.lambda$javaToKotlinLambda$0:(I)I
+  #66 = NameAndType        #52:#12        // lambda$javaToKotlinLambda$0:(I)I
+  #67 = Utf8               InnerClasses
+  #68 = Class              #69            // java/lang/invoke/MethodHandles$Lookup
+  #69 = Utf8               java/lang/invoke/MethodHandles$Lookup
+  #70 = Class              #71            // java/lang/invoke/MethodHandles
+  #71 = Utf8               java/lang/invoke/MethodHandles
+  #72 = Utf8               Lookup
+{
+  public lowered.LoweredJava();
+    descriptor: ()V
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+         4: return
+      LineNumberTable:
+        line 5: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       5     0  this   Llowered/LoweredJava;
+
+  public static int inlineLeaf(int);
+    descriptor: (I)I
+    flags: (0x0009) ACC_PUBLIC, ACC_STATIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iload_0
+         1: ireturn
+      LineNumberTable:
+        line 6: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0 value   I
+
+  public static int defaultSeed();
+    descriptor: ()I
+    flags: (0x0009) ACC_PUBLIC, ACC_STATIC
+    Code:
+      stack=1, locals=0, args_size=0
+         0: bipush        7
+         2: ireturn
+      LineNumberTable:
+        line 7: 0
+
+  public static int lambdaLeaf(int);
+    descriptor: (I)I
+    flags: (0x0009) ACC_PUBLIC, ACC_STATIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iload_0
+         1: ireturn
+      LineNumberTable:
+        line 8: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0 value   I
+
+  public static int acceptKotlinLambda(java.util.function.IntUnaryOperator);
+    descriptor: (Ljava/util/function/IntUnaryOperator;)I
+    flags: (0x0009) ACC_PUBLIC, ACC_STATIC
+    Code:
+      stack=2, locals=1, args_size=1
+         0: aload_0
+         1: bipush        7
+         3: invokeinterface #7,  2            // InterfaceMethod java/util/function/IntUnaryOperator.applyAsInt:(I)I
+         8: ireturn
+      LineNumberTable:
+        line 9: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       9     0 operation   Ljava/util/function/IntUnaryOperator;
+
+  public static int javaInline(lowered.LoweredKotlin);
+    descriptor: (Llowered/LoweredKotlin;)I
+    flags: (0x0009) ACC_PUBLIC, ACC_STATIC
+    Code:
+      stack=2, locals=1, args_size=1
+         0: aload_0
+         1: bipush        7
+         3: invokevirtual #13                 // Method lowered/LoweredKotlin.inlineStep:(I)I
+         6: ireturn
+      LineNumberTable:
+        line 10: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       7     0 kotlin   Llowered/LoweredKotlin;
+
+  public static int javaExplicitDefault(lowered.LoweredKotlin);
+    descriptor: (Llowered/LoweredKotlin;)I
+    flags: (0x0009) ACC_PUBLIC, ACC_STATIC
+    Code:
+      stack=2, locals=1, args_size=1
+         0: aload_0
+         1: bipush        7
+         3: invokevirtual #18                 // Method lowered/LoweredKotlin.withDefault:(I)I
+         6: ireturn
+      LineNumberTable:
+        line 11: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       7     0 kotlin   Llowered/LoweredKotlin;
+
+  public static int javaToKotlinLambda(lowered.LoweredKotlin);
+    descriptor: (Llowered/LoweredKotlin;)I
+    flags: (0x0009) ACC_PUBLIC, ACC_STATIC
+    Code:
+      stack=2, locals=1, args_size=1
+         0: aload_0
+         1: invokedynamic #21,  0             // InvokeDynamic #0:applyAsInt:()Ljava/util/function/IntUnaryOperator;
+         6: invokevirtual #24                 // Method lowered/LoweredKotlin.acceptJavaLambda:(Ljava/util/function/IntUnaryOperator;)I
+         9: ireturn
+      LineNumberTable:
+        line 12: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      10     0 kotlin   Llowered/LoweredKotlin;
+
+  private static int lambda$javaToKotlinLambda$0(int);
+    descriptor: (I)I
+    flags: (0x100a) ACC_PRIVATE, ACC_STATIC, ACC_SYNTHETIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iload_0
+         1: invokestatic  #28                 // Method lambdaLeaf:(I)I
+         4: ireturn
+      LineNumberTable:
+        line 12: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       5     0 value   I
+}
+SourceFile: "LoweredJava.java"
+BootstrapMethods:
+  0: #56 REF_invokeStatic java/lang/invoke/LambdaMetafactory.metafactory:(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;
+    Method arguments:
+      #63 (I)I
+      #64 REF_invokeStatic lowered/LoweredJava.lambda$javaToKotlinLambda$0:(I)I
+      #63 (I)I
+InnerClasses:
+  public static final #72= #68 of #70;    // Lookup=class java/lang/invoke/MethodHandles$Lookup of class java/lang/invoke/MethodHandles
+Classfile fixture-classes/lowered/LoweredKotlin.class
+  Last modified Oct 14, 2026; size 2926 bytes
+  SHA-256 checksum 6a58d3504eb8c820734a279b8b9915b6b39e3f50f850427c69d89662c48fdcd0
+  Compiled from "LoweredKotlin.kt"
+public final class lowered.LoweredKotlin
+  minor version: 0
+  major version: 61
+  flags: (0x0031) ACC_PUBLIC, ACC_FINAL, ACC_SUPER
+  this_class: #2                          // lowered/LoweredKotlin
+  super_class: #4                         // java/lang/Object
+  interfaces: 0, fields: 0, methods: 10, attributes: 5
+Constant pool:
+    #1 = Utf8               lowered/LoweredKotlin
+    #2 = Class              #1            // lowered/LoweredKotlin
+    #3 = Utf8               java/lang/Object
+    #4 = Class              #3            // java/lang/Object
+    #5 = Utf8               <init>
+    #6 = Utf8               ()V
+    #7 = NameAndType        #5:#6         // "<init>":()V
+    #8 = Methodref          #4.#7         // java/lang/Object."<init>":()V
+    #9 = Utf8               this
+   #10 = Utf8               Llowered/LoweredKotlin;
+   #11 = Utf8               inlineStep
+   #12 = Utf8               (I)I
+   #13 = Utf8               lowered/LoweredJava
+   #14 = Class              #13           // lowered/LoweredJava
+   #15 = Utf8               inlineLeaf
+   #16 = NameAndType        #15:#12       // inlineLeaf:(I)I
+   #17 = Methodref          #14.#16       // lowered/LoweredJava.inlineLeaf:(I)I
+   #18 = Utf8               $i$f$inlineStep
+   #19 = Utf8               I
+   #20 = Utf8               value
+   #21 = Utf8               withDefault
+   #22 = Utf8               withDefault$default
+   #23 = Utf8               (Llowered/LoweredKotlin;IILjava/lang/Object;)I
+   #24 = Utf8               defaultSeed
+   #25 = Utf8               ()I
+   #26 = NameAndType        #24:#25       // defaultSeed:()I
+   #27 = Methodref          #14.#26       // lowered/LoweredJava.defaultSeed:()I
+   #28 = NameAndType        #21:#12       // withDefault:(I)I
+   #29 = Methodref          #2.#28        // lowered/LoweredKotlin.withDefault:(I)I
+   #30 = Utf8               kotlinInline
+   #31 = Utf8               this_$iv
+   #32 = Utf8               value$iv
+   #33 = Utf8               kotlinDefault
+   #34 = NameAndType        #22:#23       // withDefault$default:(Llowered/LoweredKotlin;IILjava/lang/Object;)I
+   #35 = Methodref          #2.#34        // lowered/LoweredKotlin.withDefault$default:(Llowered/LoweredKotlin;IILjava/lang/Object;)I
+   #36 = Utf8               kotlinToJavaLambda
+   #37 = MethodType         #12           //  (I)I
+   #38 = Utf8               kotlinToJavaLambda$lambda$0
+   #39 = NameAndType        #38:#12       // kotlinToJavaLambda$lambda$0:(I)I
+   #40 = Methodref          #2.#39        // lowered/LoweredKotlin.kotlinToJavaLambda$lambda$0:(I)I
+   #41 = MethodHandle       6:#40         // REF_invokeStatic lowered/LoweredKotlin.kotlinToJavaLambda$lambda$0:(I)I
+   #42 = Utf8               java/lang/invoke/LambdaMetafactory
+   #43 = Class              #42           // java/lang/invoke/LambdaMetafactory
+   #44 = Utf8               metafactory
+   #45 = Utf8               (Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;
+   #46 = NameAndType        #44:#45       // metafactory:(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;
+   #47 = Methodref          #43.#46       // java/lang/invoke/LambdaMetafactory.metafactory:(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;
+   #48 = MethodHandle       6:#47         // REF_invokeStatic java/lang/invoke/LambdaMetafactory.metafactory:(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;
+   #49 = Utf8               applyAsInt
+   #50 = Utf8               ()Ljava/util/function/IntUnaryOperator;
+   #51 = NameAndType        #49:#50       // applyAsInt:()Ljava/util/function/IntUnaryOperator;
+   #52 = InvokeDynamic      #0:#51        // #0:applyAsInt:()Ljava/util/function/IntUnaryOperator;
+   #53 = Utf8               acceptKotlinLambda
+   #54 = Utf8               (Ljava/util/function/IntUnaryOperator;)I
+   #55 = NameAndType        #53:#54       // acceptKotlinLambda:(Ljava/util/function/IntUnaryOperator;)I
+   #56 = Methodref          #14.#55       // lowered/LoweredJava.acceptKotlinLambda:(Ljava/util/function/IntUnaryOperator;)I
+   #57 = Utf8               acceptJavaLambda
+   #58 = Utf8               Lorg/jetbrains/annotations/NotNull;
+   #59 = Utf8               operation
+   #60 = String             #59           // operation
+   #61 = Utf8               kotlin/jvm/internal/Intrinsics
+   #62 = Class              #61           // kotlin/jvm/internal/Intrinsics
+   #63 = Utf8               checkNotNullParameter
+   #64 = Utf8               (Ljava/lang/Object;Ljava/lang/String;)V
+   #65 = NameAndType        #63:#64       // checkNotNullParameter:(Ljava/lang/Object;Ljava/lang/String;)V
+   #66 = Methodref          #62.#65       // kotlin/jvm/internal/Intrinsics.checkNotNullParameter:(Ljava/lang/Object;Ljava/lang/String;)V
+   #67 = Utf8               java/util/function/IntUnaryOperator
+   #68 = Class              #67           // java/util/function/IntUnaryOperator
+   #69 = NameAndType        #49:#12       // applyAsInt:(I)I
+   #70 = InterfaceMethodref #68.#69       // java/util/function/IntUnaryOperator.applyAsInt:(I)I
+   #71 = Utf8               Ljava/util/function/IntUnaryOperator;
+   #72 = Utf8               unused
+   #73 = Utf8               lambdaLeaf
+   #74 = NameAndType        #73:#12       // lambdaLeaf:(I)I
+   #75 = Methodref          #14.#74       // lowered/LoweredJava.lambdaLeaf:(I)I
+   #76 = Utf8               it
+   #77 = Utf8               Lkotlin/Metadata;
+   #78 = Utf8               mv
+   #79 = Integer            2
+   #80 = Integer            4
+   #81 = Integer            0
+   #82 = Utf8               k
+   #83 = Integer            1
+   #84 = Utf8               xi
+   #85 = Integer            48
+   #86 = Utf8               d1
+   #87 = Utf8               \u0000\u001a\n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0002\b\u0003\n\u0002\u0010\b\n\u0002\b\u0007\n\u0002\u0018\u0002\n\u0000\u0018\u00002\u00020\u0001B\u0007¢\u0006\u0004\b\u0002\u0010\u0003J\u0011\u0010\u0004\u001a\u00020\u00052\u0006\u0010\u0006\u001a\u00020\u0005H\u0086\bJ\u0010\u0010\u0007\u001a\u00020\u00052\b\b\u0002\u0010\u0006\u001a\u00020\u0005J\u0006\u0010\b\u001a\u00020\u0005J\u0006\u0010\t\u001a\u00020\u0005J\u0006\u0010\n\u001a\u00020\u0005J\u000e\u0010\u000b\u001a\u00020\u00052\u0006\u0010\f\u001a\u00020\rJ\u0006\u0010\u000e\u001a\u00020\u0005
+   #88 = Utf8               d2
+   #89 = Utf8
+   #90 = Utf8               LoweredKotlin.kt
+   #91 = Utf8               Lkotlin/jvm/internal/SourceDebugExtension;
+   #92 = Utf8               SMAP\nLoweredKotlin.kt\nKotlin\n*S Kotlin\n*F\n+ 1 LoweredKotlin.kt\nlowered/LoweredKotlin\n*L\n1#1,14:1\n6#1:15\n*S KotlinDebug\n*F\n+ 1 LoweredKotlin.kt\nlowered/LoweredKotlin\n*L\n8#1:15\n*E\n
+   #93 = Utf8               Code
+   #94 = Utf8               LineNumberTable
+   #95 = Utf8               LocalVariableTable
+   #96 = Utf8               StackMapTable
+   #97 = Utf8               RuntimeInvisibleParameterAnnotations
+   #98 = Utf8               SourceFile
+   #99 = Utf8               SourceDebugExtension
+  #100 = Utf8               RuntimeVisibleAnnotations
+  #101 = Utf8               RuntimeInvisibleAnnotations
+  #102 = Utf8               BootstrapMethods
+{
+  public lowered.LoweredKotlin();
+    descriptor: ()V
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: invokespecial #8                  // Method java/lang/Object."<init>":()V
+         4: return
+      LineNumberTable:
+        line 5: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       5     0  this   Llowered/LoweredKotlin;
+
+  public final int inlineStep(int);
+    descriptor: (I)I
+    flags: (0x0011) ACC_PUBLIC, ACC_FINAL
+    Code:
+      stack=1, locals=3, args_size=2
+         0: iconst_0
+         1: istore_2
+         2: iload_1
+         3: invokestatic  #17                 // Method lowered/LoweredJava.inlineLeaf:(I)I
+         6: ireturn
+      LineNumberTable:
+        line 6: 2
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            2       5     2 $i$f$inlineStep   I
+            0       7     0  this   Llowered/LoweredKotlin;
+            0       7     1 value   I
+
+  public final int withDefault(int);
+    descriptor: (I)I
+    flags: (0x0011) ACC_PUBLIC, ACC_FINAL
+    Code:
+      stack=1, locals=2, args_size=2
+         0: iload_1
+         1: ireturn
+      LineNumberTable:
+        line 7: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Llowered/LoweredKotlin;
+            0       2     1 value   I
+
+  public static int withDefault$default(lowered.LoweredKotlin, int, int, java.lang.Object);
+    descriptor: (Llowered/LoweredKotlin;IILjava/lang/Object;)I
+    flags: (0x1009) ACC_PUBLIC, ACC_STATIC, ACC_SYNTHETIC
+    Code:
+      stack=2, locals=4, args_size=4
+         0: iload_2
+         1: iconst_1
+         2: iand
+         3: ifeq          10
+         6: invokestatic  #27                 // Method lowered/LoweredJava.defaultSeed:()I
+         9: istore_1
+        10: aload_0
+        11: iload_1
+        12: invokevirtual #29                 // Method withDefault:(I)I
+        15: ireturn
+      StackMapTable: number_of_entries = 1
+        frame_type = 10 /* same */
+      LineNumberTable:
+        line 7: 0
+
+  public final int kotlinInline();
+    descriptor: ()I
+    flags: (0x0011) ACC_PUBLIC, ACC_FINAL
+    Code:
+      stack=1, locals=4, args_size=1
+         0: aload_0
+         1: astore_1
+         2: bipush        7
+         4: istore_2
+         5: iconst_0
+         6: istore_3
+         7: iload_2
+         8: invokestatic  #17                 // Method lowered/LoweredJava.inlineLeaf:(I)I
+        11: ireturn
+      LineNumberTable:
+        line 8: 0
+        line 15: 7
+        line 8: 11
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            7       4     3 $i$f$inlineStep   I
+            5       6     1 this_$iv   Llowered/LoweredKotlin;
+            5       6     2 value$iv   I
+            0      12     0  this   Llowered/LoweredKotlin;
+
+  public final int kotlinDefault();
+    descriptor: ()I
+    flags: (0x0011) ACC_PUBLIC, ACC_FINAL
+    Code:
+      stack=4, locals=1, args_size=1
+         0: aload_0
+         1: iconst_0
+         2: iconst_1
+         3: aconst_null
+         4: invokestatic  #35                 // Method withDefault$default:(Llowered/LoweredKotlin;IILjava/lang/Object;)I
+         7: ireturn
+      LineNumberTable:
+        line 9: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       8     0  this   Llowered/LoweredKotlin;
+
+  public final int kotlinToJavaLambda();
+    descriptor: ()I
+    flags: (0x0011) ACC_PUBLIC, ACC_FINAL
+    Code:
+      stack=1, locals=1, args_size=1
+         0: invokedynamic #52,  0             // InvokeDynamic #0:applyAsInt:()Ljava/util/function/IntUnaryOperator;
+         5: invokestatic  #56                 // Method lowered/LoweredJava.acceptKotlinLambda:(Ljava/util/function/IntUnaryOperator;)I
+         8: ireturn
+      LineNumberTable:
+        line 10: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       9     0  this   Llowered/LoweredKotlin;
+
+  public final int acceptJavaLambda(java.util.function.IntUnaryOperator);
+    descriptor: (Ljava/util/function/IntUnaryOperator;)I
+    flags: (0x0011) ACC_PUBLIC, ACC_FINAL
+    Code:
+      stack=2, locals=2, args_size=2
+         0: aload_1
+         1: ldc           #60                 // String operation
+         3: invokestatic  #66                 // Method kotlin/jvm/internal/Intrinsics.checkNotNullParameter:(Ljava/lang/Object;Ljava/lang/String;)V
+         6: aload_1
+         7: bipush        7
+         9: invokeinterface #70,  2           // InterfaceMethod java/util/function/IntUnaryOperator.applyAsInt:(I)I
+        14: ireturn
+      LineNumberTable:
+        line 11: 6
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      15     0  this   Llowered/LoweredKotlin;
+            0      15     1 operation   Ljava/util/function/IntUnaryOperator;
+    RuntimeInvisibleParameterAnnotations:
+      parameter 0:
+        0: #58()
+          org.jetbrains.annotations.NotNull
+
+  public final int unused();
+    descriptor: ()I
+    flags: (0x0011) ACC_PUBLIC, ACC_FINAL
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iconst_0
+         1: ireturn
+      LineNumberTable:
+        line 12: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Llowered/LoweredKotlin;
+
+  private static final int kotlinToJavaLambda$lambda$0(int);
+    descriptor: (I)I
+    flags: (0x001a) ACC_PRIVATE, ACC_STATIC, ACC_FINAL
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iload_0
+         1: invokestatic  #75                 // Method lowered/LoweredJava.lambdaLeaf:(I)I
+         4: ireturn
+      LineNumberTable:
+        line 10: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       5     0    it   I
+}
+SourceFile: "LoweredKotlin.kt"
+SourceDebugExtension:
+  SMAP
+  LoweredKotlin.kt
+  Kotlin
+  *S Kotlin
+  *F
+  + 1 LoweredKotlin.kt
+  lowered/LoweredKotlin
+  *L
+  1#1,14:1
+  6#1:15
+  *S KotlinDebug
+  *F
+  + 1 LoweredKotlin.kt
+  lowered/LoweredKotlin
+  *L
+  8#1:15
+  *E
+RuntimeVisibleAnnotations:
+  0: #77(#78=[I#79,I#80,I#81],#82=I#83,#84=I#85,#86=[s#87],#88=[s#10,s#89,s#5,s#6,s#11,s#89,s#20,s#21,s#30,s#33,s#36,s#57,s#59,s#71,s#72])
+    kotlin.Metadata(
+      mv=[2,4,0]
+      k=1
+      xi=48
+      d1=["\u0000\u001a\n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0002\b\u0003\n\u0002\u0010\b\n\u0002\b\u0007\n\u0002\u0018\u0002\n\u0000\u0018\u00002\u00020\u0001B\u0007¢\u0006\u0004\b\u0002\u0010\u0003J\u0011\u0010\u0004\u001a\u00020\u00052\u0006\u0010\u0006\u001a\u00020\u0005H\u0086\bJ\u0010\u0010\u0007\u001a\u00020\u00052\b\b\u0002\u0010\u0006\u001a\u00020\u0005J\u0006\u0010\b\u001a\u00020\u0005J\u0006\u0010\t\u001a\u00020\u0005J\u0006\u0010\n\u001a\u00020\u0005J\u000e\u0010\u000b\u001a\u00020\u00052\u0006\u0010\f\u001a\u00020\rJ\u0006\u0010\u000e\u001a\u00020\u0005"]
+      d2=["Llowered/LoweredKotlin;","","<init>","()V","inlineStep","","value","withDefault","kotlinInline","kotlinDefault","kotlinToJavaLambda","acceptJavaLambda","operation","Ljava/util/function/IntUnaryOperator;","unused"]
+    )
+RuntimeInvisibleAnnotations:
+  0: #91(#20=[s#92])
+    kotlin.jvm.internal.SourceDebugExtension(
+      value=["SMAP\nLoweredKotlin.kt\nKotlin\n*S Kotlin\n*F\n+ 1 LoweredKotlin.kt\nlowered/LoweredKotlin\n*L\n1#1,14:1\n6#1:15\n*S KotlinDebug\n*F\n+ 1 LoweredKotlin.kt\nlowered/LoweredKotlin\n*L\n8#1:15\n*E\n"]
+    )
+BootstrapMethods:
+  0: #48 REF_invokeStatic java/lang/invoke/LambdaMetafactory.metafactory:(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;
+    Method arguments:
+      #37 (I)I
+      #41 REF_invokeStatic lowered/LoweredKotlin.kotlinToJavaLambda$lambda$0:(I)I
+      #37 (I)I

@@ -1,0 +1,232 @@
+{
+  "format": "retention-composition-controls",
+  "version": 1,
+  "producer": {
+    "repository": "ictechgy/isthmus",
+    "fullVerifySourceCommit": "8061ed4e43b207044025dd723b0d3d7072f23218",
+    "currentDocsOnlyCommit": "f8d823f07c7a59b95e9783640f4b6aed4b13813b",
+    "runtimeFiles": [
+      {
+        "file": "dist/cli/main.js",
+        "sha256": "6a5c8cdc14d33789783ea431ed919151ac83b996ab6ea170e946b88b2bd97d65",
+        "bytes": 9593
+      },
+      {
+        "file": "dist/cli/retentions-command.js",
+        "sha256": "2cca05d297cb001a50998eead3e3cb11bb333d76e3a90a9f84e91a222d1523a3",
+        "bytes": 3254
+      },
+      {
+        "file": "dist/report/retentions.js",
+        "sha256": "b3571843ac84bec3306efc904032877475d7bb5df9c1b4d630a7c070e2c62046",
+        "bytes": 15142
+      }
+    ]
+  },
+  "sources": [
+    {
+      "repository": "ictechgy/isthmus",
+      "base": "37f99d0cc61def725f8ef177066297660ddafd95",
+      "paths": [
+        "fixtures/bridge/dart.json",
+        "fixtures/bridge/swift.json",
+        "fixtures/domain-composition/kotlin.json"
+      ]
+    },
+    {
+      "repository": "ictechgy/kartograph",
+      "path": "cli/src/test/kotlin/dev/kartograph/cli/ExternalRetentionCliTest.kt",
+      "note": "Kotlin synthetic handler identity is adapted to the existing compiled sample.Camera.handle()V fixture; no real compiler capture is claimed."
+    }
+  ],
+  "adaptations": [
+    "Keep original /fixture project identity; no project rewrites.",
+    "Add explicit source-changed limitation to receiver inputs only.",
+    "Zero-retention control removes the Dart method-invoke fact, retaining its channel-create and both source headers.",
+    "Kotlin channel/method are adapted to the existing camera/photo Dart fixture, and handler identity to the existing Kart synthetic CLI fixture."
+  ],
+  "inputs": [
+    {
+      "file": "dart.json",
+      "sha256": "850383b01e53dba72028b85e0610bd8586718eeef0f8563898f670e40761c5c0",
+      "bytes": 814
+    },
+    {
+      "file": "dart-zero.json",
+      "sha256": "b75dad72e9004141388347b183f5d5b8729a7d3a0e1296d9ef12a4355ece5b9e",
+      "bytes": 525
+    },
+    {
+      "file": "swift-stale.json",
+      "sha256": "0d27e52bd72651d6facf667d52fbac4953cf23a13f456222221de5d753d4193a",
+      "bytes": 943
+    },
+    {
+      "file": "kotlin-stale.json",
+      "sha256": "0c6b1dd4068557bbd9deea45003ecb7e68875c685e23497e27b6a43bbf7181c0",
+      "bytes": 928
+    },
+    {
+      "file": "cartograph-baseline-input.json",
+      "sha256": "e6b9c5170c583de3ffbd30b4cea799c6a69ee09e2ba16d8ba3b700552fde7d75",
+      "bytes": 882
+    },
+    {
+      "file": "kartograph-baseline-input.json",
+      "sha256": "c12bab0aa2d54b9dd07060d8537a45808aba60d8fc9bf599b2e5cf02190e038f",
+      "bytes": 867
+    }
+  ],
+  "cases": [
+    {
+      "id": "cartograph-stale-matched",
+      "target": "cartograph",
+      "scenario": "stale-matched",
+      "file": "cartograph-stale-matched.json",
+      "sha256": "6169e543c0d04542c7b3b8fa3950d77309990a6e96c5273ded9002b3e10b8fb5",
+      "bytes": 1391,
+      "command": [
+        "node",
+        "dist/cli/main.js",
+        "retentions",
+        "dart.json",
+        "swift-stale.json",
+        "--for",
+        "cartograph"
+      ],
+      "producerExitCode": 0,
+      "expectedRoots": [
+        "s:handler"
+      ],
+      "expectedLimitationMessages": [
+        "index-freshness: source changed after index capture"
+      ],
+      "expectedSourceCount": 2,
+      "expectedRetentionsCanonicalSha256": "6fed13728733e2cfa2b17a751bd6aaab2add967b8239c65ac85e686572f70d91",
+      "expectedProvenanceCanonicalUtf8Bytes": 526,
+      "baselineFile": "cartograph-baseline.json",
+      "baselineSha256": "d986ce168d8a97ca70c070ef5ed4f7b5b2c7ea84cde909ccd4c49cd4b0a54696",
+      "baselineRetentionEquality": true
+    },
+    {
+      "id": "cartograph-unknown-version",
+      "target": "cartograph",
+      "scenario": "unknown-version",
+      "file": "cartograph-unknown-version.json",
+      "sha256": "f04a630fbee8318eb49734aa1f0986d6854ac724b6f5d30fafc100837fc53759",
+      "bytes": 1498,
+      "derivedFrom": "cartograph-stale-matched.json",
+      "mutation": "Only provenance.version=2 and bounded opaque futureContext were added; this is a forward-compatibility control, not an Isthmus-produced unknown version.",
+      "expectedRoots": [
+        "s:handler"
+      ],
+      "expectedUnsupportedContext": true,
+      "expectedRetentionsCanonicalSha256": "6fed13728733e2cfa2b17a751bd6aaab2add967b8239c65ac85e686572f70d91",
+      "expectedProvenanceCanonicalUtf8Bytes": 598
+    },
+    {
+      "id": "cartograph-zero-retentions",
+      "target": "cartograph",
+      "scenario": "zero-retentions",
+      "file": "cartograph-zero-retentions.json",
+      "sha256": "ef6065fc3b68bb4a6e540fc306b989436b88b610d88100b2b38bfccf674f3b59",
+      "bytes": 1052,
+      "command": [
+        "node",
+        "dist/cli/main.js",
+        "retentions",
+        "dart-zero.json",
+        "swift-stale.json",
+        "--for",
+        "cartograph"
+      ],
+      "producerExitCode": 0,
+      "expectedRoots": [],
+      "expectedLimitationMessages": [
+        "index-freshness: source changed after index capture"
+      ],
+      "expectedSourceCount": 2,
+      "expectedRetentionsCanonicalSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "expectedProvenanceCanonicalUtf8Bytes": 526,
+      "baselineFile": "cartograph-baseline.json",
+      "baselineSha256": "d986ce168d8a97ca70c070ef5ed4f7b5b2c7ea84cde909ccd4c49cd4b0a54696",
+      "baselineRetentionEquality": false
+    },
+    {
+      "id": "kartograph-stale-matched",
+      "target": "kartograph",
+      "scenario": "stale-matched",
+      "file": "kartograph-stale-matched.json",
+      "sha256": "afd1221c3fc4374bf96749c0cda935e2232ad382ad3f630c3c6360c2f76c372d",
+      "bytes": 1629,
+      "command": [
+        "node",
+        "dist/cli/main.js",
+        "retentions",
+        "dart.json",
+        "kotlin-stale.json",
+        "--for",
+        "kartograph"
+      ],
+      "producerExitCode": 0,
+      "expectedRoots": [
+        "method:sample/Camera#handle()V"
+      ],
+      "expectedLimitationMessages": [
+        "index-freshness: source changed after index capture",
+        "input-freshness: bridge documents differ by 288 hours"
+      ],
+      "expectedSourceCount": 2,
+      "expectedRetentionsCanonicalSha256": "40651fd49818e77dc8a4d1630b807e7477ad0247c21805eb4a85da40c66861a2",
+      "expectedProvenanceCanonicalUtf8Bytes": 673,
+      "baselineFile": "kartograph-baseline.json",
+      "baselineSha256": "08d797eae8d2ab6a937f3e30aa75bebd732e8d52113184ece12b6cd0968ce1a4",
+      "baselineRetentionEquality": true
+    },
+    {
+      "id": "kartograph-unknown-version",
+      "target": "kartograph",
+      "scenario": "unknown-version",
+      "file": "kartograph-unknown-version.json",
+      "sha256": "e9a07c93756772d8411e18ef3332a6c0b1d6e178174c5e3bc3009fa67ce62f90",
+      "bytes": 1736,
+      "derivedFrom": "kartograph-stale-matched.json",
+      "mutation": "Only provenance.version=2 and bounded opaque futureContext were added; this is a forward-compatibility control, not an Isthmus-produced unknown version.",
+      "expectedRoots": [
+        "method:sample/Camera#handle()V"
+      ],
+      "expectedUnsupportedContext": true,
+      "expectedRetentionsCanonicalSha256": "40651fd49818e77dc8a4d1630b807e7477ad0247c21805eb4a85da40c66861a2",
+      "expectedProvenanceCanonicalUtf8Bytes": 745
+    },
+    {
+      "id": "kartograph-zero-retentions",
+      "target": "kartograph",
+      "scenario": "zero-retentions",
+      "file": "kartograph-zero-retentions.json",
+      "sha256": "d2246440652945f2b7ddcd4214e8131adfd4990694e46d7b6bb83a77e444fa03",
+      "bytes": 1263,
+      "command": [
+        "node",
+        "dist/cli/main.js",
+        "retentions",
+        "dart-zero.json",
+        "kotlin-stale.json",
+        "--for",
+        "kartograph"
+      ],
+      "producerExitCode": 0,
+      "expectedRoots": [],
+      "expectedLimitationMessages": [
+        "index-freshness: source changed after index capture",
+        "input-freshness: bridge documents differ by 288 hours"
+      ],
+      "expectedSourceCount": 2,
+      "expectedRetentionsCanonicalSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "expectedProvenanceCanonicalUtf8Bytes": 673,
+      "baselineFile": "kartograph-baseline.json",
+      "baselineSha256": "08d797eae8d2ab6a937f3e30aa75bebd732e8d52113184ece12b6cd0968ce1a4",
+      "baselineRetentionEquality": false
+    }
+  ]
+}

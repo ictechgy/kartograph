@@ -26,7 +26,7 @@ public enum class Visibility {
     UNKNOWN,
 }
 
-/** JVM access flag만으로 복원할 수 없는 선언 특징과 명시적 입력 출처다. */
+/** JVM/Kotlin 선언의 추가 특징과 명시적 입력 출처다. v10 cache ordinal 보존을 위해 새 항목은 끝에 더한다. */
 public enum class NodeAttribute {
     DATA_CLASS,
     EXTENSION_FUNCTION,
@@ -39,6 +39,10 @@ public enum class NodeAttribute {
     EXTERNAL_STUB,
     /** compiler line이 없을 때 현재 project source header에서 유일하게 보강한 선언 위치다. */
     SOURCE_DECLARATION_LOCATION,
+    /** enum 소유 class의 ACC_ENUM 필드이며 descriptor가 소유 enum 자신이다. */
+    ENUM_CONSTANT,
+    /** 성공한 생성 receipt·source mapping·compiler class 바이트로 연결한 신원이다. 보존 root가 아니다. */
+    GENERATED_SOURCE_EVIDENCE,
 }
 
 /** ProGuard/R8 class specification과 직접 비교하는 JVM access flag다. */
@@ -87,9 +91,45 @@ public data class GraphNode(
     val sourceDeclaration: SourceDeclarationEvidence? = null,
     /** Kotlin metadata가 JVM signature에 대응시킨 원래 함수 이름이다. 바이트코드 이름과 구분한다. */
     val kotlinSourceName: String? = null,
+    /** metadata와 실제 호출이 함께 증명한 기본 인자 bridge 원본이다. null은 미확정이며 부재 증명이 아니다. */
+    val kotlinDefaultBridge: KotlinDefaultBridge? = null,
+    /**
+     * classfile 전체에서 수집한 enum 상수의 정렬된 JVM field ID다. null은 미수집·충돌, 빈 목록은 관측한 빈 enum이다.
+     * 그래프 view에서 field 정점을 제거해도 원래 목록을 줄이지 않는다. alias와 합성 values 필드는 포함하지 않는다.
+     */
+    val enumConstants: List<NodeId>? = null,
 ) {
     init {
         require(name.isNotBlank()) { "node name must not be blank" }
         require(kotlinSourceName == null || kotlinSourceName.isNotBlank()) { "Kotlin source name must not be blank" }
+        require(NodeAttribute.ENUM_CONSTANT !in attributes || kind == NodeKind.FIELD) {
+            "enum constant evidence requires a field node"
+        }
+        enumConstants?.let { constants ->
+            require(kind == NodeKind.ENUM && NodeAttribute.EXTERNAL_STUB !in attributes && EnumConstantIds.isOwner(id)) {
+                "enum inventory requires a captured enum owner"
+            }
+            require(constants.withIndex().all { (index, constant) ->
+                EnumConstantIds.belongsTo(id, constant) && (index == 0 || constants[index - 1] < constant)
+            }) { "enum inventory requires sorted unique self-typed field identifiers" }
+        }
+    }
+}
+
+/**
+ * 실제 JVM CALL을 보존하면서 Kotlin 기본 인자 bridge의 원본 선언을 연결한다.
+ * metadata value parameter 수로 mask 수를 확정하며 receiver/context/continuation은 그 수에 포함하지 않는다.
+ */
+public data class KotlinDefaultBridge(
+    val target: NodeId,
+    val valueParameterCount: Int,
+    val maskParameterCount: Int,
+) {
+    /** metadata signature, 정확한 bridge descriptor, 실제 bytecode CALL을 모두 확인한 근거다. */
+    val basis: String get() = "kotlinMetadataAndBytecode"
+
+    init {
+        require(valueParameterCount in 1..255) { "default bridge value parameter count must be between 1 and 255" }
+        require(maskParameterCount == (valueParameterCount + 31) / 32) { "default bridge mask count does not match metadata" }
     }
 }

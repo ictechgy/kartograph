@@ -1,0 +1,184 @@
+package dev.kartograph.gradle
+
+import dev.kartograph.index.CompilerEvidenceToken
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.compile.JavaCompile
+import org.gradle.process.CommandLineArgumentProvider
+import org.gradle.testfixtures.ProjectBuilder
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlin.test.*
+
+class AndroidCompilerArgumentInputsTest {
+    @Test
+    fun `external processor inputs bind without becoming graph roots and changed bytes refuse capture`(@TempDir root: Path) {
+        val module = Files.createDirectories(root.resolve("module"))
+        val project = ProjectBuilder.builder().withProjectDir(module.toFile()).build()
+        project.pluginManager.apply("java")
+        val sources = Files.createDirectories(module.resolve("src/main/java"))
+        Files.writeString(sources.resolve("Example.java"), "public class Example {}")
+        val build = Files.writeString(module.resolve("build.gradle"), "plugins { id 'java' }")
+        val processor = Files.writeString(root.resolve("processor.jar"), "independent processor bytes")
+        val task = project.tasks.named("compileJava", JavaCompile::class.java).get()
+        task.options.annotationProcessorPath = project.files(processor)
+        val modules = task.javaCompiler.get().metadata.installationPath.file("lib/modules")
+        val spec = WitnessSpec(module.toFile(), "sample:main", task.name, task.path, "javac",
+            project.files(sources), project.files(build), project.files(sources, build, modules, processor),
+            project.files(), project.layout.buildDirectory.file("witness.json"), null, automaticSourceInventory = true)
+        val observed = spec.observe(task)
+        val input = observed.single { it.role == "processor" }
+        assertTrue(input.path.startsWith("external/"))
+        val witness = dev.kartograph.core.BuildWitness("sample:main", "javac", task.path, observed,
+            listOf(dev.kartograph.core.InputFingerprint("classes", "build/classes", "b".repeat(64))))
+        val capture = project.tasks.create("capture", KartographSnapshotTask::class.java)
+        capture.classRoots.from(task.destinationDirectory)
+        capture.dependencyClasspath.from(task.classpath)
+        capture.compilerInputFiles.from(AndroidCompilerInputs.snapshotInputs(project, task, project.files()))
+        fun binder() = CompilerInputBinder(module, listOf(capture.compilerInputFiles.files.map { it.toPath() }))
+        assertContains(assertFailsWith<IllegalArgumentException> {
+            CompilerInputBinder(module, listOf(emptyList())).bind(witness, input, null, emptySet())
+        }.message.orEmpty(), "no selected input matches the recorded processor input")
+        assertEquals(processor, binder().bind(witness, input, null, emptySet()))
+        assertEquals(setOf(task.destinationDirectory.get().asFile), capture.classRoots.files)
+        assertTrue(capture.dependencyClasspath.isEmpty)
+        Files.writeString(processor, "changed processor bytes")
+        assertContains(assertFailsWith<IllegalArgumentException> {
+            binder().bind(witness, input, null, emptySet())
+        }.message.orEmpty(), "no selected input matches the recorded processor input")
+        assertNotEquals(CompilerEvidenceToken.create("sample:main", "javac", task.path, observed),
+            CompilerEvidenceToken.create("sample:main", "javac", task.path, spec.observe(task)))
+    }
+
+    @Test
+    fun `known metadata provider still requires complete independent byte coverage`(@TempDir root: Path) {
+        val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        project.pluginManager.apply("java")
+        val task = project.tasks.named("compileJava", JavaCompile::class.java).get()
+        val sources = Files.createDirectories(root.resolve("src/main/java"))
+        Files.writeString(sources.resolve("Example.java"), "public class Example {}")
+        val build = Files.writeString(root.resolve("build.gradle"), "plugins { id 'java' }")
+        val metadata = Files.writeString(root.resolve("annotation-processors.json"), "{}")
+        val value = project.objects.fileProperty().fileValue(metadata.toFile())
+        val provider = dev.kartograph.gradle.fixtures.PrivateArgumentProvider.room(value)
+        task.options.compilerArgumentProviders.add(provider)
+        // 타입을 위임하지 않으면 이 비공개 provider도 일반 비공개 구현과 같이 거부한다.
+        assertEquals(WitnessRejection.UNSUPPORTED_ARGUMENT_PROVIDER,
+            AndroidCompilerInputs.argumentProviderInputs(project, task).rejection)
+        val captured = AndroidCompilerInputs.argumentProviderInputs(project, task, provider.javaClass)
+        assertNull(captured.rejection)
+        assertTrue(captured.files.isEmpty)
+        val modules = task.javaCompiler.get().metadata.installationPath.file("lib/modules")
+        fun spec(known: java.io.File) = WitnessSpec(root.toFile(), "sample:main", task.name, task.path, "javac",
+            project.files(sources), project.files(build), project.files(sources, build, modules, known),
+            project.files(known), project.layout.buildDirectory.file("witness.json"), null, automaticSourceInventory = true)
+        val before = spec(metadata.toFile()).observe(task)
+        assertTrue(before.any { it.role == "compilerInput" && it.path.endsWith("annotation-processors.json") })
+        val different = Files.writeString(root.resolve("different.json"), "{}")
+        assertContains(assertFailsWith<IllegalArgumentException> { spec(different.toFile()).observe(task) }.message.orEmpty(),
+            "byte inputs omit declared compiler files")
+        task.inputs.file(different)
+        assertContains(assertFailsWith<IllegalArgumentException> { spec(metadata.toFile()).observe(task) }.message.orEmpty(),
+            "byte inputs omit declared compiler files")
+        task.options.compilerArgumentProviders.clear()
+        val expanded = dev.kartograph.gradle.fixtures.PrivateArgumentProvider.roomWithExtra(value, different.toFile())
+        task.options.compilerArgumentProviders.add(expanded)
+        assertEquals(WitnessRejection.UNSUPPORTED_ARGUMENT_PROVIDER,
+            AndroidCompilerInputs.argumentProviderInputs(project, task, expanded.javaClass).rejection)
+    }
+
+    @Test
+    fun `nonpublic provider does not break ordinary task configuration`(@TempDir root: Path) {
+        val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        project.pluginManager.apply("java")
+        val task = project.tasks.named("compileJava", JavaCompile::class.java).get()
+        task.options.compilerArgumentProviders.add(dev.kartograph.gradle.fixtures.PrivateArgumentProvider.create(root.resolve("metadata.txt").toFile()))
+        val captured = AndroidCompilerInputs.argumentProviderInputs(project, task)
+        assertTrue(captured.files.isEmpty)
+        assertEquals(WitnessRejection.UNSUPPORTED_ARGUMENT_PROVIDER, captured.rejection)
+    }
+
+    @Test
+    fun `unsupported annotated file values and conflicting roles are rejected`(@TempDir root: Path) {
+        val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        project.pluginManager.apply("java")
+        val task = project.tasks.named("compileJava", JavaCompile::class.java).get()
+        task.options.compilerArgumentProviders.add(UnsupportedArguments())
+        assertFails { AndroidCompilerInputs.argumentProviderInputs(project, task).files.files }
+        task.options.compilerArgumentProviders.clear()
+        task.options.compilerArgumentProviders.add(ConflictingArguments())
+        assertContains(assertFailsWith<IllegalArgumentException> {
+            AndroidCompilerInputs.argumentProviderInputs(project, task).files.files
+        }.message.orEmpty(), "same property as input and output")
+    }
+
+    @Test
+    fun `declared processor metadata joins witness inputs while output and undeclared inputs remain excluded`(@TempDir root: Path) {
+        val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        project.pluginManager.apply("java")
+        val sources = Files.createDirectories(root.resolve("src/main/java"))
+        Files.writeString(sources.resolve("Example.java"), "public class Example {}")
+        val build = Files.writeString(root.resolve("build.gradle"), "plugins { id 'java' }")
+        val layout = Files.writeString(root.resolve("layout-info.xml"), "before")
+        val output = Files.createDirectories(root.resolve("processor-output"))
+        val task = project.tasks.named("compileJava", JavaCompile::class.java).get()
+        val arguments = project.objects.newInstance(BindingArguments::class.java)
+        arguments.layoutInfo.set(layout.toFile())
+        arguments.output.set(output.toFile())
+        task.options.compilerArgumentProviders.add(arguments)
+        val modules = task.javaCompiler.get().metadata.installationPath.file("lib/modules")
+        fun spec(additional: org.gradle.api.file.FileCollection) = WitnessSpec(root.toFile(), "sample:main", task.name,
+            task.path, "javac", project.files(sources), project.files(build), project.files(sources, build, modules, additional),
+            additional, project.layout.buildDirectory.file("witness.json"), null, automaticSourceInventory = true)
+        val missing = assertFailsWith<IllegalArgumentException> { spec(project.files()).observe(task) }
+        assertContains(missing.message.orEmpty(), "byte inputs omit declared compiler files")
+        assertEquals(WitnessRejection.UNCOVERED_FILE_INPUT, WitnessRejection.from(missing))
+        val capture = AndroidCompilerInputs.argumentProviderInputs(project, task)
+        assertNull(capture.rejection)
+        val captured = capture.files
+        assertEquals(setOf(layout.toFile()), captured.files)
+        val witness = spec(captured)
+        val before = witness.observe(task)
+        assertTrue(before.any { it.role == "compilerInput" && it.path.endsWith("layout-info.xml") })
+        Files.writeString(output.resolve("generated.java"), "not an input")
+        assertEquals(before, witness.observe(task))
+        Files.writeString(layout, "after")
+        assertNotEquals(CompilerEvidenceToken.create("sample:main", "javac", task.path, before),
+            CompilerEvidenceToken.create("sample:main", "javac", task.path, witness.observe(task)))
+        arguments.layoutInfo.set(output.resolve("generated.java").toFile())
+        assertContains(assertFailsWith<IllegalArgumentException> { captured.files }.message.orEmpty(), "overlaps compiler outputs")
+        val ownOutput = task.destinationDirectory.get().asFile.toPath()
+        Files.createDirectories(ownOutput)
+        val self = Files.writeString(ownOutput.resolve("prior.class"), "prior output")
+        arguments.layoutInfo.set(self.toFile())
+        assertContains(assertFailsWith<IllegalArgumentException> { captured.files }.message.orEmpty(), "overlaps compiler outputs")
+        arguments.layoutInfo.set(layout.toFile())
+        val arbitrary = Files.writeString(root.resolve("unmapped-input.txt"), "unknown")
+        task.inputs.file(arbitrary)
+        assertContains(assertFailsWith<IllegalArgumentException> { witness.observe(task) }.message.orEmpty(),
+            "byte inputs omit declared compiler files")
+    }
+
+    abstract class BindingArguments : CommandLineArgumentProvider {
+        @get:InputFiles abstract val layoutInfo: RegularFileProperty
+        @get:InputFiles @get:Optional abstract val optionalMetadata: RegularFileProperty
+        @get:OutputDirectory abstract val output: DirectoryProperty
+        override fun asArguments(): Iterable<String> = listOf("-Ametadata=" + layoutInfo.get().asFile.absolutePath)
+    }
+
+    class UnsupportedArguments : CommandLineArgumentProvider {
+        @get:InputFiles val unsupported: Any = Any()
+        override fun asArguments(): Iterable<String> = emptyList()
+    }
+
+    class ConflictingArguments : CommandLineArgumentProvider {
+        @get:InputFiles @get:OutputFile val conflict: String = "ambiguous.txt"
+        override fun asArguments(): Iterable<String> = emptyList()
+    }
+
+}

@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.File
 
 plugins {
-    kotlin("jvm") version "2.4.10"
+    kotlin("jvm") version "2.4.20"
 }
 
 repositories { mavenCentral() }
@@ -15,14 +15,17 @@ version = file("../VERSION").readText().trim()
 
 configurations.create("kotlinCompilerRuntime")
 configurations.create("daggerRuntime")
+val kotlinCompilerVersion = "2.4.20"
+// 실제 설치물의 runtime pin은 수집기 compiler의 버전과 독립적으로 검증한다.
+val distributionStdlibVersion = "2.4.21"
 
 dependencies {
-    compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.10")
+    compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:$kotlinCompilerVersion")
     compileOnly("com.google.dagger:dagger-spi:2.59")
     compileOnly("com.google.devtools.ksp:symbol-processing-api:2.3.12")
 
-    add("kotlinCompilerRuntime", "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.10")
-    add("kotlinCompilerRuntime", "org.jetbrains.kotlin:kotlin-stdlib:2.4.10")
+    add("kotlinCompilerRuntime", "org.jetbrains.kotlin:kotlin-compiler-embeddable:$kotlinCompilerVersion")
+    add("kotlinCompilerRuntime", "org.jetbrains.kotlin:kotlin-stdlib:$kotlinCompilerVersion")
     add("kotlinCompilerRuntime", "org.jetbrains:annotations:23.0.0")
     add("daggerRuntime", "com.google.dagger:dagger-compiler:2.59")
     add("daggerRuntime", "com.google.dagger:dagger:2.59")
@@ -80,7 +83,48 @@ val outputAttributionTest = tasks.register<Exec>("outputAttributionTest") {
     commandLine("python3", layout.projectDirectory.file("tests/output_attribution.py").asFile.absolutePath)
 }
 
+val authoredCallsTest = tasks.register<Exec>("authoredCallsTest") {
+    dependsOn(tasks.named("jar"))
+    doFirst {
+        commandLine("python3", layout.projectDirectory.file("tests/authored_calls.py").asFile.absolutePath,
+            "--collector", tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath,
+            "--kotlin-classpath", configurations.getByName("kotlinCompilerRuntime").files.joinToString(File.pathSeparator) { it.absolutePath })
+    }
+}
+
+val callerInventoryTest = tasks.register<Exec>("callerInventoryTest") {
+    dependsOn(tasks.named("jar"))
+    doFirst {
+        commandLine("python3", layout.projectDirectory.file("tests/caller_inventory.py").asFile.absolutePath,
+            "--collector", tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath,
+            "--compiler-classpath", configurations.getByName("kotlinCompilerRuntime").files.joinToString(File.pathSeparator) { it.absolutePath })
+    }
+}
+
+val kotlinRuntimeTest = tasks.register<Exec>("kotlinRuntimeTest") {
+    commandLine("python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_kotlin_runtime.py", "-v")
+}
+
+val publicAuthoredApiInputTest = tasks.register<Exec>("publicAuthoredApiInputTest") {
+    commandLine("python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_public_authored_api.py", "-v")
+}
+
+val publicAuthoredApiTest = tasks.register<Exec>("publicAuthoredApiTest") {
+    dependsOn(publicAuthoredApiInputTest)
+    doFirst {
+        // 소스/class 디렉터리로 대체하지 않는다. 설치물 누락은 verifier가 명시적으로 실패시킨다.
+        commandLine("python3", layout.projectDirectory.file("tests/public_authored_api.py").asFile.absolutePath,
+            "--distribution", providers.gradleProperty("kartograph.consumerDistribution").orNull.orEmpty(),
+            "--version", collectorVersion, "--kotlin-version", kotlinCompilerVersion,
+            "--distribution-stdlib-version", distributionStdlibVersion,
+            "--compiler-classpath", configurations.getByName("kotlinCompilerRuntime").files.joinToString(File.pathSeparator) { it.absolutePath },
+            "--report", layout.buildDirectory.dir("reports/public-authored-api").get().asFile.absolutePath)
+    }
+}
+
 val integrationTest = tasks.register<Exec>("integrationTest") {
+    dependsOn(kotlinRuntimeTest)
+    dependsOn(authoredCallsTest, callerInventoryTest, publicAuthoredApiTest)
     dependsOn(outputAttributionTest)
     dependsOn(tasks.named("jar"))
     doFirst {
@@ -94,6 +138,7 @@ val integrationTest = tasks.register<Exec>("integrationTest") {
             layout.projectDirectory.file("tests/run.py").asFile.absolutePath,
             "--collector", collector.absolutePath,
             "--kotlin-classpath", kotlinClasspath,
+            "--kotlin-version", kotlinCompilerVersion,
             "--dagger-classpath", daggerClasspath,
         )
     }

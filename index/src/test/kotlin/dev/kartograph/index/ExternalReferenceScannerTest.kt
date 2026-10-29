@@ -2,15 +2,23 @@ package dev.kartograph.index
 
 import java.io.File
 import java.nio.file.Path
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
 import javax.tools.ToolProvider
 import kotlin.io.path.createDirectories
+import kotlin.io.path.readBytes
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassVisitor
 import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.ConstantDynamic
 import org.objectweb.asm.Handle
 import org.objectweb.asm.Label
@@ -88,6 +96,89 @@ class ExternalReferenceScannerTest {
 
         assertContains(referenced, "com/example/lib/Fn")
         assertContains(referenced, "com/example/lib/Api")
+    }
+
+    @Test
+    fun `javac generic method lambda retains erased bounds and bootstrap references`(@TempDir root: Path) {
+        val library = root.resolve("library").createDirectories()
+        compileJava(listOf(
+            source(root, "lib-src", "lib/Bound.java", "package lib; public class Bound {}"),
+            source(root, "lib-src", "lib/SignatureOnly.java", "package lib; public interface SignatureOnly {}"),
+            source(root, "lib-src", "lib/Fn.java", "package lib; public interface Fn { void run(); }"),
+            source(root, "lib-src", "lib/Api.java", "package lib; public class Api { public static void use(Bound value) {} }"),
+            source(root, "lib-src", "lib/Decoy.java", "package lib; public class Decoy {}"),
+        ), library)
+        val app = root.resolve("classes").createDirectories()
+        compileJava(listOf(source(root, "app-src", "app/GenericFactory.java", """
+            package app;
+            public class GenericFactory {
+              private static final String DECOY = "lib.Decoy";
+              public static <T extends lib.Bound & lib.SignatureOnly> lib.Fn create(T value) {
+                return () -> lib.Api.use(value);
+              }
+            }
+        """.trimIndent())), app, listOf(library))
+        val bytes = app.resolve("app/GenericFactory.class").readBytes()
+        var methodSignature: String? = null
+        var dynamicCalls = 0
+        ClassReader(bytes).accept(object : ClassVisitor(Opcodes.ASM9) {
+            override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?,
+                exceptions: Array<out String>?): MethodVisitor? {
+                if (name != "create") return null
+                methodSignature = signature
+                assertEquals("(Llib/Bound;)Llib/Fn;", descriptor)
+                return object : MethodVisitor(Opcodes.ASM9) {
+                    override fun visitInvokeDynamicInsn(name: String, descriptor: String,
+                        bootstrapMethodHandle: Handle, vararg bootstrapMethodArguments: Any) {
+                        dynamicCalls++
+                        assertEquals("run", name)
+                        assertEquals("(Llib/Bound;)Llib/Fn;", descriptor)
+                        assertEquals("java/lang/invoke/LambdaMetafactory", bootstrapMethodHandle.owner)
+                    }
+                }
+            }
+        }, ClassReader.SKIP_FRAMES)
+        assertEquals("<T:Llib/Bound;:Llib/SignatureOnly;>(TT;)Llib/Fn;", methodSignature)
+        assertEquals(1, dynamicCalls)
+        val expected = setOf("lib/Bound", "lib/SignatureOnly", "lib/Fn", "lib/Api")
+        val scanner = ExternalReferenceScanner()
+        assertEquals(expected, scanner.scan(listOf(app)).filter { it.startsWith("lib/") }.toSet())
+        val jar = root.resolve("app.jar")
+        JarOutputStream(jar.toFile().outputStream()).use { output ->
+            output.putNextEntry(JarEntry("app/GenericFactory.class"))
+            output.write(bytes)
+            output.closeEntry()
+        }
+        assertEquals(expected, scanner.scan(listOf(jar)).filter { it.startsWith("lib/") }.toSet())
+        // CLI/Gradle 의존성 입력도 같은 visitor를 사용한다. 구현 참조와 공개 ABI를 각각 확인한다.
+        for (input in listOf(app, jar)) {
+            val usage = DependencyUsageScanner().scan(listOf(input))
+            assertEquals(expected, usage.referencedClasses.filter { it.startsWith("lib/") }.toSet())
+            assertEquals(setOf("lib/Bound", "lib/SignatureOnly", "lib/Fn"),
+                usage.apiClasses.filter { it.startsWith("lib/") }.toSet())
+            assertEquals(setOf("app/GenericFactory"), usage.declaredClasses)
+            assertTrue(usage.apiComplete)
+        }
+    }
+
+    @Test
+    fun `malformed and excessive method signatures still fail before instruction scanning`(@TempDir root: Path) {
+        val signatures = listOf("(", "()" + "[".repeat(514) + "Ljava/lang/String;")
+        signatures.forEachIndexed { index, signature ->
+            val classes = root.resolve("broken-$index").createDirectories()
+            classes.resolve("Broken.class").writeBytes(ClassWriter(0).apply {
+                visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "app/Broken", null, "java/lang/Object", null)
+                visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "run", "()V", signature, null).apply {
+                    visitCode()
+                    visitInsn(Opcodes.RETURN)
+                    visitMaxs(0, 0)
+                    visitEnd()
+                }
+                visitEnd()
+            }.toByteArray())
+            val failure = assertFailsWith<ClassIndexingException> { ExternalReferenceScanner().scan(listOf(classes)) }
+            assertEquals("invalid class file", failure.message)
+        }
     }
 
     @Test

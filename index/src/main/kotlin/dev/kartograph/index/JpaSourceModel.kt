@@ -88,11 +88,19 @@ internal data class JpaSourceType(
     fun annotation(name: String): JpaAnnotation? = annotations.firstOrNull { it.name == name }
 }
 
-/** JPA 스캔용 파일 하나다 — 원문·주석 제거 뷰·마스킹 뷰와 타입 목록을 한 번만 만든다. */
-internal class JpaSourceFile(root: Path, path: Path) {
+/**
+ * JPA 스캔용 파일 하나다 — 원문·주석 제거 뷰·마스킹 뷰와 타입 목록을 한 번만 만든다.
+ *
+ * @param source [path]의 원문(줄을 `\n`으로 이은 것)이다. schema 스캔은 이미 읽은 원문을 넘겨 같은 파일을 다시 읽지 않는다.
+ *   주지 않으면 [ProjectTraversal.readSourceLines]로 읽는다
+ */
+internal class JpaSourceFile(
+    root: Path,
+    path: Path,
+    val source: String = ProjectTraversal.readSourceLines(root, path).joinToString("\n"),
+) {
     val relative: String = root.relativize(path.toAbsolutePath().normalize()).joinToString("/")
     val isJava: Boolean = path.fileName.toString().endsWith(".java")
-    val source: String = ProjectTraversal.readSourceLines(root, path).joinToString("\n")
     val code: String = stripComments(source)
     val masked: String = maskStringContents(code)
     val packageName: String = PACKAGE.find(masked)?.groupValues?.get(1).orEmpty()

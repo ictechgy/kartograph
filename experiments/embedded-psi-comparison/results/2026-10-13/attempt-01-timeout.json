@@ -1,0 +1,12 @@
+{
+  "status": "failed",
+  "adapterExit": 124,
+  "adapterTimeLimitSeconds": 90,
+  "fullComparisonExecuted": false,
+  "reason": "Adapter did not exit within its process timeout after emitting output; no terminal success receipt.",
+  "rawOutputRows": 5,
+  "resolvedMethodCallRows": 4,
+  "constructorBoundaryRows": 1,
+  "lifecycleObservation": "Output statements occur after both the analysis try block and Disposer.dispose finally block. All expected raw rows were emitted; neither analysis nor disposal raised before output.",
+  "qualification": "Raw output is preserved for diagnosis only, not promoted to successful PSI qualification."
+}

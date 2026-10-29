@@ -30,8 +30,12 @@ internal object RuntimeLibraryModels {
         add(RuntimeOperation.STRING_VALUE, "java/lang/String", listOf("valueOf"), listOf("Z", "C", "I", "J", "F", "D", "Ljava/lang/Object;", "[C").map { "($it)Ljava/lang/String;" }, static = true, sensitive = false)
     }
 
+    // 등록된 owner/name에만 복합 key를 만들고 특수 loader/Object fallback은 별도로 유지한다.
+    private val modelNamesByOwner = models.keys.groupBy(Signature::owner)
+        .mapValues { (_, signatures) -> signatures.mapTo(hashSetOf(), Signature::name) }
+
     fun find(owner: String, name: String, descriptor: String, static: Boolean, isClassLoader: (String) -> Boolean): RuntimeLibraryModel? =
-        models[Signature(owner, name, descriptor, static)] ?: when {
+        (if (name in modelNamesByOwner[owner].orEmpty()) models[Signature(owner, name, descriptor, static)] else null) ?: when {
             !static && name == "loadClass" && descriptor in LOADER_DESCRIPTORS && isClassLoader(owner) ->
                 RuntimeLibraryModel("jdk.class-loader.v1", RuntimeOperation.CLASS_LOADER, true)
             !static && name == "getClass" && descriptor == "()Ljava/lang/Class;" ->

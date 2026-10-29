@@ -3,37 +3,91 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Exact release tag (vVERSION)"
+        required: true
+        type: string
+      source_sha:
+        description: "Full reviewed main commit SHA (must equal the dispatch ref)"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  # 검증 메타데이터 밖의 Android fixture 의존성과 전체 테스트는 비밀·쓰기 토큰·environment가 없는 이 job에서만 실행한다.
+  # publish job에는 readiness가 봉인한 배포물 해시 목록만 넘긴다.
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      contents: write
-    environment: release
+      contents: read
+    outputs:
+      artifact-hashes: ${{ steps.verified.outputs.artifact-hashes }}
     steps:
+      - name: Validate manual source input
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ] || \
+             [[ ! "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || \
+             [ "$REQUESTED_SHA" != "$GITHUB_SHA" ]; then
+            echo "Manual release requires the full reviewed main commit." >&2
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
+      - name: Resolve release source
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          release_tag="$GITHUB_REF_NAME"
+          source_sha="$GITHUB_SHA"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            release_tag="$REQUESTED_TAG"
+            source_sha="$REQUESTED_SHA"
+            test "$GITHUB_REF" = refs/heads/main
+            test "$source_sha" = "$GITHUB_SHA"
+          elif [ "$GITHUB_EVENT_NAME" != push ] || [ "$GITHUB_REF" != "refs/tags/$release_tag" ]; then
+            echo "Release requires a main dispatch or a version-tag push." >&2
+            exit 1
+          fi
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]] || \
+             [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release requires a full lowercase commit SHA and vMAJOR.MINOR.PATCH tag." >&2
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$source_sha"
+          test "$release_tag" = "v$(tr -d '[:space:]' < VERSION)"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            main_ref="$(git ls-remote --exit-code --refs origin refs/heads/main)"
+            test "$main_ref" = "$source_sha"$'\trefs/heads/main'
+          fi
+          printf 'RELEASE_TAG=%s\nSOURCE_SHA=%s\n' "$release_tag" "$source_sha" >> "$GITHUB_ENV"
       - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
+          # dispatch 검증이 저장할 수 있는 기본 브랜치 Gradle·JDK 캐시가 게이트 결과와 넘길 해시 목록을 정하지 못하게 복원하지 않는다.
+          cache-jdk: false
       - name: Accept Android SDK licenses
         run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
       - name: Install fixture Android platform
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "platforms;android-35" "build-tools;35.0.0"'
-      - name: Require the tag to match VERSION
-        run: test "$GITHUB_REF_NAME" = "v$(tr -d '[:space:]' < VERSION)"
       - name: Test and verify coverage
         run: ./gradlew --no-daemon clean test :koverVerify
       - name: Verify fixtures
@@ -52,6 +106,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
         with:
           gradle-version: '8.10.2'
+          # 같은 이유로 Gradle User Home 캐시를 읽거나 쓰지 않는다.
+          cache-disabled: true
       - name: Verify minimum supported AGP and Gradle
         shell: bash
         run: |
@@ -59,7 +115,23 @@ jobs:
           bash Scripts/verify-agp-8-fixture.sh
           bash Scripts/verify-agp-8-app-snapshot.sh
       - name: Verify release artifacts without publishing
-        run: Scripts/verify-release-readiness.sh
+        shell: bash
+        run: |
+          export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
+          Scripts/verify-release-readiness.sh
+      # readiness가 마지막 clean build에서 봉인한 목록과 지금 배포물이 같을 때만 그 목록을 넘긴다.
+      - name: Record verified release artifact hashes
+        id: verified
+        shell: bash
+        run: |
+          sealed="$(cat build/reports/release-readiness/second.sha256)"
+          hashes="$(Scripts/release-artifacts.sh hashes)"
+          if [ "$hashes" != "$sealed" ]; then
+            echo "Release artifacts changed after release readiness sealed them." >&2
+            exit 1
+          fi
+          printf 'artifact-hashes<<KARTOGRAPH_ARTIFACT_HASHES\n%s\nKARTOGRAPH_ARTIFACT_HASHES\n' "$hashes" >> "$GITHUB_OUTPUT"
+      # publish job의 재빌드와 해시가 다를 때 원인을 바이트로 가를 수 있게, 넘긴 목록의 배포물도 함께 남긴다.
       - name: Preserve release readiness evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -72,17 +144,163 @@ jobs:
             build/reports/release-readiness/**/build.stdout
             build/reports/release-readiness/**/build.stderr
             build/reports/release-readiness/**/verification.json
+            cli/build/distributions/kartograph-*.zip
+            cli/build/distributions/kartograph-*.tar
+            gradle-plugin/build/libs/kartograph-gradle-plugin-*.jar
+            compiler-collectors/build/distributions/kartograph-compiler-collectors-*.zip
+            gradle-plugin/build/publications/pluginMaven/pom-default.xml
+            build/release/*.cdx.json
+            build/release/SHA256SUMS
           if-no-files-found: ignore
           retention-days: 14
-      - name: Create GitHub release
+
+  # tag·release 쓰기 토큰, environment release, Portal 비밀은 이 job에만 둔다. fixture·테스트·Android SDK는 실행하지 않는다.
+  # verify job의 목록은 믿지 않는다. 검증 메타데이터가 적용되는 루트·compiler-collectors 배포물만 캐시 없이 다시 빌드해
+  # 목록이 문자 그대로 같을 때만 자기 빌드를 게시한다.
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    # 실측(2026-10-19 release 실행): readiness의 clean build 한 번은 루트 약 1분·compiler-collectors 약 16초, 쓰기 step은 합쳐
+    # 약 21초였다. 캐시 없는 wrapper·의존성 내려받기 지연을 견디도록 넉넉히 둔다.
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    environment: release
+    steps:
+      - name: Validate manual source input
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ] || \
+             [[ ! "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || \
+             [ "$REQUESTED_SHA" != "$GITHUB_SHA" ]; then
+            echo "Manual release requires the full reviewed main commit." >&2
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      # GITHUB_ENV는 job을 건너가지 않으므로 RELEASE_TAG·SOURCE_SHA를 이 job에서 다시 확인해 얻는다.
+      - name: Resolve release source
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          release_tag="$GITHUB_REF_NAME"
+          source_sha="$GITHUB_SHA"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            release_tag="$REQUESTED_TAG"
+            source_sha="$REQUESTED_SHA"
+            test "$GITHUB_REF" = refs/heads/main
+            test "$source_sha" = "$GITHUB_SHA"
+          elif [ "$GITHUB_EVENT_NAME" != push ] || [ "$GITHUB_REF" != "refs/tags/$release_tag" ]; then
+            echo "Release requires a main dispatch or a version-tag push." >&2
+            exit 1
+          fi
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]] || \
+             [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release requires a full lowercase commit SHA and vMAJOR.MINOR.PATCH tag." >&2
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$source_sha"
+          test "$release_tag" = "v$(tr -d '[:space:]' < VERSION)"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            main_ref="$(git ls-remote --exit-code --refs origin refs/heads/main)"
+            test "$main_ref" = "$source_sha"$'\trefs/heads/main'
+          fi
+          printf 'RELEASE_TAG=%s\nSOURCE_SHA=%s\n' "$release_tag" "$source_sha" >> "$GITHUB_ENV"
+      - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+          # 비밀을 쓰는 job은 dispatch 검증이 저장할 수 있는 기본 브랜치 Gradle·JDK 캐시를 복원하지 않는다.
+          cache-jdk: false
+      - name: Rebuild release artifacts
+        shell: bash
+        run: |
+          Scripts/release-artifacts.sh build
+      # 넘겨받은 목록의 형식과 경로부터 확인한다. 그 값은 workflow 명령으로 해석될 수 있어 로그에 쓰지 않는다.
+      - name: Match rebuilt artifacts to the verified hashes
+        shell: bash
+        env:
+          VERIFIED_HASHES: ${{ needs.verify.outputs.artifact-hashes }}
+        run: |
+          expected_paths="$(Scripts/release-artifacts.sh paths)"
+          rebuilt="$(Scripts/release-artifacts.sh hashes)"
+          line_pattern='^[0-9a-f]{64}  ([^[:space:]]+)$'
+          handed_paths=""
+          while IFS= read -r line; do
+            if [[ ! "$line" =~ $line_pattern ]]; then
+              echo "The verify job handed over a malformed artifact hash list; refusing to publish." >&2
+              exit 1
+            fi
+            handed_paths+="${BASH_REMATCH[1]}"$'\n'
+          done <<< "$VERIFIED_HASHES"
+          if [ "$handed_paths" != "$expected_paths"$'\n' ]; then
+            echo "The verified hash list does not name exactly the release artifacts; refusing to publish." >&2
+            exit 1
+          fi
+          if [ "$rebuilt" != "$VERIFIED_HASHES" ]; then
+            echo "Rebuilt release artifacts differ from the verified artifacts; refusing to publish." >&2
+            printf 'Rebuilt artifact hashes:\n%s\n' "$rebuilt" >&2
+            exit 1
+          fi
+      # 기존 태그를 이동하지 않으며, GITHUB_TOKEN 태그 생성 후 이 실행에서 계속 배포한다.
+      - name: Ensure the exact release tag after verification
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$RELEASE_TAG" = "v$(tr -d '[:space:]' < VERSION)"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_REF" = refs/heads/main
+            test "$SOURCE_SHA" = "$GITHUB_SHA"
+            main_ref="$(git ls-remote --exit-code --refs origin refs/heads/main)"
+            test "$main_ref" = "$SOURCE_SHA"$'\trefs/heads/main'
+          fi
+          existing="$(git ls-remote --refs origin "refs/tags/$RELEASE_TAG")"
+          if [ -z "$existing" ]; then
+            if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
+              echo "The pushed release tag disappeared; refusing to recreate it." >&2
+              exit 1
+            fi
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$SOURCE_SHA" >/dev/null
+          fi
+          git fetch --no-tags --depth=1 origin "refs/tags/$RELEASE_TAG"
+          if [ "$(git rev-parse 'FETCH_HEAD^{commit}')" != "$SOURCE_SHA" ]; then
+            echo "Release tag does not match the verified source; it will not be moved." >&2
+            exit 1
+          fi
+      # 기존 release가 있으면 부분 배포를 자동 복구하지 않고 승인을 기다린다.
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$RELEASE_TAG" = "v$(tr -d '[:space:]' < VERSION)"
+          git fetch --no-tags --depth=1 origin "refs/tags/$RELEASE_TAG"
+          if [ "$(git rev-parse 'FETCH_HEAD^{commit}')" != "$SOURCE_SHA" ]; then
+            echo "Release tag does not match the verified source; it will not be moved." >&2
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_REF" = refs/heads/main
+            test "$SOURCE_SHA" = "$GITHUB_SHA"
+            main_ref="$(git ls-remote --exit-code --refs origin refs/heads/main)"
+            test "$main_ref" = "$SOURCE_SHA"$'\trefs/heads/main'
+          fi
           RELEASE_VERSION="$(tr -d '[:space:]' < VERSION)"
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
-            gh release create "$GITHUB_REF_NAME" \
-              --verify-tag --generate-notes --title "kartograph $GITHUB_REF_NAME"
-          gh release upload "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" \
+            --verify-tag --generate-notes --title "kartograph $RELEASE_TAG"
+          gh release upload "$RELEASE_TAG" \
             "cli/build/distributions/kartograph-$RELEASE_VERSION.zip" \
             "cli/build/distributions/kartograph-$RELEASE_VERSION.tar" \
             "gradle-plugin/build/libs/kartograph-gradle-plugin-$RELEASE_VERSION.jar" \
@@ -91,7 +309,39 @@ jobs:
             "build/release/kartograph-gradle-plugin-$RELEASE_VERSION.cdx.json" \
             "build/release/SHA256SUMS"
       - name: Publish Gradle plugin
+        shell: bash
         env:
           GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
           GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
-        run: ./gradlew --no-daemon :gradle-plugin:publishPlugins
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$RELEASE_TAG" = "v$(tr -d '[:space:]' < VERSION)"
+          git fetch --no-tags --depth=1 origin "refs/tags/$RELEASE_TAG"
+          if [ "$(git rev-parse 'FETCH_HEAD^{commit}')" != "$SOURCE_SHA" ]; then
+            echo "Release tag does not match the verified source; it will not be moved." >&2
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_REF" = refs/heads/main
+            test "$SOURCE_SHA" = "$GITHUB_SHA"
+            main_ref="$(git ls-remote --exit-code --refs origin refs/heads/main)"
+            test "$main_ref" = "$SOURCE_SHA"$'\trefs/heads/main'
+          fi
+          ./gradlew --no-daemon :gradle-plugin:publishPlugins
+      # 재빌드가 verify 목록과 다르거나 뒤 step이 실패하면, verify 증거의 배포물과 바이트로 비교할 수 있게 이 job의 재빌드를 남긴다.
+      # 실패했을 때만 돌고 tag·release·Portal에는 쓰지 않는다. 다시 실행한 attempt의 upload와 이름이 겹치지 않게 attempt 번호를 붙인다.
+      - name: Preserve rebuilt release artifacts after a failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-publish-rebuild-${{ github.run_attempt }}
+          path: |
+            cli/build/distributions/kartograph-*.zip
+            cli/build/distributions/kartograph-*.tar
+            gradle-plugin/build/libs/kartograph-gradle-plugin-*.jar
+            compiler-collectors/build/distributions/kartograph-compiler-collectors-*.zip
+            gradle-plugin/build/publications/pluginMaven/pom-default.xml
+            build/release/*.cdx.json
+            build/release/SHA256SUMS
+          if-no-files-found: ignore
+          retention-days: 14

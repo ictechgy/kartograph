@@ -16,8 +16,13 @@ internal class SpringMappingResolver(types: Collection<SpringType>, private val 
     // 내장 선언이 이긴다 — class root나 소스에 같은 이름의 대역·복제본이 있어도 프레임워크 의미를 바꾸지 않는다.
     private val types: Map<String, SpringType> = types.associateBy { it.name } + SpringAnnotations.BUILT_INS
 
-    /** 병합된 매핑이다. 속성 이름은 `path`·`method`·`params`·`headers`·`consumes`·`produces`·`version`으로 맞춘다. */
-    data class Mapping(val family: String, val attributes: Map<String, SpringValue>, val annotation: SpringAnnotation)
+    /**
+     * 병합된 매핑이다. 속성 이름은 `path`·`method`·`params`·`headers`·`consumes`·`produces`·`version`으로 맞춘다.
+     *
+     * @property cyclicAlias 합성 어노테이션의 `@AliasFor` 사슬이 이미 거친 어노테이션으로 돌아왔다. Spring이 시작할 때 거부하는
+     *   선언이라 속성을 믿지 않는다. 사실은 dynamic으로 낸다
+     */
+    data class Mapping(val family: String, val attributes: Map<String, SpringValue>, val annotation: SpringAnnotation, val cyclicAlias: Boolean = false)
 
     /**
      * 핸들러 메서드 하나다.
@@ -171,22 +176,27 @@ internal class SpringMappingResolver(types: Collection<SpringType>, private val 
     }
 
     private fun elementMapping(annotations: List<SpringAnnotation>): Mapping? {
-        val mappings = annotations.mapNotNull { annotation -> merged(annotation, emptySet())?.let { Mapping(it.first, it.second, annotation) } }
+        val mappings = annotations.mapNotNull { annotation ->
+            merged(annotation, emptySet())?.let { Mapping(it.family, it.attributes, annotation, it.cyclicAlias) }
+        }
         if (mappings.size > 1) stats.multipleMappings++
         return mappings.firstOrNull()
     }
 
     // ---- 속성 병합 ----
 
-    private fun merged(annotation: SpringAnnotation, visiting: Set<String>): Pair<String, Map<String, SpringValue>>? {
+    /** 병합 중인 매핑이다. [cyclicAlias]는 이 어노테이션이나 그 메타 어노테이션의 별칭 사슬이 순환했는지다([Mapping.cyclicAlias]). */
+    private data class Merged(val family: String, val attributes: Map<String, SpringValue>, val cyclicAlias: Boolean = false)
+
+    private fun merged(annotation: SpringAnnotation, visiting: Set<String>): Merged? {
         if (annotation.type == SpringAnnotations.REQUEST_MAPPING || annotation.type == SpringAnnotations.HTTP_EXCHANGE) {
-            return annotation.type to rootAttributes(annotation.type, annotation.attributes)
+            return Merged(annotation.type, rootAttributes(annotation.type, annotation.attributes))
         }
         if (annotation.type in visiting) return null
         val declaration = types[annotation.type]?.takeIf { it.kind == SpringTypeKind.ANNOTATION } ?: return null
         val inner = visiting + annotation.type
         val meta = declaration.annotations.firstNotNullOfOrNull { merged(it, inner) } ?: return null
-        return meta.first to overridden(meta, declaration, annotation, inner)
+        return overridden(meta, declaration, annotation, inner)
     }
 
     private fun rootAttributes(family: String, values: Map<String, SpringValue>): Map<String, SpringValue> {
@@ -205,21 +215,24 @@ internal class SpringMappingResolver(types: Collection<SpringType>, private val 
     private fun isEmpty(value: SpringValue): Boolean = value is SpringValue.Strings && value.values.all(String::isEmpty) ||
         value is SpringValue.Enums && value.names.isEmpty()
 
-    private fun overridden(meta: Pair<String, Map<String, SpringValue>>, declaration: SpringType, annotation: SpringAnnotation, visiting: Set<String>): Map<String, SpringValue> {
+    private fun overridden(meta: Merged, declaration: SpringType, annotation: SpringAnnotation, visiting: Set<String>): Merged {
         val overrides = linkedMapOf<String, MutableList<Pair<SpringValue, Boolean>>>()
+        var cyclic = meta.cyclicAlias
         declaration.methods.forEach { member ->
             val value = annotation.attributes[member.name] ?: member.defaultValue ?: EMPTY
             val explicit = annotation.attributes.containsKey(member.name) && value != (member.defaultValue ?: EMPTY) && !isEmpty(value)
-            aliasTargets(declaration, member).mapNotNull { canonical(it, member.name, meta.first, visiting) }.distinct().forEach { key ->
+            val ends = aliasTargets(declaration, member).mapNotNull { canonical(it, member.name, meta.family, visiting) }
+            if (AliasEnd.Cycle in ends) cyclic = true
+            ends.filterIsInstance<AliasEnd.Root>().map { it.key }.distinct().forEach { key ->
                 overrides.getOrPut(key) { mutableListOf() } += value to explicit
             }
         }
-        val result = meta.second.toMutableMap()
+        val result = meta.attributes.toMutableMap()
         overrides.forEach { (key, candidates) ->
             val explicit = candidates.filter { it.second }.map { it.first }.distinct()
             result[key] = when (explicit.size) { 0 -> candidates.first().first; 1 -> explicit.single(); else -> SpringValue.Unresolved }
         }
-        return result
+        return Merged(meta.family, result, cyclic)
     }
 
     /** 속성의 다른 어노테이션 대상 별칭이다. 같은 타입 안 거울 속성의 대상도 합친다. */
@@ -232,14 +245,27 @@ internal class SpringMappingResolver(types: Collection<SpringType>, private val 
 
     private fun SpringAliasTarget.withDefaultName(name: String): SpringAliasTarget = if (attribute.isEmpty()) copy(attribute = name) else this
 
-    /** 별칭 대상을 root 계열(`@RequestMapping`·`@HttpExchange`)의 정규 속성 이름까지 따라간다. */
-    private fun canonical(target: SpringAliasTarget, memberName: String, family: String, visiting: Set<String>): String? {
+    /** [canonical]이 별칭 사슬을 따라가 닿은 끝이다. */
+    private sealed interface AliasEnd {
+        /** root 계열의 정규 속성 이름 [key]에 닿았다. */
+        data class Root(val key: String) : AliasEnd
+
+        /** 이미 거친 어노테이션으로 돌아왔다. Spring이 시작할 때 거부하는 순환 별칭이다. */
+        data object Cycle : AliasEnd
+    }
+
+    /**
+     * 별칭 대상을 root 계열(`@RequestMapping`·`@HttpExchange`)의 정규 속성 이름까지 따라간다. 이미 거친 어노테이션으로
+     * 돌아오는 사슬(Spring이 시작할 때 거부하는 순환 별칭)은 끊고 [AliasEnd.Cycle]로 알린다. 모델 밖 타입·없는 속성·다른 계열처럼
+     * root에 닿지 않은 별칭은 null이다(메타 어노테이션 값을 덮어쓰지 않는다).
+     */
+    private fun canonical(target: SpringAliasTarget, memberName: String, family: String, visiting: Set<String>): AliasEnd? {
         val annotationType = target.annotation ?: return null
         val attribute = target.attribute.ifEmpty { memberName }
         if (annotationType == SpringAnnotations.REQUEST_MAPPING || annotationType == SpringAnnotations.HTTP_EXCHANGE) {
-            return if (annotationType == family) canonicalRoot(family, attribute) else null
+            return if (annotationType == family) canonicalRoot(family, attribute)?.let(AliasEnd::Root) else null
         }
-        if (annotationType in visiting && annotationType !in types) return null
+        if (annotationType in visiting) return AliasEnd.Cycle
         val declaration = types[annotationType] ?: return null
         val member = declaration.methods.firstOrNull { it.name == attribute } ?: return null
         return aliasTargets(declaration, member).firstNotNullOfOrNull { canonical(it, member.name, family, visiting + annotationType) }

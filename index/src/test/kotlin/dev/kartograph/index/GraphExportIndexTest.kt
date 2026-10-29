@@ -8,7 +8,7 @@ import org.junit.jupiter.api.io.TempDir
 import kotlin.test.*
 
 class GraphExportIndexTest {
-    private fun fixture(root: Path): Pair<Path, Path> {
+    internal fun fixture(root: Path): Pair<Path, Path> {
         val library = Files.createDirectories(root.resolve("library"))
         val input = Files.createDirectories(root.resolve("input"))
         val api = root.resolve("ServicePort.java")

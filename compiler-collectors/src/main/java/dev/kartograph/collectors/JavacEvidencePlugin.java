@@ -54,6 +54,11 @@ public final class JavacEvidencePlugin implements Plugin {
     @Override public void init(JavacTask task, String... arguments) {
         EvidenceProtocol.Options options = EvidenceProtocol.parse("javac-constants", arguments);
         EvidenceProtocol.invalidateOutput(options);
+        AuthoredCallProtocol.invalidate(options);
+        CallerInventoryProtocol.invalidate(options);
+        if (options.callerInventory()) CallerOutputHeaders.requireFresh(options.classOutput());
+        if (options.authoredCalls() && Runtime.version().feature() != 17 && Runtime.version().feature() != 21)
+            throw new IllegalArgumentException("authored calls require javac 17 or 21");
         install(task, options);
     }
 
@@ -82,6 +87,7 @@ final class JavacEvidenceSession implements TaskListener {
     private final Trees trees;
     private final Elements elements;
     private final Types types;
+    private final JavacCallerInventory callerInventory;
     private final String initialToken;
     private final String artifact;
     private final Map<String, EvidenceProtocol.Source> sources = new TreeMap<>();
@@ -95,6 +101,8 @@ final class JavacEvidenceSession implements TaskListener {
     private final Map<CompilationUnitTree, Integer> remainingTopLevelScans = new IdentityHashMap<>();
     private final Map<TypeElement, String> targetSources = new IdentityHashMap<>();
     private final EvidenceProtocol.CallPositionBuffer callPositionBuffer = new EvidenceProtocol.CallPositionBuffer();
+    private final EvidenceProtocol.EnumDecisionBuffer enumDecisionBuffer = new EvidenceProtocol.EnumDecisionBuffer();
+    private final Set<Tree> observedEnumDecisions = JavacEnumDecisionScanner.observedSet();
     private final ArrayDeque<PendingCall> pendingCalls = new ArrayDeque<>();
     private final Set<EvidenceProtocol.Edge> edges = new TreeSet<>((left, right) -> {
         int source = left.source().compareTo(right.source());
@@ -102,6 +110,10 @@ final class JavacEvidenceSession implements TaskListener {
         int target = left.target().compareTo(right.target());
         return target != 0 ? target : left.kind().compareTo(right.kind());
     });
+    private final List<AuthoredCallProtocol.Caller> authoredCallers = new ArrayList<>();
+    private int unmappedAuthoredCallers;
+    private long authoredNodes;
+    private long authoredRetainedBytes;
     private int unmapped;
     private boolean invalid;
     private String invalidReason;
@@ -112,6 +124,7 @@ final class JavacEvidenceSession implements TaskListener {
         this.trees = Trees.instance(task);
         this.elements = task.getElements();
         this.types = task.getTypes();
+        this.callerInventory = options.callerInventory() ? new JavacCallerInventory(options, trees, elements, this::identity) : null;
         this.initialToken = EvidenceProtocol.readToken(options);
         this.artifact = EvidenceProtocol.artifactFingerprint(JavacEvidencePlugin.class);
         if (options.collector().equals("dagger-bindings")) DaggerEvidenceFiles.begin(options, initialToken, artifact);
@@ -137,7 +150,7 @@ final class JavacEvidenceSession implements TaskListener {
                             topLevelClasses++;
                         }
                     }
-                    if (options.callPositions() && topLevelClasses > 0) remainingTopLevelScans.put(unit, topLevelClasses);
+                    if ((options.callPositions() || options.authoredCalls()) && topLevelClasses > 0) remainingTopLevelScans.put(unit, topLevelClasses);
                     new TreeScanner<Void, Void>() {
                         @Override public Void visitErroneous(ErroneousTree tree, Void unused) {
                             fail("javac source contains a syntax error");
@@ -174,7 +187,10 @@ final class JavacEvidenceSession implements TaskListener {
                             cacheTargetSource(type, source);
                         }
                         analyzedClasses.add(tree);
-                        if (options.collector().equals("javac-constants") && scanned.add(tree)) scan(path);
+                        if (options.collector().equals("javac-constants") && scanned.add(tree)) {
+                            if (callerInventory != null) callerInventory.observe(path, sources.get(source));
+                            scan(path);
+                        }
                     }
                 }
             }
@@ -245,6 +261,12 @@ final class JavacEvidenceSession implements TaskListener {
             return;
         }
         try {
+        if (options.enumDecisions()) {
+            String relative = sourcePath(path.getCompilationUnit().getSourceFile());
+            EvidenceProtocol.Source source = relative == null ? null : sources.get(relative);
+            if (source == null) throw new IllegalArgumentException("javac enum source inventory is unavailable");
+            new JavacEnumDecisionScanner(trees, elements, source, enumDecisionBuffer, observedEnumDecisions).scan(path, null);
+        }
         new TreePathScanner<Void, Void>() {
             private ExecutableElement caller;
             private ExecutableElement callCaller;
@@ -275,6 +297,7 @@ final class JavacEvidenceSession implements TaskListener {
                 if (element == null) { unmapped++; return null; }
                 caller = element instanceof ExecutableElement executable ? executable : null;
                 if (options.callPositions()) callCaller = caller;
+                if (options.authoredCalls()) collectAuthored(getCurrentPath(), tree, caller);
                 try {
                     super.visitMethod(tree, unused);
                     return null;
@@ -324,13 +347,16 @@ final class JavacEvidenceSession implements TaskListener {
                 return super.visitMemberSelect(tree, unused);
             }
         }.scan(path, null);
+        } catch (RuntimeException error) {
+            fail("javac semantic collection failed");
+            throw error;
         } finally {
             releaseSourceContent(path);
         }
     }
 
     private void releaseSourceContent(TreePath path) {
-        if (!options.callPositions() || !(path.getLeaf() instanceof ClassTree type) || !parsedClasses.contains(type)) return;
+        if (!(options.callPositions() || options.authoredCalls()) || !(path.getLeaf() instanceof ClassTree type) || !parsedClasses.contains(type)) return;
         CompilationUnitTree unit = path.getCompilationUnit();
         Integer remaining = remainingTopLevelScans.get(unit);
         if (remaining == null) return;
@@ -420,6 +446,88 @@ final class JavacEvidenceSession implements TaskListener {
             throw error;
         }
     }
+
+    private void collectAuthored(TreePath declaration, MethodTree method, ExecutableElement caller) {
+        // constructor의 암묵 super 호출/initializer 합성은 ordinary-body-v1 범위 밖이다.
+        if (caller == null || caller.getKind() != ElementKind.METHOD) return;
+        if (authoredCallers.size() >= EvidenceProtocol.MAX_ROWS) throw new IllegalArgumentException("authored caller limit exceeded");
+        CompilationUnitTree unit = declaration.getCompilationUnit();
+        String identity = identity(caller);
+        String path = sourcePath(unit.getSourceFile());
+        EvidenceProtocol.Source source = sources.get(path);
+        long start = trees.getSourcePositions().getStartPosition(unit, method);
+        long end = trees.getSourcePositions().getEndPosition(unit, method);
+        if (identity == null || source == null || start < 0 || end <= start || end > Integer.MAX_VALUE) {
+            unmappedAuthoredCallers++;
+            return;
+        }
+        TreeSet<String> reasons = new TreeSet<>();
+        List<AuthoredCallProtocol.Call> calls = new ArrayList<>();
+        int[] counts = new int[3]; // nodes, explicit calls, depth
+        if (method.getBody() == null) reasons.add("NO_BODY");
+        else new TreePathScanner<Void, Void>() {
+            // TreePath 진입은 scan(Tree)를 건너뛰므로 method에서 body의 root까지 명시적으로 분류한다.
+            @Override public Void visitMethod(MethodTree tree, Void unused) {
+                return scan(tree.getBody(), unused);
+            }
+            @Override public Void scan(Tree node, Void unused) {
+                if (node == null) return null;
+                if (++authoredNodes > EvidenceProtocol.MAX_ROWS || ++counts[0] > AuthoredCallProtocol.MAX_NODES || ++counts[2] > AuthoredCallProtocol.MAX_DEPTH) {
+                    throw new IllegalArgumentException("authored body resource limit exceeded");
+                }
+                try {
+                    if (!AUTHORED_TREE_KINDS.contains(node.getKind())) {
+                        reasons.add("UNSUPPORTED_SYNTAX");
+                        return null;
+                    }
+                    return super.scan(node, unused);
+                } finally { counts[2]--; }
+            }
+            @Override public Void visitMethodInvocation(MethodInvocationTree invocation, Void unused) {
+                counts[1]++;
+                Element selected = trees.getElement(getCurrentPath());
+                ExecutableElement target = selected instanceof ExecutableElement executable ? executable : null;
+                TypeElement owner = target != null && target.getEnclosingElement() instanceof TypeElement type ? type : null;
+                String targetId = target == null ? null : identity(target);
+                long[] span = selectorSpan(unit, invocation);
+                if (target == null || target.getKind() != ElementKind.METHOD || targetId == null || owner == null || span == null) {
+                    reasons.add("UNMAPPED_TARGET");
+                } else {
+                    String targetPath = targetSource(owner);
+                    authoredRetainedBytes += 256L + 4L * (targetId.length() + (targetPath == null ? 0 : targetPath.length()));
+                    if (authoredRetainedBytes > EvidenceProtocol.MAX_ENCODED_BYTES) throw new IllegalArgumentException("authored retained byte limit exceeded");
+                    calls.add(new AuthoredCallProtocol.Call(targetId, targetPath == null ? "BINARY" : "PROJECT",
+                        targetPath == null ? "" : targetPath, (int) span[0], (int) span[1]));
+                }
+                return super.visitMethodInvocation(invocation, unused);
+            }
+        }.scan(declaration, null);
+        authoredRetainedBytes += 512L + 4L * (identity.length() + path.length());
+        if (authoredRetainedBytes > EvidenceProtocol.MAX_ENCODED_BYTES) throw new IllegalArgumentException("authored retained byte limit exceeded");
+        authoredCallers.add(new AuthoredCallProtocol.Caller(identity, source, (int) start, (int) end,
+            counts[0], counts[1], List.copyOf(reasons), calls));
+    }
+
+    private static final Set<Tree.Kind> AUTHORED_TREE_KINDS = Set.of(
+        Tree.Kind.BLOCK, Tree.Kind.RETURN, Tree.Kind.EXPRESSION_STATEMENT, Tree.Kind.EMPTY_STATEMENT,
+        Tree.Kind.IDENTIFIER, Tree.Kind.MEMBER_SELECT, Tree.Kind.METHOD_INVOCATION,
+        Tree.Kind.STRING_LITERAL, Tree.Kind.CHAR_LITERAL, Tree.Kind.INT_LITERAL, Tree.Kind.LONG_LITERAL,
+        Tree.Kind.FLOAT_LITERAL, Tree.Kind.DOUBLE_LITERAL, Tree.Kind.BOOLEAN_LITERAL, Tree.Kind.NULL_LITERAL,
+        Tree.Kind.PARENTHESIZED, Tree.Kind.VARIABLE, Tree.Kind.MODIFIERS, Tree.Kind.PRIMITIVE_TYPE,
+        Tree.Kind.PARAMETERIZED_TYPE, Tree.Kind.ARRAY_TYPE, Tree.Kind.UNBOUNDED_WILDCARD,
+        Tree.Kind.EXTENDS_WILDCARD, Tree.Kind.SUPER_WILDCARD,
+        Tree.Kind.IF, Tree.Kind.CONDITIONAL_EXPRESSION, Tree.Kind.WHILE_LOOP, Tree.Kind.DO_WHILE_LOOP,
+        Tree.Kind.FOR_LOOP, Tree.Kind.BREAK, Tree.Kind.CONTINUE, Tree.Kind.LABELED_STATEMENT,
+        Tree.Kind.THROW, Tree.Kind.TRY, Tree.Kind.CATCH, Tree.Kind.SYNCHRONIZED,
+        Tree.Kind.ASSIGNMENT, Tree.Kind.ARRAY_ACCESS, Tree.Kind.TYPE_CAST, Tree.Kind.INSTANCE_OF,
+        Tree.Kind.PLUS, Tree.Kind.MINUS, Tree.Kind.MULTIPLY, Tree.Kind.DIVIDE, Tree.Kind.REMAINDER,
+        Tree.Kind.UNARY_PLUS, Tree.Kind.UNARY_MINUS, Tree.Kind.LOGICAL_COMPLEMENT, Tree.Kind.BITWISE_COMPLEMENT,
+        Tree.Kind.CONDITIONAL_AND, Tree.Kind.CONDITIONAL_OR, Tree.Kind.AND, Tree.Kind.OR, Tree.Kind.XOR,
+        Tree.Kind.EQUAL_TO, Tree.Kind.NOT_EQUAL_TO, Tree.Kind.LESS_THAN, Tree.Kind.GREATER_THAN,
+        Tree.Kind.LESS_THAN_EQUAL, Tree.Kind.GREATER_THAN_EQUAL, Tree.Kind.LEFT_SHIFT, Tree.Kind.RIGHT_SHIFT,
+        Tree.Kind.UNSIGNED_RIGHT_SHIFT, Tree.Kind.PREFIX_INCREMENT, Tree.Kind.PREFIX_DECREMENT,
+        Tree.Kind.POSTFIX_INCREMENT, Tree.Kind.POSTFIX_DECREMENT
+    );
 
     private String targetSource(TypeElement type) {
         TypeElement outermost = outermostType(type);
@@ -562,7 +670,13 @@ final class JavacEvidenceSession implements TaskListener {
                 }
             }
             if (options.collector().equals("javac-constants")) {
-                if (options.callPositions()) {
+                if (options.enumDecisions()) {
+                    if (options.callPositions()) finalizeCalls();
+                    EvidenceProtocol.write(options, Runtime.version().toString(), artifact, sources.values(), unmapped, edges, null,
+                        callPositionBuffer.positionsList(), callPositionBuffer.observedCount(), callPositionBuffer.unmappedCount(), callPositionBuffer.ambiguousCount(),
+                        enumDecisionBuffer.decisionsList(), enumDecisionBuffer.observedCount(),
+                        enumDecisionBuffer.unsupportedCount(), enumDecisionBuffer.ignoredCount());
+                } else if (options.callPositions()) {
                     finalizeCalls();
                     EvidenceProtocol.write(options, Runtime.version().toString(), artifact, sources.values(), unmapped, edges, null,
                         callPositionBuffer.positionsList(), callPositionBuffer.observedCount(), callPositionBuffer.unmappedCount(), callPositionBuffer.ambiguousCount());
@@ -581,6 +695,17 @@ final class JavacEvidenceSession implements TaskListener {
                 if (staged.incomplete()) { fail("Dagger did not publish a complete binding graph"); return; }
                 EvidenceProtocol.write(options, staged.compiler(), artifact, sources.values(), staged.unmapped(), staged.edges());
             }
+            if (options.authoredCalls()) {
+                AuthoredCallProtocol.write(options, Runtime.version().toString(), artifact, sources.values(), unmappedAuthoredCallers, authoredCallers);
+            }
+            if (callerInventory != null) {
+                Set<String> generatedOwners = new TreeSet<>();
+                for (TypeElement type : generatedTypes) {
+                    String generated = owner(type);
+                    if (generated == null || !generatedOwners.add(generated)) throw new IllegalArgumentException("caller inventory generated owner is unavailable");
+                }
+                callerInventory.finish(Runtime.version().toString(), artifact, sources.values(), generatedOwners);
+            }
             completed = true;
             if (unmapped > 0) diagnostic("unmapped javac compiler references");
         } catch (RuntimeException error) {
@@ -593,6 +718,11 @@ final class JavacEvidenceSession implements TaskListener {
 
     private void fail(String reason) {
         invalid = true;
+        if (options.callerInventory()) {
+            CallerInventoryProtocol.invalidate(options);
+            AuthoredCallProtocol.invalidate(options);
+            EvidenceProtocol.invalidateOutput(options);
+        }
         if (invalidReason == null) invalidReason = reason;
         diagnostic(reason);
     }

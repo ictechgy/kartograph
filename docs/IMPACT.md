@@ -7,6 +7,42 @@ AI 클라이언트에서는 [MCP 서버](MCP.md)의 `query_symbol`, `impact`, `f
 
 ## 수정 전에 조사
 
+### Git 변경과 snapshot 신선도를 한 번에 조사
+
+기존 한쪽 snapshot `impact`는 그대로 유지한다. 새 opt-in Git 모드는 실제 base/head 경로와
+before/current 내용 검증을 같은 응답에 보존한다. 각 checkout에서 같은 버전·scope·variant로 빌드한 뒤
+`snapshot --include-paths --revision <full-commit> --scope app:main`으로 캡처한다.
+등록 compiler task의 `--build-witness`와 `--source-root`·`--build-input`도 포함해야 compiler freshness를 확인할 수 있다.
+빌드 명령은 앱마다 다르므로 이 명령은 빌드·checkout·fetch를 대신 실행하지 않는다.
+
+```sh
+kartograph impact --git-base <base-ref> --git-head <head-ref> \
+  --project <head-checkout> --base-project <base-checkout> \
+  --base-graph before.json --graph-file after.json
+
+# 새 소스·컴파일 결과를 다시 capture한 working-tree snapshot을 사용한다 (current revision은 없거나 HEAD).
+kartograph impact --git-base HEAD --working-tree --project . \
+  --base-project <clean-base-checkout> --base-graph before.json --graph-file after.json
+```
+
+`kartograph-change-impact` v1 wrapper의 `graphImpact`는 기존 보고서다. `change`는 실제 resolved commit과
+작업 트리 모드, old/new 경로를 함께 보존한다. rename은 삭제/추가 경로로 선택하며 revision 간 간선을 합치지 않는다.
+staged·unstaged·non-ignored untracked를 작업 트리 모드에 포함한다. 파일 seed는 변경 줄뿐 아니라 해당 파일의
+모든 캡처된 선언을 고르므로 과잉 후보가 있을 수 있다. 지원 경로는 20,000개, Git 출력은 4 MiB, 최종 JSON은 16 MiB로
+제한하며 초과 시 성공한 부분 JSON을 내보내지 않는다. 기존 graph depth/visit/path/page/summary 제한은 `graphImpact`에 남는다.
+
+`snapshots`는 실제 파싱한 bytes의 SHA-256·scope·tool version·revision을 담는다. `freshness`는 before/current를
+별도로 rehash하며 필요한 외부 입력은 `--input external/slot=path`, `--base-input external/slot=path`로 전달한다.
+base checkout이 없으면 `unverified`다. commit 비교의 checkout 내용이 해당 commit과 다르면 `stale`이며,
+작업 트리 비교는 의도된 dirty source와 캡처 지문을 비교한다. 같은 HEAD 라벨, 빈 후보, `noChanges`는 안전 보장이 아니다.
+Git 선택과 해시는 원자적 capture가 아니므로 실행 중 편집과 빌드를 멈춰야 한다. 서브모듈 내부의 미커밋 변경은 검사하지 않는다.
+정적 테스트 후보는 실패 예측이나 실행 생략 허가가 아니다. 실제 compiler·source-use·runtime 한계도 원래 보고서에 남는다.
+
+MCP는 고정 startup 입력에 `--base-project`와 `--base-input`을 추가하고 `change_impact`의
+`base`, 선택 `head` 또는 `workingTree: true`를 사용한다. 각 호출이 신선도를 다시 확인하며 요청이 파일시스템
+경로나 빌드 명령을 선택할 수는 없다. snapshot은 시작 시 로드하므로 recapture 후 서버를 다시 시작한다.
+16 KiB interactive 제한이 context까지 담지 못하면 오류로 남기며 전체 Git context를 버려 성공처럼 응답하지 않는다.
+
 해당 variant를 먼저 빌드하고 기존 query와 같은 class·classpath·manifest/XML·keep 입력으로 capture한다.
 반복 질의에서는 같은 파일을 재사용한다. 테스트의 영향도 조사하려면 관련 컴파일된 test root도 `--classes`로 포함한다.
 
@@ -57,9 +93,14 @@ module·file·test 필터는 각 축이 base 또는 current 사실에 맞으면 
 대형 입력에는 `snapshot --compact`를 사용한다. v2는 문자열 사전과 node/call/edge 배열의 참조 인덱스로 반복 정보를 줄인다.
 정점·간선·외부 호출·보존 근거를 버리지 않으며 기존 v1과 같은 검증을 거친다. 기본 출력은 v1이고 query/impact는 두 형식을 읽는다.
 저장·읽기 한도는 기본 64 MiB다. 큰 그래프는 capture와 saved query·impact·verify-snapshot·MCP 시작 시
-`--snapshot-max-mib 128`을 지정해 최대 128 MiB까지 허용할 수 있다(1..128). 이 옵션은 그래프 사실이나
+`--snapshot-max-mib 128`을 지정해 최대 1024 MiB까지 허용할 수 있다(1..1024). 이 옵션은 그래프 사실이나
 신선도 증거를 바꾸지 않는다. 일반 compiled query에는 적용하지 않는다. 메모리에 파싱한 그래프와 분석 작업은
 파일 크기보다 많은 heap을 사용할 수 있다.
+v2를 읽을 때는 문자열 사전 참조와 정점 위치 참조가 펼치는 문자열을 문서마다 합계 2,147,483,648자·33,554,432개까지만
+허용하고, 넘으면 검증 전에 실패한다(exit 2). 같은 문자열을 많은 행이 참조해 검증 비용을 파일 크기보다 크게 부풀린 문서를
+막는 상한이며, byte 상한과 달리 옵션으로 바꾸지 않는다. 실측한 대형 capture(AGP 9.2.0 jar의 93 MiB v2)는 약 3.7억 자·
+549만 개로 펼쳐졌다. 상한을 넘으면 CLI는 원인을 따로 밝히지 않고 명령마다의 일반 snapshot 읽기 오류(일부는 byte 상한을
+함께 적는다)를 낸다. `--snapshot-max-mib`를 올려도 풀리지 않으므로 snapshot을 다시 capture한다.
 
 Gradle 자동 캡처에는 `kartograph { snapshotMaxMiB.set(128) }`을 설정한다. 기본값은 64이며
 JVM·Android snapshot task에 같은 범위 검증을 적용한다. CI에서 만든 큰 파일을 읽는 명령에도 한도를 명시한다.
@@ -220,7 +261,12 @@ snapshot 바이트도 처음과 같다. witness가 없는 R.jar를
   `snapshotIncludeUnitTests.set(false)` 또는 `-Pkartograph.snapshotIncludeUnitTests=false`로 끈다. 끄면 test compiler
   witness를 등록하지 않고 snapshot에 `unit-test-components-excluded:` limitation을 남긴다. androidTest는 원래 캡처하지 않는다.
 
-모듈별 snapshot은 `kartograph snapshot merge`로 하나로 합친다. 모듈 snapshot 그래프에는 다른 모듈로 가는 참조·상속
+resource 사실/필드 소유권이 있는 snapshot은 captured-empty라도 merge/aggregate를 거부한다.
+해당 모듈의 snapshot을 따로 질의한다. 아래 병합 예시는 이 채널을 포함하지 않는 기존 snapshot에 한정한다.
+[0.25.0 layout XML 캡처·업그레이드](ANDROID-RESOURCE-IMPACT.md)는 non-final R 필드와 literal include의
+revision별 영향 후보를 다룬다. 기존 자동 snapshot 지원 조합 전체의 XML mapping을 보장하지 않는다.
+
+지원하는 기존 모듈별 snapshot은 `kartograph snapshot merge`로 하나로 합친다. 모듈 snapshot 그래프에는 다른 모듈로 가는 참조·상속
 간선이 없으므로 문서끼리 합치지 않고, 각 구성원의 검증된 class root·classpath를 함께 다시 인덱싱한다. 결과 그래프는
 같은 class root를 `snapshot --classes`에 모두 준 것과 같고, JVM USR은 모듈과 무관해 그대로다.
 
@@ -246,6 +292,8 @@ kartograph routes --role client --project . --graph-file aggregate-snapshot.json
   있으면 이 옵션은 필수이고, 파일에는 절대 경로가 있으므로 공개하지 않는다.
 - 보존 근거는 구성원별 결과를 합친다. 모듈 경계를 넘는 keep rule·manifest는 다시 평가하지 않으며
   `aggregate-retention:` limitation으로 알린다. processor 관측이나 compiler-evidence witness가 있는 구성원은 아직 합치지 않는다.
+- 생성 출처(`generationEvidence`)가 있는 구성원도 선언 0개인 capture를 포함해 명시적으로 거부한다.
+  단일 scope의 생성 증거를 옮기거나 버리지 않으며, 생성 분류와 `generationSummary`는 원래 모듈 snapshot을 각각 질의한다.
 
 `routes`는 `--input-bindings`로 snapshot과 함께 만든 로컬 연결을 받는다. 없으면 project 밖 입력(의존성 JAR, 옮긴 build
 디렉터리)이 있는 snapshot은 `graph-file-freshness-unverified: missing-external-input`이다. plugin capture와 그 병합본은
@@ -298,6 +346,11 @@ python3 Scripts/check-impact.py --binary /path/to/kartograph --project . \
 helper는 commit 간 변경 파일을 NUL 구분으로 읽는다. rename의 이전·이후 경로, 삭제 경로도 포함한다.
 snapshot 라벨과 실제 비교 commit, 두 scope, analyzer version이 다르면 실패한다. 동일 버전 문자열만으로 서로 다른
 로컬 빌드를 식별할 수는 없으므로 CI가 사용하는 배포 artifact도 고정한다. tracked 미커밋 변경은 거부한다.
+분석 대상 git 설정의 filter는 실행하지 않으므로 시각만 바뀌었거나 git-lfs처럼 filter로 정규화되는 파일도 변경으로
+보고(신뢰하는 checkout이면 먼저 `git update-index --refresh`), 서브모듈 안의 커밋하지 않은 변경은 보지 않는다.
+서브모듈이 있으면 보지 않았다는 사실을 보고서 `limitations`에 `current: working-tree-submodules-unchecked:`로 남긴다.
+partial clone에 없는 객체(예: `--filter=tree:0` clone의 기준 commit tree)가 필요하면 받아 오지 않고 exit 2로 끝난다
+([SECURITY.md](../SECURITY.md)).
 snapshot 파일 자체는 Git 밖의 CI artifact/cache로 관리하며 기존 미사용 baseline과 별개다.
 helper 기본 모드는 보고용이다. 문서·설정 등 매핑되지 않은 파일도 `unresolved`에 남기되 유효한 보고서를 만들면 0을 반환한다.
 확장자만으로 파일을 자동 무시하지 않는다. `--strict`는 선택/탐색이 partial/notFound일 때 종료 코드 1을 준다.
@@ -386,6 +439,11 @@ kartograph reach <usr>... --graph-file graph.json --project .
 - **`revision`**: `--revision <rev>`를 주면 그 값이다. 없으면 snapshot의 commit 라벨(`snapshot --revision`)이고, 그것도
   없으면 `--project` 디렉터리 아래에 커밋하지 않은 변경·추적되지 않은 파일이 없을 때만 git `HEAD`다. 작업 트리가
   더럽거나 저장소가 아니면 싣지 않는다 — 고친 소스 위에서 `HEAD`를 실으면 isthmus가 낡은 분석을 최신으로 본다.
+  분석 대상 git 설정의 filter·서브모듈 명령은 실행하지 않으므로, 프로젝트 아래에 서브모듈이 있거나 git-lfs처럼
+  filter로 정규화되는 파일의 stat이 낡았거나 덮을 수 없는 filter 드라이버 이름이 있어도 깨끗함을 증명하지 못해 싣지
+  않는다. partial clone에서 빠진 객체를 받아야 확인할 수 있을 때도 받지 않고 싣지 않는다([SECURITY.md](../SECURITY.md)).
+  서브모듈이나 덮을 수 없는 설정 때문에 뺐으면 `limitations`에 `revision-unverified:`로 시작하는 문구를 남긴다.
+  작업 트리가 더럽거나 저장소가 아니어서 뺀 경우에는 남기지 않는다.
   snapshot에 라벨이 있는데 `--revision`이 다르면 도구 실패(2)다. git은 CLI만 부르고 분석·렌더링은 부르지 않는다.
   저장한 snapshot을 읽으므로 `HEAD` 자동 감지는 snapshot을 지금 작업 트리에서 캡처했다고 가정한다. 다른 커밋에서
   캡처했다면 `snapshot --revision`으로 라벨을 남긴다.
@@ -651,3 +709,100 @@ impact(U) = { H | U ∈ reach(H) } ∪ { G | G →cb+ B 이고 (B = U 또는 U �
 현재 갱신은 전체 snapshot capture다. 저장 그래프 재사용은 증분 인덱싱이 아니다.
 평가는 [계획](IMPACT-PLAN.md)의 실제 변경 과제와 compiler/runtime 코퍼스에서 수행한다.
 20,699개 후보의 탐색·출력량·시간 비교와 재현 명령은 [영향 탐색 평가](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/impact-navigation/README.md)에 있다.
+
+## Opt-in direct observed source selections
+
+Use `impact '<symbol-or-usr>' --graph-file current.json --source-edits`, optionally with `--base-graph base.json`.
+The `kartograph-source-edit-impact` version 1 wrapper contains the unchanged ordinary `graphImpact` document plus
+`sourceEdit.policy: directObservedSelections`. Each source row is a retained compiler selection whose exact target is in
+that revision's resolved changed IDs and whose caller is not itself changed. It does not propagate across graph edges,
+other source selections, overrides, subtypes or owner/member relationships. No combined affected count or risk score is given.
+
+`--source-limit` accepts 1..1000 (default 100); `--source-offset` accepts 0..200000 (default 0). The same page request applies
+independently to base and current; a page exhausted in one revision does not exhaust the other. Source rows use fixed Unicode
+scalar ordering by caller, target, source path, numeric UTF-16 offset, unit ID and use ID. Existing graph depth, result/page,
+visit, path and summary limits remain graph-only. `--all`, explicit `--sort`, and affected-result filters (`--module`,
+`--affected-file`, `--filter-file`, `--kind`, `--test-status`, `--relation`, `--path-status`) are rejected in this first source mode.
+`--format json` is supported; `language-traversal` is not. Existing default-mode behavior is unchanged.
+
+Symbol/file resolution and revision compatibility remain the ordinary impact rules. Source seeds come from the full resolved
+changed list, never a graph affected page. Missing or ambiguous selections remain in `graphImpact.unresolved`. Partially resolved
+selections inspect only resolved seeds. A revision with no selected IDs is `noTargetsInRevision`; an explicitly empty changed-file
+list is `noChanges`. Unresolved selection or unavailable evidence has a null page. Captured-empty and offset-exhausted pages
+retain their distinct counts. Empty output does not approve deletion or skipping tests.
+
+Source coverage is global, historical, and unknown or partial. The wrapper records each loaded snapshot's exact raw-byte SHA-256
+with `currentness: notChecked`. It does not prove source freshness, runtime reachability, executed calls or behavior changes.
+The complete wrapper is rendered before writing stdout and is capped at 16 MiB including the final newline. If too large, reduce
+graph/source page sizes or use a narrower snapshot; no partial successful JSON is written. Reports are not snapshot inputs.
+
+## Opt-in enum expansion candidates
+
+Use the explicit enum mode to inspect new constants that existing source
+decisions could absorb. This mode compares exact JVM enum identities and
+complete `ACC_ENUM` inventories, then examines only current typed source sites:
+
+```sh
+kartograph impact --enum-expansion --graph-file current.json --base-graph base.json \
+  --symbol 'class:sample/Status' --format json
+kartograph impact --enum-expansion --graph-file current.json --base-graph base.json \
+  --symbol 'class:sample/Status' --format text --limit 100 --offset 0
+```
+
+`--symbol` is optional and repeatable, and accepts exact `class:` identities.
+With no selector, the query compares the current snapshot's enum declarations.
+Both snapshots are required and must have matching tool version and scope.
+For 0.24.0, rebuild/capture both revisions with matching collector/CLI artifacts;
+recompile clients when a library enum changes. Follow the
+[migration conditions](COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration), including
+public data-class recompilation and old-reader limitations.
+Use the [enum capture workflow](COMPILER-EVIDENCE.md#opt-in-enum-expansion-decisions)
+to collect the current decisions. Old/missing inventories or decision channels
+remain unavailable; they are never interpreted as complete empty sets.
+
+The `kartograph-enum-expansion` version 1 JSON report includes:
+
+- `comparisons`: baseline/current inventory availability and the added/removed
+  constant IDs for each enum. Only reliably compared additions produce candidates.
+- `candidates`: current authored fallback or finite membership sites that do not
+  explicitly list an added constant. Each row has its kind/reason, added and
+  listed constants, source path/hash/UTF-16 range/line/column, attribution,
+  output-root IDs, and the compiler receipt/input-token provenance.
+- `unresolved`: emitted current source sites with attribution reasons, including
+  dependency/shadowed/ambiguous roots or later view unavailability.
+- `coverage`: selected-enum site counts, explicitly global captured-unit producer
+  counts, global `capturedAttributionCounts`, and uncovered output roots.
+  Unsupported syntax is counted at unit level; it has no fabricated source row.
+- `inputs`: the SHA-256 of the exact parsed base/current snapshot bytes, revision,
+  tool version and scope. No currentness check or source reread is performed.
+
+`EXPLICIT_FALLBACK` means an added constant may select an authored fallback.
+`FINITE_MEMBERSHIP` means the new constant is absent from the literal set;
+`NEGATED_FINITE_MEMBERSHIP` means it may pass a negated test. These are review
+candidates, not observed bugs, reachable execution paths, or whole-filter proofs.
+Current sites explicitly listing the new constant are not reported for that
+constant. Removed constants or unavailable baseline identities do not become
+added-case findings. Historical decisions are never relabeled with current source
+coordinates.
+
+`--limit` accepts 1..1000 (default 100); `--offset` accepts 0..200000 (default 0).
+The same request pages candidates and unresolved records independently.
+`navigation` and `unresolvedNavigation` retain total/omitted counts independent of
+page size; raw captured counts are not recomputed from a returned page. Identical
+source assertions repeated across completed units are deduplicated for display
+while capture counts remain intact.
+
+Top-level status is `evidenceUnavailable`, `partial`, `candidates`, or
+`noCandidates`. Unavailable comparisons, unresolved/view-omitted sites,
+unsupported producer observations or uncovered roots keep status partial.
+`noCandidates` only means this captured supported slice found no candidate.
+The JSON and text reports both preserve snapshot limitations and are rendered
+fully under a 16 MiB UTF-8 limit before stdout is written.
+
+Captured enum decision snapshots cannot currently be aggregated with snapshot
+merge; the existing compiler-evidence guard refuses them before reindexing.
+
+This mode cannot be combined with `--source-edits`, source pagination or
+`--format language-traversal`. Duplicate format/mode/singular options reject
+before snapshot reads. Ordinary graph impact remains a separate query, and enum
+decision evidence adds no reachability, retention or CALL edges.

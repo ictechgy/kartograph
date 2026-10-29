@@ -1,0 +1,12 @@
+{
+  "adapter-classes": {
+    "META-INF/main.kotlin_module": "496b922c654ebfb00fbf79bf027e15f211f84df66cb6c09c6a3f6bc37a1fc707",
+    "PsiResolvedCallsKt$main$lambda$2$$inlined$sortedBy$1.class": "900ccf005698f8d1c95718704426fe121772ea40cece3cb864e89a0b55ab9495",
+    "PsiResolvedCallsKt.class": "6a6f02763adb6678f7c5537302da9eec7c168ac3c849348a379cfead893ae047"
+  },
+  "fixture-classes": {
+    "META-INF/main.kotlin_module": "06d262cf732152000d8cb1453e8dc1209b37fa4411e5c4d202265ff0d18ec16d",
+    "lowered/LoweredJava.class": "c540fc7273a879ed9a273f8ce3578c4f0e31626e470fcdb28687357e9fb93019",
+    "lowered/LoweredKotlin.class": "6a58d3504eb8c820734a279b8b9915b6b39e3f50f850427c69d89662c48fdcd0"
+  }
+}

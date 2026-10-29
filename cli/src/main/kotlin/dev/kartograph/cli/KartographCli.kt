@@ -56,6 +56,7 @@ internal object KartographCli {
         "bridges" -> AgentCommand.bridges(arguments.drop(1), output, error)
         "schema" -> AgentCommand.schema(arguments.drop(1), output, error)
         "routes" -> RoutesCommand.run(arguments.drop(1), output, error)
+        "bindings" -> BindingEvidenceCommand.run(arguments.drop(1), output, error)
         "skill" -> AgentCommand.skill(arguments.drop(1), output, error)
         "dependencies" -> DependenciesCommand.run(arguments.drop(1), output, error)
         "cycles" -> ArchitectureCommand.cycles(arguments.drop(1), output, error)
@@ -142,7 +143,7 @@ internal object KartographCli {
                 }
                 writer.flush()
             }
-            if (output.checkError()) toolFailure(error, "graph output could not be written; check the output destination")
+            if (output.checkError()) toolFailure(error, outputFailureMessage(output))
             else ExitStatus.SUCCESS.code
         } catch (existsError: java.nio.file.FileAlreadyExistsException) {
             toolFailure(error, "graph export destination or reservation already exists; use a fresh --output-directory")
@@ -167,8 +168,9 @@ internal object KartographCli {
         val tagged = CodeGraph(original.nodes.values.map { node ->
             indexed.selectedRootByNode[node.id]?.let { options.moduleNames.getOrNull(it) }?.let { node.copy(moduleName = it) } ?: node
         }, original.edges, original.externalCalls, original.serviceProviders, original.enclosures,
-            original.callbackArguments, original.parameterUses, original.lambdaEscapes)
-        return if (original.compilerCallPositionsCaptured) tagged.withCompilerCallPositions(original.locatedCompilerReferences) else tagged
+            original.callbackArguments, original.parameterUses, original.lambdaEscapes).preserveCompilerSourceUsesFrom(original)
+        val located = if (original.compilerCallPositionsCaptured) tagged.withCompilerCallPositions(original.locatedCompilerReferences) else tagged
+        return located.withCompilerSourceFactsFrom(original)
     }
 
     /** 위치 해석 요청과 관측한 누락 한계를 JSON·NDJSON에 동일하게 적용한다. */
@@ -359,18 +361,19 @@ internal object KartographCli {
           kartograph baseline --write <file> --classes <directory> --project <directory> [options]
           kartograph why <symbol> --classes <directory> --project <directory> [options]
           kartograph query <symbol> --classes <directory> [--classes <directory>]... --project <directory> [options]
-          kartograph snapshot --classes <directory-or-jar> --project <directory> [--snapshot-max-mib <1..128>] [options]
+          kartograph snapshot --classes <directory-or-jar> --project <directory> [--snapshot-max-mib <1..1024>] [options]
           kartograph snapshot merge --project <root> --module <dir> --graph-file <snapshot.json> [--input-bindings <file>]... [options]
-          kartograph verify-snapshot --graph-file <snapshot.json> --project <directory> [--snapshot-max-mib <1..128>] [options]
-          kartograph impact <symbol> --graph-file <snapshot.json> [--base-graph <snapshot.json>] [--snapshot-max-mib <1..128>] [options]
+          kartograph verify-snapshot --graph-file <snapshot.json> --project <directory> [--snapshot-max-mib <1..1024>] [options]
+          kartograph impact <symbol> --graph-file <snapshot.json> [--base-graph <snapshot.json>] [--snapshot-max-mib <1..1024>] [options]
           kartograph impact <usr>... --format language-traversal --graph-file <snapshot.json> --project <directory> [--dispatch <mode>] [--class-hops <mode>]
           kartograph reach <usr>... --graph-file <snapshot.json> --project <directory> [--dispatch <mode>] [--class-hops <mode>]
-          kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>] [--snapshot-max-mib <1..128>]
+          kartograph query <symbol> --graph-file <snapshot.json> [--depth <n>] [--limit <n>] [--snapshot-max-mib <1..1024>]
           kartograph bridges --project <directory> [--format json]
           kartograph schema --project <directory> [--format json] [--graph-file <snapshot>]
           kartograph routes --role client --project <directory> [--wrappers <file>] [--include-tests] [<source-root>...]
           kartograph routes --role server --project <directory> [--graph-file <snapshot>] [--service <name>] [--include-tests] [<source-root>...]
-          kartograph mcp --graph-file <snapshot.json> [--snapshot-max-mib <1..128>] [options]
+          kartograph bindings --project <directory> --classes <directory-or-jar> --manifest <file> --resources <directory> --namespace <name> [options]
+          kartograph mcp --graph-file <snapshot.json> [--snapshot-max-mib <1..1024>] [options]
           kartograph skill
           kartograph dependencies --classes <directory> --project <directory> --dependencies <file> [options]
           kartograph cycles --classes <directory-or-jar> [--classes <directory-or-jar>]... [--strict]
