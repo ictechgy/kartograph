@@ -5,6 +5,8 @@ from pathlib import Path
 import tempfile
 import tarfile
 import io
+import json
+import shutil
 import unittest
 from unittest.mock import patch
 
@@ -105,6 +107,24 @@ class IndexCostMetadataTest(unittest.TestCase):
         self.assertEqual(self.old, self.file(self.baseline).read_bytes())
 
     def test_experiment_reaches_build_with_additive_pins_and_no_source_substitution(self):
+        self.exercise_experiment()
+
+    def test_failed_probe_and_late_metadata_mutation_keep_primary_receipt(self):
+        self.exercise_experiment(fail_phase="probe")
+
+    def test_failed_baseline_build_and_late_metadata_mutation_keep_primary_receipt(self):
+        self.exercise_experiment(fail_phase="build")
+
+    def test_otherwise_successful_run_rejects_late_metadata_mutation(self):
+        report = {}
+        MODULE.align_verification_metadata(self.repo, self.baseline, report)
+        with self.assertRaisesRegex(MODULE.DiagnosticError, "aligned-build-inputs-changed"):
+            with MODULE.input_integrity_guard(report, "metadataInputIntegrity", (
+                    lambda: MODULE.verify_aligned_metadata(self.repo, self.baseline, report["verificationMetadataAlignment"]),)):
+                self.file(self.baseline).write_bytes(self.new + b' ')
+        self.assertFalse(report["metadataInputIntegrity"]["unchanged"])
+
+    def exercise_experiment(self, fail_phase=None):
         # 실제 experiment의 기존 바이트 동일성 거절까지 실행한다. child 실행은 하지 않는다.
         class ReachedBuild(Exception):
             pass
@@ -124,6 +144,8 @@ class IndexCostMetadataTest(unittest.TestCase):
         java_home.mkdir()
         work = self.root / "work"
         work.mkdir()
+        report = {}
+        receipt = {"exit": 23, "phase": "baseline-build" if fail_phase == "build" else "index-probe", "stdoutBytes": 123, "stderrBytes": 45}
         def successful(arguments, cwd, env, **kwargs):
             phase = kwargs["phase"]
             if phase == "baseline-source-diff":
@@ -135,19 +157,48 @@ class IndexCostMetadataTest(unittest.TestCase):
                         raw = self.old if name.endswith("verification-metadata.xml") else (self.repo / name).read_bytes()
                         info = tarfile.TarInfo(name)
                         info.size = len(raw)
+                        info.mode = (self.repo / name).stat().st_mode & 0o777
                         tar.addfile(info, io.BytesIO(raw))
                 return {"stdout": b""}
             if phase == "baseline-build":
                 self.assertEqual(self.new, (work / "baseline/gradle/verification-metadata.xml").read_bytes())
                 self.assertEqual("class UnchangedSource\n", (work / "baseline/Source.kt").read_text())
-                raise ReachedBuild()
+                if fail_phase is None:
+                    raise ReachedBuild()
+                if fail_phase == "build":
+                    (work / "baseline/gradle/verification-metadata.xml").write_bytes(self.new + b' ')
+                    raise MODULE.DiagnosticError("required-child-failed", receipt)
+                shutil.copytree(self.repo / "cli/build/install", work / "baseline/cli/build/install")
+                return {"exit": 0}
+            if phase == "index-probe" and fail_phase == "probe":
+                (work / "baseline/gradle/verification-metadata.xml").write_bytes(self.new + b' ')
+                raise MODULE.DiagnosticError("required-child-failed", receipt)
             self.fail("unexpected child phase")
         def identity(repo, ref, env):
             return {"commit": MODULE.BASELINE if ref != "HEAD" else "c" * 40, "tree": "d" * 40}
+        def compile_probe(repo, distribution, directory, java, env):
+            directory.mkdir()
+            (directory / "Fixture.class").write_bytes(b"inventory only, never executed")
+            return "not executed"
         with patch.object(MODULE, "java_identity", return_value=[]), patch.object(MODULE, "source_identity", side_effect=identity), \
-             patch.object(MODULE, "run", return_value={"exit": 0}), patch.object(MODULE, "successful", side_effect=successful):
-            with self.assertRaises(ReachedBuild):
-                MODULE.experiment(self.repo, work, {"JAVA_HOME": str(java_home)}, {})
+             patch.object(MODULE, "run", return_value={"exit": 0}), patch.object(MODULE, "successful", side_effect=successful), \
+             patch.object(MODULE, "compile_probe", side_effect=compile_probe), patch.object(MODULE, "summary", side_effect=lambda value: value):
+            if fail_phase is not None:
+                with self.assertRaises(MODULE.DiagnosticError) as caught:
+                    MODULE.experiment(self.repo, work, {"JAVA_HOME": str(java_home)}, report)
+                self.assertEqual("required-child-failed", str(caught.exception))
+                self.assertEqual(receipt, caught.exception.receipt)
+                self.assertEqual(receipt, report["metadataInputIntegrity"]["primaryFailure"]["receipt"])
+                self.assertEqual([{"reason": "verification-metadata-changed"}], report["metadataInputIntegrity"]["errors"])
+                if fail_phase == "probe":
+                    self.assertTrue(report["executionInputIntegrity"]["unchanged"])
+                    self.assertIn("sourcesAfter", report)
+                report.update({"format": "kartograph-index-cost-v1", "status": "FAIL", "scope": "fixed-input", "residualScope": "diagnostic"})
+                public = json.loads(MODULE.public_summary(report))
+                self.assertEqual(receipt, public["metadataInputIntegrity"]["primaryFailure"]["receipt"])
+            else:
+                with self.assertRaises(ReachedBuild):
+                    MODULE.experiment(self.repo, work, {"JAVA_HOME": str(java_home)}, report)
 
 
 if __name__ == "__main__":
