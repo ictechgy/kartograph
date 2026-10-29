@@ -57,6 +57,13 @@ public data class GraphEdge(
     public val isSelfLoop: Boolean
         get() = source == target
 
-    override fun compareTo(other: GraphEdge): Int =
-        compareValuesBy(this, other, GraphEdge::source, GraphEdge::target, GraphEdge::kind, { it.origin.name })
+    override fun compareTo(other: GraphEdge): Int {
+        val sourceOrder = source.value.compareTo(other.source.value)
+        if (sourceOrder != 0) return sourceOrder
+        val targetOrder = target.value.compareTo(other.target.value)
+        if (targetOrder != 0) return targetOrder
+        val kindOrder = kind.compareTo(other.kind)
+        if (kindOrder != 0) return kindOrder
+        return origin.name.compareTo(other.origin.name)
+    }
 }

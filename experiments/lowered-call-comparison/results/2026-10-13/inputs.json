@@ -1,0 +1,125 @@
+{
+  "sourceSha256": {
+    "lowered/LoweredJava.java": "86dfcefd038e73f8d9ad31e45d8249539e2c7ef51e9b8a9e6ae0756b4b67c18c",
+    "lowered/LoweredKotlin.kt": "8fcfc29d48d1ae788658291e3a4e318e282c3e5afa1004894596041470510eb9"
+  },
+  "fixtureManifestSha256": "ffef91dd0974160fa4c360e4453cd43965250b48dd48e8b99b9cfe7535c6dc1e",
+  "executionManifestSha256": "0116440c3ca99b0301900928db55f83a8b1ed444de973b7c3b9d233070370e23",
+  "runtimeJars": [
+    {
+      "name": "annotations-23.0.0.jar",
+      "bytes": 29371,
+      "sha256": "7b0f19724082cbfcbc66e5abea2b9bc92cf08a1ea11e191933ed43801eb3cd05"
+    },
+    {
+      "name": "caffeine-2.9.3.jar",
+      "bytes": 912143,
+      "sha256": "1e0a7bbef1dd791653143f3f05d0e489934bf5481e58a87c9e619cd46b68729b"
+    },
+    {
+      "name": "checker-qual-3.19.0.jar",
+      "bytes": 222143,
+      "sha256": "a827c49183f3a632277d27a0a4673686cb341507447b9d570261094bd748aa68"
+    },
+    {
+      "name": "detekt-kotlin-analysis-api-2.0.0-alpha.6.jar",
+      "bytes": 9236967,
+      "sha256": "b0dffe98e07832202d19c0cbb2a2402e3a18580a054fe06165aaffc83996b2f6"
+    },
+    {
+      "name": "detekt-kotlin-analysis-api-standalone-2.0.0-alpha.6.jar",
+      "bytes": 237504,
+      "sha256": "08fe542ba4b1552af778549035589e55540b5d167072c3c26b33918fbcfe349b"
+    },
+    {
+      "name": "error_prone_annotations-2.10.0.jar",
+      "bytes": 15992,
+      "sha256": "a249d4d25dfb86d41e6c82fc335df580189f0c9feeabdc53233fc1e5060724a1"
+    },
+    {
+      "name": "kotlin-build-tools-api-2.4.10.jar",
+      "bytes": 310932,
+      "sha256": "3953d283e7710c990672e403a87df393d9726a9bf3e172194ebb5c33e062fcb0"
+    },
+    {
+      "name": "kotlin-compiler-2.4.10.jar",
+      "bytes": 61903538,
+      "sha256": "db12b1af0db0e10eeedfc15d5dac0316604e5c556321f60e3bcd73075a66f0a3"
+    },
+    {
+      "name": "kotlin-reflect-1.6.10.jar",
+      "bytes": 3038560,
+      "sha256": "3277ac102ae17aad10a55abec75ff5696c8d109790396434b496e75087854203"
+    },
+    {
+      "name": "kotlin-script-runtime-2.4.10.jar",
+      "bytes": 46565,
+      "sha256": "f4a5b30c2fdfbe386b097101b7989dbeea3743c06396136664784e08e15c6899"
+    },
+    {
+      "name": "kotlin-scripting-common-2.4.10.jar",
+      "bytes": 203069,
+      "sha256": "d5399982cdbf5994f7f3a731afacfbc5c21b797d97ffd7328b62cea670103076"
+    },
+    {
+      "name": "kotlin-scripting-jvm-2.4.10.jar",
+      "bytes": 136266,
+      "sha256": "0b7518219da69b427e0b3f840f13e280db9e61a839c7d3ff094de4630ddbc9f5"
+    },
+    {
+      "name": "kotlin-stdlib-2.4.10.jar",
+      "bytes": 1841933,
+      "sha256": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+    },
+    {
+      "name": "kotlin-stdlib-jdk7-2.4.10.jar",
+      "bytes": 946,
+      "sha256": "e7a8fe7cacf3b9c838f6b3fcb26dfdd41f844551a3ba67fd3f959a0d9d5c0bef"
+    },
+    {
+      "name": "kotlin-stdlib-jdk8-2.4.10.jar",
+      "bytes": 953,
+      "sha256": "08346b7f4cfba40c1139161c9f30b68199f425cecf3b63de67838063f34a05c7"
+    },
+    {
+      "name": "kotlinx-coroutines-core-jvm-1.10.2-intellij-1.jar",
+      "bytes": 1514505,
+      "sha256": "1e9b4b60644ca8dd5e9687ad096aee0028bd9d3a24afed3e38565b22ca726ee0"
+    },
+    {
+      "name": "kotlinx-coroutines-core-jvm-1.8.0.jar",
+      "bytes": 1548360,
+      "sha256": "9860906a1937490bf5f3b06d2f0e10ef451e65b95b269f22daf68a3d1f5065c5"
+    },
+    {
+      "name": "kotlinx-serialization-core-jvm-1.11.0.jar",
+      "bytes": 404509,
+      "sha256": "f4a801c647d4351327cd9e1ac4113e2be9ea37a64ab0abae269c25a52e28f35d"
+    }
+  ],
+  "adapterSourceSha256": "54cb74a5836494a876084098bd1a091ca1ff0b3aafd473249c6954004c64812f",
+  "productSourceRevision": "254c8ad40e08de6fa899a9ffd8bd3c606b8aad1b",
+  "productSourceStatus": "",
+  "productLauncherSha256": "e7ea0f5d3103714b4156fc278437f29ba01358d3e28fe36ff1363b586f5a5042",
+  "productLibrariesSha256": {
+    "analysis-0.20.1.jar": "c197bf1f6fb2b6983864e2ef627687eda070bfaf574dd1a6521c310324732d55",
+    "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+    "asm-9.10.1.jar": "ed825d10ab1399c8c0cb669e688cf0c8c82629b4c8399b58352b68e92ca10fcb",
+    "asm-analysis-9.10.1.jar": "dede75a21306b65974ecd8f87114ff6970f09fb794157a4ca09ab25c888c2bfc",
+    "asm-tree-9.10.1.jar": "3dfb0d5b6a106cd40b5b250e39935fbf2f927f4477546a5369a3ac609cf0506b",
+    "cli-0.20.1.jar": "c203167a100d63c4a95d1da03dfb5c5344f0caa5e3c4168798e1524d18ffa386",
+    "core-0.20.1.jar": "ffe8b0e07d713c9d4e3e9675ad29f8a2684e86514efc9dd7ca7b6c16fed09c78",
+    "export-0.20.1.jar": "a80f5601680bfea1ce9c358ca72cc683309cec608236700a8b83a097eda1438a",
+    "index-0.20.1.jar": "1e3966a40c7fba935eeef1dcaa4e222c9332a009c939e7d99093a435eec9e551",
+    "kotlin-metadata-jvm-2.4.20.jar": "98d9b1847908adfde7a8b2d4cc35708d7ddccae0698cec56bcb506bcf9392595",
+    "kotlin-stdlib-2.4.20.jar": "2226de463d309d4a5500a481320b3dea515a6981dcae1def531fbc158884e25f"
+  },
+  "effectiveJavaOpts": "-Xmx512m -Dfile.encoding=UTF-8",
+  "removedAmbientOptions": [
+    "JAVA_TOOL_OPTIONS",
+    "JDK_JAVA_OPTIONS",
+    "_JAVA_OPTIONS",
+    "KARTOGRAPH_OPTS"
+  ],
+  "inferenceLimit": "Clean checkout and installed distribution hashes identify selected inputs; parent retains the successful installDist build receipt."
+}

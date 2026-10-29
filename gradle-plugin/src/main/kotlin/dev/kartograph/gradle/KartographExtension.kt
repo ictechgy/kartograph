@@ -4,6 +4,7 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.SetProperty
 
 /** variant task들이 공유할 사용자 지정 보존 입력과 strict 정책이다. */
 public abstract class KartographExtension {
@@ -52,6 +53,15 @@ public abstract class KartographExtension {
      */
     public abstract val keepRules: ConfigurableFileCollection
 
+    /** 지원하지 않는 keep 문법은 strict에서 실패하고 lenient에서도 unknown 보존 근거로 남긴다. */
+    public abstract val keepRuleMode: Property<String>
+
+    /** AGP가 제공하는 variant keep 파일을 자동으로 포함할지 선택한다. */
+    public abstract val useVariantKeepRules: Property<Boolean>
+
+    /** 자동·명시 keep 입력에서 제외할 정확한 파일 집합이다. 제외는 분석 범위 변경이다. */
+    public abstract val excludedKeepRules: ConfigurableFileCollection
+
     /** 생성 전용 class directory/JAR를 지정한다. 해당 경로는 variant의 project class 입력에도 포함돼야 한다. */
     public abstract val generatedClassRoots: ConfigurableFileCollection
 
@@ -69,4 +79,16 @@ public abstract class KartographExtension {
      * 요청하지 않은 경로 노출을 만들지 않도록 CLI의 `--include-paths`와 같이 opt-in이다.
      */
     public abstract val includeSourcePaths: Property<Boolean>
+
+    /** 교환 그래프의 출력 형식이다. 기존 json과 스트리밍 ndjson을 지원한다. */
+    public abstract val graphFormat: Property<String>
+
+    /** CLI --exclude-origin과 같은 wire 이름의 출처만 제외하고 보고서에 범위를 남긴다. */
+    public abstract val excludeOrigins: SetProperty<String>
+
+    /** dispatch fanout 상한이다. 초과하면 일부 후보를 고르지 않고 생략 한계를 남긴다. */
+    public abstract val dispatchCandidateLimit: Property<Int>
+
+    /** 외부 관계의 끝점을 graph 전용 stub으로 포함한다. dead 보존 정책을 바꾸지 않는다. */
+    public abstract val includeExternalStubs: Property<Boolean>
 }

@@ -6,8 +6,30 @@ import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.random.Random
 
 class CodeGraphTest {
+    @Test
+    fun `external normalization snapshots caller owned empty targets and declaration chains`() {
+        val emptyTargets = mutableListOf<NodeId>()
+        val declaredTargets = mutableListOf<NodeId>()
+        val ownerChain = mutableListOf("outside/Api", "outside/Base")
+        val plain = ExternalCall(NodeId("a"), "outside/Api", "run", "()V", InvocationKind.VIRTUAL,
+            resolvedTargets = emptyTargets)
+        val declared = ExternalCall(NodeId("b"), "outside/Api", "run", "()V", InvocationKind.VIRTUAL,
+            resolvedTargets = declaredTargets,
+            declaration = CallDeclaration(NodeId("method:outside/Base#run()V"), CallDeclarationScope.EXTERNAL, ownerChain))
+        val graph = CodeGraph(listOf(node("a"), node("b")), emptyList(), listOf(plain, declared))
+
+        emptyTargets += NodeId("b")
+        declaredTargets += NodeId("a")
+        ownerChain[0] = "changed/Owner"
+
+        assertTrue(graph.externalCalls.all { it.resolvedTargets.isEmpty() })
+        assertEquals(listOf("outside/Api", "outside/Base"), graph.externalCalls[1].declaration?.ownerChain)
+        assertEquals(graph.externalCalls, graph.enrichedWith(emptyList()).externalCalls)
+    }
+
     @Test
     fun `duplicate edges merge their weights and keep distinct kinds`() {
         val graph = CodeGraph(
@@ -189,8 +211,43 @@ class CodeGraphTest {
         assertEquals(1, iterations)
         assertEquals(1, callIterations)
         assertGraphEquivalent(expected, actual)
+        assertGraphEquivalent(expected, base.enrichedWith(deltaEdges, calls, replacingOrigin = EdgeOrigin.DISPATCH_MODEL))
         assertEquals(1, actual.externalCalls.size)
         assertTrue(actual.externalCalls.none { it.target == insideMethod })
+    }
+
+    @Test
+    fun `collection and one shot enrichment match rebuild for colliding and missing identities`() {
+        val random = Random(704)
+        // String hash가 같아도 실제 심볼 identity와 없는 endpoint를 구분해야 한다.
+        assertEquals("Aa".hashCode(), "BB".hashCode())
+        val nodes = listOf(node("Aa"), node("BB"), node("a"), node("b"))
+        val ids = nodes.map { it.id } + NodeId("missing")
+        repeat(120) { iteration ->
+            val baseEdges = List(8) {
+                GraphEdge(ids[random.nextInt(ids.size)], ids[random.nextInt(ids.size)],
+                    EdgeKind.entries[random.nextInt(EdgeKind.entries.size)],
+                    origin = EdgeOrigin.entries[random.nextInt(EdgeOrigin.entries.size)])
+            }
+            val size = when (iteration) { 0 -> nodes.size; 1 -> nodes.size + 1; else -> iteration % 3 * 40 + iteration % 5 }
+            val delta = List(size) {
+                val origin = EdgeOrigin.entries[random.nextInt(EdgeOrigin.entries.size)]
+                GraphEdge(ids[random.nextInt(ids.size)], ids[random.nextInt(ids.size)], EdgeKind.CALL,
+                    weight = 2, callSiteLines = if (origin == EdgeOrigin.BYTECODE) listOf(random.nextInt(1, 20)) else emptyList(),
+                    origin = origin)
+            }
+            val replacement = if (iteration % 2 == 0) EdgeOrigin.DISPATCH_MODEL else null
+            val base = CodeGraph(nodes, baseEdges)
+            val oracle = CodeGraph(nodes, baseEdges.filter { it.origin != replacement } + delta)
+            assertGraphEquivalent(oracle, base.enrichedWith(delta, replacingOrigin = replacement))
+            assertGraphEquivalent(oracle, base.enrichedWith(delta.asSequence().constrainOnce().asIterable(),
+                replacingOrigin = replacement))
+            assertGraphEquivalent(CodeGraph(nodes, baseEdges), base)
+        }
+        val missing = List(20) { edge("Aa", "BB", EdgeKind.CALL) }
+        assertGraphEquivalent(CodeGraph(emptyList(), missing), CodeGraph(emptyList(), emptyList()).enrichedWith(missing))
+        val subset = nodes.filter { it.id != NodeId("BB") }
+        assertGraphEquivalent(CodeGraph(subset, missing), CodeGraph(subset, emptyList()).enrichedWith(missing))
     }
 
     @Test
@@ -316,6 +373,9 @@ class CodeGraphTest {
         assertEquals(expected.lambdaEscapes, actual.lambdaEscapes)
         assertEquals(expected.locatedCompilerReferences, actual.locatedCompilerReferences)
         assertEquals(expected.compilerCallPositionsCaptured, actual.compilerCallPositionsCaptured)
+        assertEquals(expected.compilerAuthoredCallers, actual.compilerAuthoredCallers)
+        assertEquals(expected.compilerCallerInventories, actual.compilerCallerInventories)
+        assertEquals(expected.compilerSourceUseEvidence, actual.compilerSourceUseEvidence)
         assertEquals(expected.nodeIds, actual.nodeIds)
         assertEquals(expected.nodeCount, actual.nodeCount)
         assertEquals(expected.edgeCount, actual.edgeCount)

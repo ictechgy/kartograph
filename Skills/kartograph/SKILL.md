@@ -73,6 +73,16 @@ counts in the assessment; default retention still applies. See
 
 ## Change impact preflight
 
+For an actual patch, use `impact --git-base <ref> --git-head <ref> --project <head-checkout>` with matching scoped
+`--base-graph` and `--graph-file` captures. Use `--working-tree` instead of `--git-head` for staged, unstaged and
+non-ignored untracked edits. Supply `--base-project` and separate external `--input` / `--base-input` bindings.
+The additive `kartograph-change-impact` wrapper preserves the original `graphImpact`, resolved Git endpoints,
+whole-file seed precision, exact snapshot-byte identities and separate before/current freshness. Rebuild and capture
+both sides with the same tool version; a revision label alone cannot establish compiler freshness. The mode never builds,
+checks out or fetches. Keep the files quiescent during sequential Git selection and hashing. Empty/stale/unverified results
+cannot approve edits or test skipping. With fixed MCP startup projects, `change_impact` accepts `base` and optional `head`
+or `workingTree: true`; it rechecks freshness on each call, while loaded graphs still require server restart after recapture.
+
 Before an authorized edit, capture the matching compiled inputs with `kartograph snapshot ... --include-paths`
 and run `kartograph impact '<symbol-or-usr>' --graph-file snapshot.json`. Repeat `--symbol` for multiple declarations.
 For large inputs, add `snapshot --compact` to store the same facts with a v2 string table and indexed rows; query/impact read both versions.
@@ -123,6 +133,26 @@ When `pathStatus` is partial or unavailable, inspect `budgets` and the omission'
 does not remove the candidate or establish that no path exists. Filters and pages never erase unresolved selectors,
 base/current path separation, traversal truncation, freshness limitations, or runtime uncertainty.
 An omission's `edgeKinds` contains distinct kinds, not the full sequence of omitted edges.
+
+## Direct source-selection reports
+
+When a saved snapshot explicitly captured v3 source evidence with `snapshot --include-source-uses`, inspect a uniquely resolved
+method with `query '<usr>' --graph-file snapshot.json --source-uses`. Use `impact '<usr>' --graph-file snapshot.json --source-edits`
+for direct compiler-selected callers of resolved changed declarations. The wrapper retains the ordinary `query` or `graphImpact`
+separately; it does not combine counts or traverse source selections. Never interpret missing BYTECODE correlation as proof of
+inlining or deletion safety. No Gradle/MCP source mode or live-query source mode is enabled.
+
+Read each revision's coverage, selection status, page totals and bindings. Unavailable evidence and unresolved selections have
+null pages; captured-empty and offset-exhausted pages are different states. Global original capture counts and uncovered roots
+are preserved independently of pages. Coverage is unknown or partial, never complete. Use `--source-limit 1..1000` and
+`--source-offset 0..200000` independently of existing graph budgets; the same request applies separately to base/current.
+Source impact rejects affected filters, explicit sorting, `--all` and language-traversal format. Reduce page sizes if the
+16 MiB wrapper limit is exceeded; partial successful JSON is not emitted.
+
+Saved source reports bind exact snapshot bytes with `currentness: notChecked`. Selector coordinates/hash refer to captured
+source bytes, separately from current graph-view declaration metadata. Use the original snapshot to re-query omitted rows;
+a normalized report is not a snapshot and cannot be passed as `--graph-file`. Follow the explicit currentness workflow above
+before a current-build claim, and retain direct-only and runtime/external-consumer limitations.
 
 ## After inspecting evidence
 

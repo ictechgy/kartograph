@@ -16,17 +16,22 @@ import java.nio.file.Path
 public class KeepRuleScanner @JvmOverloads constructor(
     private val projectRoot: Path,
     private val retainClassMembers: Boolean = false,
+    private val lenient: Boolean = false,
 ) {
     /** 재귀 include까지 실제 읽은 입력이다. 빈 규칙 파일도 내용 신선도에 포함한다. */
     public val inputFiles: Set<Path> get() = observedFiles.toSet()
     private val observedFiles = linkedSetOf<Path>()
+    /** 모든 독립 규칙의 오류를 수집하며 lenient에서도 누락을 보존한다. */
+    public val diagnostics: List<String> get() = observedDiagnostics.toList()
+    private val observedDiagnostics = mutableListOf<String>()
 
     /** 모든 파일을 입력 순서로 읽되 불완전하게 해석할 keep 문법에서는 실패한다. */
     public fun scan(ruleFiles: Iterable<Path>): List<KeepRule> {
         observedFiles.clear()
+        observedDiagnostics.clear()
         val realProjectRoot = resolveProjectRoot()
         val visited = mutableSetOf<Path>()
-        return buildList {
+        val rules = buildList {
             ruleFiles.forEach { ruleFile ->
                 val realRuleFile = resolveTopLevelRule(ruleFile)
                 val scope = if (realRuleFile.startsWith(realProjectRoot)) {
@@ -37,6 +42,10 @@ public class KeepRuleScanner @JvmOverloads constructor(
                 addAll(scanFile(realRuleFile, scope, visited, mutableSetOf()))
             }
         }
+        if (!lenient && observedDiagnostics.isNotEmpty()) {
+            throw KeepRuleScanningException(observedDiagnostics.joinToString("\n"))
+        }
+        return rules
     }
 
     private fun scanFile(
@@ -64,10 +73,16 @@ public class KeepRuleScanner @JvmOverloads constructor(
         var plainKeepAllMembers = false
         val plainKeptMembers = mutableListOf<KeepMemberCondition>()
         var conservativeMemberBlock = false
+        var recovering = false
         return try {
             val parsedRules = buildList {
                 lines.forEachIndexed { index, rawLine ->
                     val uncommented = rawLine.substringBefore('#')
+                    if (recovering && !uncommented.trim().startsWith('-') && !uncommented.trim().startsWith('@')) {
+                        return@forEachIndexed
+                    }
+                    recovering = false
+                    try {
                     // Member 모드에서는 조건부 owner 생존을 보수적으로 가정해 reflection member를 보존한다.
                     val memberHeader = retainClassMembers &&
                         Regex("^\\s*-keepclassmembers(?=[,\\s])").containsMatchIn(uncommented)
@@ -184,10 +199,30 @@ public class KeepRuleScanner @JvmOverloads constructor(
                     memberBlockDepth += openingBraces - closingBraces
                     if (memberBlockDepth < 0) throw unsupported("unbalanced keep rule braces", location)
                     if (memberBlockDepth == 0) memberBlockStart = null
+                    } catch (problem: KeepRuleScanningException) {
+                        val location = SourceLocation(sourcePath, index + 1)
+                        observedDiagnostics.add(problem.message ?: "unsupported keep rule at $sourcePath:${index + 1}")
+                        add(KeepRule(KeepDeclarationKind.CLASS, "**", location = location,
+                            unresolved = true, rawSpecification = rawLine.trim()))
+                        // 오류가 난 block의 나머지를 독립 규칙으로 오인하지 않는다.
+                        memberBlockDepth = 0
+                        memberBlockStart = null
+                        conditionalRule = null
+                        plainRule = null
+                        conditionalMembers.clear()
+                        plainKeptMembers.clear()
+                        skippingConditionalRule = false
+                        skippingPlainRule = false
+                        plainKeepAllMembers = false
+                        conservativeMemberBlock = false
+                        recovering = true
+                    }
                 }
             }
             if (memberBlockDepth != 0) {
-                throw unsupported("unbalanced keep rule braces", requireNotNull(memberBlockStart))
+                val location = requireNotNull(memberBlockStart)
+                observedDiagnostics.add("unbalanced keep rule braces at ${location.path}:${location.line}")
+                return parsedRules + KeepRule(KeepDeclarationKind.CLASS, "**", location = location, unresolved = true)
             }
             parsedRules
         } finally {
@@ -209,6 +244,7 @@ public class KeepRuleScanner @JvmOverloads constructor(
         }
         val keepDirective = directive.replaceFirst("-keepclasseswithmembers", "-keep")
         return parseLine("$keepDirective${line.removePrefix(directive)}", location, insideMemberBlock = false)
+            ?.copy(rawSpecification = line.substringBefore('{').trim())
     }
 
     private fun parseMemberCondition(rawLine: String, location: SourceLocation): KeepMemberCondition? {
@@ -278,7 +314,11 @@ public class KeepRuleScanner @JvmOverloads constructor(
     }
 
     private fun parseSignatureMember(line: String, location: SourceLocation): KeepMemberCondition {
-        val method = METHOD_MEMBER.matchEntire(line)
+        val tokens = line.split(WHITESPACE)
+        val qualifiers = tokens.takeWhile { it.removePrefix("!") in JVM_ACCESS_FLAGS || it.startsWith('@') }
+        val flags = parseWildcardMember(qualifiers + "<methods>", location)!!
+        val signature = tokens.drop(qualifiers.size).joinToString(" ")
+        val method = METHOD_MEMBER.matchEntire(signature)
         if (method != null) {
             val visibility = method.groupValues[1].toMemberVisibility()
             val returnType = method.groupValues[2]
@@ -288,23 +328,19 @@ public class KeepRuleScanner @JvmOverloads constructor(
             if (constructor && returnType.isNotEmpty()) {
                 throw unsupported("unsupported conditional member specification", location)
             }
-            return KeepMemberCondition(
+            return flags.copy(
                 kind = if (constructor) KeepMemberKind.CONSTRUCTORS else KeepMemberKind.METHODS,
-                requiredJvmVisibilities = visibility.required,
-                forbiddenJvmVisibilities = visibility.forbidden,
                 namePattern = if (constructor) "<init>" else name,
                 jvmDescriptor = methodDescriptor(returnType, parameters, constructor, location),
             )
         }
-        val field = FIELD_MEMBER.matchEntire(line)
-            ?: throw unsupported("unsupported conditional member specification", location)
+        val field = FIELD_MEMBER.matchEntire(signature)
+            ?: throw unsupported("unsupported member specification", location)
         val visibility = field.groupValues[1].toMemberVisibility()
-        return KeepMemberCondition(
+        return flags.copy(
             kind = KeepMemberKind.FIELDS,
-            requiredJvmVisibilities = visibility.required,
-            forbiddenJvmVisibilities = visibility.forbidden,
             namePattern = field.groupValues[3],
-            jvmDescriptor = field.groupValues[2].toJvmDescriptor(location),
+            jvmDescriptor = field.groupValues[2].takeUnless { it == "***" }?.toJvmDescriptor(location),
         )
     }
 
@@ -394,6 +430,8 @@ public class KeepRuleScanner @JvmOverloads constructor(
         val tokens = line.split(WHITESPACE)
         val directive = tokens.first()
         if (insideMemberBlock) return null
+        if (line == "-dontshrink") return KeepRule(KeepDeclarationKind.CLASS, "**", location = location,
+            shrinkingDisabled = true, rawSpecification = line)
         if (directive == "-if") {
             throw unsupported("conditional keep rules are not supported", location)
         }
@@ -457,6 +495,7 @@ public class KeepRuleScanner @JvmOverloads constructor(
             requiredAnnotationPattern = annotationPattern,
             keptMembers = inlineMembers?.conditions.orEmpty(),
             keepAllMembers = inlineMembers?.keepAll == true,
+            rawSpecification = line.substringBefore('{').trim(),
         )
     }
 

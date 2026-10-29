@@ -1,5 +1,7 @@
 package dev.kartograph.export
 
+import java.security.MessageDigest
+
 /**
  * export가 만드는 machine 문서가 공유하는 최소 JSON 직렬화다.
  * 키 순서는 호출부가 넘긴 정렬된 map이 정하므로 모든 문서가 결정적으로 렌더링된다.
@@ -13,6 +15,57 @@ internal fun boundedJsonValue(value: Any?, maximumBytes: Int, suffix: CharSequen
         appendJsonValue(value)
         append(suffix)
     }.toString()
+}
+
+/** 일반 텍스트 보고서도 같은 증분 UTF-8 출력 한도를 사용한다. */
+internal fun boundedTextValue(maximumBytes: Int, write: Appendable.() -> Unit): String {
+    require(maximumBytes > 0) { "text byte maximum must be positive" }
+    return BoundedJsonAppendable(maximumBytes).apply(write).toString()
+}
+
+/**
+ * [jsonValue] 문서의 UTF-8 바이트 SHA-256이다. 문서를 String이나 byte 배열로 만들지 않고 digest에 바로 흘린다.
+ *
+ * [appendEscapedJson]이 제어 문자와 비ASCII를 모두 escape하므로 문서는 ASCII뿐이고, ASCII 문자는 UTF-8에서 같은 값의
+ * 한 바이트다. 그래서 문자를 그대로 바이트로 넣은 digest가 `jsonValue(value).toByteArray(UTF_8)`의 digest와 같다.
+ * 큰 그래프의 내용 해시가 문서 크기의 몇 배를 할당하지 않게 한다.
+ */
+internal fun jsonSha256(value: Any?): ByteArray = Sha256AsciiAppendable().apply { appendJsonValue(value) }.digest()
+
+/** 받은 ASCII 문자를 64KiB 버퍼에 바이트로 모아 SHA-256에 넣는다. */
+private class Sha256AsciiAppendable : Appendable {
+    private val digest = MessageDigest.getInstance("SHA-256")
+    private val buffer = ByteArray(64 * 1024)
+    private var used = 0
+
+    override fun append(csq: CharSequence?): Appendable {
+        val value = csq ?: "null"
+        return append(value, 0, value.length)
+    }
+
+    override fun append(csq: CharSequence?, start: Int, end: Int): Appendable {
+        val value = csq ?: "null"
+        for (index in start until end) append(value[index])
+        return this
+    }
+
+    // 비ASCII 문자는 UTF-8에서 여러 바이트라 그대로 넣으면 해시가 달라진다. escape를 거치지 않은 문자가 오면 멈춘다.
+    override fun append(c: Char): Appendable {
+        check(c.code < 0x80) { "hashed JSON must be ASCII after escaping; U+%04X reached the digest unescaped".format(c.code) }
+        if (used == buffer.size) flush()
+        buffer[used++] = c.code.toByte()
+        return this
+    }
+
+    fun digest(): ByteArray {
+        flush()
+        return digest.digest()
+    }
+
+    private fun flush() {
+        digest.update(buffer, 0, used)
+        used = 0
+    }
 }
 
 /** 하위 문서마다 임시 문자열을 만들지 않고 같은 버퍼에 순서대로 기록한다. */

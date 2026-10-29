@@ -1,0 +1,117 @@
+name: Descriptive architecture assessment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: descriptive-architecture-assessment
+  cancel-in-progress: false
+
+jobs:
+  assess:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: 13277fbbfd7d26e14a0c5bf7becf826ccb33f6c4
+    steps:
+      - name: Set the owned evidence directory
+        shell: bash
+        run: |
+          printf 'EVIDENCE_DIRECTORY=%s/descriptive-architecture\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          path: baseline
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          path: candidate
+          persist-credentials: false
+      - name: Verify sources and apply only the frozen candidate
+        shell: bash
+        run: |
+          test "$(git -C harness rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C baseline rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git -C candidate rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git -C baseline rev-parse HEAD^{tree})" = "86ea1e2c50cd3f4ecb4b6cdac7ecd7ab0eecef73"
+          test -z "$(git -C baseline status --porcelain)"
+          test -z "$(git -C candidate status --porcelain)"
+          printf '%s  %s\n' \
+            ea5e3efc3f0f563a1bc2015eecb9cab7a2bb1735d390f0485632f1eb9d9f2eba \
+            harness/experiments/descriptive-architecture/candidate.patch | sha256sum --check --strict
+          git -C candidate apply --index "$GITHUB_WORKSPACE/harness/experiments/descriptive-architecture/candidate.patch"
+          mkdir -p "$EVIDENCE_DIRECTORY"
+          git -C harness rev-parse HEAD HEAD^{tree} > "$EVIDENCE_DIRECTORY/harness-source.txt"
+          git -C baseline rev-parse HEAD HEAD^{tree} > "$EVIDENCE_DIRECTORY/baseline-source.txt"
+          git -C candidate rev-parse HEAD HEAD^{tree} > "$EVIDENCE_DIRECTORY/candidate-parent.txt"
+          git -C candidate diff --cached --binary > "$EVIDENCE_DIRECTORY/candidate-applied.patch"
+          printf '%s\n' "$GITHUB_WORKFLOW_REF" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$EVIDENCE_DIRECTORY/workflow.txt"
+          sha256sum harness/Scripts/verify-cli-repeatability.py harness/Scripts/verify-descriptive-architecture.py \
+            harness/experiments/descriptive-architecture/candidate.patch \
+            harness/experiments/descriptive-architecture/candidate-source.json \
+            baseline/Scripts/verify-analysis-smoke-gate.py > "$EVIDENCE_DIRECTORY/scripts.sha256"
+      - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Build the baseline installation and common corpus
+        shell: bash
+        working-directory: baseline
+        run: |
+          set +e
+          ./gradlew --no-daemon -Pkotlin.compiler.execution.strategy=in-process :cli:installDist :gradle-plugin:classes 2>&1 | tee "$EVIDENCE_DIRECTORY/baseline-setup.log"
+          statuses=("${PIPESTATUS[@]}")
+          set -e
+          printf '%s\n' "${statuses[0]}" > "$EVIDENCE_DIRECTORY/baseline-setup-exit.txt"
+          printf '%s\n' "${statuses[1]}" > "$EVIDENCE_DIRECTORY/baseline-log-exit.txt"
+          if (( statuses[0] != 0 )); then exit "${statuses[0]}"; fi
+          exit "${statuses[1]}"
+      - name: Test and build the exact candidate
+        shell: bash
+        working-directory: candidate
+        run: |
+          set +e
+          ./gradlew --no-daemon -Pkotlin.compiler.execution.strategy=in-process :index:test :cli:test :cli:installDist 2>&1 | tee "$EVIDENCE_DIRECTORY/candidate-setup.log"
+          statuses=("${PIPESTATUS[@]}")
+          set -e
+          printf '%s\n' "${statuses[0]}" > "$EVIDENCE_DIRECTORY/candidate-setup-exit.txt"
+          printf '%s\n' "${statuses[1]}" > "$EVIDENCE_DIRECTORY/candidate-log-exit.txt"
+          for module in index cli; do
+            if test -d "$module/build/test-results/test"; then
+              mkdir -p "$EVIDENCE_DIRECTORY/correctness/$module"
+              cp -R "$module/build/test-results/test/." "$EVIDENCE_DIRECTORY/correctness/$module/"
+            fi
+          done
+          if (( statuses[0] != 0 )); then exit "${statuses[0]}"; fi
+          exit "${statuses[1]}"
+      - name: Run the fixed descriptive assessment
+        shell: bash
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=15s 900 python3 harness/Scripts/verify-descriptive-architecture.py \
+            --baseline-root "$GITHUB_WORKSPACE/baseline" --candidate-root "$GITHUB_WORKSPACE/candidate" \
+            --output "$EVIDENCE_DIRECTORY/capture" > "$EVIDENCE_DIRECTORY/driver.stdout" 2> "$EVIDENCE_DIRECTORY/driver.stderr"
+          rc=$?
+          printf '%s\n' "$rc" > "$EVIDENCE_DIRECTORY/outer-exit.txt"
+          exit "$rc"
+      - name: Preserve the complete descriptive outcome
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: descriptive-architecture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/descriptive-architecture/
+            !${{ runner.temp }}/descriptive-architecture/capture/tmp/**
+          if-no-files-found: error
+          retention-days: 14

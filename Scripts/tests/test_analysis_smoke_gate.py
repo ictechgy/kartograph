@@ -56,7 +56,7 @@ class AnalysisSmokeGateTest(unittest.TestCase):
 
     def test_smoke_gate_json_output(self):
         res = self.run_gate("--json")
-        self.assertEqual(res.returncode, 0)
+        self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}\nstderr: {res.stderr}")
         data = json.loads(res.stdout)
         self.assertEqual(data["status"], "PASS")
         # 저장소가 커져도 DOT 간선을 정점으로 잘못 세지 않는지 독립 JSON 출력과 비교한다.
@@ -126,6 +126,45 @@ class AnalysisSmokeGateTest(unittest.TestCase):
         failures = []
         mod.summarize_measurements(samples, counters, failures)
         self.assertEqual(failures, ["'graph' nodes varied across runs: [2100, 2100, 2099]"])
+
+    def test_known_input_hints_preserve_incomplete_analysis_without_findings(self):
+        mod = self.load_module()
+        hints = list(mod.SELF_ANALYSIS_INPUT_HINTS)
+        limitation = "limitation\tDYNAMIC_REGISTRATION\tmanifest-absent runtime component registration is not resolved"
+        result = subprocess.CompletedProcess([], 0, "\n".join(hints + [limitation]) + "\n", "")
+        measurement = {"returncode": 0}
+        failures = []
+        mod.check_contract("dead", "zero_findings", result, measurement, failures)
+        self.assertEqual(failures, [])
+        self.assertEqual(measurement["findings"], 0)
+        self.assertEqual(measurement["inputHints"], hints)
+        self.assertEqual(measurement["limitations"], [limitation])
+        summary = mod.summarize_measurements({"dead": [1.0]}, {"dead": [measurement]}, failures)
+        self.assertEqual(summary["dead"]["inputHints"], hints)
+        self.assertEqual(summary["dead"]["limitations"], [limitation])
+
+    def test_input_hints_cannot_hide_findings_unknown_output_or_failure(self):
+        mod = self.load_module()
+        hints = "\n".join(mod.SELF_ANALYSIS_INPUT_HINTS) + "\n"
+        for extra in ("unreachable\tjvm://fixture.Example#unused()V\n",
+                      "input-hint\tunknown-kind\tnew evidence\n",
+                      "input-hint\tmissing-classpath\tchanged message\n",
+                      "input-hint\tmissing-classpath\n", "unexpected output\n"):
+            with self.subTest(extra=extra):
+                failures, measurement = [], {}
+                mod.check_contract("dead", "zero_findings", subprocess.CompletedProcess([], 0, hints + extra, ""),
+                                   measurement, failures)
+                self.assertEqual(measurement["findings"], 1)
+                self.assertEqual(len(failures), 1)
+        for code, output in ((2, hints), (0, hints + mod.SELF_ANALYSIS_INPUT_HINTS[0] + "\n")):
+            failures = []
+            mod.check_contract("dead", "zero_findings", subprocess.CompletedProcess([], code, output, ""), {}, failures)
+            self.assertEqual(len(failures), 1)
+        failures = []
+        mod.summarize_measurements({"dead": [1.0, 1.0]}, {"dead": [
+            {"returncode": 0, "findings": 0, "inputHints": list(mod.SELF_ANALYSIS_INPUT_HINTS)},
+            {"returncode": 0, "findings": 0, "inputHints": []}]}, failures)
+        self.assertEqual(failures, ["'dead' inputHints varied across runs"])
 
     def test_smoke_gate_fails_on_missing_classes(self):
         with tempfile.TemporaryDirectory(prefix="kartograph-empty-repo-") as tmpdir:
@@ -235,6 +274,64 @@ class AnalysisSmokeGateTest(unittest.TestCase):
         res = self.run_gate("--unsupported-flag")
         self.assertEqual(res.returncode, 64)
         self.assertIn("error: invalid argument:", res.stderr)
+
+
+class AnalysisSmokeFailureJsonTest(unittest.TestCase):
+    def test_default_budget_failure_retains_all_samples_and_exit_one(self):
+        import contextlib
+        import importlib.util
+        import io
+        from unittest.mock import patch
+
+        spec = importlib.util.spec_from_file_location("smoke_gate_failure", SCRIPT)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        observed_passes = []
+
+        def measure(commands, env, samples, counters, failures, diagnostics=None):
+            duration = (3.0, 3.5, 4.0)[len(observed_passes)]
+            observed_passes.append([name for name, _, _ in commands])
+            for name, _, _ in commands:
+                samples[name].append(duration)
+                counters.setdefault(name, []).append({"returncode": 0})
+
+        with tempfile.TemporaryDirectory(prefix="kartograph-smoke-json-") as tmp:
+            root = Path(tmp)
+            binary = root / "kartograph"
+            binary.write_text("unused fixture")
+            for module in mod.MODULES:
+                classes = root / module / "build/classes/kotlin/main"
+                classes.mkdir(parents=True)
+                (classes / "Fixture.class").write_bytes(b"fixture")
+            (root / ".kartograph-self.pro").write_text("")
+            (root / ".kartograph.yml").write_text("")
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with patch.object(mod.os, "access", return_value=True), \
+                    patch.object(mod, "check_java_environment", return_value={}), \
+                    patch.object(mod, "has_working_java", return_value=True), \
+                    patch.object(mod, "run_measurement_pass", side_effect=measure), \
+                    contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                status = mod.main(["--json", "--no-warmup", "--repo-root", str(root),
+                                   "--binary", str(binary)])
+        self.assertEqual(status, 1)
+        result = json.loads(stdout.getvalue())
+        self.assertEqual(result["status"], "FAIL")
+        self.assertEqual(result["runs"], 3)
+        self.assertEqual(result["perCommandBudget"], 5.0)
+        self.assertEqual(result["totalBudget"], 20.0)
+        self.assertEqual(result["totalSeconds"], 21.0)
+        self.assertEqual(result["runTotals"], [18.0, 21.0, 24.0])
+        names = ["graph", "dead", "dead_private", "cycles", "rules", "metrics"]
+        self.assertEqual(observed_passes, [names] * 3)
+        self.assertEqual(list(result["measurements"]), names)
+        for measurement in result["measurements"].values():
+            self.assertEqual(measurement, {"seconds": 3.5, "samples": [3.0, 3.5, 4.0],
+                                           "returncode": 0})
+        self.assertEqual(result["contractFailures"], [])
+        self.assertEqual(result["budgetFailures"], [
+            "total analysis time was 21.000s (sum of per-command medians over 3 runs), exceeding total budget of 20.000s"
+        ])
+        self.assertEqual(stderr.getvalue(), "")
 
 
 if __name__ == "__main__":

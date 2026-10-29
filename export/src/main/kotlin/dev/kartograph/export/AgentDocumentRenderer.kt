@@ -26,6 +26,14 @@ public object AgentDocumentRenderer {
         return jsonValue(document.queryValue(positions)) + "\n"
     }
 
+    /** 저장된 생성 관측 요약만 덧붙이며 기존 optional 필드와 compiler 위치는 유지한다. */
+    public fun query(document: SymbolQueryDocument, graph: CodeGraph, generationSummary: GenerationSummary?): String {
+        if (generationSummary == null) return query(document, graph)
+        val positions = if (document.result == null) emptyMap() else graph.locatedCompilerReferences
+            .groupBy { it.source.value to it.target.value }.mapValues { (_, values) -> values.sortedWith(COMPILER_REFERENCE_COMPARATOR) }
+        return jsonValue(document.queryValue(positions) + ("generationSummary" to generationSummary.value())) + "\n"
+    }
+
     private fun SymbolQueryDocument.queryValue(
         compilerReferences: Map<Pair<String, String>, List<LocatedCompilerReference>> = emptyMap(),
     ): Map<String, Any?> =

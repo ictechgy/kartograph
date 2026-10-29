@@ -7,6 +7,8 @@ import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.Visibility
+import dev.kartograph.core.JvmModifier
+import dev.kartograph.core.KotlinDefaultBridge
 import kotlin.Metadata
 import kotlin.metadata.ClassKind
 import kotlin.metadata.KmClass
@@ -18,6 +20,7 @@ import kotlin.metadata.KmType
 import kotlin.metadata.Visibility as KotlinVisibility
 import kotlin.metadata.isData
 import kotlin.metadata.isInline
+import kotlin.metadata.declaresDefaultValue
 import kotlin.metadata.kind
 import kotlin.metadata.visibility
 import kotlin.metadata.jvm.KotlinClassMetadata
@@ -27,6 +30,7 @@ import kotlin.metadata.jvm.setterSignature
 import kotlin.metadata.jvm.signature
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.Opcodes
+import org.objectweb.asm.Type
 
 internal object KotlinMetadataEnricher {
     fun enrich(facts: ClassFacts, metadataAnnotation: Metadata): ClassFacts {
@@ -49,10 +53,49 @@ internal object KotlinMetadataEnricher {
             }
             else -> Unit
         }
+        val functions = when (metadata) {
+            is KotlinClassMetadata.Class -> metadata.kmClass.functions
+            is KotlinClassMetadata.FileFacade -> metadata.kmPackage.functions
+            is KotlinClassMetadata.MultiFileClassPart -> metadata.kmPackage.functions
+            else -> emptyList()
+        }
+        enrichDefaultBridges(facts, functions, nodes)
         return facts.copy(
             nodes = facts.nodes.map { node -> nodes.getValue(node.id) },
             edges = facts.edges + runtimeEdges,
         )
+    }
+
+    // 이름이나 int 꼬리만으로 추측하면 default expression이 호출한 overload를 원본으로 오인한다.
+    // 같은 owner의 metadata JVM signature와 value parameter 수, 실제 CALL을 모두 요구한다.
+    private fun enrichDefaultBridges(facts: ClassFacts, functions: List<KmFunction>, nodes: MutableMap<NodeId, GraphNode>) {
+        val defaulted = functions.filter { function -> function.valueParameters.any { it.declaresDefaultValue } }
+        if (defaulted.isEmpty()) return
+        val candidates = linkedMapOf<NodeId, MutableSet<KotlinDefaultBridge>>()
+        val calls = facts.calls.groupBy { it.caller }
+        defaulted.forEach { function ->
+            val signature = function.signature ?: return@forEach
+            val targetId = JvmNodeId.methodId(facts.internalName, signature.name, signature.descriptor)
+            val target = nodes[targetId] ?: return@forEach
+            val valueCount = function.valueParameters.size
+            if (valueCount !in 1..255) return@forEach
+            val maskCount = (valueCount + 31) / 32
+            val arguments = buildList {
+                if (JvmModifier.STATIC !in target.jvmModifiers) add(Type.getObjectType(facts.internalName))
+                addAll(Type.getArgumentTypes(signature.descriptor))
+                repeat(maskCount) { add(Type.INT_TYPE) }
+                add(Type.getType("Ljava/lang/Object;"))
+            }
+            val descriptor = Type.getMethodDescriptor(Type.getReturnType(signature.descriptor), *arguments.toTypedArray())
+            val bridgeId = JvmNodeId.methodId(facts.internalName, signature.name + "\$default", descriptor)
+            val bridge = nodes[bridgeId] ?: return@forEach
+            if (bridge.kotlinSourceName != null || JvmModifier.STATIC !in bridge.jvmModifiers ||
+                JvmModifier.SYNTHETIC !in bridge.jvmModifiers || calls[bridgeId].orEmpty().none { it.target == targetId }) return@forEach
+            candidates.getOrPut(bridgeId) { linkedSetOf() } += KotlinDefaultBridge(targetId, valueCount, maskCount)
+        }
+        candidates.forEach { (bridge, associations) ->
+            associations.singleOrNull()?.let { association -> nodes.patch(bridge) { it.copy(kotlinDefaultBridge = association) } }
+        }
     }
 
     private fun enrichClass(owner: String, kmClass: KmClass, nodes: MutableMap<NodeId, GraphNode>) {

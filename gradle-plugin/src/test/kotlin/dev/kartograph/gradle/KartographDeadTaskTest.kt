@@ -17,6 +17,36 @@ import org.junit.jupiter.api.io.TempDir
 
 class KartographDeadTaskTest {
     @Test
+    fun `unknown variant keep rules stay unknown and explicit replacement is reported`(@TempDir root: Path) {
+        val unsupported = root.resolve("variant.pro").also { it.writeText("-unsupported\n-keep,includecode class **\n") }
+        val replacement = root.resolve("replacement.pro").also { it.writeText("-dontshrink\n") }
+        val task = configuredTask(root, strict = false)
+        task.variantKeepRuleFiles.from(unsupported)
+        assertFailsWith<KeepRuleScanningException> { task.analyze() }
+        task.keepRuleMode.set("lenient")
+        task.analyze()
+        val report = root.resolve("build/reports/kartograph/debug.txt")
+        assertContains(report.readText(), "unknown-keep-rules")
+        assertFalse(report.readText().contains("unreachable\t"))
+        task.strict.set(true)
+        assertContains(assertFailsWith<GradleException> { task.analyze() }.message.orEmpty(), "unknown")
+        task.baselineWriteFile.set(root.resolve("invalid-baseline.json").toFile())
+        assertContains(assertFailsWith<GradleException> { task.analyze() }.message.orEmpty(), "unknown")
+        assertFalse(root.resolve("invalid-baseline.json").toFile().exists())
+        task.baselineWriteFile.unset()
+        task.keepRuleMode.set("strict")
+        task.useVariantKeepRules.set(false)
+        task.keepRuleFiles.from(replacement)
+        task.analyze()
+        assertContains(report.readText(), "keep-rule-inputs-excluded")
+        assertFalse(report.readText().contains("unknown-keep-rules"))
+        task.useVariantKeepRules.set(true)
+        task.excludedKeepRuleFiles.from(unsupported)
+        task.analyze()
+        assertContains(report.readText(), "keep-rule-inputs-excluded")
+        for (name in listOf("keepRuleMode", "useVariantKeepRules")) assertTrue(name in task.inputs.properties)
+    }
+    @Test
     fun `generated input provenance is shared with dead reporting`(@TempDir projectRoot: Path) {
         val task = configuredTask(projectRoot, strict = true)
         task.generatedClassRoots.from(task.projectDirectories.get().map { it.asFile })
@@ -37,13 +67,13 @@ class KartographDeadTaskTest {
     }
 
     @Test
-    fun `input hints stay out of a report without findings`(@TempDir projectRoot: Path) {
+    fun `input hints remain visible in a report without findings`(@TempDir projectRoot: Path) {
         val task = configuredTask(projectRoot, strict = true)
         task.generatedClassRoots.from(task.projectDirectories.get().map { it.asFile })
 
         task.analyze()
 
-        assertFalse(projectRoot.resolve("build/reports/kartograph/debug.txt").readText().contains("input-hint\t"))
+        assertContains(projectRoot.resolve("build/reports/kartograph/debug.txt").readText(), "input-hint\tmissing-classpath\t")
     }
 
     @Test
@@ -95,7 +125,7 @@ class KartographDeadTaskTest {
         assertFalse(report.contains("unreachable\t"))
         assertContains(report, "limitation\tREFLECTION_STRINGS")
         // baseline이 finding을 모두 억제했으므로 누락 입력 hint도 나오지 않는다.
-        assertFalse(report.contains("input-hint\t"))
+        assertContains(report, "input-hint\tmissing-classpath\t")
     }
 
     @Test

@@ -44,6 +44,7 @@ Gradle 9.6.1의 [Java agent·TestKit configuration cache 제약](https://docs.gr
 
 `VERSION`을 단일 원천으로 사용한다. `verify-release-readiness.sh`는 두 번의 clean build와 ZIP/TAR/JAR/POM 해시·내장 고지·압축 해제 CLI/PR 도우미를 검사하며 publish하지 않는다. 다른 로컬 빌드와 동시에 실행하지 않는다.
 release workflow는 tag별 실행을 직렬화하고 실행 중 자동 취소하지 않는다. 별도 tag 사이의 실행 순서는 보장하지 않으므로 여러 버전을 동시에 게시하지 않는다.
+verify job은 비밀·쓰기 권한 없이 fixture·전체 테스트·readiness를 실행하고 배포물 해시 목록만 넘긴다. 환경 `release`의 publish job은 테스트 없이 루트·compiler-collectors 배포물을 캐시 없이 다시 빌드해 목록이 같을 때만 tag·GitHub release·Portal에 쓴다. 다르면 아무것도 쓰지 않고 실패한다. 어느 파일이 다른지는 verify 증거의 `second.sha256`과 publish 로그의 재빌드 해시로 찾는다. 원인은 verify 증거(`release-readiness`)의 배포물과, publish job이 실패했을 때 남기는 재빌드 배포물(`release-publish-rebuild-<attempt>`)을 바이트로 비교해 가린다. 환경에 보호 규칙을 두면 승인 요청은 verify job이 끝난 뒤에 뜬다.
 GitHub asset이 이미 있으면 upload가 실패하도록 해 원본을 보존한다. GitHub만 성공하고 Portal이 실패한 부분 배포는 상태를 확인한 후 승인된 복구를 한다. 재실행을 위해 기존 asset/tag를 자동 제거하지 않는다.
 GitHub 공개, Portal 제출, Portal 승인, 독립 프로젝트 설치는 별도 결과다. 확인하지 않은 단계는 완료라고 쓰지 않는다.
 
@@ -68,3 +69,13 @@ PR CI와 tag workflow 모두 같은 fixture를 실행하며, 이어서 `Scripts/
 시스템 JDK는 배포 runtime inventory에 포함하지 않는다. `verify-release-readiness.sh`는 이 SBOM 두 개와
 배포물 SHA256SUMS까지 두 번 빌드해 재현성을 확인한다. 사용자는 release 파일들을 같은 디렉터리에 받은 후
 `shasum -a 256 -c SHA256SUMS`로 무결성을 확인할 수 있다.
+
+### 0.25.0 resource package readiness
+
+release preparation은 기존 readiness에서 최종 retained plugin JAR와 압축 해제 ZIP/TAR CLI를 사용해
+layout XML→정확한 R 필드→코드/테스트 및 literal include를 재검증해야 한다. 소스 빌드 CI를 package 검증으로
+대신하지 않는다. JDK17, SDK35/build-tools35.0.0 및 GRADLE_8_HOME의 Gradle8.10.2가 필요하다.
+두 archive CLI는 동일 before/after snapshot을 질의하며 의미 결과와 기존 음성 대조군을 비교한다.
+최종 clean build의 SHA256SUMS·artifact 해시와 실제 소비한 plugin/CLI library identity를 보존한다.
+패키지 검증 도중 installDist나 plugin source 재빌드로 검증 대상을 바꾸지 않는다.
+exact-main readiness와 공개 배포/독립 설치는 별도 단계다. resource scope는 partial이며 runtime inflation을 주장하지 않는다.

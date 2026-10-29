@@ -1,0 +1,182 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.attribute.BasicFileAttributes
+import java.security.MessageDigest
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolutionResult
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
+import org.gradle.api.artifacts.result.ResolvedDependencyResult
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.*
+import org.gradle.work.DisableCachingByDefault
+
+// Configuration 객체를 task action에 보관하지 않고 실제 해석 결과의 값만 전달한다.
+class ModuleArtifactRows implements Transformer<List<String>, Set<ResolvedArtifactResult>>, Serializable {
+    List<String> transform(Set<ResolvedArtifactResult> artifacts) {
+        if (artifacts.size() != 14) throw new GradleException('expected fourteen module artifacts')
+        artifacts.collect { artifact ->
+            def id = artifact.id.componentIdentifier
+            if (!(id instanceof ModuleComponentIdentifier)) throw new GradleException('artifact has no module identity')
+            def path = artifact.file.absolutePath
+            if (path.contains('\t') || path.contains('\n') || path.contains('\r')) throw new GradleException('invalid artifact path')
+            "${id.group}:${id.module}:${id.version}\t$path".toString()
+        }
+    }
+}
+
+@DisableCachingByDefault(because = 'The fixture validates the actual resolved runtime before every compiler invocation')
+abstract class VerifyCompilerBuildTools extends DefaultTask {
+    @Input abstract Property<ResolutionResult> getObservedResolution()
+    @Input abstract ListProperty<String> getArtifactRows()
+    @Classpath abstract ConfigurableFileCollection getRuntimeFiles()
+    @InputFile @PathSensitive(PathSensitivity.NONE) abstract RegularFileProperty getExpectedReceipt()
+    @InputDirectory @PathSensitive(PathSensitivity.RELATIVE) abstract DirectoryProperty getOriginalMirror()
+    @OutputFile abstract RegularFileProperty getVerificationFile()
+
+    static String coordinate(id) {
+        if (!(id instanceof ModuleComponentIdentifier)) throw new GradleException('selected component has no module identity')
+        "${id.group}:${id.module}:${id.version}".toString()
+    }
+
+    static byte[] boundedBytes(File file, long limit) {
+        def path = file.toPath()
+        def before = Files.readAttributes(path, BasicFileAttributes, LinkOption.NOFOLLOW_LINKS)
+        if (!before.isRegularFile() || before.size() > limit || path.toRealPath() != path.toAbsolutePath().normalize()) {
+            throw new GradleException('runtime input is not bounded and regular')
+        }
+        byte[] bytes
+        Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).withCloseable { input -> bytes = input.readNBytes((int)limit + 1) }
+        def after = Files.readAttributes(path, BasicFileAttributes, LinkOption.NOFOLLOW_LINKS)
+        if (!after.isRegularFile() || bytes.length != before.size() || before.fileKey() != after.fileKey() ||
+            before.lastModifiedTime() != after.lastModifiedTime() || before.size() != after.size()) {
+            throw new GradleException('runtime input changed while reading')
+        }
+        bytes
+    }
+
+    static String sha(byte[] bytes) { MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString() }
+
+    @TaskAction void verify() {
+        byte[] receiptBytes = boundedBytes(expectedReceipt.get().asFile, 1024 * 1024)
+        def expected = new JsonSlurper().parse(receiptBytes)
+        def fields = ['schemaVersion','profile','kotlinVersion','roots','graph','selectedModules','naturalArtifactOrder',
+                      'naturalFileOrder','artifactlessModules','metadataReferences','entries'] as Set
+        if (expected.keySet() != fields || !(expected.schemaVersion instanceof Integer) || expected.schemaVersion != 1 ||
+            expected.profile != 'kartograph-build-tools-module-mirror' || expected.kotlinVersion != '2.4.20' ||
+            expected.entries.size() != 31 || expected.selectedModules.size() != 14 || expected.artifactlessModules != []) {
+            throw new GradleException('module receipt profile differs')
+        }
+        def mirror = originalMirror.get().asFile.toPath().toAbsolutePath().normalize()
+        def expectedFiles = [:]
+        def expectedDirectories = [] as Set
+        int artifactCount = 0; int metadataCount = 0
+        expected.entries.each { row ->
+            if (!(row.path instanceof String) || !(row.kind in ['artifact','metadata'])) throw new GradleException('invalid mirror row')
+            if (row.kind == 'artifact') artifactCount++ else metadataCount++
+            def parts = row.path.split('/', -1)
+            if (parts.any { !(it ==~ /[A-Za-z0-9_.+-]+/) || it == '.' || it == '..' } || expectedFiles.put(row.path, row) != null) {
+                throw new GradleException('invalid or duplicate mirror entry')
+            }
+            for (int i = 1; i < parts.length; i++) expectedDirectories.add(parts.take(i).join('/'))
+        }
+        if (artifactCount != 14 || metadataCount != 17) throw new GradleException('mirror role counts differ')
+        def actualDirectories = [] as Set
+        def pending = [mirror]
+        def actualFiles = [] as Set
+        int count = 0
+        long total = 0
+        while (!pending.isEmpty()) {
+            def directory = pending.remove(0)
+            if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) throw new GradleException('mirror directory changed')
+            Files.newDirectoryStream(directory).withCloseable { stream ->
+                stream.each { child ->
+                    if (++count > 128) throw new GradleException('mirror entry limit')
+                    if (Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)) {
+                        def relative = mirror.relativize(child).toString().replace(File.separatorChar, '/' as char)
+                        if (!expectedDirectories.contains(relative)) throw new GradleException('unexpected mirror directory')
+                        actualDirectories.add(relative); pending.add(child)
+                    } else {
+                        def relative = mirror.relativize(child).toString().replace(File.separatorChar, '/' as char)
+                        def row = expectedFiles[relative]
+                        if (row == null) throw new GradleException('unexpected mirror file')
+                        byte[] bytes = boundedBytes(child.toFile(), row.kind == 'metadata' ? 1024 * 1024 : 128 * 1024 * 1024)
+                        total += bytes.length
+                        if (total > 128L * 1024 * 1024 || bytes.length != row.bytes || sha(bytes) != row.sha256) {
+                            throw new GradleException('mirror bytes differ')
+                        }
+                        actualFiles += relative
+                    }
+                }
+            }
+        }
+        if (actualFiles != expectedFiles.keySet() || actualDirectories != expectedDirectories) throw new GradleException('mirror file membership differs')
+        def observed = observedResolution.get()
+        def root = observed.rootComponent.get()
+        def selected = observed.allComponents.findAll { it.id != root.id }
+        if (selected.size() != 14) throw new GradleException('complete selected component count differs')
+        def graph = [:]
+        selected.each { component ->
+            def key = coordinate(component.id)
+            if (graph.containsKey(key)) throw new GradleException('duplicate selected module')
+            def edges = component.dependencies.collect { edge ->
+                if (!(edge instanceof ResolvedDependencyResult)) throw new GradleException('unresolved selected edge')
+                coordinate(edge.selected.id)
+            }
+            if (edges.size() > 64) throw new GradleException('selected edge bound')
+            graph[key] = edges.unique().sort()
+        }
+        def roots = root.dependencies.collect { edge ->
+            if (!(edge instanceof ResolvedDependencyResult)) throw new GradleException('unresolved module root')
+            coordinate(edge.selected.id)
+        }.sort()
+        if (roots != expected.roots || graph != expected.graph || graph.keySet().toList().sort() != expected.selectedModules) {
+            throw new GradleException('actual module graph differs from captured complete closure')
+        }
+        def artifactEntries = expected.entries.findAll { it.kind == 'artifact' }.collectEntries { [(it.coordinate): it] }
+        if (artifactEntries.size() != 14) throw new GradleException('artifact receipt is incomplete')
+        def artifactOrder = []; def byPath = [:]
+        artifactRows.get().each { line ->
+            def parts = line.split('\t', -1)
+            if (parts.size() != 2 || !artifactEntries.containsKey(parts[0]) || artifactOrder.contains(parts[0]) || byPath.containsKey(parts[1])) {
+                throw new GradleException('artifact module identity is ambiguous')
+            }
+            def row = artifactEntries[parts[0]]; def file = new File(parts[1])
+            byte[] bytes = boundedBytes(file,128 * 1024 * 1024)
+            if (file.name != new File(row.path).name || bytes.length != row.bytes || sha(bytes) != row.sha256) {
+                throw new GradleException('actual module artifact bytes differ')
+            }
+            artifactOrder += parts[0]; byPath[file.canonicalPath] = parts[0]
+        }
+        def fileOrder = runtimeFiles.files.collect { file ->
+            def key = byPath[file.canonicalPath]
+            if (key == null) throw new GradleException('runtime file lacks module identity')
+            key
+        }
+        if (artifactOrder != expected.naturalArtifactOrder || fileOrder != expected.naturalFileOrder) {
+            throw new GradleException('actual natural artifact or file order differs')
+        }
+        def output = verificationFile.get().asFile
+        output.parentFile.mkdirs()
+        output.setText(JsonOutput.prettyPrint(JsonOutput.toJson([schemaVersion:1, status:'verified',
+            expectedReceiptSha256:sha(receiptBytes), selectedModules:graph.keySet().toList().sort(), graph:graph.sort(),
+            naturalArtifactOrder:artifactOrder, naturalFileOrder:fileOrder])) + '\n', 'UTF-8')
+    }
+}
+
+def tools = configurations.named('kotlinBuildToolsApiClasspath')
+def verification = tasks.register('verifyCompilerBuildTools', VerifyCompilerBuildTools) {
+    observedResolution.set(tools.map { it.incoming.resolutionResult })
+    artifactRows.set(tools.get().incoming.artifacts.resolvedArtifacts.map(new ModuleArtifactRows()))
+    runtimeFiles.from(tools)
+    expectedReceipt.set(file(controlledBuildToolsReceipt))
+    originalMirror.set(file(controlledBuildToolsMirror))
+    verificationFile.set(layout.buildDirectory.file('verification/build-tools-module-runtime.json'))
+    outputs.upToDateWhen { false }
+}
+tasks.named('compileKotlin').configure { dependsOn(verification) }

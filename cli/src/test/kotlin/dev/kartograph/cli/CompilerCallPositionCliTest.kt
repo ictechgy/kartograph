@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -133,12 +134,15 @@ class CompilerCallPositionCliTest {
         val classpathValue = System.getenv("KARTOGRAPH_KOTLIN_CLASSPATH")
         val javaHomeValue = System.getenv("KARTOGRAPH_JDK17_HOME")
         assumeTrue(!collectorValue.isNullOrBlank() && !classpathValue.isNullOrBlank() && !javaHomeValue.isNullOrBlank(),
-            "packaged collector, Kotlin 2.4.10 classpath and JDK 17 are required")
+            "packaged collector, explicit Kotlin classpath/version and JDK 17 are required")
         val collector = Path.of(collectorValue).toRealPath()
         val compilerClasspath = classpathValue.split(File.pathSeparator).filter(String::isNotBlank).map { Path.of(it).toRealPath() }
         val javaHome = Path.of(javaHomeValue).toRealPath()
         assumeTrue(Files.isRegularFile(collector) && compilerClasspath.isNotEmpty() && compilerClasspath.all(Files::isRegularFile))
-        val stdlib = compilerClasspath.single { it.fileName.toString().startsWith("kotlin-stdlib-2.4.10") }
+        val kotlinVersion = requireNotNull(System.getenv("KARTOGRAPH_CALL_KOTLIN_VERSION"))
+        require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(kotlinVersion))
+        kotlinRuntimeArtifact(compilerClasspath, "kotlin-compiler-embeddable", kotlinVersion)
+        val stdlib = kotlinRuntimeArtifact(compilerClasspath, "kotlin-stdlib", kotlinVersion)
         val sources = Files.createDirectories(root.resolve("src/main/kotlin/demo"))
         val users = Files.writeString(sources.resolve("KotlinUsers.kt"), KOTLIN_USERS)
         val targets = Files.writeString(sources.resolve("KotlinTargets.kt"), KOTLIN_TARGETS)
@@ -209,7 +213,33 @@ class CompilerCallPositionCliTest {
         val query = execute("query", target.value, "--graph-file", file.toString())
         assertEquals(0, query.status, query.error)
         assertContains(query.output, "\"coordinateBasis\": \"kotlinUtf16NormalizedSource\"")
-        assertContains(query.output, "\"compilerVersion\": \"2.4.10\"")
+        assertContains(query.output, "\"compilerVersion\": \"$kotlinVersion\"")
+    }
+
+    @Test
+    fun `live Kotlin runtime selector rejects missing duplicate wrong and mixed artifacts`(@TempDir root: Path) {
+        for (artifact in listOf("kotlin-compiler-embeddable", "kotlin-stdlib")) {
+            val current = Files.write(root.resolve("$artifact-2.4.20.jar"), byteArrayOf(1))
+            val previous = Files.write(root.resolve("$artifact-2.4.10.jar"), byteArrayOf(2))
+            assertEquals(current, kotlinRuntimeArtifact(listOf(current), artifact, "2.4.20"))
+            for (paths in listOf(emptyList(), listOf(current, current), listOf(previous), listOf(current, previous))) {
+                assertFailsWith<IllegalArgumentException> { kotlinRuntimeArtifact(paths, artifact, "2.4.20") }
+            }
+            Files.delete(current)
+            assertFailsWith<IllegalArgumentException> { kotlinRuntimeArtifact(listOf(current), artifact, "2.4.20") }
+        }
+    }
+
+    private fun kotlinRuntimeArtifact(classpath: List<Path>, artifact: String, version: String): Path {
+        val candidates = classpath.filter {
+            it.fileName.toString().startsWith("$artifact-") && it.fileName.toString().endsWith(".jar")
+        }
+        require(candidates.size == 1) { "expected exactly one Kotlin runtime artifact" }
+        return candidates.single().also {
+            require(it.fileName.toString() == "$artifact-$version.jar" && Files.isRegularFile(it)) {
+                "unexpected or missing Kotlin runtime artifact"
+            }
+        }
     }
 
     private fun execute(vararg args: String): Result {

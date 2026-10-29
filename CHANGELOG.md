@@ -6,7 +6,344 @@
 
 ## [Unreleased]
 
-## [0.20.1] - 2026-10-11
+### Added
+
+- Bounded DataBinding annotation/XML candidate evidence for same-element `requireAll`,
+  multiple attributes, overload ambiguity and explicit resource-priority assertions.
+  `dead`/`why` preserve exact unresolved adapter diagnostics, snapshot/MCP preserve the
+  limitations, and `bindings` exposes independent compiled caller paths without adding
+  retention roots. See [scope and migration](docs/DATA-BINDING-EVIDENCE.md).
+- Unresolved adapter evidence follows bounded observed bytecode calls to helper
+  findings without changing graph reachability. Android compiler snapshots include
+  declared processor metadata inputs; inaccessible provider inputs reject the witness
+  while preserving ordinary compilation.
+
+## [0.26.0] - 2026-10-22
+
+이 항목은 릴리스 준비 기록이다. GitHub asset 및 Gradle Portal publication/설치 검증은 별도 절차이며,
+태그나 문서만으로 배포 완료를 의미하지 않는다. CLI/plugin/collector/library를 같은 버전으로 맞추고
+before/current snapshot을 다시 캡처한다. 기존 impact JSON/API는 유지되며 Git 문맥은 opt-in wrapper로 추가된다.
+
+### Added
+
+- 0.25.0 feedback: aggregate strict/lenient keep diagnostics, shrinking-disabled and unknown
+  retention evidence; repeated resource roots; bounded framework callback/mapper evidence;
+  Hilt input hints and verified generation markers. See [migration and limits](docs/FEEDBACK-026.md).
+- Gradle graph export options now match CLI JSON/NDJSON, origin filtering, dispatch candidate
+  limits and external stubs. Snapshot limits remain 64 MiB by default and accept explicit
+  values up to 1024 MiB, with matching compact write/read expansion budgets.
+- Partial source traversal preserves readable siblings; declaration locations and recoverable
+  fields avoid fabricated coordinates. Module metadata no longer prefixes language qualified
+  names. Closed output consumers and storage failures have distinct diagnostics.
+
+- opt-in `impact --git-base`와 MCP `change_impact`가 실제 Git base/head 또는 작업 트리 변경의
+  삭제·rename 양쪽 경로를 기존 before/current 영향 탐색에 연결한다. 새 `kartograph-change-impact` v1은
+  원래 graphImpact, exact snapshot SHA-256, 전체 파일 seed 정밀도, 별도 current/base freshness를 보존한다.
+  commit 라벨을 source/build freshness로 대신하지 않으며 기존 기본 impact 출력·탐색 API는 유지한다.
+
+- language-traversal 간선을 한 번 조립해 순회와 `graphRevision`에 함께 쓰는 라이브러리 API
+  `TraversalEdges.prepare`, `LanguageTraversal.traverse(prepared, ...)`,
+  `LanguageTraversalCodec.graphRevision(graph, traversalEdges, ...)`와 이름·한정 이름 root를 한 번 만든
+  색인으로 해석하는 `TraversalRootResolver`를 추가한다. 기존 공개 시그니처와 data class 형태는 그대로다.
+
+### Fixed
+
+- 호출 선언 보강에서 모든 호출을 재검증하되 값이 바뀐 행만 복사하고, 변경이 없으면 기존 불변 그래프를
+  재사용한다. 누락된 header의 오래된 선언은 계속 제거하며 분석 범위와 성능 게이트 예산은 바꾸지 않는다.
+
+- bridges·`routes --role client`·schema의 snapshot USR 부착과 React Native 이벤트의 주석 판정이
+  `'"'` 같은 문자 리터럴 뒤에서 어긋나던 문제를 고친다. 주석 속 emit을 사실로 내거나, 함수 머리를 놓쳐
+  USR을 빠뜨리거나, 다른 함수의 USR을 한계 표시 없이 붙이던 경우다.
+- Kotlin 백틱 이름(`` `isn't ready` ``) 속 `'`·`"`를 인용 시작으로 읽던 문제를 고친다. 그 뒤의 함수에서
+  bridges의 snapshot USR이 빠지고, routes·schema·`bridges --messages`·`--events`가 사실을 놓치던 경우다.
+- Windows에서 `bridges --rn-events` 문서의 `project`만 `\` 구분자로 남아 다른 교환 문서와 조인되지 않던
+  문제를 고친다. POSIX 출력은 그대로다.
+- 서로를 가리키는 `@AliasFor` 사슬에서 `routes --role server`가 StackOverflowError(exit 2)로 끝나던 문제를
+  고친다. source·class root 모두, Spring이 시작할 때 거부하는 이런 별칭을 쓴 핸들러는 메타 어노테이션의
+  경로를 확정 사실로 내지 않는다. dynamic 사실과 `route-coverage:` 한계로 남긴다.
+- 서로를 여러 번 참조하는 설정 플레이스홀더·어노테이션 상수·경로 식 때문에 `routes`가 끝나지 않거나
+  OutOfMemoryError로 끝나던 문제를 고친다. 최상위 해석마다 펼침 1만 번·새로 만든 문자 64KiB를 넘으면
+  기존 placeholder·dynamic·unresolved 한계로 남긴다. 경로 식은 펼치며 읽은 식 문자 1MiB도 센다. 큰 식을
+  거듭 따라가는 입력이 펼침 횟수 상한 안에서 오래 걸리지 않게 한다. 상한 안의 입력은 출력이 그대로다.
+- `routes --role client`가 exit 2("unable to scan route calls")로 끝나던 두 경우를 고친다. 자기 이름을
+  가리거나 서로를 가리키는 지역 `val`의 query 꼬리 증명이 스택을 다 쓰던 경우와, Retrofit
+  `@Path(value = 상수, encoded = true)`처럼 함수 머리 안에서 이름을 풀던 경우다.
+- `reach`·`impact --format language-traversal`의 revision 확인과 `dead --since`가 현재 디렉터리나 상대 PATH
+  항목의 git을 실행하지 않도록 PATH의 절대경로 항목에서 찾은 git만 실행하고, 분석 대상 저장소 config의
+  `core.fsmonitor` 명령을 끈다. filter·서명 확인·서브모듈 등 나머지 git 설정의 경계는 아래 Security 절과
+  [SECURITY.md](SECURITY.md)를 본다.
+- `verify-snapshot`의 사용 오류가 stderr 없이 64로 끝나던 것을 원인별 `error: ...` 문구로 알린다.
+  거부 조건과 종료 코드는 그대로이며 경로·값은 싣지 않는다.
+- source 경로 해석 중 프로젝트 순회가 밖을 가리키는 `.kt`/`.java` 링크·끊긴 링크·읽을 수 없는 디렉터리로
+  실패하면 `unresolved-source-paths`·`unavailable-source-paths` 한계가 생성·외부 source 부재 대신 순회
+  실패를 원인으로 적는다. 접두사는 그대로다.
+- [SECURITY.md](SECURITY.md)가 bridge-facts의 `project`를 `.`로 설명하던 것을 고친다. bridges·routes·schema와
+  `reach`·`impact --format language-traversal` 문서의 `project`는 사용자 홈이나 계정 이름을 드러낼 수 있는
+  canonical POSIX 절대 realpath이므로 공개 전에 치환하거나 지운다.
+
+### Changed
+
+- 아래 Security 절의 git 경계 때문에 filter를 실행하지 않으므로, git-lfs처럼 filter로 정규화되는 파일은 stat
+  정보가 index와 다르면 커밋과 내용이 달라 보인다. 그때 `reach`·`impact --format language-traversal`은
+  `--revision`·snapshot 라벨이 없을 때 싣던 `HEAD` revision을 생략하고, `dead --since`는 그런 파일과 시각만 바뀐
+  파일도 범위에 넣는다. `Scripts/check-impact.py`는 그런 파일을 작업 트리 변경으로 보고 exit 2로 끝난다. 신뢰하는
+  checkout이면 먼저 `git update-index --refresh`로 stat 정보를 갱신한다.
+- 프로젝트 아래에 서브모듈(gitlink)이 있으면 깨끗함을 증명할 수 없어 `HEAD` revision을 생략하고(`--revision`으로
+  준다) 순회 문서에 `revision-unverified:` limitation을 남긴다. `dead --since`와 `Scripts/check-impact.py`는 서브모듈이
+  가리키는 커밋의 변화만 보고 서브모듈 안의 커밋하지 않은 변경은 보지 않는다. `check-impact.py`는 서브모듈이 있으면
+  보고서 `limitations`에 `current: working-tree-submodules-unchecked:` 문구를 더한다.
+- `-c`로 그대로 덮을 수 없는 filter 드라이버 이름(`A-Z a-z 0-9 . _ + -` 밖의 문자가 든 이름)이 있거나 git 설정을
+  읽지 못하면 git을 실행하지 않는다. `HEAD` revision은 생략하고(순회 문서에 `revision-unverified:` limitation),
+  `dead --since`와 PR 도우미(`Scripts/check-pr.py`·`Scripts/check-impact.py`)는 exit 2로 끝난다.
+- partial clone(`--filter`로 받은 clone)에서 빠진 객체가 필요하면 받아 오지 않는다(아래 Security 절). `dead --since`와
+  `check-impact.py`의 diff는 rename을 판정하지 않아 blobless clone(`--filter=blob:none`)에서도 지금처럼 동작한다. 기준
+  commit의 tree가 없는 `--filter=tree:0` clone처럼 객체가 꼭 필요하면 `dead --since`는 partial clone임을 알리는 오류로,
+  `check-impact.py`는 같은 안내를 덧붙인 오류로 exit 2가 되고 revision 확인은 revision을 생략한다. `Scripts/check-pr.py`는
+  PR이 baseline을 고쳐 기준 commit의 baseline blob이 blobless clone에 없으면 exit 2로 끝난다. `--filter` 없이 clone하거나
+  신뢰하는 단계에서 객체를 먼저 받는다.
+- `schema`의 persistence `relation-use`가 관계 이름이 아닌 세 SQL 자리를 더는 사실로 내지 않는다. 같은 문장 안에서
+  한정자 없이 쓴 CTE 이름(`WITH recent AS (…) SELECT * FROM recent`), 함수 인자 안의 `FROM`
+  (`EXTRACT(YEAR FROM created_at)`·`TRIM(BOTH ' ' FROM name)`), `IS [NOT] DISTINCT FROM`의 피연산자(`$1` 포함)다.
+  Room `@Query`, JDBC·Spring JDBC·jOOQ plain-SQL 인자, JPA native 질의, SQL 모양 문자열 리터럴, SQLDelight
+  `.sq`/`.sqm`이 모두 해당한다. isthmus가 완전한 카탈로그와 맞출 때 거짓 `relation-use-without-decl` error를 내던
+  원인이며, 계열의 persistence 생산자들과 같은 규칙이다. 그 자리의 자리표시자(`EXTRACT(EPOCH FROM ?)`·
+  `IS DISTINCT FROM ?`)는 dynamic 사실과 `unjoined-dynamic-relations` 수에서도 빠진다. CTE 규칙은 문장 단위라 CTE와
+  같은 이름의 테이블을 같은 문장에서 쓰면 그 사용도 내지 않는다. 그 밖의 출력은 그대로다.
+- Gradle `kartographDependencies*` task의 build cache 키가 checkout·`GRADLE_USER_HOME` 위치와 무관해져, 같은
+  의존성·class 입력이면 다른 checkout·CI agent에서도 `FROM-CACHE`로 결과를 재사용한다. task 입력
+  `declarations`·`resolved`의 artifact 열은 root project·Gradle user home 기준 위치 키(`{root}/…`,
+  `{gradle-user-home}/…`)가 되고, 실제 파일 위치는 새 `artifactLocations`(입력 아님)에, 키와 파일의 대응은 새
+  `artifactLocationPositions`(입력)에 둔다. 두 디렉터리 밖의 artifact는 배치가 같을 때만, Android AAR 같은 Gradle
+  transform 출력은 Gradle이 정한 작업 디렉터리 이름이 같을 때만 재사용한다. 보고서의 artifact 열은 예전처럼 파일
+  이름이고, artifact 열에 경로를 적는 수동 task 설정도 그대로 동작한다([docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)).
+- **Breaking**: Gradle task가 내는 file 의존성 coordinate `file:<이름>#<해시>`의 해시를 절대경로 대신 위 위치 키로
+  만든다. root project·Gradle user home 안의 파일은 보고서 coordinate와 `dependencies-v1` 지문이 checkout 위치와
+  무관해진다. 두 디렉터리 밖의 파일은 root와의 상대 배치가 같을 때만 같은 지문이라, monorepo 형제 디렉터리의 jar는
+  checkout마다 같아지고 `/opt/libs/vendor.jar`처럼 위치가 고정된 jar는 checkout 깊이가 다르면 달라진다(0.25.0까지는
+  절대 경로가 같으면 같았다). 0.25.0 이하에서 저장한 dependency baseline·suppress의 `file:` 항목은 맞지 않으므로 다시
+  capture한다. CLI `dependencies`(TSV 입력)의 출력은 그대로다.
+- impact의 `--files-from`·`--symbol` 선택, language-traversal의 root 해석·root 목록·`graphRevision`,
+  query 이웃 탐색, bridges·routes·schema의 snapshot 신원 부착, 저장 snapshot의 processor 출력 검증,
+  JPA 명명 감지, Android resource XML 읽기, Kotlin route 소스의 문장 끝 판정, routes 경로 식의 지역 선언
+  조회에서 요청·사실·정점·펼침 수에 비례해 반복하던 스캔·재읽기·복사를 줄인다. 출력은 바뀌지 않으며
+  측정한 입력 밖의 속도·메모리 향상을 보장하지 않는다.
+
+### Security
+
+- `reach`·`impact --format language-traversal`의 revision 확인, `dead --since`, 배포본의 PR 도우미
+  (`Scripts/check-pr.py`·`Scripts/check-impact.py`)가 분석 대상 저장소의 git 설정이 고른 명령을 실행하지 않는다.
+  git을 부를 때마다 바로 앞에서 설정된 filter 드라이버 이름을 읽어 clean·smudge·process 명령을 빈 값으로 덮고,
+  `core.fsmonitor`·서명 확인(`log.showSignature`)·textconv·외부 diff와 작업 트리 diff의 index 자동 갱신(그때
+  실행되는 hook 포함)을 끄며, 서브모듈 안에서는 git을 실행하지 않는다. partial clone이 빠진 객체를 받는 lazy fetch도
+  저장소에 설정된 원격 전송 명령(`remote.<name>.uploadpack` 등)을 실행하므로, 모든 git을 어떤 전송도 허용하지 않고
+  (`GIT_ALLOW_PROTOCOL` 빈 값) lazy fetch를 끈(`GIT_NO_LAZY_FETCH=1`) 환경으로 실행한다. 여기 적지 않은 설정은 여전히
+  따르므로, 출처를 모르는 checkout에서는 `--revision`을 명시하고 `--since`를 쓰지 않는 편이 안전하다
+  ([SECURITY.md](SECURITY.md)).
+- compact(v2) snapshot을 읽을 때 문자열 사전 참조와 정점 위치 참조가 펼치는 문자열을 문서마다 합계
+  2,147,483,648자·33,554,432개까지만 허용하고, 넘으면 검증 전에 거부한다(exit 2, 명령마다의 일반 snapshot 읽기 오류로
+  나오며 byte 상한을 올려도 풀리지 않으므로 다시 capture한다). 같은 문자열을 많은 행이 참조한
+  작은 문서가 경로 검사·식별자 연결·정렬 비교를 참조 수만큼 반복시켜 CPU·메모리를 오래 쓰게 하던 문제다.
+  `--graph-file`·`--base-graph`·MCP 시작처럼 저장 snapshot을 읽는 모든 경로에 적용하며 byte 상한과 달리 옵션으로
+  바꾸지 않는다. 실측한 대형 capture(AGP 9.2.0 jar의 93 MiB v2: 약 3.7억 자·549만 개)는 영향이 없다. 상한 안의
+  적대 문서도 읽는 데 JDK 21에서 약 50초, JDK 17에서 약 80초와 5 GB 가까운 RSS를 쓸 수 있다
+  ([SECURITY.md](SECURITY.md)).
+
+## [0.25.0] - 2026-10-19
+
+### Added
+
+- 신뢰되고 정지한 Gradle application build에서 main resource inventory와 생산자 byte 지문,
+  namespace 및 실제 선택된 R.jar 선언을 함께 검증한다. 선택적 layout 사실과 필드 소유권을 별도로 저장한다.
+- 정확한 layout XML 경로의 변경을 non-final static int R.layout 필드와 코드·테스트 후보로 연결한다.
+  기록된 literal include의 역방향 closure를 포함하고 qualifier 정의를 보존한다.
+- base/current resource seed를 revision별로 분리한다. 삭제·이름 변경·없는 legacy 채널과
+  같은 이름의 다른 namespace/scope를 구분하고 불충분한 근거를 unavailable/partial로 남긴다.
+- XML parser의 DTD/외부 entity 거부, descriptor-relative no-follow 관측, 명시적 입력 상한,
+  선택적 snapshot 크기 fallback 및 Gradle8.10.2 host Kotlin ABI 회귀를 추가한다.
+
+### 업그레이드와 검증 범위
+
+- matching 0.25.0 CLI/plugin/library를 사용하고 직접 JVM client를 다시 컴파일한다.
+  양쪽 revision을 같은 도구·scope·설정으로 다시 빌드·캡처한다. resource-bearing snapshot 병합은 거부한다.
+- [PR188의 전체 CI](https://github.com/ictechgy/kartograph/actions/runs/39159309408)는
+  AGP8.7.3/Gradle8.10.2/KGP2.0.21/JDK17/SDK35 non-final R fixture의 실제 XML-only 변경,
+  child/include-parent 필드·호출자·테스트, 관련 없는 layout 배제 및 stale→matched를 검증했다.
+  Linux17/21 descriptor capability도 확인했다. 이 소스 CI와 아래 배포 package 검증은 별도 근거다.
+- [GitHub release](https://github.com/ictechgy/kartograph/releases/tag/v0.25.0)의 7개 asset이 공개됐다.
+  태그 commit은 `d7238cd5d6465219d0c1378a99e7394258b8577b`이며
+  [exact-source readiness](https://github.com/ictechgy/kartograph/actions/runs/39183549453)와
+  [release run](https://github.com/ictechgy/kartograph/actions/runs/39186955097)이 성공했다.
+  retained plugin으로 실행한 AGP8.7.3 fixture build 두 번에서 ZIP/TAR 의미 비교 20쌍이 모두 통과했다.
+  impact 17쌍은 strict 비교이며 freshness 3쌍은 검증된 root `hashNanos` 시간 필드만 제외한다.
+  ZIP·TAR·plugin 해시는 release metadata와 일치한다. `publishPlugins` task는 성공했으며
+  공개 Portal 표시와 독립 Portal 설치 검증은 별도다. 기존 공개 asset과 내장 문서는 변경하지 않는다.
+- 제어된 성능 probe에서 current-thread allocated bytes는 감소했다. wall time과 process-lifetime peak RSS는
+  혼재하며 architecture probe의 RSS 증가도 포함한다. 전체 속도·메모리 우위를 주장하지 않고,
+  이전 20초 smoke gate 실패 기록을 유지한다.
+- partial coverage이며 final/inlined ID, overlay/device winner, custom view, navigation,
+  data/view binding과 Android inflation은 미검증이다. 신뢰된 정지 입력 전제는 악의적 동시 filesystem
+  변경의 원자성·시간 상한을 제공하지 않는다. [캡처·업그레이드 안내](docs/ANDROID-RESOURCE-IMPACT.md)를 따른다.
+
+## [0.24.0] - 2026-10-17
+
+- [GitHub release](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0)의 7개 asset이 공개됐다.
+  [release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702)은 packaged readiness와
+  plugin publish 단계를 통과했다. 공개 asset/Portal의 독립 consumer 검증과는 별도 결과다.
+
+### Added
+
+- JVM `ACC_ENUM`에서 얻은 enum 상수 전체 목록을 `GraphNode.enumConstants`에 보존한다.
+  unavailable과 complete-empty를 구분하고 field view pruning 뒤에도 목록을 유지한다.
+  같은 enum 타입의 일반 static field나 alias를 enum 상수로 추측하지 않는다.
+- 명시적 compiler `enumDecisions=true`와 `snapshot --include-enum-decisions`로 Java switch의
+  authored default, Kotlin when의 authored else, 유한 리터럴 membership/negation의 타입·소스 위치를 수집한다.
+  `impact --enum-expansion`은 baseline/current의 추가 상수와 current의 검토 후보·이유·미해결 coverage를 낸다.
+  runtime 실행이나 실제 버그를 확정하지 않는다.
+- `callPositions=true`와 `--include-source-uses`를 함께 켠 캡처도 지원한다.
+  두 채널은 별도이며 기존 graph edge·retention을 바꾸지 않는다.
+- impact의 중복 `--format`과 enum/source-edit/traversal 혼합 옵션을 snapshot 읽기 전에 거부한다.
+
+### 업그레이드와 검증 범위
+
+- CLI·plugin·collector·library를 같은 0.24.0 build로 맞추고 직접 JVM library client를 다시 컴파일한다.
+  `GraphNode`·`QuerySnapshot` 공개 생성자/`copy` 형태가 바뀌므로 binary drop-in 호환성을 주장하지 않는다.
+- baseline/current source revision을 각각 다시 빌드하고 같은 0.24.0 도구·scope로 새 snapshot을 만든다.
+  current decision에는 성공한 compiler task의 fresh receipt/witness가 필요하다. baseline에는 complete inventory가
+  필요하며 decision row는 필수가 아니다. 라이브러리 enum을 바꿨다면 그 정의를 사용하는 client도 다시 컴파일한다.
+- 옛 snapshot의 누락 inventory/evidence를 empty로 취급하거나 version만 바꾸지 않는다.
+  옛 reader는 새 `ENUM_CONSTANT`를 거부하거나 optional evidence를 잃을 수 있어 lossless downgrade가 아니다.
+  captured enum decision의 snapshot merge/aggregation은 아직 지원하지 않는다.
+- 같은 claimed output root의 enum/source 귀속만 해석한다. dependency/shadowed root·일반 equality·동적/custom
+  collection·일반 filter 의미는 미해결/미지원이다. Kotlin `!in`은 지원하고 authored `!contains`/`.not()`은
+  미지원으로 센다. Java 21 null/pattern collector 분기는 JDK 17 collector CI에서 미실행이다.
+- [PR183](https://github.com/ictechgy/kartograph/pull/183)의
+  [main CI](https://github.com/ictechgy/kartograph/actions/runs/38928690616)는 소스 빌드의 Java/Kotlin
+  compiler → witness → snapshot → impact와 결합 채널을 검증했다. 이는 0.24.0 versioned head의
+  release-readiness, archive 재현성, 공개 asset/Portal 소비 또는 배포 완료를 뜻하지 않는다.
+  자세한 [0.24.0 migration](docs/COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration)을 따른다.
+
+## [0.23.0] - 2026-10-15 (prerelease)
+
+- source-use 기능을 추가한 pre-1.0 minor다.
+  [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)은 tag와 7개 asset이 공개됐고,
+  [release run](https://github.com/ictechgy/kartograph/actions/runs/38721915580)의 Gradle plugin publish step도 성공했다.
+  v0.23.0은 GitHub prerelease로 보존한다. 2026-10-18 확인 기준 latest stable은 v0.24.0이다.
+- 공개 asset·Portal plugin의 독립 consumer 검증은 미완료다. publish step 성공을 독립 설치 성공으로 해석하지 않는다.
+  기존 tag·asset·checksum과 발행 당시 archive 문서를 변경하지 않는다. 아래 호환성 근거의 한계도 그대로다.
+
+### Added
+
+- `CodeGraph.compilerSourceUseEvidence`와 `withCompilerSourceUses`·`preserveCompilerSourceUsesFrom`,
+  `CompilerEvidenceIndexer.enrichWithSourceUses` 및 별도 core evidence/value 타입을 추가한다.
+  `SourceUseQuery.inspect`·`SourceEditImpact.analyze`·`SourceUseCoverage.from`과 typed document/renderer는
+  기존 `SymbolQuery`·`ChangeImpact`와 구분되는 additive API다.
+- `snapshot --include-source-uses`는 명시한 `--compiler-evidence`·`--scope`·완료된
+  `--build-witness`와 producer `callPositions=true`를 요구한다. 누락·오래된 입력은 실패하며 자동 발견하지 않는다.
+- saved snapshot의 `query --source-uses`와 `impact --source-edits`는 version 1의 별도 source-use
+  문서를 반환한다. ordinary `query`·`graphImpact`를 따로 유지하고 source selection을 CALL 간선으로 바꾸지 않는다.
+  source-edit 결과는 변경된 정확한 target을 직접 선택한, 자신은 변경되지 않은 caller만 포함하며 전이 탐색하지 않는다.
+
+### 업그레이드와 호환성
+
+- 일반·compact snapshot 형식 번호는 1·2를 유지한다. 선택적 `graph.compilerSourceUses` extension의
+  version은 별도로 1이다. extension 부재는 unavailable이며 captured-empty와 다르다.
+  0.22 reader는 호환 graph를 읽지만 다시 저장하면 source-use extension을 잃는다. lossless downgrade가 아니다.
+  source-use snapshot을 지원하지 않는 merge/aggregation 경로는 거부한다.
+- CLI·plugin·collector와 직접 사용하는 library 모듈은 같은 버전/소스 revision으로 맞춘다.
+  새 API 사용자는 0.23.0의 matching 모듈로 빌드하며 published 0.22.0 JAR과 섞지 않는다.
+  base/current 비교가 같은 analyzer/tool version을 요구하면 두 snapshot을 같은 0.23.0 도구·설정으로 재캡처한다.
+  source-use가 없거나 옛 reader에서 사라진 snapshot에도 명시적 재캡처가 필요하며 버전 필드만 고치지 않는다.
+- 기존 compiled 0.22 client 실행과 11개 released class의 public declaration/descriptor 132쌍,
+  19개 Stage A class의 252쌍 보존은 제한된 근거다. 모든 API·client·Kotlin source 호환성을 증명하지 않는다.
+  새 Stage B API 타입은 그 19개 class inventory 밖이다. 새 API client의 구버전 실패/신버전 성공 비교는 미실행이다.
+- coverage는 captured/unavailable 상태와 partial/unknown 범위를 구분하며 complete를 주장하지 않는다.
+  saved report의 `currentness: notChecked`는 과거 관찰이며 live source를 읽지 않는다. 신선도는 별도 검증한다.
+  기본 graph·retention·reachability·ordinary query/impact 계약은 유지하고 Gradle/MCP 자동 활성화는 없다.
+  PSI/IDE 전반의 정확도·성능 우위나 삭제/테스트 생략의 근거가 아니다.
+  자세한 [API·snapshot 업그레이드 안내](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility)를 참고한다.
+
+## [0.22.0] - 2026-10-14
+
+### 업그레이드와 호환성
+
+- `QuerySnapshot`의 선택적 external-retention context가 공개 JVM 생성자·기본 인자·
+  `copy` signature를 바꾸므로 pre-1.0 minor 버전을 올린다. 직접 라이브러리를 사용하는
+  compiled 소비자는 같은 릴리스의 모듈로 다시 컴파일하고 서로 다른 버전의 JAR을 섞지 않는다.
+  기존 `ExternalRetentionCodec.parse(String)`과 `AdoptionReporter.render` JVM 진입점은 유지한다.
+- 0.20.0에서 올릴 때는 아래 0.21.0의 `GraphNode` ABI·캐시·엄격한 graph reader 안내도 적용한다.
+  0.21.0 태그는 보존하며 실패한 배포의 artifact나 Portal 설치 가능성을 이 버전으로 간주하지 않는다.
+- 일반·compact snapshot 형식 번호는 각각 1·2를 유지한다. 선택적
+  `externalRetentionContexts`가 없는 옛 snapshot은 읽지만 해당 출처 근거가 있다고 간주하지 않는다.
+  옛 reader가 새 context를 보존한다고 보장하지 않는다. 원래 cross-language project·caller 경로를
+  다른 module 경로로 바꾸지 않으며, context는 compiler freshness나 삭제 승인이 아니다.
+
+### Added
+
+- version 0 `external-retentions`의 선택적 provenance context를 dead/explain, snapshot,
+  saved query와 aggregation에 보존한다. 보존 root가 0개여도 source·limitation context를 유지한다.
+  version 1의 알려진 필드를 검증하며 알 수 없는 양의 version은 제한된 opaque context로 남긴다.
+- 문서 크기·깊이·배열 수와 portable JSON admission을 제한하고, 중복 decoded key·잘못된 Unicode·
+  날짜·숫자를 거부한다. source 배열의 원래 순서·중복과 외부 caller/evidence 경로를 유지한다.
+
+### Fixed
+
+- indexing 중 interrupt가 발생해도 cooperative worker cleanup을 기다린 뒤 archive 범위를 벗어난다.
+  반복 interrupt가 기존 30초 총 기한을 늘리지 않으며 caller interrupt를 복원한다.
+  비협조적인 worker의 강제 종료를 보장하지 않고 cleanup timeout을 보고한다.
+
+### Changed
+
+- cycles/rules/metrics는 사용하지 않는 dispatch-model 간선 생성을 기존 export 선택 경로로 제외한다.
+  전체 bytecode·metadata·runtime 분석과 validation은 유지하며 기본 graph/dead·cache API는 바꾸지 않는다.
+- export origin filter가 간선을 제거하지 않았고 compiler 위치 근거가 비어 있는 경우에만
+  동등한 그래프의 재구성을 생략한다. 실제 제거와 compiler 위치 상태가 있는 경우는 기존 경로를 유지한다.
+  고정 비교와 ordinary CI에서 검증했으며 모든 입력에서의 속도 향상을 보장하지 않는다.
+- JSON smoke receipt에 선택한 Java·runner·resource의 제한된 관찰과 전용 순차 실행의
+  waited-child CPU를 추가한다. 관찰 실패는 기존 결과를 바꾸지 않으며 20초/5초 예산과 측정 순서는 유지한다.
+
+## [0.21.0] - 2026-10-14 (태그 공개, 배포 미완료)
+
+- GitHub 태그·release 페이지는 공개됐으나 [원래 release 실행](https://github.com/ictechgy/kartograph/actions/runs/38510131118)이
+  smoke 총합 20.346초로 20초 예산을 넘겨 중단됐다. 배포 asset과 Portal plugin은 발행되지 않았다.
+  기존 태그와 실패 기록을 보존하며 아래 항목은 해당 태그의 소스 변경을 설명한다.
+
+### 업그레이드와 호환성
+
+- 0.20.1 준비본은 발행하지 않았으며 아래 수정 사항과 함께 0.21.0에 포함한다.
+- `GraphNode`에 `sourceDeclaration`, `kotlinSourceName`, `kotlinDefaultBridge`가 추가되어
+  JVM 생성자·`copy`의 binary signature가 바뀐다. 라이브러리를 직접 사용하는 compiled 소비자는
+  같은 릴리스의 모듈로 다시 컴파일한다. 이전 버전과 새 버전의 모듈 JAR을 섞지 않는다.
+- class 인덱스 캐시 형식은 7에서 9로, hierarchy 캐시 형식은 3에서 4로 바뀐다.
+  이전 캐시 항목은 다시 파싱하며 사용자가 캐시를 수동 삭제할 필요는 없다.
+- 일반·compact snapshot 형식 번호는 각각 1·2를 유지한다. 선택적 `sourceDeclarations`,
+  `kotlinSourceNames`, `kotlinDefaultBridges` 표가 없는 옛 snapshot도 읽지만 새 근거가 있다고 간주하지 않는다.
+  옛 reader가 새 근거를 보존한다고 보장하지 않는다.
+- graph JSON의 선택적 node 근거와 NDJSON의 `sourceDeclaration` record를 엄격하게 제한하는
+  소비자는 reader의 허용 필드·record 종류를 확인한다. CLI·Gradle plugin·선택적 compiler collector
+  JAR·runner·cache adapter는 같은 릴리스로 함께 설치한다.
+
+### Added
+
+- 현재 소스 선언 위치를 compiler 위치와 구분해 그래프·snapshot·saved query에 보존한다.
+  지원하는 같은 인자 수의 method overload는 타입과 compiler 줄 근거가 함께 유일할 때만 연결한다.
+- Kotlin metadata와 실제 bytecode CALL이 함께 증명한 기본 인자 bridge의 원본 선언과
+  Kotlin 함수 이름을 JVM identity와 구분해 제공한다.
+- 고정 Java/Kotlin fixture의 embedded PSI 비교와 inline·default argument·lambda lowering
+  경계 실험을 재현 가능한 소스·오라클과 함께 제공한다. 전체 프로젝트 정확도나 성능 보장은 아니다.
+
+### Fixed
+
+- generic signature 참조와 유효한 virtual dispatch 후보를 보존하고 프로젝트 호출 해석을 보완한다.
+- generic method 안의 lambda를 포함한 유효한 class 파일을 shared reference visitor가 잘못 거부하던
+  문제를 고친다. 완전한 compile root를 사용하는 `dependencies` 명령의 정상·strict 종료와 진단을 검증한다.
+
+### Changed
+
+- DOT escaping의 문자 boxing과 layer 규칙의 동일 glob pattern 반복 컴파일을 줄인다.
+  기존 출력·규칙 계약은 유지하며 작은 비교 실험의 결과를 모든 입력에 대한 속도 보장으로 일반화하지 않는다.
+- CI smoke gate는 완료된 측정의 명령별 표본을 JSON으로 남긴다. 시간 예산·판정 계산은 바꾸지 않는다.
+
+## [0.20.1] - 2026-10-11 (미발행, 0.21.0에 포함)
 
 ### Fixed
 
@@ -897,7 +1234,11 @@
 - `bridge-facts`의 프로젝트와 위치를 상대경로로 제한하고 사용되지 않는 빈 test-support module을 제거했다.
 - 배포본에 내장된 ASM과 Kotlin/JetBrains runtime dependency의 제3자 라이선스를 함께 제공한다.
 
-[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/ictechgy/kartograph/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/ictechgy/kartograph/compare/v0.25.0...v0.26.0
+[0.25.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.25.0
+[0.24.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.24.0
+[0.23.0]: https://github.com/ictechgy/kartograph/releases/tag/v0.23.0
 [0.19.0]: https://github.com/ictechgy/kartograph/compare/v0.18.2...v0.19.0
 [0.18.0]: https://github.com/ictechgy/kartograph/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/ictechgy/kartograph/compare/v0.16.0...v0.17.0
