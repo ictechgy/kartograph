@@ -1,0 +1,147 @@
+# Retrofit 요청 오라클 (API 영향 계획 Phase 4 종료 조건)
+
+종료 조건 "Retrofit 템플릿이 MockWebServer 기록 경로와 일치한다"를 실측한다. 제품 빌드와 기본 CI에는 들어가지 않는다.
+
+## 방법
+
+- `fixtures/retrofit-corpus/oracle/retrofit-client/`의 합성 서비스(Kotlin 5파일·Java 2파일, 이 저장소를 위해 새로 쓴 코드)를
+  `harness/`의 독립 Gradle 빌드가 Retrofit 2.12.0(OkHttp 3.14.9)으로 컴파일한다. 오라클은 메서드마다 요청을 보내고 OkHttp
+  MockWebServer 3.14.9가 받은 동사·인코딩된 경로·query를 기록한다. 다른 host로 가는 전체 URL·network-path 어노테이션은
+  인터셉터가 host·port만 MockWebServer로 바꾸고, 바꾸기 전 host를 `authority`로 기록한다. 경로는 Retrofit이 만든 그대로다.
+- `run.py`가 기록에 소스 목록과 버전을 더해 `fixtures/retrofit-corpus/oracle/retrofit-requests.json`을 쓴다(2026-09-29, JDK 21).
+- cli `RetrofitOracleTest`가 같은 소스를 임시 프로젝트로 복사해 `kartograph routes --role client`를 실행하고, isthmus 소비자의
+  결합대로 비교한다 — `pathAnchor: base`면 base URL 경로 뒤에, `root`면 host 루트에 템플릿을 붙이고 `{}`에 Retrofit 규칙으로
+  인코딩한 `@Path` 값을 넣는다. `{}`는 한 세그먼트라는 주장이므로 넣은 값이 `/`를 담으면 불일치다. dynamic 사실은 이유를
+  적은 케이스만 받고, 증명한 `channelPrefix`가 기록 경로의 접두사인지 본다. 동사와 `authority`도 대조한다.
+- base URL은 케이스마다 `/api/v1/`(경로 세그먼트 있음) 또는 `/`다. 이 서비스들은 코퍼스 안에 `create` 호출이 없어 생산자가
+  base를 풀지 못하고(`unresolved-base-url:`) `pathAnchor: base`로 낸다.
+- **baseUrl 결합 케이스(2026-09-29 추가).** `basePath`가 `null`인 케이스는 코퍼스 팩토리(`CatalogClients.kt`의 `catalogApi`·
+  `InventoryClients`, `ReportsClient.java`)가 리터럴 base로 만든 서비스를 부른다. 팩토리는 오라클이 준 `OkHttpClient`만 받으므로
+  base 결합은 소스 그대로다. 생산자는 `create` 호출의 `baseUrl`을 따라가 `authority`와 base 경로를 결합한 `root` 템플릿을 내야 하고,
+  테스트는 템플릿을 host 루트에 붙여 기록 경로와, `authority`를 기록 host와 대조한다. base가 둘인 서비스(`InventoryApi`)는 기록한
+  host의 사실 하나와 대조한다. `baseRef`는 기록과 비교할 값이 없어 대조하지 않는다(단위 테스트 `RetrofitBaseUrlTest`가 고정).
+
+- **인터셉터 결합 케이스(2026-09-30 추가).** `fixtures/retrofit-corpus/oracle/interceptor-client/`는 URL을 바꾸는 OkHttp 인터셉터가
+  어느 client → Retrofit 인스턴스에 붙는지를 규칙마다 보이는 별도 코퍼스다(Kotlin 5파일·Java 1파일). client를 모두 코퍼스 안에서
+  만들므로 오라클은 client에 손대지 않고 JVM 기본 `ProxySelector`를 MockWebServer로 돌린다 — `http` 요청은 프록시에 절대 URL 요청
+  줄로 오므로 인터셉터·`Authenticator`·`Call.Factory`가 바꾼 뒤의 host·경로를 그대로 기록한다(루프백은 프록시하지 않아 기존 케이스는
+  그대로다). `Authenticator` 케이스는 첫 요청에 401을 받아 재요청을 기록한다. Dagger 모듈은 어노테이션만 쓰고(생성기 없음) 제공
+  함수를 그래프 순서로 직접 부르며, Koin은 코퍼스 모듈로 시작한다(Dagger 2.59·Koin 4.2.2, Maven Central). 테스트는 이 코퍼스를 따로
+  스캔해 base를 적용한 사실은 기록과 일치하는지, base를 버린 사실은 이유가 적힌 케이스이고 버린 base로 결합하면 기록과 어긋나는지
+  (재작성이 실제로 일어났는지), 인스턴스별 한계의 스코프가 기록한 요청을 덮는지 본다.
+
+## 결과
+
+44개 케이스(서비스 메서드 39개, 같은 메서드를 다른 base·값·상속 프록시로 부른 경우 포함):
+
+| | 일치 | dynamic(이유 있음) | 불일치 |
+|---|---:|---:|---:|
+| 수정 전 (`main` 3507399) | 29 | 2 | 13 |
+| 수정 후 | 38 | 6 | 0 |
+
+baseUrl 결합 케이스 10개(팩토리 3개, 서비스 메서드 8개)를 더한 54개 케이스:
+
+| | 일치 | dynamic(이유 있음) | 불일치 |
+|---|---:|---:|---:|
+| baseUrl 결합 전 (`main` 0c05e80) | 38 | 6 | 10 |
+| baseUrl 결합 후 | 48 | 6 | 0 |
+
+결합 전에는 팩토리 케이스 10개가 모두 `pathAnchor: base`·authority 없음이라 기록(authority와 host 루트부터의 경로)과 맞지 않았다.
+
+| 범주 | 케이스 | 기록 경로 | 결합 후 사실 |
+|---|---|---|---|
+| base 경로 뒤 상대 경로 | `items/{id}` + `https://catalog.example.com/shop/v2/`(템플릿 상수) | `/shop/v2/items/42` | root `catalog.example.com` `/shop/v2/items/{}` |
+| 앞 `/` | `/health` | `/health` | root `/health` |
+| base 위 `..` | `../v1/legacy` | `/shop/v1/legacy` | root `/shop/v1/legacy` |
+| `.`·끝 슬래시 | `./search/` | `/shop/v2/search/` | root `/shop/v2/search/` |
+| base 둘(지역 `val`·`HttpUrl` 속성, 포트) | `stock/{sku}`, `/admin/stock` | `/stock/sku-1`·`/inv/stock/sku-1`, `/admin/stock` ×2 | host마다 사실 하나(`inventory.example.com`, `mirror.example.com:8443`) |
+| Java 지역 변수·static final 상수 | `reports/{year}` + `https://reports.example.com/r/` | `/r/reports/2026` | root `/r/reports/{}` |
+
+인터셉터 결합 케이스 18개(2026-09-30):
+
+| | 일치(base 적용) | base 버림(재작성 확인) | 불일치 |
+|---|---:|---:|---:|
+| 인스턴스별 결합 전 (`main` 5564cb3) | 0 | 18 | — |
+| 인스턴스별 결합 후 | 7 | 11 | 0 |
+
+결합 전에는 재작성 인터셉터가 하나라도 있으면 모든 base를 버려 헤더만 더하는 client·공유 client·`@Provides`/Koin 일반 client·Java
+람다·요청을 바꾸지 않는 `Authenticator`·`EventListener` 7케이스도 authority를 잃었다. 결합 후 base를 버린 11케이스는 모두 기록이 base와
+다르다(재작성이 요청을 바꿨다).
+
+| 규칙 | 케이스 | 기록 | 사실 |
+|---|---|---|---|
+| class 인스턴스(`addInterceptor(HostRewriteInterceptor(…))`) | `EdgeApi.item`·`order` | `edge.example.net` `/v1/items/42`·`/orders` | base 버림, 스코프 `/v1/items/{}`·`/orders` GET·POST |
+| 같은 모듈의 헤더 인터셉터 client | `PlainApi.status` | `api.example.com` `/v1/status` | root `api.example.com` `/v1/status` |
+| network 인터셉터 람다(경로 앞 세그먼트) | `PrefixApi.report` | `/edge/v1/reports/7` | base 버림, 스코프 없음(경로 변경) |
+| 속성의 `Interceptor { … }` 람다·`object` | `LambdaApi`·`ObjectApi` | 바뀐 host | base 버림, 스코프 |
+| `newBuilder()` 복사본에 더한 인터셉터 | `DerivedApi` / 원본 `SharedApi` | 바뀐 host / base 그대로 | base 버림 / root 일치 |
+| `@Provides` 한정자(`@Named("edge")`·`"plain"`) | `ProvidedEdgeApi` / `ProvidedPlainApi` | 바뀐 host / base 그대로 | base 버림 / root 일치 |
+| Koin `get(named(…))` | `KoinEdgeApi` / `KoinPlainApi` | 바뀐 host / base 그대로 | base 버림 / root 일치 |
+| Java 빌더 지역 변수 + 익명 인터셉터 / 람다 | `JavaEdgeApi` / `JavaPlainApi` | 바뀐 host / base 그대로 | base 버림 / root 일치 |
+| 다른 host로 재요청하는 `Authenticator` | `AuthApi` | 401 뒤 `auth.example.net` | base 버림, 스코프 없음 |
+| 헤더만 더하는 `Authenticator`·`EventListener` | `TokenApi`·`ListenerApi` | base 그대로 | root 일치 |
+| 직접 구현한 `Call.Factory` | `FactoryApi` | `factory.example.net` | base 버림, 스코프 없음 |
+
+수정 전에는 서비스 6파일 모두에 거짓 `route-call-coverage:`도 붙었다(OkHttp `RequestBody`·`ResponseBody` import를 모델링하지
+않은 클라이언트로 셌다).
+
+| 범주 | 케이스 | 수정 전 | 수정 후 |
+|---|---|---|---|
+| 동사 | `@GET`·`@POST`·`@PUT`·`@PATCH(value=)`·`@DELETE`·`@HEAD`·`@OPTIONS`·`@HTTP(method, path, hasBody)` | 일치 | 일치 |
+| 계약 밖 동사 | `@HTTP(method = "PURGE")` | `methodDynamic`, 경로 일치 | 같음 |
+| query | `@Query`, `@QueryMap`, 어노테이션 안 `?active=true` | 경로 불변, 일치 | 같음 |
+| base 결합 | `users/{id}` + `/api/v1/`·`/`, `/health`(host 루트로 되돌아감) | 일치 | 같음 |
+| `@Path` 값 | `a/b`(→ `a%2Fb` 한 세그먼트), `q 1`(→ `q%201`) | 일치 | 같음 |
+| `@Path(encoded = true)` | `docs/{path}` + `guide/intro` → 두 세그먼트 | `/docs/{}` 거짓 한 세그먼트 | dynamic, `channelPrefix` `/docs/` |
+| 부분 세그먼트 | `files/{name}.json` | dynamic(`compose.interpolation`) | 같음 |
+| 점 세그먼트 | `./status`, `.`, `reports/../summary`, `/legacy/./reports/../export` | 점이 템플릿에 남음 | `/status`, `/`, `/summary`, `/legacy/export` |
+| base 위 `..` | `../v2/status` → `/api/v2/status` | `/../v2/status` | dynamic(미상 base) |
+| `@Url` | `@GET @Url` | dynamic | 같음 |
+| 전체 URL·network-path | `https://uploads.example.com/v2/blobs/{id}`, `//cdn.example.com/assets/logo.png` | root + authority 일치 | 같음 |
+| Kotlin `suspend` | `suspend fun profile` | 일치 | 같음 |
+| 완전한 이름 | `@retrofit2.http.GET` | 사실 없음 | 일치 |
+| 상수 | 파일 최상위 `const val`·템플릿 안 `$USERS`, 동반 객체(한정·비한정), 같은 파일 object, `ORGS + "/…"` | 일치 | 같음 |
+| 파일 밖 상수 | `SharedPaths.MEMBERS`(다른 파일 object) | `/{}`·`/{}/{}` 거짓 템플릿 | dynamic |
+| Java | `@GET(value = …)`, `@HTTP(method = …, path = …)`, 인터페이스 상수 `ITEMS`, 같은 파일 class 상수 | `/{}`·`methodDynamic` | 일치 |
+| 상속 | `AdminApi : BaseApi`, `LegacyAdminApi extends LegacyApi`로 만든 프록시의 상속 메서드 | 일치(symbol은 선언한 상위 인터페이스) | 같음 |
+
+## 공식 소스로 확인한 규칙
+
+Maven Central의 `retrofit-2.12.0-sources.jar`·`okhttp-3.14.9-sources.jar`에서 확인했고, 오라클 실행이 재확인한다.
+
+- Retrofit `RequestBuilder`는 상대 URL을 `HttpUrl.resolve`·`newBuilder(relative)`로 base에 결합한다. OkHttp `HttpUrl.Builder.resolvePath`는
+  `/`(또는 `\`)로 시작하면 경로를 루트로 되돌리고, 아니면 base의 마지막 `/` 뒤를 버린 뒤 붙이며 `.`·`%2e`는 건너뛰고
+  `..`는 한 세그먼트를 지운다(RFC 3986 §5.2.4와 같은 결과). `Retrofit.Builder`는 `/`로 끝나지 않는 base URL을 거부한다.
+- `@Path` 값은 `canonicalizeForPath`가 제어·비ASCII 문자와 `` "<>^`{}|\?#``(와 공백)을 늘, `/`·`%`는 `encoded = false`일 때만
+  퍼센트 인코딩한다. 값 전체가 `.`·`..` 세그먼트를 만들면 `@Path parameters shouldn't perform path traversal`로 거부한다.
+- `RequestFactory`는 어노테이션 query 문자열 안의 `{name}`, `@Url`과 경로 값의 동시 사용, `@Url` 없는 빈 경로를 거부한다.
+- `Retrofit.validateServiceInterface`(2.12.0)는 서비스 인터페이스의 상위 인터페이스를 거부하지 않고 타입 매개변수만 거부한다.
+  상속 메서드는 선언한 인터페이스의 `Method`로 요청을 만든다.
+
+## 재현
+
+```sh
+python3 experiments/phase4-retrofit/run.py          # retrofit-requests.json을 다시 쓴다
+python3 experiments/phase4-retrofit/run.py --check  # 현재 파일과 오라클이 같은지 확인한다
+./gradlew :cli:test --tests dev.kartograph.cli.RetrofitOracleTest   # 표는 테스트 stdout에 나온다
+```
+
+JDK 21과 Maven Central·Gradle Plugin Portal 접근이 필요하다. MockWebServer는 오라클 프로세스 안에서만 떠 있다가 종료된다.
+기본 CI는 네트워크 의존 오라클을 돌리지 않고, 커밋된 기록에 대한 `RetrofitOracleTest`만 실행한다.
+
+## 한계
+
+- baseUrl 결합의 DI(Hilt `@Provides`·`@Inject`·Koin)·`BuildConfig` 모양은 실행 오라클이 아니라 합성 단위 테스트
+  (`index` `RetrofitBaseUrlTest`)로 고정한다 — 결합 규칙(RFC 3986) 자체는 위 팩토리 케이스가 실행으로 확인한다. 인터셉터 결합의
+  실행 케이스는 결합을 증명하는 모양만 담는다. 결합을 증명하지 못해 모든 base를 버려야 하는 모양(목록·래퍼·확장 함수·상위 타입
+  `@Provides`·어디에도 붙지 않은 재작성)은 `RetrofitInterceptorBindingTest`가 고정한다.
+- 인터셉터 오라클은 `http` base만 쓴다(프록시가 `https`는 CONNECT 터널로 받아 host·경로를 볼 수 없다). 경로·host 결합 규칙은
+  scheme과 무관하다.
+
+- 소스 스캐너라 파일 밖 상수(다른 파일 object·Java class 상수)는 증명하지 못하고 dynamic이다. 바이트코드의 접힌 어노테이션
+  값을 읽는 경로(`routes --role server`의 `--graph-file`)는 클라이언트 쪽에 아직 없다.
+- 호출 쪽 부분 세그먼트(`{name}.json`)는 `encoded = false`면 Retrofit이 `/`를 인코딩해 실제로는 한 세그먼트지만, 공유 규칙
+  `compose.interpolation`대로 dynamic으로 둔다(재현율 손실, 거짓 사실 없음).
+- 상속 메서드의 `symbol`은 어노테이션을 선언한 상위 인터페이스 메서드다. isthmus 매니페스트 `match.interfaces`에 하위
+  인터페이스만 적으면 상속 메서드 호출은 그 선언으로 귀속되지 않는다 — 상위 인터페이스도 적는다.
+- OkHttp가 `\`를 `/`처럼 경로 구분자로 읽는 동작, 경로 안 중복 슬래시, `@Path` 이름이 템플릿에 없는 오류 선언은 케이스에 없다.

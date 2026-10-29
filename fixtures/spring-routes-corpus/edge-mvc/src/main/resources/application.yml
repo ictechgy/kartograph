@@ -1,0 +1,17 @@
+server:
+  servlet:
+    context-path: /api/
+app:
+  items: /goods
+management:
+  endpoints:
+    web:
+      exposure:
+        include: mappings,health
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+app:
+  other: /other

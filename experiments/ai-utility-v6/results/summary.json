@@ -1,0 +1,139 @@
+{
+  "format": {
+    "sourceValid": 8,
+    "sourceTrials": 8,
+    "mcpValid": 8,
+    "mcpTrials": 8,
+    "infrastructureErrors": 0
+  },
+  "modelStageSeconds": 966.5809657890059,
+  "cliEstimatedModelCostUsd": 4.736082,
+  "separateSchemaControlsEstimatedUsd": 0.024217499999999996,
+  "separateSyntheticSmokeEstimatedUsd": 0.18314550000000002,
+  "preparationBuildSecondsSummed": 1004.2583866690184,
+  "productRequests": {
+    "freshness": 2,
+    "query_symbol": 3,
+    "impact": 4
+  },
+  "productProcessed": {
+    "freshness": 2,
+    "query_symbol": 3,
+    "impact": 4
+  },
+  "agentFreshness": [
+    "matched",
+    "matched"
+  ],
+  "rawAnswerArchiveSha256": "8c458e1cd216d42460f656b77e5ab74e5597a60a35f29cf1225d37ef25a1f8e7",
+  "conclusion": "Structured output valid in all 16 trials. Higher exact-identity anchor coverage in some MCP conditions does not establish general AI utility or caller-discovery superiority; source function-type notation exposed a frozen-matcher limitation.",
+  "predictionResolutionByArm": {
+    "source": {
+      "in-oracle": 90,
+      "outside-oracle-unadjudicated": 7,
+      "unresolved": 10
+    },
+    "mcp": {
+      "in-oracle": 110,
+      "outside-oracle-unadjudicated": 12
+    }
+  },
+  "trialTargetCounts": [
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "source",
+      "repeat": 0,
+      "targets": 28
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "mcp",
+      "repeat": 0,
+      "targets": 28
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "mcp",
+      "repeat": 1,
+      "targets": 27
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "source",
+      "repeat": 1,
+      "targets": 12
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "source",
+      "repeat": 0,
+      "targets": 10
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "mcp",
+      "repeat": 0,
+      "targets": 10
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "mcp",
+      "repeat": 1,
+      "targets": 11
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "source",
+      "repeat": 1,
+      "targets": 10
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "source",
+      "repeat": 0,
+      "targets": 14
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "mcp",
+      "repeat": 0,
+      "targets": 14
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "mcp",
+      "repeat": 1,
+      "targets": 15
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "source",
+      "repeat": 1,
+      "targets": 15
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "source",
+      "repeat": 0,
+      "targets": 10
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "mcp",
+      "repeat": 0,
+      "targets": 9
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "mcp",
+      "repeat": 1,
+      "targets": 8
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "source",
+      "repeat": 1,
+      "targets": 8
+    }
+  ]
+}

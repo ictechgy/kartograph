@@ -1,5 +1,12 @@
 import groovy.json.JsonSlurper
 import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.Action
+import org.gradle.api.Task
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import java.nio.ByteBuffer
 
 // 적용하는 프로젝트가 소유한 processor task를 명시적으로 선택한다.
 // native task의 기존 출력 선언에 raw sidecar와 명시한 직접 쓰기 파일만 더한다.
@@ -37,6 +44,149 @@ ext.registerProcessorOutputCache = { String taskName, File configFile ->
             task.inputs.property('kartographProcessorOutputPaths', [config.observations] + (config.cacheOutputs ?: []))
             task.outputs.file(raw).withPropertyName('kartographProcessorObservations')
             extraOutputs.eachWithIndex { file, index -> task.outputs.file(file).withPropertyName("kartographProcessorDirect${index}") }
+            if (config.compilerInputs != null) {
+                def report = local(config.compilerInputs)
+                def pending = local(config.compilerInputs + '.pending')
+                def controls = [raw, local(config.token), local(config.receipt), report, pending]
+                if (controls.toSet().size() != controls.size() || [report, pending].any { file ->
+                    (declaredInputs + outputRoots.collect { it.toFile() }).any { file.toPath().startsWith(it.toPath()) }
+                }) throw new GradleException('compiler input controls overlap declared inputs or outputs')
+                task.outputs.file(report).withPropertyName('kartographProcessorCompilerInputs')
+                task.doFirst(new ProcessorCompilerInputAction(projectRoot.toFile(), config.scope, config.kind, local(config.token), report, true))
+                task.doLast(new ProcessorCompilerInputAction(projectRoot.toFile(), config.scope, config.kind, local(config.token), report, false))
+            }
         }
     }
+}
+
+// TaskInputs의 실제 선언을 실행 전후에 관찰한다. task/Project를 action 필드에 저장하지 않는다.
+class ProcessorCompilerInputAction implements Action<Task>, Serializable {
+    final File root, token, report
+    final String scope, kind
+    final boolean begin
+    ProcessorCompilerInputAction(File root, String scope, String kind, File token, File report, boolean begin) {
+        this.root = root; this.scope = scope; this.kind = kind; this.token = token; this.report = report; this.begin = begin
+    }
+    void execute(Task task) {
+        File pending = new File(report.path + '.pending')
+        if (begin) {
+            String current = observe(task)
+            Files.deleteIfExists(report.toPath())
+            pending.parentFile.mkdirs()
+            pending.setText(current, 'UTF-8')
+        } else {
+            String current = observe(task)
+            if (!pending.isFile() || pending.getText('UTF-8') != current) throw new GradleException('compiler task inputs changed during execution')
+            Files.move(pending.toPath(), report.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+    String observe(Task task) {
+        def controls = [token, report, new File(report.path + '.pending')]
+        if (controls.any { it.canonicalFile.toPath() != it.toPath().normalize() }) throw new GradleException('symbolic compiler control path')
+        Set<File> implementations = new LinkedHashSet<>()
+        List<String> properties = flatten(task.inputs.properties, implementations, 0)
+        Set<File> selected = new LinkedHashSet<>(task.inputs.files.files)
+        if (kind == 'ksp') {
+            // KSP 2는 원본 library 대신 ABI output.bin을 task input으로 선언한다.
+            // 실행에 쓰는 공개 KspGradleConfig의 원본 bytes도 함께 관찰해야 한다.
+            if (!task.metaClass.respondsTo(task, 'getKspConfig')) throw new GradleException('selected KSP task does not expose its compiler libraries')
+            def compiler = task.getKspConfig()
+            selected.addAll(compiler.getLibraries().files)
+            selected.addAll(compiler.getProcessorClasspath().files)
+            selected.addAll(compiler.getSourceRoots().files)
+            selected.addAll(compiler.getCommonSourceRoots().files)
+            selected.addAll(compiler.getJavaSourceRoots().files)
+        }
+        def files = (selected + implementations).collect { it.canonicalFile }.toSet().sort { it.path }
+        if (files.isEmpty() || files.size() > 100000) throw new GradleException('invalid compiler input inventory')
+        String inputToken = token.getText('UTF-8').trim()
+        if (!(inputToken ==~ /[0-9a-f]{64}/)) throw new GradleException('invalid compiler input token')
+        List<String> rows = ['format\tkartograph-processor-compiler-inputs\t1', 'scope\t' + scope,
+            'task\t' + task.path, 'token\t' + inputToken, 'propertiesSha256\t' + values(properties)]
+        int external = 0
+        files.each { File file ->
+            if (controls.any { it.canonicalFile.toPath().startsWith(file.toPath()) }) {
+                throw new GradleException('compiler controls overlap task inputs')
+            }
+            String identity = file.toPath().startsWith(root.toPath()) ? 'project/' + root.toPath().relativize(file.toPath()).toString().replace('\\', '/') : 'external/compiler-input-' + external++
+            if (identity == 'project/') throw new GradleException('project root is not an isolated compiler input')
+            String kind = file.isFile() ? 'file' : file.isDirectory() ? 'directory' : 'missing'
+            rows.add(['file', encode(identity), encode(file.path), kind, inventory(file, kind)].join('\t'))
+        }
+        rows.join('\n') + '\n'
+    }
+    static List<String> flatten(Object value, Set<File> implementations, int depth) {
+        if (depth > 32) throw new GradleException('compiler property nesting exceeds limit')
+        if (value == null) return ['null']
+        if (value instanceof CharSequence || value instanceof Number || value instanceof Boolean || value instanceof Character) {
+            return [value.getClass().name, value.toString()]
+        }
+        if (value instanceof Enum) return [value.getClass().name, value.name()]
+        if (value instanceof org.gradle.jvm.toolchain.JavaLanguageVersion) return ['java-language-version', value.asInt().toString()]
+        if (value instanceof File) return ['file-path', value.canonicalPath]
+        if (value instanceof Map) {
+            if (value.size() > 100000 || !value.keySet().every { it instanceof String }) throw new GradleException('unsupported compiler property map')
+            return ['map', value.size().toString()] + value.keySet().sort().collectMany { key -> [key] + flatten(value[key], implementations, depth + 1) }
+        }
+        if (value instanceof Iterable || value.getClass().isArray()) {
+            def items = value.getClass().isArray() ? (0..<java.lang.reflect.Array.getLength(value)).collect { java.lang.reflect.Array.get(value, it) } : value.toList()
+            if (items.size() > 100000) throw new GradleException('compiler property list exceeds limit')
+            def parts = items.collect { flatten(it, implementations, depth + 1) }
+            if (value instanceof Set) parts = parts.sort { values(it) }
+            return [value instanceof Set ? 'set' : 'list', parts.size().toString()] + parts.flatten()
+        }
+        // Gradle의 @Nested 구현 marker가 getProperties()에 포함된다. 버전별 모양이 달라지면 실패한다.
+        if (value.getClass().name == 'org.gradle.internal.snapshot.impl.ImplementationValue') {
+            String identity = value.getImplementationClassIdentifier()
+            Class type = value.getValue().getClass()
+            while (type != null && type.protectionDomain?.codeSource?.location == null) type = type.superclass
+            def location = type?.protectionDomain?.codeSource?.location
+            if (location == null || location.protocol != 'file') throw new GradleException('compiler nested implementation artifact is unavailable')
+            implementations.add(new File(location.toURI()).canonicalFile)
+            return ['nested-implementation', identity]
+        }
+        if (value instanceof Serializable) {
+            def bytes = new LimitedCompilerPropertyBytes()
+            new ObjectOutputStream(bytes).withCloseable { it.writeObject(value) }
+            return ['serialized', value.getClass().name, digest(bytes.toByteArray())]
+        }
+        throw new GradleException('unsupported compiler task input property type')
+    }
+    static String inventory(File file, String kind) {
+        if (kind == 'missing') return values(['missing-file'])
+        if (Files.isSymbolicLink(file.toPath())) throw new GradleException('symbolic compiler input')
+        if (kind == 'file') return values(['file', fileHash(file)])
+        List<File> files = []
+        Files.walk(file.toPath()).withCloseable { stream -> stream.forEach { path ->
+            if (Files.isSymbolicLink(path) || !(Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) || Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))) {
+                throw new GradleException('unsupported compiler input entry')
+            }
+            if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) files.add(path.toFile())
+            if (files.size() > 100000) throw new GradleException('compiler file inventory exceeds limit')
+        } }
+        files.sort { file.toPath().relativize(it.toPath()).toString().replace('\\', '/') }
+        values(['directory'] + files.collectMany { [file.toPath().relativize(it.toPath()).toString().replace('\\', '/'), fileHash(it)] })
+    }
+    static String fileHash(File file) {
+        def hash = MessageDigest.getInstance('SHA-256')
+        file.withInputStream { input -> byte[] buffer = new byte[65536]; int size; while ((size = input.read(buffer)) != -1) hash.update(buffer, 0, size) }
+        hash.digest().encodeHex().toString()
+    }
+    static String values(List<String> values) {
+        def hash = MessageDigest.getInstance('SHA-256')
+        values.each { String item ->
+            byte[] bytes = item.getBytes('UTF-8')
+            if (bytes.length > 16 * 1024 * 1024) throw new GradleException('compiler property exceeds limit')
+            hash.update(ByteBuffer.allocate(4).putInt(bytes.length).array()); hash.update(bytes)
+        }
+        hash.digest().encodeHex().toString()
+    }
+    static String digest(byte[] bytes) { MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString() }
+    static String encode(String value) { Base64.urlEncoder.withoutPadding().encodeToString(value.getBytes('UTF-8')) }
+}
+
+class LimitedCompilerPropertyBytes extends ByteArrayOutputStream {
+    @Override void write(int value) { limit(1); super.write(value) }
+    @Override void write(byte[] bytes, int offset, int length) { limit(length); super.write(bytes, offset, length) }
+    private void limit(int extra) { if (count + extra > 16 * 1024 * 1024) throw new GradleException('serialized compiler property exceeds limit') }
 }

@@ -20,10 +20,40 @@ public object CompilerEvidenceReceipts {
         val observed = linkedSetOf<Path>()
         val derived = linkedSetOf<Path>()
         val receipts = mutableListOf<InputFingerprint>()
+        var inventories = 0
+        var authoredDocuments = 0
         documents.sortedBy { it.toAbsolutePath().normalize().toString() }.forEachIndexed { index, file ->
-            val before = ContentFingerprint.hash(file)
-            val document = CompilerEvidenceReader.read(file)
+            val bounded = BoundedCompilerEvidenceReader.read(file)
+            val before = bounded.fingerprint
+            val inventory = if (bounded.text.startsWith(CompilerCallerInventoryReader.HEADER + "\n"))
+                CompilerCallerInventoryReader.parse(bounded.text, bounded.fingerprint) else null
+            val authored = if (bounded.text.startsWith(CompilerAuthoredCallReader.HEADER + "\n"))
+                CompilerAuthoredCallReader.parse(bounded.text, bounded.fingerprint) else null
+            val envelope = if (authored == null && inventory == null) CompilerEvidenceReader.parseEnvelope(bounded.text) else null
+            val document = inventory?.evidence ?: authored?.evidence ?: requireNotNull(envelope).evidence
+            if (authored != null) authoredDocuments++
+            if (inventory != null) {
+                inventories++
+                require(CompilerCallerInventoryOptions.isEnabled(inputs)) { "caller inventory requires its recorded profile option" }
+                require(inventory.evidence.sources.map { root.resolve(it.path).toRealPath() }.toSet() == expected) {
+                    "caller inventory must include exactly the explicitly requested declaration sources; implicit and partial compilation are unsupported"
+                }
+                val inventoryOutput = root.resolve(inventory.outputRoot).toRealPath()
+                require(inventoryOutput.startsWith(root)) { "inventory output escapes project" }
+                CompilerCallerInventoryIndexer.verifyOutputs(inventoryOutput, inventory)
+            }
+            if (authored != null) require(CompilerAuthoredCallOptions.isEnabled(inputs)) { "authored evidence requires recorded profile option" }
             require(document.inputToken == token) { "compiler evidence belongs to a different compilation" }
+            if (envelope?.enumStats != null) {
+                require(CompilerEnumDecisionOptions.isEnabled(inputs)) {
+                    "v4 compiler enum decisions require the recorded enum decisions option"
+                }
+            }
+            if (envelope?.callStats != null) {
+                require(CompilerCallPositionOptions.isEnabled(inputs)) {
+                    "v3 compiler evidence requires a recorded call positions option"
+                }
+            }
             require(document.collector in if (compiler == "javac") setOf("javac-constants", "dagger-bindings", "javac-processors") else setOf("kotlin-constants")) {
                 "compiler evidence collector does not match the compiler"
             }
@@ -53,6 +83,7 @@ public object CompilerEvidenceReceipts {
             require(receipt.sha256 == before) { "compiler evidence changed while recording its receipt" }
             receipts += receipt
         }
+        require(!CompilerCallerInventoryOptions.isEnabled(inputs) || inventories == 1 && authoredDocuments == 1) { "caller inventory task requires one inventory and one authored sidecar" }
         require(observed.containsAll(expected)) { "compiler evidence is partial; run a full compilation" }
         derived.sorted().forEachIndexed { index, path ->
             receipts += ContentFingerprint.capture(root, path, "compilerGeneratedSource", "$externalPrefix-generated-source-$index")

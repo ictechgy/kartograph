@@ -1,0 +1,69 @@
+{
+  "status": "resolved-before-models",
+  "reviewer": "GLM via packet-ask",
+  "reviewSeconds": 605.641,
+  "blockers": [
+    {
+      "id": "B1",
+      "disposition": "fixed",
+      "evidence": "Post-build baseline dirty diff is now rejected in native.py and mirrored in assemble.py; clean successful/matched baseline required. Regression failed before the guard and passes after. Both real baseline records already had empty diffs."
+    }
+  ],
+  "verifications": [
+    {
+      "id": "V1",
+      "disposition": "no defect",
+      "evidence": "v6 changed_lines scopes the real module. v7 fixture case IDs equal module names; v8 IDs do not. New regression confirms the real module works and experiment ID fails."
+    },
+    {
+      "id": "V2",
+      "disposition": "verified",
+      "evidence": "The pre-review36 included5 frozen collector and13 controller regressions. Collector globals are rebound; new source_aliases has its own whitespace/backtick regression. Current total40 passes."
+    }
+  ],
+  "optional": [
+    {
+      "id": "container-skip",
+      "disposition": "wording clarified",
+      "evidence": "All container-level skips remain rejected; actual cohorts have0. Stable leaf skips retained."
+    },
+    {
+      "id": "aborted-xml",
+      "disposition": "no relaxation",
+      "evidence": "Abort maps to XML skipped only for count auditing; partition rejects aborts. Actual cohorts have0 aborted invocations and no abort-support claim."
+    },
+    {
+      "id": "shadowed-owners",
+      "disposition": "fixed",
+      "evidence": "Shadowed owners now reject source qualification, with regression. Both real independent inventories have empty shadowedOwners."
+    },
+    {
+      "id": "tool-budget",
+      "disposition": "verified existing enforcement",
+      "evidence": "Actual proxy accepts12 source requests and refuses13th. Denied excess requests remain observable without being treated as extra processed information."
+    },
+    {
+      "id": "baseline-clone",
+      "disposition": "retained",
+      "evidence": "Dedicated task-owned source clones are used; before/after clean-tree checks and current snapshot verification protect the shared baseline."
+    },
+    {
+      "id": "ascii-rendering",
+      "disposition": "no change",
+      "evidence": "ensure_ascii differences do not change parsed documents; raw regrade parity remains required."
+    },
+    {
+      "id": "CI-artifacts",
+      "disposition": "applied",
+      "evidence": "Added upload of native observer verification/journals/seals and failed-sink controls, preserving existing actions/permissions/gates."
+    },
+    {
+      "id": "scale-label",
+      "disposition": "documented",
+      "evidence": "README and INTAKE give production/test file and line composition explicitly."
+    }
+  ],
+  "pythonTestsPassed": 40,
+  "nativeObserverControlsPassed": true,
+  "evaluatedModelTrialsStarted": false
+}

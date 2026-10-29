@@ -1,0 +1,77 @@
+{
+  "direction": "dependents",
+  "dispatch": "candidates",
+  "format": "language-traversal",
+  "generatedAt": "2026-01-01T00:00:00Z",
+  "graphRevision": "sha256:6a805323ce9c09342aa4beec6602eec0ff39a167a5ccb237781ace287e395fab",
+  "limitations": [
+    "bound-dispatch-closed-world: bound dispatch assumes the analyzed classes contain every implementation of project types; runtime proxies, mocks and classes outside the snapshot are not modeled",
+    "graph-file-freshness-unverified: build-scope-mismatch;missing-build-witness;unwitnessed-class-root",
+    "unresolved-calls: counts unresolved external virtual dispatch, runtime-modeled reflective calls without resolved values and invokedynamic sites with unmodeled bootstraps"
+  ],
+  "platform": "kotlin",
+  "project": "/e2e/orders-service",
+  "reached": [
+    {
+      "depth": 1,
+      "evidence": "direct",
+      "relationships": [
+        "call"
+      ],
+      "roots": [
+        0
+      ],
+      "symbol": {
+        "kind": "method",
+        "location": {
+          "line": 35,
+          "path": "src/main/kotlin/dev/kartograph/e2e/orders/OrdersApplication.kt"
+        },
+        "qualifiedName": "dev.kartograph.e2e.orders.OrderService.describe",
+        "usr": "method:dev/kartograph/e2e/orders/OrderService#describe(Ljava/lang/String;)Ljava/lang/String;"
+      },
+      "via": "method:dev/kartograph/e2e/orders/UserGateway#fetchUser(Ljava/lang/String;)Ljava/lang/String;"
+    },
+    {
+      "depth": 2,
+      "evidence": "direct",
+      "relationships": [
+        "call"
+      ],
+      "roots": [
+        0
+      ],
+      "symbol": {
+        "kind": "method",
+        "location": {
+          "line": 42,
+          "path": "src/main/kotlin/dev/kartograph/e2e/orders/OrdersApplication.kt"
+        },
+        "qualifiedName": "dev.kartograph.e2e.orders.OrdersController.order",
+        "usr": "method:dev/kartograph/e2e/orders/OrdersController#order(Ljava/lang/String;)Ljava/lang/String;"
+      },
+      "via": "method:dev/kartograph/e2e/orders/OrderService#describe(Ljava/lang/String;)Ljava/lang/String;"
+    }
+  ],
+  "revision": "e2e-orders",
+  "roots": [
+    {
+      "id": "method:dev/kartograph/e2e/orders/UserGateway#fetchUser(Ljava/lang/String;)Ljava/lang/String;",
+      "symbol": {
+        "kind": "method",
+        "location": {
+          "line": 29,
+          "path": "src/main/kotlin/dev/kartograph/e2e/orders/OrdersApplication.kt"
+        },
+        "qualifiedName": "dev.kartograph.e2e.orders.UserGateway.fetchUser",
+        "usr": "method:dev/kartograph/e2e/orders/UserGateway#fetchUser(Ljava/lang/String;)Ljava/lang/String;"
+      }
+    }
+  ],
+  "tool": {
+    "name": "kartograph",
+    "version": "0.17.0"
+  },
+  "truncated": false,
+  "version": 1
+}

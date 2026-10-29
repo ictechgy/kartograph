@@ -18,6 +18,8 @@ for PASS in 1 2; do
 done
 grep -Fq 'Reusing configuration cache.' "$CACHE_LOG"
 python3 - <<'CHECK'
+if not __debug__:
+    raise SystemExit('AGP 8 fixture verification requires Python assertions; remove -O/PYTHONOPTIMIZE.')
 import json
 from pathlib import Path
 root = Path('fixtures/agp-8-smoke/build/reports/kartograph')

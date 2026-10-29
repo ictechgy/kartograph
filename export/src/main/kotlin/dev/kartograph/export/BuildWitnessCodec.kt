@@ -3,6 +3,8 @@ package dev.kartograph.export
 import dev.kartograph.core.BuildWitness
 import dev.kartograph.core.InputFingerprint
 import dev.kartograph.core.SnapshotProvenance
+import dev.kartograph.core.ClassTransformObservation
+import dev.kartograph.core.TransformedClass
 
 /** 성공한 compiler lifecycle 증거와 snapshot 지문을 같은 스키마로 읽고 쓴다. */
 public object BuildWitnessCodec {
@@ -15,14 +17,39 @@ public object BuildWitnessCodec {
         return witness(SnapshotJsonParser(text).parse())
     }
 
-    internal fun provenanceValue(value: SnapshotProvenance): Any = sortedMapOf(
-        "version" to 1, "inputs" to value.inputs.map(::inputValue), "witnesses" to value.witnesses.map(::witnessValue),
-    )
+    // 단일 capture 문서는 기존과 바이트가 같도록 aggregate 구성원이 있을 때만 memberScopes를 쓴다.
+    internal fun provenanceValue(value: SnapshotProvenance): Any = sortedMapOf<String, Any>(
+        "version" to if (value.transformations.isEmpty()) 1 else 2,
+        "inputs" to value.inputs.map(::inputValue), "witnesses" to value.witnesses.map(::witnessValue),
+    ).also { map ->
+        if (value.memberScopes.isNotEmpty()) map["memberScopes"] = value.memberScopes.sorted()
+        if (value.transformations.isNotEmpty()) map["transformations"] = value.transformations.map(::transformationValue)
+    }
 
     internal fun provenance(value: Any): SnapshotProvenance {
         val map = obj(value)
-        require(map["version"] == 1L) { "unsupported provenance version" }
-        return SnapshotProvenance(list(map["inputs"]).map(::input), list(map["witnesses"]).map(::witness))
+        require(map["version"] in listOf(1L, 2L)) { "unsupported provenance version" }
+        require(map["version"] != 1L || !map.containsKey("transformations")) { "transformations require provenance version 2" }
+        val transformations = if (map["version"] == 2L) list(map["transformations"]).map(::transformation) else emptyList()
+        require(map["version"] != 2L || transformations.isNotEmpty()) { "missing transformation observations" }
+        return SnapshotProvenance(list(map["inputs"]).map(::input), list(map["witnesses"]).map(::witness),
+            map["memberScopes"]?.let { scopes -> list(scopes).map(::str) }.orEmpty(), transformations)
+    }
+
+    private fun transformationValue(value: ClassTransformObservation): Any = sortedMapOf(
+        "scope" to value.scope, "observerTask" to value.observerTask, "policy" to value.policy,
+        "originalOutputs" to value.originalOutputs.map(::inputValue), "selectedOutputs" to value.selectedOutputs.map(::inputValue),
+        "passthroughOutputs" to value.passthroughOutputs.map(::inputValue),
+        "changedClasses" to value.changedClasses.map { sortedMapOf("name" to it.name,
+            "beforeSha256" to it.beforeSha256, "afterSha256" to it.afterSha256) },
+    )
+
+    private fun transformation(value: Any?): ClassTransformObservation = obj(value).let { map ->
+        ClassTransformObservation(str(map["scope"]), str(map["observerTask"]), str(map["policy"]),
+            list(map["originalOutputs"]).map(::input), list(map["selectedOutputs"]).map(::input),
+            list(map["changedClasses"]).map { obj(it).let { row ->
+                TransformedClass(str(row["name"]), str(row["beforeSha256"]), str(row["afterSha256"]))
+            } }, list(map["passthroughOutputs"]).map(::input))
     }
 
     private fun inputValue(input: InputFingerprint): Any = sortedMapOf("role" to input.role, "path" to input.path, "sha256" to input.sha256)

@@ -1,0 +1,1557 @@
+{
+  "format": "kartograph-v4-posthoc-matching-audit",
+  "frozenInputIntegrity": "Not determined by this script; compare inputSha256 with an immutable baseline.",
+  "note": "Descriptive audit of the existing matching rule, not a new efficacy score. Non-oracle predictions are unadjudicated, not false positives. The main reviewer knows published aggregate results; this is not fully blinded.",
+  "inputSha256": {
+    "oracle-v4.json": "c05648e7916af7a0ad039cba4bfcf77caa9d5e8779c8fe7d8248679e77a276fb",
+    "grade_v4.py": "7068d437ba02433d6e5d36b485fc4b7baca23716470f1c150002c284d84cd19e",
+    "results-v4/results-v4.json": "df7c1d7eff32e6db39fbb3ba22cd661b28a24c938d90131cef64eb9051de0200",
+    "results-v4/blind/0778dbd56e60.json": "5852f89b46ef906c4661ba7159e68af05a1d1e19e6ce3ca4490e01193f70dd46",
+    "results-v4/blind/1d4d39df1210.json": "78054b172de5d7fb94ba2b69bb7cbf2af67bb74189b92524facc8eb5670f2b61",
+    "results-v4/blind/3012808a9245.json": "cb3b6153e7b04d0a714638740714485910ec1b691ae14e2b8438a7195875e91e",
+    "results-v4/blind/3edee05b109d.json": "952d4b998fa65d50bbafe440fe6d1224ad8d7211743676d2aad9442cf6642cb5",
+    "results-v4/blind/42e798a8d084.json": "2bfd89fbcb9b6ed552a77add4ff92a7f21110b77e7a94e3b95d26fd6c4876514",
+    "results-v4/blind/5be0347a9a15.json": "900cd0420683400c31a8dc02d69fbed314ce7b50bbbd40af64f9e599f272d761",
+    "results-v4/blind/81f2d1dbe1fd.json": "8b578ceda700f8e0d0f1ac0a633605ed133893c16e7bcfc23aaefe2144d3ba68",
+    "results-v4/blind/84fe91ffabef.json": "ab14eb2e493e76421fde7d19b1343771ba7cd65e3266c66892524ac63a7bd34a",
+    "results-v4/blind/866466f3f04e.json": "49de65f9fde10e6c01909bbf17e6e6e6446a5bff98266d5850944f218f6e58b7",
+    "results-v4/blind/89d07d94972e.json": "89cfd1d371f76e887e880906ab8e048deb5dfeb9d9becddbb1a768012268d657",
+    "results-v4/blind/aa59036509f8.json": "833bff089fb8c2ebb4c936fe44a1270042bcad1254dc70e20186750d89b05658",
+    "results-v4/blind/d03628ddd394.json": "0cd51d81d30bfe82bff763ee5331a20e46146d11dd22e819137f9f1fa25acc84",
+    "results-v4/blind/dac24228ae3f.json": "db6fd222884f058fe650e10c4ff68b3bc60c1caef50342b7d594028aa36c25f9",
+    "results-v4/blind/def06d674b6b.json": "98f94e04a64b68d3e6d488f1d4d72d215e56f069474abf4d8eae0d7c5fd0042a",
+    "results-v4/blind/f632019f2bcf.json": "a4c2a736b25d3f4e6d2c39f11cf35fb5ee0b1b15def8d75f2d9824c67c0fb8ef",
+    "results-v4/blind/f805a7b01155.json": "8ff9249b78cec31f139244174ebaf328991708ee04f0d10a6b6900497627bea3"
+  },
+  "answers": [
+    {
+      "id": "0778dbd56e60",
+      "case": "pinterest_ktlint-2785",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "symbol": "`Given a property with a disallowed name which is suppressed`(suppressionName: String)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "symbol": "SuppressionLocator.ValueArgument.findRuleSuppressionIds()",
+          "frozenFullCreditIds": [
+            "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext.kt",
+          "symbol": "RuleExecutionContext.suppressionLocator (field init, line 42)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorTest.kt",
+          "symbol": "SuppressionLocatorTest (file-level)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRuleTest.kt",
+          "symbol": "`Issue 2612 - Given a property name suppressed via 'ObjectPropertyName' then also suppress the ktlint violation`()",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRuleTest.kt",
+          "symbol": "suppression parameterized test near line 144 (\"PropertyName\" // IntelliJ IDEA suppression)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "1d4d39df1210",
+      "case": "fasterxml__jackson-core-1016",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java",
+          "symbol": "com.fasterxml.jackson.core.sym.PlaceholderSymbolTableTest.testBasicPlaceholderLookups",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java",
+          "symbol": "com.fasterxml.jackson.core.sym.PlaceholderSymbolTableTest.testBasicPlaceholderAddFails",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/TestSymbolTables.java",
+          "symbol": "com.fasterxml.jackson.core.sym.TestSymbolTables (assert at line 52)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "src/main/java/com/fasterxml/jackson/core/JsonFactory.java",
+          "symbol": "com.fasterxml.jackson.core.JsonFactory.createNonBlockingByteArrayParser",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "src/main/java/com/fasterxml/jackson/core/JsonFactory.java",
+          "symbol": "com.fasterxml.jackson.core.JsonFactory.createNonBlockingByteBufferParser",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "src/main/java/com/fasterxml/jackson/core/JsonFactory.java",
+          "symbol": "com.fasterxml.jackson.core.JsonFactory._createParser(DataInput, IOContext)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "symbol": "com.fasterxml.jackson.core.json.UTF8DataInputJsonParser.addName(int[], int, int)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 7,
+          "file": "src/main/java/com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase.java",
+          "symbol": "com.fasterxml.jackson.core.json.async.NonBlockingJsonParserBase._addName(int[], int, int)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 8,
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8StreamJsonParser.java",
+          "symbol": "com.fasterxml.jackson.core.json.UTF8StreamJsonParser.addName(int[], int, int)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 9,
+          "file": "src/test/java/com/fasterxml/jackson/core/async/AsyncTestBase.java",
+          "symbol": "com.fasterxml.jackson.core.async.AsyncTestBase (byte-buffer wrapper factory, line 31)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": [
+            "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForByteBuffer(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;",
+            "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForBytes(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;"
+          ]
+        },
+        {
+          "index": 10,
+          "file": "src/test/java/com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest.java",
+          "symbol": "com.fasterxml.jackson.core.json.async.AsyncTokenFilterTest (lines 59, 102)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": [
+            "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingByteBufferParserAllContent()V",
+            "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingParserAllContent()V",
+            "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplit()V",
+            "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplitByteBuffer()V"
+          ]
+        },
+        {
+          "index": 11,
+          "file": "src/test/java/com/fasterxml/jackson/core/json/async/AsyncLocationTest.java",
+          "symbol": "com.fasterxml.jackson.core.json.async.AsyncLocationTest (line 44)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": [
+            "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsets()V",
+            "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsetsByteBuffer()V"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "3012808a9245",
+      "case": "alibaba__fastjson2-2097",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "ObjectReaderImplList.createInstance(long)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "ObjectReaderImplList.readObject(JSONReader, Type, Object, long)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "ObjectReaderImplList.createInstance(Collection)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "ObjectReaderImplList.readJSONBObject(JSONReader, Type, Object, long)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "ObjectReaderImplList.ObjectReaderImplList(Type, Class, Class, Type, Function) [instanceTypeHash]",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderBaseModule.java",
+          "symbol": "ObjectReaderBaseModule.getObjectReader (CLASS_ARRAYS_LIST branch, ~L1853-1866)",
+          "frozenFullCreditIds": [
+            "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/FieldReaderObject.java",
+          "symbol": "FieldReaderObject.getObjectReader (L67, L86)",
+          "frozenFullCreditIds": [
+            "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": true,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 7,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderProvider.java",
+          "symbol": "ObjectReaderProvider (L808) ObjectReaderImplList.of(objectType, rawClass, 0)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": [
+            "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+            "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReader(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ]
+        },
+        {
+          "index": 8,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplListStr.java",
+          "symbol": "ObjectReaderImplListStr.readJSONBObject / createInstance(long)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 9,
+          "file": "core/src/test/java/com/alibaba/fastjson2/dubbo/DubboTest6.java",
+          "symbol": "DubboTest6 (file-level; JSON text with \"@type\":\"java.util.Arrays$ArrayList#2\")",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 10,
+          "file": "core/src/test/java/com/alibaba/fastjson2/issues_1000/Issue1421.java",
+          "symbol": "Issue1421 (file-level; synchronizedList(Arrays.asList(1,2,3)) round-trips)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 11,
+          "file": "core/src/test/java/com/alibaba/fastjson2/issues/Issue783.java",
+          "symbol": "Issue783 (file-level; bean.value = Arrays.asList(...) written with objectWriter)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "3edee05b109d",
+      "case": "fasterxml__jackson-core-1016",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java",
+          "symbol": "PlaceholderSymbolTableTest.testBasicPlaceholderLookups",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java",
+          "symbol": "PlaceholderSymbolTableTest.testBasicPlaceholderAddFails",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/TestSymbolTables.java",
+          "symbol": "TestSymbolTables (line ~52, assertTrue(symbols.isCanonicalizing()))",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "src/main/java/com/fasterxml/jackson/core/JsonFactory.java",
+          "symbol": "JsonFactory.createNonBlockingByteArrayParser()",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "src/main/java/com/fasterxml/jackson/core/JsonFactory.java",
+          "symbol": "JsonFactory.createNonBlockingByteBufferParser()",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "src/main/java/com/fasterxml/jackson/core/JsonFactory.java",
+          "symbol": "JsonFactory._createParser(DataInput, IOContext)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "src/main/java/com/fasterxml/jackson/core/json/ByteSourceJsonBootstrapper.java",
+          "symbol": "ByteSourceJsonBootstrapper.constructParser(int, ObjectCodec, ByteQuadsCanonicalizer, CharsToNameCanonicalizer, int)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 7,
+          "file": "src/test/java/com/fasterxml/jackson/core/async/AsyncTestBase.java",
+          "symbol": "AsyncTestBase.asyncForBytes(JsonFactory, ...)",
+          "frozenFullCreditIds": [
+            "method:com/fasterxml/jackson/core/async/AsyncTestBase#asyncForBytes(Lcom/fasterxml/jackson/core/JsonFactory;I[BI)Lcom/fasterxml/jackson/core/testsupport/AsyncReaderWrapper;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 8,
+          "file": "src/test/java/com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest.java",
+          "symbol": "AsyncTokenFilterTest (lines 36, 81)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": [
+            "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingByteBufferParserAllContent()V",
+            "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testFilteredNonBlockingParserAllContent()V",
+            "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplit()V",
+            "method:com/fasterxml/jackson/core/json/async/AsyncTokenFilterTest#testSkipChildrenFailOnSplitByteBuffer()V"
+          ]
+        },
+        {
+          "index": 9,
+          "file": "src/test/java/com/fasterxml/jackson/core/json/async/AsyncLocationTest.java",
+          "symbol": "AsyncLocationTest (line 17)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": [
+            "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsets()V",
+            "method:com/fasterxml/jackson/core/json/async/AsyncLocationTest#testLocationOffsetsByteBuffer()V"
+          ]
+        },
+        {
+          "index": 10,
+          "file": "src/main/java/com/fasterxml/jackson/core/TokenStreamFactory.java",
+          "symbol": "TokenStreamFactory.createNonBlockingByteArrayParser()",
+          "frozenFullCreditIds": [
+            "method:com/fasterxml/jackson/core/TokenStreamFactory#createNonBlockingByteArrayParser()Lcom/fasterxml/jackson/core/JsonParser;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "42e798a8d084",
+      "case": "detekt_detekt-7625",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "io.gitlab.arturbosch.detekt.core.baseline.BaselineResultMappingSpec.creates on top of an existing a baseline file without issues",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.kt",
+          "symbol": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": true,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter.kt",
+          "symbol": "method:io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter#writeEmptyElement(Ljava/lang/String;)V",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt",
+          "symbol": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": true,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt",
+          "symbol": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#transformWithBaseline(Ljava/util/List;Ljava/nio/file/Path;)Ljava/util/List;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "io.gitlab.arturbosch.detekt.core.baseline.BaselineResultMappingSpec.creates on top of an existing a baseline file with issues",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "io.gitlab.arturbosch.detekt.core.baseline.BaselineResultMappingSpec.doesn't create a baseline file without issues",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 7,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": true,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 8,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": true,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 9,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$implements tooling api#reads and writes baselines()V",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 10,
+          "file": "detekt-tooling/src/main/kotlin/io/github/detekt/tooling/api/BaselineProvider.kt",
+          "symbol": "method:io/github/detekt/tooling/api/BaselineProvider#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "5be0347a9a15",
+      "case": "alibaba__fastjson2-2097",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#createInstance(J)Ljava/lang/Object;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#readObject(Lcom/alibaba/fastjson2/JSONReader;Ljava/lang/reflect/Type;Ljava/lang/Object;J)Ljava/lang/Object;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#createInstance(Ljava/util/Collection;)Ljava/lang/Object;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#readJSONBObject(Lcom/alibaba/fastjson2/JSONReader;Ljava/lang/reflect/Type;Ljava/lang/Object;J)Ljava/lang/Object;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderBaseModule.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "frozenFullCreditIds": [
+            "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": true,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderProvider.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "frozenFullCreditIds": [
+            "method:com/alibaba/fastjson2/reader/ObjectReaderProvider#getObjectReaderInternal(Ljava/lang/reflect/Type;Z)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": true,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 7,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/FieldReaderObject.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "frozenFullCreditIds": [
+            "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": true,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 8,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplListStr.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplListStr#createInstance(J)Ljava/lang/Object;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 9,
+          "file": "core/src/test/java/com/alibaba/fastjson2/autoType/AutoTypeTest27.java",
+          "symbol": "com.alibaba.fastjson2.autoType.AutoTypeTest27.test_arrayList",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 10,
+          "file": "core/src/test/java/com/alibaba/fastjson2/dubbo/DubboTest6.java",
+          "symbol": "com.alibaba.fastjson2.dubbo.DubboTest6.test1",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 11,
+          "file": "core/src/test/java/com/alibaba/fastjson2/issues_1000/Issue1227.java",
+          "symbol": "com.alibaba.fastjson2.issues_1000.Issue1227.test1",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "81f2d1dbe1fd",
+      "case": "alibaba__fastjson2-2097",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#createInstance(J)Ljava/lang/Object;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#readObject(Lcom/alibaba/fastjson2/JSONReader;Ljava/lang/reflect/Type;Ljava/lang/Object;J)Ljava/lang/Object;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#createInstance(Ljava/util/Collection;)Ljava/lang/Object;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#readJSONBObject(Lcom/alibaba/fastjson2/JSONReader;Ljava/lang/reflect/Type;Ljava/lang/Object;J)Ljava/lang/Object;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplList#of(Ljava/lang/reflect/Type;Ljava/lang/Class;J)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderBaseModule.java",
+          "symbol": "com.alibaba.fastjson2.reader.ObjectReaderBaseModule.getObjectReader (line 1857/1865)",
+          "frozenFullCreditIds": [
+            "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplListStr.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/ObjectReaderImplListStr#readJSONBObject",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 7,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/FieldReaderObject.java",
+          "symbol": "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;",
+          "frozenFullCreditIds": [
+            "method:com/alibaba/fastjson2/reader/FieldReaderObject#getObjectReader(Lcom/alibaba/fastjson2/JSONReader$Context;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": true,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 8,
+          "file": "core/src/test/java/com/alibaba/fastjson2/dubbo/DubboTest6.java",
+          "symbol": "DubboTest6 (file-level; test using @type java.util.Arrays$ArrayList, ~line 59)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 9,
+          "file": "core/src/test/java/com/alibaba/fastjson2/jsonb/basic/CollectionTest.java",
+          "symbol": "CollectionTest (file-level; methods around lines 37 and 59 using Arrays.asList(array))",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 10,
+          "file": "core/src/test/java/com/alibaba/fastjson2/issues/Issue1676.java",
+          "symbol": "Issue1676 (file-level)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "84fe91ffabef",
+      "case": "fasterxml__jackson-core-1016",
+      "answerPresent": false,
+      "malformedPredictions": 0,
+      "predictions": []
+    },
+    {
+      "id": "866466f3f04e",
+      "case": "detekt_detekt-7625",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "BaselineResultMappingSpec.`creates on top of an existing a baseline file without issues`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "BaselineResultMappingSpec.`creates on top of an existing a baseline file with issues`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt",
+          "symbol": "BaselineResultMapping.createOrUpdate(Path, List<Issue>)",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt",
+          "symbol": "BaselineResultMapping.transformWithBaseline / transformIssues",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter.kt",
+          "symbol": "IndentingXMLStreamWriter.writeEmptyElement(localName) / onEmptyTag()",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "BaselineFormatSpec.`asserts that the saved and loaded baseline files are equal`",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "BaselineFormatSpec.`has a new line at the end of the written baseline file`",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 7,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "BaselineFormatSpec.`reads and writes baselines`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 8,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "BaselineResultMappingSpec.`should update an existing baseline file if a file is configured`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 9,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/DefaultBaseline.kt",
+          "symbol": "DefaultBaseline.load(Path)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "89d07d94972e",
+      "case": "fasterxml__jackson-core-1016",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java",
+          "symbol": "com.fasterxml.jackson.core.sym.PlaceholderSymbolTableTest.testBasicPlaceholderLookups",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/PlaceholderSymbolTableTest.java",
+          "symbol": "com.fasterxml.jackson.core.sym.PlaceholderSymbolTableTest.testBasicPlaceholderAddFails",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "src/test/java/com/fasterxml/jackson/core/sym/TestSymbolTables.java",
+          "symbol": "com.fasterxml.jackson.core.sym.TestSymbolTables (line ~52, assertTrue(symbols.isCanonicalizing()))",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "src/main/java/com/fasterxml/jackson/core/JsonFactory.java",
+          "symbol": "com.fasterxml.jackson.core.JsonFactory.createNonBlockingByteArrayParser()",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "src/main/java/com/fasterxml/jackson/core/JsonFactory.java",
+          "symbol": "com.fasterxml.jackson.core.JsonFactory.createNonBlockingByteBufferParser()",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "src/main/java/com/fasterxml/jackson/core/JsonFactory.java",
+          "symbol": "com.fasterxml.jackson.core.JsonFactory._createParser(DataInput, IOContext)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "src/main/java/com/fasterxml/jackson/core/json/ByteSourceJsonBootstrapper.java",
+          "symbol": "com.fasterxml.jackson.core.json.ByteSourceJsonBootstrapper.constructParser(...)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 7,
+          "file": "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java",
+          "symbol": "com.fasterxml.jackson.core.json.UTF8DataInputJsonParser.addName(int[], int, int)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 8,
+          "file": "src/main/java/com/fasterxml/jackson/core/json/async/NonBlockingJsonParserBase.java",
+          "symbol": "com.fasterxml.jackson.core.json.async.NonBlockingJsonParserBase._addName(int[], int, int)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 9,
+          "file": "src/test/java/com/fasterxml/jackson/core/read/SimpleParserTest.java",
+          "symbol": "com.fasterxml.jackson.core.read.SimpleParserTest (line ~63, configure INTERN_FIELD_NAMES)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": [
+            "method:com/fasterxml/jackson/core/read/SimpleParserTest#testUtf8BOMHandling()V"
+          ]
+        },
+        {
+          "index": 10,
+          "file": "src/test/java/com/fasterxml/jackson/core/json/JsonFactoryTest.java",
+          "symbol": "com.fasterxml.jackson.core.json.JsonFactoryTest (INTERN_FIELD_NAMES config tests, lines 134-264)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "aa59036509f8",
+      "case": "detekt_detekt-7625",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "BaselineResultMappingSpec.`creates on top of an existing a baseline file without issues`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "BaselineResultMappingSpec.`creates on top of an existing a baseline file with issues`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "BaselineResultMappingSpec.`doesn't create a baseline file without issues`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt",
+          "symbol": "io.gitlab.arturbosch.detekt.core.baseline.BaselineResultMapping.createOrUpdate",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "BaselineFormatSpec.`asserts that the saved and loaded baseline files are equal`",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "BaselineFormatSpec.`has a new line at the end of the written baseline file`",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "BaselineFormatSpec.`reads and writes baselines`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 7,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter.kt",
+          "symbol": "io.gitlab.arturbosch.detekt.core.baseline.IndentingXMLStreamWriter.writeEmptyElement(String)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 8,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/DefaultBaseline.kt",
+          "symbol": "io.gitlab.arturbosch.detekt.core.baseline.DefaultBaseline.load",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 9,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat.kt",
+          "symbol": "io.gitlab.arturbosch.detekt.core.baseline.BaselineFormat (BaselineProvider ServiceLoader registration)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormat#write(Ljava/nio/file/Path;Lio/github/detekt/tooling/api/Baseline;)V"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "d03628ddd394",
+      "case": "alibaba__fastjson2-2097",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "ObjectReaderImplList.createInstance(long features)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "ObjectReaderImplList.readObject(JSONReader, Type, Object, long)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "ObjectReaderImplList.readJSONBObject(JSONReader, Type, Object, long)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "ObjectReaderImplList.createInstance(Collection collection)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplList.java",
+          "symbol": "ObjectReaderImplList.of(Type, Class, long) -> new ObjectReaderImplListStr / ObjectReaderImplListInt64",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderBaseModule.java",
+          "symbol": "ObjectReaderBaseModule.getObjectReader (registration for CLASS_ARRAYS_LIST, line ~1857-1865)",
+          "frozenFullCreditIds": [
+            "method:com/alibaba/fastjson2/reader/ObjectReaderBaseModule#getObjectReader(Lcom/alibaba/fastjson2/reader/ObjectReaderProvider;Ljava/lang/reflect/Type;)Lcom/alibaba/fastjson2/reader/ObjectReader;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "core/src/main/java/com/alibaba/fastjson2/reader/ObjectReaderImplListStr.java",
+          "symbol": "ObjectReaderImplListStr.readJSONBObject",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 7,
+          "file": "core/src/main/java/com/alibaba/fastjson2/util/TypeUtils.java",
+          "symbol": "TypeUtils.getClass(String) case \"java.util.Arrays$ArrayList\"",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 8,
+          "file": "core/src/test/java/com/alibaba/fastjson2/dubbo/DubboTest6.java",
+          "symbol": "DubboTest6.test1",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 9,
+          "file": "core/src/test/java/com/alibaba/fastjson2/JSONTest.java",
+          "symbol": "JSONTest (lines ~781-808: ObjectReaderImplList.INSTANCE / new ObjectReaderImplList(MyList...).createInstance())",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 10,
+          "file": "core/src/test/java/com/alibaba/fastjson2/issues_1000/Issue1421.java",
+          "symbol": "Issue1421 tests (synchronizedList/Collection of Arrays.asList)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 11,
+          "file": "core/src/test/java/com/alibaba/fastjson2/issues/Issue400.java",
+          "symbol": "Issue400 (bean fields set with Arrays.asList)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "dac24228ae3f",
+      "case": "pinterest_ktlint-2785",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "symbol": "SuppressionLocator.ValueArgument.findRuleSuppressionIds",
+          "frozenFullCreditIds": [
+            "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "symbol": "BackingPropertyNamingRuleTest.`Given a property with a disallowed name which is suppressed`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "symbol": "BackingPropertyNamingRuleTest.`Given a property name suppressed via 'PropertyName' then also suppress the ktlint violation`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRuleTest.kt",
+          "symbol": "PropertyNamingRuleTest.`Issue 2612 - Given a property name suppressed via 'ObjectPropertyName' then also suppress the ktlint violation`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorTest.kt",
+          "symbol": "SuppressionLocatorTest (file-level)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/rules/KtlintSuppressionRuleTest.kt",
+          "symbol": "KtlintSuppressionRuleTest (file-level)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/EnumEntryNameCaseRule.kt",
+          "symbol": "StandardRule id literals (e.g. \"backing-property-naming\") — file-level cross-check",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "def06d674b6b",
+      "case": "pinterest_ktlint-2785",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocator.kt",
+          "symbol": "SuppressionLocator.findRuleSuppressionIds (ValueArgument extension)",
+          "frozenFullCreditIds": [
+            "method:com/pinterest/ktlint/rule/engine/internal/SuppressionLocator#findRuleSuppressionIds(Lorg/jetbrains/kotlin/psi/ValueArgument;)Ljava/util/List;"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext.kt",
+          "symbol": "RuleExecutionContext.suppressionLocator / suppress(rootNode, node.startOffset, rule) callsites",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "symbol": "`Given a property with a disallowed name which is suppressed`(suppressionName: String)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "symbol": "`Given a property name suppressed via 'PropertyName' then also suppress the ktlint violation`()",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRuleTest.kt",
+          "symbol": "`Given a property name suppressed via 'PropertyName' then also suppress the ktlint violation`() and neighbouring Issue 2441/2612 suppression tests (lines 265-306)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRule.kt",
+          "symbol": "BackingPropertyNamingRule (file-level)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "f632019f2bcf",
+      "case": "pinterest_ktlint-2785",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "symbol": "BackingPropertyNamingRuleTest.`Given a property with a disallowed name which is suppressed`(suppressionName: String)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BackingPropertyNamingRuleTest.kt",
+          "symbol": "BackingPropertyNamingRuleTest.`Given a property name suppressed via 'PropertyName' then also suppress the ktlint violation`()",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRuleTest.kt",
+          "symbol": "PropertyNamingRuleTest.`Issue 2612 - Given a property name suppressed via 'ObjectPropertyName' then also suppress the ktlint violation`()",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRuleTest.kt",
+          "symbol": "PropertyNamingRuleTest (file-level: suppression parameterized test around line 144 listing \"PropertyName\")",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext.kt",
+          "symbol": "RuleExecutionContext.suppressionLocator (SuppressionLocator(editorConfig) at line 42)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorTest.kt",
+          "symbol": "SuppressionLocatorTest (file-level)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    },
+    {
+      "id": "f805a7b01155",
+      "case": "detekt_detekt-7625",
+      "answerPresent": true,
+      "malformedPredictions": 0,
+      "predictions": [
+        {
+          "index": 0,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "BaselineResultMappingSpec.`creates on top of an existing a baseline file without issues`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 1,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "BaselineResultMappingSpec.`creates on top of an existing a baseline file with issues`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 2,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMappingSpec.kt",
+          "symbol": "BaselineResultMappingSpec.`doesn't create a baseline file without issues`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 3,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt",
+          "symbol": "BaselineResultMapping.createOrUpdate(Path, List<Issue>)",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping#createOrUpdate(Ljava/nio/file/Path;Ljava/util/List;)V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 4,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineResultMapping.kt",
+          "symbol": "BaselineResultMapping.transformIssues / onFinish (line 37)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 5,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/IndentingXMLStreamWriter.kt",
+          "symbol": "IndentingXMLStreamWriter.writeEmptyElement(String) / onEmptyTag()",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 6,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "BaselineFormatSpec.`asserts that the saved and loaded baseline files are equal`",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#asserts that the saved and loaded baseline files are equal()V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 7,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "BaselineFormatSpec.`has a new line at the end of the written baseline file`",
+          "frozenFullCreditIds": [
+            "method:io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec$writes a baseline file#has a new line at the end of the written baseline file()V"
+          ],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 8,
+          "file": "detekt-core/src/test/kotlin/io/gitlab/arturbosch/detekt/core/baseline/BaselineFormatSpec.kt",
+          "symbol": "BaselineFormatSpec.`reads and writes baselines`",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        },
+        {
+          "index": 9,
+          "file": "detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/baseline/DefaultBaseline.kt",
+          "symbol": "DefaultBaseline.load(Path)",
+          "frozenFullCreditIds": [],
+          "onePredictionCreditsMultipleOracleIds": false,
+          "exactUsr": false,
+          "fileLevelCreditIds": []
+        }
+      ]
+    }
+  ]
+}

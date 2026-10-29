@@ -1,0 +1,190 @@
+{
+  "schema": 1,
+  "purpose": "Small startup-inclusive actual rules CLI pilot; descriptive only",
+  "measuredBaseCommit": "2cf3cb6058111906071084f403d73f3574db3c96",
+  "productionSourceSha256": "0db5f8c9653d884bbe350388e7c6bc5bc6cbe72a0a1951d1ba8b0d9f4363817e",
+  "jdkVersion": "openjdk version \"17.0.20.1\" 2026-08-18\nOpenJDK Runtime Environment Temurin-17.0.20.1+1 (build 17.0.20.1+1)\nOpenJDK 64-Bit Server VM Temurin-17.0.20.1+1 (build 17.0.20.1+1, mixed mode, sharing)\n",
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+  "logicalCpuCount": 9,
+  "javaOptions": "-Xmx1g -Dfile.encoding=UTF-8",
+  "pollSeconds": 0.001,
+  "rssScope": "Linux wait4 ru_maxrss KiB for each direct CLI process; not simultaneous process-tree RSS",
+  "configSha256": "69c3afc5eef808ec810603961d8d0c37a59a802ae01fcd28e60a87effbb30ee0",
+  "corpus": {
+    "core/build/classes/kotlin/main": {
+      "entries": 86,
+      "classFiles": 85,
+      "bytes": 479558,
+      "canonicalInventorySha256": "0bb4d3d87513b012a12a5b2feb7c831aefdb559cfa31f7b480c73e51a5f60fb0"
+    },
+    "index/build/classes/kotlin/main": {
+      "entries": 623,
+      "classFiles": 622,
+      "bytes": 4677766,
+      "canonicalInventorySha256": "7da8a351040ea05e677e17005b91bce726c5054de2b1139dacfa88ed6369de4d"
+    },
+    "analysis/build/classes/kotlin/main": {
+      "entries": 149,
+      "classFiles": 148,
+      "bytes": 980856,
+      "canonicalInventorySha256": "297e6f648e90a7e6c795d456c47279ea79f1a5f3e8e128dee258c33b9f2b3541"
+    },
+    "export/build/classes/kotlin/main": {
+      "entries": 78,
+      "classFiles": 77,
+      "bytes": 623719,
+      "canonicalInventorySha256": "d26bde09fec71386607ae5b9da261f9f431f8662e3889603a8fac231ec3b1127"
+    },
+    "cli/build/classes/kotlin/main": {
+      "entries": 62,
+      "classFiles": 61,
+      "bytes": 716369,
+      "canonicalInventorySha256": "e5e304cd4b658843d658ed369f076dedfdb3386f7206cde6b1ea6d544b41da69"
+    },
+    "gradle-plugin/build/classes/kotlin/main": {
+      "entries": 140,
+      "classFiles": 139,
+      "bytes": 770643,
+      "canonicalInventorySha256": "5d1067d6c5297d4a5fea7182453e6da6f6fdea0e3dcde08dfd95f5e7f7361630"
+    }
+  },
+  "samples": [
+    {
+      "index": 0,
+      "arm": "baseline",
+      "excluded_warmup": true,
+      "returncode": 0,
+      "wall_ns": 3187696036,
+      "max_rss_kib": 719672,
+      "user_seconds": 10.231703,
+      "system_seconds": 0.47061,
+      "stdout_bytes": 32,
+      "stdout_sha256": "2c05cf273d2461198d47b75c2742136fda452ea852bc50d2caba62a817785457",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "contractFailures": []
+    },
+    {
+      "index": 1,
+      "arm": "candidate",
+      "excluded_warmup": true,
+      "returncode": 0,
+      "wall_ns": 2843439330,
+      "max_rss_kib": 548492,
+      "user_seconds": 9.874559,
+      "system_seconds": 0.339775,
+      "stdout_bytes": 32,
+      "stdout_sha256": "2c05cf273d2461198d47b75c2742136fda452ea852bc50d2caba62a817785457",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "contractFailures": []
+    },
+    {
+      "index": 2,
+      "arm": "baseline",
+      "excluded_warmup": false,
+      "returncode": 0,
+      "wall_ns": 3199622897,
+      "max_rss_kib": 735988,
+      "user_seconds": 10.825248,
+      "system_seconds": 0.40260599999999996,
+      "stdout_bytes": 32,
+      "stdout_sha256": "2c05cf273d2461198d47b75c2742136fda452ea852bc50d2caba62a817785457",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "contractFailures": []
+    },
+    {
+      "index": 3,
+      "arm": "candidate",
+      "excluded_warmup": false,
+      "returncode": 0,
+      "wall_ns": 2931157144,
+      "max_rss_kib": 523760,
+      "user_seconds": 10.536569,
+      "system_seconds": 0.34391099999999997,
+      "stdout_bytes": 32,
+      "stdout_sha256": "2c05cf273d2461198d47b75c2742136fda452ea852bc50d2caba62a817785457",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "contractFailures": []
+    },
+    {
+      "index": 4,
+      "arm": "candidate",
+      "excluded_warmup": false,
+      "returncode": 0,
+      "wall_ns": 2903830369,
+      "max_rss_kib": 533880,
+      "user_seconds": 10.372334,
+      "system_seconds": 0.358993,
+      "stdout_bytes": 32,
+      "stdout_sha256": "2c05cf273d2461198d47b75c2742136fda452ea852bc50d2caba62a817785457",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "contractFailures": []
+    },
+    {
+      "index": 5,
+      "arm": "baseline",
+      "excluded_warmup": false,
+      "returncode": 0,
+      "wall_ns": 3233070109,
+      "max_rss_kib": 619560,
+      "user_seconds": 11.330993,
+      "system_seconds": 0.35034899999999997,
+      "stdout_bytes": 32,
+      "stdout_sha256": "2c05cf273d2461198d47b75c2742136fda452ea852bc50d2caba62a817785457",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "contractFailures": []
+    },
+    {
+      "index": 6,
+      "arm": "baseline",
+      "excluded_warmup": false,
+      "returncode": 0,
+      "wall_ns": 3467068113,
+      "max_rss_kib": 618660,
+      "user_seconds": 12.171951,
+      "system_seconds": 0.43139099999999997,
+      "stdout_bytes": 32,
+      "stdout_sha256": "2c05cf273d2461198d47b75c2742136fda452ea852bc50d2caba62a817785457",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "contractFailures": []
+    },
+    {
+      "index": 7,
+      "arm": "candidate",
+      "excluded_warmup": false,
+      "returncode": 0,
+      "wall_ns": 2823615388,
+      "max_rss_kib": 551448,
+      "user_seconds": 10.097643,
+      "system_seconds": 0.381724,
+      "stdout_bytes": 32,
+      "stdout_sha256": "2c05cf273d2461198d47b75c2742136fda452ea852bc50d2caba62a817785457",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "contractFailures": []
+    }
+  ],
+  "medianSeconds": {
+    "baseline": 3.233070109,
+    "candidate": 2.903830369
+  },
+  "medianMaxRssKiB": {
+    "baseline": 619560,
+    "candidate": 533880
+  },
+  "allInputSourceConfigInstallBracketsPassed": true,
+  "rawStdoutUtf8": "rules: 0 findings, 0 unassigned\n",
+  "rawStderrUtf8": "",
+  "recordingUsedDuringTiming": false,
+  "limits": [
+    "Three timed pairs are not a significance claim or a CI 20-second-budget guarantee.",
+    "Peak RSS is the direct CLI JVM peak, not exact allocated bytes or simultaneous process-tree memory.",
+    "Input inventory hashes use UTF-8 json.dumps(mapping, sort_keys=True, separators=(comma, colon)); each mapping is relative path to bytes/sha256."
+  ]
+}

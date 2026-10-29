@@ -10,7 +10,18 @@ public object ProvenanceVerifier {
     public data class Result(val status: String, val reasons: List<String>)
 
     /** 외부 입력은 문서의 external 슬롯에 명시적으로 다시 연결해야 한다. */
-    public fun verify(provenance: SnapshotProvenance?, project: Path, scope: String?, external: Map<String, Path> = emptyMap()): Result {
+    public fun verify(provenance: SnapshotProvenance?, project: Path, scope: String?, external: Map<String, Path> = emptyMap()): Result =
+        verifyObserved(provenance, project, scope, external, ContentFingerprint::hashInput)
+
+    /** 새 source-use capture는 각 bounded pass에서 읽은 receipt 지문을 같은 검증 경계에 제공한다. */
+    internal fun verifySourceUses(provenance: SnapshotProvenance, project: Path, scope: String,
+        external: Map<String, Path>, receiptFingerprint: (Path) -> String): Result =
+        verifyObserved(provenance, project, scope, external) { path, role ->
+            if (role == "compilerEvidence") receiptFingerprint(path) else ContentFingerprint.hashInput(path, role)
+        }
+
+    private fun verifyObserved(provenance: SnapshotProvenance?, project: Path, scope: String?, external: Map<String, Path>,
+        fingerprint: (Path, String) -> String): Result {
         if (provenance == null) return Result("unverified", listOf("legacy-snapshot"))
         if (provenance.witnesses.any { it.compilerEvidence.isNotEmpty() && !CompilerEvidenceToken.matches(it) })
             return Result("unverified", listOf("invalid-compiler-evidence-token"))
@@ -18,14 +29,15 @@ public object ProvenanceVerifier {
         val root = project.toAbsolutePath().normalize()
         fun locate(input: InputFingerprint): Path? =
             (if (input.path.startsWith("external/")) external[input.path] else root.resolve(input.path))?.toAbsolutePath()?.normalize()
-        val inputs = provenance.inputs + provenance.witnesses.flatMap { it.inputs + it.outputs + it.compilerEvidence }
+        val inputs = provenance.inputs + provenance.witnesses.flatMap { it.inputs + it.outputs + it.compilerEvidence } +
+            provenance.transformations.flatMap { it.originalOutputs + it.selectedOutputs + it.passthroughOutputs }
         // 한 번의 관측 안에서 같은 경로·역할만 재사용한다. 다음 verify와 before/after 관측은 새로 읽는다.
         val observedHashes = mutableMapOf<Pair<Path, String>, String>()
         inputs.filter { it.role != "options" }.distinct().forEach { input ->
             val path = locate(input)
             if (path == null) reasons += "missing-external-input"
             else try {
-                val actual = observedHashes.getOrPut(path to input.role) { ContentFingerprint.hashInput(path, input.role) }
+                val actual = observedHashes.getOrPut(path to input.role) { fingerprint(path, input.role) }
                 if (actual != input.sha256) reasons += "changed-${input.role}"
             } catch (_: java.io.IOException) { reasons += "unavailable-${input.role}" }
             catch (_: IllegalArgumentException) { reasons += "unavailable-${input.role}" }
@@ -35,10 +47,33 @@ public object ProvenanceVerifier {
             reasons.distinct().sorted(),
         )
         if (provenance.witnesses.isEmpty()) reasons += "missing-build-witness"
-        if (scope == null || provenance.witnesses.any { it.scope != scope }) reasons += "build-scope-mismatch"
+        // aggregate snapshot은 명시된 구성 scope의 witness만 받는다. 단일 capture는 snapshot scope와 같아야 한다.
+        val allowedScopes = provenance.memberScopes.ifEmpty { listOfNotNull(scope) }.toSet()
+        if (scope == null || provenance.witnesses.any { it.scope !in allowedScopes }) reasons += "build-scope-mismatch"
         val classes = provenance.inputs.filter { it.role == "classes" }
         val outputs = provenance.witnesses.flatMap { it.outputs }
-        if (classes.isEmpty() || classes.any { selected -> outputs.none { output ->
+        val observedOutputs = mutableListOf<InputFingerprint>()
+        provenance.transformations.forEach { observed ->
+            val sameScope = provenance.witnesses.filter { it.scope == observed.scope }
+            fun corresponds(a: InputFingerprint, b: InputFingerprint) = a.sha256 == b.sha256 && locate(a) == locate(b)
+            if (observed.scope !in allowedScopes || observed.originalOutputs.any { original ->
+                      sameScope.filter { it.compiler in setOf("javac", "kotlin") }.flatMap { it.outputs }.none { corresponds(it, original) }
+                  } || observed.passthroughOutputs.any { passthrough ->
+                      sameScope.filter { it.compiler == "agp-process-resources" }.flatMap { it.outputs }.none { corresponds(it, passthrough) }
+                  } || observed.selectedOutputs.any { selected -> classes.none { corresponds(it, selected) } }) {
+                reasons += "transformation-scope-or-output-mismatch"
+            } else try {
+                val primary = HiltClassTransforms.primarySourceNames(sameScope.filter { it.compiler in setOf("javac", "kotlin") }
+                    .flatMap { it.inputs }.filter { it.role == "sources" }.map { requireNotNull(locate(it)) })
+                val actual = HiltClassTransforms.verify(observed.originalOutputs.map { requireNotNull(locate(it)) },
+                      observed.selectedOutputs.map { requireNotNull(locate(it)) }, primary,
+                      observed.passthroughOutputs.map { requireNotNull(locate(it)) })
+                if (actual != observed.changedClasses) reasons += "transformation-class-receipt-mismatch"
+                else observedOutputs += observed.selectedOutputs
+            } catch (_: java.io.IOException) { reasons += "unavailable-class-transformation" }
+            catch (_: IllegalArgumentException) { reasons += "unsupported-class-transformation" }
+        }
+        if (classes.isEmpty() || classes.any { selected -> (outputs + observedOutputs).none { output ->
             selected.sha256 == output.sha256 && locate(selected) == locate(output)
         } }) reasons += "unwitnessed-class-root"
         if (provenance.inputs.count { it.role == "witness" } != provenance.witnesses.size) reasons += "missing-witness-file"

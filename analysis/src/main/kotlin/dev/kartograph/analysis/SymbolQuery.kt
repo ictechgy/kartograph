@@ -7,6 +7,7 @@ import dev.kartograph.core.NodeId
 import dev.kartograph.core.RetentionReason
 import dev.kartograph.core.SourceLocation
 import dev.kartograph.core.qualifiedName
+import dev.kartograph.core.matchesQualifiedName
 
 /** cartograph의 SymbolQueryDocument와 같은 필드 계약을 쓰는 심볼 질의 응답이다. */
 public data class SymbolQueryDocument(
@@ -41,6 +42,7 @@ public data class SymbolQuerySubject(
     val usr: String?,
     val accessibility: String,
     val location: SourceLocation?,
+    val sourceDeclaration: dev.kartograph.core.SourceDeclarationEvidence? = null,
 )
 
 /** 질의 대상과 관계가 있는 선언 및 그 관계다. */
@@ -53,6 +55,16 @@ public data class SymbolQueryNeighbor(
     val edges: List<String>,
     val depth: Int,
     val location: SourceLocation?,
+    /** 원본 bytecode CALL 간선이 직접 관측한 호출부 line이다. 기존 node location과 별개다. */
+    val references: List<SymbolQueryReference> = emptyList(),
+    val sourceDeclaration: dev.kartograph.core.SourceDeclarationEvidence? = null,
+)
+
+/** 직접 CALL 이웃에만 붙는 호출부 관측이다. column/offset은 bytecode에서 추측하지 않는다. */
+public data class SymbolQueryReference(
+    val kind: String,
+    val origin: String,
+    val location: SourceLocation,
 )
 
 /** 보존 뿌리에서 관측한 도달성 사실이며 삭제 판단이 아니다. */
@@ -77,13 +89,16 @@ public object SymbolQuery {
         depth: Int = 1,
         limit: Int = 50,
         suppressedByBaseline: Set<NodeId> = emptySet(),
+        callSiteLinesCaptured: Boolean = true,
     ): SymbolQueryDocument {
+        val effectiveLimitations = if (callSiteLinesCaptured) limitations
+        else (limitations + "call-site-lines: saved graph predates direct call-site evidence; line references are unavailable").distinct().sorted()
         val matches = graph.nodes.values.filter { node ->
-            node.id.value == requested || node.name == requested || node.qualifiedName == requested
+            node.id.value == requested || node.name == requested || node.matchesQualifiedName(requested)
         }.sortedBy { it.id }
-        if (matches.isEmpty()) return SymbolQueryDocument("notFound", requested, "symbol", limitations)
+        if (matches.isEmpty()) return SymbolQueryDocument("notFound", requested, "symbol", effectiveLimitations)
         if (matches.size > 1) return SymbolQueryDocument(
-            "ambiguous", requested, "symbol", limitations,
+            "ambiguous", requested, "symbol", effectiveLimitations,
             candidates = matches.map { SymbolQueryCandidate(it.qualifiedName, it.id.value) },
         )
         val node = matches.single()
@@ -92,20 +107,22 @@ public object SymbolQuery {
         val incoming = neighbors(graph, node.id, actualDepth, actualLimit, true)
         val outgoing = neighbors(graph, node.id, actualDepth, actualLimit, false)
         val memberEdges = graph.outgoingEdgesFrom(node.id).filter { it.kind == EdgeKind.MEMBER }
-        val members = memberEdges.mapNotNull { edge -> graph.node(edge.target)?.toNeighbor(listOf("member"), 1) }
+        val members = memberEdges.mapNotNull { edge -> graph.node(edge.target)?.toNeighborWithoutReferences(listOf("member"), 1) }
         val owner = graph.incomingEdgesTo(node.id).firstOrNull { it.kind == EdgeKind.MEMBER }
-            ?.source?.let(graph::node)?.toNeighbor(listOf("member"), 1)
-        val direct = reachability.retentionEvidenceFor(node.id).firstOrNull()
+            ?.source?.let(graph::node)?.toNeighborWithoutReferences(listOf("member"), 1)
+        val evidence = reachability.retentionEvidenceFor(node.id)
+        val direct = evidence.firstOrNull { it.reason != RetentionReason.UNKNOWN_KEEP_RULE } ?: evidence.firstOrNull()
         val reachable = node.id in reachability.reachableNodeIds
         val path = reachability.pathFromRootTo(node.id)?.mapNotNull(graph::node)?.map { it.qualifiedName }
         val state = when {
+            direct?.reason == RetentionReason.UNKNOWN_KEEP_RULE -> "unknown"
             direct?.reason == RetentionReason.KEEP_ANNOTATED_MEMBER -> "retainedByMember"
             direct != null -> "retained"
             reachable -> "reachable"
             else -> "unreachable"
         }
         return SymbolQueryDocument(
-            "found", requested, "symbol", limitations,
+            "found", requested, "symbol", effectiveLimitations,
             result = SymbolQueryResult(
                 node.toSubject(),
                 SymbolReachability(
@@ -124,24 +141,27 @@ public object SymbolQuery {
     }
 
     private fun neighbors(graph: CodeGraph, subject: NodeId, depth: Int, limit: Int, incoming: Boolean): NeighborPage {
-        data class Visit(val id: NodeId, val depth: Int, val edges: List<String>)
+        data class Visit(val id: NodeId, val depth: Int, val edgeFacts: List<dev.kartograph.core.GraphEdge>)
         val seen = mutableSetOf(subject)
         val queue = ArrayDeque<Visit>()
         val firstEdges = if (incoming) graph.incomingEdgesTo(subject) else graph.outgoingEdgesFrom(subject)
         firstEdges.filter { it.kind.impliesUsage }.groupBy { if (incoming) it.source else it.target }
             .toSortedMap().forEach { (id, edges) ->
-                queue += Visit(id, 1, edges.map { it.kind.name.lowerCamel() }.distinct().sorted())
+                queue += Visit(id, 1, edges)
             }
         val found = mutableListOf<SymbolQueryNeighbor>()
         while (queue.isNotEmpty()) {
             val visit = queue.removeFirst()
             if (!seen.add(visit.id)) continue
-            graph.node(visit.id)?.let { found += it.toNeighbor(visit.edges, visit.depth) }
+            graph.node(visit.id)?.let { found += it.toNeighbor(visit.edgeFacts, visit.depth, graph) }
+            // 응답은 BFS 순서의 앞 limit개와 잘림 여부뿐이라, limit+1번째 이웃을 찾으면 남은 depth 범위를 방문하지 않는다.
+            if (found.size > limit) break
             if (visit.depth >= depth) continue
             val edges = if (incoming) graph.incomingEdgesTo(visit.id) else graph.outgoingEdgesFrom(visit.id)
             edges.filter { it.kind.impliesUsage }.groupBy { if (incoming) it.source else it.target }
                 .toSortedMap().forEach { (id, grouped) ->
-                    queue += Visit(id, visit.depth + 1, grouped.map { it.kind.name.lowerCamel() }.distinct().sorted())
+                    // 이미 꺼낸 정점은 다시 꺼내도 건너뛰므로 큐에 넣지 않는다. 방문 표시는 꺼낼 때 그대로 해 순서와 간선 근거가 같다.
+                    if (id !in seen) queue += Visit(id, visit.depth + 1, grouped)
                 }
         }
         return NeighborPage(found.take(limit), found.size > limit)
@@ -149,11 +169,34 @@ public object SymbolQuery {
 
     private fun GraphNode.toSubject() = SymbolQuerySubject(
         name, qualifiedName, kind.name.lowerCamel(), moduleName, id.value, visibility.name.lowerCamel(), location,
+        sourceDeclaration,
     )
 
-    private fun GraphNode.toNeighbor(edges: List<String>, depth: Int) = SymbolQueryNeighbor(
-        name, qualifiedName, kind.name.lowerCamel(), id.value, moduleName, edges, depth, location,
-    )
+    private fun GraphNode.toNeighbor(
+        edgeFacts: List<dev.kartograph.core.GraphEdge>,
+        depth: Int,
+        graph: CodeGraph,
+    ): SymbolQueryNeighbor {
+        val edges = edgeFacts.map { it.kind.name.lowerCamel() }.distinct().sorted()
+        val references = edgeFacts
+            .takeIf { depth == 1 }
+            .orEmpty()
+            .filter { it.kind == EdgeKind.CALL && it.origin == dev.kartograph.core.EdgeOrigin.BYTECODE && it.callSiteLines.isNotEmpty() }
+            .flatMap { edge ->
+                graph.node(edge.source)?.location?.path?.takeIf(String::isNotBlank)?.let { path ->
+                    edge.callSiteLines.map { line ->
+                        SymbolQueryReference("call", "bytecode", SourceLocation(path, line))
+                    }
+                }.orEmpty()
+            }
+            .distinct()
+            .sortedWith(compareBy({ it.kind }, { it.origin }, { it.location.path }, { it.location.line ?: 0 }))
+        return SymbolQueryNeighbor(name, qualifiedName, kind.name.lowerCamel(), id.value, moduleName, edges, depth, location, references, sourceDeclaration)
+    }
+
+    private fun GraphNode.toNeighborWithoutReferences(edges: List<String>, depth: Int): SymbolQueryNeighbor =
+        SymbolQueryNeighbor(name, qualifiedName, kind.name.lowerCamel(), id.value, moduleName, edges, depth, location,
+            sourceDeclaration = sourceDeclaration)
 
     private data class NeighborPage(val items: List<SymbolQueryNeighbor>, val truncated: Boolean)
 

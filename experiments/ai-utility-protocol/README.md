@@ -198,8 +198,11 @@ source 조건에는 freshness가 없으므로 0회이고, 이 0을 낮은 점수
 - oracle은 완전한 동적 영향 정답이 아니다. javap 직접/2단계 참조와 원본에서 실제 실행한 기존 테스트,
   원본 override 선언으로 이루어진 검토 anchor다. 추가 대상을 자동으로 오탐으로 단정하지 않는다.
 - anchor 점수(사전 고정 검토 기준)와 섞지 않았다. 0.9.0의 48회 코호트 비교는 별도 결과로 유지한다.
-- 수동 검토는 아직 남아 있다(`manualReviewPending: true`). 조건명을 가린 자료는
+- 동결 시점에는 수동 검토가 남아 있었다(`manualReviewPending: true`). 조건명을 가린 자료는
   [results-v4/blind/](results-v4/blind)에 있고 대응표는 [results-v4/blind-key.json](results-v4/blind-key.json)이다.
+  2026-09-21 [후속 측정·답변 구체성 감사](review-v4/README.md)는 16개 응답과 예측 147개를 대조하고
+  overload 다중 가점 1건·존재하지 않는 예측 파일 경로 1건을 확인했다. 원래 점수는 바꾸지 않았으며,
+  추가 target 전체의 동작 판정·독립 인간 검토·새 matched-input 코호트 실행은 완료하지 않았다.
 
 ### 증거
 

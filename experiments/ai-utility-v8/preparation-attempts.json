@@ -1,0 +1,76 @@
+{
+  "scope": "Native Gradle command wall clocks, includes initial failed capture; excludes diagnostics, parser, model, reviews and installation. Warm global dependency caches used.",
+  "attempts": [
+    {
+      "source": "detekt",
+      "case": null,
+      "exit": 1,
+      "seconds": 206.13765370900364,
+      "matched": null,
+      "observerSha256": "f53410d6698698eb4d795cb0072399d66a11c73f8fdd6d9a9478f4d8396694e9",
+      "adapterSha256": "32abad21b25edd758bf24834437ed25e3a98b4a7f5de0b878cf2bb4cb08592b1",
+      "dirtyPatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "source": "detekt",
+      "case": null,
+      "exit": 0,
+      "seconds": 63.98898104199907,
+      "matched": true,
+      "observerSha256": "f53410d6698698eb4d795cb0072399d66a11c73f8fdd6d9a9478f4d8396694e9",
+      "adapterSha256": "0f67ac800c1b7203ba4d489ad499b7e960322bfe9b0e5c2e3a1cd33878d1d40f",
+      "dirtyPatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "source": "ktlint",
+      "case": null,
+      "exit": 0,
+      "seconds": 110.85805354199692,
+      "matched": true,
+      "observerSha256": "f53410d6698698eb4d795cb0072399d66a11c73f8fdd6d9a9478f4d8396694e9",
+      "adapterSha256": "0f67ac800c1b7203ba4d489ad499b7e960322bfe9b0e5c2e3a1cd33878d1d40f",
+      "dirtyPatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "source": "detekt",
+      "case": "detekt-line-content",
+      "exit": 1,
+      "seconds": 57.94473133300198,
+      "matched": null,
+      "observerSha256": "f53410d6698698eb4d795cb0072399d66a11c73f8fdd6d9a9478f4d8396694e9",
+      "adapterSha256": "0f67ac800c1b7203ba4d489ad499b7e960322bfe9b0e5c2e3a1cd33878d1d40f",
+      "dirtyPatchSha256": "7da774f6b689933754b79cf2d0291c590f39fc51b317339eb6eefc32c1d4fca6"
+    },
+    {
+      "source": "detekt",
+      "case": "detekt-trimming-methods",
+      "exit": 1,
+      "seconds": 56.18144966699765,
+      "matched": null,
+      "observerSha256": "f53410d6698698eb4d795cb0072399d66a11c73f8fdd6d9a9478f4d8396694e9",
+      "adapterSha256": "0f67ac800c1b7203ba4d489ad499b7e960322bfe9b0e5c2e3a1cd33878d1d40f",
+      "dirtyPatchSha256": "9b2fd82b80b22f65ac3b77be0d84893d4904ffacb2a3135a95111c5cf3744f4d"
+    },
+    {
+      "source": "ktlint",
+      "case": "ktlint-disabled-max-length",
+      "exit": 1,
+      "seconds": 32.91173274999892,
+      "matched": null,
+      "observerSha256": "f53410d6698698eb4d795cb0072399d66a11c73f8fdd6d9a9478f4d8396694e9",
+      "adapterSha256": "0f67ac800c1b7203ba4d489ad499b7e960322bfe9b0e5c2e3a1cd33878d1d40f",
+      "dirtyPatchSha256": "dd70734637785c869e7baa302dfa1e893eab1a958ac6f45ee03f72be5839a594"
+    },
+    {
+      "source": "ktlint",
+      "case": "ktlint-import-subpackages",
+      "exit": 1,
+      "seconds": 30.930008375005855,
+      "matched": null,
+      "observerSha256": "f53410d6698698eb4d795cb0072399d66a11c73f8fdd6d9a9478f4d8396694e9",
+      "adapterSha256": "0f67ac800c1b7203ba4d489ad499b7e960322bfe9b0e5c2e3a1cd33878d1d40f",
+      "dirtyPatchSha256": "71db5f29ad452232b92c382f9e66f62c6f191091ce0a20df2c89f4055b67a83e"
+    }
+  ],
+  "sumCommandSeconds": 558.952610418004
+}

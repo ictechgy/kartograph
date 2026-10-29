@@ -1,0 +1,43 @@
+{
+  "receipt": {
+    "provider": "glm",
+    "selector": "files",
+    "paths": [
+      "experiments/ai-utility-protocol/review-v4/packet.json"
+    ],
+    "bytes": 173245,
+    "redaction": {
+      "private_key_blocks": 0,
+      "secret_lines": 0,
+      "secret_values": 0,
+      "home_paths": 0,
+      "emails": 0,
+      "phones": 1
+    },
+    "sha256_packet_md": "74f76f6569ce1d42cb715c666904f05ead720e14044ce25e1a5742f76ccc96aa",
+    "timeout_seconds": 1800,
+    "timeout_source": "auto",
+    "timeout_applies": true,
+    "surface": "absent",
+    "effort": "medium",
+    "effort_source": "explicit",
+    "secret_name_exempt_used": 0,
+    "supervision": "none",
+    "guarantees": {
+      "leakage": "not-guaranteed",
+      "vendor_training": "not-restricted",
+      "vendor_local_copy": "uncontrolled",
+      "cwd_sandbox": "none",
+      "redaction": "denylist",
+      "doctor": "help-text-only",
+      "policy_gate": "lexical-tripwire",
+      "output_screen": "lexical-tripwire"
+    }
+  },
+  "timing": {
+    "preflight_ms": 14,
+    "packet_ms": 183,
+    "launch_ms": 372262,
+    "total_ms": 372464
+  }
+}

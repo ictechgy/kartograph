@@ -1,0 +1,823 @@
+{
+  "status": "completed",
+  "trials": 16,
+  "cases": [
+    {
+      "case": "detekt-line-content",
+      "module": "detekt-rules-style",
+      "sourceFiles": 180,
+      "nonblankSourceLines": 36269,
+      "staticCallers": 2,
+      "behaviorPositive": 4,
+      "behaviorNegative": 1847,
+      "nativeTotals": {
+        "baseline": {
+          "tests": 3649,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "changed": {
+          "tests": 3649,
+          "failures": 4,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      "outOfScopeExecutedMethods": [],
+      "arms": {
+        "source": {
+          "callCoverage": [
+            0.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            0.0,
+            1.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            null,
+            1.0
+          ],
+          "meanSeconds": 23.912070250000397,
+          "totalCostUsd": 0.2738645,
+          "knownCostUsd": 0.2738645,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        },
+        "mcp": {
+          "callCoverage": [
+            1.0,
+            0.0
+          ],
+          "behaviorCoverage": [
+            1.0,
+            0.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            null
+          ],
+          "meanSeconds": 27.942798979500367,
+          "totalCostUsd": 0.37642699999999996,
+          "knownCostUsd": 0.37642699999999996,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        }
+      }
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "module": "detekt-rules-style",
+      "sourceFiles": 180,
+      "nonblankSourceLines": 36269,
+      "staticCallers": 2,
+      "behaviorPositive": 2,
+      "behaviorNegative": 1849,
+      "nativeTotals": {
+        "baseline": {
+          "tests": 3649,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "changed": {
+          "tests": 3649,
+          "failures": 2,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      "outOfScopeExecutedMethods": [],
+      "arms": {
+        "source": {
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            1.0,
+            1.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 30.182173291505023,
+          "totalCostUsd": 0.342159,
+          "knownCostUsd": 0.342159,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        },
+        "mcp": {
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            1.0,
+            1.0
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 28.7315705205001,
+          "totalCostUsd": 0.345672,
+          "knownCostUsd": 0.345672,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        }
+      }
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "module": "ktlint-ruleset-standard",
+      "sourceFiles": 207,
+      "nonblankSourceLines": 54253,
+      "staticCallers": 14,
+      "behaviorPositive": 2,
+      "behaviorNegative": 1802,
+      "nativeTotals": {
+        "baseline": {
+          "tests": 2264,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 11
+        },
+        "changed": {
+          "tests": 2264,
+          "failures": 2,
+          "errors": 0,
+          "skipped": 11
+        }
+      },
+      "outOfScopeExecutedMethods": [
+        "method:com/pinterest/ktlint/test/RuleSetProviderTest#checkAllRulesInPackageAreProvidedByRuleSetProvider()V"
+      ],
+      "arms": {
+        "source": {
+          "callCoverage": [
+            0.9285714285714286,
+            0.5714285714285714
+          ],
+          "behaviorCoverage": [
+            0.5,
+            0.5
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 25.405483854501654,
+          "totalCostUsd": 0.23603300000000002,
+          "knownCostUsd": 0.23603300000000002,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        },
+        "mcp": {
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            0.5,
+            0.5
+          ],
+          "negativeControlsSelected": [
+            0,
+            0
+          ],
+          "observedTestPrecision": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 28.599348186999123,
+          "totalCostUsd": 0.28696,
+          "knownCostUsd": 0.28696,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        }
+      }
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "module": "ktlint-ruleset-standard",
+      "sourceFiles": 207,
+      "nonblankSourceLines": 54253,
+      "staticCallers": 4,
+      "behaviorPositive": 13,
+      "behaviorNegative": 1791,
+      "nativeTotals": {
+        "baseline": {
+          "tests": 2264,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 11
+        },
+        "changed": {
+          "tests": 2264,
+          "failures": 13,
+          "errors": 0,
+          "skipped": 11
+        }
+      },
+      "outOfScopeExecutedMethods": [
+        "method:com/pinterest/ktlint/test/RuleSetProviderTest#checkAllRulesInPackageAreProvidedByRuleSetProvider()V"
+      ],
+      "arms": {
+        "source": {
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "behaviorCoverage": [
+            0.7692307692307693,
+            0.23076923076923078
+          ],
+          "negativeControlsSelected": [
+            2,
+            0
+          ],
+          "observedTestPrecision": [
+            0.8333333333333334,
+            1.0
+          ],
+          "meanSeconds": 68.88776577050157,
+          "totalCostUsd": 0.850076,
+          "knownCostUsd": 0.850076,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        },
+        "mcp": {
+          "callCoverage": [
+            0.25,
+            1.0
+          ],
+          "behaviorCoverage": [
+            0.6923076923076923,
+            0.5384615384615384
+          ],
+          "negativeControlsSelected": [
+            1,
+            0
+          ],
+          "observedTestPrecision": [
+            0.9,
+            1.0
+          ],
+          "meanSeconds": 72.64196154149977,
+          "totalCostUsd": 0.858773,
+          "knownCostUsd": 0.858773,
+          "missingCostTrials": 0,
+          "invalidResponses": 0
+        }
+      }
+    }
+  ],
+  "trialDetails": [
+    {
+      "case": "detekt-line-content",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 0.0,
+      "behaviorCoverage": 0.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": null,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 2,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "outside-oracle-unadjudicated": 2,
+        "unresolved": 4
+      },
+      "predictionCount": 6,
+      "seconds": 23.767885332999867,
+      "costUsd": 0.1421675,
+      "informationToolRequests": 5,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 6
+      },
+      "predictionCount": 6,
+      "seconds": 24.146459750001668,
+      "costUsd": 0.1894175,
+      "informationToolRequests": 6,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {
+          "impact": 1
+        },
+        "processed": {
+          "impact": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "impact",
+            "status": "notFound",
+            "isError": false
+          }
+        ]
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 0.0,
+      "behaviorCoverage": 0.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": null,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 2,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "outside-oracle-unadjudicated": 2,
+        "unresolved": 4
+      },
+      "predictionCount": 6,
+      "seconds": 31.739138208999066,
+      "costUsd": 0.1870095,
+      "informationToolRequests": 9,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 6
+      },
+      "predictionCount": 6,
+      "seconds": 24.056255167000927,
+      "costUsd": 0.131697,
+      "informationToolRequests": 5,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 4
+      },
+      "predictionCount": 4,
+      "seconds": 26.48290804100543,
+      "costUsd": 0.16584549999999998,
+      "informationToolRequests": 7,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 4
+      },
+      "predictionCount": 4,
+      "seconds": 28.097179750002397,
+      "costUsd": 0.173344,
+      "informationToolRequests": 7,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 4
+      },
+      "predictionCount": 4,
+      "seconds": 29.365961290997802,
+      "costUsd": 0.17232799999999998,
+      "informationToolRequests": 8,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {
+          "impact": 1
+        },
+        "processed": {
+          "impact": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "impact",
+            "status": "notFound",
+            "isError": false
+          }
+        ]
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 1.0,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 4
+      },
+      "predictionCount": 4,
+      "seconds": 33.88143854200462,
+      "costUsd": 0.1763135,
+      "informationToolRequests": 8,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 0.9285714285714286,
+      "behaviorCoverage": 0.5,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 1,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 14,
+        "outside-oracle-unadjudicated": 1
+      },
+      "predictionCount": 15,
+      "seconds": 28.65863404200354,
+      "costUsd": 0.126207,
+      "informationToolRequests": 3,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 0.5,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 15
+      },
+      "predictionCount": 15,
+      "seconds": 28.76943908300018,
+      "costUsd": 0.13756649999999998,
+      "informationToolRequests": 3,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 0.5,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 15
+      },
+      "predictionCount": 15,
+      "seconds": 28.429257290998066,
+      "costUsd": 0.1493935,
+      "informationToolRequests": 3,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {
+          "impact": 1
+        },
+        "processed": {
+          "impact": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "impact",
+            "status": "notFound",
+            "isError": false
+          }
+        ]
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 0.5714285714285714,
+      "behaviorCoverage": 0.5,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 0,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 9
+      },
+      "predictionCount": 9,
+      "seconds": 22.152333666999766,
+      "costUsd": 0.10982600000000001,
+      "informationToolRequests": 3,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 0.7692307692307693,
+      "negativeControlsSelected": 2,
+      "observedTestPrecision": 0.8333333333333334,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 1,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 14,
+        "outside-oracle-unadjudicated": 3,
+        "unresolved": 2
+      },
+      "predictionCount": 19,
+      "seconds": 75.59508362500492,
+      "costUsd": 0.4685285,
+      "informationToolRequests": 12,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 0,
+      "valid": true,
+      "error": null,
+      "callCoverage": 0.25,
+      "behaviorCoverage": 0.6923076923076923,
+      "negativeControlsSelected": 1,
+      "observedTestPrecision": 0.9,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 1,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 10,
+        "unresolved": 3,
+        "outside-oracle-unadjudicated": 2
+      },
+      "predictionCount": 15,
+      "seconds": 71.97282037499826,
+      "costUsd": 0.409344,
+      "informationToolRequests": 9,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 0.5384615384615384,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 2,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 11,
+        "outside-oracle-unadjudicated": 2,
+        "unresolved": 2
+      },
+      "predictionCount": 15,
+      "seconds": 73.31110270800127,
+      "costUsd": 0.44942899999999997,
+      "informationToolRequests": 10,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 1,
+      "valid": true,
+      "error": null,
+      "callCoverage": 1.0,
+      "behaviorCoverage": 0.23076923076923078,
+      "negativeControlsSelected": 0,
+      "observedTestPrecision": 1.0,
+      "kindMismatches": 0,
+      "productionOutsideOracle": 1,
+      "testOutsideControls": 0,
+      "predictionStatusCounts": {
+        "in-oracle": 7,
+        "outside-oracle-unadjudicated": 1,
+        "unresolved": 3
+      },
+      "predictionCount": 11,
+      "seconds": 62.18044791599823,
+      "costUsd": 0.3815475,
+      "informationToolRequests": 8,
+      "outputToolRequests": 1,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "infrastructureErrors": []
+    }
+  ],
+  "interpretation": "Preregistered mutations in complete real public modules; static callers and observed assertion changes are separate. Not natural PRs, a random sample, or a general productivity measure.",
+  "modelStageSeconds": 612.606344790016,
+  "modelCostUsd": 3.5699644999999998,
+  "knownModelCostUsd": 3.5699644999999998,
+  "missingCostTrials": 0,
+  "responseValidityByArm": {
+    "source": {
+      "total": 8,
+      "valid": 8
+    },
+    "mcp": {
+      "total": 8,
+      "valid": 8
+    }
+  },
+  "infrastructureErrors": [],
+  "manifestSha256": "d539bf1b19d16b9525939b23895d880848eacc0e2ecc35f7bb00ab3bd33868e6",
+  "resultsSha256": "e4cc207808f196af5b146cab742cd149d872135849bdd915381a14e4fc51e0e0"
+}

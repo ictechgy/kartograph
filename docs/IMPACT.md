@@ -7,6 +7,42 @@ AI 클라이언트에서는 [MCP 서버](MCP.md)의 `query_symbol`, `impact`, `f
 
 ## 수정 전에 조사
 
+### Git 변경과 snapshot 신선도를 한 번에 조사
+
+기존 한쪽 snapshot `impact`는 그대로 유지한다. 새 opt-in Git 모드는 실제 base/head 경로와
+before/current 내용 검증을 같은 응답에 보존한다. 각 checkout에서 같은 버전·scope·variant로 빌드한 뒤
+`snapshot --include-paths --revision <full-commit> --scope app:main`으로 캡처한다.
+등록 compiler task의 `--build-witness`와 `--source-root`·`--build-input`도 포함해야 compiler freshness를 확인할 수 있다.
+빌드 명령은 앱마다 다르므로 이 명령은 빌드·checkout·fetch를 대신 실행하지 않는다.
+
+```sh
+kartograph impact --git-base <base-ref> --git-head <head-ref> \
+  --project <head-checkout> --base-project <base-checkout> \
+  --base-graph before.json --graph-file after.json
+
+# 새 소스·컴파일 결과를 다시 capture한 working-tree snapshot을 사용한다 (current revision은 없거나 HEAD).
+kartograph impact --git-base HEAD --working-tree --project . \
+  --base-project <clean-base-checkout> --base-graph before.json --graph-file after.json
+```
+
+`kartograph-change-impact` v1 wrapper의 `graphImpact`는 기존 보고서다. `change`는 실제 resolved commit과
+작업 트리 모드, old/new 경로를 함께 보존한다. rename은 삭제/추가 경로로 선택하며 revision 간 간선을 합치지 않는다.
+staged·unstaged·non-ignored untracked를 작업 트리 모드에 포함한다. 파일 seed는 변경 줄뿐 아니라 해당 파일의
+모든 캡처된 선언을 고르므로 과잉 후보가 있을 수 있다. 지원 경로는 20,000개, Git 출력은 4 MiB, 최종 JSON은 16 MiB로
+제한하며 초과 시 성공한 부분 JSON을 내보내지 않는다. 기존 graph depth/visit/path/page/summary 제한은 `graphImpact`에 남는다.
+
+`snapshots`는 실제 파싱한 bytes의 SHA-256·scope·tool version·revision을 담는다. `freshness`는 before/current를
+별도로 rehash하며 필요한 외부 입력은 `--input external/slot=path`, `--base-input external/slot=path`로 전달한다.
+base checkout이 없으면 `unverified`다. commit 비교의 checkout 내용이 해당 commit과 다르면 `stale`이며,
+작업 트리 비교는 의도된 dirty source와 캡처 지문을 비교한다. 같은 HEAD 라벨, 빈 후보, `noChanges`는 안전 보장이 아니다.
+Git 선택과 해시는 원자적 capture가 아니므로 실행 중 편집과 빌드를 멈춰야 한다. 서브모듈 내부의 미커밋 변경은 검사하지 않는다.
+정적 테스트 후보는 실패 예측이나 실행 생략 허가가 아니다. 실제 compiler·source-use·runtime 한계도 원래 보고서에 남는다.
+
+MCP는 고정 startup 입력에 `--base-project`와 `--base-input`을 추가하고 `change_impact`의
+`base`, 선택 `head` 또는 `workingTree: true`를 사용한다. 각 호출이 신선도를 다시 확인하며 요청이 파일시스템
+경로나 빌드 명령을 선택할 수는 없다. snapshot은 시작 시 로드하므로 recapture 후 서버를 다시 시작한다.
+16 KiB interactive 제한이 context까지 담지 못하면 오류로 남기며 전체 Git context를 버려 성공처럼 응답하지 않는다.
+
 해당 variant를 먼저 빌드하고 기존 query와 같은 class·classpath·manifest/XML·keep 입력으로 capture한다.
 반복 질의에서는 같은 파일을 재사용한다. 테스트의 영향도 조사하려면 관련 컴파일된 test root도 `--classes`로 포함한다.
 
@@ -57,9 +93,14 @@ module·file·test 필터는 각 축이 base 또는 current 사실에 맞으면 
 대형 입력에는 `snapshot --compact`를 사용한다. v2는 문자열 사전과 node/call/edge 배열의 참조 인덱스로 반복 정보를 줄인다.
 정점·간선·외부 호출·보존 근거를 버리지 않으며 기존 v1과 같은 검증을 거친다. 기본 출력은 v1이고 query/impact는 두 형식을 읽는다.
 저장·읽기 한도는 기본 64 MiB다. 큰 그래프는 capture와 saved query·impact·verify-snapshot·MCP 시작 시
-`--snapshot-max-mib 128`을 지정해 최대 128 MiB까지 허용할 수 있다(1..128). 이 옵션은 그래프 사실이나
+`--snapshot-max-mib 128`을 지정해 최대 1024 MiB까지 허용할 수 있다(1..1024). 이 옵션은 그래프 사실이나
 신선도 증거를 바꾸지 않는다. 일반 compiled query에는 적용하지 않는다. 메모리에 파싱한 그래프와 분석 작업은
 파일 크기보다 많은 heap을 사용할 수 있다.
+v2를 읽을 때는 문자열 사전 참조와 정점 위치 참조가 펼치는 문자열을 문서마다 합계 2,147,483,648자·33,554,432개까지만
+허용하고, 넘으면 검증 전에 실패한다(exit 2). 같은 문자열을 많은 행이 참조해 검증 비용을 파일 크기보다 크게 부풀린 문서를
+막는 상한이며, byte 상한과 달리 옵션으로 바꾸지 않는다. 실측한 대형 capture(AGP 9.2.0 jar의 93 MiB v2)는 약 3.7억 자·
+549만 개로 펼쳐졌다. 상한을 넘으면 CLI는 원인을 따로 밝히지 않고 명령마다의 일반 snapshot 읽기 오류(일부는 byte 상한을
+함께 적는다)를 낸다. `--snapshot-max-mib`를 올려도 풀리지 않으므로 snapshot을 다시 capture한다.
 
 Gradle 자동 캡처에는 `kartograph { snapshotMaxMiB.set(128) }`을 설정한다. 기본값은 64이며
 JVM·Android snapshot task에 같은 범위 검증을 적용한다. CI에서 만든 큰 파일을 읽는 명령에도 한도를 명시한다.
@@ -95,6 +136,12 @@ kartograph impact 'class:sample/Repository' \
 테스트 실행은 기존 CI 절차를 유지한다. Kotlin compiler가 분석에 읽은 Java 소스는 javac의 성공 증거를
 대신하지 않는다. 소스가 있는 compiler의 출력 또는 증거가 빠지면 캡처가 실패한다.
 소스가 없는 언어의 정상적인 `NO-SOURCE` 출력은 허용한다. 임의 라이브러리 누락은 계속 오류다.
+
+개발 버전은 의존 프로젝트가 공개 Gradle artifact metadata로 선언한 class 디렉터리도 부재까지 추적한다.
+예를 들어 Kotlin 전용 의존 모듈의 Java 출력이 아직 없어도 compiler가 실제 받은 classpath 상태를 기록한다.
+빈 외부 출력 여러 개는 내용 해시만으로 서로 바꿔 연결하지 않으며, 위치를 구분하는 불투명 식별자를 사용한다.
+나중에 해당 디렉터리에 바이트가 생기면 기존 snapshot은 stale이다. 임의 파일 의존성을 이 경로로 허용하거나
+의존 모듈의 런타임 완전성을 증명하지 않는다. 이 수정은 0.15.0부터 제공하며 0.14.0에는 포함되지 않는다.
 
 자동 수집이 지원하지 않는 compiler 입력은 일반 컴파일을 막지 않고 증거 생성 거부로 기록한다.
 `kartographSnapshot`은 해당 증거가 없으면 사유와 함께 실패한다. 지원하지 않는 입력을 검증된 것으로
@@ -189,6 +236,71 @@ capture는 `changed-classes`로 실패하며 이전 snapshot을 덮어쓰지 않
 snapshot 바이트도 처음과 같다. witness가 없는 R.jar를
 `unwitnessed-class-root`로 거부하는 계약은 `AppModuleRJarCliTest`·`RealAgpRJarCliTest`가 CLI 수준에서 고정한다.
 
+#### 여러 모듈과 저장소 밖 build 디렉터리
+
+여러 모듈 Android 앱(AGP 9, Compose)에 저장소 밖 init script로 plugin을 적용했을 때 드러난 실패를 다음처럼 다룬다.
+재현은 `AndroidMultiModuleSnapshotIntegrationTest`(합성 3모듈, build 디렉터리 이동, Java 전용 unit test, 같은 바이트
+외부 JAR)와 `IdenticalExternalInputSnapshotTest`가 고정한다.
+
+- **build 디렉터리를 project 밖으로 옮겨도 된다.** 별도 opt-in 없이 각 project가 선언한 `layout.buildDirectory`를
+  그 project의 build 출력으로 본다. merged manifest와 생성 resource XML의 근거 위치는 관례 배치와 같은
+  `build/<build 디렉터리 기준 경로>`로 기록해 절대 경로를 남기지 않고, 옮긴 capture와 기본 배치 capture의 근거가
+  같게 한다. build 디렉터리 밖이면서 project 밖인 XML은 계속 거부한다. class·witness 입력은 기존처럼 `external/`
+  슬롯과 `build/kartograph/<variant>-input-bindings.json`(옮긴 build 디렉터리 안)으로 다시 연결한다.
+- **같은 바이트의 외부 입력.** AndroidX KMP 분할 artifact는 항목 없는 stub JAR를 여러 transform 위치에 만든다.
+  내용이 같은 일반 파일은 신선도 판정이 같으므로 compiler가 선언한 입력을 먼저, snapshot 전용 classpath를 나중에
+  두고 결정적으로 고른다. 같은 내용의 입력이 여럿이면 서로 다른 파일에 짝짓는다. 비어 있는 서로 다른 출력처럼
+  내용이 같은 **디렉터리**는 바꿔 연결하지 않고 task·입력 슬롯·후보(project 상대 경로 또는 `<external>/` 뒤 두 이름)를
+  밝혀 거부한다. 후보가 없으면 task와 입력 슬롯, 후보 수를 알린다.
+- **Java만 있는 unit test.** Kotlin unit-test 출력은 NO-SOURCE로 생기지 않지만 javac classpath에는 들어간다.
+  같은 variant compiler의 선언 출력은 부재까지 추적하는 watch로 기록하므로 capture가 `fingerprint input is missing`으로
+  멈추지 않는다. 나중에 그 디렉터리에 class가 생기면 이전 snapshot은 stale이다.
+- **unit-test component 제외.** 기본값은 기존 계약대로 포함(`snapshotIncludeUnitTests = true`)이다. test 정점이 있어야
+  `impact`가 테스트 검토 후보(`testStatus`)를 보여 주기 때문이다. `routes`는 스캔 단계에서 test source를 기본 제외하므로
+  snapshot에 test가 있어도 route 사실이 늘지 않는다. production 그래프만 필요하거나 test compile 입력이 지원되지 않으면
+  `snapshotIncludeUnitTests.set(false)` 또는 `-Pkartograph.snapshotIncludeUnitTests=false`로 끈다. 끄면 test compiler
+  witness를 등록하지 않고 snapshot에 `unit-test-components-excluded:` limitation을 남긴다. androidTest는 원래 캡처하지 않는다.
+
+resource 사실/필드 소유권이 있는 snapshot은 captured-empty라도 merge/aggregate를 거부한다.
+해당 모듈의 snapshot을 따로 질의한다. 아래 병합 예시는 이 채널을 포함하지 않는 기존 snapshot에 한정한다.
+[0.25.0 layout XML 캡처·업그레이드](ANDROID-RESOURCE-IMPACT.md)는 non-final R 필드와 literal include의
+revision별 영향 후보를 다룬다. 기존 자동 snapshot 지원 조합 전체의 XML mapping을 보장하지 않는다.
+
+지원하는 기존 모듈별 snapshot은 `kartograph snapshot merge`로 하나로 합친다. 모듈 snapshot 그래프에는 다른 모듈로 가는 참조·상속
+간선이 없으므로 문서끼리 합치지 않고, 각 구성원의 검증된 class root·classpath를 함께 다시 인덱싱한다. 결과 그래프는
+같은 class root를 `snapshot --classes`에 모두 준 것과 같고, JVM USR은 모듈과 무관해 그대로다.
+
+```sh
+./gradlew kartographSnapshotDebug
+kartograph snapshot merge --project . --include-paths \
+  --module app --graph-file app/build/reports/kartograph/debug-snapshot.json \
+    --input-bindings app/build/kartograph/debug-input-bindings.json \
+  --module core/network --graph-file core/network/build/reports/kartograph/debug-snapshot.json \
+    --input-bindings core/network/build/kartograph/debug-input-bindings.json \
+  --input-bindings-output build/kartograph/aggregate-input-bindings.json > aggregate-snapshot.json
+kartograph verify-snapshot --graph-file aggregate-snapshot.json --project . \
+  --input-bindings build/kartograph/aggregate-input-bindings.json
+kartograph routes --role client --project . --graph-file aggregate-snapshot.json \
+  --input-bindings build/kartograph/aggregate-input-bindings.json
+```
+
+- 구성원은 capture 당시와 같은 바이트여야 한다. stale이거나 외부 입력을 찾을 수 없는(`missing-external-input`) 구성원은
+  거부한다. witness 없는 수동 capture처럼 `unverified`인 구성원은 합치되 `aggregate-member-unverified:`로 남긴다.
+- provenance는 해시를 바꾸지 않고 경로만 `--project` 기준으로 옮겨 합치며, 구성원 scope 목록(`memberScopes`)을 싣는다.
+  신선도 검사는 witness scope가 이 목록 안에 있을 때만 받는다. `--scope`를 생략하면 `aggregate:<variant>`다.
+- 구성원 외부 슬롯은 `external/member-<n>/...`로 구분하며 `--input-bindings-output` 파일에 연결을 쓴다. 외부 입력이
+  있으면 이 옵션은 필수이고, 파일에는 절대 경로가 있으므로 공개하지 않는다.
+- 보존 근거는 구성원별 결과를 합친다. 모듈 경계를 넘는 keep rule·manifest는 다시 평가하지 않으며
+  `aggregate-retention:` limitation으로 알린다. processor 관측이나 compiler-evidence witness가 있는 구성원은 아직 합치지 않는다.
+- 생성 출처(`generationEvidence`)가 있는 구성원도 선언 0개인 capture를 포함해 명시적으로 거부한다.
+  단일 scope의 생성 증거를 옮기거나 버리지 않으며, 생성 분류와 `generationSummary`는 원래 모듈 snapshot을 각각 질의한다.
+
+`routes`는 `--input-bindings`로 snapshot과 함께 만든 로컬 연결을 받는다. 없으면 project 밖 입력(의존성 JAR, 옮긴 build
+디렉터리)이 있는 snapshot은 `graph-file-freshness-unverified: missing-external-input`이다. plugin capture와 그 병합본은
+연결을 주면 `matched`까지 확인된다. matched는 한계가 아니므로 문서에 싣지 않고, unverified·stale만
+`graph-file-freshness-<status>: <reasons>`로 싣는다(`bridges`·`schema`·`language-traversal`도 같다). `snapshot --classes`로 만든 수동 capture는 compiler witness가 없으므로 연결을 줘도
+`missing-build-witness`로 `unverified`에 머문다. 이는 증거 부족을 밝히는 결과이며, 검증이 필요하면 plugin 경로를 쓴다.
+
 library 두 번째 조합에서는 KGP가 Gradle 8.14.4 이상으로 업그레이드하도록 권고한다. 경고를 억제하지 않고 검증했다.
 Toolchain 연결은 기존 Kotlin bytecode target을 보존한다. JDK 21로 JVM target 17 코드를 컴파일하는 조합도 검증했다.
 
@@ -234,6 +346,11 @@ python3 Scripts/check-impact.py --binary /path/to/kartograph --project . \
 helper는 commit 간 변경 파일을 NUL 구분으로 읽는다. rename의 이전·이후 경로, 삭제 경로도 포함한다.
 snapshot 라벨과 실제 비교 commit, 두 scope, analyzer version이 다르면 실패한다. 동일 버전 문자열만으로 서로 다른
 로컬 빌드를 식별할 수는 없으므로 CI가 사용하는 배포 artifact도 고정한다. tracked 미커밋 변경은 거부한다.
+분석 대상 git 설정의 filter는 실행하지 않으므로 시각만 바뀌었거나 git-lfs처럼 filter로 정규화되는 파일도 변경으로
+보고(신뢰하는 checkout이면 먼저 `git update-index --refresh`), 서브모듈 안의 커밋하지 않은 변경은 보지 않는다.
+서브모듈이 있으면 보지 않았다는 사실을 보고서 `limitations`에 `current: working-tree-submodules-unchecked:`로 남긴다.
+partial clone에 없는 객체(예: `--filter=tree:0` clone의 기준 commit tree)가 필요하면 받아 오지 않고 exit 2로 끝난다
+([SECURITY.md](../SECURITY.md)).
 snapshot 파일 자체는 Git 밖의 CI artifact/cache로 관리하며 기존 미사용 baseline과 별개다.
 helper 기본 모드는 보고용이다. 문서·설정 등 매핑되지 않은 파일도 `unresolved`에 남기되 유효한 보고서를 만들면 0을 반환한다.
 확장자만으로 파일을 자동 무시하지 않는다. `--strict`는 선택/탐색이 partial/notFound일 때 종료 코드 1을 준다.
@@ -294,6 +411,297 @@ snapshot freshness/runtime limitation은 페이지나 필터를 사용해도 보
 누락 경로의 `edgeKinds`는 중복 없는 관계 종류다. 전체 경로 대신 거리와 이 유한한 집합을 보존해 경로 예산을
 소진한 뒤 긴 경로를 계속 복제하지 않는다.
 
+## isthmus trace용 순회 문서 (`language-traversal` v1)
+
+`kartograph-impact` v1은 정점마다 via 하나만 싣기 때문에 root가 여럿이면 isthmus `trace`가 root 귀속을 via 사슬의
+대표 root 하나로만 복원한다(`roots-provenance-partial`). root마다 따로 돌리면 문서가 커져 trace 입력 상한을 넘는다.
+그래서 isthmus [`LANGUAGE-TRAVERSAL.md`](https://github.com/ictechgy/isthmus/blob/main/docs/LANGUAGE-TRAVERSAL.md)의
+다중 root 순회 형식을 따로 낸다. 기본 `impact` 출력은 바꾸지 않는다.
+
+```bash
+# route-call을 감싼 심볼 전부를 root로 한 번에 역방향 순회한다. routes 문서를 그대로 root 목록으로 쓴다.
+kartograph impact --format language-traversal --roots-from routes.json \
+  --graph-file graph.json --project . [--dispatch candidates] [--class-hops all] [--generated-at 2026-09-27T00:00:00Z]
+# 핸들러에서 정방향으로 순회한다(direction: dependencies).
+kartograph reach <usr>... --graph-file graph.json --project .
+```
+
+- **id**: root id와 `reached[].symbol.usr`는 snapshot의 JVM USR(`method:owner#name(desc)ret`)이며 `routes`·`schema`의
+  `symbol.usr`와 같은 문자열이다. `--roots-from`은 JSON 문자열 배열이나 bridge-facts 문서를 받는다. bridge-facts면
+  사실의 `symbol.usr`를 문서 순서대로 중복 없이 root로 쓴다. 해석하지 못한 root는 원문을 id로 두고 `symbol` 없이 싣고
+  `root-not-found:`와 `truncationReasons: ["root-not-found"]`를 단다(종료 코드 64, 문서는 출력한다).
+- **Retrofit 신원**: Retrofit route-call 사실의 `symbol.usr`는 호출 지점을 감싼 함수가 아니라 어노테이션을 선언한 서비스
+  인터페이스 메서드다. 호출 지점은 이 메서드를 `invokeinterface`로 부르므로 역방향 순회가 `call` 간선을 따라 모든 호출자에
+  닿고, 선언 하나에 호출 지점이 여럿이어도 root 하나로 덮는다. 하위 인터페이스를 수신 타입으로 부른 상속 메서드는 그 하위
+  타입에 정점이 없으므로 snapshot이 JVM 인터페이스 메서드 해석이 고르는 상위 선언으로 `call` 간선(`direct`)을 더한다.
+- **`project`**: `--project`의 realpath다. isthmus는 모든 문서의 project가 같아야 조인하므로 `routes`와 같은 root를 준다.
+  `--generated-at`을 주면 같은 입력에서 바이트가 같은 문서를 낸다.
+- **`revision`**: `--revision <rev>`를 주면 그 값이다. 없으면 snapshot의 commit 라벨(`snapshot --revision`)이고, 그것도
+  없으면 `--project` 디렉터리 아래에 커밋하지 않은 변경·추적되지 않은 파일이 없을 때만 git `HEAD`다. 작업 트리가
+  더럽거나 저장소가 아니면 싣지 않는다 — 고친 소스 위에서 `HEAD`를 실으면 isthmus가 낡은 분석을 최신으로 본다.
+  분석 대상 git 설정의 filter·서브모듈 명령은 실행하지 않으므로, 프로젝트 아래에 서브모듈이 있거나 git-lfs처럼
+  filter로 정규화되는 파일의 stat이 낡았거나 덮을 수 없는 filter 드라이버 이름이 있어도 깨끗함을 증명하지 못해 싣지
+  않는다. partial clone에서 빠진 객체를 받아야 확인할 수 있을 때도 받지 않고 싣지 않는다([SECURITY.md](../SECURITY.md)).
+  서브모듈이나 덮을 수 없는 설정 때문에 뺐으면 `limitations`에 `revision-unverified:`로 시작하는 문구를 남긴다.
+  작업 트리가 더럽거나 저장소가 아니어서 뺀 경우에는 남기지 않는다.
+  snapshot에 라벨이 있는데 `--revision`이 다르면 도구 실패(2)다. git은 CLI만 부르고 분석·렌더링은 부르지 않는다.
+  저장한 snapshot을 읽으므로 `HEAD` 자동 감지는 snapshot을 지금 작업 트리에서 캡처했다고 가정한다. 다른 커밋에서
+  캡처했다면 `snapshot --revision`으로 라벨을 남긴다.
+- **`graphRevision`**: 순회한 그래프 내용의 `sha256:` 해시다. 정점 id·종류, 간선의 양 끝·종류·출처, 순회 간선의 근거 등급,
+  어휘적 소속(`graph.enclosures`)과 그 캡처 여부, 정점별 잇지 못한 호출 수를 정렬해 담고 위치·이름·weight는 넣지 않는다.
+  방향과 무관하므로 같은 snapshot 위의 `impact --format language-traversal`과 `reach` 문서가 같은 값을 내고, `--compact`나
+  `--include-paths` 같은 snapshot 표기 차이에도 같다. isthmus는 같은 플랫폼 문서끼리 이 값이 다르면 다른 그래프에서
+  나온 분석으로 본다.
+- **제어 문자**: root와 `--revision`에 C0(U+0000–U+001F)·DEL·C1(U+0080–U+009F)·U+2028·U+2029나 짝 없는 서러게이트가
+  있으면 문서를 만들기 전에 사용 오류(64)다. isthmus는 그런 id·revision이 든 문서를 통째로 거부한다.
+- **roots·depth·via**: `reached[].roots`는 그 정점에 닿는 모든(자기 제외) root의 오름차순 인덱스다. 64개를 넘으면
+  작은 64개만 싣고 `rootsTruncated: true`를 단다. 다른 root에서 닿은 root도 자기 인덱스 없이 싣는다. depth는 가장
+  가까운(자기 제외) root까지의 간선 수(1..128)이고 via는 그 최단 경로의 직전 정점(동률이면 usr가 작은 쪽)이다.
+  `relationships`는 via와 그 정점 사이에서 따른 간선 종류다(`call`·`fieldAccess`·`reference`·`override`·`contains` 등).
+- **한 번에 계산한다**: 정점마다 가장 가까운 서로 다른 root 두 개를 기록하는 다중 출발 BFS로 depth·via를 구하고,
+  등급별 간선 부분 그래프를 강연결요소로 접어 root 비트 집합을 위상 순서로 전파해 roots·evidence를 구한다.
+  테스트는 무작위 그래프에서 root별 전수 BFS 결과와 대조한다. roots·evidence는 depth 상한과 무관한 실제 도달
+  관계이며, depth 상한은 목록에 싣는 정점만 자른다(잘리면 `truncated`, `truncationReasons: ["depth"]`).
+  도달 정점이 `--max-reached`(기본·최대 100,000)를 넘으면 (depth, usr) 앞부분만 싣고 `reached-limit`로 알린다.
+- **신선도**: `routes`와 같이 snapshot provenance를 현재 입력과 대조한다. `--input-bindings`로 plugin·`snapshot merge`가
+  쓴 로컬 연결을 주면 project 밖 입력(의존성 JAR, 옮긴 build 디렉터리)도 확인한다. `matched`면 한계를 싣지 않고, 아니면
+  `graph-file-freshness-unverified:`·`graph-file-freshness-stale:`로 원인을 싣는다. stale이어도 문서는 낸다.
+
+### 테스트 소스 (`--include-tests`)
+
+테스트 소스는 production과 따로 컴파일되는 별도 프로그램으로 본다. production 코드는 테스트 class를 참조·생성하지
+않으므로(main 컴파일 classpath에 test 출력이 없다) production 호출 지점의 dispatch 대상에 테스트 fake가 들어올 수 없고,
+테스트 정점을 거치는 경로는 production 실행 경로가 아니다. 그래서 기본 순회는 테스트 소스 정점을 뺀 부분 그래프에서 한다.
+`bound`의 닫힌 세계도 production 구현만 센다. 뺀 정점 수는 `test-sources-excluded:`로 알린다. `routes`가 테스트 소스를
+기본으로 빼는 것과 같은 경계다.
+
+- **판별**: 정점의 소스 위치가 `src/test`, `src/androidTest`, `src/test<Variant>`·`src/androidTest<Variant>`,
+  `src/<이름>Test`, `src/testFixtures` 아래면 테스트다(`routes`와 같은 규칙). 경로의 다른 `src/<이름>` 쌍이 production
+  source set(`src/main`, 또는 테스트가 아닌 이름 뒤의 `java`·`kotlin` 등)을 확정하면 production이다 — main 소스 안의
+  `…/src/test/…` 모양 패키지를 테스트로 오인하지 않는다. 위치가 없는 멤버는 소유 class, 중첩 class는
+  바깥 class의 위치를 따른다. 끝내 위치가 없으면 production으로 둔다 — 테스트를 production으로 잘못 두면 `bound`가
+  약해지고 목록이 늘 뿐 도달을 잃지 않는다. snapshot에는 정점별 source set·plugin component 표식이 없어 경로 규칙이 가장
+  직접적인 근거다. 관례 밖 디렉터리로 옮긴 source set, `build/generated/.../<variant>UnitTest`의 생성 테스트 코드, 테스트
+  도우미 모듈의 main source는 production으로 본다.
+- **가정 검증**: production 정점에서 테스트 정점으로 가는 dispatch가 아닌 간선(호출·필드 접근·참조·상속·어노테이션·
+  런타임 모델)이 하나라도 있으면 가정이 깨진 것이므로 테스트를 빼지 않고 전체 그래프를 순회한다. root가 테스트 선언이면
+  테스트 프로그램 문맥이므로 역시 전체 그래프다. 두 경우 모두 `test-sources-included:`로 이유를 밝히며 `bound`는 테스트
+  구현도 센다. 상위 선언 → 테스트 구현 override와 호출자 → 테스트 구현 후보는 dispatch 가능성이라 위반으로 세지 않는다.
+- **`--include-tests`**: 전체 그래프를 순회한다(이전 동작). 테스트 fake가 있으면 production 호출자도 `candidate`가 된다.
+- **`graphRevision`**: 실제로 순회한 그래프의 해시다. 같은 snapshot이라도 테스트를 빼면 `--include-tests`와 값이 다르고,
+  같은 설정의 `impact --format language-traversal`과 `reach`는 같은 값을 낸다.
+
+### 람다의 어휘적 소속과 간선 등급
+
+Kotlin 람다 class·익명 객체·suspend 람다·SAM 변환 class는 `FunctionN.invoke` 같은 외부 호출에 대해 dispatch
+모델(`origin = dispatchModel`)이 모든 프로젝트 `invoke` 구현을 후보로 잇는다. 이 후보 간선을 따라가면 람다 본문
+하나의 역방향 영향이 콜백을 받는 공통 함수(예: Compose 컴포넌트)를 거쳐 앱 대부분으로 퍼진다. 그래서 두 가지를 더했다.
+
+- **어휘적 소속**: `snapshot`이 classfile `EnclosingMethod`를 `graph.enclosures`(`localClass` → `enclosing`)로 싣는다.
+  순회는 이것을 `contains` 간선(감싼 선언 → 지역 class와 그 메서드·생성자)으로 쓴다. 람다 본문의 변경은 감싼 함수와
+  그 호출자에 닿고, 정방향이면 감싼 함수에서 본문의 호출 대상에 닿는다. 컴파일러가 기록한 관계라 `direct`다.
+  감싼 메서드가 그래프에 없거나 초기화 문맥이면 소유 class로 넓힌다. invokedynamic 람다는 본문이 같은 class의
+  합성 메서드이고 bootstrap 인자 handle이 이미 `call` 간선이므로 따로 다루지 않는다.
+- **간선 등급**: 모든 순회 간선에 등급을 매긴다. 문서의 `evidence`는 root마다 가장 강한 등급을 구한 뒤 그중 가장
+  약한 값이다(root별 하한).
+
+| 등급 | 간선 | 근거 |
+|---|---|---|
+| `direct` | bytecode·Kotlin metadata·compiler reference의 호출·필드 접근·참조·상속·어노테이션, `contains` | 컴파일러가 대상을 확정했다 |
+| `bound` | override(dispatch) 중 수신 정적 타입이 프로젝트 타입이고, 그 타입과 모든 프로젝트 하위 타입의 구체 class가 메서드를 같은 프로젝트 구현 하나로 해석하는 것. `runtimeModel` 간선 | 닫힌 세계 가정에서 대상이 하나다 |
+| `candidate` | 그 밖의 override: 구현이 둘 이상인 인터페이스, `java/lang/Object#toString`처럼 외부 소유 가상 호출의 계층 후보 | 가능성만 있다 |
+| lambda(따로 제외) | 대상이 지역·익명 class의 멤버이거나 호출 지점이 Kotlin 함수 타입·`java/util/function`·`Runnable`·`Callable` 호출뿐인 dispatch | candidate와 같은 등급이지만 `contains`가 같은 본문을 정확히 잇는다 |
+| `bound`/`candidate`(`callback`) | 받은 람다를 실행하거나 그대로 넘기는 함수 → 람다 본문. 아래 [콜백 흐름](#콜백-흐름-callback) | 호출 문맥 안에서만 참이라 닿은 함수를 더 퍼뜨리지 않는다 |
+
+`bound`의 닫힌 세계 가정은 분석한 class가 프로젝트 타입의 구현을 모두 담는다는 것이다. 수신 타입이 외부
+타입이면 라이브러리 객체도 올 수 있으므로 `bound`가 될 수 없다. 구체 하위 타입 하나라도 프로젝트 class 사슬 안에서
+메서드를 찾지 못하면(외부 상위 class 상속, 인터페이스 default 메서드) 보수적으로 `candidate`다. 런타임 proxy·mock·
+snapshot 밖 class는 모델링하지 않으며 `bound-dispatch-closed-world:` 한계로 알린다. 이 규칙은 dispatch 모델 간선과
+상위 선언 → 구현 override 간선에 똑같이 적용한다.
+
+### 콜백 흐름 (`callback`)
+
+어휘적 소속만으로는 람다를 **실행하는** 쪽이 빠진다. 화면 F가 route 호출을 담은 람다 L을 공통 UI 함수 G(`onClick`)에
+넘기면 L 본문의 변경은 F에는 닿지만 G에는 닿지 않는다. lambda fan-out(`--dispatch all`)을 따르면 G에 닿는 대신 G를
+부르는 모든 화면으로 퍼진다. 그래서 `snapshot`이 bytecode 값 흐름 사실 두 가지를 더 싣고, 역방향 순회가 이를 호출
+문맥 안에서만 잇는다.
+
+- `graph.callbackArguments`: F 안에서 만든 람다(invokedynamic 구현 메서드, 또는 `EnclosingMethod`가 있는 지역·익명
+  class)가 호출 지점 G(...)의 인자 i로 그대로 넘어간 사실이다. 지역 변수 복사·`checkcast`·분기 합류를 따라가며, 분기에서
+  다른 값과 합쳐져도 L일 수 있으면 기록한다. Compose 컴파일러의 `ComposableLambdaKt.*(… block …)` 래퍼는 `block`과
+  같은 값으로 본다(래퍼의 `invoke`가 같은 인자로 `block`을 부른다).
+- `graph.parameterUses`: 함수형 타입(또는 SAM 호출 대상) 파라미터의 쓰임이다. 수신 객체 호출, 다른 호출의 인자,
+  invokedynamic 캡처, 필드·반환·배열 저장, 모델 없는 bootstrap을 남긴다. `declared` 행은 그 파라미터의 쓰임을
+  빠짐없이 기록했다는 표식이며, 표식이 없는 파라미터로 넘어간 값은 "쓰이지 않음"이 아니라 "모름"으로 다룬다.
+- `graph.lambdaEscapes`: F가 만든 람다 값이 호출 인자가 아닌 방식(필드·배열 저장, 반환, F가 직접 실행, 모델 없는
+  bootstrap)으로 쓰인 사실이다. 넘기는 쪽에서 새는 별칭을 잡는다.
+
+G의 파라미터 i에서 출발해 값을 수정 없이 넘겨받은 프로젝트 메서드(정적·특수 호출, 닫힌 세계에서 구현이 하나인 가상
+호출, invokedynamic 캡처의 구현 메서드)를 최대 8단계까지 따라간다. 그 경로에서 L의 함수형 메서드를 부르는 곳과
+라이브러리 코드에 값을 넘기는 곳이 실행 지점이다. 실행 지점으로 이어지는 경로 위의 메서드마다 `callback` 간선(메서드 →
+L 본문)을 만든다. 라이브러리에 넘긴 경우 그 코드가 어느 함수형 메서드를 부를지 모르므로 지역 class의 모든 인스턴스
+메서드로 잇는다.
+
+| 등급 | 조건 |
+|---|---|
+| `bound` | 값이 한 번도 빠져나가지 않았고 실행 지점이 모두 프로젝트 안의 호출이다. 같은 F가 만든 같은 L의 **모든** 쓰임(다른 호출 인자 포함)이 이 조건을 만족하고 `lambdaEscapes`가 없어야 한다. 닫힌 세계에서 L을 실행하는 곳은 이 경로들뿐이다 |
+| `candidate` | 실행 지점은 찾았지만 값이 라이브러리 코드로 넘어가거나(예: Compose `Button(onClick = …)`), 필드·반환·배열로 빠져나가거나, 가상 호출 구현을 하나로 정하지 못하거나, 쓰임 기록이 없는 파라미터로 넘어가거나, 깊이를 넘거나, `Object`가 아닌 다른 메서드를 부르거나, 새 실행 지점이 있는 람다가 캡처했다 |
+| (간선 없음) | 실행 지점 없이 빠져나갔다. 흐름 수를 이유별로 `callback-flow-unresolved:`에 싣는다 |
+
+여러 흐름이 같은 간선을 만들면 약한 등급이 이긴다. 받은 람다를 실행하지도 넘기지도 않는 함수로 간 흐름은 이을 것이
+없으므로 간선도 미해결 수도 만들지 않는다. `--dispatch`가 빼는 등급의 콜백 간선 수는 `callback-excluded:`로 알린다.
+
+- **호출 문맥**: `callback` 간선은 F가 G를 부른 그 호출에서만 참이다. 역방향 순회는 이 간선으로 닿은 G를 목록에 싣지만
+  G의 다른 호출자(다른 람다를 넘기는 화면)로 퍼뜨리지 않는다. 계산은 콜백 간선의 호출자마다 그림자 정점을 두고, 그림자에서는
+  콜백 간선만 나가게 한 뒤 출력에서 본 정점과 합친다. 그래서 G가 받은 람다를 다시 다른 람다에 넘기는 경우처럼 콜백 간선끼리는
+  이어진다. F와 그 호출자는 L의 어휘적 소속으로 이미 닿는다. 한 정점은 한 줄이며 일반 경로와 콜백 경로 중 가까운 쪽의
+  depth·via를 쓰고, root·evidence는 두 경로를 합친다. 콜백 경로의 `relationships`는 `callback`이다. 무작위 그래프에서
+  (정점, 그림자 여부) 상태 공간의 root별 전수 BFS와 대조해 검증한다.
+- **정방향**(`reach`)은 콜백 간선을 따르지 않는다. F에서 L 본문으로 가는 길은 어휘적 소속이 잇고, G에서 출발하면 어느
+  람다를 받았는지 문맥이 없다.
+- **inline 함수**는 람다 본문이 호출한 함수 안으로 복사되므로 전달 사실이 없고 본문의 호출은 F의 `direct` 간선이다. inline
+  함수 자체는 호출되지 않아 목록에 없다. `crossinline` 람다가 만드는 class는 `EnclosingMethod`로 F에 속한다.
+- **Compose**: `@Composable` 람다는 `rememberComposableLambda`로 감싼 값을 추적한다. runtime이 재구성 때 감싼 람다를
+  다시 실행할 수 있으므로 이런 흐름은 `candidate`다. 재구성 람다(`updateScope`)처럼
+  파라미터를 캡처한 람다가 같은 함수로 값을 되돌려 넘기기만 하면 실행 지점이 늘지 않으므로 등급을 낮추지 않는다.
+  `Composer.changed`·`changedInstance`는 다음 구성에서 비교할 값으로만 쓰므로 쓰임에서 뺀다. 객체를 돌려주지 않는
+  검사 호출(`Intrinsics.checkNotNull*`·`areEqual`, `Objects.equals`·`hashCode`·`isNull`·`nonNull`)도 같다. 대부분의
+  UI 함수는 콜백을 Material 컴포넌트에 넘기므로 `candidate`다. 캡처 없는 composable 람다를 `ComposableSingletons`의
+  필드에 올려 둔 경우는 값이 필드를 거치므로 추적하지 않는다.
+- **추적하지 않는 것**: 필드에 저장한 뒤 다른 곳에서 부르는 콜백의 실행 측(생성자 인자로 넘긴 람다, class 기반 클로저의
+  캡처 포함), 중단 지점 너머로 continuation 필드에 넣는 suspend 함수의 콜백(필드로 빠져나간 것으로 본다), 객체를
+  반환하는 라이브러리 호출을 거친 별칭, 구현이 둘 이상인 인터페이스 메서드로 넘긴 람다. 이런 흐름은 `candidate`이거나
+  `callback-flow-unresolved:`에 남는다. `--dispatch all`은 여전히 모든 lambda fan-out을 따른다.
+- 콜백 사실 세 목록 중 하나라도 없는 snapshot은 `callback-facts-unavailable:`로 알리고 콜백 간선 없이 순회한다(이 기능
+  전과 같다). 일부 사실만으로 흐름을 판정하면 빠져나감을 놓쳐 `bound`를 잘못 매길 수 있기 때문이다.
+
+### `--dispatch`와 기본값
+
+| 값 | 따르는 간선 |
+|---|---|
+| `direct` | direct |
+| `bound` | direct + bound |
+| `candidates` (기본) | direct + bound + candidate |
+| `all` | direct + bound + candidate + lambda(`candidate`로 표시) |
+
+기본값은 `candidates`다. trace가 쓸모 있으려면 인터페이스 뒤의 호출자(저장소·use case 계층)를 놓치지 않아야 하고,
+정직하려면 그런 hop을 `candidate`로 표시해 isthmus가 `candidate-dispatch` gap을 남기게 해야 한다. lambda fan-out은
+같은 본문을 `contains`가 정확히 잇고, 따라가면 무관한 화면까지 모든 root가 거의 같은 집합에 닿아 route별 구분이
+사라지므로 기본에서 뺀다. 빠진 간선 수는 `lambda-dispatch-excluded:`로 알린다. 람다를 받아 실행하는 쪽은
+[콜백 흐름](#콜백-흐름-callback)이 호출 문맥 안에서 잇는다(`bound` 콜백은 `--dispatch bound`부터, `candidate` 콜백은
+기본값부터 따른다). 제외로 여전히 잃는 것은 필드에 저장했다가 다른 곳에서 호출하는 콜백처럼 값 흐름으로 증명하지 못한
+실행 측이다. 필요하면 `--dispatch all`로 따른다.
+어휘적 소속 사실이 없는 옛 snapshot에서는 lambda 간선을 빼면 본문이 끊기므로 `candidate`로 따르고
+`lexical-enclosures-unavailable:`로 알린다. 새 snapshot을 캡처하면 정밀한 결과가 나온다.
+
+### class 정점 hop (`--class-hops`)
+
+프레임워크 콜백 모델(`runtimeModel`)은 `androidx/lifecycle/ViewModel`·`ViewModelProvider$Factory`·`WebViewClient`
+같은 타입의 하위 class에서 비공개·정적이 아닌 모든 멤버로 `reference` 간선(class → 멤버)을 긋는다. 런타임이 그 class의
+인스턴스에서 멤버를 부른다는 가정이다. 역방향 순회는 이 간선을 거꾸로 따라 멤버 하나의 변경을 소유 class 정점에 올리고,
+class 정점은 다시 그 class를 가리키는 모든 `reference` 간선의 source로 퍼진다. 그런데 bytecode `reference`는 시그니처·
+필드 타입·cast·class literal·호출 소유자·중첩 class의 바깥 class 참조가 한 간선으로 합쳐져 있어, ViewModel 멤버 하나의
+변경이 그 ViewModel 타입을 파라미터나 캡처 필드로 적은 모든 화면 람다와 다른 멤버로 번진다.
+
+| 값 | 따르는 경로 |
+|---|---|
+| `all` (기본) | 모든 간선을 그대로 따른다. 그래프가 잇는 것은 놓치지 않는다 |
+| `member-only` | 아래 두 hop을 같은 class 정점(그 사이의 상속 hop 포함)에서 잇지 않는다 |
+
+- **이름만 적은 참조(type reference)**: class 정점을 가리키는 `reference` 간선 중 `runtimeModel` 출처가 아니고, 같은
+  source가 그 class의 생성자(`C.<init>`)를 부르지 않는 것이다.
+- **콜백 모델(owner callback)**: `runtimeModel` 출처의 class → 자기 멤버 `reference` 간선이다. 다른 class 멤버로 가는
+  런타임 모델 간선(reflection으로 해석한 메서드 등)은 아니다.
+- **역방향**(`impact --format language-traversal`): 멤버 → 소유 class hop으로 닿은 class는 목록에 싣되, 그 class에서
+  이름만 적은 참조의 source로는 가지 않는다. 그 class에서 계속 따르는 것은 인스턴스 생성(생성자를 부르는 선언의
+  참조), 상속(하위 class, 같은 좁힌 상태로), 어휘적 소속(`contains`), 콜백, 런타임 모델 참조다. 멤버 자체의 호출자,
+  override·dispatch(`--dispatch`에 따름)는 원래대로 멤버에서 따른다. class가 root이거나 다른 경로(상속으로 상위 class에서,
+  콜백 모델이 아닌 간선)로 닿으면 좁히지 않는다.
+- **정방향**(`reach`): 같은 두 hop 조합을 반대쪽에서 막는다. 이름만 적은 참조로 닿은 class(와 그 상위 class)는 목록에
+  싣되 콜백 모델 간선으로 멤버에 가지 않는다. 인스턴스를 만드는 선언은 class를 좁히지 않으므로 런타임 콜백까지 닿는다.
+  정방향에서 이 조합은 "타입을 적기만 한 코드가 그 class의 모든 런타임 콜백에 기댄다"는 과대 추정이므로 같은 규칙을 쓴다.
+- **놓칠 수 있는 것**: 프레임워크가 class 전체를 얻어 멤버를 부르는 경로 중 추적한 인스턴스 생성이 없는 것 —
+  `ViewModelProvider`·Hilt·reflection이 class literal로 만드는 ViewModel, DI 생성 코드 밖의 생성, 이름만 적은 선언이
+  런타임 콜백 결과(상태 필드 등)에 기대는 경우다. 역방향에서 그 class를 이름만 적은 선언이 실제로 바뀐 멤버를 부르면
+  호출 간선으로 닿으므로 잃지 않는다. 잃는 것은 다른 멤버만 부르거나 타입만 적은 선언이다.
+- **한계 문구**: `member-only`면 항상 `class-hops-narrowed: N ... from K class vertex(es) ...`를 싣는다(0이어도 싣는다 —
+  문서에 모드 필드가 없으므로 이 줄로 좁힌 결과임을 안다). N은 적어도 한 root가 좁힌 상태로만 닿은(본 class 정점에는
+  닿지 않은) class K개에서 따르지 않은 (class, 선언) 쌍의 수다. 같은 쌍을 다른 간선으로 잇는 경우는 세지 않는다.
+- **계산**: 콜백 그림자처럼 class마다 진입 그림자 정점을 두고, 진입 간선은 그림자로, 그림자에서는 막힌 간선을 뺀 나머지로
+  잇는다. 출력에서 그림자는 본 정점과 합친다. 무작위 그래프에서 (정점, 본·콜백 그림자·진입) 상태 공간의 root별 전수 BFS와
+  roots·depth·evidence·via·한계 수를 대조하고, `member-only` 결과가 `all`의 부분집합인지 확인한다.
+- `graphRevision`은 그래프 내용의 해시이므로 `--class-hops`와 무관하게 같다(`--dispatch`와 같다).
+
+### 정방향·역방향 대칭성 (`reach` ↔ `impact`)
+
+API 영향 계획 Phase 4의 종료 조건 "같은 스냅샷에서 `reach(H) ∋ U ⇔ impact(U) ∋ H`"를 옵션 조합별로 확인했다. 여기서
+`reach(H)`는 root H 하나의 `reach` 목록, `impact(U)`는 root U 하나의 `impact --format language-traversal` 목록이다.
+두 목록 모두 root 자신은 싣지 않는다.
+
+| 조건 | 관계 |
+|---|---|
+| 따르는 콜백 간선이 없다(`--dispatch direct`, 콜백 사실이 없는 옛 snapshot, 콜백 흐름이 없는 그래프) | 모든 `--class-hops`에서 정확한 전치다. 같은 쌍의 `depth`·`evidence`도 같다 |
+| `--dispatch bound`·`candidates`(기본)·`all`이고 콜백 간선이 있다 | `U ∈ reach(H) ⇒ H ∈ impact(U)`는 늘 성립한다. 반대 방향은 콜백 문맥만큼 넓다(아래 등식) |
+| `--depth`로 목록을 자른다 | 같은 경로 길이로 자르므로 위 두 줄이 그대로다. `--max-reached`로 잘리면(`reached-limit:`) 대칭을 주장하지 않는다 |
+| 테스트 소스 | root가 범위를 정한다. `--include-tests`거나 H·U가 모두 production이면 같은 그래프라 위 결론이 그대로다 |
+
+콜백 간선이 있을 때 역방향은 정확히 다음과 같다(→cb는 따르는 등급의 콜백 간선, G가 받은 람다 본문 B를 부른다).
+
+```text
+impact(U) = { H | U ∈ reach(H) } ∪ { G | G →cb+ B 이고 (B = U 또는 U ∈ reach(B)) } − { U }
+```
+
+- **왜 설계상 비대칭인가**: 콜백 간선은 호출 문맥 안에서만 참이다. 역방향은 람다 본문의 변경이 그 람다를 부르는
+  함수 G에 닿는다고 싣되 G의 다른 호출자로 퍼뜨리지 않는다([콜백 흐름](#콜백-흐름-callback)). 정방향은 G에서 G가 받을 수
+  있는 모든 람다 본문으로 퍼지지 않는다 — 그러면 다른 화면이 넘긴 람다까지 문맥 없이 닿는다. 람다를 만든 함수에서 본문으로
+  가는 길은 어휘적 소속(`contains`)이 양방향으로 같이 잇는다. 그래서 늘어나는 쌍은 "콜백 사슬로 본문을 부르는 G"뿐이다.
+- **`--class-hops member-only`는 대칭을 깨지 않는다**: 막는 경로 모양이 원래 간선 방향으로 `TYPE_REFERENCE ∘ 상속* ∘
+  OWNER_CALLBACK`(같은 class 정점에서 만나는 두 hop) 하나이고, 정방향은 앞에서, 역방향은 뒤에서 같은 모양을 막는다.
+  콜백 간선은 진입 상태의 본문에서도 호출자 그림자로 이어지므로 위 등식에서 `reach(B)`는 같은 `--class-hops`의 정방향이다.
+- **테스트 소스는 root가 정하는 범위다**: 기본 순회는 root가 테스트 선언일 때만 전체 그래프를 쓴다. 그래서 테스트 t가
+  production p를 부르면 `p ∈ reach(t)`(전체 그래프)지만 `t ∉ impact(p)`(production 부분 그래프)다. 반대로 production 호출이
+  테스트 fake 구현에 dispatch 후보로 닿으면 `p ∈ impact(fake)`지만 `fake ∉ reach(p)`다. 둘 다 "테스트 소스는 별도
+  프로그램" 정책([테스트 소스](#테스트-소스---include-tests))대로이며, 같은 프로그램에서 비교하려면 `--include-tests`를 쓴다.
+- **검증**: analysis `TraversalSymmetryTest`가 무작위 그래프 300개 × `--dispatch` 4 × `--class-hops` 2에서 모든 정점 쌍의
+  전치(depth·evidence 포함)를, 무작위 콜백 간선을 더한 그래프 300개에서 위 등식을 한 root 순회끼리 대조한다. 표본이 실제로
+  `member-only` 좁힘과 콜백 문맥 쌍을 담는지도 확인한다. cli `TraversalSymmetrySelfTest`는 kartograph 자신의 컴파일 그래프
+  (정점 11,745개, 콜백 간선 176개)에서 `direct`·`candidates`·`all` × `all`·`member-only` 표본 쌍 373,161개(정방향 양성
+  178,878개, 콜백 문맥으로만 역방향에 있는 쌍 1,622개)가 등식을 따르고 `direct`가 정확한 전치임을 확인한다. 의도하지 않은
+  비대칭은 찾지 못했다.
+
+### 잇지 못한 호출 (`unresolvedCalls`)
+
+문서는 항상 `dispatch`를 실으므로 모든 정점의 `evidence`와 잇지 못한 호출을 완전히 신고한다는 선언이다.
+정점 자신의 나가는 호출 지점 중 다음을 센다(0이면 생략).
+
+- 외부 소유 가상·인터페이스 호출 중 dispatch 해석이 `unresolved`로 끝난 것(`external-dispatch` 한계와 같은 집합)
+- reflection 같은 런타임 라이브러리 모델이 붙었지만 값이 해석되지 않은 호출
+- LambdaMetafactory·StringConcatFactory·ObjectMethods·SwitchBootstraps가 아닌 bootstrap의 invokedynamic
+
+라이브러리 메서드를 부르는 정적·특수 호출은 대상이 확정된 호출이라 세지 않는다. 이 값은 `--dispatch` 값과 무관하다.
+
+### 호환성
+
+- `impact`의 기본 출력(`--format json`, `kartograph-impact` v1)은 바이트 단위로 같다. `graph.enclosures`는 간선이 아니라
+  별도 사실이므로 도달성·dead·query·기존 impact 결과를 바꾸지 않는다.
+- snapshot은 선택 필드 `graph.enclosures`를 v1·compact v2 모두 같은 평문 모양으로 싣는다. 옛 reader는 모르는 graph
+  키를 읽지 않는다. 새 reader는 이 키가 없는 옛 snapshot을 "소속 사실 미캡처"로 구분한다.
+- class 인덱스 캐시 형식이 5로 올라 옛 캐시 항목은 한 번 다시 파싱된다. 콜백 사실을 더하며 6으로 다시 올렸다.
+- snapshot은 선택 필드 `graph.callbackArguments`·`graph.parameterUses`도 v1·compact v2에 같은 평문 모양으로 싣는다.
+  옛 reader는 읽지 않고, 새 reader는 두 키가 없는 snapshot을 "콜백 사실 미캡처"로 구분한다. 역시 간선이 아니므로
+  도달성·dead·query·기본 impact 결과를 바꾸지 않는다.
+- `graphRevision`은 콜백 간선(순회 간선에 포함)과 콜백 사실 캡처 여부도 담는다. 같은 snapshot이라도 이 버전과 이전
+  버전의 값은 다르다.
+- `language-traversal`의 `--revision`은 이제 임의의 revision 문자열을 받는다(전에는 snapshot 라벨과 같은 전체 commit
+  hash만 받고 라벨이 없는 snapshot이면 실패했다). `graphRevision`은 snapshot 파일 바이트의 hex 해시에서 `sha256:` 그래프
+  내용 해시로 바뀌었다. 기본 `impact`의 `--revision`·`--base-revision`은 그대로 전체 commit hash다.
+- `language-traversal`은 `saved-graph:` 한계 대신 실제 신선도 결과를 싣는다.
+- `language-traversal`이 테스트 소스 선언을 기본으로 빼므로, unit test를 담은 snapshot에서는 이전 버전보다 도달 정점이
+  적고 `bound`가 늘 수 있다. 이전 결과는 `--include-tests`로 얻는다.
+- `--class-hops`의 기본값 `all`은 이전 순회와 바이트 단위로 같은 문서를 낸다. `member-only`는 명시했을 때만 쓴다.
+- `language-traversal` 전용 옵션(`--dispatch`·`--project`·`--roots-from`·`--generated-at`·`--max-reached`)은 기본
+  형식에서 받지 않고, 기본 형식 전용 옵션(`--base-graph`·`--file`·`--limit`·필터 등)은 새 형식에서 사용 오류(64)다.
+
 ## 현재 한계와 평가
 
 클래스 사용·상속·field 접근 등은 전부 잠재적 의존이다. 어떤 수정이 실제 동작을 바꾸는지는 이 관계만으로 결정되지 않는다.
@@ -301,3 +709,100 @@ snapshot freshness/runtime limitation은 페이지나 필터를 사용해도 보
 현재 갱신은 전체 snapshot capture다. 저장 그래프 재사용은 증분 인덱싱이 아니다.
 평가는 [계획](IMPACT-PLAN.md)의 실제 변경 과제와 compiler/runtime 코퍼스에서 수행한다.
 20,699개 후보의 탐색·출력량·시간 비교와 재현 명령은 [영향 탐색 평가](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/impact-navigation/README.md)에 있다.
+
+## Opt-in direct observed source selections
+
+Use `impact '<symbol-or-usr>' --graph-file current.json --source-edits`, optionally with `--base-graph base.json`.
+The `kartograph-source-edit-impact` version 1 wrapper contains the unchanged ordinary `graphImpact` document plus
+`sourceEdit.policy: directObservedSelections`. Each source row is a retained compiler selection whose exact target is in
+that revision's resolved changed IDs and whose caller is not itself changed. It does not propagate across graph edges,
+other source selections, overrides, subtypes or owner/member relationships. No combined affected count or risk score is given.
+
+`--source-limit` accepts 1..1000 (default 100); `--source-offset` accepts 0..200000 (default 0). The same page request applies
+independently to base and current; a page exhausted in one revision does not exhaust the other. Source rows use fixed Unicode
+scalar ordering by caller, target, source path, numeric UTF-16 offset, unit ID and use ID. Existing graph depth, result/page,
+visit, path and summary limits remain graph-only. `--all`, explicit `--sort`, and affected-result filters (`--module`,
+`--affected-file`, `--filter-file`, `--kind`, `--test-status`, `--relation`, `--path-status`) are rejected in this first source mode.
+`--format json` is supported; `language-traversal` is not. Existing default-mode behavior is unchanged.
+
+Symbol/file resolution and revision compatibility remain the ordinary impact rules. Source seeds come from the full resolved
+changed list, never a graph affected page. Missing or ambiguous selections remain in `graphImpact.unresolved`. Partially resolved
+selections inspect only resolved seeds. A revision with no selected IDs is `noTargetsInRevision`; an explicitly empty changed-file
+list is `noChanges`. Unresolved selection or unavailable evidence has a null page. Captured-empty and offset-exhausted pages
+retain their distinct counts. Empty output does not approve deletion or skipping tests.
+
+Source coverage is global, historical, and unknown or partial. The wrapper records each loaded snapshot's exact raw-byte SHA-256
+with `currentness: notChecked`. It does not prove source freshness, runtime reachability, executed calls or behavior changes.
+The complete wrapper is rendered before writing stdout and is capped at 16 MiB including the final newline. If too large, reduce
+graph/source page sizes or use a narrower snapshot; no partial successful JSON is written. Reports are not snapshot inputs.
+
+## Opt-in enum expansion candidates
+
+Use the explicit enum mode to inspect new constants that existing source
+decisions could absorb. This mode compares exact JVM enum identities and
+complete `ACC_ENUM` inventories, then examines only current typed source sites:
+
+```sh
+kartograph impact --enum-expansion --graph-file current.json --base-graph base.json \
+  --symbol 'class:sample/Status' --format json
+kartograph impact --enum-expansion --graph-file current.json --base-graph base.json \
+  --symbol 'class:sample/Status' --format text --limit 100 --offset 0
+```
+
+`--symbol` is optional and repeatable, and accepts exact `class:` identities.
+With no selector, the query compares the current snapshot's enum declarations.
+Both snapshots are required and must have matching tool version and scope.
+For 0.24.0, rebuild/capture both revisions with matching collector/CLI artifacts;
+recompile clients when a library enum changes. Follow the
+[migration conditions](COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration), including
+public data-class recompilation and old-reader limitations.
+Use the [enum capture workflow](COMPILER-EVIDENCE.md#opt-in-enum-expansion-decisions)
+to collect the current decisions. Old/missing inventories or decision channels
+remain unavailable; they are never interpreted as complete empty sets.
+
+The `kartograph-enum-expansion` version 1 JSON report includes:
+
+- `comparisons`: baseline/current inventory availability and the added/removed
+  constant IDs for each enum. Only reliably compared additions produce candidates.
+- `candidates`: current authored fallback or finite membership sites that do not
+  explicitly list an added constant. Each row has its kind/reason, added and
+  listed constants, source path/hash/UTF-16 range/line/column, attribution,
+  output-root IDs, and the compiler receipt/input-token provenance.
+- `unresolved`: emitted current source sites with attribution reasons, including
+  dependency/shadowed/ambiguous roots or later view unavailability.
+- `coverage`: selected-enum site counts, explicitly global captured-unit producer
+  counts, global `capturedAttributionCounts`, and uncovered output roots.
+  Unsupported syntax is counted at unit level; it has no fabricated source row.
+- `inputs`: the SHA-256 of the exact parsed base/current snapshot bytes, revision,
+  tool version and scope. No currentness check or source reread is performed.
+
+`EXPLICIT_FALLBACK` means an added constant may select an authored fallback.
+`FINITE_MEMBERSHIP` means the new constant is absent from the literal set;
+`NEGATED_FINITE_MEMBERSHIP` means it may pass a negated test. These are review
+candidates, not observed bugs, reachable execution paths, or whole-filter proofs.
+Current sites explicitly listing the new constant are not reported for that
+constant. Removed constants or unavailable baseline identities do not become
+added-case findings. Historical decisions are never relabeled with current source
+coordinates.
+
+`--limit` accepts 1..1000 (default 100); `--offset` accepts 0..200000 (default 0).
+The same request pages candidates and unresolved records independently.
+`navigation` and `unresolvedNavigation` retain total/omitted counts independent of
+page size; raw captured counts are not recomputed from a returned page. Identical
+source assertions repeated across completed units are deduplicated for display
+while capture counts remain intact.
+
+Top-level status is `evidenceUnavailable`, `partial`, `candidates`, or
+`noCandidates`. Unavailable comparisons, unresolved/view-omitted sites,
+unsupported producer observations or uncovered roots keep status partial.
+`noCandidates` only means this captured supported slice found no candidate.
+The JSON and text reports both preserve snapshot limitations and are rendered
+fully under a 16 MiB UTF-8 limit before stdout is written.
+
+Captured enum decision snapshots cannot currently be aggregated with snapshot
+merge; the existing compiler-evidence guard refuses them before reindexing.
+
+This mode cannot be combined with `--source-edits`, source pagination or
+`--format language-traversal`. Duplicate format/mode/singular options reject
+before snapshot reads. Ordinary graph impact remains a separate query, and enum
+decision evidence adds no reachability, retention or CALL edges.

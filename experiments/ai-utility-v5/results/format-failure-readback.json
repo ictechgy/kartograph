@@ -1,0 +1,54 @@
+{
+  "invalidResponses": [
+    {
+      "case": "detekt_detekt-7212",
+      "arm": "mcp",
+      "repeat": 0,
+      "kind": "missing-final-object-brace",
+      "rawAssistantAndResultEqual": true,
+      "singleClosingBraceWouldParse": true,
+      "frozenScoreUnchanged": true
+    },
+    {
+      "case": "detekt_detekt-7212",
+      "arm": "mcp",
+      "repeat": 1,
+      "kind": "missing-final-object-brace",
+      "rawAssistantAndResultEqual": true,
+      "singleClosingBraceWouldParse": true,
+      "frozenScoreUnchanged": true
+    },
+    {
+      "case": "detekt_detekt-6446",
+      "arm": "mcp",
+      "repeat": 1,
+      "kind": "missing-final-object-brace",
+      "rawAssistantAndResultEqual": true,
+      "singleClosingBraceWouldParse": true,
+      "frozenScoreUnchanged": true
+    },
+    {
+      "case": "pinterest_ktlint-2774",
+      "arm": "source",
+      "repeat": 0,
+      "kind": "missing-final-object-brace",
+      "rawAssistantAndResultEqual": true,
+      "singleClosingBraceWouldParse": true,
+      "frozenScoreUnchanged": true
+    },
+    {
+      "case": "pinterest_ktlint-2774",
+      "arm": "mcp",
+      "repeat": 1,
+      "kind": "missing-final-object-brace",
+      "rawAssistantAndResultEqual": true,
+      "singleClosingBraceWouldParse": true,
+      "frozenScoreUnchanged": true
+    }
+  ],
+  "observedAssistantModels": [
+    "claude-opus-5"
+  ],
+  "observedStopReasons": {},
+  "attribution": "Missing delimiter is present in raw assistant and result events. Model vs upstream-client origin was not independently separated. No repair or rescore applied."
+}

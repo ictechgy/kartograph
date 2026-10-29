@@ -1,0 +1,591 @@
+[
+  {
+    "case": "detekt_detekt-7212",
+    "module": "detekt-rules-naming",
+    "oracle": 7,
+    "primary": 7,
+    "direct": 0,
+    "indirect": 0,
+    "executedRuleSuiteAnchors": 7,
+    "changed": [
+      "method:io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNaming#visitProperty(Lorg/jetbrains/kotlin/psi/KtProperty;)V"
+    ],
+    "sha256": "7e10329d211bca45450e43d95359c774dcfc774501457c8df5a329cbc21442a4",
+    "targets": [
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec$constants on top level#should not detect any constants not complying to the naming rules()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec$constants on top level#should detect five constants not complying to the naming rules()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec$variables on top level#should not report any()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec$variables on top level#should report non private top level property using underscore()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec$variables on top level#should report private top level property using two underscores()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec#should use custom name top level properties()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec#should not care about no top level properties()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/naming/TopLevelPropertyNamingSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      }
+    ]
+  },
+  {
+    "case": "detekt_detekt-6446",
+    "module": "detekt-rules-errorprone",
+    "oracle": 54,
+    "primary": 54,
+    "direct": 0,
+    "indirect": 0,
+    "executedRuleSuiteAnchors": 54,
+    "changed": [
+      "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValue#visitCallExpression(Lorg/jetbrains/kotlin/psi/KtCallExpression;)V"
+    ],
+    "sha256": "a59aa0e0757c28f930c28de6783bf8c9bc27e36e9ee419d33ebf0cb996bbfecc",
+    "targets": [
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$Java sources#reports when annotation is on the method()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$Java sources#reports when annotation is on the package()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$custom annotation config#reports when a function is annotated with the custom annotation()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$custom annotation config#does not report when a function is annotated with the not included annotation()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$custom annotation config#does not report when a function is not annotated()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#reports when a function which returns a value is called and the return is ignored()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#reports when a function which returns a value is called before a valid return()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#reports when a function which returns a value is called in chain as first statement and the return is ignored()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when a function which returns a value is called in the middle of a chain and the return is ignored()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#reports when a function which returns a value is called in the end of a chain and the return is ignored()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#reports when a function which returns a value is called before a semicolon()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#reports when a function which returns a value is called after a semicolon()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#reports when a function which returns a value is called between comments()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#reports when an extension function which returns a value is called and the return is ignored()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when the return value is assigned to a pre-existing variable()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when a function which doesn't return a value is called()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when a function's return value is used in a test statement()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when a function's return value is used in a comparison()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when a function's return value is used as parameter for another call()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when a function's return value is used with named parameters()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when a function is the last statement in a block and it's used()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#report when a function is not the last statement in a 'if' block and 'if' block is used()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when a function is the last statement in a block and it's in a chain()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#report when a function is not the last statement in a block and it's in a chain()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#report when a function is the last statement in a block()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when a function return value is consumed in a chain that returns a Unit()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#reports when the containing class of a function has _@CheckReturnValue_()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#reports when the containing object of a function has _@CheckReturnValue_()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when the containing class of a function has _@CheckReturnValue_ but the function has _@CanIgnoreReturnValue_()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with annotated return values#does not report when the containing class of a function has no _@CheckReturnValue_ but the parent class has _@CheckReturnValue_()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when a function which returns a value is called and the return is ignored()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when a function which returns a value is called before a valid return()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when a function which returns a value is called in chain and the return is ignored()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when a function which returns a value is called before a semicolon()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when a function which returns a value is called after a semicolon()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when a function which returns a value is called between comments()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when an extension function which returns a value is called and the return is ignored()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when the return value is assigned to a pre-existing variable()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when a function which doesn't return a value is called()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when a function's return value is used in a test statement()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when a function's return value is used in a comparison()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when a function's return value is used as parameter for another call()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$default config with non-annotated return values#does not report when a function's return value is used with named parameters()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$restrict to config#reports when a function is annotated with a custom annotation()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$restrict to config#reports when a function is not annotated()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$restrict to config#reports when a single function inside main is not annotated - #5806()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$restrict to config#reports when a function returns type that should not be ignored()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$restrict to config#does not report when a function has _@CanIgnoreReturnValue_()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$restrict to config#does not report when a function has a custom annotation()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$restrict to config#does not report when a function is in ignoreFunctionCall()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$return value types default config#reports when result of function returning Flow is ignored()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$return value types default config#reports when a function returned result is used in a chain that returns a Flow()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$return value types default config#does not report when a function returned value is used to be returned()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec$return value types default config#does not report when a function returned value is consumed in a chain that returns an Unit()V",
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/bugs/IgnoredReturnValueSpec.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      }
+    ]
+  },
+  {
+    "case": "pinterest_ktlint-2774",
+    "module": "ktlint-ruleset-standard",
+    "oracle": 22,
+    "primary": 22,
+    "direct": 1,
+    "indirect": 0,
+    "executedRuleSuiteAnchors": 21,
+    "changed": [
+      "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRule#isNoSemicolonRequiredAfter(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;)Z"
+    ],
+    "sha256": "4da0d03c52baa93db8b17ea4b52cedfc4ed9202196e2588796f08975cab1a722",
+    "targets": [
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest$Given an enumeration#Given an enumeration and the list of values is followed by a declaration then do not return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest$Given an enumeration#Issue 1733 - Given an enumeration with primary constructor and the list of values is followed by a code element then do not return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest$Given an enumeration#Given an enumeration and the list of values is closed with an EOL comment followed by a semicolon on the next line then do not return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest$Given an enumeration#Given an enumeration and the list of values is closed with a semicolon not followed by statements then do return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest$Given an enumeration#Given an enumeration with a primary constructor and the list of values is closed with a semicolon not followed by statements then do return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given a package statement followed by a comma then return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given multiple statements on a single line then do no return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given a semi colon at the start of a line and not followed by code or comment on the same line then do report a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given a call to function with an optional lambda as last parameter which is omitted, followed by function call on a lambda receiver requires a semicolon in between()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given multiple statements on a single line and semicolon not followed by space then do return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given a function declaration followed by a comma then return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Issue 281 - Given a companion object without block and followed by semicolon then do not return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Issue 281 - Given a companion object followed by a block and semicolon then do return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given a KDoc with an identifier followed by a semicolon then do not return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given a lambda call followed by an annotated block then do not return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given a lambda call followed by a block then do not return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given a lambda call followed by a block preceded with a KDoc then do not return a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given a for loop with an empty body then do not report a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given a while loop with an empty body then do not report a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given a do-while loop with an empty body then do report a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest#Given an if-statement with an empty body then do not report a lint error()V",
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRuleTest.kt",
+        "sourceAddressable": true,
+        "basis": "executed same-rule regression suite"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRule#beforeVisitChildNodes(Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;Lkotlin/jvm/functions/Function3;)V",
+        "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoSemicolonsRule.kt",
+        "sourceAddressable": true,
+        "basis": "javap direct/depth-2 call"
+      }
+    ]
+  },
+  {
+    "case": "pinterest_ktlint-2727",
+    "module": "ktlint-rule-engine",
+    "oracle": 5,
+    "primary": 4,
+    "direct": 2,
+    "indirect": 3,
+    "executedRuleSuiteAnchors": 0,
+    "changed": [
+      "method:com/pinterest/ktlint/rule/engine/internal/CodeFormatter#executeRule(Lcom/pinterest/ktlint/rule/engine/internal/RuleExecutionContext;Lcom/pinterest/ktlint/rule/engine/core/api/Rule;Lcom/pinterest/ktlint/rule/engine/internal/AutocorrectHandler;Lcom/pinterest/ktlint/rule/engine/api/Code;)Ljava/util/Set;",
+      "method:com/pinterest/ktlint/rule/engine/internal/CodeFormatter#format(Lcom/pinterest/ktlint/rule/engine/api/Code;Lcom/pinterest/ktlint/rule/engine/internal/AutocorrectHandler;I)Lkotlin/Pair;"
+    ],
+    "sha256": "e0b3f73575a543c65dc7b58da37a5caa4c3e6832137f2a62dadd8c04f890274f",
+    "targets": [
+      {
+        "id": "method:com/pinterest/ktlint/rule/engine/api/KtLintRuleEngine#lint(Lcom/pinterest/ktlint/rule/engine/api/Code;Lkotlin/jvm/functions/Function1;)V",
+        "file": "src/main/kotlin/com/pinterest/ktlint/rule/engine/api/KtLintRuleEngine.kt",
+        "sourceAddressable": true,
+        "basis": "javap direct/depth-2 call"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/rule/engine/api/KtLintRuleEngine#format(Lcom/pinterest/ktlint/rule/engine/api/Code;Lkotlin/jvm/functions/Function2;)Ljava/lang/String;",
+        "file": "src/main/kotlin/com/pinterest/ktlint/rule/engine/api/KtLintRuleEngine.kt",
+        "sourceAddressable": true,
+        "basis": "javap direct/depth-2 call"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/rule/engine/internal/CodeFormatter#format(Lcom/pinterest/ktlint/rule/engine/api/Code;Lcom/pinterest/ktlint/rule/engine/internal/AutocorrectHandler;Lkotlin/jvm/functions/Function2;I)Ljava/lang/String;",
+        "file": "src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/CodeFormatter.kt",
+        "sourceAddressable": true,
+        "basis": "javap direct/depth-2 call"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/rule/engine/internal/CodeFormatter#format$default(Lcom/pinterest/ktlint/rule/engine/internal/CodeFormatter;Lcom/pinterest/ktlint/rule/engine/api/Code;Lcom/pinterest/ktlint/rule/engine/internal/AutocorrectHandler;Lkotlin/jvm/functions/Function2;IILjava/lang/Object;)Ljava/lang/String;",
+        "file": "src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/CodeFormatter.kt",
+        "sourceAddressable": false,
+        "basis": "javap direct/depth-2 call"
+      },
+      {
+        "id": "method:com/pinterest/ktlint/rule/engine/internal/CodeFormatter#format(Lcom/pinterest/ktlint/rule/engine/internal/RuleExecutionContext;Lcom/pinterest/ktlint/rule/engine/internal/AutocorrectHandler;Lcom/pinterest/ktlint/rule/engine/api/Code;)Ljava/util/Set;",
+        "file": "src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/CodeFormatter.kt",
+        "sourceAddressable": true,
+        "basis": "javap direct/depth-2 call"
+      }
+    ]
+  }
+]

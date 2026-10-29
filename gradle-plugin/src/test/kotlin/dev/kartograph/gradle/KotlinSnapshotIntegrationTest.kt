@@ -17,6 +17,36 @@ import org.junit.jupiter.api.io.TempDir
 
 class KotlinSnapshotIntegrationTest {
     @Test
+    fun `Kotlin project dependency permits its Java no source directory`(@TempDir root: Path) {
+        fixture(root)
+        Files.writeString(root.resolve("settings.gradle"), "rootProject.name='kotlin-project-classpath'\ninclude 'support'\n")
+        Files.createDirectories(root.resolve("support"))
+        source(root, "support/src/main/kotlin/lib/Support.kt", "package lib; class Support { fun value() = 1 }")
+        source(root, "src/main/kotlin/p/Entry.kt", "package p; class Entry { fun value() = lib.Support().value() }")
+        source(root, "src/test/kotlin/p/Check.kt", "package p; class Check { fun check() = Entry().value() }")
+        val build = root.resolve("build.gradle")
+        Files.writeString(build, Files.readString(build) + "\n" + """
+            project(':support') {
+                apply plugin: 'org.jetbrains.kotlin.jvm'
+                repositories { mavenCentral() }
+                kotlin { jvmToolchain(${Runtime.version().feature()}) }
+            }
+            dependencies { implementation project(':support') }
+        """.trimIndent())
+        val first = runner(root).build()
+        assertEquals(TaskOutcome.NO_SOURCE, first.task(":support:compileJava")!!.outcome)
+        assertEquals(TaskOutcome.SUCCESS, first.task(":support:compileKotlin")!!.outcome)
+        val snapshot = QuerySnapshotCodec.parse(Files.readString(root.resolve("build/reports/kartograph/jvm-snapshot.json")))
+        val bindings = ExternalInputBindingsCodec.parse(Files.readString(root.resolve("build/kartograph/jvm-input-bindings.json")))
+            .mapValues { Path.of(it.value) }
+        assertEquals("matched", ProvenanceVerifier.verify(snapshot.provenance, root, snapshot.scope, bindings).status)
+        val again = runner(root).build()
+        assertTrue(again.output.contains("Reusing configuration cache"), again.output)
+        assertEquals(TaskOutcome.UP_TO_DATE, again.task(":compileKotlin")!!.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, again.task(":compileTestKotlin")!!.outcome)
+    }
+
+    @Test
     fun `unrecognized Kotlin task input preserves ordinary build but cannot produce verified snapshot`(@TempDir root: Path) {
         fixture(root)
         source(root, "src/main/kotlin/p/Entry.kt", "package p; class Entry")

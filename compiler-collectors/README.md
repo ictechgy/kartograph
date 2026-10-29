@@ -8,7 +8,7 @@ The jar contains four separately selected collectors:
 
 - `javac-constants`: a `javac` plugin that records resolved references to
   compile-time constant fields.
-- `kotlin-constants`: a Kotlin 2.4.10 K2 compiler plugin. FIR supplies the
+- `kotlin-constants`: a Kotlin 2.4.20 K2 compiler plugin. FIR supplies the
   resolved constant reference and the JVM backend supplies the emitted method
   and field identities. This is what handles file `JvmName`, objects,
   companions, function `JvmName`, and overload descriptors; no fixture mapping
@@ -36,7 +36,9 @@ See the [output workflow](../docs/PROCESSOR-GENERATION.md#output-collector-kaptk
 Set `JAVA_HOME` to JDK 17 and run from the repository root:
 
 ```sh
-./gradlew --no-daemon -p compiler-collectors integrationTest
+./gradlew --no-daemon :cli:installDist
+./gradlew --no-daemon -p compiler-collectors \
+  -Pkartograph.consumerDistribution="$PWD/cli/build/install/kartograph" integrationTest
 ```
 
 The first run resolves fixed compiler dependencies using the checked-in SHA-256
@@ -54,6 +56,9 @@ Gradle plugin runtime.
 
 The build publishes `build/libs/kartograph-compiler-collectors.jar` and runs
 the real Java, Kotlin, and Dagger fixtures in `tests/run.py`.
+The required `publicAuthoredApiTest` compiles a separate consumer against only
+the explicitly installed analysis/core/stdlib JARs. Missing or mismatched
+distributions fail instead of skipping; no source or internal-test classpath is used.
 It also runs `tests/output_attribution.py` for real javac/KAPT/KSP output and
 failure controls. The latter restores the native javac/KAPT/KSP task from the
 Gradle build cache, reuses configuration cache and validates restored output
@@ -97,11 +102,11 @@ The SPI uses bounded temporary staging so Gradle's separate processor and compil
 classloaders do not need to share an implementation object. Temporary files are
 not final compiler evidence. Missing pairing produces a compiler error.
 
-For Kotlin 2.4.10, pass the collector jar and plugin configuration to the K2
+For Kotlin 2.4.20, pass the collector jar and plugin configuration to the K2
 compiler:
 
 ```text
-java -cp <kotlin-2.4.10-compiler-classpath> org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
+java -cp <kotlin-2.4.20-compiler-classpath> org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
   -Xplugin=/path/kartograph-compiler-collectors.jar \
   -P plugin:kartograph.compiler-evidence:root=/project \
   -P plugin:kartograph.compiler-evidence:output=/evidence \
@@ -130,3 +135,35 @@ qualifier strings, timestamps, random values, or absolute paths are emitted.
 `unmapped` is explicit incomplete evidence, not a best-effort success signal.
 The producer never walks a source directory to manufacture compiler coverage,
 and hand-authored TSV is not compiler proof.
+
+## Opt-in authored source calls
+
+`authoredCalls=true` records a separately versioned complete-caller profile for
+ordinary Java methods and Kotlin 2.4.20 functions. It writes an independent
+`compiler-references-authored.tsv` sidecar and leaves `callPositions` unchanged.
+Use completed compiler witnesses and the additive authored importer, not raw
+sidecars as build proof. See [profile, freshness, API and limits](../docs/COMPILER-AUTHORED-CALLS.md).
+
+`callerInventory=true` plus `authoredCalls=true` and an explicit fresh `classOutput`
+adds separately versioned source/backend inventory. It records no-class sources and
+every emitted method, including unknown generated methods, without changing v3 or raw
+CALL. [The inventory contract](../docs/COMPILER-CALLER-INVENTORY.md) documents its fresh
+output requirement, successful receipts and explicit module/file/body-kind scope.
+
+## Optional enum decisions
+
+This feature is part of the unreleased 0.24.0 preparation; published v0.23.0
+collectors do not include it. Use matching collector/CLI/plugin artifacts from
+the same revision and recompile clients after a library enum changes. Capture
+fresh compatible baseline and current snapshots rather than relabeling an old
+snapshot. Direct JVM clients also need recompilation for the changed public
+GraphNode/QuerySnapshot data-class shapes.
+
+The constants collectors accept a separate `enumDecisions=true` option. Java
+places it inside the existing KartographEvidence plugin argument; Kotlin uses
+`-P plugin:kartograph.compiler-evidence:enumDecisions=true`. Enabled capture writes
+v4 typed fallback/finite-membership sites and explicit observation counters.
+It can coexist with call positions. Omitted/false preserves prior formats.
+See the [capture and coverage guide](../docs/COMPILER-EVIDENCE.md#opt-in-enum-expansion-decisions)
+for completed-witness prerequisites and unsupported cases. Raw rows are not build
+success evidence or runtime behavior claims.

@@ -884,6 +884,7 @@ class ClassFileIndexerTest {
         assertEquals(expected.graph.edges, actual.graph.edges)
         assertEquals(expected.graph.externalCalls, actual.graph.externalCalls)
         assertEquals(expected.graph.serviceProviders, actual.graph.serviceProviders)
+        assertEquals(expected.graph.enclosures, actual.graph.enclosures)
         assertEquals(expected.observations, actual.observations)
         assertEquals(expected.declarationsByRoot, actual.declarationsByRoot)
         assertEquals(expected.selectedRootByNode, actual.selectedRootByNode)

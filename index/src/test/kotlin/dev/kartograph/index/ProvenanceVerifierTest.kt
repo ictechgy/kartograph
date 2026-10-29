@@ -39,6 +39,28 @@ class ProvenanceVerifierTest {
     }
 
     @Test
+    fun `aggregate provenance accepts only witnesses of its declared member scopes`(@TempDir root: Path) {
+        Files.createDirectories(root.resolve("src"))
+        Files.writeString(root.resolve("src/A.java"), "class A {}")
+        val classes = Files.createDirectories(root.resolve("classes"))
+        Files.write(classes.resolve("A.class"), byteArrayOf(1, 2, 3))
+        Files.writeString(root.resolve("build.gradle"), "plugins {}")
+        Files.writeString(root.resolve("compiler.jar"), "compiler")
+        Files.writeString(root.resolve("witness.json"), "unit fixture")
+        fun fp(role: String, path: String) = ContentFingerprint.capture(root, root.resolve(path), role, role)
+        val witness = BuildWitness(":core:debug", "javac", ":core:compileJava", listOf(fp("sources", "src"),
+            fp("buildConfig", "build.gradle"), fp("compiler", "compiler.jar"),
+            InputFingerprint("options", "compileJava-options", ContentFingerprint.values(listOf("-g")))), listOf(fp("classes", "classes")))
+        val single = SnapshotProvenance(witness.outputs + fp("witness", "witness.json"), listOf(witness))
+        assertEquals(listOf("build-scope-mismatch"), ProvenanceVerifier.verify(single, root, "aggregate:debug").reasons)
+        val aggregate = single.copy(memberScopes = listOf(":app:debug", ":core:debug"))
+        assertEquals("matched", ProvenanceVerifier.verify(aggregate, root, "aggregate:debug").status)
+        val other = single.copy(memberScopes = listOf(":app:debug"))
+        assertEquals(listOf("build-scope-mismatch"), ProvenanceVerifier.verify(other, root, "aggregate:debug").reasons)
+        assertEquals("unverified", ProvenanceVerifier.verify(aggregate, root, null).status)
+    }
+
+    @Test
     fun `correspondence needs matching witness contents sources outputs and identity`(@TempDir root: Path) {
         val source = Files.createDirectories(root.resolve("src"))
         Files.writeString(source.resolve("A.java"), "class A {}")

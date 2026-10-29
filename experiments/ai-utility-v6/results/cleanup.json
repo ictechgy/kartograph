@@ -1,0 +1,43 @@
+{
+  "status": "complete",
+  "archive": "archives/native-inputs.tar.gz in the local evidence ledger",
+  "archiveSha256": "82994c50cadff4c3f279b272fc60443499983e16bd74b705db0e732cda01c637",
+  "archiveBytes": 555762599,
+  "members": 26222,
+  "everyMemberVerified": true,
+  "actualRestorationVerified": true,
+  "restoredSnapshots": [
+    {
+      "case": "pinterest_ktlint-2554",
+      "status": "matched"
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "status": "matched"
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "status": "matched"
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "status": "matched"
+    },
+    {
+      "case": "pinterest_ktlint-2715",
+      "status": "matched"
+    },
+    {
+      "case": "synthetic-smoke",
+      "status": "matched"
+    }
+  ],
+  "originalNativeInputDirectoriesRemovedAfterVerification": true,
+  "preservedEvidenceFiles": 180,
+  "evidenceHashesUnchanged": true,
+  "beforeTaskDirectoryAllocatedBytes": 9326505984,
+  "afterTaskDirectoryAllocatedBytes": 617631744,
+  "existingGlobalCachesToolsUserWorktreesPreserved": true,
+  "protectedKeystoreContentsRead": false,
+  "restore": "Use the private ledger native-archive-manifest.json and native-cleanup.json. Extract into an empty directory, keep original bindings intact and rebind only copied local paths. Restore native inputs before making a current-build claim. Global JDK17 and CLI0.15.0 are prerequisites. Never resume the completed frozen trial directory."
+}

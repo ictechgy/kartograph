@@ -1,0 +1,744 @@
+{
+  "status": "completed",
+  "trials": 16,
+  "interpretation": "Per-case known-anchor coverage; no aggregate impact detection or general productivity claim. CLI costs are client estimates.",
+  "cases": [
+    {
+      "case": "detekt_detekt-6443",
+      "module": "detekt-rules-errorprone",
+      "primaryOracle": 27,
+      "suiteAnchors": 26,
+      "callAnchors": 1,
+      "arms": {
+        "source": {
+          "primaryCoverage": [
+            1.0,
+            0.4074074074074074
+          ],
+          "suiteCoverage": [
+            1.0,
+            0.38461538461538464
+          ],
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 80.72245970850054,
+          "totalCostUsd": 0.49518199999999996,
+          "knownCostUsd": 0.49518199999999996,
+          "missingCostTrials": 0,
+          "invalidResponses": 0,
+          "invalidReasons": {}
+        },
+        "mcp": {
+          "primaryCoverage": [
+            1.0,
+            1.0
+          ],
+          "suiteCoverage": [
+            1.0,
+            1.0
+          ],
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 68.43043772950114,
+          "totalCostUsd": 0.5751,
+          "knownCostUsd": 0.5751,
+          "missingCostTrials": 0,
+          "invalidResponses": 0,
+          "invalidReasons": {}
+        }
+      }
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "module": "detekt-rules-errorprone",
+      "primaryOracle": 9,
+      "suiteAnchors": 9,
+      "callAnchors": 0,
+      "arms": {
+        "source": {
+          "primaryCoverage": [
+            1.0,
+            1.0
+          ],
+          "suiteCoverage": [
+            1.0,
+            1.0
+          ],
+          "callCoverage": [
+            null,
+            null
+          ],
+          "meanSeconds": 42.20231952050017,
+          "totalCostUsd": 0.39159,
+          "knownCostUsd": 0.39159,
+          "missingCostTrials": 0,
+          "invalidResponses": 0,
+          "invalidReasons": {}
+        },
+        "mcp": {
+          "primaryCoverage": [
+            1.0,
+            1.0
+          ],
+          "suiteCoverage": [
+            1.0,
+            1.0
+          ],
+          "callCoverage": [
+            null,
+            null
+          ],
+          "meanSeconds": 62.47386752050079,
+          "totalCostUsd": 0.507409,
+          "knownCostUsd": 0.507409,
+          "missingCostTrials": 0,
+          "invalidResponses": 0,
+          "invalidReasons": {}
+        }
+      }
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "module": "ktlint-ruleset-standard",
+      "primaryOracle": 14,
+      "suiteAnchors": 14,
+      "callAnchors": 0,
+      "arms": {
+        "source": {
+          "primaryCoverage": [
+            0.7142857142857143,
+            0.8571428571428571
+          ],
+          "suiteCoverage": [
+            0.7142857142857143,
+            0.8571428571428571
+          ],
+          "callCoverage": [
+            null,
+            null
+          ],
+          "meanSeconds": 64.65549577050115,
+          "totalCostUsd": 0.6887274999999999,
+          "knownCostUsd": 0.6887274999999999,
+          "missingCostTrials": 0,
+          "invalidResponses": 0,
+          "invalidReasons": {}
+        },
+        "mcp": {
+          "primaryCoverage": [
+            0.7857142857142857,
+            0.8571428571428571
+          ],
+          "suiteCoverage": [
+            0.7857142857142857,
+            0.8571428571428571
+          ],
+          "callCoverage": [
+            null,
+            null
+          ],
+          "meanSeconds": 62.32778277049874,
+          "totalCostUsd": 0.8208799999999999,
+          "knownCostUsd": 0.8208799999999999,
+          "missingCostTrials": 0,
+          "invalidResponses": 0,
+          "invalidReasons": {}
+        }
+      }
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "module": "ktlint-ruleset-standard",
+      "primaryOracle": 31,
+      "suiteAnchors": 30,
+      "callAnchors": 1,
+      "arms": {
+        "source": {
+          "primaryCoverage": [
+            0.22580645161290322,
+            0.16129032258064516
+          ],
+          "suiteCoverage": [
+            0.23333333333333334,
+            0.16666666666666666
+          ],
+          "callCoverage": [
+            0.0,
+            0.0
+          ],
+          "meanSeconds": 48.87494954149952,
+          "totalCostUsd": 0.579557,
+          "knownCostUsd": 0.579557,
+          "missingCostTrials": 0,
+          "invalidResponses": 0,
+          "invalidReasons": {}
+        },
+        "mcp": {
+          "primaryCoverage": [
+            0.25806451612903225,
+            0.22580645161290322
+          ],
+          "suiteCoverage": [
+            0.23333333333333334,
+            0.2
+          ],
+          "callCoverage": [
+            1.0,
+            1.0
+          ],
+          "meanSeconds": 53.60317033300089,
+          "totalCostUsd": 0.6776365,
+          "knownCostUsd": 0.6776365,
+          "missingCostTrials": 0,
+          "invalidResponses": 0,
+          "invalidReasons": {}
+        }
+      }
+    }
+  ],
+  "trialDetails": [
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "source",
+      "repeat": 0,
+      "seconds": 68.27095720799844,
+      "costUsd": 0.28738549999999996,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 1.0,
+      "suiteCoverage": 1.0,
+      "callCoverage": 1.0,
+      "totalToolRequests": 7,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "informationToolRequests": 6,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 1,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "source",
+      "repeat": 1,
+      "seconds": 93.17396220900264,
+      "costUsd": 0.2077965,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 0.4074074074074074,
+      "suiteCoverage": 0.38461538461538464,
+      "callCoverage": 1.0,
+      "totalToolRequests": 6,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "informationToolRequests": 5,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 1,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "mcp",
+      "repeat": 0,
+      "seconds": 72.99771241700364,
+      "costUsd": 0.303758,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 1.0,
+      "suiteCoverage": 1.0,
+      "callCoverage": 1.0,
+      "totalToolRequests": 7,
+      "product": {
+        "requested": {
+          "freshness": 1,
+          "query_symbol": 1
+        },
+        "processed": {
+          "freshness": 1,
+          "query_symbol": 1
+        },
+        "agentFreshness": [
+          "matched"
+        ],
+        "responses": [
+          {
+            "tool": "freshness",
+            "status": "matched",
+            "isError": false
+          },
+          {
+            "tool": "query_symbol",
+            "status": "found",
+            "isError": false
+          }
+        ]
+      },
+      "informationToolRequests": 6,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 1,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt_detekt-6443",
+      "arm": "mcp",
+      "repeat": 1,
+      "seconds": 63.86316304199863,
+      "costUsd": 0.27134199999999997,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 1.0,
+      "suiteCoverage": 1.0,
+      "callCoverage": 1.0,
+      "totalToolRequests": 6,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "informationToolRequests": 5,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 0,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "source",
+      "repeat": 0,
+      "seconds": 35.507322416000534,
+      "costUsd": 0.176352,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 1.0,
+      "suiteCoverage": 1.0,
+      "callCoverage": null,
+      "totalToolRequests": 6,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "informationToolRequests": 5,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 1,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "source",
+      "repeat": 1,
+      "seconds": 48.8973166249998,
+      "costUsd": 0.21523799999999998,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 1.0,
+      "suiteCoverage": 1.0,
+      "callCoverage": null,
+      "totalToolRequests": 7,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "informationToolRequests": 6,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 1,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "mcp",
+      "repeat": 0,
+      "seconds": 42.53396412500297,
+      "costUsd": 0.2163985,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 1.0,
+      "suiteCoverage": 1.0,
+      "callCoverage": null,
+      "totalToolRequests": 7,
+      "product": {
+        "requested": {
+          "query_symbol": 1
+        },
+        "processed": {
+          "query_symbol": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "query_symbol",
+            "status": "found",
+            "isError": false
+          }
+        ]
+      },
+      "informationToolRequests": 6,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 1,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "detekt_detekt-6352",
+      "arm": "mcp",
+      "repeat": 1,
+      "seconds": 82.41377091599861,
+      "costUsd": 0.2910105,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 1.0,
+      "suiteCoverage": 1.0,
+      "callCoverage": null,
+      "totalToolRequests": 8,
+      "product": {
+        "requested": {
+          "freshness": 1,
+          "impact": 1
+        },
+        "processed": {
+          "freshness": 1,
+          "impact": 1
+        },
+        "agentFreshness": [
+          "matched"
+        ],
+        "responses": [
+          {
+            "tool": "freshness",
+            "status": "matched",
+            "isError": false
+          },
+          {
+            "tool": "impact",
+            "status": "partial",
+            "isError": false
+          }
+        ]
+      },
+      "informationToolRequests": 7,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 2,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "source",
+      "repeat": 0,
+      "seconds": 54.23314316599863,
+      "costUsd": 0.3078205,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 0.7142857142857143,
+      "suiteCoverage": 0.7142857142857143,
+      "callCoverage": null,
+      "totalToolRequests": 9,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "informationToolRequests": 8,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 1,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "source",
+      "repeat": 1,
+      "seconds": 75.07784837500367,
+      "costUsd": 0.380907,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 0.8571428571428571,
+      "suiteCoverage": 0.8571428571428571,
+      "callCoverage": null,
+      "totalToolRequests": 12,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "informationToolRequests": 11,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 1,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "mcp",
+      "repeat": 0,
+      "seconds": 60.77997612499894,
+      "costUsd": 0.4027315,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 0.7857142857142857,
+      "suiteCoverage": 0.7857142857142857,
+      "callCoverage": null,
+      "totalToolRequests": 9,
+      "product": {
+        "requested": {
+          "impact": 1
+        },
+        "processed": {
+          "impact": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "impact",
+            "status": "partial",
+            "isError": false
+          }
+        ]
+      },
+      "informationToolRequests": 8,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 3,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "pinterest_ktlint-2617",
+      "arm": "mcp",
+      "repeat": 1,
+      "seconds": 63.87558941599855,
+      "costUsd": 0.4181484999999999,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 0.8571428571428571,
+      "suiteCoverage": 0.8571428571428571,
+      "callCoverage": null,
+      "totalToolRequests": 10,
+      "product": {
+        "requested": {
+          "impact": 1
+        },
+        "processed": {
+          "impact": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "impact",
+            "status": "partial",
+            "isError": false
+          }
+        ]
+      },
+      "informationToolRequests": 9,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 3,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "source",
+      "repeat": 0,
+      "seconds": 48.187252582996734,
+      "costUsd": 0.29618849999999997,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 0.22580645161290322,
+      "suiteCoverage": 0.23333333333333334,
+      "callCoverage": 0.0,
+      "totalToolRequests": 10,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "informationToolRequests": 9,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 0,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "source",
+      "repeat": 1,
+      "seconds": 49.5626465000023,
+      "costUsd": 0.2833685,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 0.16129032258064516,
+      "suiteCoverage": 0.16666666666666666,
+      "callCoverage": 0.0,
+      "totalToolRequests": 10,
+      "product": {
+        "requested": {},
+        "processed": {},
+        "agentFreshness": [],
+        "responses": []
+      },
+      "informationToolRequests": 9,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 1,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "mcp",
+      "repeat": 0,
+      "seconds": 57.95506508299877,
+      "costUsd": 0.33189599999999997,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 0.25806451612903225,
+      "suiteCoverage": 0.23333333333333334,
+      "callCoverage": 1.0,
+      "totalToolRequests": 12,
+      "product": {
+        "requested": {
+          "query_symbol": 1
+        },
+        "processed": {
+          "query_symbol": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "query_symbol",
+            "status": "found",
+            "isError": false
+          }
+        ]
+      },
+      "informationToolRequests": 11,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 1,
+      "infrastructureErrors": []
+    },
+    {
+      "case": "pinterest_ktlint-2554",
+      "arm": "mcp",
+      "repeat": 1,
+      "seconds": 49.25127558300301,
+      "costUsd": 0.34574049999999995,
+      "valid": true,
+      "error": null,
+      "primaryCoverage": 0.22580645161290322,
+      "suiteCoverage": 0.2,
+      "callCoverage": 1.0,
+      "totalToolRequests": 11,
+      "product": {
+        "requested": {
+          "impact": 1
+        },
+        "processed": {
+          "impact": 1
+        },
+        "agentFreshness": [],
+        "responses": [
+          {
+            "tool": "impact",
+            "status": "found",
+            "isError": false
+          }
+        ]
+      },
+      "informationToolRequests": 10,
+      "outputToolRequests": 1,
+      "providerSubtype": "success",
+      "structuredOutputError": null,
+      "ambiguous": 0,
+      "duplicates": 0,
+      "outsideOracle": 1,
+      "infrastructureErrors": []
+    }
+  ],
+  "modelStageSeconds": 966.5809657890059,
+  "modelCostUsd": 4.736082,
+  "knownModelCostUsd": 4.736082,
+  "missingCostTrials": 0,
+  "responseValidityByArm": {
+    "source": {
+      "total": 8,
+      "valid": 8,
+      "failures": {}
+    },
+    "mcp": {
+      "total": 8,
+      "valid": 8,
+      "failures": {}
+    }
+  },
+  "infrastructureErrors": [],
+  "manifestSha256": "41bcfc072c50ce227603c6a71c6c8d8aead420cc5e7828092175d9bd8cbec87d",
+  "resultsSha256": "da7a349bcc8eb84f0fd3d67ba9a92983d17bb29c037eaaf5568b9ced64b7aeed"
+}

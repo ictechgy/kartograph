@@ -1,4 +1,5 @@
 import hashlib
+import base64
 import importlib.util
 import json
 from pathlib import Path
@@ -11,6 +12,48 @@ witness = importlib.util.module_from_spec(spec); spec.loader.exec_module(witness
 
 
 class OutputWitnessTests(unittest.TestCase):
+    def test_new_compiler_control_cannot_delete_an_existing_non_evidence_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); (root / 'src').mkdir(); (root / 'src/Input.java').write_text('class Input {}')
+            jar = root / 'compiler-only.jar'; jar.write_bytes(b'original classpath bytes')
+            config = {'project': str(root), 'scope': 'fixture:main', 'kind': 'javac', 'processor': 'fixture.Processor',
+                      'inputs': ['src'], 'outputRoots': ['generated'], 'collectorJar': str(root / 'collector.jar'), 'processorJar': str(root / 'processor.jar'),
+                      'token': '.evidence/token', 'observations': '.evidence/outputs.tsv', 'receipt': '.evidence/receipt.json',
+                      'compilerInputs': 'compiler-only.jar', 'command': [sys.executable, '-c', 'raise SystemExit(99)']}
+            for name in ['collector.jar', 'processor.jar']: (root / name).write_bytes(b'artifact')
+            path = root / 'config.json'; path.write_text(json.dumps(config))
+            with self.assertRaises(witness.EvidenceError): witness.record(path, root / 'logs')
+            self.assertTrue(jar.exists(), 'misconfigured evidence path deleted the compiler input')
+            self.assertEqual(jar.read_bytes(), b'original classpath bytes')
+
+    def test_gradle_input_receipt_tracks_classpath_outside_manual_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); (root / '.evidence').mkdir()
+            dependency = root / 'classpath.jar'; dependency.write_bytes(b'original compiler input')
+            config = {'scope': 'fixture:main', 'compilerInputs': '.evidence/compiler-inputs.tsv'}
+            token = 'a' * 64
+            encode = lambda value: base64.urlsafe_b64encode(value.encode()).decode().rstrip('=')
+            content = 'format\tkartograph-processor-compiler-inputs\t1\n'
+            content += 'scope\tfixture:main\ntask\t:compileJava\ntoken\t' + token + '\npropertiesSha256\t' + 'b' * 64 + '\n'
+            content += '\t'.join(['file', encode('project/classpath.jar'), encode(str(dependency)), 'file', witness.inventory(dependency)]) + '\n'
+            receipt = root / config['compilerInputs']; receipt.write_text(content)
+            observed = witness.compiler_inputs(config, root, token)
+            self.assertEqual(observed['task'], ':compileJava')
+            self.assertEqual(observed['files'][0]['path'], 'project/classpath.jar')
+            self.assertNotIn(str(root), json.dumps(observed))
+            relocated = root / 'archive'; relocated.mkdir()
+            (relocated / '.evidence').mkdir(); copy = relocated / 'classpath.jar'; copy.write_bytes(dependency.read_bytes())
+            (relocated / config['compilerInputs']).write_text(content.replace(encode(str(dependency)), encode(str(copy))))
+            self.assertEqual(observed, witness.compiler_inputs(config, relocated, token))
+            dependency.write_bytes(b'changed compiler input')
+            with self.assertRaises(witness.EvidenceError):
+                witness.compiler_inputs(config, root, token)
+
+            dependency.write_bytes(b'original compiler input')
+            receipt.write_text(content.replace(token, 'c' * 64))
+            with self.assertRaises(witness.EvidenceError):
+                witness.compiler_inputs(config, root, token)
+
     def test_output_count_limit_matches_snapshot_contract_before_reading_outputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

@@ -15,7 +15,8 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # collector 설치·compiler 증거·Android fixture를 순차 검증하면 기존 30분 예산을 넘을 수 있다.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,7 +34,41 @@ jobs:
       - name: Install fixture Android platform
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
       - name: Test and verify coverage
-        run: ./gradlew --no-daemon clean test :koverVerify :cli:installDist
+        id: candidate-build
+        # Kotlin 컴파일 daemon만 늘린다. 테스트·CLI JVM과 분석 시간 예산은 그대로 둔다.
+        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g clean test :koverVerify :cli:installDist
+      - name: Observe Kotlin compiler heap after primary build
+        if: always()
+        timeout-minutes: 1
+        run: python3 Scripts/observe-kotlin-daemon-heap.py
+      - name: Verify non-privileged POSIX permission regressions
+        run: python3 Scripts/verify-posix-permission-tests.py
+      - name: Verify actual DataBinding processor regression execution
+        run: python3 Scripts/verify-databinding-processor-test.py
+      - name: Preserve DataBinding processor evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: databinding-processor-test
+          path: |
+            build/reports/databinding-processor-test.json
+            gradle-plugin/build/test-results/test/TEST-dev.kartograph.gradle.AndroidDataBindingIntegrationTest.xml
+            gradle-plugin/build/test-results/test/TEST-dev.kartograph.gradle.AndroidHiltIntegrationTest.xml
+            gradle-plugin/build/reports/hilt-transform/hilt-snapshot-*.json
+            gradle-plugin/build/reports/hilt-transform/observations.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve POSIX permission evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: posix-permission-tests
+          path: |
+            build/reports/posix-permission-tests.json
+            index/build/test-results/test/TEST-dev.kartograph.index.SourceDirectoryFailureTest.xml
+            index/build/test-results/test/TEST-dev.kartograph.index.AndroidXmlScannerTest.xml
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Preserve failed test details
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -43,9 +78,28 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Verify CLI contract
+        id: cli_contract
         run: Scripts/verify-cli-contract.sh
       - name: Verify PR gate against real Git and compiler outputs
         run: python3 -m unittest discover -s Scripts/tests -v
+      - name: Verify caller and behavior evaluation contracts
+        run: python3 -m unittest discover -s experiments/ai-utility-v7 -p 'test*.py' -v
+      - name: Verify real-module evaluation and native JUnit evidence
+        run: |
+          python3 -m unittest discover -s experiments/ai-utility-v8 -p 'test*.py' -v
+          python3 experiments/ai-utility-v8/verify_observer.py --jdk "$JAVA_HOME" --download-junit --output build/reports/ai-utility-v8-observer
+      - name: Preserve native JUnit observer evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ai-utility-v8-observer
+          path: |
+            build/reports/ai-utility-v8-observer/verification.json
+            build/reports/ai-utility-v8-observer/base/*.json*
+            build/reports/ai-utility-v8-observer/changed/*.json*
+            build/reports/ai-utility-v8-observer/failed-sink.*
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Verify automatic Gradle snapshots and CI impact
         run: python3 Scripts/verify-gradle-impact-ci.py
       - name: Preserve Gradle impact CI evidence
@@ -56,7 +110,22 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Verify analysis smoke gate and self-analysis contracts
-        run: python3 Scripts/verify-analysis-smoke-gate.py
+        run: python3 Scripts/verify-analysis-smoke-gate.py --json
+      - name: Diagnose fixed-input index cost without changing the smoke gate
+        if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
+        timeout-minutes: 15
+        run: python3 Scripts/verify-index-cost.py
+      - name: Preserve bounded index cost evidence
+        if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: index-cost
+          path: |
+            build/reports/index-cost/result.json
+            build/reports/index-cost/raw/*.gz
+            build/reports/index-cost/jfr/*.jfr
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify agent query and bridge contracts
         run: Scripts/verify-agent-surface.sh
       - name: Verify runtime blind-spot corpus
@@ -65,15 +134,26 @@ jobs:
         run: python3 Scripts/verify-runtime-contracts.py
       - name: Compare compiler references before constant inlining
         run: python3 experiments/compiler-references/run.py
+      # 시간 게이트 실패 뒤에도 성공한 설치물을 쓰는 독립 정확성 검증은 남긴다.
       - name: Verify Dagger selected binding evidence
+        id: dagger_evidence
+        if: ${{ !cancelled() && steps.candidate-build.outcome == 'success' && steps.cli_contract.outcome == 'success' }}
         run: python3 experiments/dagger-bindings/run.py
       - name: Verify compiler collectors and product evidence lifecycle
+        id: collector_lifecycle
+        if: ${{ !cancelled() && steps.candidate-build.outcome == 'success' && steps.cli_contract.outcome == 'success' }}
         run: |
-          KARTOGRAPH_SNAPSHOT_CLI="$PWD/cli/build/install/kartograph/bin/kartograph" ./gradlew --no-daemon -p compiler-collectors integrationTest distZip
+          KARTOGRAPH_SNAPSHOT_CLI="$PWD/cli/build/install/kartograph/bin/kartograph" ./gradlew --no-daemon -p compiler-collectors \
+            -Pkartograph.consumerDistribution="$PWD/cli/build/install/kartograph" integrationTest distZip
           python3 Scripts/verify-collector-installation.py \
             --archive "compiler-collectors/build/distributions/kartograph-compiler-collectors-$(cat VERSION).zip" \
             --version "$(cat VERSION)" --evidence build/reports/collector-installation
-          python3 Scripts/verify-compiler-evidence.py
+      # Dagger 검증이 만드는 fixture JAR와 collector 설치 검증을 모두 요구한다.
+      - name: Verify Gradle compiler evidence lifecycle
+        if: ${{ !cancelled() && steps.candidate-build.outcome == 'success' && steps.cli_contract.outcome == 'success' && steps.dagger_evidence.outcome == 'success' && steps.collector_lifecycle.outcome == 'success' }}
+        run: python3 Scripts/verify-compiler-evidence.py
+      - name: Verify exact compiler call positions without skipped checks
+        run: python3 Scripts/verify-compiler-call-positions.py
       - name: Preserve compiler evidence validation
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -81,10 +161,12 @@ jobs:
           name: compiler-evidence-validation
           path: |
             build/reports/compiler-evidence-integration/
+            build/reports/compiler-call-positions/
             build/reports/collector-installation/*.log
             build/reports/collector-installation/**/build.stdout
             build/reports/collector-installation/**/build.stderr
             build/reports/collector-installation/verification.json
+            compiler-collectors/build/reports/public-authored-api/public-report.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Compare callgraph precision
@@ -127,8 +209,19 @@ jobs:
         run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
       - name: Install Android snapshot test platform
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
+      - name: Verify owned-directory capture capabilities on Linux
+        timeout-minutes: 2
+        run: java Scripts/VerifySecureDirectoryStream.java
       - name: Verify supported JDK
-        run: ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} test :gradle-plugin:validatePlugins
+        shell: bash
+        run: |
+          # 양쪽 JDK에서 관측한 Kotlin 컴파일 heap 부족만 다룬다.
+          printf '%s\n' 'Requested Kotlin daemon maximum heap: 1 GiB; a separate observation records available process flags.'
+          ./gradlew --no-daemon -Pkartograph.javaVersion=${{ matrix.java }} -Pkotlin.daemon.jvmargs=-Xmx1g test :gradle-plugin:validatePlugins
+      - name: Observe Kotlin compiler heap after compatibility build
+        if: always()
+        timeout-minutes: 1
+        run: python3 Scripts/observe-kotlin-daemon-heap.py
       - name: Preserve failed compatibility test details
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -140,7 +233,7 @@ jobs:
 
   agp-minimum:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -172,3 +265,18 @@ jobs:
         run: |
           export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
           bash Scripts/verify-agp-8-app-snapshot.sh
+
+      - name: Establish layout resource field and test evidence on minimum AGP
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          export GRADLE_8_HOME="$(dirname "$(dirname "$(command -v gradle)")")"
+          python3 Scripts/verify-agp-8-resource-impact.py
+      - name: Preserve bounded resource experiment evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: agp-8-resource-impact
+          path: build/reports/agp-8-resource-impact/result.json
+          if-no-files-found: warn
+          retention-days: 14

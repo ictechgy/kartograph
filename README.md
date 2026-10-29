@@ -1,5 +1,7 @@
 # kartograph
 
+<img src="icon.png" alt="kartograph's bird mascot" width="112" height="112" align="right">
+
 Queryable dependency graphs for Kotlin/Android codebases. A sister project of cartograph (Swift) that shares its design and exchange contracts.
 
 > [한국어](README.ko.md)
@@ -24,19 +26,20 @@ The current source version is declared in [VERSION](VERSION). Released versions 
 Working today:
 
 - `impact` checks the potential effect of a planned symbol edit, or of the files changed since a base commit, using captured graphs. It reports base/current paths, deletions, runtime evidence and uncertainty identically to people, agents and CI. See [change impact](docs/IMPACT.md) and the [scored public replays](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/change-impact/README.md).
-- `graph` renders compiled class roots as DOT or as a `code-graph` JSON exchange document. With `--include-paths --project` it also resolves project-relative source paths. The JSON records edge origins and external calls with their resolution status. Repeating `--classes` merges several module/variant outputs; when a JVM class appears in more than one root, the first root always wins.
+- `graph` renders compiled class roots as DOT, streamed `code-graph` JSON, NDJSON, or fixed-header Neo4j CSV. With `--include-paths --project` it also resolves project-relative source paths. Per-root `--module-name`, optional external stubs, origin filtering, and bounded dispatch candidates support large exports. Repeating `--classes` merges several module/variant outputs; when a JVM class appears in more than one root, the first root always wins. See [graph export contracts](docs/GRAPH-EXPORT.md).
 - `dead` reports unreachable class declarations from Android retention roots (manifest, XML, `@Keep`, keep rules, inheritance hierarchies, DI/serialization annotations, JNI and framework callbacks). It supports `--explain`, baselines, expiring `--suppress` entries, `--since`, and machine-readable reports (text/gradle/github-actions/sarif/json/markdown). JSON, SARIF and markdown findings carry a `confidence` tier (static / needs-runtime-review / runtime-observed / unmeasured) derived from the unresolved runtime channels measured in the declaration's own source file or from user-supplied runtime evidence. Recursive includes and consumer rules are supported. Keep rules that produced no retention evidence are reported as `unmatched-keep-rule` input diagnostics with file:line provenance — a measurement, not proof the rule can be removed. When findings exist, inputs that were not supplied (keep rules, dependency classpath, or a manifest with component declarations) are reported as `input-hint` diagnostics so a possibly over-reported result is visible before it is trusted. Optional `--runtime-classes` and `--coverage` inputs (user-supplied class lists and JaCoCo/Kover XML) mark findings whose class was observed as `runtime-observed` confidence; they change neither findings nor exit codes.
 - `why <symbol>` answers in one step why a declaration is retained, reachable, or unreachable: retention evidence with file:line provenance, the representative path from a retention root, direct callers, a test-only marker, and a measured confidence tier for unreachable declarations. The answer is a reachability fact, not a deletion approval.
 - `query`/`bridges`/`skill` give agents the users, dependencies and reachability of a single symbol, plus Flutter/React Native bridge facts, instead of a full graph dump. `query` also reports measured counts of unresolved runtime paths and conservative dispatch candidates. React Native coverage spans core `@ReactModule`/`@ReactMethod` and Expo Modules (`class X : Module()` with `ModuleDefinition { Name(...) / Function(...) / View(...) }`); Expo `module-export`/`component-export` facts carry `"mechanism": "expo"` so isthmus keeps Expo and core resolution paths separate.
+- Direct bytecode calls now carry optional `references` with the caller source file and call-site line on depth-one `query` neighbors. Kotlin inline mappings are used only when they identify the caller's own source file. Declaration locations remain separate; bytecode does not provide exact columns or offsets. New saved snapshots preserve this evidence in both normal and compact encoding, while older snapshots report its absence.
 - `dependencies` compares a declared dependency list (TSV: coordinate, scope, artifact) with bytecode references from the supplied class roots and reports `unused-dependency` findings. It does not run the build or collect coverage; processor and runtime-only scopes are counted but not judged. See [declared dependencies](docs/DEPENDENCIES.md). Version 0.12.0 adds `--library`
   API/implementation advice, `--resolved-dependencies` ownership checks, all six report formats,
   and JVM/Android `kartographDependencies` tasks. Version 0.13.0 adds exact baselines, expiring suppressions, and capture of all observed diagnostics before filtering.
 - Optional [processor source attribution](docs/PROCESSOR-GENERATION.md) records actual JSR-269 Filer outputs and their generating artifact through completed compiler receipts. The collector is built separately from the tagged source; attribution does not change reachability or dependency-unused decisions.
 - `cycles`/`rules`/`metrics` analyze module/package cycles with weakest edges, fail-closed layer YAML, and Martin Ca/Ce/I/A/D metrics.
 - The Gradle plugin registers `kartographDead<Variant>` and `kartographGraph<Variant>` per Android variant over the AGP public Variant API.
-- The Gradle plugin's `kartographSnapshot` and `kartographSnapshot<Variant>` tasks capture JVM main/test and Android main/unit-test inputs automatically, together with compiler witnesses, for repeated impact queries. Android application variants also cover the generated `R.jar` through a `processResources` producer witness. See [automatic capture and toolchain configuration](docs/IMPACT.md#jvm-빌드에서-자동-캡처) and the [build provenance contract](docs/BUILD-PROVENANCE.md).
+- The Gradle plugin's `kartographSnapshot` and `kartographSnapshot<Variant>` tasks capture JVM main/test and Android main/unit-test inputs automatically, together with compiler witnesses, for repeated impact queries. Android application variants also cover the generated `R.jar` through a `processResources` producer witness. See [automatic capture and toolchain configuration](docs/IMPACT.md#jvm-빌드에서-자동-캡처) and the [build provenance contract](docs/BUILD-PROVENANCE.md). Build directories may live outside the repository, and `kartograph snapshot merge` combines per-module snapshots into one verifiable snapshot for `routes`/`impact` ([multi-module capture](docs/IMPACT.md#여러-모듈과-저장소-밖-build-디렉터리)).
 - Optional [incremental parsing](docs/INDEX-CACHE.md) reuses unchanged class facts and dependency JAR headers. Current inputs are still checked and the analysis is rebuilt on every capture.
-- The [MCP stdio server](docs/MCP.md) exposes `query_symbol`, `impact` and `freshness` over fixed local snapshots, using the same reports as the CLI.
+- The [MCP stdio server](docs/MCP.md) exposes `query_symbol`, `impact` and `freshness` over fixed local snapshots, using the same reports as the CLI; `discover_symbols` recovers exact selectors.
 - Keep-rule parsing fails closed with file and line instead of silently dropping unsupported syntax. Errors and evidence never print absolute paths.
 
 Class loading, reflective construction, and known method/field access are connected through bounded intra-method value tracking; external dispatch uses conservative hierarchy candidates. `META-INF/services` registrations in class roots and in explicit CLI `--service-resources` inputs retain their providers. The Gradle plugin supplies the selected variant's Java resource source directories. In the external-call JSON, the matching API model and the resolution result are separate fields. Optional [compiler collectors](docs/COMPILER-EVIDENCE.md) add javac/Kotlin 2.4.10 constant references and javac Dagger 2.59 selected bindings to snapshots. These collectors must be built and connected explicitly; their supported patterns and remaining gaps are documented. The primary graph and retention policy still apply. Callgraph precision remains an experiment.
@@ -53,13 +56,76 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 - Android graph/dead tasks: AGP 8.7+, Gradle 8.10+, JDK 17+ (verified with AGP 8.7.3 / Gradle 8.10.2 and with AGP 9.x).
 - Automatic snapshots: JVM Java/Kotlin on Gradle 9.6.1 and JDK 17/21, plus the [tested Android combinations](docs/IMPACT.md#android-variant-자동-캡처). The Kotlin compiler adapter is verified with KGP 2.4.10; other KGP versions are not guaranteed. The minimum Android combination was tested on Gradle 8.10.2, although KGP itself recommends 8.14.4 or later.
 
+The following example targets the 0.26.0 release preparation. Use the plugin once that version
+is available from the Portal, or build matching modules from the same source revision.
+
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.14.0"
+    id("io.github.ictechgy.kartograph") version "0.26.0"
 }
 ```
 
 Download `kartograph-<version>.zip` or `.tar` from a GitHub release. For 0.5.0 and later, check its SHA256 against the matching entry in `SHA256SUMS` before unpacking, then run `bin/kartograph`. Releases also include CycloneDX runtime SBOMs. Detached signatures are not published.
+
+0.22.0 is published on [GitHub Releases](https://github.com/ictechgy/kartograph/releases/tag/v0.22.0)
+and the [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.22.0).
+The public CLI archives, collector ZIP and Portal plugin passed independent installation checks.
+The published archives retain their original preparation-era documentation.
+The 0.21.0 tag and release page exist, but its failed release produced no distribution assets or Portal plugin.
+When upgrading from 0.20.0, rebuild direct JVM library consumers for the `GraphNode` and
+`QuerySnapshot` ABI changes and use matching CLI, plugin and optional collector versions.
+As checked on 2026-10-17, [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)
+has its seven assets and its [release run](https://github.com/ictechgy/kartograph/actions/runs/38721915580)
+completed the Gradle plugin publish step. It remains a GitHub prerelease.
+Independent public-asset/Portal-consumer verification of 0.23.0 is still pending. Those assets and their
+original documentation are unchanged. Publication and successful independent installation are separate results.
+As checked on 2026-10-18, [v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0) was the latest stable GitHub release with seven assets.
+Its [release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702) passed packaged readiness and plugin publication; independent public consumption is a separate check.
+As checked on 2026-10-19, [v0.25.0](https://github.com/ictechgy/kartograph/releases/tag/v0.25.0) is the latest stable GitHub release with seven assets,
+from tag commit `d7238cd5d6465219d0c1378a99e7394258b8577b`.
+Its [exact-source readiness](https://github.com/ictechgy/kartograph/actions/runs/39183549453) and
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39186955097) passed. All 20 ZIP/TAR semantic pairs
+passed against two retained-plugin AGP8.7.3 fixture builds: 17 impact pairs are strict; three freshness pairs
+omit only the validated root `hashNanos` timing field. ZIP, TAR and plugin hashes match release metadata.
+The `publishPlugins` task succeeded; public Portal visibility and independent Portal installation remain separate checks.
+Published assets retain their original documentation.
+Use matching CLI, plugin, collector and library artifacts. The new source-use APIs and explicit
+`snapshot --include-source-uses`, `query --source-uses` and `impact --source-edits` flags are additive.
+Saved source-use reports are partial/historical evidence with `currentness: notChecked`, separate from ordinary graph results.
+A 0.22 reader drops the optional source-use extension when reserializing. Recapture missing evidence, and recapture both
+base/current snapshots with the same tool version when required; do not relabel old snapshots or mix module versions.
+Old compiled-client and descriptor checks cover selected APIs, not every client or Kotlin source compatibility.
+See the [upgrade notes](CHANGELOG.md) and [source-use compatibility guide](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility).
+
+Version 0.24.0 adds enum expansion candidates for explicit fallback and finite literal membership decisions.
+Enable compiler `enumDecisions=true` and `snapshot --include-enum-decisions`, then compare fresh compatible
+baseline/current snapshots with `impact --enum-expansion`. Results retain current source locations,
+added constants, reasons and unresolved coverage. Both enum and source-use capture flags can be enabled together.
+Rebuild direct library clients for the changed `GraphNode`/`QuerySnapshot` public shape, use matching collector/CLI
+builds, and rebuild clients when their enum definitions change. Follow the
+[0.24.0 migration](docs/COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration) and
+[enum expansion guide](docs/IMPACT.md#opt-in-enum-expansion-candidates).
+These are review candidates, not runtime behavior proof. The published 0.23.0 artifacts do not contain this feature.
+The JDK 17 collector suite does not execute the conditional Java 21 null/pattern syntax branch.
+
+Version 0.26.0 adds native `impact --git-base` and MCP `change_impact` for Git base/head or working-tree changes.
+Build and capture both revisions with matching CLI/plugin/library versions, then connect their source and build inputs;
+revision labels alone do not establish freshness. Existing impact output remains compatible. The opt-in report retains
+historical callers, separate revision paths, file-wide seed precision, stale/unknown inputs and traversal budgets.
+See [change analysis and migration](docs/IMPACT.md) and the [bounded real-change validation](docs/GIT-IMPACT-VALIDATION.md).
+These are review and static test candidates, not failure predictions or permission to skip tests.
+Public 0.26.0 assets and Portal installation have not yet been verified; release preparation is not publication.
+
+See [0.26.0 input/reporting migration](docs/FEEDBACK-026.md),
+[Android CLI and plugin input setup](docs/ANDROID-CLI-INPUTS.md), and
+[bounded Android callback evidence](docs/ANDROID-CALLBACK-INPUTS.md) for the feedback fixes and remaining limits.
+For DataBinding `requireAll`, overload and explicit overlay observations, see
+[DataBinding candidate evidence](docs/DATA-BINDING-EVIDENCE.md). XML candidates retain runtime uncertainty in `dead` and `why`.
+
+Version 0.25.0 adds captured application layout XML impact through exact non-final R fields and recorded literal includes.
+Use matching CLI/plugin/library builds and recapture both revisions. Coverage remains partial; module snapshots with resource
+evidence cannot be aggregated. See [layout capture and migration](docs/ANDROID-RESOURCE-IMPACT.md) for the tested AGP8.7.3
+combination, trusted-build boundary, freshness checks and unsupported runtime/dynamic cases.
 
 ## Usage
 
@@ -109,6 +175,14 @@ kartograph query UserService --classes path/to/classes --project . --depth 2 --l
 kartograph bridges --project . --format json
 # Opt-in Flutter BasicMessageChannel facts for Kotlin/JVM sources.
 kartograph bridges --project . --target flutter --messages --graph-file build/reports/kartograph/main-graph.json
+# Persistence relation uses for isthmus: Room/JDBC/Exposed/jOOQ, SQL-shaped literals, SQLDelight .sq/.sqm.
+kartograph schema --project . --format json
+# Client HTTP route calls for isthmus: declared wrappers, java.net.URL requests, Retrofit, Spring RestTemplate/RestClient/WebClient/@HttpExchange.
+kartograph routes --role client --project . --wrappers http-wrappers.json app/src/main
+# Spring MVC/WebFlux route declarations for isthmus; a fresh snapshot supplies bytecode values and handler usrs.
+kartograph routes --role server --project . --service api --graph-file graph.json
+# Multi-root reverse traversal for isthmus trace, rooted at every route-call symbol (language-traversal v1).
+kartograph impact --format language-traversal --roots-from routes.json --graph-file graph.json --project .
 kartograph skill --project .
 ```
 
@@ -224,9 +298,168 @@ entry policy still applies; the owner expansion itself does not select sibling m
 original Dart/JS caller locations, channel, method and omitted caller count. Supply the normal
 required dead arguments as well.
 
+Optional document-level `provenance` (wire version 1) preserves the original source headers and
+join limitations independently of the matched JVM roots. `dead`, `dead --explain`, live `query`,
+saved-query/MCP results and all dead report formats display bounded context caveats. A stale or
+unsupported context does not remove matching roots. Legacy or empty source metadata remains
+unavailable context; it does not mean complete coverage. Nonempty unmatched identifiers still
+fail the entire analysis, with caveats and no partial findings. Zero-retention documents retain
+all document context.
+
+Source and limitation arrays retain their original order and duplicate entries; canonicalization
+sorts object keys only. Absent source metadata remains distinct from an explicitly empty source
+array in saved context.
+
+`query` and `snapshot` also accept one `--external-retentions <file>`. Snapshot capture fingerprints
+the document and reads it inside the capture checks. Plain/compact snapshots preserve the admitted
+context as canonical raw document strings and validate it again when loading. Snapshot merge keeps
+contexts even if no matched node remains, and never rebases original cross-language projects or
+caller paths. These observations remain separate from compiler build-witness provenance. They do
+not establish freshness, source/index completeness or permission to delete code.
+
+The provenance envelope uses a bounded portable JSON profile: at most 1 MiB canonical UTF-8,
+256 source headers, 4,096 limitations and 64 nested containers. Duplicate keys, invalid Unicode,
+fraction/exponent numeric tokens, negative zero and integers outside the JavaScript safe range
+are rejected before version dispatch. Unknown positive envelope versions remain opaque and
+unsupported after the same admission checks. Source timestamps use real Gregorian dates with
+case-insensitive T/Z, hours and offset hours 00–23, minutes 00–59, seconds 00–59 and preserved
+fraction digits; leap seconds are unsupported. The CLI reads at most 16 MiB from a regular,
+non-symlink document with before/after identity checks. JDK file APIs do not provide a portable
+nonblocking open, so these checks do not claim atomic protection against hostile concurrent
+replacement by a special file. Supply a completed, stable input.
+
+This addition is included in 0.22.0 and is absent from the 0.21.0 tag. It changes the public JVM constructor
+and generated `copy`/default-call signatures of `QuerySnapshot`; clients compiled against an
+earlier `QuerySnapshot` must be rebuilt together with the updated export library. Source-level
+default arguments and existing snapshot wire versions remain compatible. The existing
+`ExternalRetentionCodec.parse(String)` and `AdoptionReporter.render` JVM entry points are retained.
+This public shape uses the published pre-1.0 minor version 0.22.0.
+
 `bridges --rn-events [--target react-native]` exports explicit
 `getJSModule(...RCTDeviceEventEmitter::class.java).emit(...)` calls (Java `.class` is also supported)
 in a separate v2 `react-native-event` document. `--graph-file` can attach actual JVM identities.
 Capture snapshots with `snapshot --include-paths` so bridge source paths can match indexed methods.
 Expo/codegen events and emitter variables/wrappers are not resolved. This flag is separate from
 Flutter `--events` and `--messages`. Both extensions are available from 0.11.0. In 0.13.0, bridge `generatedAt` records extraction time and optional `sourceModifiedAt` separately records observed source mtime; neither proves compiler freshness.
+
+`schema --project <dir> [--format json] [--graph-file <snapshot>] [--jpa-naming <profile>]` (available from 0.17.0) emits a
+`bridge-facts` document with `"target": "persistence"` for isthmus. It scans Kotlin and Java sources for
+Room annotations (`@Entity`, `@DatabaseView`, `@Query`, `@ColumnInfo`, `@ForeignKey`, and the
+DAO operation annotations), JDBC call arguments when a `java.sql`/`javax.sql` import gates the
+file, Spring JDBC calls on receivers declared as `JdbcTemplate`/`NamedParameterJdbcTemplate`/`JdbcClient`
+(and their `*Operations` interfaces), Exposed `Table` objects and DSL receivers, jOOQ plain-SQL calls,
+SQL-shaped string literals, and SQLDelight `.sq`/`.sqm` files. Other frameworks (Ktorm, jdbi, Criteria
+string paths) are not claimed. Dynamic or unresolved evidence stays visible as `dynamic` facts and measured
+limitations; an empty scan emits `"target": null`. `--graph-file` attaches JVM symbol identities only when the
+snapshot is fresh.
+
+JPA and Spring Data (unreleased): entity mappings (`@Table(name, schema)`, `@Column`, `@JoinColumn(s)`,
+`@JoinTable`, `@Embedded`/`@Embeddable` with `@AttributeOverride(s)`, the three inheritance strategies with
+`@DiscriminatorColumn` and `@PrimaryKeyJoinColumn`, `@ElementCollection`/`@CollectionTable`/`@OrderColumn`,
+`@Transient`, `@MappedSuperclass`, Java getter property access) become table and column facts under the
+Hibernate naming strategy detected from build and configuration files: Spring Boot 3 (Hibernate 6
+`CamelCaseToUnderscoresNamingStrategy` + `SpringImplicitNamingStrategy`), Spring Boot 4 (Hibernate 7
+`PhysicalNamingStrategySnakeCaseImpl`, which also splits before digits and leaves quoted names alone), or plain
+Hibernate 6/7 defaults. `--jpa-naming spring-boot-3|spring-boot-4|hibernate-6|hibernate-7` fixes the profile.
+When the version is unknown, only names that differ across the candidate profiles become dynamic; a custom
+strategy (settings value, strategy class or `@Bean`) or globally quoted identifiers leave every JPA name dynamic.
+The rules are checked against real Hibernate 6 and 7 schema export in `fixtures/jpa-naming/vectors.json`
+([experiment](experiments/jpa-persistence/README.md)). Spring Data repositories (including generic base
+interfaces) contribute derived query names (Spring Data `PartTree` property paths), `@Query` JPQL (entity and
+alias paths resolved to tables and columns), native `@Query` SQL, named queries and inherited CRUD methods;
+`EntityManager` `createQuery`/`createNativeQuery`/`createNamedQuery`/`find` calls are read too. With
+`--graph-file`, every repository call site becomes facts located at the call and owned by the calling method's
+JVM id — the only identity a handler's forward `reach` is guaranteed to contain, because inherited CRUD methods
+have no project node. Pass that document to `reach`/`impact --format language-traversal` with
+`--persistence-facts <file>`: calls to inherited Spring Data repository methods that it attributes to the calling
+method at the call line are then not counted in `unresolvedCalls` (`persistence-modeled-calls:` reports how many).
+Unmodelled mappings, unresolved query paths and non-JPA repositories are counted as limitations instead of guessed.
+
+`routes --role client --project <dir> [--wrappers <http-wrappers.json>] [--include-tests] [--service <name>] [<source-root>...]`
+(unreleased) emits a `bridge-facts` document with `"target": "http"` and `"roles": ["client"]` for the
+isthmus http domain. Each `route-call` fact carries the HTTP method (or `methodDynamic`), the canonical
+path template (or a `dynamic` fact with a proven `channelPrefix`), `pathAnchor`, and the location of the
+call expression. It recognizes calls of wrappers declared in an isthmus `http-wrappers` v1 file (only
+`"language": "kotlin"` entries), `java.net.URL` requests opened in the same function with a provable path
+and method, and Retrofit verb annotations in Kotlin and Java (named elements, `@HTTP`, fully qualified
+`@retrofit2.http.*`). Retrofit paths follow RFC 3986 resolution as OkHttp applies it: `/x` is root, `x` is relative
+to the base URL, and `.`/`..` segments are removed; `@Url`, `@Path(encoded = true)`, a `..` above an unknown base
+path, and annotation constants declared in another file stay dynamic. The templates agree with the requests Retrofit 2.12.0
+sent to OkHttp MockWebServer for a synthetic service corpus
+([experiments/phase4-retrofit](experiments/phase4-retrofit/README.md)). String resolution covers literals,
+same-file constants (including Java interface fields), Kotlin templates whose interpolation fills a whole segment,
+and query tails (a literal `?`, or a trailing local proven to start with `?`). Literal URLs lose userinfo, query and fragment, and high-entropy
+or webhook segments are masked. Test source sets are excluded unless `--include-tests` marks those facts
+`testSource`. Other clients (OkHttp, Ktor, …), stale wrapper declarations, and undeclared sinks surface as
+limitations instead of guessed facts.
+Retrofit base URLs are joined by following where each service interface is created: `Retrofit.Builder()…baseUrl(x)…build()
+.create(Api::class.java)` (also `Api.class`, `create<Api>()`, and `Class<T>`/reified creator functions), through local `val`s,
+properties (`= …`, `by lazy`, getters, every assignment of a `var`/Java field), function bodies, Dagger/Hilt `@Provides`
+providers matched by qualifier (`@Inject` constructors and fields, `@Provides` parameters) and Koin `single`/`factory` with
+`get()`. A base that resolves to a literal (string, template, same-file or cross-file constant, read-only property, `HttpUrl`
+wrapper, or an in-repo `buildConfigField` literal of the nearest module) gives `authority` and a `root` template composed by
+the RFC 3986 rules above (`users/{id}` + `https://h/v1/` → `/v1/users/{}`; `/x` stays `/x`); several bases give one fact each.
+Otherwise the fact keeps `pathAnchor: base` and carries `baseRef` — the source-qualified id (`kt:<pkg>.<Type>.<member>`) of the
+declaration holding the Retrofit instance — for workspace links `match.baseRefs`, and `unresolved-base-url:` counts those
+services. Runtime values and ambiguous DI bindings never yield an authority. Test-source `create` calls are ignored.
+OkHttp request rewrites (`url-rewrite-interceptors:`) drop the base only of the Retrofit instances whose client provably carries
+them: each URL-rewriting interceptor (class, object, lambda, anonymous object) is followed to the `addInterceptor`/
+`addNetworkInterceptor` call it reaches, and each Retrofit `client(…)`/`callFactory(…)` to its OkHttpClient (builder chains,
+`newBuilder()` copies, local builders, `@Provides`, Koin). Authenticators and event listeners not proven to keep the URL, and custom
+`Call.Factory` implementations, count as rewrites. Such an instance gets its own limitation, with a client-side `limitationScopes`
+entry bounding its hidden requests when every rewrite provably changes only scheme/host/port. If any rewrite or any client with a
+resolved base cannot be bound (interceptor lists, builders passed around, unattached rewrites), every base is dropped as before.
+With `--graph-file`, a Retrofit fact's `symbol.usr` is the service interface method that declares the annotation
+(for an inherited method, the super-interface that declares it). Call sites invoke that method, so reverse traversal
+(`impact --format language-traversal --roots-from`) reaches every caller, including calls through a sub-interface.
+Facts left without a JVM identity are counted by `missing-route-usrs:`, which names a snapshot/routes
+`--project` root mismatch when the source paths show one.
+Spring server-to-server calls are recognized too: `RestTemplate` request methods (`getForObject`, `exchange`, ...), `RestClient`
+and `WebClient` `get()`/`post()`/.../`method(...)` followed by `.uri(...)` (template strings, `UriComponentsBuilder` chains, `URI`
+values, builder lambdas), on a receiver proven to be such a client, and `@HttpExchange` interface methods (one fact per method,
+`symbol.usr` = the interface method). Base URLs follow builder chains (`baseUrl`, `RestTemplateBuilder.rootUri`,
+`DefaultUriBuilderFactory`), `@Bean` methods chosen by type, `@Qualifier`, `@Primary` or name, and `@Value("${key}")` properties
+from the in-repo default profile, and are joined the way Spring does it — string concatenation with `//` collapsed for
+`UriBuilderFactory` (`/api` + `users` is `/apiusers`), root only for `/`-prefixed templates with `rootUri` — verified against Spring
+Framework 6.2.19 / Boot 3.5.16 sources and an execution oracle (32 of 32 calls match). Unresolved bases keep `pathAnchor: base` with a
+`baseRef` (the `@Bean` method, property or field supplying the client) and are counted by `unresolved-base-url:`; facts carry no
+`service`, so link server members by `match.hosts` or `match.baseRefs`. Details, source citations and the two-service isthmus trace
+are in [Spring HTTP clients](docs/SPRING-CLIENTS.md).
+
+`routes --role server --project <dir> [--graph-file <snapshot> [--input-bindings <file>]] [--service <name>] [--include-tests] [<source-root>...]`
+(unreleased) emits `"roles": ["server"]` and `"dispatch": "specificity"` with one `route-decl` fact per Spring MVC or
+WebFlux handler mapping: `@RequestMapping`, `@GetMapping`…`@PatchMapping`, `@HttpExchange`/`@GetExchange`… on
+`@Controller` classes, custom annotations meta-annotated with them (`@AliasFor`), mappings inherited from interfaces and
+superclasses, class × method paths, and `ANY` for method-less mappings. With a fresh `--graph-file` the snapshot's class
+roots supply the annotation values (constants already folded by the compiler) and `symbol.usr` is the handler's JVM id,
+the same id space as `impact`/`reach`; sources always supply the annotation location. The in-repo default profile supplies
+`server.servlet.context-path` / `spring.webflux.base-path` and `${key:default}` placeholders (`configDefault` when only the
+default applies). Facts carry `trailingSlash` (`strict` for Spring Boot 3+, `optional` for Boot 2, omitted when unknown),
+`narrowed`, `paramConstraints` for regex path variables, and catch-all prefix expansion for `/**` and `{*path}`. Unresolved
+paths stay `dynamic`; places Spring matches with an empty value (a trailing `*`, a partial-segment variable) also emit
+empty-value variant facts. Functional routers, framework-provided routes (`/error`, actuator, static resources, ...), other
+profiles and unresolved prefixes are reported as server-side limitations; providers whose requests can be bounded carry
+isthmus http `limitationScopes` (for example `/error` for every method, static resources for `GET`/`HEAD` only), so calls
+outside them stay error-judgeable. Rules, Spring sources and the actuator oracle
+results (100% precision on three public Spring Boot apps and two synthetic MVC/WebFlux apps) are in
+[Spring server routes](docs/SPRING-ROUTES.md).
+
+`impact --format language-traversal` (reverse) and `reach` (forward) (unreleased) emit an isthmus
+`language-traversal` v1 document for `trace`: one pass over many roots, with every root that reaches each
+declaration, a shortest-path witness, per-root lower-bound `evidence` (`direct`, `bound`, `candidate`) and
+`unresolvedCalls`. Lambda and anonymous-class bodies belong to their enclosing declaration through captured
+`EnclosingMethod` facts, so `FunctionN`/SAM `invoke` fan-out is not followed by default
+(`--dispatch direct|bound|candidates|all`, default `candidates`). `revision` is `--revision <rev>` when given,
+else the snapshot's revision label, else the git `HEAD` only when the project directory has no uncommitted or
+untracked changes (omitted otherwise, so isthmus never treats an analysis of edited sources as current).
+`graphRevision` is `sha256:` over the graph content — node ids and kinds, edges with their kinds and origins,
+evidence tiers and lexical enclosures, locations excluded — so reverse and forward documents from one snapshot agree.
+Roots and `--revision` containing control characters (C0, DEL, C1, U+2028, U+2029) are rejected with exit 64 because
+isthmus rejects such ids. Functions that invoke or forward a lambda argument (for example a UI section running an
+`onClick` callback) are linked to the lambda body as `callback` evidence (`bound` when every invocation is inside the
+project, `candidate` when the value reaches library code or escapes) and are listed only for that call context, never
+expanded to their other callers. Test-source declarations (`src/test`, `src/androidTest`, ...) are a separate program:
+they are not traversed by default, so bound dispatch counts production implementations only (`--include-tests` restores
+them). Snapshot inputs are verified like `routes` (`--input-bindings` for inputs outside the project). The default
+`impact` output is unchanged. See
+[change impact](docs/IMPACT.md#isthmus-trace용-순회-문서-language-traversal-v1).

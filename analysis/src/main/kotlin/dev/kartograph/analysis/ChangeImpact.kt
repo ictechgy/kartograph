@@ -9,13 +9,17 @@ import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.qualifiedName
+import java.util.Collections
 
 /** 한 시점의 그래프와 해당 시점에서 관측한 보존·한계다. */
 public data class ImpactInput(
     val graph: CodeGraph,
     val retention: List<RetentionEvidence> = emptyList(),
     val limitations: List<String> = emptyList(),
-)
+    val androidResources: AndroidResourceImpactContext? = null,
+) {
+    init { androidResources?.requireMatches(graph) }
+}
 
 /** 경로를 구성한 그래프 시점이며, 서로 다른 시점의 간선을 섞지 않는다. */
 public enum class ImpactRevision { BASE, CURRENT }
@@ -94,7 +98,12 @@ public data class ImpactNode(
 )
 
 /** 입력에 대응하는 사실을 확정하지 못한 경우와 명시적으로 선택할 후보다. */
-public data class ImpactUnresolved(val requested: String, val reason: String, val candidates: List<NodeId> = emptyList())
+public data class ImpactUnresolved(
+    val requested: String,
+    val reason: String,
+    val candidates: List<NodeId> = emptyList(),
+    val revision: ImpactRevision? = null,
+)
 
 /** 결과 수·깊이·방문 예산에 따른 잘림을 각각 알린다. */
 public data class ImpactTruncation(val results: Boolean = false, val depth: Boolean = false, val budget: Boolean = false)
@@ -145,6 +154,10 @@ public data class ImpactReport(
     val truncated: ImpactTruncation,
     val navigation: ImpactNavigation = ImpactNavigation(),
     val budgets: ImpactBudget = ImpactBudget(),
+    /** 실제 seed admission이다. graph에 같은 ID가 존재한다는 사실과 구분한다. */
+    val selectedByRevision: Map<ImpactRevision, Set<NodeId>> = emptyMap(),
+    /** JVM 간선 경로에 합성하지 않은 XML/include/field 선택 근거다. */
+    val resourceSelections: Map<ImpactRevision, AndroidResourceImpactSelection> = emptyMap(),
 )
 
 /** 변경 선언의 역방향 사용 관계를 시점별로 탐색하는 순수 질의다. */
@@ -177,40 +190,72 @@ public object ChangeImpact {
         val limitations = inputs.flatMap { (revision, input) ->
             input.limitations.map { "${revision.name.lowercase()}: $it" }
         }.toMutableList()
+        val symbolMatches = symbolCandidates(inputs.values, symbols)
         for (symbol in symbols.distinct().sorted()) {
-            val matches = inputs.values.flatMap { it.graph.nodes.values }
-                .filter { it.id.value == symbol || it.name == symbol || it.qualifiedName == symbol }
-                .map { it.id }.distinct().sorted()
+            val matches = symbolMatches[symbol].orEmpty().toList()
             when (matches.size) {
                 0 -> unresolved += ImpactUnresolved(symbol, "notFound")
                 1 -> inputs.forEach { (revision, input) -> if (input.graph.contains(matches.single())) selected.getValue(revision) += matches.single() }
                 else -> unresolved += ImpactUnresolved(symbol, "ambiguous", matches)
             }
         }
+        val knownResourcePaths = inputs.values.flatMap { it.androidResources?.facts?.definitions.orEmpty() }
+            .mapTo(hashSetOf()) { it.file.path }
+        val resourceFiles = files.distinct().sorted().filter { it in knownResourcePaths || AndroidResourceImpact.isResourceFile(it) }
+        val resourceSelections = if (resourceFiles.isEmpty()) emptyMap() else inputs.mapValues { (_, input) ->
+            AndroidResourceImpact.select(input.graph, input.androidResources, resourceFiles)
+        }
+        for ((revision, selection) in resourceSelections) {
+            limitations += selection.limitations.map { "${revision.name.lowercase()}: $it" }
+            for (receipt in selection.files) {
+                val reason = when (receipt.status) {
+                    AndroidResourceImpactFileStatus.MATCHED, AndroidResourceImpactFileStatus.ABSENT -> null
+                    AndroidResourceImpactFileStatus.EVIDENCE_UNAVAILABLE -> "resourceEvidenceUnavailable"
+                    AndroidResourceImpactFileStatus.BINDING_UNAVAILABLE -> "resourceBindingUnavailable"
+                    AndroidResourceImpactFileStatus.OUTSIDE_ROOT -> "resourceOutsideRoots"
+                    AndroidResourceImpactFileStatus.INVALID_PATH -> "resourceInvalidPath"
+                    AndroidResourceImpactFileStatus.BUDGET_EXCEEDED -> "resourceBudgetExceeded"
+                }
+                if (reason != null) unresolved += ImpactUnresolved(receipt.requested, reason, revision = revision)
+            }
+            for (resource in selection.resources.filter { it.outcome.unavailable != null }) {
+                unresolved += ImpactUnresolved(
+                    "${resource.key.namespace}:${resource.key.type}/${resource.key.name}",
+                    "resourceFieldUnavailable", revision = revision,
+                )
+            }
+        }
         var fallbackMatches = 0
+        val fileIndexes = if (files.isEmpty()) emptyMap() else inputs.mapValues { (_, input) -> ChangedFileIndex(input) }
         for (file in files.distinct().sorted()) {
             var matched = false
-            for ((revision, input) in inputs) {
-                val nodes = input.graph.nodes.values.filter { node ->
-                    val path = node.location?.path ?: return@filter false
-                    if (path == file) true else if ('/' !in path && path == file.substringAfterLast('/')) {
-                        fallbackMatches++
-                        true
-                    } else false
-                }.map { it.id }
-                val retained = input.retention.filter { it.location?.path == file && input.graph.contains(it.nodeId) }.map { it.nodeId }
-                selected.getValue(revision).addAll(nodes + retained)
-                if (nodes.isNotEmpty() || retained.isNotEmpty()) matched = true
+            for ((revision, index) in fileIndexes) {
+                val nodes = index.exact(file)
+                val fallback = index.filenameOnly(file)
+                val retained = index.retained(file)
+                fallbackMatches += fallback.size
+                selected.getValue(revision).apply { addAll(nodes); addAll(fallback); addAll(retained) }
+                if (nodes.isNotEmpty() || fallback.isNotEmpty() || retained.isNotEmpty()) matched = true
             }
-            if (!matched) unresolved += ImpactUnresolved(file, "unmappedFile")
+            val resourceMatched = resourceSelections.values.any { selection ->
+                selection.files.any { it.requested == file && it.status == AndroidResourceImpactFileStatus.MATCHED }
+            }
+            val resourceRefused = file in resourceFiles &&
+                resourceSelections.values.any { it.status == AndroidResourceImpactStatus.REFUSED }
+            if (!matched && !resourceMatched && !resourceRefused && unresolved.none { it.requested == file }) {
+                unresolved += ImpactUnresolved(file, "unmappedFile")
+            }
         }
         if (fallbackMatches > 0) limitations += "source-file-candidates: $fallbackMatches node match(es) used a source filename instead of an exact project-relative path"
 
-        val changedIds = selected.values.flatten().toSortedSet()
-        // 파일 경로가 이동해도 같은 JVM 선언을 가진 모든 시점의 호출자를 조사한다.
+        val ordinaryChangedIds = selected.values.flatten().toSortedSet()
+        // 기존 symbol/source/retention 선택은 이동한 JVM 선언의 모든 시점을 조사한다.
         for ((revision, input) in inputs) {
-            selected.getValue(revision).addAll(changedIds.filter { input.graph.contains(it) })
+            selected.getValue(revision).addAll(ordinaryChangedIds.filter { input.graph.contains(it) })
         }
+        // 리소스만으로 승인된 field는 그 revision에만 추가한다. 다른 시점의 동명 field는 근거가 아니다.
+        for ((revision, selection) in resourceSelections) selected.getValue(revision).addAll(selection.selectedFields)
+        val changedIds = selected.values.flatten().toSortedSet()
         val paths = sortedMapOf<NodeId, MutableList<ImpactPath>>()
         val pathOmissions = sortedMapOf<NodeId, MutableList<ImpactPathOmission>>()
         val observedIn = sortedMapOf<NodeId, MutableSet<ImpactRevision>>()
@@ -218,7 +263,7 @@ public object ChangeImpact {
         val visitedBy = sortedMapOf<ImpactRevision, Int>()
         val visitLimitReached = sortedSetOf<ImpactRevision>()
         var depthTruncated = false
-        var budgetTruncated = false
+        var budgetTruncated = resourceSelections.values.any { it.status == AndroidResourceImpactStatus.REFUSED }
         var pathEdgesUsed = 0
         var pathOmissionCount = 0
         for ((revision, input) in inputs) {
@@ -377,7 +422,67 @@ public object ChangeImpact {
                 offset > 0 && orderedCandidates.isNotEmpty(), pageEnd < orderedCandidates.size,
             ),
             budgets = ImpactBudget(visitLimit, pathLimit, visitedBy, visitLimitReached, pathEdgesUsed, pathOmissionCount),
+            selectedByRevision = Collections.unmodifiableMap(selected.mapValues { (_, ids) ->
+                Collections.unmodifiableSet(ids.toSortedSet())
+            }),
+            resourceSelections = Collections.unmodifiableMap(resourceSelections),
         )
+    }
+
+    /**
+     * 요청 symbol마다 두 시점 정점 중 USR·이름·qualifiedName이 같은 선언을 모은다. 값은 NodeId 순서로 정렬된 중복 없는 집합이다.
+     * symbol마다 전체 정점을 다시 거르면 (symbol 수 × 정점 수)번 qualifiedName을 만들어서, 정점을 한 번만 훑고 요청 집합으로 조회한다.
+     * analyze 밖의 작은 함수로 두어, 거대한 analyze 안에서 이 루프가 JIT 컴파일되지 못하고 인터프리터로 도는 것을 피한다.
+     */
+    private fun symbolCandidates(inputs: Collection<ImpactInput>, symbols: List<String>): Map<String, Set<NodeId>> {
+        if (symbols.isEmpty()) return emptyMap()
+        val requested = symbols.toHashSet()
+        val candidates = HashMap<String, MutableSet<NodeId>>()
+        fun add(key: String, id: NodeId) {
+            if (key in requested) candidates.getOrPut(key) { sortedSetOf() } += id
+        }
+        for (input in inputs) for (node in input.graph.nodes.values) {
+            add(node.id.value, node.id)
+            add(node.name, node.id)
+            add(node.qualifiedName, node.id)
+        }
+        return candidates
+    }
+
+    /**
+     * 한 시점에서 변경 파일을 선언으로 바꾸는 경로 색인이다.
+     * 파일마다 전체 정점과 보존 근거를 다시 거르면 비용이 (파일 수 × (정점 수 + 보존 근거 수))로 늘어서, 시점마다 한 번만 만든다.
+     */
+    private class ChangedFileIndex(input: ImpactInput) {
+        /** 위치 경로별 정점이다. 디렉터리가 없는 옛 위치는 경로가 곧 파일 이름이라, 파일 이름 대체 조회도 이 색인을 쓴다. */
+        private val nodesByPath = HashMap<String, MutableList<NodeId>>()
+
+        /** 이 시점 그래프에 있는 선언을 가리키는 보존 근거만 경로별로 모은다. */
+        private val retainedByPath = HashMap<String, MutableList<NodeId>>()
+
+        init {
+            for (node in input.graph.nodes.values) {
+                val path = node.location?.path ?: continue
+                nodesByPath.getOrPut(path) { mutableListOf() } += node.id
+            }
+            for (evidence in input.retention) {
+                val path = evidence.location?.path ?: continue
+                if (input.graph.contains(evidence.nodeId)) retainedByPath.getOrPut(path) { mutableListOf() } += evidence.nodeId
+            }
+        }
+
+        /** 위치 경로가 요청과 정확히 같은 선언이다. */
+        fun exact(file: String): List<NodeId> = nodesByPath[file].orEmpty()
+
+        /**
+         * 디렉터리가 있는 요청을 파일 이름만 남은 위치에 대응시킨 후보다. 파일 이름에는 '/'가 없어 찾은 정점의 위치에도 디렉터리가 없다.
+         * 디렉터리가 없는 요청은 exact에서 이미 맞으므로 대체 후보로 다시 세지 않는다.
+         */
+        fun filenameOnly(file: String): List<NodeId> =
+            if ('/' in file) nodesByPath[file.substringAfterLast('/')].orEmpty() else emptyList()
+
+        /** 그 경로에서 관측한 보존 근거가 가리키는 선언이다. */
+        fun retained(file: String): List<NodeId> = retainedByPath[file].orEmpty()
     }
 
     private fun matches(item: ImpactNode, filter: ImpactFilter): Boolean {

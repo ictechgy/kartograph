@@ -9,6 +9,9 @@ import sys
 import tempfile
 import zipfile
 
+if not __debug__:
+    sys.exit("Runtime contract verification requires Python assertions; remove -O/PYTHONOPTIMIZE.")
+
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "fixtures/runtime-contracts"
 BINARY = ROOT / "cli/build/install/kartograph/bin/kartograph"

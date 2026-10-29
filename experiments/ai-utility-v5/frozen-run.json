@@ -1,0 +1,135 @@
+{
+  "status": "frozen-before-main-model-trials",
+  "manifestSha256": "06c865d2fc110dc5a47e9f0b3a3905c2d51662ebcecae82b839efe2943a8203d",
+  "model": "claude-opus-5[1m]",
+  "effort": "low",
+  "maxTools": 12,
+  "maxPredictions": 64,
+  "wallSeconds": 900,
+  "maxBudgetUsd": 3,
+  "plannedTrials": 16,
+  "schedule": [
+    {
+      "case": "detekt_detekt-7212",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "detekt_detekt-7212",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "detekt_detekt-7212",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "detekt_detekt-7212",
+      "arm": "source",
+      "repeat": 1
+    },
+    {
+      "case": "detekt_detekt-6446",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "detekt_detekt-6446",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "detekt_detekt-6446",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "detekt_detekt-6446",
+      "arm": "source",
+      "repeat": 1
+    },
+    {
+      "case": "pinterest_ktlint-2774",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "pinterest_ktlint-2774",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "pinterest_ktlint-2774",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "pinterest_ktlint-2774",
+      "arm": "source",
+      "repeat": 1
+    },
+    {
+      "case": "pinterest_ktlint-2727",
+      "arm": "source",
+      "repeat": 0
+    },
+    {
+      "case": "pinterest_ktlint-2727",
+      "arm": "mcp",
+      "repeat": 0
+    },
+    {
+      "case": "pinterest_ktlint-2727",
+      "arm": "mcp",
+      "repeat": 1
+    },
+    {
+      "case": "pinterest_ktlint-2727",
+      "arm": "source",
+      "repeat": 1
+    }
+  ],
+  "cases": [
+    {
+      "id": "detekt_detekt-7212",
+      "base": "d4f3f99ca335a36d596007685d705d0d69f65c01",
+      "module": "detekt-rules-naming",
+      "sourceFiles": 54,
+      "snapshotSha256": "5d57883585305f885160faaa115bb78c46c87e9900eaa113f5573f23e75c1e55",
+      "inventorySha256": "7e10329d211bca45450e43d95359c774dcfc774501457c8df5a329cbc21442a4",
+      "promptSha256": "ecaa1f3287d14072e5db0770cdd3f3cf233fef5ba86434300887459beb5f3694",
+      "freshness": "matched"
+    },
+    {
+      "id": "detekt_detekt-6446",
+      "base": "cb050a10df93da3c98742f7d86de46df1e771897",
+      "module": "detekt-rules-errorprone",
+      "sourceFiles": 84,
+      "snapshotSha256": "868534ca295ac446d746c6ebbe228218cf3303b13192079550381f23823ffcae",
+      "inventorySha256": "a59aa0e0757c28f930c28de6783bf8c9bc27e36e9ee419d33ebf0cb996bbfecc",
+      "promptSha256": "a65f37a704c56399ca9c3d5d59368778c7146e46cca8913841bce34499139cc6",
+      "freshness": "matched"
+    },
+    {
+      "id": "pinterest_ktlint-2774",
+      "base": "c10637342741504690498f545cf141405cbd7244",
+      "module": "ktlint-ruleset-standard",
+      "sourceFiles": 206,
+      "snapshotSha256": "5eb96dc40f91a165b49bb27f113e50c5ed1211239691a0bc2d69ac6630f40d84",
+      "inventorySha256": "4da0d03c52baa93db8b17ea4b52cedfc4ed9202196e2588796f08975cab1a722",
+      "promptSha256": "2e02b8673300e830feedea375006f7bc30189b9866f36b96d4ac95e28afd2bfe",
+      "freshness": "matched"
+    },
+    {
+      "id": "pinterest_ktlint-2727",
+      "base": "52534ca794753c340f69314a2d14624183f3055e",
+      "module": "ktlint-rule-engine",
+      "sourceFiles": 50,
+      "snapshotSha256": "e62a9882b151fac31c0a4b406be9fd09b716a68d8c6a606ec318a97ebf163942",
+      "inventorySha256": "e0b3f73575a543c65dc7b58da37a5caa4c3e6832137f2a62dadd8c04f890274f",
+      "promptSha256": "7fea948ee8fc337547efb9fc5619e3faa7f823218fc51fef36d43b9530b2ab2b",
+      "freshness": "matched"
+    }
+  ]
+}

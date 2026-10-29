@@ -1,0 +1,17 @@
+# method	template	handler — expected-mappings.json의 패턴을 compare_mappings.py canonical()로 정규화한 결과다
+DELETE	/wf/r/seg/{}	edge.flux.ReactiveController.delete
+DELETE	/wf/reactive/seg/{}	edge.flux.ReactiveController.delete
+GET	/wf/ex/one	edge.flux.ExchangeController.one
+GET	/wf/r/flux	edge.flux.ReactiveController.flux
+GET	/wf/r/mono/{}	edge.flux.ReactiveController.mono
+GET	/wf/reactive/flux	edge.flux.ReactiveController.flux
+GET	/wf/reactive/mono/{}	edge.flux.ReactiveController.mono
+PATCH	/wf/r/methods	edge.flux.ReactiveController.methods
+PATCH	/wf/r/rest	edge.flux.ReactiveController.tail
+PATCH	/wf/r/rest/{**}	edge.flux.ReactiveController.tail
+PATCH	/wf/reactive/methods	edge.flux.ReactiveController.methods
+PATCH	/wf/reactive/rest	edge.flux.ReactiveController.tail
+PATCH	/wf/reactive/rest/{**}	edge.flux.ReactiveController.tail
+POST	/wf/ex	edge.flux.ExchangeController.create
+PUT	/wf/r/methods	edge.flux.ReactiveController.methods
+PUT	/wf/reactive/methods	edge.flux.ReactiveController.methods

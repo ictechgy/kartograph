@@ -22,6 +22,20 @@ import java.nio.file.Files
  * stale로 거부한다. producer의 원인 입력은 res·merged manifest·namespace·플랫폼 boot classpath다.
  */
 internal object ResourceProcessWitnesses {
+    const val RESOURCE_ROLE: String = "android-resources"
+    const val RESOURCE_UNAVAILABLE: String =
+        "android-resource-producer-evidence-unavailable: processResources witness lacks byte-complete resource inputs"
+
+    const val INVENTORY_UNVERIFIED: String =
+        "android-resource-producer-inventory-unverified: recorded resource roots do not prove complete AGP root inventory"
+
+    /** 이전 witness의 일반 bytecode 질의는 유지하되 리소스 생산자 근거를 가장하지 않는다. */
+    fun resourceLimitations(witnesses: List<BuildWitness>): List<String> =
+        if (witnesses.any { it.compiler == "agp-process-resources" && it.inputs.none { input -> input.role == RESOURCE_ROLE } })
+            listOf(RESOURCE_UNAVAILABLE)
+        else if (witnesses.any { it.compiler == "agp-process-resources" }) listOf(INVENTORY_UNVERIFIED)
+        else emptyList()
+
     /** processResources task(AGP가 늦게 생성한다)에 witness 기록을 붙이고 witness 파일 provider를 반환한다. */
     fun automaticProcessResources(
         project: Project,
@@ -62,17 +76,22 @@ internal object ResourceProcessWitnesses {
     ) : Serializable {
         fun observe(): List<InputFingerprint> {
             val files = buildList {
-                addAll(resDirectories.files.filter { file -> Files.exists(file.toPath()) }.map { "sources" to it })
+                val roots = resDirectories.files.toList()
+                addAll(roots.filter { file -> Files.exists(file.toPath()) }.map { "sources" to it }) // 이전 witness의 역할과 식별자는 유지한다.
                 mergedManifest.get().asFile.takeIf(File::isFile)?.let { add("sources" to it) }
                 addAll(buildInputs.files.map { "buildConfig" to it })
                 addAll(bootClasspath.files.map { "compiler" to it })
+                addAll(roots.map { RESOURCE_ROLE to it }) // 기존 row 순서를 유지하고 XML 전체 바이트·멤버를 추가한다.
             }
             val projectPath = project.toPath()
             // external slot 식별자에 ':'를 넣지 않는다(InputFingerprint 이동성 계약).
             val slotBase = taskIdentity.removePrefix(":").replace(':', '-')
             val fingerprints = files.mapIndexed { index, (role, file) ->
+                // "sources" 역할의 res 디렉터리는 .java/.kt만 해시하므로 서로 같은 값이 된다. build 디렉터리가 project 밖이면
+                // 내용으로는 다시 연결할 수 없어 위치 기반 불투명 식별자를 slot으로 쓴다(경로 원문은 남기지 않는다).
+                val slot = if (role == RESOURCE_ROLE || file.isDirectory) CompilerDirectoryInput.slot(projectPath, file.toPath()) else "$slotBase-$role-$index"
                 try {
-                    ContentFingerprint.capture(projectPath, file.toPath(), role, "$slotBase-$role-$index")
+                    ContentFingerprint.capture(projectPath, file.toPath(), role, slot)
                 } catch (error: IllegalArgumentException) {
                     // 절대경로는 노출하지 않고 role·파일명과 원인 메시지를 함께 남긴다.
                     throw IllegalArgumentException(

@@ -1,0 +1,59 @@
+{
+  "format": "isthmus-trace-context",
+  "links": [
+    {
+      "client": "orders",
+      "match": {
+        "hosts": [
+          "users.internal:8081"
+        ]
+      },
+      "name": "orders->users",
+      "server": "users"
+    }
+  ],
+  "members": [
+    {
+      "analyses": [
+        {
+          "id": "users-forward",
+          "path": "users-forward.json",
+          "platform": "kotlin",
+          "role": "forward"
+        }
+      ],
+      "documents": [
+        "users.server.http.json"
+      ],
+      "name": "users",
+      "project": "/e2e/users-service",
+      "revision": "e2e-users"
+    },
+    {
+      "analyses": [
+        {
+          "id": "orders-reverse",
+          "path": "orders-reverse.json",
+          "platform": "kotlin",
+          "role": "reverse"
+        }
+      ],
+      "documents": [
+        "orders.server.http.json",
+        "orders.client.http.json"
+      ],
+      "name": "orders",
+      "project": "/e2e/orders-service",
+      "revision": "e2e-orders"
+    }
+  ],
+  "selection": {
+    "routes": [
+      {
+        "method": "GET",
+        "template": "/api/users/{}"
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,110 @@
+{
+  "scope": "Controlled compiled module inputs; not unmodified cold installation; full setup/failures retained locally",
+  "cases": [
+    {
+      "case": "detekt_detekt-7212",
+      "module": "detekt-rules-naming",
+      "exit": 0,
+      "seconds": 26.583910942077637,
+      "tests": "io.gitlab.arturbosch.detekt.rules.naming.TopLevelPropertyNamingSpec*",
+      "matched": true,
+      "verifyExit": 0,
+      "sourceSetupOverlay": true
+    },
+    {
+      "case": "pinterest_ktlint-2774",
+      "module": "ktlint-ruleset-standard",
+      "exit": 0,
+      "seconds": 24.750768899917603,
+      "tests": "com.pinterest.ktlint.ruleset.standard.rules.NoSemicolonsRuleTest*",
+      "matched": true,
+      "verifyExit": 0,
+      "sourceSetupOverlay": false
+    },
+    {
+      "case": "pinterest_ktlint-2727",
+      "module": "ktlint-rule-engine",
+      "exit": 0,
+      "seconds": 19.35038709640503,
+      "tests": "com.pinterest.ktlint.rule.engine.api.KtLintTest*",
+      "matched": true,
+      "verifyExit": 0,
+      "sourceSetupOverlay": false
+    },
+    {
+      "case": "detekt_detekt-6446",
+      "module": "detekt-rules-errorprone",
+      "exit": 0,
+      "seconds": 36.53066420555115,
+      "tests": "io.gitlab.arturbosch.detekt.rules.bugs.IgnoredReturnValueSpec*",
+      "matched": true,
+      "verifyExit": 0,
+      "sourceSetupOverlay": false
+    }
+  ],
+  "originalTests": {
+    "passed": 95,
+    "skipped": 3,
+    "failed": 0
+  },
+  "developmentPlugin": {
+    "versionLabel": "0.14.0",
+    "released": false,
+    "sha256": "6ff6f4dbac1086b6958e4d269b12cc07fd338a84de926cf8e4ff994cc0ba148c",
+    "jar": "kartograph-fixed-6ff6f4dbac10.jar",
+    "baseCommit": "fd7bb01da674cdda0521babc4cb0c6ea559addbb",
+    "changes": "per-source-set project classpath directory watches, opaque directory identity, missing-dependency rejection retained"
+  },
+  "aliasParity": [
+    {
+      "case": "detekt_detekt-6446",
+      "primaryDeclarations": 54,
+      "sourceAndUsrCoverageEqual": true,
+      "coverage": 1.0
+    },
+    {
+      "case": "detekt_detekt-7212",
+      "primaryDeclarations": 7,
+      "sourceAndUsrCoverageEqual": true,
+      "coverage": 1.0
+    },
+    {
+      "case": "pinterest_ktlint-2727",
+      "primaryDeclarations": 4,
+      "sourceAndUsrCoverageEqual": true,
+      "coverage": 1.0
+    },
+    {
+      "case": "pinterest_ktlint-2774",
+      "primaryDeclarations": 22,
+      "sourceAndUsrCoverageEqual": true,
+      "coverage": 1.0
+    }
+  ],
+  "inputReadback": [
+    {
+      "case": "detekt_detekt-7212",
+      "classFilesMatched": 143,
+      "sourceFilesMatched": 53,
+      "oracleSourceInventoryMatched": true
+    },
+    {
+      "case": "detekt_detekt-6446",
+      "classFilesMatched": 178,
+      "sourceFilesMatched": 79,
+      "oracleSourceInventoryMatched": true
+    },
+    {
+      "case": "pinterest_ktlint-2774",
+      "classFilesMatched": 533,
+      "sourceFilesMatched": 205,
+      "oracleSourceInventoryMatched": true
+    },
+    {
+      "case": "pinterest_ktlint-2727",
+      "classFilesMatched": 400,
+      "sourceFilesMatched": 49,
+      "oracleSourceInventoryMatched": true
+    }
+  ]
+}

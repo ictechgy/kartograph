@@ -17,18 +17,64 @@ import java.nio.file.attribute.BasicFileAttributes
  * 아니어서 탐색 비용만 지배하므로 함께 제외한다(`docs/RESEARCH.md`의 가지치기 실측 참조).
  */
 internal object ProjectTraversal {
-    /** 열거 뒤 바뀐 링크도 읽기 직전에 다시 검사하고 최종 파일 링크를 따라 열지 않는다. */
-    fun readSourceLines(projectRoot: Path, source: Path): List<String> {
+    /** 경로 보고에서는 읽기 실패한 디렉터리를 분리하고 읽을 수 있는 sibling의 근거를 유지한다. */
+    fun walkSourceDirectories(
+        projectRoot: Path,
+        unreadable: (Path) -> Unit,
+        visit: (Path) -> Unit,
+    ) {
+        val root = projectRoot.toRealPath()
+        val pending = java.util.ArrayDeque<Path>()
+        pending.add(root)
+        while (pending.isNotEmpty()) {
+            val directory = pending.removeLast()
+            // 제외 경로를 열기 전에 가지치기하므로 chmod 000 build 디렉터리도 열지 않는다.
+            if (isPruned(root, directory)) continue
+            try {
+                Files.newDirectoryStream(directory).use { entries ->
+                    for (file in entries) {
+                        if (isPruned(root, file)) continue
+                        if (Files.isDirectory(file, LinkOption.NOFOLLOW_LINKS)) {
+                            pending.add(file)
+                        } else if (file.fileName.toString().substringAfterLast('.', "") in setOf("java", "kt")) {
+                            val realFile = file.toRealPath()
+                            if (!realFile.startsWith(root)) throw IOException("source file is outside the project root")
+                            if (!isPruned(root, realFile) && Files.isRegularFile(realFile)) visit(file)
+                        }
+                    }
+                }
+            } catch (problem: java.nio.file.AccessDeniedException) {
+                unreadable(directory)
+            } catch (problem: java.nio.file.DirectoryIteratorException) {
+                unreadable(directory)
+            } catch (problem: SecurityException) {
+                unreadable(directory)
+            }
+        }
+    }
+
+    /**
+     * 열거 뒤 바뀐 링크도 읽기 직전에 다시 검사하고 최종 파일 링크를 따라 열지 않는다.
+     *
+     * @param includeTests 참이면 test source set도 읽는다(`routes --include-tests`). 가지치기 디렉터리는 여전히 거부한다
+     */
+    fun readSourceLines(projectRoot: Path, source: Path, includeTests: Boolean = false): List<String> {
         val root = projectRoot.toRealPath()
         val realSource = source.toRealPath()
-        if (!realSource.startsWith(root) || isPrunedSource(root, realSource)) {
+        val pruned = if (includeTests) isPruned(root, realSource) else isPrunedSource(root, realSource)
+        if (!realSource.startsWith(root) || pruned) {
             throw IOException("source file is outside the allowed project sources")
         }
         return Files.newInputStream(realSource, LinkOption.NOFOLLOW_LINKS).bufferedReader().use { it.readLines() }
     }
 
     /** 실제 프로젝트 경계 안의 source만 방문하고 제외 디렉터리는 열거하지 않는다. */
-    fun walkSources(projectRoot: Path, includeTests: Boolean = false, visit: (Path) -> Unit) {
+    fun walkSources(
+        projectRoot: Path,
+        includeTests: Boolean = false,
+        extensions: Set<String> = setOf("kt", "java"),
+        visit: (Path) -> Unit,
+    ) {
         val root = projectRoot.toRealPath()
         fun pruned(path: Path): Boolean = if (includeTests) isPruned(root, path) else isPrunedSource(root, path)
         Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
@@ -36,7 +82,7 @@ internal object ProjectTraversal {
                 if (pruned(dir)) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
 
             override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                if (file.fileName.toString().substringAfterLast('.', "") !in setOf("kt", "java") || pruned(file)) {
+                if (file.fileName.toString().substringAfterLast('.', "") !in extensions || pruned(file)) {
                     return FileVisitResult.CONTINUE
                 }
                 val realFile = file.toRealPath()

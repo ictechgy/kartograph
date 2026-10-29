@@ -1,0 +1,10 @@
+EmbeddedPsiDeclarations.java adapts the environment setup, PSI traversal, and JSON quoting pattern from:
+https://github.com/ictechgy/kartograph/blob/ab056981a016e1b4452de1071bcf209818526849/experiments/ai-utility-v5/SourceDeclarations.java
+The source repository is MIT licensed; the repository root LICENSE retains that notice.
+The fixture sources and explicit expectations are newly authored for this recovery experiment.
+
+The semantic adapter uses public API usage patterns verified against:
+- detekt/detekt v2.0.0-alpha.6 EnvironmentAware.kt and KotlinAnalysisApiEngine.kt (Apache-2.0).
+- JetBrains/kotlin v2.4.10 KaCallInfo.kt, KaSymbol.kt and StandaloneAnalysisAPISession.kt (Apache-2.0).
+No Kartograph graph, source parser, collector or matching implementation is used by the semantic adapter.
+The complete Apache-2.0 text is in semantic/LICENSE-APACHE-2.0. Runtime JARs retain their original licenses/notices.

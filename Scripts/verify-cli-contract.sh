@@ -44,7 +44,7 @@ expect_output() {
 }
 
 TEMPORARY_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/kartograph-cli-contract.XXXXXX")"
-trap 'rm -f "$TEMPORARY_DIRECTORY/Probe.java" "$TEMPORARY_DIRECTORY/classes/Probe.class" "$TEMPORARY_DIRECTORY/AndroidManifest.xml"; rmdir "$TEMPORARY_DIRECTORY/classes" "$TEMPORARY_DIRECTORY/empty" "$TEMPORARY_DIRECTORY/res" "$TEMPORARY_DIRECTORY"' EXIT
+trap 'rm -f "$TEMPORARY_DIRECTORY/Probe.java" "$TEMPORARY_DIRECTORY/classes/Probe.class" "$TEMPORARY_DIRECTORY/AndroidManifest.xml" "$TEMPORARY_DIRECTORY/graph.json"; rmdir "$TEMPORARY_DIRECTORY/classes" "$TEMPORARY_DIRECTORY/empty" "$TEMPORARY_DIRECTORY/res" "$TEMPORARY_DIRECTORY"' EXIT
 mkdir "$TEMPORARY_DIRECTORY/classes" "$TEMPORARY_DIRECTORY/empty" "$TEMPORARY_DIRECTORY/res"
 printf 'public class Probe {}\n' > "$TEMPORARY_DIRECTORY/Probe.java"
 printf '<manifest />\n' > "$TEMPORARY_DIRECTORY/AndroidManifest.xml"
@@ -61,6 +61,12 @@ expect_status 0 "dead --help" dead --help
 expect_status 0 "baseline --help" baseline --help
 expect_status 0 "query --help" query --help
 expect_status 0 "bridges --help" bridges --help
+expect_status 0 "routes --help" routes --help
+expect_status 0 "reach --help" reach --help
+expect_status 0 "impact --help" impact --help
+expect_status 0 "impact --format language-traversal --help" impact --format language-traversal --help
+expect_status 0 "impact --format language-traversal -h" impact --format language-traversal -h
+expect_status 0 "reach --format language-traversal --help" reach --format language-traversal --help
 expect_status 0 "skill --help" skill --help
 expect_status 0 "cycles --help" cycles --help
 expect_status 0 "rules --help" rules --help
@@ -68,6 +74,8 @@ expect_status 0 "metrics --help" metrics --help
 expect_status 0 "정상 class root graph" graph --classes "$TEMPORARY_DIRECTORY/classes"
 expect_status 0 "정상 class root graph JSON" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json --include-paths --project .
 expect_status 0 "정상 class root metrics" metrics --classes "$TEMPORARY_DIRECTORY/classes"
+expect_status 0 "빈 source root routes" routes --role client --project "$TEMPORARY_DIRECTORY" empty
+expect_status 0 "빈 source root 서버 routes" routes --role server --project "$TEMPORARY_DIRECTORY" empty
 
 echo "종료 코드 64 — 사용 오류"
 expect_status 64 "알 수 없는 옵션" --no-such-option
@@ -82,6 +90,18 @@ expect_status 64 "baseline write 경로 누락" baseline
 expect_status 64 "잘못된 report 형식" dead --report-format yaml
 expect_status 64 "cycles class root 누락" cycles
 expect_status 64 "rules config 누락" rules --classes "$TEMPORARY_DIRECTORY"
+expect_status 64 "routes role 누락" routes --project "$TEMPORARY_DIRECTORY"
+expect_status 64 "routes 잘못된 role" routes --role proxy --project "$TEMPORARY_DIRECTORY"
+expect_status 64 "서버 routes에 클라이언트 전용 --wrappers" routes --role server --project "$TEMPORARY_DIRECTORY" --wrappers missing.json
+expect_status 64 "language-traversal project 누락" impact --format language-traversal method:A#run --graph-file missing.json
+expect_status 64 "language-traversal에 impact 전용 옵션" impact --format language-traversal method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --base-graph missing.json
+# isthmus가 거부하는 제어 문자(C0·DEL·C1·U+2028·U+2029)는 snapshot을 읽기 전에 사용 오류다. bash 3.2도 \x 이스케이프는 읽는다.
+expect_status 64 "language-traversal revision의 C0 제어 문자" impact --format language-traversal method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --revision $'bad\x01rev'
+expect_status 64 "language-traversal revision의 C1 제어 문자" reach method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --revision $'bad\xc2\x85rev'
+expect_status 64 "language-traversal root의 U+2028" reach $'method:A#run\xe2\x80\xa8' --graph-file missing.json --project "$TEMPORARY_DIRECTORY"
+expect_status 64 "language-traversal 빈 revision" reach method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --revision ''
+expect_status 64 "language-traversal 잘못된 class-hops 값" impact --format language-traversal method:A#run --graph-file missing.json --project "$TEMPORARY_DIRECTORY" --class-hops none
+expect_status 64 "기본 impact 형식에 class-hops" impact method:A#run --graph-file missing.json --class-hops member-only
 
 echo "종료 코드 2 — 도구 실패"
 expect_status 2 "빈 class root graph" graph --classes "$TEMPORARY_DIRECTORY/empty"
@@ -91,6 +111,9 @@ expect_status 2 "빈 class root dead strict" dead --classes "$TEMPORARY_DIRECTOR
     --project "$TEMPORARY_DIRECTORY" --manifest AndroidManifest.xml --resources res --namespace app --strict
 expect_status 2 "없는 class root" graph --classes "$TEMPORARY_DIRECTORY/missing"
 expect_status 2 "없는 project root" graph --classes "$TEMPORARY_DIRECTORY" --format json --include-paths --project "$TEMPORARY_DIRECTORY/missing"
+expect_status 2 "없는 routes 선언 파일" routes --role client --project "$TEMPORARY_DIRECTORY" --wrappers missing.json
+expect_status 2 "없는 서버 routes snapshot" routes --role server --project "$TEMPORARY_DIRECTORY" --graph-file "$TEMPORARY_DIRECTORY/missing.json" empty
+expect_status 2 "없는 reach snapshot" reach method:A#run --graph-file "$TEMPORARY_DIRECTORY/missing.json" --project "$TEMPORARY_DIRECTORY"
 
 # 예기치 못한 실패가 strict finding 코드(1)로 새지 않는지 확인한다. root는 권한 검사를 우회하므로 건너뛴다.
 if [[ "$(id -u)" != "0" ]]; then
@@ -109,9 +132,19 @@ expect_output "kartograph" "도움말에 도구 이름" --help
 expect_output "Exit codes:" "도움말에 종료 코드 표" --help
 expect_output "kartograph baseline" "도움말에 baseline 명령" --help
 expect_output "kartograph cycles" "도움말에 architecture 명령" --help
+expect_output "kartograph reach" "도움말에 정방향 순회 명령" --help
+expect_output "Dispatch modes" "impact 순회 형식 도움말" impact --format language-traversal --help
 expect_output "digraph kartograph" "graph의 DOT 문서" graph --classes "$TEMPORARY_DIRECTORY/classes"
 expect_output '"format": "code-graph"' "graph의 교환 JSON 문서" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json
 expect_output '"limitations"' "graph JSON의 한계 필드" graph --classes "$TEMPORARY_DIRECTORY/classes" --format json
+"$BINARY" snapshot --classes "$TEMPORARY_DIRECTORY/classes" --project "$TEMPORARY_DIRECTORY" > "$TEMPORARY_DIRECTORY/graph.json" 2>/dev/null
+expect_output '"graphRevision": "sha256:' "language-traversal의 그래프 내용 해시" reach class:Probe --graph-file "$TEMPORARY_DIRECTORY/graph.json" --project "$TEMPORARY_DIRECTORY" --generated-at 2026-09-27T00:00:00Z
+expect_output '"revision": "given-rev"' "language-traversal의 --revision 값" reach class:Probe --graph-file "$TEMPORARY_DIRECTORY/graph.json" --project "$TEMPORARY_DIRECTORY" --revision given-rev
+expect_output 'class-hops-narrowed: 0 ' "좁힌 class hop 모드의 한계 문구" reach class:Probe --graph-file "$TEMPORARY_DIRECTORY/graph.json" --project "$TEMPORARY_DIRECTORY" --class-hops member-only
+expect_output '"roles": \["client"\]' "routes의 http 클라이언트 문서" routes --role client --project "$TEMPORARY_DIRECTORY" empty
+expect_output '"dispatch": "specificity"' "서버 routes의 디스패치 모델" routes --role server --project "$TEMPORARY_DIRECTORY" empty
+expect_output '"roles": \["server"\]' "서버 routes의 http 서버 문서" routes --role server --project "$TEMPORARY_DIRECTORY" empty
+expect_output "kartograph routes --role server" "도움말에 서버 routes 명령" --help
 
 echo
 if [[ "$FAILURES" -eq 0 ]]; then

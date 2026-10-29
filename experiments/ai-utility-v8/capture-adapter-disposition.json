@@ -1,0 +1,20 @@
+{
+  "status": "resolved",
+  "cause": "The evaluation adapter included test-only observer.jar in snapshotBuildInputs; published plugin correctly required every otherwise-unclassified input JAR to be a declared compiler runtime artifact.",
+  "diagnosticUnclassifiedJar": [
+    "observer.jar"
+  ],
+  "fix": "Remove the test-only observer JAR from compiler build inputs; retain it in Test.classpath and independently pin its bytes in observer/native/model manifests.",
+  "originalPublishedPluginUnchanged": true,
+  "baselineInvocationsEqual": 3649,
+  "sameCompilerOutputFiles": 701,
+  "differentCompilerOutputs": [],
+  "matched": true,
+  "originalFailure": "baseline-detekt-1",
+  "successfulControl": "baseline-detekt-2",
+  "diagnosticSetupFailures": [
+    "included-build project guard",
+    "Kotlin object INSTANCE invocation"
+  ],
+  "manualWitnessMissingClasspath": "A separate manual API probe without optional directory watches; not the automatic collector root cause."
+}

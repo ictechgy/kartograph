@@ -1,0 +1,26 @@
+[
+  {
+    "case": "detekt_detekt-6446",
+    "primaryDeclarations": 54,
+    "sourceAndUsrCoverageEqual": true,
+    "coverage": 1.0
+  },
+  {
+    "case": "detekt_detekt-7212",
+    "primaryDeclarations": 7,
+    "sourceAndUsrCoverageEqual": true,
+    "coverage": 1.0
+  },
+  {
+    "case": "pinterest_ktlint-2727",
+    "primaryDeclarations": 4,
+    "sourceAndUsrCoverageEqual": true,
+    "coverage": 1.0
+  },
+  {
+    "case": "pinterest_ktlint-2774",
+    "primaryDeclarations": 22,
+    "sourceAndUsrCoverageEqual": true,
+    "coverage": 1.0
+  }
+]

@@ -1,0 +1,74 @@
+[
+  {
+    "case": "detekt_detekt-6443",
+    "module": "detekt-rules-errorprone",
+    "primary": 27,
+    "oracle": 27,
+    "direct": 1,
+    "indirect": 0,
+    "suiteAnchors": 26,
+    "tests": {
+      "passed": 26,
+      "skipped": 0,
+      "failed": 0
+    },
+    "preparationAttempts": 1,
+    "launchJdk": "17",
+    "originalWrapper": true,
+    "oracleSha256": "290b5c25ee8ed3287932c1cbdd2f730cb81583edb8690c7c76551d6faa585c26"
+  },
+  {
+    "case": "detekt_detekt-6352",
+    "module": "detekt-rules-errorprone",
+    "primary": 9,
+    "oracle": 9,
+    "direct": 0,
+    "indirect": 0,
+    "suiteAnchors": 9,
+    "tests": {
+      "passed": 9,
+      "skipped": 0,
+      "failed": 0
+    },
+    "preparationAttempts": 3,
+    "launchJdk": "17",
+    "originalWrapper": false,
+    "oracleSha256": "c2cec383f85c3aa211c36dcdf5e61fc9855b37854710c6cbcf874fe36577483a"
+  },
+  {
+    "case": "pinterest_ktlint-2617",
+    "module": "ktlint-ruleset-standard",
+    "primary": 14,
+    "oracle": 14,
+    "direct": 0,
+    "indirect": 0,
+    "suiteAnchors": 14,
+    "tests": {
+      "passed": 14,
+      "skipped": 0,
+      "failed": 0
+    },
+    "preparationAttempts": 2,
+    "launchJdk": "21",
+    "originalWrapper": true,
+    "oracleSha256": "9605b1cbc6179dcadb6a856a7a9166277db5b373955e8672df40d80f8b3c6d68"
+  },
+  {
+    "case": "pinterest_ktlint-2554",
+    "module": "ktlint-ruleset-standard",
+    "primary": 31,
+    "oracle": 31,
+    "direct": 1,
+    "indirect": 0,
+    "suiteAnchors": 30,
+    "tests": {
+      "passed": 30,
+      "skipped": 0,
+      "failed": 0
+    },
+    "preparationAttempts": 1,
+    "launchJdk": "21",
+    "originalWrapper": true,
+    "oracleSha256": "b922572564f49a86e3df537774eba36cd8a9954e39c74b3048b36410866b0f5e"
+  }
+]

@@ -30,6 +30,15 @@ resource producer witness(processResources)로 커버되며, 실물 fixture에�
 - 남은 실 AGP 절반은 Gradle plugin wiring 자체다: 실제 `kartographSnapshotDebug` 실행(Gradle 데몬·
   AGP artifact 필요)으로 1단계를 마무리하고 위 스케치대로 구현한다.
 
+### 보존 산출물 재검증 (2026-09-21)
+
+Now in Android revision `12f80da6518e161ed16a06a68e71fb8a873576d6`의 보존 입력 중
+현재 남아 있는 transform class root 17개와 R.jar를 복원했다. 700개 파일(2,736,129 bytes)의
+복사 전후 SHA-256을 대조하고 `RealAgpRJarCliTest` 2개를 실패·skip 없이 통과했다.
+위 2026-09-15의 22-root 기록과 다른 보존 집합이며 새 NIA 전체 빌드를 주장하지 않는다.
+이 테스트는 실물 bytes로 witness coverage 경계를 대조하며, 테스트가 구성한 witness를
+NIA의 실제 compiler 실행 receipt로 해석하지 않는다.
+
 ## 실물 AGP 재현·후보 A wiring 검증 (2026-09-15 완료)
 
 `Scripts/verify-agp-8-app-snapshot.sh`(GRADLE_8_HOME·ANDROID_HOME 필요, `fixtures/agp-8-smoke`

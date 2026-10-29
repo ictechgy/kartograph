@@ -1,0 +1,86 @@
+{
+  "observedModelProductRequests": 3,
+  "allModelRequestsNotFound": true,
+  "validModelTargetPathsReturned": 0,
+  "canonicalUsrControls": [
+    {
+      "case": "detekt-line-content",
+      "repeat": 0,
+      "originalRequest": {
+        "files": [
+          "detekt-rules-style/src/main/kotlin/io/gitlab/arturbosch/detekt/rules/style/KtFileContent.kt"
+        ],
+        "depth": 3,
+        "limit": 30
+      },
+      "originalStatus": "notFound",
+      "correctedRequest": {
+        "depth": 3,
+        "limit": 30,
+        "symbols": [
+          "method:io/gitlab/arturbosch/detekt/rules/style/KtFileContentKt#toFileContent(Lorg/jetbrains/kotlin/psi/KtFile;)Lio/gitlab/arturbosch/detekt/rules/style/KtFileContent;"
+        ]
+      },
+      "correctedStatus": "partial",
+      "correctedChangedCount": 1,
+      "correctedAffectedCount": 1,
+      "scope": "Post-run selector diagnostic only; no model rerun or score change."
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "repeat": 1,
+      "originalRequest": {
+        "symbols": [
+          "io.gitlab.arturbosch.detekt.rules.style.isTrimmed"
+        ],
+        "limit": 20
+      },
+      "originalStatus": "notFound",
+      "correctedRequest": {
+        "limit": 20,
+        "symbols": [
+          "method:io/gitlab/arturbosch/detekt/rules/style/TrimMultilineRawStringKt#isTrimmed(Lorg/jetbrains/kotlin/psi/KtStringTemplateExpression;Ljava/util/List;)Z"
+        ]
+      },
+      "correctedStatus": "found",
+      "correctedChangedCount": 1,
+      "correctedAffectedCount": 2,
+      "scope": "Post-run selector diagnostic only; no model rerun or score change."
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "repeat": 1,
+      "originalRequest": {
+        "symbols": [
+          "com.pinterest.ktlint.ruleset.standard.rules.maxLineLength"
+        ],
+        "limit": 50
+      },
+      "originalStatus": "notFound",
+      "correctedRequest": {
+        "limit": 50,
+        "symbols": [
+          "method:com/pinterest/ktlint/ruleset/standard/rules/MaxLineLengthRuleKt#maxLineLength(Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig;)I"
+        ]
+      },
+      "correctedStatus": "partial",
+      "correctedChangedCount": 1,
+      "correctedAffectedCount": 1,
+      "scope": "Post-run selector diagnostic only; no model rerun or score change."
+    }
+  ],
+  "fileScopeControl": {
+    "case": "detekt-line-content",
+    "request": {
+      "files": [
+        "src/main/kotlin/io/gitlab/arturbosch/detekt/rules/style/KtFileContent.kt"
+      ],
+      "depth": 3,
+      "limit": 30
+    },
+    "outcome": "isError: response exceeds16KiB after reductions; exact single-function USR resolves",
+    "meaning": "The file selects additional declarations; correcting path alone is not enough for this bounded interactive report."
+  },
+  "originalScoresChanged": false,
+  "interpretation": "The MCP condition offered product tools, but these trials obtained no resolved changed-target paths from them. More complete answers in that condition cannot be attributed to consumed graph paths."
+}

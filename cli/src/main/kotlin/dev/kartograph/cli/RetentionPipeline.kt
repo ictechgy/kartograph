@@ -36,6 +36,11 @@ internal data class RetentionInputs(
     val serviceResources: List<Path>,
     val includePrivateMembers: Boolean,
     val externalRetentions: List<RetentionEvidence> = emptyList(),
+    val externalRetentionContexts: List<dev.kartograph.export.ExternalRetentionDocumentContext> = emptyList(),
+    val resourceRoots: List<Path> = listOf(resources),
+    val lenientKeepRules: Boolean = false,
+    val bindingOverlayRoots: List<Path> = emptyList(),
+    val bindingLimit: Int = 1_000,
 )
 
 /** 보존 분석 결과와 소스 파일별로 측정한 미해결 runtime 채널 관측을 함께 운반한다. */
@@ -45,46 +50,61 @@ internal data class RetentionAnalysisResult(
     val unresolvedChannelsBySource: Map<String, Int>,
     val unmatchedKeepRules: List<KeepRule>,
     val inputHints: List<InputHint>,
+    val externalRetentionContexts: List<dev.kartograph.export.ExternalRetentionDocumentContext> = emptyList(),
+    val keepDiagnostics: List<String> = emptyList(),
+    val sourceDiagnostics: List<String> = emptyList(),
+    val sourcePaths: Map<NodeId, String> = emptyMap(),
+    val bindingReview: dev.kartograph.analysis.AndroidBindingReviewResult? = null,
 )
 
 /** dead와 why가 같은 그래프·같은 근거를 만들게 하는 공통 조립 단계다. */
 internal object RetentionPipeline {
     fun analyze(inputs: RetentionInputs): RetentionAnalysisResult {
-        val indexed = ClassFileIndexer().indexWithObservations(
+        val indexed = ClassFileIndexer(callbackFacts = false).indexWithObservations(
             inputs.classRoots,
             inputs.classpath,
             inputs.serviceResources,
             inputs.generatedClassRoots,
         )
-        val graph = indexed.graph
-        require(inputs.externalRetentions.all { graph.contains(it.nodeId) }) {
-            "external retention identifiers are absent from the indexed graph; regenerate facts and retentions from the same build"
-        }
+        val paths = dev.kartograph.index.SourcePathIndex.resolve(indexed.graph, inputs.projectRoot)
+        val graph = dev.kartograph.index.SourceDeclarationLocations.enrich(indexed.graph, inputs.projectRoot, paths.byNodeId, false)
+        ExternalRetentionFiles.requireMatches(graph, inputs.externalRetentions, inputs.externalRetentionContexts)
         val manifestEvidence = AndroidManifestScanner(inputs.projectRoot).scan(inputs.manifest, inputs.namespace)
         val inputEvidence = buildList {
             addAll(manifestEvidence)
-            addAll(AndroidXmlScanner(inputs.projectRoot).scan(inputs.resources))
+            inputs.resourceRoots.distinct().sorted().forEach { addAll(AndroidXmlScanner(inputs.projectRoot).scan(it)) }
             addAll(inputs.externalRetentions)
         }
-        val keepRules = KeepRuleScanner(inputs.projectRoot, inputs.includePrivateMembers)
-            .scan(inputs.keepRules)
+        val scanner = KeepRuleScanner(inputs.projectRoot, inputs.includePrivateMembers, inputs.lenientKeepRules)
+        val keepRules = scanner.scan(inputs.keepRules)
         val evidence = DefaultRetention.find(
             graph,
             inputEvidence,
             keepRules,
             indexed.hierarchy,
             includePrivateMembers = inputs.includePrivateMembers,
+            lenientKeepRules = inputs.lenientKeepRules,
         )
+        val reachability = ReachabilityAnalyzer.analyze(graph, evidence)
+        val bindings = dev.kartograph.analysis.AndroidBindingReview.analyze(graph, indexed.hierarchy,
+            dev.kartograph.index.AndroidBindingScanner.scan(graph, inputs.classRoots, inputs.resourceRoots, inputs.projectRoot,
+                inputs.bindingOverlayRoots), reachability, inputs.bindingLimit)
         return RetentionAnalysisResult(
             graph,
-            ReachabilityAnalyzer.analyze(graph, evidence),
+            reachability,
             RuntimeLimitationScanner.sourceChannelCounts(indexed),
             KeepRuleRetention.unmatched(keepRules, evidence),
             InputHints.detect(
                 keepRuleInputs = inputs.keepRules.size,
                 classpathInputs = inputs.classpath.size,
                 manifestEvidenceCount = manifestEvidence.size,
-            ),
+                graph = graph,
+            ) + if (evidence.any { it.reason == RetentionReason.UNKNOWN_KEEP_RULE }) listOf(InputHint.UNKNOWN_KEEP_RULES) else emptyList(),
+            inputs.externalRetentionContexts,
+            scanner.diagnostics,
+            paths.limitations + bindings.diagnostics,
+            paths.byNodeId,
+            bindings,
         )
     }
 
@@ -146,7 +166,7 @@ internal object RetentionPipeline {
     // test→production cross edge를 보존하려면 production과 test root를 함께 index해야 한다.
     // 따로 index하면 combined 조립 시 dangling 제거로 test→production 간선이 유실된다.
     private fun testReachableNodeIds(graph: CodeGraph, classRoots: List<Path>, testClassRoots: List<Path>): Set<NodeId> {
-        val combined = ClassFileIndexer().index(classRoots + testClassRoots)
+        val combined = ClassFileIndexer(callbackFacts = false).index(classRoots + testClassRoots)
         // seed는 combined에만 있고 production graph에는 없는 노드, 즉 test 전용 노드다.
         // classRoots가 먼저 index되므로 production 노드는 항상 graph.nodes에 있어 seed에서 빠진다.
         // 같은 FQN이 production·test 양쪽에 있으면 첫 root(production) 사실이 우선해 test 사본 간선이 가려질 수 있고,

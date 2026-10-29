@@ -1,0 +1,26 @@
+[
+  {
+    "case": "detekt_detekt-7212",
+    "classFilesMatched": 143,
+    "sourceFilesMatched": 53,
+    "oracleSourceInventoryMatched": true
+  },
+  {
+    "case": "detekt_detekt-6446",
+    "classFilesMatched": 178,
+    "sourceFilesMatched": 79,
+    "oracleSourceInventoryMatched": true
+  },
+  {
+    "case": "pinterest_ktlint-2774",
+    "classFilesMatched": 533,
+    "sourceFilesMatched": 205,
+    "oracleSourceInventoryMatched": true
+  },
+  {
+    "case": "pinterest_ktlint-2727",
+    "classFilesMatched": 400,
+    "sourceFilesMatched": 49,
+    "oracleSourceInventoryMatched": true
+  }
+]

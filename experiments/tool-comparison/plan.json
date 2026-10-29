@@ -1,0 +1,17 @@
+{
+  "repeats": 3,
+  "order": "alternate tool order each repeat",
+  "targets": {
+    "MainActivityViewModel": "com.google.samples.apps.nowinandroid.MainActivityViewModel",
+    "NewsResourceDao": "com.google.samples.apps.nowinandroid.core.database.dao.NewsResourceDao",
+    "ListToMapMigration": "com.google.samples.apps.nowinandroid.core.datastore.ListToMapMigration"
+  },
+  "scope": "same frozen source revision and documented variant; source vs compiled input coverage differs",
+  "excluded": [
+    "application build time",
+    "OS cold-cache control",
+    "runtime correctness",
+    "general accuracy ranking"
+  ],
+  "timestamp": 1789954410.391905
+}

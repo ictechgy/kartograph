@@ -1,0 +1,29 @@
+{
+  "status": "source-only; compiler, JVM, adapter and product not executed for this fixture",
+  "freezeVersion": 1,
+  "freezeNote": "Source-call target choices and lowering distinctions were authored before any compiler/JVM invocation for this fixture. Static Python range/hash consistency checks are not semantic or compiled evidence.",
+  "sourceSha256": {
+    "lowered/LoweredJava.java": "86dfcefd038e73f8d9ad31e45d8249539e2c7ef51e9b8a9e6ae0756b4b67c18c",
+    "lowered/LoweredKotlin.kt": "8fcfc29d48d1ae788658291e3a4e318e282c3e5afa1004894596041470510eb9"
+  },
+  "expectationAndProposalFilesSha256": {
+    "README.md": "5dd672f062c6bf0f7a861c51021e6ac6abe315a2c89e8316cc631c9a8af5a4d2",
+    "RUN-PLAN.md": "7fc9e7a7f19906dd3dba9a16468e0966c429c8a0b35acc7cf748d24b40b6b1b6",
+    "source-call-expectations.json": "7099acb51dfcbc7a8937d050564accd7f4ae48f1dc80673205115a015b5d82ae",
+    "lowering-expectations.json": "0b8c6ac1b25cfcfe91e22fc742498da99a83d2be045185bd34fa29213fdf722e",
+    "source-files.txt": "4f12bc739b5ab5d2b6ca398ea3442388ad5314176b42cbe34e7c281ec77f32ff",
+    "runtime-jars.json": "a23813087f8634ce82cb612f7f6932962458a8947338d2e71ddac66b68df5efa"
+  },
+  "reusedAdapter": {
+    "repositoryRevision": "254c8ad40e08de6fa899a9ffd8bd3c606b8aad1b",
+    "path": "experiments/embedded-psi-comparison/semantic/PsiResolvedCalls.kt",
+    "sha256": "54cb74a5836494a876084098bd1a091ca1ff0b3aafd473249c6954004c64812f",
+    "modification": "none",
+    "runtimePinSha256": "a23813087f8634ce82cb612f7f6932962458a8947338d2e71ddac66b68df5efa"
+  },
+  "expectedInternalSourceCallSites": 10,
+  "expectedExternalBoundaryRows": 2,
+  "expectedExplicitMethodDeclarations": 14,
+  "expectedExplicitConstructorRows": 0,
+  "compilerAndProductLane": "Await parent review and serialization; prefer verified pure-main 254c8ad CLI."
+}

@@ -1,5 +1,7 @@
 # kartograph
 
+<img src="icon.png" alt="kartograph의 새 마스코트" width="112" height="112" align="right">
+
 Kotlin/Android 코드베이스의 의존성 그래프를 만들고 질의하는 도구다. cartograph(Swift)의 자매 프로젝트로, 설계와 교환 계약을 공유한다.
 
 > [English](README.md)
@@ -28,6 +30,7 @@ Android에는 한 가지 유리한 점이 있다. "안 쓰는 것처럼 보이�
 - `dead`는 Android 보존 근거(manifest, XML, `@Keep`, keep 규칙, 상속 hierarchy, DI/직렬화 어노테이션, JNI·프레임워크 콜백)에서 도달 불가한 class 선언을 보고한다. `--explain`, baseline, 만료일이 있는 `--suppress`, `--since`, machine report(text/gradle/github-actions/sarif/json/markdown)를 지원한다. JSON·SARIF·markdown 보고에는 `confidence` 등급(static / needs-runtime-review / runtime-observed / unmeasured)이 실리는데, 이는 그 선언의 소스 파일에서 측정한 미해결 runtime 채널 수나 사용자가 제공한 런타임 근거에서 나온다. 재귀 include와 consumer rules 입력도 지원한다. 보존 근거를 하나도 만들지 않은 keep rule은 파일·줄 근거와 함께 `unmatched-keep-rule` 입력 진단으로 보고한다 — 규칙 삭제의 증거가 아니다. finding이 있는데 keep 규칙·dependency classpath·component 선언이 있는 manifest가 입력되지 않았으면 `input-hint` 진단으로 과대 보고 가능성을 먼저 알린다. 선택 입력 `--runtime-classes`·`--coverage`(사용자 제공 class 목록·JaCoCo/Kover XML)로 관측된 class의 finding은 `runtime-observed` confidence로 표시되며, finding과 종료 코드는 바뀌지 않는다.
 - `why <symbol>`은 한 선언이 보존·도달·도달 불가인 이유를 한 번에 답한다. 보존 근거(파일·줄), 보존 root부터의 대표 경로, 직접 caller, test 전용 도달 표시, 도달 불가 선언의 측정된 신뢰도 등급을 출력한다. 답은 도달성 사실이지 삭제 승인이 아니다.
 - `query`/`bridges`/`skill`은 전체 그래프를 덤프하는 대신 한 symbol의 사용·의존·도달성과 Flutter/React Native 브리지 사실을 에이전트에게 준다. `query`는 미해결 runtime 경로와 보수적 dispatch 후보의 계량된 수도 함께 알린다. React Native 지원은 core `@ReactModule`/`@ReactMethod`와 Expo Modules(`class X : Module()`의 `ModuleDefinition { Name(…) / Function(…) / View(…) }`)를 모두 포함하며, Expo `module-export`/`component-export`에는 `"mechanism": "expo"`를 실어 isthmus가 Expo와 core 해석 경로를 구분하게 한다.
+- 직접 bytecode 호출은 깊이 1의 `query` 이웃에 호출자 소스 파일·호출부 줄을 담은 선택적 `references`를 추가한다. Kotlin inline 매핑은 호출자 자신의 소스임을 확인한 경우에만 사용한다. 기존 선언 위치는 별도로 유지하며 column·offset은 추측하지 않는다. 새 snapshot은 일반·compact 표현 모두 이 근거를 보존하고, 옛 snapshot은 근거 부재를 한계로 알린다.
 - `dependencies`는 선언 목록(TSV: coordinate, scope, artifact)과 전달한 class root의 bytecode 참조를 대조해 `unused-dependency`를 보고한다. 빌드나 커버리지를 실행하지 않고, processor·runtime-only scope는 세기만 한다. [선언 의존성 분석](docs/DEPENDENCIES.md) 참고. 0.12.0에는 `--library` API/implementation
   배치 조언, `--resolved-dependencies` 소유권 검사, 6개 보고 형식과 JVM/Android
   `kartographDependencies` task가 추가됐다.
@@ -35,9 +38,9 @@ Android에는 한 가지 유리한 점이 있다. "안 쓰는 것처럼 보이�
 - 선택적 [processor source 귀속](docs/PROCESSOR-GENERATION.md)은 실제 JSR-269 Filer 출력과 generating artifact를 완료된 compiler receipt에 연결합니다. collector는 태그 소스에서 별도로 빌드하며 귀속이 reachability나 dependency unused 판정을 바꾸지는 않습니다.
 - `cycles`/`rules`/`metrics`는 module/package 순환과 weakest edge, fail-closed layer YAML, Martin Ca/Ce/I/A/D 지표를 분석한다.
 - Gradle plugin은 AGP public Variant API 위에서 Android variant마다 `kartographDead<Variant>`와 `kartographGraph<Variant>` task를 등록한다.
-- Gradle plugin의 `kartographSnapshot`과 `kartographSnapshot<Variant>` task는 JVM main/test와 Android main/unit-test 입력을 compiler witness와 함께 자동 캡처한다. Android application variant에서는 생성된 `R.jar`도 `processResources` producer witness로 함께 캡처한다. 반복 영향 질의는 [자동 캡처와 toolchain 설정](docs/IMPACT.md#jvm-빌드에서-자동-캡처)과 [build provenance 계약](docs/BUILD-PROVENANCE.md)을 참고한다.
+- Gradle plugin의 `kartographSnapshot`과 `kartographSnapshot<Variant>` task는 JVM main/test와 Android main/unit-test 입력을 compiler witness와 함께 자동 캡처한다. Android application variant에서는 생성된 `R.jar`도 `processResources` producer witness로 함께 캡처한다. 반복 영향 질의는 [자동 캡처와 toolchain 설정](docs/IMPACT.md#jvm-빌드에서-자동-캡처)과 [build provenance 계약](docs/BUILD-PROVENANCE.md)을 참고한다. build 디렉터리는 저장소 밖에 둘 수 있고, `kartograph snapshot merge`가 모듈별 snapshot을 `routes`·`impact`용 검증 가능한 snapshot 하나로 합친다([여러 모듈 캡처](docs/IMPACT.md#여러-모듈과-저장소-밖-build-디렉터리)).
 - 선택적 [증분 파싱](docs/INDEX-CACHE.md)은 바뀌지 않은 class 사실과 dependency JAR header를 재사용한다. 현재 입력 검사와 전체 분석은 캡처할 때마다 다시 수행한다.
-- [MCP stdio 서버](docs/MCP.md)는 고정된 로컬 snapshot 위에서 `query_symbol`·`impact`·`freshness`를 제공하며, CLI와 같은 보고서를 쓴다.
+- [MCP stdio 서버](docs/MCP.md)는 고정된 로컬 snapshot 위에서 `query_symbol`·`impact`·`freshness`를 제공하며, CLI와 같은 보고서를 쓴다. `discover_symbols`로 정확한 선택자를 복구한다.
 - keep 규칙 파싱은 지원하지 않는 문법을 조용히 버리지 않고 파일·줄을 밝히며 실패한다(fail-closed). 근거와 오류 메시지에는 절대경로를 출력하지 않는다.
 
 class 로딩, reflection 생성자, 알려진 method/field 접근은 메서드 안에서만 값을 추적해 연결하고, 외부 dispatch는 보수적인 상속 후보로 연결한다. class root와 CLI `--service-resources`에 있는 `META-INF/services` 등록은 provider를 보존한다. Gradle plugin은 선택한 variant의 Java resource 소스 디렉터리를 넘긴다. 외부 호출 JSON의 API 모델 ID와 해석 결과는 별개 필드다. 선택적 [compiler collector](docs/COMPILER-EVIDENCE.md)는 javac/Kotlin 2.4.10 상수 참조와 javac Dagger 2.59 선택 binding을 snapshot에 더한다. collector는 따로 빌드해서 명시적으로 연결해야 하며, 지원하는 패턴과 남은 한계는 문서에 있다. 주 그래프와 보존 정책은 그대로 적용된다. callgraph 정밀도 보강은 아직 실험이다.
@@ -54,13 +57,69 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 - Android graph/dead task: AGP 8.7+, Gradle 8.10+, JDK 17+(AGP 8.7.3 / Gradle 8.10.2와 AGP 9.x에서 검증).
 - 자동 snapshot: JVM Java/Kotlin은 Gradle 9.6.1과 JDK 17/21에서, Android는 [검증된 조합](docs/IMPACT.md#android-variant-자동-캡처)에서 확인했다. Kotlin compiler adapter는 KGP 2.4.10에서 검증했고 다른 버전은 보장하지 않는다. 최소 Android 조합은 Gradle 8.10.2에서 검증했지만, KGP 자체는 8.14.4 이상을 권고한다.
 
+아래 예시는 0.26.0 릴리스 준비본용이다. plugin은 해당 버전이 Portal에 제공된 뒤 사용하거나
+같은 source revision에서 matching 모듈을 빌드한다.
+
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.14.0"
+    id("io.github.ictechgy.kartograph") version "0.26.0"
 }
 ```
 
 GitHub release에서 `kartograph-<version>.zip` 또는 `.tar`를 받는다. 0.5.0 이상은 압축을 풀기 전에 파일의 SHA256을 `SHA256SUMS`의 해당 항목과 대조하고, 그다음 `bin/kartograph`를 실행한다. release에는 CycloneDX runtime SBOM도 들어 있다. 별도 서명은 배포하지 않는다.
+
+0.22.0은 [GitHub Releases](https://github.com/ictechgy/kartograph/releases/tag/v0.22.0)와
+[Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.22.0)에 공개됐다.
+공개 CLI archive·collector ZIP·Portal plugin은 독립 설치 검사를 통과했다.
+공개 archive에는 발행 당시의 준비 단계 문서가 그대로 들어 있다.
+0.21.0은 태그·release 페이지만 공개됐고 실패한 배포에서
+distribution asset이나 Portal plugin은 발행되지 않았다. 0.20.0에서 올리는 직접 JVM 라이브러리
+소비자는 `GraphNode`·`QuerySnapshot`의 생성자·`copy` ABI 변경에 맞춰 다시 컴파일하고
+CLI·plugin·선택적 collector를 같은 버전으로 설치한다.
+2026-10-17 확인 기준 [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)은
+7개 asset이 공개됐고 [release run](https://github.com/ictechgy/kartograph/actions/runs/38721915580)의
+Gradle plugin publish step도 성공했다. GitHub prerelease 상태를 유지한다.
+0.23.0의 공개 asset·Portal consumer 독립 검증은 미완료다. 기존 asset·checksum·archive 문서는
+그대로 보존하며 publish 성공을 독립 설치 성공으로 해석하지 않는다.
+2026-10-18 확인 당시 [v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0)은 7개 asset이 있는 최신 안정 GitHub release였다.
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702)의 packaged readiness와 plugin publish가 성공했으며 공개 consumer 검증은 별도다.
+2026-10-19 확인 기준 [v0.25.0](https://github.com/ictechgy/kartograph/releases/tag/v0.25.0)은 7개 asset이 있는 최신 안정 GitHub release다.
+태그 commit은 `d7238cd5d6465219d0c1378a99e7394258b8577b`이며
+[exact-source readiness](https://github.com/ictechgy/kartograph/actions/runs/39183549453)와
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39186955097)이 성공했다. retained plugin으로 실행한
+AGP8.7.3 fixture build 두 번에서 ZIP/TAR 의미 비교 20쌍이 모두 통과했다. impact 17쌍은 strict 비교이며,
+freshness 3쌍은 검증된 root `hashNanos` 시간 필드만 제외한다. ZIP·TAR·plugin 해시는 release metadata와 일치한다.
+`publishPlugins` task는 성공했으며 공개 Portal 표시와 독립 Portal 설치 검증은 별도다.
+공개 asset에는 발행 당시의 문서를 그대로 보존한다.
+CLI·plugin·collector·library artifact는 같은 버전으로 맞춘다. 새 source-use API와 명시적
+`snapshot --include-source-uses`·`query --source-uses`·`impact --source-edits`는 additive 기능이다.
+saved report는 `currentness: notChecked`인 부분적 과거 관찰이며 ordinary graph 결과와 별도다.
+0.22 reader로 다시 저장하면 선택적 source-use extension이 사라진다. 없는 근거는 재캡처하고,
+base/current 비교가 같은 tool version을 요구하면 둘 다 재캡처한다. 옛 snapshot의 version만 바꾸거나 모듈을 섞지 않는다.
+기존 compiled-client·descriptor 검사는 선택한 API의 근거이며 모든 client·Kotlin source 호환성 보장이 아니다.
+[업그레이드 안내](CHANGELOG.md)와 [source-use 호환성](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility)을 참고한다.
+
+0.24.0은 enum 상수 추가가 authored default/else 또는 유한 리터럴 membership/negation에
+흡수될 수 있는 검토 후보를 제공한다. compiler `enumDecisions=true`와
+`snapshot --include-enum-decisions`를 켜고 fresh baseline/current snapshot을
+`impact --enum-expansion`으로 비교한다. current 소스 위치·이유·추가 상수·미해결 coverage를 보존하며
+enum/source-use 캡처를 함께 사용할 수 있다. `GraphNode`·`QuerySnapshot` 공개 형태가 바뀌므로
+직접 library client를 다시 컴파일하고 collector/CLI build를 맞춘다. library enum 변경 시 그 client도
+다시 빌드한다. [0.24.0 migration](docs/COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration)과
+[enum 영향 안내](docs/IMPACT.md#opt-in-enum-expansion-candidates)를 따른다.
+실제 runtime 동작이나 버그를 확정하는 결과가 아니며 공개된 0.23.0 artifact에는 이 기능이 없다.
+JDK 17 collector CI의 Java 21 null/pattern 구문 분기는 미실행이다.
+
+0.26.0은 Git base/head 또는 작업 트리 변경을 받는 native `impact --git-base`와 MCP `change_impact`를 추가한다.
+동일한 CLI/plugin/library 버전으로 양쪽을 빌드·캡처하고 소스와 빌드 입력을 연결한다. revision 라벨만으로 신선도를
+입증하지 않는다. 기존 impact 출력은 유지하며 새 opt-in 보고서는 과거 호출자, revision별 경로, 파일 전체 seed의
+정밀도 한계, stale/unknown 입력과 순회 예산을 보존한다. [변경 분석·이전 안내](docs/IMPACT.md)와
+[범위를 제한한 실제 변경 검증](docs/GIT-IMPACT-VALIDATION.md)을 참고한다. 정적 테스트 후보는 실패 예측이나 생략 허가가 아니다.
+공개 0.26.0 asset과 Portal 설치 검증은 아직 완료되지 않았다. 릴리스 준비와 공개 배포는 별개다.
+
+0.25.0은 application layout XML 변경을 정확한 non-final R 필드와 기록된 literal include를 통해 코드·테스트 후보로 연결한다.
+matching CLI/plugin/library와 양쪽 revision 재캡처가 필요하다. coverage는 partial이며 resource 근거가 있는 모듈 snapshot은 병합하지 않는다.
+검증된 AGP8.7.3 조합·신뢰된 build 전제·신선도와 미지원 runtime 경계는 [layout 안내](docs/ANDROID-RESOURCE-IMPACT.md)를 따른다.
 
 ## 사용법
 
@@ -110,6 +169,14 @@ kartograph query UserService --classes path/to/classes --project . --depth 2 --l
 kartograph bridges --project . --format json
 # Kotlin/JVM Flutter BasicMessageChannel 사실(v2)을 선택적으로 생성한다.
 kartograph bridges --project . --target flutter --messages --graph-file build/reports/kartograph/main-graph.json
+# isthmus용 persistence 관계 사용: Room/JDBC/Exposed/jOOQ, SQL 모양 리터럴, SQLDelight .sq/.sqm.
+kartograph schema --project . --format json
+# isthmus용 클라이언트 HTTP route 호출: 선언된 래퍼, java.net.URL 요청, Retrofit 어노테이션.
+kartograph routes --role client --project . --wrappers http-wrappers.json app/src/main
+# isthmus용 Spring MVC·WebFlux 라우트 선언. 신선한 snapshot이 바이트코드 값과 핸들러 usr를 준다.
+kartograph routes --role server --project . --service api --graph-file graph.json
+# isthmus trace용 다중 root 역방향 순회(language-traversal v1). route-call을 감싼 심볼 전부가 root다.
+kartograph impact --format language-traversal --roots-from routes.json --graph-file graph.json --project .
 kartograph skill --project .
 ```
 
@@ -231,3 +298,99 @@ kartograph는 MIT 라이선스다. 배포본에 내장된 의존성의 저작권
 있습니다. `snapshot --include-paths`로 소스 경로가 있는 스냅샷을 만들어야 브리지 위치와
 인덱스 메서드를 대조할 수 있습니다. Expo·codegen 이벤트·emitter 변수/래퍼는 해석하지 않습니다. Flutter의
 `--events`·`--messages`와 함께 사용할 수 없습니다. 두 기능은 0.11.0부터 제공됩니다. 0.13.0의 generatedAt은 추출 시각이며 source mtime은 선택적 sourceModifiedAt으로 분리합니다. 어느 시각도 compiler freshness를 증명하지 않습니다.
+
+`schema --project <dir> [--format json] [--graph-file <snapshot>] [--jpa-naming <profile>]`(0.17.0부터 제공)는
+isthmus용으로 `"target": "persistence"`인 `bridge-facts` 문서를 냅니다. Kotlin·Java 소스에서 Room
+어노테이션(`@Entity`, `@DatabaseView`, `@Query`, `@ColumnInfo`, `@ForeignKey`, DAO 작업
+어노테이션), `java.sql`/`javax.sql` import가 있는 파일의 JDBC 호출 인자, `JdbcTemplate`·
+`NamedParameterJdbcTemplate`·`JdbcClient`(와 `*Operations` 인터페이스)로 선언된 수신자의 Spring JDBC 호출,
+Exposed `Table` 객체와 DSL 수신자, jOOQ plain-SQL 호출, SQL 모양 문자열 리터럴, SQLDelight `.sq`/`.sqm`
+파일을 스캔합니다. 그 밖의 프레임워크(Ktorm, jdbi, Criteria 문자열 경로)는 지원을 주장하지 않습니다.
+동적·미해석 근거는 `dynamic` 사실과 계량된 limitation으로 보존하고, 빈 스캔은 `"target": null`을 냅니다.
+`--graph-file`은 스냅샷이 fresh일 때만 JVM 심볼 식별자를 붙입니다.
+
+JPA·Spring Data(미출시): 엔티티 매핑(`@Table(name, schema)`, `@Column`, `@JoinColumn(s)`, `@JoinTable`,
+`@AttributeOverride(s)`를 포함한 `@Embedded`/`@Embeddable`, `@DiscriminatorColumn`·`@PrimaryKeyJoinColumn`과 세 상속
+전략, `@ElementCollection`/`@CollectionTable`/`@OrderColumn`, `@Transient`, `@MappedSuperclass`, Java getter property
+access)을 빌드·설정 파일에서 감지한 Hibernate 명명 전략으로 테이블·컬럼 사실로 냅니다. Spring Boot 3(Hibernate 6
+`CamelCaseToUnderscoresNamingStrategy` + `SpringImplicitNamingStrategy`), Spring Boot 4(Hibernate 7
+`PhysicalNamingStrategySnakeCaseImpl` — 숫자 앞에서도 나누고 인용 이름은 그대로 둠), 순수 Hibernate 6·7 기본값을
+구분하며 `--jpa-naming spring-boot-3|spring-boot-4|hibernate-6|hibernate-7`로 고정할 수 있습니다. 버전을 모르면 후보
+조합 사이에서 갈리는 이름만 dynamic이 되고, 사용자 정의 전략(설정 값·전략 클래스·`@Bean`)이나 전역 인용 설정이면
+모든 JPA 이름이 dynamic입니다. 규칙은 실제 Hibernate 6·7 스키마 export로 만든 `fixtures/jpa-naming/vectors.json`과
+대조합니다([실험](experiments/jpa-persistence/README.md)). Spring Data 저장소(제네릭 기반 인터페이스 포함)의 파생 질의 이름
+(Spring Data `PartTree` 속성 경로), `@Query` JPQL(엔티티·별칭 경로를 테이블·컬럼으로 해석), native `@Query` SQL,
+이름 있는 질의, 상속 CRUD 메서드와 `EntityManager`의 `createQuery`/`createNativeQuery`/`createNamedQuery`/`find` 호출도
+읽습니다. `--graph-file`이 있으면 저장소 호출 지점마다 호출 위치의 사실을 내고 호출자 메서드의 JVM id를 owner로
+싣습니다 — 상속 CRUD 메서드에는 프로젝트 정점이 없어서, 핸들러의 정방향 `reach`가 확실히 포함하는 신원은 호출자뿐이기
+때문입니다. 이 문서를 `reach`·`impact --format language-traversal`에 `--persistence-facts <file>`로 주면, 호출 줄에서
+호출자에 귀속된 상속 Spring Data 저장소 호출은 `unresolvedCalls`에서 빠집니다(`persistence-modeled-calls:`가 수를 알립니다).
+모델링하지 않은 매핑, 해석하지 못한 질의 경로, JPA가 아닌 저장소는 추측하지 않고 limitation으로 셉니다.
+
+`routes --role client --project <dir> [--wrappers <http-wrappers.json>] [--include-tests] [--service <name>] [<source-root>...]`
+(미출시)는 isthmus http 도메인용으로 `"target": "http"`, `"roles": ["client"]`인 `bridge-facts` 문서를
+냅니다. `route-call` 사실마다 HTTP 동사(또는 `methodDynamic`), 정규 경로 템플릿(또는 증명된
+`channelPrefix`를 단 `dynamic` 사실), `pathAnchor`, 호출식 위치를 싣습니다. isthmus `http-wrappers` v1
+파일에 선언한 래퍼 호출(`"language": "kotlin"` 항목만), 같은 함수에서 여는 `java.net.URL` 요청 중
+경로와 동사를 증명할 수 있는 것, Kotlin·Java의 Retrofit 동사 어노테이션(명명 요소, `@HTTP`, 완전한 이름
+`@retrofit2.http.*`)을 인식합니다. Retrofit 경로는 OkHttp가 적용하는 RFC 3986 해석을 따릅니다 — `/x`는 root,
+`x`는 base URL 기준이고 `.`·`..` 세그먼트는 지웁니다. `@Url`, `@Path(encoded = true)`, 미상 base 경로 위로 올라가는
+`..`, 다른 파일에 선언한 어노테이션 상수는 dynamic으로 남깁니다. 합성 서비스 코퍼스에서 Retrofit 2.12.0이 OkHttp MockWebServer에 보낸
+요청과 템플릿이 일치합니다([experiments/phase4-retrofit](experiments/phase4-retrofit/README.md)). 문자열은
+리터럴, 같은 파일 상수(Java 인터페이스 필드 포함), 세그먼트 전체를 채우는 Kotlin 템플릿 보간, query 꼬리(리터럴 `?` 또는 `?`로
+시작함을 증명한 끝 지역 변수)까지 해석합니다. 리터럴 URL의 userinfo·query·fragment는 떼고 고엔트로피·
+웹훅 세그먼트는 가립니다. 테스트 소스 세트는 `--include-tests`가 없으면 제외하고, 주면 `testSource`로
+표시합니다. 그 밖의 클라이언트(OkHttp, Ktor 등), 낡은 래퍼 선언, 선언되지 않은 싱크는 추측한 사실 대신
+limitation으로 남깁니다.
+Retrofit base URL은 각 서비스 인터페이스를 만드는 곳을 따라가 결합합니다: `Retrofit.Builder()…baseUrl(x)…build().create(Api::class.java)`
+(`Api.class`, `create<Api>()`, `Class<T>`·reified 생성 함수 포함)를 지역 `val`, 속성(`= …`, `by lazy`, getter, `var`·Java 필드의
+모든 대입), 함수 몸체, 한정자가 맞는 Dagger/Hilt `@Provides` provider(`@Inject` 생성자·필드, `@Provides` 매개변수), Koin
+`single`·`factory`와 `get()`까지 따라갑니다. base가 리터럴(문자열, 템플릿, 같은 파일·다른 파일 상수, 읽기 전용 속성, `HttpUrl` 래퍼,
+가장 가까운 모듈의 저장소 안 `buildConfigField` 리터럴)로 풀리면 `authority`와 위 RFC 3986 규칙으로 결합한 `root` 템플릿을
+냅니다(`users/{id}` + `https://h/v1/` → `/v1/users/{}`, `/x`는 `/x`). base가 여럿이면 base마다 사실 하나입니다. 풀지 못하면
+`pathAnchor: base`를 유지하고 Retrofit 인스턴스를 담은 선언의 소스 한정 id(`kt:<pkg>.<Type>.<member>`)를 `baseRef`로 실어
+workspace link `match.baseRefs`로 귀속할 수 있게 하며, 그 서비스 수를 `unresolved-base-url:`로 셉니다. 실행 시점 값, 모호한 DI
+결합은 authority를 만들지 않습니다. 테스트 소스의 `create`는 보지 않습니다.
+OkHttp 요청 재작성(`url-rewrite-interceptors:`)은 그 재작성이 붙었음을 증명한 client를 쓰는 Retrofit 인스턴스의 base만 버립니다.
+URL을 바꾸는 인터셉터(class·object·람다·익명 객체)를 닿는 `addInterceptor`·`addNetworkInterceptor` 호출까지, Retrofit
+`client(…)`·`callFactory(…)`를 OkHttpClient(빌더 사슬, `newBuilder()` 복사본, 빌더 지역 변수, `@Provides`, Koin)까지 따라갑니다.
+URL을 유지함을 증명하지 못한 `Authenticator`·`EventListener`와 직접 구현한 `Call.Factory`도 재작성으로 봅니다. 그런 인스턴스는
+한계를 따로 받고, 모든 재작성이 scheme·host·port만 바꿈을 증명하면 숨은 요청의 상한을 호출 측 `limitationScopes`로 싣습니다.
+재작성이나 base를 푼 인스턴스의 client를 하나라도 결합하지 못하면(인터셉터 목록, 다른 곳에 넘긴 빌더, 어디에도 붙지 않은 재작성)
+이전처럼 모든 base를 버립니다.
+`--graph-file`이 있으면 Retrofit 사실의 `symbol.usr`는 어노테이션을 선언한 서비스 인터페이스 메서드입니다(상속 메서드는 그것을
+선언한 상위 인터페이스). 호출 지점이 이 메서드를 부르므로 역방향 순회(`impact --format language-traversal --roots-from`)가
+하위 인터페이스로 부른 호출을 포함해 모든 호출자에 닿습니다.
+JVM 신원을 붙이지 못한 사실은 `missing-route-usrs:`로 세고, source 경로에서 드러나면 snapshot과 routes의
+`--project` 불일치를 밝힙니다.
+
+`routes --role server --project <dir> [--graph-file <snapshot> [--input-bindings <file>]] [--service <name>] [--include-tests] [<source-root>...]`
+(미출시)는 `"roles": ["server"]`, `"dispatch": "specificity"` 문서에 Spring MVC·WebFlux 핸들러 매핑마다 `route-decl`
+사실을 냅니다. `@Controller` class의 `@RequestMapping`·`@GetMapping`…`@PatchMapping`·`@HttpExchange`/`@GetExchange`…,
+이들로 메타 어노테이션한 사용자 어노테이션(`@AliasFor`), 인터페이스·상위 class에서 물려받은 매핑, 클래스×메서드 경로,
+동사 없는 매핑의 `ANY`를 다룹니다. 신선한 `--graph-file`이 있으면 snapshot class root의 어노테이션 값(컴파일러가 이미
+접은 상수)을 쓰고 `symbol.usr`는 `impact`·`reach`와 같은 핸들러 JVM id입니다. 위치는 항상 소스의 어노테이션 토큰입니다.
+저장소 안 기본 프로필 설정으로 `server.servlet.context-path`·`spring.webflux.base-path`와 `${key:default}` 플레이스홀더를
+풉니다(기본값만 쓴 경우 `configDefault`). 사실에는 `trailingSlash`(Spring Boot 3 이상 `strict`, Boot 2 `optional`, 모르면
+생략), `narrowed`, 정규식 경로 변수의 `paramConstraints`, `/**`·`{*path}`의 catch-all 접두사 펼침을 싣습니다. 풀지 못한
+경로는 `dynamic`으로 남기고, Spring이 빈 값으로도 맞추는 자리(끝 `*`, 부분 세그먼트 변수)는 빈 값 변형 사실도 냅니다. 함수형
+라우터, 프레임워크 제공 경로(`/error`, actuator, 정적 리소스 등), 다른 프로필, 확정하지 못한 접두사는 서버 측 limitation으로
+알립니다. 요청 상한을 증명한 제공자에는 isthmus http `limitationScopes`를 붙여(예: `/error`는 모든 method, 정적 리소스는
+`GET`·`HEAD`만) 그 밖의 호출은 error를 판정할 수 있게 합니다. 규칙과 Spring 소스 근거, actuator 오라클 결과(공개 Spring Boot 앱 3개와
+합성 MVC·WebFlux 앱 2개에서 정밀도 100%)는 [Spring 서버 라우트](docs/SPRING-ROUTES.md)에 있습니다.
+
+`impact --format language-traversal`(역방향)과 `reach`(정방향)(미출시)는 isthmus `trace`용 `language-traversal`
+v1 문서를 냅니다. 여러 root를 한 번에 순회해 선언마다 닿는 모든 root, 최단 경로 목격, root별 하한 근거
+등급(`direct`·`bound`·`candidate`), `unresolvedCalls`를 싣습니다. 람다·익명 class 본문은 캡처한 `EnclosingMethod`
+사실로 감싼 선언에 속하므로 `FunctionN`/SAM `invoke` fan-out은 기본으로 따르지 않습니다
+(`--dispatch direct|bound|candidates|all`, 기본 `candidates`). `revision`은 `--revision <rev>`를 주면 그 값, 없으면
+snapshot의 revision 라벨, 그것도 없으면 프로젝트 디렉터리에 커밋하지 않은 변경·추적되지 않은 파일이 없을 때만 git
+`HEAD`입니다(아니면 생략해 isthmus가 고친 소스의 분석을 최신으로 보지 않게 합니다). `graphRevision`은 그래프 내용
+(정점 id·종류, 간선 종류·출처, 근거 등급, 어휘적 소속, 위치 제외)의 `sha256:` 해시라 한 snapshot의 역방향·정방향 문서가
+같은 값을 냅니다. 제어 문자(C0·DEL·C1·U+2028·U+2029)가 든 root와 `--revision`은 isthmus가 거부하므로 종료 코드
+64로 막습니다. 받은 람다를 실행하거나 그대로 넘기는 함수(예: `onClick` 콜백을 실행하는 UI 섹션)는 람다 본문에
+`callback` 근거로 이어지며(실행이 모두 프로젝트 안이면 `bound`, 라이브러리 코드에 넘기거나 값이 빠져나가면 `candidate`),
+그 호출 문맥에서만 목록에 오르고 다른 호출자로 퍼지지 않습니다. 테스트 소스 선언(`src/test`·`src/androidTest` 등)은
+별도 프로그램으로 보고 기본으로 순회하지 않으므로 `bound` 판정은 production 구현만 셉니다(`--include-tests`로 포함).
+snapshot 입력은 `routes`처럼 신선도를 확인합니다(project 밖 입력은 `--input-bindings`). 기본 `impact` 출력은 바뀌지 않습니다.
+[변경 영향](docs/IMPACT.md#isthmus-trace용-순회-문서-language-traversal-v1)을 참고하세요.

@@ -1,0 +1,69 @@
+{
+  "dispatch": "specificity",
+  "facts": [
+    {
+      "channel": "/api/users/{}",
+      "dynamic": false,
+      "kind": "route-decl",
+      "location": {
+        "column": 5,
+        "line": 18,
+        "path": "src/main/kotlin/dev/kartograph/e2e/users/UsersApplication.kt"
+      },
+      "method": "GET",
+      "pathAnchor": "root",
+      "symbol": {
+        "qualifiedName": "dev.kartograph.e2e.users.UsersController.user",
+        "usr": "method:dev/kartograph/e2e/users/UsersController#user(Ljava/lang/String;)Ljava/lang/String;"
+      },
+      "trailingSlash": "strict"
+    }
+  ],
+  "format": "bridge-facts",
+  "generatedAt": "2026-01-01T00:00:00Z",
+  "limitationScopes": [
+    {
+      "limitationIndex": 0,
+      "templates": [
+        "/error"
+      ]
+    },
+    {
+      "limitationIndex": 1,
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "templatePrefixes": [
+        "/"
+      ]
+    },
+    {
+      "limitationIndex": 2,
+      "templates": [
+        "/"
+      ]
+    }
+  ],
+  "limitations": [
+    "framework-provided-routes: error endpoint (/error) accepts every method; no project declaration and no synthetic route-decl facts are emitted",
+    "framework-provided-routes: static resources and webjars (/**) may be served for GET and HEAD; no project declaration and no synthetic route-decl facts are emitted",
+    "framework-provided-routes: welcome page handlers may answer the root path (/); no project declaration and no synthetic route-decl facts are emitted",
+    "graph-file-freshness-unverified: build-scope-mismatch;missing-build-witness;unwitnessed-class-root"
+  ],
+  "platform": "kotlin",
+  "project": "/e2e/users-service",
+  "roles": [
+    "server"
+  ],
+  "sourceModifiedAt": "2026-01-01T00:00:00Z",
+  "sourceSets": {
+    "tests": "excluded"
+  },
+  "target": "http",
+  "tool": {
+    "name": "kartograph",
+    "version": "0.17.0"
+  },
+  "version": 1
+}

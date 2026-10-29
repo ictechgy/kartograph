@@ -1,0 +1,65 @@
+{
+  "review": "GLM corrected-scope review, before any of the16 main trials",
+  "items": [
+    {
+      "id": "F1",
+      "decision": "rejected",
+      "evidence": "WitnessSpec.observe fingerprints only observed compiler files; optional set membership does not add inputs. Four actual main witness readbacks contain no test output watches. Full snapshot correctly includes test graph outputs."
+    },
+    {
+      "id": "F2",
+      "decision": "scope-existing",
+      "evidence": "JDK17/21 compiler lib/modules is required, never made optional by this fix. JDK8 compiler capture is not claimed."
+    },
+    {
+      "id": "F3",
+      "decision": "confirmed-nonissue",
+      "evidence": "ContentFingerprint.put hashes each UTF8 value with a four-byte byte-length prefix before contents."
+    },
+    {
+      "id": "F4",
+      "decision": "rejected",
+      "evidence": "JVM/Kotlin method names cannot contain dot. Actual Kotlin2.0.10 probe rejects a.b and all four source inventories contain zero dotted function names."
+    },
+    {
+      "id": "F5",
+      "decision": "fixed",
+      "evidence": "Removed source lines include a function start/signature; insertions before another declaration remain distinct. Two regressions added. All four oracle documents stayed byte-identical."
+    },
+    {
+      "id": "F6",
+      "decision": "scope-recorded",
+      "evidence": "Local functions and local-class methods are outside current source-alias mapping; no current primary oracle declaration has that form. Non-mapping is not proof of compiler generation."
+    },
+    {
+      "id": "F7",
+      "decision": "confirmed",
+      "evidence": "Actual Kotlin2.0.10 module-name eval-public emits value$eval_public; only known kotlin_module suffix plus owner/arity/line is accepted."
+    },
+    {
+      "id": "F8",
+      "decision": "fixed-reporting-contract",
+      "evidence": "Protocol requires per-case interpretation and separates test-suite discovery from call-graph anchors; no single aggregate impact-detection claim."
+    },
+    {
+      "id": "F9",
+      "decision": "clarified",
+      "evidence": "Exact allowed fence grammar stated; invalid error breakdowns reported per arm."
+    },
+    {
+      "id": "F10",
+      "decision": "rejected",
+      "evidence": "Invalid response format does not abort trials. An actual dispatcher unit test records invalid then valid responses and completes; only infrastructure/input integrity failures stop."
+    },
+    {
+      "id": "F11",
+      "decision": "confirmed",
+      "evidence": "Primary and non-primary coverage remain separate; oracle agreement not false-positive precision."
+    },
+    {
+      "id": "F12",
+      "decision": "confirmed",
+      "evidence": "Frozen transport.SYSTEM is read-only safety/source-evidence guidance, with no oracle/output semantics; v5 appends the same JSON-only instruction in both arms."
+    }
+  ]
+}

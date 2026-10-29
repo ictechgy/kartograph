@@ -60,9 +60,10 @@ internal object CacheIdentity {
     private val types = listOf(
         ClassFileIndexer::class.java, FactsVisitor::class.java, ClassFacts::class.java,
         ClassRuntimeObservation::class.java, ClassFactsCodec::class.java,
-        KotlinMetadataEnricher::class.java, RuntimeValueAnalyzer::class.java, JvmNodeId::class.java,
-        CodeGraph::class.java, GraphNode::class.java, GraphEdge::class.java, ExternalCall::class.java,
-        NodeKind::class.java, NodeAttribute::class.java, JvmModifier::class.java,
+        KotlinMetadataEnricher::class.java, RuntimeValueAnalyzer::class.java, JvmNodeId::class.java, CallbackFactScanner::class.java,
+        CallbackArgument::class.java, ParameterUse::class.java, ParameterUseKind::class.java, LambdaEscape::class.java,
+        CodeGraph::class.java, GraphNode::class.java, KotlinDefaultBridge::class.java, GraphEdge::class.java, ExternalCall::class.java,
+        NodeKind::class.java, NodeAttribute::class.java, JvmModifier::class.java, EnumConstantIds::class.java,
         EdgeKind::class.java, EdgeOrigin::class.java, InvocationKind::class.java, CallResolution::class.java,
         ClassReader::class.java, MethodNode::class.java,
         org.objectweb.asm.tree.analysis.Analyzer::class.java, KotlinClassMetadata::class.java, kotlin.Unit::class.java,
@@ -122,7 +123,7 @@ internal class CacheFormatException(cause: Throwable? = null) : IOException("inv
 /** 제한된 ClassFacts 포맷. 선택된 고유 메서드 본문은 ASM classfile 한 벌로 보관한다. */
 internal object ClassFactsCodec {
     private const val MAGIC = 0x4b584332
-    private const val VERSION = 4
+    private const val VERSION = 10
     private const val MAX_METHOD_BYTES = 4 * 1024 * 1024
     private const val MAX_LIST_ITEMS = 1_000_000
     private const val MAX_STRING_BYTES = 65_535
@@ -155,6 +156,10 @@ internal object ClassFactsCodec {
         writeList(f.fieldWriteMethods) { writeString(it.value) }
         writeList(f.constantStringFields.entries) { writeString(it.key.value); writeString(it.value) }
         writeBodies(f)
+        writeNullable(f.enclosingDeclaration?.value)
+        writeList(f.callbackArguments) { writeCallbackArgument(it) }
+        writeList(f.parameterUses) { writeParameterUse(it) }
+        writeList(f.lambdaEscapes) { writeString(it.caller.value); writeString(it.lambda.value); writeEnum(it.kind) }
     }
 
     private fun DataInputStream.readFacts(): ClassFacts {
@@ -162,7 +167,28 @@ internal object ClassFactsCodec {
         val nodes = readList { readNode() }; val edges = readList { readEdge() }; val calls = readList { readCall() }
         val writes = readSet { NodeId(readString()) }; val constants = readMap { NodeId(readString()) to readString() }
         val bodies = readBodies(name)
-        return ClassFacts(name, nodes, edges, enclosing, runtime, calls, bodies.runtime, bodies.returns, writes, bodies.fields, constants)
+        val enclosingDeclaration = readNullable()?.let(::NodeId)
+        val callbackArguments = readList { readCallbackArgument() }
+        val parameterUses = readList { readParameterUse() }
+        val lambdaEscapes = readList { LambdaEscape(NodeId(readString()), NodeId(readString()), readEnum<ParameterUseKind>()) }
+        return ClassFacts(name, nodes, edges, enclosing, runtime, calls, bodies.runtime, bodies.returns, writes, bodies.fields, constants,
+            enclosingDeclaration, callbackArguments, parameterUses, lambdaEscapes)
+    }
+
+    private fun DataOutputStream.writeCallbackArgument(a: CallbackArgument) {
+        writeString(a.caller.value); writeString(a.callee.value); writeEnum(a.invocation); writeInt(a.argument); writeString(a.lambda.value); writeNullable(a.samMethod)
+    }
+    private fun DataInputStream.readCallbackArgument() =
+        CallbackArgument(NodeId(readString()), NodeId(readString()), readEnum<InvocationKind>(), readInt(), NodeId(readString()), readNullable())
+    private fun DataOutputStream.writeParameterUse(u: ParameterUse) {
+        writeString(u.method.value); writeInt(u.parameter); writeEnum(u.kind); writeNullable(u.target?.value)
+        writeBoolean(u.invocation != null); u.invocation?.let { writeEnum(it) }; writeInt(u.position ?: -1)
+    }
+    private fun DataInputStream.readParameterUse(): ParameterUse {
+        val method = NodeId(readString()); val parameter = readInt(); val kind = readEnum<ParameterUseKind>(); val target = readNullable()?.let(::NodeId)
+        val invocation = if (readBoolean()) readEnum<InvocationKind>() else null
+        val position = readInt().let { if (it == -1) null else it }
+        return ParameterUse(method, parameter, kind, target, invocation, position)
     }
 
     private fun DataOutputStream.writeBodies(f: ClassFacts) {
@@ -228,10 +254,22 @@ internal object ClassFactsCodec {
         writeString(n.id.value); writeString(n.name); writeEnum(n.kind); writeNullable(n.moduleName); writeNullable(n.jvmSignature); writeLocation(n.location)
         writeEnum(n.visibility); writeEnum(n.jvmVisibility); writeList(n.jvmModifiers) { writeEnum(it) }; writeList(n.attributes) { writeEnum(it) }
         writeList(n.annotations) { writeString(it) }; writeList(n.supertypes) { writeString(it) }; writeNullable(n.extensionReceiverType); writeBoolean(n.synthesized)
+        writeNullable(n.kotlinSourceName)
+        writeBoolean(n.kotlinDefaultBridge != null)
+        n.kotlinDefaultBridge?.let { writeString(it.target.value); writeInt(it.valueParameterCount); writeInt(it.maskParameterCount) }
+        writeBoolean(n.enumConstants != null)
+        n.enumConstants?.let { constants -> writeList(constants) { writeString(it.value) } }
     }
-    private fun DataInputStream.readNode() = GraphNode(NodeId(readString()), readString(), readEnum<NodeKind>(), readNullable(), readNullable(), readLocation(), readEnum<Visibility>(), readEnum<Visibility>(), readList { readEnum<JvmModifier>() }.toSet(), readList { readEnum<NodeAttribute>() }.toSet(), readList { readString() }.toSet(), readList { readString() }.toSet(), readNullable(), readBoolean())
-    private fun DataOutputStream.writeEdge(e: GraphEdge) { writeString(e.source.value); writeString(e.target.value); writeEnum(e.kind); writeInt(e.weight); writeEnum(e.origin) }
-    private fun DataInputStream.readEdge() = GraphEdge(NodeId(readString()), NodeId(readString()), readEnum<EdgeKind>(), readInt(), readEnum<EdgeOrigin>())
+    private fun DataInputStream.readNode() = GraphNode(NodeId(readString()), readString(), readEnum<NodeKind>(), readNullable(), readNullable(), readLocation(), readEnum<Visibility>(), readEnum<Visibility>(), readList { readEnum<JvmModifier>() }.toSet(), readList { readEnum<NodeAttribute>() }.toSet(), readList { readString() }.toSet(), readList { readString() }.toSet(), readNullable(), readBoolean(), kotlinSourceName = readNullable(),
+        kotlinDefaultBridge = if (readBoolean()) KotlinDefaultBridge(NodeId(readString()), readInt(), readInt()) else null,
+        enumConstants = if (readBoolean()) readList { NodeId(readString()) } else null)
+    private fun DataOutputStream.writeEdge(e: GraphEdge) {
+        writeString(e.source.value); writeString(e.target.value); writeEnum(e.kind); writeInt(e.weight); writeEnum(e.origin)
+        writeList(e.callSiteLines) { writeInt(it) }
+    }
+    private fun DataInputStream.readEdge() = GraphEdge(
+        NodeId(readString()), NodeId(readString()), readEnum<EdgeKind>(), readInt(), readEnum<EdgeOrigin>(), readList { readInt() },
+    )
     private fun DataOutputStream.writeCall(c: ExternalCall) { writeString(c.caller.value); writeString(c.owner); writeString(c.name); writeString(c.descriptor); writeEnum(c.kind); writeLocation(c.location); writeInt(c.ordinal); writeList(c.resolvedTargets) { writeString(it.value) }; writeEnum(c.resolution); writeNullable(c.model) }
     private fun DataInputStream.readCall() = ExternalCall(NodeId(readString()), readString(), readString(), readString(), readEnum<InvocationKind>(), readLocation(), readInt(), readList { NodeId(readString()) }, readEnum<CallResolution>(), readNullable())
 

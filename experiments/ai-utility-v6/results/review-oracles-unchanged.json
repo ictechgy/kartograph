@@ -1,0 +1,22 @@
+[
+  {
+    "case": "detekt_detekt-6443",
+    "unchanged": true,
+    "sha256": "290b5c25ee8ed3287932c1cbdd2f730cb81583edb8690c7c76551d6faa585c26"
+  },
+  {
+    "case": "detekt_detekt-6352",
+    "unchanged": true,
+    "sha256": "c2cec383f85c3aa211c36dcdf5e61fc9855b37854710c6cbcf874fe36577483a"
+  },
+  {
+    "case": "pinterest_ktlint-2617",
+    "unchanged": true,
+    "sha256": "9605b1cbc6179dcadb6a856a7a9166277db5b373955e8672df40d80f8b3c6d68"
+  },
+  {
+    "case": "pinterest_ktlint-2554",
+    "unchanged": true,
+    "sha256": "b922572564f49a86e3df537774eba36cd8a9954e39c74b3048b36410866b0f5e"
+  }
+]

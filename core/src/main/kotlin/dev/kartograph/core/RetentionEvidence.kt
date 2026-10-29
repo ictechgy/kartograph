@@ -8,6 +8,8 @@ public enum class RetentionReason(public val description: String) {
     KEEP_ANNOTATED_MEMBER("contains a member annotated with androidx.annotation.Keep"),
     KEEP_ANNOTATED_CLASS_MEMBER("member of a class annotated with androidx.annotation.Keep"),
     KEEP_RULE("matched a ProGuard/R8 keep rule"),
+    SHRINKING_DISABLED("retained because -dontshrink disables shrinking of all input declarations"),
+    UNKNOWN_KEEP_RULE("retention is unknown because a keep rule or required hierarchy was not resolved"),
     DEPENDENCY_INJECTION("retained by a supported dependency-injection annotation model"),
     SERIALIZATION("participates in reflection or generated serialization"),
     GENERATED_CODE("generated companion of a retained framework declaration"),

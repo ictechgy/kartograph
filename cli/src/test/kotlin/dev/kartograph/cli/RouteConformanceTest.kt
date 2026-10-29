@@ -1,0 +1,351 @@
+package dev.kartograph.cli
+
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
+import dev.kartograph.core.HttpWrapperArgument
+import dev.kartograph.core.HttpWrapperDeclaration
+import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
+import dev.kartograph.core.RouteLimitationScope
+import dev.kartograph.export.McpJsonCodec
+import dev.kartograph.index.RouteCallScanner
+import dev.kartograph.index.RouteDeclScanner
+import dev.kartograph.index.RouteLimitationScopes
+import dev.kartograph.index.RouteUrlRules
+import dev.kartograph.index.RouteUrlRules.ArgumentValue
+import dev.kartograph.index.RouteUrlRules.CallArgument
+import dev.kartograph.index.RouteUrlRules.ComposedRoute
+import dev.kartograph.index.RouteUrlRules.JoinMode
+import dev.kartograph.index.RouteUrlRules.UrlPart
+import java.nio.file.Path
+import java.security.MessageDigest
+import kotlin.io.path.createDirectories
+import kotlin.io.path.writeText
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.test.fail
+import org.junit.jupiter.api.io.TempDir
+
+/**
+ * isthmus 공유 적합성 벡터(`http-template`·`url-compose`·`http-limitation-scope`·`http-dispatch`)의 생산자 케이스를 kartograph 규칙으로
+ * 실행한다. `producer`와 `producer:kartograph` 케이스를 모두 돌린다 — Spring PathPattern 케이스는 실제 서버 생산자(`RouteDeclScanner`)로,
+ * Spring 클라이언트 base 결합(`spring-*` join) 케이스는 실제 클라이언트 생산자(`RouteCallScanner`)로 낸다.
+ *
+ * 벤더링한 파일의 sha256을 `conformance.lock`과 먼저 대조한다. 생산자 케이스의 규칙 식별자를 모르면
+ * 건너뛰지 않고 실패한다 — 새 규칙이 조용히 미검증으로 남지 않게 하기 위해서다.
+ */
+class RouteConformanceTest {
+    @TempDir
+    lateinit var project: Path
+
+    private fun resource(name: String): ByteArray =
+        requireNotNull(javaClass.getResourceAsStream("/$name")) { "missing vendored conformance file $name" }.use { it.readAllBytes() }
+
+    private fun document(name: String): Map<*, *> = McpJsonCodec.parse(resource(name).toString(Charsets.UTF_8)) as Map<*, *>
+
+    private fun producerCases(name: String): List<Map<*, *>> {
+        val suite = document(name)
+        assertEquals<Any?>("isthmus-conformance", suite["format"])
+        assertEquals<Any?>(1L, suite["version"])
+        return (suite["cases"] as List<*>).map { it as Map<*, *> }
+            .filter { case -> (case["appliesTo"] as List<*>).any { it == "producer" || it == "producer:kartograph" } }
+    }
+
+    @Test
+    fun `vendored vectors match the lock file`() {
+        val lock = document("conformance.lock")
+        assertEquals<Any?>("isthmus-conformance-lock", lock["format"])
+        val files = lock["files"] as Map<*, *>
+        assertEquals<Any?>(setOf("http-dispatch.json", "http-limitation-scope.json", "http-template.json", "url-compose.json"), files.keys)
+        files.forEach { (name, expected) ->
+            val digest = MessageDigest.getInstance("SHA-256").digest(resource(name as String)).joinToString("") { "%02x".format(it) }
+            assertEquals<Any?>(expected, digest, "vendored $name differs from conformance.lock; re-vendor from isthmus")
+        }
+        assertTrue((lock["isthmus"] as Map<*, *>)["commit"].toString().matches(Regex("[0-9a-f]{40}")))
+    }
+
+    @Test
+    fun `http-template producer cases pass`() {
+        val cases = producerCases("http-template.json")
+        cases.forEach { case ->
+            val input = case["input"] as Map<*, *>
+            val expect = case["expect"] as Map<*, *>? ?: emptyMap<String, Any?>()
+            when (case["ruleId"]) {
+                "template.grammar" -> {
+                    val reason = RouteUrlRules.validateTemplate(input["template"] as String)
+                    assertEquals<Any?>(expect["valid"], reason == null, case["id"].toString())
+                    expect["reason"]?.let { assertEquals<Any?>(it, reason, case["id"].toString()) }
+                }
+                "template.normalize" ->
+                    assertEquals<Any?>(expect["template"], RouteUrlRules.normalizePath(input["path"] as String), case["id"].toString())
+                "framework.spring.path-pattern" -> checkSpring(case)
+                else -> fail("unknown producer rule ${case["ruleId"]} in ${case["id"]}; implement it before vendoring")
+            }
+        }
+        assertTrue(cases.size >= 30, "expected the grammar and normalize producer cases, got ${cases.size}")
+        assertEquals(15, cases.count { it["ruleId"] == "framework.spring.path-pattern" }, "every Spring PathPattern case runs")
+    }
+
+    /**
+     * Spring PathPattern 케이스를 합성 Boot 3.5(Spring Framework 6.2) 프로젝트로 만들어 서버 생산자로 낸다. 핸들러 정점이 있는
+     * 그래프를 주어 usr를 붙인다 — catch-all 접두사 표식(`catchAllPrefix`)은 계약상 usr가 있어야 달린다.
+     */
+    private fun checkSpring(case: Map<*, *>) {
+        val id = case["id"].toString()
+        val input = case["input"] as Map<*, *>
+        assertEquals<Any?>("spring-mvc", input["framework"], id)
+        val root = project.resolve(id.replace('/', '-')).createDirectories()
+        root.resolve("build.gradle.kts").writeText(
+            "plugins { id(\"org.springframework.boot\") version \"3.5.5\" }\n" +
+                "dependencies { implementation(\"org.springframework.boot:spring-boot-starter-web\") }\n",
+        )
+        val sources = root.resolve("src/main/java/demo").createDirectories()
+        val classMapping = (input["classMapping"] as String?)?.let { "@RequestMapping(\"${javaString(it)}\")\n" }.orEmpty()
+        sources.resolve("SpringCase.java").writeText(
+            "package demo;\nimport org.springframework.web.bind.annotation.*;\n@RestController\n$classMapping" +
+                "public class SpringCase {\n    @GetMapping(\"${javaString(input["mapping"] as String)}\")\n    public String handler() { return \"\"; }\n}\n",
+        )
+        if (input["matchOptionalTrailingSeparator"] == true) {
+            sources.resolve("PathConfig.java").writeText(
+                "package demo;\nclass PathConfig {\n    void configure(org.springframework.web.util.pattern.PathPatternParser parser) {\n" +
+                    "        parser.setMatchOptionalTrailingSeparator(true);\n    }\n}\n",
+            )
+        }
+        val handler = GraphNode(NodeId("method:demo/SpringCase#handler()Ljava/lang/String;"), "handler", NodeKind.METHOD)
+        val document = RouteDeclScanner(root).scan(generatedAt = "2026-01-01T00:00:00Z", graph = CodeGraph(listOf(handler), emptyList()))
+        val static = document.facts.filter { !it.dynamic }
+        (case["expectLimitation"] as String?)?.let { prefix -> assertTrue(document.limitations.any { it.startsWith(prefix) }, "$id limitation") }
+        if (case["expectDynamic"] == true) {
+            assertTrue(static.isEmpty() && document.facts.any { it.dynamic }, "$id dynamic")
+            return
+        }
+        val expect = case["expect"] as Map<*, *>
+        assertEquals<Any?>((expect["templates"] as List<*>).toSet(), static.mapTo(mutableSetOf()) { it.channel }, "$id templates")
+        (expect["catchAllPrefixTemplates"] as List<*>?)?.let { prefixes ->
+            assertEquals<Any?>(prefixes.toSet(), static.filter { it.routeDecl!!.catchAllPrefix }.mapTo(mutableSetOf()) { it.channel }, "$id catchAllPrefix")
+        } ?: assertTrue(static.none { it.routeDecl!!.catchAllPrefix }, "$id catchAllPrefix")
+        expect["trailingSlash"]?.let { slash -> assertTrue(static.all { it.routeDecl!!.trailingSlash == slash }, "$id trailingSlash") }
+        assertTrue(static.all { it.method == "GET" && it.symbol?.usr == handler.id.value }, "$id method and symbol")
+        assertEquals(1, static.map { it.location }.distinct().size, "$id variants share the handler location")
+    }
+
+    private fun javaString(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"")
+
+    /**
+     * `http-dispatch`의 생산자 케이스는 `order` 검증(`dispatch.validate`)뿐이다. kartograph 서버 문서는 항상 `dispatch: "specificity"`이고
+     * `order`를 싣지 않으며(Spring PathPattern은 구체성 순서로 고른다) 클라이언트 문서에는 `dispatch`가 없어 적용할 대상이 없다.
+     * 다른 생산자 규칙이 더해지면 조용히 넘어가지 않게 실패한다.
+     */
+    @Test
+    fun `http-dispatch producer cases only validate order, which kartograph never emits`() {
+        val cases = producerCases("http-dispatch.json")
+        cases.forEach { case ->
+            if (case["ruleId"] != "dispatch.validate") fail("unknown producer rule ${case["ruleId"]} in ${case["id"]}; implement it before vendoring")
+        }
+        assertEquals(18, cases.size, "expected every http-dispatch producer case")
+    }
+
+    @Test
+    fun `http-limitation-scope producer cases pass`() {
+        val cases = producerCases("http-limitation-scope.json")
+        cases.forEach { case ->
+            val id = case["id"].toString()
+            val input = case["input"] as Map<*, *>
+            val expect = case["expect"] as Map<*, *>
+            @Suppress("UNCHECKED_CAST")
+            val entry = input["scope"] as Map<String, Any?>
+            when (case["ruleId"]) {
+                "scope.validate" -> assertEquals<Any?>(expect["valid"], RouteLimitationScopes.problem(entry) == null, id)
+                "scope.applies" -> {
+                    assertEquals<Any?>(null, RouteLimitationScopes.problem(entry), "$id scope is valid")
+                    val probe = input["probe"] as Map<*, *>
+                    val applies = RouteLimitationScopes.applies(scopeOf(entry), probe["template"] as String, probe["method"] as String?,
+                        probe["pathAnchor"] as String, declaration = probe["side"] == "declaration")
+                    assertEquals<Any?>(expect["applies"], applies, id)
+                }
+                else -> fail("unknown producer rule ${case["ruleId"]} in $id; implement it before vendoring")
+            }
+        }
+        assertEquals(27, cases.size, "expected every http-limitation-scope producer case")
+    }
+
+    private fun scopeOf(entry: Map<String, Any?>): RouteLimitationScope {
+        fun strings(key: String) = (entry[key] as List<*>?).orEmpty().map { it as String }
+        return RouteLimitationScope("probe", strings("templates"), strings("templatePrefixes"), strings("templateSuffixes"), strings("methods"))
+    }
+
+    @Test
+    fun `url-compose producer cases pass`() {
+        val cases = producerCases("url-compose.json")
+        cases.forEach { case ->
+            val id = case["id"].toString()
+            val input = case["input"] as Map<*, *>
+            val expect = case["expect"] as? Map<*, *> ?: emptyMap<String, Any?>()
+            val expectDynamic = case["expectDynamic"] == true
+            when (case["ruleId"]) {
+                "compose.interpolation", "compose.query-tail", "compose.suffix", "compose.normalize" ->
+                    checkComposed(id, RouteUrlRules.compose(parts(input["parts"] as List<*>), JoinMode.PathOnly), expect, expectDynamic, case)
+                "compose.base-join" -> if ((input["join"] as String).startsWith("spring-")) {
+                    checkSpringJoin(id, input, expect, expectDynamic, case["expectLimitation"] as String?)
+                } else {
+                    val composed = RouteUrlRules.compose(listOf(UrlPart.Literal(input["path"] as String)), joinMode(input))
+                    checkComposed(id, composed, expect, expectDynamic, case)
+                }
+                "compose.strip" ->
+                    checkComposed(id, RouteUrlRules.compose(listOf(UrlPart.Literal(input["url"] as String)), JoinMode.PathOnly), expect, expectDynamic, case)
+                "compose.mask" -> {
+                    val (template, count) = RouteUrlRules.mask(input["template"] as String, input["authority"] as String?)
+                    assertEquals<Any?>(expect["template"], template, id)
+                    assertEquals<Any?>(expect["maskedSegments"], count.toLong(), id)
+                }
+                "wrapper.method" -> checkMethod(id, input, expect, expectDynamic)
+                "wrapper.location" -> checkLocation(id, input, expect)
+                else -> fail("unknown producer rule ${case["ruleId"]} in $id; implement it before vendoring")
+            }
+        }
+        assertTrue(cases.size >= 40, "expected every url-compose producer case, got ${cases.size}")
+        assertEquals(13, cases.count { (it["input"] as Map<*, *>)["join"].toString().startsWith("spring-") }, "every Spring base-join case runs")
+    }
+
+    /**
+     * Spring 클라이언트 base 결합 케이스를 합성 Kotlin 소스로 만들어 실제 클라이언트 생산자로 낸다. join마다 클라이언트 모양이 다르다.
+     *
+     * - `spring-uri-builder`: `RestClient.builder().baseUrl(base)`(`DefaultUriBuilderFactory`) 위의 `.uri(path)`
+     * - `spring-root-uri`: Spring Boot `RestTemplateBuilder().rootUri(base)` 위의 `getForObject(path)`
+     * - `spring-http-exchange`: 타입 `@HttpExchange(typeUrl)`·메서드 `@GetExchange(path)` 인터페이스를 `baseUrl(base)` RestClient
+     *   어댑터로 만든 클라이언트
+     *
+     * base가 null이면 설정에 없는 `@Value` 속성으로 base를 공급한다 — 생산자는 값을 모르는 base로 결합해야 한다.
+     */
+    private fun checkSpringJoin(id: String, input: Map<*, *>, expect: Map<*, *>, expectDynamic: Boolean, expectLimitation: String?) {
+        val root = project.resolve(id.replace('/', '-')).createDirectories()
+        val sources = root.resolve("src/main/kotlin/demo").createDirectories()
+        sources.resolve("SpringJoinCase.kt").writeText(springJoinSource(input))
+        val document = RouteCallScanner(root).scan(generatedAt = "2026-01-01T00:00:00Z")
+        // 같은 테스트의 `wrapper.location` 케이스가 [project] 전체를 스캔하므로 합성 Spring 소스를 남기지 않는다.
+        check(root.toFile().deleteRecursively()) { "could not delete the synthetic Spring project $root; remove it and rerun" }
+        // 합성 소스의 호출은 하나뿐이다 — 설정 줄 등에서 사실이 더 나오면 그것도 결함이다.
+        val fact = document.facts.singleOrNull()?.takeIf { it.symbol?.qualifiedName?.endsWith(".call") == true }
+            ?: fail("$id: expected exactly one route-call named call from the synthetic Spring client, got ${document.facts}")
+        assertEquals<Any?>("GET", fact.method, "$id method")
+        assertEquals<Any?>(expectDynamic, fact.dynamic, "$id dynamic")
+        expect["template"]?.let { assertEquals<Any?>(it, fact.channel, "$id template") }
+        expect["pathAnchor"]?.let { assertEquals<Any?>(it, fact.route?.pathAnchor, "$id pathAnchor") }
+        expect["authority"]?.let { assertEquals<Any?>(it, fact.route?.authority, "$id authority") }
+        expectLimitation?.let { prefix -> assertTrue(document.limitations.any { it.startsWith(prefix) }, "$id limitation ${document.limitations}") }
+    }
+
+    /** [checkSpringJoin]의 합성 소스다. 호출(또는 `@HttpExchange` 메서드)의 이름은 항상 `call`이다. */
+    private fun springJoinSource(input: Map<*, *>): String {
+        val base = input["base"] as String?
+        val path = kotlinString(input["path"] as String)
+        val baseExpression = base?.let { "\"${kotlinString(it)}\"" } ?: "baseUrl"
+        val baseParameter = if (base == null) "@Value(\"\\\${demo.base-url}\") private val baseUrl: String" else ""
+        val imports = "import org.springframework.beans.factory.annotation.Value\n"
+        return when (val join = input["join"]) {
+            "spring-uri-builder" -> "package demo\n$imports" + "import org.springframework.web.client.RestClient\n\n" +
+                "class SpringJoinCase($baseParameter) {\n" +
+                "    private val client = RestClient.builder().baseUrl($baseExpression).build()\n" +
+                "    fun call(): String? = client.get().uri(\"$path\").retrieve().body(String::class.java)\n}\n"
+            "spring-root-uri" -> "package demo\n$imports" + "import org.springframework.boot.web.client.RestTemplateBuilder\n\n" +
+                "class SpringJoinCase($baseParameter) {\n" +
+                "    private val template = RestTemplateBuilder().rootUri($baseExpression).build()\n" +
+                "    fun call(): String? = template.getForObject(\"$path\", String::class.java)\n}\n"
+            "spring-http-exchange" -> {
+                val typeUrl = (input["typeUrl"] as String?)?.let { "@HttpExchange(\"${kotlinString(it)}\")\n" }.orEmpty()
+                "package demo\n$imports" + "import org.springframework.web.client.RestClient\n" +
+                    "import org.springframework.web.client.support.RestClientAdapter\n" +
+                    "import org.springframework.web.service.annotation.GetExchange\n" +
+                    "import org.springframework.web.service.annotation.HttpExchange\n" +
+                    "import org.springframework.web.service.invoker.HttpServiceProxyFactory\n\n" +
+                    "${typeUrl}interface SpringJoinApi {\n    @GetExchange(\"$path\")\n    fun call(): String\n}\n\n" +
+                    "class SpringJoinCase($baseParameter) {\n" +
+                    "    private val client = RestClient.builder().baseUrl($baseExpression).build()\n" +
+                    "    val api: SpringJoinApi = HttpServiceProxyFactory.builderFor(RestClientAdapter.create(client)).build()\n" +
+                    "        .createClient(SpringJoinApi::class.java)\n}\n"
+            }
+            else -> fail("unknown Spring join $join")
+        }
+    }
+
+    /** Kotlin 문자열 리터럴 안에 넣을 수 있게 `\\`·`"`·`$`를 이스케이프한다. */
+    private fun kotlinString(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")
+
+    /** 적힌 키만 비교한다(계약의 벡터 비교 규칙). */
+    private fun checkComposed(id: String, composed: ComposedRoute, expect: Map<*, *>, expectDynamic: Boolean, case: Map<*, *>) {
+        assertEquals<Any?>(expectDynamic, composed.dynamic, "$id dynamic")
+        expect["template"]?.let { assertEquals<Any?>(it, composed.template, "$id template") }
+        expect["channelPrefix"]?.let { assertEquals<Any?>(it, composed.channelPrefix, "$id channelPrefix") }
+        expect["queryTailStripped"]?.let { assertEquals<Any?>(it, composed.queryTailStripped, "$id queryTailStripped") }
+        expect["pathAnchor"]?.let { assertEquals<Any?>(it, composed.pathAnchor, "$id pathAnchor") }
+        expect["authority"]?.let { assertEquals<Any?>(it, composed.authority, "$id authority") }
+        (case["expectLimitation"] as String?)?.let { assertEquals<Any?>(it, composed.limitation, "$id limitation") }
+    }
+
+    private fun parts(values: List<*>): List<UrlPart> = values.map { raw ->
+        val part = raw as Map<*, *>
+        when {
+            "literal" in part -> UrlPart.Literal(part["literal"] as String)
+            "value" in part -> UrlPart.Value(part["value"] as String)
+            "queryTail" in part -> UrlPart.QueryTail(part["queryTail"] as String)
+            else -> fail("unknown part shape $part")
+        }
+    }
+
+    private fun joinMode(input: Map<*, *>): JoinMode = when (input["join"]) {
+        "rfc3986" -> JoinMode.Rfc3986
+        "slash-join" -> JoinMode.SlashJoin
+        "dio-concat" -> JoinMode.Concat(input["base"] as String?)
+        else -> fail("unknown join ${input["join"]}")
+    }
+
+    private fun checkMethod(id: String, input: Map<*, *>, expect: Map<*, *>, expectDynamic: Boolean) {
+        val declaration = input["declaration"] as Map<*, *>
+        val arguments = ((input["call"] as Map<*, *>)["args"] as List<*>).map { raw ->
+            val argument = raw as Map<*, *>
+            val value = argument["value"] as Map<*, *>
+            CallArgument(
+                argument["label"] as String?,
+                when {
+                    "literal" in value -> ArgumentValue.Literal(value["literal"] as String)
+                    "enumCase" in value -> ArgumentValue.EnumCase(value["enumCase"] as String)
+                    else -> ArgumentValue.Opaque
+                },
+            )
+        }
+        val method = RouteUrlRules.bindMethod(
+            argumentSpec(declaration["methodArg"] as Map<*, *>?),
+            declaration["defaultMethod"] as String?,
+            (declaration["methodEnum"] as Map<*, *>?).orEmpty().entries.associate { (key, verb) -> key as String to verb as String },
+            arguments,
+        )
+        if (expectDynamic) assertEquals<Any?>(null, method, id) else assertEquals<Any?>(expect["method"], method, id)
+    }
+
+    private fun argumentSpec(value: Map<*, *>?): HttpWrapperArgument? =
+        value?.let { HttpWrapperArgument((it["index"] as Long?)?.toInt(), it["label"] as String?) }
+
+    /** 실제 스캐너로 여러 줄 호출을 읽어 호출식 시작 줄을 보고하는지 확인한다. */
+    private fun checkLocation(id: String, input: Map<*, *>, expect: Map<*, *>) {
+        val callLine = (input["callStartLine"] as Long).toInt()
+        val methodLine = (input["methodArgLine"] as Long).toInt()
+        val pathLine = (input["pathArgLine"] as Long).toInt()
+        val lines = MutableList(pathLine + 3) { "" }
+        lines[0] = "package conformance"
+        lines[callLine - 1] = "fun caller() = request("
+        lines[methodLine - 1] = "    method = \"GET\","
+        lines[pathLine - 1] = "    path = \"/x\","
+        lines[pathLine] = ")"
+        lines[pathLine + 1] = "fun request(method: String, path: String) = path"
+        project.resolve("Conformance.kt").writeText(lines.joinToString("\n") + "\n")
+        val wrapper = HttpWrapperDeclaration(
+            language = "kotlin", kind = "function", owner = "conformance", name = "request",
+            methodArg = HttpWrapperArgument(null, "method"), pathArg = HttpWrapperArgument(null, "path"),
+            defaultMethod = null, methodEnum = emptyMap(), pathAnchor = "root", service = null,
+        )
+        val fact = RouteCallScanner(project, wrappers = listOf(wrapper)).scan(generatedAt = "2026-01-01T00:00:00Z").facts.single()
+        assertEquals<Any?>(expect["line"], fact.location.line.toLong(), id)
+        assertEquals<Any?>("GET", fact.method, id)
+    }
+}

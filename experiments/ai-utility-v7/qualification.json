@@ -1,0 +1,39 @@
+{
+  "status": "qualified-before-models",
+  "cases": [
+    {
+      "case": "threshold",
+      "calls": 3,
+      "behaviorPositive": 3,
+      "behaviorNegative": 4,
+      "tests": 7,
+      "matched": true
+    },
+    {
+      "case": "nulls",
+      "calls": 3,
+      "behaviorPositive": 3,
+      "behaviorNegative": 4,
+      "tests": 7,
+      "matched": true
+    },
+    {
+      "case": "callback",
+      "calls": 5,
+      "behaviorPositive": 3,
+      "behaviorNegative": 3,
+      "tests": 6,
+      "matched": true
+    },
+    {
+      "case": "dispatch",
+      "calls": 1,
+      "behaviorPositive": 3,
+      "behaviorNegative": 4,
+      "tests": 7,
+      "matched": true
+    }
+  ],
+  "preparationSeconds": 44.47693104199425,
+  "sourceUnchanged": true
+}

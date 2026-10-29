@@ -1,0 +1,3 @@
+# 서비스 B다. route는 context-path 없이 `/api/users/{id}`다.
+server:
+  port: 8081

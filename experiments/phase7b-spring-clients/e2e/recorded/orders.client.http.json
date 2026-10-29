@@ -1,0 +1,42 @@
+{
+  "facts": [
+    {
+      "authority": "users.internal:8081",
+      "baseRef": "kt:dev.kartograph.e2e.orders.ClientConfig.usersRestClient",
+      "channel": "/api/users/{}",
+      "dynamic": false,
+      "kind": "route-call",
+      "location": {
+        "column": 42,
+        "line": 29,
+        "path": "src/main/kotlin/dev/kartograph/e2e/orders/OrdersApplication.kt"
+      },
+      "method": "GET",
+      "pathAnchor": "root",
+      "symbol": {
+        "qualifiedName": "dev.kartograph.e2e.orders.UserGateway.fetchUser",
+        "usr": "method:dev/kartograph/e2e/orders/UserGateway#fetchUser(Ljava/lang/String;)Ljava/lang/String;"
+      }
+    }
+  ],
+  "format": "bridge-facts",
+  "generatedAt": "2026-01-01T00:00:00Z",
+  "limitations": [
+    "graph-file-freshness-unverified: build-scope-mismatch;missing-build-witness;unwitnessed-class-root"
+  ],
+  "platform": "kotlin",
+  "project": "/e2e/orders-service",
+  "roles": [
+    "client"
+  ],
+  "sourceModifiedAt": "2026-01-01T00:00:00Z",
+  "sourceSets": {
+    "tests": "excluded"
+  },
+  "target": "http",
+  "tool": {
+    "name": "kartograph",
+    "version": "0.17.0"
+  },
+  "version": 1
+}

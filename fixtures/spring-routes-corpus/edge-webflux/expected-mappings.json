@@ -1,0 +1,100 @@
+{
+  "format": "spring-actuator-mappings-oracle",
+  "version": 1,
+  "recordedWith": "Spring Boot 4.1.0 (Spring Framework 7.0.8), JDK 21, GET /actuator/mappings",
+  "prefix": "/wf",
+  "handlers": [
+    {
+      "className": "edge.flux.ExchangeController",
+      "name": "create",
+      "descriptor": "()Lreactor/core/publisher/Mono;",
+      "methods": [
+        "POST"
+      ],
+      "patterns": [
+        "/ex"
+      ]
+    },
+    {
+      "className": "edge.flux.ExchangeController",
+      "name": "one",
+      "descriptor": "()Lreactor/core/publisher/Mono;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/ex/one"
+      ]
+    },
+    {
+      "className": "edge.flux.ReactiveController",
+      "name": "delete",
+      "descriptor": "()Lreactor/core/publisher/Mono;",
+      "methods": [
+        "DELETE"
+      ],
+      "patterns": [
+        "/r/seg/{id:[0-9]+}",
+        "/reactive/seg/{id:[0-9]+}"
+      ]
+    },
+    {
+      "className": "edge.flux.ReactiveController",
+      "name": "flux",
+      "descriptor": "()Lreactor/core/publisher/Flux;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/r/flux",
+        "/reactive/flux"
+      ]
+    },
+    {
+      "className": "edge.flux.ReactiveController",
+      "name": "methods",
+      "descriptor": "()Lreactor/core/publisher/Mono;",
+      "methods": [
+        "PATCH",
+        "PUT"
+      ],
+      "patterns": [
+        "/r/methods",
+        "/reactive/methods"
+      ]
+    },
+    {
+      "className": "edge.flux.ReactiveController",
+      "name": "mono",
+      "descriptor": "(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/r/mono/{id}",
+        "/reactive/mono/{id}"
+      ]
+    },
+    {
+      "className": "edge.flux.ReactiveController",
+      "name": "tail",
+      "descriptor": "()Lreactor/core/publisher/Mono;",
+      "methods": [
+        "PATCH"
+      ],
+      "patterns": [
+        "/r/rest/{*tail}",
+        "/reactive/rest/{*tail}"
+      ]
+    }
+  ],
+  "frameworkPredicates": [
+    "(GET && /fn)",
+    "/**",
+    "/webjars/**",
+    "{GET /actuator, produces [application/vnd.spring-boot.actuator.v3+json || application/vnd.spring-boot.actuator.v2+json || application/json]}",
+    "{GET /actuator/health, produces [application/vnd.spring-boot.actuator.v3+json || application/vnd.spring-boot.actuator.v2+json || application/json]}",
+    "{GET /actuator/health/{*path}, produces [application/vnd.spring-boot.actuator.v3+json || application/vnd.spring-boot.actuator.v2+json || application/json]}",
+    "{GET /actuator/mappings, produces [application/vnd.spring-boot.actuator.v3+json || application/vnd.spring-boot.actuator.v2+json || application/json]}"
+  ]
+}

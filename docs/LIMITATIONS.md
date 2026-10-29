@@ -6,6 +6,11 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 
 ## 현재 릴리스의 경계
 
+- 실행 JVM과 분석 SDK는 별개다. 기존 index 생성자는 host JDK의 platform header를 사용한다.
+  명시적 `targetJdkHome` 생성자는 해당 SDK의 `jmods`만 읽으며 누락된 platform header를 host로 대체하지 않는다.
+  내용 지문·bounded lazy header·cache 분리·측정 비용은 [명시적 JDK 계약](TARGET-JDK.md)을 본다.
+  CLI/plugin 기본값이나 JVM bytecode target만으로 동일 SDK 분석을 주장하지 않는다.
+
 - Hilt/Dagger의 확인된 생성 marker와 Hilt application sibling은 구분하지만 모든 generator를 인식하지는 않는다.
   protobuf generated wrapper/Kotlin DSL처럼 marker가 없는 생성물은 `--generated-classes`로 생성 전용 컴파일 root를
   명시할 수 있다. 해당 root는 `--classes`에도 포함돼야 한다. Gradle의 같은 입력은 `generatedClassRoots`다.
@@ -81,6 +86,13 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   취급해 보고하지 않으므로(보수적 방향) multi-file top-level은 part 기준으로만 보고된다. inline 함수·property
   접근자·backing field·native 함수·launcher `main`과 private 모드 아닌 private top-level은 보수적으로 보고하지
   않는다. top-level property는 여전히 미사용이어도 보고되지 않는다.
+- JVM operand의 owner가 상속한 멤버를 직접 선언하지 않아도, 제공된 프로젝트 class 사슬 안의 static 호출·직접 superclass
+  `super` 호출과 상속 field 접근은 실제 선언에 연결한다. [JVMS field/method resolution](https://docs.oracle.com/javase/specs/jvms/se21/html/jvms-5.html#jvms-5.4.3.2)
+  규칙에 따라 field는 인터페이스를 superclass보다 먼저 살피며, 같은 이름이라도 JVM descriptor가 다르면 다른 멤버다.
+  가장 가까운 선언을 넘어 먼 ancestor에 연결하지 않는다. 원래 호출 operand와 call-site line·weight는 보존한다.
+  필드 탐색의 관련 hierarchy가 빠졌거나 여러 인터페이스 선언으로 모호하면 대상을 추측하지 않는다. dependency field header,
+  생성자 상속, private 상속, 인터페이스 default `super` 호출은 새 경로에서 복원하지 않는다. virtual 호출은 기존 dispatch
+  후보 모델을 유지하며, 이 보강은 PSI 전체의 대체나 실행 시점의 완전성을 증명하지 않는다.
 - source file과 line은 JVM debug attribute에 의존하므로 누락되거나 같은 basename 때문에 모호할 수 있다.
 - `graph --format json --include-paths`와 Gradle의 `kartographGraph<Variant>`(`includeSourcePaths`)는
   그 source file 이름을 `--project` 안에서 유일하게 일치하는 파일에만
@@ -104,17 +116,98 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   JAR entry 시각은 일반 ZIP의 정밀도를 고려해 2초 구간으로 보수적으로 취급한다. source 시각이 그 구간 안에
   있으면 stale이 아니라 `index-freshness-unknown`이며, 구간 이후의 변경은 계속 stale로 잡는다.
   디렉터리 class 파일은 이 허용 구간을 적용하지 않는다.
+- 직접 bytecode CALL의 `callSiteLines`는 컴파일러 LineNumberTable에서 관측한 줄이다. 깊이 1의
+  `query` 이웃에만 선택적 `references`로 노출하며, 기존 `location`은 선언/호출자 위치다.
+  column·offset은 제공하지 않는다. 파일 경로 해석을 하지 않은 live query의 경로는 SourceFile 이름이다.
+  Kotlin SMAP의 외부 소스·모호한 동명 소스·미매핑 줄 및 identity가 아닌 inline 합성 줄과 bootstrap/method-handle 간선에는 호출부 줄을 붙이지 않는다.
+  새 snapshot은 빈 근거 배열도 캡처 여부로 구분하며, 필드가 없는 옛 snapshot은 `call-site-lines:` 한계를 싣는다.
 - `snapshot`은 생성 시점의 그래프·보존 근거·baseline 상태·측정 한계를 고정한다. `query --graph-file`은
   원본 class/source/규칙 파일을 읽지 않으며 `saved-graph` 한계를 추가한다. 현재 source와 일치하는지는 확인하지
   않으므로 변경 후에는 새 snapshot을 만든다. live 입력이나 baseline을 섞어 저장된 의미를 바꿀 수 없다.
   일반 `graph --format json` 문서에는 보존 문맥이 없으므로 질의 snapshot으로 읽지 않는다. 입력은 UTF-8 JSON,
-  기본 64 MiB이며 `--snapshot-max-mib`로 명시한 경우 최대 128 MiB다. 지원하지 않는 버전·손상·중복 정점·dangling edge를 오류로 거부한다.
+  기본 64 MiB이며 `--snapshot-max-mib`로 명시한 경우 최대 1024 MiB다. 출력도 인코딩 중 같은 byte 상한으로 제한한다. 지원하지 않는 버전·손상·중복 정점·dangling edge를 오류로 거부한다.
 - `snapshot --compact` v2는 반복 문자열과 graph 행을 인덱스로 저장한다. 사실을 생략하지 않으며 v1도 계속 읽는다.
   `--revision`/`--scope`는 호출자의 입력 라벨이고 내용 지문이나 빌드 신선도 증명이 아니다.
 - `impact`는 잠재적 사용/계약 의존을 역방향으로 조사하며 실제 동작 변화나 테스트 생략을 승인하지 않는다.
   삭제/rename을 조사할 때는 같은 analyzer·입력 범위로 만든 base/current snapshot이 필요하다.
   보존만 됐다는 사실은 호출자 근거가 아니다. 범위가 큰 클래스/파일 변경은 많은 후보를 만들 수 있으며, 출력·깊이·방문·경로
   예산에 따른 잘림과 불명확한 파일 매핑을 보고한다. [영향 점검 계약](IMPACT.md)을 따른다.
+- `impact --format language-traversal`과 `reach`의 `bound` 등급은 분석한 class가 프로젝트 타입의 구현을 모두 담는다는
+  닫힌 세계 가정에 기댄다. 런타임 proxy·mock·snapshot 밖 class는 모델링하지 않는다. 기본 `--dispatch candidates`는
+  `FunctionN`/SAM 콜백 fan-out을 따르지 않고 람다 본문을 `EnclosingMethod` 소속으로만 잇는다. 받은 람다를 실행하거나
+  그대로 넘기는 함수는 bytecode 값 흐름으로 증명한 경우에만 `callback` 간선으로 잇는다(호출 문맥 안에서만 목록에 싣고
+  그 함수의 다른 호출자로 퍼뜨리지 않는다). 필드·생성자·class 기반 클로저·suspend continuation을 거친 콜백, 객체를 반환하는
+  라이브러리 호출을 거친 별칭, 구현이 둘 이상인 인터페이스로 넘긴 람다, `ComposableSingletons` 필드의 composable 람다는
+  추적하지 않으며 `callback-flow-unresolved:`로 수만 알린다. 이런 콜백의 호출 측은 `--dispatch all`에서만 보인다.
+  테스트 소스 선언은 기본으로 순회하지 않으며 소스 경로 규칙(`src/test`·`src/androidTest`·`src/testFixtures` 등)으로만
+  가린다. 관례 밖 source set, 생성된 테스트 코드, main source에 둔 테스트 도우미 모듈은 production으로 남아 `bound`를
+  약하게 만들 수 있다. production이 테스트 선언을 참조하는 그래프는 전체를 순회한다(`test-sources-included:`).
+  `--class-hops member-only`는 멤버 변경이 콜백 모델로 소유 class에 오른 뒤 그 class를 이름만 적은 선언으로 퍼지지
+  않게 한다. 프레임워크가 class literal·reflection·DI로 class 전체를 얻어 쓰는 경로는 추적한 생성자 호출이 없으면 빠지며
+  `class-hops-narrowed:`로 따르지 않은 간선 수를 알린다. 기본 `all`은 이 경로를 모두 따른다.
+  라이브러리 코드에 넘긴 콜백(대부분의 Compose UI 함수)은 실행을 증명하지 못해 `candidate`다. 콜백 간선은 정방향
+  `reach`에서 따르지 않는다. `unresolvedCalls`는 kartograph가 관측한 미해석 dispatch·미해석 reflection 모델·모델 없는
+  invokedynamic만 세며 모든 런타임 경로를 안다고 주장하지 않는다.
+  `revision`을 git `HEAD`에서 자동으로 채울 때는 저장한 snapshot을 지금 작업 트리에서 캡처했다고 가정한다. 다른
+  커밋에서 캡처한 snapshot은 `snapshot --revision` 라벨이나 `--revision`으로 revision을 명시한다.
+  어휘적 소속 사실(`graph.enclosures`)이 없는 옛 snapshot은 람다 후보를 `candidate`로 따라가므로 결과가 넓다.
+- `routes --graph-file`이 사실에 JVM 신원을 붙이지 못하면 `missing-route-usrs:`로 수를 세고, source 경로가 공통 접두사만큼
+  어긋나면 snapshot과 routes의 `--project` 불일치(`project-root-mismatch:`)를 밝힌다. 경로 비교로 찾지 못하는 원인은
+  일반 문구로만 남는다.
+- Retrofit 사실의 신원은 소스에서 복원한 소유 타입·메서드 이름·동사 어노테이션이 같고 같은 파일 경로에 있는 snapshot 정점이
+  하나일 때만 붙는다. 같은 이름·동사의 overload는 소스 매개변수 수로 가르고, 그래도 여럿이면 신원을 붙이지 않는다. 값 class
+  매개변수로 바뀐 JVM 이름(`name-<hash>`)은 같은 선언으로 본다. 하위 인터페이스를 수신 타입으로 부른
+  상속 추상 메서드에는 JVM 인터페이스 메서드 해석이 고르는 선언으로 `call` 간선을 더한다. 수신 타입이 인터페이스일 때만이고
+  (추상 class 사슬은 dispatch 모델만 따른다), 선언과 호출이 같은 snapshot에 있어야 한다 — 모듈별 snapshot을 `snapshot merge`로
+  합치면 다른 모듈의 상위 인터페이스로 가는 간선은 생기지 않는다. 이 간선은 선언 정점에서 모든 override로 퍼지므로 정방향
+  순회가 수신 타입의 하위가 아닌 구현까지 넓게 닿을 수 있다. 실행 대상 해석(`external-dispatch`)은 바꾸지 않는다.
+- Retrofit base URL 결합은 소스 어휘 해석이다. 서비스를 만드는 `create` 호출의 수신 식을 같은 식의 빌더 사슬·지역 `val`·속성·함수
+  몸체·`@Provides`(한정자 일치)·Koin 정의까지만 따라가며, 매개변수로 받은 Retrofit은 `@Provides`·`@Inject` 문맥일 때만 DI로 푼다.
+  같은 한정자의 provider가 둘 이상이면(다른 컴포넌트) 고르지 않는다. 오버로드된 팩토리 함수, 확장 함수 수신 객체(`fun Retrofit.x()`),
+  `with(retrofit) { create(…) }`, Dagger `@Binds`·다중 모듈 컴포넌트 그래프, Koin `named` 밖의 한정자·스코프는 모델링하지 않아
+  base 앵커로 남는다. `BuildConfig` 값은 가장 가까운 모듈 빌드 파일의 `buildConfigField` 리터럴만 읽는다(`gradle.properties`·환경
+  변수·`local.properties`·빌드 스크립트 계산 값은 모름). 값이 여럿이면(빌드 타입·flavor) base마다 사실을 내므로 한 빌드에서는 그중
+  하나만 실제로 쓰인다. authority는 OkHttp `HttpUrl`처럼 scheme 기본 포트(http 80·https 443)를 지우고, 범위 밖이거나 0으로
+  시작하는 포트의 base는 풀지 않는다(isthmus 계약의 기본 포트 정규화는 미결이라 다른 생산자와 표기가 다를 수 있다). `baseRef`는 JVM 정점 id가 아니라 소스 한정 이름(`kt:` 접두사)이다.
+- URL을 바꾸는 OkHttp 재작성도 어휘로만 센다 — `intercept` 함수 몸체, `Interceptor { … }` 람다, `addInterceptor { … }` 블록·부착 호출의
+  인자 괄호(Java 람다), Java `Interceptor x = …` 초기식 안의 `newBuilder()` 뒤 `url`·`host`·scheme·port·경로 변경(`apply { … }` 포함)과
+  새 요청 생성(`Request.Builder()`·`Request(…)`), 그리고 원래 요청(`chain.request()`)이나 그 `newBuilder()` 사본이 아닌 요청을 넘기는
+  `chain.proceed(x)`다. 인터셉터 문맥 밖 헬퍼 함수로 옮긴 재작성(그 결과를 proceed하지 않는 경우)과 라이브러리 인터셉터는 보지 못한다. 재작성 개체(class·
+  object와 그 하위 타입·람다·익명 객체)가 만들어지는 모든 곳에서 부착 호출(`addInterceptor`·`addNetworkInterceptor`)까지 값의 흐름을
+  따라가고(생성·지역·속성 변수의 모든 참조·함수 반환값의 모든 호출·같은 타입의 `@Provides` 주입 지점), Retrofit `client(…)`·
+  `callFactory(…)`의 client를 base와 같은 DI 규칙으로 풀어(빌더 사슬·`newBuilder()` 복사본·다른 곳에 넘기지 않은 빌더 지역 변수) 재작성이
+  붙은 client를 쓰는 인스턴스의 base와 전체 URL 어노테이션의 host만 버린다. `Authenticator`·`EventListener`는 `NONE`이나 몸체에 재작성이
+  없고 프로젝트 상위 타입이 없는 구현만(`Authenticator`는 돌려주는 요청이 모두 `null`·`response.request()` 계열일 때만) 요청을 바꾸지
+  않는 것으로 보고, OkHttpClient임을 증명하지 못한 `callFactory`는 재작성으로 본다.
+  흐름을 하나라도 증명하지 못하면 — 목록·반복문·다른 함수 인자·래퍼로 넘긴 인터셉터, `interceptors()` 목록 조작, 매개변수로 받은 빌더·
+  확장 함수 안의 부착, 어디에도 붙지 않은 재작성, `@Provides`가 상위 타입(`Interceptor`)으로 돌려준 인터셉터, `@Binds`·다중 바인딩,
+  메서드 참조, 원천을 모르는 client로 base를 푼 인스턴스 — #123처럼 프로젝트의 모든 Retrofit base를 버리고 개수만 센다. 인스턴스별
+  `url-rewrite-interceptors:`의 호출 측 limitation 스코프는 모든 재작성이 원래 요청 URL의 `newBuilder()` 사본에서 authority·query만 바꿈을
+  증명하고 그 인스턴스의 모든 사실의 경로를 알 때만 싣는다(base를 알던 경로는 root 템플릿, 모르던 상대 경로는 접미사). 재작성 뒤 요청이
+  가는 host는 모르므로 버린 base를 공급하던 인스턴스의 `baseRef`는 그대로 싣는다 — 매니페스트가 그 `baseRef`를 다른 서비스로 선언하면
+  isthmus는 그 서비스로 귀속한다.
+- Spring HTTP 클라이언트(`RestTemplate`·`RestClient`·`WebClient`·`@HttpExchange`) 사실도 소스 어휘 해석이다. 수신 식을 import한 타입의
+  선언·생성 식·`@Bean`(타입·`@Qualifier`·`@Named`·`@Primary`·이름)으로 증명한 호출만 내고, 일반 메서드 매개변수로 받은 클라이언트·프로젝트
+  한정자 어노테이션·`@ConfigurationProperties` 객체·환경 변수·다른 프로필 값·SpEL은 base를 모르는 쪽으로 둔다. `with(client) { … }`처럼
+  수신 식이 없는 호출과 여러 문장으로 나눈 요청 spec은 보지 않거나 `route-call-coverage:`로 센다. `RestTemplate` 기본 인코딩은 경로
+  변수의 `/`를 인코딩하지 않지만 `{}`(한 세그먼트)로 낸다. `@HttpExchange`의 `${…}`는 dynamic이고, Spring Boot 4의
+  `@ImportHttpServices`·HTTP 서비스 그룹 base는 모델링하지 않는다. 규칙과 출처는 [Spring HTTP 클라이언트](SPRING-CLIENTS.md)다.
+- `routes --role server`는 어노테이션 controller만 읽는다. 함수형 라우터·view controller·서블릿 등록·JAX-RS는 사실 없이
+  `route-coverage:`로, 프레임워크 제공 경로는 `framework-provided-routes:`로만 알린다. 제공 경로의 스코프는 상한을 증명한
+  제공자(오류 컨트롤러·welcome page·정적 리소스·actuator·springdoc·H2 console, base path를 아는 Data REST, 경로를 푼 GraphQL, 정적으로
+  풀리는 서블릿 `SecurityFilterChain` 구성의 Security)에만 붙고, 정적 리소스 위치는 열거하지 않아 GET·HEAD 호출은 언제나 가려진다.
+  사용자 필터·`WebSecurityCustomizer`·`Customizer` bean·SAML·WebAuthn·리액티브 Security와 의존성 JAR이 더하는 Security 구성은 증명하지
+  않거나 보지 못한다. 프로필은 기본 프로필만 템플릿에
+  쓰고 환경 변수·명령행·config server 재정의는 모델링하지 않는다. 라이브러리가 선언한 stereotype·합성 어노테이션·상위 타입의
+  매핑은 보이지 않는다. 빈 값을 받는 자리(끝 `*`, 부분 세그먼트)는 빈 값 변형 decl로 펼치되 원본과 묶는 표식은 아직 없다.
+  목록과 근거는 [Spring 서버 라우트](SPRING-ROUTES.md#프레임워크-제공-경로와-스코프)다.
+- `reach`·`impact --format language-traversal`의 `--persistence-facts`는 persistence 문서가 호출 줄에 그 저장소의 relation을
+  귀속한 상속 Spring Data 저장소 호출만 `unresolvedCalls`에서 뺀다. 같은 줄에서 같은 테이블을 쓰는 다른 문장과는 구분하지 않고,
+  저장소 AOP advice처럼 프레임워크가 끼워 넣는 프로젝트 코드는 모델링하지 않는다.
+- `snapshot merge`는 구성원 class root를 다시 인덱싱하지만 보존 근거는 구성원별 결과를 합친다. 한 모듈의 keep rule·manifest가
+  다른 모듈 선언을 보존하는 관계는 다시 평가하지 않으며 `aggregate-retention:`으로 알린다. processor 관측과 compiler-evidence
+  witness가 있는 구성원은 아직 합치지 않는다. 생성 출처(`generationEvidence`)가 있는 구성원도 선언 0개인 capture를 포함해
+  거부하므로, 생성 분류·관측 요약은 원래 모듈 snapshot에서 각각 확인해야 한다.
 - package/module architecture는 JVM 이름과 입력 root를 기준으로 하며 Gradle dependency resolution model 자체는 아니다.
 - Java와 Kotlin bytecode를 함께 읽지만 reflection configuration, runtime class loading과 외부 서비스 설정은 별도 입력이다.
 
@@ -127,6 +220,26 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 그래프 JSON의 `externalCalls`는 앱 정점 밖 메서드 호출을 별도로 보존한다. 외부 선언을 앱의 dead 후보로
 추가하지 않으며 호출자·대상 JVM identity·호출 종류·같은 메서드 내 invoke 명령 ordinal·위치를 기록한다. invokedynamic의 bootstrap과 method handle 대상도 구분해 기록한다.
 `resolvedTargets`는 제공된 사실으로 연결한 프로젝트 대상이며 빈 배열은 대상 부재의 증명이 아니다.
+
+선택 `externalCalls.declaration`은 `target` JVM identity, `scope`(`project`/`external`),
+`ownerChain`(operand owner부터 첫 선언까지)을 별도로 싣는다. 필드가 없으면 **미확정**이며 선언 부재가 아니다.
+class 경로는 단일한 superclass 사슬과 모든 sibling 종류가 알려진 virtual/static 및 직접 superclass-special 호출만
+확인한다. 첫 외부 선언이 더 먼 프로젝트 선언을 가리면 외부 선언에서 멈춘다. abstract 선언도 선언으로
+확인할 수 있지만 실행 body나 dispatch 후보라는 뜻은 아니다. final 선언은 override 후보를 추가하지 않는다.
+`kind=interface`는 알려진 interface header의 완전한 직접 method 목록에서 정확한 name+descriptor가
+하나이며 public·non-static인 경우에만 같은 owner의 선언을 확인한다. `ownerChain`은 반드시 한 원소다.
+별도 proof 필드 없이 부모 `kind`가 class 사슬과 직접 interface 근거를 구분하며 길이만으로 추정하지 않는다.
+프로젝트 직접 operand는 기존 내부 BYTECODE CALL로 남고 externalCalls를 추가하지 않는다.
+알 수 없는 조상은 직접 선언의 증명을 막지 않지만, 직접 선언이 없으면 inherited/default/abstract 선택과
+Object fallback은 미확정이다. interface-owned static·special도 지원하지 않는다.
+그 밖에 누락·종류 미상·다중 class 부모·cycle, constructor, signature-polymorphic,
+기타 special 형태와 256개 초과 사슬은 추측하지 않는다. 접근 권한과 static 호환성을 확인하며 다른 package의
+protected virtual 호출은 caller 상속과 receiver owner 제약을 함께 증명한다. private nestmate는 같은 owner가
+아니면 지원하지 않는다. class 가시성·module export의 접근 사실은 보존되지 않아 전체 JVM linkage나
+실행 성공을 증명하지 않는다. CHA 후보 목록에서 선언을 골라내거나 원래 operand·ordinal·호출 수를 바꾸지 않는다.
+이 근거는 현재 dependency header 조립 뒤 다시 계산하고 raw class cache에는 저장하지 않는다. 외부 선언은
+앱 정점·dead 후보나 새로운 usage 간선을 만들지 않는다. source-call 소비자는 `project` 선언만 선택한 뒤
+독립적으로 확인한 Kotlin default-bridge 근거를 적용해야 한다. 이 제한된 관계는 PSI와의 동등성을 주장하지 않는다.
 
 `query`는 ClassLoader 로딩, reflection 생성자, ServiceLoader, 프로젝트 상위 타입에 대한 미해결 외부
 virtual 호출, 해석된 프로젝트 밖 runtime 대상, 값 분석 한도, 인라인 상수 사용처 손실을 실제 입력 개수로 알린다.
@@ -165,13 +278,18 @@ DI 어노테이션 보존은 지원되는 어노테이션을 진입점으로 삼
 
 ## 선언 의존성 분석
 
-`dependencies`는 전달한 class root의 classfile 참조만 측정한다. reflection 문자열, runtime class loading,
-SOURCE-retention annotation, annotation processor가 만든 코드, resource 기반 사용은 해석하지 않으므로 unused
-finding이 dependency 삭제 승인이 아니다. signature에만 있는 generic type 인자는 bytecode descriptor에서
-지워져 보이지 않는다. test root를 주지 않으면 test scope는 판정하지 않지만, main scope dependency가 test에서만
-쓰이면 unused로 보일 수 있다. 같은 class 이름이 앱과 dependency에 겹치면 사용됨으로 기울 수 있다.
-processor·runtime-only scope는 판정하지 않고 개수만 알린다. artifact는 project-relative 경로를 그대로,
-절대경로는 파일 이름만 출력하며, baseline·suppress·confidence 같은 `dead` 보조 장치는 아직 없다.
+`dependencies`는 전달한 class root의 JVM descriptor·Signature·annotation·명령 참조와 Kotlin metadata의
+타입·가시성·inline 본문을 사용한다. descriptor에서 지워진 generic type 인자도 Signature에 남으면 복원한다.
+reflection 문자열, runtime class loading, SOURCE-retention annotation, resource 기반 사용과 processor별
+생성물 귀속은 완전하게 해석하지 않으므로 unused finding이 dependency 삭제 승인이 아니다. 제공된 생성 class의
+참조는 읽지만, compiler snapshot의 processor 출력 근거가 dependency unused 판정을 바꾸지는 않는다.
+test root를 주지 않으면 test scope는 판정하지 않지만, main scope dependency가 test에서만 쓰이면 unused로
+보일 수 있다. 동명 class가 여러 component 또는 프로젝트 출력에 겹치면 소유자를 추측하지 않는다.
+metadata·typealias 소유자·internal 공개 경로·Java module API 등을 복원하지 못하면 부재에 근거한 unused와
+scope 축소를 보류한다. processor·runtime-only scope와 class가 없는 artifact는 판정하지 않고 개수·한계를 알린다.
+artifact는 project-relative 경로를 그대로, 절대경로는 파일 이름만 출력한다. baseline과 기한 있는 suppress는
+0.13.0부터 제공하며, `dead`의 runtime-observed confidence와는 별개다. 지원 scope·ABI 기준·억제 계약은
+[선언 의존성 분석](DEPENDENCIES.md)을 따른다.
 
 ## 라이브러리 runtime 모델
 
@@ -217,3 +335,41 @@ unused control을 확인한다. `reflective_field` 실행 표본의 mutable 초�
 
 이름은 알려졌지만 public/declared 검색 조건 등에 맞는 프로젝트 member가 없으면 `runtime-member-lookup`으로
 별도 계량한다. 외부 class 대상과 조회 조건 불일치를 같은 범주로 단정하지 않는다.
+
+### Kotlin 기본 인자 source association
+
+`GraphNode.kotlinDefaultBridge`와 graph JSON의 같은 이름 필드는 raw JVM `CALL`과 별도인 선택적 근거다.
+공식 Kotlin metadata에 기본 인자가 있는 함수의 정확한 JVM signature/value parameter 수와 동일 owner의
+static synthetic bridge descriptor, 실제 원본 호출이 모두 일치할 때만 `kotlinMetadataAndBytecode`로 기록한다.
+dispatch/extension/context receiver와 continuation은 value parameter mask 수에 포함하지 않는다.
+Kotlin 2.4.20의 실제 context parameter 및 value-class 맹글링 fixture도 같은 exact signature 계약으로 검증한다. default expression이 호출하는 다른
+함수/overload를 포함한 모든 실제 `CALL`은 보존하며, 도달성이나 외부 호출 개수를 다시 정의하지 않는다.
+null/필드 누락은 미확정이다. 이름만 같은 사용자 함수는 연결하지 않는다. 생성자 default overload,
+다른 owner로 이동한 legacy interface `DefaultImpls`/multifile facade, 변형되거나 모호한 lowering 등은
+이 연관으로 추측하지 않는다. source-level 소비자는 미확정을 성공한 빈 결과로 바꾸면 안 된다.
+선택적 snapshot side table은 v1/v2에 동일하게 적용되며 오래된 snapshot의 누락은 null로 읽는다.
+ClassFacts cache binary v8은 재사용하지 않고 v9로 재파싱한다.
+그래프 선택/가지치기 또는 origin 제외로 원본 정점이나 BYTECODE CALL 근거가 사라지면 연관도 null로
+정규화한다. 원본 그래프의 사실과 raw CALL은 변경하지 않는다.
+
+### Direct compiler-source observations
+
+Opt-in saved query/impact source reports expose only admitted direct compiler selections. They do not cover source transitivity,
+unobserved syntax, local/lambda/ambiguous mappings, external targets/consumers, unbuilt variants or dynamic execution. A missing
+exact bytecode CALL is a correlation fact, not an inline/erased/unused classification. Querying a class does not expand its members.
+Captured root/producer/import omissions remain global historical gaps after narrowing; a smaller view cannot improve capture
+coverage or restore removed rows. Source page counts and graph traversal/path truncation are independent. Saved snapshot identity
+hashes are neither producer authentication nor current-build freshness. `verify-snapshot` remains a separate explicit check.
+
+## Captured Android layout impact (0.25.0 preparation)
+
+[Layout impact](ANDROID-RESOURCE-IMPACT.md) uses exact captured paths, admitted non-final R.layout fields
+and recorded literal reverse includes. The demonstrated application fixture is AGP8.7.3/Gradle8.10.2/KGP2.0.21,
+JDK17/SDK35. Other Android snapshot compatibility results do not establish this resource mapping path.
+Coverage stays partial: dynamic/external includes may hide parents; final/inlined IDs, custom views,
+navigation, data/view binding, overlay/device winners and runtime inflation are unmeasured.
+Trusted quiescent build capture is required. Descriptor-relative no-follow observations do not provide
+atomic snapshots or hostile-filesystem time bounds. Unsupported/oversized capture remains unavailable,
+not successful empty selection. Legacy missing channels cannot borrow another revision's binding.
+Resource-bearing snapshots, including captured-empty channels, cannot be aggregated. Keep per-module
+scope/namespace/output ownership and use matching CLI/plugin/library versions with recompiled JVM clients.

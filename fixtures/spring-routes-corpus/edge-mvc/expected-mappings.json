@@ -1,0 +1,384 @@
+{
+  "format": "spring-actuator-mappings-oracle",
+  "version": 1,
+  "recordedWith": "Spring Boot 4.1.0 (Spring Framework 7.0.8), JDK 21, GET /actuator/mappings",
+  "prefix": "/api",
+  "handlers": [
+    {
+      "className": "edge.mvc.BaseController",
+      "name": "base",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/child/base"
+      ]
+    },
+    {
+      "className": "edge.mvc.ChildController",
+      "name": "all",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [],
+      "patterns": [
+        "/child"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "any",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [],
+      "patterns": [
+        "/j/any",
+        "/java/any"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "cartesian",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/a",
+        "/j/b",
+        "/java/a",
+        "/java/b"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "composed",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/composed",
+        "/java/composed"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "constant",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/constant/local",
+        "/java/constant/local"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "consume",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "POST"
+      ],
+      "patterns": [
+        "/j/consume",
+        "/java/consume"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "exchange",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/exchange",
+        "/java/exchange"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "files",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/files/{*path}",
+        "/java/files/{*path}"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "multi",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "patterns": [
+        "/j/multi",
+        "/java/multi"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "narrow",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/narrow",
+        "/java/narrow"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "over",
+      "descriptor": "(Ljava/lang/Integer;)Ljava/lang/String;",
+      "methods": [
+        "POST"
+      ],
+      "patterns": [
+        "/j/over",
+        "/java/over"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "over",
+      "descriptor": "(Ljava/lang/String;)Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/over",
+        "/java/over"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "partial",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/doc/{name}.json",
+        "/java/doc/{name}.json"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "placeholderDefault",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/v1/ver",
+        "/java/v1/ver"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "placeholderOtherProfile",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/fallback",
+        "/java/fallback"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "placeholderValue",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/goods",
+        "/java/goods"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "regex",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/re/{code:[A-Z]{3}}",
+        "/java/re/{code:[A-Z]{3}}"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "slug",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/slug/{slug:[a-z0-9-]+}",
+        "/java/slug/{slug:[a-z0-9-]+}"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "statics",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/static/**",
+        "/java/static/**"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "trailing",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/trailing/",
+        "/java/trailing/"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "twoVariables",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/v{major}.{minor}",
+        "/java/v{major}.{minor}"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "user",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/users/{id:\\d+}",
+        "/java/users/{id:\\d+}"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "uuid",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/uuid/{id:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}",
+        "/java/uuid/{id:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeJavaController",
+      "name": "wildcard",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/j/x/*/y",
+        "/java/x/*/y"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeKotlinController",
+      "name": "deep",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/k/k/deep",
+        "/k/two"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeKotlinController",
+      "name": "item",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/k/items/{id}"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeKotlinController",
+      "name": "kget",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/k/kget"
+      ]
+    },
+    {
+      "className": "edge.mvc.EdgeKotlinController",
+      "name": "put",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "PUT"
+      ],
+      "patterns": [
+        "/k"
+      ]
+    },
+    {
+      "className": "edge.mvc.KotlinApiController",
+      "name": "iface",
+      "descriptor": "(Ljava/lang/String;)Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "/iface/{id}"
+      ]
+    },
+    {
+      "className": "edge.mvc.KotlinApiController",
+      "name": "root",
+      "descriptor": "()Ljava/lang/String;",
+      "methods": [
+        "GET"
+      ],
+      "patterns": [
+        "",
+        "/"
+      ]
+    }
+  ],
+  "frameworkPredicates": [
+    "(GET && /fn)",
+    "/**",
+    "/webjars/**",
+    "{ [/error], produces [text/html]}",
+    "{ [/error]}",
+    "{GET [/actuator/health/**], produces [application/vnd.spring-boot.actuator.v3+json || application/vnd.spring-boot.actuator.v2+json || application/json]}",
+    "{GET [/actuator/health], produces [application/vnd.spring-boot.actuator.v3+json || application/vnd.spring-boot.actuator.v2+json || application/json]}",
+    "{GET [/actuator/mappings], produces [application/vnd.spring-boot.actuator.v3+json || application/vnd.spring-boot.actuator.v2+json || application/json]}",
+    "{GET [/actuator], produces [application/vnd.spring-boot.actuator.v3+json || application/vnd.spring-boot.actuator.v2+json || application/json]}"
+  ]
+}

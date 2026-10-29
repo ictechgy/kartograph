@@ -7,15 +7,22 @@ import kotlin.test.assertFailsWith
 
 class QuerySnapshotSizeLimitTest {
     private val snapshot = QuerySnapshot(CodeGraph(emptyList(), emptyList()), emptyList(), emptyList())
+    @Test fun `compact writer rejects amplification that its reader cannot expand`() {
+        val shared = "x".repeat(1024 * 1024)
+        val nodes = (0..2100).map { dev.kartograph.core.GraphNode(dev.kartograph.core.NodeId("class:Example$it"), shared, dev.kartograph.core.NodeKind.CLASS) }
+        val oversized = QuerySnapshot(CodeGraph(nodes, emptyList()), emptyList(), emptyList())
+        val error = assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.render(oversized, true, QuerySnapshotCodec.maximumBytes(256)) }
+        kotlin.test.assertContains(error.message!!, "expand beyond the supported budget")
+    }
 
     @Test
     fun `default and configurable snapshot limits are validated`() {
         assertEquals(64, QuerySnapshotCodec.DEFAULT_MAX_MIB)
-        assertEquals(128, QuerySnapshotCodec.MAX_MIB)
+        assertEquals(1024, QuerySnapshotCodec.MAX_MIB)
         assertEquals(64 * 1024 * 1024, QuerySnapshotCodec.MAX_BYTES)
         assertEquals(QuerySnapshotCodec.MAX_BYTES, QuerySnapshotCodec.maximumBytes(64))
         assertEquals(128 * 1024 * 1024, QuerySnapshotCodec.maximumBytes(128))
-        for (invalid in listOf(Int.MIN_VALUE, -1, 0, 129, Int.MAX_VALUE)) {
+        for (invalid in listOf(Int.MIN_VALUE, -1, 0, 1025, Int.MAX_VALUE)) {
             assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.maximumBytes(invalid) }
         }
     }
@@ -31,8 +38,35 @@ class QuerySnapshotSizeLimitTest {
         assertFailsWith<IllegalArgumentException> {
             QuerySnapshotCodec.render(snapshot, compact = false, maximumBytes = byteSize - 1)
         }
-        for (invalid in listOf(0, QuerySnapshotCodec.maximumBytes(128) + 1)) {
+        for (invalid in listOf(0, QuerySnapshotCodec.maximumBytes(1024) + 1)) {
             assertFailsWith<IllegalArgumentException> { QuerySnapshotCodec.parse(encoded, invalid) }
         }
+    }
+
+    @Test
+    fun `normal and compact bounded renders preserve exact bytes at their boundary`() {
+        for (compact in listOf(false, true)) {
+            val expected = QuerySnapshotCodec.render(snapshot, compact)
+            val maximum = expected.toByteArray(Charsets.UTF_8).size
+            assertEquals(expected, QuerySnapshotCodec.render(snapshot, compact, maximum))
+            assertFailsWith<QuerySnapshotSizeException> {
+                QuerySnapshotCodec.render(snapshot, compact, maximum - 1)
+            }
+        }
+    }
+
+    @Test
+    fun `invalid byte maximum is rejected before snapshot assembly`() {
+        val invalidLocation = dev.kartograph.core.GraphNode(
+            dev.kartograph.core.NodeId("class:Invalid"), "Invalid", dev.kartograph.core.NodeKind.CLASS,
+            location = dev.kartograph.core.SourceLocation("/private/source.kt"),
+        )
+        val invalidSnapshot = QuerySnapshot(
+            CodeGraph(listOf(invalidLocation), emptyList()), emptyList(), emptyList(),
+        )
+        val error = assertFailsWith<IllegalArgumentException> {
+            QuerySnapshotCodec.render(invalidSnapshot, maximumBytes = 0, compact = false)
+        }
+        assertEquals("query snapshot byte maximum must be between 1 byte and 1024 MiB", error.message)
     }
 }

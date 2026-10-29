@@ -1,0 +1,178 @@
+{
+  "status": "metadata-selected-before-diff-product-or-model-inspection",
+  "selectedAt": "2026-09-21T02:20:00.313126+00:00",
+  "population": "Gradle JVM tasks from detekt and ktlint; not the previous Java/Maven population",
+  "previousCases": [
+    "alibaba__fastjson2-2097",
+    "alibaba__fastjson2-2285",
+    "alibaba__fastjson2-2559",
+    "alibaba__fastjson2-2775",
+    "ankidroid_Anki-Android-19384",
+    "ankidroid_Anki-Android-19509",
+    "ankidroid_Anki-Android-19661",
+    "ankidroid_Anki-Android-19982",
+    "ankidroid_Anki-Android-20250",
+    "detekt_detekt-7625",
+    "detekt_detekt-7635",
+    "detekt_detekt-7667",
+    "detekt_detekt-7715",
+    "detekt_detekt-7718",
+    "detekt_detekt-7871",
+    "detekt_detekt-7888",
+    "fasterxml__jackson-core-1016",
+    "fasterxml__jackson-core-1053",
+    "fasterxml__jackson-core-1142",
+    "fasterxml__jackson-core-1172",
+    "fasterxml__jackson-core-1182",
+    "fasterxml__jackson-core-1204",
+    "fasterxml__jackson-core-1208",
+    "fasterxml__jackson-core-1263",
+    "fasterxml__jackson-core-1309",
+    "google__gson-1093",
+    "google__gson-1391",
+    "google__gson-1555",
+    "google__gson-1703",
+    "google__gson-1787",
+    "pinterest_ktlint-2785",
+    "pinterest_ktlint-2823",
+    "pinterest_ktlint-2873",
+    "pinterest_ktlint-2891",
+    "pinterest_ktlint-2895",
+    "pinterest_ktlint-2950",
+    "pinterest_ktlint-2983",
+    "square_okhttp-6887"
+  ],
+  "primary": [
+    {
+      "id": "detekt_detekt-7212",
+      "repository": "detekt/detekt",
+      "base": "d4f3f99ca335a36d596007685d705d0d69f65c01",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    },
+    {
+      "id": "detekt_detekt-6446",
+      "repository": "detekt/detekt",
+      "base": "cb050a10df93da3c98742f7d86de46df1e771897",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    },
+    {
+      "id": "pinterest_ktlint-2774",
+      "repository": "pinterest/ktlint",
+      "base": "c10637342741504690498f545cf141405cbd7244",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    },
+    {
+      "id": "pinterest_ktlint-2727",
+      "repository": "pinterest/ktlint",
+      "base": "52534ca794753c340f69314a2d14624183f3055e",
+      "language": "kotlin",
+      "datasetRevision": "b9025d86f7ae634901396766bd61f6d4ae6d2165"
+    }
+  ],
+  "repeatsPerArm": 2,
+  "plannedTrials": 16,
+  "selectionRule": "INTAKE.md",
+  "scan": [
+    {
+      "id": "detekt_detekt-7888",
+      "repository": "detekt/detekt",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "detekt_detekt-7871",
+      "repository": "detekt/detekt",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "detekt_detekt-7718",
+      "repository": "detekt/detekt",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "detekt_detekt-7715",
+      "repository": "detekt/detekt",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "detekt_detekt-7667",
+      "repository": "detekt/detekt",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "detekt_detekt-7635",
+      "repository": "detekt/detekt",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "detekt_detekt-7625",
+      "repository": "detekt/detekt",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "detekt_detekt-7212",
+      "repository": "detekt/detekt",
+      "base": "d4f3f99ca335a36d596007685d705d0d69f65c01",
+      "f2pCount": 1,
+      "status": "selected"
+    },
+    {
+      "id": "detekt_detekt-6446",
+      "repository": "detekt/detekt",
+      "base": "cb050a10df93da3c98742f7d86de46df1e771897",
+      "f2pCount": 3,
+      "status": "selected"
+    },
+    {
+      "id": "pinterest_ktlint-2983",
+      "repository": "pinterest/ktlint",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "pinterest_ktlint-2950",
+      "repository": "pinterest/ktlint",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "pinterest_ktlint-2895",
+      "repository": "pinterest/ktlint",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "pinterest_ktlint-2891",
+      "repository": "pinterest/ktlint",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "pinterest_ktlint-2873",
+      "repository": "pinterest/ktlint",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "pinterest_ktlint-2823",
+      "repository": "pinterest/ktlint",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "pinterest_ktlint-2785",
+      "repository": "pinterest/ktlint",
+      "status": "previously-used-or-excluded"
+    },
+    {
+      "id": "pinterest_ktlint-2774",
+      "repository": "pinterest/ktlint",
+      "base": "c10637342741504690498f545cf141405cbd7244",
+      "f2pCount": 2,
+      "status": "selected"
+    },
+    {
+      "id": "pinterest_ktlint-2727",
+      "repository": "pinterest/ktlint",
+      "base": "52534ca794753c340f69314a2d14624183f3055e",
+      "f2pCount": 1,
+      "status": "selected"
+    }
+  ]
+}

@@ -9,6 +9,28 @@ import kotlin.test.assertTrue
 
 class GraphModelTest {
     @Test
+    fun `legacy node constructor leaves default bridge association unknown`() {
+        val node = GraphNode(NodeId("method:Legacy#run()V"), "run", NodeKind.METHOD)
+        assertNull(node.kotlinDefaultBridge)
+        assertEquals(2, KotlinDefaultBridge(node.id, 33, 2).maskParameterCount)
+        assertFailsWith<IllegalArgumentException> { KotlinDefaultBridge(node.id, 33, 1) }
+        assertFailsWith<IllegalArgumentException> { KotlinDefaultBridge(node.id, 0, 0) }
+    }
+
+    @Test
+    fun `hierarchy constructors preserve unknown kinds and copy observed class kinds`() {
+        val entries = mapOf("fixture/Type" to emptySet<String>())
+        listOf(ClassHierarchy(entries), ClassHierarchy(entries, emptyMap()), ClassHierarchy(entries, emptyMap(), emptyMap()))
+            .forEach { assertNull(it.isInterface("fixture/Type")) }
+        val kinds = mutableMapOf("fixture/Type" to false, "fixture/Contract" to true)
+        val hierarchy = ClassHierarchy(entries, emptyMap(), emptyMap(), kinds)
+        kinds["fixture/Type"] = true
+        assertEquals(false, hierarchy.isInterface("fixture/Type"))
+        assertEquals(true, hierarchy.isInterface("fixture/Contract"))
+        assertNull(hierarchy.isInterface("fixture/Missing"))
+    }
+
+    @Test
     fun `member containment does not imply usage`() {
         assertTrue(EdgeKind.CALL.impliesUsage)
         assertTrue(EdgeKind.FIELD_ACCESS.impliesUsage)
@@ -37,6 +59,29 @@ class GraphModelTest {
         assertFailsWith<IllegalArgumentException> { NodeId("") }
         assertFailsWith<IllegalArgumentException> {
             GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, weight = 0)
+        }
+        assertEquals(listOf(1, 65535), GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, weight = 2,
+            callSiteLines = listOf(1, 65535)).callSiteLines)
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, callSiteLines = listOf(0))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, callSiteLines = listOf(4, 2))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, callSiteLines = listOf(2, 2))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.REFERENCE, callSiteLines = listOf(2))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, origin = EdgeOrigin.RUNTIME_MODEL, callSiteLines = listOf(2))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, callSiteLines = listOf(1, 2))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            GraphEdge(NodeId("a"), NodeId("b"), EdgeKind.CALL, callSiteLines = listOf(65536))
         }
     }
 

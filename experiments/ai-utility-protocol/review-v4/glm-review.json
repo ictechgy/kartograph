@@ -1,0 +1,259 @@
+{
+  "reviews": [
+    {
+      "id": "0778dbd56e60",
+      "case": "pinterest_ktlint-2785",
+      "parseShape": "Well-formed (targets/unknowns/summary). No parse defects.",
+      "overloadNaming": "findRuleSuppressionIds named as `SuppressionLocator.ValueArgument.findRuleSuppressionIds()` (target index 2); recognizable against oracle `findRuleSuppressionIds(ValueArgument)` though written as extension-receiver syntax rather than the compiled declaration.",
+      "granularity": "Mostly declaration-level; target index 4 (SuppressionLocatorTest) is explicitly file-level.",
+      "duplicateOrSelfCaller": "No duplicates; no changed-symbol-as-own-caller.",
+      "unsupportedCertainty": "Target index 2 asserts map lookup is the 'Sole consumer of SUPPRESS_ANNOTATION_RULE_MAP'; the oracle lists two additional referencing declarations (synthetic `access$getSUPPRESS_ANNOTATION_RULE_MAP$cp` and `Companion#getSUPPRESS_ANNOTATION_RULE_MAP`), so 'sole consumer' is false at reference level. Unknown 'LocalVariableName appears nowhere else in the repo' is an unverifiable repo-wide negative.",
+      "observations": [
+        "Target index 2 (findRuleSuppressionIds) is the only oracle-matching declaration (oracle direct target #2); the synthetic accessor and Companion getter (oracle direct target #1, indirect #2) are never mentioned, consistent with source-level search but relevant to the 'sole consumer' claim.",
+        "Targets 1, 3, 5, 6 (BackingPropertyNamingRuleTest, RuleExecutionContext, PropertyNamingRuleTest x2) are outside the frozen ktlint oracle and must be treated as unadjudicated, not false positives.",
+        "Oracle indirect target createSuppressionHintFromAnnotations(KtAnnotated) is not covered."
+      ],
+      "oracleOverlap": "1 of 4 oracle entries (SuppressionLocator#findRuleSuppressionIds)."
+    },
+    {
+      "id": "1d4d39df1210",
+      "case": "fasterxml__jackson-core-1016",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "JsonFactory methods named exactly (createNonBlockingByteArrayParser, createNonBlockingByteBufferParser, _createParser(DataInput, IOContext)); but these are the changed symbols themselves.",
+      "granularity": "Targets 10-12 (AsyncTestBase 'byte-buffer wrapper factory, line 31', AsyncTokenFilterTest 'lines 59, 102', AsyncLocationTest 'line 44') are line-anchored file/ambiguous-level; oracle identities are declarations (asyncForBytes, asyncForByteBuffer, testFilteredNonBlockingByteBufferParserAllContent, testLocationOffsets, etc.).",
+      "duplicateOrSelfCaller": "Five of twelve targets (indexes 4-8: three JsonFactory methods, UTF8DataInputJsonParser.addName, NonBlockingJsonParserBase._addName) are the changed symbols themselves labeled kind 'caller' with reason 'Changed callsite'/'Modified method' — changed-symbol-as-own-caller padding.",
+      "unsupportedCertainty": "Summary asserts guard correctness ('the addName guard is the only protection') based on single-match text search, not adjudicated evidence; PlaceholderSymbolTableTest contract claims are consistent with quoted evidence but outside the oracle.",
+      "observations": [
+        "Zero declaration-level overlap with the oracle's 32 entries despite a 12-target cap; the oracle's depth-1 set (e.g., JsonFactory#createParser(DataInput), UTF8DataInputJsonParser findName/_handleOddName/_parseAposName/parseEscapedName family, NonBlockingJsonParserBase#_findName overloads, TokenStreamFactory overrides) is entirely absent.",
+        "Target index 10 (AsyncTokenFilterTest lines 59,102) plausibly corresponds to oracle testFilteredNonBlockingByteBufferParserAllContent, but the answer stops at file/line level and never names the oracle declaration.",
+        "In a case with recall ceiling 0.375, spending 5/12 slots on the changed symbols themselves materially reduces measurable recall."
+      ],
+      "oracleOverlap": "0 of 32 oracle entries at declaration level."
+    },
+    {
+      "id": "3012808a9245",
+      "case": "alibaba__fastjson2-2097",
+      "parseShape": "Well-formed; some symbols carry approximate anchors ('~L1853-1866').",
+      "overloadNaming": "Target index 7 names 'FieldReaderObject.getObjectReader (L67, L86)' with two line anchors and no descriptor — ambiguous between the oracle's two distinct overloads getObjectReader(JSONReader$Context) and getObjectReader(JSONReader). Target index 8 names class 'ObjectReaderProvider' with a line but no method name (oracle identity is getObjectReaderInternal(Type,Z)).",
+      "granularity": "Targets 10-12 (DubboTest6, Issue1421, Issue783) are self-declared file-level.",
+      "duplicateOrSelfCaller": "Targets 1-5 are all declarations inside the changed class ObjectReaderImplList (createInstance/readObject/readJSONBObject/constructor), unadjudicated by the javap oracle; none is literally the changed symbol, so not self-caller, but the changed-symbol-of() is not listed (unlike siblings).",
+      "unsupportedCertainty": "Asserts 'will NPE at setAccessible or throw create list error' for the reflective path; the answer's own unknowns concede this is inferred from L337-339, not read or executed — mixed certainty between reason text and unknowns.",
+      "observations": [
+        "Only target index 6 (ObjectReaderBaseModule#getObjectReader) matches an oracle declaration (oracle direct target #3).",
+        "FieldReaderObject (index 7) hedges across both oracle overloads via lines instead of naming either, so neither oracle direct target #1 nor #2 is adjudicably matched.",
+        "Oracle indirect targets (processExtra, readFieldValue, ObjectReaderProvider#getObjectReader(Type,Z)) are not covered; the answer's 12 slots are spent mostly on same-class methods the oracle does not adjudicate."
+      ],
+      "oracleOverlap": "1 clear (ObjectReaderBaseModule#getObjectReader); FieldReaderObject ambiguous; ObjectReaderProvider not at declaration level."
+    },
+    {
+      "id": "3edee05b109d",
+      "case": "fasterxml__jackson-core-1016",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "TokenStreamFactory methods named exactly with 'override' kind, matching oracle override entries; JsonFactory changed methods named exactly.",
+      "granularity": "AsyncTokenFilterTest (lines 36,81) and AsyncLocationTest (line 17) are file/line-level vs oracle test-method identities.",
+      "duplicateOrSelfCaller": "Three targets (indexes 4-6: JsonFactory.createNonBlockingByteArrayParser, createNonBlockingByteBufferParser, _createParser(DataInput,IOContext)) are the changed symbols themselves labeled 'Changed call site'.",
+      "unsupportedCertainty": "Reason on index 7 asserts async tests 'all' use asyncForBytes via the changed factory — a universal claim from one helper; mostly hedged in unknowns.",
+      "observations": [
+        "Matches oracle identities at indexes 7 (AsyncTestBase#asyncForBytes), 10 and 11 (TokenStreamFactory#createNonBlockingByteArrayParser / #createNonBlockingByteBufferParser overrides) — the only jackson answer to hit the override targets.",
+        "Remaining 8 targets are either changed symbols (3), changed-symbol contract tests outside the oracle (PlaceholderSymbolTableTest x2, TestSymbolTables), or unadjudicated (ByteSourceJsonBootstrapper#constructParser).",
+        "The large oracle depth-1 family in UTF8DataInputJsonParser (findName overloads, parseEscapedName, _handleOddName, _parseAposName) and NonBlockingJsonParserBase#_findName is untouched; defensible under the 12 cap but the slots went to non-oracle content."
+      ],
+      "oracleOverlap": "3 of 32 oracle entries (asyncForBytes + both TokenStreamFactory overrides)."
+    },
+    {
+      "id": "42e798a8d084",
+      "case": "detekt_detekt-7625",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "Exact: BaselineFormat#write with full JVM descriptor (index 2), BaselineResultMapping#createOrUpdate descriptor (index 4), and both oracle spec-test ids including enclosing class `BaselineFormatSpec$writes a baseline file#...` (indexes 8-9).",
+      "granularity": "Declaration-level throughout; IndentingXMLStreamWriter and BaselineProvider targets are declarations though outside the oracle.",
+      "duplicateOrSelfCaller": "No duplicates; changed symbol (BaselineFormat#save) is correctly not listed as a target.",
+      "unsupportedCertainty": "Index 1 states 'WILL BREAK' for BaselineResultMappingSpec; that test is outside the frozen oracle, so the emphatic claim is unadjudicable from this packet regardless of the quoted line evidence.",
+      "observations": [
+        "Covers all four oracle entries: direct BaselineFormat#write (index 2) plus all three indirect (createOrUpdate index 4; both BaselineFormatSpec tests indexes 8-9) — full-oracle recall for this case.",
+        "Indexes 1, 3, 5-7, 10 (BaselineResultMappingSpec tests, transformWithBaseline, IndentingXMLStreamWriter, BaselineProvider#write, tooling-api test) are unadjudicated additions.",
+        "Only answer in the detekt cohort to also name BaselineFormat#write itself as a target with an exact descriptor."
+      ],
+      "oracleOverlap": "4 of 4 oracle entries."
+    },
+    {
+      "id": "5be0347a9a15",
+      "case": "alibaba__fastjson2-2097",
+      "parseShape": "Well-formed; uses 'method:' prefixed descriptors.",
+      "overloadNaming": "Index 8 names FieldReaderObject#getObjectReader(JSONReader) but its evidence cites two call edges (lines 51 and 74), which per the oracle belong to two distinct overloads (JSONReader$Context vs JSONReader) — one overload named, evidence for both: ambiguous. ObjectReaderBaseModule#getObjectReader and ObjectReaderProvider#getObjectReaderInternal named with full descriptors.",
+      "granularity": "Tests (indexes 10-12: AutoTypeTest27, DubboTest6, Issue1227) are declaration-named but outside the oracle.",
+      "duplicateOrSelfCaller": "Index 5 is the changed symbol itself (ObjectReaderImplList#of) labeled kind 'caller' with reason 'Changed method' — changed-symbol-as-own-caller.",
+      "unsupportedCertainty": "States createInstance 'throws JSONException(\"create list error\")' as fact; unknowns concede getDefaultConstructor behavior was not read and the outcome is 'not confirmed by execution'.",
+      "observations": [
+        "Matches oracle direct targets #3 (ObjectReaderBaseModule#getObjectReader, index 6) and #4 (ObjectReaderProvider#getObjectReaderInternal, index 7).",
+        "FieldReaderObject (index 8) adjudicably matches at most one of the two oracle overloads; the other (Context) is unnamed.",
+        "Oracle indirect targets (processExtra, readFieldValue, ObjectReaderProvider#getObjectReader(Type,Z)) are not covered anywhere in the 12 slots."
+      ],
+      "oracleOverlap": "2 clear + 1 ambiguous of 7 oracle entries."
+    },
+    {
+      "id": "81f2d1dbe1fd",
+      "case": "alibaba__fastjson2-2097",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "Index 8 names the Context overload exactly (JSONReader$Context) — matches one oracle overload but silently omits the JSONReader overload. Index 6 names ObjectReaderBaseModule.getObjectReader with only line anchors, no descriptor — identifiable but not signature-exact.",
+      "granularity": "Targets 9-11 (DubboTest6 '~line 59', CollectionTest, Issue1676) are explicitly file-level; Issue1676 is only an 'impact graph count 4' with methods unresolved.",
+      "duplicateOrSelfCaller": "Index 5 is the changed symbol of() itself ('Changed method itself') — changed-symbol-as-own-caller.",
+      "unsupportedCertainty": "Reason on index 1 asserts add() 'would throw UnsupportedOperationException' hypothetically stacked on an unconfirmed failure path; otherwise appropriately hedged ('likely').",
+      "observations": [
+        "Matches oracle direct target #1/#2 (FieldReaderObject#getObjectReader(JSONReader$Context), index 8) and #3 (ObjectReaderBaseModule#getObjectReader, index 6, descriptor-less).",
+        "Misses the second FieldReaderObject overload and all three oracle indirect targets.",
+        "Issue1676 (index 11) is an admitted unresolved graph aggregate ('count 4'), the weakest granularity in this answer."
+      ],
+      "oracleOverlap": "2 of 7 oracle entries (one exact overload, one descriptor-less BaseModule)."
+    },
+    {
+      "id": "84fe91ffabef",
+      "case": "fasterxml__jackson-core-1016",
+      "parseShape": "DEFECT: answer is null — no targets, unknowns, or summary. Shape-invalid response; cannot be scored on any dimension.",
+      "overloadNaming": "N/A.",
+      "granularity": "N/A.",
+      "duplicateOrSelfCaller": "N/A.",
+      "unsupportedCertainty": "N/A.",
+      "observations": [
+        "The only empty response in the packet; any evaluation needs an explicit convention (e.g., zero-recall/failed-response) distinct from a scored low-recall answer, especially given this case's 0.375 recall ceiling."
+      ],
+      "oracleOverlap": "0 of 32; undefined by nullity rather than by mismatch."
+    },
+    {
+      "id": "866466f3f04e",
+      "case": "detekt_detekt-7625",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "createOrUpdate named with Kotlin-style params (Path, List<Issue>) — maps to the oracle descriptor; spec tests named with backticked test strings matching oracle ids. No JVM descriptors, but unambiguous.",
+      "granularity": "Declaration-level except DefaultBaseline.load and IndentingXMLStreamWriter, which are declarations but unadjudicated.",
+      "duplicateOrSelfCaller": "No duplicates; changed symbol save() not listed.",
+      "unsupportedCertainty": "Index 1 'WILL BREAK' on BaselineResultMappingSpec — outside the oracle; also 'Only production caller of BaselineFormat.write' (index 3) is consistent with the oracle's indirect expansion (only createOrUpdate and the two spec tests reference write), so acceptable, but the SAX self-closing claim is flagged as inferred in unknowns — good hygiene.",
+      "observations": [
+        "Matches three of four oracle entries: createOrUpdate (index 3), and BaselineFormatSpec 'asserts that the saved and loaded baseline files are equal' (index 6), 'has a new line at the end...' (index 7).",
+        "Misses the direct oracle target BaselineFormat#write — the only answer-level route to full recall in this case.",
+        "Index 9's DefaultBaseline.load reasoning about SAX empty-element handling is honestly marked unverified."
+      ],
+      "oracleOverlap": "3 of 4 oracle entries (all indirect; direct write() missed)."
+    },
+    {
+      "id": "89d07d94972e",
+      "case": "fasterxml__jackson-core-1016",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "Changed JsonFactory/parser methods named exactly; SimpleParserTest target is 'line ~63, configure INTERN_FIELD_NAMES' — line-anchored, no method name, so it cannot be confirmed as or against oracle indirect SimpleParserTest#testUtf8BOMHandling.",
+      "granularity": "JsonFactoryTest and SimpleParserTest targets are file/line-level.",
+      "duplicateOrSelfCaller": "Five targets (indexes 4-6, 8-9: three JsonFactory methods, UTF8DataInputJsonParser.addName, NonBlockingJsonParserBase._addName) are the changed symbols themselves — the heaviest self-caller padding in the packet alongside 1d4d39df1210.",
+      "unsupportedCertainty": "Asserts 'INTERN_FIELD_NAMES is silently ignored under placeholder' — an inference from reading ByteQuadsCanonicalizer fragment, stated as fact; 'No existing test found that disables CANONICALIZE_FIELD_NAMES (search... 0 hits)' is a negative claim whose search scope is self-reported only.",
+      "observations": [
+        "Zero declaration-level oracle overlap in 11 targets; AsyncTestBase#asyncForBytes (an oracle direct target the answer's own reasoning circles) is not listed.",
+        "Indexes 10-11 (SimpleParserTest, JsonFactoryTest) are file/line-level and unadjudicable against oracle identities.",
+        "Changed-symbol-as-own-caller count (5) exceeds this answer's oracle contribution (0), inverting the target/impact relationship."
+      ],
+      "oracleOverlap": "0 of 32 oracle entries."
+    },
+    {
+      "id": "aa59036509f8",
+      "case": "detekt_detekt-7625",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "Declaration names match oracle ids textually; no descriptors but unambiguous (single write/createOrUpdate declarations).",
+      "granularity": "Declaration-level; index 10 (BaselineFormat ServiceLoader registration) is effectively file-level ('file-level evidence only' per its own evidence).",
+      "duplicateOrSelfCaller": "No duplicates; no self-caller.",
+      "unsupportedCertainty": "'this assertion is expected to break' (index 1) on an oracle-absent test — softened from 'WILL BREAK' but still a prediction the frozen oracle cannot adjudicate.",
+      "observations": [
+        "Matches three of four oracle entries: createOrUpdate (index 4) plus both oracle BaselineFormatSpec tests (indexes 5-6).",
+        "Misses oracle direct target BaselineFormat#write; index 10 touches BaselineFormat only as a ServiceLoader registration note, not the write declaration.",
+        "Indexes 1-3, 7-9 (BaselineResultMappingSpec tests, IndentingXMLStreamWriter, DefaultBaseline.load) are unadjudicated additions."
+      ],
+      "oracleOverlap": "3 of 4 oracle entries."
+    },
+    {
+      "id": "d03628ddd394",
+      "case": "alibaba__fastjson2-2097",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "Index 6 names ObjectReaderBaseModule#getObjectReader with line anchors, no descriptor — identifiable. No FieldReaderObject or ObjectReaderProvider target at all, so the thorniest overload question is avoided rather than answered.",
+      "granularity": "Targets 10-12 (DubboTest6.test1 is declaration-level; JSONTest 'lines ~781-808', Issue1421, Issue400) are file-level; the answer says so.",
+      "duplicateOrSelfCaller": "Index 5 is the changed symbol of() ('-> new ObjectReaderImplListStr / ObjectReaderImplListInt64') — changed-symbol-as-own-caller; targets 1-4 are same-class methods unadjudicated by the oracle.",
+      "unsupportedCertainty": "Reason on index 1 claims the text-JSON path 'breaks' with NPE/JSONException; unknowns concede BeanUtils behavior was 'not read' and the outcome is inferred — same certainty mismatch as 3012808a9245.",
+      "observations": [
+        "Only oracle match is ObjectReaderBaseModule#getObjectReader (index 6, oracle direct target #3); neither FieldReaderObject overload, getObjectReaderInternal, nor any indirect target appears.",
+        "TypeUtils#getClass mapping (index 8) is a plausible lead but entirely outside the javap oracle — unadjudicated.",
+        "12-slot budget allocates 5 targets to ObjectReaderImplList-internal methods and 3 to file-level tests, leaving oracle indirect depth unexplored."
+      ],
+      "oracleOverlap": "1 of 7 oracle entries."
+    },
+    {
+      "id": "dac24228ae3f",
+      "case": "pinterest_ktlint-2785",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "Index 1 names `SuppressionLocator.ValueArgument.findRuleSuppressionIds` — corresponds to oracle direct target #2 (findRuleSuppressionIds(ValueArgument)).",
+      "granularity": "Declaration-level except index 7 (SuppressionLocatorTest, self-declared file-level) and index 6 (EnumEntryNameCaseRule 'file-level cross-check' — an odd target whose symbol field contains no actual declaration).",
+      "duplicateOrSelfCaller": "No duplicates; no self-caller.",
+      "unsupportedCertainty": "Index 1 repeats 'Sole consumer of SUPPRESS_ANNOTATION_RULE_MAP', contradicted at reference level by the oracle's synthetic accessor and Companion getter. Summary asserts 'No existing tests break' — a repo-wide negative from partial search.",
+      "observations": [
+        "Only oracle match is findRuleSuppressionIds (index 1); the synthetic accessor (oracle direct #1), Companion getter and createSuppressionHintFromAnnotations (oracle indirect) are absent.",
+        "Index 6 (EnumEntryNameCaseRule id-literal cross-check) is a category error relative to the oracle's reference-based target model — file-level, unadjudicated.",
+        "Index 4's SuppressionLocatorTest evidence is a search-hit enumeration, not a declaration — appropriately labeled but unverifiable."
+      ],
+      "oracleOverlap": "1 of 4 oracle entries."
+    },
+    {
+      "id": "def06d674b6b",
+      "case": "pinterest_ktlint-2785",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "Index 1 names findRuleSuppressionIds as a ValueArgument extension — matches oracle direct target #2.",
+      "granularity": "Index 6 (BackingPropertyNamingRule.kt, 'file-level') is explicitly file-level with a search-based absence claim ('isLocalVariable ... 0 hits').",
+      "duplicateOrSelfCaller": "No duplicates; no self-caller.",
+      "unsupportedCertainty": "Index 1 'Sole consumer of SUPPRESS_ANNOTATION_RULE_MAP' — contradicted by oracle's synthetic accessor and Companion getter; unknowns' search-scope negatives ('returned 0 hits') are scope-limited but presented as evidence.",
+      "observations": [
+        "Single oracle match (findRuleSuppressionIds, index 1); oracle targets access$getSUPPRESS_ANNOTATION_RULE_MAP$cp, Companion#getSUPPRESS_ANNOTATION_RULE_MAP, createSuppressionHintFromAnnotations are all missed.",
+        "Index 2 (RuleExecutionContext.suppressionLocator) is unadjudicated; the oracle's depth-2 expansion from the changed field does not include it.",
+        "Absence-claims as evidence (index 6) are the weakest epistemic item here, though the answer flags them."
+      ],
+      "oracleOverlap": "1 of 4 oracle entries."
+    },
+    {
+      "id": "f632019f2bcf",
+      "case": "pinterest_ktlint-2785",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "N/A — no SuppressionLocator declaration is offered as a target; the changed symbol's consumer findRuleSuppressionIds appears only inside evidence strings (target index 3's evidence cites SuppressionLocator.kt line 225).",
+      "granularity": "Index 4 (PropertyNamingRuleTest 'file-level ... line 144') and index 6 (SuppressionLocatorTest) are file-level.",
+      "duplicateOrSelfCaller": "No duplicates; no self-caller; but the answer never lists any oracle target at all.",
+      "unsupportedCertainty": "Index 3's reason asserts LocalVariableName 'deliberately does NOT map to standard:property-naming' — an intent claim not derivable from the diff evidence shown; unknowns appropriately flag unread ranges.",
+      "observations": [
+        "Zero oracle overlap: all six targets (BackingPropertyNamingRuleTest x2, PropertyNamingRuleTest x2, RuleExecutionContext.suppressionLocator, SuppressionLocatorTest) are outside the frozen ktlint oracle — unadjudicated, not false positives, but recall 0.",
+        "The oracle's four entries all live in SuppressionLocator.kt, the one file this answer declines to target despite citing its lines three times in evidence.",
+        "Test-fixture reasoning (top-level val _foo vs local variable) is specific and coherent but unadjudicable here."
+      ],
+      "oracleOverlap": "0 of 4 oracle entries."
+    },
+    {
+      "id": "f805a7b01155",
+      "case": "detekt_detekt-7625",
+      "parseShape": "Well-formed.",
+      "overloadNaming": "Declaration names match oracle ids (createOrUpdate with Kotlin param types; backticked spec-test names); no descriptors but unambiguous.",
+      "granularity": "Declaration-level; no file-level-only targets.",
+      "duplicateOrSelfCaller": "No duplicates; changed symbol save() correctly not listed.",
+      "unsupportedCertainty": "'The one existing test that will break is ...' (summary) — prediction on an oracle-absent test; also 'writeEmptyElement was previously unused by BaselineFormat' (index 6) is a negative history claim not verifiable from the packet.",
+      "observations": [
+        "Matches three of four oracle entries: createOrUpdate (index 4) plus the two oracle BaselineFormatSpec tests (indexes 7-8).",
+        "Misses oracle direct target BaselineFormat#write (the direct depth-1 caller).",
+        "Index 5's transformIssues/onFinish and indexes 1-3, 9-10 are unadjudicated additions, honestly reasoned."
+      ],
+      "oracleOverlap": "3 of 4 oracle entries."
+    }
+  ],
+  "crossCuttingFindings": [
+    "Changed-symbol-as-own-caller padding: jackson answers (1d4d39df1210, 3edee05b109d, 89d07d94972e) list the five changed JsonFactory/parser methods as 'caller' targets, and fastjson2 answers (5be0347a9a15, 81f2d1dbe1fd, d03628ddd394) list ObjectReaderImplList#of itself. Since fasterxml__jackson-core-1016 has a 0.375 recall ceiling (32 oracle entries vs cap 12), this padding directly suppresses measurable recall.",
+    "Overload ambiguity concentrated at FieldReaderObject#getObjectReader: the oracle distinguishes (JSONReader$Context) and (JSONReader) overloads as separate targets; answers either name one while citing both call edges (5be0347a9a15), name one silently (81f2d1dbe1fd), or cite lines with no descriptor (3012808a9245). ObjectReaderProvider targets are sometimes reduced to class+line with no method name (3012808a9245). Evaluations must require descriptor-exact or at least method-exact names for overload-dense classes.",
+    "Granularity drift: file-level or line-anchored answers where the oracle holds test-method identities (AsyncTokenFilterTest, AsyncLocationTest, SimpleParserTest, DubboTest6, CollectionTest, Issue1421/783/400, SuppressionLocatorTest, BaselineFormat 'registration'). These cannot be scored as hits or as false positives.",
+    "'Sole/only consumer' claims are falsified or unverified at reference level: ktlint answers (0778dbd56e60, dac24228ae3f, def06d674b6b) call findRuleSuppressionIds the sole consumer of SUPPRESS_ANNOTATION_RULE_MAP while the oracle shows a synthetic accessor and Companion getter also referencing the field. Detekt 'only production caller' claims for createOrUpdate are, by contrast, consistent with the oracle.",
+    "Unsupported predictive certainty: emphatic breakage predictions ('WILL BREAK', 'will fail', 'expected to break') on BaselineResultMappingSpec tests (42e798a8d084, 866466f3f04e, aa59036509f8, f805a7b01155) and failure-mode assertions (NPE vs JSONException) in fastjson2 answers are outside the frozen oracle or conceded-inferred in the same answer's unknowns. A future evaluation must separate evidence-backed mechanism claims from outcome predictions.",
+    "Recall spread is extreme even within cases: detekt answers range 0→4 oracle matches and jackson answers 0→3 of 32, with several answers (1d4d39df1210, 89d07d94972e, f632019f2bcf, d03628ddd394) at or near zero despite cap headroom. One null answer (84fe91ffabef) requires an explicit failed-response convention distinct from zero recall.",
+    "Best-scoring pattern visible in-packet: declaration-level naming of oracle identities (descriptors or exact test ids) plus avoidance of self-caller entries (42e798a8d084 achieves 4/4 on detekt; 3edee05b109d uniquely captures the TokenStreamFactory override targets)."
+  ],
+  "limitations": [
+    "This audit used only the packet. Quoted line numbers, test bodies, and file contents in the answers were not verified against any source tree; no source files absent from the packet were checked.",
+    "The oracle is explicitly incomplete ('known review anchors only, not complete behavioral impact'). All targets outside it — including the BaselineResultMappingSpec and PlaceholderSymbolTableTest items several answers emphasize — are recorded as unadjudicated, never as false positives.",
+    "fasterxml__jackson-core-1016 has a recall ceiling of 0.375 (32 oracle entries vs response cap 12); per-answer recall figures for that case are ceiling-limited and must not be compared naively with the other three cases (ceiling 1.0).",
+    "Condition names and the correspondence key are withheld; condition-specific effects could not be assessed, and answer prose mentioning graph/javap-style evidence was treated as untrusted data, not as a blinding signal.",
+    "Overlap counts use declaration-level identity (name + arity/parameter types or exact test id); answers matching only at file/line level were conservatively scored as non-matching rather than partially matching.",
+    "This is a measurement-quality audit only: no rescoring, no oracle edits, no runtime verification of any claim, and no ranking of hidden cohorts."
+  ]
+}

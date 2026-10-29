@@ -4,6 +4,31 @@ kartograph는 로컬 snapshot을 읽는 MCP stdio 서버를 제공한다. 분석
 그래프·보존·도달성·영향 탐색과 보고서는 CLI와 공유한다. 서버가 코드를 빌드하거나
 수정하지 않으므로, 먼저 의도한 variant와 테스트 출력을 캡처한다.
 
+## 첫 조사 준비
+
+반복 조사에는 snapshot을 한 번 로드하는 MCP 세션을 사용한다. CLI saved query는 호출마다
+JVM 시작과 snapshot 읽기를 수행하므로, 여러 심볼을 조사하는 비용을 MCP 호출 지연과 구분한다.
+
+1. [JVM 자동 캡처](IMPACT.md#jvm-빌드에서-자동-캡처) 또는
+   [Android variant 자동 캡처](IMPACT.md#android-variant-자동-캡처)의 plugin 설정을 적용한다.
+   다중 모듈에서는 분석할 모듈의 task 경로를 사용한다. `./gradlew :app:tasks --all`로 제공되는
+   `kartographSnapshot` 계열 task를 확인하고, Android는 의도한 variant를 선택한다.
+2. JVM은 `./gradlew :app:kartographSnapshot`, Android debug는
+   `./gradlew :app:kartographSnapshotDebug`로 캡처한다. 실제 task 이름은 1에서 확인한다.
+   이 작업은 필요한 컴파일을 수행하지만 테스트를 실행하지 않는다.
+3. 해당 모듈의 snapshot과 input bindings로 `verify-snapshot`을 실행한다. 예를 들어 JVM `:app`은
+   아래처럼 모듈 디렉터리를 `--project`로 지정한다. snapshot scope도 이 모듈·variant와 같아야 한다.
+
+```sh
+kartograph verify-snapshot --graph-file app/build/reports/kartograph/jvm-snapshot.json \
+  --project app --input-bindings app/build/kartograph/jvm-input-bindings.json
+```
+
+`matched`를 확인한 뒤 같은 세 경로로 MCP를 시작한다. 아래 서버 예시는 단일 모듈 루트 기준이다.
+기존 수동 snapshot도 조사할 수 있지만 compiler witness가 없으면 현재 빌드와의 일치를 주장할 수 없다.
+
+## 서버 연결
+
 ```sh
 kartograph mcp --graph-file build/reports/kartograph/jvm-snapshot.json \
   --project . --input-bindings build/kartograph/jvm-input-bindings.json
@@ -33,16 +58,28 @@ binding은 시작할 때만 설정하며 질의 인자로 바꿀 수 없다. `--
 신선도 결과는 `unverified`다. 로컬 binding 문서는 절대 경로를 담으므로 공개하지 않는다.
 
 Snapshot 파일의 기본 읽기 한도는 각각 64 MiB다. 큰 그래프에는 시작 옵션
-`--snapshot-max-mib 128`로 최대 128 MiB까지 명시적으로 허용할 수 있다(허용값 1..128).
+`--snapshot-max-mib 128`로 최대 1024 MiB까지 명시적으로 허용할 수 있다(허용값 1..1024).
 현재·base 파일에 같은 한도를 적용하며, 도구 호출 중에는 한도를 바꿀 수 없다.
 파일의 허용 크기는 JVM heap 사용량과 다르다. 파싱한 그래프와 질의 작업에 필요한
 추가 메모리를 확보해야 한다. 도구 내용의 16 KiB 한도는 그대로 적용한다.
+compact v2 파일은 펼쳐지는 문자열 합계에도 CLI와 같은 상한이 있어([영향 점검](IMPACT.md#수정-전에-조사)), 넘으면 시작하지 않는다(exit 2).
 
 | 도구 | 용도 | 확인할 내용 |
 |---|---|---|
 | `query_symbol` | 이름 또는 정확한 JVM USR의 호출자·의존 대상·멤버 조사 | `document.status`, `limitations`, `result.truncated` |
 | `impact` | 수정할 심볼·파일의 잠재적 영향 후보와 경로 조사 | `changed`, `affected`, `unresolved`, 경로의 origin·revision·누락, pagination |
+| `change_impact` | 고정 project의 실제 Git base/head·작업 트리 변경 조사 | `change`, `snapshots`, before/current `freshness`, 기존 `graphImpact` |
 | `freshness` | 고정한 현재 snapshot과 실제 설정된 입력 비교 | `matched`, `stale`, `unverified`와 이유 |
+
+`change_impact`에는 `base`와 선택 `head`(기본 HEAD), 또는 `workingTree: true`를 전달한다.
+scoped before/current snapshot의 revision 라벨이 resolved Git commit과 같아야 한다. 이 라벨 확인과 별도로
+각 호출이 실제 내용·compiler witness를 검증한다. 과거 입력도 검사하려면 서버 시작 시
+`--base-project <before-checkout>`와 필요한 `--base-input external/slot=path`를 지정한다.
+없으면 과거 신선도는 `unverified`로 남는다. Git 프로젝트는 저장소 루트여야 하며 snapshot 파일 경로도 같은 루트에
+상대적이어야 한다. 모듈 루트 snapshot은 자동으로 저장소 상대 경로로 바꾸지 않으므로 그 범위를 먼저 맞춘다.
+새 응답은 [`kartograph-change-impact` wrapper](IMPACT.md#git-변경과-snapshot-신선도를-한-번에-조사)이며
+기존 `impact`는 saved graph selector 모드 그대로다. `change_impact`도 16 KiB page/path/summary 예산을 보존하고,
+변경 context 자체가 넘치면 CLI로 보내며 context나 신선도 이유를 지우지 않는다.
 
 반환 wrapper의 `document`는 기존 CLI 보고서이고, `snapshot`은 서버가 읽은 내용의
 해시·분석기 버전·scope·revision이다. JSON text와 structured content를 함께 제공한다.
@@ -54,6 +91,36 @@ Snapshot 파일의 기본 읽기 한도는 각각 64 MiB다. 큰 그래프에는
 이미 실행 중인 서버의 그래프는 바뀌지 않는다. 새 snapshot을 사용하려면 서버를
 재시작한다. 질의 중 파일이 교체되어 서로 다른 그래프의 신선도와 결과가 섞이는
 일을 피하기 위한 경계다.
+
+## 신선도 결과에 따른 다음 행동
+
+| 관측 | 확인·복구 |
+|---|---|
+| `matched` | 기록된 입력이 일치한다. 해당 snapshot의 질의를 진행하고 런타임·variant 한계는 유지한다. |
+| `project-not-configured` | snapshot을 만든 모듈을 `--project`로 지정해 서버를 재시작한다. |
+| `missing-external-input` | 같은 checkout·capture가 생성한 input bindings를 연결한다. 다른 기계의 절대경로 파일을 그대로 재사용하지 않는다. |
+| `changed-*`, `unavailable-*` | 입력 변경·누락을 확인하고 필요한 컴파일·캡처를 다시 수행한 뒤 검증·서버 재시작을 한다. |
+| `missing-build-witness`, `unwitnessed-class-root`, `missing-witness-file` | 성공한 compiler task 근거를 포함해 다시 캡처한다. 지원되지 않는 입력은 사유를 보존하며 수동 라벨로 검증을 대신하지 않는다. |
+| `build-scope-mismatch`, `snapshot-scope-mismatch` | 선택한 모듈·variant·witness·scope를 일치시켜 다시 캡처한다. |
+| `legacy-snapshot`, `invalid-compiler-evidence-token` | 지원되는 현재 capture 경로로 새 snapshot을 만든다. 기존 기록을 수정해 일치한 것처럼 만들지 않는다. |
+
+`unverified`는 저장된 그래프를 읽을 수 없다는 뜻은 아니다. 과거 capture의 조사 후보로 사용하고,
+현재 source에 대한 결론에는 부족한 증거를 명시한다. 조사 권한만 있을 때 빌드·캡처를 임의로 수행하지 않는다.
+같은 입력에 `freshness`를 반복 호출해도 누락된 witness가 생기지 않는다.
+
+## 적은 호출로 조사 범위 좁히기
+
+변경 전 조사에서는 확인된 변경 심볼로 `impact`를 먼저 요청하고, 경로를 더 확인할 후보에
+`query_symbol`을 사용한다. 광범위한 파일과 메서드를 함께 보내면 합집합이 되어 범위가 넓어진다.
+정확한 overload를 모르면 `suggestions`를 읽고 선택한 USR과 미선택 후보를 구분한다.
+이 순서는 사용 안내이며 도구 호출을 강제하거나 AI 효용 향상을 측정한 결과가 아니다.
+
+응답의 source 파일 이름만으로 패키지·모듈 경로를 만들어 내지 않는다. `Issue1676.java` 같은 basename은
+여러 source root에 존재할 수 있다. 정확한 경로가 없으면 파일명 수준 근거로 남기고 source 검색으로 확인한다.
+요약의 후보 개수를 실제 메서드 identity로 대신하지 않는다. 최종 답변에서는 변경 선언 자체, 직접·간접 호출자,
+테스트 검토 후보를 구분하고, 관측하지 않은 테스트 실패를 실행 결과처럼 단정하지 않는다.
+
+## 질의 범위와 출력 한도
 
 기본 페이지는 query 10개, impact 5개이며 최대 요청은 100개다. Impact의 기본 depth는
 2, 경로 간선 예산은 100이다. 필요한 범위에 맞춰 스키마의 한도 안에서 늘릴 수 있다.
@@ -72,19 +139,36 @@ Snapshot 파일의 기본 읽기 한도는 각각 64 MiB다. 큰 그래프에는
 `C.m` 또는 `p.C.m(int)` 같은 표기가 `notFound`가 되면 wrapper의 `suggestions`에서
 실제 후보 USR을 확인해 다시 질의한다. 괄호 안 타입을 해석해 overload를 선택하는 기능은
 아니다. 원래 `notFound`·`ambiguous`는 유지하며 후보 수·반환 수·잘림을 알린다.
-후보의 `presentIn`은 current/base 중 존재하는 시점을 표시한다. 두 시점 모두에 있으면 위치는
-current 기준이며, base에만 있는 후보는 current 전용 `query_symbol`로 찾을 수 없다.
+후보의 `presentIn`은 current/base 중 존재하는 시점을 표시한다. 위치는 선택자에 맞는 current 우선,
+다음 base 순서이며, base에만 있는 후보는 current 전용 `query_symbol`로 찾을 수 없다.
 이 경우 base/current를 함께 조사하는 `impact`에서 해당 USR을 사용한다.
+Kotlin 최상위 함수의 `package.function` 표기는 그래프의 `FILE_FACADE` metadata 근거로
+후보를 찾는다. `Kt` 접미사만으로 파일 클래스를 추측하지 않으며 원래 query/impact 판정은 유지한다.
+저장된 그래프에 없는 source 이름(`@JvmName` 등으로 JVM 이름과 다른 경우)은 복원하지 않는다.
+모듈 기준 snapshot에 저장소 기준 파일 경로를 보낸 경우에도 `suggestions`에서 실제 위치와 USR을 확인한다.
+
+0.16.0부터 후보가 잘렸거나 파일 전체 impact가 너무 크면 `discover_symbols`에 `symbol` 또는 `file` 중
+정확히 하나를 보낸다. 예를 들어 `{"file":"module/src/main/kotlin/p/Value.kt","limit":10}`으로
+선언을 확인하고, 반환된 `nextOffset`을 다음 요청의 `offset`으로 전달한다. `total`, `returned`,
+`truncated`, `hasNext`를 함께 읽는다. 마지막 offset 페이지도 전체 후보보다 작으면 `truncated`다.
+파일은 정확한 그래프 경로를 우선하고 없으면 경로 구성 요소 단위 suffix가 맞는 모든 파일을 제안한다.
+파일명만 같아도 여러 후보가 생길 수 있다.
+파일을 읽거나 경로를 자동 교정하지 않는다. 원래 입력에 맞는 선언을 소스와 대조한 뒤
+선택한 USR만 `impact.symbols` 또는 `query_symbol.symbol`로 재시도한다.
+이 discovery 문서는 선언 목록이며 영향 분석 결과나 현재 빌드 신선도 증명이 아니다.
+
 복구 후보가 크면 서버의 `suggestionLimit`을 10 → 3 → 0으로 줄인다. 마지막 단계도 요청별
 전체 후보 수·반환 수 0·잘림을 남기며, `response.effective`에 실제 한도를 알린다.
 같은 요청의 후보 탐색은 한 번만 수행한다. 원래 질의 문서 자체가 너무 크면 명시적으로 실패한다.
 
 도구 text 내용은 **16 KiB**로 제한한다. 큰 결과에는 최대 세 번의 결정적인 시도로 페이지·
 경로·요약 출력 예산을 줄인다. `response.requested`와 `response.effective`, `adapted`, `attempts`에
-이를 명시하며, `document`는 실제 적용한 한도의 원래 CLI 보고서다. 선택·depth·방문 한도는
+이를 명시하며, query/impact의 `document`는 실제 적용한 한도의 원래 CLI 보고서다. 선택·depth·방문 한도는
 유지하고 원래 navigation·truncation·경로 생략 정보를 보존한다. 적용된 페이지를 기준으로
 다음 offset을 조사한다. 최소 페이지에도 필수 내용을 담을 수 없으면 좁은 심볼을 요청하도록
-오류를 반환한다. JSON이나 근거를 조용히 잘라서 보내지 않는다.
+`discover_symbols`로 선택 범위를 좁히도록 오류를 반환한다. Discovery 자체도 페이지를
+최소 1개까지 줄이며 적용된 한도를 기록한다. 한 후보조차 한도에 들어오지 않으면 명시적으로
+실패한다. JSON이나 근거를 조용히 잘라서 보내지 않는다.
 
 프로토콜은 **MCP 2025-11-25 stdio**다. `initialize`로 연결하며 도구 capability만
 제공한다. 현재의 2026-07-28 프로토콜이나 HTTP 서버를 구현했다고 주장하지 않는다.

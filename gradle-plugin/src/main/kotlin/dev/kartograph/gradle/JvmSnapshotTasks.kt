@@ -18,12 +18,16 @@ internal object JvmSnapshotTasks {
         val declaredClassOutputs = project.files(main.output.classesDirs, tests.output.classesDirs)
         val optionalOutputs = project.files(listOfNotNull(main.output.resourcesDir, tests.output.resourcesDir),
             project.providers.provider { declaredClassOutputs.files })
+        val optionalBySourceSet = listOf(main, tests).associate { sourceSet ->
+            sourceSet.name to project.files(optionalOutputs, JvmClasspathDirectories.collect(project, sourceSet))
+        }
         val configuration = SnapshotBuildInputs.collect(project, extension.snapshotBuildInputs)
         val buildInputs = configuration.files
         val compilers = listOf(main, tests).map { sourceSet ->
             val compiler = project.tasks.named(sourceSet.compileJavaTaskName, JavaCompile::class.java)
             val witness = CompilerWitnesses.automaticJavaCompile(project, compiler, scope,
-                (kotlin[sourceSet.name]?.roots ?: sourceSet.java.sourceDirectories).filter { it.isDirectory }, buildInputs, optionalOutputs)
+                (kotlin[sourceSet.name]?.roots ?: sourceSet.java.sourceDirectories).filter { it.isDirectory }, buildInputs,
+                optionalBySourceSet.getValue(sourceSet.name))
             compiler to witness
         }
         val snapshot = project.tasks.register("kartographSnapshot", KartographSnapshotTask::class.java) { task ->
@@ -39,6 +43,8 @@ internal object JvmSnapshotTasks {
             task.indexCacheEnabled.set(extension.snapshotIndexCacheEnabled)
             task.indexCacheDirectory.set(extension.snapshotIndexCacheDirectory)
             task.keepRuleFiles.from(extension.keepRules)
+            task.keepRuleMode.set(extension.keepRuleMode)
+            task.excludedKeepRuleFiles.from(extension.excludedKeepRules)
             task.baselineFile.set(extension.baseline)
             task.generatedClassRoots.from(extension.generatedClassRoots)
             // test runtime의 test-before-main 순서를 그래프의 첫 root 우선 정책에도 유지한다.
@@ -75,10 +81,10 @@ internal object JvmSnapshotTasks {
             val jdk = extension.snapshotKotlinToolchain.orElse(project.providers.provider<org.gradle.jvm.toolchain.JavaLauncher> {
                 throw IllegalArgumentException("Kotlin snapshots require snapshotKotlinToolchain bound to the intended Gradle toolchain")
             })
-            kotlin.values.forEach { compilation ->
+            kotlin.forEach { (name, compilation) ->
                 val compiler = compilation.compiler
                 val witness = KotlinCompilerWitnesses.automaticCompile(project, compiler, scope,
-                    compilation.roots.filter { it.isDirectory }, buildInputs, runtime, optionalOutputs, jdk)
+                    compilation.roots.filter { it.isDirectory }, buildInputs, runtime, optionalBySourceSet.getValue(name), jdk)
                 snapshot.configure { task ->
                     val input = project.objects.newInstance(SnapshotCompilation::class.java)
                     input.identity.set(compiler.map { it.path })

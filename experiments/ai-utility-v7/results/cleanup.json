@@ -1,0 +1,40 @@
+{
+  "status": "complete",
+  "archive": "archives/native-inputs.tar.gz",
+  "archiveSha256": "bedd4e2edb0d0123a4f10d336025ba7fa940dda0177adb2b9198e035198fdacf",
+  "archiveBytes": 342542,
+  "archiveMembers": 2164,
+  "actualRestoredSnapshots": [
+    {
+      "case": "threshold",
+      "status": "matched"
+    },
+    {
+      "case": "nulls",
+      "status": "matched"
+    },
+    {
+      "case": "callback",
+      "status": "matched"
+    },
+    {
+      "case": "dispatch",
+      "status": "matched"
+    }
+  ],
+  "protectedRawFiles": 183,
+  "protectedV5V6Files": 61,
+  "removed": [
+    "native-1/base",
+    "native-1/changed",
+    "source-parser",
+    "restore-check"
+  ],
+  "allocatedBeforeBytes": 74788864,
+  "allocatedAfterBytes": 4263936,
+  "liveNativeInputs": false,
+  "parserDuplicateFilesRemoved": 6,
+  "parserRestoration": "Verified byte-identical members in the retained v6 native archive; see local parser-restoration-reference-local.json.",
+  "prerequisites": "Existing JDK, global dependency cache, released CLI/plugin and frozen worktree sources remain in place.",
+  "restoration": "Extract native-inputs.tar.gz into an empty directory; rewrite only copied local binding values for the new native-1 prefix; run verify-snapshot for each restored base module. Original manifests and bindings remain immutable."
+}

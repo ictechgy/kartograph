@@ -17,7 +17,9 @@ import org.gradle.jvm.toolchain.JavaLauncher
 /** 선택한 Android main/unit-test artifacts와 compiler provider를 같은 snapshot scope로 연결한다. */
 internal object AndroidSnapshotTasks {
     fun register(project: Project, extension: KartographExtension, variant: Variant) {
-        val unitTest = variant.nestedComponents.filterIsInstance<UnitTest>().singleOrNull()
+        // unit-test 제외는 opt-out이다. 제외하면 test compiler witness도 등록하지 않아 test 입력이 capture를 막지 않는다.
+        val includeUnitTests = extension.snapshotIncludeUnitTests.get()
+        val unitTest = variant.nestedComponents.filterIsInstance<UnitTest>().singleOrNull()?.takeIf { includeUnitTests }
         val components = listOfNotNull(variant, unitTest)
         val scope = "${project.path}:${variant.name}"
         val roots = components.associate { component -> component.name to project.files(component.sources.java?.all, component.sources.kotlin?.all) }
@@ -27,7 +29,9 @@ internal object AndroidSnapshotTasks {
         val task = project.tasks.register("kartographSnapshot${variant.name.replaceFirstChar(Char::titlecase)}",
             KartographAndroidSnapshotTask::class.java) { snapshot ->
             snapshot.group = "verification"
-            snapshot.description = "Captures compiled Android ${variant.name} main and unit-test inputs for impact queries."
+            snapshot.description = if (includeUnitTests) "Captures compiled Android ${variant.name} main and unit-test inputs for impact queries."
+                else "Captures compiled Android ${variant.name} main inputs for impact queries."
+            if (!includeUnitTests) snapshot.captureLimitations.add(UNIT_TESTS_EXCLUDED)
             snapshot.scope.set(scope)
             snapshot.revision.set(extension.snapshotRevision)
             snapshot.projectDirectory.set(project.layout.projectDirectory)
@@ -39,6 +43,9 @@ internal object AndroidSnapshotTasks {
             snapshot.indexCacheDirectory.set(extension.snapshotIndexCacheDirectory)
             snapshot.baselineFile.set(extension.baseline)
             snapshot.keepRuleFiles.from(extension.keepRules)
+            snapshot.keepRuleMode.set(extension.keepRuleMode)
+            snapshot.useVariantKeepRules.set(extension.useVariantKeepRules)
+            snapshot.excludedKeepRuleFiles.from(extension.excludedKeepRules)
             snapshot.generatedKeepRuleFiles.from(variant.proguardFiles)
             snapshot.generatedClassRoots.from(extension.generatedClassRoots)
             snapshot.namespace.set(variant.namespace)
@@ -79,8 +86,16 @@ internal object AndroidSnapshotTasks {
             ?.toGet(ScopedArtifact.CLASSES, KartographAndroidSnapshotTask::testJars, KartographAndroidSnapshotTask::testDirectories)
         unitTest?.artifacts?.forScope(ScopedArtifacts.Scope.ALL)?.use(task)
             ?.toGet(ScopedArtifact.CLASSES, KartographAndroidSnapshotTask::testClasspathJars, KartographAndroidSnapshotTask::testClasspathDirectories)
+        project.pluginManager.withPlugin("com.google.dagger.hilt.android") {
+            task.configure { it.hiltArtifactObservation.convention(true) }
+        }
+        SafeArgsSnapshotTasks.register(project, variant.name, scope, task)
 
-        val optionalOutputs = project.files()
+        // 같은 variant compiler의 선언 출력은 NO-SOURCE로 생성되지 않을 수 있다(예: Java만 있는 unit test의 Kotlin 출력).
+        // javac classpath에 들어간 이 디렉터리는 부재까지 추적하는 watch로 기록한다. JVM 경로와 같이 provider로 감싸
+        // compiler 간 build dependency를 되먹이지 않는다.
+        val declaredClassOutputs = project.objects.fileCollection()
+        val optionalOutputs = project.files(project.providers.provider { declaredClassOutputs.files })
         // AGP application의 processResources 산출 R.jar를 resource producer witness로 덮는다(후보 A).
         if (variant is com.android.build.api.variant.ApplicationVariant) {
             val processTaskName = "process${variant.name.replaceFirstChar(Char::titlecase)}Resources"
@@ -104,6 +119,10 @@ internal object AndroidSnapshotTasks {
             task.configure { snapshot ->
                 snapshot.dependsOn(processTaskName)
                 snapshot.buildWitnessFiles.from(resourceWitness)
+                variant.sources.res?.all?.let {
+                    snapshot.androidMainResourceDirectories.from(witnessResDirs)
+                    snapshot.androidResourceProducerArtifact.set(if (project.path == ":") ":$processTaskName" else "${project.path}:$processTaskName")
+                }
             }
         }
         val javaInputs = components.associate { component ->
@@ -120,16 +139,19 @@ internal object AndroidSnapshotTasks {
         }
         // AGP callback은 onVariants 중 등록해야 compiler task 생성에 반영된다.
         AndroidCompilerInputs.javaCompilers(project, components) { component, compiler ->
+            val arguments = AndroidCompilerInputs.argumentProviderInputs(project, compiler, AndroidCompilerInputs.metadataProviderType())
             val additionalInputs = project.files(AndroidCompilerInputs.systemImages(project, compiler),
-                AndroidCompilerInputs.metadataInputs(project, compiler))
+                AndroidCompilerInputs.metadataInputs(project, compiler), arguments.files)
             val witness = CompilerWitnesses.automaticJavaCompile(project, compiler, scope,
-                roots.getValue(component.name).filter { it.isDirectory }, buildInputs, optionalOutputs, additionalInputs)
+                roots.getValue(component.name).filter { it.isDirectory }, buildInputs, optionalOutputs, additionalInputs, arguments.rejection)
             val (input, compilerInputs) = javaInputs.getValue(component.name)
             input.identity.set(compiler.path)
             input.primarySources.from(compiler.source)
             input.classDirectories.from(compiler.destinationDirectory)
+            // 출력 property를 map하면 producer 완료 전 조회가 되어 configuration cache가 거부한다. 위치만 읽는다.
+            declaredClassOutputs.from(project.provider { compiler.destinationDirectory.get().asFile })
             input.witnessFiles.from(witness)
-            compilerInputs.from(additionalInputs, compiler.classpath, compiler.javaCompiler.map { it.metadata.installationPath.file("lib/modules") })
+            compilerInputs.from(AndroidCompilerInputs.snapshotInputs(project, compiler, additionalInputs))
         }
         project.afterEvaluate {
             val kotlin = KotlinJvmInputs.androidCompilations(project, roots)
@@ -140,6 +162,7 @@ internal object AndroidSnapshotTasks {
                 })
                 kotlin.values.forEach { compilation ->
                     val compiler = compilation.compiler
+                    declaredClassOutputs.from(compiler.map { KotlinCompilerWitnesses.destination(it) })
                     val witness = KotlinCompilerWitnesses.automaticCompile(project, compiler, scope,
                         compilation.roots.filter { it.isDirectory }, buildInputs, runtime, optionalOutputs, jdk)
                     attach(project, task, compiler, witness, "kotlin", compiler.map {
@@ -153,8 +176,15 @@ internal object AndroidSnapshotTasks {
                     }
                 }
             }
+            if (project.pluginManager.hasPlugin("com.google.dagger.hilt.android")) {
+                AndroidArtifactCompilers.attach(project, task.get(), scope, buildInputs, optionalOutputs)
+            }
         }
     }
+
+    /** unit-test 제외 사실이다. impact의 테스트 검토 후보가 비어 있는 이유를 결과에서 알 수 있게 한다. */
+    const val UNIT_TESTS_EXCLUDED: String =
+        "unit-test-components-excluded: snapshotIncludeUnitTests=false; test declarations and test review candidates are absent"
 
     private fun attach(project: Project, snapshot: TaskProvider<KartographAndroidSnapshotTask>, compiler: TaskProvider<out Task>,
         witness: Provider<RegularFile>, kind: String, sources: Provider<out FileCollection>, destination: Provider<*>) {

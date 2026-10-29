@@ -1,0 +1,1117 @@
+{
+  "format": "kartograph-jpa-naming-vectors",
+  "version": 1,
+  "description": "JPA entity sources under src/main mapped to table and column names by real Hibernate schema export. Table keys are schema-qualified when @Table(schema) is set; quotes are stripped.",
+  "sources": [
+    "src/main/java/fixture/jpa/naming/Address.java",
+    "src/main/java/fixture/jpa/naming/Article.java",
+    "src/main/java/fixture/jpa/naming/AuditedBase.java",
+    "src/main/java/fixture/jpa/naming/Badge.java",
+    "src/main/java/fixture/jpa/naming/BasicNames.java",
+    "src/main/java/fixture/jpa/naming/CardPayment.java",
+    "src/main/java/fixture/jpa/naming/CircleShape.java",
+    "src/main/java/fixture/jpa/naming/Customer.java",
+    "src/main/java/fixture/jpa/naming/Department.java",
+    "src/main/java/fixture/jpa/naming/Employee.java",
+    "src/main/java/fixture/jpa/naming/ExplicitNames.java",
+    "src/main/java/fixture/jpa/naming/GeoPoint.java",
+    "src/main/java/fixture/jpa/naming/Invoice.java",
+    "src/main/java/fixture/jpa/naming/Laptop.java",
+    "src/main/java/fixture/jpa/naming/NamedEntity.java",
+    "src/main/java/fixture/jpa/naming/NoteTag.java",
+    "src/main/java/fixture/jpa/naming/OrderNote.java",
+    "src/main/java/fixture/jpa/naming/ParkingSpot.java",
+    "src/main/java/fixture/jpa/naming/Payment.java",
+    "src/main/java/fixture/jpa/naming/Project.java",
+    "src/main/java/fixture/jpa/naming/PropertyAccess.java",
+    "src/main/java/fixture/jpa/naming/QuotedNames.java",
+    "src/main/java/fixture/jpa/naming/Shape.java",
+    "src/main/java/fixture/jpa/naming/Skill.java",
+    "src/main/java/fixture/jpa/naming/Truck.java",
+    "src/main/java/fixture/jpa/naming/Vehicle.java",
+    "src/main/java/fixture/jpa/naming/WirePayment.java",
+    "src/main/kotlin/fixture/jpa/naming/KotlinEntities.kt"
+  ],
+  "cases": [
+    {
+      "id": "spring-boot-3/hibernate-6.6.53.Final",
+      "profile": "spring-boot-3",
+      "provenance": "execution",
+      "source": "experiments/jpa-persistence/harness :hibernate6 (spring-boot)",
+      "oracle": {
+        "hibernate": "6.6.53.Final",
+        "strategies": {
+          "hibernate.implicit_naming_strategy": "org.springframework.boot.orm.jpa.hibernate.SpringImplicitNamingStrategy",
+          "hibernate.physical_naming_strategy": "org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy"
+        },
+        "springBoot": "3.5.16"
+      },
+      "expect": {
+        "tables": {
+          "article": [
+            "article_id"
+          ],
+          "article_alias": [
+            "alias_text",
+            "article_ref"
+          ],
+          "article_ordered_notes": [
+            "article_article_id",
+            "ordered_notes",
+            "ordered_notes_order"
+          ],
+          "article_past_addresses": [
+            "article_article_id",
+            "lat_value",
+            "lng",
+            "street_name",
+            "zip_code"
+          ],
+          "article_tag_names": [
+            "article_article_id",
+            "tag_names"
+          ],
+          "badge": [
+            "badge_id",
+            "label_text"
+          ],
+          "basic_names": [
+            "ab",
+            "address2line",
+            "already_snake",
+            "created_at",
+            "foo_bar1",
+            "htmlparser",
+            "id",
+            "line2address",
+            "title",
+            "urlvalue",
+            "version2",
+            "x"
+          ],
+          "card_payment": [
+            "card_last4",
+            "payment_id"
+          ],
+          "circle_shape": [
+            "id",
+            "radius_value",
+            "shape_color"
+          ],
+          "customer": [
+            "bill_lat",
+            "bill_lng",
+            "bill_street",
+            "bill_zip",
+            "id",
+            "lat_value",
+            "lng",
+            "street_name",
+            "zip_code"
+          ],
+          "department": [
+            "dept_id",
+            "dept_name"
+          ],
+          "employee": [
+            "home_department_dept_id",
+            "id",
+            "mentor_ref",
+            "parking_spot_spot_id"
+          ],
+          "employee_badges": [
+            "badges_badge_id",
+            "employee_id"
+          ],
+          "employee_projects": [
+            "members_id",
+            "projects_project_id"
+          ],
+          "employee_skill": [
+            "employee_ref",
+            "skill_ref"
+          ],
+          "invoice": [
+            "created_by",
+            "id",
+            "row_version",
+            "total_amount"
+          ],
+          "kotlin_board": [
+            "board_id",
+            "board_name",
+            "owner_task_id"
+          ],
+          "kotlin_tasks": [
+            "board_ref",
+            "created_at",
+            "due_on",
+            "id",
+            "priority_level",
+            "task_title"
+          ],
+          "laptop": [
+            "label_text",
+            "laptop_id",
+            "owner_employee"
+          ],
+          "note_tag": [
+            "note_tags_note_id",
+            "tag_id",
+            "tag_text"
+          ],
+          "order_note": [
+            "note_id",
+            "order_line_line_id",
+            "widget_id"
+          ],
+          "parking_spot": [
+            "label_text",
+            "spot_id"
+          ],
+          "payments": [
+            "amount_cents",
+            "payment_id",
+            "payment_kind"
+          ],
+          "project": [
+            "label_text",
+            "project_id"
+          ],
+          "property_access": [
+            "active_flag",
+            "key",
+            "public_name"
+          ],
+          "sales_data.order_line": [
+            "display_name",
+            "item_code",
+            "line_id",
+            "unit_price"
+          ],
+          "skill": [
+            "label_text",
+            "skill_id"
+          ],
+          "user_account": [
+            "id",
+            "login_name",
+            "mixed_case"
+          ],
+          "vehicle": [
+            "axle_count",
+            "dtype",
+            "id",
+            "plate_number"
+          ],
+          "widget_item": [
+            "id",
+            "widget_label"
+          ],
+          "wire_payments": [
+            "bank_code",
+            "wire_payment_ref"
+          ]
+        }
+      }
+    },
+    {
+      "id": "spring-boot-4/hibernate-7.2.24.Final",
+      "profile": "spring-boot-4",
+      "provenance": "execution",
+      "source": "experiments/jpa-persistence/harness :hibernate7-2 (spring-boot)",
+      "oracle": {
+        "hibernate": "7.2.24.Final",
+        "strategies": {
+          "hibernate.implicit_naming_strategy": "org.springframework.boot.hibernate.SpringImplicitNamingStrategy",
+          "hibernate.physical_naming_strategy": "org.hibernate.boot.model.naming.PhysicalNamingStrategySnakeCaseImpl"
+        },
+        "springBoot": "4.0.8"
+      },
+      "expect": {
+        "tables": {
+          "UserAccount": [
+            "MixedCase",
+            "id",
+            "loginName"
+          ],
+          "article": [
+            "article_id"
+          ],
+          "article_alias": [
+            "alias_text",
+            "article_ref"
+          ],
+          "article_ordered_notes": [
+            "article_article_id",
+            "ordered_notes",
+            "ordered_notes_order"
+          ],
+          "article_past_addresses": [
+            "article_article_id",
+            "lat_value",
+            "lng",
+            "street_name",
+            "zip_code"
+          ],
+          "article_tag_names": [
+            "article_article_id",
+            "tag_names"
+          ],
+          "badge": [
+            "badge_id",
+            "label_text"
+          ],
+          "basic_names": [
+            "ab",
+            "address2_line",
+            "already_snake",
+            "created_at",
+            "foo_bar1",
+            "htmlparser",
+            "id",
+            "line2_address",
+            "title",
+            "urlvalue",
+            "version2",
+            "x"
+          ],
+          "card_payment": [
+            "card_last4",
+            "payment_id"
+          ],
+          "circle_shape": [
+            "id",
+            "radius_value",
+            "shape_color"
+          ],
+          "customer": [
+            "bill_lat",
+            "bill_lng",
+            "bill_street",
+            "bill_zip",
+            "id",
+            "lat_value",
+            "lng",
+            "street_name",
+            "zip_code"
+          ],
+          "department": [
+            "dept_id",
+            "dept_name"
+          ],
+          "employee": [
+            "home_department_dept_id",
+            "id",
+            "mentor_ref",
+            "parking_spot_spot_id"
+          ],
+          "employee_badges": [
+            "badges_badge_id",
+            "employee_id"
+          ],
+          "employee_projects": [
+            "members_id",
+            "projects_project_id"
+          ],
+          "employee_skill": [
+            "employee_ref",
+            "skill_ref"
+          ],
+          "invoice": [
+            "created_by",
+            "id",
+            "row_version",
+            "total_amount"
+          ],
+          "kotlin_board": [
+            "board_id",
+            "board_name",
+            "owner_task_id"
+          ],
+          "kotlin_tasks": [
+            "board_ref",
+            "created_at",
+            "due_on",
+            "id",
+            "priority_level",
+            "task_title"
+          ],
+          "laptop": [
+            "label_text",
+            "laptop_id",
+            "owner_employee"
+          ],
+          "note_tag": [
+            "note_tags_note_id",
+            "tag_id",
+            "tag_text"
+          ],
+          "order_note": [
+            "note_id",
+            "order_line_line_id",
+            "widget_id"
+          ],
+          "parking_spot": [
+            "label_text",
+            "spot_id"
+          ],
+          "payments": [
+            "amount_cents",
+            "payment_id",
+            "payment_kind"
+          ],
+          "project": [
+            "label_text",
+            "project_id"
+          ],
+          "property_access": [
+            "active_flag",
+            "key",
+            "public_name"
+          ],
+          "sales_data.order_line": [
+            "display_name",
+            "item_code",
+            "line_id",
+            "unit_price"
+          ],
+          "skill": [
+            "label_text",
+            "skill_id"
+          ],
+          "vehicle": [
+            "axle_count",
+            "dtype",
+            "id",
+            "plate_number"
+          ],
+          "widget_item": [
+            "id",
+            "widget_label"
+          ],
+          "wire_payments": [
+            "bank_code",
+            "wire_payment_ref"
+          ]
+        }
+      }
+    },
+    {
+      "id": "spring-boot-4/hibernate-7.4.5.Final",
+      "profile": "spring-boot-4",
+      "provenance": "execution",
+      "source": "experiments/jpa-persistence/harness :hibernate7-4 (spring-boot)",
+      "oracle": {
+        "hibernate": "7.4.5.Final",
+        "strategies": {
+          "hibernate.implicit_naming_strategy": "org.springframework.boot.hibernate.SpringImplicitNamingStrategy",
+          "hibernate.physical_naming_strategy": "org.hibernate.boot.model.naming.PhysicalNamingStrategySnakeCaseImpl"
+        },
+        "springBoot": "4.1.1"
+      },
+      "expect": {
+        "tables": {
+          "UserAccount": [
+            "MixedCase",
+            "id",
+            "loginName"
+          ],
+          "article": [
+            "article_id"
+          ],
+          "article_alias": [
+            "alias_text",
+            "article_ref"
+          ],
+          "article_ordered_notes": [
+            "article_article_id",
+            "ordered_notes",
+            "ordered_notes_order"
+          ],
+          "article_past_addresses": [
+            "article_article_id",
+            "lat_value",
+            "lng",
+            "street_name",
+            "zip_code"
+          ],
+          "article_tag_names": [
+            "article_article_id",
+            "tag_names"
+          ],
+          "badge": [
+            "badge_id",
+            "label_text"
+          ],
+          "basic_names": [
+            "ab",
+            "address2_line",
+            "already_snake",
+            "created_at",
+            "foo_bar1",
+            "htmlparser",
+            "id",
+            "line2_address",
+            "title",
+            "urlvalue",
+            "version2",
+            "x"
+          ],
+          "card_payment": [
+            "card_last4",
+            "payment_id"
+          ],
+          "circle_shape": [
+            "id",
+            "radius_value",
+            "shape_color"
+          ],
+          "customer": [
+            "bill_lat",
+            "bill_lng",
+            "bill_street",
+            "bill_zip",
+            "id",
+            "lat_value",
+            "lng",
+            "street_name",
+            "zip_code"
+          ],
+          "department": [
+            "dept_id",
+            "dept_name"
+          ],
+          "employee": [
+            "home_department_dept_id",
+            "id",
+            "mentor_ref",
+            "parking_spot_spot_id"
+          ],
+          "employee_badges": [
+            "badges_badge_id",
+            "employee_id"
+          ],
+          "employee_projects": [
+            "members_id",
+            "projects_project_id"
+          ],
+          "employee_skill": [
+            "employee_ref",
+            "skill_ref"
+          ],
+          "invoice": [
+            "created_by",
+            "id",
+            "row_version",
+            "total_amount"
+          ],
+          "kotlin_board": [
+            "board_id",
+            "board_name",
+            "owner_task_id"
+          ],
+          "kotlin_tasks": [
+            "board_ref",
+            "created_at",
+            "due_on",
+            "id",
+            "priority_level",
+            "task_title"
+          ],
+          "laptop": [
+            "label_text",
+            "laptop_id",
+            "owner_employee"
+          ],
+          "note_tag": [
+            "note_tags_note_id",
+            "tag_id",
+            "tag_text"
+          ],
+          "order_note": [
+            "note_id",
+            "order_line_line_id",
+            "widget_id"
+          ],
+          "parking_spot": [
+            "label_text",
+            "spot_id"
+          ],
+          "payments": [
+            "amount_cents",
+            "payment_id",
+            "payment_kind"
+          ],
+          "project": [
+            "label_text",
+            "project_id"
+          ],
+          "property_access": [
+            "active_flag",
+            "key",
+            "public_name"
+          ],
+          "sales_data.order_line": [
+            "display_name",
+            "item_code",
+            "line_id",
+            "unit_price"
+          ],
+          "skill": [
+            "label_text",
+            "skill_id"
+          ],
+          "vehicle": [
+            "axle_count",
+            "dtype",
+            "id",
+            "plate_number"
+          ],
+          "widget_item": [
+            "id",
+            "widget_label"
+          ],
+          "wire_payments": [
+            "bank_code",
+            "wire_payment_ref"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hibernate-6/hibernate-6.6.53.Final",
+      "profile": "hibernate-6",
+      "provenance": "execution",
+      "source": "experiments/jpa-persistence/harness :hibernate6 (hibernate)",
+      "oracle": {
+        "hibernate": "6.6.53.Final",
+        "strategies": {}
+      },
+      "expect": {
+        "tables": {
+          "Article": [
+            "articleId"
+          ],
+          "ArticleAlias": [
+            "aliasText",
+            "articleRef"
+          ],
+          "Article_orderedNotes": [
+            "Article_articleId",
+            "orderedNotes",
+            "orderedNotes_ORDER"
+          ],
+          "Article_pastAddresses": [
+            "Article_articleId",
+            "latValue",
+            "lng",
+            "streetName",
+            "zipCode"
+          ],
+          "Article_tagNames": [
+            "Article_articleId",
+            "tagNames"
+          ],
+          "Badge": [
+            "badgeId",
+            "labelText"
+          ],
+          "BasicNames": [
+            "HTMLParser",
+            "URLValue",
+            "aB",
+            "address2Line",
+            "already_snake",
+            "createdAt",
+            "fooBar1",
+            "id",
+            "line2Address",
+            "title",
+            "version2",
+            "x"
+          ],
+          "CardPayment": [
+            "cardLast4",
+            "paymentId"
+          ],
+          "CircleShape": [
+            "id",
+            "radiusValue",
+            "shapeColor"
+          ],
+          "Customer": [
+            "billLat",
+            "billLng",
+            "billStreet",
+            "billZip",
+            "id",
+            "latValue",
+            "lng",
+            "streetName",
+            "zipCode"
+          ],
+          "Department": [
+            "deptId",
+            "deptName"
+          ],
+          "Employee": [
+            "homeDepartment_deptId",
+            "id",
+            "mentorRef",
+            "parkingSpot_spotId"
+          ],
+          "EmployeeSkill": [
+            "employeeRef",
+            "skillRef"
+          ],
+          "Employee_Badge": [
+            "Employee_id",
+            "badges_badgeId"
+          ],
+          "Employee_Project": [
+            "members_id",
+            "projects_projectId"
+          ],
+          "Invoice": [
+            "createdBy",
+            "id",
+            "rowVersion",
+            "totalAmount"
+          ],
+          "KotlinBoard": [
+            "boardId",
+            "boardName",
+            "ownerTask_id"
+          ],
+          "Laptop": [
+            "labelText",
+            "laptopId",
+            "ownerEmployee"
+          ],
+          "NoteTag": [
+            "noteTags_noteId",
+            "tagId",
+            "tagText"
+          ],
+          "OrderNote": [
+            "noteId",
+            "orderLine_lineId",
+            "widget_id"
+          ],
+          "ParkingSpot": [
+            "labelText",
+            "spotId"
+          ],
+          "Project": [
+            "labelText",
+            "projectId"
+          ],
+          "PropertyAccess": [
+            "activeFlag",
+            "key",
+            "publicName"
+          ],
+          "SalesData.OrderLine": [
+            "UnitPrice",
+            "display_name",
+            "itemCode",
+            "lineId"
+          ],
+          "Skill": [
+            "labelText",
+            "skillId"
+          ],
+          "UserAccount": [
+            "MixedCase",
+            "id",
+            "loginName"
+          ],
+          "Vehicle": [
+            "DTYPE",
+            "axleCount",
+            "id",
+            "plateNumber"
+          ],
+          "WidgetItem": [
+            "id",
+            "widgetLabel"
+          ],
+          "kotlin_tasks": [
+            "boardRef",
+            "createdAt",
+            "due_on",
+            "id",
+            "priorityLevel",
+            "taskTitle"
+          ],
+          "payments": [
+            "amountCents",
+            "paymentId",
+            "paymentKind"
+          ],
+          "wire_payments": [
+            "bankCode",
+            "wirePaymentRef"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hibernate-7/hibernate-7.2.24.Final",
+      "profile": "hibernate-7",
+      "provenance": "execution",
+      "source": "experiments/jpa-persistence/harness :hibernate7-2 (hibernate)",
+      "oracle": {
+        "hibernate": "7.2.24.Final",
+        "strategies": {}
+      },
+      "expect": {
+        "tables": {
+          "Article": [
+            "articleId"
+          ],
+          "ArticleAlias": [
+            "aliasText",
+            "articleRef"
+          ],
+          "Article_orderedNotes": [
+            "Article_articleId",
+            "orderedNotes",
+            "orderedNotes_ORDER"
+          ],
+          "Article_pastAddresses": [
+            "Article_articleId",
+            "latValue",
+            "lng",
+            "streetName",
+            "zipCode"
+          ],
+          "Article_tagNames": [
+            "Article_articleId",
+            "tagNames"
+          ],
+          "Badge": [
+            "badgeId",
+            "labelText"
+          ],
+          "BasicNames": [
+            "HTMLParser",
+            "URLValue",
+            "aB",
+            "address2Line",
+            "already_snake",
+            "createdAt",
+            "fooBar1",
+            "id",
+            "line2Address",
+            "title",
+            "version2",
+            "x"
+          ],
+          "CardPayment": [
+            "cardLast4",
+            "paymentId"
+          ],
+          "CircleShape": [
+            "id",
+            "radiusValue",
+            "shapeColor"
+          ],
+          "Customer": [
+            "billLat",
+            "billLng",
+            "billStreet",
+            "billZip",
+            "id",
+            "latValue",
+            "lng",
+            "streetName",
+            "zipCode"
+          ],
+          "Department": [
+            "deptId",
+            "deptName"
+          ],
+          "Employee": [
+            "homeDepartment_deptId",
+            "id",
+            "mentorRef",
+            "parkingSpot_spotId"
+          ],
+          "EmployeeSkill": [
+            "employeeRef",
+            "skillRef"
+          ],
+          "Employee_Badge": [
+            "Employee_id",
+            "badges_badgeId"
+          ],
+          "Employee_Project": [
+            "members_id",
+            "projects_projectId"
+          ],
+          "Invoice": [
+            "createdBy",
+            "id",
+            "rowVersion",
+            "totalAmount"
+          ],
+          "KotlinBoard": [
+            "boardId",
+            "boardName",
+            "ownerTask_id"
+          ],
+          "Laptop": [
+            "labelText",
+            "laptopId",
+            "ownerEmployee"
+          ],
+          "NoteTag": [
+            "noteTags_noteId",
+            "tagId",
+            "tagText"
+          ],
+          "OrderNote": [
+            "noteId",
+            "orderLine_lineId",
+            "widget_id"
+          ],
+          "ParkingSpot": [
+            "labelText",
+            "spotId"
+          ],
+          "Project": [
+            "labelText",
+            "projectId"
+          ],
+          "PropertyAccess": [
+            "activeFlag",
+            "key",
+            "publicName"
+          ],
+          "SalesData.OrderLine": [
+            "UnitPrice",
+            "display_name",
+            "itemCode",
+            "lineId"
+          ],
+          "Skill": [
+            "labelText",
+            "skillId"
+          ],
+          "UserAccount": [
+            "MixedCase",
+            "id",
+            "loginName"
+          ],
+          "Vehicle": [
+            "DTYPE",
+            "axleCount",
+            "id",
+            "plateNumber"
+          ],
+          "WidgetItem": [
+            "id",
+            "widgetLabel"
+          ],
+          "kotlin_tasks": [
+            "boardRef",
+            "createdAt",
+            "due_on",
+            "id",
+            "priorityLevel",
+            "taskTitle"
+          ],
+          "payments": [
+            "amountCents",
+            "paymentId",
+            "paymentKind"
+          ],
+          "wire_payments": [
+            "bankCode",
+            "wirePaymentRef"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hibernate-7/hibernate-7.4.5.Final",
+      "profile": "hibernate-7",
+      "provenance": "execution",
+      "source": "experiments/jpa-persistence/harness :hibernate7-4 (hibernate)",
+      "oracle": {
+        "hibernate": "7.4.5.Final",
+        "strategies": {}
+      },
+      "expect": {
+        "tables": {
+          "Article": [
+            "articleId"
+          ],
+          "ArticleAlias": [
+            "aliasText",
+            "articleRef"
+          ],
+          "Article_orderedNotes": [
+            "Article_articleId",
+            "orderedNotes",
+            "orderedNotes_ORDER"
+          ],
+          "Article_pastAddresses": [
+            "Article_articleId",
+            "latValue",
+            "lng",
+            "streetName",
+            "zipCode"
+          ],
+          "Article_tagNames": [
+            "Article_articleId",
+            "tagNames"
+          ],
+          "Badge": [
+            "badgeId",
+            "labelText"
+          ],
+          "BasicNames": [
+            "HTMLParser",
+            "URLValue",
+            "aB",
+            "address2Line",
+            "already_snake",
+            "createdAt",
+            "fooBar1",
+            "id",
+            "line2Address",
+            "title",
+            "version2",
+            "x"
+          ],
+          "CardPayment": [
+            "cardLast4",
+            "paymentId"
+          ],
+          "CircleShape": [
+            "id",
+            "radiusValue",
+            "shapeColor"
+          ],
+          "Customer": [
+            "billLat",
+            "billLng",
+            "billStreet",
+            "billZip",
+            "id",
+            "latValue",
+            "lng",
+            "streetName",
+            "zipCode"
+          ],
+          "Department": [
+            "deptId",
+            "deptName"
+          ],
+          "Employee": [
+            "homeDepartment_deptId",
+            "id",
+            "mentorRef",
+            "parkingSpot_spotId"
+          ],
+          "EmployeeSkill": [
+            "employeeRef",
+            "skillRef"
+          ],
+          "Employee_Badge": [
+            "Employee_id",
+            "badges_badgeId"
+          ],
+          "Employee_Project": [
+            "members_id",
+            "projects_projectId"
+          ],
+          "Invoice": [
+            "createdBy",
+            "id",
+            "rowVersion",
+            "totalAmount"
+          ],
+          "KotlinBoard": [
+            "boardId",
+            "boardName",
+            "ownerTask_id"
+          ],
+          "Laptop": [
+            "labelText",
+            "laptopId",
+            "ownerEmployee"
+          ],
+          "NoteTag": [
+            "noteTags_noteId",
+            "tagId",
+            "tagText"
+          ],
+          "OrderNote": [
+            "noteId",
+            "orderLine_lineId",
+            "widget_id"
+          ],
+          "ParkingSpot": [
+            "labelText",
+            "spotId"
+          ],
+          "Project": [
+            "labelText",
+            "projectId"
+          ],
+          "PropertyAccess": [
+            "activeFlag",
+            "key",
+            "publicName"
+          ],
+          "SalesData.OrderLine": [
+            "UnitPrice",
+            "display_name",
+            "itemCode",
+            "lineId"
+          ],
+          "Skill": [
+            "labelText",
+            "skillId"
+          ],
+          "UserAccount": [
+            "MixedCase",
+            "id",
+            "loginName"
+          ],
+          "Vehicle": [
+            "DTYPE",
+            "axleCount",
+            "id",
+            "plateNumber"
+          ],
+          "WidgetItem": [
+            "id",
+            "widgetLabel"
+          ],
+          "kotlin_tasks": [
+            "boardRef",
+            "createdAt",
+            "due_on",
+            "id",
+            "priorityLevel",
+            "taskTitle"
+          ],
+          "payments": [
+            "amountCents",
+            "paymentId",
+            "paymentKind"
+          ],
+          "wire_payments": [
+            "bankCode",
+            "wirePaymentRef"
+          ]
+        }
+      }
+    }
+  ]
+}

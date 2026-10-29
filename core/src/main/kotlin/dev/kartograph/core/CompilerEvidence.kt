@@ -39,7 +39,9 @@ public data class CompilerEvidence(
         require(collector in setOf("javac-constants", "kotlin-constants", "dagger-bindings", "javac-processors")) { "unsupported compiler evidence collector" }
         require((collector == "javac-processors") == (processorGeneration != null)) { "processor evidence identity is missing or misplaced" }
         require(processorGeneration == null || references.isEmpty() && unmapped == 0) { "processor attribution cannot contain reference edges" }
-        require(processorGeneration?.sources.orEmpty().all { it in sources }) { "processor outputs must be observed compiler sources" }
+        // 생성 source마다 List 포함 검사를 하면 (생성 source 수 × 관찰 source 수)번 비교하므로, 관찰 source를 한 번만 집합으로 만든다.
+        val generatedSources = processorGeneration?.sources.orEmpty()
+        require(generatedSources.isEmpty() || sources.toHashSet().containsAll(generatedSources)) { "processor outputs must be observed compiler sources" }
         require(compilerVersion.length in 1..128 && Regex("[A-Za-z0-9._+\\-]+").matches(compilerVersion)) { "invalid compiler version" }
         require(Regex("[0-9a-f]{64}").matches(inputToken) && Regex("[0-9a-f]{64}").matches(artifactSha256)) { "invalid compiler evidence fingerprint" }
         require(unmapped >= 0) { "invalid unmapped reference count" }

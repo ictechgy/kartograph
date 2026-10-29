@@ -1,0 +1,10 @@
+{
+  "url": "https://api.github.com/repos/alibaba/fastjson2/git/trees/3f6275bcc3cd40a57f6d257cdeec322d1b9ae06d?recursive=1",
+  "bytes": 1362155,
+  "sha256": "691adfb1279182b6b79af42a6e209ae4d4eefa1debcd7b05c06352cb2d6ead25",
+  "truncated": false,
+  "matchingPaths": [
+    "core/src/test/java/com/alibaba/fastjson2/issues_1600/Issue1676.java",
+    "fastjson1-compatible/src/test/java/com/alibaba/fastjson/v2issues/Issue1676.java"
+  ]
+}

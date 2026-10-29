@@ -1,0 +1,1150 @@
+{
+  "scope": "Post-run readback of every unresolved prediction, caller deficit and observed negative-control selection. No alternate scoring, name repair or model rerun.",
+  "unresolvedCounts": {
+    "omitted-nested-owner": 16,
+    "misnamed-declaration": 2
+  },
+  "unresolved": [
+    {
+      "case": "detekt-line-content",
+      "arm": "source",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+        "symbol": "TrailingWhitespaceSpec.`reports a line just with a whitespace`",
+        "kind": "test",
+        "reason": "Expects a finding, but trimmed lines contain no trailing whitespace, so no report is emitted.",
+        "evidence": "test at line 15 in suite for rule whose detection input is toFileContent()"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a line just with a whitespace()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+            "package": "io.gitlab.arturbosch.detekt.rules.style",
+            "name": "reports a line just with a whitespace",
+            "owners": [
+              "TrailingWhitespaceSpec",
+              "positive cases"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 14,
+            "endLine": 19
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "source",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+        "symbol": "TrailingWhitespaceSpec.`reports a commented line with a whitespace at the end`",
+        "kind": "test",
+        "reason": "Same: trailing whitespace stripped before detection, expected finding disappears.",
+        "evidence": "line 22"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a commented line with a whitespace at the end()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+            "package": "io.gitlab.arturbosch.detekt.rules.style",
+            "name": "reports a commented line with a whitespace at the end",
+            "owners": [
+              "TrailingWhitespaceSpec",
+              "positive cases"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 21,
+            "endLine": 26
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "source",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+        "symbol": "TrailingWhitespaceSpec.`reports a class declaration with a whitespace at the end`",
+        "kind": "test",
+        "reason": "Same: expected report no longer produced.",
+        "evidence": "line 29"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a class declaration with a whitespace at the end()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+            "package": "io.gitlab.arturbosch.detekt.rules.style",
+            "name": "reports a class declaration with a whitespace at the end",
+            "owners": [
+              "TrailingWhitespaceSpec",
+              "positive cases"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 28,
+            "endLine": 33
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "source",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+        "symbol": "TrailingWhitespaceSpec.`reports a print statement with a tab at the end`",
+        "kind": "test",
+        "reason": "trimEnd also removes tabs, so the tab-at-end finding vanishes.",
+        "evidence": "line 36; countTrailingWhitespace checks ' ' and '\\t'"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a print statement with a tab at the end()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+            "package": "io.gitlab.arturbosch.detekt.rules.style",
+            "name": "reports a print statement with a tab at the end",
+            "owners": [
+              "TrailingWhitespaceSpec",
+              "positive cases"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 35,
+            "endLine": 40
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "mcp",
+      "repeat": 1,
+      "prediction": {
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+        "symbol": "TrailingWhitespaceSpec.`reports a line just with a whitespace`",
+        "kind": "test",
+        "reason": "Code \" \" becomes \"\" after trimEnd, no finding; hasTextLocations(0 to 1) fails.",
+        "evidence": "lines 16-18"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a line just with a whitespace()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+            "package": "io.gitlab.arturbosch.detekt.rules.style",
+            "name": "reports a line just with a whitespace",
+            "owners": [
+              "TrailingWhitespaceSpec",
+              "positive cases"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 14,
+            "endLine": 19
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "mcp",
+      "repeat": 1,
+      "prediction": {
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+        "symbol": "TrailingWhitespaceSpec.`reports a commented line with a whitespace at the end`",
+        "kind": "test",
+        "reason": "Trailing space trimmed away; expected finding at 12 to 13 disappears.",
+        "evidence": "lines 23-25"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a commented line with a whitespace at the end()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+            "package": "io.gitlab.arturbosch.detekt.rules.style",
+            "name": "reports a commented line with a whitespace at the end",
+            "owners": [
+              "TrailingWhitespaceSpec",
+              "positive cases"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 21,
+            "endLine": 26
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "mcp",
+      "repeat": 1,
+      "prediction": {
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+        "symbol": "TrailingWhitespaceSpec.`reports a class declaration with a whitespace at the end`",
+        "kind": "test",
+        "reason": "Trailing space on first line trimmed; no finding at 36 to 37.",
+        "evidence": "lines 30-32"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a class declaration with a whitespace at the end()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+            "package": "io.gitlab.arturbosch.detekt.rules.style",
+            "name": "reports a class declaration with a whitespace at the end",
+            "owners": [
+              "TrailingWhitespaceSpec",
+              "positive cases"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 28,
+            "endLine": 33
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "mcp",
+      "repeat": 1,
+      "prediction": {
+        "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+        "symbol": "TrailingWhitespaceSpec.`reports a print statement with a tab at the end`",
+        "kind": "test",
+        "reason": "trimEnd also removes the trailing tab; expected 22 to 23 finding disappears.",
+        "evidence": "lines 37-39"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a print statement with a tab at the end()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec.kt",
+            "package": "io.gitlab.arturbosch.detekt.rules.style",
+            "name": "reports a print statement with a tab at the end",
+            "owners": [
+              "TrailingWhitespaceSpec",
+              "positive cases"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 35,
+            "endLine": 40
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+        "symbol": "NoWildcardImportsRuleTest.`Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected`",
+        "kind": "test",
+        "reason": "Layout 'react.**' must allow 'react.dom.*'; after the flip withSubpackages=true no longer matches subpackage, adding an unexpected violation on line 4",
+        "evidence": "lines 114-125: expects only violation (2,1) with react.** override"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+            "package": "com.pinterest.ktlint.ruleset.standard.rules",
+            "name": "Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected",
+            "owners": [
+              "NoWildcardImportsRuleTest",
+              "Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 113,
+            "endLine": 125
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+        "symbol": "NoWildcardImportsRuleTest.`Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected`",
+        "kind": "test",
+        "reason": "Default entry 'kotlinx.android.synthetic.**' (withSubpackages=true) would no longer match kotlinx.android.synthetic.main.layout_name.*, adding a violation on line 2",
+        "evidence": "lines 82-97 expect violations only at lines 3 and 4"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+            "package": "com.pinterest.ktlint.ruleset.standard.rules",
+            "name": "Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected",
+            "owners": [
+              "NoWildcardImportsRuleTest",
+              "Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 81,
+            "endLine": 97
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/internal/importordering/ImportSorter.kt",
+        "symbol": "ImportSorter.findEntryMatchingImport",
+        "kind": "caller",
+        "reason": "Selects best PatternEntry via isBetterMatchForPackageThan which calls matchesPackageName; subpackage imports now fall through to ALL_OTHER_IMPORTS, changing grouping/order",
+        "evidence": "ImportSorter.kt lines 31-41 iterate patterns and compare entries"
+      },
+      "category": "misnamed-declaration",
+      "readbackOnly": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/internal/importordering/ImportSorter#findImportIndex(Lorg/jetbrains/kotlin/resolve/ImportPath;)I",
+          "sourceEvidence": {
+            "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/internal/importordering/ImportSorter.kt",
+            "package": "com.pinterest.ktlint.ruleset.standard.rules.internal.importordering",
+            "name": "findImportIndex",
+            "owners": [
+              "ImportSorter"
+            ],
+            "types": [
+              "ImportPath"
+            ],
+            "namedParameters": [
+              "path: ImportPath"
+            ],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 29,
+            "endLine": 53
+          },
+          "sourceDeclarationLine": "    fun findImportIndex(path: ImportPath): Int {",
+          "inBehaviorOracle": false,
+          "inCallOracle": true
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+        "symbol": "NoWildcardImportsRuleTest.`Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected`",
+        "kind": "test",
+        "reason": "'react.**' (withSubpackages=true) will no longer match 'react.dom.*', adding an unexpected violation on line 4 beyond the single expected violation",
+        "evidence": "lines 114-125: override react.** and hasLintViolationWithoutAutoCorrect(2,1)"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+            "package": "com.pinterest.ktlint.ruleset.standard.rules",
+            "name": "Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected",
+            "owners": [
+              "NoWildcardImportsRuleTest",
+              "Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 113,
+            "endLine": 125
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+        "symbol": "NoWildcardImportsRuleTest.`Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected`",
+        "kind": "test",
+        "reason": "IntelliJ default entry kotlinx.android.synthetic.** no longer matches kotlinx.android.synthetic.main.layout_name.*, adding a violation at line 2 not expected",
+        "evidence": "lines 82-97 expect only violations at lines 3 and 4; defaultValue parses 'kotlinx.android.synthetic.**' (NoWildcardImportsRule.kt:98)"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+            "package": "com.pinterest.ktlint.ruleset.standard.rules",
+            "name": "Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected",
+            "owners": [
+              "NoWildcardImportsRuleTest",
+              "Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 81,
+            "endLine": 97
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 1,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+        "symbol": "NoWildcardImportsRuleTest.`Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected`",
+        "kind": "test",
+        "reason": "'react.**' will no longer match 'react.dom.*', adding an unexpected violation on line 4; only violation at (2,1) asserted.",
+        "evidence": "lines 114-125: override react.** ; hasLintViolationWithoutAutoCorrect(2,1)"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+            "package": "com.pinterest.ktlint.ruleset.standard.rules",
+            "name": "Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected",
+            "owners": [
+              "NoWildcardImportsRuleTest",
+              "Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 113,
+            "endLine": 125
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 1,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+        "symbol": "NoWildcardImportsRuleTest.`Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected`",
+        "kind": "test",
+        "reason": "Default 'kotlinx.android.synthetic.**' no longer matches kotlinx.android.synthetic.main.layout_name.* -> extra violation at line 2.",
+        "evidence": "lines 82-97 expect only violations 3 and 4; NoWildcardImportsRule.kt line 98 default value"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+            "package": "com.pinterest.ktlint.ruleset.standard.rules",
+            "name": "Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected",
+            "owners": [
+              "NoWildcardImportsRuleTest",
+              "Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 81,
+            "endLine": 97
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 1,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+        "symbol": "NoWildcardImportsRuleTest.`Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected`",
+        "kind": "test",
+        "reason": "Default allows kotlinx.android.synthetic.** (withSubpackages=true); patched code no longer matches subpackage import on line 2, adding an unexpected violation.",
+        "evidence": "lines 86,93-95: expects only violations at lines 3 and 4"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+            "package": "com.pinterest.ktlint.ruleset.standard.rules",
+            "name": "Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected",
+            "owners": [
+              "NoWildcardImportsRuleTest",
+              "Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 81,
+            "endLine": 97
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 1,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+        "symbol": "NoWildcardImportsRuleTest.`Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected`",
+        "kind": "test",
+        "reason": "'react.**' (withSubpackages=true) will no longer match 'react.dom.*', producing an extra violation at line 4.",
+        "evidence": "lines 123-124: override react.** and expects only violation (2,1)"
+      },
+      "category": "omitted-nested-owner",
+      "readbackOnly": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest.kt",
+            "package": "com.pinterest.ktlint.ruleset.standard.rules",
+            "name": "Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected",
+            "owners": [
+              "NoWildcardImportsRuleTest",
+              "Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 113,
+            "endLine": 125
+          },
+          "sourceDeclarationLine": "        @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 1,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest.kt",
+        "symbol": "ImportOrderingRuleCustomTest.`Given a custom layout with blank lines`",
+        "kind": "test",
+        "reason": "Layout 'android.**,|,org.junit.**,...' relies on subpackage matching for imports like android.app.Activity; patched matching sends them to '*' changing groups/blank lines.",
+        "evidence": "line 110: IJ_KOTLIN_IMPORTS_LAYOUT_PROPERTY to \"android.**,|,org.junit.**,|,net.**,...,*\""
+      },
+      "category": "misnamed-declaration",
+      "readbackOnly": [
+        {
+          "id": "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest#Given some imports ordered as required then do no return lint errors()V",
+          "sourceEvidence": {
+            "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest.kt",
+            "package": "com.pinterest.ktlint.ruleset.standard.rules.importordering",
+            "name": "Given some imports ordered as required then do no return lint errors",
+            "owners": [
+              "ImportOrderingRuleCustomTest"
+            ],
+            "types": [],
+            "namedParameters": [],
+            "receiver": null,
+            "local": false,
+            "suspend": false,
+            "startLine": 90,
+            "endLine": 112
+          },
+          "sourceDeclarationLine": "    @Test",
+          "inBehaviorOracle": true,
+          "inCallOracle": false
+        }
+      ],
+      "scoreChanged": false
+    }
+  ],
+  "callGaps": [
+    {
+      "case": "detekt-line-content",
+      "arm": "source",
+      "repeat": 0,
+      "missing": [
+        "method:io/gitlab/arturbosch/detekt/rules/style/MaxLineLength#visitKtFile(Lorg/jetbrains/kotlin/psi/KtFile;)V",
+        "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespace#visitKtFile(Lorg/jetbrains/kotlin/psi/KtFile;)V"
+      ],
+      "namedProductionTargets": [
+        {
+          "file": "src/main/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespace.kt",
+          "symbol": "TrailingWhitespace.visit",
+          "kind": "caller",
+          "reason": "Consumes toFileContent() lines; trimEnd removes the very whitespace this rule detects, so countTrailingWhitespace always returns 0 and offsets/entity ranges also shift (line.length now shorter than actual source line).",
+          "evidence": "line 28 visit(file.toFileContent()); lines 33-35 forEachIndexed { offset += line.length; countTrailingWhitespace(line) }"
+        },
+        {
+          "file": "src/main/kotlin/io/gitlab/arturbosch/detekt/rules/style/MaxLineLength.kt",
+          "symbol": "MaxLineLength.visit",
+          "kind": "caller",
+          "reason": "Uses line.length for length check and to compute running offset/TextLocation; trimming trailing whitespace changes reported lengths and desynchronizes offsets from the real file text used by findKtElementInParents/Location.from.",
+          "evidence": "lines 58,62-78: offset += line.length; TextLocation(offset - line.length, offset)"
+        }
+      ],
+      "interpretation": "The two named visit(KtFileContent) methods are valid downstream consumers, distinct from the oracle visitKtFile callers; they remain outside-oracle unadjudicated."
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "mcp",
+      "repeat": 1,
+      "missing": [
+        "method:io/gitlab/arturbosch/detekt/rules/style/MaxLineLength#visitKtFile(Lorg/jetbrains/kotlin/psi/KtFile;)V",
+        "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespace#visitKtFile(Lorg/jetbrains/kotlin/psi/KtFile;)V"
+      ],
+      "namedProductionTargets": [
+        {
+          "file": "src/main/kotlin/io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespace.kt",
+          "symbol": "TrailingWhitespace.visit",
+          "kind": "caller",
+          "reason": "Consumes toFileContent() lines; trimEnd() removes exactly the trailing whitespace this rule detects, so countTrailingWhitespace is always 0 and the rule reports nothing. Also offsets computed from line.length shift.",
+          "evidence": "line 28 visit(file.toFileContent()); lines 33-35 offset += line.length; countTrailingWhitespace(line)"
+        },
+        {
+          "file": "src/main/kotlin/io/gitlab/arturbosch/detekt/rules/style/MaxLineLength.kt",
+          "symbol": "MaxLineLength.visit",
+          "kind": "caller",
+          "reason": "Line length and offsets now exclude trailing whitespace; long lines only exceeding the limit due to trailing spaces are no longer reported and text/source locations shift for later lines.",
+          "evidence": "line 58 visit(file.toFileContent()); lines 66-77 offset += line.length, TextLocation(offset - line.length, offset)"
+        }
+      ],
+      "interpretation": "The two named visit(KtFileContent) methods are valid downstream consumers, distinct from the oracle visitKtFile callers; they remain outside-oracle unadjudicated."
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "source",
+      "repeat": 0,
+      "missing": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/MaxLineLengthRule#beforeFirstNode(Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig;)V"
+      ],
+      "namedProductionTargets": [
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/MaxLineLengthRule.kt",
+          "symbol": "EditorConfig.maxLineLength",
+          "kind": "caller",
+          "reason": "Changed function; both branches identical making the enabled-check dead code.",
+          "evidence": "line 160-165"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ArgumentListWrappingRule.kt",
+          "symbol": "ArgumentListWrappingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Consumes maxLineLength; will now wrap based on configured length even when max-line-length rule disabled.",
+          "evidence": "line 95: maxLineLength = editorConfig.maxLineLength()"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule.kt",
+          "symbol": "FunctionSignatureRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Behavior depends on maxLineLength sentinel; disabled-rule case now constrains signatures.",
+          "evidence": "line 112"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ClassSignatureRule.kt",
+          "symbol": "ClassSignatureRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same maxLineLength dependency.",
+          "evidence": "line 103"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/WrappingRule.kt",
+          "symbol": "WrappingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same maxLineLength dependency.",
+          "evidence": "line 129"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BinaryExpressionWrappingRule.kt",
+          "symbol": "BinaryExpressionWrappingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same maxLineLength dependency.",
+          "evidence": "line 73"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ChainMethodContinuationRule.kt",
+          "symbol": "ChainMethodContinuationRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same maxLineLength dependency.",
+          "evidence": "line 102"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ParameterListWrappingRule.kt",
+          "symbol": "ParameterListWrappingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same maxLineLength dependency.",
+          "evidence": "line 63"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyWrappingRule.kt",
+          "symbol": "PropertyWrappingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same maxLineLength dependency.",
+          "evidence": "line 66"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionLiteralRule.kt",
+          "symbol": "FunctionLiteralRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same maxLineLength dependency.",
+          "evidence": "line 100"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ParameterWrappingRule.kt",
+          "symbol": "ParameterWrappingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same maxLineLength dependency.",
+          "evidence": "line 68"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ParameterListSpacingRule.kt",
+          "symbol": "ParameterListSpacingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same maxLineLength dependency.",
+          "evidence": "line 51"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionReturnTypeSpacingRule.kt",
+          "symbol": "FunctionReturnTypeSpacingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same maxLineLength dependency.",
+          "evidence": "line 32"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ContextReceiverWrappingRule.kt",
+          "symbol": "ContextReceiverWrappingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same maxLineLength dependency.",
+          "evidence": "line 66"
+        }
+      ],
+      "interpretation": "Omitted or incorrectly named known callers remain missing under the frozen rule."
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "source",
+      "repeat": 1,
+      "missing": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/ContextReceiverWrappingRule#beforeFirstNode(Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig;)V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionLiteralRule#beforeFirstNode(Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig;)V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionReturnTypeSpacingRule#beforeFirstNode(Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig;)V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/ParameterListSpacingRule#beforeFirstNode(Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig;)V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/ParameterWrappingRule#beforeFirstNode(Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig;)V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/PropertyWrappingRule#beforeFirstNode(Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig;)V"
+      ],
+      "namedProductionTargets": [
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/WrappingRule.kt",
+          "symbol": "WrappingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Reads editorConfig.maxLineLength(); when max-line-length rule is disabled it now gets a finite limit and may wrap code.",
+          "evidence": "line 129: maxLineLength = editorConfig.maxLineLength()"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ArgumentListWrappingRule.kt",
+          "symbol": "ArgumentListWrappingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Behaviour changes when rule disabled but max_line_length set.",
+          "evidence": "line 95: maxLineLength = editorConfig.maxLineLength()"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionSignatureRule.kt",
+          "symbol": "FunctionSignatureRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Signature wrapping decisions keyed on maxLineLength value.",
+          "evidence": "line 112: maxLineLength = editorConfig.maxLineLength()"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ClassSignatureRule.kt",
+          "symbol": "ClassSignatureRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same dependency on disabled-rule sentinel.",
+          "evidence": "line 103"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ParameterListWrappingRule.kt",
+          "symbol": "ParameterListWrappingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same dependency on disabled-rule sentinel.",
+          "evidence": "line 63"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BinaryExpressionWrappingRule.kt",
+          "symbol": "BinaryExpressionWrappingRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same dependency.",
+          "evidence": "line 73"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ChainMethodContinuationRule.kt",
+          "symbol": "ChainMethodContinuationRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Same dependency.",
+          "evidence": "line 102"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/MaxLineLengthRule.kt",
+          "symbol": "MaxLineLengthRule.beforeFirstNode",
+          "kind": "caller",
+          "reason": "Rule itself uses helper; only runs when enabled so behaviour unchanged but should be reviewed.",
+          "evidence": "line 68"
+        }
+      ],
+      "interpretation": "Omitted or incorrectly named known callers remain missing under the frozen rule."
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 0,
+      "missing": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/internal/importordering/ImportSorter#findImportIndex(Lorg/jetbrains/kotlin/resolve/ImportPath;)I",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/internal/importordering/PatternEntry#isBetterMatchForPackageThan$ktlint_ruleset_standard(Lcom/pinterest/ktlint/ruleset/standard/rules/internal/importordering/PatternEntry;Lorg/jetbrains/kotlin/resolve/ImportPath;)Z",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/internal/importordering/PatternEntry#matches$ktlint_ruleset_standard(Lorg/jetbrains/kotlin/resolve/ImportPath;)Z"
+      ],
+      "namedProductionTargets": [
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRule.kt",
+          "symbol": "NoWildcardImportsRule.beforeVisitChildNodes",
+          "kind": "caller",
+          "reason": "Calls PatternEntry.matches -> matchesPackageName; inverted condition means subpackage wildcard entries (e.g. 'react.**') stop matching subpackages, producing new 'Wildcard import' violations",
+          "evidence": "line 39: if (allowedWildcardImports.none { it.matches(path) })"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/internal/importordering/ImportSorter.kt",
+          "symbol": "ImportSorter.findEntryMatchingImport",
+          "kind": "caller",
+          "reason": "Selects best PatternEntry via isBetterMatchForPackageThan which calls matchesPackageName; subpackage imports now fall through to ALL_OTHER_IMPORTS, changing grouping/order",
+          "evidence": "ImportSorter.kt lines 31-41 iterate patterns and compare entries"
+        },
+        {
+          "file": "src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ImportOrderingRule.kt",
+          "symbol": "ImportOrderingRule.beforeVisitChildNodes",
+          "kind": "caller",
+          "reason": "Drives ImportSorter with configured layout patterns; resulting import grouping and emitted violations depend on the changed matching",
+          "evidence": "ImportOrderingRule.kt line 90 uses importSorter.patterns"
+        }
+      ],
+      "interpretation": "Omitted or incorrectly named known callers remain missing under the frozen rule."
+    }
+  ],
+  "selectedNegativeControls": [
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleIdeaTest.kt",
+        "symbol": "ImportOrderingRuleIdeaTest.`Given some imports in correct order and containing blank lines then do return a lint error`",
+        "kind": "test",
+        "reason": "Expected format keeps java.util.List last; patch moves it into the '*' lexicographic group",
+        "evidence": "lines 96-117"
+      },
+      "nativeOutcome": "pass in baseline and changed"
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest.kt",
+        "symbol": "ImportOrderingRuleCustomTest.`Issue 1845 - Given a list of pattern entries including a '|' pattern but no import exists that match any pattern before the first '|'`",
+        "kind": "test",
+        "reason": "Layout '*, |, javax.**, java.**, |, kotlinx.**, kotlin.**' relies on subpackage matching to place imports in later groups",
+        "evidence": "line 268 override"
+      },
+      "nativeOutcome": "pass in baseline and changed"
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 0,
+      "prediction": {
+        "file": "src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest.kt",
+        "symbol": "ImportOrderingRuleCustomTest.`Issue 1845 - Given a list of pattern entries including a '|' pattern but no import exists that match any pattern before the first '|'`",
+        "kind": "test",
+        "reason": "Layout '*, |, javax.**, java.**, |, kotlinx.**, kotlin.**' — subpackage imports now match only '*', changing which groups are empty and the produced blank lines",
+        "evidence": "line 268 layout override"
+      },
+      "nativeOutcome": "pass in baseline and changed"
+    }
+  ],
+  "missingBehavior": [
+    {
+      "case": "detekt-line-content",
+      "arm": "source",
+      "repeat": 0,
+      "missing": [
+        "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a class declaration with a whitespace at the end()V",
+        "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a commented line with a whitespace at the end()V",
+        "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a line just with a whitespace()V",
+        "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a print statement with a tab at the end()V"
+      ]
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "mcp",
+      "repeat": 0,
+      "missing": []
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "mcp",
+      "repeat": 1,
+      "missing": [
+        "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a class declaration with a whitespace at the end()V",
+        "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a commented line with a whitespace at the end()V",
+        "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a line just with a whitespace()V",
+        "method:io/gitlab/arturbosch/detekt/rules/style/TrailingWhitespaceSpec$positive cases#reports a print statement with a tab at the end()V"
+      ]
+    },
+    {
+      "case": "detekt-line-content",
+      "arm": "source",
+      "repeat": 1,
+      "missing": []
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "source",
+      "repeat": 0,
+      "missing": []
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "mcp",
+      "repeat": 0,
+      "missing": []
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "mcp",
+      "repeat": 1,
+      "missing": []
+    },
+    {
+      "case": "detekt-trimming-methods",
+      "arm": "source",
+      "repeat": 1,
+      "missing": []
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "source",
+      "repeat": 0,
+      "missing": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionLiteralRuleTest$Given a lambda with multiple parameters but not fitting on the first line#Given that max-line-length rule is disabled()V"
+      ]
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "mcp",
+      "repeat": 0,
+      "missing": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionLiteralRuleTest$Given a lambda with multiple parameters but not fitting on the first line#Given that max-line-length rule is disabled()V"
+      ]
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "mcp",
+      "repeat": 1,
+      "missing": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionLiteralRuleTest$Given a lambda with multiple parameters but not fitting on the first line#Given that max-line-length rule is disabled()V"
+      ]
+    },
+    {
+      "case": "ktlint-disabled-max-length",
+      "arm": "source",
+      "repeat": 1,
+      "missing": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/FunctionLiteralRuleTest$Given a lambda with multiple parameters but not fitting on the first line#Given that max-line-length rule is disabled()V"
+      ]
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 0,
+      "missing": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleIdeaTest#Given some imports containing 'as' in the path then do not remove them()V"
+      ]
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 0,
+      "missing": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleIdeaTest#Given some imports containing 'as' in the path then do not remove them()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleIdeaTest#Given some imports having an EOL comment but in incorrect order then retain the comment and do return a lint error()V"
+      ]
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "mcp",
+      "repeat": 1,
+      "missing": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleIdeaTest#Given imports which are sorted correctly then do not return lint errors()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleIdeaTest#Given some imports containing 'as' in the path then do not remove them()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleIdeaTest#Given some imports having an EOL comment but in incorrect order then retain the comment and do return a lint error()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleIdeaTest#Given some imports which are sorted incorrectly then do return lint errors()V"
+      ]
+    },
+    {
+      "case": "ktlint-import-subpackages",
+      "arm": "source",
+      "repeat": 1,
+      "missing": [
+        "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given non-ktlint_official code style and the property is set with value 'unset' then packages which are accepted by IntelliJ Default are not detected()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/NoWildcardImportsRuleTest$Given that editorconfig property ij_kotlin_packages_to_use_import_on_demand is set#Given that the property is set to some packages inclusive subpackages then wildcard imports for those directories are not detected()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest#Given an imports layout with multiple consecutive empty lines then fold to one single empty line()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest#Given some import layout which matches a complete import and imports in correct order()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest#Given some import layout which matches a complete import and imports in incorrect order()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest#Given some imports not ordered as required then do return lint errors()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest#Given some imports ordered as required then do no return lint errors()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest#Given some imports with aliases correctly ordered()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleCustomTest#Given some imports with aliases incorrectly ordered()V",
+        "method:com/pinterest/ktlint/ruleset/standard/rules/importordering/ImportOrderingRuleIdeaTest#Given some imports containing 'as' in the path then do not remove them()V"
+      ]
+    }
+  ],
+  "reportSha256": "f8e6210e06dfb4a212709cbfbc30ef610f8e1233e97881cd7bd64193bb0f7cfe",
+  "primaryScoresChanged": false
+}

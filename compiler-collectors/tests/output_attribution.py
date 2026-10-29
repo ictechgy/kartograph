@@ -2,6 +2,7 @@
 """실제 javac/KAPT/KSP source·class·resource·직접 쓰기 및 실패 대조를 실행한다."""
 from __future__ import annotations
 import argparse
+import base64
 import importlib.util
 import json
 import os
@@ -33,6 +34,28 @@ def rejected(action):
     except (witness.EvidenceError, OSError):
         return
     raise AssertionError('invalid evidence was accepted')
+
+
+def archive_compiler_inputs(config, project, saved_project, reports):
+    """관찰은 유지하고 동일 bytes를 보존한 경로로 로컬 binding만 다시 연결한다."""
+    source = project / config['compilerInputs']
+    shutil.copyfile(source, reports / (config['kind'] + '-compiler-inputs-original-local.tsv'))
+    rows = []
+    for row in source.read_text().splitlines():
+        fields = row.split('\t')
+        if fields[0] == 'file':
+            name, original, kind, fingerprint = witness.decode(fields[1]), Path(witness.decode(fields[2])), fields[3], fields[4]
+            target = reports / 'compiler-input-artifacts' / fingerprint if name.startswith('external/') else saved_project / name.removeprefix('project/')
+            if kind != 'missing': target.parent.mkdir(parents=True, exist_ok=True)
+            if kind != 'missing' and target.exists(): assert witness.inventory(target) == fingerprint
+            elif kind == 'directory': shutil.copytree(original, target)
+            elif kind == 'file': shutil.copyfile(original, target)
+            elif name.startswith('external/'): target = reports / 'missing-inputs' / config['kind'] / name
+            if kind != 'missing': assert witness.inventory(target) == fingerprint
+            fields[2] = base64.urlsafe_b64encode(str(target).encode()).decode().rstrip('=')
+        rows.append('\t'.join(fields))
+    target = saved_project / config['compilerInputs']; target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('\n'.join(rows) + '\n')
 
 
 def main():
@@ -87,6 +110,12 @@ def main():
             arguments = ';'.join('arg(' + quote(key) + ',' + quote(value) + ')' for key, value in values.items()) + ";arg('fixture.mode',providers.gradleProperty('fixtureMode').getOrElse('normal'))"
             setup += 'kapt { includeCompileClasspath=false; correctErrorTypes=true; useBuildCache=true; arguments { ' + arguments + ' } }\n' if kind == 'kapt' else 'ksp { ' + arguments + ' }\n'
         cache_task = {'javac': 'compileJava', 'kapt': 'kaptKotlin', 'ksp': 'kspKotlin'}[kind]
+        # 수동 runner 입력 밖의 실제 compile classpath도 새 task inventory가 추적해야 한다.
+        shutil.copyfile(processor_jar, project / 'compiler-only.jar')
+        setup += "dependencies { compileOnly files('compiler-only.jar') }\n"
+        (project / 'external').mkdir()
+        (project / 'external/compiler-input-0').write_text('project file sharing the external slot spelling')
+        setup += "tasks.configureEach { task -> if (task.name == " + quote(cache_task) + ") { task.inputs.file('external/compiler-input-0').withPropertyName('projectExternalInput') } }\n"
         shutil.copyfile(ROOT / 'processor_output_cache.gradle', project / 'processor-output-cache.gradle')
         setup += "apply from: 'processor-output-cache.gradle'\nregisterProcessorOutputCache(" + quote(cache_task) + ", file('witness-config-local.json'))\n"
         (project / 'build.gradle').write_text('plugins { ' + plugins + " }\nrepositories { mavenCentral() }\njava { toolchain { languageVersion=JavaLanguageVersion.of(17) } }\n" + setup)
@@ -95,11 +124,15 @@ def main():
                   'collectorJar': str(collector), 'processorJar': str(processor_jar), 'inputs': ['src', 'build.gradle', 'settings.gradle', 'gradle.properties', 'processor-output-cache.gradle'],
                   'outputRoots': ['build', 'direct'], 'token': '.evidence/token.pending', 'observations': '.evidence/outputs.tsv', 'receipt': '.evidence/receipt.json',
                   'cacheOutputs': ['direct/direct.txt'],
+                  'compilerInputs': '.evidence/compiler-inputs.tsv',
                   'command': [str(gradle), '--no-daemon', '--build-cache', '--configuration-cache', 'classes']}
         config_file = project / 'witness-config-local.json'; config_file.write_text(json.dumps(config))
         value = witness.record(config_file, reports / kind)
         assert witness.verify(config_file)['status'] == 'matched'
-        assert value['version'] == 2
+        assert value['version'] == 3
+        assert any(item['path'] == 'project/compiler-only.jar' for item in value['observation']['compilerInputs']['files'])
+        assert any(item['path'] == 'project/external/compiler-input-0' for item in value['observation']['compilerInputs']['files'])
+        assert any(item['path'] == 'external/compiler-input-0' for item in value['observation']['compilerInputs']['files'])
         outputs = value['observation']['outputs']
         assert {(row['kind'], row['observation']) for row in outputs} == {('source', 'api'), ('class', 'api'), ('resource', 'api'), ('file', 'callback-scope')}
         assert len(outputs) == 4 and all('Handwritten' not in row['path'] for row in outputs)
@@ -130,6 +163,10 @@ def main():
             assert document['retention'] == json.loads(baseline.stdout)['retention']
             assert document['processorOutputs'][0]['outputs'] == outputs
             assert document['processorOutputs'][0]['scope'] == config['scope']
+            assert document['processorOutputs'][0]['compilerInputs'] == value['observation']['compilerInputs']
+            declarations = document['processorOutputs'][0]['declarations']
+            assert len(declarations) == 1 and declarations[0]['owner'] == 'class:fixture/OutputBinary'
+            assert any(symbol.startswith('method:fixture/OutputBinary#') for symbol in declarations[0]['symbols'])
             (reports / (kind + '-snapshot.json')).write_text(captured.stdout)
             changed = project / outputs[0]['path']; original_output = changed.read_bytes(); changed.write_bytes(b'stale')
             stale = subprocess.run(snapshot_command + ['--processor-output-config', str(config_file)], capture_output=True, text=True, timeout=120)
@@ -141,6 +178,17 @@ def main():
         assert (project / resource['path']).read_text() == 'processor-resource'
         original = source.read_bytes(); source.write_bytes(original + b'\n// changed input\n')
         rejected(lambda: witness.verify(config_file)); source.write_bytes(original)
+        dependency = project / 'compiler-only.jar'; original = dependency.read_bytes()
+        stamp = dependency.stat(); dependency.write_bytes(original + b'changed classpath bytes'); os.utime(dependency, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+        rejected(lambda: witness.verify(config_file))
+        rejected(lambda: witness.record(config_file, reports / (kind + '-classpath-cache-rejected')))
+        assert not (project / config['receipt']).exists()
+        assert f':{cache_task} FROM-CACHE' in (reports / (kind + '-classpath-cache-rejected/build.stdout')).read_text()
+        dependency.write_bytes(original)
+        assert witness.record(config_file, reports / (kind + '-classpath-restored')) == value
+        compiler_report = project / config['compilerInputs']; original = compiler_report.read_text()
+        compiler_report.write_text(original.replace('propertiesSha256\t', 'unknownProperties\t'))
+        rejected(lambda: witness.verify(config_file)); compiler_report.write_text(original)
         output = project / binary['path']; original = output.read_bytes(); output.write_bytes(original + b'x')
         rejected(lambda: witness.verify(config_file)); output.write_bytes(original)
         raw = project / config['observations']; original = raw.read_bytes(); raw.write_bytes(original.replace(b'processorArtifact\t', b'unknownArtifact\t'))
@@ -159,6 +207,7 @@ def main():
             saved = saved_project / name; saved.parent.mkdir(parents=True, exist_ok=True)
             if (project / name).is_dir(): shutil.copytree(project / name, saved, dirs_exist_ok=True)
             else: shutil.copyfile(project / name, saved)
+        archive_compiler_inputs(config, project, saved_project, reports)
         archived_config = reports / (kind + '-success-config-local.json')
         archived_config.write_text(json.dumps({**config, 'project': str(saved_project),
             'collectorJar': str(saved_artifacts / 'collector.jar'), 'processorJar': str(saved_artifacts / 'processor.jar')}))
@@ -170,8 +219,9 @@ def main():
             config['command'].pop()
         assert witness.verify(archived_config)['status'] == 'matched'
         results.append({'kind': kind, 'outputs': 4, 'sourceClassResourceDirect': True, 'handwrittenExcluded': True,
-                        'staleControls': ['source', 'output', 'raw', 'scope'], 'failedBuildControls': ['unclosed', 'broken'],
+                        'staleControls': ['source', 'output', 'raw', 'scope', 'declared-classpath', 'normalized-cache-classpath', 'compiler-properties'], 'failedBuildControls': ['unclosed', 'broken'],
                         'nativeTaskRestoredFromCache': cache_task, 'configurationCacheReused': True,
+                        'declaredCompilerInputs': len(value['observation']['compilerInputs']['files']),
                         'snapshotMetadataVerified': args.snapshot_cli is not None})
         print(json.dumps(results[-1]), flush=True)
     (reports / 'results.json').write_text(json.dumps({'cases': results}, indent=2) + '\n')
