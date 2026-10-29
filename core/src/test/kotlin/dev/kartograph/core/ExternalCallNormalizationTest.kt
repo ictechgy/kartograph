@@ -16,6 +16,66 @@ class ExternalCallNormalizationTest {
     private val nodes = listOf(caller, first, second).map { GraphNode(it, "run", NodeKind.METHOD) }
 
     @Test
+    fun `enrichment revalidates caller owned node stub attributes`() {
+        val stubAttributes = mutableSetOf(NodeAttribute.EXTERNAL_STUB)
+        val raw = call(emptyList())
+        val graph = CodeGraph(nodes + GraphNode(raw.target, "run", NodeKind.METHOD, attributes = stubAttributes),
+            emptyList(), listOf(raw))
+        assertEquals(1, graph.externalCalls.size)
+        stubAttributes.clear()
+        assertTrue(graph.enrichedWith(emptyList()).externalCalls.isEmpty())
+
+        val projectAttributes = mutableSetOf<NodeAttribute>()
+        val declaredNodes = nodes.map { if (it.id == first) it.copy(attributes = projectAttributes) else it }
+        val declared = raw.copy(owner = "app/A", kind = InvocationKind.VIRTUAL,
+            declaration = CallDeclaration(first, CallDeclarationScope.PROJECT, listOf("app/A")))
+        // 외부 operand와 별도 프로젝트 선언을 사용해 호출 자체 제거 없이 선언 검증을 관찰한다.
+        val operand = declared.copy(owner = "app/Child", declaration = CallDeclaration(first,
+            CallDeclarationScope.PROJECT, listOf("app/Child", "app/A")))
+        val withDeclaration = CodeGraph(declaredNodes, emptyList(), listOf(operand))
+        assertEquals(first, withDeclaration.externalCalls.single().declaration?.target)
+        projectAttributes += NodeAttribute.EXTERNAL_STUB
+        assertNull(withDeclaration.enrichedWith(emptyList()).externalCalls.single().declaration)
+    }
+
+    @Test
+    fun `same comparison key preserves distinct metadata order and removes separated duplicates`() {
+        val left = call(listOf(first)).copy(resolution = CallResolution.PROJECT_CANDIDATES, model = "left")
+        val middle = call(listOf(second)).copy(resolution = CallResolution.RUNTIME_MODEL, model = "middle")
+        val early = call(emptyList(), 0).copy(owner = "a/Api")
+        val late = call(emptyList(), 2).copy(owner = "z/Api")
+        val input = listOf(late, left, middle, left, early, middle, late)
+        val graph = CodeGraph(nodes, emptyList(), input)
+        assertEquals(input.distinct().sorted(), graph.externalCalls)
+        assertSame(graph.externalCalls, graph.enrichedWith(emptyList()).externalCalls)
+        val copied = CodeGraph(nodes.filter { it.id != first }, emptyList(), graph.externalCalls)
+        assertTrue(copied.externalCalls.none { first in it.resolvedTargets })
+        assertTrue(first in graph.externalCalls.single { it.model == "left" }.resolvedTargets)
+    }
+
+    @Test
+    fun `canonical call list candidates and declaration chains reject mutation through Java list API`() {
+        val chain = mutableListOf("library/Api", "library/Base")
+        val raw = call(mutableListOf(first, second)).copy(kind = InvocationKind.VIRTUAL, declaration = CallDeclaration(
+            NodeId("method:library/Base#run()V"), CallDeclarationScope.EXTERNAL, chain))
+        val graph = CodeGraph(nodes, emptyList(), mutableListOf(raw))
+        fun assertImmutable(list: List<*>) {
+            val failure = assertFailsWith<java.lang.reflect.InvocationTargetException> {
+                java.util.List::class.java.getMethod("set", Int::class.javaPrimitiveType, Any::class.java)
+                    .invoke(list, 0, list[0])
+            }
+            assertTrue(failure.cause is UnsupportedOperationException)
+        }
+        assertImmutable(graph.externalCalls)
+        assertImmutable(graph.externalCalls.subList(0, 1))
+        assertImmutable(graph.externalCalls.single().resolvedTargets)
+        assertImmutable(requireNotNull(graph.externalCalls.single().declaration).ownerChain)
+        chain.clear()
+        assertEquals(listOf("library/Api", "library/Base"), graph.externalCalls.single().declaration!!.ownerChain)
+        assertSame(graph.externalCalls, graph.enrichedWith(emptyList()).externalCalls)
+    }
+
+    @Test
     fun `shared candidate input is normalized once to an isolated canonical snapshot`() {
         val mutable = mutableListOf(second, missing, first, second)
         val shared = CountingList(mutable)

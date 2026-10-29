@@ -177,14 +177,21 @@ internal object RuntimeValueAnalyzer {
                 reflectiveConstructions = unknownConstructors, outsideRuntimeTargets = outsideTargets,
                 valueAnalysisLimits = boundedMethods, serviceLoadingCalls = unknownServices, reflectiveMethods = unknownMethods, reflectiveFields = unknownFields, reflectiveMemberMisses = missingMembers)
         }
-        val calls = graph.externalCalls.map { call ->
+        var calls: MutableList<dev.kartograph.core.ExternalCall>? = null
+        graph.externalCalls.forEachIndexed { index, call ->
             val model = RuntimeLibraryModels.find(call.owner, call.name, call.descriptor,
                 call.kind == dev.kartograph.core.InvocationKind.STATIC, ::loader)
-            models[call.caller to call.ordinal]?.let { targets ->
-                call.copy(resolvedTargets = targets, resolution = CallResolution.RUNTIME_MODEL, model = model?.id)
-            } ?: call.copy(model = model?.id)
+            val targets = models[call.caller to call.ordinal]
+            val updated = if (targets != null) {
+                if (targets == call.resolvedTargets && call.resolution == CallResolution.RUNTIME_MODEL && model?.id == call.model) call
+                else call.copy(resolvedTargets = targets, resolution = CallResolution.RUNTIME_MODEL, model = model?.id)
+            } else if (model?.id == call.model) call else call.copy(model = model?.id)
+            if (updated !== call) {
+                if (calls == null) calls = graph.externalCalls.toMutableList()
+                calls[index] = updated
+            }
         }
-        return graph.enrichedWith(derived, calls) to observations
+        return graph.enrichedWith(derived, calls ?: graph.externalCalls) to observations
     }
 
     private val CLASS_LOADERS = setOf("java/lang/ClassLoader", "java/net/URLClassLoader", "java/security/SecureClassLoader")
