@@ -3,6 +3,7 @@
 
 import gzip
 from collections import Counter
+from contextlib import contextmanager
 import ctypes
 import errno
 import hashlib
@@ -22,6 +23,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import xml.etree.ElementTree as ET
 
 # 이번 간선 묶기의 추가 효과를 같은 runner에서 비교한다. 이전 bb13/5a 실험의 기록은 별도 보존한다.
 SOURCE_BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
@@ -32,6 +34,18 @@ LIMIT = 32 * 1024 * 1024
 RAW_LIMIT = 256 * 1024 * 1024
 JFR_LIMIT = 16 * 1024 * 1024
 JFR_EVENTS = ("jdk.ExecutionSample", "jdk.ObjectAllocationSample")
+WRAPPER_FILES = ("gradlew", "gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.properties")
+# 공개 고정 Git 입력의 bytes·SHA256·POSIX mode 한 쌍만 공통 도구로 재료화한다.
+REVIEWED_WRAPPERS = {
+    "9.7.1": ((8656, "a5a5c199ba02189ae8c46a334223371a20599d9c298ef65e7540ede4a3f72d59", 0o755),
+              (47505, "7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d", 0o644),
+              (368, "d0bebe8133babb74ab29a31ee6616c56ef8985fc801e1fd16c61b5ed2189e907", 0o644)),
+    "9.8.1": ((8656, "a5a5c199ba02189ae8c46a334223371a20599d9c298ef65e7540ede4a3f72d59", 0o755),
+              (48749, "3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98", 0o644),
+              (368, "b9c24447093e4fab2b1f37bfb461d2a1eb14157a4808dff50e0f954801a8f8f1", 0o644)),
+}
+WRAPPER_DISTRIBUTIONS = {"9.7.1": "acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a",
+                         "9.8.1": "dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f"}
 
 
 class DiagnosticError(Exception):
@@ -94,6 +108,215 @@ def root_inventory(root):
 def require_equal(before, after, reason):
     if before != after:
         raise DiagnosticError(reason)
+
+
+@contextmanager
+def wrapper_parent(root, relative):
+    """root와 각 부모를 descriptor로 고정하며 링크를 따라가지 않는다."""
+    descriptor = None
+    try:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        descriptor = os.open(root, flags)
+        for name in Path(relative).parts[:-1]:
+            child = os.open(name, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        yield descriptor, Path(relative).name
+    except OSError as error:
+        raise DiagnosticError("invalid-build-wrapper") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def wrapper_inputs(root):
+    """세 고정 경로의 일반 파일만 1MiB씩 제한하여 읽는다."""
+    records, contents = [], []
+    for relative in WRAPPER_FILES:
+        with wrapper_parent(root, relative) as (parent, name):
+            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            with os.fdopen(descriptor, "rb") as stream:
+                before = os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= 1024 * 1024:
+                    raise DiagnosticError("invalid-build-wrapper")
+                raw = stream.read(1024 * 1024 + 1)
+                after = os.fstat(stream.fileno())
+                current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            identity = lambda value: (value.st_dev, value.st_ino, value.st_mode, value.st_size, value.st_mtime_ns)
+            if len(raw) != before.st_size or identity(before) != identity(after) or identity(before) != identity(current):
+                raise DiagnosticError("build-wrapper-changed-during-read")
+            records.append({"path": relative, "bytes": len(raw), "sha256": digest(raw), "mode": stat.S_IMODE(after.st_mode)})
+            contents.append(raw)
+    return records, contents
+
+
+def replace_wrapper(root, relative, raw, mode):
+    """검증을 마친 임시 archive의 한 파일을 링크 추적 없이 원자적으로 바꾼다."""
+    with wrapper_parent(root, relative) as (parent, name):
+        temporary = ".kartograph-wrapper-" + os.urandom(12).hex()
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fchmod(stream.fileno(), mode)
+                os.fsync(stream.fileno())
+            os.replace(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=parent)
+            except FileNotFoundError:
+                pass  # 원자적 교체가 끝나면 임시 이름은 존재하지 않는다.
+
+
+def align_build_wrappers(repo, baseline, report):
+    """검토한 9.7.1→9.8.1에 한해 양쪽 엔진을 같은 도구로 빌드한다."""
+    original, _ = wrapper_inputs(baseline)
+    shared, contents = wrapper_inputs(repo)
+    def version(rows):
+        identity = tuple((row["bytes"], row["sha256"], row["mode"]) for row in rows)
+        return next((name for name, value in REVIEWED_WRAPPERS.items() if identity == value), None)
+    old_version, shared_version = version(original), version(shared)
+    changed = original != shared
+    if changed and (old_version, shared_version) != ("9.7.1", "9.8.1"):
+        raise DiagnosticError("build-tool-identity-mismatch")
+    value = {"scope": "derived baseline: original engine and build scripts under the common candidate wrapper; not the original build recipe",
+             "baselineOriginalVersion": old_version, "sharedVersion": shared_version, "changed": changed,
+             "baselineOriginal": original, "shared": shared,
+             "baselineOriginalDistributionSha256": WRAPPER_DISTRIBUTIONS.get(old_version),
+             "sharedDistributionSha256": WRAPPER_DISTRIBUTIONS.get(shared_version)}
+    report["buildWrapperAlignment"] = value
+    if changed:
+        for row, raw in zip(shared, contents):
+            replace_wrapper(baseline, row["path"], raw, row["mode"])
+    verify_aligned_wrappers(repo, baseline, value)
+
+
+def verify_aligned_wrappers(repo, baseline, value):
+    for root in (repo, baseline):
+        records, _ = wrapper_inputs(root)
+        require_equal(value["shared"], records, "build-wrapper-changed")
+
+
+@contextmanager
+def aligned_build_inputs(repo, baseline, report):
+    """실패한 child 증거를 보존하면서 성공·실패 양쪽의 도구 변이를 검사한다."""
+    align_build_wrappers(repo, baseline, report)
+    # 정렬 후에도 기존의 양쪽 wrapper 바이트 동일성 전제를 유지한다.
+    _, candidate_bytes = wrapper_inputs(repo)
+    _, baseline_bytes = wrapper_inputs(baseline)
+    require_equal(candidate_bytes, baseline_bytes, "build-tool-identity-mismatch")
+    align_verification_metadata(repo, baseline, report)
+    with input_integrity_guard(report, "buildInputIntegrity", (
+            lambda: verify_aligned_wrappers(repo, baseline, report["buildWrapperAlignment"]),
+            lambda: verify_aligned_metadata(repo, baseline, report["verificationMetadataAlignment"]))):
+        yield
+
+
+@contextmanager
+def input_integrity_guard(report, key, checks):
+    """후속 불변식 오류가 원래 child 실패와 receipt를 대체하지 않게 한다."""
+    primary = None
+    try:
+        yield
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        result = {"unchanged": True, "errors": []}
+        if primary is not None:
+            result["primaryFailure"] = {"reason": str(primary) if isinstance(primary, DiagnosticError) else "interrupted-or-unexpected-child-error"}
+            if isinstance(primary, DiagnosticError) and primary.receipt is not None:
+                result["primaryFailure"]["receipt"] = primary.receipt
+        for check in checks:
+            try:
+                check()
+            except (DiagnosticError, OSError) as error:
+                result["errors"].append({"reason": str(error) if isinstance(error, DiagnosticError) else "build-input-read-failed"})
+        result["unchanged"] = not result["errors"]
+        report[key] = result
+        if result["errors"] and primary is None:
+            raise DiagnosticError("aligned-build-inputs-changed")
+
+
+def verification_document(path):
+    """고정 진단의 UTF-8 명시적 SHA256 metadata만 제한된 크기로 읽는다."""
+    if path.is_symlink():
+        raise DiagnosticError("linked-verification-metadata")
+    with path.open("rb") as stream:
+        raw = stream.read(2 * 1024 * 1024 + 1)
+    if len(raw) > 2 * 1024 * 1024:
+        raise DiagnosticError("invalid-verification-metadata")
+    try:
+        text = raw.decode("utf-8-sig")
+        if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
+            raise DiagnosticError("invalid-verification-metadata")
+        root = ET.fromstring(text)
+    except (ET.ParseError, UnicodeDecodeError) as error:
+        raise DiagnosticError("invalid-verification-metadata") from error
+    pending = [(root, 0)]
+    visited = 0
+    while pending:
+        element, depth = pending.pop()
+        visited += 1
+        if depth > 16 or visited > 20_000:
+            raise DiagnosticError("verification-metadata-structure-limit")
+        pending.extend((child, depth + 1) for child in element)
+    namespace = "{https://schema.gradle.org/dependency-verification}"
+    def signature(element):
+        return (element.tag, tuple(sorted(element.attrib.items())), (element.text or "").strip(),
+                tuple(signature(child) for child in element))
+    if root.tag != namespace + "verification-metadata" or [child.tag for child in root] != [namespace + "configuration", namespace + "components"]:
+        raise DiagnosticError("unsupported-verification-metadata-policy")
+    configuration, components = root
+    if components.attrib:
+        raise DiagnosticError("unsupported-verification-metadata-policy")
+    artifacts = {}
+    component_keys = set()
+    for component in components:
+        if component.tag != namespace + "component" or set(component.attrib) != {"group", "name", "version"} or any(
+            not re.fullmatch(r"[A-Za-z0-9_.-]+", value) for value in component.attrib.values()
+        ):
+            raise DiagnosticError("unsupported-verification-metadata-component")
+        coordinate = tuple(component.attrib[key] for key in ("group", "name", "version"))
+        if coordinate in component_keys:
+            raise DiagnosticError("duplicate-verification-component")
+        component_keys.add(coordinate)
+        for artifact in component:
+            if artifact.tag != namespace + "artifact" or set(artifact.attrib) != {"name"} or not re.fullmatch(r"[A-Za-z0-9_.-]+", artifact.attrib["name"]):
+                raise DiagnosticError("unsupported-verification-artifact")
+            key = (*coordinate, artifact.attrib["name"])
+            if key in artifacts or len(artifact) != 1:
+                raise DiagnosticError("duplicate-or-alternative-verification-pin")
+            checksum = artifact[0]
+            if checksum.tag != namespace + "sha256" or set(checksum.attrib) - {"value", "origin"} or not re.fullmatch(r"[0-9a-f]{64}", checksum.get("value", "")) or len(checksum) or (checksum.text or "").strip():
+                raise DiagnosticError("unsupported-verification-checksum")
+            artifacts[key] = signature(artifact)
+    if not artifacts:
+        raise DiagnosticError("empty-verification-metadata")
+    return raw, (tuple(sorted(root.attrib.items())), signature(configuration)), artifacts
+
+
+def align_verification_metadata(repo, baseline, report):
+    """원본 소스는 유지하고 추가 artifact 핀만 임시 baseline에 동일하게 적용한다."""
+    relative = Path("gradle/verification-metadata.xml")
+    original, old_policy, old = verification_document(baseline / relative)
+    shared, new_policy, new = verification_document(repo / relative)
+    require_equal(old_policy, new_policy, "verification-metadata-policy-changed")
+    if any(key not in new or new[key] != value for key, value in old.items()):
+        raise DiagnosticError("verification-metadata-existing-pin-changed")
+    value = {"scope": "additive-exact-SHA256-artifact-pins-only; this operation changes no executable source or wrapper; wrapper recipe recorded separately",
+             "baselineOriginalSha256": digest(original), "sharedSha256": digest(shared),
+             "baselineArtifacts": len(old), "sharedArtifacts": len(new), "addedArtifacts": len(new) - len(old)}
+    if original != shared:
+        (baseline / relative).write_bytes(shared)
+    report["verificationMetadataAlignment"] = value
+
+
+def verify_aligned_metadata(repo, baseline, value):
+    for root in (repo, baseline):
+        raw, _, _ = verification_document(root / "gradle/verification-metadata.xml")
+        require_equal(value["sharedSha256"], digest(raw), "verification-metadata-changed")
 
 
 def java_identity(home):
@@ -487,6 +710,11 @@ def public_summary(report):
         result["failure"] = report["failure"]
     if "sourcesBefore" in report:
         result["sources"] = report["sourcesBefore"]
+    if "verificationMetadataAlignment" in report:
+        result["verificationMetadataAlignment"] = report["verificationMetadataAlignment"]
+    for key in ("buildWrapperAlignment", "buildInputIntegrity", "executionInputIntegrity"):
+        if key in report:
+            result[key] = report[key]
     result["identitySha256"] = {key: identity_digest(report[key]) for key in (
         "rootsBefore", "projectBefore", "libsBefore", "launchersBefore", "jdkBefore",
         "probeSourceBefore", "semanticSourceBefore", "probesBefore") if key in report}
@@ -937,75 +1165,76 @@ def experiment(repo, work, env, report, raw_directory=None):
     successful(["git", "archive", "--format=tar", "--output", archive, BASELINE], repo, env, phase="baseline-archive")
     with tarfile.open(archive) as source:
         source.extractall(baseline, filter="data")
-    for name in ("gradlew", "gradle/wrapper/gradle-wrapper.jar",
-                 "gradle/wrapper/gradle-wrapper.properties", "gradle/verification-metadata.xml"):
-        require_equal((repo / name).read_bytes(), (baseline / name).read_bytes(), "build-tool-identity-mismatch")
-    report["baselinePreparation"] = summary(successful(
-        [baseline / "gradlew", "--no-daemon", ":cli:installDist"], baseline, env, timeout=600, phase="baseline-build"))
-    distributions = {"baseline": baseline / "cli/build/install/kartograph", "candidate": candidate}
-    libs_before = {arm: inventory(dist / "lib") for arm, dist in distributions.items()}
-    require_equal(candidate_before, libs_before["candidate"], "candidate-rebuilt-or-changed")
-    report["libsBefore"] = libs_before
-    launchers_before = {arm: inventory(dist / "bin") for arm, dist in distributions.items()}
-    require_equal(launchers_candidate_before, launchers_before["candidate"], "candidate-launchers-changed")
-    report["launchersBefore"] = launchers_before
-    require_equal(source_before, root_inventory(repo), "source-roots-changed-before-arms")
-    require_equal(frozen_before, root_inventory(frozen), "frozen-roots-changed-before-arms")
-    require_equal(jdk_before, java_identity(java_home), "selected-jdk-changed-before-arms")
-    classpaths = {arm: compile_probe(repo, dist, work / ("probe-" + arm), java_home, env)
-                  for arm, dist in distributions.items()}
-    probes_before = {arm: inventory(work / ("probe-" + arm)) for arm in distributions}
-    report["probesBefore"] = probes_before
-    roots = [frozen / module / "build/classes/kotlin/main" for module in MODULES]
-    report["profiles"] = []
-    report["cli"] = []
-    try:
-        for profile, sample, arm in schedule():
-            result = successful([java_home / "bin/java", "-cp", classpaths[arm], "IndexCostProbe",
-                                 profile, *roots], project, env, phase="index-probe")
-            data = validate_probe(result, profile)
-            report["profiles"].append({"arm": arm, "sample": sample, **data, "process": summary(result)})
-        check_profile_counts(report["profiles"])
-        commands = {arm: cli_commands(dist / "bin/kartograph", roots, project)
-                    for arm, dist in distributions.items()}
-        located_nodes = next(row["locatedNodes"] for row in report["profiles"] if row["profile"] == "dead")
-        raw = RawStreams(raw_directory if raw_directory is not None else work / "raw")
-        paired_cli(commands, project, env, located_nodes, report, raw)
-        # 이미 보존한 paired 출력과 비교한다. 새 unprofiled 성공 표본을 만들지 않는다.
-        prior = next(row for row in report["cli"] if row["command"] == "dead")
-        expected = {"exit": prior["candidate"]["exit"]}
-        for stream in ("stdout", "stderr"):
-            receipt = prior["raw"]["candidate"][stream]
-            value = gzip.decompress((raw.directory / Path(receipt["path"]).name).read_bytes())
-            if len(value) != receipt["bytes"] or digest(value) != receipt["sha256"]:
-                raise DiagnosticError("jfr-reference-changed")
-            expected[stream] = value
-        report["jfr"] = capture_jfr(java_home,
-            ["-cp", str(candidate / "lib/*"), "dev.kartograph.cli.MainKt", *commands["candidate"][1][1][1:]],
-            env, work / "jfr-capture", raw.directory.parent / "jfr", repo / "Scripts/IndexCostCapture.jfc", expected)
-        semantic_oracle(repo, distributions, roots, java_home, env, work, report, raw)
-    finally:
-        report["sourcesAfter"] = {"baselineSource": source_identity(repo, SOURCE_BASELINE, env),
-                                  "baseline": source_identity(repo, BASELINE, env),
-                                  "candidate": source_identity(repo, "HEAD", env)}
-        report["launchersAfter"] = {arm: inventory(dist / "bin") for arm, dist in distributions.items()}
-        report["probeSourceAfter"] = file_record(repo / "Scripts/IndexCostProbe.java", "IndexCostProbe.java")
-        report["semanticSourceAfter"] = file_record(repo / "Scripts/IndexEquivalenceProbe.java", "IndexEquivalenceProbe.java")
-        report["probesAfter"] = {arm: inventory(work / ("probe-" + arm)) for arm in distributions}
-        require_equal(sources_before, report["sourcesAfter"], "source-commit-or-tree-changed")
-        require_equal(launchers_before, report["launchersAfter"], "distribution-launchers-changed")
-        require_equal(probe_source_before, report["probeSourceAfter"], "probe-source-changed")
-        require_equal(semantic_source_before, report["semanticSourceAfter"], "semantic-source-changed")
-        require_equal(probes_before, report["probesAfter"], "compiled-probes-changed")
-        report["rootsAfter"] = root_inventory(frozen)
-        report["libsAfter"] = {arm: inventory(dist / "lib") for arm, dist in distributions.items()}
-        report["jdkAfter"] = java_identity(java_home)
-        report["projectAfter"] = inventory(project)
-        require_equal(source_before, root_inventory(repo), "source-roots-changed")
-        require_equal(frozen_before, report["rootsAfter"], "frozen-roots-changed")
-        require_equal(libs_before, report["libsAfter"], "distribution-libs-changed")
-        require_equal(jdk_before, report["jdkAfter"], "selected-jdk-changed")
-        require_equal(project_before, report["projectAfter"], "shared-project-changed")
+    with aligned_build_inputs(repo, baseline, report):
+        report["baselinePreparation"] = summary(successful(
+            [baseline / "gradlew", "--no-daemon", ":cli:installDist"], baseline, env, timeout=600, phase="baseline-build"))
+        verify_aligned_wrappers(repo, baseline, report["buildWrapperAlignment"])
+        verify_aligned_metadata(repo, baseline, report["verificationMetadataAlignment"])
+        distributions = {"baseline": baseline / "cli/build/install/kartograph", "candidate": candidate}
+        libs_before = {arm: inventory(dist / "lib") for arm, dist in distributions.items()}
+        require_equal(candidate_before, libs_before["candidate"], "candidate-rebuilt-or-changed")
+        report["libsBefore"] = libs_before
+        launchers_before = {arm: inventory(dist / "bin") for arm, dist in distributions.items()}
+        require_equal(launchers_candidate_before, launchers_before["candidate"], "candidate-launchers-changed")
+        report["launchersBefore"] = launchers_before
+        require_equal(source_before, root_inventory(repo), "source-roots-changed-before-arms")
+        require_equal(frozen_before, root_inventory(frozen), "frozen-roots-changed-before-arms")
+        require_equal(jdk_before, java_identity(java_home), "selected-jdk-changed-before-arms")
+        classpaths = {arm: compile_probe(repo, dist, work / ("probe-" + arm), java_home, env)
+                      for arm, dist in distributions.items()}
+        probes_before = {arm: inventory(work / ("probe-" + arm)) for arm in distributions}
+        report["probesBefore"] = probes_before
+        roots = [frozen / module / "build/classes/kotlin/main" for module in MODULES]
+        report["profiles"] = []
+        report["cli"] = []
+        def verify_execution_inputs():
+            report["sourcesAfter"] = {"baselineSource": source_identity(repo, SOURCE_BASELINE, env),
+                                      "baseline": source_identity(repo, BASELINE, env),
+                                      "candidate": source_identity(repo, "HEAD", env)}
+            report["launchersAfter"] = {arm: inventory(dist / "bin") for arm, dist in distributions.items()}
+            report["probeSourceAfter"] = file_record(repo / "Scripts/IndexCostProbe.java", "IndexCostProbe.java")
+            report["semanticSourceAfter"] = file_record(repo / "Scripts/IndexEquivalenceProbe.java", "IndexEquivalenceProbe.java")
+            report["probesAfter"] = {arm: inventory(work / ("probe-" + arm)) for arm in distributions}
+            require_equal(sources_before, report["sourcesAfter"], "source-commit-or-tree-changed")
+            require_equal(launchers_before, report["launchersAfter"], "distribution-launchers-changed")
+            require_equal(probe_source_before, report["probeSourceAfter"], "probe-source-changed")
+            require_equal(semantic_source_before, report["semanticSourceAfter"], "semantic-source-changed")
+            require_equal(probes_before, report["probesAfter"], "compiled-probes-changed")
+            report["rootsAfter"] = root_inventory(frozen)
+            report["libsAfter"] = {arm: inventory(dist / "lib") for arm, dist in distributions.items()}
+            report["jdkAfter"] = java_identity(java_home)
+            report["projectAfter"] = inventory(project)
+            require_equal(source_before, root_inventory(repo), "source-roots-changed")
+            require_equal(frozen_before, report["rootsAfter"], "frozen-roots-changed")
+            require_equal(libs_before, report["libsAfter"], "distribution-libs-changed")
+            require_equal(jdk_before, report["jdkAfter"], "selected-jdk-changed")
+            require_equal(project_before, report["projectAfter"], "shared-project-changed")
+
+        with input_integrity_guard(report, "executionInputIntegrity", (verify_execution_inputs,)):
+            for profile, sample, arm in schedule():
+                result = successful([java_home / "bin/java", "-cp", classpaths[arm], "IndexCostProbe",
+                                     profile, *roots], project, env, phase="index-probe")
+                data = validate_probe(result, profile)
+                report["profiles"].append({"arm": arm, "sample": sample, **data, "process": summary(result)})
+            check_profile_counts(report["profiles"])
+            commands = {arm: cli_commands(dist / "bin/kartograph", roots, project)
+                        for arm, dist in distributions.items()}
+            located_nodes = next(row["locatedNodes"] for row in report["profiles"] if row["profile"] == "dead")
+            raw = RawStreams(raw_directory if raw_directory is not None else work / "raw")
+            paired_cli(commands, project, env, located_nodes, report, raw)
+            # 이미 보존한 paired 출력과 비교한다. 새 unprofiled 성공 표본을 만들지 않는다.
+            prior = next(row for row in report["cli"] if row["command"] == "dead")
+            expected = {"exit": prior["candidate"]["exit"]}
+            for stream in ("stdout", "stderr"):
+                receipt = prior["raw"]["candidate"][stream]
+                value = gzip.decompress((raw.directory / Path(receipt["path"]).name).read_bytes())
+                if len(value) != receipt["bytes"] or digest(value) != receipt["sha256"]:
+                    raise DiagnosticError("jfr-reference-changed")
+                expected[stream] = value
+            report["jfr"] = capture_jfr(java_home,
+                ["-cp", str(candidate / "lib/*"), "dev.kartograph.cli.MainKt", *commands["candidate"][1][1][1:]],
+                env, work / "jfr-capture", raw.directory.parent / "jfr", repo / "Scripts/IndexCostCapture.jfc", expected)
+            semantic_oracle(repo, distributions, roots, java_home, env, work, report, raw)
 
 
 def main():
