@@ -10,6 +10,27 @@ import kotlin.random.Random
 
 class CodeGraphTest {
     @Test
+    fun `external normalization snapshots caller owned empty targets and declaration chains`() {
+        val emptyTargets = mutableListOf<NodeId>()
+        val declaredTargets = mutableListOf<NodeId>()
+        val ownerChain = mutableListOf("outside/Api", "outside/Base")
+        val plain = ExternalCall(NodeId("a"), "outside/Api", "run", "()V", InvocationKind.VIRTUAL,
+            resolvedTargets = emptyTargets)
+        val declared = ExternalCall(NodeId("b"), "outside/Api", "run", "()V", InvocationKind.VIRTUAL,
+            resolvedTargets = declaredTargets,
+            declaration = CallDeclaration(NodeId("method:outside/Base#run()V"), CallDeclarationScope.EXTERNAL, ownerChain))
+        val graph = CodeGraph(listOf(node("a"), node("b")), emptyList(), listOf(plain, declared))
+
+        emptyTargets += NodeId("b")
+        declaredTargets += NodeId("a")
+        ownerChain[0] = "changed/Owner"
+
+        assertTrue(graph.externalCalls.all { it.resolvedTargets.isEmpty() })
+        assertEquals(listOf("outside/Api", "outside/Base"), graph.externalCalls[1].declaration?.ownerChain)
+        assertEquals(graph.externalCalls, graph.enrichedWith(emptyList()).externalCalls)
+    }
+
+    @Test
     fun `duplicate edges merge their weights and keep distinct kinds`() {
         val graph = CodeGraph(
             nodes = listOf(node("a"), node("b")),
