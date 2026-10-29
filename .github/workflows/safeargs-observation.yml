@@ -7,12 +7,15 @@ on:
       - gradle/wrapper/**
       - gradlew
       - gradlew.bat
+      - gradle-plugin/build.gradle.kts
       - gradle-plugin/src/test/kotlin/dev/kartograph/gradle/AndroidSafeArgsIntegrationTest.kt
       - gradle-plugin/src/test/kotlin/dev/kartograph/gradle/SafeArgsBuildEvidence*.kt
       - gradle-plugin/src/test/kotlin/dev/kartograph/gradle/SafeArgsNativeProfile*.kt
       - gradle-plugin/src/test/kotlin/dev/kartograph/gradle/SafeArgsActionArtifactsTest.kt
       - Scripts/safeargs_native_profiles.py
       - Scripts/observe-safeargs-gradle813.py
+      - Scripts/prepare-safeargs-current-gradle.py
+      - Scripts/tests/test_safeargs_current_gradle.py
       - Scripts/verify-safeargs-native-test.py
       - Scripts/tests/test_safeargs_native_verifier.py
       - Scripts/verify-safeargs-product-test.py

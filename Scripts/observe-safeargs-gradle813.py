@@ -16,6 +16,10 @@ import zipfile
 VERSION = "8.13"
 DISTRIBUTION = f"https://services.gradle.org/distributions/gradle-{VERSION}-bin.zip"
 DISTRIBUTION_SHA = "20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78"
+PINNED_DISTRIBUTIONS = {
+    "8.13": DISTRIBUTION_SHA,
+    "9.7.1": "acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a",
+}
 PLUGIN_SHA = "5e585dfe55474ce5361f2759faf9afd4a12a7e6a8259c7371bab1b7e8a846c56"
 GENERATOR_SHA = "d4eb204430ce5e350799981cbac0941cea76cf6feeffd959878363bfc13b5c3d"
 ACTION = "org.gradle.api.internal.project.taskfactory.IncrementalTaskAction"
@@ -123,22 +127,30 @@ def read_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique)
 
 
-def unpack(archive: Path, destination: Path, expected_sha: str = DISTRIBUTION_SHA) -> Path:
+def distribution_entries(z: zipfile.ZipFile, *, version: str = VERSION) -> list[zipfile.ZipInfo]:
+    """두 고정 fixture가 공유하는 archive 경계 검사다. 인증 SHA 검사는 호출자가 유지한다."""
+    if version not in PINNED_DISTRIBUTIONS:
+        raise ValueError("unregistered Gradle fixture version")
+    entries = z.infolist()
+    if len(entries) > 2000 or sum(i.file_size for i in entries) > MAX_EXPANDED:
+        raise ValueError("expanded Gradle distribution exceeds bound")
+    names = set()
+    for info in entries:
+        name = portable(info.filename.rstrip("/"))
+        if name in names or not (name.startswith(f"gradle-{version}/") or (name == f"gradle-{version}" and info.is_dir())):
+            raise ValueError("unexpected or duplicate distribution entry")
+        names.add(name)
+        mode = info.external_attr >> 16
+        if stat.S_ISLNK(mode) or info.flag_bits & 1:
+            raise ValueError("linked or encrypted distribution entry")
+    return entries
+
+
+def unpack(archive: Path, destination: Path, expected_sha: str = DISTRIBUTION_SHA, *, version: str = VERSION) -> Path:
     if archive.is_symlink() or archive.stat().st_size > MAX_ARCHIVE or digest(archive) != expected_sha:
         raise ValueError("official Gradle distribution checksum mismatch or oversized archive")
     with zipfile.ZipFile(archive) as z:
-        entries = z.infolist()
-        if len(entries) > 2000 or sum(i.file_size for i in entries) > MAX_EXPANDED:
-            raise ValueError("expanded Gradle distribution exceeds bound")
-        names = set()
-        for info in entries:
-            name = portable(info.filename.rstrip("/"))
-            if name in names or not (name.startswith(f"gradle-{VERSION}/") or (name == f"gradle-{VERSION}" and info.is_dir())):
-                raise ValueError("unexpected or duplicate distribution entry")
-            names.add(name)
-            mode = info.external_attr >> 16
-            if stat.S_ISLNK(mode) or info.flag_bits & 1:
-                raise ValueError("linked or encrypted distribution entry")
+        entries = distribution_entries(z, version=version)
         destination.mkdir(exist_ok=False)
         for info in entries:
             target = destination / info.filename
@@ -151,11 +163,14 @@ def unpack(archive: Path, destination: Path, expected_sha: str = DISTRIBUTION_SH
                         output.write(part)
                 if os.name != "nt":
                     target.chmod(0o755 if (info.external_attr >> 16) & 0o111 else 0o644)
-    return destination / f"gradle-{VERSION}"
+    return destination / f"gradle-{version}"
 
 
-def download(archive: Path) -> None:
-    with urllib.request.urlopen(DISTRIBUTION, timeout=60) as response, archive.open("xb") as target:
+def download(archive: Path, *, version: str = VERSION) -> None:
+    if version not in PINNED_DISTRIBUTIONS:
+        raise ValueError("unregistered Gradle fixture version")
+    url = DISTRIBUTION if version == VERSION else f"https://services.gradle.org/distributions/gradle-{version}-bin.zip"
+    with urllib.request.urlopen(url, timeout=60) as response, archive.open("xb") as target:
         size = 0
         for part in iter(lambda: response.read(1024 * 1024), b""):
             size += len(part)
