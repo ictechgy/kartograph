@@ -92,9 +92,12 @@ internal fun looksLikeSql(text: String, strict: Boolean = false): Boolean {
  * [SqlRelation.keyword]는 관계를 연 키워드 토큰의 원문 위치다.
  * 두 번째 반환은 관계 자리의 피연산자를 읽지 못한 횟수다 —
  * `FROM {}` 같은 플레이스홀더를 사실 없이 조용히 넘기지 않기 위해서다.
+ * 같은 문장의 CTE 이름, 함수 인자 안의 FROM, `IS [NOT] DISTINCT FROM`의 피연산자는
+ * 관계가 아니다(persistence 생산자 공통 규칙, [SqlRelationContext]).
  */
 internal fun sqlRelations(text: String, strict: Boolean = false): Pair<List<SqlRelation>, Int> {
     val tokens = lexSql(text)
+    val context = SqlRelationContext(tokens)
     val out = mutableListOf<SqlRelation>()
     // 같은 키워드의 피연산자 목록 안에서만 중복을 막는다(`FROM a, a`).
     // 다른 위치의 같은 이름은 별개의 사용 근거다 — `SELECT .. FROM t`와
@@ -186,8 +189,9 @@ internal fun sqlRelations(text: String, strict: Boolean = false): Pair<List<SqlR
                 grantOn || createOn
             }
             // grant·revoke의 FROM은 권한 주체 자리다 — 관계가 아니므로
-            // from·join을 그 문장에서는 열지 않는다.
-            "from", "join" -> !grantStmt
+            // from·join을 그 문장에서는 열지 않는다. 함수 인자 안의 FROM(R1)과
+            // `IS [NOT] DISTINCT FROM`(R3)도 관계 자리가 아니라 미해석으로도 세지 않는다.
+            "from", "join" -> !grantStmt && !(word == "from" && context.suppressesFrom(i))
             else -> true
         }
         if (!fires) continue
@@ -296,6 +300,9 @@ internal fun sqlRelations(text: String, strict: Boolean = false): Pair<List<SqlR
                     // 함수의 내부 관계를 추측하지 않고 미해석 근거를 남긴다.
                     unresolved++
                     skipParens(tokens, next) ?: break
+                } else if (context.isCteReference(j, next)) {
+                    // 같은 문장의 CTE 이름은 관계가 아니다(R2) — 소비 표시만 남기고 내지 않는다.
+                    next
                 } else {
                     if (bufferedGrant) buf += name
                     else if (seen.add("${tok.offset}\u0000$name")) out += SqlRelation(name, tok.offset)
@@ -335,6 +342,148 @@ internal fun sqlRelations(text: String, strict: Boolean = false): Pair<List<SqlR
         }
     }
     return out to unresolved
+}
+
+/**
+ * 계열 공통 규칙 세 가지가 관계 키워드마다 묻는 문장·괄호 문맥이다.
+ *
+ * - R1: `(` 바로 앞이 함수 이름이고 그룹이 SELECT·WITH·VALUES로 시작하지 않으면 그 깊이의 FROM은
+ *   관계를 열지 않는다(`EXTRACT(YEAR FROM created_at)`·`TRIM(BOTH ' ' FROM name)`). 안쪽 하위 질의는 연다.
+ * - R2: 문장(`;` 구간)마다 `WITH [RECURSIVE] name [(cols)] AS [NOT] [MATERIALIZED] (`와 `, name …`의
+ *   이름을 모아, 같은 문장의 한정자 없는 피연산자가 그 이름이면 관계로 내지 않는다. 다른 문장에는 영향이 없다.
+ * - R3: FROM 바로 앞이 비인용 `distinct`이고 그 앞이 `is` 또는 `is not`이면 비교 연산자의 일부다.
+ *
+ * persistence 생산자 7곳이 같은 SQL을 같게 읽어야 isthmus 조인이 생산자 언어에 따라 갈리지 않는다 —
+ * 규칙의 정본은 isthmus GRAPH-EXCHANGE의 "SQL 텍스트의 관계 이름" 절과 공유 사례
+ * `conformance/sql-relations.json`이다. 키워드마다 토큰을 되감지 않도록 문장 번호·괄호 짝·CTE 이름·
+ * 함수 인자 문맥을 토큰 열을 세 번 훑어 미리 계산한다(재귀 없이 선형).
+ * 세 규칙은 관계를 빼기만 하므로 strict(게이트 없는 리터럴)에서도 판정 단어의 대소문자를 가리지 않는다 —
+ * strict 게이트는 산문이 관계 자리를 여는 것을 막는 장치이고, 계열 도구도 같게 판정한다.
+ */
+private class SqlRelationContext(private val tokens: List<SqlToken>) {
+    /** 토큰마다 속한 문장(`;`로 갈리는 구간) 번호다. */
+    private val statements = IntArray(tokens.size)
+
+    /** 여는 괄호마다 같은 문장 안의 짝 닫는 괄호 위치다 — 짝이 없으면 -1이다. */
+    private val closing = IntArray(tokens.size) { -1 }
+
+    /** CTE 정의 본문의 `(` 위치다 — 이 괄호는 함수 인자 그룹이 아니다. */
+    private val cteBodies = HashSet<Int>()
+
+    /** 토큰을 감싼 가장 안쪽 괄호가 함수 인자 그룹인지다(R1). */
+    private val insideFunctionArguments = BooleanArray(tokens.size)
+
+    /** 문장마다 모은 CTE 이름의 비교 키다(R2). */
+    private val cteNames: List<Set<String>>
+
+    init {
+        markStatementsAndParens()
+        cteNames = collectCteNames()
+        markFunctionArguments()
+    }
+
+    /** [index]의 FROM이 관계를 열지 않는지 본다 — 함수 인자 안(R1)이거나 `IS [NOT] DISTINCT FROM`(R3)이다. */
+    fun suppressesFrom(index: Int): Boolean = insideFunctionArguments[index] || isDistinctFromOperator(index)
+
+    /** [start]부터 [next] 앞까지 읽은 피연산자가 같은 문장의 CTE 이름인지 본다(R2) — 한정 이름은 CTE가 아니다. */
+    fun isCteReference(start: Int, next: Int): Boolean =
+        next == start + 1 && cteKey(tokens[start]) in cteNames[statements[start]]
+
+    /**
+     * 토큰마다 문장 번호를, 여는 괄호마다 같은 문장 안의 짝 닫는 괄호를 적는다.
+     * `;`는 열린 괄호를 모두 버린다 — 앞 문장의 닫히지 않은 괄호가 다음 문장의 문맥이 되지 않게 한다.
+     */
+    private fun markStatementsAndParens() {
+        var statement = 0
+        val open = ArrayDeque<Int>()
+        for (index in tokens.indices) {
+            statements[index] = statement
+            when {
+                isSymbol(index, ";") -> { statement++; open.clear() }
+                isSymbol(index, "(") -> open.addLast(index)
+                isSymbol(index, ")") -> open.removeLastOrNull()?.let { closing[it] = index }
+            }
+        }
+    }
+
+    /** R2: 문장마다 CTE 이름의 비교 키를 모으고, 그 정의의 본문 괄호를 [cteBodies]에 적는다. */
+    private fun collectCteNames(): List<Set<String>> {
+        val names = List((statements.lastOrNull() ?: 0) + 1) { HashSet<String>() }
+        for (index in tokens.indices) {
+            val withClause = isWord(index, "with")
+            if (!withClause && !isSymbol(index, ",")) continue
+            val nameIndex = if (withClause && isWord(index + 1, "recursive")) index + 2 else index + 1
+            val body = cteBodyParen(nameIndex) ?: continue
+            names[statements[nameIndex]].add(cteKey(tokens[nameIndex]))
+            cteBodies.add(body)
+        }
+        return names
+    }
+
+    /**
+     * [nameIndex]에서 `name [(cols)] AS [NOT] [MATERIALIZED] (`가 시작하면 본문의 `(` 위치를 돌려준다.
+     * 모양이 다르면(`WITH GRANT OPTION`·`WITH (NOLOCK)`·`WITH TIME ZONE`) CTE 정의가 아니다.
+     */
+    private fun cteBodyParen(nameIndex: Int): Int? {
+        if (!isCteName(nameIndex)) return null
+        val columnsEnd = if (isSymbol(nameIndex + 1, "(")) closing[nameIndex + 1] else nameIndex
+        if (columnsEnd < 0) return null // 닫히지 않은 열 목록이다.
+        var cursor = columnsEnd + 1
+        if (!isWord(cursor, "as")) return null
+        cursor++
+        if (isWord(cursor, "not")) cursor++
+        if (isWord(cursor, "materialized")) cursor++
+        return cursor.takeIf { isSymbol(it, "(") }
+    }
+
+    /** R1: 토큰마다 감싼 가장 안쪽 괄호가 함수 인자 그룹인지 적는다 — `;`는 열린 괄호 문맥을 모두 버린다. */
+    private fun markFunctionArguments() {
+        val groups = ArrayDeque<Boolean>()
+        for (index in tokens.indices) {
+            when {
+                isSymbol(index, ";") -> groups.clear()
+                isSymbol(index, "(") -> groups.addLast(index !in cteBodies && opensFunctionArguments(index))
+                isSymbol(index, ")") -> groups.removeLastOrNull()
+                else -> insideFunctionArguments[index] = groups.lastOrNull() == true
+            }
+        }
+    }
+
+    /**
+     * `(`가 함수 인자 그룹을 여는지 본다 — 바로 앞이 함수 이름이고 그룹이 SELECT·WITH·VALUES로 시작하지 않는다.
+     * 함수 이름은 절 키워드·관계 키워드가 아닌 비인용 이름이다. 공통 규칙의 "식별자"를 이렇게 좁혀야
+     * `IN ((SELECT …) UNION SELECT … FROM b)`의 b, DB2 `OLD TABLE (DELETE FROM t …)`의 t를 잃지 않는다.
+     */
+    private fun opensFunctionArguments(open: Int): Boolean {
+        val name = tokens.getOrNull(open - 1) ?: return false
+        if (!isNameToken(name) || isClauseWord(name.text) || isRelationKeyword(name.text)) return false
+        return listOf("select", "with", "values").none { isWord(open + 1, it) }
+    }
+
+    /** R3: FROM 바로 앞이 비인용 `distinct`이고 그 앞이 `is` 또는 `is not`이면 비교 연산자의 일부다. */
+    private fun isDistinctFromOperator(index: Int): Boolean =
+        isWord(index - 1, "distinct") &&
+            (isWord(index - 2, "is") || (isWord(index - 2, "not") && isWord(index - 3, "is")))
+
+    /** CTE 이름이 될 수 있는 토큰인지 본다 — 비인용 이름이거나 비어 있지 않은 인용 식별자다. */
+    private fun isCteName(index: Int): Boolean {
+        val token = tokens.getOrNull(index) ?: return false
+        return if (token.quoted) token.text.isNotEmpty() else isNameToken(token)
+    }
+
+    /**
+     * CTE 이름과 한정자 없는 피연산자의 비교 키다. 비인용 이름은 SQL 식별자 규칙대로 소문자로 접고
+     * 인용 이름은 그대로 둔다(isthmus 참조 구현과 같은 선택이다).
+     */
+    private fun cteKey(token: SqlToken): String = if (token.quoted) token.text else token.text.lowercase()
+
+    /** [index]의 토큰이 비인용 단어 [word](소문자)인지 대소문자 없이 본다 — 범위 밖이면 거짓이다. */
+    private fun isWord(index: Int, word: String): Boolean =
+        tokens.getOrNull(index)?.let { !it.quoted && it.text.lowercase() == word } == true
+
+    /** [index]의 토큰이 비인용 기호 [symbol]인지 본다 — 범위 밖이면 거짓이다. */
+    private fun isSymbol(index: Int, symbol: String): Boolean =
+        tokens.getOrNull(index)?.let { !it.quoted && it.text == symbol } == true
 }
 
 /** 뒤따르는 식별자가 관계 이름인 키워드다. `on`은 GRANT/REVOKE 문 안에서만 관계 키워드로 발화한다. */

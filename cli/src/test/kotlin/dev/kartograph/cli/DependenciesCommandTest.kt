@@ -208,6 +208,57 @@ class DependenciesCommandTest {
         assertEquals(64, execute(*args, "--write-baseline").status)
     }
 
+    @Test
+    fun `complete generic lambda outputs retain dependencies and strict exit contracts`(@TempDir root: Path) {
+        val used = root.resolve("used-classes").createDirectories()
+        compileJava(listOf(
+            source(root, "used-src", "lib/Bound.java", "package lib; public class Bound {}"),
+            source(root, "used-src", "lib/SignatureOnly.java", "package lib; public interface SignatureOnly {}"),
+            source(root, "used-src", "lib/Fn.java", "package lib; public interface Fn { void run(); }"),
+            source(root, "used-src", "lib/Api.java", "package lib; public class Api { public static void use(Bound value) {} }"),
+        ), used)
+        val decoy = root.resolve("decoy-classes").createDirectories()
+        compileJava(listOf(source(root, "decoy-src", "lib/Decoy.java", "package lib; public class Decoy {}")), decoy)
+        val app = root.resolve("app-classes").createDirectories()
+        compileJava(listOf(source(root, "app-src", "app/GenericFactory.java", """
+            package app;
+            public class GenericFactory {
+              private static final String DECOY = "lib.Decoy";
+              public static <T extends lib.Bound & lib.SignatureOnly> lib.Fn create(T value) {
+                return () -> lib.Api.use(value);
+              }
+            }
+        """.trimIndent())), app, listOf(used, decoy))
+        // 각 javac 출력 root 전체를 사용한다. 문자열 decoy는 타입 사용 근거가 아니다.
+        val declarations = "example:used:1\tapi\tused-classes\n" +
+            "example:decoy:1\timplementation\tdecoy-classes\n"
+        root.resolve("declared.tsv").writeText(declarations)
+        root.resolve("resolved.tsv").writeText(declarations)
+        val arguments = arrayOf("dependencies", "--classes", app.toString(), "--project", root.toString(),
+            "--dependencies", "declared.tsv", "--resolved-dependencies", "resolved.tsv", "--library",
+            "--report-format", "json")
+
+        val ordinary = execute(*arguments)
+        assertEquals(ExitStatus.SUCCESS.code, ordinary.status, ordinary.error)
+        assertEquals("", ordinary.error)
+        val document = dev.kartograph.export.McpJsonCodec.parse(ordinary.output) as Map<*, *>
+        assertEquals("dependencies", document["command"])
+        assertEquals(2, (document["analyzedDependencies"] as Number).toInt())
+        for (field in listOf("skippedDependencies", "withoutClassArtifacts", "ambiguousClassOwnership")) {
+            assertEquals(0, (document[field] as Number).toInt(), field)
+        }
+        val finding = (document["diagnostics"] as List<*>).single() as Map<*, *>
+        assertEquals("unused-dependency", finding["ruleId"])
+        assertEquals("unused", finding["state"])
+        assertEquals("example:decoy:1", finding["coordinate"])
+        assertEquals("implementation", finding["scope"])
+        assertEquals("decoy-classes", finding["artifact"])
+        val strict = execute(*arguments, "--strict")
+        assertEquals(ExitStatus.FINDINGS.code, strict.status, strict.error)
+        assertEquals("", strict.error)
+        assertEquals(ordinary.output, strict.output)
+    }
+
     private fun source(root: Path, directory: String, relative: String, content: String): Path =
         root.resolve(directory).resolve(relative).also { path ->
             path.parent.createDirectories()

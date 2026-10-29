@@ -1,0 +1,593 @@
+{
+  "status": "authored before compilation; not an observed result",
+  "coordinateBasis": "UTF-16 code units; zero-based offsets; one-based lines and columns",
+  "callerSemantics": "Nearest enclosing KtNamedFunction or PsiMethod; lexical ownership, including default expressions and lambda bodies. Not a runtime caller guarantee.",
+  "declarations": [
+    {
+      "id": "K.inlineStep",
+      "usr": "method:lowered/LoweredKotlin#inlineStep(I)I",
+      "anchor": {
+        "file": "lowered/LoweredKotlin.kt",
+        "nameStartUtf16": 98,
+        "name": "inlineStep"
+      },
+      "line": 6,
+      "columnUtf16": 16
+    },
+    {
+      "id": "K.withDefault",
+      "usr": "method:lowered/LoweredKotlin#withDefault(I)I",
+      "anchor": {
+        "file": "lowered/LoweredKotlin.kt",
+        "nameStartUtf16": 166,
+        "name": "withDefault"
+      },
+      "line": 7,
+      "columnUtf16": 9
+    },
+    {
+      "id": "K.kotlinInline",
+      "usr": "method:lowered/LoweredKotlin#kotlinInline()I",
+      "anchor": {
+        "file": "lowered/LoweredKotlin.kt",
+        "nameStartUtf16": 239,
+        "name": "kotlinInline"
+      },
+      "line": 8,
+      "columnUtf16": 9
+    },
+    {
+      "id": "K.kotlinDefault",
+      "usr": "method:lowered/LoweredKotlin#kotlinDefault()I",
+      "anchor": {
+        "file": "lowered/LoweredKotlin.kt",
+        "nameStartUtf16": 283,
+        "name": "kotlinDefault"
+      },
+      "line": 9,
+      "columnUtf16": 9
+    },
+    {
+      "id": "K.kotlinToJavaLambda",
+      "usr": "method:lowered/LoweredKotlin#kotlinToJavaLambda()I",
+      "anchor": {
+        "file": "lowered/LoweredKotlin.kt",
+        "nameStartUtf16": 328,
+        "name": "kotlinToJavaLambda"
+      },
+      "line": 10,
+      "columnUtf16": 9
+    },
+    {
+      "id": "K.acceptJavaLambda",
+      "usr": "method:lowered/LoweredKotlin#acceptJavaLambda(Ljava/util/function/IntUnaryOperator;)I",
+      "anchor": {
+        "file": "lowered/LoweredKotlin.kt",
+        "nameStartUtf16": 426,
+        "name": "acceptJavaLambda"
+      },
+      "line": 11,
+      "columnUtf16": 9
+    },
+    {
+      "id": "K.unused",
+      "usr": "method:lowered/LoweredKotlin#unused()I",
+      "anchor": {
+        "file": "lowered/LoweredKotlin.kt",
+        "nameStartUtf16": 511,
+        "name": "unused"
+      },
+      "line": 12,
+      "columnUtf16": 9
+    },
+    {
+      "id": "J.inlineLeaf",
+      "usr": "method:lowered/LoweredJava#inlineLeaf(I)I",
+      "anchor": {
+        "file": "lowered/LoweredJava.java",
+        "nameStartUtf16": 112,
+        "name": "inlineLeaf"
+      },
+      "line": 6,
+      "columnUtf16": 23
+    },
+    {
+      "id": "J.defaultSeed",
+      "usr": "method:lowered/LoweredJava#defaultSeed()I",
+      "anchor": {
+        "file": "lowered/LoweredJava.java",
+        "nameStartUtf16": 174,
+        "name": "defaultSeed"
+      },
+      "line": 7,
+      "columnUtf16": 23
+    },
+    {
+      "id": "J.lambdaLeaf",
+      "usr": "method:lowered/LoweredJava#lambdaLeaf(I)I",
+      "anchor": {
+        "file": "lowered/LoweredJava.java",
+        "nameStartUtf16": 224,
+        "name": "lambdaLeaf"
+      },
+      "line": 8,
+      "columnUtf16": 23
+    },
+    {
+      "id": "J.acceptKotlinLambda",
+      "usr": "method:lowered/LoweredJava#acceptKotlinLambda(Ljava/util/function/IntUnaryOperator;)I",
+      "anchor": {
+        "file": "lowered/LoweredJava.java",
+        "nameStartUtf16": 286,
+        "name": "acceptKotlinLambda"
+      },
+      "line": 9,
+      "columnUtf16": 23
+    },
+    {
+      "id": "J.javaInline",
+      "usr": "method:lowered/LoweredJava#javaInline(Llowered/LoweredKotlin;)I",
+      "anchor": {
+        "file": "lowered/LoweredJava.java",
+        "nameStartUtf16": 391,
+        "name": "javaInline"
+      },
+      "line": 10,
+      "columnUtf16": 23
+    },
+    {
+      "id": "J.javaExplicitDefault",
+      "usr": "method:lowered/LoweredJava#javaExplicitDefault(Llowered/LoweredKotlin;)I",
+      "anchor": {
+        "file": "lowered/LoweredJava.java",
+        "nameStartUtf16": 479,
+        "name": "javaExplicitDefault"
+      },
+      "line": 11,
+      "columnUtf16": 23
+    },
+    {
+      "id": "J.javaToKotlinLambda",
+      "usr": "method:lowered/LoweredJava#javaToKotlinLambda(Llowered/LoweredKotlin;)I",
+      "anchor": {
+        "file": "lowered/LoweredJava.java",
+        "nameStartUtf16": 577,
+        "name": "javaToKotlinLambda"
+      },
+      "line": 12,
+      "columnUtf16": 23
+    }
+  ],
+  "internalCallSites": [
+    {
+      "id": "k-inline-body",
+      "sourceCall": {
+        "file": "lowered/LoweredKotlin.kt",
+        "startUtf16": 140,
+        "endUtf16Exclusive": 157,
+        "line": 6,
+        "columnUtf16": 58,
+        "text": "inlineLeaf(value)"
+      },
+      "lexicalCaller": "K.inlineStep",
+      "selectedSourceTarget": "J.inlineLeaf",
+      "sourceContext": "named-function-body",
+      "loweringHypothesis": "preserved-direct",
+      "expectedAdapterRow": {
+        "engine": "kotlin-aa",
+        "file": "lowered/LoweredKotlin.kt",
+        "callStartUtf16": 140,
+        "callEndUtf16Exclusive": 157,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 98,
+          "name": "inlineStep"
+        },
+        "target": {
+          "file": "lowered/LoweredJava.java",
+          "nameStartUtf16": 112,
+          "name": "inlineLeaf"
+        },
+        "resolved": true
+      }
+    },
+    {
+      "id": "k-default-expression",
+      "sourceCall": {
+        "file": "lowered/LoweredKotlin.kt",
+        "startUtf16": 203,
+        "endUtf16Exclusive": 216,
+        "line": 7,
+        "columnUtf16": 46,
+        "text": "defaultSeed()"
+      },
+      "lexicalCaller": "K.withDefault",
+      "selectedSourceTarget": "J.defaultSeed",
+      "sourceContext": "parameter-default-expression",
+      "loweringHypothesis": "relocated-default-expression-owner",
+      "expectedAdapterRow": {
+        "engine": "kotlin-aa",
+        "file": "lowered/LoweredKotlin.kt",
+        "callStartUtf16": 203,
+        "callEndUtf16Exclusive": 216,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 166,
+          "name": "withDefault"
+        },
+        "target": {
+          "file": "lowered/LoweredJava.java",
+          "nameStartUtf16": 174,
+          "name": "defaultSeed"
+        },
+        "resolved": true
+      }
+    },
+    {
+      "id": "k-inline-call",
+      "sourceCall": {
+        "file": "lowered/LoweredKotlin.kt",
+        "startUtf16": 261,
+        "endUtf16Exclusive": 274,
+        "line": 8,
+        "columnUtf16": 31,
+        "text": "inlineStep(7)"
+      },
+      "lexicalCaller": "K.kotlinInline",
+      "selectedSourceTarget": "K.inlineStep",
+      "sourceContext": "named-function-body",
+      "loweringHypothesis": "erased-inline-target",
+      "expectedAdapterRow": {
+        "engine": "kotlin-aa",
+        "file": "lowered/LoweredKotlin.kt",
+        "callStartUtf16": 261,
+        "callEndUtf16Exclusive": 274,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 239,
+          "name": "kotlinInline"
+        },
+        "target": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 98,
+          "name": "inlineStep"
+        },
+        "resolved": true
+      }
+    },
+    {
+      "id": "k-default-call",
+      "sourceCall": {
+        "file": "lowered/LoweredKotlin.kt",
+        "startUtf16": 306,
+        "endUtf16Exclusive": 319,
+        "line": 9,
+        "columnUtf16": 32,
+        "text": "withDefault()"
+      },
+      "lexicalCaller": "K.kotlinDefault",
+      "selectedSourceTarget": "K.withDefault",
+      "sourceContext": "named-function-body",
+      "loweringHypothesis": "redirected-default-bridge-target",
+      "expectedAdapterRow": {
+        "engine": "kotlin-aa",
+        "file": "lowered/LoweredKotlin.kt",
+        "callStartUtf16": 306,
+        "callEndUtf16Exclusive": 319,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 283,
+          "name": "kotlinDefault"
+        },
+        "target": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 166,
+          "name": "withDefault"
+        },
+        "resolved": true
+      }
+    },
+    {
+      "id": "k-to-java-sam-call",
+      "sourceCall": {
+        "file": "lowered/LoweredKotlin.kt",
+        "startUtf16": 368,
+        "endUtf16Exclusive": 417,
+        "line": 10,
+        "columnUtf16": 49,
+        "text": "acceptKotlinLambda { LoweredJava.lambdaLeaf(it) }"
+      },
+      "lexicalCaller": "K.kotlinToJavaLambda",
+      "selectedSourceTarget": "J.acceptKotlinLambda",
+      "sourceContext": "named-function-body",
+      "loweringHypothesis": "preserved-direct",
+      "expectedAdapterRow": {
+        "engine": "kotlin-aa",
+        "file": "lowered/LoweredKotlin.kt",
+        "callStartUtf16": 368,
+        "callEndUtf16Exclusive": 417,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 328,
+          "name": "kotlinToJavaLambda"
+        },
+        "target": {
+          "file": "lowered/LoweredJava.java",
+          "nameStartUtf16": 286,
+          "name": "acceptKotlinLambda"
+        },
+        "resolved": true
+      }
+    },
+    {
+      "id": "k-sam-body",
+      "sourceCall": {
+        "file": "lowered/LoweredKotlin.kt",
+        "startUtf16": 401,
+        "endUtf16Exclusive": 415,
+        "line": 10,
+        "columnUtf16": 82,
+        "text": "lambdaLeaf(it)"
+      },
+      "lexicalCaller": "K.kotlinToJavaLambda",
+      "selectedSourceTarget": "J.lambdaLeaf",
+      "sourceContext": "sam-lambda-body",
+      "loweringHypothesis": "relocated-lambda-body-owner",
+      "expectedAdapterRow": {
+        "engine": "kotlin-aa",
+        "file": "lowered/LoweredKotlin.kt",
+        "callStartUtf16": 401,
+        "callEndUtf16Exclusive": 415,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 328,
+          "name": "kotlinToJavaLambda"
+        },
+        "target": {
+          "file": "lowered/LoweredJava.java",
+          "nameStartUtf16": 224,
+          "name": "lambdaLeaf"
+        },
+        "resolved": true
+      }
+    },
+    {
+      "id": "j-inline-control",
+      "sourceCall": {
+        "file": "lowered/LoweredJava.java",
+        "startUtf16": 433,
+        "endUtf16Exclusive": 453,
+        "line": 10,
+        "columnUtf16": 65,
+        "text": "kotlin.inlineStep(7)"
+      },
+      "lexicalCaller": "J.javaInline",
+      "selectedSourceTarget": "K.inlineStep",
+      "sourceContext": "named-method-body",
+      "loweringHypothesis": "preserved-direct",
+      "expectedAdapterRow": {
+        "engine": "java-psi",
+        "file": "lowered/LoweredJava.java",
+        "callStartUtf16": 433,
+        "callEndUtf16Exclusive": 453,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredJava.java",
+          "nameStartUtf16": 391,
+          "name": "javaInline"
+        },
+        "target": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 98,
+          "name": "inlineStep"
+        },
+        "resolved": true
+      }
+    },
+    {
+      "id": "j-explicit-default-control",
+      "sourceCall": {
+        "file": "lowered/LoweredJava.java",
+        "startUtf16": 530,
+        "endUtf16Exclusive": 551,
+        "line": 11,
+        "columnUtf16": 74,
+        "text": "kotlin.withDefault(7)"
+      },
+      "lexicalCaller": "J.javaExplicitDefault",
+      "selectedSourceTarget": "K.withDefault",
+      "sourceContext": "named-method-body",
+      "loweringHypothesis": "preserved-direct",
+      "expectedAdapterRow": {
+        "engine": "java-psi",
+        "file": "lowered/LoweredJava.java",
+        "callStartUtf16": 530,
+        "callEndUtf16Exclusive": 551,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredJava.java",
+          "nameStartUtf16": 479,
+          "name": "javaExplicitDefault"
+        },
+        "target": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 166,
+          "name": "withDefault"
+        },
+        "resolved": true
+      }
+    },
+    {
+      "id": "j-to-kotlin-sam-call",
+      "sourceCall": {
+        "file": "lowered/LoweredJava.java",
+        "startUtf16": 627,
+        "endUtf16Exclusive": 678,
+        "line": 12,
+        "columnUtf16": 73,
+        "text": "kotlin.acceptJavaLambda(value -> lambdaLeaf(value))"
+      },
+      "lexicalCaller": "J.javaToKotlinLambda",
+      "selectedSourceTarget": "K.acceptJavaLambda",
+      "sourceContext": "named-method-body",
+      "loweringHypothesis": "preserved-direct",
+      "expectedAdapterRow": {
+        "engine": "java-psi",
+        "file": "lowered/LoweredJava.java",
+        "callStartUtf16": 627,
+        "callEndUtf16Exclusive": 678,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredJava.java",
+          "nameStartUtf16": 577,
+          "name": "javaToKotlinLambda"
+        },
+        "target": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 426,
+          "name": "acceptJavaLambda"
+        },
+        "resolved": true
+      }
+    },
+    {
+      "id": "j-sam-body",
+      "sourceCall": {
+        "file": "lowered/LoweredJava.java",
+        "startUtf16": 660,
+        "endUtf16Exclusive": 677,
+        "line": 12,
+        "columnUtf16": 106,
+        "text": "lambdaLeaf(value)"
+      },
+      "lexicalCaller": "J.javaToKotlinLambda",
+      "selectedSourceTarget": "J.lambdaLeaf",
+      "sourceContext": "sam-lambda-body",
+      "loweringHypothesis": "relocated-lambda-body-owner",
+      "expectedAdapterRow": {
+        "engine": "java-psi",
+        "file": "lowered/LoweredJava.java",
+        "callStartUtf16": 660,
+        "callEndUtf16Exclusive": 677,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredJava.java",
+          "nameStartUtf16": 577,
+          "name": "javaToKotlinLambda"
+        },
+        "target": {
+          "file": "lowered/LoweredJava.java",
+          "nameStartUtf16": 224,
+          "name": "lambdaLeaf"
+        },
+        "resolved": true
+      }
+    }
+  ],
+  "externalBoundarySites": [
+    {
+      "id": "k-sam-invocation-boundary",
+      "sourceCall": {
+        "file": "lowered/LoweredKotlin.kt",
+        "startUtf16": 489,
+        "endUtf16Exclusive": 502,
+        "line": 11,
+        "columnUtf16": 72,
+        "text": "applyAsInt(7)"
+      },
+      "lexicalCaller": "K.acceptJavaLambda",
+      "authoredExternalTarget": "java.util.function.IntUnaryOperator.applyAsInt(int): int",
+      "qualificationLimit": "The unchanged adapter reports no out-of-root target identity; resolved=true is not exact external-target verification.",
+      "expectedAdapterRow": {
+        "engine": "kotlin-aa",
+        "file": "lowered/LoweredKotlin.kt",
+        "callStartUtf16": 489,
+        "callEndUtf16Exclusive": 502,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredKotlin.kt",
+          "nameStartUtf16": 426,
+          "name": "acceptJavaLambda"
+        },
+        "target": null,
+        "resolved": true
+      }
+    },
+    {
+      "id": "j-sam-invocation-boundary",
+      "sourceCall": {
+        "file": "lowered/LoweredJava.java",
+        "startUtf16": 342,
+        "endUtf16Exclusive": 365,
+        "line": 9,
+        "columnUtf16": 79,
+        "text": "operation.applyAsInt(7)"
+      },
+      "lexicalCaller": "J.acceptKotlinLambda",
+      "authoredExternalTarget": "java.util.function.IntUnaryOperator.applyAsInt(int): int",
+      "qualificationLimit": "The unchanged adapter reports no out-of-root target identity; resolved=true is not exact external-target verification.",
+      "expectedAdapterRow": {
+        "engine": "java-psi",
+        "file": "lowered/LoweredJava.java",
+        "callStartUtf16": 342,
+        "callEndUtf16Exclusive": 365,
+        "kind": "method",
+        "caller": {
+          "file": "lowered/LoweredJava.java",
+          "nameStartUtf16": 286,
+          "name": "acceptKotlinLambda"
+        },
+        "target": null,
+        "resolved": true
+      }
+    }
+  ],
+  "expectedCounts": {
+    "explicitMethodDeclarations": 14,
+    "internalMethodCallSites": 10,
+    "internalByEngine": {
+      "kotlin-aa": 6,
+      "java-psi": 4
+    },
+    "externalBoundaryMethodCallSites": 2,
+    "allMethodRowsByEngine": {
+      "kotlin-aa": 7,
+      "java-psi": 5
+    },
+    "explicitConstructorRows": 0
+  },
+  "negativeControls": {
+    "noAuthoredIncomingSourceCallsOrRawProductCalls": [
+      "K.unused"
+    ],
+    "sourceTargetMustNotBeSubstituted": [
+      {
+        "site": "k-inline-call",
+        "notTarget": "J.inlineLeaf",
+        "reason": "An inlined body call is not the selected source inline declaration."
+      },
+      {
+        "site": "k-default-call",
+        "notTarget": "J.defaultSeed",
+        "reason": "The default expression callee is not the selected source defaulted declaration."
+      },
+      {
+        "site": "k-to-java-sam-call",
+        "notTarget": "J.lambdaLeaf",
+        "reason": "The lambda body target is not the selected Java accepting method."
+      },
+      {
+        "site": "j-to-kotlin-sam-call",
+        "notTarget": "J.lambdaLeaf",
+        "reason": "The lambda body target is not the selected Kotlin accepting method."
+      }
+    ]
+  },
+  "qualification": "Compare every full expectedAdapterRow with exact multiplicity, separately retaining internal and external categories; no unknown or unresolved rows. The author-selected target anchors, not product output, define internal source-call success."
+}

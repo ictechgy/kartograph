@@ -1,13 +1,75 @@
 package dev.kartograph.export
 
+import java.security.MessageDigest
+
 /**
  * export가 만드는 machine 문서가 공유하는 최소 JSON 직렬화다.
  * 키 순서는 호출부가 넘긴 정렬된 map이 정하므로 모든 문서가 결정적으로 렌더링된다.
  */
 internal fun jsonValue(value: Any?): String = buildString { appendJsonValue(value) }
 
+/** 선택한 UTF-8 상한을 넘기기 전에 JSON을 멈추며, suffix도 같은 상한으로 기록한다. */
+internal fun boundedJsonValue(value: Any?, maximumBytes: Int, suffix: CharSequence = ""): String {
+    require(maximumBytes > 0) { "JSON byte maximum must be positive" }
+    return BoundedJsonAppendable(maximumBytes).apply {
+        appendJsonValue(value)
+        append(suffix)
+    }.toString()
+}
+
+/** 일반 텍스트 보고서도 같은 증분 UTF-8 출력 한도를 사용한다. */
+internal fun boundedTextValue(maximumBytes: Int, write: Appendable.() -> Unit): String {
+    require(maximumBytes > 0) { "text byte maximum must be positive" }
+    return BoundedJsonAppendable(maximumBytes).apply(write).toString()
+}
+
+/**
+ * [jsonValue] 문서의 UTF-8 바이트 SHA-256이다. 문서를 String이나 byte 배열로 만들지 않고 digest에 바로 흘린다.
+ *
+ * [appendEscapedJson]이 제어 문자와 비ASCII를 모두 escape하므로 문서는 ASCII뿐이고, ASCII 문자는 UTF-8에서 같은 값의
+ * 한 바이트다. 그래서 문자를 그대로 바이트로 넣은 digest가 `jsonValue(value).toByteArray(UTF_8)`의 digest와 같다.
+ * 큰 그래프의 내용 해시가 문서 크기의 몇 배를 할당하지 않게 한다.
+ */
+internal fun jsonSha256(value: Any?): ByteArray = Sha256AsciiAppendable().apply { appendJsonValue(value) }.digest()
+
+/** 받은 ASCII 문자를 64KiB 버퍼에 바이트로 모아 SHA-256에 넣는다. */
+private class Sha256AsciiAppendable : Appendable {
+    private val digest = MessageDigest.getInstance("SHA-256")
+    private val buffer = ByteArray(64 * 1024)
+    private var used = 0
+
+    override fun append(csq: CharSequence?): Appendable {
+        val value = csq ?: "null"
+        return append(value, 0, value.length)
+    }
+
+    override fun append(csq: CharSequence?, start: Int, end: Int): Appendable {
+        val value = csq ?: "null"
+        for (index in start until end) append(value[index])
+        return this
+    }
+
+    // 비ASCII 문자는 UTF-8에서 여러 바이트라 그대로 넣으면 해시가 달라진다. escape를 거치지 않은 문자가 오면 멈춘다.
+    override fun append(c: Char): Appendable {
+        check(c.code < 0x80) { "hashed JSON must be ASCII after escaping; U+%04X reached the digest unescaped".format(c.code) }
+        if (used == buffer.size) flush()
+        buffer[used++] = c.code.toByte()
+        return this
+    }
+
+    fun digest(): ByteArray {
+        flush()
+        return digest.digest()
+    }
+
+    private fun flush() {
+        digest.update(buffer, 0, used)
+        used = 0
+    }
+}
+
 /** 하위 문서마다 임시 문자열을 만들지 않고 같은 버퍼에 순서대로 기록한다. */
-private fun StringBuilder.appendJsonValue(value: Any?) {
+internal fun Appendable.appendJsonValue(value: Any?) {
     when (value) {
         null -> append("null")
         is String -> { append('"'); appendEscapedJson(value); append('"') }
@@ -15,7 +77,12 @@ private fun StringBuilder.appendJsonValue(value: Any?) {
         is Map<*, *> -> {
             append('{')
             var separator = ""
-            for ((key, item) in value) {
+            val iterator = value.entries.iterator()
+            while (true) {
+                (this as? JsonByteBudget)?.ensureJsonSpace(1)
+                if (!iterator.hasNext()) break
+                (this as? JsonByteBudget)?.ensureJsonSpace(if (separator.isEmpty()) 6 else 8)
+                val (key, item) = iterator.next()
                 append(separator)
                 append('"'); appendEscapedJson(key.toString()); append("\": ")
                 appendJsonValue(item)
@@ -26,7 +93,12 @@ private fun StringBuilder.appendJsonValue(value: Any?) {
         is Iterable<*> -> {
             append('[')
             var separator = ""
-            for (item in value) {
+            val iterator = value.iterator()
+            while (true) {
+                (this as? JsonByteBudget)?.ensureJsonSpace(1)
+                if (!iterator.hasNext()) break
+                (this as? JsonByteBudget)?.ensureJsonSpace(if (separator.isEmpty()) 2 else 4)
+                val item = iterator.next()
                 append(separator)
                 appendJsonValue(item)
                 separator = ", "
@@ -44,7 +116,7 @@ private fun StringBuilder.appendJsonValue(value: Any?) {
  * 비UTF-8 로케일에서 한글 같은 식별자가 `?`로 뭉개지면 서로 다른 선언이 같은 `usr`로 붕괴해
  * 교환 문서의 join key가 조용히 충돌한다.
  */
-private fun StringBuilder.appendEscapedJson(value: String) {
+private fun Appendable.appendEscapedJson(value: String) {
     value.forEach { character ->
         when (character) {
             '\\' -> append("\\\\")
@@ -63,6 +135,88 @@ private fun StringBuilder.appendEscapedJson(value: String) {
 }
 
 private const val HEX_DIGITS = "0123456789abcdef"
+
+/** 배열·객체의 다음 원소를 꺼내기 전에 닫힘과 최소 JSON 토큰의 공간을 확인한다. */
+private interface JsonByteBudget {
+    fun ensureJsonSpace(bytes: Int)
+}
+
+/** JSON이 실제로 추가한 UTF-8 바이트를 세며, 초과 append는 버퍼에 반영하지 않는다. */
+private class BoundedJsonAppendable(private val maximumBytes: Int) : Appendable, JsonByteBudget {
+    private val output = StringBuilder()
+    private var bytes = 0L
+    private var pendingHighSurrogate = false
+
+    override fun append(csq: CharSequence?): Appendable {
+        val value = csq ?: "null"
+        return append(value, 0, value.length)
+    }
+
+    override fun append(csq: CharSequence?, start: Int, end: Int): Appendable {
+        val value = csq ?: "null"
+        require(start >= 0 && start <= end && end <= value.length) { "invalid append range" }
+        var pendingHigh = pendingHighSurrogate
+        var additional = 0L
+        for (index in start until end) {
+            val character = value[index]
+            if (pendingHigh) {
+                if (Character.isLowSurrogate(character)) {
+                    additional += 3
+                    pendingHigh = false
+                    continue
+                }
+                pendingHigh = false
+            }
+            when {
+                Character.isHighSurrogate(character) -> {
+                    additional++
+                    pendingHigh = true
+                }
+                Character.isSurrogate(character) -> additional++
+                character.code <= 0x7f -> additional++
+                character.code <= 0x7ff -> additional += 2
+                else -> additional += 3
+            }
+        }
+        if (bytes + additional > maximumBytes.toLong()) throw QuerySnapshotSizeException()
+        output.append(value, start, end)
+        bytes += additional
+        pendingHighSurrogate = pendingHigh
+        return this
+    }
+
+    override fun append(c: Char): Appendable {
+        var pendingHigh = pendingHighSurrogate
+        val additional = if (pendingHigh && Character.isLowSurrogate(c)) {
+            pendingHigh = false
+            3
+        } else {
+            pendingHigh = false
+            when {
+                Character.isHighSurrogate(c) -> {
+                    pendingHigh = true
+                    1
+                }
+                Character.isSurrogate(c) -> 1
+                c.code <= 0x7f -> 1
+                c.code <= 0x7ff -> 2
+                else -> 3
+            }
+        }
+        if (bytes + additional.toLong() > maximumBytes.toLong()) throw QuerySnapshotSizeException()
+        output.append(c)
+        bytes += additional
+        pendingHighSurrogate = pendingHigh
+        return this
+    }
+
+    override fun ensureJsonSpace(bytes: Int) {
+        require(bytes >= 0) { "JSON byte budget must be non-negative" }
+        if (this.bytes + bytes.toLong() > maximumBytes.toLong()) throw QuerySnapshotSizeException()
+    }
+
+    override fun toString(): String = output.toString()
+}
 
 /** SCREAMING_SNAKE enum 이름을 machine 문서가 공통으로 쓰는 lowerCamel 값으로 바꾼다. */
 internal fun String.lowerCamel(): String = lowercase().split('_').let { words ->

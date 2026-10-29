@@ -16,6 +16,19 @@ import org.objectweb.asm.Opcodes
 
 class RuntimeLimitationScannerTest {
     @Test
+    fun `dispatch candidate counts exclude exact inherited invocation kinds`(@TempDir root: Path) {
+        val caller = dev.kartograph.core.GraphNode(JvmNodeId.methodId("app/Entry", "run", "()V"), "run",
+            dev.kartograph.core.NodeKind.METHOD)
+        val calls = dev.kartograph.core.InvocationKind.entries.map { kind ->
+            dev.kartograph.core.ExternalCall(caller.id, "lib/Parent", "run", "()V", kind,
+                resolution = dev.kartograph.core.CallResolution.PROJECT_CANDIDATES)
+        }
+        val indexed = IndexedClasses(dev.kartograph.core.CodeGraph(listOf(caller), emptyList(), calls), emptyList())
+        assertEquals(listOf("dispatch-candidates: 2 external virtual call(s) use conservative hierarchy candidates rather than proven receivers"),
+            RuntimeLimitationScanner.scan(indexed, root))
+    }
+
+    @Test
     fun `DOS timestamp rounding is unknown rather than stale and later changes remain stale`(@TempDir root: Path) {
         val writer = ClassWriter(0)
         writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "A", null, "java/lang/Object", null)

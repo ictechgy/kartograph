@@ -26,10 +26,11 @@ The current source version is declared in [VERSION](VERSION). Released versions 
 Working today:
 
 - `impact` checks the potential effect of a planned symbol edit, or of the files changed since a base commit, using captured graphs. It reports base/current paths, deletions, runtime evidence and uncertainty identically to people, agents and CI. See [change impact](docs/IMPACT.md) and the [scored public replays](https://github.com/ictechgy/kartograph/blob/b7bcc1570d1adc851abf77be9f728f186ada1b9b/experiments/change-impact/README.md).
-- `graph` renders compiled class roots as DOT or as a `code-graph` JSON exchange document. With `--include-paths --project` it also resolves project-relative source paths. The JSON records edge origins and external calls with their resolution status. Repeating `--classes` merges several module/variant outputs; when a JVM class appears in more than one root, the first root always wins.
+- `graph` renders compiled class roots as DOT, streamed `code-graph` JSON, NDJSON, or fixed-header Neo4j CSV. With `--include-paths --project` it also resolves project-relative source paths. Per-root `--module-name`, optional external stubs, origin filtering, and bounded dispatch candidates support large exports. Repeating `--classes` merges several module/variant outputs; when a JVM class appears in more than one root, the first root always wins. See [graph export contracts](docs/GRAPH-EXPORT.md).
 - `dead` reports unreachable class declarations from Android retention roots (manifest, XML, `@Keep`, keep rules, inheritance hierarchies, DI/serialization annotations, JNI and framework callbacks). It supports `--explain`, baselines, expiring `--suppress` entries, `--since`, and machine-readable reports (text/gradle/github-actions/sarif/json/markdown). JSON, SARIF and markdown findings carry a `confidence` tier (static / needs-runtime-review / runtime-observed / unmeasured) derived from the unresolved runtime channels measured in the declaration's own source file or from user-supplied runtime evidence. Recursive includes and consumer rules are supported. Keep rules that produced no retention evidence are reported as `unmatched-keep-rule` input diagnostics with file:line provenance — a measurement, not proof the rule can be removed. When findings exist, inputs that were not supplied (keep rules, dependency classpath, or a manifest with component declarations) are reported as `input-hint` diagnostics so a possibly over-reported result is visible before it is trusted. Optional `--runtime-classes` and `--coverage` inputs (user-supplied class lists and JaCoCo/Kover XML) mark findings whose class was observed as `runtime-observed` confidence; they change neither findings nor exit codes.
 - `why <symbol>` answers in one step why a declaration is retained, reachable, or unreachable: retention evidence with file:line provenance, the representative path from a retention root, direct callers, a test-only marker, and a measured confidence tier for unreachable declarations. The answer is a reachability fact, not a deletion approval.
 - `query`/`bridges`/`skill` give agents the users, dependencies and reachability of a single symbol, plus Flutter/React Native bridge facts, instead of a full graph dump. `query` also reports measured counts of unresolved runtime paths and conservative dispatch candidates. React Native coverage spans core `@ReactModule`/`@ReactMethod` and Expo Modules (`class X : Module()` with `ModuleDefinition { Name(...) / Function(...) / View(...) }`); Expo `module-export`/`component-export` facts carry `"mechanism": "expo"` so isthmus keeps Expo and core resolution paths separate.
+- Direct bytecode calls now carry optional `references` with the caller source file and call-site line on depth-one `query` neighbors. Kotlin inline mappings are used only when they identify the caller's own source file. Declaration locations remain separate; bytecode does not provide exact columns or offsets. New saved snapshots preserve this evidence in both normal and compact encoding, while older snapshots report its absence.
 - `dependencies` compares a declared dependency list (TSV: coordinate, scope, artifact) with bytecode references from the supplied class roots and reports `unused-dependency` findings. It does not run the build or collect coverage; processor and runtime-only scopes are counted but not judged. See [declared dependencies](docs/DEPENDENCIES.md). Version 0.12.0 adds `--library`
   API/implementation advice, `--resolved-dependencies` ownership checks, all six report formats,
   and JVM/Android `kartographDependencies` tasks. Version 0.13.0 adds exact baselines, expiring suppressions, and capture of all observed diagnostics before filtering.
@@ -55,13 +56,76 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 - Android graph/dead tasks: AGP 8.7+, Gradle 8.10+, JDK 17+ (verified with AGP 8.7.3 / Gradle 8.10.2 and with AGP 9.x).
 - Automatic snapshots: JVM Java/Kotlin on Gradle 9.6.1 and JDK 17/21, plus the [tested Android combinations](docs/IMPACT.md#android-variant-자동-캡처). The Kotlin compiler adapter is verified with KGP 2.4.10; other KGP versions are not guaranteed. The minimum Android combination was tested on Gradle 8.10.2, although KGP itself recommends 8.14.4 or later.
 
+The following example targets the 0.26.0 release preparation. Use the plugin once that version
+is available from the Portal, or build matching modules from the same source revision.
+
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.18.2"
+    id("io.github.ictechgy.kartograph") version "0.26.0"
 }
 ```
 
 Download `kartograph-<version>.zip` or `.tar` from a GitHub release. For 0.5.0 and later, check its SHA256 against the matching entry in `SHA256SUMS` before unpacking, then run `bin/kartograph`. Releases also include CycloneDX runtime SBOMs. Detached signatures are not published.
+
+0.22.0 is published on [GitHub Releases](https://github.com/ictechgy/kartograph/releases/tag/v0.22.0)
+and the [Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.22.0).
+The public CLI archives, collector ZIP and Portal plugin passed independent installation checks.
+The published archives retain their original preparation-era documentation.
+The 0.21.0 tag and release page exist, but its failed release produced no distribution assets or Portal plugin.
+When upgrading from 0.20.0, rebuild direct JVM library consumers for the `GraphNode` and
+`QuerySnapshot` ABI changes and use matching CLI, plugin and optional collector versions.
+As checked on 2026-10-17, [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)
+has its seven assets and its [release run](https://github.com/ictechgy/kartograph/actions/runs/38721915580)
+completed the Gradle plugin publish step. It remains a GitHub prerelease.
+Independent public-asset/Portal-consumer verification of 0.23.0 is still pending. Those assets and their
+original documentation are unchanged. Publication and successful independent installation are separate results.
+As checked on 2026-10-18, [v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0) was the latest stable GitHub release with seven assets.
+Its [release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702) passed packaged readiness and plugin publication; independent public consumption is a separate check.
+As checked on 2026-10-19, [v0.25.0](https://github.com/ictechgy/kartograph/releases/tag/v0.25.0) is the latest stable GitHub release with seven assets,
+from tag commit `d7238cd5d6465219d0c1378a99e7394258b8577b`.
+Its [exact-source readiness](https://github.com/ictechgy/kartograph/actions/runs/39183549453) and
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39186955097) passed. All 20 ZIP/TAR semantic pairs
+passed against two retained-plugin AGP8.7.3 fixture builds: 17 impact pairs are strict; three freshness pairs
+omit only the validated root `hashNanos` timing field. ZIP, TAR and plugin hashes match release metadata.
+The `publishPlugins` task succeeded; public Portal visibility and independent Portal installation remain separate checks.
+Published assets retain their original documentation.
+Use matching CLI, plugin, collector and library artifacts. The new source-use APIs and explicit
+`snapshot --include-source-uses`, `query --source-uses` and `impact --source-edits` flags are additive.
+Saved source-use reports are partial/historical evidence with `currentness: notChecked`, separate from ordinary graph results.
+A 0.22 reader drops the optional source-use extension when reserializing. Recapture missing evidence, and recapture both
+base/current snapshots with the same tool version when required; do not relabel old snapshots or mix module versions.
+Old compiled-client and descriptor checks cover selected APIs, not every client or Kotlin source compatibility.
+See the [upgrade notes](CHANGELOG.md) and [source-use compatibility guide](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility).
+
+Version 0.24.0 adds enum expansion candidates for explicit fallback and finite literal membership decisions.
+Enable compiler `enumDecisions=true` and `snapshot --include-enum-decisions`, then compare fresh compatible
+baseline/current snapshots with `impact --enum-expansion`. Results retain current source locations,
+added constants, reasons and unresolved coverage. Both enum and source-use capture flags can be enabled together.
+Rebuild direct library clients for the changed `GraphNode`/`QuerySnapshot` public shape, use matching collector/CLI
+builds, and rebuild clients when their enum definitions change. Follow the
+[0.24.0 migration](docs/COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration) and
+[enum expansion guide](docs/IMPACT.md#opt-in-enum-expansion-candidates).
+These are review candidates, not runtime behavior proof. The published 0.23.0 artifacts do not contain this feature.
+The JDK 17 collector suite does not execute the conditional Java 21 null/pattern syntax branch.
+
+Version 0.26.0 adds native `impact --git-base` and MCP `change_impact` for Git base/head or working-tree changes.
+Build and capture both revisions with matching CLI/plugin/library versions, then connect their source and build inputs;
+revision labels alone do not establish freshness. Existing impact output remains compatible. The opt-in report retains
+historical callers, separate revision paths, file-wide seed precision, stale/unknown inputs and traversal budgets.
+See [change analysis and migration](docs/IMPACT.md) and the [bounded real-change validation](docs/GIT-IMPACT-VALIDATION.md).
+These are review and static test candidates, not failure predictions or permission to skip tests.
+Public 0.26.0 assets and Portal installation have not yet been verified; release preparation is not publication.
+
+See [0.26.0 input/reporting migration](docs/FEEDBACK-026.md),
+[Android CLI and plugin input setup](docs/ANDROID-CLI-INPUTS.md), and
+[bounded Android callback evidence](docs/ANDROID-CALLBACK-INPUTS.md) for the feedback fixes and remaining limits.
+For DataBinding `requireAll`, overload and explicit overlay observations, see
+[DataBinding candidate evidence](docs/DATA-BINDING-EVIDENCE.md). XML candidates retain runtime uncertainty in `dead` and `why`.
+
+Version 0.25.0 adds captured application layout XML impact through exact non-final R fields and recorded literal includes.
+Use matching CLI/plugin/library builds and recapture both revisions. Coverage remains partial; module snapshots with resource
+evidence cannot be aggregated. See [layout capture and migration](docs/ANDROID-RESOURCE-IMPACT.md) for the tested AGP8.7.3
+combination, trusted-build boundary, freshness checks and unsupported runtime/dynamic cases.
 
 ## Usage
 
@@ -233,6 +297,43 @@ or unmatched input fails without partial application. The called member's contai
 entry policy still applies; the owner expansion itself does not select sibling methods. `dead --explain` shows EXTERNAL_BRIDGE with the
 original Dart/JS caller locations, channel, method and omitted caller count. Supply the normal
 required dead arguments as well.
+
+Optional document-level `provenance` (wire version 1) preserves the original source headers and
+join limitations independently of the matched JVM roots. `dead`, `dead --explain`, live `query`,
+saved-query/MCP results and all dead report formats display bounded context caveats. A stale or
+unsupported context does not remove matching roots. Legacy or empty source metadata remains
+unavailable context; it does not mean complete coverage. Nonempty unmatched identifiers still
+fail the entire analysis, with caveats and no partial findings. Zero-retention documents retain
+all document context.
+
+Source and limitation arrays retain their original order and duplicate entries; canonicalization
+sorts object keys only. Absent source metadata remains distinct from an explicitly empty source
+array in saved context.
+
+`query` and `snapshot` also accept one `--external-retentions <file>`. Snapshot capture fingerprints
+the document and reads it inside the capture checks. Plain/compact snapshots preserve the admitted
+context as canonical raw document strings and validate it again when loading. Snapshot merge keeps
+contexts even if no matched node remains, and never rebases original cross-language projects or
+caller paths. These observations remain separate from compiler build-witness provenance. They do
+not establish freshness, source/index completeness or permission to delete code.
+
+The provenance envelope uses a bounded portable JSON profile: at most 1 MiB canonical UTF-8,
+256 source headers, 4,096 limitations and 64 nested containers. Duplicate keys, invalid Unicode,
+fraction/exponent numeric tokens, negative zero and integers outside the JavaScript safe range
+are rejected before version dispatch. Unknown positive envelope versions remain opaque and
+unsupported after the same admission checks. Source timestamps use real Gregorian dates with
+case-insensitive T/Z, hours and offset hours 00–23, minutes 00–59, seconds 00–59 and preserved
+fraction digits; leap seconds are unsupported. The CLI reads at most 16 MiB from a regular,
+non-symlink document with before/after identity checks. JDK file APIs do not provide a portable
+nonblocking open, so these checks do not claim atomic protection against hostile concurrent
+replacement by a special file. Supply a completed, stable input.
+
+This addition is included in 0.22.0 and is absent from the 0.21.0 tag. It changes the public JVM constructor
+and generated `copy`/default-call signatures of `QuerySnapshot`; clients compiled against an
+earlier `QuerySnapshot` must be rebuilt together with the updated export library. Source-level
+default arguments and existing snapshot wire versions remain compatible. The existing
+`ExternalRetentionCodec.parse(String)` and `AdoptionReporter.render` JVM entry points are retained.
+This public shape uses the published pre-1.0 minor version 0.22.0.
 
 `bridges --rn-events [--target react-native]` exports explicit
 `getJSModule(...RCTDeviceEventEmitter::class.java).emit(...)` calls (Java `.class` is also supported)

@@ -46,6 +46,7 @@ public data class SnapshotProvenance(
     val inputs: List<InputFingerprint>,
     val witnesses: List<BuildWitness>,
     val memberScopes: List<String> = emptyList(),
+    val transformations: List<ClassTransformObservation> = emptyList(),
 ) {
     init {
         require(memberScopes.all { it.isNotEmpty() && it.length <= 200 && Regex("[A-Za-z0-9_.:-]+").matches(it) } &&

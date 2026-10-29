@@ -1,0 +1,120 @@
+name: Safe Args native observation
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/safeargs-observation.yml
+      - gradle-plugin/src/test/kotlin/dev/kartograph/gradle/AndroidSafeArgsIntegrationTest.kt
+      - gradle-plugin/src/test/kotlin/dev/kartograph/gradle/SafeArgsBuildEvidence*.kt
+      - gradle-plugin/src/test/kotlin/dev/kartograph/gradle/SafeArgsNativeProfile*.kt
+      - gradle-plugin/src/test/kotlin/dev/kartograph/gradle/SafeArgsActionArtifactsTest.kt
+      - Scripts/safeargs_native_profiles.py
+      - Scripts/observe-safeargs-gradle813.py
+      - Scripts/verify-safeargs-native-test.py
+      - Scripts/tests/test_safeargs_native_verifier.py
+      - Scripts/verify-safeargs-product-test.py
+      - Scripts/tests/test_safeargs_product_verifier.py
+      - gradle-plugin/src/main/kotlin/dev/kartograph/gradle/SafeArgs*.kt
+      - gradle-plugin/src/main/kotlin/dev/kartograph/gradle/GenerationAttemptJournal.kt
+      - index/src/main/kotlin/dev/kartograph/index/GeneratedSourceIndexer.kt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: safeargs-observation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  observe:
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [gradle971-agp932, gradle813-agp813-java]
+    env:
+      KARTOGRAPH_SAFEARGS_NATIVE_PROFILE: ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-read-only: true
+      - name: Record exact observation source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p build/reports/safeargs-workflow
+          git rev-parse HEAD HEAD^{tree} > build/reports/safeargs-workflow/source.txt
+          printf '%s\n' "$GITHUB_SHA" "$PR_HEAD_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > build/reports/safeargs-workflow/run.txt
+      - name: Prepare checksum-verified Gradle 8.13 consumer distribution
+        if: matrix.profile == 'gradle813-agp813-java'
+        run: |
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          from pathlib import Path
+          path = Path('Scripts/observe-safeargs-gradle813.py')
+          spec = importlib.util.spec_from_file_location('prepare', path)
+          module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+          root = Path('build/reports/safeargs-workflow/gradle'); root.mkdir()
+          archive = root / 'gradle-8.13-bin.zip'; module.download(archive)
+          home = module.unpack(archive, root / 'installation')
+          (root / 'distribution.json').write_text(json.dumps({'sha256': module.digest(archive), 'home': str(home), 'scope': 'setup only; separate from build and CLI timings'}) + '\n')
+          PY
+      - name: Accept existing CI Android SDK licenses
+        run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
+      - name: Install the existing fixture platform selection
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
+      - name: Verify observation gate rejection cases
+        run: python3 -m unittest discover -s Scripts/tests -p '*safeargs*' -v
+      - name: Prepare pinned public and current CLI distributions
+        run: |
+          mkdir -p build/reports/safeargs-workflow/public-cli
+          curl --fail --location --max-time 90 https://github.com/ictechgy/kartograph/releases/download/v0.25.0/kartograph-0.25.0.zip -o build/reports/safeargs-workflow/public-cli/kartograph-0.25.0.zip
+          echo 'a7a55b35a0bbcab93230d1364482ef781b9ab060ed35f1c1f359b5f972361978  build/reports/safeargs-workflow/public-cli/kartograph-0.25.0.zip' | sha256sum --check
+          unzip -q build/reports/safeargs-workflow/public-cli/kartograph-0.25.0.zip -d build/reports/safeargs-workflow/public-cli
+          ./gradlew --no-daemon :cli:installDist
+      - name: Execute the single Safe Args TestKit observation
+        timeout-minutes: 20
+        env:
+          KARTOGRAPH_SAFEARGS_GRADLE_HOME: ${{ github.workspace }}/build/reports/safeargs-workflow/gradle/installation/gradle-8.13
+          KARTOGRAPH_SAFEARGS_EVIDENCE_DIR: ${{ github.workspace }}/build/reports/safeargs-native
+          KARTOGRAPH_PUBLIC_025_HOME: ${{ github.workspace }}/build/reports/safeargs-workflow/public-cli/kartograph-0.25.0
+          KARTOGRAPH_CURRENT_CLI_HOME: ${{ github.workspace }}/cli/build/install/kartograph
+        run: |
+          set +e
+          ./gradlew --no-daemon :gradle-plugin:test --tests dev.kartograph.gradle.AndroidSafeArgsIntegrationTest --rerun --no-build-cache --stacktrace 2>&1 | tee build/reports/safeargs-workflow/gradle.log
+          statuses=("${PIPESTATUS[@]}")
+          printf '%s\n' "${statuses[0]}" > build/reports/safeargs-workflow/gradle-exit.txt
+          printf '%s\n' "${statuses[1]}" > build/reports/safeargs-workflow/log-exit.txt
+          if (( statuses[0] != 0 )); then exit "${statuses[0]}"; fi
+          exit "${statuses[1]}"
+      - name: Require actual unskipped execution and complete observation receipts
+        if: ${{ always() && !cancelled() }}
+        run: python3 Scripts/verify-safeargs-native-test.py
+      - name: Require actual cold product and public baseline consumption
+        if: ${{ always() && !cancelled() }}
+        run: python3 Scripts/verify-safeargs-product-test.py
+      - name: Preserve successful or failed observation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: safeargs-native-${{ matrix.profile }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/reports/safeargs-native/
+            build/reports/safeargs-workflow/
+            !build/reports/safeargs-workflow/gradle/gradle-8.13-bin.zip
+            !build/reports/safeargs-workflow/gradle/installation/**
+            build/reports/safeargs-native-verification.json
+            build/reports/safeargs-product-verification.json
+            gradle-plugin/build/test-results/test/TEST-dev.kartograph.gradle.AndroidSafeArgsIntegrationTest.xml
+          if-no-files-found: error
+          retention-days: 14

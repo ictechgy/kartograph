@@ -6,6 +6,9 @@ import dev.kartograph.export.BuildWitnessCodec
 import dev.kartograph.index.ContentFingerprint
 import dev.kartograph.index.CompilerEvidenceReceipts
 import dev.kartograph.index.CompilerEvidenceToken
+import dev.kartograph.index.CompilerCallPositionOptions
+import dev.kartograph.index.CompilerAuthoredCallOptions
+import dev.kartograph.index.CompilerEnumDecisionOptions
 import org.gradle.api.Action
 import org.gradle.api.Project
 import org.gradle.api.Task
@@ -39,10 +42,10 @@ public object CompilerWitnesses {
     /** AGP의 compiler 생성 callback에서는 현재 task를 직접 설정하고 task container를 다시 변경하지 않는다. */
     internal fun automaticJavaCompile(project: Project, compiler: JavaCompile, scope: String,
         sourceRoots: FileCollection, buildInputs: FileCollection, optionalClasspathDirectories: FileCollection,
-        additionalInputs: FileCollection = project.files()): Provider<RegularFile> =
+        additionalInputs: FileCollection = project.files(), captureRejection: WitnessRejection? = null): Provider<RegularFile> =
         register(project, project.tasks.named(compiler.name, JavaCompile::class.java), scope, sourceRoots, buildInputs,
             "javac", additionalInputs, optionalClasspathDirectories = optionalClasspathDirectories,
-            automaticSourceInventory = true, configuredTask = compiler)
+            automaticSourceInventory = true, configuredTask = compiler, captureRejection = captureRejection)
 
     /** 수집기는 compiler action 중에만 이 요청 토큰을 읽는다. 성공 증거나 cache output은 아니다. */
     public fun inputTokenFile(project: Project, compiler: TaskProvider<out Task>): Provider<RegularFile> =
@@ -58,19 +61,21 @@ public object CompilerWitnesses {
         kotlinJdk: Provider<org.gradle.jvm.toolchain.JavaLauncher>? = null,
         compilerEvidence: Boolean = false,
         optionalClasspathDirectories: FileCollection = project.files(),
-        automaticSourceInventory: Boolean = false, configuredTask: Task? = null): Provider<RegularFile> {
+        automaticSourceInventory: Boolean = false, configuredTask: Task? = null,
+        captureRejection: WitnessRejection? = null): Provider<RegularFile> {
         val witnessDirectory = project.layout.buildDirectory.dir("kartograph/witnesses/${compiler.name}")
         val witness = witnessDirectory.map { it.file("witness.json") }
         val taskIdentity = if (project.path == ":") ":${compiler.name}" else "${project.path}:${compiler.name}"
         val byteInputs = project.objects.fileCollection().from(buildInputs, additionalInputs)
         if (!automaticSourceInventory) byteInputs.from(sourceRoots)
-        val spec = WitnessSpec(project.layout.projectDirectory.asFile, scope, compiler.name, taskIdentity, kind, sourceRoots, buildInputs, byteInputs, additionalInputs, witness, kotlinJdk, compilerEvidence, optionalClasspathDirectories, automaticSourceInventory)
+        val spec = WitnessSpec(project.layout.projectDirectory.asFile, scope, compiler.name, taskIdentity, kind, sourceRoots, buildInputs, byteInputs, additionalInputs, witness, kotlinJdk, compilerEvidence, optionalClasspathDirectories, automaticSourceInventory, captureRejection)
         val configure: (Task) -> Unit = { task ->
             val selectedSources = if (automaticSourceInventory) {
                 (if (task is JavaCompile) task.source else KotlinCompilerWitnesses.sourceFiles(task)).also { byteInputs.from(it) }
             } else sourceRoots
             task.inputs.files(selectedSources).withPropertyName("kartographSourceRoots").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             task.inputs.property("kartographAutomaticSourceInventory", automaticSourceInventory)
+            task.inputs.property("kartographCaptureRejection", captureRejection?.name.orEmpty())
             task.inputs.files(buildInputs).withPropertyName("kartographBuildInputs").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             task.inputs.property("kartographScope", scope)
             task.inputs.property("kartographCompilerEvidenceEnabled", compilerEvidence)
@@ -158,8 +163,10 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
     val additionalInputs: FileCollection, val witness: Provider<RegularFile>,
     val kotlinJdk: Provider<org.gradle.jvm.toolchain.JavaLauncher>?, val compilerEvidence: Boolean = false,
     val optionalClasspathDirectories: FileCollection? = null,
-    val automaticSourceInventory: Boolean = false) : Serializable {
+    val automaticSourceInventory: Boolean = false,
+    val captureRejection: WitnessRejection? = null) : Serializable {
     fun observe(task: Task): List<InputFingerprint> {
+        require(captureRejection == null) { requireNotNull(captureRejection).description }
         val observed = if (kind == "javac") javaObservation(task as JavaCompile)
             else KotlinCompilerWitnesses.observe(task, requireNotNull(kotlinJdk).get(), additionalInputs)
         val roots = sourceRoots.files.toList()
@@ -181,7 +188,12 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
             roots
         }
         val optional = optionalClasspathDirectories?.files?.map { it.canonicalFile }?.toSet().orEmpty()
-        val files = selectedSources.map { "sources" to it } + buildInputs.files.map { "buildConfig" to it } + observed.files.map { (role, file) ->
+        val authoredEnabled = CompilerCallPositionOptionParser.authoredEnabled(kind, observed.options, compilerEvidence)
+        val sdk = if (task is JavaCompile) task.javaCompiler.get().metadata.installationPath.asFile
+            else requireNotNull(kotlinJdk).get().metadata.installationPath.asFile
+        val authoredSdkFiles = if (authoredEnabled) listOf("compilerInput" to File(sdk, "jmods"), "compilerInput" to File(sdk, "release")) else emptyList()
+        val files = selectedSources.map { "sources" to it } + buildInputs.files.map { "buildConfig" to it } +
+            (observed.files + authoredSdkFiles).distinctBy { it.first to it.second.canonicalFile }.map { (role, file) ->
             (if (role in setOf("classpath", "friend") && file.canonicalFile in optional) "directory-watch" else role) to file
         }
         val covered = byteInputs.files.map { it.canonicalFile }
@@ -205,7 +217,39 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
         } + listOf(project.absolutePath, project.toURI().toASCIIString().trimEnd('/'), project.toPath().toAbsolutePath().toUri().toASCIIString().trimEnd('/'))
             .map { it to "project" }).sortedByDescending { it.first.length }
         val normalized = observed.options.map { value -> replacements.fold(value) { text, (path, identity) -> text.replace(path, identity) } }
-        return fingerprints + InputFingerprint("options", "$artifact-options", ContentFingerprint.values(normalized))
+        val observedInputs = fingerprints + InputFingerprint("options", "$artifact-options", ContentFingerprint.values(normalized))
+        val callPositionInputs = if (CompilerCallPositionOptionParser.enabled(kind, observed.options, compilerEvidence)) {
+            observedInputs + CompilerCallPositionOptions.enabledInput()
+        } else observedInputs
+        val positionInputs = callPositionInputs + (if (CompilerCallPositionOptionParser.enumDecisionsEnabled(kind, observed.options, compilerEvidence))
+            listOf(CompilerEnumDecisionOptions.enabledInput()) else emptyList())
+        if (!CompilerCallPositionOptionParser.authoredEnabled(kind, observed.options, compilerEvidence)) return positionInputs
+        if (task is JavaCompile) {
+            require(task.options.encoding.equals("UTF-8", ignoreCase = true)) { "authored evidence requires explicit UTF-8 javac encoding" }
+            require("-proc:none" in task.options.allCompilerArgs && task.options.bootstrapClasspath?.isEmpty != false &&
+                task.options.allCompilerArgs.none { arg ->
+                    arg.startsWith("-proc:") && arg != "-proc:none" ||
+                        setOf("--system", "--module-path", "-p", "--upgrade-module-path", "--patch-module", "--module-source-path",
+                            "--release", "-bootclasspath", "--boot-class-path", "-extdirs", "-endorseddirs", "-processor").any {
+                            arg == it || arg.startsWith("$it=") || arg.startsWith("$it:")
+                        }
+                }) {
+                "authored evidence requires ordinary javac classpath inputs with annotation processing disabled"
+            }
+            require(task.options.release.orNull == null || task.options.release.get() == task.javaCompiler.get().metadata.languageVersion.asInt()) {
+                "authored evidence requires the native target SDK, not a different release API"
+            }
+        } else {
+            require(observed.options.none { it.startsWith("-Xjdk-release") || it == "-no-jdk" }) {
+                "authored evidence requires the native target SDK"
+            }
+        }
+        val authoredInputs = positionInputs + CompilerAuthoredCallOptions.enabledInput()
+        if (!CompilerCallPositionOptionParser.inventoryEnabled(kind, observed.options, compilerEvidence)) return authoredInputs
+        require(CompilerCallPositionOptionParser.inventoryOutput(kind, observed.options) == observed.destination.canonicalFile) {
+            "caller inventory classOutput differs from the actual task destination"
+        }
+        return authoredInputs + dev.kartograph.index.CompilerCallerInventoryOptions.enabledInput()
     }
 
     fun output(task: Task): InputFingerprint {
@@ -294,7 +338,7 @@ internal data class WitnessSpec(val project: File, val scope: String, val artifa
                 }
             } else require(argument in setOf("-parameters", "-Werror", "-Xlint", "-g", "-proc:none", "-proc:full", "--enable-preview", "-XDstringConcat=inline") ||
                 argument.startsWith("-Xlint:") || argument.startsWith("-g:") || argument.startsWith("-A") || argument.startsWith("-Xdiags:") ||
-                compilerEvidence && argument.startsWith("-Xplugin:KartographEvidence ")) {
+                compilerEvidence && CompilerCallPositionOptionParser.isJavacPluginArgument(argument)) {
                 "unsupported javac option for compiler witness"
             }
         }

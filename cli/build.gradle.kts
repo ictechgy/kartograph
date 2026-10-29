@@ -36,6 +36,7 @@ distributions {
                 into("LICENSES")
             }
             val releaseDocumentation = listOf(
+                "GRAPH-EXPORT.md",
                 "DEPENDENCIES.md",
                 "PROCESSOR-GENERATION.md",
                 "DECISION-truth-source.md",
@@ -51,6 +52,17 @@ distributions {
                 "PUBLIC-VALIDATION.md",
                 "IMPACT-PLAN.md",
                 "IMPACT.md",
+                "GIT-IMPACT-VALIDATION.md",
+                "FEEDBACK-026.md",
+                "ANDROID-CLI-INPUTS.md",
+                "ANDROID-CALLBACK-INPUTS.md",
+                "DATA-BINDING-EVIDENCE.md",
+                "ANDROID-RESOURCE-EVIDENCE.md",
+                "ANDROID-RESOURCE-CAPTURE.md",
+                "ANDROID-RESOURCE-PRODUCER-EVIDENCE.md",
+                "ANDROID-RESOURCE-BINDINGS.md",
+                "ANDROID-RESOURCE-IMPACT.md",
+                "ANDROID-RESOURCE-IMPACT-EXPERIMENT.md",
                 "BUILD-PROVENANCE.md",
                 "COMPILER-EVIDENCE.md",
                 "INDEX-CACHE.md",

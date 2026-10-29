@@ -1,0 +1,55 @@
+{
+  "adapterExit": 0,
+  "adapterSha256": "54cb74a5836494a876084098bd1a091ca1ff0b3aafd473249c6954004c64812f",
+  "comparisonSha256": "612c0c659a85dfd1b652c1f9e614fb55f0a852426690f8cee6b349539b08b4ad",
+  "graderSha256": "6dee3a238728fccbb570804cab2079e1f1123675dde02b7f9b5afcc6ffe1cf5a",
+  "lifecycleCorrection": "Explicit isolated CLI exit0 only after successful analysis, disposal, output flush and output error check; not a general embedded-library shutdown claim.",
+  "locationObservations": {
+    "productExactIdentifierColumnsAvailable": 0,
+    "productFileAndLineMatches": 8,
+    "warning": "This is not position-parity evidence; the PSI call adapter exports source anchors, and the declaration-only smoke adapter has not been executed."
+  },
+  "outerExit": 0,
+  "primaryComparisonQualified": true,
+  "priorFailure": {
+    "directory": "run-01",
+    "exit": 124,
+    "reason": "No process termination after complete output; raw output did not count as qualified"
+  },
+  "productAndGraderExit": 0,
+  "productDistributionRecordedAfterSuccessfulRun": {
+    "launcherSha256": "e7ea0f5d3103714b4156fc278437f29ba01358d3e28fe36ff1363b586f5a5042",
+    "libraries": {
+      "analysis-0.20.1.jar": "d4ccae6f54e246257f100428d98c7a39c30f6884e683046d1430d17c19d74ed2",
+      "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+      "asm-9.10.1.jar": "ed825d10ab1399c8c0cb669e688cf0c8c82629b4c8399b58352b68e92ca10fcb",
+      "asm-analysis-9.10.1.jar": "dede75a21306b65974ecd8f87114ff6970f09fb794157a4ca09ab25c888c2bfc",
+      "asm-tree-9.10.1.jar": "3dfb0d5b6a106cd40b5b250e39935fbf2f927f4477546a5369a3ac609cf0506b",
+      "cli-0.20.1.jar": "037e5bf4d6d452a58d5564408cef9c6c456d880a60346b5696177c34b84d544f",
+      "core-0.20.1.jar": "a908915c5cc921ee0a17bca3702080012c62f9455c7d8fde0f419e473a23cc40",
+      "export-0.20.1.jar": "9d3ddba68ad2cd1298ef22f65b66e9c2e945b3faebea9c73ae3649547530b18a",
+      "index-0.20.1.jar": "8641954caa0454fc2f59a88d592e52b88423671155dddb747f7c2afa10cd68d3",
+      "kotlin-metadata-jvm-2.4.20.jar": "98d9b1847908adfde7a8b2d4cc35708d7ddccae0698cec56bcb506bcf9392595",
+      "kotlin-stdlib-2.4.20.jar": "2226de463d309d4a5500a481320b3dea515a6981dcae1def531fbc158884e25f"
+    }
+  },
+  "productGraphSha256": "80071ed87d1a8c2f8a82074f2788771bb2bbdec9712293ac9b7e0d06b6bff090",
+  "productScope": {
+    "expectedExplicitMethodNodesFound": 8,
+    "primaryExpectedDirectCallEdges": 4,
+    "rawGraphEdges": 27,
+    "rawGraphNodes": 12
+  },
+  "productSourceBaseline": "ab056981a016e1b4452de1071bcf209818526849",
+  "psiScope": {
+    "javaPsiRecords": 2,
+    "kotlinAaRecords": 2,
+    "rawMethodCallSiteRecords": 4,
+    "separateConstructorRecords": 1
+  },
+  "rawPsiSha256": "ec58e281c18eb73293538ba7ea1d6c626ca15a8e176168f2f51e097a071fa015",
+  "sameFixtureClassBytesAsFailedAttempt": true,
+  "sameRawPsiRowsAsFailedAttempt": true,
+  "sameRuntimeJarBytesAsFailedAttempt": true,
+  "status": "passed"
+}

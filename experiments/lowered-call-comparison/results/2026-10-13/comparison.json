@@ -1,0 +1,422 @@
+{
+  "fixtureManifestSha256": "ffef91dd0974160fa4c360e4453cd43965250b48dd48e8b99b9cfe7535c6dc1e",
+  "graphSha256": "7290ca4c93ee340f0e0301c588ab784147361b3b35db4ce9374f43f60c580261",
+  "javapSha256": "43a6a006f5b112415ae9c275244e0db07b691c56148b180152af5e5764c13795",
+  "product": {
+    "gates": {
+      "allExplicitJavapMethodsPresent": true,
+      "allExplicitProductMethodsPresent": true,
+      "allSitesClassifiedWithEvidence": true,
+      "exactRawAuthoredPairsMatchDisassembly": true,
+      "uniqueProductNodeIdentities": true,
+      "unusedHasNoRawIncomingCall": true
+    },
+    "missingJavapMethods": [],
+    "missingProductMethods": [],
+    "qualified": true,
+    "rawAuthoredPairsMissingFromProduct": [],
+    "rawAuthoredPairsUnsupportedByDisassembly": [],
+    "rawCallsBetweenAuthoredMethods": [
+      [
+        "method:lowered/LoweredJava#javaExplicitDefault(Llowered/LoweredKotlin;)I",
+        "method:lowered/LoweredKotlin#withDefault(I)I"
+      ],
+      [
+        "method:lowered/LoweredJava#javaInline(Llowered/LoweredKotlin;)I",
+        "method:lowered/LoweredKotlin#inlineStep(I)I"
+      ],
+      [
+        "method:lowered/LoweredJava#javaToKotlinLambda(Llowered/LoweredKotlin;)I",
+        "method:lowered/LoweredKotlin#acceptJavaLambda(Ljava/util/function/IntUnaryOperator;)I"
+      ],
+      [
+        "method:lowered/LoweredKotlin#inlineStep(I)I",
+        "method:lowered/LoweredJava#inlineLeaf(I)I"
+      ],
+      [
+        "method:lowered/LoweredKotlin#kotlinInline()I",
+        "method:lowered/LoweredJava#inlineLeaf(I)I"
+      ],
+      [
+        "method:lowered/LoweredKotlin#kotlinToJavaLambda()I",
+        "method:lowered/LoweredJava#acceptKotlinLambda(Ljava/util/function/IntUnaryOperator;)I"
+      ]
+    ],
+    "scopeLimit": "Compiler-output/source preservation observations only; not runtime callback execution, general completeness, accuracy or performance ranking.",
+    "siteObservations": [
+      {
+        "checks": {
+          "bytecodeDirectCall": true,
+          "productDirectCall": true
+        },
+        "classification": "preserved-direct",
+        "observedBytecodeDirectPairs": [
+          [
+            "method:lowered/LoweredKotlin#inlineStep(I)I",
+            "method:lowered/LoweredJava#inlineLeaf(I)I"
+          ]
+        ],
+        "observedRawProductEdges": [
+          {
+            "callSiteLines": [
+              6
+            ],
+            "kind": "call",
+            "source": "method:lowered/LoweredKotlin#inlineStep(I)I",
+            "target": "method:lowered/LoweredJava#inlineLeaf(I)I",
+            "weight": 1
+          }
+        ],
+        "site": "k-inline-body",
+        "sourceCallerSemantics": "named-function-body",
+        "sourcePair": [
+          "method:lowered/LoweredKotlin#inlineStep(I)I",
+          "method:lowered/LoweredJava#inlineLeaf(I)I"
+        ]
+      },
+      {
+        "checks": {
+          "bytecodeLexicalOwnerNotDirectCaller": true,
+          "bytecodeMovedExpressionCall": true,
+          "productLexicalOwnerNotInvented": true,
+          "productMovedExpressionCall": true
+        },
+        "classification": "relocated-default-expression-owner",
+        "observedBytecodeDirectPairs": [
+          [
+            "method:lowered/LoweredKotlin#withDefault$default(Llowered/LoweredKotlin;IILjava/lang/Object;)I",
+            "method:lowered/LoweredJava#defaultSeed()I"
+          ]
+        ],
+        "observedRawProductEdges": [
+          {
+            "callSiteLines": [
+              7
+            ],
+            "kind": "call",
+            "source": "method:lowered/LoweredKotlin#withDefault$default(Llowered/LoweredKotlin;IILjava/lang/Object;)I",
+            "target": "method:lowered/LoweredJava#defaultSeed()I",
+            "weight": 1
+          }
+        ],
+        "site": "k-default-expression",
+        "sourceCallerSemantics": "parameter-default-expression",
+        "sourcePair": [
+          "method:lowered/LoweredKotlin#withDefault(I)I",
+          "method:lowered/LoweredJava#defaultSeed()I"
+        ]
+      },
+      {
+        "checks": {
+          "bytecodeExpandedBodyCall": true,
+          "bytecodeSourceTargetErased": true,
+          "productExpandedBodyCall": true,
+          "productSourceTargetNotInvented": true
+        },
+        "classification": "erased-inline-target",
+        "observedBytecodeDirectPairs": [
+          [
+            "method:lowered/LoweredKotlin#kotlinInline()I",
+            "method:lowered/LoweredJava#inlineLeaf(I)I"
+          ]
+        ],
+        "observedRawProductEdges": [
+          {
+            "kind": "call",
+            "source": "method:lowered/LoweredKotlin#kotlinInline()I",
+            "target": "method:lowered/LoweredJava#inlineLeaf(I)I",
+            "weight": 1
+          }
+        ],
+        "site": "k-inline-call",
+        "sourceCallerSemantics": "named-function-body",
+        "sourcePair": [
+          "method:lowered/LoweredKotlin#kotlinInline()I",
+          "method:lowered/LoweredKotlin#inlineStep(I)I"
+        ]
+      },
+      {
+        "actualDefaultBridgeAssociation": {
+          "basis": "kotlinMetadataAndBytecode",
+          "maskParameterCount": 1,
+          "target": "method:lowered/LoweredKotlin#withDefault(I)I",
+          "valueParameterCount": 1
+        },
+        "checks": {
+          "bytecodeOriginalDirectCallAbsent": true,
+          "bytecodeRedirectAndBridgeTarget": true,
+          "exactExistingAssociation": true,
+          "productOriginalDirectCallNotInvented": true,
+          "productRedirectAndBridgeTarget": true
+        },
+        "classification": "redirected-default-bridge-target",
+        "observedBytecodeDirectPairs": [
+          [
+            "method:lowered/LoweredKotlin#kotlinDefault()I",
+            "method:lowered/LoweredKotlin#withDefault$default(Llowered/LoweredKotlin;IILjava/lang/Object;)I"
+          ],
+          [
+            "method:lowered/LoweredKotlin#withDefault$default(Llowered/LoweredKotlin;IILjava/lang/Object;)I",
+            "method:lowered/LoweredKotlin#withDefault(I)I"
+          ]
+        ],
+        "observedRawProductEdges": [
+          {
+            "callSiteLines": [
+              9
+            ],
+            "kind": "call",
+            "source": "method:lowered/LoweredKotlin#kotlinDefault()I",
+            "target": "method:lowered/LoweredKotlin#withDefault$default(Llowered/LoweredKotlin;IILjava/lang/Object;)I",
+            "weight": 1
+          },
+          {
+            "callSiteLines": [
+              7
+            ],
+            "kind": "call",
+            "source": "method:lowered/LoweredKotlin#withDefault$default(Llowered/LoweredKotlin;IILjava/lang/Object;)I",
+            "target": "method:lowered/LoweredKotlin#withDefault(I)I",
+            "weight": 1
+          }
+        ],
+        "site": "k-default-call",
+        "sourceCallerSemantics": "named-function-body",
+        "sourcePair": [
+          "method:lowered/LoweredKotlin#kotlinDefault()I",
+          "method:lowered/LoweredKotlin#withDefault(I)I"
+        ]
+      },
+      {
+        "checks": {
+          "bytecodeDirectCall": true,
+          "productDirectCall": true
+        },
+        "classification": "preserved-direct",
+        "observedBytecodeDirectPairs": [
+          [
+            "method:lowered/LoweredKotlin#kotlinToJavaLambda()I",
+            "method:lowered/LoweredJava#acceptKotlinLambda(Ljava/util/function/IntUnaryOperator;)I"
+          ]
+        ],
+        "observedRawProductEdges": [
+          {
+            "callSiteLines": [
+              10
+            ],
+            "kind": "call",
+            "source": "method:lowered/LoweredKotlin#kotlinToJavaLambda()I",
+            "target": "method:lowered/LoweredJava#acceptKotlinLambda(Ljava/util/function/IntUnaryOperator;)I",
+            "weight": 1
+          }
+        ],
+        "site": "k-to-java-sam-call",
+        "sourceCallerSemantics": "named-function-body",
+        "sourcePair": [
+          "method:lowered/LoweredKotlin#kotlinToJavaLambda()I",
+          "method:lowered/LoweredJava#acceptKotlinLambda(Ljava/util/function/IntUnaryOperator;)I"
+        ]
+      },
+      {
+        "actualImplementationCandidates": [
+          "method:lowered/LoweredKotlin#kotlinToJavaLambda$lambda$0(I)I"
+        ],
+        "checks": {
+          "bytecodeLexicalOwnerNotDirectCaller": true,
+          "productBootstrapImplementationHandle": true,
+          "productImplementationBodyCall": true,
+          "productLexicalOwnerNotInvented": true,
+          "uniqueCompilerBodyFromActualBootstrapHandle": true
+        },
+        "classification": "relocated-lambda-body-owner",
+        "implementationSyntheticFlags": {
+          "method:lowered/LoweredKotlin#kotlinToJavaLambda$lambda$0(I)I": false
+        },
+        "observedBytecodeDirectPairs": [
+          [
+            "method:lowered/LoweredKotlin#kotlinToJavaLambda$lambda$0(I)I",
+            "method:lowered/LoweredJava#lambdaLeaf(I)I"
+          ]
+        ],
+        "observedRawProductEdges": [
+          {
+            "callSiteLines": [
+              10
+            ],
+            "kind": "call",
+            "source": "method:lowered/LoweredKotlin#kotlinToJavaLambda$lambda$0(I)I",
+            "target": "method:lowered/LoweredJava#lambdaLeaf(I)I",
+            "weight": 1
+          },
+          {
+            "kind": "call",
+            "source": "method:lowered/LoweredKotlin#kotlinToJavaLambda()I",
+            "target": "method:lowered/LoweredKotlin#kotlinToJavaLambda$lambda$0(I)I",
+            "weight": 1
+          }
+        ],
+        "site": "k-sam-body",
+        "sourceCallerSemantics": "sam-lambda-body",
+        "sourcePair": [
+          "method:lowered/LoweredKotlin#kotlinToJavaLambda()I",
+          "method:lowered/LoweredJava#lambdaLeaf(I)I"
+        ]
+      },
+      {
+        "checks": {
+          "bytecodeDirectCall": true,
+          "productDirectCall": true
+        },
+        "classification": "preserved-direct",
+        "observedBytecodeDirectPairs": [
+          [
+            "method:lowered/LoweredJava#javaInline(Llowered/LoweredKotlin;)I",
+            "method:lowered/LoweredKotlin#inlineStep(I)I"
+          ]
+        ],
+        "observedRawProductEdges": [
+          {
+            "callSiteLines": [
+              10
+            ],
+            "kind": "call",
+            "source": "method:lowered/LoweredJava#javaInline(Llowered/LoweredKotlin;)I",
+            "target": "method:lowered/LoweredKotlin#inlineStep(I)I",
+            "weight": 1
+          }
+        ],
+        "site": "j-inline-control",
+        "sourceCallerSemantics": "named-method-body",
+        "sourcePair": [
+          "method:lowered/LoweredJava#javaInline(Llowered/LoweredKotlin;)I",
+          "method:lowered/LoweredKotlin#inlineStep(I)I"
+        ]
+      },
+      {
+        "checks": {
+          "bytecodeDirectCall": true,
+          "productDirectCall": true
+        },
+        "classification": "preserved-direct",
+        "observedBytecodeDirectPairs": [
+          [
+            "method:lowered/LoweredJava#javaExplicitDefault(Llowered/LoweredKotlin;)I",
+            "method:lowered/LoweredKotlin#withDefault(I)I"
+          ]
+        ],
+        "observedRawProductEdges": [
+          {
+            "callSiteLines": [
+              11
+            ],
+            "kind": "call",
+            "source": "method:lowered/LoweredJava#javaExplicitDefault(Llowered/LoweredKotlin;)I",
+            "target": "method:lowered/LoweredKotlin#withDefault(I)I",
+            "weight": 1
+          }
+        ],
+        "site": "j-explicit-default-control",
+        "sourceCallerSemantics": "named-method-body",
+        "sourcePair": [
+          "method:lowered/LoweredJava#javaExplicitDefault(Llowered/LoweredKotlin;)I",
+          "method:lowered/LoweredKotlin#withDefault(I)I"
+        ]
+      },
+      {
+        "checks": {
+          "bytecodeDirectCall": true,
+          "productDirectCall": true
+        },
+        "classification": "preserved-direct",
+        "observedBytecodeDirectPairs": [
+          [
+            "method:lowered/LoweredJava#javaToKotlinLambda(Llowered/LoweredKotlin;)I",
+            "method:lowered/LoweredKotlin#acceptJavaLambda(Ljava/util/function/IntUnaryOperator;)I"
+          ]
+        ],
+        "observedRawProductEdges": [
+          {
+            "callSiteLines": [
+              12
+            ],
+            "kind": "call",
+            "source": "method:lowered/LoweredJava#javaToKotlinLambda(Llowered/LoweredKotlin;)I",
+            "target": "method:lowered/LoweredKotlin#acceptJavaLambda(Ljava/util/function/IntUnaryOperator;)I",
+            "weight": 1
+          }
+        ],
+        "site": "j-to-kotlin-sam-call",
+        "sourceCallerSemantics": "named-method-body",
+        "sourcePair": [
+          "method:lowered/LoweredJava#javaToKotlinLambda(Llowered/LoweredKotlin;)I",
+          "method:lowered/LoweredKotlin#acceptJavaLambda(Ljava/util/function/IntUnaryOperator;)I"
+        ]
+      },
+      {
+        "actualImplementationCandidates": [
+          "method:lowered/LoweredJava#lambda$javaToKotlinLambda$0(I)I"
+        ],
+        "checks": {
+          "bytecodeLexicalOwnerNotDirectCaller": true,
+          "productBootstrapImplementationHandle": true,
+          "productImplementationBodyCall": true,
+          "productLexicalOwnerNotInvented": true,
+          "uniqueCompilerBodyFromActualBootstrapHandle": true
+        },
+        "classification": "relocated-lambda-body-owner",
+        "implementationSyntheticFlags": {
+          "method:lowered/LoweredJava#lambda$javaToKotlinLambda$0(I)I": true
+        },
+        "observedBytecodeDirectPairs": [
+          [
+            "method:lowered/LoweredJava#lambda$javaToKotlinLambda$0(I)I",
+            "method:lowered/LoweredJava#lambdaLeaf(I)I"
+          ]
+        ],
+        "observedRawProductEdges": [
+          {
+            "kind": "call",
+            "source": "method:lowered/LoweredJava#javaToKotlinLambda(Llowered/LoweredKotlin;)I",
+            "target": "method:lowered/LoweredJava#lambda$javaToKotlinLambda$0(I)I",
+            "weight": 1
+          },
+          {
+            "callSiteLines": [
+              12
+            ],
+            "kind": "call",
+            "source": "method:lowered/LoweredJava#lambda$javaToKotlinLambda$0(I)I",
+            "target": "method:lowered/LoweredJava#lambdaLeaf(I)I",
+            "weight": 1
+          }
+        ],
+        "site": "j-sam-body",
+        "sourceCallerSemantics": "sam-lambda-body",
+        "sourcePair": [
+          "method:lowered/LoweredJava#javaToKotlinLambda(Llowered/LoweredKotlin;)I",
+          "method:lowered/LoweredJava#lambdaLeaf(I)I"
+        ]
+      }
+    ],
+    "tool": {
+      "name": "kartograph",
+      "version": "0.20.1"
+    }
+  },
+  "psi": {
+    "actualRows": 12,
+    "expectedRows": 12,
+    "externalBoundarySites": 2,
+    "externalIdentityLimit": "Out-of-root target identities are not exported or qualified.",
+    "internalSites": 10,
+    "missingRows": [],
+    "qualified": true,
+    "unexpectedRows": []
+  },
+  "psiSha256": "238504b8a5ec2e537e67bf38843449504df578dbc1abebb2ab2044d2a020a9fc",
+  "sourceSha256": {
+    "lowered/LoweredJava.java": "86dfcefd038e73f8d9ad31e45d8249539e2c7ef51e9b8a9e6ae0756b4b67c18c",
+    "lowered/LoweredKotlin.kt": "8fcfc29d48d1ae788658291e3a4e318e282c3e5afa1004894596041470510eb9"
+  },
+  "status": "qualified-scoped-readback"
+}

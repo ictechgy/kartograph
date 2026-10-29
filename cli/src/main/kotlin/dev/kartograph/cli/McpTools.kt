@@ -18,7 +18,10 @@ internal class McpTools(
     private val project: Path?,
     private val expectedScope: String?,
     private val external: Map<String, Path>,
+    private val baseProject: Path? = null,
+    private val baseExternal: Map<String, Path> = emptyMap(),
 ) {
+    private val querySession = SavedSnapshotOperations.QuerySession(current)
     fun call(name: String, arguments: Map<String, Any?>): Map<String, Any?> {
         val definition = definitions.firstOrNull { it["name"] == name }
             ?: throw IllegalArgumentException("Unknown tool; use tools/list")
@@ -58,7 +61,7 @@ internal class McpTools(
                 var recovery: List<SymbolSuggestionPage>? = null
                 attempts.forEachIndexed { index, effectiveLimit ->
                     if (previousLimit != effectiveLimit) {
-                        document = McpJsonCodec.parse(SavedSnapshotOperations.query(current, symbol, depth, effectiveLimit).json)
+                        document = McpJsonCodec.parse(querySession.query(symbol, depth, effectiveLimit).json)
                         previousLimit = effectiveLimit
                     }
                     val pages = recovery ?: (if ((document as? Map<*, *>)?.get("status") == "found") emptyList()
@@ -70,10 +73,17 @@ internal class McpTools(
                 }
                 tooLarge(name)
             }
-            "impact" -> {
+            "impact", "change_impact" -> {
                 val symbols = strings("symbols")
-                val files = strings("files")
-                require("symbols" in arguments || "files" in arguments) { "Provide symbols or files (an empty files array represents no changes)" }
+                val change = if (name == "change_impact") GitImpactContext.inspect(
+                    requireNotNull(project) { "Restart with a fixed --project for Git change impact" },
+                    arguments.getValue("base") as String, arguments["head"] as? String, arguments["workingTree"] == true).also {
+                    GitImpactContext.validate(it, current, base)
+                } else null
+                val changeFreshness = change?.let { GitImpactContext.freshness(current, requireNotNull(base), requireNotNull(project),
+                    baseProject, external, baseExternal, change.workingTree, expectedScope) }
+                val files = change?.files ?: strings("files")
+                require(change != null || "symbols" in arguments || "files" in arguments) { "Provide symbols or files (an empty files array represents no changes)" }
                 require((files + strings("affectedFiles")).all(ImpactCommand::portable)) { "Files must be portable project-relative graph selectors" }
                 require(symbols.all { !it.startsWith('/') }) { "Use a symbol name or exact USR" }
                 val filter = ImpactFilter(strings("modules").toSet(), strings("affectedFiles").toSet(),
@@ -101,6 +111,7 @@ internal class McpTools(
                     if (previousLimits != limits) {
                         document = McpJsonCodec.parse(SavedSnapshotOperations.impact(current, base, symbols, files,
                             depth, effectiveLimit, visitLimit, effectivePathLimit, offset, filter, sort, effectiveSummaryLimit).json)
+                        if (change != null) document = GitImpactContext.document(document, change, metadata, requireNotNull(changeFreshness))
                         previousLimits = limits
                     }
                     val suggestionLimit = SUGGESTION_LIMITS[index]
@@ -111,7 +122,8 @@ internal class McpTools(
                         "pathLimit" to effectivePathLimit, "summaryLimit" to effectiveSummaryLimit,
                         "suggestionLimit" to suggestionLimit, "offset" to offset)
                     val pages = recovery ?: run {
-                        val unresolved = (document as? Map<*, *>)?.get("unresolved") as? List<*>
+                        val graphDocument = if (change == null) document else (document as? Map<*, *>)?.get("graphImpact")
+                        val unresolved = (graphDocument as? Map<*, *>)?.get("unresolved") as? List<*>
                         val unresolvedSymbols = unresolved.orEmpty().mapNotNull { (it as? Map<*, *>)?.get("requested") as? String }
                             .filter { it in symbols }
                         val graphs = listOfNotNull(current.graph, base?.graph)
@@ -139,7 +151,9 @@ internal class McpTools(
         check(attempts in 1..MAX_ADAPTATION_ATTEMPTS)
         val wrapper = buildMap<String, Any?> {
             put("snapshot", metadata)
-            put("freshness", if ((document as? Map<*, *>)?.get("format") == "kartograph-freshness")
+            put("freshness", if ((document as? Map<*, *>)?.get("format") == "kartograph-change-impact")
+                "Checked configured before/current inputs for the loaded snapshots in this call; retain each status and reason. Restart after recapture."
+                else if ((document as? Map<*, *>)?.get("format") == "kartograph-freshness")
                 "Checked live configured inputs for the loaded current snapshot in this call; base freshness is not checked."
                 else "Not checked by this call. Invoke freshness separately; restart the server to load a new snapshot.")
             put("document", document)
@@ -172,7 +186,7 @@ internal class McpTools(
         } })
 
     private fun tooLarge(tool: String): Map<String, Any?> = error(when (tool) {
-        "impact" -> "Interactive result exceeds 16 KiB after bounded page, path, summary and suggestion reduction. Call discover_symbols with one file or symbol selector, follow nextOffset, then retry impact with selected exact USRs only; files and symbols are union selectors. CLI impact without --summary-limit provides the full summary."
+        "impact", "change_impact" -> "Interactive result exceeds 16 KiB after bounded page, path, summary and suggestion reduction. Use CLI impact (with --git-base for the complete change context), or discover_symbols and inspect selected exact USRs separately. Oversized Git context is not discarded."
         "query_symbol" -> "Interactive result exceeds 16 KiB after bounded page and suggestion reduction. Call discover_symbols with the symbol selector to page exact USRs, or inspect the full saved query with the CLI."
         "discover_symbols" -> "A discovery candidate exceeds 16 KiB even at limit 1; inspect the full saved graph with the CLI."
         else -> "Freshness evidence exceeds 16 KiB; use CLI verify-snapshot to inspect all reasons."
@@ -213,10 +227,17 @@ internal class McpTools(
                     "testStatus" to enum("test", "production", "unknown"), "relation" to enum("direct", "structural", "transitive", "unknown"),
                     "pathStatus" to enum("complete", "partial", "unavailable"),
                     "sort" to enum("review", "usr", "module", "file", "test", "test-status", "relation", "path", "path-depth", "path-status"))),
+            tool("change_impact", "Select actual Git base/head or working-tree changes using the startup-configured project and base/current snapshots. Preserves deleted and renamed paths, separate revision witnesses, exact snapshot identities and before/current content freshness. Requires matching scoped revision labels; never builds or fetches. Files select whole declarations, not only changed lines. Static candidates do not predict failures or approve skipped tests.",
+                mapOf("base" to string(), "head" to string(), "workingTree" to mapOf("type" to "boolean"),
+                    "depth" to integer(1, 100, IMPACT_DEFAULT_DEPTH), "limit" to integer(1, 100, IMPACT_DEFAULT_LIMIT),
+                    "offset" to integer(0, 100_000, 0), "visitLimit" to integer(1, 100_000, 100_000),
+                    "pathLimit" to integer(1, 100_000, IMPACT_DEFAULT_PATH_LIMIT),
+                    "summaryLimit" to integer(1, 100, IMPACT_DEFAULT_SUMMARY_LIMIT)), listOf("base")),
             tool("freshness", "Rehash only startup-configured project and input bindings against the loaded current snapshot. Reports matched, stale or unverified. No project means unverified. Does not verify the base snapshot. Labels alone are not freshness evidence.", emptyMap()))
 
         private fun validate(value: Any?, schema: Map<*, *>) {
             when (schema["type"]) {
+                "boolean" -> require(value is Boolean)
                 "object" -> {
                     require(value is Map<*, *>)
                     val properties = schema["properties"] as Map<*, *>

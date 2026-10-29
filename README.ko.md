@@ -30,6 +30,7 @@ Android에는 한 가지 유리한 점이 있다. "안 쓰는 것처럼 보이�
 - `dead`는 Android 보존 근거(manifest, XML, `@Keep`, keep 규칙, 상속 hierarchy, DI/직렬화 어노테이션, JNI·프레임워크 콜백)에서 도달 불가한 class 선언을 보고한다. `--explain`, baseline, 만료일이 있는 `--suppress`, `--since`, machine report(text/gradle/github-actions/sarif/json/markdown)를 지원한다. JSON·SARIF·markdown 보고에는 `confidence` 등급(static / needs-runtime-review / runtime-observed / unmeasured)이 실리는데, 이는 그 선언의 소스 파일에서 측정한 미해결 runtime 채널 수나 사용자가 제공한 런타임 근거에서 나온다. 재귀 include와 consumer rules 입력도 지원한다. 보존 근거를 하나도 만들지 않은 keep rule은 파일·줄 근거와 함께 `unmatched-keep-rule` 입력 진단으로 보고한다 — 규칙 삭제의 증거가 아니다. finding이 있는데 keep 규칙·dependency classpath·component 선언이 있는 manifest가 입력되지 않았으면 `input-hint` 진단으로 과대 보고 가능성을 먼저 알린다. 선택 입력 `--runtime-classes`·`--coverage`(사용자 제공 class 목록·JaCoCo/Kover XML)로 관측된 class의 finding은 `runtime-observed` confidence로 표시되며, finding과 종료 코드는 바뀌지 않는다.
 - `why <symbol>`은 한 선언이 보존·도달·도달 불가인 이유를 한 번에 답한다. 보존 근거(파일·줄), 보존 root부터의 대표 경로, 직접 caller, test 전용 도달 표시, 도달 불가 선언의 측정된 신뢰도 등급을 출력한다. 답은 도달성 사실이지 삭제 승인이 아니다.
 - `query`/`bridges`/`skill`은 전체 그래프를 덤프하는 대신 한 symbol의 사용·의존·도달성과 Flutter/React Native 브리지 사실을 에이전트에게 준다. `query`는 미해결 runtime 경로와 보수적 dispatch 후보의 계량된 수도 함께 알린다. React Native 지원은 core `@ReactModule`/`@ReactMethod`와 Expo Modules(`class X : Module()`의 `ModuleDefinition { Name(…) / Function(…) / View(…) }`)를 모두 포함하며, Expo `module-export`/`component-export`에는 `"mechanism": "expo"`를 실어 isthmus가 Expo와 core 해석 경로를 구분하게 한다.
+- 직접 bytecode 호출은 깊이 1의 `query` 이웃에 호출자 소스 파일·호출부 줄을 담은 선택적 `references`를 추가한다. Kotlin inline 매핑은 호출자 자신의 소스임을 확인한 경우에만 사용한다. 기존 선언 위치는 별도로 유지하며 column·offset은 추측하지 않는다. 새 snapshot은 일반·compact 표현 모두 이 근거를 보존하고, 옛 snapshot은 근거 부재를 한계로 알린다.
 - `dependencies`는 선언 목록(TSV: coordinate, scope, artifact)과 전달한 class root의 bytecode 참조를 대조해 `unused-dependency`를 보고한다. 빌드나 커버리지를 실행하지 않고, processor·runtime-only scope는 세기만 한다. [선언 의존성 분석](docs/DEPENDENCIES.md) 참고. 0.12.0에는 `--library` API/implementation
   배치 조언, `--resolved-dependencies` 소유권 검사, 6개 보고 형식과 JVM/Android
   `kartographDependencies` task가 추가됐다.
@@ -56,13 +57,69 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 - Android graph/dead task: AGP 8.7+, Gradle 8.10+, JDK 17+(AGP 8.7.3 / Gradle 8.10.2와 AGP 9.x에서 검증).
 - 자동 snapshot: JVM Java/Kotlin은 Gradle 9.6.1과 JDK 17/21에서, Android는 [검증된 조합](docs/IMPACT.md#android-variant-자동-캡처)에서 확인했다. Kotlin compiler adapter는 KGP 2.4.10에서 검증했고 다른 버전은 보장하지 않는다. 최소 Android 조합은 Gradle 8.10.2에서 검증했지만, KGP 자체는 8.14.4 이상을 권고한다.
 
+아래 예시는 0.26.0 릴리스 준비본용이다. plugin은 해당 버전이 Portal에 제공된 뒤 사용하거나
+같은 source revision에서 matching 모듈을 빌드한다.
+
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.18.2"
+    id("io.github.ictechgy.kartograph") version "0.26.0"
 }
 ```
 
 GitHub release에서 `kartograph-<version>.zip` 또는 `.tar`를 받는다. 0.5.0 이상은 압축을 풀기 전에 파일의 SHA256을 `SHA256SUMS`의 해당 항목과 대조하고, 그다음 `bin/kartograph`를 실행한다. release에는 CycloneDX runtime SBOM도 들어 있다. 별도 서명은 배포하지 않는다.
+
+0.22.0은 [GitHub Releases](https://github.com/ictechgy/kartograph/releases/tag/v0.22.0)와
+[Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.22.0)에 공개됐다.
+공개 CLI archive·collector ZIP·Portal plugin은 독립 설치 검사를 통과했다.
+공개 archive에는 발행 당시의 준비 단계 문서가 그대로 들어 있다.
+0.21.0은 태그·release 페이지만 공개됐고 실패한 배포에서
+distribution asset이나 Portal plugin은 발행되지 않았다. 0.20.0에서 올리는 직접 JVM 라이브러리
+소비자는 `GraphNode`·`QuerySnapshot`의 생성자·`copy` ABI 변경에 맞춰 다시 컴파일하고
+CLI·plugin·선택적 collector를 같은 버전으로 설치한다.
+2026-10-17 확인 기준 [v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)은
+7개 asset이 공개됐고 [release run](https://github.com/ictechgy/kartograph/actions/runs/38721915580)의
+Gradle plugin publish step도 성공했다. GitHub prerelease 상태를 유지한다.
+0.23.0의 공개 asset·Portal consumer 독립 검증은 미완료다. 기존 asset·checksum·archive 문서는
+그대로 보존하며 publish 성공을 독립 설치 성공으로 해석하지 않는다.
+2026-10-18 확인 당시 [v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0)은 7개 asset이 있는 최신 안정 GitHub release였다.
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702)의 packaged readiness와 plugin publish가 성공했으며 공개 consumer 검증은 별도다.
+2026-10-19 확인 기준 [v0.25.0](https://github.com/ictechgy/kartograph/releases/tag/v0.25.0)은 7개 asset이 있는 최신 안정 GitHub release다.
+태그 commit은 `d7238cd5d6465219d0c1378a99e7394258b8577b`이며
+[exact-source readiness](https://github.com/ictechgy/kartograph/actions/runs/39183549453)와
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39186955097)이 성공했다. retained plugin으로 실행한
+AGP8.7.3 fixture build 두 번에서 ZIP/TAR 의미 비교 20쌍이 모두 통과했다. impact 17쌍은 strict 비교이며,
+freshness 3쌍은 검증된 root `hashNanos` 시간 필드만 제외한다. ZIP·TAR·plugin 해시는 release metadata와 일치한다.
+`publishPlugins` task는 성공했으며 공개 Portal 표시와 독립 Portal 설치 검증은 별도다.
+공개 asset에는 발행 당시의 문서를 그대로 보존한다.
+CLI·plugin·collector·library artifact는 같은 버전으로 맞춘다. 새 source-use API와 명시적
+`snapshot --include-source-uses`·`query --source-uses`·`impact --source-edits`는 additive 기능이다.
+saved report는 `currentness: notChecked`인 부분적 과거 관찰이며 ordinary graph 결과와 별도다.
+0.22 reader로 다시 저장하면 선택적 source-use extension이 사라진다. 없는 근거는 재캡처하고,
+base/current 비교가 같은 tool version을 요구하면 둘 다 재캡처한다. 옛 snapshot의 version만 바꾸거나 모듈을 섞지 않는다.
+기존 compiled-client·descriptor 검사는 선택한 API의 근거이며 모든 client·Kotlin source 호환성 보장이 아니다.
+[업그레이드 안내](CHANGELOG.md)와 [source-use 호환성](docs/COMPILER-EVIDENCE.md#0230-upgrade-and-api-compatibility)을 참고한다.
+
+0.24.0은 enum 상수 추가가 authored default/else 또는 유한 리터럴 membership/negation에
+흡수될 수 있는 검토 후보를 제공한다. compiler `enumDecisions=true`와
+`snapshot --include-enum-decisions`를 켜고 fresh baseline/current snapshot을
+`impact --enum-expansion`으로 비교한다. current 소스 위치·이유·추가 상수·미해결 coverage를 보존하며
+enum/source-use 캡처를 함께 사용할 수 있다. `GraphNode`·`QuerySnapshot` 공개 형태가 바뀌므로
+직접 library client를 다시 컴파일하고 collector/CLI build를 맞춘다. library enum 변경 시 그 client도
+다시 빌드한다. [0.24.0 migration](docs/COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration)과
+[enum 영향 안내](docs/IMPACT.md#opt-in-enum-expansion-candidates)를 따른다.
+실제 runtime 동작이나 버그를 확정하는 결과가 아니며 공개된 0.23.0 artifact에는 이 기능이 없다.
+JDK 17 collector CI의 Java 21 null/pattern 구문 분기는 미실행이다.
+
+0.26.0은 Git base/head 또는 작업 트리 변경을 받는 native `impact --git-base`와 MCP `change_impact`를 추가한다.
+동일한 CLI/plugin/library 버전으로 양쪽을 빌드·캡처하고 소스와 빌드 입력을 연결한다. revision 라벨만으로 신선도를
+입증하지 않는다. 기존 impact 출력은 유지하며 새 opt-in 보고서는 과거 호출자, revision별 경로, 파일 전체 seed의
+정밀도 한계, stale/unknown 입력과 순회 예산을 보존한다. [변경 분석·이전 안내](docs/IMPACT.md)와
+[범위를 제한한 실제 변경 검증](docs/GIT-IMPACT-VALIDATION.md)을 참고한다. 정적 테스트 후보는 실패 예측이나 생략 허가가 아니다.
+공개 0.26.0 asset과 Portal 설치 검증은 아직 완료되지 않았다. 릴리스 준비와 공개 배포는 별개다.
+
+0.25.0은 application layout XML 변경을 정확한 non-final R 필드와 기록된 literal include를 통해 코드·테스트 후보로 연결한다.
+matching CLI/plugin/library와 양쪽 revision 재캡처가 필요하다. coverage는 partial이며 resource 근거가 있는 모듈 snapshot은 병합하지 않는다.
+검증된 AGP8.7.3 조합·신뢰된 build 전제·신선도와 미지원 runtime 경계는 [layout 안내](docs/ANDROID-RESOURCE-IMPACT.md)를 따른다.
 
 ## 사용법
 

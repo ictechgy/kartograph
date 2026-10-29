@@ -237,7 +237,7 @@ internal class ReferenceVisitor : ClassVisitor(Opcodes.ASM9) {
                 vararg bootstrapMethodArguments: Any,
             ) {
                 addDescriptor(descriptor)
-                referenced += signatureClassNames(signature, typeOnly = true)
+                // 메서드 Signature는 visitMethod에서 읽었다. invokedynamic에는 별도 Signature가 없다.
                 addHandle(bootstrapMethodHandle)
                 bootstrapMethodArguments.forEach(::addConstant)
             }

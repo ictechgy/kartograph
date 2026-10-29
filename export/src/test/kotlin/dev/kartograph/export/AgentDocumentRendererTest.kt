@@ -6,6 +6,9 @@ import dev.kartograph.core.BridgeFact
 import dev.kartograph.core.BridgeFactsDocument
 import dev.kartograph.core.BridgeLocation
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.EdgeKind
+import dev.kartograph.core.EdgeOrigin
+import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
@@ -21,6 +24,25 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
 class AgentDocumentRendererTest {
+    @Test
+    fun `query renders additive direct call references`() {
+        val caller = GraphNode(NodeId("method:app/Caller#calls()V"), "calls", NodeKind.METHOD,
+            location = SourceLocation("Caller.java", 3))
+        val target = GraphNode(NodeId("method:app/Target#run()V"), "run", NodeKind.METHOD,
+            location = SourceLocation("Target.java", 1))
+        val graph = CodeGraph(listOf(caller, target), listOf(
+            GraphEdge(caller.id, target.id, EdgeKind.CALL, weight = 2, origin = EdgeOrigin.BYTECODE, callSiteLines = listOf(5, 7)),
+        ))
+
+        val json = AgentDocumentRenderer.query(SymbolQuery.query(
+            graph, ReachabilityAnalyzer.analyze(graph, emptyList()), target.id.value, emptyList(),
+        ))
+
+        assertContains(json, "\"references\": [{\"kind\": \"call\", \"location\": {\"line\": 5, \"path\": \"Caller.java\"}, \"origin\": \"bytecode\"},")
+        assertContains(json, "\"line\": 7")
+        assertFalse(json.contains("\"column\""))
+    }
+
     @Test
     fun `notFound query keeps nullable sibling fields and limitations`() {
         val graph = CodeGraph(emptyList(), emptyList())

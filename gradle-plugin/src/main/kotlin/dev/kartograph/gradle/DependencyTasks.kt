@@ -20,11 +20,11 @@ internal object DependencyTasks {
         val task = task(project, extension, "kartographDependencies", "jvm", project.pluginManager.hasPlugin("java-library"))
         task.configure { it.classRoots.from(main.output.classesDirs) }
         val requests = requests(project, listOf(""))
-        wire(project.configurations.getByName(main.compileClasspathConfigurationName), task, requests, false)
+        wire(project, project.configurations.getByName(main.compileClasspathConfigurationName), task, requests, false)
         if (extension.dependencyIncludeTests.get()) {
             task.configure { it.testClassRoots.from(test.output.classesDirs) }
             val testRequests = requests(project, listOf(""), listOf("test"))
-            wire(project.configurations.getByName(test.compileClasspathConfigurationName), task, testRequests, true)
+            wire(project, project.configurations.getByName(test.compileClasspathConfigurationName), task, testRequests, true)
         }
     }
 
@@ -42,7 +42,10 @@ internal object DependencyTasks {
             task.reportFile.set(project.layout.buildDirectory.file("reports/kartograph/$variant-dependencies.txt"))
         }
 
-    fun wire(configuration: Configuration, task: TaskProvider<KartographDependenciesTask>, requests: ListProperty<String>, test: Boolean) {
+    fun wire(project: Project, configuration: Configuration, task: TaskProvider<KartographDependenciesTask>, requests: ListProperty<String>, test: Boolean) {
+        // artifact 위치 키의 기준이다. provider에는 파일 값만 넘겨 configuration cache가 Project를 담지 않게 한다.
+        val rootDirectory = project.rootDir
+        val gradleUserHome = project.gradle.gradleUserHomeDir
         val rootComponent = configuration.incoming.resolutionResult.rootComponent
         val ownComponent = rootComponent.map { it.id }
         // Android unit-test classpath의 tested variant는 의존성이 아니라 별도 main class 입력이다.
@@ -51,11 +54,14 @@ internal object DependencyTasks {
             view.componentFilter { id -> id != ownComponent.get() }
         }.artifacts
         val result = rootComponent.zip(artifacts.resolvedArtifacts) { root, files -> root to files }
-            .zip(requests) { (root, files), declarations -> DependencyResolution.capture(root, files, declarations, test) }
+            .zip(requests) { (root, files), declarations ->
+                DependencyResolution.capture(root, files, declarations, test, rootDirectory, gradleUserHome)
+            }
         task.configure {
             it.dependencyArtifacts.from(artifacts.artifactFiles)
             it.declarations.addAll(result.map(DependencyResolution::declared))
             it.resolved.addAll(result.map(DependencyResolution::resolved))
+            it.artifactLocations.putAll(result.map(DependencyResolution::locations))
             it.inputLimitations.addAll(result.map(DependencyResolution::limitations))
         }
     }

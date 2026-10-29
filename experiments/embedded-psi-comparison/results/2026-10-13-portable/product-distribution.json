@@ -1,0 +1,17 @@
+{
+  "launcherSha256": "e7ea0f5d3103714b4156fc278437f29ba01358d3e28fe36ff1363b586f5a5042",
+  "libraries": {
+    "analysis-0.20.1.jar": "d4ccae6f54e246257f100428d98c7a39c30f6884e683046d1430d17c19d74ed2",
+    "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+    "asm-9.10.1.jar": "ed825d10ab1399c8c0cb669e688cf0c8c82629b4c8399b58352b68e92ca10fcb",
+    "asm-analysis-9.10.1.jar": "dede75a21306b65974ecd8f87114ff6970f09fb794157a4ca09ab25c888c2bfc",
+    "asm-tree-9.10.1.jar": "3dfb0d5b6a106cd40b5b250e39935fbf2f927f4477546a5369a3ac609cf0506b",
+    "cli-0.20.1.jar": "037e5bf4d6d452a58d5564408cef9c6c456d880a60346b5696177c34b84d544f",
+    "core-0.20.1.jar": "a908915c5cc921ee0a17bca3702080012c62f9455c7d8fde0f419e473a23cc40",
+    "export-0.20.1.jar": "9d3ddba68ad2cd1298ef22f65b66e9c2e945b3faebea9c73ae3649547530b18a",
+    "index-0.20.1.jar": "e38f4708f1ad3ea118dc1280513b6a0fab3c2a381d6009564f2cb16189419b7a",
+    "kotlin-metadata-jvm-2.4.20.jar": "98d9b1847908adfde7a8b2d4cc35708d7ddccae0698cec56bcb506bcf9392595",
+    "kotlin-stdlib-2.4.20.jar": "2226de463d309d4a5500a481320b3dea515a6981dcae1def531fbc158884e25f"
+  },
+  "libraryLocationConvention": "installed CLI sibling lib directory; an empty inventory does not identify a wrapper runtime"
+}

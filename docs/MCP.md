@@ -58,16 +58,28 @@ binding은 시작할 때만 설정하며 질의 인자로 바꿀 수 없다. `--
 신선도 결과는 `unverified`다. 로컬 binding 문서는 절대 경로를 담으므로 공개하지 않는다.
 
 Snapshot 파일의 기본 읽기 한도는 각각 64 MiB다. 큰 그래프에는 시작 옵션
-`--snapshot-max-mib 128`로 최대 128 MiB까지 명시적으로 허용할 수 있다(허용값 1..128).
+`--snapshot-max-mib 128`로 최대 1024 MiB까지 명시적으로 허용할 수 있다(허용값 1..1024).
 현재·base 파일에 같은 한도를 적용하며, 도구 호출 중에는 한도를 바꿀 수 없다.
 파일의 허용 크기는 JVM heap 사용량과 다르다. 파싱한 그래프와 질의 작업에 필요한
 추가 메모리를 확보해야 한다. 도구 내용의 16 KiB 한도는 그대로 적용한다.
+compact v2 파일은 펼쳐지는 문자열 합계에도 CLI와 같은 상한이 있어([영향 점검](IMPACT.md#수정-전에-조사)), 넘으면 시작하지 않는다(exit 2).
 
 | 도구 | 용도 | 확인할 내용 |
 |---|---|---|
 | `query_symbol` | 이름 또는 정확한 JVM USR의 호출자·의존 대상·멤버 조사 | `document.status`, `limitations`, `result.truncated` |
 | `impact` | 수정할 심볼·파일의 잠재적 영향 후보와 경로 조사 | `changed`, `affected`, `unresolved`, 경로의 origin·revision·누락, pagination |
+| `change_impact` | 고정 project의 실제 Git base/head·작업 트리 변경 조사 | `change`, `snapshots`, before/current `freshness`, 기존 `graphImpact` |
 | `freshness` | 고정한 현재 snapshot과 실제 설정된 입력 비교 | `matched`, `stale`, `unverified`와 이유 |
+
+`change_impact`에는 `base`와 선택 `head`(기본 HEAD), 또는 `workingTree: true`를 전달한다.
+scoped before/current snapshot의 revision 라벨이 resolved Git commit과 같아야 한다. 이 라벨 확인과 별도로
+각 호출이 실제 내용·compiler witness를 검증한다. 과거 입력도 검사하려면 서버 시작 시
+`--base-project <before-checkout>`와 필요한 `--base-input external/slot=path`를 지정한다.
+없으면 과거 신선도는 `unverified`로 남는다. Git 프로젝트는 저장소 루트여야 하며 snapshot 파일 경로도 같은 루트에
+상대적이어야 한다. 모듈 루트 snapshot은 자동으로 저장소 상대 경로로 바꾸지 않으므로 그 범위를 먼저 맞춘다.
+새 응답은 [`kartograph-change-impact` wrapper](IMPACT.md#git-변경과-snapshot-신선도를-한-번에-조사)이며
+기존 `impact`는 saved graph selector 모드 그대로다. `change_impact`도 16 KiB page/path/summary 예산을 보존하고,
+변경 context 자체가 넘치면 CLI로 보내며 context나 신선도 이유를 지우지 않는다.
 
 반환 wrapper의 `document`는 기존 CLI 보고서이고, `snapshot`은 서버가 읽은 내용의
 해시·분석기 버전·scope·revision이다. JSON text와 structured content를 함께 제공한다.

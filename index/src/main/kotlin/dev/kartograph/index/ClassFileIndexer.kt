@@ -23,6 +23,7 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.FileTime
+import java.util.BitSet
 import java.util.jar.JarFile
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
@@ -48,6 +49,17 @@ import org.objectweb.asm.tree.MethodNode
  */
 public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbackFacts: Boolean = true) {
     private val collectCallbacks: Boolean = callbackFacts || cache != null
+    private var targetJdkHome: Path? = null
+
+    /** 분석 SDK를 실행 JVM과 분리한다. 미지정 생성자는 기존 host-runtime 동작을 유지한다. */
+    public constructor(targetJdkHome: Path, cache: ClassIndexCache? = null, callbackFacts: Boolean = true) :
+        this(cache, callbackFacts) {
+        this.targetJdkHome = targetJdkHome
+    }
+
+    /** 마지막 성공한 SDK 관측의 내용 지문이다. 전체 discovery·검증 비용은 hierarchyNanos에 포함된다. */
+    public var targetJdkFingerprint: String? = null
+        private set
 
     /**
      * 각 root를 재귀 탐색하고 JVM class name이 같은 중복 산출물은 첫 번째 것만 사용한다.
@@ -74,14 +86,36 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         generatedClassRoots: Iterable<Path>,
     ): IndexedClasses = indexWithObservations(classRoots, classpath, serviceResources, generatedClassRoots, null)
 
+    /** 내보내기에서 제외한 후보는 만들지 않고, 큰 fanout은 부분 선택 대신 전체 생략으로 보고한다. */
+    public fun indexForGraphExport(
+        classRoots: Iterable<Path>,
+        classpath: Iterable<Path>? = null,
+        serviceResources: Iterable<Path> = emptyList(),
+        generatedClassRoots: Iterable<Path> = emptyList(),
+        options: GraphExportIndexOptions = GraphExportIndexOptions(),
+    ): GraphExportIndexResult {
+        val limitations = mutableListOf<String>()
+        val indexed = indexConfigured(classRoots, classpath, serviceResources, generatedClassRoots, null, options, limitations)
+        return GraphExportIndexResult(indexed, limitations.distinct().sorted())
+    }
+
     internal fun indexWithObservations(
         classRoots: Iterable<Path>,
         classpath: Iterable<Path>?,
         serviceResources: Iterable<Path>,
         generatedClassRoots: Iterable<Path>,
         observedJarDigests: ObservedJarDigestLookup?,
+    ): IndexedClasses = indexConfigured(classRoots, classpath, serviceResources, generatedClassRoots,
+        observedJarDigests, null, mutableListOf())
+
+    /** 기존 인덱싱과 export 선택이 같은 class 파싱·소유권·관측을 공유하는 내부 경계다. */
+    private fun indexConfigured(
+        classRoots: Iterable<Path>, classpath: Iterable<Path>?, serviceResources: Iterable<Path>,
+        generatedClassRoots: Iterable<Path>, observedJarDigests: ObservedJarDigestLookup?,
+        exportOptions: GraphExportIndexOptions?, exportLimitations: MutableList<String>,
     ): IndexedClasses {
         val started = System.nanoTime()
+        targetJdkFingerprint = null
         var classFiles = 0
         var cacheHits = 0
         var cacheMisses = 0
@@ -115,6 +149,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         val rootByClass = linkedMapOf<String, Int>()
         val declarationsByRoot = mutableListOf<Set<NodeId>>()
         val loader = cache?.let { CachedClassBatchLoader(it, ::parse) }
+        val uncachedLoader = if (loader == null) UncachedClassBatchLoader(::parse) else null
         fun readMany(inputs: List<() -> ClassInput>): List<ClassFacts> {
             if (loader != null) {
                 val loaded = loader.load(inputs)
@@ -132,17 +167,12 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
                 cacheWriteNanos += measured.cacheWriteNanos
                 return loaded.facts
             }
-            return inputs.map { read ->
-                var phaseStart = System.nanoTime()
-                val input = read()
-                readNanos += System.nanoTime() - phaseStart
-                phaseStart = System.nanoTime()
-                val facts = parse(input.bytes)
-                parseNanos += System.nanoTime() - phaseStart
-                classFiles++
-                parsedClasses++
-                facts.copy(runtime = facts.runtime.copy(modified = input.modified))
-            }
+            val loaded = requireNotNull(uncachedLoader).load(inputs)
+            readNanos += loaded.statistics.readNanos
+            parseNanos += loaded.statistics.parseNanos
+            classFiles += loaded.statistics.classFiles
+            parsedClasses += loaded.statistics.parsedClasses
+            return loaded.facts
         }
         try {
             roots.forEachIndexed { rootIndex, root ->
@@ -153,11 +183,20 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
                     val selected = if (generatedInput) facts.copy(nodes = facts.nodes.map { node ->
                         node.copy(synthesized = true, attributes = node.attributes + NodeAttribute.GENERATED_INPUT)
                     }) else facts
-                    if (factsByClass.putIfAbsent(facts.internalName, selected) == null) rootByClass[facts.internalName] = rootIndex
+                    val previous = factsByClass.putIfAbsent(facts.internalName, selected)
+                    if (previous == null) {
+                        rootByClass[facts.internalName] = rootIndex
+                    } else {
+                        // 첫 root의 구현 선택은 유지하지만 shadowed class의 capture를 완전한 enum 근거로 쓰지 않는다.
+                        factsByClass[facts.internalName] = previous.copy(nodes = previous.nodes.map { node ->
+                            if (node.enumConstants == null) node else node.copy(enumConstants = null)
+                        })
+                    }
                 }
             }
         } finally {
             loader?.close()
+            uncachedLoader?.close()
         }
         if (factsByClass.isEmpty()) throw ClassIndexingException("no compiled declarations found; check class roots and build the project")
         val generatedSiblingNames = factsByClass.values.flatMapTo(mutableSetOf(), ClassFacts::generatedSiblingNames)
@@ -179,14 +218,16 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         }
         val assemblyStart = System.nanoTime()
         val enclosures = lexicalEnclosures(classFacts)
+        val inheritedMembers = InheritedMemberReferences(classFacts)
         val graph = CodeGraph(
             nodes = classFacts.flatMap(ClassFacts::nodes),
             edges = classFacts.flatMap(ClassFacts::edges) +
                 projectOverrideEdges(classFacts) +
+                inheritedMembers.edges +
                 inheritedInterfaceCallEdges(classFacts) +
                 frameworkCallbackEdges(classFacts) +
                 enclosingContainerEdges(classFacts),
-            externalCalls = classFacts.flatMap(ClassFacts::calls),
+            externalCalls = inheritedMembers.calls,
             serviceProviders = ServiceProviderScanner.scan(roots + serviceResources),
             enclosures = enclosures,
             callbackArguments = localCallbackArguments(classFacts, enclosures),
@@ -195,20 +236,38 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         )
         assemblyNanos = System.nanoTime() - assemblyStart
         val hierarchyStart = System.nanoTime()
-        val hierarchyIndexer = if (observedJarDigests == null) {
-            ClassHierarchyIndexer(cache)
-        } else {
-            ClassHierarchyIndexer(cache, observedJarDigests)
+        val targetHome = targetJdkHome
+        val hierarchyIndexer = when {
+            targetHome != null && observedJarDigests != null -> ClassHierarchyIndexer(targetHome, cache, observedJarDigests)
+            targetHome != null -> ClassHierarchyIndexer(targetHome, cache)
+            observedJarDigests != null -> ClassHierarchyIndexer(cache, observedJarDigests)
+            else -> ClassHierarchyIndexer(cache)
         }
-        val hierarchy = classpath?.let { hierarchyIndexer.index(it, graph.nodes.values.flatMap(GraphNode::supertypes)) } ?: ClassHierarchy.EMPTY
+        val hierarchy = if (classpath != null || targetHome != null) {
+            val referenced = graph.nodes.values.flatMap(GraphNode::supertypes) +
+                if (targetHome != null) inheritedMembers.calls.map(ExternalCall::owner) else emptyList()
+            hierarchyIndexer.index(classpath ?: emptyList(), referenced)
+        } else ClassHierarchy.EMPTY
         hierarchyNanos = System.nanoTime() - hierarchyStart
         val runtimeStart = System.nanoTime()
-        val (modeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
+        val (runtimeModeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
+        val android = AndroidFrameworkCallbacks.enrich(runtimeModeled, hierarchy)
+        val modeled = android.graph
         runtimeNanos = System.nanoTime() - runtimeStart
         val selectedRootByNode = classFacts.flatMap { facts -> facts.nodes.map { it.id to rootByClass.getValue(facts.internalName) } }.toMap()
         val dispatchStart = System.nanoTime()
-        val dispatched = IndexedClasses(modeled, observations, hierarchy, declarationsByRoot.toList(), selectedRootByNode)
-            .withHierarchy(hierarchy)
+        val dispatchResult = when {
+            exportOptions == null -> ExternalDispatchIndexer.enrichBounded(modeled, hierarchy, null, inheritedMembers.calls)
+            EdgeOrigin.DISPATCH_MODEL in exportOptions.excludedOrigins -> DispatchEnrichment(modeled, 0)
+            else -> ExternalDispatchIndexer.enrichBounded(modeled, hierarchy, exportOptions.maximumDispatchCandidates, inheritedMembers.calls)
+        }
+        if (dispatchResult.overLimitCalls > 0) exportLimitations +=
+            "dispatch-candidates-over-limit: ${dispatchResult.overLimitCalls} call site(s) exceeded " +
+                "${exportOptions!!.maximumDispatchCandidates} distinct targets; all candidates for those calls were omitted"
+        val declared = CallDeclarationIndexer(dispatchResult.graph, hierarchy).enrich()
+        val expanded = if (exportOptions?.includeExternalStubs == true) externalStubs(declared, classFacts) else declared
+        val selected = selectForGraphExport(expanded, exportOptions)
+        val dispatched = IndexedClasses(selected, observations, hierarchy, declarationsByRoot.toList(), selectedRootByNode)
         val dispatchNanos = System.nanoTime() - dispatchStart
         val statistics = IndexingStatistics(classFiles, cacheHits, cacheMisses, parsedClasses, invalidEntries, writeFailures,
             readNanos, cacheReadNanos, parseNanos, assemblyNanos, hierarchyNanos, runtimeNanos, cacheWriteNanos,
@@ -217,7 +276,47 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
             hierarchyIndexer.statistics.hierarchyParsedJars, hierarchyIndexer.statistics.hierarchyInvalidEntries,
             hierarchyIndexer.statistics.hierarchyWriteFailures, hierarchyIndexer.statistics.hierarchyUnavailableEntries,
             dispatchNanos)
-        return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics)
+        targetJdkFingerprint = hierarchyIndexer.targetJdkFingerprint
+        return IndexedClasses(dispatched.graph, observations, hierarchy, dispatched.declarationsByRoot, selectedRootByNode, statistics,
+            inheritedMembers.calls.filter { it.target in graph.nodes &&
+                (it.kind == InvocationKind.VIRTUAL || it.kind == InvocationKind.INTERFACE) }, android.derivation)
+    }
+
+    /** 전체 필터를 한 번 평가한 뒤 제거와 compiler 위치 상태가 없을 때만 정규화된 그래프를 재사용한다. */
+    private fun selectForGraphExport(expanded: CodeGraph, exportOptions: GraphExportIndexOptions?): CodeGraph {
+        if (exportOptions == null || exportOptions.excludedOrigins.isEmpty()) return expanded
+        val edges = expanded.edges.filter { it.origin !in exportOptions.excludedOrigins }
+        return if (edges.size == expanded.edgeCount && expanded.locatedCompilerReferences.isEmpty() &&
+            !expanded.compilerCallPositionsCaptured) expanded else
+            CodeGraph(expanded.nodes.values, edges,
+                expanded.externalCalls, expanded.serviceProviders, expanded.enclosures,
+                expanded.callbackArguments, expanded.parameterUses, expanded.lambdaEscapes)
+    }
+
+    /** 실제 classfile 참조의 identity만 복원한다. SDK 구현이나 source 위치를 만들어내지 않는다. */
+    private fun externalStubs(graph: CodeGraph, facts: List<ClassFacts>): CodeGraph {
+        val stubs = linkedMapOf<NodeId, GraphNode>()
+        facts.forEach { fact -> fact.edges.forEach edgeLoop@ { edge ->
+            if (edge.target in graph.nodes) return@edgeLoop
+            val id = edge.target
+            val owner = id.value.substringAfter(':').substringBefore('#')
+            val member = id.value.substringAfter('#', "").substringBefore('(').substringBefore(':')
+            val kind = when {
+                id.value.startsWith("class:") -> if (edge.kind == EdgeKind.ANNOTATION) NodeKind.ANNOTATION_CLASS else NodeKind.CLASS
+                id.value.startsWith("method:") -> if (member == "<init>") NodeKind.CONSTRUCTOR else NodeKind.METHOD
+                id.value.startsWith("field:") -> NodeKind.FIELD
+                else -> return@edgeLoop
+            }
+            val name = if (member.isEmpty()) owner.substringAfterLast('/') else member
+            if (name.isNotEmpty()) stubs.putIfAbsent(id, GraphNode(id, name, kind, jvmSignature = id.value.substringAfter(':'),
+                attributes = setOf(NodeAttribute.EXTERNAL_STUB)))
+        } }
+        val edges = sequence {
+            yieldAll(graph.edges)
+            facts.forEach { fact -> fact.edges.forEach { edge -> if (edge.target in stubs) yield(edge) } }
+        }
+        return CodeGraph(graph.nodes.values + stubs.values, edges.asIterable(), graph.externalCalls,
+            graph.serviceProviders, graph.enclosures, graph.callbackArguments, graph.parameterUses, graph.lambdaEscapes)
     }
 
     private fun readRoot(root: Path, readMany: (List<() -> ClassInput>) -> List<ClassFacts>): List<ClassFacts> = when {
@@ -315,8 +414,12 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     // EnclosingMethod 속성의 감싼 메서드(초기화 문맥이면 class)다. 지역·익명 class에만 있다.
     private var enclosingDeclaration: NodeId? = null
     private var classAccess: Int = 0
+    private var capturesEnumInventory = false
+    private val enumConstants = mutableListOf<NodeId>()
     private var innerClassAccess: Int? = null
     private var sourceFile: String? = null
+    private var sourceDebugMapper: SourceDebugMapper? = null
+    private var sourceDebugPresent = false
     private var metadataValues: MetadataAnnotationValues? = null
     private val nodes = mutableListOf<GraphNode>()
     private val edges = mutableListOf<GraphEdge>()
@@ -339,6 +442,8 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     ) {
         internalName = name
         classAccess = access
+        // 상수별 익명 subclass와 Kotlin metadata의 enum-entry kind만으로 빈 enum을 확정하지 않는다.
+        capturesEnumInventory = access and Opcodes.ACC_ENUM != 0 && superName == "java/lang/Enum"
         if (superName != null && superName != "java/lang/Object") supertypes += superName
         supertypes += interfaces
         if (superName != null && superName != "java/lang/Object") {
@@ -347,10 +452,16 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         interfaces.forEach { interfaceName ->
             edges += GraphEdge(JvmNodeId.classId(name), JvmNodeId.classId(interfaceName), EdgeKind.INHERITANCE)
         }
+        // 상속 자체는 위 간선에 이미 있으므로 지워진 타입 인자·bound만 선언 참조로 더한다.
+        (signatureClassNames(signature) - supertypes - "java/lang/Object").forEach { target ->
+            edges += GraphEdge(JvmNodeId.classId(name), JvmNodeId.classId(target), EdgeKind.REFERENCE)
+        }
     }
 
     override fun visitSource(source: String?, debug: String?) {
-        sourceFile = source
+        sourceFile = source?.substringAfterLast('/')?.substringAfterLast('\\')?.takeIf(String::isNotBlank)
+        sourceDebugPresent = debug?.startsWith("SMAP") == true
+        sourceDebugMapper = if (sourceDebugPresent) SourceDebugMapper.parse(debug, sourceFile) else null
     }
 
     override fun visitInnerClass(name: String, outerName: String?, innerName: String?, access: Int) {
@@ -383,13 +494,21 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         value: Any?,
     ): FieldVisitor {
         val fieldId = JvmNodeId.fieldId(internalName, name, descriptor)
+        val enumConstant = access and Opcodes.ACC_ENUM != 0
+        require(!enumConstant || capturesEnumInventory && descriptor == "L$internalName;") {
+            "enum constant does not match its enum owner"
+        }
+        if (enumConstant) {
+            require(fieldId !in enumConstants) { "duplicate enum constant field" }
+            enumConstants += fieldId
+        }
         if (value is String && descriptor == "Ljava/lang/String;" && access and Opcodes.ACC_STATIC != 0) {
             constantStringFields[fieldId] = value
         }
         val annotations = mutableSetOf<String>()
         edges += GraphEdge(JvmNodeId.classId(internalName), fieldId, EdgeKind.MEMBER)
         edges += GraphEdge(fieldId, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
-        descriptorClassNames(descriptor).forEach { target ->
+        (descriptorClassNames(descriptor) + signatureClassNames(signature, typeOnly = true) - internalName).forEach { target ->
             edges += GraphEdge(fieldId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
         }
         return object : FieldVisitor(Opcodes.ASM9) {
@@ -409,7 +528,10 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                     visibility = access.toVisibility(),
                     jvmVisibility = access.toVisibility(),
                     jvmModifiers = access.toJvmModifiers(),
-                    attributes = if (value != null) setOf(NodeAttribute.COMPILE_TIME_CONSTANT) else emptySet(),
+                    attributes = buildSet {
+                        if (value != null) add(NodeAttribute.COMPILE_TIME_CONSTANT)
+                        if (enumConstant) add(NodeAttribute.ENUM_CONSTANT)
+                    },
                     annotations = annotations,
                     synthesized = access.isSynthetic() || internalName.isAndroidGeneratedClass(),
                 )
@@ -432,10 +554,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         if (name == "<clinit>") {
             edges += GraphEdge(JvmNodeId.classId(internalName), methodId, EdgeKind.REFERENCE)
         }
-        descriptorClassNames(descriptor).forEach { target ->
-            edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
-        }
-        exceptions.orEmpty().forEach { target ->
+        (descriptorClassNames(descriptor) + signatureClassNames(signature) + exceptions.orEmpty() - internalName).forEach { target ->
             edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
         }
         return object : MethodVisitor(Opcodes.ASM9) {
@@ -479,13 +598,15 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                     Opcodes.INVOKEINTERFACE -> InvocationKind.INTERFACE
                     else -> InvocationKind.VIRTUAL
                 }
-                calls += ExternalCall(methodId, owner, targetName, targetDescriptor, invocationKind, sourceLocation(currentLine), callOrdinal++)
+                val call = ExternalCall(methodId, owner, targetName, targetDescriptor, invocationKind, sourceLocation(currentLine), callOrdinal++)
+                calls += call
                 if (owner == "java/lang/Class" && targetName == "forName") reflectionCalls++
                 if (RuntimeLimitationScanner.isDynamicRegistration(owner, targetName)) dynamicRegistrations++
                 edges += GraphEdge(
                     methodId,
-                    JvmNodeId.methodId(owner, targetName, targetDescriptor),
+                    call.target,
                     EdgeKind.CALL,
+                    callSiteLines = callSiteLine(currentLine)?.let(::listOf).orEmpty(),
                 )
                 edges += GraphEdge(methodId, JvmNodeId.classId(owner), EdgeKind.REFERENCE)
             }
@@ -507,10 +628,15 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 vararg bootstrapMethodArguments: Any,
             ) {
                 val ordinal = callOrdinal++
-                edges += GraphEdge(methodId, JvmNodeId.methodId(bootstrapMethodHandle.owner, bootstrapMethodHandle.name, bootstrapMethodHandle.desc), EdgeKind.CALL)
-                edges += GraphEdge(methodId, JvmNodeId.classId(bootstrapMethodHandle.owner), EdgeKind.REFERENCE)
-                calls += ExternalCall(methodId, bootstrapMethodHandle.owner, bootstrapMethodHandle.name,
+                val bootstrapCall = ExternalCall(methodId, bootstrapMethodHandle.owner, bootstrapMethodHandle.name,
                     bootstrapMethodHandle.desc, InvocationKind.BOOTSTRAP, sourceLocation(currentLine), ordinal)
+                edges += GraphEdge(
+                    methodId,
+                    bootstrapCall.target,
+                    EdgeKind.CALL,
+                )
+                edges += GraphEdge(methodId, JvmNodeId.classId(bootstrapMethodHandle.owner), EdgeKind.REFERENCE)
+                calls += bootstrapCall
                 bootstrapMethodArguments.filterIsInstance<Handle>().forEach { handle ->
                     when (handle.tag) {
                         Opcodes.H_GETFIELD, Opcodes.H_GETSTATIC, Opcodes.H_PUTFIELD, Opcodes.H_PUTSTATIC -> {
@@ -533,10 +659,11 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                                 Opcodes.H_INVOKEVIRTUAL -> InvocationKind.VIRTUAL
                                 else -> InvocationKind.SPECIAL
                             }
-                            calls += ExternalCall(methodId, handle.owner, handle.name, handle.desc, kind, sourceLocation(currentLine), ordinal)
+                            val call = ExternalCall(methodId, handle.owner, handle.name, handle.desc, kind, sourceLocation(currentLine), ordinal)
+                            calls += call
                             edges += GraphEdge(
                                 methodId,
-                                JvmNodeId.methodId(handle.owner, handle.name, handle.desc),
+                                call.target,
                                 EdgeKind.CALL,
                             )
                             edges += GraphEdge(methodId, JvmNodeId.classId(handle.owner), EdgeKind.REFERENCE)
@@ -607,6 +734,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             annotations = classAnnotations,
             supertypes = supertypes,
             synthesized = effectiveClassAccess.isSynthetic() || internalName.isAndroidGeneratedClass(),
+            enumConstants = if (capturesEnumInventory) enumConstants.sorted() else null,
         )
     }
 
@@ -664,9 +792,109 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
      * 로컬 경로가 흘러가지 않게 한다. 남는 이름이 없으면 위치를 만들지 않는다.
      */
     private fun sourceLocation(line: Int? = null): SourceLocation? =
-        sourceFile?.substringAfterLast('/')?.substringAfterLast('\\')
-            ?.takeIf(String::isNotBlank)
-            ?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
+        sourceFile?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
+
+    /** 새 호출부 근거만 SMAP으로 확인한다. 같은 basename의 inline body도 caller 위치로 오인하지 않게 identity만 쓴다. */
+    private fun callSiteLine(line: Int?): Int? {
+        if (line == null || line !in 1..65535) return null
+        if (!sourceDebugPresent) return if (sourceFile == null) null else line
+        if (sourceDebugMapper?.isIdentity(line) != true) return null
+        // primary SMAP의 output/input identity만 확정적인 caller 위치다. KotlinDebug stratum이나 inline 매핑은 추정하지 않는다.
+        return line
+    }
+}
+
+/** Kotlin SMAP에서 자기 source의 output/input identity만 저장하며 다른 위치로 재귀속하지 않는다. */
+private class SourceDebugMapper private constructor(private val identityLines: BitSet) {
+    fun isIdentity(outputLine: Int): Boolean = identityLines[outputLine]
+
+    companion object {
+        private const val MAX_DEBUG_BYTES = 1_048_576
+        private const val MAX_MAPPED_LINES = 100_000
+        private val linePattern = Regex("^(\\d+)#(\\d+)(?:,(\\d+))?:(\\d+)(?:,(\\d+))?$")
+
+        fun parse(debug: String?, ownSource: String?): SourceDebugMapper? {
+            if (debug == null || debug.toByteArray(Charsets.UTF_8).size > MAX_DEBUG_BYTES || !debug.startsWith("SMAP")) return null
+            val rows = debug.split(Regex("\\r?\\n"))
+            val defaultStratum = rows.getOrNull(2)?.trimEnd('\r')?.takeIf(String::isNotBlank) ?: return null
+            val files = mutableMapOf<Int, SmapFile>()
+            val basenames = mutableMapOf<String, String>()
+            val ambiguousBasenames = mutableSetOf<String>()
+            // JVM line 범위만 저장한다. seen은 충돌/null도 세어 기존 mapped.size 예산을 보존한다.
+            val seen = BitSet(65536)
+            val identityLines = BitSet(65536)
+            var mappedSize = 0
+            var section = ""
+            var hasStratum = false
+            var activeStratum = false
+            var index = 0
+            while (index < rows.size) {
+                val row = rows[index].trimEnd('\r')
+                when (row) {
+                    "*F" -> if (!hasStratum || activeStratum) section = "files"
+                    "*L" -> if (!hasStratum || activeStratum) section = "lines"
+                    "*E" -> break
+                    else -> if (row.startsWith("*S ")) {
+                        hasStratum = true
+                        activeStratum = row.removePrefix("*S ") == defaultStratum
+                        section = ""
+                    } else when (section) {
+                        "files" -> {
+                            val tokens = row.removePrefix("+").trim().split(Regex("\\s+"), limit = 3)
+                            val id = tokens.firstOrNull()?.toIntOrNull() ?: return null
+                            if (row.trimStart().startsWith("+")) {
+                                if (index + 1 >= rows.size) return null
+                                val fullPath = rows[++index].trimEnd('\r')
+                                val logicalName = tokens.drop(1).joinToString(" ").substringAfterLast('/').substringAfterLast('\\')
+                                val basename = logicalName.takeIf(String::isNotBlank) ?: fullPath.substringAfterLast('/').substringAfterLast('\\')
+                                if (files.put(id, SmapFile(fullPath, basename)) != null) return null
+                                val prior = basenames.putIfAbsent(basename, fullPath)
+                                if (prior != null && prior != fullPath) ambiguousBasenames += basename
+                            } else {
+                                val fullPath = tokens.drop(1).joinToString(" ")
+                                val basename = fullPath.substringAfterLast('/').substringAfterLast('\\').takeIf(String::isNotBlank) ?: return null
+                                if (files.put(id, SmapFile(fullPath, basename)) != null) return null
+                                val prior = basenames.putIfAbsent(basename, fullPath)
+                                if (prior != null && prior != fullPath) ambiguousBasenames += basename
+                            }
+                        }
+                        "lines" -> {
+                            val match = linePattern.matchEntire(row) ?: return null
+                            val inputStart = match.groupValues[1].toLongOrNull() ?: return null
+                            val fileId = match.groupValues[2].toIntOrNull() ?: return null
+                            val repeat = match.groupValues[3].takeIf(String::isNotEmpty)?.toLongOrNull() ?: 1L
+                            val outputStart = match.groupValues[4].toLongOrNull() ?: return null
+                            val outputIncrement = match.groupValues[5].takeIf(String::isNotEmpty)?.toLongOrNull() ?: 1L
+                            val file = files[fileId] ?: return null
+                            if (repeat < 1 || repeat > MAX_MAPPED_LINES || outputIncrement < 1 || mappedSize + repeat > MAX_MAPPED_LINES) return null
+                            repeat(repeat.toInt()) { offset ->
+                                val output = outputStart + offset.toLong() * outputIncrement
+                                val input = inputStart + offset
+                                if (output in 1..65535 && input in 1..65535 && file.basename !in ambiguousBasenames) {
+                                    // SourceLocation 생성이 거부하던 잘못된 입력은 ownSource가 없어도 거부한다.
+                                    require(file.basename.isNotBlank()) { "source path must not be blank" }
+                                    val outputLine = output.toInt()
+                                    val identity = file.basename == ownSource && input == output
+                                    if (!seen[outputLine]) {
+                                        seen.set(outputLine)
+                                        mappedSize++
+                                        if (identity) identityLines.set(outputLine)
+                                    } else if (!identity) {
+                                        // 한 번 충돌하거나 비identity였던 위치는 이후 identity로 복구하지 않는다.
+                                        identityLines.clear(outputLine)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                index++
+            }
+            return SourceDebugMapper(identityLines)
+        }
+
+        private data class SmapFile(val fullPath: String, val basename: String)
+    }
 }
 
 internal data class ClassFacts(
@@ -749,20 +977,54 @@ private fun inheritedInterfaceCallEdges(classFacts: List<ClassFacts>): List<Grap
     val typeNodes = classFacts.mapNotNull { facts -> facts.nodes.firstOrNull { it.id == JvmNodeId.classId(facts.internalName) } }
         .associateBy { it.id.value.removePrefix("class:") }
     val methods = classFacts.flatMap(ClassFacts::nodes).associateBy(GraphNode::id)
+    // 관련된 unresolved interface 호출만 먼저 묶어, 대형 그래프의 unrelated edge에는 key 객체를 만들지 않는다.
+    val relevantCalls = linkedMapOf<NodeId, MutableMap<NodeId, MutableList<ExternalCall>>>()
+    classFacts.forEach { facts ->
+        facts.calls.forEach { call ->
+            if (call.kind != InvocationKind.INTERFACE || typeNodes[call.owner]?.kind != NodeKind.INTERFACE || call.target in methods ||
+                call.name + call.descriptor in OBJECT_PUBLIC_METHODS) return@forEach
+            relevantCalls.getOrPut(call.caller) { linkedMapOf() }
+                .getOrPut(call.target) { mutableListOf() }
+                .add(call)
+        }
+    }
+    if (relevantCalls.isEmpty()) return emptyList()
+
+    // 실제 BYTECODE CALL 사실도 위의 caller/target 집합에 맞는 것만 보존한다. bootstrap CALL은 호출 후보를 만들지 않는다.
+    val directBytecodeCalls = linkedMapOf<NodeId, MutableMap<NodeId, MutableList<GraphEdge>>>()
+    classFacts.forEach { facts ->
+        facts.edges.forEach { edge ->
+            if (edge.kind != EdgeKind.CALL || edge.origin != EdgeOrigin.BYTECODE) return@forEach
+            val targets = relevantCalls[edge.source] ?: return@forEach
+            if (edge.target !in targets) return@forEach
+            directBytecodeCalls.getOrPut(edge.source) { linkedMapOf() }
+                .getOrPut(edge.target) { mutableListOf() }
+                .add(edge)
+        }
+    }
     val ancestors = mutableMapOf<String, Set<String>>()
     fun ancestorsOf(name: String): Set<String> = ancestors.getOrPut(name) { factsByName[name]?.projectSupertypes(factsByName).orEmpty() }
-    return classFacts.flatMap(ClassFacts::calls).mapNotNull { call ->
-        if (call.kind != InvocationKind.INTERFACE || typeNodes[call.owner]?.kind != NodeKind.INTERFACE || call.target in methods ||
-            call.name + call.descriptor in OBJECT_PUBLIC_METHODS) return@mapNotNull null
-        val declarations = ancestorsOf(call.owner).mapNotNull { owner ->
-            methods[JvmNodeId.methodId(owner, call.name, call.descriptor)]?.takeIf(GraphNode::isOverrideCandidate)
+    val derived = mutableListOf<GraphEdge>()
+    relevantCalls.forEach { (caller, targets) ->
+        targets.forEach { (target, calls) ->
+            val call = calls.first()
+            val declarations = ancestorsOf(call.owner).mapNotNull { owner ->
+                methods[JvmNodeId.methodId(owner, call.name, call.descriptor)]?.takeIf(GraphNode::isOverrideCandidate)
+            }
+            val owners = declarations.map { it.id.value.removePrefix("method:").substringBefore('#') }
+            // 다른 후보의 상위 인터페이스인 선언은 가려진다(최대 특수 선언만 남긴다).
+            val specific = declarations.filterIndexed { index, _ -> owners.none { other -> owners[index] in ancestorsOf(other) } }
+            if (specific.any { JvmModifier.ABSTRACT !in it.jvmModifiers } || specific.isEmpty()) return@forEach
+
+            val direct = directBytecodeCalls[caller]?.get(target).orEmpty()
+            val weight = direct.sumOf(GraphEdge::weight).takeIf { it > 0 } ?: calls.size
+            val lines = direct.flatMap(GraphEdge::callSiteLines).distinct().sorted()
+            specific.forEach { declaration ->
+                derived += GraphEdge(caller, declaration.id, EdgeKind.CALL, weight = weight, callSiteLines = lines)
+            }
         }
-        val owners = declarations.map { it.id.value.removePrefix("method:").substringBefore('#') }
-        // 다른 후보의 상위 인터페이스인 선언은 가려진다(최대 특수 선언만 남긴다).
-        val specific = declarations.filterIndexed { index, _ -> owners.none { other -> owners[index] in ancestorsOf(other) } }
-        specific.filter { JvmModifier.ABSTRACT in it.jvmModifiers }.takeIf { it.size == specific.size }
-            ?.map { declaration -> GraphEdge(call.caller, declaration.id, EdgeKind.CALL) }
-    }.flatten()
+    }
+    return derived
 }
 
 /** 인터페이스 메서드 해석이 상위 인터페이스보다 먼저 고르는 `java/lang/Object` 공개 인스턴스 메서드다. */

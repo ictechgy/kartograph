@@ -1,0 +1,18 @@
+{
+  "basis": "Authored fixture source bytes; fixed before testing an overload-location implementation",
+  "coordinateBasis": "rawDecodedUtf16",
+  "sourceSha256": {
+    "probe/PsiJava.java": "4084c63c440e76c2b27cab74fee27f32c0f2038540ef469a816a81a04ec6ea6c",
+    "probe/PsiKotlin.kt": "09e2da7b473e7661b7b374571b1fb80074821023747661db33a328770d4f8a8b"
+  },
+  "methods": [
+    {"usr":"method:probe/PsiJava#leaf(I)I","path":"probe/PsiJava.java","name":"leaf","offsetUtf16":61,"line":4,"column":23},
+    {"usr":"method:probe/PsiJava#leaf(Ljava/lang/String;)Ljava/lang/String;","path":"probe/PsiJava.java","name":"leaf","offsetUtf16":120,"line":5,"column":26},
+    {"usr":"method:probe/PsiJava#caller()Ljava/lang/String;","path":"probe/PsiJava.java","name":"caller","offsetUtf16":182,"line":6,"column":26},
+    {"usr":"method:probe/PsiJava#unused()I","path":"probe/PsiJava.java","name":"unused","offsetUtf16":261,"line":7,"column":23},
+    {"usr":"method:probe/PsiKotlin#leaf(I)I","path":"probe/PsiKotlin.kt","name":"leaf","offsetUtf16":41,"line":4,"column":9},
+    {"usr":"method:probe/PsiKotlin#leaf(Ljava/lang/String;)Ljava/lang/String;","path":"probe/PsiKotlin.kt","name":"leaf","offsetUtf16":79,"line":5,"column":9},
+    {"usr":"method:probe/PsiKotlin#caller()I","path":"probe/PsiKotlin.kt","name":"caller","offsetUtf16":123,"line":6,"column":9},
+    {"usr":"method:probe/PsiKotlin#unused()I","path":"probe/PsiKotlin.kt","name":"unused","offsetUtf16":169,"line":7,"column":9}
+  ]
+}

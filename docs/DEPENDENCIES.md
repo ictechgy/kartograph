@@ -69,9 +69,19 @@ Java의 non-private/compiler-visible 선언을 ABI 후보로 본다. 의미 기�
 
 ## Gradle
 
+아래 예시는 미출시 0.26.0 준비본용이다. Portal에서 해당 버전이 제공된 뒤 사용하거나
+같은 source revision에서 matching 모듈을 빌드한다.
+[v0.23.0](https://github.com/ictechgy/kartograph/releases/tag/v0.23.0)은 일곱 asset이 있는 GitHub prerelease이며
+release workflow의 plugin publish 단계도 성공했다. 공개 asset/Portal plugin의 독립 consumer 검증은 아직 확인하지 못했다.
+2026-10-18 기준 최신 안정 GitHub release는 [v0.24.0](https://github.com/ictechgy/kartograph/releases/tag/v0.24.0)이다.
+[release run](https://github.com/ictechgy/kartograph/actions/runs/39039052702)의 packaged readiness와 plugin publish가 성공했다. 독립 공개 설치 검증은 별도다. 기존
+[0.22.0 Portal 페이지](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.22.0)는 그대로 남는다.
+0.25.0 layout XML 기능은 [matching plugin/CLI와 재캡처 조건](ANDROID-RESOURCE-IMPACT.md)을 따른다.
+CLI·plugin·collector 버전을 맞추며 [0.24.0 재캡처·재컴파일 조건](COMPILER-EVIDENCE.md#0240-upgrade-and-enum-migration)을 따른다.
+
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.18.2"
+    id("io.github.ictechgy.kartograph") version "0.26.0"
 }
 kartograph {
     reportFormat.set("json")
@@ -88,6 +98,11 @@ kartograph {
   provider에서 해석하며 configuration 단계에서 resolve하지 않는다.
 - 선언 scope·선택된 artifact·class 바이트는 task 입력이다. configuration cache와
   up-to-date 검사를 사용하며 입력이 바뀌면 다시 분석한다. report를 쓴 뒤 strict 실패를 낸다.
+- task 입력의 artifact 열은 root project·Gradle user home 기준 상대 위치 키(`{root}/…`,
+  `{gradle-user-home}/…`)이고 실제 파일 위치는 입력에서 뺀다. 그래서 checkout이나 Gradle user home
+  위치가 달라도 build cache 결과를 재사용한다. 두 디렉터리 밖의 artifact는 root 기준 `..` 상대 위치라
+  배치가 같을 때만 재사용한다. Android AAR 같은 Gradle transform 출력은 Gradle이 정한 작업 디렉터리
+  이름이 키에 들어가므로 그 이름이 같을 때만 재사용한다. 보고서에는 예전처럼 artifact 파일 이름만 싣는다.
 - 알 수 없는 선언 scope나 선택 classpath에 artifact가 없는 플랫폼/processor 선언은
   판정하지 않고 계수·한계를 남긴다. [processor source 귀속](PROCESSOR-GENERATION.md)은
   opt-in compiler snapshot 근거로 제공하며 dependency unused 판정을 바꾸지 않는다.
@@ -104,7 +119,13 @@ kartograph dependencies --classes build/classes/java/main --project . \
 
 공통 baseline JSON의 정확한 `dependencies-v1|...` 지문을 사용한다. JSON/SARIF에 지문을
 내보내며, 좌표·버전·선언 scope·제안 scope·관찰한 클래스가 바뀌면 다시 검토해야 한다.
-artifact cache 절대경로와 클래스 목록 순서는 지문에 영향을 주지 않는다. 임시 억제는
+artifact cache 절대경로와 클래스 목록 순서는 지문에 영향을 주지 않는다. Gradle task의 file 의존성
+좌표 `file:<이름>#<해시>`는 위 위치 키로 해시를 만든다. 그래서 root project·Gradle user home 안의 파일은
+checkout 위치와 무관하게 같은 좌표다. 두 디렉터리 밖의 파일은 root와의 상대 배치가 같을 때만 같은 좌표다.
+monorepo의 형제 디렉터리처럼 root와 함께 옮겨지는 파일은 같고, `/opt/libs/vendor.jar`처럼 위치가 고정된
+파일은 checkout 깊이가 다르면 달라진다. 좌표는 build cache 출력이라 task 입력인 위치 키로만 만든다. 그런
+파일의 지문을 agent끼리 맞추려면 같은 깊이에 checkout하거나 파일을 root 아래로 옮긴다. 0.25.0까지는
+절대경로로 만들었으므로 그때 저장한 baseline·suppress의 `file:` 지문은 다시 capture한다. 임시 억제는
 공통 suppress 형식의 `fingerprint`, 비어 있지 않은 `reason`, `expires`가 필요하다.
 만료일은 해당 UTC 날짜까지 유효하다. strict는 필터 뒤 진단만 세며, 억제·만료 수와
 원래 분석 한계를 보고서에 남긴다. capture는 기존 필터 적용 전 모든 관찰을 저장한다.

@@ -1,11 +1,23 @@
 package dev.kartograph.analysis
 
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.CompilerEvidenceSource
+import dev.kartograph.core.CompilerSourceCoordinateBasis
+import dev.kartograph.core.CompilerSourceUse
+import dev.kartograph.core.CompilerSourceUseClaim
+import dev.kartograph.core.CompilerSourceUseEvidence
+import dev.kartograph.core.CompilerSourceUseImportCounts
+import dev.kartograph.core.CompilerSourceUseKind
+import dev.kartograph.core.CompilerSourceUseProducerCounts
+import dev.kartograph.core.CompilerSourceUseRoot
+import dev.kartograph.core.CompilerSourceUseUnit
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
+import dev.kartograph.core.InputFingerprint
 import dev.kartograph.core.JvmModifier
+import dev.kartograph.core.LocatedCompilerReference
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.SourceLocation
@@ -85,6 +97,69 @@ class TestSourceScopeTest {
             .reached.associate { it.node.id.value to it.evidence }
         assertEquals(TraversalEvidence.BOUND, forward.getValue("method:p/RealClient#fetch()V"))
         assertFalse("method:p/FakeClient#fetch()V" in forward)
+    }
+
+    @Test
+    fun `excluding test nodes preserves capture state and only surviving compiler positions`() {
+        val productionSource = NodeId("method:p/RealClient#fetch()V")
+        val testSource = NodeId("method:p/FakeClient#fetch()V")
+        val target = NodeId("method:p/Http#get()V")
+        fun position(source: NodeId, path: String, offset: Int) = LocatedCompilerReference(
+            source, target, CompilerEvidenceSource(path, "a".repeat(64)),
+            "kotlin-constants", "2.4.10", CompilerSourceCoordinateBasis.KOTLIN_UTF16_NORMALIZED_SOURCE,
+            offset, offset + 3, 1, offset + 1,
+        )
+        val positioned = graph().withCompilerCallPositions(listOf(
+            position(productionSource, "$main/RealClient.kt", 10),
+            position(testSource, "$test/FakeClient.kt", 20),
+        ))
+
+        val selected = TestSourceScope.select(positioned, listOf(target.value), includeTests = false).graph
+        assertTrue(selected.compilerCallPositionsCaptured)
+        assertEquals(listOf(productionSource), selected.locatedCompilerReferences.map { it.source })
+        assertTrue(selected.edges.any { it.source == productionSource && it.target == target && it.kind == EdgeKind.CALL })
+
+        val capturedEmpty = graph().withCompilerCallPositions(emptyList())
+        val emptySelected = TestSourceScope.select(capturedEmpty, listOf(target.value), includeTests = false).graph
+        assertTrue(emptySelected.compilerCallPositionsCaptured)
+        assertEquals(emptyList(), emptySelected.locatedCompilerReferences)
+    }
+
+    @Test
+    fun `test scope narrows source uses idempotently without changing default traversal`() {
+        val original = graph()
+        val production = NodeId("method:p/RealClient#fetch()V")
+        val testCaller = NodeId("method:p/FakeClient#fetch()V")
+        val target = NodeId("method:p/Http#get()V")
+        val input = InputFingerprint("classes", "build/classes", "a".repeat(64))
+        val root = CompilerSourceUseRoot(0, input, original.nodes.values.filter { it.kind == NodeKind.METHOD }.map { it.id })
+        fun captured(empty: Boolean): CodeGraph {
+            val count = if (empty) 0 else 2
+            val unit = CompilerSourceUseUnit(InputFingerprint("compilerEvidence", "build/evidence.tsv", "b".repeat(64)),
+                "kotlin-constants", "2.4.10", "c".repeat(64), "d".repeat(64),
+                listOf(CompilerSourceUseClaim(":sample:jvm", "kotlin", ":compileKotlin", listOf(input))),
+                CompilerSourceUseProducerCounts(count, count, 0, 0), CompilerSourceUseImportCounts(count, 0, 0, 0, 0, 0), 0)
+            val uses = if (empty) emptyList() else listOf(production, testCaller).mapIndexed { index, caller ->
+                CompilerSourceUse(unit.id, caller, target, root.id, root.id, CompilerSourceUseKind.INVOCATION_SELECTION,
+                    CompilerEvidenceSource(if (caller == production) "$main/RealClient.kt" else "$test/FakeClient.kt", "e".repeat(64)),
+                    "kotlin-constants", "2.4.10", CompilerSourceCoordinateBasis.KOTLIN_UTF16_NORMALIZED_SOURCE,
+                    10 + index * 10, 13 + index * 10, 1, 11 + index * 10, false)
+            }
+            return original.withCompilerSourceUses(CompilerSourceUseEvidence(listOf(root), listOf(unit), uses))
+        }
+        val baseline = TestSourceScope.select(original, listOf(target.value), false)
+        val selected = TestSourceScope.select(captured(false), listOf(target.value), false)
+        assertEquals(baseline.graph.edges, selected.graph.edges)
+        assertEquals(reverse(baseline), reverse(selected))
+        val evidence = selected.graph.compilerSourceUseEvidence!!
+        assertEquals(listOf(production), evidence.uses.map { it.source })
+        assertEquals(1, evidence.units.single().viewOmitted)
+        assertEquals(2, evidence.units.single().importCounts.admitted)
+        assertEquals(listOf(root), evidence.roots)
+        assertEquals(evidence, TestSourceScope.select(selected.graph, listOf(target.value), false).graph.compilerSourceUseEvidence)
+        val empty = TestSourceScope.select(captured(true), listOf(target.value), false).graph.compilerSourceUseEvidence!!
+        assertTrue(empty.uses.isEmpty())
+        assertEquals(0, empty.units.single().viewOmitted)
     }
 
     @Test

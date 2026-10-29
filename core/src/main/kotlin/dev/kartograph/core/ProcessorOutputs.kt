@@ -26,7 +26,10 @@ public data class ProcessorOutputs(
         InputFingerprint("observations", "outputs.tsv", rawSha256)
         require(outputs.size <= 100_000 && outputs.map { it.path }.distinct().size == outputs.size) { "invalid processor output inventory" }
         require(declarations.size <= 100_000 && declarations.map { it.output }.distinct().size == declarations.size) { "invalid processor declaration inventory" }
-        require(declarations.all { declaration -> outputs.any { it.path == declaration.output && it.kind == "class" && it.observation == "api" } }) { "processor declarations require observed class outputs" }
+        // 선언마다 출력 목록 전체를 다시 훑으면 (선언 수 × 출력 수)번 비교하므로, API로 관측한 class 출력 경로를 한 번만 모은다.
+        val classOutputs = if (declarations.isEmpty()) emptySet()
+            else outputs.filter { it.kind == "class" && it.observation == "api" }.mapTo(HashSet()) { it.path }
+        require(declarations.all { it.output in classOutputs }) { "processor declarations require observed class outputs" }
         require(declarations.isEmpty() || compilerInputs != null) { "processor declarations require compiler input evidence" }
     }
 }

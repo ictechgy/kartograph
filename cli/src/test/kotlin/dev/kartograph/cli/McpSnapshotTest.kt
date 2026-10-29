@@ -40,6 +40,41 @@ class McpSnapshotTest {
         return (result["structuredContent"] as Map<*, *>)["document"] as Map<*, *>
     }
 
+    @Test fun `query symbol preserves compiler references or returns the existing bounded error`(@TempDir root: Path) {
+        val caller = GraphNode(NodeId("method:p/Caller#use()V"), "use", NodeKind.METHOD)
+        val target = GraphNode(NodeId("method:p/Target#hit()V"), "hit", NodeKind.METHOD)
+        val edge = GraphEdge(caller.id, target.id, EdgeKind.CALL, origin = EdgeOrigin.BYTECODE)
+        fun reference(index: Int) = LocatedCompilerReference(
+            caller.id, target.id, CompilerEvidenceSource("src/p/Caller$index.java", index.toString(16).padStart(64, '0')),
+            "javac-constants", "17.0.20+0", CompilerSourceCoordinateBasis.JAVAC_UTF16_CHAR_SEQUENCE,
+            index * 4, index * 4 + 3, index + 1, 1,
+        )
+        val graph = CodeGraph(listOf(caller, target), listOf(edge)).withCompilerCallPositions(listOf(reference(1)))
+        val file = write(root, snapshot().copy(graph = graph,
+            limitations = listOf("compiler-call-positions-uncovered-roots: 1")))
+        client(file).use { c ->
+            c.initialize()
+            val result = document(c.call("query_symbol", mapOf("symbol" to target.id.value, "limit" to 1)))
+            val neighbor = ((result["result"] as Map<*, *>)["usedBy"] as List<*>).single() as Map<*, *>
+            val compiler = (neighbor["references"] as List<*>).single() as Map<*, *>
+            assertEquals("compiler", compiler["origin"])
+            assertEquals("javacUtf16CharSequence", compiler["coordinateBasis"])
+            assertContains(result["limitations"] as List<*>, "compiler-call-positions-uncovered-roots: 1")
+        }
+
+        val largeGraph = CodeGraph(listOf(caller, target), listOf(edge)).withCompilerCallPositions(
+            (1..300).map(::reference),
+        )
+        val large = write(root, snapshot().copy(graph = largeGraph), "large-positions.json")
+        client(large).use { c ->
+            c.initialize()
+            val result = c.call("query_symbol", mapOf("symbol" to target.id.value, "limit" to 1))
+            assertEquals(true, result["isError"])
+            assertFalse(result.containsKey("structuredContent"))
+            assertContains(result.toString(), "full saved query with the CLI")
+        }
+    }
+
     @Test fun `large recovery suggestions shrink without losing the original missing report`(@TempDir root: Path) {
         val nodes = (1..20).flatMap { owner -> (1..10).map { overload ->
             GraphNode(NodeId("method:p/Writer$owner#value(" + "I".repeat(overload) + ")V"), "value", NodeKind.METHOD,

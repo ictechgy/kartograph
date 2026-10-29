@@ -4,6 +4,7 @@ import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
+import dev.kartograph.export.LanguageTraversalCodec
 import dev.kartograph.export.McpJsonCodec
 import dev.kartograph.export.QuerySnapshot
 import dev.kartograph.export.QuerySnapshotCodec
@@ -17,7 +18,10 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.condition.DisabledOnOs
+import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 
 /** `impact --format language-traversal`과 `reach`의 교환 문서·옵션·호환 계약이다. */
@@ -177,10 +181,15 @@ class TraversalCliTest {
         "--format", "language-traversal", "--graph-file", graph.toString(), "--project", root.toString(),
         "--generated-at", "2026-09-27T00:00:00Z", *extra)
 
+    /** git 격리 때문에 revision을 확인하지 못했다는 한계 문구다. */
+    private fun revisionLimitations(document: Map<*, *>): List<String> =
+        (document["limitations"] as List<*>).map { it as String }.filter { it.startsWith("revision-unverified:") }
+
     @Test
     fun `revision comes from the option or the snapshot label and conflicting labels fail`(@TempDir root: Path) {
         val graph = capture(root)
         assertFalse("revision" in document(traverse(graph, root)), "no repository and no label leaves revision unknown")
+        assertEquals(emptyList(), revisionLimitations(document(traverse(graph, root))), "a directory outside git is not a limitation")
         val given = traverse(graph, root, "--revision", "release-1.2")
         assertEquals(0, given.status, given.error)
         assertEquals("release-1.2", document(given)["revision"])
@@ -212,6 +221,8 @@ class TraversalCliTest {
         assertEquals("pinned", document(traverse(graph, root, "--revision", "pinned"))["revision"], "--revision wins over HEAD")
         Files.writeString(root.resolve("notes.txt"), "untracked")
         assertFalse("revision" in document(traverse(graph, root)), "an untracked file makes HEAD unreliable")
+        // 작업 트리가 더러워 뺀 revision은 문서화된 생략이라 한계를 남기지 않는다.
+        assertEquals(emptyList(), revisionLimitations(document(traverse(graph, root))))
         Files.delete(root.resolve("notes.txt"))
         root.resolve("src/p/Http.java").toFile().appendText("\n// edited\n")
         assertFalse("revision" in document(traverse(graph, root)), "an uncommitted edit makes HEAD unreliable")
@@ -227,10 +238,206 @@ class TraversalCliTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the fsmonitor marker hook is a POSIX shell script")
+    fun `reach reads a clean HEAD without running the repository fsmonitor command`(@TempDir root: Path) {
+        val project = Files.createDirectories(root.resolve("project"))
+        val graph = capture(project)
+        Files.writeString(project.resolve(".gitignore"), "classes/\n*.json\n")
+        git(project, "init", "-q")
+        git(project, "add", "-A")
+        git(project, "commit", "-q", "-m", "fixture")
+        val head = git(project, "rev-parse", "HEAD")
+        // 압축본으로 받은 저장소의 .git/config에 실린 명령을 흉내 낸다. revision 확인의 git status가 index를 읽을 때 실행된다.
+        val probe = FsmonitorHookProbe(root, project)
+
+        val forward = run("reach", "method:p/Main#main([Ljava/lang/String;)V", "--graph-file", graph.toString(),
+            "--project", project.toString(), "--generated-at", "2026-09-27T00:00:00Z")
+
+        assertEquals(0, forward.status, forward.error)
+        assertEquals(head, document(forward)["revision"])
+        assertFalse(probe.hookRan, "kartograph must not run the analyzed repository's core.fsmonitor command")
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the filter driver marker is a POSIX shell script")
+    fun `reach reads a clean HEAD without running filter drivers configured by the repository`(@TempDir root: Path) {
+        val project = Files.createDirectories(root.resolve("project"))
+        val graph = capture(project)
+        Files.writeString(project.resolve(".gitignore"), "classes/\n*.json\n")
+        Files.writeString(project.resolve(".gitattributes"), "* filter=evil\n")
+        GitFixture.git(project, "init", "-q")
+        GitFixture.git(project, "add", "-A")
+        GitFixture.git(project, "commit", "-q", "-m", "fixture")
+        val head = GitFixture.git(project, "rev-parse", "HEAD")
+        // 압축본으로 받은 저장소의 .git/config에 실린 드라이버를 흉내 낸다. revision 확인의 git status가 stat이 낡은 파일을
+        // 다시 읽을 때 실행된다.
+        val probe = FilterDriverProbe(root, project, "evil", stale = listOf(project.resolve("src/p/Http.java")))
+
+        val forward = run("reach", "method:p/Main#main([Ljava/lang/String;)V", "--graph-file", graph.toString(),
+            "--project", project.toString(), "--generated-at", "2026-09-27T00:00:00Z")
+
+        assertEquals(0, forward.status, forward.error)
+        assertEquals(head, document(forward)["revision"], "unchanged content stays clean without the driver")
+        assertFalse(probe.ran, "kartograph must not run the analyzed repository's filter driver")
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the filter driver marker is a POSIX shell script")
+    fun `revision checks run no repository filter driver and keep unchanged content clean`(@TempDir root: Path) {
+        // .git/info/attributes와 커밋된 .gitattributes, 점이 든 이름, process 키가 모두 같은 경계를 지난다.
+        listOf(Triple("evil", "clean", true), Triple("evil.name", "clean", false), Triple("evil", "process", true))
+            .forEachIndexed { index, (name, key, infoAttributes) ->
+                val project = root.resolve("project-$index")
+                val attributes = if (infoAttributes) emptyMap() else mapOf(".gitattributes" to "* filter=$name\n")
+                GitFixture.commit(project, mapOf("src/A.kt" to "class A\n") + attributes)
+                val head = GitFixture.git(project, "rev-parse", "HEAD")
+                val probe = FilterDriverProbe(root, project, name, key, infoAttributes, stale = listOf(project.resolve("src/A.kt")))
+
+                assertEquals(head, GitRevision.cleanHead(project.toRealPath()), "$name.$key")
+                assertFalse(probe.ran, "kartograph must not run the analyzed repository's filter driver ($name.$key)")
+            }
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the filter driver marker is a POSIX shell script")
+    fun `a required filter driver keeps the revision readable without running it`(@TempDir root: Path) {
+        // git-lfs는 required = true를 둔다. 명령만 비우면 git이 그 파일에서 실패해 revision을 잃는다.
+        val project = root.resolve("project")
+        GitFixture.commit(project, mapOf("src/A.kt" to "class A\n"))
+        val head = GitFixture.git(project, "rev-parse", "HEAD")
+        val probe = FilterDriverProbe(root, project, "evil", infoAttributes = true, stale = listOf(project.resolve("src/A.kt")),
+            required = true)
+
+        assertEquals(head, GitRevision.cleanHead(project.toRealPath()))
+        assertFalse(probe.ran, "kartograph must not run the analyzed repository's filter driver")
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the normalizing filter is a POSIX shell command")
+    fun `a filter-normalized file with a stale stat omits the revision`(@TempDir root: Path) {
+        val project = root.resolve("project")
+        // git-lfs처럼 저장소가 믿는 정규화 filter다. 커밋할 때 돌아서 blob은 대문자로 저장된다.
+        GitFixture.commit(project, mapOf(".gitattributes" to "*.txt filter=upper\n", "notes.txt" to "hello\n"),
+            "filter.upper.clean" to "tr a-z A-Z")
+        val head = GitFixture.git(project, "rev-parse", "HEAD")
+        assertEquals(head, GitRevision.cleanHead(project.toRealPath()), "an unchanged stat needs no content read")
+
+        GitFixture.stale(listOf(project.resolve("notes.txt")), GitFixture.STALE_TIME)
+
+        // filter를 돌리지 않으면 내용이 blob과 달라 보인다. 깨끗하다고 주장하지 않고 revision을 뺀다(fail-safe).
+        // 실제로 고친 파일과 구분할 수 없으므로 더러운 작업 트리처럼 한계 없이 뺀다.
+        assertEquals(GitRevision.Inspection(null, null), GitRevision.inspect(project.toRealPath()))
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the filter driver marker is a POSIX shell script")
+    fun `a filter driver name that cannot be overridden omits the revision without running it`(@TempDir root: Path) {
+        // git은 -c 값을 첫 '='에서 나누므로 "a=b"는 덮을 수 없다. 비ASCII 이름은 JVM argv 인코딩이 로캘에 따라 바꾼다.
+        listOf("a=b", "évil").forEachIndexed { index, name ->
+            val project = root.resolve("project-$index")
+            GitFixture.commit(project, mapOf("src/A.kt" to "class A\n"))
+            val probe = FilterDriverProbe(root, project, name, infoAttributes = true, stale = listOf(project.resolve("src/A.kt")))
+
+            val inspection = GitRevision.inspect(project.toRealPath())
+            assertNull(inspection.revision, name)
+            // 막은 사실을 한계로 알린다. 신뢰하지 않는 드라이버 이름은 싣지 않는다.
+            assertContains(inspection.limitation.orEmpty(), "filter driver whose name cannot be safely overridden", message = name)
+            assertFalse(inspection.limitation.orEmpty().contains(name), name)
+            assertFalse(probe.ran, "kartograph must not run git while it cannot override the driver ($name)")
+        }
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the filter driver marker is a POSIX shell script")
+    fun `a submodule under the project omits the revision without running git inside it`(@TempDir root: Path) {
+        val library = root.resolve("library")
+        GitFixture.commit(library, mapOf("inner.txt" to "inner\n"))
+        val repository = root.resolve("repository")
+        GitFixture.commit(repository, mapOf("app/src/A.kt" to "class A\n", "tools/B.kt" to "class B\n"))
+        GitFixture.git(repository, "submodule", "--quiet", "add", library.toString(), "app/sub")
+        GitFixture.git(repository, "commit", "-q", "-m", "submodule")
+        val head = GitFixture.git(repository, "rev-parse", "HEAD")
+        // 서브모듈 저장소 자신의 config에 건 드라이버다. 상위 저장소의 status가 서브모듈 안에서 git을 띄우면 실행된다.
+        val submodule = repository.resolve("app/sub")
+        val probe = FilterDriverProbe(root, submodule, "evil", infoAttributes = true, stale = listOf(submodule.resolve("inner.txt")))
+
+        // 서브모듈 작업 트리가 깨끗한지는 서브모듈 저장소의 설정을 따르는 git으로만 알 수 있어 깨끗함을 증명하지 못한다.
+        assertNull(GitRevision.cleanHead(repository.resolve("app").toRealPath()))
+        assertNull(GitRevision.cleanHead(repository.toRealPath()))
+        assertEquals(head, GitRevision.cleanHead(repository.resolve("tools").toRealPath()), "a project without submodules keeps HEAD")
+        assertContains(GitRevision.inspect(repository.toRealPath()).limitation.orEmpty(), "submodules")
+        assertNull(GitRevision.inspect(repository.resolve("tools").toRealPath()).limitation)
+        assertFalse(probe.ran, "kartograph must not run git inside the submodule")
+    }
+
+    @Test
+    fun `an uncommitted submodule removal under the project omits the revision`(@TempDir root: Path) {
+        val library = root.resolve("library")
+        GitFixture.commit(library, mapOf("inner.txt" to "inner\n"))
+        val repository = root.resolve("repository")
+        GitFixture.commit(repository, mapOf("app/src/A.kt" to "class A\n"))
+        GitFixture.git(repository, "submodule", "--quiet", "add", library.toString(), "app/sub")
+        GitFixture.git(repository, "commit", "-q", "-m", "submodule")
+        // index에서 gitlink가 빠지고, 함께 바뀐 .gitmodules는 프로젝트(app) 밖에 있다.
+        GitFixture.git(repository, "rm", "-q", "app/sub")
+
+        // HEAD의 gitlink 삭제도 커밋하지 않은 변경이라 깨끗하다고 주장하지 않는다. 더러운 작업 트리처럼 한계 없이 뺀다.
+        assertEquals(GitRevision.Inspection(null, null), GitRevision.inspect(repository.resolve("app").toRealPath()))
+    }
+
+    @Test
+    fun `a revision the git boundary cannot verify leaves a limitation instead of a silent omission`(@TempDir root: Path) {
+        val library = root.resolve("library")
+        GitFixture.commit(library, mapOf("inner.txt" to "inner\n"))
+        val project = root.resolve("project")
+        val graph = capture(project)
+        GitFixture.commit(project, mapOf(".gitignore" to "classes/\n*.json\n"))
+        GitFixture.git(project, "submodule", "--quiet", "add", library.toString(), "sub")
+        GitFixture.git(project, "commit", "-q", "-m", "submodule")
+
+        val traversal = traverse(graph, project)
+
+        assertEquals(0, traversal.status, traversal.error)
+        val document = document(traversal)
+        assertFalse("revision" in document, "a submodule keeps the project from proving a clean HEAD")
+        // 작업 트리가 더러워 뺀 경우와 구분되도록, git 격리 때문에 확인하지 못했다는 사실과 해결 방향을 한계로 남긴다.
+        val limitation = revisionLimitations(document).single()
+        assertContains(limitation, "submodule")
+        assertContains(limitation, "--revision")
+        assertFalse(limitation.contains(project.toString()), "the limitation carries no absolute path")
+        // --revision을 주면 git으로 확인하지 않으므로 한계도 없다.
+        assertEquals(emptyList(), revisionLimitations(document(traverse(graph, project, "--revision", "pinned"))))
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = "the upload-pack marker is a POSIX shell script")
+    fun `revision checks do not fetch objects a partial clone lacks through the repository remote`(@TempDir root: Path) {
+        val source = root.resolve("source")
+        val lines = (1..200).joinToString("\n", postfix = "\n")
+        GitFixture.commit(source, mapOf("src/Old.kt" to lines))
+        val base = GitFixture.git(source, "rev-parse", "HEAD")
+        GitFixture.git(source, "mv", "src/Old.kt", "src/New.kt")
+        Files.writeString(source.resolve("src/New.kt"), lines + "tail\n")
+        GitFixture.git(source, "commit", "-q", "-am", "rename")
+        val clone = root.resolve("clone")
+        // HEAD만 기준 커밋으로 옮겨(--soft) index에 staged rename을 남긴다. 일반 git status는 rename을 판정하려고 기준 쪽의
+        // 빠진 blob을 lazy fetch하며 clone config의 upload-pack을 실행한다.
+        val probe = LazyFetchProbe(root, source, clone, "blob:none", listOf("--no-optional-locks", "status", "--porcelain")) { target ->
+            GitFixture.git(target, "reset", "-q", "--soft", base)
+        }
+
+        assertNull(GitRevision.cleanHead(clone.toRealPath()))
+        assertFalse(probe.ran, "kartograph must not fetch missing objects through the analyzed repository's remote")
+    }
+
+    @Test
     fun `graph revision is shared by both directions and ignores snapshot layout`(@TempDir root: Path) {
         val graph = capture(root)
         val reverse = document(traverse(graph, root))["graphRevision"] as String
         assertTrue(Regex("sha256:[0-9a-f]{64}").matches(reverse), reverse)
+        // 순회가 조립한 간선을 해시에 넘겨도 snapshot 그래프만으로 다시 낸 해시와 같다.
+        val snapshot = QuerySnapshotCodec.parse(Files.readString(graph))
+        assertEquals(LanguageTraversalCodec.graphRevision(snapshot.graph, snapshot.enclosuresCaptured, snapshot.callbackFactsCaptured), reverse)
         val forward = run("reach", "method:p/Main#main([Ljava/lang/String;)V", "--graph-file", graph.toString(), "--project", root.toString())
         assertEquals(0, forward.status, forward.error)
         assertEquals(reverse, document(forward)["graphRevision"])
