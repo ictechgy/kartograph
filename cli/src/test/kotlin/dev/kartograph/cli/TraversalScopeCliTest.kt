@@ -1,14 +1,21 @@
 package dev.kartograph.cli
 
 import dev.kartograph.core.BuildWitness
+import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.GraphNode
 import dev.kartograph.core.InputFingerprint
+import dev.kartograph.core.NodeId
+import dev.kartograph.core.NodeKind
+import dev.kartograph.core.SourceLocation
 import dev.kartograph.export.BuildWitnessCodec
 import dev.kartograph.export.ExternalInputBindingsCodec
 import dev.kartograph.export.McpJsonCodec
+import dev.kartograph.export.QuerySnapshot
 import dev.kartograph.export.QuerySnapshotCodec
 import dev.kartograph.index.ContentFingerprint
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
+import java.lang.management.ManagementFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.tools.ToolProvider
@@ -17,6 +24,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.io.TempDir
 
 /** language-traversal의 테스트 소스 제외(`--include-tests`)와 snapshot 신선도(`--input-bindings`) 계약이다. */
@@ -117,6 +125,62 @@ class TraversalScopeCliTest {
     }
 
     @Test
+    fun `name roots choose the program like exact roots and ambiguous or stale roots stay unresolved`(@TempDir root: Path) {
+        val graph = capture(root)
+        // 한정 이름으로 고른 테스트 소스 선언도 테스트 root다.
+        val testRoot = impact(graph, root, "p.FakeClient.fetch")
+        assertEquals(0, testRoot.status, testRoot.error)
+        assertTrue(limitations(testRoot).any { it.startsWith("test-sources-included:") && it.endsWith("1 root(s) are test-source declarations") })
+        assertEquals("candidate", evidence(testRoot)["method:p/Client#fetch()V"])
+        // production 선언의 한정 이름은 정확한 usr와 같은 범위·결과를 낸다.
+        val byName = impact(graph, root, "p.Http.get")
+        assertEquals(0, byName.status, byName.error)
+        assertEquals(evidence(impact(graph, root, "method:p/Http#get()V")), evidence(byName))
+        assertTrue(limitations(byName).any { it.startsWith("test-sources-excluded:") })
+        // 테스트·production에 함께 있는 이름과 없는 usr는 해석하지 않고 원문 그대로 root-not-found로 남긴다.
+        val unresolved = impact(graph, root, "fetch", "--symbol", "method:p/Gone#run()V")
+        assertEquals(64, unresolved.status)
+        val roots = (document(unresolved)["roots"] as List<*>).map { it as Map<*, *> }
+        assertEquals(listOf("fetch", "method:p/Gone#run()V"), roots.map { it["id"] })
+        assertTrue(roots.none { "symbol" in it })
+        assertTrue(limitations(unresolved).any { it.startsWith("root-not-found: 2 requested root(s)") })
+        assertTrue(limitations(unresolved).any { it.startsWith("test-sources-excluded:") }, "unresolved roots are not test roots")
+    }
+
+    @Test
+    fun `inexact roots are resolved against one name index`(@TempDir root: Path) {
+        // 리뷰 지적 재현(perf#4·sec#3): 정확한 usr가 아닌 root마다 전체 정점을 훑으며 qualifiedName을 새로 만들었고, 테스트
+        // 소스가 있으면 범위 결정이 같은 스캔을 한 번 더 해 비용이 (요청 수 × 정점 수 × 2)였다. 시간 대신 스레드 할당량으로 본다.
+        val threads = (ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean)
+            ?.takeIf { it.isThreadAllocatedMemorySupported && it.isThreadAllocatedMemoryEnabled }
+        assumeTrue(threads != null, "thread allocation accounting is unavailable on this JVM")
+        fun node(name: String, sourceSet: String) = GraphNode(NodeId("method:p/$name#run()V"), "run", NodeKind.METHOD,
+            location = SourceLocation("app/src/$sourceSet/kotlin/p/$name.kt"))
+        val nodes = List(NODES) { node("P$it", "main") } + List(NODES / 100) { node("T$it", "test") }
+        val graph = root.resolve("graph.json").also {
+            Files.writeString(it, QuerySnapshotCodec.render(QuerySnapshot(CodeGraph(nodes, emptyList()), emptyList(), emptyList())))
+        }
+        fun allocated(stale: Int): Long {
+            val requested = List(stale) { "method:p/Gone$it#run()V" } + "method:p/P0#run()V"
+            val roots = root.resolve("roots-$stale.json").also { Files.writeString(it, requested.joinToString(", ", "[", "]") { "\"$it\"" }) }
+            val arguments = arrayOf("impact", "--format", "language-traversal", "--roots-from", roots.toString(), "--graph-file", graph.toString(),
+                "--project", root.toString(), "--generated-at", "2026-10-18T00:00:00Z")
+            // 첫 실행의 클래스 적재 할당을 빼려고 한 번 먼저 돌린다.
+            run(*arguments)
+            val before = threads!!.currentThreadAllocatedBytes
+            val execution = run(*arguments)
+            val bytes = threads.currentThreadAllocatedBytes - before
+            assertEquals(64, execution.status, execution.error)
+            assertTrue(limitations(execution).any { it.startsWith("root-not-found: $stale requested root(s)") })
+            assertTrue(limitations(execution).any { it.startsWith("test-sources-excluded:") })
+            return bytes
+        }
+        val cells = (MANY_STALE - FEW_STALE).toLong() * nodes.size
+        val extra = allocated(MANY_STALE) - allocated(FEW_STALE)
+        assertTrue(extra < cells * 2, "resolving ${MANY_STALE - FEW_STALE} more stale roots allocated $extra bytes over ${nodes.size} vertices")
+    }
+
+    @Test
     fun `matched snapshots add no freshness limitation and changed inputs do`(@TempDir root: Path) {
         val graph = witnessed(root)
         val traversal = impact(graph, root, "method:p/Http#get()V")
@@ -158,5 +222,12 @@ class TraversalScopeCliTest {
         val duplicate = impact(graph, root, "method:p/Http#get()V", "--include-tests", "--include-tests")
         assertEquals(64, duplicate.status)
         assertEquals(64, impact(graph, root, "method:p/Http#get()V", "--input-bindings").status)
+    }
+
+    private companion object {
+        /** 할당량 비교 그래프의 production 정점 수와 두 stale root 수다. 테스트 소스 정점은 production의 1%다. */
+        const val NODES = 5_000
+        const val MANY_STALE = 2_000
+        const val FEW_STALE = 20
     }
 }

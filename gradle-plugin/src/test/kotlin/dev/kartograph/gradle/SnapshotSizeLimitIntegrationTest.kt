@@ -43,8 +43,8 @@ class SnapshotSizeLimitIntegrationTest {
         assertEquals(defaultSnapshot, Files.readString(snapshotFile))
         QuerySnapshotCodec.parse(Files.readString(snapshotFile), QuerySnapshotCodec.maximumBytes(1))
 
-        val invalid = runner(root, "kartographSnapshot", "-PsnapshotMaxMiB=129").buildAndFail()
-        assertContains(invalid.output, "snapshot maximum must be 1..128 MiB")
+        val invalid = runner(root, "kartographSnapshot", "-PsnapshotMaxMiB=1025").buildAndFail()
+        assertContains(invalid.output, "snapshot maximum must be 1..1024 MiB")
     }
 
     private fun runner(root: Path, task: String, vararg arguments: String): GradleRunner =

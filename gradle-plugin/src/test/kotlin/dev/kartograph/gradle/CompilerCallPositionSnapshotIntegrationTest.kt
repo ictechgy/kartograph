@@ -158,7 +158,7 @@ class CompilerCallPositionSnapshotIntegrationTest {
         val position = snapshot.graph.locatedCompilerReferences.single { it.target == NodeId("method:demo/Target#hit()V") }
         assertEquals(NodeId("method:demo/CallerKt#use()V"), position.source)
         assertEquals(CompilerSourceCoordinateBasis.KOTLIN_UTF16_NORMALIZED_SOURCE, position.coordinateBasis)
-        assertEquals("2.4.10", position.compilerVersion)
+        assertEquals(kotlinVersion(), position.compilerVersion)
         assertEquals("src/main/kotlin/demo/Caller.kt", snapshot.graph.nodes.getValue(position.source).location?.path)
 
         val again = build(root, "callPositionSnapshot")
@@ -328,15 +328,17 @@ class CompilerCallPositionSnapshotIntegrationTest {
             "rootProject.name='kotlin-call-position-snapshot'\nbuildCache { local { directory=file('.fixture-cache') } }\n")
         Files.writeString(root.resolve("gradle.properties"),
             "kotlin.stdlib.default.dependency=false\nkotlin.compiler.runViaBuildToolsApi=false\n")
-        val repository = kotlinRepository(root, gradleClasspath)
+        CompilerCallPositionRuntime.buildTools(kotlinVersion())
+        val moduleMirror = CompilerCallPositionRuntime.repository()
+        val moduleReceipt = CompilerCallPositionRuntime.moduleReceipt()
+        val moduleVerifier = CompilerCallPositionRuntime.verifierScript()
         val buildscriptClasspath = gradleClasspath.joinToString(", ") { "'${groovy(it)}'" }
         val compilerRuntime = compilerClasspath.joinToString(", ") { "'${groovy(it)}'" }
-        val stdlib = compilerClasspath.single { it.fileName.toString() == "kotlin-stdlib-2.4.10.jar" }
+        val stdlib = kotlinArtifact(compilerClasspath, "kotlin-stdlib")
         Files.writeString(root.resolve("build.gradle"), """
             buildscript { dependencies { classpath files($buildscriptClasspath) } }
             plugins { id 'io.github.ictechgy.kartograph' }
             apply plugin: 'org.jetbrains.kotlin.jvm'
-            repositories { maven { url = uri('${groovy(repository)}') } }
             dependencies { implementation project.files('${groovy(stdlib)}') }
             configurations.configureEach {
                 exclude group: 'org.jetbrains.kotlin', module: 'kotlin-scripting-compiler-embeddable'
@@ -347,11 +349,15 @@ class CompilerCallPositionSnapshotIntegrationTest {
             }
             configurations.named('kotlinBuildToolsApiClasspath') {
                 dependencies.clear()
-                dependencies.add(project.dependencies.create('org.jetbrains.kotlin:kotlin-build-tools-compat:2.4.10'))
-                dependencies.add(project.dependencies.create('org.jetbrains.kotlin:kotlin-build-tools-impl:2.4.10'))
-                dependencies.add(project.dependencies.create(project.files($compilerRuntime)))
+                dependencies.add(project.dependencies.create('org.jetbrains.kotlin:kotlin-build-tools-compat:${kotlinVersion()}'))
+                dependencies.add(project.dependencies.create('org.jetbrains.kotlin:kotlin-build-tools-impl:${kotlinVersion()}'))
             }
             configurations.named('kotlinCompilerPluginClasspathMain') { dependencies.clear() }
+            repositories { maven { url = uri('${groovy(moduleMirror)}'); metadataSources { gradleMetadata(); mavenPom() } } }
+            ext.controlledBuildToolsMirror = '${groovy(moduleMirror)}'
+            ext.controlledBuildToolsReceipt = '${groovy(moduleReceipt)}'
+            apply from: '${groovy(moduleVerifier)}'
+            def moduleRuntimeInputs = files('${groovy(moduleReceipt)}', '${groovy(moduleVerifier)}', fileTree('${groovy(moduleMirror)}'))
             java { toolchain { languageVersion = JavaLanguageVersion.of(17) } }
             def compiler = tasks.named('compileKotlin')
             def sources = files('src/main/kotlin')
@@ -369,7 +375,7 @@ class CompilerCallPositionSnapshotIntegrationTest {
             }
             def jdk = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
             def witness = dev.kartograph.gradle.KotlinCompilerWitnesses.INSTANCE.kotlinCompile(project, compiler, 'sample:main',
-                sources, buildInputs, jdk, files($compilerRuntime), true)
+                sources, buildInputs, jdk, files($compilerRuntime, configurations.named('kotlinBuildToolsApiClasspath'), moduleRuntimeInputs), true)
             tasks.register('callPositionSnapshot', dev.kartograph.gradle.KartographSnapshotTask) { task ->
                 def compilation = objects.newInstance(dev.kartograph.gradle.SnapshotCompilation)
                 compilation.identity.set(compiler.map { it.path })
@@ -384,7 +390,7 @@ class CompilerCallPositionSnapshotIntegrationTest {
                 task.sourceFiles.from(compiler.map { it.sources })
                 task.buildInputFiles.from(buildInputs)
                 task.buildWitnessFiles.from(witness)
-                task.compilerInputFiles.from(files($compilerRuntime), files($buildscriptClasspath), files('${groovy(collector)}'),
+                task.compilerInputFiles.from(files($compilerRuntime), configurations.named('kotlinBuildToolsApiClasspath'), moduleRuntimeInputs, files($buildscriptClasspath), files('${groovy(collector)}'),
                     jdk.map { it.metadata.installationPath.file('lib/modules') })
                 task.scope.set('sample:main')
                 task.includeSourcePaths.set(true)
@@ -398,24 +404,15 @@ class CompilerCallPositionSnapshotIntegrationTest {
         """.trimIndent())
     }
 
-    private fun kotlinRepository(root: Path, classpath: List<Path>): Path {
-        val repository = root.resolve(".kotlin-repository")
-        for (artifact in listOf("kotlin-build-tools-compat", "kotlin-build-tools-impl")) {
-            val source = classpath.single { it.fileName.toString() == "$artifact-2.4.10.jar" }
-            val directory = repository.resolve("org/jetbrains/kotlin/$artifact/2.4.10")
-            Files.createDirectories(directory)
-            Files.copy(source, directory.resolve("$artifact-2.4.10.jar"))
-            Files.writeString(directory.resolve("$artifact-2.4.10.pom"), """
-                <project xmlns="http://maven.apache.org/POM/4.0.0">
-                  <modelVersion>4.0.0</modelVersion>
-                  <groupId>org.jetbrains.kotlin</groupId>
-                  <artifactId>$artifact</artifactId>
-                  <version>2.4.10</version>
-                </project>
-            """.trimIndent())
-        }
-        return repository
+    private fun kotlinVersion(): String = requireNotNull(System.getenv("KARTOGRAPH_CALL_KOTLIN_VERSION")).also {
+        require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(it)) { "explicit collector compiler version is required" }
     }
+
+    private fun kotlinArtifact(classpath: List<Path>, artifact: String): Path =
+        classpath.single { it.fileName.toString().startsWith("$artifact-") && it.fileName.toString().endsWith(".jar") }.also {
+            require(it.fileName.toString() == "$artifact-${kotlinVersion()}.jar") { "unexpected Kotlin runtime artifact version" }
+        }
+
 
     private fun kotlinClasspaths(): Pair<List<Path>, List<Path>> {
         fun paths(name: String): List<Path> {
@@ -424,7 +421,10 @@ class CompilerCallPositionSnapshotIntegrationTest {
             return value.split(File.pathSeparator).filter(String::isNotBlank).map { Path.of(it).toRealPath() }
                 .also { assumeTrue(it.isNotEmpty() && it.all(Files::isRegularFile)) }
         }
-        return paths("KARTOGRAPH_KOTLIN_GRADLE_CLASSPATH") to paths("KARTOGRAPH_KOTLIN_COMPILER_CLASSPATH")
+        val compilerClasspath = paths("KARTOGRAPH_KOTLIN_COMPILER_CLASSPATH")
+        kotlinArtifact(compilerClasspath, "kotlin-compiler-embeddable")
+        kotlinArtifact(compilerClasspath, "kotlin-stdlib")
+        return paths("KARTOGRAPH_KOTLIN_GRADLE_CLASSPATH") to compilerClasspath
     }
 
     private fun build(root: Path, vararg arguments: String, fails: Boolean = false): org.gradle.testkit.runner.BuildResult {

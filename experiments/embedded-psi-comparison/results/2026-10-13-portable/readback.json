@@ -1,0 +1,61 @@
+{
+  "artifacts": {
+    "comparison.json": "4f8edf511088dcaea3da68b2c41de088e4942c6a116298e6d3e0dc99c0d58860",
+    "kartograph-graph.json": "db9d232cbeb1c27e327b2163558637cc97896dc59d07ca2726640d5780718cd6",
+    "product-distribution.json": "5a94faea2cea4cee20621784aa7e7298c877a90813d6d8a70c43d3e5712081c6",
+    "source-header-check.json": "ce284a22da9b1ad8ebf12551d4c33c944fb0cb713e49c96391e803f689891b22",
+    "stages.json": "d2b1cb94cca839ee38e1e18f03f71e6c9800598fae6ad509f91ebf2b7f621951"
+  },
+  "baselineComparison": {
+    "checks": {
+      "adapterSha256": true,
+      "allBytecodeLocationsIdentical": true,
+      "allEdgesIdentical": true,
+      "compiledFixture": true,
+      "expectationsSha256": true,
+      "fixture": true,
+      "fixtureManifestSha256": true,
+      "rawPsiRowsIdentical": true,
+      "runtimeJars": true,
+      "sameNodeIdentitySet": true
+    },
+    "reference": "../2026-10-13/compiled-fixture-inputs.json"
+  },
+  "compiledFixture": {
+    "META-INF/main.kotlin_module": "06d262cf732152000d8cb1453e8dc1209b37fa4411e5c4d202265ff0d18ec16d",
+    "probe/PsiJava.class": "cae3433c7cd28a522fa3148d878225830fdb2d811a85ecf5d027e6be2a9a1494",
+    "probe/PsiKotlin.class": "a6c87786c7dce0b011890d5bdfa552962f23311d8fb89396b0567c7569911019"
+  },
+  "compiler": "Kotlin 2.4.10",
+  "date": "2026-10-13",
+  "gradle": "9.7.1",
+  "jdk": "Temurin 17.0.20.1+1",
+  "primaryCallEdges": {
+    "expected": 4,
+    "matched": 4,
+    "productMethodsExpected": 8,
+    "productMethodsPresent": 8
+  },
+  "product": {
+    "baseCommit": "ab056981a016e1b4452de1071bcf209818526849",
+    "candidateState": "uncommitted local product change; recorded graph is not evidence for main",
+    "distributionReceipt": "product-distribution.json",
+    "modifiedProductionSourceSha256": {
+      "index/src/main/kotlin/dev/kartograph/index/SourceDeclarationLocations.kt": "bf9ce9dd84f16ce61179c74b95e9379e7245c370236dee2be39e53674067863b"
+    },
+    "stagedPatchSha256": "93c258a418000c7958e16ddf136f7675749176c16627c83a72659b55c77ab271"
+  },
+  "qualification": "Successful portable invocation and field-specific source-header improvement; no performance or whole-project quality claim",
+  "rawPsiReference": "../2026-10-13/psi-calls.jsonl",
+  "rawPsiSha256": "ec58e281c18eb73293538ba7ea1d6c626ca15a8e176168f2f51e097a071fa015",
+  "runnerExit": 0,
+  "runnerSha256": "f7294d73cdc5efa38b215df268e661fd345fbaa1402a5375fcf25d6b09817519",
+  "scope": "Reviewed portable end-to-end runner on the unchanged two-file fixture and an uncommitted overload source-header product candidate",
+  "sourceHeaderAnchors": {
+    "after": 8,
+    "before": 4,
+    "expected": 8
+  },
+  "sourceHeaderCheckerSha256": "b18d4f3d8299f9e5510becacd3d67046505ea37d24b5700640a75d6e6f5ab68e",
+  "sourceLocationExpectationsSha256": "20c1f543efebf623e22cbbd7993eac2cf926af65e66e04c164c87c731d187f94"
+}

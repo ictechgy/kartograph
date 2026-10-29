@@ -128,6 +128,26 @@ public object LanguageTraversal {
     ): LanguageTraversalResult = traverse(graph, TraversalEdges.assemble(graph, enclosuresCaptured, callbackFactsCaptured), requested, direction, dispatch,
         maxDepth, maxReached, enclosuresCaptured, callbackFactsCaptured, rootGraph, classHops, modeledCalls)
 
+    /**
+     * [TraversalEdges.prepare]로 조립해 둔 간선으로 순회한다. 같은 그래프의 해시를 함께 내는 호출부가 간선을 두 번 조립하지
+     * 않게 한다. 순회할 그래프와 두 캡처 여부는 [prepared]의 값이고, 나머지 매개변수는 위 [traverse]와 같다.
+     *
+     * @param prepared 순회할 그래프에서 조립한 간선이다
+     * @param rootGraph root 요청을 해석할 그래프다. 기본은 [prepared]의 그래프다
+     */
+    public fun traverse(
+        prepared: AssembledTraversalEdges,
+        requested: List<String>,
+        direction: TraversalDirection,
+        dispatch: TraversalDispatch = TraversalDispatch.CANDIDATES,
+        maxDepth: Int = MAX_DEPTH,
+        maxReached: Int = MAX_REACHED,
+        rootGraph: CodeGraph = prepared.graph,
+        classHops: TraversalClassHops = TraversalClassHops.ALL,
+        modeledCalls: Set<ExternalCall> = emptySet(),
+    ): LanguageTraversalResult = traverse(prepared.graph, prepared.assembled, requested, direction, dispatch, maxDepth, maxReached,
+        prepared.enclosuresCaptured, prepared.callbackFactsCaptured, rootGraph, classHops, modeledCalls)
+
     /** 이미 만든 순회 간선으로 순회한다. 테스트가 임의의 콜백 간선으로 계산을 검증할 때 쓴다. */
     internal fun traverse(
         graph: CodeGraph,
@@ -176,15 +196,19 @@ public object LanguageTraversal {
      * 해석은 [rootGraph]에서 하고, 순회할 [graph]에 없는 정점은 해석하지 못한 것으로 둔다.
      */
     private fun resolveRoots(graph: CodeGraph, rootGraph: CodeGraph, requested: List<String>, unresolved: Map<NodeId, Int>): List<TraversalRoot> {
+        val resolver = TraversalRootResolver(rootGraph)
         val seen = mutableSetOf<String>()
         return requested.mapNotNull { text ->
-            val node = resolveRootNode(rootGraph, text)?.let { graph.node(it.id) }
+            val node = resolver.resolve(text)?.let { graph.node(it.id) }
             val id = node?.id?.value ?: text
             if (!seen.add(id)) null else TraversalRoot(id, node, node?.let { unresolved[it.id] } ?: 0)
         }
     }
 
-    /** root 요청 하나를 정점으로 해석한다. 정확한 usr를 우선하고, 없으면 유일한 한정 이름·이름이다. 못 하면 null이다. */
+    /**
+     * root 요청 하나를 정점으로 해석한다. 정확한 usr를 우선하고, 없으면 유일한 한정 이름·이름이다. 못 하면 null이다.
+     * 정확한 usr가 아니면 정점 전체를 훑으므로 요청이 여럿이면 [TraversalRootResolver]를 쓴다(같은 규칙이다).
+     */
     internal fun resolveRootNode(graph: CodeGraph, text: String): GraphNode? =
         graph.node(NodeId(text)) ?: graph.nodes.values.filter { it.qualifiedName == text || it.name == text }.singleOrNull()
 
@@ -228,6 +252,28 @@ public object LanguageTraversal {
         if (depthTruncated) add("depth-limit: some reachable declarations are more than $maxDepth edge(s) from every root and are not listed")
         if (reachedTruncated) add("reached-limit: more than $maxReached reachable declarations; the (depth, usr) prefix is listed")
     }
+}
+
+/**
+ * language-traversal의 root 요청을 정점으로 해석한다([LanguageTraversal.traverse]와 같은 규칙).
+ *
+ * 정확한 usr를 우선하고, 없으면 한정 이름이나 이름이 맞는 정점이 정확히 하나일 때 그 정점이다. 둘 이상이면 모호해서
+ * 해석하지 않는다. 이름 색인은 정확한 usr가 아닌 요청이 처음 올 때 정점을 한 번 훑어 만든다. 요청마다 정점 전체를 훑으며
+ * `qualifiedName`을 다시 만들면 바뀐 usr 수천 개를 넘긴 실행의 비용이 (요청 수 × 정점 수)로 커지기 때문이다.
+ * 순회는 안에서 이 해석기를 쓰고, 테스트 소스 범위 결정처럼 순회 전에 같은 요청을 해석해야 하는 호출부도 이것을 쓴다.
+ *
+ * @param graph root를 해석할 그래프다
+ */
+public class TraversalRootResolver(private val graph: CodeGraph) {
+    private val byQualifiedName: Map<String, List<GraphNode>> by lazy { graph.nodes.values.groupBy { it.qualifiedName } }
+    private val byName: Map<String, List<GraphNode>> by lazy { graph.nodes.values.groupBy { it.name } }
+
+    /**
+     * @param text root 요청이다. 정확한 usr, 한정 이름 또는 이름이다
+     * @return 해석한 정점이다. 맞는 정점이 없거나 둘 이상이면 null이다
+     */
+    public fun resolve(text: String): GraphNode? = graph.node(NodeId(text))
+        ?: (byQualifiedName[text].orEmpty().asSequence() + byName[text].orEmpty()).distinctBy { it.id }.take(2).singleOrNull()
 }
 
 /**
@@ -530,7 +576,7 @@ private class TraversalComputation private constructor(
         val depth = targets.map { depthOf(it, vertex, own) }.filter { it >= 0 }.minOrNull() ?: return null
         if (depth !in 1..maxDepth) return null
         val level = reach.indexOfFirst { sets -> rootsOf(sets, vertex).let { reached -> roots.stream().allMatch(reached::get) } }
-        return witness(vertex, targets, own, depth).copy(depth = depth, roots = roots.stream().toArray().toList(), level = level)
+        return witness(vertex, targets, own, depth).copy(depth = depth, roots = RootIndexList(roots), level = level)
     }
 
     /**
@@ -564,6 +610,46 @@ private class TraversalComputation private constructor(
     companion object {
         fun run(space: TraversalSpace, rootVertices: List<Int>, maxDepth: Int): TraversalComputation =
             TraversalComputation(space, rootVertices, maxDepth).also { it.execute() }
+    }
+}
+
+/**
+ * 정점에 닿는 root 인덱스의 오름차순 읽기 전용 목록이다([TraversalReached.roots]).
+ *
+ * 인덱스마다 boxing한 목록을 만들면 (도달 정점 수 × root 수)개의 Integer가 남아, 촘촘한 그래프에 root 수천 개를 주면
+ * 출력 상한(정점당 64개)과 무관하게 heap이 GB 단위로 는다. 그래서 boxing하지 않고 담는다 — 비트 집합(root 64개당
+ * 8바이트)과 정렬한 int 배열(원소당 4바이트) 중 작은 쪽이다. equals·hashCode는 일반 [List]와 같다.
+ *
+ * @param roots 이 목록만 쓰는 사본이다([TraversalComputation.rootsOf]가 정점마다 만든다). 넘긴 뒤 바꾸지 않는다
+ */
+private class RootIndexList(roots: BitSet) : AbstractList<Int>() {
+    override val size: Int = roots.cardinality()
+
+    /** 촘촘한 집합이면 비트 집합 그대로다. [BitSet.size]는 실제로 잡힌 words의 비트 수다. */
+    private val bits: BitSet? = roots.takeIf { it.size() <= size * Int.SIZE_BITS }
+
+    /** 성긴 집합이면 처음부터, 촘촘한 집합이면 [get]이 처음 쓸 때 만든 정렬 배열이다. 같은 값을 다시 만들 수 있어 경합은 무해하다. */
+    @Volatile private var sorted: IntArray? = if (bits == null) roots.stream().toArray() else null
+
+    override fun get(index: Int): Int {
+        if (index !in 0 until size) throw IndexOutOfBoundsException("root index position $index is outside 0 until $size")
+        val array = sorted ?: checkNotNull(bits).stream().toArray().also { sorted = it }
+        return array[index]
+    }
+
+    override fun iterator(): Iterator<Int> {
+        sorted?.let { return it.iterator() }
+        val set = checkNotNull(bits)
+        return object : Iterator<Int> {
+            private var next = set.nextSetBit(0)
+
+            override fun hasNext(): Boolean = next >= 0
+
+            override fun next(): Int {
+                if (next < 0) throw NoSuchElementException("no more root indices")
+                return next.also { next = set.nextSetBit(it + 1) }
+            }
+        }
     }
 }
 

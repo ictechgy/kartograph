@@ -43,6 +43,9 @@ internal object AndroidSnapshotTasks {
             snapshot.indexCacheDirectory.set(extension.snapshotIndexCacheDirectory)
             snapshot.baselineFile.set(extension.baseline)
             snapshot.keepRuleFiles.from(extension.keepRules)
+            snapshot.keepRuleMode.set(extension.keepRuleMode)
+            snapshot.useVariantKeepRules.set(extension.useVariantKeepRules)
+            snapshot.excludedKeepRuleFiles.from(extension.excludedKeepRules)
             snapshot.generatedKeepRuleFiles.from(variant.proguardFiles)
             snapshot.generatedClassRoots.from(extension.generatedClassRoots)
             snapshot.namespace.set(variant.namespace)
@@ -83,6 +86,10 @@ internal object AndroidSnapshotTasks {
             ?.toGet(ScopedArtifact.CLASSES, KartographAndroidSnapshotTask::testJars, KartographAndroidSnapshotTask::testDirectories)
         unitTest?.artifacts?.forScope(ScopedArtifacts.Scope.ALL)?.use(task)
             ?.toGet(ScopedArtifact.CLASSES, KartographAndroidSnapshotTask::testClasspathJars, KartographAndroidSnapshotTask::testClasspathDirectories)
+        project.pluginManager.withPlugin("com.google.dagger.hilt.android") {
+            task.configure { it.hiltArtifactObservation.convention(true) }
+        }
+        SafeArgsSnapshotTasks.register(project, variant.name, scope, task)
 
         // 같은 variant compiler의 선언 출력은 NO-SOURCE로 생성되지 않을 수 있다(예: Java만 있는 unit test의 Kotlin 출력).
         // javac classpath에 들어간 이 디렉터리는 부재까지 추적하는 watch로 기록한다. JVM 경로와 같이 provider로 감싸
@@ -112,6 +119,10 @@ internal object AndroidSnapshotTasks {
             task.configure { snapshot ->
                 snapshot.dependsOn(processTaskName)
                 snapshot.buildWitnessFiles.from(resourceWitness)
+                variant.sources.res?.all?.let {
+                    snapshot.androidMainResourceDirectories.from(witnessResDirs)
+                    snapshot.androidResourceProducerArtifact.set(if (project.path == ":") ":$processTaskName" else "${project.path}:$processTaskName")
+                }
             }
         }
         val javaInputs = components.associate { component ->
@@ -128,10 +139,11 @@ internal object AndroidSnapshotTasks {
         }
         // AGP callback은 onVariants 중 등록해야 compiler task 생성에 반영된다.
         AndroidCompilerInputs.javaCompilers(project, components) { component, compiler ->
+            val arguments = AndroidCompilerInputs.argumentProviderInputs(project, compiler, AndroidCompilerInputs.metadataProviderType())
             val additionalInputs = project.files(AndroidCompilerInputs.systemImages(project, compiler),
-                AndroidCompilerInputs.metadataInputs(project, compiler))
+                AndroidCompilerInputs.metadataInputs(project, compiler), arguments.files)
             val witness = CompilerWitnesses.automaticJavaCompile(project, compiler, scope,
-                roots.getValue(component.name).filter { it.isDirectory }, buildInputs, optionalOutputs, additionalInputs)
+                roots.getValue(component.name).filter { it.isDirectory }, buildInputs, optionalOutputs, additionalInputs, arguments.rejection)
             val (input, compilerInputs) = javaInputs.getValue(component.name)
             input.identity.set(compiler.path)
             input.primarySources.from(compiler.source)
@@ -139,7 +151,7 @@ internal object AndroidSnapshotTasks {
             // 출력 property를 map하면 producer 완료 전 조회가 되어 configuration cache가 거부한다. 위치만 읽는다.
             declaredClassOutputs.from(project.provider { compiler.destinationDirectory.get().asFile })
             input.witnessFiles.from(witness)
-            compilerInputs.from(additionalInputs, compiler.classpath, compiler.javaCompiler.map { it.metadata.installationPath.file("lib/modules") })
+            compilerInputs.from(AndroidCompilerInputs.snapshotInputs(project, compiler, additionalInputs))
         }
         project.afterEvaluate {
             val kotlin = KotlinJvmInputs.androidCompilations(project, roots)
@@ -163,6 +175,9 @@ internal object AndroidSnapshotTasks {
                             jdk.map { it.metadata.installationPath.file("lib/modules") })
                     }
                 }
+            }
+            if (project.pluginManager.hasPlugin("com.google.dagger.hilt.android")) {
+                AndroidArtifactCompilers.attach(project, task.get(), scope, buildInputs, optionalOutputs)
             }
         }
     }

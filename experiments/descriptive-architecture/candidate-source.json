@@ -1,0 +1,146 @@
+{
+  "protocol": "Prospective descriptive architecture assessment; no confidence or release gate substitution",
+  "product_sha": "13277fbbfd7d26e14a0c5bf7becf826ccb33f6c4",
+  "product_tree": "86ea1e2c50cd3f4ecb4b6cdac7ecd7ab0eecef73",
+  "patch": "candidate.patch",
+  "patch_sha256": "ea5e3efc3f0f563a1bc2015eecb9cab7a2bb1735d390f0485632f1eb9d9f2eba",
+  "changed_files": [
+    {
+      "path": "cli/src/main/kotlin/dev/kartograph/cli/ArchitectureCommand.kt",
+      "status": "M",
+      "sha256": "5c136882adf9d44aaa50c29b6922c24eb983dc125948c744ad10b2487ca1f0a2",
+      "bytes": 9543
+    },
+    {
+      "path": "cli/src/test/kotlin/dev/kartograph/cli/ArchitectureDispatchSelectionTest.kt",
+      "status": "A",
+      "sha256": "6d2358ec8c983e164a8ad7b187037a8a27379c5fe56055e9061ee754da35ef46",
+      "bytes": 30189
+    },
+    {
+      "path": "cli/src/test/kotlin/dev/kartograph/cli/FullIndexArchitectureCommandOracle.kt",
+      "status": "A",
+      "sha256": "d280d26be1e1b17fbabe039b8ad24439bd50492c30ca5b873db0d456f4b8e8fa",
+      "bytes": 9126
+    },
+    {
+      "path": "index/src/main/kotlin/dev/kartograph/index/ClassFileIndexer.kt",
+      "status": "M",
+      "sha256": "066cfd2632a3f03faaf0ffa3e8ed51bef64752ef0159da63329cb4e6610c1635",
+      "bytes": 62265
+    },
+    {
+      "path": "index/src/test/kotlin/dev/kartograph/index/FullRebuildGraphExportSelectionOracle.kt",
+      "status": "A",
+      "sha256": "2b5e34beb89164c85ede5f929659453be4c281d6a5b7fc20250fcf5bc39ed671",
+      "bytes": 740
+    },
+    {
+      "path": "index/src/test/kotlin/dev/kartograph/index/GraphExportIndexTest.kt",
+      "status": "M",
+      "sha256": "05fcc8118dbb507e9bf232c9fdbc5328403ae198d604d917ae9548ce0d49b930",
+      "bytes": 5934
+    },
+    {
+      "path": "index/src/test/kotlin/dev/kartograph/index/GraphExportSelectionIntegrationTest.kt",
+      "status": "A",
+      "sha256": "40fc45ff964f003d180491de7164f31205cfb66da84c4751d7945f9658a29f2f",
+      "bytes": 17766
+    },
+    {
+      "path": "index/src/test/kotlin/dev/kartograph/index/GraphExportSelectionTest.kt",
+      "status": "A",
+      "sha256": "79adf6d432cd8405b9298e222d20e0204b2d6e774a485e05e281bbab609b481e",
+      "bytes": 9239
+    }
+  ],
+  "oracle": {
+    "path": "cli/src/test/kotlin/dev/kartograph/cli/FullIndexArchitectureCommandOracle.kt",
+    "base_path": "cli/src/main/kotlin/dev/kartograph/cli/ArchitectureCommand.kt",
+    "base_source_sha256": "610367fd551f4e8f01b92903f48c62d83ecadc701f758a680efd835acf8eaaeb",
+    "only_substitution": {
+      "from": "internal object ArchitectureCommand {",
+      "to": "internal object FullIndexArchitectureCommandOracle {"
+    },
+    "mechanical_equality_verified": true
+  },
+  "unchanged_controls": [
+    "graph",
+    "dead",
+    "dead_private"
+  ],
+  "changed_commands": [
+    "cycles",
+    "rules",
+    "metrics"
+  ],
+  "reviewed_plan_sha256": "d585c8231d7f445ba6e2fbeaa51d444fc3f5d411500ddc20d3ddffb4fa3ac40a",
+  "prior_records": {
+    "architecture_pilot": "rejected under its original frozen screen",
+    "earlier_guard_pilot": "rejected under its original frozen screen",
+    "aa_qualification_run": 38554070997,
+    "aa_qualification_result": "not-qualified",
+    "aa_result_sha256": "9b9cd131caefc163657977c0b16163a89c1d48f0161e772426c32764577d98b0",
+    "architecture_only_descriptive_run": {
+      "run_id": 38567659274,
+      "url": "https://github.com/ictechgy/kartograph/actions/runs/38567659274",
+      "status": "inconclusive-for-release-headroom-justification",
+      "suite_paired_geometric_ratio": 0.9383176720807214,
+      "result_sha256": "2def76e7fce64119082149a1b3f07a2bec070d096bda7e2f8d70926bcf32b981",
+      "original_zip_sha256": "c64dd8db16e2121820198aa86ecbc9c32db4ce717bc31952b9974d4145016cde",
+      "original_evidence": "All 172 observations and original raw evidence remain unchanged; this is not a regrade."
+    }
+  },
+  "authorization": "This file pins reviewed inputs; it does not authorize publication or execution.",
+  "candidate_scope": "combined-architecture-dispatch-exclusion-and-index-zero-removal-reuse",
+  "candidate_source_manifest_sha256": "35d196ab775053055ff3e671e281f5b1b70dd783308e6d2825906d07733465c7",
+  "selection_oracle": {
+    "path": "index/src/test/kotlin/dev/kartograph/index/FullRebuildGraphExportSelectionOracle.kt",
+    "sha256": "2b5e34beb89164c85ede5f929659453be4c281d6a5b7fc20250fcf5bc39ed671",
+    "base_path": "index/src/main/kotlin/dev/kartograph/index/ClassFileIndexer.kt",
+    "base_source_sha256": "12458364e3099943afca8c53968709655484debbef836427438de4a0e6121a55",
+    "selection_sha256": "7134a44d51c5aeb2e2c71cea4b74e500fa5e1afeff6aea736399a6ea1b02930d",
+    "correspondence": "Exact old selection block; only a test function wrapper and return selected surround it.",
+    "mechanical_equality_verified": true
+  },
+  "allowed_install_differences": [
+    "lib/cli-0.21.0.jar",
+    "lib/index-0.21.0.jar"
+  ],
+  "required_correctness_cases": {
+    "cli": {
+      "dev.kartograph.cli.ArchitectureDispatchSelectionTest": [
+        "javac cross package interface and subclass fanout preserves authored dependencies(Path)",
+        "acyclic javac fanout retains strict success(Path)",
+        "constant reflection reference retains real cycle rule findings and metric rows(Path)",
+        "unresolved reflection observations survive without new architecture warnings(Path)",
+        "rules preserve unassigned allowed denied and exact explanation outcomes(Path)",
+        "directory jar and duplicate root precedence retain exact old results(Path)",
+        "missing empty truncated jar service and yaml failures preserve status and bytes(Path)",
+        "help usage and invalid paths preserve old parser exits(Path)",
+        "old indexing catch still encloses action but never swallows unrelated public exceptions(Path)",
+        "architecture leaves later default cold warm graph capture and dead dispatch intact(Path)",
+        "explicit dispatch selection preserves Kotlin metadata and bridge witnesses(Path)"
+      ]
+    },
+    "index": {
+      "dev.kartograph.index.GraphExportSelectionTest": [
+        "every origin and mixed exclusions reuse only zero removal graphs()",
+        "null and empty options retain identity including compiler state()",
+        "empty and populated compiler captures take old reconstruction path()",
+        "stateful exclusions preserve exact full membership sequence()",
+        "throwing exclusions preserve exception and call prefix()"
+      ],
+      "dev.kartograph.index.GraphExportSelectionIntegrationTest": [
+        "compiler fixtures match old selection across roots callbacks stubs and cache states(Path)",
+        "accepted cached origins and stub restored edges are filtered after expansion(Path)",
+        "full index preserves caller exclusion calls and throwing membership(Path)",
+        "malformed class and jar still fail before final selection(Path)",
+        "invalid cache bytes enums weights and lines reparse identically(Path)",
+        "assembly and restored stub overflow still fail before exclusions can remove them(Path)"
+      ]
+    }
+  },
+  "control_scope": "graph, dead and dead_private retain the same algorithmic selection behavior; the index bytecode and executables differ. This combined-versus-original comparison does not isolate causal savings of the new no-removal delta.",
+  "protocol_identity": "reviewed_plan_sha256 remains the original fixed protocol identity; candidate_scope separately identifies this prospective combined candidate."
+}

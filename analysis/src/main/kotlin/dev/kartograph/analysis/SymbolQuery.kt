@@ -7,6 +7,7 @@ import dev.kartograph.core.NodeId
 import dev.kartograph.core.RetentionReason
 import dev.kartograph.core.SourceLocation
 import dev.kartograph.core.qualifiedName
+import dev.kartograph.core.matchesQualifiedName
 
 /** cartograph의 SymbolQueryDocument와 같은 필드 계약을 쓰는 심볼 질의 응답이다. */
 public data class SymbolQueryDocument(
@@ -93,7 +94,7 @@ public object SymbolQuery {
         val effectiveLimitations = if (callSiteLinesCaptured) limitations
         else (limitations + "call-site-lines: saved graph predates direct call-site evidence; line references are unavailable").distinct().sorted()
         val matches = graph.nodes.values.filter { node ->
-            node.id.value == requested || node.name == requested || node.qualifiedName == requested
+            node.id.value == requested || node.name == requested || node.matchesQualifiedName(requested)
         }.sortedBy { it.id }
         if (matches.isEmpty()) return SymbolQueryDocument("notFound", requested, "symbol", effectiveLimitations)
         if (matches.size > 1) return SymbolQueryDocument(
@@ -109,10 +110,12 @@ public object SymbolQuery {
         val members = memberEdges.mapNotNull { edge -> graph.node(edge.target)?.toNeighborWithoutReferences(listOf("member"), 1) }
         val owner = graph.incomingEdgesTo(node.id).firstOrNull { it.kind == EdgeKind.MEMBER }
             ?.source?.let(graph::node)?.toNeighborWithoutReferences(listOf("member"), 1)
-        val direct = reachability.retentionEvidenceFor(node.id).firstOrNull()
+        val evidence = reachability.retentionEvidenceFor(node.id)
+        val direct = evidence.firstOrNull { it.reason != RetentionReason.UNKNOWN_KEEP_RULE } ?: evidence.firstOrNull()
         val reachable = node.id in reachability.reachableNodeIds
         val path = reachability.pathFromRootTo(node.id)?.mapNotNull(graph::node)?.map { it.qualifiedName }
         val state = when {
+            direct?.reason == RetentionReason.UNKNOWN_KEEP_RULE -> "unknown"
             direct?.reason == RetentionReason.KEEP_ANNOTATED_MEMBER -> "retainedByMember"
             direct != null -> "retained"
             reachable -> "reachable"
@@ -151,11 +154,14 @@ public object SymbolQuery {
             val visit = queue.removeFirst()
             if (!seen.add(visit.id)) continue
             graph.node(visit.id)?.let { found += it.toNeighbor(visit.edgeFacts, visit.depth, graph) }
+            // 응답은 BFS 순서의 앞 limit개와 잘림 여부뿐이라, limit+1번째 이웃을 찾으면 남은 depth 범위를 방문하지 않는다.
+            if (found.size > limit) break
             if (visit.depth >= depth) continue
             val edges = if (incoming) graph.incomingEdgesTo(visit.id) else graph.outgoingEdgesFrom(visit.id)
             edges.filter { it.kind.impliesUsage }.groupBy { if (incoming) it.source else it.target }
                 .toSortedMap().forEach { (id, grouped) ->
-                    queue += Visit(id, visit.depth + 1, grouped)
+                    // 이미 꺼낸 정점은 다시 꺼내도 건너뛰므로 큐에 넣지 않는다. 방문 표시는 꺼낼 때 그대로 해 순서와 간선 근거가 같다.
+                    if (id !in seen) queue += Visit(id, visit.depth + 1, grouped)
                 }
         }
         return NeighborPage(found.take(limit), found.size > limit)

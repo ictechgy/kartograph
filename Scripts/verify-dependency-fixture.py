@@ -7,6 +7,9 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+if not __debug__:
+    raise SystemExit('Dependency fixture verification requires Python assertions; remove -O/PYTHONOPTIMIZE.')
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--gradle', required=True)
 parser.add_argument('--plugin-jar', required=True)

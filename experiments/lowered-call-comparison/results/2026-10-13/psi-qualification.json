@@ -1,0 +1,19 @@
+{
+  "fixtureManifestSha256": "ffef91dd0974160fa4c360e4453cd43965250b48dd48e8b99b9cfe7535c6dc1e",
+  "psi": {
+    "actualRows": 12,
+    "expectedRows": 12,
+    "externalBoundarySites": 2,
+    "externalIdentityLimit": "Out-of-root target identities are not exported or qualified.",
+    "internalSites": 10,
+    "missingRows": [],
+    "qualified": true,
+    "unexpectedRows": []
+  },
+  "psiSha256": "238504b8a5ec2e537e67bf38843449504df578dbc1abebb2ab2044d2a020a9fc",
+  "sourceSha256": {
+    "lowered/LoweredJava.java": "86dfcefd038e73f8d9ad31e45d8249539e2c7ef51e9b8a9e6ae0756b4b67c18c",
+    "lowered/LoweredKotlin.kt": "8fcfc29d48d1ae788658291e3a4e318e282c3e5afa1004894596041470510eb9"
+  },
+  "status": "source-qualified"
+}

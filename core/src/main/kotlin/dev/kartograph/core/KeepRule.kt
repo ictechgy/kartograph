@@ -40,4 +40,8 @@ public data class KeepRule(
     val memberConditions: List<KeepMemberCondition> = emptyList(),
     val keptMembers: List<KeepMemberCondition> = emptyList(),
     val keepAllMembers: Boolean = false,
+    /** 전체 shrinking 비활성화와 미해결 규칙은 일반 class 매칭과 구별한다. */
+    val shrinkingDisabled: Boolean = false,
+    val unresolved: Boolean = false,
+    val rawSpecification: String? = null,
 )

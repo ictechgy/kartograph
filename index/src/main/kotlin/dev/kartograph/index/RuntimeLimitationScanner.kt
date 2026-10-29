@@ -18,10 +18,16 @@ public class IndexedClasses internal constructor(
     public val declarationsByRoot: List<Set<NodeId>> = emptyList(),
     public val selectedRootByNode: Map<NodeId, Int> = emptyMap(),
     public val statistics: IndexingStatistics = IndexingStatistics(),
+    /** 공개 externalCalls에서 제거된 내부 virtual/interface opcode를 재보강 때 재사용한다. */
+    private val projectCalls: List<dev.kartograph.core.ExternalCall> = emptyList(),
+    private val androidDerivation: AndroidFrameworkDerivation = AndroidFrameworkDerivation(),
 ) {
     /** 1회 파싱한 그래프에 dependency header를 보강하며 관측값과 호출 위치는 재사용한다. */
-    public fun withHierarchy(hierarchy: ClassHierarchy): IndexedClasses =
-        IndexedClasses(ExternalDispatchIndexer.enrich(graph, hierarchy), observations, hierarchy, declarationsByRoot, selectedRootByNode, statistics)
+    public fun withHierarchy(hierarchy: ClassHierarchy): IndexedClasses {
+        val android = AndroidFrameworkCallbacks.enrich(androidDerivation.removeFrom(graph), hierarchy)
+        return IndexedClasses(CallDeclarationIndexer(ExternalDispatchIndexer.enrichBounded(android.graph, hierarchy, null, projectCalls).graph, hierarchy).enrich(),
+            observations, hierarchy, declarationsByRoot, selectedRootByNode, statistics, projectCalls, android.derivation)
+    }
 }
 
 /** 한 인덱싱 실행에서 관측한 캐시 수명주기와 주요 phase 시간이다. */
@@ -34,6 +40,7 @@ public data class IndexingStatistics(
     val writeFailures: Int = 0,
     val readNanos: Long = 0,
     val cacheReadNanos: Long = 0,
+    /** cache 없는 작업 창은 read와 겹친 worker CPU를 더하지 않고 제출·순서 대기의 caller wall만 센다. */
     val parseNanos: Long = 0,
     val assemblyNanos: Long = 0,
     val hierarchyNanos: Long = 0,
@@ -153,6 +160,18 @@ public object RuntimeLimitationScanner {
             if (serviceLoading > 0) add("service-loading: $serviceLoading ServiceLoader call(s) require provider registration inputs")
             if (externalDispatch > 0) add("external-dispatch: $externalDispatch external virtual call(s) have no project implementation target")
             if (modeledDispatch > 0) add("dispatch-candidates: $modeledDispatch external virtual call(s) use conservative hierarchy candidates rather than proven receivers")
+            val bindingEntries = indexed.graph.externalCalls.filter { it.owner == "androidx/databinding/DataBindingUtil" &&
+                it.name in setOf("setContentView", "inflate", "bind") }
+            val bindingDeclarations = indexed.graph.nodes.values.count { node ->
+                node.annotations.any { it == "androidx/databinding/BindingAdapter" || it == "android/databinding/BindingAdapter" } ||
+                    node.supertypes.any { it in setOf("androidx/databinding/ViewDataBinding", "android/databinding/ViewDataBinding",
+                        "androidx/databinding/DataBinderMapper", "android/databinding/DataBinderMapper") }
+            }
+            if (bindingEntries.isNotEmpty() || bindingDeclarations > 0) add(
+                "data-binding-selection-partial: ${bindingEntries.size} generic entry call(s), " +
+                    "${bindingEntries.count { it.model == "android-data-binding-mapper" }} with a captured root mapper; " +
+                    "compiled callback and adapter paths are candidates; layout IDs, XML requireAll/attribute selection and variant overlays are not resolved",
+            )
             if (constants > 0) add("inlined-constant-references: $constants compile-time constant declaration(s) may have erased use sites")
             if (dynamicRegistrations > 0) add(
                 "dynamic-registration: $dynamicRegistrations runtime component registration call(s) are absent from the manifest graph",

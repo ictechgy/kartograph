@@ -8,6 +8,7 @@ import java.nio.file.Path
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 import javax.tools.ToolProvider
+import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -68,6 +69,6 @@ class ProcessorOutputIndexerTest {
         return output
     }
     private fun observation(root: Path, file: Path) = ProcessorOutputs("fixture:main", "javac", "fixture.Processor", "a".repeat(64), "b".repeat(64),
-        listOf(ProcessorOutput(root.relativize(file).toString(), "class", "api", CompilerEvidenceIndexer.sourceHash(file))), "c".repeat(64),
+        listOf(ProcessorOutput(root.relativize(file).invariantSeparatorsPathString, "class", "api", CompilerEvidenceIndexer.sourceHash(file))), "c".repeat(64),
         ProcessorCompilerInputs(":compileJava", emptyList(), "d".repeat(64), "e".repeat(64)))
 }

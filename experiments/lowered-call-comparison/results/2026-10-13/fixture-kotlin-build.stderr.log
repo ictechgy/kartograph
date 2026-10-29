@@ -1,0 +1,3 @@
+fixture/lowered/LoweredKotlin.kt:6:5: warning: expected performance impact from inlining is insignificant. Inlining works best for functions with parameters of function types.
+    inline fun inlineStep(value: Int): Int = LoweredJava.inlineLeaf(value)
+    ^^^^^^

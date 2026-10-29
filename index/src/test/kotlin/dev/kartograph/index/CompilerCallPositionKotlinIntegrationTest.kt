@@ -22,13 +22,18 @@ class CompilerCallPositionKotlinIntegrationTest {
         val classpathValue = System.getenv("KARTOGRAPH_KOTLIN_CLASSPATH")
         val javaHomeValue = System.getenv("KARTOGRAPH_JDK17_HOME")
         assumeTrue(!collectorValue.isNullOrBlank() && !classpathValue.isNullOrBlank() && !javaHomeValue.isNullOrBlank(),
-            "pinned collector, Kotlin 2.4.10 classpath and JDK 17 are required")
+            "pinned collector, explicit Kotlin classpath/version and JDK 17 are required")
         val collector = Path.of(collectorValue).toRealPath()
         val compilerClasspath = classpathValue.split(File.pathSeparator).filter(String::isNotBlank).map { Path.of(it).toRealPath() }
         val javaHome = Path.of(javaHomeValue).toRealPath()
         assumeTrue(Files.isRegularFile(collector) && compilerClasspath.isNotEmpty() && compilerClasspath.all(Files::isRegularFile) &&
             Files.isRegularFile(javaHome.resolve("bin/java")), "pinned compiler inputs are unavailable")
-        val stdlib = compilerClasspath.single { it.fileName.toString().startsWith("kotlin-stdlib-2.4.10") }
+        val kotlinVersion = requireNotNull(System.getenv("KARTOGRAPH_CALL_KOTLIN_VERSION"))
+        require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(kotlinVersion))
+        val compiler = compilerClasspath.single { it.fileName.toString().startsWith("kotlin-compiler-embeddable-") }
+        require(compiler.fileName.toString() == "kotlin-compiler-embeddable-$kotlinVersion.jar")
+        val stdlib = compilerClasspath.single { it.fileName.toString().startsWith("kotlin-stdlib-") }
+        require(stdlib.fileName.toString() == "kotlin-stdlib-$kotlinVersion.jar")
 
         val sourceDirectory = Files.createDirectories(root.resolve("src/main/kotlin/demo"))
         val users = sourceDirectory.resolve("KotlinUsers.kt")
@@ -77,7 +82,7 @@ class CompilerCallPositionKotlinIntegrationTest {
 
         val envelope = CompilerEvidenceReader.readEnvelope(document)
         assertEquals("kotlin-constants", envelope.evidence.collector)
-        assertEquals("2.4.10", envelope.evidence.compilerVersion)
+        assertEquals(kotlinVersion, envelope.evidence.compilerVersion)
         assertEquals(collectorInput.sha256, envelope.evidence.artifactSha256)
         val receipts = CompilerEvidenceReceipts.validate(
             root, "kotlin", token, inputs, listOf(document), setOf(users, targets),
@@ -103,7 +108,7 @@ class CompilerCallPositionKotlinIntegrationTest {
         assertEquals("src/main/kotlin/demo/KotlinUsers.kt", position.file.path)
         assertEquals(CompilerEvidenceIndexer.sourceHash(users), position.file.sha256)
         assertEquals("kotlin-constants", position.collector)
-        assertEquals("2.4.10", position.compilerVersion)
+        assertEquals(kotlinVersion, position.compilerVersion)
         assertEquals(CompilerSourceCoordinateBasis.KOTLIN_UTF16_NORMALIZED_SOURCE, position.coordinateBasis)
         assertEquals(52, position.offsetUtf16)
         assertEquals(58, position.endOffsetUtf16)

@@ -14,12 +14,13 @@ internal class ReactNativeEventScanner(private val projectRoot: Path) {
         val root = projectRoot.toRealPath()
         val files = mutableListOf<Path>()
         ProjectTraversal.walkSources(root) { files.add(it) }
+        val attacher = graph?.let { SnapshotSymbolAttacher(it, root) }
         val facts = files.sorted().flatMap { path -> scanFile(root, path) }
-            .map { fact -> graph?.let { attachSnapshotSymbol(fact, it, root) } ?: fact }
+            .map { fact -> attacher?.attach(fact) ?: fact }
         val missing = facts.count { it.symbol?.usr == null }
         val dynamic = facts.count { it.dynamic }
         return BridgeFactsDocument(
-            version = 2, transport = "react-native-event", project = root.toString(),
+            version = 2, transport = "react-native-event", project = projectIdentity(root),
             target = if (facts.isEmpty()) null else "react-native", facts = facts,
             generatedAt = bridgeTimestamp(generatedAt?.let(Instant::parse) ?: Instant.now()),
             sourceModifiedAt = files.maxOfOrNull { Files.getLastModifiedTime(it).toInstant() }?.let(::bridgeTimestamp),
@@ -33,7 +34,8 @@ internal class ReactNativeEventScanner(private val projectRoot: Path) {
 
     private fun scanFile(root: Path, path: Path): List<BridgeFact> {
         val source = ProjectTraversal.readSourceLines(root, path).joinToString("\n")
-        val comments = maskDeclarationComments(source)
+        // 주석만 지운 뷰다. `'"'` 같은 문자 리터럴도 인용으로 읽어 뒤 주석이 코드로 남지 않게 하고, channel 식은 이 뷰에서 자른다.
+        val comments = stripComments(source)
         val code = maskStringContents(comments)
         val importsReact = Regex("\\bimport\\s+com\\.facebook\\.react\\.").containsMatchIn(code)
         return EMIT.findAll(code).filter { importsReact || it.value.contains("com.facebook.react.modules.core.") }.map { match ->

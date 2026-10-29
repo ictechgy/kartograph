@@ -13,6 +13,9 @@ internal enum class WitnessRejection(val description: String) {
     FAIL_ON_ERROR_REQUIRED("compiler witness requires failOnError=true"),
     MISSING_INPUT("fingerprint input is missing"),
     CHANGED_INPUTS("compiler inputs changed during compilation; rebuild before capturing a snapshot"),
+    UNDECLARED_SOURCE("compiler sources are outside declared source directories; register generated sources with the source set"),
+    UNCOVERED_FILE_INPUT("compiler witness byte inputs omit declared compiler files; supply additionalInputs explicitly"),
+    UNSUPPORTED_ARGUMENT_PROVIDER("compiler argument provider file inputs are inaccessible; snapshot capture is unsupported"),
     UNAVAILABLE("compiler evidence could not be captured; inspect the selected compiler input configuration");
 
     /** 일시 I/O·빌드 중 변경·내부 launcher 설정은 Gradle의 기존 입력 기록만으로 고정하지 않는다. */

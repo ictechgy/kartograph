@@ -85,10 +85,11 @@ public object ContentFingerprint {
             require(Files.isRegularFile(path, NOFOLLOW_LINKS)) { "watched input must be a regular file" }
             return planHash(path, sourcesOnly = false, request.maximumSpoolBytes, request.spoolDirectory, request.sizeHint)
         }
-        if (role !in setOf("source-watch", "directory-watch")) {
+        if (role !in setOf("source-watch", "directory-watch", "android-resources")) {
             return planHash(path, role == "sources", request.maximumSpoolBytes, request.spoolDirectory, request.sizeHint)
         }
-        // 없음과 빈 디렉터리는 모두 컴파일할 소스가 없는 상태다. 조회 실패를 없음으로 대체하지 않는다.
+        // 없음과 빈 디렉터리는 모두 관측할 멤버가 없는 상태다. android-resources는 XML을 포함한 전체 바이트를 읽는다.
+        // 조회 실패를 없음으로 대체하지 않는다.
         if (Files.notExists(path, NOFOLLOW_LINKS)) return ObservationPlan.constant(values(listOf("directory")))
         require(Files.isDirectory(path, NOFOLLOW_LINKS)) { "watched input must be a directory" }
         // 소스 확장자가 없는 symlink 디렉터리도 이후 소스를 숨길 수 있으므로 먼저 거부한다.
@@ -165,7 +166,7 @@ public object ContentFingerprint {
         }
 
     private fun resolveIdentity(projectRoot: Path, request: ObservationRequest, observation: HashObservation): CapturedContentFingerprint {
-        val watchRole = request.role in setOf("source-watch", "directory-watch", "file-watch", "build-logic-watch")
+        val watchRole = request.role in setOf("source-watch", "directory-watch", "android-resources", "file-watch", "build-logic-watch")
         val absolute = if (watchRole && Files.notExists(request.path, NOFOLLOW_LINKS)) {
             request.path.toFile().canonicalFile.toPath()
         } else request.path.toRealPath()

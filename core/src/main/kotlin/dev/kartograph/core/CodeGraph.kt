@@ -1,5 +1,8 @@
 package dev.kartograph.core
 
+import java.util.IdentityHashMap
+import java.util.RandomAccess
+
 /**
  * 중복과 dangling edge를 정리하고 방향별 인접 목록을 한 번만 만드는 불변 코드 그래프다.
  * 분석 알고리즘이 전체 간선을 반복 스캔하지 않게 한다.
@@ -60,6 +63,68 @@ public class CodeGraph private constructor(
     public val compilerCallPositionsCaptured: Boolean
         get() = state.compilerCallPositionsCaptured
 
+    /** v3 selector와 별도인 compiler-authored 호출 분류다. 누락된 caller의 완전성은 알 수 없다. */
+    public val compilerAuthoredCallers: List<CompilerAuthoredCaller>
+        get() = state.compilerAuthoredCallers
+
+    /** COMPLETE 행의 calls만 해당 caller의 전체 authored 집합이다. 원시 간선과 합치지 않는다. */
+    public fun compilerAuthoredCallsFrom(caller: NodeId): CompilerAuthoredCaller? =
+        state.compilerAuthoredCallersById[caller]
+
+    /** 검증된 side table을 원시 간선·dispatch와 독립적으로 교체한다. */
+    public fun withCompilerAuthoredCalls(callers: Iterable<CompilerAuthoredCaller>): CodeGraph {
+        val rows = callers.toList()
+        require(rows.size <= 200_000 && rows.map { it.caller }.distinct().size == rows.size) { "duplicate authored caller coverage" }
+        val normalized = rows.filter { it.caller in state.nodes }.map { row ->
+            require(state.nodes.getValue(row.caller).let { it.kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) &&
+                NodeAttribute.EXTERNAL_STUB !in it.attributes }) { "authored caller must be a project method" }
+            require(row.calls.all { it.origin != AuthoredCallOrigin.PROJECT || it.target !in state.nodes ||
+                state.nodes.getValue(it.target).kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) }) { "authored target must be a method" }
+            require(row.calls.all { call -> state.nodes[call.target]?.let { target ->
+                (call.origin == AuthoredCallOrigin.BINARY) == (NodeAttribute.EXTERNAL_STUB in target.attributes)
+            } ?: true }) { "authored target scope contradicts graph" }
+            row.retainingTargets(state.nodes.keys).let { it.copy(
+                calls = it.calls.sortedWith(compareBy({ call -> call.offsetUtf16 }, { call -> call.target })),
+                reasons = it.reasons.sortedBy { reason -> reason.name }) }
+        }.sortedBy { it.caller }
+        return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
+            state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses, state.lambdaEscapes,
+            state.locatedCompilerReferences, state.compilerCallPositionsCaptured, state.outgoing, state.incoming, normalized, state.compilerCallerInventories, state.compilerSourceUseEvidence))
+    }
+
+    /** source/body와 실제 output method의 전체 accounting이다. CALL이 없는 method도 포함한다. */
+    public val compilerCallerInventories: List<CompilerCallerInventory>
+        get() = state.compilerCallerInventories
+
+    /** inventory를 붙여도 원시 그래프는 바뀌지 않으며 missing output은 projection incomplete로 남는다. */
+    public fun withCompilerCallerInventories(inventories: Iterable<CompilerCallerInventory>): CodeGraph {
+        val rows = inventories.toList()
+        require(rows.size <= 256 && rows.map { it.scope to it.artifact }.distinct().size == rows.size) { "duplicate caller inventory task" }
+        require(rows.sumOf { it.sources.size + it.bodies.size + it.outputs.size + it.methods.size + it.bodies.sumOf { body -> body.methods.size.toLong() } } <= 200_000) { "caller inventories exceed total row limit" }
+        val owners = rows.flatMap { it.outputs }.mapNotNull { it.owner }
+        val methods = rows.flatMap { it.methods }.map { it.id }
+        require(owners.distinct().size == owners.size && methods.distinct().size == methods.size) { "overlapping caller inventory outputs" }
+        val sourceOwners = rows.flatMap { row -> row.sources.map { row.scope to it.path } }
+        require(sourceOwners.distinct().size == sourceOwners.size) { "duplicate caller inventory source owner" }
+        val normalized = rows.map { row -> row.copy(sources = row.sources.sortedBy { it.path },
+            bodies = row.bodies.map { it.copy(methods = it.methods.sorted()) }.sortedBy { it.key },
+            outputs = row.outputs.sortedBy { it.path }, methods = row.methods.sortedBy { it.id },
+            sourceBodyCounts = row.sourceBodyCounts.toSortedMap()).retainingNodes(state.nodes) }.sortedWith(compareBy({ it.scope }, { it.artifact }))
+        return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
+            state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses, state.lambdaEscapes,
+            state.locatedCompilerReferences, state.compilerCallPositionsCaptured, state.outgoing, state.incoming,
+            state.compilerAuthoredCallers, normalized, state.compilerSourceUseEvidence))
+    }
+
+    /**
+     * 같은 JVM identity/관계를 유지한 표시 보강 또는 node projection에 기존 C1/C2 capture-time 사실을 보존한다.
+     * 제거·변경된 선언과 source 모순은 완전성을 잃는다. 현재 input/output 신선도 검증을 대신하지 않는다.
+     */
+    public fun withCompilerSourceFactsFrom(original: CodeGraph): CodeGraph = CompilerSourceFacts.retain(original, this)
+    /** 명시적으로 수집한 원본 선택이며 runtime 간선/분석 정책에 참여하지 않는다. */
+    public val compilerSourceUseEvidence: CompilerSourceUseEvidence?
+        get() = state.compilerSourceUseEvidence
+
     public val edges: List<GraphEdge>
         get() = state.edges
 
@@ -119,8 +184,27 @@ public class CodeGraph private constructor(
             true,
             state.outgoing,
             state.incoming,
+            state.compilerAuthoredCallers,
+            state.compilerCallerInventories,
+            state.compilerSourceUseEvidence,
         ))
     }
+
+    /** 새 channel은 전부 검증한 뒤 한 번 붙이며 다른 capture로 덮어쓰지 않는다. */
+    public fun withCompilerSourceUses(evidence: CompilerSourceUseEvidence): CodeGraph {
+        evidence.requireMatchesGraph(this)
+        val previous = state.compilerSourceUseEvidence
+        require(previous == null || previous == evidence) { "conflicting compiler source use attachment" }
+        if (previous != null) return this
+        return CodeGraph(CanonicalState(state.nodes, state.nodeIds, state.edges, state.externalCalls,
+            state.serviceProviders, state.enclosures, state.callbackArguments, state.parameterUses,
+            state.lambdaEscapes, state.locatedCompilerReferences, state.compilerCallPositionsCaptured,
+            state.outgoing, state.incoming, state.compilerAuthoredCallers, state.compilerCallerInventories, evidence))
+    }
+
+    /** graph 복사/가지치기가 원래 capture의 근거와 view 계수를 보존하도록 한다. */
+    public fun preserveCompilerSourceUsesFrom(original: CodeGraph): CodeGraph =
+        original.compilerSourceUseEvidence?.let { withCompilerSourceUses(it.select(nodes.keys)) } ?: this
 
     /**
      * 이미 정규화된 그래프에 간선 delta를 더해 새 불변 그래프를 만든다.
@@ -162,6 +246,9 @@ public class CodeGraph private constructor(
                 state.compilerCallPositionsCaptured,
                 state.outgoing,
                 state.incoming,
+                state.compilerAuthoredCallers,
+                state.compilerCallerInventories,
+                state.compilerSourceUseEvidence,
             ))
         }
 
@@ -170,7 +257,7 @@ public class CodeGraph private constructor(
         val outgoing = mergedEdges.groupBy(GraphEdge::source)
         val incoming = mergedEdges.groupBy(GraphEdge::target)
         return CodeGraph(CanonicalState(
-            state.nodes,
+            retainDefaultBridgeWitnesses(state.nodes, outgoing),
             state.nodeIds,
             mergedEdges,
             calls,
@@ -183,13 +270,23 @@ public class CodeGraph private constructor(
             state.compilerCallPositionsCaptured,
             outgoing,
             incoming,
+            state.compilerAuthoredCallers,
+            state.compilerCallerInventories,
+            state.compilerSourceUseEvidence,
         ))
     }
 
     private fun collectDelta(edges: Iterable<GraphEdge>): List<DeltaEntry> {
+        // 큰 Collection에서 endpoint마다 NodeId를 boxing하는 대신 현재 key 값만 한 번 복사한다.
+        // O(nodes) 메모리와 준비 비용을 쓰므로 작은/크기 미상의 iterable은 기존 조회를 유지한다.
+        val nodeValues: Set<String>? = if (edges is Collection<*> && edges.size > state.nodes.size) {
+            state.nodes.keys.mapTo(HashSet(state.nodes.size)) { it.value }
+        } else null
         val merged = mutableMapOf<EdgeSignature, EdgeAccumulator>()
         for (edge in edges) {
-            if (edge.source !in state.nodes || edge.target !in state.nodes) continue
+            if (nodeValues != null) {
+                if (edge.source.value !in nodeValues || edge.target.value !in nodeValues) continue
+            } else if (edge.source !in state.nodes || edge.target !in state.nodes) continue
             val signature = EdgeSignature(edge.source, edge.target, edge.kind, edge.origin)
             merged.getOrPut(signature, ::EdgeAccumulator).add(edge)
         }
@@ -256,7 +353,12 @@ public class CodeGraph private constructor(
         val compilerCallPositionsCaptured: Boolean,
         val outgoing: Map<NodeId, List<GraphEdge>>,
         val incoming: Map<NodeId, List<GraphEdge>>,
-    )
+        val compilerAuthoredCallers: List<CompilerAuthoredCaller> = emptyList(),
+        val compilerCallerInventories: List<CompilerCallerInventory> = emptyList(),
+        val compilerSourceUseEvidence: CompilerSourceUseEvidence? = null,
+    ) {
+        val compilerAuthoredCallersById: Map<NodeId, CompilerAuthoredCaller> = compilerAuthoredCallers.associateBy { it.caller }
+    }
 
     private data class EdgeSignature(
         val source: NodeId,
@@ -292,9 +394,19 @@ public class CodeGraph private constructor(
             parameterUseInputs: Iterable<ParameterUse>,
             lambdaEscapeInputs: Iterable<LambdaEscape>,
         ): CanonicalState {
-            val nodes = buildMap {
-                nodeInputs.forEach { node -> putIfAbsent(node.id, node) }
-            }
+            // 반복 조회는 JVM hash table을 쓰되 첫 입력 순서와 읽기 전용 map 계약은 유지한다.
+            val nodes = java.util.Collections.unmodifiableMap(linkedMapOf<NodeId, GraphNode>().apply {
+                nodeInputs.forEach { node ->
+                    val previous = putIfAbsent(node.id, node)
+                    // 첫 입력의 일반 정점 사실은 그대로 두되 서로 다른 capture를 완전한 enum 목록으로 합치지 않는다.
+                    if (previous != null && previous.enumConstants != null &&
+                        (previous.enumConstants != node.enumConstants || previous.kind != node.kind ||
+                            previous.moduleName != node.moduleName || previous.location?.path != node.location?.path ||
+                            previous.sourceDeclaration != node.sourceDeclaration)) {
+                        put(node.id, previous.copy(enumConstants = null))
+                    }
+                }
+            })
             val externalCalls = normalizeExternalCalls(externalCallInputs, nodes)
             val serviceProviders = serviceProviderInputs.distinct().sorted()
             val enclosures = enclosureInputs
@@ -310,8 +422,9 @@ public class CodeGraph private constructor(
                 .filter { it.caller in nodes && it.lambda in nodes }
                 .distinct().sorted()
             val edges = mergeAllEdges(edgeInputs, nodes)
+            val outgoing = edges.groupBy(GraphEdge::source)
             return CanonicalState(
-                nodes,
+                retainDefaultBridgeWitnesses(nodes, outgoing),
                 nodes.keys.sorted(),
                 edges,
                 externalCalls,
@@ -322,18 +435,95 @@ public class CodeGraph private constructor(
                 lambdaEscapes,
                 emptyList(),
                 false,
-                edges.groupBy(GraphEdge::source),
+                outgoing,
                 edges.groupBy(GraphEdge::target),
             )
+        }
+
+        // 선택/가지치기로 근거 CALL 또는 원본 정점이 사라지면 연관도 미확정으로 되돌린다.
+        // 원본 그래프는 그대로 두고 실제로 제거할 항목이 있을 때만 정점 map을 복사한다.
+        private fun retainDefaultBridgeWitnesses(
+            nodes: Map<NodeId, GraphNode>, outgoing: Map<NodeId, List<GraphEdge>>,
+        ): Map<NodeId, GraphNode> {
+            var changed: MutableMap<NodeId, GraphNode>? = null
+            nodes.values.forEach { node ->
+                val association = node.kotlinDefaultBridge ?: return@forEach
+                if (association.target !in nodes || outgoing[node.id].orEmpty().none {
+                    it.target == association.target && it.kind == EdgeKind.CALL && it.origin == EdgeOrigin.BYTECODE
+                }) {
+                    if (changed == null) changed = nodes.toMutableMap()
+                    changed!![node.id] = node.copy(kotlinDefaultBridge = null)
+                }
+            }
+            return changed ?: nodes
         }
 
         private fun normalizeExternalCalls(
             calls: Iterable<ExternalCall>,
             nodes: Map<NodeId, GraphNode>,
-        ): List<ExternalCall> = calls
-            .filter { it.caller in nodes && (it.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(it.target).attributes) }
-            .map { it.copy(resolvedTargets = it.resolvedTargets.filter(nodes::containsKey).distinct().sorted()) }
-            .distinct().sorted()
+        ): List<ExternalCall> {
+            // 한 번의 정규화 안에서만 공유한다. 새 그래프/가지치기는 현재 정점으로 다시 검증한다.
+            val candidates = IdentityHashMap<List<NodeId>, List<NodeId>>()
+            val normalized = calls
+                .filter { it.caller in nodes && (it.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(it.target).attributes) }
+                .map { call ->
+                    val targets = call.resolvedTargets
+                    val canonical = if (targets.isEmpty()) emptyList() else candidates.getOrPut(targets) {
+                        val retained = targets.filter(nodes::containsKey).distinct().sorted()
+                        if (targets is CanonicalTargets && retained == targets) targets
+                        else if (retained.isEmpty()) emptyList() else CanonicalTargets(retained)
+                    }
+                    val declaration = call.declaration?.takeUnless { declaration ->
+                        declaration.scope == CallDeclarationScope.PROJECT &&
+                            (declaration.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(declaration.target).attributes) ||
+                            call.kind == InvocationKind.INTERFACE && declaration.scope == CallDeclarationScope.EXTERNAL &&
+                            nodes[NodeId("class:${call.owner}")]?.let { NodeAttribute.EXTERNAL_STUB !in it.attributes } == true
+                    }?.let { declaration ->
+                        require(declaration.ownerChain.size in 1..CallDeclaration.MAX_OWNER_CHAIN) { "invalid call declaration chain size" }
+                        if (declaration.ownerChain is CanonicalOwnerChain) declaration
+                        else declaration.copy(ownerChain = CanonicalOwnerChain(declaration.ownerChain.toList()))
+                    }
+                    // 값이 같아도 caller의 mutable 빈 목록은 재사용하지 않는다. identity가 같은 방어 복사만 공유한다.
+                    if (canonical === targets && declaration === call.declaration) call
+                    else call.copy(resolvedTargets = canonical, declaration = declaration)
+                }
+                .sorted()
+            // compareTo의 같은 key 안에서만 equals 중복이 있을 수 있다. 유일한 호출까지 전체 후보 목록을 해시하지 않는다.
+            val distinct = ArrayList<ExternalCall>(normalized.size)
+            var previous: ExternalCall? = null
+            var sameKey: MutableSet<ExternalCall>? = null
+            for (call in normalized) {
+                val before = previous
+                if (before == null || before.compareTo(call) != 0) {
+                    sameKey = null
+                    distinct += call
+                } else {
+                    val seen = sameKey ?: linkedSetOf(before).also { sameKey = it }
+                    if (seen.add(call)) distinct += call
+                }
+                previous = call
+            }
+            return CanonicalCalls(distinct)
+        }
+
+        // 원본 리스트나 하위 목록으로 수정할 수 없는 방어 복사다. 다른 graph의 정점 검증을 우회하는 표식으로 쓰지 않는다.
+        private class CanonicalCalls(private val entries: List<ExternalCall>) : AbstractList<ExternalCall>(), RandomAccess {
+            override val size: Int get() = entries.size
+            override fun get(index: Int): ExternalCall = entries[index]
+        }
+
+        private class CanonicalOwnerChain(private val entries: List<String>) : AbstractList<String>(), RandomAccess {
+            override val size: Int get() = entries.size
+            override fun get(index: Int): String = entries[index]
+        }
+
+        // 방어 복사만 감싸므로 해시가 바뀌지 않는다. 같은 후보를 가진 호출마다 전체 목록을 재해시하지 않는다.
+        private class CanonicalTargets(private val entries: List<NodeId>) : AbstractList<NodeId>(), RandomAccess {
+            private val cachedHashCode = entries.hashCode()
+            override val size: Int get() = entries.size
+            override fun get(index: Int): NodeId = entries[index]
+            override fun hashCode(): Int = cachedHashCode
+        }
 
         private fun mergeAllEdges(edges: Iterable<GraphEdge>, nodes: Map<NodeId, GraphNode>): List<GraphEdge> {
             val merged = mutableMapOf<EdgeSignature, EdgeAccumulator>()

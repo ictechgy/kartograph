@@ -1,15 +1,20 @@
 package dev.kartograph.export
 
+import dev.kartograph.core.AndroidResourceBindingEvidence
+import dev.kartograph.core.AndroidResourceEvidence
 import dev.kartograph.core.CallResolution
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.CompilerEvidenceSource
+import dev.kartograph.core.CompilerEnumDecisionEvidence
 import dev.kartograph.core.CompilerSourceCoordinateBasis
 import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.EdgeOrigin
+import dev.kartograph.core.EnumConstantIds
 import dev.kartograph.core.ExternalCall
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.InvocationKind
+import dev.kartograph.core.KotlinDefaultBridge
 import dev.kartograph.core.JvmModifier
 import dev.kartograph.core.KartographVersion
 import dev.kartograph.core.LexicalEnclosure
@@ -52,8 +57,37 @@ public data class QuerySnapshot(
     val callbackFactsCaptured: Boolean = true,
     /** 새 snapshot이 sparse call-site evidence를 캡처했는지다. 옛 문서는 false로 읽는다. */
     val callSiteLinesCaptured: Boolean = true,
+    /** 보존 교환 문서의 원본 관측이며 compiler-task build provenance와 독립적이다. */
+    val externalRetentionContexts: List<ExternalRetentionDocumentContext> = emptyList(),
+    /** opt-in compiler 판단 capture이며 null은 미수집이다. graph view에서도 원본 행을 유지한다. */
+    val enumDecisionEvidence: CompilerEnumDecisionEvidence? = null,
+    /** 미승인 XML 관측이다. null은 미수집이며 영향 mapping admission을 뜻하지 않는다. */
+    val androidResourceEvidence: AndroidResourceEvidence? = null,
+    /** 저장 당시 main resource→선택 R 산출물의 대응이다. 현재 freshness는 별도로 검사한다. */
+    val androidResourceBindings: AndroidResourceBindingEvidence? = null,
+    /** 생성 task의 관측과 compiler 바이트로 결박한 신원이다. 런타임 보존 사실과 독립적이다. */
+    val generationEvidence: dev.kartograph.core.GenerationEvidence? = null,
 ) {
     init {
+        if (generationEvidence == null) {
+            require(graph.nodes.values.none { NodeAttribute.GENERATED_SOURCE_EVIDENCE in it.attributes }) {
+                "generated graph marker requires generation evidence"
+            }
+        } else generationEvidence.requireMatches(graph, requireNotNull(provenance) { "generation evidence requires provenance" },
+            requireNotNull(scope) { "generation evidence requires scope" })
+        androidResourceBindings?.requireMatches(
+            requireNotNull(androidResourceEvidence) { "resource bindings require resource facts" },
+            requireNotNull(provenance) { "resource bindings require provenance" },
+            graph, requireNotNull(scope) { "resource bindings require scope" })
+        androidResourceEvidence?.let { evidence ->
+            require(evidence.scope == scope) { "Android resources require the matching snapshot scope" }
+            require(provenance?.memberScopes.isNullOrEmpty()) { "Android resources are not supported in aggregate snapshots" }
+        }
+        enumDecisionEvidence?.let { evidence ->
+            evidence.requireMatchesGraph(graph)
+            evidence.requireMatchesProvenance(requireNotNull(provenance) { "enum decisions require snapshot provenance" },
+                requireNotNull(scope) { "enum decisions require snapshot scope" })
+        }
         require(revision == null || Regex("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}").matches(revision)) { "snapshot revision must be a full commit hash" }
         require(scope == null || (scope.length <= 200 && Regex("[A-Za-z0-9_.:-]+").matches(scope))) { "snapshot scope must be a portable project and variant label" }
         require(processorOutputs.size <= 256 && processorOutputs.all { it.scope == scope }) { "processor outputs require the matching snapshot scope" }
@@ -73,13 +107,13 @@ public object QuerySnapshotCodec {
     /** 저장 snapshot의 호환 기본 상한이며 opt-in하지 않은 호출에 적용한다. */
     public const val DEFAULT_MAX_MIB: Int = 64
     /** 명시적 저장 snapshot 상한이 넘을 수 없는 절대 경계다. */
-    public const val MAX_MIB: Int = 128
+    public const val MAX_MIB: Int = 1024
     /** 한 번에 읽는 질의 문서의 상한이다. */
     public const val MAX_BYTES: Int = DEFAULT_MAX_MIB * 1024 * 1024
 
     /** CLI/adapter의 MiB 설정을 overflow 없는 byte 상한으로 검증한다. */
     public fun maximumBytes(maximumMiB: Int): Int {
-        require(maximumMiB in 1..MAX_MIB) { "snapshot maximum must be 1..128 MiB" }
+        require(maximumMiB in 1..MAX_MIB) { "snapshot maximum must be 1..1024 MiB" }
         return maximumMiB * 1024 * 1024
     }
 
@@ -90,14 +124,31 @@ public object QuerySnapshotCodec {
     public fun render(snapshot: QuerySnapshot, compact: Boolean): String = render(snapshot, compact, MAX_BYTES)
 
     private fun renderContent(snapshot: QuerySnapshot, compact: Boolean, maximumBytes: Int): String {
+        snapshot.generationEvidence?.requireMatches(snapshot.graph, requireNotNull(snapshot.provenance), requireNotNull(snapshot.scope))
+        snapshot.graph.compilerSourceUseEvidence?.let { evidence ->
+            evidence.requireMatchesGraph(snapshot.graph)
+            evidence.requireMatchesProvenance(requireNotNull(snapshot.provenance) { "compiler source uses require snapshot provenance" },
+                requireNotNull(snapshot.scope) { "compiler source uses require snapshot scope" })
+        }
+        snapshot.enumDecisionEvidence?.let { evidence ->
+            evidence.requireMatchesGraph(snapshot.graph)
+            evidence.requireMatchesProvenance(requireNotNull(snapshot.provenance) { "enum decisions require snapshot provenance" },
+                requireNotNull(snapshot.scope) { "enum decisions require snapshot scope" })
+        }
         val positions = if (compact) snapshot.graph.nodeIds.withIndex().associate { it.value to it.index } else emptyMap()
         val encoding = if (compact) CompactSnapshotGraph(positions.mapKeys { it.key.value }) else null
         return boundedJsonValue(sortedMapOf(
         "format" to FORMAT,
-        "version" to if (compact) 2 else 1,
+        "version" to (if (compact) 2 else 1) + (if (snapshot.generationEvidence != null) 2 else 0),
+        "generationEvidence" to snapshot.generationEvidence?.let(GenerationEvidenceSnapshotCodec::value),
         "toolVersion" to snapshot.toolVersion,
         "revision" to snapshot.revision, "scope" to snapshot.scope,
         "provenance" to snapshot.provenance?.let(BuildWitnessCodec::provenanceValue),
+        "enumDecisions" to snapshot.enumDecisionEvidence?.let(CompilerEnumDecisionSnapshotCodec::value),
+        "androidResources" to snapshot.androidResourceEvidence?.let(AndroidResourceEvidenceSnapshotCodec::value),
+        "androidResourceBindings" to snapshot.androidResourceBindings?.let(AndroidResourceBindingSnapshotCodec::value),
+        "externalRetentionContexts" to snapshot.externalRetentionContexts.takeIf { it.isNotEmpty() }
+            ?.map { it.canonicalDocument }?.distinct()?.sorted(),
         "processorOutputs" to snapshot.processorOutputs.sortedWith(compareBy({ it.kind }, { it.processor }, { it.processorArtifact }, { it.rawSha256 })).map(ProcessorOutputCodec::value),
         "processorGenerations" to snapshot.processorGenerations.sortedWith(compareBy({ it.processor }, { it.artifactSha256 })).map { generation ->
             sortedMapOf("processor" to generation.processor, "artifactSha256" to generation.artifactSha256,
@@ -113,8 +164,14 @@ public object QuerySnapshotCodec {
         },
         "graph" to sortedMapOf(
             "nodes" to snapshot.graph.nodeIds.map { snapshot.graph.nodes.getValue(it).toValue().let { value -> encoding?.node(value) ?: value } },
+            // field 정점이 가지치기돼도 전체 capture 목록을 보존한다. compact 사전과 독립적인 선택 확장이다.
+            "enumInventories" to snapshot.graph.nodeIds.mapNotNull { id ->
+                snapshot.graph.nodes.getValue(id).enumConstants?.let { constants ->
+                    sortedMapOf("usr" to id.value, "constants" to constants.map { it.value })
+                }
+            },
             "edges" to snapshot.graph.edges.map { edge ->
-                if (encoding != null) listOf(positions.getValue(edge.source), positions.getValue(edge.target),
+                if (encoding != null) listOf(encoding.reference(edge.source.value), encoding.reference(edge.target.value),
                     encoding.text(edge.kind.name.lowerCamel()), encoding.text(edge.origin.name.lowerCamel()), edge.weight)
                 else sortedMapOf<String, Any?>("source" to edge.source.value, "target" to edge.target.value,
                     "kind" to edge.kind.name.lowerCamel(), "origin" to edge.origin.name.lowerCamel(), "weight" to edge.weight)
@@ -143,7 +200,7 @@ public object QuerySnapshotCodec {
             ).filterValues { it != null } },
             "compilerCallEvidence" to if (snapshot.graph.compilerCallPositionsCaptured) snapshot.graph.locatedCompilerReferences.map { item ->
                 if (encoding == null) compilerCallEvidenceValue(item) else listOf(
-                    positions.getValue(item.source), positions.getValue(item.target),
+                    encoding.reference(item.source.value), encoding.reference(item.target.value),
                     encoding.text(compilerEvidencePath(item.file.path)), encoding.text(item.file.sha256),
                     encoding.text(item.collector), encoding.text(item.compilerVersion), encoding.text(item.coordinateBasis.name.lowerCamel()),
                     item.offsetUtf16, item.endOffsetUtf16, item.line, item.column, item.generated,
@@ -164,12 +221,30 @@ public object QuerySnapshotCodec {
                 if (names.isEmpty()) graph else graph + ("kotlinSourceNames" to names)
             }
             .let { graph ->
+                val bridges = snapshot.graph.nodes.values.mapNotNull { node ->
+                    node.kotlinDefaultBridge?.let { it.toJsonValue() + ("usr" to node.id.value) }
+                }.sortedBy { it["usr"] as String }
+                if (bridges.isEmpty()) graph else graph + ("kotlinDefaultBridges" to bridges)
+            }
+            .let { graph ->
+                val declarations = CallDeclarationCodec.records(snapshot.graph.externalCalls)
+                if (declarations.isEmpty()) graph else graph + ("callDeclarations" to declarations)
+            }
+            .let { graph ->
                 val declarations = snapshot.graph.nodes.values.mapNotNull { node ->
                     node.sourceDeclaration?.let { it.toJsonValue() + ("usr" to node.id.value) }
                 }.sortedBy { it["usr"] as String }
                 if (declarations.isEmpty()) graph else graph + ("sourceDeclarations" to declarations)
             }
+            .let { graph -> if (snapshot.graph.nodes.values.any { it.enumConstants != null }) graph else graph - "enumInventories" }
             .let { graph -> if (snapshot.graph.compilerCallPositionsCaptured) graph else graph - "compilerCallEvidence" }
+            .let { graph -> if (snapshot.graph.compilerAuthoredCallers.isEmpty()) graph else
+                graph + ("compilerAuthoredCalls" to CompilerAuthoredCallCodec.value(snapshot.graph.compilerAuthoredCallers)) }
+            .let { graph -> if (snapshot.graph.compilerCallerInventories.isEmpty()) graph else
+                graph + ("compilerCallerInventories" to CompilerCallerInventoryCodec.value(snapshot.graph.compilerCallerInventories)) }
+            .let { graph -> snapshot.graph.compilerSourceUseEvidence?.let {
+                graph + ("compilerSourceUses" to CompilerSourceUseSnapshotCodec.value(it))
+            } ?: graph }
             .let { graph -> if (encoding == null) graph else graph + ("stringTable" to encoding.table) },
         ).filterValues { it != null }, maximumBytes, "\n")
     }
@@ -188,11 +263,13 @@ public object QuerySnapshotCodec {
         requireMaximum(content, maximumBytes)
         val document = objectValue(SnapshotJsonParser(content).parse())
         val version = integer(document["version"])
-        require(document["format"] == FORMAT && version in 1..2) {
+        require(document["format"] == FORMAT && version in 1..4) {
             "unsupported query snapshot; capture it with `kartograph snapshot`"
         }
+        require((version >= 3) == document.containsKey("generationEvidence")) { "generation evidence requires snapshot version 3 or 4" }
+        val generationEvidence = if (version >= 3) GenerationEvidenceSnapshotCodec.parse(document["generationEvidence"]) else null
         val rawGraph = objectValue(document["graph"])
-        val graph = if (version == 2) CompactSnapshotGraph.expand(rawGraph) else rawGraph
+        val graph = if (version % 2 == 0) CompactSnapshotGraph.expand(rawGraph) else rawGraph
         val sourceNames = rawGraph["kotlinSourceNames"]?.let { value ->
             list(value).map { raw ->
                 val item = objectValue(raw)
@@ -216,6 +293,34 @@ public object QuerySnapshotCodec {
         }
         val ids = nodes.map { it.id }.toSet()
         require(ids.size == nodes.size) { "query snapshot contains duplicate nodes" }
+        val enumInventories = if (rawGraph.containsKey("enumInventories")) {
+            val byId = nodes.associateBy { it.id }
+            list(rawGraph["enumInventories"]).map { raw ->
+                val item = objectValue(raw)
+                require(item.keys == setOf("usr", "constants")) { "invalid enum inventory" }
+                val id = NodeId(string(item["usr"]))
+                val owner = requireNotNull(byId[id]) { "enum inventory has an unknown owner" }
+                val constants = strings(item["constants"]).map(::NodeId)
+                // GraphNode는 owner kind·stub·정확한 self descriptor와 정렬/중복을 함께 검증한다.
+                owner.copy(enumConstants = constants)
+                require(constants.all { constant ->
+                    byId[constant]?.let { field -> field.kind == NodeKind.FIELD &&
+                        NodeAttribute.ENUM_CONSTANT in field.attributes && NodeAttribute.EXTERNAL_STUB !in field.attributes } ?: true
+                }) { "enum inventory does not match retained field facts" }
+                id to constants
+            }.also { entries -> require(entries.map { it.first }.distinct().size == entries.size) {
+                "duplicate enum inventory"
+            } }.toMap()
+        } else emptyMap()
+        val capturedConstants = enumInventories.mapValues { it.value.toSet() }
+        val enumNodesById = nodes.associateBy { it.id }
+        require(nodes.filter { NodeAttribute.ENUM_CONSTANT in it.attributes }.all { field ->
+            val owner = NodeId("class:" + field.id.value.removePrefix("field:").substringBefore('#'))
+            val retainedOwner = enumNodesById[owner]
+            EnumConstantIds.belongsTo(owner, field.id) &&
+                (retainedOwner == null || retainedOwner.kind == NodeKind.ENUM && NodeAttribute.EXTERNAL_STUB !in retainedOwner.attributes) &&
+                capturedConstants[owner]?.contains(field.id) != false
+        }) { "enum constant does not match captured graph facts" }
         require(sourceNames.keys.all { it in ids } && nodes.filter { it.kotlinSourceName != null }.all { it.kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) }) {
             "Kotlin source name fact does not match a function node"
         }
@@ -280,13 +385,16 @@ public object QuerySnapshotCodec {
         val compilerCallEvidence = if (rawGraph.containsKey("compilerCallEvidence")) {
             parseCompilerCallEvidence(rawGraph, version, nodes)
         } else null
-        val calls = list(graph["externalCalls"]).map { raw ->
+        val rawCalls = list(graph["externalCalls"]).map { raw ->
             val call = objectValue(raw)
             ExternalCall(NodeId(string(call["caller"])), string(call["owner"]), string(call["name"]), string(call["descriptor"]),
                 enumValue(call["kind"]), location(call["location"]), integer(call["ordinal"]),
                 strings(call["resolvedTargets"]).map(::NodeId), enumValue(call["resolution"]), optionalString(call["model"]))
         }
-        require(calls.all { it.caller in ids && it.target !in ids && it.ordinal >= 0 && it.resolvedTargets.all(ids::contains) }) {
+        val calls = CallDeclarationCodec.parse(rawGraph["callDeclarations"], rawCalls, nodes, rawGraph.containsKey("callDeclarations"))
+        val externalStubIds = nodes.filter { NodeAttribute.EXTERNAL_STUB in it.attributes }.mapTo(mutableSetOf()) { it.id }
+        require(calls.all { it.caller in ids && (it.target !in ids || it.target in externalStubIds) &&
+            it.ordinal >= 0 && it.resolvedTargets.all(ids::contains) }) {
             "query snapshot contains invalid external calls"
         }
         val providers = list(graph["serviceProviders"]).map { raw ->
@@ -330,13 +438,49 @@ public object QuerySnapshotCodec {
         }
         val suppressed = strings(document["suppressed"]).map(::NodeId).toSet()
         require(suppressed.all(ids::contains)) { "query snapshot contains invalid baseline references" }
-        val baseGraph = CodeGraph(nodes.map { node -> declarations[node.id]?.let { node.copy(sourceDeclaration = it) } ?: node }, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
+        val bridgeFacts = rawGraph["kotlinDefaultBridges"]?.let { value ->
+            val byId = nodes.associateBy { it.id }
+            val callPairs = edges.filter { it.kind == EdgeKind.CALL && it.origin == EdgeOrigin.BYTECODE }
+                .map { it.source to it.target }.toSet()
+            list(value).map { raw ->
+                val item = objectValue(raw)
+                require(item.keys == setOf("usr", "target", "basis", "valueParameterCount", "maskParameterCount") &&
+                    item["basis"] == "kotlinMetadataAndBytecode") { "invalid Kotlin default bridge evidence" }
+                val id = NodeId(string(item["usr"]))
+                val association = KotlinDefaultBridge(NodeId(string(item["target"])),
+                    integer(item["valueParameterCount"]), integer(item["maskParameterCount"]))
+                val bridge = byId[id]
+                val target = byId[association.target]
+                require(bridge != null && target != null && bridge.kind in setOf(NodeKind.METHOD, NodeKind.FUNCTION) &&
+                    bridge.kotlinSourceName == null && JvmModifier.STATIC in bridge.jvmModifiers &&
+                    JvmModifier.SYNTHETIC in bridge.jvmModifiers && target.kotlinSourceName != null &&
+                    (id to association.target) in callPairs && association.matches(bridge, target)) { "Kotlin default bridge evidence does not match graph facts" }
+                id to association
+            }.also { entries -> require(entries.map { it.first }.distinct().size == entries.size) {
+                "duplicate Kotlin default bridge evidence"
+            } }.toMap()
+        }.orEmpty()
+        val baseGraph = CodeGraph(nodes.map { node -> node.copy(sourceDeclaration = declarations[node.id],
+            kotlinDefaultBridge = bridgeFacts[node.id], enumConstants = enumInventories[node.id]) }, edges, calls, providers, enclosures.orEmpty(), callbackArguments.orEmpty(), parameterUses.orEmpty(),
             lambdaEscapes.orEmpty())
-        val restoredGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
+        val locatedGraph = compilerCallEvidence?.let(baseGraph::withCompilerCallPositions) ?: baseGraph
+        val authoredGraph = if (rawGraph.containsKey("compilerAuthoredCalls")) locatedGraph.withCompilerAuthoredCalls(
+            CompilerAuthoredCallCodec.parse(rawGraph["compilerAuthoredCalls"], nodes)) else locatedGraph
+        val inventoriedGraph = if (rawGraph.containsKey("compilerCallerInventories")) authoredGraph.withCompilerCallerInventories(
+            CompilerCallerInventoryCodec.parse(rawGraph["compilerCallerInventories"])) else authoredGraph
+
+        val provenance = document["provenance"]?.let(BuildWitnessCodec::provenance)
+        val scope = optionalString(document["scope"])
+        // 새 확장은 compact string table과 독립적이며 원래 graph에서만 존재 여부를 판단한다.
+        val restoredGraph = if (rawGraph.containsKey("compilerSourceUses")) {
+            val evidence = CompilerSourceUseSnapshotCodec.parse(rawGraph["compilerSourceUses"])
+            evidence.requireMatchesProvenance(requireNotNull(provenance) { "compiler source uses require snapshot provenance" },
+                requireNotNull(scope) { "compiler source uses require snapshot scope" })
+            inventoriedGraph.withCompilerSourceUses(evidence)
+        } else inventoriedGraph
         return QuerySnapshot(restoredGraph, retention, strings(document["limitations"]), suppressed,
             boolean(document["includePrivateMembers"]), string(document["toolVersion"]),
-            optionalString(document["revision"]), optionalString(document["scope"]),
-            document["provenance"]?.let(BuildWitnessCodec::provenance),
+            optionalString(document["revision"]), scope, provenance,
             document["processorGenerations"]?.let { values -> list(values).map { raw ->
                 val generation = objectValue(raw)
                 dev.kartograph.core.ProcessorGeneration(string(generation["processor"]), string(generation["artifactSha256"]),
@@ -346,7 +490,16 @@ public object QuerySnapshotCodec {
             } }.orEmpty(),
             document["processorOutputs"]?.let { values -> list(values).map { ProcessorOutputCodec.observation(it) } }.orEmpty(),
             enclosuresCaptured = enclosures != null, callbackFactsCaptured = callbackArguments != null && parameterUses != null && lambdaEscapes != null,
-            callSiteLinesCaptured = rawGraph.containsKey("callSiteEvidence"))
+            callSiteLinesCaptured = rawGraph.containsKey("callSiteEvidence"),
+            externalRetentionContexts = if ("externalRetentionContexts" in document) list(document["externalRetentionContexts"]).map { raw ->
+                ExternalRetentionCodec.parseDocument(string(raw)).also { require(it.retentions.isEmpty()) {
+                    "external retention snapshot context must not contain hidden retention roots"
+                } }.context
+            }.distinct().sortedBy { it.canonicalDocument } else emptyList(),
+            enumDecisionEvidence = if ("enumDecisions" in document) CompilerEnumDecisionSnapshotCodec.parse(document["enumDecisions"]) else null,
+            androidResourceEvidence = if ("androidResources" in document) AndroidResourceEvidenceSnapshotCodec.parse(document["androidResources"]) else null,
+            androidResourceBindings = if ("androidResourceBindings" in document) AndroidResourceBindingSnapshotCodec.parse(document["androidResourceBindings"]) else null,
+            generationEvidence = generationEvidence)
     }
 
     /** UTF-8 byte 배열을 추가로 만들지 않고 저장 문서의 explicit 상한을 검증한다. */
@@ -357,7 +510,7 @@ public object QuerySnapshotCodec {
 
     private fun requireValidMaximum(maximumBytes: Int) {
         require(maximumBytes in 1..QuerySnapshotCodec.maximumBytes(MAX_MIB)) {
-            "query snapshot byte maximum must be between 1 byte and 128 MiB"
+            "query snapshot byte maximum must be between 1 byte and 1024 MiB"
         }
     }
 
@@ -412,7 +565,7 @@ public object QuerySnapshotCodec {
         nodes: List<GraphNode>,
     ): List<LocatedCompilerReference> {
         val rows = list(rawGraph["compilerCallEvidence"])
-        val evidence = if (version == 1) rows.map { raw ->
+        val evidence = if (version % 2 == 1) rows.map { raw ->
             val item = objectValue(raw)
             require(item.keys == COMPILER_CALL_EVIDENCE_FIELDS) { "query snapshot contains invalid compiler call evidence" }
             LocatedCompilerReference(
@@ -509,57 +662,102 @@ public object QuerySnapshotCodec {
 public class QuerySnapshotSizeException internal constructor() : IllegalArgumentException("query snapshot is too large")
 
 /** 문서 밖의 입력을 오류 문구에 넣지 않는, 깊이와 크기가 제한된 JSON reader다. */
-internal class SnapshotJsonParser(private val text: String, private val generalNumbers: Boolean = false) {
+internal class SnapshotJsonParser(
+    private val text: String,
+    private val generalNumbers: Boolean = false,
+    private val externalRetentionEnvelope: Boolean = false,
+    private val strictRetentionRoot: Boolean = false,
+) {
     private var offset = 0
 
     fun parse(): Any? {
-        val result = value(0)
+        val result = value(0, if (strictRetentionRoot) 0 else null)
         whitespace()
         checkInput(offset == text.length)
         return result
     }
 
-    private fun value(depth: Int): Any? {
-        checkInput(depth <= 32)
+    private fun value(depth: Int, retentionDepth: Int? = null, arrayLimit: Int? = null): Any? {
+        if (retentionDepth == null) checkInput(depth <= 32)
         whitespace()
-        return when (text.getOrNull(offset)) {
-            '{' -> objectValue(depth + 1)
-            '[' -> arrayValue(depth + 1)
-            '"' -> stringValue()
+        val token = text.getOrNull(offset)
+        if (retentionDepth != null && (token == '{' || token == '[')) checkInput(retentionDepth < 64)
+        return when (token) {
+            '{' -> objectValue(depth + 1, retentionDepth?.plus(1))
+            '[' -> arrayValue(depth + 1, retentionDepth?.plus(1), arrayLimit)
+            '"' -> stringValue(retentionDepth != null)
             't' -> literal("true", true)
             'f' -> literal("false", false)
             'n' -> literal("null", null)
-            '-', in '0'..'9' -> numberValue()
+            '-', in '0'..'9' -> numberValue(retentionDepth != null)
             else -> invalid()
         }
     }
 
-    private fun objectValue(depth: Int): Map<String, Any?> {
+    private fun objectValue(depth: Int, retentionDepth: Int?): Map<String, Any?> {
         expect('{')
         val result = linkedMapOf<String, Any?>()
         if (consume('}')) return result
         while (true) {
-            val key = stringValue()
+            val key = stringValue(retentionDepth != null)
             checkInput(key !in result)
             expect(':')
-            result[key] = value(depth)
+            if (depth == 1 && key == "generationEvidence") requireGenerationSubtreeBudget()
+            val envelope = externalRetentionEnvelope && retentionDepth == null && depth == 1 && key == "provenance"
+            val limit = if (retentionDepth == 1) when (key) {
+                "sources" -> 256
+                "limitations" -> 4096
+                else -> null
+            } else null
+            result[key] = if (envelope) value(0, 0) else value(depth, retentionDepth, limit)
             if (consume('}')) return result
             expect(',')
         }
     }
 
-    private fun arrayValue(depth: Int): List<Any?> {
+    private fun arrayValue(depth: Int, retentionDepth: Int?, maximum: Int?): List<Any?> {
         expect('[')
         val result = mutableListOf<Any?>()
         if (consume(']')) return result
         while (true) {
-            result += value(depth)
+            if (maximum != null) checkInput(result.size < maximum)
+            result += value(depth, retentionDepth)
             if (consume(']')) return result
             expect(',')
         }
     }
 
-    private fun stringValue(): String {
+    // root의 실제 key를 해독한 뒤 해당 값만 미리 훑는다. 전체 graph나 문자열 속 가짜 key는 검사하지 않는다.
+    private fun requireGenerationSubtreeBudget() {
+        var cursor = offset
+        var depth = 0
+        var quoted = false
+        var escaped = false
+        var bytes = 0
+        var started = false
+        while (cursor < text.length) {
+            val character = text[cursor]
+            if (!quoted && depth == 0 && started && (character == ',' || character == '}')) return
+            val width = if (Character.isHighSurrogate(character) && text.getOrNull(cursor + 1)?.let(Character::isLowSurrogate) == true) 2 else 1
+            bytes += when { width == 2 -> 4; character.code <= 0x7f -> 1; character.code <= 0x7ff -> 2; Character.isSurrogate(character) -> 1; else -> 3 }
+            require(bytes <= GenerationReceiptCodec.MAX_BYTES) { "generation evidence subtree is too large" }
+            cursor += width
+            if (quoted) {
+                when { escaped -> escaped = false; character == '\\' -> escaped = true; character == '"' -> {
+                    quoted = false
+                    if (depth == 0) return
+                } }
+            } else when (character) {
+                '"' -> { quoted = true; started = true }
+                '{', '[' -> { depth++; started = true }
+                '}', ']' -> { depth--; if (depth <= 0) return }
+                ' ', '\t', '\r', '\n' -> Unit
+                else -> started = true
+            }
+        }
+    }
+
+    private fun stringValue(strictScalar: Boolean = false): String {
         expect('"')
         return buildString {
             while (offset < text.length) {
@@ -578,7 +776,7 @@ internal class SnapshotJsonParser(private val text: String, private val generalN
                                 checkInput(offset + 4 <= text.length)
                                 val digits = text.substring(offset, offset + 4)
                                 offset += 4
-                                checkInput(digits.all { it.digitToIntOrNull(16) != null })
+                                checkInput(digits.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' })
                                 digits.toInt(16).toChar()
                             }
                             else -> invalid()
@@ -588,16 +786,23 @@ internal class SnapshotJsonParser(private val text: String, private val generalN
                 }
             }
             invalid()
-        }
+        }.also { if (strictScalar) checkInput(it.codePoints().allMatch { code -> code !in 0xD800..0xDFFF }) }
     }
 
-    private fun numberValue(): Number {
+    private fun numberValue(strictInteger: Boolean = false): Number {
         val start = offset
         if (text.getOrNull(offset) == '-') offset++
         val digits = offset
         while (text.getOrNull(offset) in '0'..'9') offset++
         checkInput(offset > digits && (text[digits] != '0' || offset == digits + 1))
         checkInput(offset - start <= MAX_NUMBER_CHARACTERS)
+        if (strictInteger) {
+            checkInput(text.getOrNull(offset) !in listOf('.', 'e', 'E'))
+            val spelling = text.substring(start, offset)
+            checkInput(spelling != "-0")
+            return spelling.toLongOrNull()?.takeIf { it in -9_007_199_254_740_991L..9_007_199_254_740_991L }
+                ?: invalid()
+        }
         if (!generalNumbers) return text.substring(start, offset).toLongOrNull() ?: invalid()
         var decimal = false
         if (text.getOrNull(offset) == '.') {

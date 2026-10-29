@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "basis": "Authored before collector output; complete body call sets, including empty sets",
+  "kotlin": {
+    "method:authored/AuthoredCalls#implicit(Lauthored/Printable;)Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": []
+    },
+    "method:authored/AuthoredCalls#zero()Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": []
+    },
+    "method:authored/AuthoredCalls#local(Lauthored/Printable;)Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": []
+    },
+    "method:authored/AuthoredCalls#overload(Ljava/lang/String;)Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": []
+    },
+    "method:authored/AuthoredCalls#explicit(Lauthored/Printable;)Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": [
+        "method:authored/Printable#toString()Ljava/lang/String;"
+      ]
+    },
+    "method:authored/AuthoredCalls#choose(ZLauthored/Printable;)Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": [
+        "method:authored/Printable#toString()Ljava/lang/String;"
+      ]
+    },
+    "method:authored/AuthoredCalls#renamed(Lauthored/Printable;)Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": [
+        "method:authored/Printable#toString()Ljava/lang/String;"
+      ]
+    },
+    "method:authored/AuthoredCalls#overload(Lauthored/Printable;)Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": [
+        "method:authored/Printable#toString()Ljava/lang/String;"
+      ]
+    },
+    "method:authored/Printable#toString()Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": []
+    },
+    "method:authored/Nested$Owner#call(Lauthored/Printable;)Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": [
+        "method:authored/Printable#toString()Ljava/lang/String;"
+      ]
+    },
+    "unsupportedLambda": {
+      "status": "INCOMPLETE",
+      "match": "source method name; all aliases incomplete/unknown"
+    },
+    "unsupportedProperty": {
+      "status": "INCOMPLETE",
+      "match": "source method name; all aliases incomplete/unknown"
+    },
+    "unsupportedOperator": {
+      "status": "INCOMPLETE",
+      "match": "source method name; all aliases incomplete/unknown"
+    },
+    "unsupportedDefault": {
+      "status": "INCOMPLETE",
+      "match": "source method name; all aliases incomplete/unknown"
+    },
+    "unsupportedSuspend": {
+      "status": "INCOMPLETE",
+      "match": "source method name; all aliases incomplete/unknown"
+    },
+    "unsupportedExternal": {
+      "status": "INCOMPLETE",
+      "match": "source method name; all aliases incomplete/unknown"
+    }
+  },
+  "java": {
+    "method:authored/JavaCalls$Printable#toString()Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": []
+    },
+    "method:authored/JavaCalls#implicit(Lauthored/JavaCalls$Printable;)Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": []
+    },
+    "method:authored/JavaCalls#explicit(Lauthored/JavaCalls$Printable;)Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": [
+        "method:authored/JavaCalls$Printable#toString()Ljava/lang/String;"
+      ]
+    },
+    "method:authored/JavaCalls#zero()Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": []
+    },
+    "method:authored/JavaCalls#choose(ZLauthored/JavaCalls$Printable;)Ljava/lang/String;": {
+      "status": "COMPLETE",
+      "targets": [
+        "method:authored/JavaCalls$Printable#toString()Ljava/lang/String;"
+      ]
+    },
+    "method:authored/JavaCalls#external(I)I": {
+      "status": "COMPLETE",
+      "targets": [
+        "method:java/lang/Math#abs(I)I"
+      ]
+    },
+    "unsupportedNew": {
+      "status": "INCOMPLETE",
+      "match": "source method name"
+    },
+    "unsupportedLambda": {
+      "status": "INCOMPLETE",
+      "match": "source method name"
+    },
+    "unsupportedReference": {
+      "status": "INCOMPLETE",
+      "match": "source method name"
+    }
+  },
+  "sourceSha256": {
+    "Calls.kt": "a345dd133f2b7a4bd6ee5ff05092a81874a204151cb1a3f76a64dbc31ba25942",
+    "JavaCalls.java": "1b22f090a2db1868e6874ffd4448c5e8d3987a5a9849f40a6da0cc6e27843304"
+  }
+}

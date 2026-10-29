@@ -15,6 +15,25 @@ import kotlin.test.assertTrue
 /** javac가 거부하거나 만들지 않는 descriptor·불완전 hierarchy의 안전 경계를 직접 고정한다. */
 class InheritedMemberResolutionSafetyTest {
     @Test
+    fun `empty inherited call targets avoid a raw call scan but still resolve fields`() {
+        val base = type("Base", fields = listOf(field("Base")))
+        val child = type("Child", setOf("Base"))
+        val entry = caller("Entry", emptySet(), "Child", InvocationKind.VIRTUAL)
+        val originalCall = entry.calls.single()
+        val observations = listOf(entry.edges.single(), GraphEdge(originalCall.caller, field("Child").id, EdgeKind.FIELD_ACCESS))
+        var visits = 0
+        val tracked = object : AbstractList<GraphEdge>() {
+            override val size: Int get() = observations.size
+            override fun get(index: Int): GraphEdge { visits++; return observations[index] }
+        }
+        val result = InheritedMemberReferences(listOf(base, child, entry.copy(edges = tracked)))
+
+        assertEquals(listOf(field("Base").id), result.edges.map { it.target })
+        assertEquals(listOf(originalCall), result.calls)
+        assertEquals(observations.size, visits, "only the required field scan should visit raw edges")
+    }
+
+    @Test
     fun `field descriptor is part of lookup identity`() {
         val base = type("Base", fields = listOf(field("Base", "I")))
         val middle = type("Middle", setOf("Base"), fields = listOf(field("Middle", "J")))

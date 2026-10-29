@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFails
 import kotlin.test.assertTrue
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
@@ -18,6 +19,35 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.io.TempDir
 
 class CompilerCallPositionMarkerLifecycleTest {
+    @Test
+    fun `build tools fixture rejects omitted reordered changed and mixed artifacts`(@TempDir root: Path) {
+        val version = "2.4.20"
+        val paths = listOf("kotlin-build-tools-compat", "kotlin-build-tools-impl", "kotlin-tooling-core")
+            .map { root.resolve("$it-$version.jar").also { path -> Files.writeString(path, "public fixture $it") } }
+        val manifest = root.resolve("runtime.tsv")
+        fun writeReceipt(selected: List<Path> = paths) {
+            Files.writeString(manifest, "kartograph-build-tools-runtime\t1\t$version\n" +
+                selected.mapIndexed { index, path ->
+                    "$index\t${path.fileName}\t${Files.size(path)}\t${CompilerCallPositionRuntime.sha256(path)}"
+                }.joinToString("\n", postfix = "\n"))
+        }
+        writeReceipt()
+        assertEquals(paths, CompilerCallPositionRuntime.verify(paths, manifest, version))
+        for (changed in listOf(paths.dropLast(1), paths + listOf(paths.first()), paths.reversed())) {
+            assertFails { CompilerCallPositionRuntime.verify(changed, manifest, version) }
+        }
+        val wrong = root.resolve("kotlin-tooling-core-2.4.10.jar")
+        Files.copy(paths.last(), wrong)
+        val mixed = paths.dropLast(1) + listOf(wrong)
+        writeReceipt(mixed)
+        assertFails { CompilerCallPositionRuntime.verify(mixed, manifest, version) }
+        writeReceipt()
+        Files.writeString(paths.first(), "changed bytes")
+        assertFails { CompilerCallPositionRuntime.verify(paths, manifest, version) }
+        Files.delete(paths.last())
+        assertFails { CompilerCallPositionRuntime.verify(paths, manifest, version) }
+    }
+
     @Test
     fun `actual javac marker follows true false cache and invalid duplicate lifecycle`(@TempDir root: Path) {
         val collector = collector()
@@ -72,7 +102,7 @@ class CompilerCallPositionMarkerLifecycleTest {
         assertTrue(CompilerEvidenceToken.matches(trueWitness))
         assertEquals(1, trueWitness.inputs.count { it == CompilerCallPositionOptions.enabledInput() })
         assertEquals("3", Files.readString(evidencePath).lineSequence().first().substringAfterLast('\t'))
-        assertEquals("2.4.10", CompilerEvidenceReader.readEnvelope(evidencePath).evidence.compilerVersion)
+        assertEquals(kotlinVersion(), CompilerEvidenceReader.readEnvelope(evidencePath).evidence.compilerVersion)
 
         val again = build(root, "compileKotlin", "-PcallPositions=true", "-PcommaOptions=true", configurationCache = false)
         assertEquals(TaskOutcome.UP_TO_DATE, again.task(":compileKotlin")?.outcome)
@@ -163,17 +193,19 @@ class CompilerCallPositionMarkerLifecycleTest {
             "rootProject.name='marker-kotlin'\nbuildCache { local { directory=file('.fixture-cache') } }")
         Files.writeString(root.resolve("gradle.properties"),
             "kotlin.stdlib.default.dependency=false\nkotlin.compiler.runViaBuildToolsApi=false\n")
-        val kotlinRepository = kotlinRepository(root, gradleClasspath)
+        CompilerCallPositionRuntime.buildTools(kotlinVersion())
+        val moduleMirror = CompilerCallPositionRuntime.repository()
+        val moduleReceipt = CompilerCallPositionRuntime.moduleReceipt()
+        val moduleVerifier = CompilerCallPositionRuntime.verifierScript()
         val buildscriptClasspath = gradleClasspath.joinToString(", ") { "'${groovy(it)}'" }
         val kotlinCompilerClasspath = compilerClasspath.joinToString(", ") { "'${groovy(it)}'" }
-        val kotlinStdlib = compilerClasspath.single { it.fileName.toString() == "kotlin-stdlib-2.4.10.jar" }
+        val kotlinStdlib = kotlinArtifact(compilerClasspath, "kotlin-stdlib")
         Files.writeString(root.resolve("build.gradle"), """
             buildscript {
                 dependencies { classpath files($buildscriptClasspath) }
             }
             plugins { id 'io.github.ictechgy.kartograph' }
             apply plugin: 'org.jetbrains.kotlin.jvm'
-            repositories { maven { url = uri('${groovy(kotlinRepository)}') } }
             dependencies { implementation project.files('${groovy(kotlinStdlib)}') }
             configurations.configureEach {
                 exclude group: 'org.jetbrains.kotlin', module: 'kotlin-scripting-compiler-embeddable'
@@ -184,13 +216,17 @@ class CompilerCallPositionMarkerLifecycleTest {
             }
             configurations.named('kotlinBuildToolsApiClasspath') {
                 dependencies.clear()
-                dependencies.add(project.dependencies.create('org.jetbrains.kotlin:kotlin-build-tools-compat:2.4.10'))
-                dependencies.add(project.dependencies.create('org.jetbrains.kotlin:kotlin-build-tools-impl:2.4.10'))
-                dependencies.add(project.dependencies.create(project.files($kotlinCompilerClasspath)))
+                dependencies.add(project.dependencies.create('org.jetbrains.kotlin:kotlin-build-tools-compat:${kotlinVersion()}'))
+                dependencies.add(project.dependencies.create('org.jetbrains.kotlin:kotlin-build-tools-impl:${kotlinVersion()}'))
             }
             configurations.named('kotlinCompilerPluginClasspathMain') {
                 dependencies.clear()
             }
+            repositories { maven { url = uri('${groovy(moduleMirror)}'); metadataSources { gradleMetadata(); mavenPom() } } }
+            ext.controlledBuildToolsMirror = '${groovy(moduleMirror)}'
+            ext.controlledBuildToolsReceipt = '${groovy(moduleReceipt)}'
+            apply from: '${groovy(moduleVerifier)}'
+            def moduleRuntimeInputs = files('${groovy(moduleReceipt)}', '${groovy(moduleVerifier)}', fileTree('${groovy(moduleMirror)}'))
             java { toolchain { languageVersion = JavaLanguageVersion.of(17) } }
             def compiler = tasks.named('compileKotlin')
             def token = dev.kartograph.gradle.CompilerWitnesses.INSTANCE.inputTokenFile(project, compiler)
@@ -213,28 +249,19 @@ class CompilerCallPositionMarkerLifecycleTest {
             def jdk = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
             dev.kartograph.gradle.KotlinCompilerWitnesses.INSTANCE.kotlinCompile(project, compiler, 'sample:main',
                 files('src/main/kotlin'), files('build.gradle','settings.gradle','gradle.properties'), jdk,
-                files($kotlinCompilerClasspath), true)
+                files($kotlinCompilerClasspath, configurations.named('kotlinBuildToolsApiClasspath'), moduleRuntimeInputs), true)
         """.trimIndent())
     }
 
-    private fun kotlinRepository(root: Path, classpath: List<Path>): Path {
-        val repository = root.resolve(".kotlin-repository")
-        for (artifact in listOf("kotlin-build-tools-compat", "kotlin-build-tools-impl")) {
-            val source = classpath.single { it.fileName.toString() == "$artifact-2.4.10.jar" }
-            val directory = repository.resolve("org/jetbrains/kotlin/$artifact/2.4.10")
-            Files.createDirectories(directory)
-            Files.copy(source, directory.resolve("$artifact-2.4.10.jar"))
-            Files.writeString(directory.resolve("$artifact-2.4.10.pom"), """
-                <project xmlns="http://maven.apache.org/POM/4.0.0">
-                  <modelVersion>4.0.0</modelVersion>
-                  <groupId>org.jetbrains.kotlin</groupId>
-                  <artifactId>$artifact</artifactId>
-                  <version>2.4.10</version>
-                </project>
-            """.trimIndent())
-        }
-        return repository
+    private fun kotlinVersion(): String = requireNotNull(System.getenv("KARTOGRAPH_CALL_KOTLIN_VERSION")).also {
+        require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(it)) { "explicit collector compiler version is required" }
     }
+
+    private fun kotlinArtifact(classpath: List<Path>, artifact: String): Path =
+        classpath.single { it.fileName.toString().startsWith("$artifact-") && it.fileName.toString().endsWith(".jar") }.also {
+            require(it.fileName.toString() == "$artifact-${kotlinVersion()}.jar") { "unexpected Kotlin runtime artifact version" }
+        }
+
 
     private fun build(
         root: Path,
@@ -259,6 +286,8 @@ class CompilerCallPositionMarkerLifecycleTest {
         val compilerClasspath = compilerClasspathValue.split(File.pathSeparator).filter(String::isNotBlank)
             .map { Path.of(it).toRealPath() }
         assumeTrue(compilerClasspath.isNotEmpty() && compilerClasspath.all(Files::isRegularFile))
+        kotlinArtifact(compilerClasspath, "kotlin-compiler-embeddable")
+        kotlinArtifact(compilerClasspath, "kotlin-stdlib")
         return gradleClasspath to compilerClasspath
     }
 

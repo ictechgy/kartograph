@@ -28,8 +28,12 @@ internal class JpaNamingDetector(private val projectRoot: Path) {
      * 저장소를 읽어 명명 문맥을 만든다. [override]가 있으면 관측 없이 그 조합을 쓴다.
      * [legacyJavax]는 소스가 `javax.persistence`(Hibernate 5 세대)를 쓴다는 뜻이다 — 벡터로 검증하지 않은 세대라
      * 검증된 조합 전체를 후보로 둔다.
+     *
+     * @param maskedSources 호출자가 이미 읽어 주석을 지우고 문자열을 가린(`maskStringContents(stripComments(…))`) project의
+     *   `.kt`·`.java` 소스 전부와 그 경로다. 주면 소스를 다시 순회·읽지 않고 이 뷰에서 사용자 전략을 찾는다 — schema 스캔이 같은
+     *   파일을 두 번 읽고 가리지 않게 하려는 것이다. null이면 소스를 직접 순회한다. 설정 파일은 어느 쪽이든 직접 읽는다
      */
-    fun detect(override: String? = null, legacyJavax: Boolean = false): JpaNamingContext {
+    fun detect(override: String? = null, legacyJavax: Boolean = false, maskedSources: List<Pair<Path, String>>? = null): JpaNamingContext {
         // 사용자가 준 id를 그대로 근거에 적는다 — hibernate-6·7은 같은 조합이라 id로 되돌리면 표기가 바뀐다.
         override?.let { id -> JpaNamingProfile.fromId(id)?.let { return JpaNamingContext.fixed(it, "$id from --jpa-naming") } }
         val evidence = Evidence()
@@ -37,7 +41,8 @@ internal class JpaNamingDetector(private val projectRoot: Path) {
             val name = path.fileName.toString()
             if (isConfigFile(name)) readConfig(path, name, evidence)
         }
-        ProjectTraversal.walkSources(projectRoot) { path -> readSource(path, evidence) }
+        if (maskedSources == null) ProjectTraversal.walkSources(projectRoot) { path -> readSource(path, evidence) }
+        else maskedSources.forEach { (path, masked) -> readMaskedSource(path, masked, evidence) }
         val decided = decide(evidence)
         val unverifiedBoot = evidence.bootMajors.any { it !in BOOT_MANAGED_HIBERNATE }
         if ((legacyJavax || unverifiedBoot) && evidence.physical.isEmpty() && evidence.implicit.isEmpty() && decided.candidates.isNotEmpty()) {
@@ -95,8 +100,15 @@ internal class JpaNamingDetector(private val projectRoot: Path) {
 
     /** 소스에 선언된 사용자 명명 전략 클래스·bean을 찾는다 — Boot는 이런 bean을 자동으로 쓴다. */
     private fun readSource(path: Path, evidence: Evidence) {
-        val code = maskStringContents(stripComments(ProjectTraversal.readSourceLines(projectRoot, path).joinToString("\n")))
-        if (CUSTOM_STRATEGY_SOURCE.containsMatchIn(code)) {
+        readMaskedSource(path, maskStringContents(stripComments(ProjectTraversal.readSourceLines(projectRoot, path).joinToString("\n"))), evidence)
+    }
+
+    /**
+     * 가린 소스 뷰 하나에서 사용자 전략을 찾는다. 근거 경로는 링크가 아니라 실제 경로 기준으로 적는다 — 소스를 직접 순회하던 때와
+     * 같은 표기를 지키려는 것이다.
+     */
+    private fun readMaskedSource(path: Path, masked: String, evidence: Evidence) {
+        if (CUSTOM_STRATEGY_SOURCE.containsMatchIn(masked)) {
             evidence.customSources += projectRoot.toRealPath().relativize(path.toRealPath()).joinToString("/")
         }
     }

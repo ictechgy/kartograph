@@ -14,13 +14,22 @@ public object DefaultRetention {
         keepRules: Iterable<KeepRule>,
         classHierarchy: ClassHierarchy = ClassHierarchy.EMPTY,
         includePrivateMembers: Boolean = false,
+    ): List<RetentionEvidence> = find(graph, inputEvidence, keepRules, classHierarchy, includePrivateMembers, false)
+
+    public fun find(
+        graph: CodeGraph,
+        inputEvidence: Iterable<RetentionEvidence>,
+        keepRules: Iterable<KeepRule>,
+        classHierarchy: ClassHierarchy = ClassHierarchy.EMPTY,
+        includePrivateMembers: Boolean = false,
+        lenientKeepRules: Boolean,
     ): List<RetentionEvidence> {
         val evidence = buildList {
             addAll(inputEvidence)
             addAll(graph.serviceProviders.map { provider ->
                 RetentionEvidence(provider.provider, dev.kartograph.core.RetentionReason.SERVICE_PROVIDER, provider.location)
             })
-            addAll(KeepRuleRetention.find(graph, keepRules, classHierarchy))
+            addAll(KeepRuleRetention.find(graph, keepRules, classHierarchy, lenientKeepRules))
             addAll(KeepAnnotationRetention.find(graph))
             addAll(FrameworkAnnotationRetention.find(graph, classHierarchy))
             addAll(GeneratedSiblingRetention.find(graph))

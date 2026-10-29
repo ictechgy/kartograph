@@ -54,6 +54,12 @@ CSV는 닫힌 staging 디렉터리를 게시한다. 기존 목적지는 거부�
 소스 위치를 추측하지 않는다. 외부 호출 원시 레코드도 보존한다. 이 노드를 프로젝트
 구현이나 완전한 SDK 타입 색인으로 취급하지 않는다.
 
+plain v1·compact v2 query snapshot도 외부 호출 operand target이 없거나 해당 정점에
+`externalStub` attribute가 명시되어 있으면 원시 호출·선언 근거·해석 상태·간선을 보존한다.
+이 표식은 그래프 모델의 주장일 뿐 인증된 입력 출처나 메서드 본문의 완전성을 증명하지 않는다.
+표식 없는 프로젝트 target과 외부 호출의 모순은 계속 거부하며, caller·ordinal·resolved target과
+선언 side table의 identity·scope·알려진 프로젝트 사실 검증도 그대로 적용한다.
+
 경로 후보는 package 디렉터리와 읽을 수 있는 소스 package 선언으로 좁힌다.
 `ambiguous-source-paths`와 `unavailable-source-paths`는 각각 여러 후보와 후보 부재를
 구분한다. 경로가 확정된 소스 안에서 타입 소유 사슬과 유일한 선언이 일치하면 타입 줄을
@@ -92,3 +98,25 @@ SOURCE 보존 항목은 classfile에 없어 복원하지 않는다. 대상이 �
 간선이 없어도 노드의 `annotations`에는 관찰한 identity가 남는다. 외부 stub 옵션은
 외부 어노테이션 타입으로 가는 원시 간선도 보존한다. processor가 변형한 결과가 소스
 어노테이션과 일대일로 같거나 DI 선택 관계를 전부 나타낸다고 보장하지 않는다.
+
+## JVM 호출 선언 근거
+
+외부 호출 JSON/NDJSON의 선택 `declaration`은 `target`, `scope`(`project` 또는 `external`),
+`ownerChain`을 제공한다. `target`은 첫 class 메서드 선언이고 기존 `resolvedTargets`/`resolution`은
+실행 후보·runtime 모델 해석이다. 둘은 별개이며 abstract 선언도 가능한 선언이다. 원래 호출 operand,
+kind, ordinal, 수와 간선은 그대로 남는다. `declaration` 누락은 미확정이며 대상 부재를 뜻하지 않는다.
+class 가시성·module export·nestmate를 포함한 전체 JVM linkage/실행 성공의 증거는 아니다.
+알려진 method access만 보수적으로 검사하며 이 근거를 완전한 접근 권한 검증으로 해석하지 않는다.
+
+plain v1과 compact v2 snapshot은 선택 `graph.callDeclarations` side table에 같은 근거를 저장한다.
+각 행의 `call`은 정렬된 `externalCalls` 배열의 0-based 위치이며 `caller`, `operand`, `kind`, `ordinal`을
+함께 검사한다. 고정 compact call 행은 바뀌지 않아 이전 reader가 선택 키를 무시할 수 있고 이전 snapshot은
+미확정으로 읽힌다. reader는 중복 index, 잘못된 signature/chain endpoint/scope, 빈·중복·256개 초과 사슬과
+프로젝트 정점에 모순되는 주장을 거부한다. 외부 header 주장은 데이터이며 보이지 않는 bytecode의 진위를
+암호학적으로 증명하지 않는다. 프로젝트 target을 제거한 선택 그래프는 해당 근거도 비운다.
+
+실제 javac/JVM 회귀는 프로젝트 superclass를 상속하는 dependency, dependency JAR의 같은 이름 교체,
+final/static/super/abstract와 protected 호출을 비교한다. raw cache의 호출 사실에는 후속 선언 근거를
+직렬화하지 않으며 매 조립과 `withHierarchy`에서 현재 header로 다시 계산한다. 내부 project 호출의
+opcode도 비공개로 보존하여 재보강 때 후보를 다시 계산하고, 오래된 dispatch 간선을 그대로 보존하지 않는다. 지원 경계는
+[LIMITATIONS](LIMITATIONS.md#런타임-관측-범위)에 명시한다.

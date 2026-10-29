@@ -1,0 +1,107 @@
+{
+  "adapterSha256": "54cb74a5836494a876084098bd1a091ca1ff0b3aafd473249c6954004c64812f",
+  "compiledFixture": {
+    "META-INF/main.kotlin_module": "06d262cf732152000d8cb1453e8dc1209b37fa4411e5c4d202265ff0d18ec16d",
+    "probe/PsiJava.class": "cae3433c7cd28a522fa3148d878225830fdb2d811a85ecf5d027e6be2a9a1494",
+    "probe/PsiKotlin.class": "a6c87786c7dce0b011890d5bdfa552962f23311d8fb89396b0567c7569911019"
+  },
+  "expectationsSha256": "6dee3a238728fccbb570804cab2079e1f1123675dde02b7f9b5afcc6ffe1cf5a",
+  "fixture": {
+    "probe/PsiJava.java": "4084c63c440e76c2b27cab74fee27f32c0f2038540ef469a816a81a04ec6ea6c",
+    "probe/PsiKotlin.kt": "09e2da7b473e7661b7b374571b1fb80074821023747661db33a328770d4f8a8b"
+  },
+  "fixtureManifestSha256": "6999f307a0adbc37a787abac522857e121ecfc358b9e5f3686db7b12367959c1",
+  "runtimeJars": [
+    {
+      "bytes": 29371,
+      "name": "annotations-23.0.0.jar",
+      "sha256": "7b0f19724082cbfcbc66e5abea2b9bc92cf08a1ea11e191933ed43801eb3cd05"
+    },
+    {
+      "bytes": 912143,
+      "name": "caffeine-2.9.3.jar",
+      "sha256": "1e0a7bbef1dd791653143f3f05d0e489934bf5481e58a87c9e619cd46b68729b"
+    },
+    {
+      "bytes": 222143,
+      "name": "checker-qual-3.19.0.jar",
+      "sha256": "a827c49183f3a632277d27a0a4673686cb341507447b9d570261094bd748aa68"
+    },
+    {
+      "bytes": 9236967,
+      "name": "detekt-kotlin-analysis-api-2.0.0-alpha.6.jar",
+      "sha256": "b0dffe98e07832202d19c0cbb2a2402e3a18580a054fe06165aaffc83996b2f6"
+    },
+    {
+      "bytes": 237504,
+      "name": "detekt-kotlin-analysis-api-standalone-2.0.0-alpha.6.jar",
+      "sha256": "08fe542ba4b1552af778549035589e55540b5d167072c3c26b33918fbcfe349b"
+    },
+    {
+      "bytes": 15992,
+      "name": "error_prone_annotations-2.10.0.jar",
+      "sha256": "a249d4d25dfb86d41e6c82fc335df580189f0c9feeabdc53233fc1e5060724a1"
+    },
+    {
+      "bytes": 310932,
+      "name": "kotlin-build-tools-api-2.4.10.jar",
+      "sha256": "3953d283e7710c990672e403a87df393d9726a9bf3e172194ebb5c33e062fcb0"
+    },
+    {
+      "bytes": 61903538,
+      "name": "kotlin-compiler-2.4.10.jar",
+      "sha256": "db12b1af0db0e10eeedfc15d5dac0316604e5c556321f60e3bcd73075a66f0a3"
+    },
+    {
+      "bytes": 3038560,
+      "name": "kotlin-reflect-1.6.10.jar",
+      "sha256": "3277ac102ae17aad10a55abec75ff5696c8d109790396434b496e75087854203"
+    },
+    {
+      "bytes": 46565,
+      "name": "kotlin-script-runtime-2.4.10.jar",
+      "sha256": "f4a5b30c2fdfbe386b097101b7989dbeea3743c06396136664784e08e15c6899"
+    },
+    {
+      "bytes": 203069,
+      "name": "kotlin-scripting-common-2.4.10.jar",
+      "sha256": "d5399982cdbf5994f7f3a731afacfbc5c21b797d97ffd7328b62cea670103076"
+    },
+    {
+      "bytes": 136266,
+      "name": "kotlin-scripting-jvm-2.4.10.jar",
+      "sha256": "0b7518219da69b427e0b3f840f13e280db9e61a839c7d3ff094de4630ddbc9f5"
+    },
+    {
+      "bytes": 1841933,
+      "name": "kotlin-stdlib-2.4.10.jar",
+      "sha256": "4ec0293bc3751423b203f1d8493251c57c42e73eb6377a6b8560d0974ff0a6df"
+    },
+    {
+      "bytes": 946,
+      "name": "kotlin-stdlib-jdk7-2.4.10.jar",
+      "sha256": "e7a8fe7cacf3b9c838f6b3fcb26dfdd41f844551a3ba67fd3f959a0d9d5c0bef"
+    },
+    {
+      "bytes": 953,
+      "name": "kotlin-stdlib-jdk8-2.4.10.jar",
+      "sha256": "08346b7f4cfba40c1139161c9f30b68199f425cecf3b63de67838063f34a05c7"
+    },
+    {
+      "bytes": 1514505,
+      "name": "kotlinx-coroutines-core-jvm-1.10.2-intellij-1.jar",
+      "sha256": "1e9b4b60644ca8dd5e9687ad096aee0028bd9d3a24afed3e38565b22ca726ee0"
+    },
+    {
+      "bytes": 1548360,
+      "name": "kotlinx-coroutines-core-jvm-1.8.0.jar",
+      "sha256": "9860906a1937490bf5f3b06d2f0e10ef451e65b95b269f22daf68a3d1f5065c5"
+    },
+    {
+      "bytes": 404509,
+      "name": "kotlinx-serialization-core-jvm-1.11.0.jar",
+      "sha256": "f4a801c647d4351327cd9e1ac4113e2be9ea37a64ab0abae269c25a52e28f35d"
+    }
+  ],
+  "stage": "compiled-fixture"
+}

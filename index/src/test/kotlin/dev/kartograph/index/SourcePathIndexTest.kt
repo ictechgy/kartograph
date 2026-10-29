@@ -10,6 +10,7 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
 import org.junit.jupiter.api.io.TempDir
@@ -75,6 +76,31 @@ class SourcePathIndexTest {
         outside.writeText("class Outside")
         java.nio.file.Files.createSymbolicLink(project.resolve("Outside.kt"), outside)
         assertEquals(emptyMap(), SourcePathIndex.byFileName(project))
+    }
+
+    @Test
+    fun `failed source traversal is reported as the cause instead of absent sources`(@TempDir root: Path) {
+        val outside = root.resolve("Outside.kt").also { it.writeText("class Outside") }
+        for ((name, target) in listOf("outside" to outside, "broken" to root.resolve("missing.kt"))) {
+            val project = root.resolve("project-$name").createDirectories()
+            write(project, "src/p/Real.kt")
+            java.nio.file.Files.createSymbolicLink(project.resolve("src/p/Linked.kt"), target)
+            val graph = CodeGraph(listOf(node("class:p/Real", "Real", "Real.kt"), node("class:p/Generated", "Generated", "Generated.kt")), emptyList())
+
+            // 공개 계약은 그대로다. 순회가 실패하면 부분 색인 대신 빈 색인이다.
+            assertEquals(emptyMap(), SourcePathIndex.byFileName(project))
+            val failed = SourcePathIndex.resolve(graph, project).limitations
+            assertTrue(failed.any { it.startsWith("unresolved-source-paths: 2 of 2 ") && "project source traversal failed" in it }, "$name: $failed")
+            assertTrue(failed.any { it.startsWith("unavailable-source-paths: 2 ") && "project source traversal failed" in it }, "$name: $failed")
+            assertFalse(failed.any { "generated, external or omitted" in it }, "$name: $failed")
+            assertFalse(failed.any { root.toString() in it || root.toRealPath().toString() in it || "Linked.kt" in it }, "$name: $failed")
+
+            // 링크를 치우면 같은 그래프의 한계가 원래 안내로 돌아온다.
+            java.nio.file.Files.delete(project.resolve("src/p/Linked.kt"))
+            val healthy = SourcePathIndex.resolve(graph, project).limitations
+            assertTrue(healthy.any { it.startsWith("unavailable-source-paths: 1 ") && it.endsWith("generated, external or omitted sources may be absent") }, "$name: $healthy")
+            assertFalse(healthy.any { "traversal failed" in it }, "$name: $healthy")
+        }
     }
 
     @Test

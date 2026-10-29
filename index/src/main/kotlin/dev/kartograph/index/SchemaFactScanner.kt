@@ -48,11 +48,12 @@ public class SchemaFactScanner(private val projectRoot: Path, private val jpaNam
         val entities = mutableMapOf<String, String>()
         val exposedTables = mutableMapOf<String, String>()
         sources.forEach { collectDeclarations(it, entities, exposedTables, stats) }
-        val jpa = scanJpa(root, jpaFiles(files, sources), graph)
+        val jpa = scanJpa(root, sources, jpaFiles(sources), graph)
         val facts = mutableListOf<BridgeFact>()
         sources.forEach { scanFile(it, entities, exposedTables, facts, stats, jpa.consumed[it.relative].orEmpty()) }
         // JPA 사실은 owner 규칙에 따라 스스로 symbol을 정했다 — 소스 범위 기반 부착은 나머지 사실에만 적용한다.
-        val attached = facts.map { graph?.let { snapshot -> attachSnapshotSymbol(it, snapshot, projectRoot) } ?: it }
+        val attacher = graph?.let { SnapshotSymbolAttacher(it, projectRoot) }
+        val attached = facts.map { attacher?.attach(it) ?: it }
         val withSymbols = (attached + jpa.facts).distinct().sortedWith(
             compareBy(
                 { it.location.path }, { it.location.line }, { it.location.column },
@@ -65,7 +66,7 @@ public class SchemaFactScanner(private val projectRoot: Path, private val jpaNam
                 ?.let(::bridgeTimestamp),
             platform = "kotlin",
             target = if (withSymbols.isEmpty()) null else "persistence",
-            project = root.toString().replace('\\', '/'),
+            project = projectIdentity(root),
             facts = withSymbols,
             limitations = (limitations(stats) + jpa.limitations).distinct().sorted(),
         )
@@ -75,26 +76,31 @@ public class SchemaFactScanner(private val projectRoot: Path, private val jpaNam
      * JPA 스캔 대상 파일이다 — import 게이트를 통과한 파일과, 그 파일들의 인터페이스를 상속하는 인터페이스를 선언한 파일
      * (같은 패키지라 import가 없는 하위 저장소)이다.
      */
-    private fun jpaFiles(files: List<Path>, sources: List<SourceFile>): List<Path> {
+    private fun jpaFiles(sources: List<SourceFile>): List<SourceFile> {
         val gated = sources.indices.filter { sources[it].jpa || sources[it].entityManager }.toSet()
         val interfaces = gated.flatMap { index -> INTERFACE_NAME.findAll(sources[index].masked).map { it.groupValues[1] } }.toSet()
-        if (interfaces.isEmpty()) return gated.sorted().map(files::get)
+        if (interfaces.isEmpty()) return gated.sorted().map(sources::get)
         val extending = Regex("\\binterface\\s+\\w+[^{;]*?\\b(?:${interfaces.joinToString("|") { Regex.escape(it) }})\\b")
-        return files.indices.filter { it in gated || (!sources[it].isSqlDelight && extending.containsMatchIn(sources[it].masked)) }
-            .map(files::get)
+        return sources.indices.filter { it in gated || (!sources[it].isSqlDelight && extending.containsMatchIn(sources[it].masked)) }
+            .map(sources::get)
     }
 
-    /** JPA·Spring Data 표면을 스캔한다 — 게이트 파일이 없으면 명명 감지도 하지 않는다. */
-    private fun scanJpa(root: Path, files: List<Path>, graph: CodeGraph?): JpaPersistenceScanner.Result {
+    /**
+     * JPA·Spring Data 표면을 스캔한다 — 게이트 파일이 없으면 명명 감지도 하지 않는다.
+     * 이미 읽은 원문과 가린 뷰를 넘긴다. 다시 읽고 가리면 JPA 파일이 하나만 있어도 전체 소스 크기만큼 일이 는다.
+     */
+    private fun scanJpa(root: Path, sources: List<SourceFile>, files: List<SourceFile>, graph: CodeGraph?): JpaPersistenceScanner.Result {
         if (files.isEmpty()) return JpaPersistenceScanner.Result(emptyList(), emptyMap(), emptyList())
-        val parsed = files.map { JpaSourceFile(root, it) }
+        val parsed = files.map { JpaSourceFile(root, it.path, it.source) }
         val legacyJavax = parsed.any { it.imports("javax.persistence") }
-        val naming = JpaNamingDetector(projectRoot).detect(jpaNaming, legacyJavax)
+        // 명명 감지는 .kt·.java만 본다 — .sq·.sqm은 SQL이고 가린 뷰도 주석을 지우지 않은 것이다.
+        val maskedSources = sources.filterNot { it.isSqlDelight }.map { it.path to it.masked }
+        val naming = JpaNamingDetector(projectRoot).detect(jpaNaming, legacyJavax, maskedSources)
         return JpaPersistenceScanner(projectRoot, parsed, naming).scan(graph)
     }
 
     /** 파일 하나의 스캔 컨텍스트다 — 원문·주석 제거 뷰·마스킹 뷰와 게이트를 한 번만 만든다. */
-    private class SourceFile(root: Path, path: Path, stats: ScanStats) {
+    private class SourceFile(root: Path, val path: Path, stats: ScanStats) {
         val relative: String = root.relativize(path.toAbsolutePath().normalize()).joinToString("/")
         val isSqlDelight: Boolean = path.fileName.toString().let {
             it.endsWith(".sq") || it.endsWith(".sqm")
