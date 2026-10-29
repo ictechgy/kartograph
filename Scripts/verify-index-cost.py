@@ -22,6 +22,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import xml.etree.ElementTree as ET
 
 # 이번 간선 묶기의 추가 효과를 같은 runner에서 비교한다. 이전 bb13/5a 실험의 기록은 별도 보존한다.
 SOURCE_BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
@@ -94,6 +95,86 @@ def root_inventory(root):
 def require_equal(before, after, reason):
     if before != after:
         raise DiagnosticError(reason)
+
+
+def verification_document(path):
+    """고정 진단의 UTF-8 명시적 SHA256 metadata만 제한된 크기로 읽는다."""
+    if path.is_symlink():
+        raise DiagnosticError("linked-verification-metadata")
+    with path.open("rb") as stream:
+        raw = stream.read(2 * 1024 * 1024 + 1)
+    if len(raw) > 2 * 1024 * 1024:
+        raise DiagnosticError("invalid-verification-metadata")
+    try:
+        text = raw.decode("utf-8-sig")
+        if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
+            raise DiagnosticError("invalid-verification-metadata")
+        root = ET.fromstring(text)
+    except (ET.ParseError, UnicodeDecodeError) as error:
+        raise DiagnosticError("invalid-verification-metadata") from error
+    pending = [(root, 0)]
+    visited = 0
+    while pending:
+        element, depth = pending.pop()
+        visited += 1
+        if depth > 16 or visited > 20_000:
+            raise DiagnosticError("verification-metadata-structure-limit")
+        pending.extend((child, depth + 1) for child in element)
+    namespace = "{https://schema.gradle.org/dependency-verification}"
+    def signature(element):
+        return (element.tag, tuple(sorted(element.attrib.items())), (element.text or "").strip(),
+                tuple(signature(child) for child in element))
+    if root.tag != namespace + "verification-metadata" or [child.tag for child in root] != [namespace + "configuration", namespace + "components"]:
+        raise DiagnosticError("unsupported-verification-metadata-policy")
+    configuration, components = root
+    if components.attrib:
+        raise DiagnosticError("unsupported-verification-metadata-policy")
+    artifacts = {}
+    component_keys = set()
+    for component in components:
+        if component.tag != namespace + "component" or set(component.attrib) != {"group", "name", "version"} or any(
+            not re.fullmatch(r"[A-Za-z0-9_.-]+", value) for value in component.attrib.values()
+        ):
+            raise DiagnosticError("unsupported-verification-metadata-component")
+        coordinate = tuple(component.attrib[key] for key in ("group", "name", "version"))
+        if coordinate in component_keys:
+            raise DiagnosticError("duplicate-verification-component")
+        component_keys.add(coordinate)
+        for artifact in component:
+            if artifact.tag != namespace + "artifact" or set(artifact.attrib) != {"name"} or not re.fullmatch(r"[A-Za-z0-9_.-]+", artifact.attrib["name"]):
+                raise DiagnosticError("unsupported-verification-artifact")
+            key = (*coordinate, artifact.attrib["name"])
+            if key in artifacts or len(artifact) != 1:
+                raise DiagnosticError("duplicate-or-alternative-verification-pin")
+            checksum = artifact[0]
+            if checksum.tag != namespace + "sha256" or set(checksum.attrib) - {"value", "origin"} or not re.fullmatch(r"[0-9a-f]{64}", checksum.get("value", "")) or len(checksum) or (checksum.text or "").strip():
+                raise DiagnosticError("unsupported-verification-checksum")
+            artifacts[key] = signature(artifact)
+    if not artifacts:
+        raise DiagnosticError("empty-verification-metadata")
+    return raw, (tuple(sorted(root.attrib.items())), signature(configuration)), artifacts
+
+
+def align_verification_metadata(repo, baseline, report):
+    """원본 소스는 유지하고 추가 artifact 핀만 임시 baseline에 동일하게 적용한다."""
+    relative = Path("gradle/verification-metadata.xml")
+    original, old_policy, old = verification_document(baseline / relative)
+    shared, new_policy, new = verification_document(repo / relative)
+    require_equal(old_policy, new_policy, "verification-metadata-policy-changed")
+    if any(key not in new or new[key] != value for key, value in old.items()):
+        raise DiagnosticError("verification-metadata-existing-pin-changed")
+    value = {"scope": "additive-exact-SHA256-artifact-pins-only; original executable source and wrapper unchanged",
+             "baselineOriginalSha256": digest(original), "sharedSha256": digest(shared),
+             "baselineArtifacts": len(old), "sharedArtifacts": len(new), "addedArtifacts": len(new) - len(old)}
+    if original != shared:
+        (baseline / relative).write_bytes(shared)
+    report["verificationMetadataAlignment"] = value
+
+
+def verify_aligned_metadata(repo, baseline, value):
+    for root in (repo, baseline):
+        raw, _, _ = verification_document(root / "gradle/verification-metadata.xml")
+        require_equal(value["sharedSha256"], digest(raw), "verification-metadata-changed")
 
 
 def java_identity(home):
@@ -487,6 +568,8 @@ def public_summary(report):
         result["failure"] = report["failure"]
     if "sourcesBefore" in report:
         result["sources"] = report["sourcesBefore"]
+    if "verificationMetadataAlignment" in report:
+        result["verificationMetadataAlignment"] = report["verificationMetadataAlignment"]
     result["identitySha256"] = {key: identity_digest(report[key]) for key in (
         "rootsBefore", "projectBefore", "libsBefore", "launchersBefore", "jdkBefore",
         "probeSourceBefore", "semanticSourceBefore", "probesBefore") if key in report}
@@ -937,11 +1020,12 @@ def experiment(repo, work, env, report, raw_directory=None):
     successful(["git", "archive", "--format=tar", "--output", archive, BASELINE], repo, env, phase="baseline-archive")
     with tarfile.open(archive) as source:
         source.extractall(baseline, filter="data")
-    for name in ("gradlew", "gradle/wrapper/gradle-wrapper.jar",
-                 "gradle/wrapper/gradle-wrapper.properties", "gradle/verification-metadata.xml"):
+    for name in ("gradlew", "gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.properties"):
         require_equal((repo / name).read_bytes(), (baseline / name).read_bytes(), "build-tool-identity-mismatch")
+    align_verification_metadata(repo, baseline, report)
     report["baselinePreparation"] = summary(successful(
         [baseline / "gradlew", "--no-daemon", ":cli:installDist"], baseline, env, timeout=600, phase="baseline-build"))
+    verify_aligned_metadata(repo, baseline, report["verificationMetadataAlignment"])
     distributions = {"baseline": baseline / "cli/build/install/kartograph", "candidate": candidate}
     libs_before = {arm: inventory(dist / "lib") for arm, dist in distributions.items()}
     require_equal(candidate_before, libs_before["candidate"], "candidate-rebuilt-or-changed")
@@ -985,6 +1069,7 @@ def experiment(repo, work, env, report, raw_directory=None):
             env, work / "jfr-capture", raw.directory.parent / "jfr", repo / "Scripts/IndexCostCapture.jfc", expected)
         semantic_oracle(repo, distributions, roots, java_home, env, work, report, raw)
     finally:
+        verify_aligned_metadata(repo, baseline, report["verificationMetadataAlignment"])
         report["sourcesAfter"] = {"baselineSource": source_identity(repo, SOURCE_BASELINE, env),
                                   "baseline": source_identity(repo, BASELINE, env),
                                   "candidate": source_identity(repo, "HEAD", env)}
