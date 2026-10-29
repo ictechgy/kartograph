@@ -740,7 +740,7 @@
       </component>
       <component group="org.jetbrains.kotlinx.kover" name="org.jetbrains.kotlinx.kover.gradle.plugin" version="0.9.11">
          <artifact name="org.jetbrains.kotlinx.kover.gradle.plugin-0.9.11.pom">
-            <sha256 value="2ac3170ec954ebca93275a18470cc2de4f8342933fe6fbbb521121ed142b0ca8" origin="Canonical public repository bytes; published digests matched"/>
+            <sha256 value="f9b90b9486e255ff29eb11f5839a5a24ab95b7b475fef9c91c70681c196e6659" origin="Canonical public repository bytes; published digests matched"/>
          </artifact>
       </component>
       <component group="org.jetbrains.kotlinx.kover" name="org.jetbrains.kotlinx.kover.gradle.plugin" version="0.9.9">
