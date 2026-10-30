@@ -32,7 +32,7 @@ def exact_jar(paths: list[Path], family: str, version: str) -> Path:
     return candidates[0]
 
 
-def distribution_jars(distribution: str, version: str, kotlin_version: str) -> list[Path]:
+def distribution_jars(distribution: str, version: str, stdlib_version: str) -> list[Path]:
     if not distribution or not Path(distribution).is_dir():
         raise AssertionError("explicit built distribution is required; use -Pkartograph.consumerDistribution=<installDist>")
     root = Path(distribution).resolve()
@@ -40,7 +40,7 @@ def distribution_jars(distribution: str, version: str, kotlin_version: str) -> l
         raise AssertionError("installed distribution VERSION does not match the requested product version")
     paths = list((root / "lib").glob("*.jar"))
     jars = [exact_jar(paths, "analysis", version), exact_jar(paths, "core", version),
-            exact_jar(paths, "kotlin-stdlib", kotlin_version)]
+            exact_jar(paths, "kotlin-stdlib", stdlib_version)]
     for path, required in zip(jars, ("dev/kartograph/analysis/AuthoredCallUniverse.class",
                                       "dev/kartograph/core/CodeGraph.class", "kotlin/Unit.class")):
         if path.is_symlink() or path.resolve().parent != root / "lib":
@@ -132,7 +132,7 @@ def verify(args: argparse.Namespace) -> dict:
 
 
 def verify_inputs(args: argparse.Namespace, report: Path) -> dict:
-    jars = distribution_jars(args.distribution, args.version, args.kotlin_version)
+    jars = distribution_jars(args.distribution, args.version, args.distribution_stdlib_version)
     entries = args.compiler_classpath.split(os.pathsep)
     compiler = [Path(entry).resolve() for entry in entries if entry]
     if len(compiler) != len(entries) or not compiler or len(compiler) > 64 or len(set(compiler)) != len(compiler) or any(
@@ -186,10 +186,12 @@ def verify_inputs(args: argparse.Namespace, report: Path) -> dict:
         raise AssertionError("packaged consumer inputs changed during verification")
     value = {"schemaVersion": 1, "status": "PASS", "distribution": str(Path(args.distribution).resolve()),
              "productVersion": args.version, "kotlinVersion": args.kotlin_version,
+             "distributionStdlibVersion": args.distribution_stdlib_version,
              "targetClasspath": [str(path) for path in jars], "inputs": before, "commands": commands,
              "consumerOutputs": classes, "expectedStdout": EXPECTED}
     (report / "verification.json").write_text(json.dumps(value, indent=2) + "\n")
     publish(report, "PASS", public_inputs, commands, productVersion=args.version, kotlinVersion=args.kotlin_version,
+            distributionStdlibVersion=args.distribution_stdlib_version,
             targetClasspath=[f"distribution/lib/{path.name}" for path in jars], consumerOutputs=classes, expectedStdout=EXPECTED)
     return value
 
@@ -199,6 +201,7 @@ def main() -> None:
     parser.add_argument("--distribution", required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--kotlin-version", required=True)
+    parser.add_argument("--distribution-stdlib-version", required=True)
     parser.add_argument("--compiler-classpath", required=True)
     parser.add_argument("--report", required=True)
     args = parser.parse_args()

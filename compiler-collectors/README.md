@@ -59,6 +59,10 @@ the real Java, Kotlin, and Dagger fixtures in `tests/run.py`.
 The required `publicAuthoredApiTest` compiles a separate consumer against only
 the explicitly installed analysis/core/stdlib JARs. Missing or mismatched
 distributions fail instead of skipping; no source or internal-test classpath is used.
+The fixture pins the compiler and its own stdlib to 2.4.20 independently of
+the installed distribution's stdlib 2.4.21. Both versions remain exact inputs;
+consumer compilation and execution use the installed JARs, while the compiler
+launcher uses its separate pinned runtime. Verification receipts record both.
 It also runs `tests/output_attribution.py` for real javac/KAPT/KSP output and
 failure controls. The latter restores the native javac/KAPT/KSP task from the
 Gradle build cache, reuses configuration cache and validates restored output
