@@ -8,7 +8,7 @@ plugins {
     `java-gradle-plugin`
     kotlin("jvm")
     `maven-publish`
-    id("com.gradle.plugin-publish") version "2.1.1"
+    id("com.gradle.plugin-publish") version "2.2.1"
 }
 
 val embedded = configurations.create("embedded") {
