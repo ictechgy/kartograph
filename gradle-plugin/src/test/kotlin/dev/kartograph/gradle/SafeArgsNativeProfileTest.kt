@@ -1,6 +1,7 @@
 package dev.kartograph.gradle
 
 import java.nio.file.Path
+import java.nio.file.Files
 import groovy.lang.GroovyShell
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -31,6 +32,38 @@ class SafeArgsNativeProfileTest {
         assertFailsWith<IllegalArgumentException> { profile.runner(root, null, 21) }
         assertFailsWith<IllegalArgumentException> { profile.runner(root, null, 17) }
         assertFailsWith<IllegalArgumentException> { profile.runner(root, root.resolve("missing").toString(), 17) }
+    }
+
+    @Test
+    fun `현재 프로필은 누락된 고정 설치본을 기본 TestKit으로 대체하지 않는다`(@TempDir root: Path) {
+        val key = "kartograph.test.safeargsCurrentGradleHome"
+        val previous = System.getProperty(key)
+        System.setProperty(key, root.resolve("missing-verified-home").toString())
+        try {
+            assertFailsWith<IllegalArgumentException> { SafeArgsNativeProfile.CURRENT.runner(root, null, 17) }
+        } finally {
+            if (previous == null) System.clearProperty(key) else System.setProperty(key, previous)
+        }
+    }
+
+    @Test
+    fun `현재 프로필은 다른 버전의 설치본을 거절한다`(@TempDir root: Path) {
+        val home = root.resolve("wrong-version")
+        Files.createDirectories(home.resolve("bin"))
+        Files.createDirectories(home.resolve("lib"))
+        Files.writeString(home.resolve("bin/gradle"), "synthetic selection-only launcher")
+        Files.writeString(home.resolve("lib/gradle-core-8.13.jar"), "synthetic selection-only marker")
+        val key = "kartograph.test.safeargsCurrentGradleHome"
+        val previous = System.getProperty(key)
+        System.setProperty(key, home.toString())
+        try {
+            assertFailsWith<IllegalArgumentException> { SafeArgsNativeProfile.CURRENT.runner(root, null, 17) }
+            // 경로 선택의 양성 대조군이다. 실제 배포본/Gradle 실행 성공으로 세지 않는다.
+            Files.move(home.resolve("lib/gradle-core-8.13.jar"), home.resolve("lib/gradle-core-9.7.1.jar"))
+            assertEquals(root.toFile(), SafeArgsNativeProfile.CURRENT.runner(root, null, 17).projectDir)
+        } finally {
+            if (previous == null) System.clearProperty(key) else System.setProperty(key, previous)
+        }
     }
 
     @Test

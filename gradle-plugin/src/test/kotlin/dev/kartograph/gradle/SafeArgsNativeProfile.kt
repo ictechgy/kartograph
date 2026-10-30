@@ -13,10 +13,15 @@ internal enum class SafeArgsNativeProfile(val id: String, val gradleVersion: Str
         val runner = GradleRunner.create().withProjectDir(root.toFile())
         if (this == JAVA_813) {
             require(javaFeature == 17) { "Gradle 8.13 Java fixture requires JDK 17" }
-            val home = Path.of(requireNotNull(installation) { "Gradle 8.13 fixture requires the verified distribution home" })
-            require(Files.isDirectory(home) && Files.isRegularFile(home.resolve("bin/gradle"))) { "verified Gradle 8.13 distribution is unavailable" }
-            runner.withGradleInstallation(home.toFile())
         }
+        // CURRENT는 outer wrapper 버전과 독립적이다. TestKit 기본 설치로 대체하지 않는다.
+        val selected = if (this == CURRENT) System.getProperty("kartograph.test.safeargsCurrentGradleHome") else installation
+        val home = Path.of(requireNotNull(selected) { "SafeArgs fixture requires its verified Gradle $gradleVersion distribution home" })
+        require(Files.isDirectory(home) && Files.isRegularFile(home.resolve("bin/gradle")) &&
+            Files.isRegularFile(home.resolve("lib/gradle-core-$gradleVersion.jar"))) {
+            "verified Gradle $gradleVersion distribution is unavailable"
+        }
+        runner.withGradleInstallation(home.toFile())
         return runner
     }
 
