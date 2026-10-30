@@ -7,6 +7,11 @@ on:
         description: Full reviewed commit SHA for the same-executable diagnostic
         required: true
         type: string
+      runtime_pair:
+        description: One approved fixed-target JDK comparison, including a same-runtime noise control
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -17,7 +22,7 @@ concurrency:
 
 jobs:
   qualify:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runtime_pair && 'ubuntu-24.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
     env:
       TARGET_SHA: ${{ inputs.target_sha }}
@@ -29,6 +34,13 @@ jobs:
             echo "target_sha must be a full lowercase commit SHA" >&2
             exit 64
           }
+          if [[ '${{ inputs.runtime_pair }}' == 'true' ]]; then
+            test "$TARGET_SHA" = '741903922f011aab92888c395226f8e4d4f4b6a9'
+            python3 - <<'PY' >> "$GITHUB_ENV"
+          import time
+          print('PAIR_DEADLINE_MONOTONIC=' + str(time.monotonic() + 2400))
+          PY
+          fi
           printf 'EVIDENCE_DIRECTORY=%s/cli-repeatability\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,6 +53,7 @@ jobs:
           path: target
           persist-credentials: false
       - name: Verify and record both checkouts
+        id: identities
         shell: bash
         run: |
           test "$(git -C harness rev-parse HEAD)" = "$GITHUB_SHA"
@@ -50,15 +63,46 @@ jobs:
           git -C target rev-parse HEAD HEAD^{tree} > "$EVIDENCE_DIRECTORY/target-source.txt"
           printf '%s\n' "$GITHUB_WORKFLOW_REF" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$EVIDENCE_DIRECTORY/workflow.txt"
           sha256sum harness/Scripts/verify-cli-repeatability.py harness/experiments/cli-repeatability/README.md target/Scripts/verify-analysis-smoke-gate.py > "$EVIDENCE_DIRECTORY/scripts.sha256"
+          if [[ '${{ inputs.runtime_pair }}' == 'true' ]]; then
+            python3 - <<'PY'
+          import json, os, pathlib
+          value = {'complete': False, 'scope': 'metadata-only failure evidence',
+                   'raw_streams_preserved': False,
+                   'reason': 'No complete verified package; consult failed workflow step and available status receipts.',
+                   'interpretation': 'No runtime-effect or acceptance claim is permitted from this incomplete artifact.'}
+          pathlib.Path(os.environ['EVIDENCE_DIRECTORY'], 'failure-evidence.json').write_text(json.dumps(value, indent=2) + '\n')
+          PY
+          fi
       - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        if: ${{ !inputs.runtime_pair }}
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
           # 입력 SHA의 코드를 실행한 뒤 기본 브랜치 범위 캐시를 저장하지 않도록 복원만 한다.
           cache-read-only: true
+      - name: Select the already installed build JDK without downloading a runtime
+        if: inputs.runtime_pair
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, sys
+          if sys.version_info < (3, 11):
+              raise SystemExit('Python 3.11+ is required; do not install a replacement')
+          java = pathlib.Path(os.environ['JAVA_HOME_17_X64']).resolve(strict=True)
+          release = (java / 'release').read_text()
+          if 'IMPLEMENTOR="Eclipse Adoptium"' not in release or 'JAVA_RUNTIME_VERSION="17.0.21+9"' not in release:
+              raise SystemExit('The approved build JDK is not preinstalled; no fallback installation')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('JAVA_HOME=' + str(java) + '\n')
+              stream.write('GRADLE_USER_HOME=' + os.environ['RUNNER_TEMP'] + '/kartograph-build-cache\n')
+          with open(os.environ['GITHUB_PATH'], 'a') as stream:
+              stream.write(str(java / 'bin') + '\n')
+          pathlib.Path(os.environ['EVIDENCE_DIRECTORY'], 'build-jdk-release.txt').write_text(release)
+          PY
       - name: Build the single installation and corpus
+        if: ${{ !inputs.runtime_pair }}
         shell: bash
         working-directory: target
         run: |
@@ -70,7 +114,22 @@ jobs:
           printf '%s\n' "${statuses[1]}" > "$EVIDENCE_DIRECTORY/setup-log-exit.txt"
           if (( statuses[0] != 0 )); then exit "${statuses[0]}"; fi
           exit "${statuses[1]}"
+      - name: Exercise native Linux supervision before build and measurement
+        if: inputs.runtime_pair
+        shell: bash
+        run: python3 -m unittest discover -s harness/Scripts/tests -p test_jdk_runtime_pair.py -v
+      - name: Build the single installation with owned-process and disk guards
+        if: inputs.runtime_pair
+        shell: bash
+        run: |
+          timeout --signal=TERM --kill-after=15s 1815 python3 harness/Scripts/verify-jdk-runtime-pair.py build \
+            --repo-root "$GITHUB_WORKSPACE/target" --output "$EVIDENCE_DIRECTORY"
+      - name: Prepare the two approved official runtimes
+        if: inputs.runtime_pair
+        shell: bash
+        run: python3 harness/Scripts/verify-jdk-runtime-pair.py prepare --output "$EVIDENCE_DIRECTORY"
       - name: Run the fixed same-executable qualification
+        if: ${{ !inputs.runtime_pair }}
         shell: bash
         run: |
           set +e
@@ -80,8 +139,52 @@ jobs:
           rc=$?
           printf '%s\n' "$rc" > "$EVIDENCE_DIRECTORY/outer-exit.txt"
           exit "$rc"
+      - name: Run the fixed JDK comparison and same-runtime control
+        if: inputs.runtime_pair
+        shell: bash
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=15s 900 python3 harness/Scripts/verify-jdk-runtime-pair.py measure \
+            --repo-root "$GITHUB_WORKSPACE/target" --target-sha "$TARGET_SHA" \
+            --output "$EVIDENCE_DIRECTORY/capture" > "$EVIDENCE_DIRECTORY/driver.stdout" 2> "$EVIDENCE_DIRECTORY/driver.stderr"
+          rc=$?
+          printf '%s\n' "$rc" > "$EVIDENCE_DIRECTORY/outer-exit.txt"
+          exit "$rc"
+      - name: Package and verify all raw comparison evidence within the storage budget
+        id: package
+        if: ${{ always() && inputs.runtime_pair && steps.identities.outcome == 'success' }}
+        shell: bash
+        run: |
+          python3 harness/Scripts/verify-jdk-runtime-pair.py package --output "$EVIDENCE_DIRECTORY" \
+            --destination "$RUNNER_TEMP/kartograph-runtime-pair-evidence.zip"
+      - name: Preserve the bounded complete JDK comparison outcome
+        if: ${{ always() && inputs.runtime_pair && steps.package.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: jdk-runtime-pair-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kartograph-runtime-pair-evidence.zip
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve bounded metadata when the complete package cannot be produced
+        if: ${{ always() && inputs.runtime_pair && steps.identities.outcome == 'success' && steps.package.outcome != 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: jdk-runtime-pair-INCOMPLETE-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/cli-repeatability/failure-evidence.json
+            ${{ runner.temp }}/cli-repeatability/capture/result.json
+            ${{ runner.temp }}/cli-repeatability/runtime-preparation.json
+            ${{ runner.temp }}/cli-repeatability/build.json
+            ${{ runner.temp }}/cli-repeatability/outer-exit.txt
+            ${{ runner.temp }}/cli-repeatability/harness-source.txt
+            ${{ runner.temp }}/cli-repeatability/target-source.txt
+            ${{ runner.temp }}/cli-repeatability/workflow.txt
+            ${{ runner.temp }}/cli-repeatability/scripts.sha256
+          if-no-files-found: error
+          retention-days: 7
       - name: Preserve the complete diagnostic outcome
-        if: always()
+        if: ${{ always() && !inputs.runtime_pair }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-repeatability-${{ github.run_id }}-${{ github.run_attempt }}
