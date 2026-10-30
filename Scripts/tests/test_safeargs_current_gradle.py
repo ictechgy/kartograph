@@ -13,6 +13,8 @@ from unittest.mock import patch
 import zipfile
 
 SPEC = importlib.util.spec_from_file_location("current_gradle", Path(__file__).parents[1] / "prepare-safeargs-current-gradle.py")
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("test module specification with a loader is required")
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 

@@ -8,6 +8,8 @@ import unittest
 from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location("index_cost_wrapper", Path(__file__).parents[1] / "verify-index-cost.py")
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("test module specification with a loader is required")
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 PATHS = ("gradlew", "gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.properties")

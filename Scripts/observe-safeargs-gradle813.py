@@ -192,9 +192,11 @@ def inventory(root: Path) -> dict:
     return result
 
 
-def validate_observation(value: dict, gradle_home: Path, phase: str) -> None:
+def validate_observation(value: object, gradle_home: Path, phase: str) -> None:
     if phase not in ("cold", "warm"):
         raise ValueError("unknown observation phase")
+    if not isinstance(value, dict):
+        raise ValueError("observation must be a JSON object")
     if value["gradle"] != VERSION or value["java"] != "17" or value["task"] != ":generateSafeArgsDebug" or value["taskType"] != TASK:
         raise ValueError("wrong observed toolchain or task")
     if any(not isinstance(value[k], str) or not 0 < len(value[k]) <= 128 for k in ("javaRuntimeVersion", "javaVendor")):

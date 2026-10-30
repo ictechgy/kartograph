@@ -16,6 +16,8 @@ import zipfile
 VERSION = "9.7.1"
 DISTRIBUTION_SHA = "acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a"
 SPEC = importlib.util.spec_from_file_location("safeargs_distribution", Path(__file__).with_name("observe-safeargs-gradle813.py"))
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("test module specification with a loader is required")
 SHARED = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SHARED)
 
