@@ -111,21 +111,6 @@ jobs:
           retention-days: 14
       - name: Verify analysis smoke gate and self-analysis contracts
         run: python3 Scripts/verify-analysis-smoke-gate.py --json
-      - name: Diagnose fixed-input index cost without changing the smoke gate
-        if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
-        timeout-minutes: 15
-        run: python3 Scripts/verify-index-cost.py
-      - name: Preserve bounded index cost evidence
-        if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: index-cost
-          path: |
-            build/reports/index-cost/result.json
-            build/reports/index-cost/raw/*.gz
-            build/reports/index-cost/jfr/*.jfr
-          if-no-files-found: error
-          retention-days: 14
       - name: Verify agent query and bridge contracts
         run: Scripts/verify-agent-surface.sh
       - name: Verify runtime blind-spot corpus

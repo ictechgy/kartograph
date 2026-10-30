@@ -3,6 +3,7 @@
 import argparse
 import json
 import hashlib
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -35,12 +36,81 @@ class PublicAuthoredApiTests(unittest.TestCase):
         (self.lib / "cli-0.20.1.jar").write_bytes(b"not a target input")
         self.assertEqual([path.name for path in self.selected()], list(self.names))
 
+    def split_runtime_inputs(self):
+        (self.lib / self.names[2]).rename(self.lib / "kotlin-stdlib-2.4.21.jar")
+        compiler = self.root / "compiler"
+        compiler.mkdir()
+        paths = [compiler / "kotlin-compiler-embeddable-2.4.20.jar", compiler / "kotlin-stdlib-2.4.20.jar"]
+        for path in paths:
+            path.write_bytes(b"compiler fixture; never executed")
+        home = self.root / "jdk"
+        for name in ("release", "lib/modules", "bin/java"):
+            path = home / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"native JDK fixture; never executed")
+        args = argparse.Namespace(distribution=str(self.dist), version="0.20.1", kotlin_version="2.4.20",
+                                  distribution_stdlib_version="2.4.21", compiler_classpath=os.pathsep.join(map(str, paths)),
+                                  report=str(self.root / "split-report"))
+        return args, paths, home
+
+    def test_compiler_and_packaged_stdlib_versions_are_independently_pinned(self):
+        args, paths, home = self.split_runtime_inputs()
+        observed = {}
+
+        def execute(name, command, cwd, env, report, inputs, public_inputs, commands, path_tokens, expected=0):
+            observed[name] = (command, expected)
+            stdout = consumer.EXPECTED if name == "consumer-run" else ""
+            stderr = "info: kotlinc-jvm 2.4.20\n" if name == "compiler-version" else ""
+            if name == "internal-access-denied":
+                stderr = "Cannot access 'CompilerSourceFacts': it is internal"
+            return subprocess.CompletedProcess(command, expected, stdout, stderr)
+
+        with mock.patch.dict(os.environ, {"JAVA_HOME": str(home)}), \
+             mock.patch.object(consumer, "execute", side_effect=execute):
+            value = consumer.verify(args)
+        self.assertEqual(set(observed), {"compiler-version", "consumer-compile", "consumer-run", "internal-access-denied"})
+        compiler = observed["compiler-version"][0]
+        self.assertEqual(compiler[compiler.index("-cp") + 1], os.pathsep.join(str(path.resolve()) for path in paths))
+        compile_command = observed["consumer-compile"][0]
+        target_classpath = compile_command[compile_command.index("-classpath") + 1].split(os.pathsep)
+        self.assertEqual(target_classpath, [str((self.lib / name).resolve()) for name in
+                                          (self.names[0], self.names[1], "kotlin-stdlib-2.4.21.jar")])
+        self.assertEqual(observed["internal-access-denied"][1], 1)
+        self.assertEqual(value["kotlinVersion"], "2.4.20")
+        self.assertEqual(value["distributionStdlibVersion"], "2.4.21")
+        receipt = json.loads((Path(args.report) / "public-report.json").read_text())
+        self.assertEqual(receipt["kotlinVersion"], "2.4.20")
+        self.assertEqual(receipt["distributionStdlibVersion"], "2.4.21")
+        self.assertIn("distribution/lib/kotlin-stdlib-2.4.21.jar", receipt["inputs"])
+        self.assertTrue(any(name.endswith("/kotlin-stdlib-2.4.20.jar") for name in receipt["inputs"]))
+
+    def test_wrong_distribution_stdlib_expectation_fails_before_compiler(self):
+        args, _, home = self.split_runtime_inputs()
+        args.distribution_stdlib_version = "2.4.22"
+        with mock.patch.dict(os.environ, {"JAVA_HOME": str(home)}), mock.patch.object(consumer, "execute") as run:
+            with self.assertRaisesRegex(AssertionError, "kotlin-stdlib-2.4.22.jar"):
+                consumer.verify(args)
+            run.assert_not_called()
+
+    def test_packaged_stdlib_cannot_replace_the_pinned_compiler_runtime(self):
+        args, paths, home = self.split_runtime_inputs()
+        different = paths[1].with_name("kotlin-stdlib-2.4.21.jar")
+        different.write_bytes(paths[1].read_bytes())
+        for selection in ([paths[0], different], [paths[0]], [*paths, different]):
+            with self.subTest(selection=[path.name for path in selection]):
+                args.compiler_classpath = os.pathsep.join(map(str, selection))
+                with mock.patch.dict(os.environ, {"JAVA_HOME": str(home)}), mock.patch.object(consumer, "execute") as run:
+                    with self.assertRaisesRegex(AssertionError, "kotlin-stdlib-2.4.20.jar"):
+                        consumer.verify(args)
+                    run.assert_not_called()
+
     def test_missing_distribution_fails_and_invalidates_old_success_before_compiler(self):
         report = self.root / "report"
         report.mkdir()
         receipt = report / "verification.json"
         receipt.write_text(json.dumps({"status": "PASS"}))
         args = argparse.Namespace(distribution="", version="0.20.1", kotlin_version="2.4.20",
+                                  distribution_stdlib_version="2.4.20",
                                   compiler_classpath="unused.jar", report=str(report))
         with mock.patch.object(consumer.subprocess, "run") as run:
             with self.assertRaisesRegex(AssertionError, "explicit built distribution"):
