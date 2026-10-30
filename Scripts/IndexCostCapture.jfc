@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- 공개 fixture의 호출 스택만 관측한다. 환경 변수·JVM 인자·프로세스 목록은 수집하지 않는다. -->
+<!-- 공개 fixture의 호출 스택과 GC/JIT 구성·기간만 관측한다. 환경 변수·JVM 인자·프로세스 목록은 수집하지 않는다. -->
 <configuration version="2.0" label="Kartograph bounded index samples" description="Diagnostic samples, never performance acceptance" provider="Kartograph">
   <event name="jdk.ExecutionSample">
     <setting name="enabled">true</setting>
@@ -9,5 +9,28 @@
     <setting name="enabled">true</setting>
     <setting name="stackTrace">true</setting>
     <setting name="throttle">150/s</setting>
+  </event>
+  <event name="jdk.GCHeapConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+  <event name="jdk.GCConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+  <event name="jdk.CompilerConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+  <event name="jdk.Compilation">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.GarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.DataLoss">
+    <setting name="enabled">true</setting>
   </event>
 </configuration>

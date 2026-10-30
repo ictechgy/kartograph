@@ -136,3 +136,62 @@ and small owned-child timeout/nonzero/overflow/cleanup behavior. Official
 actionlint checks workflow contexts. Exact source/test review, ordinary CI and
 all workflow-validation results must be accepted before a separately authorized
 manual dispatch. A local test pass is not evidence of runner repeatability.
+# Optional fixed-target JDK contrast
+
+`runtime_pair=true` is a separately authorized diagnostic for engine
+`741903922f011aab92888c395226f8e4d4f4b6a9`, not a production performance gate.
+It runs once on a standard public `ubuntu-24.04` VM. Historical CPU/image
+identity is not selectable. The build uses the preinstalled Temurin17.0.21+9;
+if that exact build JDK is missing, the job stops instead of installing a substitute.
+The six complete production class roots and installation must match the prior
+public input digest, and all files, modes and internal symlink bindings are
+sealed again before/after measurement. Kotlin module files are included in this
+additional seal. The engine revision and diagnostic harness revision are distinct.
+
+Official Adoptium HotSpot Linux x64 JDK17.0.20.1+1 (A) and17.0.21+9 (B)
+are downloaded without credentials to `RUNNER_TEMP/kartograph-runtime-pair/`.
+The fixed official archive SHA256/length, archive paths/link graph, release and
+actual executed version/vendor are checked. No Mac installation, package manager,
+global Java selection, external AI, new credentials or remote cache writes are used.
+Archives total386,847,308 bytes; expanded official size is unknown. Each runtime
+has a768MiB regular-file cap and archive+installation has a2GiB cap. After the
+guarded build at least9GiB must remain; preparation/measurement stop at5.5GiB.
+
+Two warmup suites (A/B) are excluded, followed by the six declared permutations
+of A/B1/B2: eighteen measured suites,120 CLI calls total. B1/B2 use the identical
+new-JDK path, executable and child environment. Eight separate metadata JVM calls
+run outside CLI intervals. Their flags are metadata, not live per-CLI flag proof.
+No rows are removed or adaptive retries run. The existing5% paired difference,
+2.5% median imbalance and1.10 range screens apply to B1/B2 for each command and
+suite sum. A also has a1.10 max/min range screen. A failed noise screen prevents a runtime-effect claim. Contrasts remain
+descriptive within this VM and cannot explain historical CPU/image changes.
+
+The same full raw stdout/stderr and existing command contracts must match across
+all arms. Runtime/source/install/input/resource-policy drift fails the diagnostic.
+Process-tree RSS samples are bounded at12GiB with a50ms observer interval; direct
+child wait4 peak RSS is separate. Sampling can miss short descendant peaks. The
+observer adds controller work symmetrically; this is not uninstrumented CI timing.
+All task children are sampled; a final process-group census occurs while the root
+is held with WNOWAIT. Observed descendants have stable pidfd handles for cleanup.
+Detached descendants that appear and reparent entirely between samples can still
+escape attribution; this is a bounded observer of reviewed programs, not a sandbox
+for adversarial process creation. The original shared A/A helper remains byte-exact.
+The build is measured separately and shares no live Kotlin daemon with the probe.
+The original20-second total and5-second command acceptance requirements are unchanged.
+
+The job is45minutes, build at most1800seconds, measurement at most900seconds and
+each CLI at most120seconds. Raw evidence is bounded at1GiB; complete retained
+streams are losslessly ZIP-compressed and every file is read back/hash-verified.
+The inner ZIP is at most127MiB, leaving room under128MiB for GitHub's artifact
+wrapper. It is retained7days (new artifact budget at mostUS$0.01) and Mac evidence
+acquisition is capped at160MiB with a5.5GiB stop reserve. Incomplete/noisy outcomes
+are retained as such. If disk/size limits prevent a complete verified ZIP, only the
+three size-bounded JSON receipts (at most12MiB each), fixed small identity files
+and an explicit `complete=false` manifest are uploaded under an INCOMPLETE name.
+That artifact never proves raw parity or a runtime effect. The package failure
+still fails the job. This emergency upload reads existing files without new disk
+allocation and is mutually exclusive with the complete artifact, under the same
+128MiB/7day budget. Runtime archives and private temporary files are excluded.
+Existing automatic PR CI artifact costs are separate and unverified. A result
+does not authorize a CI JDK downgrade, budget waiver, merge or another probe.
+

@@ -17,6 +17,8 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("index_cost", ROOT / "Scripts/verify-index-cost.py")
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("test module specification with a loader is required")
 probe = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(probe)
 
@@ -144,7 +146,7 @@ class IndexCostTest(unittest.TestCase):
             root = Path(temporary)
             commands = {arm: probe.cli_commands(arm, [root / "classes"], root)
                         for arm in ("baseline", "candidate")}
-            report = {"format": "kartograph-index-cost-v1", "status": "PASS",
+            report: dict[str, object] = {"format": "kartograph-index-cost-v1", "status": "PASS",
                       "scope": "diagnostic", "residualScope": "not-query-only"}
             calls = []
             def execute(arguments, cwd, env, **kwargs):
@@ -160,17 +162,23 @@ class IndexCostTest(unittest.TestCase):
                 probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(root / "raw"))
             self.assertEqual([arm for _, _, order in probe.cli_schedule() for arm in order], calls)
             self.assertEqual(36, len(calls))
-            self.assertEqual(18, len(report["cli"]))
-            self.assertEqual(36, len(report["cliLoad"]))
+            rows = report["cli"]
+            loads = report["cliLoad"]
+            timing = report["cliTiming"]
+            assert isinstance(rows, list) and isinstance(loads, list) and isinstance(timing, dict)
+            arms = timing["arms"]
+            assert isinstance(arms, dict)
+            self.assertEqual(18, len(rows))
+            self.assertEqual(36, len(loads))
             for index in range(6):
                 self.assertEqual([(1, ("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline")),
                                   (2, ("candidate", "baseline") if index % 2 == 0 else ("baseline", "candidate")),
                                   (3, ("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline"))],
                                  [(sample, order) for command, sample, order in probe.cli_schedule() if command == index])
-            self.assertEqual(100_000_000_000, report["cli"][0]["candidate"]["wallNanos"])
+            self.assertEqual(100_000_000_000, rows[0]["candidate"]["wallNanos"])
             for arm in ("baseline", "candidate"):
-                self.assertEqual(6, report["cliTiming"]["arms"][arm]["sumMedianSeconds"])
-            for row in report["cli"]:
+                self.assertEqual(6, arms[arm]["sumMedianSeconds"])
+            for row in rows:
                 self.assertTrue(row["contractAccepted"])
                 for arm in ("baseline", "candidate"):
                     for stream in ("stdout", "stderr"):
@@ -549,6 +557,47 @@ class IndexCostTest(unittest.TestCase):
             with self.assertRaisesRegex(probe.DiagnosticError, "invalid-jfr-events"):
                 probe.summarize_jfr(json.dumps({"recording": {"events": [changed]}}))
 
+    def test_runtime_jfr_keeps_typed_configuration_and_overlapping_durations_separate(self):
+        def event(kind, **values):
+            return {"type": kind, "values": values}
+        events = [event("jdk.GCHeapConfiguration", minSize=8, maxSize=64, initialSize=16, usesCompressedOops=True),
+                  event("jdk.GCConfiguration", youngCollector="G1New", oldCollector="G1Old", parallelGCThreads=2,
+                        concurrentGCThreads=1, usesDynamicGCThreads=True),
+                  event("jdk.CompilerConfiguration", threadCount=2, tieredCompilation=True),
+                  event("jdk.Compilation", compileLevel=4, succeded=True, duration="PT0.125S"),
+                  event("jdk.Compilation", compileLevel=3, succeded=False, duration="PT0.000000001S"),
+                  event("jdk.GarbageCollection", duration="PT1.25S", sumOfPauses="PT0.1S", longestPause="PT0.09S")]
+        result = probe.summarize_runtime_jfr(json.dumps({"recording": {"events": events}}))
+        self.assertEqual("observed", result["status"])
+        self.assertEqual([], result["missingConfigurations"])
+        self.assertEqual(64, result["configurations"]["jdk.GCHeapConfiguration"][0]["maxSize"])
+        self.assertEqual({"3": 1, "4": 1}, result["compilation"]["byLevel"])
+        self.assertEqual(125000001, result["compilation"]["durationNanosSum"])
+        self.assertEqual(1, result["compilation"]["succeeded"])
+        self.assertEqual(100000000, result["garbageCollection"]["pauseNanosSum"])
+        self.assertEqual(90000000, result["garbageCollection"]["maximumPauseNanos"])
+        self.assertIn("may overlap", result["scope"])
+
+    def test_runtime_jfr_missing_configuration_is_partial_not_default_zero(self):
+        result = probe.summarize_runtime_jfr('{"recording":{"events":[]}}')
+        self.assertEqual("partial", result["status"])
+        self.assertEqual(3, len(result["missingConfigurations"]))
+        self.assertEqual([], result["configurations"]["jdk.GCHeapConfiguration"])
+
+    def test_runtime_jfr_refuses_private_types_corruption_and_recording_loss(self):
+        invalid = [{"type": "jdk.InitialEnvironmentVariable", "values": {}},
+                   {"type": "jdk.Compilation", "values": {"compileLevel": True, "succeded": True, "duration": "PT1S"}},
+                   {"type": "jdk.Compilation", "values": {"compileLevel": 4, "succeded": True, "duration": "NaN"}},
+                   {"type": "jdk.Compilation", "values": {"compileLevel": 4, "succeded": True, "duration": "PT-1S"}},
+                   {"type": "jdk.CompilerConfiguration", "values": {"threadCount": -1, "tieredCompilation": True}},
+                   {"type": "jdk.GCHeapConfiguration", "values": {"minSize": 0, "maxSize": True, "initialSize": 0, "usesCompressedOops": True}}]
+        for event in invalid:
+            with self.subTest(event=event):
+                with self.assertRaisesRegex(probe.DiagnosticError, "invalid-jfr-runtime-events"):
+                    probe.summarize_runtime_jfr(json.dumps({"recording": {"events": [event]}}))
+        with self.assertRaisesRegex(probe.DiagnosticError, "jfr-data-loss"):
+            probe.summarize_runtime_jfr('{"recording":{"events":[{"type":"jdk.DataLoss","values":{"amount":1,"total":1}}]}}')
+
     def test_jfr_unexpected_event_refuses_before_public_copy(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -569,6 +618,53 @@ class IndexCostTest(unittest.TestCase):
                     probe.capture_jfr(jdk, ["Fixture"], {}, root / "work", root / "public", config, expected)
             self.assertFalse((root / "public").exists())
 
+    def test_jfr_runtime_count_mismatch_refuses_before_public_copy(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = root / "samples.jfc"
+            config.write_text("<configuration/>")
+            jdk = root / "jdk"
+            tool = jdk / "bin" / ("jfr.exe" if os.name == "nt" else "jfr")
+            tool.parent.mkdir(parents=True)
+            tool.write_bytes(b"fixture tool identity")
+            expected = {"exit": 0, "stdout": b"ok", "stderr": b""}
+            def execute(arguments, cwd, env, **kwargs):
+                if kwargs["phase"] == "jfr-candidate":
+                    (cwd / "capture.jfr").write_bytes(b"fixture recording")
+                    return expected
+                if kwargs["phase"] == "jfr-summary":
+                    return {"stdout": b"jdk.ExecutionSample 1 100\njdk.GCHeapConfiguration 1 80\n"}
+                return {"stdout": b'{"recording":{"events":[{"type":"jdk.ExecutionSample","values":{"stackTrace":null}}]}}'}
+            with mock.patch.object(probe, "successful", side_effect=execute):
+                with self.assertRaisesRegex(probe.DiagnosticError, "jfr-runtime-event-count-mismatch"):
+                    probe.capture_jfr(jdk, ["Fixture"], {}, root / "work", root / "public", config, expected)
+            self.assertFalse((root / "public").exists())
+
+    def test_public_runtime_projection_exposes_only_stored_identity(self):
+        samples = {kind: {"events": 1, "weight": 1, "inclusive": [], "nearest": []}
+                   for kind in probe.JFR_EVENTS}
+        runtime = probe.summarize_runtime_jfr('{"recording":{"events":[]}}')
+        original = {"samples": samples, "command": "dead", "outputMatchesUnprofiledCandidate": True,
+            "scope": "single-profiled-candidate; sampled-stacks-and-weighted-allocations; not-timing-acceptance",
+            "launcher": "direct-java-same-main-class-and-arguments; startup-not-equivalent",
+            "recording": {"size": 1, "sha256": "0" * 64}, "configurationSha256": "1" * 64,
+            "runtime": runtime}
+        result = json.loads(probe.public_observation_summary({"status": "PASS", "jfr": original}))
+        self.assertEqual({"status": "stored-not-projected", "format": "kartograph-jfr-runtime-v1",
+                          "sha256": probe.identity_digest(runtime)}, result["jfr"]["runtimeDetails"])
+        self.assertEqual("not-available-for-unprofiled-gate", result["jfr"]["gcJitAttribution"])
+        self.assertNotIn("configurations", result["jfr"])
+        for invalid in [{"format": "unexpected"}, {"format": "kartograph-jfr-runtime-v1", "number": float("nan")},
+                        {"format": "kartograph-jfr-runtime-v1", "extra": "x" * 32768}]:
+            with self.assertRaisesRegex(probe.DiagnosticError, "invalid-public-observation"):
+                probe.public_observation_summary({"status": "PASS", "jfr": {**original, "runtime": invalid}})
+
+    def test_runtime_jfr_bounds_configuration_variants(self):
+        events = [{"type": "jdk.CompilerConfiguration", "values": {"threadCount": value, "tieredCompilation": True}}
+                  for value in range(9)]
+        with self.assertRaisesRegex(probe.DiagnosticError, "invalid-jfr-runtime-events"):
+            probe.summarize_runtime_jfr(json.dumps({"recording": {"events": events}}))
+
     def test_real_jfr_capture_has_only_allowed_events_and_unchanged_output(self):
         # 설치된 JDK의 실제 recording/summary/print를 검증한다. 작은 fixture는 성능 근거가 아니다.
         java_home = Path(os.environ["JAVA_HOME"]).resolve(strict=True)
@@ -587,6 +683,12 @@ class IndexCostTest(unittest.TestCase):
             self.assertGreater(sum(row["events"] for row in report["samples"].values()), 0)
             self.assertGreater(report["recording"]["size"], 0)
             self.assertLessEqual(report["recording"]["size"], probe.JFR_LIMIT)
+            self.assertEqual("observed", report["runtime"]["status"])
+            self.assertEqual(64 * 1024 * 1024,
+                report["runtime"]["configurations"]["jdk.GCHeapConfiguration"][0]["maxSize"])
+            self.assertGreater(report["runtime"]["compilation"]["events"], 0)
+            self.assertGreater(report["runtime"]["garbageCollection"]["events"], 0)
+            self.assertEqual(0, report["runtime"]["eventCounts"]["jdk.DataLoss"])
 
     def test_real_java_probe_against_installed_distribution(self):
         # CI의 선행 installDist/JDK가 없으면 skip 대신 실패한다.

@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
@@ -111,21 +111,6 @@ jobs:
           retention-days: 14
       - name: Verify analysis smoke gate and self-analysis contracts
         run: python3 Scripts/verify-analysis-smoke-gate.py --json
-      - name: Diagnose fixed-input index cost without changing the smoke gate
-        if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
-        timeout-minutes: 15
-        run: python3 Scripts/verify-index-cost.py
-      - name: Preserve bounded index cost evidence
-        if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: index-cost
-          path: |
-            build/reports/index-cost/result.json
-            build/reports/index-cost/raw/*.gz
-            build/reports/index-cost/jfr/*.jfr
-          if-no-files-found: error
-          retention-days: 14
       - name: Verify agent query and bridge contracts
         run: Scripts/verify-agent-surface.sh
       - name: Verify runtime blind-spot corpus
@@ -199,7 +184,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin

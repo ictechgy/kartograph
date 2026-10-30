@@ -34,6 +34,8 @@ LIMIT = 32 * 1024 * 1024
 RAW_LIMIT = 256 * 1024 * 1024
 JFR_LIMIT = 16 * 1024 * 1024
 JFR_EVENTS = ("jdk.ExecutionSample", "jdk.ObjectAllocationSample")
+JFR_RUNTIME_EVENTS = ("jdk.GCHeapConfiguration", "jdk.GCConfiguration", "jdk.CompilerConfiguration",
+                      "jdk.Compilation", "jdk.GarbageCollection", "jdk.DataLoss")
 
 
 class DiagnosticError(Exception):
@@ -690,6 +692,15 @@ def public_observation_summary(report):
                 "gcJitAttribution": "not-recorded", "outputMatchesUnprofiledCandidate": True,
                 "configurationSha256": checksum(original["configurationSha256"]),
                 "recording": {"size": size, "sha256": checksum(recording["sha256"])}}
+            if "runtime" in original:
+                runtime = original["runtime"]
+                if (not isinstance(runtime, dict) or runtime.get("format") != "kartograph-jfr-runtime-v1"
+                        or len(json.dumps(runtime, allow_nan=False).encode("utf-8")) > 32768):
+                    raise DiagnosticError("invalid-public-observation")
+                # 구성·기간은 보존된 원본에만 둔다. 기간 합계는 비계측 gate의 GC/JIT 비용 귀속이 아니다.
+                result["jfr"]["gcJitAttribution"] = "not-available-for-unprofiled-gate"
+                result["jfr"]["runtimeDetails"] = {"status": "stored-not-projected",
+                    "format": "kartograph-jfr-runtime-v1", "sha256": identity_digest(runtime)}
         if "cliLoad" in report:
             rows = report["cliLoad"]
             if not isinstance(rows, list) or len(rows) > 36:
@@ -956,6 +967,94 @@ def summarize_jfr(data):
         raise DiagnosticError("invalid-jfr-events") from None
 
 
+def summarize_runtime_jfr(data):
+    """구성·계측된 기간만 보존한다. 병렬 JIT 기간을 wall/CPU 시간으로 해석하지 않는다."""
+    configuration_fields = {
+        "jdk.GCHeapConfiguration": {"minSize": int, "maxSize": int, "initialSize": int,
+                                     "usesCompressedOops": bool},
+        "jdk.GCConfiguration": {"youngCollector": str, "oldCollector": str,
+                                 "parallelGCThreads": int, "concurrentGCThreads": int,
+                                 "usesDynamicGCThreads": bool},
+        "jdk.CompilerConfiguration": {"threadCount": int, "tieredCompilation": bool},
+    }
+
+    def integer(value):
+        if type(value) is not int or not 0 <= value <= 2**63 - 1:
+            raise ValueError()
+        return value
+
+    def nanos(value):
+        if not isinstance(value, str) or len(value) > 64:
+            raise ValueError()
+        match = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)(?:\.(\d{1,9}))?S)?", value)
+        if not match or all(part is None for part in match.groups()):
+            raise ValueError()
+        hours, minutes, seconds, fraction = match.groups()
+        total = (int(hours or 0) * 3600 + int(minutes or 0) * 60 + int(seconds or 0)) * 10**9
+        total += int((fraction or "").ljust(9, "0"))
+        if total > 3600 * 10**9:
+            raise ValueError()
+        return total
+
+    try:
+        events = json.loads(data)["recording"]["events"]
+        if not isinstance(events, list) or len(events) > 20000:
+            raise ValueError()
+        counts = Counter()
+        configurations = {kind: [] for kind in configuration_fields}
+        compilation = {"events": 0, "succeeded": 0, "durationNanosSum": 0,
+                       "maximumDurationNanos": 0, "byLevel": Counter()}
+        garbage = {"events": 0, "durationNanosSum": 0, "pauseNanosSum": 0,
+                   "maximumPauseNanos": 0}
+        for event in events:
+            kind, values = event["type"], event["values"]
+            if kind not in (*JFR_EVENTS, *JFR_RUNTIME_EVENTS) or not isinstance(values, dict):
+                raise ValueError()
+            if kind in JFR_EVENTS:
+                continue
+            counts[kind] += 1
+            if kind in configuration_fields:
+                row = {}
+                for name, expected_type in configuration_fields[kind].items():
+                    value = values[name]
+                    if type(value) is not expected_type:
+                        raise ValueError()
+                    if expected_type is int:
+                        value = integer(value)
+                    elif expected_type is str and not re.fullmatch(r"[A-Za-z0-9 _-]{1,64}", value):
+                        raise ValueError()
+                    row[name] = value
+                if row not in configurations[kind]:
+                    if len(configurations[kind]) >= 8:
+                        raise ValueError()
+                    configurations[kind].append(row)
+            elif kind == "jdk.Compilation":
+                level = integer(values["compileLevel"])
+                if level > 4 or type(values["succeded"]) is not bool:
+                    raise ValueError()
+                duration = nanos(values["duration"])
+                compilation["events"] += 1
+                compilation["succeeded"] += int(values["succeded"])
+                compilation["durationNanosSum"] += duration
+                compilation["maximumDurationNanos"] = max(compilation["maximumDurationNanos"], duration)
+                compilation["byLevel"][str(level)] += 1
+            elif kind == "jdk.GarbageCollection":
+                garbage["events"] += 1
+                garbage["durationNanosSum"] += nanos(values["duration"])
+                garbage["pauseNanosSum"] += nanos(values["sumOfPauses"])
+                garbage["maximumPauseNanos"] = max(garbage["maximumPauseNanos"], nanos(values["longestPause"]))
+            elif integer(values["amount"]) or integer(values["total"]):
+                raise DiagnosticError("jfr-data-loss")
+        missing = [kind for kind, rows in configurations.items() if not rows]
+        return {"format": "kartograph-jfr-runtime-v1", "status": "partial" if missing else "observed",
+                "scope": "single-profiled-clone-configuration-and-duration-observations; not-unprofiled-gate-or-cpu-attribution; JIT durations may overlap",
+                "missingConfigurations": missing, "configurations": configurations,
+                "compilation": {**compilation, "byLevel": dict(sorted(compilation["byLevel"].items()))},
+                "garbageCollection": garbage, "eventCounts": {kind: counts[kind] for kind in JFR_RUNTIME_EVENTS}}
+    except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
+        raise DiagnosticError("invalid-jfr-runtime-events") from None
+
+
 def capture_jfr(java_home, arguments, env, work, output, config, expected):
     """별도 단회 실행이며 paired 중앙값·정식 gate 예산에는 포함하지 않는다."""
     work.mkdir()
@@ -971,23 +1070,28 @@ def capture_jfr(java_home, arguments, env, work, output, config, expected):
     recording = work / "capture.jfr"
     if not recording.is_file() or recording.is_symlink() or not 0 < recording.stat().st_size <= JFR_LIMIT:
         raise DiagnosticError("jfr-recording-size")
-    # 알려진 두 샘플과 내부 metadata 이외의 event가 있으면 원본을 공개 artifact로 복사하지 않는다.
+    # 샘플·숫자/고정 구성·기간 event만 허용한다. 환경·인자 등 예상 밖 event는 공개하지 않는다.
     listing = successful([tool, "summary", recording], work, env, phase="jfr-summary")
     counts = {}
     for line in listing["stdout"].decode("utf-8").splitlines():
         match = re.fullmatch(r"\s*(\S+)\s+(\d+)\s+\d+\s*", line)
         if match and int(match[2]):
             counts[match[1]] = int(match[2])
-    if not counts or set(counts) - {*JFR_EVENTS, "jdk.CheckPoint", "jdk.Metadata"}:
+    if not counts or set(counts) - {*JFR_EVENTS, *JFR_RUNTIME_EVENTS, "jdk.CheckPoint", "jdk.Metadata"}:
         raise DiagnosticError("unexpected-jfr-event-type")
-    events = successful([tool, "print", "--json", "--events", ",".join(JFR_EVENTS), recording],
+    events = successful([tool, "print", "--json", "--events", ",".join((*JFR_EVENTS, *JFR_RUNTIME_EVENTS)), recording],
                         work, env, phase="jfr-events")
-    samples = summarize_jfr(events["stdout"])
+    runtime = summarize_runtime_jfr(events["stdout"])
+    selected = json.loads(events["stdout"])["recording"]["events"]
+    samples = summarize_jfr(json.dumps({"recording": {"events": [
+        event for event in selected if event["type"] in JFR_EVENTS]}}))
     for name in JFR_EVENTS:
         if samples[name]["events"] != counts.get(name, 0):
             raise DiagnosticError("jfr-event-count-mismatch")
     if not sum(row["events"] for row in samples.values()):
         raise DiagnosticError("jfr-no-samples")
+    if any(runtime["eventCounts"][kind] != counts.get(kind, 0) for kind in JFR_RUNTIME_EVENTS):
+        raise DiagnosticError("jfr-runtime-event-count-mismatch")
     require_equal(tool_before, file_record(tool, "bin/jfr"), "jfr-tool-changed")
     require_equal(configuration, config.read_bytes(), "jfr-configuration-changed")
     output.mkdir()
@@ -997,7 +1101,7 @@ def capture_jfr(java_home, arguments, env, work, output, config, expected):
             "command": "dead", "launcher": "direct-java-same-main-class-and-arguments; startup-not-equivalent",
             "configurationSha256": digest(configuration), "tool": tool_before,
             "recording": file_record(output / "candidate.jfr", "jfr/candidate.jfr"),
-            "eventCounts": counts, "samples": samples, "process": summary(result),
+            "eventCounts": counts, "samples": samples, "runtime": runtime, "process": summary(result),
             "outputMatchesUnprofiledCandidate": True}
 
 
