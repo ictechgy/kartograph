@@ -17,6 +17,8 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("index_cost", ROOT / "Scripts/verify-index-cost.py")
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("test module specification with a loader is required")
 probe = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(probe)
 
@@ -144,7 +146,7 @@ class IndexCostTest(unittest.TestCase):
             root = Path(temporary)
             commands = {arm: probe.cli_commands(arm, [root / "classes"], root)
                         for arm in ("baseline", "candidate")}
-            report = {"format": "kartograph-index-cost-v1", "status": "PASS",
+            report: dict[str, object] = {"format": "kartograph-index-cost-v1", "status": "PASS",
                       "scope": "diagnostic", "residualScope": "not-query-only"}
             calls = []
             def execute(arguments, cwd, env, **kwargs):
@@ -160,17 +162,23 @@ class IndexCostTest(unittest.TestCase):
                 probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(root / "raw"))
             self.assertEqual([arm for _, _, order in probe.cli_schedule() for arm in order], calls)
             self.assertEqual(36, len(calls))
-            self.assertEqual(18, len(report["cli"]))
-            self.assertEqual(36, len(report["cliLoad"]))
+            rows = report["cli"]
+            loads = report["cliLoad"]
+            timing = report["cliTiming"]
+            assert isinstance(rows, list) and isinstance(loads, list) and isinstance(timing, dict)
+            arms = timing["arms"]
+            assert isinstance(arms, dict)
+            self.assertEqual(18, len(rows))
+            self.assertEqual(36, len(loads))
             for index in range(6):
                 self.assertEqual([(1, ("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline")),
                                   (2, ("candidate", "baseline") if index % 2 == 0 else ("baseline", "candidate")),
                                   (3, ("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline"))],
                                  [(sample, order) for command, sample, order in probe.cli_schedule() if command == index])
-            self.assertEqual(100_000_000_000, report["cli"][0]["candidate"]["wallNanos"])
+            self.assertEqual(100_000_000_000, rows[0]["candidate"]["wallNanos"])
             for arm in ("baseline", "candidate"):
-                self.assertEqual(6, report["cliTiming"]["arms"][arm]["sumMedianSeconds"])
-            for row in report["cli"]:
+                self.assertEqual(6, arms[arm]["sumMedianSeconds"])
+            for row in rows:
                 self.assertTrue(row["contractAccepted"])
                 for arm in ("baseline", "candidate"):
                     for stream in ("stdout", "stderr"):
