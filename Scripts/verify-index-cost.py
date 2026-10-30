@@ -226,13 +226,14 @@ def nonreaping_waiter():
             signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL):
         raise DiagnosticError("child-ownership-not-supported")
     options = os.WEXITED | os.WNOHANG | os.WNOWAIT
-    if callable(getattr(os, "waitid", None)):
+    waitid = getattr(os, "waitid", None)
+    if callable(waitid):
         def observe(pid):
-            result = os.waitid(os.P_PID, pid, options)
+            result = waitid(os.P_PID, pid, options)
             if result is None:
                 return False
-            if (result.si_pid != pid or result.si_signo != signal.SIGCHLD or
-                    result.si_code not in (os.CLD_EXITED, os.CLD_KILLED, os.CLD_DUMPED)):
+            if (getattr(result, "si_pid", None) != pid or getattr(result, "si_signo", None) != signal.SIGCHLD or
+                    getattr(result, "si_code", None) not in (os.CLD_EXITED, os.CLD_KILLED, os.CLD_DUMPED)):
                 raise ChildProcessError(errno.ECHILD, "child-ownership-lost")
             return True
         return observe
