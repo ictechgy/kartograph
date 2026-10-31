@@ -57,9 +57,6 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 - Android graph/dead task: AGP 8.7+, Gradle 8.10+, JDK 17+(AGP 8.7.3 / Gradle 8.10.2와 AGP 9.x에서 검증).
 - 자동 snapshot: JVM Java/Kotlin은 Gradle 9.6.1과 JDK 17/21에서, Android는 [검증된 조합](docs/IMPACT.md#android-variant-자동-캡처)에서 확인했다. Kotlin compiler adapter는 KGP 2.4.10에서 검증했고 다른 버전은 보장하지 않는다. 최소 Android 조합은 Gradle 8.10.2에서 검증했지만, KGP 자체는 8.14.4 이상을 권고한다.
 
-아래 예시는 0.26.0 릴리스 준비본용이다. plugin은 해당 버전이 Portal에 제공된 뒤 사용하거나
-같은 source revision에서 matching 모듈을 빌드한다.
-
 설치 예제는 2026-11-01 [Plugin Portal에서 확인한 0.25.0](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.25.0)을 고정한다. 소스 0.26.0은 릴리스 후보이다. 현재 checkout의 빌드 설정은 Gradle 9.7.1·KGP 2.4.20이며 소비자 검증 버전과 구분한다.
 
 ```kotlin
