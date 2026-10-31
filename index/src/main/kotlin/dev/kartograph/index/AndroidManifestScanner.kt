@@ -23,6 +23,9 @@ public class AndroidManifestScanner @JvmOverloads constructor(
         return readXml(manifest) { reader ->
             when (reader.localName) {
                 "activity-alias" -> listOf(reader.requiredClassReference("targetActivity", namespace, sourcePath))
+                "application" -> APPLICATION_CLASS_ATTRIBUTES.mapNotNull { attribute ->
+                    reader.getAttributeValue(ANDROID_NAMESPACE, attribute)?.toReference(namespace, sourcePath, reader.location.lineNumber)
+                }.distinctBy(ManifestReference::qualifiedName)
                 in COMPONENT_ELEMENTS -> reader.getAttributeValue(ANDROID_NAMESPACE, "name")
                     ?.let { declaredName ->
                         listOf(declaredName.toReference(namespace, sourcePath, reader.location.lineNumber))
@@ -94,6 +97,8 @@ public class AndroidManifestScanner @JvmOverloads constructor(
     private companion object {
         const val ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android"
         val METADATA_CLASS_ATTRIBUTES = listOf("name", "value")
+        // Android R.attr의 런타임 클래스 속성이다. 리소스·프로세스 이름은 포함하지 않는다.
+        val APPLICATION_CLASS_ATTRIBUTES = listOf("name", "backupAgent", "appComponentFactory", "zygotePreloadName")
         val COMPONENT_ELEMENTS = setOf("activity", "application", "instrumentation", "provider", "receiver", "service")
     }
 }
