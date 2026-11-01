@@ -650,5 +650,124 @@ class IndexCostTest(unittest.TestCase):
             self.assertNotEqual(list(documents[0]["payloads"].values()), list(documents[1]["payloads"].values()))
 
 
+# 고정 baseline 33f8ce1에 대한 의도된 계약 확장(DEPENDENCY_INJECTION_OWNERS 한계, Martin A의 합성 타입 제외)이다.
+# CI 자기 분석 원시 출력과 같은 형태의 바이트로 정확한 허용 범위와 거부 경계를 고정한다.
+DEAD_BASELINE = (
+    b"input-hint\tmissing-classpath\tno dependency classpath inputs were supplied\n"
+    b"limitation\tANNOTATION_VALUE_REFERENCES\tclass references in SOURCE-retention annotations are not available in compiled inputs\n"
+    b"limitation\tDYNAMIC_REGISTRATION\tmanifest-absent runtime component registration is not resolved\n"
+    b"limitation\tTOP_LEVEL_DECLARATIONS\tfile-facade top-level properties and their accessors are conservatively not reported\n"
+)
+DI_LINE = (b"limitation\tDEPENDENCY_INJECTION_OWNERS\towners of supported dependency-injection annotations, including "
+           b"@Inject constructors, are retained without proof that a generated component requests them\n")
+DEAD_CANDIDATE = DEAD_BASELINE.replace(b"limitation\tDYNAMIC_REGISTRATION", DI_LINE + b"limitation\tDYNAMIC_REGISTRATION", 1)
+METRICS_BASELINE = (
+    b"module\tCa\tCe\tI\tA\tD\n"
+    b"dev.kartograph.analysis\t3\t1\t0.250\t0.005\t0.745\n"
+    b"dev.kartograph.core\t5\t0\t0.000\t0.000\t1.000\n"
+    b"dev.kartograph.gradle\t0\t4\t1.000\t0.053\t0.053\n"
+)
+METRICS_CANDIDATE = (
+    b"module\tCa\tCe\tI\tA\tD\n"
+    b"dev.kartograph.analysis\t3\t1\t0.250\t0.006\t0.744\n"
+    b"dev.kartograph.core\t5\t0\t0.000\t0.000\t1.000\n"
+    b"dev.kartograph.gradle\t0\t4\t1.000\t0.139\t0.139\n"
+)
+
+
+def cli_result(stdout, stderr=b"", exit_code=0):
+    return {"exit": exit_code, "stdout": stdout, "stderr": stderr}
+
+
+class ContractDeltaTest(unittest.TestCase):
+    def test_dead_delta_is_exactly_one_sorted_limitation_line(self):
+        self.assertTrue(probe.contract_delta_active())
+        for command in ("dead", "dead_private"):
+            self.assertTrue(probe.expected_contract_delta(command, cli_result(DEAD_BASELINE), cli_result(DEAD_CANDIDATE)))
+        rejected = {
+            "identical": DEAD_BASELINE,
+            "appended": DEAD_BASELINE + DI_LINE,
+            "duplicated": DEAD_CANDIDATE.replace(DI_LINE, DI_LINE + DI_LINE),
+            "reworded": DEAD_CANDIDATE.replace(b"generated component", b"component"),
+            "extra-line": DEAD_CANDIDATE + b"limitation\tEXTERNAL_RETENTIONS\textra\n",
+            "finding": b"unreachable\tclass:app/Unused\t-\n" + DEAD_CANDIDATE,
+            "crlf": DEAD_CANDIDATE.replace(DI_LINE, DI_LINE[:-1] + b"\r\n"),
+        }
+        for label, candidate in rejected.items():
+            with self.subTest(label=label):
+                self.assertFalse(probe.expected_contract_delta("dead", cli_result(DEAD_BASELINE), cli_result(candidate)))
+        self.assertFalse(probe.expected_contract_delta("dead", cli_result(DEAD_CANDIDATE), cli_result(DEAD_CANDIDATE + DI_LINE)))
+        self.assertFalse(probe.expected_contract_delta("dead", cli_result(b"same\n"), cli_result(b"same\n" + DI_LINE)))
+        self.assertFalse(probe.expected_contract_delta(
+            "dead", cli_result(DEAD_BASELINE), cli_result(DEAD_CANDIDATE, stderr=b"warning\n")))
+        self.assertFalse(probe.expected_contract_delta(
+            "dead", cli_result(DEAD_BASELINE, exit_code=1), cli_result(DEAD_CANDIDATE, exit_code=1)))
+        for command in ("graph", "cycles", "rules", "metrics"):
+            self.assertFalse(probe.expected_contract_delta(command, cli_result(DEAD_BASELINE), cli_result(DEAD_CANDIDATE)))
+
+    def test_metrics_delta_changes_only_consistent_abstractness_and_distance(self):
+        self.assertTrue(probe.expected_contract_delta("metrics", cli_result(METRICS_BASELINE), cli_result(METRICS_CANDIDATE)))
+        rejected = {
+            "identical": METRICS_BASELINE,
+            "module": METRICS_CANDIDATE.replace(b"dev.kartograph.core", b"dev.kartograph.core2"),
+            "ca": METRICS_CANDIDATE.replace(b"core\t5\t0", b"core\t4\t0"),
+            "ce": METRICS_CANDIDATE.replace(b"gradle\t0\t4", b"gradle\t0\t3"),
+            "instability": METRICS_CANDIDATE.replace(b"\t0.250\t", b"\t0.251\t"),
+            "decreased-abstractness": METRICS_CANDIDATE.replace(b"0.139\t0.139", b"0.052\t0.052"),
+            "inconsistent-distance": METRICS_CANDIDATE.replace(b"0.006\t0.744", b"0.006\t0.700"),
+            "out-of-range": METRICS_CANDIDATE.replace(b"0.139\t0.139", b"1.139\t1.139"),
+            "malformed": METRICS_CANDIDATE.replace(b"0.139\t0.139", b"0.14\t0.14"),
+            "header": METRICS_CANDIDATE.replace(b"\tD\n", b"\tDistance\n", 1),
+            "missing-row": METRICS_CANDIDATE.replace(b"dev.kartograph.core\t5\t0\t0.000\t0.000\t1.000\n", b""),
+            "extra-row": METRICS_CANDIDATE + b"dev.kartograph.zzz\t0\t1\t1.000\t0.000\t0.000\n",
+            "extra-column": METRICS_CANDIDATE.replace(b"0.139\t0.139\n", b"0.139\t0.139\t0\n"),
+            "no-final-newline": METRICS_CANDIDATE[:-1],
+        }
+        for label, candidate in rejected.items():
+            with self.subTest(label=label):
+                self.assertFalse(probe.expected_contract_delta("metrics", cli_result(METRICS_BASELINE), cli_result(candidate)))
+        # D는 출력된 A·I에서 다시 계산한 값과 반올림 한 단위(0.001)까지만 다를 수 있다.
+        rounded = METRICS_CANDIDATE.replace(b"0.006\t0.744", b"0.006\t0.745")
+        self.assertTrue(probe.expected_contract_delta("metrics", cli_result(METRICS_BASELINE), cli_result(rounded)))
+        self.assertFalse(probe.expected_contract_delta(
+            "metrics", cli_result(METRICS_BASELINE), cli_result(METRICS_CANDIDATE, stderr=b"limitation: x\n")))
+
+    def test_contract_delta_turns_off_when_the_baseline_moves(self):
+        for name in ("BASELINE", "SOURCE_BASELINE"):
+            with self.subTest(name=name), mock.patch.object(probe, name, "0" * 40):
+                self.assertFalse(probe.contract_delta_active())
+                self.assertFalse(probe.expected_contract_delta("dead", cli_result(DEAD_BASELINE), cli_result(DEAD_CANDIDATE)))
+                self.assertFalse(probe.expected_contract_delta(
+                    "metrics", cli_result(METRICS_BASELINE), cli_result(METRICS_CANDIDATE)))
+
+    def test_paired_cli_accepts_the_pinned_delta_and_still_rejects_other_changes(self):
+        outputs = {"dead": (DEAD_BASELINE, DEAD_CANDIDATE), "metrics": (METRICS_BASELINE, METRICS_CANDIDATE)}
+        for changed in (None, "graph", "cycles", "rules"):
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                commands = {arm: probe.cli_commands(arm, [root / "classes"], root) for arm in ("baseline", "candidate")}
+                def execute(arguments, cwd, env, **kwargs):
+                    arm, command = arguments[:2]
+                    pair = outputs.get(command, (b"same\n", b"other\n" if command == changed else b"same\n"))
+                    stdout = pair[0] if arm == "baseline" else pair[1]
+                    return {"phase": kwargs["phase"], "exit": 0, "stdout": stdout, "stderr": b"", "wallNanos": 1, "rss": {}}
+                report = {}
+                with mock.patch.object(probe, "run", side_effect=execute), mock.patch.object(
+                        probe, "host_load_snapshot", return_value={}):
+                    if changed is None:
+                        probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(root / "raw"))
+                    else:
+                        with self.assertRaisesRegex(probe.DiagnosticError, "cli-byte-mismatch-or-unsuccessful-exit"):
+                            probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(root / "raw"))
+                rows = {(row["command"], row["sample"]): row for row in report["cli"]}
+                for (command, _), row in rows.items():
+                    delta = command in ("dead", "dead_private", "metrics")
+                    self.assertEqual(delta, row["expectedContractDelta"], command)
+                    self.assertEqual(not delta and command != changed, row["exactEqual"], command)
+                    self.assertEqual("same-input-intentionally-changed-output" if delta else "exact-byte-comparison",
+                                     row["comparisonScope"], command)
+                    self.assertEqual(command != changed, row["contractAccepted"], command)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -844,6 +844,84 @@ def successful_pair(left, right):
     return left["exit"] == 0 and right["exit"] == 0 and equivalent(left, right)
 
 
+# 고정 baseline에 없는 의도된 계약 확장 두 가지만 정확히 허용한다(f5f5418의 고정 delta와 같은 방식).
+# - dead·dead_private: 이름순 정적 한계 목록에 DEPENDENCY_INJECTION_OWNERS 한 줄이 ANNOTATION_VALUE_REFERENCES 바로 뒤에 들어간다.
+# - metrics: file facade·합성 class를 A에서 빼므로 A·D 열만 바뀐다. module·Ca·Ce·I·행 순서·헤더는 바이트 그대로다.
+# BASELINE을 이 변경 이후 commit으로 옮기면 비활성화되고 모든 명령이 다시 바이트 동일 비교만 쓴다.
+CONTRACT_DELTA_BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
+CONTRACT_DELTA_COMMANDS = ("dead", "dead_private", "metrics")
+CONTRACT_DELTA_OUTPUT_LIMIT = 1024 * 1024
+ANNOTATION_VALUE_LIMITATION = (b"limitation\tANNOTATION_VALUE_REFERENCES\tclass references in SOURCE-retention "
+                               b"annotations are not available in compiled inputs\n")
+DYNAMIC_REGISTRATION_PREFIX = b"limitation\tDYNAMIC_REGISTRATION\t"
+DEPENDENCY_INJECTION_LIMITATION = (b"limitation\tDEPENDENCY_INJECTION_OWNERS\towners of supported dependency-injection "
+                                   b"annotations, including @Inject constructors, are retained without proof that a "
+                                   b"generated component requests them\n")
+METRICS_HEADER = b"module\tCa\tCe\tI\tA\tD\n"
+METRIC_RATIO = re.compile(rb"0\.[0-9]{3}|1\.000")
+
+
+def contract_delta_active():
+    return SOURCE_BASELINE == CONTRACT_DELTA_BASELINE and BASELINE == SOURCE_BASELINE
+
+
+def bounded_output(data):
+    # 비교 대상은 작은 자기 분석 표다. 한도를 넘거나 읽는 중 길이가 바뀌면 delta로 인정하지 않는다.
+    if len(data) > CONTRACT_DELTA_OUTPUT_LIMIT:
+        return None
+    value = b"".join(output_chunks(data))
+    return value if len(value) == len(data) else None
+
+
+def expected_contract_delta(command, left, right):
+    """고정 baseline 대비 의도된 출력 차이만 참으로 판정한다. 종료 코드·stderr·다른 명령은 그대로 엄격하다."""
+    if command not in CONTRACT_DELTA_COMMANDS or not contract_delta_active():
+        return False
+    if left["exit"] != 0 or right["exit"] != 0 or not output_equal(left["stderr"], right["stderr"]):
+        return False
+    baseline, candidate = bounded_output(left["stdout"]), bounded_output(right["stdout"])
+    if baseline is None or candidate is None:
+        return False
+    return (expected_metrics_delta(baseline, candidate) if command == "metrics"
+            else expected_dead_delta(baseline, candidate))
+
+
+def expected_dead_delta(baseline, candidate):
+    if baseline.count(ANNOTATION_VALUE_LIMITATION) != 1 or DEPENDENCY_INJECTION_LIMITATION in baseline:
+        return False
+    start = baseline.index(ANNOTATION_VALUE_LIMITATION)
+    end = start + len(ANNOTATION_VALUE_LIMITATION)
+    if (start > 0 and baseline[start - 1:start] != b"\n") or not baseline.startswith(DYNAMIC_REGISTRATION_PREFIX, end):
+        return False
+    return candidate == baseline[:end] + DEPENDENCY_INJECTION_LIMITATION + baseline[end:]
+
+
+def expected_metrics_delta(baseline, candidate):
+    if not all(value.startswith(METRICS_HEADER) and value.endswith(b"\n") for value in (baseline, candidate)):
+        return False
+    left = baseline[len(METRICS_HEADER):-1].split(b"\n")
+    right = candidate[len(METRICS_HEADER):-1].split(b"\n")
+    if len(left) != len(right) or left == [b""]:
+        return False
+    changed = False
+    for before, after in zip(left, right):
+        old, new = before.split(b"\t"), after.split(b"\t")
+        if len(old) != 6 or len(new) != 6 or old[:4] != new[:4]:
+            return False
+        if not all(METRIC_RATIO.fullmatch(value) for value in old[3:] + new[4:]):
+            return False
+        # 천분율 정수로 비교한다. 합성 타입은 이 입력에서 모두 구체 class라 A는 줄지 않는다.
+        old_abstractness, abstractness, instability, distance = (
+            int(value.replace(b".", b"")) for value in (old[4], new[4], new[3], new[5]))
+        if abstractness < old_abstractness:
+            return False
+        # 출력된 A·I·D가 각각 0.0005 이내로 반올림되므로 다시 계산한 D와 최대 0.001까지만 다를 수 있다.
+        if abs(distance - abs(abstractness + instability - 1000)) > 1:
+            return False
+        changed = changed or before != after
+    return changed
+
+
 def source_identity(repo, ref, env):
     result = successful(["git", "rev-parse", "--verify", ref + "^{commit}"], repo, env)
     commit = result["stdout"].decode("ascii").strip()
@@ -1096,12 +1174,14 @@ def paired_cli(commands, project, env, located_nodes, report, raw):
                 report["cliLoad"].append({"command": name, "sample": sample, "arm": arm,
                                           "before": before, "after": after})
             left, right = results["baseline"], results["candidate"]
-            accepted = successful_pair(left, right)
+            expected_delta = expected_contract_delta(name, left, right)
+            accepted = successful_pair(left, right) or expected_delta
             all_accepted = all_accepted and accepted
             report["cli"].append({"command": name, "sample": sample, "order": list(order),
                                   "exactEqual": equivalent(left, right),
-                                  "expectedContractDelta": False, "contractAccepted": accepted,
-                                  "comparisonScope": "exact-byte-comparison",
+                                  "expectedContractDelta": expected_delta, "contractAccepted": accepted,
+                                  "comparisonScope": ("same-input-intentionally-changed-output" if expected_delta
+                                                      else "exact-byte-comparison"),
                                   "raw": retained, **{arm: summary(result) for arm, result in results.items()}})
     report["cliTiming"] = {
         "scope": "three-paired-fresh-processes-per-command; no-performance-pass-or-budget-change",
