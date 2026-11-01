@@ -307,7 +307,7 @@ jobs:
   # 상대 회귀를 판정하고, 절대 안전 상한(10초/40초)도 함께 적용한다.
   performance:
     runs-on: ubuntu-latest
-    # 기준·후보 빌드 2회와 warm-up 포함 교차 측정 6라운드(느린 runner에서 약 5분)를 담는다.
+    # 기준·후보 빌드 2회와 arm별 warm-up 1회·교차 측정 6라운드(느린 runner에서 약 5분)를 담는다.
     timeout-minutes: 30
     permissions:
       contents: read
@@ -340,6 +340,18 @@ jobs:
           ref: ${{ steps.base.outputs.sha }}
           path: reference
           persist-credentials: false
+      # 증거가 가리키는 기준·후보가 실제로 빌드할 checkout과 같은지 먼저 확인한다.
+      - name: Verify the checked-out reference and candidate revisions
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          reference_head="$(git -C reference rev-parse HEAD)"
+          candidate_head="$(git -C candidate rev-parse HEAD)"
+          if [[ "$reference_head" != "$BASE_SHA" || "$candidate_head" != "$GITHUB_SHA" ]]; then
+            echo "checked-out revisions do not match the selected base and the event commit" >&2
+            exit 2
+          fi
       - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
@@ -353,15 +365,20 @@ jobs:
       - name: Build candidate CLI and class roots
         working-directory: candidate
         run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g :cli:installDist :gradle-plugin:classes
+      # 절대 합계·비율을 job summary에도 남겨 허용치 아래 회귀가 main push마다 쌓이는지 볼 수 있게 한다.
       - name: Compare analysis time with the reference build on this runner
         id: compare
         shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
         run: |
           mkdir -p candidate/build/reports/analysis-performance
           python3 candidate/Scripts/verify-analysis-smoke-gate.py --json \
             --repo-root candidate \
             --binary candidate/cli/build/install/kartograph/bin/kartograph \
             --reference-binary reference/cli/build/install/kartograph/bin/kartograph \
+            --reference-revision "$BASE_SHA" --candidate-revision "$GITHUB_SHA" \
+            --summary "$GITHUB_STEP_SUMMARY" \
             | tee candidate/build/reports/analysis-performance/result.json
       - name: Preserve relative performance evidence
         if: ${{ !cancelled() && (steps.compare.outcome == 'success' || steps.compare.outcome == 'failure') }}

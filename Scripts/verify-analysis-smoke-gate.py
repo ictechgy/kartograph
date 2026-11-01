@@ -30,9 +30,13 @@ RECORDED_TOTAL_BUDGET = 20.0
 # 입력 급증이나 기준·후보 동반 급등 같은 치명적 회귀만 막고, 느린 runner의 정상 결과(최대 약 25초)는 통과시킨다.
 DEFAULT_COMMAND_CAP = 10.0
 DEFAULT_TOTAL_CAP = 40.0
-# 단독 모드의 반복 수는 기존과 같다. 기준 비교는 arm마다 같은 수의 표본이 필요해 라운드를 늘린다.
+# 단독 모드의 반복 수는 기존과 같다. 기준 비교는 짝수 라운드여야 명령마다 두 arm이 쌍의 앞·뒤 자리를
+# 같은 횟수로 맡아(3:3) 위치 효과가 명령별 비율에 남지 않는다. 홀수(5)는 3:2로 남는다.
 STANDALONE_RUNS = 3
-REFERENCE_RUNS = 5
+REFERENCE_RUNS = 6
+# 기준 분석기의 strict·임계값 진단(1)은 분석을 끝낸 결과라 시간을 비교한다. 그 밖의 종료는 판정 불가다.
+REFERENCE_MEASURABLE_EXITS = (0, 1)
+REVISION = re.compile(r"[0-9a-f]{40}")
 # 같은 runner A/A 측정의 잡음에서 정한 상대 허용치다(근거: docs/AGENT-WORKFLOW.md).
 DEFAULT_TOTAL_TOLERANCE = 0.05
 DEFAULT_COMMAND_TOLERANCE = 0.15
@@ -859,36 +863,50 @@ def reference_child(name, cmd, env, phase, round_index):
                         launchError=type(error).__name__) from None
 
 
-def require_reference_success(name, result, phase, round_index):
-    """기준은 판정의 잣대이므로 모든 명령이 0으로 끝나야 한다. 실패를 통과나 단독 판정으로 바꾸지 않는다."""
-    if result.returncode == 0:
-        return
+def reference_completion(name, result, phase, round_index):
+    """기준이 분석을 끝냈는지 판단해 종료 코드를 돌려준다. 끝내지 못했으면 통과나 단독 판정 대신 닫는다.
+
+    0과 strict·임계값 진단(1)은 분석을 끝낸 결과라 시간을 비교한다. 후보가 새 규칙으로만 보존되는 코드나
+    기준이 모르는 진단을 더하면 기준은 1로 끝날 수 있다. 2·64·그 밖의 값은 도구가 끝내지 못한 것이다.
+    """
+    if result.returncode in REFERENCE_MEASURABLE_EXITS:
+        return result.returncode
     print(json.dumps({"arm": "reference", **analysis_failure_receipt(name, result)}, sort_keys=True), file=sys.stderr)
     raise GateAbort(2, "reference-failed",
                     f"reference command '{name}' exited with code {result.returncode} during {phase}; "
-                    "the base build cannot be measured on these inputs, so the comparison cannot be judged",
+                    "the base build cannot complete these inputs, so the comparison cannot be judged",
                     arm="reference", phase=phase, round=round_index, command=name, returncode=result.returncode)
+
+
+def candidate_launch_failure(name, error, phase, round_index=None):
+    """실행되지 못한 후보를 traceback 대신 판정 불가로 닫는다. 경로가 섞일 수 있는 원문 대신 예외 종류만 남긴다."""
+    location = {"round": round_index} if phase == "measurement" else {}
+    return GateAbort(2, "candidate-failed",
+                     f"candidate command '{name}' could not be launched ({type(error).__name__}) during {phase}",
+                     arm="candidate", phase=phase, **location, command=name, launchError=type(error).__name__)
 
 
 def warm_up_arms(arm_commands, env):
     """측정에서 뺀 warm-up으로 arm마다 여섯 명령을 한 번씩 실행해 실행 파일·입력의 page cache를 채운다.
 
-    기준 실패는 바로 닫는다. 후보 결과는 기존 단독 warm-up처럼 판정하지 않고 측정 라운드의 계약 검사가 판정한다.
+    기준이 끝내지 못하면 바로 닫는다. 후보 결과는 기존 단독 warm-up처럼 판정하지 않고 측정 라운드의 계약 검사가 판정한다.
     """
     for _, name, order in relative_schedule(1, list(arm_commands["candidate"])):
         for arm in order:
             cmd = arm_commands[arm][name][0]
             if arm == "reference":
-                require_reference_success(name, reference_child(name, cmd, env, "warmup", None), "warmup", None)
+                reference_completion(name, reference_child(name, cmd, env, "warmup", None), "warmup", None)
                 continue
             try:
                 subprocess.run(cmd, capture_output=True, env=env, timeout=120, check=False)
             except subprocess.TimeoutExpired:
                 raise GateAbort(2, "candidate-failed", f"candidate warmup command '{name}' timed out",
                                 arm="candidate", phase="warmup", command=name, timedOut=True) from None
+            except OSError as error:
+                raise candidate_launch_failure(name, error, "warmup") from None
 
 
-def measure_reference(name, cmd, env, samples, diagnostics, round_index):
+def measure_reference(name, cmd, env, samples, returncodes, diagnostics, round_index):
     """기준 명령 하나의 wall 시간을 후보와 같은 방식(perf_counter로 child 실행만)으로 잰다."""
     cpu_before = observe(diagnostics.cpu_snapshot) if diagnostics is not None else None
     started = time.perf_counter()
@@ -897,8 +915,28 @@ def measure_reference(name, cmd, env, samples, diagnostics, round_index):
     if diagnostics is not None:
         cpu_after = observe(diagnostics.cpu_snapshot)
         observe(diagnostics.after_child, cpu_before, cpu_after, len(samples[name]) + 1, name)
-    require_reference_success(name, result, "measurement", round_index)
+    returncodes[name].append(reference_completion(name, result, "measurement", round_index))
     samples[name].append(elapsed)
+
+
+def shared_arguments(arm_commands, reference_binary, binary):
+    """두 arm이 실행 파일만 다르고 같은 인자로 같은 입력을 분석하는지 확인하고 공유 인자 digest를 돌려준다.
+
+    기준에만 일을 더하거나(예: --explain) 입력·strict를 한쪽에서 빼면 비교가 불공정해지므로 실행 전에 닫는다.
+    """
+    executables = {"reference": str(reference_binary), "candidate": str(binary)}
+    names = list(arm_commands["candidate"])
+    if list(arm_commands["reference"]) != names:
+        raise GateAbort(2, "arguments-differ", "reference and candidate command lists differ", command=None)
+    for name in names:
+        reference_cmd, candidate_cmd = arm_commands["reference"][name][0], arm_commands["candidate"][name][0]
+        if (reference_cmd[0] != executables["reference"] or candidate_cmd[0] != executables["candidate"]
+                or reference_cmd[1:] != candidate_cmd[1:]):
+            raise GateAbort(2, "arguments-differ",
+                            f"reference and candidate arguments for '{name}' differ beyond the executable",
+                            command=name)
+    shared = [[name, *arm_commands["candidate"][name][0][1:]] for name in names]
+    return hashlib.sha256(json.dumps(shared, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 def compare_to_reference(reference, candidate, total_tolerance, command_tolerance):
@@ -966,28 +1004,37 @@ def verify_against_reference(
     warmup: bool = True,
     as_json: bool = False,
     runs: int = REFERENCE_RUNS,
+    revisions=None,
+    summary_path=None,
 ):
     """후보와 기준 실행 파일을 같은 입력으로 같은 machine에서 교차 측정해 상대 회귀와 절대 상한을 판정한다.
 
-    후보에는 단독 모드와 같은 계약 검사를 매 실행 적용한다. 기준은 모든 명령이 0으로 끝나야 하며, 아니면
-    통과로 바꾸지 않고 종료 코드 2와 `reference-failed`로 닫는다. `--json`이면 오류도 JSON 문서 하나로 남긴다.
+    후보에는 단독 모드와 같은 계약 검사를 매 실행 적용한다. 기준은 모든 명령에서 분석을 끝내야(0 또는 strict
+    진단 1) 하며, 끝내지 못하면 통과로 바꾸지 않고 종료 코드 2와 `reference-failed`로 닫는다. 비교는 변경
+    하나 단위이므로 허용치 아래 회귀의 누적과 입력 증가는 절대 안전 상한만 막는다. `--json`이면 오류도 JSON
+    문서 하나로 남기고, summary_path가 있으면 같은 문서를 markdown으로 덧붙인다.
     """
     settings = {"perCommandBudget": per_command_budget, "totalBudget": total_budget, "runs": runs,
                 "totalTolerance": total_tolerance, "commandTolerance": command_tolerance}
+    revisions = {"reference": None, "candidate": None, **(revisions or {})}
     state = {"env": None, "init": None, "diagnostics": None, "finished": None}
     try:
-        return compare_with_reference(binary, reference_binary, repo_root, settings, warmup, as_json, state)
+        status, document = compare_with_reference(binary, reference_binary, repo_root, settings, warmup, as_json,
+                                                  state, revisions)
     except GateAbort as abort:
         if abort.message:
             print(f"error: {abort.message}", file=sys.stderr)
+        document = {"status": "ERROR", "mode": "reference", **settings, "revisions": revisions,
+                    "error": {"kind": abort.kind, **abort.details}}
+        diagnostics = diagnostics_block(state)
+        if diagnostics is not None:
+            document["diagnostics"] = diagnostics
         if as_json:
-            document = {"status": "ERROR", "mode": "reference", **settings,
-                        "error": {"kind": abort.kind, **abort.details}}
-            diagnostics = diagnostics_block(state)
-            if diagnostics is not None:
-                document["diagnostics"] = diagnostics
             print(json.dumps(document, indent=2))
-        return abort.code
+        status = abort.code
+    if summary_path is not None:
+        append_summary(summary_path, document)
+    return status
 
 
 def diagnostics_block(state):
@@ -999,7 +1046,7 @@ def diagnostics_block(state):
     return {"version": 1, "scope": "observation-only; never-used-for-gate-acceptance", **result}
 
 
-def compare_with_reference(binary, reference_binary, repo_root, settings, warmup, as_json, state):
+def compare_with_reference(binary, reference_binary, repo_root, settings, warmup, as_json, state, revisions):
     if not reference_binary.is_file() or not os.access(reference_binary, os.X_OK):
         raise GateAbort(2, "reference-unavailable", f"reference kartograph binary not executable at {reference_binary}",
                         arm="reference")
@@ -1026,11 +1073,13 @@ def compare_with_reference(binary, reference_binary, repo_root, settings, warmup
                   analysis_commands(executable, repo_root, project_dir, manifest_path, res_dir)}
             for arm, executable in (("reference", reference_binary), ("candidate", binary))
         }
+        shared_digest = shared_arguments(arm_commands, reference_binary, binary)
         names = list(arm_commands["candidate"])
         if warmup:
             warm_up_arms(arm_commands, env)
 
         samples = {arm: {name: [] for name in names} for arm in arm_commands}
+        reference_returncodes = {name: [] for name in names}
         counters = {}
         contract_failures = []
         labelled = {arm: ArmDiagnostics(state["diagnostics"], arm) if state["diagnostics"] is not None else None
@@ -1040,11 +1089,15 @@ def compare_with_reference(binary, reference_binary, repo_root, settings, warmup
             for arm in order:
                 cmd, kind = arm_commands[arm][name]
                 if arm == "reference":
-                    measure_reference(name, cmd, env, samples["reference"], labelled["reference"], index)
+                    measure_reference(name, cmd, env, samples["reference"], reference_returncodes,
+                                      labelled["reference"], index)
                     continue
                 # 후보는 단독 모드와 같은 함수로 재고 같은 계약을 매 실행 검사한다.
-                exit_code = run_measurement_pass([(name, cmd, kind)], env, samples["candidate"], counters,
-                                                 contract_failures, labelled["candidate"])
+                try:
+                    exit_code = run_measurement_pass([(name, cmd, kind)], env, samples["candidate"], counters,
+                                                     contract_failures, labelled["candidate"])
+                except OSError as error:
+                    raise candidate_launch_failure(name, error, "measurement", index) from None
                 if exit_code is not None:
                     raise GateAbort(exit_code, "candidate-failed", None, arm="candidate", phase="measurement",
                                     round=index, command=name)
@@ -1061,39 +1114,45 @@ def compare_with_reference(binary, reference_binary, repo_root, settings, warmup
                       for arm, arm_samples in samples.items()}
         passed = not contract_failures and not cap_failures and not relative_failures
         recorded = recorded_budget(raw_medians, runs)
+        diagnostic_exits = sum(code == 1 for codes in reference_returncodes.values() for code in codes)
         reference_measurements = {}
         for name, values in samples["reference"].items():
             rounded = [round(value, 3) for value in values]
             reference_measurements[name] = {"seconds": round(statistics.median(rounded), 3), "samples": rounded,
-                                            "returncode": 0}
+                                            "returncode": reference_returncodes[name][-1],
+                                            "returncodes": reference_returncodes[name]}
 
+        result_doc = {
+            "status": "PASS" if passed else "FAIL",
+            "mode": "reference",
+            **settings,
+            "revisions": revisions,
+            "totalSeconds": round(sum(raw_medians["candidate"].values()), 3),
+            "runTotals": run_totals["candidate"],
+            "measurements": measurements,
+            "contractFailures": contract_failures,
+            "budgetFailures": cap_failures,
+            "relativeFailures": relative_failures,
+            # 기준의 strict 진단(1)은 시간을 비교하되 측정 라운드에서 몇 번이었는지 남긴다.
+            "referenceDiagnosticExits": diagnostic_exits,
+            "reference": {
+                "totalSeconds": round(sum(raw_medians["reference"].values()), 3),
+                "runTotals": run_totals["reference"],
+                "measurements": reference_measurements,
+            },
+            "comparison": comparison,
+            "schedule": {
+                "scope": "same-machine; per-command adjacent pairs; first arm alternates by command and round (ABBA)",
+                "warmupSuitesPerArm": 1 if warmup else 0,
+                "firstArm": [[order[0] for round_index, _, order in schedule if round_index == index]
+                             for index in range(runs)],
+                "sharedArgumentsSha256": shared_digest,
+            },
+            "recordedBudget": recorded,
+        }
+        if diagnostics is not None:
+            result_doc["diagnostics"] = diagnostics
         if as_json:
-            result_doc = {
-                "status": "PASS" if passed else "FAIL",
-                "mode": "reference",
-                **settings,
-                "totalSeconds": round(sum(raw_medians["candidate"].values()), 3),
-                "runTotals": run_totals["candidate"],
-                "measurements": measurements,
-                "contractFailures": contract_failures,
-                "budgetFailures": cap_failures,
-                "relativeFailures": relative_failures,
-                "reference": {
-                    "totalSeconds": round(sum(raw_medians["reference"].values()), 3),
-                    "runTotals": run_totals["reference"],
-                    "measurements": reference_measurements,
-                },
-                "comparison": comparison,
-                "schedule": {
-                    "scope": "same-machine; per-command adjacent pairs; first arm alternates by command and round (ABBA)",
-                    "warmupSuitesPerArm": 1 if warmup else 0,
-                    "firstArm": [[order[0] for round_index, _, order in schedule if round_index == index]
-                                 for index in range(runs)],
-                },
-                "recordedBudget": recorded,
-            }
-            if diagnostics is not None:
-                result_doc["diagnostics"] = diagnostics
             print(json.dumps(result_doc, indent=2))
         else:
             headline = "[SMOKE GATE PASS]" if passed else "[SMOKE GATE FAIL]"
@@ -1109,10 +1168,73 @@ def compare_with_reference(binary, reference_binary, repo_root, settings, warmup
             print(f"  Recorded {RECORDED_COMMAND_BUDGET:.3f}s/{RECORDED_TOTAL_BUDGET:.3f}s budget (not gating): "
                   f"{len(recorded['candidate']['exceeded'])} candidate and "
                   f"{len(recorded['reference']['exceeded'])} reference exceedance(s)")
+            if diagnostic_exits:
+                print(f"  Reference exited 1 (strict diagnostics) in {diagnostic_exits} measured run(s); "
+                      "its time is still compared.")
             if not passed:
                 print_failures(contract_failures, cap_failures, relative_failures)
 
-        return 0 if passed else 1
+        return (0 if passed else 1), result_doc
+
+
+SUMMARY_DETAILS = ("command", "phase", "round", "returncode", "timedOut", "launchError")
+
+
+def observed_cpu_model(document):
+    try:
+        model = document["diagnostics"]["value"]["before"]["value"]["linux"]["cpuModel"]
+    except (KeyError, TypeError):
+        return "unavailable"
+    return model.get("value", "unavailable") if model.get("status") == "observed" else "unavailable"
+
+
+def performance_summary(document):
+    """GitHub job summary용 markdown을 만든다. 판정 문서의 수치를 옮길 뿐 새 판정을 하지 않는다.
+
+    main push마다 기준·후보의 절대 합계와 비율이 남아, 허용치 아래 회귀가 쌓이는 drift를 사람이 볼 수 있다.
+    """
+    status = document["status"]
+    if status == "ERROR":
+        error = document.get("error", {})
+        details = ", ".join(f"{key} {error[key]}" for key in SUMMARY_DETAILS if error.get(key) is not None)
+        lines = [f"### Relative analysis performance: ERROR (`{error.get('kind', 'unknown')}`)", ""]
+        if details:
+            lines.append(details + ".")
+        return "\n".join(lines) + "\n\n"
+    revisions = document.get("revisions") or {}
+    identity = [f"runner CPU: {observed_cpu_model(document)}", f"rounds: {document['runs']}"]
+    identity += [f"{arm} `{revisions[arm][:12]}`" for arm in ("reference", "candidate") if revisions.get(arm)]
+    comparison = document["comparison"]
+    lines = [f"### Relative analysis performance: {status}", "", " · ".join(identity), "",
+             "| command | candidate (s) | reference (s) | ratio | limit |", "|---|---:|---:|---:|---:|"]
+    for name, row in comparison["commands"].items():
+        lines.append(f"| {name} | {row['candidateSeconds']:.3f} | {row['referenceSeconds']:.3f} | "
+                     f"{row['ratio']:.4f} | {row['limit']:.4f} |")
+    lines.append(f"| **total** | {comparison['candidateTotalSeconds']:.3f} | {comparison['referenceTotalSeconds']:.3f} | "
+                 f"{comparison['totalRatio']:.4f} | {comparison['totalLimit']:.4f} |")
+    recorded = document["recordedBudget"]
+
+    def recorded_total(arm):
+        return f"{recorded[arm]['totalSeconds']:.3f} s ({'exceeded' if recorded[arm]['exceeded'] else 'within'})"
+
+    lines += ["", f"Recorded {RECORDED_COMMAND_BUDGET:g} s / {RECORDED_TOTAL_BUDGET:g} s budget (not gating): "
+                  f"candidate {recorded_total('candidate')}, reference {recorded_total('reference')}. "
+                  f"Safety cap: {document['perCommandBudget']:g} s per command, {document['totalBudget']:g} s total. "
+                  f"Reference strict-diagnostic exits: {document['referenceDiagnosticExits']}."]
+    failures = document["contractFailures"] + document["budgetFailures"] + document["relativeFailures"]
+    if failures:
+        lines += ["", "Failures:", *(f"- {failure}" for failure in failures)]
+    return "\n".join(lines) + "\n\n"
+
+
+def append_summary(path, document):
+    """job summary 파일에 덧붙인다. 쓰기 실패는 경고로 알리고 이미 정한 판정과 종료 코드는 바꾸지 않는다."""
+    try:
+        with open(path, "a", encoding="utf-8") as stream:
+            stream.write(performance_summary(document))
+    except OSError as error:
+        print(f"warning: could not append the job summary ({type(error).__name__}); the gate result is unchanged",
+              file=sys.stderr)
 
 
 def main(argv=None):
@@ -1162,6 +1284,22 @@ def main(argv=None):
              f"(default: {DEFAULT_COMMAND_TOLERANCE})",
     )
     parser.add_argument(
+        "--reference-revision",
+        default=None,
+        help="with --reference-binary: full lowercase commit SHA of the reference build, recorded in the result",
+    )
+    parser.add_argument(
+        "--candidate-revision",
+        default=None,
+        help="with --reference-binary: full lowercase commit SHA of the candidate build, recorded in the result",
+    )
+    parser.add_argument(
+        "--summary",
+        default=None,
+        help="with --reference-binary: append a Markdown summary of the result to this file "
+             "(for example $GITHUB_STEP_SUMMARY)",
+    )
+    parser.add_argument(
         "--runs",
         type=int,
         default=None,
@@ -1195,12 +1333,19 @@ def main(argv=None):
         return 64
 
     tolerances = (options.total_tolerance, options.command_tolerance)
-    if options.reference_binary is None and any(value is not None for value in tolerances):
-        print("error: --total-tolerance and --command-tolerance require --reference-binary", file=sys.stderr)
+    reference_only = (*tolerances, options.summary, options.reference_revision, options.candidate_revision)
+    if options.reference_binary is None and any(value is not None for value in reference_only):
+        print("error: --total-tolerance, --command-tolerance, --summary, --reference-revision and "
+              "--candidate-revision require --reference-binary", file=sys.stderr)
         return 64
     if any(value is not None and (not math.isfinite(value) or value < 0) for value in tolerances):
         print("error: tolerances must be finite non-negative numbers", file=sys.stderr)
         return 64
+    for option, value in (("--reference-revision", options.reference_revision),
+                          ("--candidate-revision", options.candidate_revision)):
+        if value is not None and not REVISION.fullmatch(value):
+            print(f"error: {option} must be a full lowercase commit SHA", file=sys.stderr)
+            return 64
 
     repo_root = (
         Path(options.repo_root).resolve()
@@ -1212,6 +1357,12 @@ def main(argv=None):
         if options.binary
         else repo_root / "cli/build/install/kartograph/bin/kartograph"
     )
+    reference_binary = Path(options.reference_binary).resolve() if options.reference_binary is not None else None
+    # 같은 실행 파일(symlink·hard link 포함)끼리 비교하면 기준 비교가 아니라 자기 자신과의 비교가 된다.
+    if reference_binary is not None and (reference_binary == binary.resolve() or (
+            reference_binary.exists() and binary.exists() and os.path.samefile(reference_binary, binary))):
+        print("error: --reference-binary must name a different executable from --binary", file=sys.stderr)
+        return 64
 
     if options.json and __name__ == "__main__":
         # 부가 관측 실패는 CLI 진입/종료를 막지 않으며 텍스트 경로는 관측하지 않는다.
@@ -1231,7 +1382,7 @@ def main(argv=None):
         )
     return verify_against_reference(
         binary=binary,
-        reference_binary=Path(options.reference_binary).resolve(),
+        reference_binary=reference_binary,
         repo_root=repo_root,
         per_command_budget=options.per_command_budget,
         total_budget=options.total_budget,
@@ -1240,6 +1391,8 @@ def main(argv=None):
         warmup=not options.no_warmup,
         as_json=options.json,
         runs=REFERENCE_RUNS if options.runs is None else options.runs,
+        revisions={"reference": options.reference_revision, "candidate": options.candidate_revision},
+        summary_path=options.summary,
     )
 
 

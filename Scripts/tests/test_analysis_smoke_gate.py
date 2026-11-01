@@ -377,6 +377,7 @@ class FakeAnalyzer:
     """subprocess.run 대역이다. 실행 파일 경로로 arm을 구분하고 지정한 시간만큼 가짜 시계를 진행한다.
 
     시간은 2진 분수만 써서 시계 차이가 정확히 표현되게 한다. 호출 번호는 warm-up을 포함해 (arm, 명령)별로 센다.
+    second_position_penalty는 같은 명령 쌍의 두 번째 실행에만 붙는 위치 효과를 흉내 낸다.
     """
 
     OUTPUTS = {
@@ -388,11 +389,12 @@ class FakeAnalyzer:
         "metrics": "module\tCa\n" + "row\n" * 6,
     }
 
-    def __init__(self, arms, durations, events=None, outputs=None):
+    def __init__(self, arms, durations, events=None, outputs=None, second_position_penalty=0.0):
         self.arms = arms
         self.durations = durations
         self.events = events or {}
         self.outputs = outputs or {}
+        self.second_position_penalty = second_position_penalty
         self.now = 0.0
         self.calls = []
 
@@ -403,11 +405,16 @@ class FakeAnalyzer:
         arm = self.arms[cmd[0]]
         name = "dead_private" if cmd[1] == "dead" and "--include-private-members" in cmd else cmd[1]
         index = sum(1 for call in self.calls if call["arm"] == arm and call["name"] == name)
-        self.calls.append({"arm": arm, "name": name, "index": index, "text": kwargs.get("text", False)})
+        previous = self.calls[-1] if self.calls else None
+        second = (previous is not None and previous["name"] == name and previous["arm"] != arm
+                  and previous["index"] == index)
+        self.calls.append({"arm": arm, "name": name, "index": index, "cmd": list(cmd),
+                           "text": kwargs.get("text", False), "timeout": kwargs.get("timeout")})
         event = self.events.get((arm, name, index), {})
         if isinstance(event, BaseException):
             raise event
-        self.now += event.get("seconds", self.durations[arm][name])
+        seconds = event.get("seconds", self.durations[arm][name])
+        self.now += seconds * (1 + self.second_position_penalty) if second else seconds
         stdout = event.get("stdout", self.outputs.get((arm, name), self.OUTPUTS[name]))
         return subprocess.CompletedProcess(cmd, event.get("returncode", 0), stdout, "secret-stderr-text")
 
@@ -417,6 +424,7 @@ class ReferenceModeTest(unittest.TestCase):
 
     NAMES = ["graph", "dead", "dead_private", "cycles", "rules", "metrics"]
     BASE = {"graph": 4.0, "dead": 4.0, "dead_private": 4.0, "cycles": 3.0, "rules": 3.0, "metrics": 3.0}
+    RULES_FAILURE = "'rules' median 3.500s is 1.1667x the reference median 3.000s, exceeding 1.1500x"
 
     def setUp(self):
         import importlib.util
@@ -444,14 +452,14 @@ class ReferenceModeTest(unittest.TestCase):
     def scaled(self, factor, **overrides):
         return {name: overrides.get(name, seconds * factor) for name, seconds in self.BASE.items()}
 
-    def gate(self, candidate=None, *args, reference=None, events=None, outputs=None, as_json=True):
+    def gate(self, candidate=None, *args, reference=None, events=None, outputs=None, as_json=True, penalty=0.0):
         import contextlib
         import io
         from unittest.mock import patch
 
         fake = FakeAnalyzer({str(path): arm for arm, path in self.binaries.items()},
                             {"reference": reference or dict(self.BASE), "candidate": candidate or dict(self.BASE)},
-                            events, outputs)
+                            events, outputs, penalty)
         argv = ["--repo-root", str(self.root), "--binary", str(self.binaries["candidate"]),
                 "--reference-binary", str(self.binaries["reference"]), *args]
         stdout, stderr = io.StringIO(), io.StringIO()
@@ -464,34 +472,45 @@ class ReferenceModeTest(unittest.TestCase):
         document = json.loads(stdout.getvalue()) if as_json and stdout.getvalue() else stdout.getvalue()
         return status, document, stderr.getvalue(), fake
 
+    def usage(self, *args):
+        import contextlib
+        import io
+
+        with contextlib.redirect_stderr(io.StringIO()) as stderr:
+            status = self.mod.main(list(args))
+        return status, stderr.getvalue()
+
     def test_equal_arms_pass_and_record_comparison_document(self):
         status, data, stderr, _ = self.gate()
         self.assertEqual(status, 0, stderr)
         self.assertEqual(data["status"], "PASS")
         self.assertEqual(data["mode"], "reference")
-        self.assertEqual((data["runs"], data["perCommandBudget"], data["totalBudget"]), (5, 10.0, 40.0))
+        self.assertEqual((data["runs"], data["perCommandBudget"], data["totalBudget"]), (6, 10.0, 40.0))
         self.assertEqual((data["totalTolerance"], data["commandTolerance"]), (0.05, 0.15))
         self.assertEqual((data["contractFailures"], data["budgetFailures"], data["relativeFailures"]), ([], [], []))
         self.assertEqual(list(data["measurements"]), self.NAMES)
         self.assertEqual(list(data["reference"]["measurements"]), self.NAMES)
         for name, seconds in self.BASE.items():
-            self.assertEqual(data["measurements"][name]["samples"], [seconds] * 5, name)
+            self.assertEqual(data["measurements"][name]["samples"], [seconds] * 6, name)
             self.assertEqual(data["reference"]["measurements"][name],
-                             {"seconds": seconds, "samples": [seconds] * 5, "returncode": 0})
+                             {"seconds": seconds, "samples": [seconds] * 6, "returncode": 0, "returncodes": [0] * 6})
             self.assertEqual(data["comparison"]["commands"][name],
                              {"referenceSeconds": seconds, "candidateSeconds": seconds, "ratio": 1.0,
                               "limit": 1.15, "exceeded": False})
         self.assertEqual(data["measurements"]["graph"]["nodes"], 2000)
         self.assertEqual(data["measurements"]["dead"]["findings"], 0)
         self.assertEqual((data["totalSeconds"], data["reference"]["totalSeconds"]), (21.0, 21.0))
-        self.assertEqual((data["runTotals"], data["reference"]["runTotals"]), ([21.0] * 5, [21.0] * 5))
+        self.assertEqual((data["runTotals"], data["reference"]["runTotals"]), ([21.0] * 6, [21.0] * 6))
+        self.assertEqual(data["referenceDiagnosticExits"], 0)
+        self.assertEqual(data["revisions"], {"reference": None, "candidate": None})
         comparison = data["comparison"]
         self.assertEqual((comparison["totalRatio"], comparison["totalLimit"], comparison["totalExceeded"]),
                          (1.0, 1.05, False))
-        self.assertEqual(comparison["roundRatios"], [1.0] * 5)
+        self.assertEqual(comparison["roundRatios"], [1.0] * 6)
         self.assertEqual(data["schedule"]["warmupSuitesPerArm"], 1)
+        self.assertRegex(data["schedule"]["sharedArgumentsSha256"], "^[0-9a-f]{64}$")
         # 기존 20초 예산 초과(21초)는 두 arm 모두 기록되지만 판정은 통과다.
-        total_message = ("total analysis time was 21.000s (sum of per-command medians over 5 runs), "
+        total_message = ("total analysis time was 21.000s (sum of per-command medians over 6 runs), "
                          "exceeding total budget of 20.000s")
         self.assertEqual(data["recordedBudget"], {
             "scope": "observation-only; never-used-for-gate-acceptance", "perCommandBudget": 5.0, "totalBudget": 20.0,
@@ -519,8 +538,7 @@ class ReferenceModeTest(unittest.TestCase):
         # rules만 3.5/3.0(약 16.7%) 느리면 합계는 2.4%라 통과해도 명령별 판정이 잡는다.
         status, data, _, _ = self.gate(self.scaled(1.0, rules=3.5))
         self.assertEqual(status, 1)
-        self.assertEqual(data["relativeFailures"], [
-            "'rules' median 3.500s is 1.1667x the reference median 3.000s, exceeding 1.1500x"])
+        self.assertEqual(data["relativeFailures"], [self.RULES_FAILURE])
         self.assertFalse(data["comparison"]["totalExceeded"])
         self.assertEqual(data["comparison"]["totalRatio"], 1.0238)
         self.assertEqual([name for name, row in data["comparison"]["commands"].items() if row["exceeded"]], ["rules"])
@@ -535,6 +553,29 @@ class ReferenceModeTest(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertEqual(len(data["relativeFailures"]), 2)
 
+    def test_median_resists_a_fast_outlier_and_uses_every_round(self):
+        # 한 번만 빠른 후보 표본은 중앙값을 바꾸지 않는다. 최솟값으로 판정하면 이 회귀를 놓친다.
+        status, data, _, _ = self.gate(self.scaled(1.0, rules=3.5), "--no-warmup",
+                                       events={("candidate", "rules", 2): {"seconds": 3.0}})
+        self.assertEqual(status, 1)
+        self.assertEqual(data["measurements"]["rules"]["samples"], [3.5, 3.5, 3.0, 3.5, 3.5, 3.5])
+        self.assertEqual(data["relativeFailures"], [self.RULES_FAILURE])
+        # 마지막 라운드도 표본이다. 여기서는 마지막 4초 표본이 있어야 중앙값이 3.5초가 된다.
+        events = {("candidate", "rules", index): {"seconds": 4.0} for index in (2, 3, 5)}
+        status, data, _, _ = self.gate(None, "--no-warmup", events=events)
+        self.assertEqual(status, 1)
+        self.assertEqual(data["measurements"]["rules"]["samples"], [3.0, 3.0, 4.0, 4.0, 3.0, 4.0])
+        self.assertEqual(data["runTotals"][-1], 22.0)
+        self.assertEqual(data["relativeFailures"], [self.RULES_FAILURE])
+
+    def test_even_default_rounds_cancel_a_second_position_penalty(self):
+        # 쌍의 두 번째 실행만 1/32 느린 위치 효과가 있어도 짝수 라운드 ABBA는 명령마다 두 arm에 똑같이 나눈다.
+        status, data, _, _ = self.gate(None, "--no-warmup", penalty=1 / 32)
+        self.assertEqual(status, 0)
+        self.assertEqual({name: row["ratio"] for name, row in data["comparison"]["commands"].items()},
+                         {name: 1.0 for name in self.NAMES})
+        self.assertEqual(data["comparison"]["totalRatio"], 1.0)
+
     def test_safety_cap_applies_even_when_arms_match(self):
         slow = {name: 7.0 for name in self.NAMES}
         status, data, _, _ = self.gate(dict(slow), reference=dict(slow))
@@ -542,24 +583,26 @@ class ReferenceModeTest(unittest.TestCase):
         self.assertEqual(data["relativeFailures"], [])
         self.assertEqual(data["comparison"]["totalRatio"], 1.0)
         self.assertEqual(data["budgetFailures"], [
-            "total analysis time was 42.000s (sum of per-command medians over 5 runs), exceeding total budget of 40.000s"])
+            "total analysis time was 42.000s (sum of per-command medians over 6 runs), exceeding total budget of 40.000s"])
         spike = self.scaled(1.0, graph=10.5)
         status, data, _, _ = self.gate(dict(spike), reference=dict(spike))
         self.assertEqual(status, 1)
         self.assertEqual(data["budgetFailures"], [
-            "'graph' took 10.500s (median of 5 runs), exceeding budget of 10.000s"])
+            "'graph' took 10.500s (median of 6 runs), exceeding budget of 10.000s"])
         status, data, _, _ = self.gate(dict(spike), "--per-command-budget", "11", reference=dict(spike))
         self.assertEqual((status, data["perCommandBudget"], data["budgetFailures"]), (0, 11.0, []))
 
     def test_reference_failure_fails_closed_with_distinct_reason(self):
         cases = [
-            # 측정 라운드 2의 rules(warm-up 포함 호출 번호 3)에서 기준이 strict 진단으로 끝난 경우
-            ({("reference", "rules", 3): {"returncode": 1}},
-             {"phase": "measurement", "round": 2, "command": "rules", "returncode": 1}),
+            # 측정 라운드 2의 rules(warm-up 포함 호출 번호 3)에서 기준이 도구 실패(2)로 끝난 경우
+            ({("reference", "rules", 3): {"returncode": 2}},
+             {"phase": "measurement", "round": 2, "command": "rules", "returncode": 2}),
             ({("reference", "dead", 0): {"returncode": 2}},
              {"phase": "warmup", "round": None, "command": "dead", "returncode": 2}),
             ({("reference", "cycles", 0): {"returncode": 64}},
              {"phase": "warmup", "round": None, "command": "cycles", "returncode": 64}),
+            ({("reference", "dead_private", 6): {"returncode": 3}},
+             {"phase": "measurement", "round": 5, "command": "dead_private", "returncode": 3}),
             ({("reference", "metrics", 1): subprocess.TimeoutExpired("secret-command", 120)},
              {"phase": "measurement", "round": 0, "command": "metrics", "timedOut": True}),
             ({("reference", "graph", 0): PermissionError(13, "secret-launch-path")},
@@ -587,13 +630,32 @@ class ReferenceModeTest(unittest.TestCase):
         self.assertIn("reference kartograph binary not executable", stderr)
         self.assertEqual(fake.calls, [])
 
+    def test_reference_diagnostic_exit_is_measured_and_counted(self):
+        # 기준 분석기가 후보 입력에서 strict 진단(1)을 내도 분석은 끝났으므로 시간은 비교한다.
+        finding = "unreachable\tclass:dev/kartograph/NewlyRetained\tNew.kt:1\n"
+        events = {("reference", "rules", 0): {"returncode": 1},
+                  ("reference", "rules", 2): {"returncode": 1, "stdout": finding},
+                  ("reference", "dead", 4): {"returncode": 1, "stdout": finding}}
+        status, data, stderr, fake = self.gate(events=events)
+        self.assertEqual(status, 0, stderr)
+        self.assertEqual(data["status"], "PASS")
+        self.assertEqual(data["referenceDiagnosticExits"], 2)
+        self.assertEqual(data["reference"]["measurements"]["rules"]["returncodes"], [0, 1, 0, 0, 0, 0])
+        self.assertEqual(data["reference"]["measurements"]["dead"]["returncodes"], [0, 0, 0, 1, 0, 0])
+        self.assertEqual(data["contractFailures"], [])
+        self.assertEqual(len(fake.calls), 2 * 6 * 7)
+        self.assertEqual(stderr, "")
+        # 후보가 같은 진단을 내면 후보 계약은 그대로 실패한다.
+        status, data, _, _ = self.gate(events={("candidate", "rules", 2): {"returncode": 1}})
+        self.assertEqual((status, data["contractFailures"]), (1, ["'rules' exited with code 1, expected 0"]))
+
     def test_candidate_contracts_still_apply_on_every_candidate_run(self):
         finding = "unreachable\tclass:dev/kartograph/Unused\tUnused.kt:1\n"
         cases = [
             ({}, {("candidate", "dead"): finding},
              "'dead' reported unreachable findings: ['unreachable\\tclass:dev/kartograph/Unused\\tUnused.kt:1']"),
             ({("candidate", "graph", 4): {"stdout": "x [shape=box];\n" * 2001}}, {},
-             "'graph' nodes varied across runs: [2000, 2000, 2000, 2001, 2000]"),
+             "'graph' nodes varied across runs: [2000, 2000, 2000, 2001, 2000, 2000]"),
             ({("candidate", "cycles", 2): {"returncode": 1}}, {}, "'cycles' exited with code 1, expected 0"),
             ({}, {("candidate", "metrics"): "module\tCa\nrow\n"}, "'metrics' produced 1 metric rows, expected >= 6"),
         ]
@@ -617,16 +679,62 @@ class ReferenceModeTest(unittest.TestCase):
                 self.assertIn(f"(exit {code})", stderr)
         status, data, stderr, _ = self.gate(events={("candidate", "graph", 0): subprocess.TimeoutExpired("x", 120)})
         self.assertEqual((status, data["error"]["kind"], data["error"]["phase"]), (2, "candidate-failed", "warmup"))
+        # 실행되지 못한 후보도 traceback 대신 판정 불가 문서로 닫고 원문 경로를 남기지 않는다.
+        launches = [
+            ({("candidate", "graph", 0): PermissionError(13, "secret-launch-path")},
+             {"phase": "warmup", "command": "graph", "launchError": "PermissionError"}),
+            ({("candidate", "dead", 1): OSError(8, "secret exec format")},
+             {"phase": "measurement", "round": 0, "command": "dead", "launchError": "OSError"}),
+        ]
+        for events, details in launches:
+            with self.subTest(details=details):
+                status, data, stderr, _ = self.gate(events=events)
+                self.assertEqual(status, 2)
+                self.assertEqual(data["status"], "ERROR")
+                self.assertEqual(data["error"], {"kind": "candidate-failed", "arm": "candidate", **details})
+                self.assertIn(f"candidate command '{details['command']}' could not be launched", stderr)
+                self.assertNotIn("secret", stderr + json.dumps(data))
 
-    def test_schedule_interleaves_adjacent_pairs_and_alternates_first_arm(self):
+    def test_schedule_pairs_identical_arguments_and_alternates_first_arm(self):
+        import hashlib
+
         _, data, _, fake = self.gate()
         expected = []
-        for index in range(-1, 5):  # -1은 측정에서 빼는 warm-up 라운드다.
+        for index in range(-1, 6):  # -1은 측정에서 빼는 warm-up 라운드다.
             for position, name in enumerate(self.NAMES):
                 first, second = ("reference", "candidate") if (max(index, 0) + position) % 2 == 0 \
                     else ("candidate", "reference")
                 expected.extend([(first, name), (second, name)])
         self.assertEqual([(call["arm"], call["name"]) for call in fake.calls], expected)
+        # 쌍마다 실행 파일만 다르고 나머지 인자는 같다.
+        for first, second in zip(fake.calls[0::2], fake.calls[1::2]):
+            self.assertEqual(first["name"], second["name"])
+            self.assertEqual(first["cmd"][1:], second["cmd"][1:])
+            for call in (first, second):
+                self.assertEqual(call["cmd"][0], str(self.binaries[call["arm"]]))
+        # 공유 인자는 단독 모드와 같은 고정 명령이다: 여섯 class root 전부, strict, 같은 설정 파일.
+        class_args = [value for module in self.mod.MODULES
+                      for value in ("--classes", str(self.root / module / "build/classes/kotlin/main"))]
+        candidate = {call["name"]: call["cmd"] for call in fake.calls if call["arm"] == "candidate"}
+        project = Path(candidate["dead"][candidate["dead"].index("--project") + 1])
+        binary = str(self.binaries["candidate"])
+        dead = [binary, "dead", *class_args, "--project", str(project), "--manifest",
+                str(project / "AndroidManifest.xml"), "--resources", str(project / "res"),
+                "--namespace", "dev.kartograph", "--keep-rules", str(self.root / ".kartograph-self.pro")]
+        self.assertEqual(candidate, {
+            "graph": [binary, "graph", *class_args, "--format", "dot"],
+            "dead": [*dead, "--strict"],
+            "dead_private": [*dead, "--include-private-members", "--strict"],
+            "cycles": [binary, "cycles", *class_args, "--strict"],
+            "rules": [binary, "rules", *class_args, "--config", str(self.root / ".kartograph.yml"), "--strict"],
+            "metrics": [binary, "metrics", *class_args],
+        })
+        shared = [[name, *candidate[name][1:]] for name in self.NAMES]
+        self.assertEqual(data["schedule"]["sharedArgumentsSha256"],
+                         hashlib.sha256(json.dumps(shared, separators=(",", ":")).encode("utf-8")).hexdigest())
+        # 두 arm의 warm-up과 측정 호출 모두 같은 120초 timeout으로 묶인다.
+        self.assertEqual({(call["arm"], call["timeout"]) for call in fake.calls},
+                         {("reference", 120), ("candidate", 120)})
         # warm-up 후보 호출만 기존 단독 warm-up처럼 출력을 해석하지 않는다.
         self.assertEqual([call["text"] for call in fake.calls[:12]],
                          [call["arm"] == "reference" for call in fake.calls[:12]])
@@ -634,43 +742,121 @@ class ReferenceModeTest(unittest.TestCase):
         self.assertEqual(data["schedule"]["firstArm"][:2], [
             ["reference", "candidate", "reference", "candidate", "reference", "candidate"],
             ["candidate", "reference", "candidate", "reference", "candidate", "reference"]])
+        self.assertEqual(len(data["schedule"]["firstArm"]), 6)
         _, data, _, fake = self.gate(None, "--no-warmup", "--runs", "2")
         self.assertEqual(len(fake.calls), 2 * 2 * 6)
         self.assertEqual((data["runs"], data["schedule"]["warmupSuitesPerArm"]), (2, 0))
         self.assertEqual(len(data["measurements"]["graph"]["samples"]), 2)
 
+    def test_arm_argument_mismatch_fails_closed_before_running(self):
+        from unittest.mock import patch
+
+        original = self.mod.analysis_commands
+        reference = str(self.binaries["reference"])
+
+        def extra_reference_work(binary, *args):
+            commands = original(binary, *args)
+            if str(binary) == reference:
+                name, cmd, kind = commands[1]
+                commands[1] = (name, [*cmd, "--explain"], kind)
+            return commands
+
+        def wrong_executable(binary, *args):
+            commands = original(binary, *args)
+            if str(binary) != reference:
+                name, cmd, kind = commands[3]
+                commands[3] = (name, [reference, *cmd[1:]], kind)
+            return commands
+
+        for skew, command in ((extra_reference_work, "dead"), (wrong_executable, "cycles")):
+            with self.subTest(command=command), patch.object(self.mod, "analysis_commands", side_effect=skew):
+                status, data, stderr, fake = self.gate()
+                self.assertEqual(status, 2)
+                self.assertEqual(data["status"], "ERROR")
+                self.assertEqual(data["error"], {"kind": "arguments-differ", "command": command})
+                self.assertIn(f"'{command}'", stderr)
+                self.assertEqual(fake.calls, [])
+
     def test_single_slow_launch_does_not_fail_and_stays_visible(self):
         status, data, _, _ = self.gate(None, "--no-warmup",
                                        events={("candidate", "graph", 1): {"seconds": 6.0}})
         self.assertEqual(status, 0)
-        self.assertEqual(data["measurements"]["graph"]["samples"], [4.0, 6.0, 4.0, 4.0, 4.0])
+        self.assertEqual(data["measurements"]["graph"]["samples"], [4.0, 6.0, 4.0, 4.0, 4.0, 4.0])
         self.assertEqual(data["comparison"]["commands"]["graph"]["ratio"], 1.0)
         self.assertEqual(data["comparison"]["roundRatios"][1], round(23.0 / 21.0, 4))
 
     def test_text_output_reports_ratios_and_failures(self):
         status, output, stderr, _ = self.gate(self.scaled(1.0, rules=3.5), "--runs", "1", "--no-warmup",
-                                              as_json=False)
+                                              as_json=False, events={("reference", "dead", 0): {"returncode": 1}})
         self.assertEqual(status, 1)
         self.assertIn("[SMOKE GATE FAIL] Candidate compared with the reference build on this machine "
                       "(medians of 1 interleaved rounds):", output)
         self.assertIn("  - rules          : 3.500s vs reference 3.000s (ratio 1.1667; limit 1.1500)", output)
         self.assertIn("Recorded 5.000s/20.000s budget (not gating): 1 candidate and 1 reference exceedance(s)", output)
-        self.assertIn("relative failures:\n  - 'rules' median 3.500s", stderr)
+        self.assertIn("Reference exited 1 (strict diagnostics) in 1 measured run(s); its time is still compared.",
+                      output)
+        self.assertIn("relative failures:\n  - " + self.RULES_FAILURE, stderr)
+
+    def test_revisions_are_validated_and_recorded(self):
+        reference, candidate = "704ff3c9d3c373b6a0ec657d345bd7989cb31822", "4c3828b91e8aa3a53b10926e216834d2eac4b3c5"
+        status, data, _, _ = self.gate(None, "--reference-revision", reference, "--candidate-revision", candidate)
+        self.assertEqual((status, data["revisions"]), (0, {"reference": reference, "candidate": candidate}))
+        for bad in ("704ff3c", "G" * 40, reference.upper(), reference + "0", ""):
+            with self.subTest(bad=bad):
+                status, stderr = self.usage("--reference-binary", str(self.binaries["reference"]),
+                                            "--reference-revision", bad)
+                self.assertEqual(status, 64)
+                self.assertIn("full lowercase commit SHA", stderr)
+
+    def test_step_summary_reports_totals_ratios_and_fail_closed_reason(self):
+        summary = self.root / "step-summary.md"
+        summary.write_text("earlier step\n")
+        reference = "704ff3c9d3c373b6a0ec657d345bd7989cb31822"
+        status, _, _, _ = self.gate(None, "--summary", str(summary), "--reference-revision", reference)
+        self.assertEqual(status, 0)
+        text = summary.read_text()
+        self.assertTrue(text.startswith("earlier step\n"))
+        self.assertIn("### Relative analysis performance: PASS", text)
+        self.assertIn("reference `704ff3c9d3c3`", text)
+        self.assertIn("| graph | 4.000 | 4.000 | 1.0000 | 1.1500 |", text)
+        self.assertIn("| **total** | 21.000 | 21.000 | 1.0000 | 1.0500 |", text)
+        self.assertIn("Recorded 5 s / 20 s budget (not gating): candidate 21.000 s (exceeded), "
+                      "reference 21.000 s (exceeded).", text)
+        status, _, _, _ = self.gate(self.scaled(1.0, rules=3.5), "--summary", str(summary))
+        self.assertEqual(status, 1)
+        self.assertIn("### Relative analysis performance: FAIL", summary.read_text())
+        self.assertIn("- " + self.RULES_FAILURE, summary.read_text())
+        status, _, _, _ = self.gate(None, "--summary", str(summary), events={("reference", "rules", 3): {"returncode": 2}})
+        self.assertEqual(status, 2)
+        self.assertIn("### Relative analysis performance: ERROR (`reference-failed`)", summary.read_text())
+        self.assertIn("command rules, phase measurement, round 2, returncode 2", summary.read_text())
+        self.assertEqual(summary.read_text().count("### Relative analysis performance:"), 3)
+
+    def test_reference_binary_must_differ_from_candidate(self):
+        candidate = self.binaries["candidate"]
+        symbolic = self.root / "symbolic-kartograph"
+        symbolic.symlink_to(candidate)
+        hard = self.root / "hard-kartograph"
+        os.link(candidate, hard)
+        for reference in (candidate, symbolic, hard):
+            with self.subTest(reference=reference.name):
+                status, stderr = self.usage("--binary", str(candidate), "--reference-binary", str(reference))
+                self.assertEqual(status, 64)
+                self.assertIn("--reference-binary must name a different executable from --binary", stderr)
 
     def test_reference_mode_options_are_validated(self):
-        import contextlib
-        import io
-
         for args in (["--total-tolerance", "-0.01"], ["--command-tolerance", "nan"], ["--total-tolerance", "inf"],
                      ["--runs", "0"], ["--per-command-budget", "inf"], ["--total-budget", "nan"]):
-            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()) as stderr:
-                status = self.mod.main(["--reference-binary", str(self.binaries["reference"]), *args])
+            with self.subTest(args=args):
+                status, stderr = self.usage("--reference-binary", str(self.binaries["reference"]), *args)
                 self.assertEqual(status, 64)
-                self.assertTrue(stderr.getvalue().startswith("error: "))
-        for args in (["--total-tolerance", "0.1"], ["--command-tolerance", "0.1"]):
-            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()) as stderr:
-                self.assertEqual(self.mod.main(args), 64)
-                self.assertIn("require --reference-binary", stderr.getvalue())
+                self.assertTrue(stderr.startswith("error: "))
+        for args in (["--total-tolerance", "0.1"], ["--command-tolerance", "0.1"], ["--summary", "summary.md"],
+                     ["--reference-revision", "a" * 40], ["--candidate-revision", "a" * 40]):
+            with self.subTest(args=args):
+                status, stderr = self.usage(*args)
+                self.assertEqual(status, 64)
+                self.assertIn("require --reference-binary", stderr)
 
 
 class ReferenceModeProcessTest(unittest.TestCase):
@@ -722,9 +908,19 @@ exit 0
         self.assertEqual(data["measurements"]["graph"]["nodes"], 2000)
         self.assertEqual(data["measurements"]["metrics"]["rows"], 6)
         self.assertEqual(len(data["reference"]["measurements"]["rules"]["samples"]), 2)
+        self.assertEqual(data["referenceDiagnosticExits"], 0)
+
+    def test_real_reference_diagnostic_exit_is_measured(self):
+        with tempfile.TemporaryDirectory(prefix="kartograph-reference-process-") as tmp:
+            root = Path(tmp)
+            res = self.run_gate(root, self.fixture(root, 'if [ "$1" = "rules" ]; then exit 1; fi'))
+        self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}\nstderr: {res.stderr}")
+        data = json.loads(res.stdout)
+        self.assertEqual((data["status"], data["referenceDiagnosticExits"]), ("PASS", 2))
+        self.assertEqual(data["reference"]["measurements"]["rules"]["returncodes"], [1, 1])
 
     def test_real_reference_failure_exits_two_with_reason(self):
-        failure = 'if [ "$1" = "rules" ]; then echo "error: /private/secret" >&2; exit 1; fi'
+        failure = 'if [ "$1" = "rules" ]; then echo "error: /private/secret" >&2; exit 2; fi'
         with tempfile.TemporaryDirectory(prefix="kartograph-reference-process-") as tmp:
             root = Path(tmp)
             res = self.run_gate(root, self.fixture(root, failure))
@@ -732,7 +928,7 @@ exit 0
         data = json.loads(res.stdout)
         self.assertEqual(data["status"], "ERROR")
         self.assertEqual(data["error"], {"kind": "reference-failed", "arm": "reference", "phase": "warmup",
-                                         "round": None, "command": "rules", "returncode": 1})
+                                         "round": None, "command": "rules", "returncode": 2})
         self.assertNotIn("/private/secret", res.stdout + res.stderr)
 
 

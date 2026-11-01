@@ -22,10 +22,14 @@
   5 s per command / 20 s total budget, which the same tree passed at about 15–17 s on AMD EPYC 9V45 and Intel Xeon
   6975P-C runners and failed at 21–25 s on AMD EPYC 7763 runners. The new `performance` job builds both commits and runs
   `Scripts/verify-analysis-smoke-gate.py --reference-binary` on the candidate's inputs, interleaving the two builds in
-  ABBA order over five rounds after one warm-up per build. It fails when the sum of per-command medians is more than 5%
-  above the base build or any command is more than 15% above it, and fails closed (exit 2) instead of passing when the
-  base build fails any command. A 10 s / 40 s absolute safety cap still applies in both modes, and the 5 s / 20 s
-  comparison is recorded in the JSON without gating. Verification only; product behaviour is unchanged.
+  ABBA order over six rounds after one warm-up per build. It fails when the sum of per-command medians is more than 5%
+  above the base build or any command is more than 15% above it. A base build that exits 1 with strict diagnostics is
+  still measured and counted; one that cannot complete a command (other exit codes, timeout, launch failure) fails
+  closed (exit 2) instead of passing. The comparison is per change only: regressions below the tolerance can compound
+  (ten changes at +4% are about +48%) and input growth affects both builds, so only the new 10 s / 40 s absolute safety
+  cap bounds them. The cap applies to the candidate in both modes and replaces the 5 s / 20 s standalone default; the
+  5 s / 20 s comparison and the ratios are recorded in the JSON and the job summary without gating. Verification only;
+  product behaviour is unchanged.
 
 ### Added
 
