@@ -849,8 +849,10 @@ def successful_pair(left, right):
 #   GENERATED_CODE_COVERAGE 바로 앞에 들어간다.
 # - metrics: file facade·합성 class를 A에서 빼므로 A·D 열만 바뀐다. 입력은 이 브랜치 head의 6개 production class
 #   root라 결정적이므로, CI 세 번의 9쌍에서 모두 같게 관측한 baseline·후보 출력 바이트를 표로 고정한다.
-#   입력 class가 바뀌어 어느 쪽이든 이 표와 다르면 delta로 인정하지 않는다(바이트 비교로 실패). 그때는 BASELINE을
-#   옮기거나 새 CI artifact에서 이 표를 다시 관측해 갱신한다.
+#   입력 class가 바뀌어 어느 쪽이든 이 표와 다르면 delta로 인정하지 않는다. 두 쪽이 A·D 열만 다르면 표가 낡은
+#   것이므로 `metrics-contract-delta-stale`로 따로 실패한다. 그때는 BASELINE을 이 변경 이후 commit으로 옮기거나,
+#   그 실행의 index-cost artifact(`raw/metrics-*-{baseline,candidate}-stdout.gz`)에서 EXPECTED_METRICS_ROWS를 다시
+#   관측해 갱신한다. module·Ca·Ce·I가 두 쪽에서 다르거나 다른 명령도 실패하면 일반 불일치 오류다.
 # BASELINE을 이 변경 이후 commit으로 옮기면 비활성화되고 모든 명령이 다시 바이트 동일 비교만 쓴다.
 CONTRACT_DELTA_BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
 CONTRACT_DELTA_COMMANDS = ("dead", "dead_private", "metrics")
@@ -917,6 +919,36 @@ def expected_metrics_output(arm):
 
 def expected_metrics_delta(baseline, candidate):
     return baseline == expected_metrics_output("baseline") and candidate == expected_metrics_output("candidate")
+
+
+STALE_METRICS_REASON = "metrics-contract-delta-stale"
+STALE_METRICS_HINT = (
+    "self-analysis metrics differ between baseline and candidate only in the A/D columns, but no longer match the "
+    "pinned EXPECTED_METRICS_ROWS because the class input changed; move BASELINE past this contract change or "
+    "re-observe EXPECTED_METRICS_ROWS from this run's index-cost artifact (see the CONTRACT_DELTA_BASELINE comment in "
+    "Scripts/verify-index-cost.py)")
+
+
+def metrics_columns_match(baseline, candidate):
+    """헤더·행 수·행 순서·module·Ca·Ce·I가 같고 A·D 열만 다른지 본다. 허용이 아니라 실패 분류에만 쓴다."""
+    if not all(value.startswith(METRICS_HEADER) and value.endswith(b"\n") for value in (baseline, candidate)):
+        return False
+    left = baseline[len(METRICS_HEADER):-1].split(b"\n")
+    right = candidate[len(METRICS_HEADER):-1].split(b"\n")
+    return len(left) == len(right) and all(
+        len(old) == 6 and len(new) == 6 and old[:4] == new[:4]
+        for old, new in ((before.split(b"\t"), after.split(b"\t")) for before, after in zip(left, right)))
+
+
+def stale_metrics_pin(command, left, right):
+    """고정 metrics 표가 입력 class 변화로 낡았는지 분류한다. 판정(허용 여부)은 바꾸지 않는다."""
+    if command != "metrics" or not contract_delta_active():
+        return False
+    if left["exit"] != 0 or right["exit"] != 0 or not output_equal(left["stderr"], right["stderr"]):
+        return False
+    baseline, candidate = bounded_output(left["stdout"]), bounded_output(right["stdout"])
+    return (baseline is not None and candidate is not None and baseline != candidate
+            and not expected_metrics_delta(baseline, candidate) and metrics_columns_match(baseline, candidate))
 
 
 def source_identity(repo, ref, env):
@@ -1174,9 +1206,12 @@ def paired_cli(commands, project, env, located_nodes, report, raw):
             expected_delta = expected_contract_delta(name, left, right)
             accepted = successful_pair(left, right) or expected_delta
             all_accepted = all_accepted and accepted
+            # 임시 stream은 이 표본 안에서만 읽을 수 있으므로 실패 분류도 여기서 기록한다.
+            stale = not accepted and stale_metrics_pin(name, left, right)
             report["cli"].append({"command": name, "sample": sample, "order": list(order),
                                   "exactEqual": equivalent(left, right),
                                   "expectedContractDelta": expected_delta, "contractAccepted": accepted,
+                                  "staleContractDelta": stale,
                                   "comparisonScope": ("same-input-intentionally-changed-output" if expected_delta
                                                       else "exact-byte-comparison"),
                                   "raw": retained, **{arm: summary(result) for arm, result in results.items()}})
@@ -1195,6 +1230,14 @@ def paired_cli(commands, project, env, located_nodes, report, raw):
     for values in report["cliTiming"]["arms"].values():
         values["sumMedianSeconds"] = sum(values["medianSeconds"].values())
     if not all_accepted:
+        failed = [row for row in report["cli"] if not row["contractAccepted"]]
+        if all(row["staleContractDelta"] for row in failed):
+            first = failed[0]
+            raise DiagnosticError(STALE_METRICS_REASON, receipt={
+                "phase": "cli-metrics", "hint": STALE_METRICS_HINT,
+                "pinnedSha256": {arm: digest(expected_metrics_output(arm)) for arm in ("baseline", "candidate")},
+                "observedSha256": {arm: first[arm]["stdout"]["sha256"] for arm in ("baseline", "candidate")},
+            })
         raise DiagnosticError("cli-byte-mismatch-or-unsuccessful-exit")
 
 

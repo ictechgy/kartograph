@@ -794,6 +794,79 @@ class ContractDeltaTest(unittest.TestCase):
                                      row["comparisonScope"], command)
                     self.assertEqual(command != changed, row["contractAccepted"], command)
 
+    def run_pairs(self, outputs, stderr=None, exits=None):
+        """명령별 (baseline, 후보) stdout으로 paired_cli를 돌려 report와 진단 오류를 돌려준다."""
+        stderr, exits = stderr or {}, exits or {}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            commands = {arm: probe.cli_commands(arm, [root / "classes"], root) for arm in ("baseline", "candidate")}
+            def execute(arguments, cwd, env, **kwargs):
+                arm, command = arguments[:2]
+                index = 0 if arm == "baseline" else 1
+                pair = outputs.get(command, (b"same\n", b"same\n"))
+                return {"phase": kwargs["phase"], "exit": exits.get(command, (0, 0))[index], "stdout": pair[index],
+                        "stderr": stderr.get(command, (b"", b""))[index], "wallNanos": 1, "rss": {}}
+            report, error = {}, None
+            with mock.patch.object(probe, "run", side_effect=execute), mock.patch.object(
+                    probe, "host_load_snapshot", return_value={}):
+                try:
+                    probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(root / "raw"))
+                except probe.DiagnosticError as caught:
+                    error = caught
+            return report, error
+
+    def test_stale_metrics_pin_has_its_own_diagnostic_code(self):
+        # 입력 class가 바뀌어 고정 표만 낡은 경우: 두 쪽이 A·D만 다르지만 고정 바이트와 다르다.
+        stale = {
+            "shifted-row": (METRICS_BASELINE.replace(b"0.027\t0.639", b"0.030\t0.636"),
+                            METRICS_CANDIDATE.replace(b"0.034\t0.632", b"0.037\t0.629")),
+            "new-package": (METRICS_BASELINE + b"dev.kartograph.zzz\t1\t0\t0.000\t0.000\t1.000\n",
+                            METRICS_CANDIDATE + b"dev.kartograph.zzz\t1\t0\t0.000\t0.500\t0.500\n"),
+        }
+        for label, metrics in stale.items():
+            with self.subTest(label=label):
+                report, error = self.run_pairs({"dead": (DEAD_BASELINE, DEAD_CANDIDATE), "metrics": metrics})
+                self.assertIsNotNone(error)
+                self.assertEqual("metrics-contract-delta-stale", str(error))
+                self.assertEqual("cli-metrics", error.receipt["phase"])
+                for name in ("EXPECTED_METRICS_ROWS", "BASELINE", "Scripts/verify-index-cost.py"):
+                    self.assertIn(name, error.receipt["hint"])
+                self.assertEqual({arm: probe.digest(probe.expected_metrics_output(arm)) for arm in ("baseline", "candidate")},
+                                 error.receipt["pinnedSha256"])
+                self.assertEqual({"baseline": probe.digest(metrics[0]), "candidate": probe.digest(metrics[1])},
+                                 error.receipt["observedSha256"])
+                for row in report["cli"]:
+                    stale_row = row["command"] == "metrics"
+                    self.assertEqual(stale_row, row["staleContractDelta"], row["command"])
+                    self.assertEqual(not stale_row, row["contractAccepted"], row["command"])
+
+    def test_other_metrics_and_cli_failures_keep_the_generic_code(self):
+        stale = (METRICS_BASELINE.replace(b"0.027\t0.639", b"0.030\t0.636"),
+                 METRICS_CANDIDATE.replace(b"0.034\t0.632", b"0.037\t0.629"))
+        dead = (DEAD_BASELINE, DEAD_CANDIDATE)
+        cases = {
+            # 후보 binary가 같은 입력에서 module·Ca·Ce·I를 바꾸면 표가 낡은 것이 아니라 동작 변화다.
+            "coupling-changed": ({"dead": dead, "metrics": (METRICS_BASELINE, METRICS_CANDIDATE.replace(
+                b"core\t5\t0", b"core\t4\t0"))}, {}, {}),
+            "row-only-in-candidate": ({"dead": dead, "metrics": (METRICS_BASELINE,
+                METRICS_CANDIDATE + b"dev.kartograph.zzz\t1\t0\t0.000\t0.000\t1.000\n")}, {}, {}),
+            "stderr-differs": ({"dead": dead, "metrics": stale}, {"metrics": (b"", b"limitation: x\n")}, {}),
+            "exit-differs": ({"dead": dead, "metrics": stale}, {}, {"metrics": (0, 2)}),
+            "stale-and-graph-changed": ({"dead": dead, "metrics": stale, "graph": (b"same\n", b"other\n")}, {}, {}),
+            "dead-changed": ({"dead": (DEAD_BASELINE, DEAD_BASELINE + b"extra\n"), "metrics": stale}, {}, {}),
+        }
+        for label, (outputs, stderr, exits) in cases.items():
+            with self.subTest(label=label):
+                _, error = self.run_pairs(outputs, stderr, exits)
+                self.assertIsNotNone(error)
+                self.assertEqual("cli-byte-mismatch-or-unsuccessful-exit", str(error))
+        with mock.patch.object(probe, "BASELINE", "0" * 40):
+            _, error = self.run_pairs({"metrics": stale})
+            self.assertEqual("cli-byte-mismatch-or-unsuccessful-exit", str(error))
+        report, error = self.run_pairs({"dead": dead, "metrics": (METRICS_BASELINE, METRICS_CANDIDATE)})
+        self.assertIsNone(error)
+        self.assertFalse(any(row["staleContractDelta"] for row in report["cli"]))
+
 
 if __name__ == "__main__":
     unittest.main()
