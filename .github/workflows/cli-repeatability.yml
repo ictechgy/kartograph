@@ -7,6 +7,11 @@ on:
         description: Full reviewed commit SHA for the same-executable diagnostic
         required: true
         type: string
+      baseline_sha:
+        description: Optional reviewed baseline commit for the fixed paired comparison
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -21,6 +26,7 @@ jobs:
     timeout-minutes: 45
     env:
       TARGET_SHA: ${{ inputs.target_sha }}
+      BASELINE_SHA: ${{ inputs.baseline_sha }}
     steps:
       - name: Validate the requested identity
         shell: bash
@@ -29,6 +35,10 @@ jobs:
             echo "target_sha must be a full lowercase commit SHA" >&2
             exit 64
           }
+          if [[ -n "$BASELINE_SHA" && ! "$BASELINE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "baseline_sha must be empty or a full lowercase commit SHA" >&2
+            exit 64
+          fi
           printf 'EVIDENCE_DIRECTORY=%s/cli-repeatability\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,6 +50,12 @@ jobs:
           ref: ${{ inputs.target_sha }}
           path: target
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ inputs.baseline_sha != '' }}
+        with:
+          ref: ${{ inputs.baseline_sha }}
+          path: baseline
+          persist-credentials: false
       - name: Verify and record both checkouts
         shell: bash
         run: |
@@ -50,6 +66,11 @@ jobs:
           git -C target rev-parse HEAD HEAD^{tree} > "$EVIDENCE_DIRECTORY/target-source.txt"
           printf '%s\n' "$GITHUB_WORKFLOW_REF" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$EVIDENCE_DIRECTORY/workflow.txt"
           sha256sum harness/Scripts/verify-cli-repeatability.py harness/experiments/cli-repeatability/README.md target/Scripts/verify-analysis-smoke-gate.py > "$EVIDENCE_DIRECTORY/scripts.sha256"
+          if [[ -n "$BASELINE_SHA" ]]; then
+            test "$(git -C baseline rev-parse HEAD)" = "$BASELINE_SHA"
+            git -C baseline rev-parse HEAD HEAD^{tree} > "$EVIDENCE_DIRECTORY/baseline-source.txt"
+            sha256sum harness/Scripts/verify-performance-pair.py harness/Scripts/verify-index-cost.py baseline/Scripts/verify-analysis-smoke-gate.py >> "$EVIDENCE_DIRECTORY/scripts.sha256"
+          fi
       - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
@@ -70,12 +91,38 @@ jobs:
           printf '%s\n' "${statuses[1]}" > "$EVIDENCE_DIRECTORY/setup-log-exit.txt"
           if (( statuses[0] != 0 )); then exit "${statuses[0]}"; fi
           exit "${statuses[1]}"
+      - name: Build the paired baseline installation and fixed corpus
+        if: ${{ inputs.baseline_sha != '' }}
+        shell: bash
+        working-directory: baseline
+        run: |
+          set +e
+          ./gradlew --no-daemon -Pkotlin.compiler.execution.strategy=in-process :cli:installDist :gradle-plugin:classes 2>&1 | tee "$EVIDENCE_DIRECTORY/baseline-setup.log"
+          statuses=("${PIPESTATUS[@]}")
+          printf '%s\n' "${statuses[0]}" > "$EVIDENCE_DIRECTORY/baseline-setup-exit.txt"
+          printf '%s\n' "${statuses[1]}" > "$EVIDENCE_DIRECTORY/baseline-setup-log-exit.txt"
+          if (( statuses[0] != 0 )); then exit "${statuses[0]}"; fi
+          exit "${statuses[1]}"
       - name: Run the fixed same-executable qualification
+        if: ${{ inputs.baseline_sha == '' }}
         shell: bash
         run: |
           set +e
           timeout --signal=TERM --kill-after=15s 900 python3 harness/Scripts/verify-cli-repeatability.py \
             --repo-root "$GITHUB_WORKSPACE/target" --target-sha "$TARGET_SHA" \
+            --output "$EVIDENCE_DIRECTORY/capture" > "$EVIDENCE_DIRECTORY/driver.stdout" 2> "$EVIDENCE_DIRECTORY/driver.stderr"
+          rc=$?
+          printf '%s\n' "$rc" > "$EVIDENCE_DIRECTORY/outer-exit.txt"
+          exit "$rc"
+      - name: Run the fixed paired comparison
+        if: ${{ inputs.baseline_sha != '' }}
+        shell: bash
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=15s 900 python3 harness/Scripts/verify-performance-pair.py \
+            --repo-root "$GITHUB_WORKSPACE/target" --target-sha "$TARGET_SHA" \
+            --baseline-root "$GITHUB_WORKSPACE/baseline" --baseline-sha "$BASELINE_SHA" \
+            --harness-sha "$GITHUB_SHA" \
             --output "$EVIDENCE_DIRECTORY/capture" > "$EVIDENCE_DIRECTORY/driver.stdout" 2> "$EVIDENCE_DIRECTORY/driver.stderr"
           rc=$?
           printf '%s\n' "$rc" > "$EVIDENCE_DIRECTORY/outer-exit.txt"
