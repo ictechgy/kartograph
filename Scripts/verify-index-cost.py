@@ -33,6 +33,7 @@ PROFILES = ("graph", "dead", "architecture")
 LIMIT = 32 * 1024 * 1024
 RAW_LIMIT = 256 * 1024 * 1024
 JFR_LIMIT = 16 * 1024 * 1024
+JFR_PRINT_STACK_DEPTH = 5
 JFR_EVENTS = ("jdk.ExecutionSample", "jdk.ObjectAllocationSample")
 
 
@@ -763,6 +764,20 @@ def public_summary(report):
     return encoded
 
 
+def _public_jfr_stack_trace_view(original):
+    """표시 frame 한도와 녹화·rank의 잘림을 분리하며 옛 관측의 깊이는 추정하지 않는다."""
+    if "stackTraceView" not in original:
+        return {"status": "unavailable", "requestedDepth": None, "completeStacksGuaranteed": False,
+                "scope": "source-observation-did-not-record-print-depth"}
+    value = original["stackTraceView"]
+    if (not isinstance(value, dict) or set(value) != {"requestedDepth", "completeStacksGuaranteed"}
+            or type(value["requestedDepth"]) is not int or not 1 <= value["requestedDepth"] <= 256
+            or value["completeStacksGuaranteed"] is not False):
+        raise DiagnosticError("invalid-public-observation")
+    return {"status": "observed", "requestedDepth": value["requestedDepth"], "completeStacksGuaranteed": False,
+            "scope": "jfr-print-frame-view; recording-truncation-and-ranking-omissions-are-separate"}
+
+
 def public_observation_summary(report):
     """이미 수집한 관측만 별도 제한 로그로 공개한다. 경로·환경·원시 stack은 복사하지 않는다."""
     def integer(value, maximum=2**63 - 1):
@@ -834,6 +849,7 @@ def public_observation_summary(report):
                 "scope": "single-profiled-candidate; all-thread-samples; not-wall-time-or-total-heap",
                 "launcher": "direct-java-same-main-class-and-arguments; startup-not-equivalent",
                 "rankingScope": "top-10-of-stored-top-30-product-methods; full-tail-count-not-recorded; inclusive-rows-overlap",
+                "stackTraceView": _public_jfr_stack_trace_view(original),
                 "gcJitAttribution": "not-recorded", "outputMatchesUnprofiledCandidate": True,
                 "configurationSha256": checksum(original["configurationSha256"]),
                 "recording": {"size": size, "sha256": checksum(recording["sha256"])}}
@@ -1127,7 +1143,8 @@ def capture_jfr(java_home, arguments, env, work, output, config, expected):
             counts[match[1]] = int(match[2])
     if not counts or set(counts) - {*JFR_EVENTS, "jdk.CheckPoint", "jdk.Metadata"}:
         raise DiagnosticError("unexpected-jfr-event-type")
-    events = successful([tool, "print", "--json", "--events", ",".join(JFR_EVENTS), recording],
+    events = successful([tool, "print", "--json", "--stack-depth", str(JFR_PRINT_STACK_DEPTH),
+                         "--events", ",".join(JFR_EVENTS), recording],
                         work, env, phase="jfr-events")
     samples = summarize_jfr(events["stdout"])
     for name in JFR_EVENTS:
@@ -1142,6 +1159,7 @@ def capture_jfr(java_home, arguments, env, work, output, config, expected):
         destination.write(recording.read_bytes())
     return {"scope": "single-profiled-candidate; sampled-stacks-and-weighted-allocations; not-timing-acceptance",
             "command": "dead", "launcher": "direct-java-same-main-class-and-arguments; startup-not-equivalent",
+            "stackTraceView": {"requestedDepth": JFR_PRINT_STACK_DEPTH, "completeStacksGuaranteed": False},
             "configurationSha256": digest(configuration), "tool": tool_before,
             "recording": file_record(output / "candidate.jfr", "jfr/candidate.jfr"),
             "eventCounts": counts, "samples": samples, "process": summary(result),

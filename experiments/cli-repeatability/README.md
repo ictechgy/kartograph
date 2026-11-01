@@ -178,3 +178,8 @@ ordinary 32MiB stderr streams fit below the existing 256MiB aggregate upper boun
 The private workspace remains independently bounded. The port does not adopt
 PR204's unproved owner cache or accumulator candidates, or replace newer main
 runtime-value analysis.
+
+The ordinary index-cost JFR sampler now explicitly requests five print frames and
+records that display limit. The diagnostic tools request 32 frames explicitly.
+Neither setting guarantees complete recorded stacks or a complete ranked tail.
+Older reports that did not record the print depth retain an unknown view.
