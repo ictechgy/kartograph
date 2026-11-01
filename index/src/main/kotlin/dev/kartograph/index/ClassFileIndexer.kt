@@ -418,6 +418,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private val enumConstants = mutableListOf<NodeId>()
     private var innerClassAccess: Int? = null
     private var sourceFile: String? = null
+    private var lastSourceLocation: SourceLocation? = null
     private var sourceDebugMapper: SourceDebugMapper? = null
     private var sourceDebugPresent = false
     private var metadataValues: MetadataAnnotationValues? = null
@@ -460,6 +461,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
 
     override fun visitSource(source: String?, debug: String?) {
         sourceFile = source?.substringAfterLast('/')?.substringAfterLast('\\')?.takeIf(String::isNotBlank)
+        lastSourceLocation = null
         sourceDebugPresent = debug?.startsWith("SMAP") == true
         sourceDebugMapper = if (sourceDebugPresent) SourceDebugMapper.parse(debug, sourceFile) else null
     }
@@ -791,8 +793,13 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
      * 그래프에 들어가기 전에 파일 이름 성분만 남겨, 보고서·교환 문서·baseline 지문 어디로도 빌드 기계의
      * 로컬 경로가 흘러가지 않게 한다. 남는 이름이 없으면 위치를 만들지 않는다.
      */
-    private fun sourceLocation(line: Int? = null): SourceLocation? =
-        sourceFile?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
+    private fun sourceLocation(line: Int? = null): SourceLocation? {
+        val path = sourceFile ?: return null
+        val normalized = line?.takeIf { it > 0 }
+        // 같은 줄의 연속 instruction은 불변 위치를 공유한다. source 변경 때 비우며 한 개만 보관한다.
+        return lastSourceLocation?.takeIf { it.path == path && it.line == normalized }
+            ?: SourceLocation(path, normalized).also { lastSourceLocation = it }
+    }
 
     /** 새 호출부 근거만 SMAP으로 확인한다. 같은 basename의 inline body도 caller 위치로 오인하지 않게 identity만 쓴다. */
     private fun callSiteLine(line: Int?): Int? {
@@ -812,10 +819,12 @@ private class SourceDebugMapper private constructor(private val identityLines: B
         private const val MAX_DEBUG_BYTES = 1_048_576
         private const val MAX_MAPPED_LINES = 100_000
         private val linePattern = Regex("^(\\d+)#(\\d+)(?:,(\\d+))?:(\\d+)(?:,(\\d+))?$")
+        private val rowSeparator = Regex("\\r?\\n")
+        private val fileSeparator = Regex("\\s+")
 
         fun parse(debug: String?, ownSource: String?): SourceDebugMapper? {
             if (debug == null || debug.toByteArray(Charsets.UTF_8).size > MAX_DEBUG_BYTES || !debug.startsWith("SMAP")) return null
-            val rows = debug.split(Regex("\\r?\\n"))
+            val rows = debug.split(rowSeparator)
             val defaultStratum = rows.getOrNull(2)?.trimEnd('\r')?.takeIf(String::isNotBlank) ?: return null
             val files = mutableMapOf<Int, SmapFile>()
             val basenames = mutableMapOf<String, String>()
@@ -840,7 +849,7 @@ private class SourceDebugMapper private constructor(private val identityLines: B
                         section = ""
                     } else when (section) {
                         "files" -> {
-                            val tokens = row.removePrefix("+").trim().split(Regex("\\s+"), limit = 3)
+                            val tokens = row.removePrefix("+").trim().split(fileSeparator, limit = 3)
                             val id = tokens.firstOrNull()?.toIntOrNull() ?: return null
                             if (row.trimStart().startsWith("+")) {
                                 if (index + 1 >= rows.size) return null

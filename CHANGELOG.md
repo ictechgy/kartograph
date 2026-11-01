@@ -6,6 +6,7 @@
 
 ## [Unreleased]
 
+- Reuse immutable indexing values after revalidation and reduce repeated SMAP pattern allocations.
 - Exclude bytecode override structure from architecture dependencies while preserving reachability.
 - Read application backup-agent, component-factory and zygote-preload classes from Android manifests.
 

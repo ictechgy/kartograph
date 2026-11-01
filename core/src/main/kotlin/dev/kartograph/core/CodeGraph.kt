@@ -464,30 +464,53 @@ public class CodeGraph private constructor(
         ): List<ExternalCall> {
             // 한 번의 정규화 안에서만 공유한다. 새 그래프/가지치기는 현재 정점으로 다시 검증한다.
             val candidates = IdentityHashMap<List<NodeId>, List<NodeId>>()
-            val normalized = calls
-                .filter { it.caller in nodes && (it.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(it.target).attributes) }
-                .map { call ->
-                    val targets = call.resolvedTargets
-                    val canonical = if (targets.isEmpty()) emptyList() else candidates.getOrPut(targets) {
-                        val retained = targets.filter(nodes::containsKey).distinct().sorted()
-                        if (targets is CanonicalTargets && retained == targets) targets
-                        else if (retained.isEmpty()) emptyList() else CanonicalTargets(retained)
-                    }
-                    val declaration = call.declaration?.takeUnless { declaration ->
-                        declaration.scope == CallDeclarationScope.PROJECT &&
-                            (declaration.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(declaration.target).attributes) ||
-                            call.kind == InvocationKind.INTERFACE && declaration.scope == CallDeclarationScope.EXTERNAL &&
-                            nodes[NodeId("class:${call.owner}")]?.let { NodeAttribute.EXTERNAL_STUB !in it.attributes } == true
-                    }?.let { declaration ->
-                        require(declaration.ownerChain.size in 1..CallDeclaration.MAX_OWNER_CHAIN) { "invalid call declaration chain size" }
-                        if (declaration.ownerChain is CanonicalOwnerChain) declaration
-                        else declaration.copy(ownerChain = CanonicalOwnerChain(declaration.ownerChain.toList()))
-                    }
-                    // 값이 같아도 caller의 mutable 빈 목록은 재사용하지 않는다. identity가 같은 방어 복사만 공유한다.
-                    if (canonical === targets && declaration === call.declaration) call
-                    else call.copy(resolvedTargets = canonical, declaration = declaration)
+            val original = calls as? CanonicalCalls
+            var changed: MutableList<ExternalCall>? = if (original == null) ArrayList() else null
+            fun materializePrefix(index: Int): MutableList<ExternalCall> {
+                changed?.let { return it }
+                // 아직 변경 목록이 없다는 것은 검증 중인 입력이 우리 불변 목록이라는 뜻이다.
+                val source = requireNotNull(original)
+                return ArrayList<ExternalCall>(source.size).also {
+                    it.addAll(source.subList(0, index))
+                    changed = it
                 }
-                .sorted()
+            }
+            // 외부 iterable은 끝까지 소비한 다음 하위 mutable 목록을 snapshot하는 기존 순서를 지킨다.
+            val inputs = original ?: calls.filter {
+                it.caller in nodes && (it.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(it.target).attributes)
+            }
+            inputs.forEachIndexed { index, call ->
+                if (original != null && (call.caller !in nodes || (call.target in nodes && NodeAttribute.EXTERNAL_STUB !in nodes.getValue(call.target).attributes))) {
+                    materializePrefix(index)
+                    return@forEachIndexed
+                }
+                val targets = call.resolvedTargets
+                val canonical = if (targets.isEmpty()) emptyList() else candidates.getOrPut(targets) {
+                    if (targets is CanonicalTargets && targets.all(nodes::containsKey)) targets
+                    else {
+                        val retained = targets.filter(nodes::containsKey).distinct().sorted()
+                        if (retained.isEmpty()) emptyList() else CanonicalTargets(retained)
+                    }
+                }
+                val declaration = call.declaration?.takeUnless { declaration ->
+                    declaration.scope == CallDeclarationScope.PROJECT &&
+                        (declaration.target !in nodes || NodeAttribute.EXTERNAL_STUB in nodes.getValue(declaration.target).attributes) ||
+                        call.kind == InvocationKind.INTERFACE && declaration.scope == CallDeclarationScope.EXTERNAL &&
+                        nodes[NodeId("class:${call.owner}")]?.let { NodeAttribute.EXTERNAL_STUB !in it.attributes } == true
+                }?.let { declaration ->
+                    require(declaration.ownerChain.size in 1..CallDeclaration.MAX_OWNER_CHAIN) { "invalid call declaration chain size" }
+                    if (declaration.ownerChain is CanonicalOwnerChain) declaration
+                    else declaration.copy(ownerChain = CanonicalOwnerChain(declaration.ownerChain.toList()))
+                }
+                // 값이 같아도 caller의 mutable 빈 목록은 재사용하지 않는다. identity가 같은 방어 복사만 공유한다.
+                val normalized = if (canonical === targets && declaration === call.declaration) call
+                else call.copy(resolvedTargets = canonical, declaration = declaration)
+                if (normalized !== call) materializePrefix(index)
+                changed?.add(normalized)
+            }
+            // 현재 정점에 대해 모든 호출을 재검증한 뒤에만 이전 정렬·중복 제거 결과를 재사용한다.
+            val normalized = changed ?: return requireNotNull(original)
+            normalized.sort()
             // compareTo의 같은 key 안에서만 equals 중복이 있을 수 있다. 유일한 호출까지 전체 후보 목록을 해시하지 않는다.
             val distinct = ArrayList<ExternalCall>(normalized.size)
             var previous: ExternalCall? = null
