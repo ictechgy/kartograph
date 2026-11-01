@@ -418,6 +418,62 @@ class PairSafetyTests(unittest.TestCase):
 
 
 class PairBudgetTests(unittest.TestCase):
+    def delayed_setup(self, root, clock, setup_seconds, initially_waiting=False):
+        owner = P.load_module("pair_delayed_owner", ROOT / "Scripts/verify-index-cost.py")
+        child = SimpleNamespace(pid=4242, returncode=None, stdout=io.BytesIO(b"kept"), stderr=io.BytesIO())
+        def wait(**unused):
+            child.returncode = 0
+            return 0
+        child.wait = wait
+        observations = []
+        def observe(pid):
+            observations.append(pid)
+            clock[0] = 12
+            return not initially_waiting or len(observations) > 1
+        def census():
+            clock[0] = setup_seconds
+            return lambda pid: False
+        return owner, child, observe, census
+
+    def test_delayed_setup_cannot_refresh_absolute_deadline_for_waiting_or_ready_child(self):
+        for waiting in (False, True):
+            with self.subTest(initially_waiting=waiting), tempfile.TemporaryDirectory() as temporary:
+                root, clock, row = Path(temporary), [0], {}
+                owner, child, observe, census = self.delayed_setup(root, clock, 9, waiting)
+                with patch.object(P.time, "monotonic", side_effect=lambda: clock[0]), \
+                     patch.object(owner, "nonreaping_waiter", return_value=observe), \
+                     patch.object(owner, "group_census", side_effect=census), \
+                     patch.object(owner, "kill_group") as kill, patch.object(P.subprocess, "Popen", return_value=child), \
+                     self.assertRaises(TimeoutError):
+                    try:
+                        P.Capture(root, root, {}, owner, 10).run(["synthetic-child"], "delayed", row)
+                    finally:
+                        print(json.dumps({"control": "absolute-child-deadline", "entry": 0, "setup_complete": 9,
+                                          "observed": clock[0], "deadline": 10, "initially_waiting": waiting, "row": row}))
+                self.assertEqual("TimeoutError", row["primary_error"]["type"])
+                if not waiting:
+                    self.assertEqual(3, row["seconds"])  # 측정 원점은 준비 뒤로 유지한다.
+                self.assertEqual(b"kept", (root / row["streams"]["stdout"]["path"]).read_bytes())
+                self.assertEqual(0, child.returncode)
+                self.assertTrue(child.stdout.closed and child.stderr.closed)
+                kill.assert_not_called()  # 합성 PID에는 실제 숫자 신호를 보내지 않는다.
+
+    def test_setup_exhausting_command_timeout_refuses_spawn_even_with_driver_time_remaining(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root, clock, row = Path(temporary), [0], {}
+            owner, child, observe, census = self.delayed_setup(root, clock, 11)
+            with patch.object(P.time, "monotonic", side_effect=lambda: clock[0]), \
+                 patch.object(owner, "nonreaping_waiter", return_value=observe), \
+                 patch.object(owner, "group_census", side_effect=census), patch.object(owner, "kill_group"), \
+                 patch.object(P.subprocess, "Popen", return_value=child) as spawn, self.assertRaises(TimeoutError):
+                try:
+                    P.Capture(root, root, {}, owner, 100).run(["never-launch"], "exhausted-setup", row, timeout=10)
+                finally:
+                    print(json.dumps({"control": "setup-command-deadline", "entry": 0, "setup_complete": 11,
+                                      "driver_deadline": 100, "timeout": 10, "row": row}))
+            spawn.assert_not_called()
+            self.assertEqual([], list(root.iterdir()))
+
     def test_expired_budget_prevents_identity_copy_seal_hash_archive_and_child_activity(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

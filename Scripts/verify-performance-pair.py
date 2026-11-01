@@ -285,18 +285,21 @@ class Capture:
         self.lock = threading.Lock()
 
     def run(self, argv, stem, row: CaptureReceipt, timeout=120):
+        command_start = time.monotonic()
+        command_deadline = min(self.deadline, command_start + timeout)
         if self.used + 2 * self.stream_limit > self.total_limit:
             raise ValueError("total output reservation limit")
         # 두 stream의 최대 쓰기를 미리 예약하여 마지막 child도 중단 여유를 보존한다.
         if shutil.disk_usage(self.output).free < DISK_STOP + 2 * self.stream_limit:
             raise ValueError("5.5GiB disk stop")
-        allowed = min(timeout, self.deadline - time.monotonic())
-        if allowed <= 0:
+        if time.monotonic() >= command_deadline:
             raise TimeoutError("overall deadline")
         paths = [self.output / (stem + suffix) for suffix in (".stdout", ".stderr")]
         row["argv"] = list(map(str, argv))
         counts = [0, 0]
         observe, census = self.owner.nonreaping_waiter(), self.owner.group_census()
+        if time.monotonic() >= command_deadline:
+            raise TimeoutError("overall deadline")
         streams = []
         process, owned, readers = None, None, []
         handoff_lock, old_handlers, pending_signals = threading.Lock(), {}, []
@@ -321,7 +324,7 @@ class Capture:
         try:
             for path in paths:
                 streams.append(path.open("xb"))
-            check_deadline(self.deadline)
+            check_deadline(command_deadline)
             # OS mask는 바꾸지 않는다. Popen 반환값과 lease가 결합되기 전 Python
             # 취소 예외만 미뤄서 handle을 잃는 assignment 공백을 닫는다.
             with handoff_lock:
@@ -329,6 +332,7 @@ class Capture:
                     handler = signal.getsignal(number)
                     if handler != signal.SIG_IGN:
                         old_handlers[number] = signal.signal(number, lambda number, frame: pending_signals.append(number))
+                check_deadline(command_deadline)
                 process = subprocess.Popen(argv, cwd=self.cwd, env=self.env, stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE, start_new_session=True)
                 owned = self.owner.OwnedProcessGroup(process, observe, census)
@@ -361,13 +365,14 @@ class Capture:
             for reader in readers:
                 reader.start()
             while not owned.ready():
-                if time.monotonic() - started > allowed:
+                if time.monotonic() >= command_deadline:
                     raise TimeoutError("child deadline")
                 if shutil.disk_usage(self.output).free < DISK_STOP:
                     raise ValueError("5.5GiB disk stop")
                 time.sleep(.01)
-            row["seconds"] = time.monotonic() - started
-            if row["seconds"] > allowed:
+            finished = time.monotonic()
+            row["seconds"] = finished - started
+            if finished >= command_deadline:
                 raise TimeoutError("completed child exceeded deadline")
         except BaseException as error:
             record_error("child-control", error)
