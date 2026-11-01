@@ -418,6 +418,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private val enumConstants = mutableListOf<NodeId>()
     private var innerClassAccess: Int? = null
     private var sourceFile: String? = null
+    private var lastSourceLocation: SourceLocation? = null
     private var sourceDebugMapper: SourceDebugMapper? = null
     private var sourceDebugPresent = false
     private var metadataValues: MetadataAnnotationValues? = null
@@ -460,6 +461,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
 
     override fun visitSource(source: String?, debug: String?) {
         sourceFile = source?.substringAfterLast('/')?.substringAfterLast('\\')?.takeIf(String::isNotBlank)
+        lastSourceLocation = null
         sourceDebugPresent = debug?.startsWith("SMAP") == true
         sourceDebugMapper = if (sourceDebugPresent) SourceDebugMapper.parse(debug, sourceFile) else null
     }
@@ -478,8 +480,9 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     }
 
     override fun visitAnnotation(descriptor: String, visible: Boolean): AnnotationVisitor? {
-        classAnnotations += annotationInternalName(descriptor)
-        edges += annotationEdge(JvmNodeId.classId(internalName), descriptor)
+        val annotationName = annotationInternalName(descriptor)
+        classAnnotations += annotationName
+        edges += annotationEdge(JvmNodeId.classId(internalName), annotationName)
         if (descriptor == "Lkotlin/Metadata;") {
             return MetadataAnnotationValues().also { metadataValues = it }
         }
@@ -508,13 +511,18 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         val annotations = mutableSetOf<String>()
         edges += GraphEdge(JvmNodeId.classId(internalName), fieldId, EdgeKind.MEMBER)
         edges += GraphEdge(fieldId, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
-        (descriptorClassNames(descriptor) + signatureClassNames(signature, typeOnly = true) - internalName).forEach { target ->
+        val references = linkedSetOf<String>()
+        addDescriptorClassNames(descriptor, references)
+        references.addAll(signatureClassNames(signature, typeOnly = true))
+        references.remove(internalName)
+        references.forEach { target ->
             edges += GraphEdge(fieldId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
         }
         return object : FieldVisitor(Opcodes.ASM9) {
             override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor? {
-                annotations += annotationInternalName(annotationDescriptor)
-                edges += annotationEdge(fieldId, annotationDescriptor)
+                val annotationName = annotationInternalName(annotationDescriptor)
+                annotations += annotationName
+                edges += annotationEdge(fieldId, annotationName)
                 return AnnotationValueVisitor(fieldId)
             }
 
@@ -554,7 +562,12 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         if (name == "<clinit>") {
             edges += GraphEdge(JvmNodeId.classId(internalName), methodId, EdgeKind.REFERENCE)
         }
-        (descriptorClassNames(descriptor) + signatureClassNames(signature) + exceptions.orEmpty() - internalName).forEach { target ->
+        val references = linkedSetOf<String>()
+        addDescriptorClassNames(descriptor, references)
+        references.addAll(signatureClassNames(signature))
+        references.addAll(exceptions.orEmpty())
+        references.remove(internalName)
+        references.forEach { target ->
             edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
         }
         return object : MethodVisitor(Opcodes.ASM9) {
@@ -565,8 +578,9 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             override fun visitAnnotationDefault(): AnnotationVisitor = AnnotationValueVisitor(methodId, JvmNodeId.classId(internalName))
 
             override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor? {
-                annotations += annotationInternalName(annotationDescriptor)
-                edges += annotationEdge(methodId, annotationDescriptor)
+                val annotationName = annotationInternalName(annotationDescriptor)
+                annotations += annotationName
+                edges += annotationEdge(methodId, annotationName)
                 return AnnotationValueVisitor(methodId)
             }
 
@@ -576,7 +590,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 visible: Boolean,
             ): AnnotationVisitor {
                 // parameter annotation 타입 자체도 연결해 값 없는 어노테이션이 referenced class를 잃지 않게 한다.
-                edges += annotationEdge(methodId, annotationDescriptor)
+                edges += annotationEdge(methodId, annotationInternalName(annotationDescriptor))
                 return AnnotationValueVisitor(methodId)
             }
 
@@ -747,9 +761,9 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         return KotlinMetadataEnricher.enrich(facts, metadata)
     }
 
-    private fun annotationEdge(source: NodeId, descriptor: String): GraphEdge = GraphEdge(
+    private fun annotationEdge(source: NodeId, annotationName: String): GraphEdge = GraphEdge(
         source,
-        JvmNodeId.classId(Type.getType(descriptor).internalName),
+        JvmNodeId.classId(annotationName),
         EdgeKind.ANNOTATION,
     )
 
@@ -791,8 +805,13 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
      * 그래프에 들어가기 전에 파일 이름 성분만 남겨, 보고서·교환 문서·baseline 지문 어디로도 빌드 기계의
      * 로컬 경로가 흘러가지 않게 한다. 남는 이름이 없으면 위치를 만들지 않는다.
      */
-    private fun sourceLocation(line: Int? = null): SourceLocation? =
-        sourceFile?.let { SourceLocation(it, line?.takeIf { value -> value > 0 }) }
+    private fun sourceLocation(line: Int? = null): SourceLocation? {
+        val path = sourceFile ?: return null
+        val normalized = line?.takeIf { it > 0 }
+        // 같은 줄의 연속 instruction은 불변 위치를 공유한다. source 변경 때 비우며 한 개만 보관한다.
+        return lastSourceLocation?.takeIf { it.path == path && it.line == normalized }
+            ?: SourceLocation(path, normalized).also { lastSourceLocation = it }
+    }
 
     /** 새 호출부 근거만 SMAP으로 확인한다. 같은 basename의 inline body도 caller 위치로 오인하지 않게 identity만 쓴다. */
     private fun callSiteLine(line: Int?): Int? {
@@ -812,10 +831,12 @@ private class SourceDebugMapper private constructor(private val identityLines: B
         private const val MAX_DEBUG_BYTES = 1_048_576
         private const val MAX_MAPPED_LINES = 100_000
         private val linePattern = Regex("^(\\d+)#(\\d+)(?:,(\\d+))?:(\\d+)(?:,(\\d+))?$")
+        private val rowSeparator = Regex("\\r?\\n")
+        private val fileSeparator = Regex("\\s+")
 
         fun parse(debug: String?, ownSource: String?): SourceDebugMapper? {
             if (debug == null || debug.toByteArray(Charsets.UTF_8).size > MAX_DEBUG_BYTES || !debug.startsWith("SMAP")) return null
-            val rows = debug.split(Regex("\\r?\\n"))
+            val rows = debug.split(rowSeparator)
             val defaultStratum = rows.getOrNull(2)?.trimEnd('\r')?.takeIf(String::isNotBlank) ?: return null
             val files = mutableMapOf<Int, SmapFile>()
             val basenames = mutableMapOf<String, String>()
@@ -840,7 +861,7 @@ private class SourceDebugMapper private constructor(private val identityLines: B
                         section = ""
                     } else when (section) {
                         "files" -> {
-                            val tokens = row.removePrefix("+").trim().split(Regex("\\s+"), limit = 3)
+                            val tokens = row.removePrefix("+").trim().split(fileSeparator, limit = 3)
                             val id = tokens.firstOrNull()?.toIntOrNull() ?: return null
                             if (row.trimStart().startsWith("+")) {
                                 if (index + 1 >= rows.size) return null
@@ -1136,11 +1157,15 @@ private val RUNTIME_CALLBACK_MEMBER_KINDS = setOf(NodeKind.CONSTRUCTOR, NodeKind
 private fun Int.isSynthetic(): Boolean = this and Opcodes.ACC_SYNTHETIC != 0
 
 internal fun descriptorClassNames(descriptor: String): Set<String> = buildSet {
+    addDescriptorClassNames(descriptor, this)
+}
+
+private fun addDescriptorClassNames(descriptor: String, destination: MutableSet<String>) {
     if (descriptor.startsWith('(')) {
-        Type.getArgumentTypes(descriptor).forEach { type -> addDescriptorType(type) }
-        addDescriptorType(Type.getReturnType(descriptor))
+        Type.getArgumentTypes(descriptor).forEach { type -> destination.addDescriptorType(type) }
+        destination.addDescriptorType(Type.getReturnType(descriptor))
     } else {
-        addDescriptorType(Type.getType(descriptor))
+        destination.addDescriptorType(Type.getType(descriptor))
     }
 }
 

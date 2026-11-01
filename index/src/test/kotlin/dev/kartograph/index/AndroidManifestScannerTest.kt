@@ -12,6 +12,22 @@ import org.junit.jupiter.api.io.TempDir
 
 class AndroidManifestScannerTest {
     @Test
+    fun `application runtime class attributes carry manifest evidence`(@TempDir projectRoot: Path) {
+        val manifest = projectRoot.resolve("AndroidManifest.xml")
+        manifest.writeText("""
+            <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application android:name=".App" android:backupAgent=".Backup"
+                android:appComponentFactory="other.Factory" android:zygotePreloadName=".Preload" />
+            </manifest>
+        """.trimIndent())
+        val evidence = AndroidManifestScanner(projectRoot).scan(manifest, "dev.fixture")
+        assertEquals(setOf("class:dev/fixture/App", "class:dev/fixture/Backup", "class:other/Factory", "class:dev/fixture/Preload"),
+            evidence.map { it.nodeId.value }.toSet())
+        assertEquals(setOf(RetentionReason.MANIFEST_COMPONENT), evidence.map { it.reason }.toSet())
+        assertEquals(setOf("AndroidManifest.xml"), evidence.map { assertNotNull(it.location).path }.toSet())
+    }
+
+    @Test
     fun `resolves relative bare and qualified component names with evidence lines`(@TempDir projectRoot: Path) {
         val manifest = projectRoot.resolve("app/src/main/AndroidManifest.xml")
         manifest.parent.createDirectories()

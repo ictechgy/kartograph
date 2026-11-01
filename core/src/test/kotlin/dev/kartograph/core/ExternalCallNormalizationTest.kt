@@ -9,6 +9,16 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ExternalCallNormalizationTest {
+    @Test
+    fun `copying a graph reuses validated immutable external calls`() {
+        val graph = CodeGraph(nodes, emptyList(), listOf(call(listOf(first, second))))
+        val copied = CodeGraph(graph.nodes.values, graph.edges, graph.externalCalls)
+        assertSame(graph.externalCalls, copied.externalCalls)
+        val pruned = CodeGraph(nodes.filter { it.id != first }, emptyList(), graph.externalCalls)
+        assertEquals(listOf(second), pruned.externalCalls.single().resolvedTargets)
+        assertEquals(listOf(first, second), graph.externalCalls.single().resolvedTargets)
+    }
+
     private val caller = NodeId("method:app/Caller#run()V")
     private val first = NodeId("method:app/A#run()V")
     private val second = NodeId("method:app/B#run()V")

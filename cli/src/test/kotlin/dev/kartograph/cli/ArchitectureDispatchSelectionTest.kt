@@ -48,7 +48,7 @@ class ArchitectureDispatchSelectionTest {
         assertEquals(full.nodes, selected.nodes)
         assertEquals(full.edges.filter { it.origin != EdgeOrigin.DISPATCH_MODEL }, selected.edges)
         val expectedDependencies = setOf(
-            "api" to "impla", "api" to "implb", "client" to "api",
+            "client" to "api",
             "impla" to "api", "impla" to "body", "implb" to "api", "implb" to "body",
         )
         for (graph in listOf(full, selected)) {
@@ -73,18 +73,17 @@ class ArchitectureDispatchSelectionTest {
                 from: Client
                 allow: [Api]
         """)
-        val cycles = parity("cycles", listOf(classes), extra = listOf("--strict"), status = 1)
-        assertContains(cycles.stdout, "api -> impla -> api\n")
-        assertContains(cycles.stdout, "cycles: 1 findings\n")
+        val cycles = parity("cycles", listOf(classes), extra = listOf("--strict"), status = 0)
+        assertEquals("cycles: 0 findings\n", cycles.stdout)
         val rules = parity("rules", listOf(classes), config, listOf("--strict"), 0)
         assertEquals("rules: 0 findings, 0 unassigned\n", rules.stdout)
         val metrics = parity("metrics", listOf(classes), status = 0)
         assertEquals("module\tCa\tCe\tI\tA\tD\n" +
-            "api\t3\t2\t0.400\t0.500\t0.100\n" +
+            "api\t3\t0\t0.000\t0.500\t0.500\n" +
             "body\t2\t0\t0.000\t0.000\t1.000\n" +
             "client\t0\t1\t1.000\t0.000\t0.000\n" +
-            "impla\t1\t2\t0.667\t0.000\t0.333\n" +
-            "implb\t1\t2\t0.667\t0.000\t0.333\n", metrics.stdout)
+            "impla\t0\t2\t1.000\t0.000\t0.000\n" +
+            "implb\t0\t2\t1.000\t0.000\t0.000\n", metrics.stdout)
     }
 
     @Test

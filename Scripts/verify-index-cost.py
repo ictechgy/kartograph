@@ -164,7 +164,7 @@ def align_verification_metadata(repo, baseline, report):
     require_equal(old_policy, new_policy, "verification-metadata-policy-changed")
     if any(key not in new or new[key] != value for key, value in old.items()):
         raise DiagnosticError("verification-metadata-existing-pin-changed")
-    value = {"scope": "additive-exact-SHA256-artifact-pins-only; original executable source and wrapper unchanged",
+    value = {"scope": "additive-exact-SHA256-artifact-pins-only; wrapper transition and source identities recorded separately",
              "baselineOriginalSha256": digest(original), "sharedSha256": digest(shared),
              "baselineArtifacts": len(old), "sharedArtifacts": len(new), "addedArtifacts": len(new) - len(old)}
     if original != shared:
@@ -202,6 +202,127 @@ def input_integrity_guard(report, key, checks):
         report[key] = result
         if result["errors"] and primary is None:
             raise DiagnosticError("aligned-build-inputs-changed")
+
+
+
+WRAPPER_FILES = ("gradlew", "gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.properties")
+
+
+REVIEWED_WRAPPERS = {
+    "9.7.1": ((8656, "a5a5c199ba02189ae8c46a334223371a20599d9c298ef65e7540ede4a3f72d59", 0o755),
+              (47505, "7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d", 0o644),
+              (368, "d0bebe8133babb74ab29a31ee6616c56ef8985fc801e1fd16c61b5ed2189e907", 0o644)),
+    "9.8.1": ((8656, "a5a5c199ba02189ae8c46a334223371a20599d9c298ef65e7540ede4a3f72d59", 0o755),
+              (48749, "3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98", 0o644),
+              (368, "b9c24447093e4fab2b1f37bfb461d2a1eb14157a4808dff50e0f954801a8f8f1", 0o644)),
+}
+
+
+WRAPPER_DISTRIBUTIONS = {"9.7.1": "acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a",
+                         "9.8.1": "dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f"}
+
+
+@contextmanager
+def wrapper_parent(root, relative):
+    """root와 각 부모를 descriptor로 고정하며 링크를 따라가지 않는다."""
+    descriptor = None
+    try:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        descriptor = os.open(root, flags)
+        for name in Path(relative).parts[:-1]:
+            child = os.open(name, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        yield descriptor, Path(relative).name
+    except OSError as error:
+        raise DiagnosticError("invalid-build-wrapper") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def wrapper_inputs(root):
+    """세 고정 경로의 일반 파일만 1MiB씩 제한하여 읽는다."""
+    records, contents = [], []
+    for relative in WRAPPER_FILES:
+        with wrapper_parent(root, relative) as (parent, name):
+            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            with os.fdopen(descriptor, "rb") as stream:
+                before = os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= 1024 * 1024:
+                    raise DiagnosticError("invalid-build-wrapper")
+                raw = stream.read(1024 * 1024 + 1)
+                after = os.fstat(stream.fileno())
+                current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            identity = lambda value: (value.st_dev, value.st_ino, value.st_mode, value.st_size, value.st_mtime_ns)
+            if len(raw) != before.st_size or identity(before) != identity(after) or identity(before) != identity(current):
+                raise DiagnosticError("build-wrapper-changed-during-read")
+            records.append({"path": relative, "bytes": len(raw), "sha256": digest(raw), "mode": stat.S_IMODE(after.st_mode)})
+            contents.append(raw)
+    return records, contents
+
+
+def replace_wrapper(root, relative, raw, mode):
+    """검증을 마친 임시 archive의 한 파일을 링크 추적 없이 원자적으로 바꾼다."""
+    with wrapper_parent(root, relative) as (parent, name):
+        temporary = ".kartograph-wrapper-" + os.urandom(12).hex()
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fchmod(stream.fileno(), mode)
+                os.fsync(stream.fileno())
+            os.replace(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=parent)
+            except FileNotFoundError:
+                pass
+
+
+def align_build_wrappers(repo, baseline, report):
+    """검토한 9.7.1→9.8.1에 한해 양쪽 엔진을 같은 도구로 빌드한다."""
+    original, _ = wrapper_inputs(baseline)
+    shared, contents = wrapper_inputs(repo)
+    def version(rows):
+        identity = tuple((row["bytes"], row["sha256"], row["mode"]) for row in rows)
+        return next((name for name, value in REVIEWED_WRAPPERS.items() if identity == value), None)
+    old_version, shared_version = version(original), version(shared)
+    changed = original != shared
+    if changed and (old_version, shared_version) != ("9.7.1", "9.8.1"):
+        raise DiagnosticError("build-tool-identity-mismatch")
+    value = {"scope": "derived baseline: original engine and build scripts under the common candidate wrapper; not the original build recipe",
+             "baselineOriginalVersion": old_version, "sharedVersion": shared_version, "changed": changed,
+             "baselineOriginal": original, "shared": shared,
+             "baselineOriginalDistributionSha256": WRAPPER_DISTRIBUTIONS.get(old_version) if old_version is not None else None,
+             "sharedDistributionSha256": WRAPPER_DISTRIBUTIONS.get(shared_version) if shared_version is not None else None}
+    report["buildWrapperAlignment"] = value
+    if changed:
+        for row, raw in zip(shared, contents):
+            replace_wrapper(baseline, row["path"], raw, row["mode"])
+    verify_aligned_wrappers(repo, baseline, value)
+
+
+def verify_aligned_wrappers(repo, baseline, value):
+    for root in (repo, baseline):
+        records, _ = wrapper_inputs(root)
+        require_equal(value["shared"], records, "build-wrapper-changed")
+
+
+@contextmanager
+def aligned_build_inputs(repo, baseline, report):
+    """실패한 child 증거를 보존하면서 성공·실패 양쪽의 도구 변이를 검사한다."""
+    align_build_wrappers(repo, baseline, report)
+    # 정렬 후에도 기존의 양쪽 wrapper 바이트 동일성 전제를 유지한다.
+    _, candidate_bytes = wrapper_inputs(repo)
+    _, baseline_bytes = wrapper_inputs(baseline)
+    require_equal(candidate_bytes, baseline_bytes, "build-tool-identity-mismatch")
+    align_verification_metadata(repo, baseline, report)
+    with input_integrity_guard(report, "buildInputIntegrity", (
+            lambda: verify_aligned_wrappers(repo, baseline, report["buildWrapperAlignment"]),
+            lambda: verify_aligned_metadata(repo, baseline, report["verificationMetadataAlignment"]))):
+        yield
 
 
 def java_identity(home):
@@ -598,7 +719,7 @@ def public_summary(report):
         result["sources"] = report["sourcesBefore"]
     if "verificationMetadataAlignment" in report:
         result["verificationMetadataAlignment"] = report["verificationMetadataAlignment"]
-    for key in ("metadataInputIntegrity", "executionInputIntegrity"):
+    for key in ("metadataInputIntegrity", "buildWrapperAlignment", "buildInputIntegrity", "executionInputIntegrity"):
         if key in report:
             result[key] = report[key]
     result["identitySha256"] = {key: identity_digest(report[key]) for key in (
@@ -1051,10 +1172,7 @@ def experiment(repo, work, env, report, raw_directory=None):
     successful(["git", "archive", "--format=tar", "--output", archive, BASELINE], repo, env, phase="baseline-archive")
     with tarfile.open(archive) as source:
         source.extractall(baseline, filter="data")
-    for name in ("gradlew", "gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.properties"):
-        require_equal((repo / name).read_bytes(), (baseline / name).read_bytes(), "build-tool-identity-mismatch")
-    align_verification_metadata(repo, baseline, report)
-    with input_integrity_guard(report, "metadataInputIntegrity", (
+    with aligned_build_inputs(repo, baseline, report), input_integrity_guard(report, "metadataInputIntegrity", (
             lambda: verify_aligned_metadata(repo, baseline, report["verificationMetadataAlignment"]),)):
         report["baselinePreparation"] = summary(successful(
             [baseline / "gradlew", "--no-daemon", ":cli:installDist"], baseline, env, timeout=600, phase="baseline-build"))

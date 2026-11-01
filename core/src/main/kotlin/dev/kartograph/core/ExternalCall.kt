@@ -25,7 +25,7 @@ public data class ExternalCall(
     init {
         require(declaration == null || (declaration.ownerChain.first() == owner &&
             declaration.target.value == "method:${declaration.ownerChain.last()}#$name$descriptor" &&
-            (kind in setOf(InvocationKind.VIRTUAL, InvocationKind.STATIC, InvocationKind.SPECIAL) && !name.startsWith('<') ||
+            ((kind == InvocationKind.VIRTUAL || kind == InvocationKind.STATIC || kind == InvocationKind.SPECIAL) && !name.startsWith('<') ||
                 kind == InvocationKind.INTERFACE && declaration.ownerChain.size == 1 &&
                     CallDeclaration.isValidInterfaceSignature(name, descriptor)))) {
             "call declaration does not match the observed operand"

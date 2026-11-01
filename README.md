@@ -56,12 +56,11 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 - Android graph/dead tasks: AGP 8.7+, Gradle 8.10+, JDK 17+ (verified with AGP 8.7.3 / Gradle 8.10.2 and with AGP 9.x).
 - Automatic snapshots: JVM Java/Kotlin on Gradle 9.6.1 and JDK 17/21, plus the [tested Android combinations](docs/IMPACT.md#android-variant-자동-캡처). The Kotlin compiler adapter is verified with KGP 2.4.10; other KGP versions are not guaranteed. The minimum Android combination was tested on Gradle 8.10.2, although KGP itself recommends 8.14.4 or later.
 
-The following example targets the 0.26.0 release preparation. Use the plugin once that version
-is available from the Portal, or build matching modules from the same source revision.
+The install example pins [0.25.0 on the Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.25.0), verified on 2026-11-01. Source 0.26.0 remains a release candidate. The checkout currently builds with Gradle 9.8.1 and KGP 2.4.21; the consumer verification matrix above records separate tested versions.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.26.0"
+    id("io.github.ictechgy.kartograph") version "0.25.0"
 }
 ```
 

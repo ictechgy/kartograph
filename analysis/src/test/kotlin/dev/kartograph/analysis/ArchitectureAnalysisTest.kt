@@ -15,6 +15,26 @@ import kotlin.test.assertFailsWith
 
 class ArchitectureAnalysisTest {
     @Test
+    fun `bytecode overrides retain implementations without creating architectural dependencies`() {
+        val lower = node("lower", "domain")
+        val upper = node("upper", "app")
+        val graph = CodeGraph(listOf(lower, upper), listOf(
+            GraphEdge(upper.id, lower.id, EdgeKind.CALL),
+            GraphEdge(lower.id, upper.id, EdgeKind.OVERRIDE, origin = EdgeOrigin.BYTECODE),
+        ))
+        assertEquals(listOf(upper.id), graph.usageSuccessorsOf(lower.id))
+        val architecture = ArchitectureGraph.aggregate(graph)
+        assertEquals(emptyList(), CycleAnalyzer.analyze(architecture))
+        assertEquals(listOf(NodeId("unit:domain")), architecture.usageSuccessorsOf(NodeId("unit:app")))
+        val evaluator = LayerRuleEvaluator(
+            listOf(LayerDefinition("Domain", listOf("domain")), LayerDefinition("App", listOf("app"))),
+            listOf(LayerRule("domain boundary", "Domain", allow = emptyList())),
+        )
+        assertEquals(emptyList(), evaluator.evaluate(graph))
+        assertEquals(0, MartinMetrics.calculate(graph).single { it.module == "domain" }.efferentCoupling)
+    }
+
+    @Test
     fun `runtime dispatch candidates preserve reachability without reversing module dependencies`() {
         val lower = node("lower", "domain")
         val upper = node("upper", "app")

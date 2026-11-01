@@ -22,11 +22,36 @@ sourceSets.main {
     resources.srcDir(rootProject.file("Skills"))
 }
 
+val distributionVersion = project.version.toString()
+val pluginInstallationPin = Regex("""(id\("io\.github\.ictechgy\.kartograph"\) version ")[^"]+(")""")
+
+// 인라인 문서 renderer가 바뀌면 이전 Copy 결과를 재사용하지 않는다.
+for (taskName in listOf("distZip", "distTar", "installDist")) {
+    tasks.named(taskName) {
+        inputs.file(project.file("build.gradle.kts"))
+    }
+}
+
 distributions {
     main {
         contents {
-            from(rootProject.file("README.md"))
-            from(rootProject.file("README.ko.md"))
+            // 공개 README는 발행본을 고정하고 archive 문서는 동봉 버전을 가리킨다.
+            for (readme in listOf("README.md", "README.ko.md")) {
+                from(rootProject.file(readme)) {
+                    filteringCharset = "UTF-8"
+                    filter { line: String ->
+                        when {
+                            line.startsWith("The install example pins") ->
+                                "This archive's install example targets bundled version $distributionVersion. Portal publication is separate; use the bundled CLI or build matching modules until the plugin version is available."
+                            line.startsWith("설치 예제는") ->
+                                "이 archive의 설치 예제는 동봉 버전 $distributionVersion 을 가리킨다. Portal 발행은 별도이며 공개 전에는 동봉 CLI나 같은 소스의 모듈을 사용한다."
+                            else -> pluginInstallationPin.replace(line) { match ->
+                                "${match.groupValues[1]}$distributionVersion${match.groupValues[2]}"
+                            }
+                        }
+                    }
+                }
+            }
             from(rootProject.file("VERSION"))
             from(rootProject.file("CHANGELOG.md"))
             from(rootProject.file("SECURITY.md"))
