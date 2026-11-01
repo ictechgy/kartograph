@@ -855,16 +855,29 @@ def source_identity(repo, ref, env):
     return {"commit": commit, "tree": tree}
 
 
-# cache 엔진 지문(index의 CacheIdentity)을 이루는 index·core 구현과 그 build script다. 지문이 같을 때만 쓰므로
-# 의존성 버전처럼 엔진 jar 바이트를 바꾸는 변경은 지문 차이로 먼저 드러난다. test·다른 module은 엔진이 아니다.
-ENGINE_SOURCE_PATHS = ("core/build.gradle.kts", "core/src/main", "index/build.gradle.kts", "index/src/main")
+# cache 엔진 지문(index의 CacheIdentity)은 index·core·ASM·kotlin-metadata·stdlib 등 엔진 쪽 jar 바이트에서 나온다.
+# 배포 lib에서 엔진 밖의 kartograph module만 빼고 나머지를 버전과 무관한 artifact 이름으로 비교한다.
+NON_ENGINE_ARTIFACTS = frozenset(("analysis", "export", "cli"))
 
 
-def engine_sources_changed(repo, baseline, env):
-    """BASELINE과 후보 HEAD 사이에 cache 엔진을 이루는 소스나 build script가 바뀌었는지 Git tree로 본다."""
-    changed = successful(["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only",
-                          baseline, "HEAD", "--", *ENGINE_SOURCE_PATHS], repo, env, phase="engine-source-diff")
-    return changed["stdout"] != b""
+def engine_artifacts(rows):
+    """배포 lib inventory의 엔진 쪽 파일을 artifact 이름→정렬된 sha256 목록으로 만든다. 빌드 시각은 보지 않는다."""
+    result = {}
+    for row in rows:
+        path = row["path"]
+        name = path[:-len(".jar")] if path.endswith(".jar") and "/" not in path else None
+        artifact = re.sub(r"-[0-9][0-9A-Za-z.+_-]*$", "", name) if name is not None else path
+        if name is not None and artifact in NON_ENGINE_ARTIFACTS:
+            continue
+        result.setdefault(artifact, []).append(row["sha256"])
+    return {artifact: sorted(values) for artifact, values in result.items()}
+
+
+def engine_jars_identical(libraries):
+    """두 배포의 엔진 쪽 jar가 바이트 동일한지 본다. 두 inventory가 모두 없으면 판정하지 않는다(None)."""
+    if not isinstance(libraries, dict) or set(libraries) != {"baseline", "candidate"}:
+        return None
+    return engine_artifacts(libraries["baseline"]) == engine_artifacts(libraries["candidate"])
 
 
 def require_baseline_source(repo, source, baseline, env):
@@ -1156,12 +1169,13 @@ def compile_probe(repo, distribution, destination, java_home, env):
     return str(destination) + os.pathsep + str(distribution / "lib/*")
 
 
-def compare_semantic_outputs(outputs, report, engine_sources_changed=True):
+def compare_semantic_outputs(outputs, report, distribution_libraries=None):
     """engine 지문은 보존하고 v10 raw payload와 두 전체 graph 형식의 바이트를 비교한다.
 
-    baseline이 후보와 같은 엔진이면(index·core 소스와 build script가 BASELINE과 같음) 지문이 같은 것이 정상이다.
-    그때는 교차 엔진 동등성을 관측하지 못한 same-engine control로 기록하고, 엔진 소스가 바뀌었는데 지문이 같으면
-    각 arm이 자기 엔진을 읽었다는 근거가 없으므로 계속 실패한다.
+    지문 판정은 두 배포의 엔진 쪽 jar 바이트로 한다(`distribution_libraries`는 arm별 lib inventory). 지문과 엔진 jar가
+    함께 같으면 교차 엔진 동등성을 관측하지 못한 same-engine control로 통과한다. 지문만 같으면 각 arm이 자기 엔진을
+    읽었다는 근거가 없고, 엔진 jar만 같으면 지문이 비결정적이거나 다른 코드를 읽은 것이므로 둘 다 실패한다.
+    inventory가 없으면 엔진 jar 동일성을 모르므로 같은 지문은 실패한다.
     """
     records, payloads, graphs = {}, {}, {}
     for arm, directory in outputs.items():
@@ -1199,17 +1213,20 @@ def compare_semantic_outputs(outputs, report, engine_sources_changed=True):
     left, right = records["baseline"], records["candidate"]
     equal_graphs = graphs["baseline"] == graphs["candidate"]
     same_engine = left["engine"] == right["engine"]
+    jars_identical = engine_jars_identical(distribution_libraries)
     report["semantic"] = {"scope": "non-timed-full-graph-JSON-NDJSON-and-v10-raw-payload; graph-bytes-not-retained",
                           "arms": records, "graphsEqual": equal_graphs,
                           "rawPayloadsEqual": payloads["baseline"] == payloads["candidate"],
-                          "enginesDiffer": not same_engine, "engineSourcesChanged": engine_sources_changed,
-                          "engineScope": ("same-engine control: index/core sources and build scripts equal BASELINE; "
-                                          "cross-engine equivalence not exercised") if same_engine and not engine_sources_changed
+                          "enginesDiffer": not same_engine, "engineJarsIdentical": jars_identical,
+                          "engineScope": ("same-engine control: engine jars are byte-identical; "
+                                          "cross-engine equivalence not exercised") if same_engine and jars_identical is True
                           else "recorded separately; implementation JAR identities change; each cache consumed by its own reader"}
     if not equal_graphs or payloads["baseline"] != payloads["candidate"]:
         raise DiagnosticError("semantic-graph-or-raw-payload-mismatch")
-    if same_engine and engine_sources_changed:
+    if same_engine and jars_identical is not True:
         raise DiagnosticError("semantic-engine-did-not-change")
+    if not same_engine and jars_identical is True:
+        raise DiagnosticError("semantic-engine-fingerprint-unstable")
 
 
 def semantic_oracle(repo, distributions, roots, java_home, env, work, report, raw):
@@ -1228,7 +1245,7 @@ def semantic_oracle(repo, distributions, roots, java_home, env, work, report, ra
             raise DiagnosticError("semantic-facts-bound")
         raw.retain("semantic-facts", 1, arm,
                    {"stdout": (outputs[arm] / "raw-facts.json").read_bytes(), "stderr": result["stdout"]})
-    compare_semantic_outputs(outputs, report, engine_sources_changed(repo, BASELINE, env))
+    compare_semantic_outputs(outputs, report, distribution_libraries=report.get("libsBefore"))
 
 
 def summarize_jfr(data):
