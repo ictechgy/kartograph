@@ -920,7 +920,7 @@ class KartographCliTest {
         assertContains(execution.output, "unreachable\tclass:dev/kartograph/cli/KartographCli")
         assertContains(execution.output, "limitation\tREFLECTION_STRINGS")
         assertContains(execution.output, "limitation\tDYNAMIC_REGISTRATION")
-        assertContains(execution.output, "limitation\tDEPENDENCY_INJECTION_OWNERS\t")
+        assertContains(execution.output, "limitation\tFRAMEWORK_ANNOTATION_OWNERS\t")
         kotlin.test.assertFalse(execution.output.contains("deletable"))
     }
 

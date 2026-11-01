@@ -845,18 +845,20 @@ def successful_pair(left, right):
 
 
 # 고정 baseline에 없는 의도된 계약 확장 두 가지만 정확히 허용한다(f5f5418의 고정 delta와 같은 방식).
-# - dead·dead_private: 이름순 정적 한계 목록에 DEPENDENCY_INJECTION_OWNERS 한 줄이 ANNOTATION_VALUE_REFERENCES 바로 뒤에 들어간다.
+# - dead·dead_private: 이름순 정적 한계 목록에 FRAMEWORK_ANNOTATION_OWNERS 한 줄이 DYNAMIC_REGISTRATION 바로 뒤,
+#   GENERATED_CODE_COVERAGE 바로 앞에 들어간다.
 # - metrics: file facade·합성 class를 A에서 빼므로 A·D 열만 바뀐다. module·Ca·Ce·I·행 순서·헤더는 바이트 그대로다.
 # BASELINE을 이 변경 이후 commit으로 옮기면 비활성화되고 모든 명령이 다시 바이트 동일 비교만 쓴다.
 CONTRACT_DELTA_BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
 CONTRACT_DELTA_COMMANDS = ("dead", "dead_private", "metrics")
 CONTRACT_DELTA_OUTPUT_LIMIT = 1024 * 1024
-ANNOTATION_VALUE_LIMITATION = (b"limitation\tANNOTATION_VALUE_REFERENCES\tclass references in SOURCE-retention "
-                               b"annotations are not available in compiled inputs\n")
-DYNAMIC_REGISTRATION_PREFIX = b"limitation\tDYNAMIC_REGISTRATION\t"
-DEPENDENCY_INJECTION_LIMITATION = (b"limitation\tDEPENDENCY_INJECTION_OWNERS\towners of supported dependency-injection "
-                                   b"annotations, including @Inject constructors, are retained without proof that a "
-                                   b"generated component requests them\n")
+DYNAMIC_REGISTRATION_LIMITATION = (b"limitation\tDYNAMIC_REGISTRATION\tmanifest-absent runtime component registration "
+                                   b"is not resolved\n")
+GENERATED_CODE_PREFIX = b"limitation\tGENERATED_CODE_COVERAGE\t"
+FRAMEWORK_OWNERS_LIMITATION = (b"limitation\tFRAMEWORK_ANNOTATION_OWNERS\towners retained by supported dependency-injection, "
+                               b"serialization or runtime-entry annotations (such as @Inject constructors, @Expose fields, "
+                               b"@TypeConverter methods or @Component types) and all their members are roots without proof "
+                               b"that generated code or a framework uses them\n")
 METRICS_HEADER = b"module\tCa\tCe\tI\tA\tD\n"
 METRIC_RATIO = re.compile(rb"0\.[0-9]{3}|1\.000")
 
@@ -887,13 +889,13 @@ def expected_contract_delta(command, left, right):
 
 
 def expected_dead_delta(baseline, candidate):
-    if baseline.count(ANNOTATION_VALUE_LIMITATION) != 1 or DEPENDENCY_INJECTION_LIMITATION in baseline:
+    if baseline.count(DYNAMIC_REGISTRATION_LIMITATION) != 1 or FRAMEWORK_OWNERS_LIMITATION in baseline:
         return False
-    start = baseline.index(ANNOTATION_VALUE_LIMITATION)
-    end = start + len(ANNOTATION_VALUE_LIMITATION)
-    if (start > 0 and baseline[start - 1:start] != b"\n") or not baseline.startswith(DYNAMIC_REGISTRATION_PREFIX, end):
+    start = baseline.index(DYNAMIC_REGISTRATION_LIMITATION)
+    end = start + len(DYNAMIC_REGISTRATION_LIMITATION)
+    if (start > 0 and baseline[start - 1:start] != b"\n") or not baseline.startswith(GENERATED_CODE_PREFIX, end):
         return False
-    return candidate == baseline[:end] + DEPENDENCY_INJECTION_LIMITATION + baseline[end:]
+    return candidate == baseline[:end] + FRAMEWORK_OWNERS_LIMITATION + baseline[end:]
 
 
 def expected_metrics_delta(baseline, candidate):

@@ -650,17 +650,19 @@ class IndexCostTest(unittest.TestCase):
             self.assertNotEqual(list(documents[0]["payloads"].values()), list(documents[1]["payloads"].values()))
 
 
-# 고정 baseline 33f8ce1에 대한 의도된 계약 확장(DEPENDENCY_INJECTION_OWNERS 한계, Martin A의 합성 타입 제외)이다.
+# 고정 baseline 33f8ce1에 대한 의도된 계약 확장(FRAMEWORK_ANNOTATION_OWNERS 한계, Martin A의 합성 타입 제외)이다.
 # CI 자기 분석 원시 출력과 같은 형태의 바이트로 정확한 허용 범위와 거부 경계를 고정한다.
 DEAD_BASELINE = (
     b"input-hint\tmissing-classpath\tno dependency classpath inputs were supplied\n"
     b"limitation\tANNOTATION_VALUE_REFERENCES\tclass references in SOURCE-retention annotations are not available in compiled inputs\n"
     b"limitation\tDYNAMIC_REGISTRATION\tmanifest-absent runtime component registration is not resolved\n"
+    b"limitation\tGENERATED_CODE_COVERAGE\tonly supported generation markers and sibling relationships identify generated code\n"
     b"limitation\tTOP_LEVEL_DECLARATIONS\tfile-facade top-level properties and their accessors are conservatively not reported\n"
 )
-DI_LINE = (b"limitation\tDEPENDENCY_INJECTION_OWNERS\towners of supported dependency-injection annotations, including "
-           b"@Inject constructors, are retained without proof that a generated component requests them\n")
-DEAD_CANDIDATE = DEAD_BASELINE.replace(b"limitation\tDYNAMIC_REGISTRATION", DI_LINE + b"limitation\tDYNAMIC_REGISTRATION", 1)
+DI_LINE = (b"limitation\tFRAMEWORK_ANNOTATION_OWNERS\towners retained by supported dependency-injection, serialization or "
+           b"runtime-entry annotations (such as @Inject constructors, @Expose fields, @TypeConverter methods or @Component "
+           b"types) and all their members are roots without proof that generated code or a framework uses them\n")
+DEAD_CANDIDATE = DEAD_BASELINE.replace(b"limitation\tGENERATED_CODE_COVERAGE", DI_LINE + b"limitation\tGENERATED_CODE_COVERAGE", 1)
 METRICS_BASELINE = (
     b"module\tCa\tCe\tI\tA\tD\n"
     b"dev.kartograph.analysis\t3\t1\t0.250\t0.005\t0.745\n"
@@ -688,7 +690,8 @@ class ContractDeltaTest(unittest.TestCase):
             "identical": DEAD_BASELINE,
             "appended": DEAD_BASELINE + DI_LINE,
             "duplicated": DEAD_CANDIDATE.replace(DI_LINE, DI_LINE + DI_LINE),
-            "reworded": DEAD_CANDIDATE.replace(b"generated component", b"component"),
+            "wrong-position": DEAD_BASELINE.replace(b"limitation\tDYNAMIC_REGISTRATION", DI_LINE + b"limitation\tDYNAMIC_REGISTRATION", 1),
+            "reworded": DEAD_CANDIDATE.replace(b"generated code or a framework", b"a framework"),
             "extra-line": DEAD_CANDIDATE + b"limitation\tEXTERNAL_RETENTIONS\textra\n",
             "finding": b"unreachable\tclass:app/Unused\t-\n" + DEAD_CANDIDATE,
             "crlf": DEAD_CANDIDATE.replace(DI_LINE, DI_LINE[:-1] + b"\r\n"),

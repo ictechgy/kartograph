@@ -97,7 +97,7 @@ class KartographDeadTaskTest {
         assertContains(report, "unreachable\tclass:dev/kartograph/gradle/PluginUnreachableFixture\t")
         assertContains(report, "limitation\tREFLECTION_STRINGS\t")
         assertContains(report, "limitation\tDYNAMIC_REGISTRATION\t")
-        assertContains(report, "limitation\tDEPENDENCY_INJECTION_OWNERS\t")
+        assertContains(report, "limitation\tFRAMEWORK_ANNOTATION_OWNERS\t")
     }
 
     @Test
