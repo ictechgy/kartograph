@@ -663,19 +663,29 @@ DI_LINE = (b"limitation\tFRAMEWORK_ANNOTATION_OWNERS\towners retained by support
            b"runtime-entry annotations (such as @Inject constructors, @Expose fields, @TypeConverter methods or @Component "
            b"types) and all their members are roots without proof that generated code or a framework uses them\n")
 DEAD_CANDIDATE = DEAD_BASELINE.replace(b"limitation\tGENERATED_CODE_COVERAGE", DI_LINE + b"limitation\tGENERATED_CODE_COVERAGE", 1)
+# CI 세 번(run 41295549264·41299413844·41304840868)의 9쌍이 모두 같은 바이트로 관측한 자기 분석 metrics 출력이다.
 METRICS_BASELINE = (
     b"module\tCa\tCe\tI\tA\tD\n"
     b"dev.kartograph.analysis\t3\t1\t0.250\t0.005\t0.745\n"
+    b"dev.kartograph.cli\t0\t4\t1.000\t0.013\t0.013\n"
     b"dev.kartograph.core\t5\t0\t0.000\t0.000\t1.000\n"
+    b"dev.kartograph.export\t2\t2\t0.500\t0.006\t0.494\n"
     b"dev.kartograph.gradle\t0\t4\t1.000\t0.053\t0.053\n"
+    b"dev.kartograph.index\t2\t1\t0.333\t0.027\t0.639\n"
 )
 METRICS_CANDIDATE = (
     b"module\tCa\tCe\tI\tA\tD\n"
     b"dev.kartograph.analysis\t3\t1\t0.250\t0.006\t0.744\n"
+    b"dev.kartograph.cli\t0\t4\t1.000\t0.016\t0.016\n"
     b"dev.kartograph.core\t5\t0\t0.000\t0.000\t1.000\n"
+    b"dev.kartograph.export\t2\t2\t0.500\t0.012\t0.488\n"
     b"dev.kartograph.gradle\t0\t4\t1.000\t0.139\t0.139\n"
+    b"dev.kartograph.index\t2\t1\t0.333\t0.034\t0.632\n"
 )
-
+CI_METRICS_SHA256 = {
+    "baseline": "be9ed1309686fc576db701c805fbd161e402fa4e5a2c79fecd826dd948b31f10",
+    "candidate": "fd0f89c5b8479cc7736294f7a4a5597c07e5db53ebe933c95c04b835e1092202",
+}
 
 def cli_result(stdout, stderr=b"", exit_code=0):
     return {"exit": exit_code, "stdout": stdout, "stderr": stderr}
@@ -708,32 +718,45 @@ class ContractDeltaTest(unittest.TestCase):
         for command in ("graph", "cycles", "rules", "metrics"):
             self.assertFalse(probe.expected_contract_delta(command, cli_result(DEAD_BASELINE), cli_result(DEAD_CANDIDATE)))
 
-    def test_metrics_delta_changes_only_consistent_abstractness_and_distance(self):
+    def test_metrics_delta_is_the_exact_pinned_output_pair(self):
+        self.assertEqual(CI_METRICS_SHA256["baseline"], probe.digest(METRICS_BASELINE))
+        self.assertEqual(CI_METRICS_SHA256["candidate"], probe.digest(METRICS_CANDIDATE))
         self.assertTrue(probe.expected_contract_delta("metrics", cli_result(METRICS_BASELINE), cli_result(METRICS_CANDIDATE)))
+        # 다시 계산한 D와 일관된 임의의 A 상승(예: 모든 행 A=1.000)도 고정된 후보 바이트가 아니면 거부한다.
+        all_abstract = METRICS_BASELINE.split(b"\n", 1)[0] + b"\n" + b"".join(
+            b"\t".join(row.split(b"\t")[:4] + [b"1.000", b"%.3f" % abs(1.0 + float(row.split(b"\t")[3]) - 1.0)]) + b"\n"
+            for row in METRICS_BASELINE.split(b"\n")[1:-1])
         rejected = {
+            "all-abstract": all_abstract,
             "identical": METRICS_BASELINE,
+            "rounded-distance": METRICS_CANDIDATE.replace(b"0.006\t0.744", b"0.006\t0.745"),
+            "other-abstractness": METRICS_CANDIDATE.replace(b"0.139\t0.139", b"0.140\t0.140"),
             "module": METRICS_CANDIDATE.replace(b"dev.kartograph.core", b"dev.kartograph.core2"),
             "ca": METRICS_CANDIDATE.replace(b"core\t5\t0", b"core\t4\t0"),
-            "ce": METRICS_CANDIDATE.replace(b"gradle\t0\t4", b"gradle\t0\t3"),
             "instability": METRICS_CANDIDATE.replace(b"\t0.250\t", b"\t0.251\t"),
-            "decreased-abstractness": METRICS_CANDIDATE.replace(b"0.139\t0.139", b"0.052\t0.052"),
-            "inconsistent-distance": METRICS_CANDIDATE.replace(b"0.006\t0.744", b"0.006\t0.700"),
-            "out-of-range": METRICS_CANDIDATE.replace(b"0.139\t0.139", b"1.139\t1.139"),
-            "malformed": METRICS_CANDIDATE.replace(b"0.139\t0.139", b"0.14\t0.14"),
             "header": METRICS_CANDIDATE.replace(b"\tD\n", b"\tDistance\n", 1),
             "missing-row": METRICS_CANDIDATE.replace(b"dev.kartograph.core\t5\t0\t0.000\t0.000\t1.000\n", b""),
             "extra-row": METRICS_CANDIDATE + b"dev.kartograph.zzz\t0\t1\t1.000\t0.000\t0.000\n",
-            "extra-column": METRICS_CANDIDATE.replace(b"0.139\t0.139\n", b"0.139\t0.139\t0\n"),
+            "crlf": METRICS_CANDIDATE.replace(b"\n", b"\r\n"),
             "no-final-newline": METRICS_CANDIDATE[:-1],
         }
         for label, candidate in rejected.items():
             with self.subTest(label=label):
+                self.assertNotEqual(METRICS_CANDIDATE, candidate)
                 self.assertFalse(probe.expected_contract_delta("metrics", cli_result(METRICS_BASELINE), cli_result(candidate)))
-        # D는 출력된 A·I에서 다시 계산한 값과 반올림 한 단위(0.001)까지만 다를 수 있다.
-        rounded = METRICS_CANDIDATE.replace(b"0.006\t0.744", b"0.006\t0.745")
-        self.assertTrue(probe.expected_contract_delta("metrics", cli_result(METRICS_BASELINE), cli_result(rounded)))
+        # baseline 쪽도 고정 바이트여야 한다. 입력이 바뀌어 baseline 행이 달라지면 delta가 아니다.
+        moved = METRICS_BASELINE.replace(b"0.027\t0.639", b"0.028\t0.638")
+        self.assertFalse(probe.expected_contract_delta("metrics", cli_result(moved), cli_result(METRICS_CANDIDATE)))
         self.assertFalse(probe.expected_contract_delta(
             "metrics", cli_result(METRICS_BASELINE), cli_result(METRICS_CANDIDATE, stderr=b"limitation: x\n")))
+
+    def test_pinned_metrics_rows_are_internally_consistent(self):
+        # 고정 표 자체가 module·Ca·Ce·I를 공유하고, 두 쪽 D가 출력된 A·I에서 반올림 한 단위 안에 있는지 확인한다.
+        rows = probe.EXPECTED_METRICS_ROWS
+        self.assertEqual(sorted(rows), list(rows))
+        for module, ca, ce, instability, *values in rows:
+            for abstractness, distance in (values[:2], values[2:]):
+                self.assertLessEqual(abs(float(distance) - abs(float(abstractness) + float(instability) - 1.0)), 0.0015, module)
 
     def test_contract_delta_turns_off_when_the_baseline_moves(self):
         for name in ("BASELINE", "SOURCE_BASELINE"):

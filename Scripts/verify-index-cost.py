@@ -847,7 +847,10 @@ def successful_pair(left, right):
 # 고정 baseline에 없는 의도된 계약 확장 두 가지만 정확히 허용한다(f5f5418의 고정 delta와 같은 방식).
 # - dead·dead_private: 이름순 정적 한계 목록에 FRAMEWORK_ANNOTATION_OWNERS 한 줄이 DYNAMIC_REGISTRATION 바로 뒤,
 #   GENERATED_CODE_COVERAGE 바로 앞에 들어간다.
-# - metrics: file facade·합성 class를 A에서 빼므로 A·D 열만 바뀐다. module·Ca·Ce·I·행 순서·헤더는 바이트 그대로다.
+# - metrics: file facade·합성 class를 A에서 빼므로 A·D 열만 바뀐다. 입력은 이 브랜치 head의 6개 production class
+#   root라 결정적이므로, CI 세 번의 9쌍에서 모두 같게 관측한 baseline·후보 출력 바이트를 표로 고정한다.
+#   입력 class가 바뀌어 어느 쪽이든 이 표와 다르면 delta로 인정하지 않는다(바이트 비교로 실패). 그때는 BASELINE을
+#   옮기거나 새 CI artifact에서 이 표를 다시 관측해 갱신한다.
 # BASELINE을 이 변경 이후 commit으로 옮기면 비활성화되고 모든 명령이 다시 바이트 동일 비교만 쓴다.
 CONTRACT_DELTA_BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
 CONTRACT_DELTA_COMMANDS = ("dead", "dead_private", "metrics")
@@ -860,7 +863,15 @@ FRAMEWORK_OWNERS_LIMITATION = (b"limitation\tFRAMEWORK_ANNOTATION_OWNERS\towners
                                b"@TypeConverter methods or @Component types) and all their members are roots without proof "
                                b"that generated code or a framework uses them\n")
 METRICS_HEADER = b"module\tCa\tCe\tI\tA\tD\n"
-METRIC_RATIO = re.compile(rb"0\.[0-9]{3}|1\.000")
+# (module, Ca, Ce, I, baseline A, baseline D, 후보 A, 후보 D). 출력 sha256: baseline be9ed130…, 후보 fd0f89c5….
+EXPECTED_METRICS_ROWS = (
+    ("dev.kartograph.analysis", "3", "1", "0.250", "0.005", "0.745", "0.006", "0.744"),
+    ("dev.kartograph.cli", "0", "4", "1.000", "0.013", "0.013", "0.016", "0.016"),
+    ("dev.kartograph.core", "5", "0", "0.000", "0.000", "1.000", "0.000", "1.000"),
+    ("dev.kartograph.export", "2", "2", "0.500", "0.006", "0.494", "0.012", "0.488"),
+    ("dev.kartograph.gradle", "0", "4", "1.000", "0.053", "0.053", "0.139", "0.139"),
+    ("dev.kartograph.index", "2", "1", "0.333", "0.027", "0.639", "0.034", "0.632"),
+)
 
 
 def contract_delta_active():
@@ -898,30 +909,14 @@ def expected_dead_delta(baseline, candidate):
     return candidate == baseline[:end] + FRAMEWORK_OWNERS_LIMITATION + baseline[end:]
 
 
+def expected_metrics_output(arm):
+    columns = slice(4, 6) if arm == "baseline" else slice(6, 8)
+    return METRICS_HEADER + b"".join(
+        "\t".join(row[:4] + row[columns]).encode("ascii") + b"\n" for row in EXPECTED_METRICS_ROWS)
+
+
 def expected_metrics_delta(baseline, candidate):
-    if not all(value.startswith(METRICS_HEADER) and value.endswith(b"\n") for value in (baseline, candidate)):
-        return False
-    left = baseline[len(METRICS_HEADER):-1].split(b"\n")
-    right = candidate[len(METRICS_HEADER):-1].split(b"\n")
-    if len(left) != len(right) or left == [b""]:
-        return False
-    changed = False
-    for before, after in zip(left, right):
-        old, new = before.split(b"\t"), after.split(b"\t")
-        if len(old) != 6 or len(new) != 6 or old[:4] != new[:4]:
-            return False
-        if not all(METRIC_RATIO.fullmatch(value) for value in old[3:] + new[4:]):
-            return False
-        # 천분율 정수로 비교한다. 합성 타입은 이 입력에서 모두 구체 class라 A는 줄지 않는다.
-        old_abstractness, abstractness, instability, distance = (
-            int(value.replace(b".", b"")) for value in (old[4], new[4], new[3], new[5]))
-        if abstractness < old_abstractness:
-            return False
-        # 출력된 A·I·D가 각각 0.0005 이내로 반올림되므로 다시 계산한 D와 최대 0.001까지만 다를 수 있다.
-        if abs(distance - abs(abstractness + instability - 1000)) > 1:
-            return False
-        changed = changed or before != after
-    return changed
+    return baseline == expected_metrics_output("baseline") and candidate == expected_metrics_output("candidate")
 
 
 def source_identity(repo, ref, env):
