@@ -232,6 +232,25 @@ class FrameworkAnnotationRetentionTest {
     }
 
     @Test
+    fun `every JUnit table entry is member only unless it selects the test class`() {
+        // 보존 이유와 owner 정책은 같은 표 항목에 있다. JUnit에서 class를 고르는 것은 @Test 계열뿐이므로
+        // 그 밖의 JUnit annotation(생명주기·rule·parameter·extension)은 member만 root여야 한다.
+        val selectors = setOf("Test", "RepeatedTest", "TestFactory", "TestTemplate", "ParameterizedTest")
+        val junit = FrameworkAnnotationRetention.ROOTS.filterKeys { it.startsWith("org/junit/") }
+        assertEquals(ADDED_FRAMEWORK_REASONS.keys.filter { it.startsWith("org/junit/") }.toSet() + setOf(
+            "org/junit/Test", "org/junit/jupiter/api/Test"), junit.keys)
+        junit.forEach { (annotation, root) ->
+            val (reason, retainOwner) = root
+            assertEquals(RetentionReason.RUNTIME_ENTRY_POINT, reason, annotation)
+            assertEquals(annotation.substringAfterLast('/') in selectors, retainOwner, annotation)
+        }
+        // JUnit 밖의 지원 annotation은 기존처럼 owner 정책을 쓴다.
+        assertEquals(emptyMap(), FrameworkAnnotationRetention.ROOTS.filter { (annotation, root) ->
+            !annotation.startsWith("org/junit/") && !root.second
+        })
+    }
+
+    @Test
     fun `assisted injection and Room converters retain their owners and callees`() {
         val worker = node("class:app/SyncWorker", NodeKind.CLASS)
         val constructor = node("method:app/SyncWorker#<init>()V", NodeKind.CONSTRUCTOR, setOf("dagger/assisted/AssistedInject"))

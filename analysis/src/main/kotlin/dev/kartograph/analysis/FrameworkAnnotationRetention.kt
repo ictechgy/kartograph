@@ -36,29 +36,19 @@ public object FrameworkAnnotationRetention {
             .distinct().sortedWith(RETENTION_ORDER)
     }
 
-    // JUnit runner가 member 단위로 부르는 생명주기·rule·parameter annotation이다. class 선택은 @Test 계열이 맡으므로
-    // owner를 runtime root로 넓히지 않는다. owner는 member의 owner 참조 간선으로 도달한다.
-    private val MEMBER_ONLY = setOf(
-        "org/junit/Before",
-        "org/junit/After",
-        "org/junit/BeforeClass",
-        "org/junit/AfterClass",
-        "org/junit/Rule",
-        "org/junit/ClassRule",
-        "org/junit/runners/Parameterized\$Parameters",
-        "org/junit/runners/Parameterized\$Parameter",
-        "org/junit/jupiter/api/BeforeEach",
-        "org/junit/jupiter/api/AfterEach",
-        "org/junit/jupiter/api/BeforeAll",
-        "org/junit/jupiter/api/AfterAll",
-        "org/junit/jupiter/api/extension/RegisterExtension",
-    )
-
     private const val PREVIEW = "androidx/compose/ui/tooling/preview/Preview"
     private val DIRECT_PREVIEWS = setOf(PREVIEW, PREVIEW + '$' + "Container")
+    private const val RETAIN_OWNER = true
+    private const val MEMBER_ONLY_ROOT = false
 
-    private val REASONS = buildMap {
-        listOf(
+    /**
+     * 지원 annotation 표다. 각 항목이 보존 이유와 owner 정책을 함께 가진다. 정책이 참이면 annotation이 붙은 선언의
+     * owner 사슬까지 root가 되고 runtime 확장으로 그 직접 member도 보존된다. 거짓이면 그 member만 root이고 owner는
+     * member의 owner 참조 간선으로 도달한다. owner 정책을 별도 목록으로 두지 않아 새 항목이 정책 없이 들어올 수 없다.
+     */
+    internal val ROOTS: Map<String, Pair<RetentionReason, Boolean>> = buildMap {
+        roots(
+            RetentionReason.DEPENDENCY_INJECTION, RETAIN_OWNER,
             "javax/inject/Inject",
             "jakarta/inject/Inject",
             "dagger/Provides",
@@ -81,8 +71,9 @@ public object FrameworkAnnotationRetention {
             "dagger/Subcomponent\$Factory",
             "dagger/hilt/EntryPoint",
             "androidx/hilt/work/HiltWorker",
-        ).forEach { annotation -> put(annotation, RetentionReason.DEPENDENCY_INJECTION) }
-        listOf(
+        )
+        roots(
+            RetentionReason.SERIALIZATION, RETAIN_OWNER,
             "kotlinx/serialization/Serializable",
             "com/google/gson/annotations/SerializedName",
             "com/squareup/moshi/Json",
@@ -95,14 +86,32 @@ public object FrameworkAnnotationRetention {
             // Gson의 노출 field와 Room 생성 코드가 부르는 converter method다.
             "com/google/gson/annotations/Expose",
             "androidx/room/TypeConverter",
-        ).forEach { annotation -> put(annotation, RetentionReason.SERIALIZATION) }
-        listOf(
+        )
+        roots(
+            RetentionReason.RUNTIME_ENTRY_POINT, RETAIN_OWNER,
             "android/webkit/JavascriptInterface",
-            "androidx/compose/ui/tooling/preview/Preview",
+            *DIRECT_PREVIEWS.toTypedArray(),
+            // JUnit에서 test class를 고르는 annotation은 owner 정책을 유지한다.
             "org/junit/Test",
             "org/junit/jupiter/api/Test",
-            // JUnit runner가 reflection으로 부르는 생명주기·rule·parameter·변형 test 진입점이다.
-            // @Test가 없는 base test class의 member도 이 annotation으로 root가 된다. owner 정책은 MEMBER_ONLY를 따른다.
+            "org/junit/jupiter/api/RepeatedTest",
+            "org/junit/jupiter/api/TestFactory",
+            "org/junit/jupiter/api/TestTemplate",
+            "org/junit/jupiter/params/ParameterizedTest",
+            "org/robolectric/annotation/Config",
+            "retrofit2/http/DELETE",
+            "retrofit2/http/GET",
+            "retrofit2/http/HEAD",
+            "retrofit2/http/HTTP",
+            "retrofit2/http/OPTIONS",
+            "retrofit2/http/PATCH",
+            "retrofit2/http/POST",
+            "retrofit2/http/PUT",
+        )
+        roots(
+            // JUnit runner가 member 단위로 부르는 생명주기·rule·parameter·extension annotation이다.
+            // @Test가 없는 base test class의 member도 root가 되지만 형제 member로 넓히지 않는다.
+            RetentionReason.RUNTIME_ENTRY_POINT, MEMBER_ONLY_ROOT,
             "org/junit/Before",
             "org/junit/After",
             "org/junit/BeforeClass",
@@ -115,21 +124,21 @@ public object FrameworkAnnotationRetention {
             "org/junit/jupiter/api/AfterEach",
             "org/junit/jupiter/api/BeforeAll",
             "org/junit/jupiter/api/AfterAll",
-            "org/junit/jupiter/api/RepeatedTest",
-            "org/junit/jupiter/api/TestFactory",
-            "org/junit/jupiter/api/TestTemplate",
             "org/junit/jupiter/api/extension/RegisterExtension",
-            "org/junit/jupiter/params/ParameterizedTest",
-            "org/robolectric/annotation/Config",
-            "retrofit2/http/DELETE",
-            "retrofit2/http/GET",
-            "retrofit2/http/HEAD",
-            "retrofit2/http/HTTP",
-            "retrofit2/http/OPTIONS",
-            "retrofit2/http/PATCH",
-            "retrofit2/http/POST",
-            "retrofit2/http/PUT",
-        ).forEach { annotation -> put(annotation, RetentionReason.RUNTIME_ENTRY_POINT) }
-        DIRECT_PREVIEWS.forEach { put(it, RetentionReason.RUNTIME_ENTRY_POINT) }
+        )
+    }
+
+    private val REASONS = ROOTS.mapValues { (_, root) -> root.first }
+    private val MEMBER_ONLY = ROOTS.filterValues { (_, retainOwner) -> !retainOwner }.keys
+
+    // 같은 annotation을 두 정책으로 등록하지 못하게 중복을 초기화 시점에 거부한다.
+    private fun MutableMap<String, Pair<RetentionReason, Boolean>>.roots(
+        reason: RetentionReason,
+        retainOwner: Boolean,
+        vararg annotations: String,
+    ) {
+        annotations.forEach { annotation ->
+            require(put(annotation, reason to retainOwner) == null) { "duplicate framework annotation root: $annotation" }
+        }
     }
 }
