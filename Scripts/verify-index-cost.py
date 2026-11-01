@@ -439,7 +439,12 @@ class OwnedProcessGroup:
                 raise
             # 관측은 unreaped child를 확보한 같은 lock 안에서만 한다. 관측 오류는 소유권 상실이 아니다.
             if observer is not None:
-                observer.sample(self.process.pid, terminal)
+                try:
+                    observer.sample(self.process.pid, terminal)
+                except DiagnosticError:
+                    raise
+                except Exception as error:
+                    raise DiagnosticError("observer-sample-failed", {"exceptionType": type(error).__name__}) from error
             return terminal
 
     def signal_group(self):
@@ -576,6 +581,7 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
     timed_out = False
     wait_failed = False
     observer_failure = None
+    observer_initiated_failure = False
     observer_reap_failure = None
     reader_unclosed = False
     rss = {"status": "unavailable", "reason": "owned-wait4-rusage-not-observed"}
@@ -595,6 +601,8 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
         wait_failed = True
     except DiagnosticError as error:
         observer_failure = error
+        # reader가 이미 종료를 유발했으면 뒤늦은 sample 오류가 원래 원인을 덮지 않는다.
+        observer_initiated_failure = not (overflow.is_set() or failures)
     finally:
         try:
             owned.close_signals()
@@ -616,11 +624,11 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
                         if observer is not None:
                             try:
                                 observer.reaped(usage)
-                            except DiagnosticError as error:
-                                if observer_failure is None:
-                                    observer_failure = error
-                                else:
-                                    observer_reap_failure = error
+                            except Exception as error:
+                                # reap은 이미 끝났다. 콜백 오류를 wait4 오류로 오인하거나
+                                # reader join·출력 close를 건너뛰지 않고 별도 보존한다.
+                                observer_reap_failure = (error if isinstance(error, DiagnosticError) else
+                                    DiagnosticError("observer-reap-failed", {"exceptionType": type(error).__name__}))
                         if sys.platform in ("linux", "darwin") and 0 < usage.ru_maxrss < 2**63:
                             rss = {"status": "observed", "peakBytes": int(usage.ru_maxrss) *
                                    (1024 if sys.platform == "linux" else 1),
@@ -648,18 +656,27 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
               "stdout": SpooledOutput(stdout_path) if destination is not None else bytes(streams[0]),
               "stderr": bytes(streams[1]),
               "wallNanos": time.monotonic_ns() - started, "rss": rss, "phase": phase}
-    reason = (str(observer_failure) if observer_failure is not None else
-              "child-stream-not-closed" if reader_unclosed else
-              "child-timeout" if timed_out else "child-output-limit" if overflow.is_set() else
-              "child-stream-failed" if failures else "child-wait-failed" if wait_failed else None)
+    child_reason = ("child-stream-not-closed" if reader_unclosed else
+                    "child-timeout" if timed_out else "child-output-limit" if overflow.is_set() else
+                    "child-stream-failed" if failures else "child-wait-failed" if wait_failed else None)
+    reason = child_reason
+    if observer_failure is not None and (observer_initiated_failure or reason is None):
+        reason = str(observer_failure)
+    if reason is None and observer_reap_failure is not None:
+        reason = str(observer_reap_failure)
     if reason:
         receipt = summary(result)
         if observer_failure is not None:
+            receipt["observerSampleFailure"] = {"reason": str(observer_failure), "receipt": observer_failure.receipt}
             if observer_failure.receipt is not None:
                 receipt["observerFailure"] = observer_failure.receipt
-            if observer_reap_failure is not None:
-                receipt["observerReapFailure"] = {"reason": str(observer_reap_failure),
-                                                  "receipt": observer_reap_failure.receipt}
+        if observer_reap_failure is not None:
+            receipt["observerReapFailure"] = {"reason": str(observer_reap_failure), "receipt": observer_reap_failure.receipt}
+            if child_reason is None and observer_failure is None and observer_reap_failure.receipt is not None:
+                receipt["observerFailure"] = observer_reap_failure.receipt
+        if observer_failure is not None or observer_reap_failure is not None:
+            if child_reason is not None:
+                receipt["childFailure"] = {"reason": child_reason}
             if wait_failed or reader_unclosed:
                 receipt["observerCleanupIncomplete"] = True
         raise DiagnosticError(reason, receipt)

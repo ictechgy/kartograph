@@ -1,7 +1,9 @@
 """Linux 진단의 lease·입력 식별·수치 의미·원문 비노출을 검증한다."""
 import copy
+import base64
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -334,6 +336,217 @@ class RuntimeCostTest(unittest.TestCase):
                 capture.assert_not_called()
                 run.assert_not_called()
                 self.assertEqual(["result.json"], [path.name for path in output.iterdir()])
+
+
+class ObserverFailurePriorityTest(unittest.TestCase):
+    class FailingReap:
+        def __init__(self, sample_error=None, reap_error=None):
+            self.pid, self.reap_calls = None, 0
+            self.sample_error, self.reap_error = sample_error, reap_error
+
+        def sample(self, pid, terminal):
+            self.pid = pid
+            if self.sample_error is not None:
+                raise self.sample_error
+
+        def reaped(self, usage):
+            self.reap_calls += 1
+            raise self.reap_error if self.reap_error is not None else runtime.p.DiagnosticError(
+                "secondary-reap-failure", {"stage": "reaped"})
+
+    def record(self, error, stdout=None):
+        print(json.dumps({"test": self.id(), "reason": str(error), "receipt": error.receipt,
+                          "retainedStdoutBase64": base64.b64encode(stdout).decode() if stdout is not None else None}))
+
+    def assert_secondary(self, error, reason):
+        self.assertEqual(reason, str(error))
+        self.assertEqual({"reason": "secondary-reap-failure", "receipt": {"stage": "reaped"}},
+                         error.receipt["observerReapFailure"])
+
+    def assert_reaped(self, observer):
+        pid = observer.pid
+        if not isinstance(pid, int):
+            self.fail("observer did not receive the owned child pid")
+        self.assertEqual(1, observer.reap_calls)
+        with self.assertRaises(ChildProcessError):
+            os.waitpid(pid, os.WNOHANG)
+
+    def test_real_timeout_preserves_child_reason_output_and_secondary_reap_failure(self):
+        observer = self.FailingReap()
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "stdout.bin"
+            with self.assertRaises(runtime.p.DiagnosticError) as caught:
+                runtime.p.run([sys.executable, "-S", "-c",
+                    "import os,time;os.write(1,b'before-timeout');os.write(2,b'error');time.sleep(10)"],
+                    temporary, dict(os.environ), timeout=0.1, stdout_path=path, observer=observer)
+            raw = path.read_bytes()
+            self.record(caught.exception, raw)
+            self.assert_secondary(caught.exception, "child-timeout")
+            self.assertEqual(b"before-timeout", raw)
+            self.assertEqual({"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()},
+                             caught.exception.receipt["stdout"])
+            self.assertEqual(hashlib.sha256(b"error").hexdigest(), caught.exception.receipt["stderr"]["sha256"])
+        self.assert_reaped(observer)
+
+    def test_real_overflow_preserves_child_reason_spool_and_secondary_reap_failure(self):
+        observer = self.FailingReap()
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "stdout.bin"
+            with self.assertRaises(runtime.p.DiagnosticError) as caught:
+                runtime.p.run([sys.executable, "-S", "-c",
+                    "import os,time;os.write(2,b'error');os.write(1,b'A'*65536);os.write(1,b'B'*65536);time.sleep(10)"],
+                    temporary, dict(os.environ), stdout_path=path, stdout_limit=65536, observer=observer)
+            raw = path.read_bytes()
+            self.record(caught.exception, raw)
+            self.assert_secondary(caught.exception, "child-output-limit")
+            self.assertEqual(b"A" * 65536, raw)
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), caught.exception.receipt["stdout"]["sha256"])
+            self.assertEqual(hashlib.sha256(b"error").hexdigest(), caught.exception.receipt["stderr"]["sha256"])
+        self.assert_reaped(observer)
+
+    def controlled_child(self, observer, stdout=None, wait_error=False, late_reader=False, limit=runtime.p.LIMIT):
+        child = types.SimpleNamespace(pid=4242, returncode=None, stdout=stdout or io.BytesIO(b"kept"),
+                                      stderr=io.BytesIO(b"error"))
+        usage = types.SimpleNamespace(ru_maxrss=4096)
+        class Reader:
+            def __init__(self, target, args, daemon):
+                self.target, self.args = target, args
+            def start(self):
+                self.target(*self.args)
+            def join(self, timeout):
+                pass
+            def is_alive(self):
+                return late_reader
+        with mock.patch.object(runtime.p.subprocess, "Popen", return_value=child), \
+                mock.patch.object(runtime.p, "nonreaping_waiter", return_value=lambda pid: True), \
+                mock.patch.object(runtime.p, "group_census", return_value=lambda pid: True), \
+                mock.patch.object(runtime.p, "kill_group"), \
+                mock.patch.object(runtime.p.os, "wait4", return_value=(child.pid, 0, usage)), \
+                mock.patch.object(runtime.p.threading, "Thread", Reader):
+            if wait_error:
+                with mock.patch.object(runtime.p.OwnedProcessGroup, "ready", side_effect=OSError("controlled-wait")):
+                    runtime.p.run(["controlled-child"], ROOT, {}, observer=observer, limit=limit)
+            else:
+                runtime.p.run(["controlled-child"], ROOT, {}, observer=observer, limit=limit)
+
+    def test_read_failure_preserves_prior_bytes_and_secondary_reap_failure(self):
+        class FailedRead:
+            first = True
+            def read(self, size):
+                if self.first:
+                    self.first = False
+                    return b"before-read-failure"
+                raise OSError("controlled-read")
+            def close(self):
+                pass
+        with self.assertRaises(runtime.p.DiagnosticError) as caught:
+            self.controlled_child(self.FailingReap(), stdout=FailedRead())
+        self.record(caught.exception, b"before-read-failure")
+        self.assert_secondary(caught.exception, "child-stream-failed")
+        self.assertEqual(hashlib.sha256(b"before-read-failure").hexdigest(),
+                         caught.exception.receipt["stdout"]["sha256"])
+
+    def test_wait_observation_failure_is_primary_when_final_reap_callback_also_fails(self):
+        with self.assertRaises(runtime.p.DiagnosticError) as caught:
+            self.controlled_child(self.FailingReap(), wait_error=True)
+        self.record(caught.exception, b"kept")
+        self.assert_secondary(caught.exception, "child-wait-failed")
+        self.assertEqual("observed", caught.exception.receipt["rss"]["status"])
+
+    def test_final_wait4_failure_never_supplies_unobserved_usage_to_reap_callback(self):
+        observer, children = self.FailingReap(), []
+        original_popen = runtime.p.subprocess.Popen
+        def spawn(*arguments, **options):
+            child = original_popen(*arguments, **options)
+            children.append(child)
+            return child
+        with tempfile.TemporaryDirectory() as temporary, \
+                mock.patch.object(runtime.p.subprocess, "Popen", side_effect=spawn), \
+                mock.patch.object(runtime.p.os, "wait4", side_effect=OSError("controlled-final-wait")):
+            with self.assertRaises(runtime.p.DiagnosticError) as caught:
+                runtime.p.run([sys.executable, "-S", "-c", "print('before-wait-failure')"],
+                              temporary, dict(os.environ), observer=observer)
+        self.record(caught.exception, b"before-wait-failure\n")
+        self.assertEqual("child-wait-failed", str(caught.exception))
+        self.assertEqual(0, observer.reap_calls)
+        self.assertEqual(0, children[0].returncode)
+        self.assertNotIn("observerReapFailure", caught.exception.receipt)
+        self.assertEqual("unavailable", caught.exception.receipt["rss"]["status"])
+        self.assertEqual(hashlib.sha256(b"before-wait-failure\n").hexdigest(),
+                         caught.exception.receipt["stdout"]["sha256"])
+
+    def test_unclosed_reader_cannot_be_hidden_by_reap_callback_failure(self):
+        with self.assertRaises(runtime.p.DiagnosticError) as caught:
+            self.controlled_child(self.FailingReap(), late_reader=True)
+        self.record(caught.exception, b"kept")
+        self.assert_secondary(caught.exception, "child-stream-not-closed")
+
+    def test_sample_error_after_existing_overflow_stays_secondary_to_child_failure(self):
+        observer = self.FailingReap(sample_error=runtime.p.DiagnosticError("late-sample-failure", {"stage": "sample"}))
+        with self.assertRaises(runtime.p.DiagnosticError) as caught:
+            self.controlled_child(observer, limit=1)
+        self.record(caught.exception, b"")
+        self.assert_secondary(caught.exception, "child-output-limit")
+        self.assertEqual({"reason": "late-sample-failure", "receipt": {"stage": "sample"}},
+                         caught.exception.receipt["observerSampleFailure"])
+
+    def test_reap_failure_is_primary_only_when_child_and_streams_succeeded(self):
+        with self.assertRaises(runtime.p.DiagnosticError) as caught:
+            self.controlled_child(self.FailingReap())
+        self.record(caught.exception, b"kept")
+        self.assert_secondary(caught.exception, "secondary-reap-failure")
+        self.assertEqual({"stage": "reaped"}, caught.exception.receipt["observerFailure"])
+
+    def test_sample_initiated_termination_remains_primary_over_later_cleanup_overflow(self):
+        gate = threading.Event()
+        class LateOverflow:
+            def read(self, size):
+                if not gate.wait(2):
+                    raise OSError("controlled-reader-gate")
+                return b"overflow"
+            def close(self):
+                pass
+        child = types.SimpleNamespace(pid=4242, returncode=None, stdout=LateOverflow(), stderr=io.BytesIO())
+        def reap(pid, flags):
+            gate.set()
+            return pid, 0, types.SimpleNamespace(ru_maxrss=4096)
+        observer = self.FailingReap(sample_error=runtime.p.DiagnosticError("sample-primary", {"stage": "sample"}))
+        with mock.patch.object(runtime.p.subprocess, "Popen", return_value=child), \
+                mock.patch.object(runtime.p, "nonreaping_waiter", return_value=lambda pid: True), \
+                mock.patch.object(runtime.p, "group_census", return_value=lambda pid: True), \
+                mock.patch.object(runtime.p, "kill_group") as kill, \
+                mock.patch.object(runtime.p.os, "wait4", side_effect=reap):
+            with self.assertRaises(runtime.p.DiagnosticError) as caught:
+                runtime.p.run(["controlled-child"], ROOT, {}, observer=observer, limit=1)
+        self.record(caught.exception, b"")
+        self.assert_secondary(caught.exception, "sample-primary")
+        self.assertEqual({"reason": "child-output-limit"}, caught.exception.receipt["childFailure"])
+        self.assertEqual(1, kill.call_count)  # 늦은 reader는 reap 뒤 numeric PGID를 신호하지 못한다.
+
+    def test_unexpected_callback_errors_still_reap_close_spool_and_preserve_prior_timeout(self):
+        for stage, failure, expected in (("sample", ValueError("private-value"), "observer-sample-failed"),
+                                         ("reaped", ValueError("private-value"), "child-timeout"),
+                                         ("reaped", OSError("private-value"), "child-timeout")):
+            with self.subTest(stage=stage, kind=type(failure).__name__), tempfile.TemporaryDirectory() as temporary:
+                path = Path(temporary) / "stdout.bin"
+                observer = self.FailingReap(sample_error=failure if stage == "sample" else None,
+                                            reap_error=failure if stage == "reaped" else None)
+                destinations, original_open = [], Path.open
+                def tracked_open(selected, *arguments, **options):
+                    handle = original_open(selected, *arguments, **options)
+                    if selected == path and arguments == ("xb",):
+                        destinations.append(handle)
+                    return handle
+                with mock.patch.object(Path, "open", autospec=True, side_effect=tracked_open):
+                    with self.assertRaises(runtime.p.DiagnosticError) as caught:
+                        runtime.p.run([sys.executable, "-S", "-c", "import time;time.sleep(10)"], temporary,
+                                      dict(os.environ), timeout=0.05, stdout_path=path, observer=observer)
+                self.record(caught.exception, path.read_bytes())
+                self.assertEqual(expected, str(caught.exception))
+                self.assertNotIn("private-value", json.dumps(caught.exception.receipt))
+                self.assertEqual(1, len(destinations))
+                self.assertTrue(destinations[0].closed)
+                self.assert_reaped(observer)
 
 
 if __name__ == "__main__":
