@@ -147,7 +147,7 @@ class PairSafetyTests(unittest.TestCase):
                 "output.write(b'END-EOF\\n')\noutput.flush()")
 
     def test_graph_stdout_above_32mib_retains_eof_digest_lossless_archive_and_full_parity(self):
-        row = {"command": "graph"}
+        row = P.CaptureReceipt(command="graph")
         capture = self.capture()
         paths = capture.run([sys.executable, "-S", "-c", self.large_stream_program("stdout")],
                             "large-graph", row, stdout_limit=P.GRAPH_STDOUT_LIMIT)
@@ -177,7 +177,7 @@ class PairSafetyTests(unittest.TestCase):
 
     def test_default_stdout_and_graph_stderr_still_reject_above_32mib(self):
         for stream in ("stdout", "stderr"):
-            row = {"command": "metrics" if stream == "stdout" else "graph"}
+            row = P.CaptureReceipt(command="metrics" if stream == "stdout" else "graph")
             options = {} if stream == "stdout" else {"stdout_limit": P.GRAPH_STDOUT_LIMIT}
             with self.subTest(stream=stream), self.assertRaisesRegex(ValueError, "bounded output limit"):
                 self.capture().run([sys.executable, "-S", "-c", self.large_stream_program(stream)],
@@ -197,7 +197,7 @@ class PairSafetyTests(unittest.TestCase):
     def test_graph_asymmetric_reservation_and_cumulative_bytes_refuse_before_spawn(self):
         reservation = 96 * 1024**2
         capture = self.capture(total_limit=reservation)
-        first = {"command": "graph"}
+        first = P.CaptureReceipt(command="graph")
         capture.run([sys.executable, "-S", "-c", "import sys;print('one');print('two',file=sys.stderr)"],
                     "first-graph", first, stdout_limit=P.GRAPH_STDOUT_LIMIT)
         self.assertEqual(8, capture.used)
