@@ -5,6 +5,7 @@ import dev.kartograph.analysis.ArchitectureGraph
 import dev.kartograph.analysis.LayerConfigurationException
 import dev.kartograph.analysis.LayerRuleEvaluator
 import dev.kartograph.analysis.LayerRuleYaml
+import dev.kartograph.analysis.MartinMetric
 import dev.kartograph.analysis.MartinMetrics
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.EdgeOrigin
@@ -38,10 +39,23 @@ internal object ArchitectureCommand {
     fun metrics(arguments: List<String>, output: PrintStream, error: PrintStream): Int =
         commandHelp(arguments, output, METRICS_HELP) ?: withGraph(arguments, error, allowStrict = false) { graph, _ ->
         output.println("module\tCa\tCe\tI\tA\tD")
-        MartinMetrics.calculate(graph).forEach { metric ->
+        val metrics = MartinMetrics.calculate(graph)
+        metrics.forEach { metric ->
             output.println("${metric.module}\t${metric.afferentCoupling}\t${metric.efferentCoupling}\t${format(metric.instability)}\t${format(metric.abstractness)}\t${format(metric.distance)}")
         }
+        undefinedDistanceLimitation(metrics)?.let(error::println)
         ExitStatus.SUCCESS.code
+    }
+
+    /**
+     * I 또는 A가 정의되지 않은 단위를 표 밖의 한계로 알린다. TSV 열과 0.000 자리표시 값은 기존 계약대로 두고,
+     * D=1.000이 zone of pain으로 읽히지 않도록 해당 단위를 stderr에 정렬된 이름으로 나열한다.
+     */
+    internal fun undefinedDistanceLimitation(metrics: List<MartinMetric>): String? {
+        val undefined = metrics.filterNot(MartinMetric::distanceDefined).map(MartinMetric::module)
+        if (undefined.isEmpty()) return null
+        return "limitation: undefined-distance: ${undefined.size} unit(s) have no cross-unit dependency or no declared type, " +
+            "so I or A is undefined and D is not a main-sequence distance: ${undefined.joinToString(", ")}"
     }
 
     fun rules(arguments: List<String>, output: PrintStream, error: PrintStream): Int =
@@ -117,6 +131,10 @@ internal object ArchitectureCommand {
 
         Usage:
           kartograph metrics --classes <directory-or-jar> [--classes <directory-or-jar>]...
+
+        A counts declared types; file facades and synthesized classes are excluded.
+        Units without cross-unit dependencies or declared types keep 0.000 placeholders for I or A,
+        and a stderr limitation lists them because their D is not a main-sequence distance.
     """.trimIndent() + "\n"
 
     private inline fun withGraph(        arguments: List<String>,

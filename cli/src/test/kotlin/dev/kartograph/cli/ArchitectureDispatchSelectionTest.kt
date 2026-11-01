@@ -104,6 +104,22 @@ class ArchitectureDispatchSelectionTest {
     }
 
     @Test
+    fun `metrics keeps placeholder rows and lists units with undefined distance on stderr`(@TempDir root: Path) {
+        val classes = compile(root, linkedMapOf(
+            "api/Port.java" to "package api; public interface Port { void open(); }",
+            "app/Adapter.java" to "package app; public class Adapter implements api.Port { public void open() {} }",
+            "lonely/Alone.java" to "package lonely; public class Alone {}",
+        ))
+        val metrics = parity("metrics", listOf(classes), status = 0)
+        assertEquals("module\tCa\tCe\tI\tA\tD\n" +
+            "api\t1\t0\t0.000\t1.000\t0.000\n" +
+            "app\t0\t1\t1.000\t0.000\t0.000\n" +
+            "lonely\t0\t0\t0.000\t0.000\t1.000\n", metrics.stdout)
+        assertEquals("limitation: undefined-distance: 1 unit(s) have no cross-unit dependency or no declared type, " +
+            "so I or A is undefined and D is not a main-sequence distance: lonely\n", metrics.stderr)
+    }
+
+    @Test
     fun `constant reflection reference retains real cycle rule findings and metric rows`(@TempDir root: Path) {
         val classes = runtime(root)
         val full = ClassFileIndexer(callbackFacts = false).index(listOf(classes))

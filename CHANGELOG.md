@@ -14,6 +14,11 @@
 - Retain JUnit 4/5 lifecycle, rule, parameter and test-template methods, Dagger assisted-injection and
   component types, Hilt entry points and workers, Gson `@Expose` fields and Room type converters as
   framework roots, so a base test class without `@Test` keeps its setup callees reachable.
+- Count only declared (non-synthesized) types in Martin abstractness, so Kotlin file facades and
+  synthetic classes no longer lower `A`. `MartinMetric` adds `instabilityDefined`,
+  `abstractnessDefined` and `distanceDefined`; `metrics` keeps its TSV columns and `0.000`
+  placeholders but lists units without cross-unit dependencies or declared types in a stderr
+  `undefined-distance` limitation, because their `D=1.000` is not the zone of pain.
 
 ### Added
 
