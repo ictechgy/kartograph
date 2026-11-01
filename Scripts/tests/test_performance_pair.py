@@ -3,6 +3,7 @@
 import argparse
 from contextlib import redirect_stdout
 import errno
+import hashlib
 import importlib.util
 import io
 import json
@@ -10,6 +11,7 @@ import math
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -138,6 +140,78 @@ class PairSafetyTests(unittest.TestCase):
         with patch.object(P.subprocess, "Popen") as launch, self.assertRaisesRegex(ValueError, "reservation"):
             capture.run([sys.executable, "-c", "print('two')"], "two", {})
         launch.assert_not_called()
+
+    def large_stream_program(self, stream):
+        return ("import sys\noutput=sys." + stream + ".buffer\n"
+                "for _ in range(528): output.write(b'x'*65536)\n"
+                "output.write(b'END-EOF\\n')\noutput.flush()")
+
+    def test_graph_stdout_above_32mib_retains_eof_digest_lossless_archive_and_full_parity(self):
+        row = {"command": "graph"}
+        capture = self.capture()
+        paths = capture.run([sys.executable, "-S", "-c", self.large_stream_program("stdout")],
+                            "large-graph", row, stdout_limit=P.GRAPH_STDOUT_LIMIT)
+        expected = hashlib.sha256()
+        for _ in range(528):
+            expected.update(b"x" * 65536)
+        expected.update(b"END-EOF\n")
+        self.assertEqual(0, row["exit"])
+        self.assertEqual(33 * 1024**2 + 8, row["streams"]["stdout"]["bytes"])
+        self.assertEqual(expected.hexdigest(), row["streams"]["stdout"]["sha256"])
+        with paths[0].open("rb") as source:
+            source.seek(-8, os.SEEK_END)
+            self.assertEqual(b"END-EOF\n", source.read())
+        comparison = self.root / "complete-comparison"
+        shutil.copyfile(paths[0], comparison)
+        P.preserve(paths, row, self.root)
+        self.assertTrue(all(not path.exists() for path in paths))
+        archive = self.root / row["streams"]["stdout"]["gzip_path"]
+        self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), row["streams"]["stdout"]["gzip_sha256"])
+        self.assertTrue(P.equal_raw(archive, comparison))
+        with comparison.open("r+b") as changed:
+            changed.seek(-1, os.SEEK_END)
+            changed.write(b"!")
+        self.assertFalse(P.equal_raw(archive, comparison))
+        self.assertEqual(33 * 1024**2 + 8, capture.used)  # 압축/원문 삭제 뒤에도 처리량은 누적한다.
+        print(json.dumps({"control": "large-graph-eof", "row": row, "processed_bytes": capture.used}))
+
+    def test_default_stdout_and_graph_stderr_still_reject_above_32mib(self):
+        for stream in ("stdout", "stderr"):
+            row = {"command": "metrics" if stream == "stdout" else "graph"}
+            options = {} if stream == "stdout" else {"stdout_limit": P.GRAPH_STDOUT_LIMIT}
+            with self.subTest(stream=stream), self.assertRaisesRegex(ValueError, "bounded output limit"):
+                self.capture().run([sys.executable, "-S", "-c", self.large_stream_program(stream)],
+                                   "limited-" + stream, row, **options)
+            self.assertEqual(32 * 1024**2, row["streams"][stream]["bytes"])
+            self.assertLess(row["exit"], 0)
+            self.assertEqual("bounded output limit", row["primary_error"]["reason"])
+            print(json.dumps({"control": "default-limit", "stream": stream, "row": row}))
+
+    def test_graph_override_is_exclusive_and_bounded_before_spawn(self):
+        for command, limit in (("metrics", 64 * 1024**2), ("graph", 64 * 1024**2 + 1), ("graph", True)):
+            with self.subTest(command=command, limit=limit), patch.object(P.subprocess, "Popen") as spawn, \
+                 self.assertRaisesRegex(ValueError, "invalid graph stdout limit"):
+                self.capture().run(["never-launch"], "invalid-override", {"command": command}, stdout_limit=limit)
+            spawn.assert_not_called()
+
+    def test_graph_asymmetric_reservation_and_cumulative_bytes_refuse_before_spawn(self):
+        reservation = 96 * 1024**2
+        capture = self.capture(total_limit=reservation)
+        first = {"command": "graph"}
+        capture.run([sys.executable, "-S", "-c", "import sys;print('one');print('two',file=sys.stderr)"],
+                    "first-graph", first, stdout_limit=P.GRAPH_STDOUT_LIMIT)
+        self.assertEqual(8, capture.used)
+        with patch.object(P.subprocess, "Popen") as spawn, self.assertRaisesRegex(ValueError, "total output reservation"):
+            capture.run(["never-launch"], "reserved-graph", {"command": "graph"}, stdout_limit=P.GRAPH_STDOUT_LIMIT)
+        spawn.assert_not_called()
+        # 같은 잔여 예산에서도 default stdout32 + stderr32는 예약할 수 있다.
+        capture.run([sys.executable, "-S", "-c", "print('default')"], "remaining-default", {"command": "metrics"})
+        self.assertEqual(16, capture.used)
+        with patch.object(P.shutil, "disk_usage", return_value=SimpleNamespace(free=P.DISK_STOP + reservation - 1)):
+            with patch.object(P.subprocess, "Popen") as spawn, self.assertRaisesRegex(ValueError, "disk stop"):
+                self.capture().run(["never-launch"], "disk-graph", {"command": "graph"}, stdout_limit=P.GRAPH_STDOUT_LIMIT)
+            spawn.assert_not_called()
+            self.capture().run([sys.executable, "-S", "-c", "print('default')"], "disk-default", {"command": "metrics"})
 
     def test_timeout_reaps_owned_child_and_retains_output(self):
         row = {}
@@ -549,13 +623,14 @@ class PairFixtureFlowTests(unittest.TestCase):
             commands = {"graph": "\n".join(f'n{i} [shape=box]' for i in range(2000)) + "\n",
                         "dead": "", "dead_private": "", "cycles": "0 findings\n",
                         "rules": "0 findings, 0 unassigned\n", "metrics": "row\n" * 6}
-            launched, budgets, checkpoints, clock = [], [], [], [100.0]
+            launched, budgets, checkpoints, clock, selected_limits = [], [], [], [100.0], []
             class FixtureCapture:
                 def __init__(self, output, *unused, **unused_options):
                     self.output = output
                     budgets.append((unused[-1], unused_options.get("finalization_deadline")))
-                def run(self, argv, stem, row):
+                def run(self, argv, stem, row, stdout_limit=None):
                     launched.append(stem)
+                    selected_limits.append((row["command"], stdout_limit))
                     row.update(argv=list(map(str, argv)), exit=2 if failure in ("child", "semantic-archive") and row["arm"] == "candidate" else 0,
                                seconds=3.0 if row["arm"] == "baseline" else 2.0)
                     text = commands[row["command"]]
@@ -610,6 +685,12 @@ class PairFixtureFlowTests(unittest.TestCase):
                 else:
                     self.assertEqual(0, P.qualify(args))
             result = json.loads((args.output / "result.json").read_text())
+            self.assertEqual(32 * 1024**2, result["protocol"]["default_stdout_limit_bytes"])
+            self.assertEqual(64 * 1024**2, result["protocol"]["graph_stdout_limit_bytes"])
+            self.assertEqual(32 * 1024**2, result["protocol"]["stderr_limit_bytes"])
+            self.assertEqual(2 * 1024**3, result["protocol"]["total_raw_limit_bytes"])
+            self.assertTrue(all(limit == (64 * 1024**2 if command == "graph" else None)
+                                for command, limit in selected_limits))
             self.assertEqual("failed-or-incomplete" if failure else "speedup-demonstrated", result["status"])
             if failure:
                 self.assertEqual(108, len(launched)) if failure == "last-row-disk" else self.assertLess(len(launched), 108)
@@ -619,6 +700,10 @@ class PairFixtureFlowTests(unittest.TestCase):
                 self.assertEqual(216, len(list(args.output.glob("*.gz"))))
                 self.assertTrue(result["sealed_inputs_unchanged"])
                 self.assertEqual([-6.0] * 8, result["statistics"]["paired_candidate_minus_baseline_seconds"])
+                graph_count = sum(command == "graph" for command, _ in selected_limits)
+                self.assertEqual(18, graph_count)
+                self.assertGreater(graph_count * 64 * 1024**2, 512 * 1024**2)
+                self.assertLess(graph_count * 64 * 1024**2, result["protocol"]["total_raw_limit_bytes"])
             if failure == "mutation":
                 self.assertIn("final_integrity_error", result)
             if failure == "semantic-archive":

@@ -29,7 +29,7 @@ MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
 NAMES = ("graph", "dead", "dead_private", "cycles", "rules", "metrics")
 CONTRACTS = ("node_count", "zero_findings", "zero_findings", "zero_cycles", "zero_rule_violations", "valid_metrics")
 PAIRS, RESAMPLES, SEED = 8, 10_000, 20261101
-STREAM_LIMIT, TOTAL_LIMIT = 32 * 1024**2, 512 * 1024**2
+STREAM_LIMIT, GRAPH_STDOUT_LIMIT, TOTAL_LIMIT = 32 * 1024**2, 64 * 1024**2, 2 * 1024**3
 DISK_STOP = int(5.5 * 1024**3)
 DRIVER_SECONDS, FINALIZATION_SECONDS = 840, 900
 SMOKE_SHA256 = "d8d4764592e758c87916bd522f489117fae9956453b72f5b15a49e7a9d7728a9"
@@ -284,13 +284,18 @@ class Capture:
         self.finalization_deadline = finalization_deadline
         self.lock = threading.Lock()
 
-    def run(self, argv, stem, row: CaptureReceipt, timeout=120):
+    def run(self, argv, stem, row: CaptureReceipt, timeout=120, stdout_limit=None):
         command_start = time.monotonic()
         command_deadline = min(self.deadline, command_start + timeout)
-        if self.used + 2 * self.stream_limit > self.total_limit:
+        if stdout_limit is not None and (row.get("command") != "graph" or type(stdout_limit) is not int
+                                        or not 0 < stdout_limit <= GRAPH_STDOUT_LIMIT):
+            raise ValueError("invalid graph stdout limit override")
+        stream_limits = (self.stream_limit if stdout_limit is None else stdout_limit, self.stream_limit)
+        reservation = sum(stream_limits)
+        if self.used + reservation > self.total_limit:
             raise ValueError("total output reservation limit")
         # 두 stream의 최대 쓰기를 미리 예약하여 마지막 child도 중단 여유를 보존한다.
-        if shutil.disk_usage(self.output).free < DISK_STOP + 2 * self.stream_limit:
+        if shutil.disk_usage(self.output).free < DISK_STOP + reservation:
             raise ValueError("5.5GiB disk stop")
         if time.monotonic() >= command_deadline:
             raise TimeoutError("overall deadline")
@@ -344,7 +349,7 @@ class Capture:
                 try:
                     for chunk in iter(lambda: source.read(65536), b""):
                         with self.lock:
-                            if counts[index] + len(chunk) > self.stream_limit or self.used + len(chunk) > self.total_limit:
+                            if counts[index] + len(chunk) > stream_limits[index] or self.used + len(chunk) > self.total_limit:
                                 raise ValueError("bounded output limit")
                             streams[index].write(chunk)
                             counts[index] += len(chunk)
@@ -614,6 +619,10 @@ def qualify(args, entered=None):
     result = {"status": "incomplete", "scope": "Linux fixed-input paired comparison; not mandatory smoke acceptance",
               "protocol": {"pairs": PAIRS, "bootstrap_resamples": RESAMPLES, "seed": SEED,
                            "stream_limit_bytes": STREAM_LIMIT, "total_raw_limit_bytes": TOTAL_LIMIT,
+                           "stream_limit_scope": "default per stream; graph stdout uses the explicit override",
+                           "default_stdout_limit_bytes": STREAM_LIMIT, "graph_stdout_limit_bytes": GRAPH_STDOUT_LIMIT,
+                           "stderr_limit_bytes": STREAM_LIMIT,
+                           "total_raw_limit_scope": "cumulative uncompressed bytes processed by CLI captures; not resident memory",
                            "driver_seconds_from_entry": DRIVER_SECONDS, "finalization_seconds_from_entry": FINALIZATION_SECONDS},
               "rows": [], "sources": {}, "helper_sha256": digest(Path(__file__)),
               "python_version": sys.version,
@@ -695,7 +704,10 @@ def qualify(args, entered=None):
                 paths = [output / (stem + suffix) for suffix in (".stdout", ".stderr")]
                 row_primary = None
                 try:
-                    capture.run(argv, stem, row)
+                    if name == "graph":
+                        capture.run(argv, stem, row, stdout_limit=GRAPH_STDOUT_LIMIT)
+                    else:
+                        capture.run(argv, stem, row)
                     check_deadline(deadline)
                     if name in references and any(not equal_raw(output / references[name][stream], path, deadline)
                             for stream, path in zip(("stdout", "stderr"), paths)):
