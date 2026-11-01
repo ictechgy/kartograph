@@ -32,8 +32,27 @@ public object FrameworkAnnotationRetention {
         // owner를 새 runtime root로 만들면 무관한 sibling method까지 확장된다.
         val previews = annotationRetentionEvidence(graph,
             (previewNames - DIRECT_PREVIEWS).associateWith { RetentionReason.RUNTIME_ENTRY_POINT }, includeOwners = false)
-        return (annotationRetentionEvidence(graph, REASONS) + previews).distinct().sortedWith(RETENTION_ORDER)
+        return (annotationRetentionEvidence(graph, REASONS, memberOnlyAnnotations = MEMBER_ONLY) + previews)
+            .distinct().sortedWith(RETENTION_ORDER)
     }
+
+    // JUnit runner가 member 단위로 부르는 생명주기·rule·parameter annotation이다. class 선택은 @Test 계열이 맡으므로
+    // owner를 runtime root로 넓히지 않는다. owner는 member의 owner 참조 간선으로 도달한다.
+    private val MEMBER_ONLY = setOf(
+        "org/junit/Before",
+        "org/junit/After",
+        "org/junit/BeforeClass",
+        "org/junit/AfterClass",
+        "org/junit/Rule",
+        "org/junit/ClassRule",
+        "org/junit/runners/Parameterized\$Parameters",
+        "org/junit/runners/Parameterized\$Parameter",
+        "org/junit/jupiter/api/BeforeEach",
+        "org/junit/jupiter/api/AfterEach",
+        "org/junit/jupiter/api/BeforeAll",
+        "org/junit/jupiter/api/AfterAll",
+        "org/junit/jupiter/api/extension/RegisterExtension",
+    )
 
     private const val PREVIEW = "androidx/compose/ui/tooling/preview/Preview"
     private val DIRECT_PREVIEWS = setOf(PREVIEW, PREVIEW + '$' + "Container")
@@ -83,7 +102,7 @@ public object FrameworkAnnotationRetention {
             "org/junit/Test",
             "org/junit/jupiter/api/Test",
             // JUnit runner가 reflection으로 부르는 생명주기·rule·parameter·변형 test 진입점이다.
-            // @Test가 없는 base test class의 member도 이 annotation으로 root가 된다.
+            // @Test가 없는 base test class의 member도 이 annotation으로 root가 된다. owner 정책은 MEMBER_ONLY를 따른다.
             "org/junit/Before",
             "org/junit/After",
             "org/junit/BeforeClass",

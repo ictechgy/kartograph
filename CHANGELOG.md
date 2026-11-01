@@ -20,7 +20,9 @@
   thresholds (see README "Installation and compatibility").
 - Retain JUnit 4/5 lifecycle, rule, parameter and test-template methods, Dagger assisted-injection and
   component types, Hilt entry points and workers, Gson `@Expose` fields and Room type converters as
-  framework roots, so a base test class without `@Test` keeps its setup callees reachable.
+  framework roots, so a base test class without `@Test` keeps its setup callees reachable. JUnit
+  lifecycle, rule and parameter annotations root only the annotated member, so unused sibling private
+  helpers stay reportable; test-selecting annotations keep the owner policy.
 - Count only declared (non-synthesized) types in Martin abstractness, so Kotlin file facades and
   synthetic classes no longer lower `A`. `MartinMetric` adds `instabilityDefined`,
   `abstractnessDefined` and `distanceDefined`; `metrics` keeps its TSV columns and `0.000`

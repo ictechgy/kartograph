@@ -8,6 +8,7 @@ import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RetentionReason
 import dev.kartograph.core.SourceLocation
+import dev.kartograph.core.Visibility
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -180,6 +181,53 @@ class FrameworkAnnotationRetentionTest {
             assertEquals(RetentionReason.RUNTIME_ENTRY_POINT, evidence.first { it.nodeId == setUp.id }.reason, lifecycle)
             assertEquals(SourceLocation("BaseTest.kt", 5), evidence.first { it.nodeId == setUp.id }.location, lifecycle)
             assertEquals(true, fixtures.id in reachable, lifecycle)
+        }
+    }
+
+    @Test
+    fun `member level JUnit annotations root only the annotated member while test annotations keep the owner policy`() {
+        // 생명주기·rule·parameter annotation은 그 member만 runner 진입점이다. owner를 root로 만들면 형제 private helper까지 숨는다.
+        val memberOnly = listOf(
+            "org/junit/Before", "org/junit/After", "org/junit/BeforeClass", "org/junit/AfterClass",
+            "org/junit/Rule", "org/junit/ClassRule",
+            "org/junit/runners/Parameterized\$Parameters", "org/junit/runners/Parameterized\$Parameter",
+            "org/junit/jupiter/api/BeforeEach", "org/junit/jupiter/api/AfterEach",
+            "org/junit/jupiter/api/BeforeAll", "org/junit/jupiter/api/AfterAll",
+            "org/junit/jupiter/api/extension/RegisterExtension",
+        )
+        val ownerPolicy = listOf(
+            "org/junit/Test", "org/junit/jupiter/api/Test", "org/junit/jupiter/api/RepeatedTest",
+            "org/junit/jupiter/api/TestFactory", "org/junit/jupiter/api/TestTemplate",
+            "org/junit/jupiter/params/ParameterizedTest",
+        )
+        for (annotation in memberOnly + ownerPolicy) {
+            val base = node("class:app/BaseTest", NodeKind.CLASS)
+            val entry = node("method:app/BaseTest#entry()V", NodeKind.METHOD, setOf(annotation))
+            val helper = GraphNode(NodeId("method:app/BaseTest#unusedHelper()V"), "unusedHelper", NodeKind.METHOD,
+                visibility = Visibility.PRIVATE)
+            val leak = node("class:app/Leak", NodeKind.CLASS)
+            val graph = CodeGraph(listOf(base, entry, helper, leak), listOf(
+                GraphEdge(base.id, entry.id, EdgeKind.MEMBER),
+                GraphEdge(base.id, helper.id, EdgeKind.MEMBER),
+                GraphEdge(entry.id, base.id, EdgeKind.REFERENCE),
+                GraphEdge(helper.id, base.id, EdgeKind.REFERENCE),
+                GraphEdge(helper.id, leak.id, EdgeKind.REFERENCE),
+            ))
+
+            val evidence = DefaultRetention.find(graph, emptyList(), emptyList(), includePrivateMembers = true)
+            val result = ReachabilityAnalyzer.analyze(graph, evidence)
+            val findings = DeadFindings.collect(graph, result, includePrivateMembers = true).map { it.nodeId }
+
+            val ownerReasons = result.retentionEvidenceFor(base.id).map { it.reason }
+            assertEquals(true, RetentionReason.RUNTIME_ENTRY_POINT in result.retentionEvidenceFor(entry.id).map { it.reason }, annotation)
+            assertEquals(true, base.id in result.reachableNodeIds, annotation)
+            if (annotation in memberOnly) {
+                assertEquals(false, RetentionReason.RUNTIME_ENTRY_POINT in ownerReasons, annotation)
+                assertEquals(listOf(leak.id, helper.id), findings, annotation)
+            } else {
+                assertEquals(true, RetentionReason.RUNTIME_ENTRY_POINT in ownerReasons, annotation)
+                assertEquals(emptyList(), findings, annotation)
+            }
         }
     }
 
