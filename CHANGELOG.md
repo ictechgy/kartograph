@@ -11,6 +11,10 @@
 - Record the JFR print-frame depth explicitly; legacy observations without that provenance remain unknown.
 - Exclude bytecode override structure from architecture dependencies while preserving reachability.
 - Read application backup-agent, component-factory and zygote-preload classes from Android manifests.
+- The CLI launcher raises only HotSpot's Tier4 (C2) compile thresholds 4x, so short runs stop spending more CPU on
+  one-off C2 compilations than on analysis. Same-runner interleaved measurements on eight GitHub Linux runners showed
+  the smoke-gate commands at −8.5% median wall (−6.2% worst) and −14.7% CPU, with large-input `metrics`/`cycles`
+  within −0.4%/−1.3% (worst +2.4%) and byte-identical output. `JAVA_OPTS`/`KARTOGRAPH_OPTS` still override these flags.
 
 ### Added
 

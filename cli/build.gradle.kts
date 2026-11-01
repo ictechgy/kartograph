@@ -16,6 +16,18 @@ dependencies {
 application {
     applicationName = "kartograph"
     mainClass = "dev.kartograph.cli.MainKt"
+    // 짧은 CLI 실행에서는 C2가 한 번 쓰고 마는 중간 온도 메서드까지 컴파일해 JIT CPU가 분석 CPU를 넘는다.
+    // HotSpot 기본 Tier4 진입 임계값만 4배로 올려 C1 단계는 그대로 두고, 실제로 뜨거운 메서드만 C2로 보낸다.
+    // GitHub Linux runner 8대(EPYC 7763×5·9V45·9V74·Xeon 8370C) 동일 runner 교차 측정에서 smoke gate 명령
+    // wall 중앙값 −8.5%(최소 개선 −6.2%)·CPU −14.7%, 대형 입력(kotlin-compiler-embeddable) metrics −0.4%·
+    // cycles −1.3%(최악 +2.4%)이며 출력은 바이트 단위로 같았다. C1 전용(대형 입력 +140%)과 ParallelGC(대형 +14.5%)는
+    // 기각했다. 사용자 JAVA_OPTS/KARTOGRAPH_OPTS는 이 기본값 뒤에 붙으므로 같은 flag로 되돌릴 수 있다.
+    applicationDefaultJvmArgs = listOf(
+        "-XX:Tier4InvocationThreshold=20000",
+        "-XX:Tier4MinInvocationThreshold=2400",
+        "-XX:Tier4CompileThreshold=60000",
+        "-XX:Tier4BackEdgeThreshold=160000",
+    )
 }
 
 sourceSets.main {
