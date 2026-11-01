@@ -164,7 +164,7 @@ def align_verification_metadata(repo, baseline, report):
     require_equal(old_policy, new_policy, "verification-metadata-policy-changed")
     if any(key not in new or new[key] != value for key, value in old.items()):
         raise DiagnosticError("verification-metadata-existing-pin-changed")
-    value = {"scope": "additive-exact-SHA256-artifact-pins-only; original executable source and wrapper unchanged",
+    value = {"scope": "additive-exact-SHA256-artifact-pins-only; wrapper transition and source identities recorded separately",
              "baselineOriginalSha256": digest(original), "sharedSha256": digest(shared),
              "baselineArtifacts": len(old), "sharedArtifacts": len(new), "addedArtifacts": len(new) - len(old)}
     if original != shared:
