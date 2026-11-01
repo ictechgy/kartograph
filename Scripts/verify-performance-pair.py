@@ -18,6 +18,7 @@ import stat
 import statistics
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from typing import TypedDict
@@ -30,6 +31,7 @@ CONTRACTS = ("node_count", "zero_findings", "zero_findings", "zero_cycles", "zer
 PAIRS, RESAMPLES, SEED = 8, 10_000, 20261101
 STREAM_LIMIT, TOTAL_LIMIT = 32 * 1024**2, 512 * 1024**2
 DISK_STOP = int(5.5 * 1024**3)
+DRIVER_SECONDS, FINALIZATION_SECONDS = 840, 900
 SMOKE_SHA256 = "d8d4764592e758c87916bd522f489117fae9956453b72f5b15a49e7a9d7728a9"
 
 
@@ -61,7 +63,7 @@ class StreamReceipt(TypedDict, total=False):
     partial_gzip_path: str
 
 
-class Observation(Suite, total=False):
+class CaptureReceipt(TypedDict, total=False):
     command: str
     argv: list[str]
     exit: int
@@ -75,6 +77,10 @@ class Observation(Suite, total=False):
     secondary_errors: list[SecondaryError]
 
 
+class Observation(Suite, CaptureReceipt):
+    pass
+
+
 class UnsupportedPlatform(ValueError):
     """자원 관측 계약이 없는 호스트를 측정 전에 구분한다."""
 
@@ -85,11 +91,11 @@ def error_record(error: BaseException) -> ErrorRecord:
     return {"type": type(error).__name__, "reason": reason}
 
 
-def primary_record(row: Observation, error: BaseException):
+def primary_record(row: CaptureReceipt, error: BaseException):
     row.setdefault("primary_error", error_record(error))
 
 
-def secondary_record(row: Observation, stage: str, error: BaseException):
+def secondary_record(row: CaptureReceipt, stage: str, error: BaseException):
     row.setdefault("secondary_errors", []).append({"stage": stage, **error_record(error)})
 
 
@@ -102,11 +108,27 @@ def load_module(name, path):
     return module
 
 
-def digest(path):
+def remaining(deadline, maximum):
+    if deadline is None:
+        return maximum
+    value = deadline - time.monotonic()
+    if value <= 0:
+        raise TimeoutError("driver deadline")
+    return min(maximum, value)
+
+
+def check_deadline(deadline):
+    remaining(deadline, math.inf)
+
+
+def digest(path, deadline=None):
+    check_deadline(deadline)
     h = hashlib.sha256()
     with Path(path).open("rb") as source:
         for chunk in iter(lambda: source.read(65536), b""):
+            check_deadline(deadline)
             h.update(chunk)
+    check_deadline(deadline)
     return h.hexdigest()
 
 
@@ -145,10 +167,11 @@ def command_expression(node, values):
     raise ValueError("unrecognized smoke command expression")
 
 
-def commands(smoke_path, corpus, fixture, binary) -> list[tuple[str, list[str], str]]:
-    if digest(smoke_path) != SMOKE_SHA256:
+def commands(smoke_path, corpus, fixture, binary, deadline=None) -> list[tuple[str, list[str], str]]:
+    if digest(smoke_path, deadline) != SMOKE_SHA256:
         raise ValueError("smoke evaluator identity changed")
     source = ast.parse(smoke_path.read_text())
+    check_deadline(deadline)
     function = next((n for n in source.body if isinstance(n, ast.FunctionDef)
                      and n.name == "verify_self_analysis"), None)
     assignments = [] if function is None else [n.value for n in ast.walk(function)
@@ -213,44 +236,55 @@ def file_stamp(path):
     return [value.st_dev, value.st_ino, value.st_mode, value.st_size, value.st_mtime_ns]
 
 
-def seal(roots):
+def seal(roots, deadline=None):
     result = []
     for token, root in roots.items():
-        paths = [root, *sorted(root.rglob("*"))] if root.is_dir() else [root]
-        if len(paths) > 100_000:
-            raise ValueError("input entry count limit")
+        check_deadline(deadline)
+        paths = [root]
+        if root.is_dir():
+            for path in root.rglob("*"):
+                check_deadline(deadline)
+                paths.append(path)
+                if len(paths) > 100_000:
+                    raise ValueError("input entry count limit")
+            paths[1:] = sorted(paths[1:])
         for path in paths:
+            check_deadline(deadline)
             before = file_stamp(path)
             row = {"root": token, "relative": str(path.relative_to(root)) if path != root else ".",
                    "stamp": before}
             if path.is_file():
                 if before[3] > 512 * 1024**2:
                     raise ValueError("input file size limit")
-                row["sha256"] = digest(path)
+                row["sha256"] = digest(path, deadline)
             if before != file_stamp(path):
                 raise ValueError("input changed while sealing")
             result.append(row)
     return result
 
 
-def verify_seal(roots, expected, full=False):
+def verify_seal(roots, expected, full=False, deadline=None):
+    check_deadline(deadline)
     if full:
-        if seal(roots) != expected:
+        if seal(roots, deadline) != expected:
             raise ValueError("sealed inputs changed")
     else:
         for row in expected:
+            check_deadline(deadline)
             if file_stamp(roots[row["root"]] / row["relative"]) != row["stamp"]:
                 raise ValueError("sealed inputs changed")
 
 
 class Capture:
     """기존 WNOWAIT lease로 두 파일 sink와 전체 출력 예산을 묶는다."""
-    def __init__(self, output, cwd, env, owner, deadline, stream_limit=STREAM_LIMIT, total_limit=TOTAL_LIMIT):
+    def __init__(self, output, cwd, env, owner, deadline, stream_limit=STREAM_LIMIT, total_limit=TOTAL_LIMIT,
+                 finalization_deadline=None):
         self.output, self.cwd, self.env, self.owner, self.deadline = output, cwd, env, owner, deadline
         self.stream_limit, self.total_limit, self.used = stream_limit, total_limit, 0
+        self.finalization_deadline = finalization_deadline
         self.lock = threading.Lock()
 
-    def run(self, argv, stem, row: Observation, timeout=120):
+    def run(self, argv, stem, row: CaptureReceipt, timeout=120):
         if self.used + 2 * self.stream_limit > self.total_limit:
             raise ValueError("total output reservation limit")
         # 두 stream의 최대 쓰기를 미리 예약하여 마지막 child도 중단 여유를 보존한다.
@@ -265,6 +299,8 @@ class Capture:
         observe, census = self.owner.nonreaping_waiter(), self.owner.group_census()
         streams = []
         process, owned, readers = None, None, []
+        handoff_lock, old_handlers, pending_signals = threading.Lock(), {}, []
+        pending_delivered = False
         primary: BaseException | None = None
         failure_lock = threading.Lock()
         def record_error(stage: str, error: BaseException):
@@ -278,12 +314,28 @@ class Capture:
                 else:
                     secondary_record(row, stage, error)
         started = time.monotonic()
+        def restore_handlers():
+            for number, handler in list(old_handlers.items()):
+                signal.signal(number, handler)
+                del old_handlers[number]
         try:
             for path in paths:
                 streams.append(path.open("xb"))
-            process = subprocess.Popen(argv, cwd=self.cwd, env=self.env, stdout=subprocess.PIPE,
-                                       stderr=subprocess.PIPE, start_new_session=True)
-            owned = self.owner.OwnedProcessGroup(process, observe, census)
+            check_deadline(self.deadline)
+            # OS mask는 바꾸지 않는다. Popen 반환값과 lease가 결합되기 전 Python
+            # 취소 예외만 미뤄서 handle을 잃는 assignment 공백을 닫는다.
+            with handoff_lock:
+                for number in (signal.SIGTERM, signal.SIGINT):
+                    handler = signal.getsignal(number)
+                    if handler != signal.SIG_IGN:
+                        old_handlers[number] = signal.signal(number, lambda number, frame: pending_signals.append(number))
+                process = subprocess.Popen(argv, cwd=self.cwd, env=self.env, stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, start_new_session=True)
+                owned = self.owner.OwnedProcessGroup(process, observe, census)
+                restore_handlers()
+            if pending_signals:
+                pending_delivered = True
+                raise KeyboardInterrupt("interrupted during child handoff")
             def drain(index, source):
                 try:
                     for chunk in iter(lambda: source.read(65536), b""):
@@ -324,24 +376,57 @@ class Capture:
                 try:
                     owned.close_signals()
                 except BaseException as error:
-                    row["cleanup_error"] = type(error).__name__
+                    row.setdefault("cleanup_error", type(error).__name__)
                     record_error("owned-signal-close", error)
                 try:
                     if process is None:
                         raise RuntimeError("owned process reference missing")
                     if owned.lost:
                         raise RuntimeError("owned child lease lost")
-                    row["exit"] = process.wait(timeout=10)
+                    row["exit"] = process.wait(timeout=remaining(self.finalization_deadline, 10))
                 except BaseException as error:
-                    row["cleanup_error"] = type(error).__name__
+                    row.setdefault("cleanup_error", type(error).__name__)
                     record_error("owned-reap", error)
+            elif process is not None:
+                # constructor 오류 경로에는 reader가 없다. 같은 handoff lock에서
+                # 원래 WNOWAIT 관측으로 direct child를 증명한 뒤에만 신호한다.
+                leased = False
+                with handoff_lock:
+                    try:
+                        if process.returncode is not None:
+                            raise RuntimeError("unbound child lease lost")
+                        terminal = observe(process.pid)
+                        leased = True
+                        if not terminal or census(process.pid):
+                            self.owner.kill_group(process)
+                    except BaseException as error:
+                        record_error("handoff-signal-close", error)
+                    # 이 지점 뒤에는 unbound numeric PGID 신호 경로를 다시 열지 않는다.
+                    if leased:
+                        try:
+                            row["exit"] = process.wait(timeout=remaining(self.finalization_deadline, 10))
+                        except BaseException as error:
+                            record_error("handoff-reap", error)
             for reader in readers:
                 try:
-                    reader.join(timeout=10)
+                    reader.join(timeout=remaining(self.finalization_deadline, 10))
                     if reader.is_alive():
                         raise RuntimeError("owned stream did not close")
                 except BaseException as error:
                     record_error("reader-close", error)
+            if process is not None:
+                for index, source in enumerate((process.stdout, process.stderr)):
+                    if source is not None and (index >= len(readers) or readers[index].ident is None):
+                        try:
+                            source.close()
+                        except BaseException as error:
+                            record_error("unstarted-source-close", error)
+            try:
+                restore_handlers()
+            except BaseException as error:
+                record_error("signal-handler-restore", error)
+            if pending_signals and not pending_delivered:
+                record_error("deferred-interruption", KeyboardInterrupt("interrupted during child handoff"))
             for stream in streams:
                 try:
                     stream.close()
@@ -354,7 +439,7 @@ class Capture:
                 receipts[name] = receipt
                 try:
                     receipt["bytes"] = path.stat().st_size
-                    receipt["sha256"] = digest(path)
+                    receipt["sha256"] = digest(path, self.finalization_deadline)
                 except BaseException as error:
                     record_error("stream-receipt-" + name, error)
         if primary is not None:
@@ -365,10 +450,11 @@ class Capture:
 
 class DiskCheckedArchive:
     """gzip 헤더·압축 청크·종료 꼬리까지 같은 디스크 중단 기준을 적용한다."""
-    def __init__(self, destination, parent):
-        self.destination, self.parent = destination, parent
+    def __init__(self, destination, parent, deadline=None):
+        self.destination, self.parent, self.deadline = destination, parent, deadline
 
     def write(self, data):
+        check_deadline(self.deadline)
         if shutil.disk_usage(self.parent).free < DISK_STOP + len(data):
             raise ValueError("archive disk stop")
         written = self.destination.write(data)
@@ -380,11 +466,12 @@ class DiskCheckedArchive:
         return self.destination.flush()
 
 
-def preserve(paths, row: Observation, output):
+def preserve(paths, row: CaptureReceipt, output, deadline=None):
     receipts = row.get("streams")
     if receipts is None:
         raise ValueError("missing stream receipts")
     for name, path in zip(("stdout", "stderr"), paths):
+        check_deadline(deadline)
         target = output / (path.name + ".gz")
         # 비압축 자료보다 큰 결과와 gzip 오버헤드까지 보수적으로 예약한다.
         reservation = path.stat().st_size * 2 + 1024
@@ -395,7 +482,7 @@ def preserve(paths, row: Observation, output):
             try:
                 source = path.open("rb")
                 destination = target.open("xb", buffering=0)
-                sink, compressor = DiskCheckedArchive(destination, output), zlib.compressobj(level=6, wbits=31)
+                sink, compressor = DiskCheckedArchive(destination, output, deadline), zlib.compressobj(level=6, wbits=31)
                 read = source.read
                 for chunk in iter(lambda: read(65536), b""):
                     sink.write(compressor.compress(chunk))
@@ -416,7 +503,7 @@ def preserve(paths, row: Observation, output):
                                 secondary_record(row, "archive-close", error)
             if archive_primary is not None:
                 raise archive_primary
-            receipts[name]["gzip_sha256"] = digest(target)
+            receipts[name]["gzip_sha256"] = digest(target, deadline)
             receipts[name]["gzip_path"] = target.name
             path.unlink()
         except BaseException as error:
@@ -429,9 +516,11 @@ def preserve(paths, row: Observation, output):
             raise
 
 
-def equal_raw(reference, current):
+def equal_raw(reference, current, deadline=None):
+    check_deadline(deadline)
     with gzip.open(reference, "rb") as left, current.open("rb") as right:
         while True:
+            check_deadline(deadline)
             a, b = left.read(65536), right.read(65536)
             if a != b:
                 return False
@@ -439,60 +528,98 @@ def equal_raw(reference, current):
                 return True
 
 
-def source_identity(owner, repo, expected, env):
-    def git(*args):
-        value = owner.run(["git", *args], repo, env, timeout=10, limit=65536, phase="source-identity")
-        if value["exit"] != 0:
-            raise ValueError("source identity command failed")
-        return value["stdout"].decode("utf-8", errors="strict").strip()
-    head, dirty = git("rev-parse", "HEAD"), git("status", "--porcelain", "--untracked-files=no")
-    if head != expected or dirty:
-        raise ValueError("source identity mismatch or dirty tracked tree")
-    return {"head": head, "tree": git("rev-parse", "HEAD^{tree}")}
+def source_identity(owner, repo, expected, env, deadline=None):
+    check_deadline(deadline)
+    temporary = tempfile.TemporaryDirectory(prefix="pair-identity-", dir=env.get("TMPDIR"))
+    primary, row = None, CaptureReceipt()
+    try:
+        capture = Capture(Path(temporary.name), repo, env, owner, deadline if deadline is not None else math.inf,
+                          stream_limit=65536, total_limit=6 * 65536, finalization_deadline=deadline)
+        ordinal = 0
+        def git(*args):
+            nonlocal ordinal, row
+            row = CaptureReceipt()
+            paths = capture.run(["git", *args], "identity-" + str(ordinal), row, timeout=remaining(deadline, 10))
+            ordinal += 1
+            check_deadline(deadline)
+            if row.get("exit") != 0:
+                raise ValueError("source identity command failed")
+            return paths[0].read_text(encoding="utf-8", errors="strict").strip()
+        head, dirty = git("rev-parse", "HEAD"), git("status", "--porcelain", "--untracked-files=no")
+        if head != expected or dirty:
+            raise ValueError("source identity mismatch or dirty tracked tree")
+        return {"head": head, "tree": git("rev-parse", "HEAD^{tree}")}
+    except BaseException as error:
+        primary = error
+        primary_record(row, error)
+        setattr(error, "identity_receipt", row)
+        raise
+    finally:
+        try:
+            temporary.cleanup()
+        except BaseException as error:
+            if primary is None:
+                primary_record(row, error)
+                setattr(error, "identity_receipt", row)
+                raise
+            secondary_record(row, "identity-temp-cleanup", error)
 
 
-def copy_input(source, destination):
+def copy_input(source, destination, deadline=None):
     """고정 입력을 복사하는 동안에도 파일·디스크 예산을 먼저 확인한다."""
     source, destination = Path(source), Path(destination)
+    check_deadline(deadline)
     before = file_stamp(source)
     if not source.is_file() or before[3] > 512 * 1024**2:
         raise ValueError("invalid frozen input file")
     total = 0
     with source.open("rb") as incoming, destination.open("xb") as outgoing:
         for chunk in iter(lambda: incoming.read(65536), b""):
+            check_deadline(deadline)
             total += len(chunk)
             if total > before[3] or shutil.disk_usage(destination.parent).free < DISK_STOP + len(chunk):
                 raise ValueError("frozen copy size or disk budget")
             outgoing.write(chunk)
+    check_deadline(deadline)
     if total != before[3] or before != file_stamp(source):
         raise ValueError("source changed during frozen copy")
     shutil.copystat(source, destination, follow_symlinks=False)
     return str(destination)
 
 
-def qualify(args):
+def qualify(args, entered=None):
+    entered = time.monotonic() if entered is None else entered
+    deadline, finalization_deadline = entered + DRIVER_SECONDS, entered + FINALIZATION_SECONDS
     validate_sha(args.baseline_sha)
     validate_sha(args.target_sha)
     validate_sha(args.harness_sha)
     harness = Path(__file__).resolve().parents[1]
+    check_deadline(deadline)
     owner = load_module("pair_owned", harness / "Scripts/verify-index-cost.py")
+    check_deadline(deadline)
     repeatability = load_module("pair_environment", harness / "Scripts/verify-cli-repeatability.py")
+    check_deadline(deadline)
     baseline, candidate, output = args.baseline_root.resolve(), args.repo_root.resolve(), args.output.resolve()
     if shutil.disk_usage(output.parent).free < DISK_STOP:
         raise ValueError("5.5GiB disk stop")
     output.mkdir(parents=True, exist_ok=False)
     (output / "tmp").mkdir()
     env = repeatability.cli_environment(os.environ, output / "tmp")
+    check_deadline(deadline)
     result = {"status": "incomplete", "scope": "Linux fixed-input paired comparison; not mandatory smoke acceptance",
               "protocol": {"pairs": PAIRS, "bootstrap_resamples": RESAMPLES, "seed": SEED,
-                           "stream_limit_bytes": STREAM_LIMIT, "total_raw_limit_bytes": TOTAL_LIMIT},
+                           "stream_limit_bytes": STREAM_LIMIT, "total_raw_limit_bytes": TOTAL_LIMIT,
+                           "driver_seconds_from_entry": DRIVER_SECONDS, "finalization_seconds_from_entry": FINALIZATION_SECONDS},
               "rows": [], "sources": {}, "helper_sha256": digest(Path(__file__)),
+              "python_version": sys.version,
               "environment_keys": sorted(env),
               "environment_sha256": hashlib.sha256(json.dumps(env, sort_keys=True).encode()).hexdigest()}
     def save(primary=None):
         active = primary or sys.exc_info()[1]
         try:
-            (output / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+            temporary = output / "result.json.tmp"
+            temporary.write_text(json.dumps(result, indent=2) + "\n")
+            temporary.replace(output / "result.json")
         except BaseException as error:
             if active is None:
                 raise
@@ -501,6 +628,7 @@ def qualify(args):
     roots, sealed, primary = None, None, None
     old_handler = signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt("terminated")))
     try:
+        check_deadline(deadline)
         result["platform_preflight"] = {"required": "linux", "observed": sys.platform,
                                         "supported": sys.platform == "linux"}
         if sys.platform != "linux":
@@ -508,19 +636,22 @@ def qualify(args):
         java = Path(env["JAVA_HOME"]).resolve(strict=True)
         for arm, repo, sha in (("baseline", baseline, args.baseline_sha), ("candidate", candidate, args.target_sha),
                               ("harness", harness, args.harness_sha)):
-            result["sources"][arm] = source_identity(owner, repo, sha, env)
-            if digest(repo / "Scripts/verify-analysis-smoke-gate.py") != SMOKE_SHA256:
+            result["sources"][arm] = source_identity(owner, repo, sha, env, deadline)
+            if digest(repo / "Scripts/verify-analysis-smoke-gate.py", deadline) != SMOKE_SHA256:
                 raise ValueError("smoke evaluator identity changed")
         corpus, fixture = output / "corpus", output / "fixture"
         corpus.mkdir()
         for module in MODULES:
+            check_deadline(deadline)
             relative = Path(module) / "build/classes/kotlin/main"
             source = baseline / relative
             if not any(source.rglob("*.class")):
                 raise ValueError("empty baseline production class root")
-            shutil.copytree(source, corpus / relative, symlinks=True, copy_function=copy_input)
+            shutil.copytree(source, corpus / relative, symlinks=True,
+                            copy_function=lambda source, destination: copy_input(source, destination, deadline))
         for name in (".kartograph-self.pro", ".kartograph.yml"):
-            copy_input(baseline / name, corpus / name)
+            copy_input(baseline / name, corpus / name, deadline)
+        check_deadline(deadline)
         (fixture / "res").mkdir(parents=True)
         (fixture / "AndroidManifest.xml").write_text(
             '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.kartograph">\n'
@@ -536,18 +667,21 @@ def qualify(args):
                  "candidate_evaluator": candidate / "Scripts/verify-analysis-smoke-gate.py"}
         vm = java / "lib/server/libjvm.so"
         roots["jdk_vm"] = vm
-        sealed = seal(roots)
+        sealed = seal(roots, deadline)
         result["sealed_inputs"] = sealed
         smoke = load_module("pair_smoke", baseline / "Scripts/verify-analysis-smoke-gate.py")
+        check_deadline(deadline)
         declared = {arm: commands(baseline / "Scripts/verify-analysis-smoke-gate.py", corpus, fixture,
-                    repo / "cli/build/install/kartograph/bin/kartograph")
+                    repo / "cli/build/install/kartograph/bin/kartograph", deadline)
                     for arm, repo in (("baseline", baseline), ("candidate", candidate))}
-        capture = Capture(output, baseline, env, owner, time.monotonic() + 900)
+        check_deadline(deadline)
+        capture = Capture(output, baseline, env, owner, deadline, finalization_deadline=finalization_deadline)
         references: dict[str, dict[str, str]] = {}
         result["resource_policy"] = repeatability.resources()["policy"]
         for suite in schedule():
             for name, argv, contract in declared[suite["arm"]]:
-                verify_seal(roots, sealed)
+                check_deadline(deadline)
+                verify_seal(roots, sealed, deadline=deadline)
                 if repeatability.resources()["policy"] != result["resource_policy"]:
                     raise ValueError("resource policy changed")
                 row: Observation = {**suite, "command": name, "contract_failures": []}
@@ -557,7 +691,8 @@ def qualify(args):
                 row_primary = None
                 try:
                     capture.run(argv, stem, row)
-                    if name in references and any(not equal_raw(output / references[name][stream], path)
+                    check_deadline(deadline)
+                    if name in references and any(not equal_raw(output / references[name][stream], path, deadline)
                             for stream, path in zip(("stdout", "stderr"), paths)):
                         raise ValueError("raw output parity mismatch")
                     exit_code = row.get("exit")
@@ -567,6 +702,7 @@ def qualify(args):
                     contract_failures: list[str] = []
                     smoke.check_contract(name, contract, subprocess.CompletedProcess(argv, exit_code,
                         paths[0].read_text(), paths[1].read_text()), observation, contract_failures)
+                    check_deadline(deadline)
                     row["contract_failures"] = contract_failures
                     row["contract"] = observation
                     if exit_code != 0 or contract_failures:
@@ -575,9 +711,13 @@ def qualify(args):
                     row_primary = error
                     primary_record(row, error)
                 finally:
+                    # 원래 실패를 압축·전체 무결성 재검사보다 먼저 원자적으로 남긴다.
+                    if row_primary is not None:
+                        result.update(status="failed-or-incomplete", error=error_record(row_primary))
+                        save(row_primary)
                     try:
                         if all(p.exists() for p in paths) and "streams" in row:
-                            preserve(paths, row, output)
+                            preserve(paths, row, output, finalization_deadline)
                     except BaseException as error:
                         if row_primary is None:
                             row_primary = error
@@ -585,6 +725,8 @@ def qualify(args):
                         else:
                             secondary_record(row, "archive", error)
                     finally:
+                        if row_primary is not None:
+                            result.update(status="failed-or-incomplete", error=error_record(row_primary))
                         save(row_primary)
                 if row_primary is not None:
                     raise row_primary
@@ -598,25 +740,37 @@ def qualify(args):
                         raise ValueError("missing complete archive")
                     archive_paths[stream] = gzip_path
                 references.setdefault(name, archive_paths)
+        check_deadline(deadline)
         result["statistics"] = statistics_for(result["rows"])
+        check_deadline(deadline)
         result["status"] = "speedup-demonstrated" if result["statistics"]["speedup_demonstrated"] else "no-proven-speedup"
     except BaseException as error:
         primary = error
         result.update(status="unsupported-os" if isinstance(error, UnsupportedPlatform) else "failed-or-incomplete",
                       error=error_record(error))
+        identity_receipt = getattr(error, "identity_receipt", None)
+        if identity_receipt is not None:
+            result["source_identity_failure"] = identity_receipt
+        save(primary)
     finally:
         try:
             if sealed is not None:
-                verify_seal(roots, sealed, full=True)
+                verify_seal(roots, sealed, full=True, deadline=finalization_deadline)
                 result["sealed_inputs_unchanged"] = True
             if result["sources"]:
                 for arm, repo, sha in (("baseline", baseline, args.baseline_sha), ("candidate", candidate, args.target_sha),
                                       ("harness", harness, args.harness_sha)):
-                    if source_identity(owner, repo, sha, env) != result["sources"].get(arm):
+                    if source_identity(owner, repo, sha, env, finalization_deadline) != result["sources"].get(arm):
                         raise ValueError("source identity changed")
         except BaseException as error:
-            primary = primary or error
-            result.update(status="failed-or-incomplete", final_integrity_error=type(error).__name__)
+            if primary is None:
+                primary = error
+                result["error"] = error_record(error)
+            result.update(status="failed-or-incomplete", final_integrity_error=type(error).__name__,
+                          final_integrity_failure=error_record(error))
+            identity_receipt = getattr(error, "identity_receipt", None)
+            if identity_receipt is not None:
+                result["final_source_identity_failure"] = identity_receipt
         result["finished_utc_ns"] = time.time_ns()
         try:
             save(primary)
@@ -632,6 +786,7 @@ def qualify(args):
 
 
 def main(argv=None):
+    entered = time.monotonic()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-root", required=True, type=Path)
     parser.add_argument("--baseline-sha", required=True)
@@ -646,7 +801,7 @@ def main(argv=None):
         validate_sha(args.harness_sha)
     except ValueError as error:
         parser.error(str(error))
-    return qualify(args)
+    return qualify(args, entered=entered)
 
 
 if __name__ == "__main__":

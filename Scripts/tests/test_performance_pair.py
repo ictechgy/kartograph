@@ -9,6 +9,7 @@ import json
 import math
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
@@ -16,7 +17,7 @@ import threading
 import time
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -100,6 +101,19 @@ class PairSafetyTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.owner = P.load_module("pair_owner_test", ROOT / "Scripts/verify-index-cost.py")
+        self.original_owner = self.owner.OwnedProcessGroup
+
+    def cleanup_test_child(self, child):
+        if child.returncode is None:
+            try:
+                lease = self.original_owner(child, self.owner.nonreaping_waiter(), self.owner.group_census())
+                lease.close_signals()
+                child.wait(timeout=2)
+            except ChildProcessError:
+                child.returncode = 0
+        for stream in (child.stdout, child.stderr):
+            if stream is not None:
+                stream.close()
 
     def capture(self, **kwargs):
         return P.Capture(self.root, self.root, {"PATH": os.environ.get("PATH", "")},
@@ -132,6 +146,148 @@ class PairSafetyTests(unittest.TestCase):
                                "timeout", row, timeout=.1)
         self.assertLess(row["exit"], 0)
         self.assertNotIn("cleanup_error", row)
+
+    def assert_child_finished(self, child):
+        self.assertIsNotNone(child.returncode)
+        with self.assertRaises(ChildProcessError):
+            os.waitpid(child.pid, os.WNOHANG)
+        with self.assertRaises(ProcessLookupError):
+            os.killpg(child.pid, 0)
+        self.assertTrue(child.stdout.closed and child.stderr.closed)
+
+    def test_owner_constructor_failure_uses_validated_unreaped_child_cleanup(self):
+        original_popen, children = P.subprocess.Popen, []
+        original_kill = self.owner.kill_group
+        primary = RuntimeError("constructor failure")
+        def spawn(*args, **kwargs):
+            child = original_popen(*args, **kwargs)
+            children.append(child)
+            self.addCleanup(self.cleanup_test_child, child)
+            return child
+        for cleanup_failure in (False, True):
+            def kill(child):
+                original_kill(child)
+                if cleanup_failure:
+                    raise OSError(errno.EIO, "secondary after owned signal")
+            row, before = {}, set(threading.enumerate())
+            with self.subTest(cleanup_failure=cleanup_failure), \
+                 patch.object(P.subprocess, "Popen", side_effect=spawn), \
+                 patch.object(self.owner, "OwnedProcessGroup", side_effect=primary), \
+                 patch.object(self.owner, "kill_group", side_effect=kill), \
+                 self.assertRaises(RuntimeError) as caught:
+                self.capture().run([sys.executable, "-S", "-c", "import time;time.sleep(10)"],
+                                   "constructor-" + str(cleanup_failure), row)
+            self.assertIs(primary, caught.exception)
+            self.assertEqual("constructor failure", row["primary_error"]["reason"])
+            self.assert_child_finished(children[-1])
+            self.assertEqual(before, set(threading.enumerate()))
+            if cleanup_failure:
+                self.assertTrue(any(e["stage"] == "handoff-signal-close" for e in row["secondary_errors"]))
+            print(json.dumps({"control": "constructor", "cleanup_failure": cleanup_failure, "row": row}))
+
+    def test_real_sigterm_and_sigint_at_popen_assignment_seam_are_deferred_until_owned(self):
+        original_popen = P.subprocess.Popen
+        for number in (signal.SIGTERM, signal.SIGINT):
+            def interrupted(*unused):
+                raise KeyboardInterrupt("test termination")
+            prior = signal.signal(number, interrupted)
+            self.addCleanup(signal.signal, number, prior)
+            children, row, before = [], {}, set(threading.enumerate())
+            handlers = {n: signal.getsignal(n) for n in (signal.SIGTERM, signal.SIGINT)}
+            def spawn(*args, **kwargs):
+                child = original_popen(*args, **kwargs)
+                children.append(child)
+                self.addCleanup(self.cleanup_test_child, child)
+                os.kill(os.getpid(), number)  # 실제 반환 전 assignment 공백에 도착한다.
+                return child
+            with self.subTest(signal=number), patch.object(P.subprocess, "Popen", side_effect=spawn), \
+                 self.assertRaises(KeyboardInterrupt):
+                self.capture().run([sys.executable, "-S", "-c", "import time;time.sleep(10)"],
+                                   "assignment-" + str(number), row)
+            self.assertEqual("KeyboardInterrupt", row["primary_error"]["type"])
+            self.assert_child_finished(children[0])
+            self.assertEqual(before, set(threading.enumerate()))
+            self.assertEqual(handlers, {n: signal.getsignal(n) for n in handlers})
+            print(json.dumps({"control": "assignment-signal", "signal": number, "row": row}))
+
+    def test_constructor_primary_survives_pending_cancellation_until_fallback_reap(self):
+        original_popen, children, row = P.subprocess.Popen, [], {}
+        primary = RuntimeError("constructor before deferred interrupt")
+        def spawn(*args, **kwargs):
+            child = original_popen(*args, **kwargs)
+            children.append(child)
+            self.addCleanup(self.cleanup_test_child, child)
+            return child
+        def constructor(*unused):
+            os.kill(os.getpid(), signal.SIGINT)
+            raise primary
+        with patch.object(P.subprocess, "Popen", side_effect=spawn), \
+             patch.object(self.owner, "OwnedProcessGroup", side_effect=constructor), self.assertRaises(RuntimeError) as caught:
+            self.capture().run([sys.executable, "-S", "-c", "import time;time.sleep(10)"], "constructor-pending", row)
+        self.assertIs(primary, caught.exception)
+        self.assert_child_finished(children[0])
+        self.assertTrue(any(e["stage"] == "deferred-interruption" and e["type"] == "KeyboardInterrupt"
+                            for e in row["secondary_errors"]))
+        print(json.dumps({"control": "constructor-deferred-interruption", "row": row}))
+
+    def test_constructor_reaped_or_lost_child_refuses_numeric_signal_and_unrelated_child_survives(self):
+        original_popen = P.subprocess.Popen
+        unrelated = original_popen([sys.executable, "-S", "-c", "import time;time.sleep(10)"], start_new_session=True)
+        try:
+            for reaped_returncode in (True, False):
+                children, row = [], {}
+                def spawn(*args, **kwargs):
+                    child = original_popen(*args, **kwargs)
+                    children.append(child)
+                    self.addCleanup(self.cleanup_test_child, child)
+                    return child
+                def constructor(child, *unused):
+                    if reaped_returncode:
+                        child.wait(timeout=2)
+                    else:
+                        os.waitpid(child.pid, 0)  # ECHILD인데 Popen returncode는 아직 None이다.
+                    raise RuntimeError("constructor after lease loss")
+                with self.subTest(returncode=reaped_returncode), patch.object(P.subprocess, "Popen", side_effect=spawn), \
+                     patch.object(self.owner, "OwnedProcessGroup", side_effect=constructor), \
+                     patch.object(self.owner, "kill_group") as kill, self.assertRaises(RuntimeError):
+                    self.capture().run([sys.executable, "-S", "-c", "pass"], "lost-" + str(reaped_returncode), row)
+                kill.assert_not_called()
+                self.assertNotIn("exit", row)
+                self.assertTrue(any(e["stage"] == "handoff-signal-close" for e in row["secondary_errors"]))
+                children[0].returncode = 0
+                self.assert_child_finished(children[0])
+                self.assertIsNone(unrelated.poll())
+        finally:
+            lease = self.owner.OwnedProcessGroup(unrelated, self.owner.nonreaping_waiter(), self.owner.group_census())
+            lease.close_signals()
+            unrelated.wait(timeout=2)
+
+    def test_identity_git_signal_uses_repaired_ownership_and_private_sinks_are_removed(self):
+        original_popen, children = P.subprocess.Popen, []
+        temporary = self.root / "private"
+        temporary.mkdir()
+        def interrupted(*unused):
+            raise KeyboardInterrupt("identity termination")
+        prior = signal.signal(signal.SIGTERM, interrupted)
+        self.addCleanup(signal.signal, signal.SIGTERM, prior)
+        def spawn(*args, **kwargs):
+            child = original_popen(*args, **kwargs)
+            children.append(child)
+            self.addCleanup(self.cleanup_test_child, child)
+            os.kill(os.getpid(), signal.SIGTERM)
+            return child
+        with patch.object(P.subprocess, "Popen", side_effect=spawn), \
+             patch.object(self.owner, "run", side_effect=AssertionError("inherited unsafe launch path")) as inherited, \
+             self.assertRaises(KeyboardInterrupt) as caught:
+            P.source_identity(self.owner, ROOT, "a" * 40,
+                              {"PATH": os.environ.get("PATH", ""), "TMPDIR": str(temporary)}, time.monotonic() + 10)
+        inherited.assert_not_called()
+        self.assert_child_finished(children[0])
+        self.assertEqual([], list(temporary.iterdir()))
+        receipt = getattr(caught.exception, "identity_receipt")
+        self.assertEqual(["git", "rev-parse", "HEAD"], receipt["argv"])
+        self.assertEqual("KeyboardInterrupt", receipt["primary_error"]["type"])
+        print(json.dumps({"control": "identity-signal", "row": receipt}))
 
     def test_timeout_remains_primary_when_receipt_digest_fails(self):
         row = {}
@@ -261,6 +417,52 @@ class PairSafetyTests(unittest.TestCase):
             P.verify_seal({"directory": self.root}, sealed)
 
 
+class PairBudgetTests(unittest.TestCase):
+    def test_expired_budget_prevents_identity_copy_seal_hash_archive_and_child_activity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "input"
+            source.write_bytes(b"frozen")
+            owner = SimpleNamespace(run=Mock())
+            with patch.object(P.time, "monotonic", return_value=10), patch.object(P.subprocess, "Popen") as spawn:
+                operations = [lambda: P.source_identity(owner, root, "a" * 40, {}, 10),
+                    lambda: P.copy_input(source, root / "copy", 10), lambda: P.seal({"input": source}, 10),
+                    lambda: P.digest(source, 10),
+                    lambda: P.preserve([source, source], {"streams": {"stdout": {}, "stderr": {}}}, root, 10),
+                    lambda: P.Capture(root, root, {}, owner, 10).run(["never-launch"], "expired", {})]
+                for operation in operations:
+                    with self.assertRaises(TimeoutError):
+                        operation()
+            owner.run.assert_not_called()
+            spawn.assert_not_called()
+            self.assertEqual([source], list(root.iterdir()))
+
+    def test_identity_git_calls_use_remaining_absolute_budget_without_refresh(self):
+        clock, timeouts = [0], []
+        class IdentityCapture:
+            def __init__(self, output, *unused, **options):
+                self.output = output
+            def run(self, argv, stem, row, timeout):
+                timeouts.append(timeout)
+                clock[0] += 4
+                path = self.output / stem
+                path.write_bytes(("a" * 40 if argv[1] == "rev-parse" else "").encode())
+                row["exit"] = 0
+                return [path]
+        with patch.object(P.time, "monotonic", side_effect=lambda: clock[0]), \
+             patch.object(P, "Capture", IdentityCapture), self.assertRaises(TimeoutError):
+            P.source_identity(SimpleNamespace(), Path("."), "a" * 40, {}, 9)
+        self.assertEqual([9, 5, 1], timeouts)
+
+    def test_main_origin_precedes_argument_parsing_and_is_forwarded_to_qualifier(self):
+        args = ["--baseline-root", "/baseline", "--baseline-sha", "a" * 40,
+                "--repo-root", "/candidate", "--target-sha", "b" * 40,
+                "--harness-sha", "c" * 40, "--output", "/output"]
+        with patch.object(P.time, "monotonic", return_value=123), patch.object(P, "qualify", return_value=0) as qualify:
+            self.assertEqual(0, P.main(args))
+        self.assertEqual(123, qualify.call_args.kwargs["entered"])
+
+
 class PairFixtureFlowTests(unittest.TestCase):
     """합성 출력/고정 수치만 사용하며 실제 CLI 속도는 측정하지 않는다."""
     def exercise(self, failure=None):
@@ -291,10 +493,11 @@ class PairFixtureFlowTests(unittest.TestCase):
             commands = {"graph": "\n".join(f'n{i} [shape=box]' for i in range(2000)) + "\n",
                         "dead": "", "dead_private": "", "cycles": "0 findings\n",
                         "rules": "0 findings, 0 unassigned\n", "metrics": "row\n" * 6}
-            launched = []
+            launched, budgets, checkpoints, clock = [], [], [], [100.0]
             class FixtureCapture:
-                def __init__(self, output, *unused):
+                def __init__(self, output, *unused, **unused_options):
                     self.output = output
+                    budgets.append((unused[-1], unused_options.get("finalization_deadline")))
                 def run(self, argv, stem, row):
                     launched.append(stem)
                     row.update(argv=list(map(str, argv)), exit=2 if failure in ("child", "semantic-archive") and row["arm"] == "candidate" else 0,
@@ -307,6 +510,9 @@ class PairFixtureFlowTests(unittest.TestCase):
                         path = self.output / (stem + "." + name)
                         path.write_bytes(data)
                         row["streams"][name] = {"bytes": len(data), "sha256": P.digest(path), "path": path.name}
+                    if failure == "row-budget":
+                        clock[0] = 941
+                        raise TimeoutError("fixture original deadline")
                     if failure == "mutation":
                         (self.output / "corpus/.kartograph-self.pro").write_text("changed input\n")
             original_load = P.load_module
@@ -324,14 +530,26 @@ class PairFixtureFlowTests(unittest.TestCase):
             def disk_usage(path):
                 return SimpleNamespace(free=P.DISK_STOP - 1 if failure == "last-row-disk" and len(launched) == 108
                                        else 100 * 1024**3)
+            def identity(owner, repo, sha, env, deadline=None):
+                if failure == "setup-budget":
+                    clock[0] = 941
+                return {"head": sha, "tree": "c" * 40}
+            original_preserve = P.preserve
+            def preserve(paths, row, output, deadline=None):
+                if failure == "row-budget":
+                    checkpoint = output / "result.json"
+                    checkpoints.append(json.loads(checkpoint.read_text()) if checkpoint.exists() else None)
+                    clock[0] = 1001
+                return original_preserve(paths, row, output) if deadline is None else original_preserve(paths, row, output, deadline)
             with patch.dict(os.environ, {"JAVA_HOME": str(java)}), patch.object(P, "Capture", FixtureCapture), \
                  patch.object(P, "load_module", side_effect=load), \
-                 patch.object(P, "source_identity", side_effect=lambda owner, repo, sha, env: {"head": sha, "tree": "c" * 40}), \
+                 patch.object(P, "source_identity", side_effect=identity), \
+                 patch.object(P.time, "monotonic", side_effect=lambda: clock[0]), patch.object(P, "preserve", side_effect=preserve), \
                  patch.object(P.sys, "platform", "linux"), patch.object(P.shutil, "disk_usage", side_effect=disk_usage), \
                  patch.object(P.zlib, "compressobj", side_effect=compressor), \
                  redirect_stdout(io.StringIO()):
                 if failure:
-                    with self.assertRaises(ValueError):
+                    with self.assertRaises(TimeoutError if failure in ("setup-budget", "row-budget") else ValueError):
                         P.qualify(args)
                 else:
                     self.assertEqual(0, P.qualify(args))
@@ -356,6 +574,21 @@ class PairFixtureFlowTests(unittest.TestCase):
                 row = result["rows"][-1]
                 self.assertIn("archive disk reservation", row["primary_error"]["reason"])
                 self.assertTrue((args.output / row["streams"]["stdout"]["path"]).is_file())
+            if failure == "setup-budget":
+                self.assertEqual([], launched)
+                self.assertEqual("TimeoutError", result["error"]["type"])
+            if failure == "row-budget":
+                self.assertEqual(1, len(launched))
+                self.assertEqual("fixture original deadline", result["error"]["reason"])
+                self.assertIsNotNone(checkpoints[0], "primary receipt must precede archive")
+                self.assertEqual("failed-or-incomplete", checkpoints[0]["status"])
+                self.assertEqual("fixture original deadline", checkpoints[0]["rows"][-1]["primary_error"]["reason"])
+                self.assertIn("final_integrity_error", result)
+                self.assertTrue(any(e["stage"] == "archive" for e in result["rows"][-1]["secondary_errors"]))
+                self.assertTrue((args.output / result["rows"][-1]["streams"]["stdout"]["path"]).is_file())
+            if budgets:
+                self.assertEqual([(940, 1000)], budgets)
+            self.assertEqual(sys.version, result["python_version"])
 
     def test_complete_synthetic_protocol_preserves_all_rows_and_raw_outputs(self):
         self.exercise()
@@ -367,6 +600,11 @@ class PairFixtureFlowTests(unittest.TestCase):
 
     def test_semantic_failure_survives_gzip_failure_and_last_row_disk_stop_cannot_pass(self):
         for failure in ("semantic-archive", "last-row-disk"):
+            with self.subTest(failure=failure):
+                self.exercise(failure)
+
+    def test_setup_counts_against_driver_budget_and_row_failure_precedes_heavy_finalization(self):
+        for failure in ("setup-budget", "row-budget"):
             with self.subTest(failure=failure):
                 self.exercise(failure)
 
