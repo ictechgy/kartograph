@@ -16,6 +16,8 @@ version = file("../VERSION").readText().trim()
 configurations.create("kotlinCompilerRuntime")
 configurations.create("daggerRuntime")
 val kotlinCompilerVersion = "2.4.20"
+// 실제 설치물의 runtime pin은 수집기 compiler의 버전과 독립적으로 검증한다.
+val distributionStdlibVersion = "2.4.21"
 
 dependencies {
     compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:$kotlinCompilerVersion")
@@ -114,6 +116,7 @@ val publicAuthoredApiTest = tasks.register<Exec>("publicAuthoredApiTest") {
         commandLine("python3", layout.projectDirectory.file("tests/public_authored_api.py").asFile.absolutePath,
             "--distribution", providers.gradleProperty("kartograph.consumerDistribution").orNull.orEmpty(),
             "--version", collectorVersion, "--kotlin-version", kotlinCompilerVersion,
+            "--distribution-stdlib-version", distributionStdlibVersion,
             "--compiler-classpath", configurations.getByName("kotlinCompilerRuntime").files.joinToString(File.pathSeparator) { it.absolutePath },
             "--report", layout.buildDirectory.dir("reports/public-authored-api").get().asFile.absolutePath)
     }
