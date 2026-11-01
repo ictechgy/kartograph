@@ -120,7 +120,7 @@ internal object FullIndexArchitectureCommandOracle {
 
         A counts declared types; file facades and synthesized classes are excluded.
         Units without cross-unit dependencies or declared types keep 0.000 placeholders for I or A,
-        and a stderr limitation lists them because their D is not a main-sequence distance.
+        and a stderr limitation lists up to 20 of them because their D is not a main-sequence distance.
     """.trimIndent() + "\n"
 
     private inline fun withGraph(        arguments: List<String>,

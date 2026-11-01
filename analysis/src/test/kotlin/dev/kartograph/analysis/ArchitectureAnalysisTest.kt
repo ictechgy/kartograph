@@ -217,6 +217,21 @@ class ArchitectureAnalysisTest {
     }
 
     @Test
+    fun `martin abstractness can fall when a synthesized abstract base is excluded`() {
+        // Hilt가 생성한 abstract base(Hilt_MainActivity)는 합성 선언이라 A에서 빠진다. 이전 집계의 0.500이 0.000이 된다.
+        val generatedBase = node("Hilt_MainActivity", "ui").copy(synthesized = true, jvmModifiers = setOf(JvmModifier.ABSTRACT))
+        val graph = CodeGraph(listOf(node("MainActivity", "ui"), generatedBase, node("App", "app")), listOf(
+            edge("MainActivity", "Hilt_MainActivity", EdgeKind.INHERITANCE),
+            edge("App", "MainActivity", EdgeKind.REFERENCE),
+        ))
+
+        val ui = MartinMetrics.calculate(graph).single { it.module == "ui" }
+
+        assertEquals(MartinMetric("ui", 1, 0, 0, 1), ui)
+        assertEquals(0.0, ui.abstractness)
+    }
+
+    @Test
     fun `yaml rules reject unknown keys and references instead of passing empty`() {
         assertFailsWith<LayerConfigurationException> { LayerRuleYaml.parse("\n") }
         assertFailsWith<LayerConfigurationException> {

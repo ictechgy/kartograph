@@ -1,6 +1,7 @@
 package dev.kartograph.cli
 
 import dev.kartograph.analysis.ArchitectureGraph
+import dev.kartograph.analysis.MartinMetric
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.cli.fixture.defaultbridge.BridgeFixture
 import dev.kartograph.core.CodeGraph
@@ -117,6 +118,21 @@ class ArchitectureDispatchSelectionTest {
             "lonely\t0\t0\t0.000\t0.000\t1.000\n", metrics.stdout)
         assertEquals("limitation: undefined-distance: 1 unit(s) have no cross-unit dependency or no declared type, " +
             "so I or A is undefined and D is not a main-sequence distance: lonely\n", metrics.stderr)
+    }
+
+    @Test
+    fun `undefined distance limitation lists a bounded number of units`() {
+        val defined = MartinMetric("defined", 1, 1, 0, 1)
+        val isolated = (1..25).map { index -> MartinMetric("unit%02d".format(index), 0, 0, 0, 1) }
+        assertEquals(null, ArchitectureCommand.undefinedDistanceLimitation(listOf(defined)))
+        val few = ArchitectureCommand.undefinedDistanceLimitation(listOf(defined) + isolated.take(20))
+        assertEquals("limitation: undefined-distance: 20 unit(s) have no cross-unit dependency or no declared type, " +
+            "so I or A is undefined and D is not a main-sequence distance: " +
+            isolated.take(20).joinToString(", ") { it.module }, few)
+        val many = ArchitectureCommand.undefinedDistanceLimitation(listOf(defined) + isolated)
+        assertEquals("limitation: undefined-distance: 25 unit(s) have no cross-unit dependency or no declared type, " +
+            "so I or A is undefined and D is not a main-sequence distance: " +
+            isolated.take(20).joinToString(", ") { it.module } + ", and 5 more", many)
     }
 
     @Test
