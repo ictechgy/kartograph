@@ -118,6 +118,104 @@ class IndexCostTest(unittest.TestCase):
                 with self.assertRaisesRegex(probe.DiagnosticError, reason):
                     probe.compare_semantic_outputs(outputs, {})
 
+    def test_engine_source_change_is_read_from_index_and_core_trees_only(self):
+        env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            def execute(arguments, cwd=repo, environment=env, **kwargs):
+                result = subprocess.run(arguments, cwd=cwd, env=environment, capture_output=True, check=True, timeout=30)
+                return {"stdout": result.stdout}
+            def git(*arguments):
+                return execute(["git", *arguments])["stdout"].decode().strip()
+            git("init", "-q")
+            git("config", "user.name", "Fixture")
+            git("config", "user.email", "fixture@example.invalid")
+            files = ("index/src/main/Index.kt", "index/src/test/IndexTest.kt", "index/build.gradle.kts",
+                     "core/src/main/Core.kt", "core/build.gradle.kts", "analysis/src/main/Analysis.kt",
+                     "Scripts/verify-index-cost.py", "build.gradle.kts")
+            for name in files:
+                (repo / name).parent.mkdir(parents=True, exist_ok=True)
+                (repo / name).write_text("original\n")
+            git("add", ".")
+            git("commit", "-qm", "baseline")
+            baseline = git("rev-parse", "HEAD")
+            expected = {
+                "Scripts/verify-index-cost.py": False, "analysis/src/main/Analysis.kt": False,
+                "index/src/test/IndexTest.kt": False, "build.gradle.kts": False,
+                "index/src/main/Index.kt": True, "core/src/main/Core.kt": True,
+                "index/build.gradle.kts": True, "core/build.gradle.kts": True,
+            }
+            with mock.patch.object(probe, "successful", side_effect=execute):
+                self.assertFalse(probe.engine_sources_changed(repo, baseline, env))
+                for name, changed in expected.items():
+                    with self.subTest(name=name):
+                        git("checkout", "-q", "--detach", baseline)
+                        (repo / name).write_text("changed\n")
+                        git("commit", "-qam", "change " + name)
+                        self.assertEqual(changed, probe.engine_sources_changed(repo, baseline, env))
+
+    def test_same_engine_is_accepted_only_as_a_control_when_engine_sources_are_unchanged(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            outputs = {arm: Path(temporary) / arm for arm in ("baseline", "candidate")}
+            facts = {"format": "class-facts-v10-payload-sha256", "engine": "a" * 64, "payloads": {"c" * 64: "d" * 64}}
+            graphs = {name: {"bytes": 100, "sha256": "e" * 64} for name in ("json", "ndjson")}
+            for directory in outputs.values():
+                directory.mkdir()
+                (directory / "raw-facts.json").write_text(json.dumps(facts))
+                (directory / "graphs.json").write_text(json.dumps(graphs))
+            report = {}
+            probe.compare_semantic_outputs(outputs, report, engine_sources_changed=False)
+            self.assertFalse(report["semantic"]["enginesDiffer"])
+            self.assertFalse(report["semantic"]["engineSourcesChanged"])
+            self.assertIn("same-engine control", report["semantic"]["engineScope"])
+            # 같은 엔진도 payload·graph는 계속 바이트 동일해야 한다.
+            (outputs["candidate"] / "raw-facts.json").write_text(json.dumps({**facts, "payloads": {"c" * 64: "f" * 64}}))
+            with self.assertRaisesRegex(probe.DiagnosticError, "semantic-graph-or-raw-payload-mismatch"):
+                probe.compare_semantic_outputs(outputs, {}, engine_sources_changed=False)
+            (outputs["candidate"] / "raw-facts.json").write_text(json.dumps(facts))
+            # 엔진 소스가 바뀌었는데 지문이 같으면 각 arm이 자기 엔진을 읽었다는 근거가 없으므로 계속 실패한다.
+            for changed in (True, None):
+                arguments = {} if changed is None else {"engine_sources_changed": changed}
+                with self.subTest(changed=changed), self.assertRaisesRegex(probe.DiagnosticError, "semantic-engine-did-not-change"):
+                    probe.compare_semantic_outputs(outputs, {}, **arguments)
+            (outputs["candidate"] / "raw-facts.json").write_text(json.dumps({**facts, "engine": "b" * 64}))
+            report = {}
+            probe.compare_semantic_outputs(outputs, report, engine_sources_changed=False)
+            self.assertTrue(report["semantic"]["enginesDiffer"])
+            self.assertNotIn("same-engine control", report["semantic"]["engineScope"])
+
+    def test_semantic_oracle_reads_the_engine_source_change_against_the_baseline(self):
+        facts = {"format": "class-facts-v10-payload-sha256", "engine": "a" * 64, "payloads": {"c" * 64: "d" * 64}}
+        graphs = {name: {"bytes": 100, "sha256": "e" * 64} for name in ("json", "ndjson")}
+        def execute(arguments, cwd, env, **kwargs):
+            if kwargs.get("phase") == "semantic-oracle":
+                output = Path(arguments[4])
+                output.mkdir()
+                (output / "raw-facts.json").write_text(json.dumps(facts))
+                (output / "graphs.json").write_text(json.dumps(graphs))
+            return {"phase": kwargs.get("phase", "child"), "exit": 0, "stdout": b"{}", "stderr": b"", "wallNanos": 1, "rss": {}}
+        for changed in (False, True):
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as temporary:
+                work = Path(temporary)
+                distributions = {arm: work / arm for arm in ("baseline", "candidate")}
+                calls = []
+                def engine_change(repo, baseline, env):
+                    calls.append(baseline)
+                    return changed
+                with mock.patch.object(probe, "successful", side_effect=execute), mock.patch.object(
+                        probe, "engine_sources_changed", side_effect=engine_change):
+                    report = {}
+                    if changed:
+                        with self.assertRaisesRegex(probe.DiagnosticError, "semantic-engine-did-not-change"):
+                            probe.semantic_oracle(ROOT, distributions, [work / "classes"], work, {}, work, report,
+                                                  probe.RawStreams(work / "raw"))
+                    else:
+                        probe.semantic_oracle(ROOT, distributions, [work / "classes"], work, {}, work, report,
+                                              probe.RawStreams(work / "raw"))
+                        self.assertFalse(report["semantic"]["enginesDiffer"])
+                self.assertEqual([probe.BASELINE], calls)
+
     def test_exact_dead_pair_rejects_an_added_diagnostic(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

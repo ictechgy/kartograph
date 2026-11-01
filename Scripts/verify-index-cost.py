@@ -855,6 +855,18 @@ def source_identity(repo, ref, env):
     return {"commit": commit, "tree": tree}
 
 
+# cache 엔진 지문(index의 CacheIdentity)을 이루는 index·core 구현과 그 build script다. 지문이 같을 때만 쓰므로
+# 의존성 버전처럼 엔진 jar 바이트를 바꾸는 변경은 지문 차이로 먼저 드러난다. test·다른 module은 엔진이 아니다.
+ENGINE_SOURCE_PATHS = ("core/build.gradle.kts", "core/src/main", "index/build.gradle.kts", "index/src/main")
+
+
+def engine_sources_changed(repo, baseline, env):
+    """BASELINE과 후보 HEAD 사이에 cache 엔진을 이루는 소스나 build script가 바뀌었는지 Git tree로 본다."""
+    changed = successful(["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only",
+                          baseline, "HEAD", "--", *ENGINE_SOURCE_PATHS], repo, env, phase="engine-source-diff")
+    return changed["stdout"] != b""
+
+
 def require_baseline_source(repo, source, baseline, env):
     """보조 baseline이 원본의 실행 소스·빌드 스크립트를 바꾸지 않았는지 Git tree로 확인한다."""
     changed = successful(["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only",
@@ -1144,8 +1156,13 @@ def compile_probe(repo, distribution, destination, java_home, env):
     return str(destination) + os.pathsep + str(distribution / "lib/*")
 
 
-def compare_semantic_outputs(outputs, report):
-    """engine 지문은 보존하고 v10 raw payload와 두 전체 graph 형식의 바이트를 비교한다."""
+def compare_semantic_outputs(outputs, report, engine_sources_changed=True):
+    """engine 지문은 보존하고 v10 raw payload와 두 전체 graph 형식의 바이트를 비교한다.
+
+    baseline이 후보와 같은 엔진이면(index·core 소스와 build script가 BASELINE과 같음) 지문이 같은 것이 정상이다.
+    그때는 교차 엔진 동등성을 관측하지 못한 same-engine control로 기록하고, 엔진 소스가 바뀌었는데 지문이 같으면
+    각 arm이 자기 엔진을 읽었다는 근거가 없으므로 계속 실패한다.
+    """
     records, payloads, graphs = {}, {}, {}
     for arm, directory in outputs.items():
         files = {}
@@ -1181,14 +1198,17 @@ def compare_semantic_outputs(outputs, report):
         records[arm] = {"engine": document["engine"], "entries": len(payloads[arm]), "files": files, "graphs": graph}
     left, right = records["baseline"], records["candidate"]
     equal_graphs = graphs["baseline"] == graphs["candidate"]
+    same_engine = left["engine"] == right["engine"]
     report["semantic"] = {"scope": "non-timed-full-graph-JSON-NDJSON-and-v10-raw-payload; graph-bytes-not-retained",
                           "arms": records, "graphsEqual": equal_graphs,
                           "rawPayloadsEqual": payloads["baseline"] == payloads["candidate"],
-                          "enginesDiffer": left["engine"] != right["engine"],
-                          "engineScope": "recorded separately; implementation JAR identities change; each cache consumed by its own reader"}
+                          "enginesDiffer": not same_engine, "engineSourcesChanged": engine_sources_changed,
+                          "engineScope": ("same-engine control: index/core sources and build scripts equal BASELINE; "
+                                          "cross-engine equivalence not exercised") if same_engine and not engine_sources_changed
+                          else "recorded separately; implementation JAR identities change; each cache consumed by its own reader"}
     if not equal_graphs or payloads["baseline"] != payloads["candidate"]:
         raise DiagnosticError("semantic-graph-or-raw-payload-mismatch")
-    if left["engine"] == right["engine"]:
+    if same_engine and engine_sources_changed:
         raise DiagnosticError("semantic-engine-did-not-change")
 
 
@@ -1208,7 +1228,7 @@ def semantic_oracle(repo, distributions, roots, java_home, env, work, report, ra
             raise DiagnosticError("semantic-facts-bound")
         raw.retain("semantic-facts", 1, arm,
                    {"stdout": (outputs[arm] / "raw-facts.json").read_bytes(), "stderr": result["stdout"]})
-    compare_semantic_outputs(outputs, report)
+    compare_semantic_outputs(outputs, report, engine_sources_changed(repo, BASELINE, env))
 
 
 def summarize_jfr(data):
