@@ -22,6 +22,8 @@
 - `dead` reports in every format add the `DEPENDENCY_INJECTION_OWNERS` limitation: owners of supported
   DI annotations, such as classes with only an `@Inject` constructor, stay conservative roots and are
   not reported even when no generated component requests them. Retention and findings are unchanged.
+- README documents the fixed `dead` report scope: types, file-facade top-level functions and opt-in
+  private members, never unused public/protected/internal members of reachable classes.
 
 ### Added
 

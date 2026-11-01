@@ -274,6 +274,8 @@ Scripts/verify-release-readiness.sh # two clean builds, never publishes
 
 A finding, including `unreachable`, is a fact about the input graph you supplied. **It never says any code is safe to delete.** Reflection, JNI, dynamic registration, missing variants or classpaths, and stale build outputs can all change the result. Before changing code, review `--explain`, the runtime paths, and that variant's tests. The full boundaries are in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). How local inputs are handled, and what to review before publishing reports, is in [`SECURITY.md`](SECURITY.md).
 
+`dead` reports a fixed scope. It lists unreachable types (classes, interfaces, objects, enums, and annotation classes) and non-private top-level functions of Kotlin file facades; inline functions, property accessors, compile-time constants, native methods, launcher `main`, and synthesized declarations are excluded. `--include-private-members` adds private members of reachable classes and private top-level functions. Unused public, protected, or internal members of a reachable class are never reported. Owners of compile-time constants and of supported DI annotations, such as a class with only an `@Inject` constructor, stay retained; the `INLINE_CONSTANT_REFERENCES` and `DEPENDENCY_INJECTION_OWNERS` limitations say so in every report.
+
 | Document | Contents |
 |---|---|
 | [`docs/PRD.md`](docs/PRD.md) | What, for whom, how far, and what it will not do |

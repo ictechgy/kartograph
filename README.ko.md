@@ -269,6 +269,8 @@ Scripts/verify-release-readiness.sh # clean build 두 번, publish하지 않음
 
 kartograph의 finding과 `unreachable`은 주어진 입력 그래프에 대한 사실이다. **어떤 코드도 안전하게 삭제할 수 있다고 말하지 않는다.** reflection, JNI, 동적 등록, 누락된 variant/classpath, stale build output은 결과를 바꿀 수 있다. 코드를 바꾸기 전에 `--explain`, runtime 경로, 해당 variant의 테스트를 검토한다. 전체 경계는 [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md)에, 로컬 입력 처리와 report 공개 전 주의점은 [`SECURITY.md`](SECURITY.md)에 있다.
 
+`dead`의 보고 범위는 고정돼 있다. 도달 불가 타입(class, interface, object, enum, annotation class)과 Kotlin file facade의 private이 아닌 top-level 함수를 보고하며, inline 함수·property 접근자·compile-time constant·native method·launcher `main`·합성 선언은 제외한다. `--include-private-members`는 reachable class의 private member와 private top-level 함수를 더한다. reachable class의 미사용 public·protected·internal member는 보고하지 않는다. compile-time constant의 owner와 `@Inject` 생성자만 있는 class 같은 지원 DI annotation의 owner는 보존되며, 모든 report의 `INLINE_CONSTANT_REFERENCES`·`DEPENDENCY_INJECTION_OWNERS` 한계가 이를 알린다.
+
 | 문서 | 내용 |
 |---|---|
 | [`docs/PRD.md`](docs/PRD.md) | 무엇을, 누구를 위해, 어디까지, 무엇을 하지 않을지 |
