@@ -20,6 +20,7 @@ import stat
 import sys
 import tempfile
 import time
+from typing import Callable, NoReturn
 
 HERE = Path(__file__).resolve().parent
 SPEC = importlib.util.spec_from_file_location("runtime_supervisor", HERE / "verify-index-cost.py")
@@ -33,8 +34,15 @@ EVENTS = ("jdk.ExecutionSample", "jdk.NativeMethodSample", "jdk.Compilation", "j
 INTERRUPTED = False
 
 
-def fail(reason):
+def fail(reason) -> NoReturn:
     raise p.DiagnosticError(reason)
+
+
+def affinity_cpu_count():
+    affinity: Callable[[int], set[int]] | None = getattr(os, "sched_getaffinity", None)
+    if not callable(affinity):
+        fail("required-linux-runner-unavailable")
+    return len(affinity(0))
 
 
 def canonical(value):
@@ -117,10 +125,13 @@ class Observer:
         if self.fd is None:
             self.fd = os.open("/proc/" + str(pid), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
             if not terminal:
+                prlimit: Callable[..., tuple[int, int]] | None = getattr(resource, "prlimit", None)
+                if not callable(prlimit):
+                    fail("required-linux-runner-unavailable")
                 for kind, maximum in ((resource.RLIMIT_CPU, 120), (resource.RLIMIT_FSIZE, 32 * MIB)):
-                    _, hard = resource.prlimit(pid, kind)
+                    _, hard = prlimit(pid, kind)
                     bounded = maximum if hard == resource.RLIM_INFINITY else min(maximum, hard)
-                    resource.prlimit(pid, kind, (bounded, bounded))
+                    prlimit(pid, kind, (bounded, bounded))
         if now < self.next and not terminal:
             return
         self.next = now + 50_000_000
@@ -606,7 +617,7 @@ def main(argv=None):
             fail("unreviewed-target")
         if any(os.environ.get(k) for k in ("CLASSPATH", "JAVA_OPTS", "KARTOGRAPH_OPTS", "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS")):
             fail("injected-java-options")
-        report["host"]["affinityCpuCount"] = len(os.sched_getaffinity(0))
+        report["host"]["affinityCpuCount"] = affinity_cpu_count()
         if report["host"]["affinityCpuCount"] != 4:
             fail("original-runner-cpu-count-mismatch")
         for key in ("ImageOS", "ImageVersion"):

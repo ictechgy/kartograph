@@ -23,6 +23,7 @@ import signal
 import struct
 import sys
 import time
+from typing import NoReturn
 import xml.etree.ElementTree as ET
 
 HERE = Path(__file__).resolve().parent
@@ -38,35 +39,39 @@ EVENTS = ("jdk.Compilation", "jdk.CompilationFailure", "jdk.Deoptimization", "jd
 MAX_EVENTS = 100000
 
 
+def fail(reason) -> NoReturn:
+    raise p.DiagnosticError(reason)
+
+
 def boolean(value):
     if type(value) is not bool:
-        r.fail("invalid-jit-boolean")
+        fail("invalid-jit-boolean")
     return value
 
 
 def timestamp(value):
     if not isinstance(value, str):
-        r.fail("invalid-jit-timestamp")
+        fail("invalid-jit-timestamp")
     match = re.fullmatch(r"(20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?(Z|[+-]\d\d:\d\d)", value)
     if not match:
-        r.fail("invalid-jit-timestamp")
+        fail("invalid-jit-timestamp")
     zone = "+00:00" if match[3] == "Z" else match[3]
     try:
         seconds = int(datetime.datetime.fromisoformat(match[1] + zone).timestamp())
     except ValueError:
-        r.fail("invalid-jit-timestamp")
+        fail("invalid-jit-timestamp")
     return seconds * 1_000_000_000 + int((match[2] or "").ljust(9, "0"))
 
 
 def token(value, maximum=80):
     if not isinstance(value, str) or not 0 < len(value) <= maximum or not re.fullmatch(r"[A-Za-z0-9_$ .:+<>/-]+", value):
-        r.fail("invalid-jit-token")
+        fail("invalid-jit-token")
     return value
 
 
 def signed(value, lower=-1, upper=2**31 - 1):
     if type(value) is not int or not lower <= value <= upper:
-        r.fail("invalid-jit-signed-number")
+        fail("invalid-jit-signed-number")
     return value
 
 
@@ -77,7 +82,7 @@ def method(value):
     descriptor = value.get("descriptor")
     if (not isinstance(descriptor, str) or not 0 < len(descriptor) <= 2048
             or not re.fullmatch(r"[A-Za-z0-9_$/;()\[<>-]+", descriptor)):
-        r.fail("invalid-jit-descriptor")
+        fail("invalid-jit-descriptor")
     # 허용한 런타임/공개 제품 패키지 외의 descriptor 이름은 보존하지 않는다.
     for owner in re.findall(r"L([^;]+);", descriptor):
         if r.method_label({"type": {"name": owner}, "name": "x"}) == "<unclassified>":
@@ -89,44 +94,44 @@ def thread(value):
     if value is None:
         return {"osThreadId": None, "role": "unknown"}
     if not isinstance(value, dict):
-        r.fail("invalid-jit-thread")
+        fail("invalid-jit-thread")
     name = value.get("javaName") or value.get("osName") or ""
     if not isinstance(name, str) or len(name) > 256:
-        r.fail("invalid-jit-thread")
+        fail("invalid-jit-thread")
     return {"osThreadId": r.number(value["osThreadId"], 2**31 - 1), "role": r.role(name)}
 
 
 def frame_type(value):
     if value not in ("Interpreted", "JIT compiled", "Inlined", "Native", "C1 compiled", "C2 compiled"):
-        r.fail("unknown-jfr-frame-type")
+        fail("unknown-jfr-frame-type")
     return value
 
 
 def chunk_coverage(data):
     """완료된 단일 dumponexit recording의 모든 chunk와 종료 표지를 검사한다."""
     if not 68 <= len(data) <= 32 * MIB:
-        r.fail("jit-recording-size-limit")
+        fail("jit-recording-size-limit")
     chunks, offset = [], 0
     while offset < len(data):
         if len(chunks) >= 64 or len(data) - offset < 68:
-            r.fail("invalid-jfr-chunk-header")
+            fail("invalid-jfr-chunk-header")
         magic, major, minor, size, pool, metadata, start, duration, ticks, frequency, features = struct.unpack_from(
             ">4sHHQQQQQQQI", data, offset)
         if (magic != b"FLR\x00" or major != 2 or minor != 1 or not 68 <= size <= len(data) - offset
                 or not 68 <= metadata < size or not 0 <= pool < size or frequency <= 0
                 or not 0 <= duration <= 130_000_000_000):
-            r.fail("invalid-jfr-chunk-header")
+            fail("invalid-jfr-chunk-header")
         state, flags = data[offset + 64], data[offset + 67]
         if state != 0:
-            r.fail("jfr-chunk-not-finalized")
+            fail("jfr-chunk-not-finalized")
         chunks.append({"startNs": start, "endNs": start + duration, "bytes": size,
                        "fileState": state, "flags": flags, "headerFlagsWord": features,
                        "finalChunk": bool(flags & 2)})
         offset += size
     if offset != len(data):
-        r.fail("truncated-jfr-chunk")
+        fail("truncated-jfr-chunk")
     if not chunks[-1]["finalChunk"]:
-        r.fail("jfr-terminal-chunk-not-final")
+        fail("jfr-terminal-chunk-not-final")
     return chunks
 
 
@@ -167,26 +172,27 @@ def expected_settings(config):
 def normalize_setting(value):
     if value in ("true", "false", "everyChunk", "beginChunk", "endChunk"):
         return value
-    if isinstance(value, str) and re.fullmatch(r"[0-9]{1,8} ?(?:ns|us|ms|s)", value):
-        count, unit = re.fullmatch(r"([0-9]+) ?(ns|us|ms|s)", value).groups()
+    match = re.fullmatch(r"([0-9]{1,8}) ?(ns|us|ms|s)", value) if isinstance(value, str) else None
+    if match:
+        count, unit = match.groups()
         return str(int(count) * {"ns": 1, "us": 1000, "ms": 1000000, "s": 1000000000}[unit]) + "ns"
-    r.fail("invalid-active-setting")
+    fail("invalid-active-setting")
 
 
 def sanitize(document, ids, settings, chunks):
     events = document.get("recording", {}).get("events")
     if not isinstance(events, list) or not events or len(events) > MAX_EVENTS:
-        r.fail("jit-event-count-limit")
+        fail("jit-event-count-limit")
     intervals = interval_union(chunks)
     origin, end = intervals[0][0], intervals[-1][1]
     ledger, counts, pauses, active, recordings = [], collections.Counter(), [], {}, []
     for event in events:
         kind, values = event.get("type"), event.get("values")
         if kind not in EVENTS or not isinstance(values, dict):
-            r.fail("unexpected-jit-event")
+            fail("unexpected-jit-event")
         at = timestamp(values["startTime"])
         if not any(low <= at <= high for low, high in intervals):
-            r.fail("jfr-event-outside-chunk-coverage")
+            fail("jfr-event-outside-chunk-coverage")
         row = {"event": kind, "atNs": at - origin}
         counts[kind] += 1
         if kind in ("jdk.Compilation", "jdk.Deoptimization", "jdk.CompilationFailure"):
@@ -194,7 +200,7 @@ def sanitize(document, ids, settings, chunks):
             if kind != "jdk.CompilationFailure":
                 compiler = values["compiler"]
                 if compiler not in ("c1", "c2", "jvmci"):
-                    r.fail("unknown-jit-compiler")
+                    fail("unknown-jit-compiler")
                 row.update(compiler=compiler, method=method(values["method"]))
             if kind == "jdk.Compilation":
                 duration = r.duration(values["duration"])
@@ -211,7 +217,7 @@ def sanitize(document, ids, settings, chunks):
             stack = values.get("stackTrace") or {}
             frames = stack.get("frames", [])
             if not isinstance(frames, list) or len(frames) > 32:
-                r.fail("jit-stack-limit")
+                fail("jit-stack-limit")
             row.update(thread=thread(values.get("sampledThread")), truncated=boolean(stack.get("truncated", False)))
             row["frames"] = [{"method": method(frame.get("method")), "type": frame_type(frame["type"]),
                               "bci": signed(frame.get("bytecodeIndex", -1))} for frame in frames]
@@ -221,7 +227,7 @@ def sanitize(document, ids, settings, chunks):
             for field in (("user", "system") if kind == "jdk.ThreadCPULoad" else ("jvmUser", "jvmSystem", "machineTotal")):
                 value = values[field]
                 if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
-                    r.fail("invalid-jit-cpu-load")
+                    fail("invalid-jit-cpu-load")
                 row[field] = value
         elif kind == "jdk.GCPhasePause":
             elapsed = r.duration(values["duration"])
@@ -242,29 +248,29 @@ def sanitize(document, ids, settings, chunks):
             setting = normalize_setting(values["value"])
             key = (event_name, name)
             if key in active and active[key] != setting:
-                r.fail("active-setting-changed")
+                fail("active-setting-changed")
             active[key] = setting
             row.update(targetEvent=event_name, setting=name, value=setting)
         elif kind == "jdk.ActiveRecording":
             if values["maxSize"] != 0 or values["maxAge"] not in ("PT0S", "0 s", 0):
-                r.fail("circular-or-age-limited-recording")
+                fail("circular-or-age-limited-recording")
             start = timestamp(values["recordingStart"])
             # 첫 chunk가 recording 시작 이후이면 앞부분이 보존되지 않은 것이다.
             if start + 1_000_000 < origin or start > end:
-                r.fail("recording-head-coverage-lost")
+                fail("recording-head-coverage-lost")
             row.update(recordingStartRelativeNs=start - origin, maxSize=0, maxAge=0)
             recordings.append(row)
         else:
             row.update(amount=r.number(values["amount"]), total=r.number(values["total"]))
             if row["amount"] or row["total"]:
-                r.fail("recording-data-loss")
+                fail("recording-data-loss")
         ledger.append(row)
     for event_name, requirements in settings.items():
         for name, value in requirements.items():
             if active.get((event_name, name)) != normalize_setting(value):
-                r.fail("required-active-setting-not-observed")
+                fail("required-active-setting-not-observed")
     if not recordings:
-        r.fail("active-recording-not-observed")
+        fail("active-recording-not-observed")
     return ledger, {"eventCounts": dict(counts), "gcPauseUnionNs": r.pause_union(pauses),
                     "coverage": {"chunkCount": len(chunks), "durationNs": end - origin,
                                  "chunkStartEpochNs": origin, "chunkEndEpochNs": end,
@@ -295,12 +301,12 @@ class TimelineObserver(r.Observer):
         super().sample(pid, terminal)
         if self.collect and self.samples != before:
             if len(self.timeline) >= 2402:
-                r.fail("jit-proc-timeline-limit")
+                fail("jit-proc-timeline-limit")
             compiler = [{"osThreadId": int(tid), "startTicks": epoch, "counters": values}
                         for (tid, epoch), (kind, values) in sorted(self.rows.items()) if kind == "compiler"]
             self.cells += len(compiler)
             if len(compiler) > 32 or self.cells > 10000:
-                r.fail("jit-proc-timeline-cell-limit")
+                fail("jit-proc-timeline-cell-limit")
             self.timeline.append({"atNs": time.monotonic_ns() - self.start, "compilerThreads": compiler})
 
     def report(self):
@@ -322,7 +328,7 @@ def checked(arguments, cwd, env, deadline, private, phase, collect=False):
     try:
         remaining = min(120, deadline - time.monotonic())
         if remaining < 1:
-            r.fail("controller-deadline")
+            fail("controller-deadline")
         result = p.run(arguments, cwd, env, timeout=remaining, phase=phase, observer=observer)
         if result["rss"].get("status") != "observed" or result["rss"].get("peakBytes", 0) > 3 * 1024 * MIB:
             raise p.DiagnosticError("owned-final-rss-limit-or-unavailable", p.summary(result))
@@ -352,15 +358,15 @@ public class JitEventIds {
 
 def event_ids(data):
     if len(data) > 128 * 1024:
-        r.fail("event-type-id-limit")
+        fail("event-type-id-limit")
     result = {}
     for line in data.decode("ascii").splitlines():
         match = re.fullmatch(r"([0-9]{1,12}) (jdk\.[A-Za-z0-9_]{1,80})", line)
         if not match or int(match[1]) in result:
-            r.fail("invalid-event-type-id")
+            fail("invalid-event-type-id")
         result[int(match[1])] = match[2]
     if not set(EVENTS).issubset(set(result.values())):
-        r.fail("required-event-type-id-absent")
+        fail("required-event-type-id-absent")
     return result
 
 
@@ -373,7 +379,7 @@ def run_pair(arguments, project, env, deadline, private, work, report):
     profiled, observations = checked(arguments, project, profile_env, deadline, private, "profile-dead-private", True)
     report["profile"] = {"process": p.summary(profiled), "observations": observations}
     if not p.equivalent(ordinary, profiled):
-        r.fail("profiled-cli-output-mismatch")
+        fail("profiled-cli-output-mismatch")
     report["exactOutputEqual"] = True
     after = resource.getrusage(resource.RUSAGE_SELF)
     report["controllerCPUIncludingSampling"] = {"userSeconds": after.ru_utime - before.ru_utime,
@@ -399,23 +405,23 @@ def capture(repo, output, private, reference, report, deadline):
     observed = r.identities(repo, frozen, project, distribution, jdk)
     report["observedIdentity"] = observed
     if observed != reference["canonicalSha256"] or r.seal(p.root_inventory(repo)) != observed["roots"]:
-        r.fail("original-linux-identity-mismatch")
+        fail("original-linux-identity-mismatch")
     for directory, expected in ((repo, [reference["origin"]["checkout"], reference["origin"]["tree"]]), (HERE.parent, None)):
         source, _ = checked(["git", "rev-parse", "HEAD", "HEAD^{tree}"], directory, env, deadline, private, "source-identity")
         identity = source["stdout"].decode().splitlines()
         if (expected is not None and identity != expected) or len(identity) != 2:
-            r.fail("source-identity-mismatch")
+            fail("source-identity-mismatch")
         if expected is None:
             report["harnessSource"] = identity
             if identity[0] != os.environ.get("GITHUB_SHA"):
-                r.fail("harness-source-mismatch")
+                fail("harness-source-mismatch")
         clean, _ = checked(["git", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "--untracked-files=no"],
                            directory, dict(env, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1"), deadline, private, "source-cleanliness")
         if clean["stdout"]:
-            r.fail("tracked-source-dirty")
+            fail("tracked-source-dirty")
     metadata, _ = checked([jdk / "bin/jfr", "metadata", "--events", ",".join(EVENTS)], private, env, deadline, private, "jfr-metadata")
     if set(re.findall(r'@Name\("([^"]+)"\)', metadata["stdout"].decode())) != set(EVENTS):
-        r.fail("required-jfr-event-unavailable")
+        fail("required-jfr-event-unavailable")
     report["metadataSha256"] = p.digest(metadata["stdout"])
     jfr_tool = r.canonical(p.file_record(jdk / "bin/jfr", "bin/jfr"))
     report["jfrTool"] = jfr_tool
@@ -425,7 +431,7 @@ def capture(repo, output, private, reference, report, deadline):
     report["configurationSha256"] = p.digest(config)
     (work / "capture.jfc").write_bytes(config)
     if not re.fullmatch(r"/[A-Za-z0-9_./-]+", str(work)):
-        r.fail("unsafe-jfr-option-path")
+        fail("unsafe-jfr-option-path")
     roots = [frozen / module / "build/classes/kotlin/main" for module in p.MODULES]
     commands = dict(p.cli_commands(distribution / "bin/kartograph", roots, project))
     arguments = commands["dead_private"]
@@ -433,7 +439,7 @@ def capture(repo, output, private, reference, report, deadline):
     run_pair(arguments, project, env, deadline, private, work, report)
     recording = work / "capture.jfr"
     if recording.is_symlink() or not 0 < recording.stat().st_size <= 32 * MIB:
-        r.fail("jit-recording-size-limit")
+        fail("jit-recording-size-limit")
     raw = recording.read_bytes()
     chunks = chunk_coverage(raw)
     report["privateRecording"] = {"bytes": len(raw), "sha256": p.digest(raw), "published": False}
@@ -448,27 +454,27 @@ def capture(repo, output, private, reference, report, deadline):
         if match and int(match[2]):
             counts[match[1]] = int(match[2])
     if not counts or set(counts) - {*EVENTS, "jdk.CheckPoint", "jdk.Metadata"}:
-        r.fail("unexpected-recording-event")
+        fail("unexpected-recording-event")
     printed, _ = checked([jdk / "bin/jfr", "print", "--json", "--stack-depth", "32", "--events", ",".join(EVENTS), recording],
                          private, env, deadline, private, "decode-recording")
     ledger, summary = sanitize(json.loads(printed["stdout"]), ids, expected_settings(config), chunks)
     child_coverage(summary, report["profile"]["observations"])
     if any(summary["eventCounts"].get(name, 0) != counts.get(name, 0) for name in EVENTS):
-        r.fail("recording-event-count-mismatch")
+        fail("recording-event-count-mismatch")
     data = r.encoded(ledger)
     if len(data) > 16 * MIB:
-        r.fail("sanitized-ledger-limit")
+        fail("sanitized-ledger-limit")
     compressed = gzip.compress(data, mtime=0)
     if len(compressed) > 4 * MIB:
-        r.fail("sanitized-gzip-limit")
+        fail("sanitized-gzip-limit")
     (output / "events-dead-private.json.gz").write_bytes(compressed)
     report.update(jfr=summary, ledger={"path": "events-dead-private.json.gz", "sha256": p.digest(compressed), "bytes": len(compressed)})
     report["hostAfter"] = r.host_snapshot()
     if observed != r.identities(repo, frozen, project, distribution, jdk) or r.seal(p.root_inventory(repo)) != observed["roots"]:
-        r.fail("identity-changed-during-capture")
+        fail("identity-changed-during-capture")
     report["identityUnchanged"] = True
     if jfr_tool != r.canonical(p.file_record(jdk / "bin/jfr", "bin/jfr")):
-        r.fail("jfr-tool-changed")
+        fail("jfr-tool-changed")
 
 
 def main(argv=None):
@@ -489,19 +495,19 @@ def main(argv=None):
               "hypotheses": ["late OSR/recompilation explains compiler CPU", "GC or scheduling dominates wall cost"],
               "falsification": ["compilations short/early or not OSR lowers first hypothesis", "small GC/scheduling counters lower second; incomplete observations remain explicit"]}
     def interrupted(signum, frame):
-        r.INTERRUPTED = True
+        setattr(r, "INTERRUPTED", True)
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGINT, interrupted)
     try:
         if (sys.platform != "linux" or os.uname().machine != "x86_64" or not hasattr(resource, "prlimit")
                 or not os.environ.get("RUNNER_TEMP") or not os.environ.get("JAVA_HOME")):
-            r.fail("required-linux-runner-unavailable")
+            fail("required-linux-runner-unavailable")
         if args.target_sha != reference["origin"]["checkout"]:
-            r.fail("unreviewed-target")
+            fail("unreviewed-target")
         if any(os.environ.get(k) for k in ("CLASSPATH", "JAVA_OPTS", "KARTOGRAPH_OPTS", "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS")):
-            r.fail("injected-java-options")
-        if len(os.sched_getaffinity(0)) != 4:
-            r.fail("original-runner-cpu-count-mismatch")
+            fail("injected-java-options")
+        if r.affinity_cpu_count() != 4:
+            fail("original-runner-cpu-count-mismatch")
         report["harnessFiles"] = {name: p.digest((HERE / name).read_bytes()) for name in
             ("verify-jit-attribution.py", "JitAttributionCapture.jfc", "verify-linux-runtime-cost.py", "verify-index-cost.py", "LinuxRuntimeReference.json")}
         r.private_workspace(output, report, lambda private: capture(args.repo_root.resolve(strict=True), output, private, reference, report, time.monotonic() + 420))

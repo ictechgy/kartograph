@@ -233,8 +233,11 @@ class RuntimeCostTest(unittest.TestCase):
         self.assertEqual({"stage": "sample"}, caught.exception.receipt["observerFailure"])
         self.assertEqual({"reason": "observer-secondary", "receipt": {"stage": "reaped"}},
                          caught.exception.receipt["observerReapFailure"])
+        pid = observation.pid
+        if not isinstance(pid, int):
+            self.fail("observer did not receive the owned child pid")
         with self.assertRaises(ChildProcessError):
-            os.waitpid(observation.pid, os.WNOHANG)
+            os.waitpid(pid, os.WNOHANG)
 
     def test_proc_sampler_tracks_reused_tid_epoch_and_disappearing_thread(self):
         def stat_text(epoch, user=12):
