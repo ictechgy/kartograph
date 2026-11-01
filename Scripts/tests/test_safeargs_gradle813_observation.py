@@ -10,6 +10,8 @@ from unittest.mock import patch
 import zipfile
 
 SPEC = importlib.util.spec_from_file_location("gradle813", Path(__file__).parents[1] / "observe-safeargs-gradle813.py")
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("test module specification with a loader is required")
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
@@ -48,6 +50,11 @@ class Gradle813ObservationTest(unittest.TestCase):
         MODULE.validate_observation(self.observation, self.home, "warm")
         with self.assertRaises(ValueError):
             MODULE.validate_observation(self.observation, self.home, "cold")
+
+    def test_non_object_observation_has_a_bounded_domain_error(self):
+        for value in (None, False, 1, "bounded", []):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "observation must be a JSON object"):
+                MODULE.validate_observation(value, self.home, "cold")
 
     def test_archive_parent_and_new_unpack_destination_are_separate(self):
         # workflow의 실제 디렉터리 순서를 작은 ZIP으로 실행한다. 다운로드/Gradle 실행은 하지 않는다.

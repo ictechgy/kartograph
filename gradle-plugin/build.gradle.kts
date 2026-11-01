@@ -105,6 +105,23 @@ tasks.jar {
 
 val testKitNativeDirectory = layout.buildDirectory.dir("testkit-native")
 val expectedTestKitNativeDirectory = layout.projectDirectory.asFile.canonicalFile.resolve("build/testkit-native")
+// wrapper 변경이 고정 native fixture의 소비 환경을 바꾸지 않도록 분리한다.
+val safeArgsCurrentGradleVersion = "9.7.1"
+val safeArgsCurrentGradleDirectory = layout.buildDirectory.dir("safeargs-current-gradle")
+val prepareSafeArgsCurrentGradle = if (gradle.gradleVersion == safeArgsCurrentGradleVersion) null else
+    tasks.register<Exec>("prepareSafeArgsCurrentGradle") {
+        val script = rootProject.file("Scripts/prepare-safeargs-current-gradle.py")
+        inputs.files(script, rootProject.file("Scripts/observe-safeargs-gradle813.py"))
+        inputs.property("version", safeArgsCurrentGradleVersion)
+        inputs.property("distributionSha256", "acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a")
+        outputs.dir(safeArgsCurrentGradleDirectory)
+        // 네트워크 준비 출력은 원격 build cache에서 복원하지 않는다.
+        outputs.cacheIf { false }
+        commandLine("python3", script.absolutePath, "--output", safeArgsCurrentGradleDirectory.get().dir("prepared").asFile.absolutePath)
+    }
+val safeArgsCurrentGradleHome = if (gradle.gradleVersion == safeArgsCurrentGradleVersion)
+    requireNotNull(gradle.gradleHomeDir) else
+    safeArgsCurrentGradleDirectory.get().dir("prepared/distribution/gradle-$safeArgsCurrentGradleVersion").asFile
 // worker 수명인 native DLL은 실패한 테스트 뒤에도 worker 종료 후 정리한다.
 val cleanTestKitNativeLibraries = tasks.register<Delete>("cleanTestKitNativeLibraries") {
     delete(testKitNativeDirectory)
@@ -118,6 +135,10 @@ val cleanTestKitNativeLibraries = tasks.register<Delete>("cleanTestKitNativeLibr
 
 // Android 소비 검증은 AGP와 같은 buildscript classloader에서 실제 배포 JAR를 적용한다.
 tasks.test {
+    prepareSafeArgsCurrentGradle?.let { dependsOn(it) }
+    inputs.dir(safeArgsCurrentGradleHome).withPropertyName("safeArgsCurrentGradleDistribution")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("kartograph.test.safeargsCurrentGradleHome", safeArgsCurrentGradleHome.absolutePath)
     val pluginJar = tasks.jar.flatMap { it.archiveFile }
     inputs.file(pluginJar)
     inputs.file(rootProject.file(".kartograph-self.pro")).withPropertyName("selfAnalysisKeepRules")
