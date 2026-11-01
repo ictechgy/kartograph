@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""자체 컴파일 그래프의 분석 불변식(contracts)과 실행 시간(time budget) smoke 게이트를 검증한다."""
+"""자체 컴파일 그래프의 분석 불변식(contracts)과 실행 시간(time budget) smoke 게이트를 검증한다.
+
+--reference-binary를 주면 같은 machine에서 기준 빌드와 교차 측정해 상대 회귀를 판정한다(CI 수용 기준).
+"""
 
 import argparse
 import hashlib
@@ -18,6 +21,21 @@ import threading
 
 
 MODULES = ["core", "index", "analysis", "export", "cli", "gradle-plugin"]
+
+# 예전 CI 수용 기준(명령별 중앙값 5초·합계 20초)은 같은 tree도 runner CPU 종류에 따라 통과/실패가 갈려
+# 판정에서 뺐다. 절대 수치는 계속 보이도록 JSON에 판정하지 않는 기록(recordedBudget)으로만 남긴다.
+RECORDED_COMMAND_BUDGET = 5.0
+RECORDED_TOTAL_BUDGET = 20.0
+# 두 모드 모두 후보에 적용하는 절대 안전 상한(기록 예산의 2배)이다. 같은 runner 상대 비교가 보지 못하는
+# 입력 급증이나 기준·후보 동반 급등 같은 치명적 회귀만 막고, 느린 runner의 정상 결과(최대 약 25초)는 통과시킨다.
+DEFAULT_COMMAND_CAP = 10.0
+DEFAULT_TOTAL_CAP = 40.0
+# 단독 모드의 반복 수는 기존과 같다. 기준 비교는 arm마다 같은 수의 표본이 필요해 라운드를 늘린다.
+STANDALONE_RUNS = 3
+REFERENCE_RUNS = 5
+# 같은 runner A/A 측정의 잡음에서 정한 상대 허용치다(근거: docs/AGENT-WORKFLOW.md).
+DEFAULT_TOTAL_TOLERANCE = 0.05
+DEFAULT_COMMAND_TOLERANCE = 0.15
 
 
 class UsageError(Exception):
@@ -387,7 +405,7 @@ class SmokeDiagnostics:
             raise ObservationUnavailable("invalid-counter")
         return values
 
-    def after_child(self, before, after, run, command):
+    def after_child(self, before, after, run, command, arm=None):
         if before["status"] != "observed" or after["status"] != "observed":
             value = before if before["status"] != "observed" else after
         else:
@@ -396,11 +414,26 @@ class SmokeDiagnostics:
                 value = unavailable("invalid-delta")
             else:
                 value = {"status": "observed", "userSeconds": values[0], "systemSeconds": values[1]}
-        self.document["childCpu"]["observations"].append({"run": run, "command": command, **value})
+        label = {"arm": arm} if arm is not None else {}
+        self.document["childCpu"]["observations"].append({"run": run, "command": command, **label, **value})
 
     def finish(self, env):
         self.document["after"] = observe(context_snapshot, env)
         return self.document
+
+
+class ArmDiagnostics:
+    """기준 비교 모드에서 child CPU 관측 행에 arm 이름을 붙인다. 관측 범위와 판정은 그대로다."""
+
+    def __init__(self, diagnostics, arm):
+        self.diagnostics = diagnostics
+        self.arm = arm
+
+    def cpu_snapshot(self):
+        return self.diagnostics.cpu_snapshot()
+
+    def after_child(self, before, after, run, command):
+        self.diagnostics.after_child(before, after, run, command, self.arm)
 
 
 # 명령마다 결과에서 세는 수치 필드. 반복마다 값이 달라지면 분석이 비결정적이라는 뜻이다.
@@ -592,6 +625,84 @@ def summarize_measurements(samples, counters, contract_failures):
     return measurements
 
 
+def input_problem(binary, repo_root):
+    """측정 전에 실행 파일과 자기 분석 입력을 확인하고 첫 문제를 기존 문구로 돌려준다(없으면 None)."""
+    if not binary.is_file() or not os.access(binary, os.X_OK):
+        return f"kartograph binary not executable at {binary}"
+    for root in [repo_root / module / "build/classes/kotlin/main" for module in MODULES]:
+        if not root.is_dir():
+            return f"missing compiled class root: {root}"
+        if not any(root.rglob("*.class")):
+            return f"no class files found in {root}"
+    self_pro = repo_root / ".kartograph-self.pro"
+    if not self_pro.is_file():
+        return f"missing keep rules file: {self_pro}"
+    rules_yml = repo_root / ".kartograph.yml"
+    if not rules_yml.is_file():
+        return f"missing layer rules configuration: {rules_yml}"
+    return None
+
+
+def self_analysis_project(project_dir):
+    """자체 분석용 빈 manifest/resource 입력을 소유한 임시 디렉터리 안에 만든다."""
+    manifest_path = project_dir / "AndroidManifest.xml"
+    manifest_path.write_text(
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.kartograph">\n'
+        '    <application/>\n'
+        '</manifest>\n'
+    )
+    res_dir = project_dir / "res"
+    res_dir.mkdir()
+    return manifest_path, res_dir
+
+
+def analysis_commands(binary, repo_root, project_dir, manifest_path, res_dir):
+    """측정하는 여섯 명령과 계약 종류를 고정 순서로 만든다. 기준 비교에서도 두 arm은 실행 파일만 다르다."""
+    executable = str(binary)
+    class_args = []
+    for module in MODULES:
+        class_args.extend(["--classes", str(repo_root / module / "build/classes/kotlin/main")])
+    dead = [executable, "dead", *class_args, "--project", str(project_dir), "--manifest", str(manifest_path),
+            "--resources", str(res_dir), "--namespace", "dev.kartograph",
+            "--keep-rules", str(repo_root / ".kartograph-self.pro")]
+    return [
+        ("graph", [executable, "graph", *class_args, "--format", "dot"], "node_count"),
+        ("dead", [*dead, "--strict"], "zero_findings"),
+        ("dead_private", [*dead, "--include-private-members", "--strict"], "zero_findings"),
+        ("cycles", [executable, "cycles", *class_args, "--strict"], "zero_cycles"),
+        ("rules", [executable, "rules", *class_args, "--config", str(repo_root / ".kartograph.yml"), "--strict"],
+         "zero_rule_violations"),
+        ("metrics", [executable, "metrics", *class_args], "valid_metrics"),
+    ]
+
+
+def budget_failures(raw_medians, per_command_budget, total_budget, runs):
+    """반올림 전 명령별 중앙값과 그 합을 절대 예산과 비교한다. 경계값이 반올림으로 통과하지 않게 한다."""
+    failures = [
+        f"'{name}' took {median:.3f}s (median of {runs} runs), exceeding budget of {per_command_budget:.3f}s"
+        for name, median in raw_medians.items()
+        if median > per_command_budget
+    ]
+    total_time = sum(raw_medians.values())
+    if total_time > total_budget:
+        failures.append(
+            f"total analysis time was {total_time:.3f}s (sum of per-command medians over {runs} runs), exceeding total budget of {total_budget:.3f}s"
+        )
+    return failures
+
+
+def recorded_budget(arms, runs):
+    """예전 5초/20초 기준과의 비교를 판정 없이 기록한다. 절대 수치가 계속 보이게 하는 관측값이다."""
+    return {
+        "scope": "observation-only; never-used-for-gate-acceptance",
+        "perCommandBudget": RECORDED_COMMAND_BUDGET,
+        "totalBudget": RECORDED_TOTAL_BUDGET,
+        **{arm: {"totalSeconds": round(sum(medians.values()), 3),
+                 "exceeded": budget_failures(medians, RECORDED_COMMAND_BUDGET, RECORDED_TOTAL_BUDGET, runs)}
+           for arm, medians in arms.items()},
+    }
+
+
 def verify_self_analysis(
     binary: Path,
     repo_root: Path,
@@ -599,29 +710,11 @@ def verify_self_analysis(
     total_budget: float,
     warmup: bool = True,
     as_json: bool = False,
-    runs: int = 3,
+    runs: int = STANDALONE_RUNS,
 ):
-    if not binary.is_file() or not os.access(binary, os.X_OK):
-        print(f"error: kartograph binary not executable at {binary}", file=sys.stderr)
-        return 2
-
-    roots = [repo_root / m / "build/classes/kotlin/main" for m in MODULES]
-    for root in roots:
-        if not root.is_dir():
-            print(f"error: missing compiled class root: {root}", file=sys.stderr)
-            return 2
-        if not any(root.rglob("*.class")):
-            print(f"error: no class files found in {root}", file=sys.stderr)
-            return 2
-
-    self_pro = repo_root / ".kartograph-self.pro"
-    if not self_pro.is_file():
-        print(f"error: missing keep rules file: {self_pro}", file=sys.stderr)
-        return 2
-
-    rules_yml = repo_root / ".kartograph.yml"
-    if not rules_yml.is_file():
-        print(f"error: missing layer rules configuration: {rules_yml}", file=sys.stderr)
+    problem = input_problem(binary, repo_root)
+    if problem:
+        print(f"error: {problem}", file=sys.stderr)
         return 2
 
     env = check_java_environment()
@@ -636,25 +729,15 @@ def verify_self_analysis(
     diagnostic_init = observe(SmokeDiagnostics, env) if as_json else None
     diagnostics = diagnostic_init["value"] if diagnostic_init and diagnostic_init["status"] == "observed" else None
 
-    class_args = []
-    for r in roots:
-        class_args.extend(["--classes", str(r)])
-
     with tempfile.TemporaryDirectory(prefix="kartograph-smoke-gate-") as tmpdir:
         project_dir = Path(tmpdir)
-        manifest_path = project_dir / "AndroidManifest.xml"
-        manifest_path.write_text(
-            '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.kartograph">\n'
-            '    <application/>\n'
-            '</manifest>\n'
-        )
-        res_dir = project_dir / "res"
-        res_dir.mkdir()
+        manifest_path, res_dir = self_analysis_project(project_dir)
+        commands = analysis_commands(binary, repo_root, project_dir, manifest_path, res_dir)
 
         if warmup:
             try:
                 subprocess.run(
-                    [str(binary), "graph", *class_args, "--format", "dot"],
+                    commands[0][1],
                     capture_output=True,
                     env=env,
                     timeout=120,
@@ -663,70 +746,6 @@ def verify_self_analysis(
             except subprocess.TimeoutExpired:
                 print("error: warmup run timed out", file=sys.stderr)
                 return 2
-
-        commands = [
-            (
-                "graph",
-                [str(binary), "graph", *class_args, "--format", "dot"],
-                "node_count",
-            ),
-            (
-                "dead",
-                [
-                    str(binary),
-                    "dead",
-                    *class_args,
-                    "--project",
-                    str(project_dir),
-                    "--manifest",
-                    str(manifest_path),
-                    "--resources",
-                    str(res_dir),
-                    "--namespace",
-                    "dev.kartograph",
-                    "--keep-rules",
-                    str(self_pro),
-                    "--strict",
-                ],
-                "zero_findings",
-            ),
-            (
-                "dead_private",
-                [
-                    str(binary),
-                    "dead",
-                    *class_args,
-                    "--project",
-                    str(project_dir),
-                    "--manifest",
-                    str(manifest_path),
-                    "--resources",
-                    str(res_dir),
-                    "--namespace",
-                    "dev.kartograph",
-                    "--keep-rules",
-                    str(self_pro),
-                    "--include-private-members",
-                    "--strict",
-                ],
-                "zero_findings",
-            ),
-            (
-                "cycles",
-                [str(binary), "cycles", *class_args, "--strict"],
-                "zero_cycles",
-            ),
-            (
-                "rules",
-                [str(binary), "rules", *class_args, "--config", str(rules_yml), "--strict"],
-                "zero_rule_violations",
-            ),
-            (
-                "metrics",
-                [str(binary), "metrics", *class_args],
-                "valid_metrics",
-            ),
-        ]
 
         # 한 번의 측정은 GitHub runner 부하에 따라 수백 ms씩 흔들리므로, 명령 묶음을 runs회 반복해
         # 명령별 중앙값으로 판정한다. 계약 검사는 매 반복마다 수행해 약화하지 않는다.
@@ -747,21 +766,14 @@ def verify_self_analysis(
         run_totals = [
             round(sum(samples[name][index] for name in samples), 3) for index in range(runs)
         ]
-        budget_failures = [
-            f"'{name}' took {median:.3f}s (median of {runs} runs), exceeding budget of {per_command_budget:.3f}s"
-            for name, median in raw_medians.items()
-            if median > per_command_budget
-        ]
-        if total_time > total_budget:
-            budget_failures.append(
-                f"total analysis time was {total_time:.3f}s (sum of per-command medians over {runs} runs), exceeding total budget of {total_budget:.3f}s"
-            )
+        budget_problems = budget_failures(raw_medians, per_command_budget, total_budget, runs)
 
-        passed = not contract_failures and not budget_failures
+        passed = not contract_failures and not budget_problems
 
         if as_json:
             result_doc = {
                 "status": "PASS" if passed else "FAIL",
+                "mode": "standalone",
                 "perCommandBudget": per_command_budget,
                 "totalBudget": total_budget,
                 "runs": runs,
@@ -769,7 +781,8 @@ def verify_self_analysis(
                 "runTotals": run_totals,
                 "measurements": measurements,
                 "contractFailures": contract_failures,
-                "budgetFailures": budget_failures,
+                "budgetFailures": budget_problems,
+                "recordedBudget": recorded_budget({"candidate": raw_medians}, runs),
             }
             result_doc["diagnostics"] = {
                 "version": 1,
@@ -791,14 +804,313 @@ def verify_self_analysis(
                     f"  Total analysis time: {total_time:.3f}s (budget: {total_budget:.3f}s; per-run totals: {', '.join(f'{value:.3f}' for value in run_totals)})"
                 )
             else:
-                if contract_failures:
-                    print("contract failures:", file=sys.stderr)
-                    for f in contract_failures:
-                        print(f"  - {f}", file=sys.stderr)
-                if budget_failures:
-                    print("budget failures:", file=sys.stderr)
-                    for f in budget_failures:
-                        print(f"  - {f}", file=sys.stderr)
+                print_failures(contract_failures, budget_problems)
+
+        return 0 if passed else 1
+
+
+def print_failures(contract_failures, budget_problems, relative_problems=()):
+    for title, failures in (("contract failures:", contract_failures), ("budget failures:", budget_problems),
+                            ("relative failures:", relative_problems)):
+        if failures:
+            print(title, file=sys.stderr)
+            for failure in failures:
+                print(f"  - {failure}", file=sys.stderr)
+
+
+class GateAbort(Exception):
+    """기준 비교를 끝까지 판정할 수 없는 실패를 종료 코드와 고정된 사유(kind)로 전달한다."""
+
+    def __init__(self, code, kind, message, **details):
+        super().__init__(kind)
+        self.code = code
+        self.kind = kind
+        self.message = message
+        self.details = details
+
+
+def relative_schedule(rounds, names):
+    """기준 비교의 (라운드, 명령, arm 순서) 목록을 만든다.
+
+    같은 명령의 두 arm을 붙여 실행해 runner 부하 변화가 두 arm에 거의 같이 걸리게 한다. 첫 arm은 명령마다,
+    라운드마다 번갈아 각 라운드가 ABBA 순서가 되므로 위치 효과와 라운드 안의 선형 drift가 상쇄된다.
+    verify-index-cost.py의 paired schedule과 같은 규칙이다.
+    """
+    return [
+        (index, name, ("reference", "candidate") if (index + position) % 2 == 0 else ("candidate", "reference"))
+        for index in range(rounds)
+        for position, name in enumerate(names)
+    ]
+
+
+def reference_child(name, cmd, env, phase, round_index):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=120)
+    except subprocess.TimeoutExpired:
+        raise GateAbort(2, "reference-failed",
+                        f"reference command '{name}' timed out during {phase}; the comparison cannot be judged",
+                        arm="reference", phase=phase, round=round_index, command=name, timedOut=True) from None
+    except OSError as error:
+        # 실행 자체가 안 되는 기준도 판정 불가다. 경로가 섞일 수 있는 원문 대신 예외 종류만 남긴다.
+        raise GateAbort(2, "reference-failed",
+                        f"reference command '{name}' could not be launched ({type(error).__name__}) during {phase}; "
+                        "the comparison cannot be judged",
+                        arm="reference", phase=phase, round=round_index, command=name,
+                        launchError=type(error).__name__) from None
+
+
+def require_reference_success(name, result, phase, round_index):
+    """기준은 판정의 잣대이므로 모든 명령이 0으로 끝나야 한다. 실패를 통과나 단독 판정으로 바꾸지 않는다."""
+    if result.returncode == 0:
+        return
+    print(json.dumps({"arm": "reference", **analysis_failure_receipt(name, result)}, sort_keys=True), file=sys.stderr)
+    raise GateAbort(2, "reference-failed",
+                    f"reference command '{name}' exited with code {result.returncode} during {phase}; "
+                    "the base build cannot be measured on these inputs, so the comparison cannot be judged",
+                    arm="reference", phase=phase, round=round_index, command=name, returncode=result.returncode)
+
+
+def warm_up_arms(arm_commands, env):
+    """측정에서 뺀 warm-up으로 arm마다 여섯 명령을 한 번씩 실행해 실행 파일·입력의 page cache를 채운다.
+
+    기준 실패는 바로 닫는다. 후보 결과는 기존 단독 warm-up처럼 판정하지 않고 측정 라운드의 계약 검사가 판정한다.
+    """
+    for _, name, order in relative_schedule(1, list(arm_commands["candidate"])):
+        for arm in order:
+            cmd = arm_commands[arm][name][0]
+            if arm == "reference":
+                require_reference_success(name, reference_child(name, cmd, env, "warmup", None), "warmup", None)
+                continue
+            try:
+                subprocess.run(cmd, capture_output=True, env=env, timeout=120, check=False)
+            except subprocess.TimeoutExpired:
+                raise GateAbort(2, "candidate-failed", f"candidate warmup command '{name}' timed out",
+                                arm="candidate", phase="warmup", command=name, timedOut=True) from None
+
+
+def measure_reference(name, cmd, env, samples, diagnostics, round_index):
+    """기준 명령 하나의 wall 시간을 후보와 같은 방식(perf_counter로 child 실행만)으로 잰다."""
+    cpu_before = observe(diagnostics.cpu_snapshot) if diagnostics is not None else None
+    started = time.perf_counter()
+    result = reference_child(name, cmd, env, "measurement", round_index)
+    elapsed = time.perf_counter() - started
+    if diagnostics is not None:
+        cpu_after = observe(diagnostics.cpu_snapshot)
+        observe(diagnostics.after_child, cpu_before, cpu_after, len(samples[name]) + 1, name)
+    require_reference_success(name, result, "measurement", round_index)
+    samples[name].append(elapsed)
+
+
+def compare_to_reference(reference, candidate, total_tolerance, command_tolerance):
+    """교차 측정한 표본의 명령별 중앙값으로 후보/기준 비율을 구하고 허용치를 넘은 항목을 실패로 돌려준다.
+
+    합계는 기존 예산과 같은 명령별 중앙값의 합이다. 중앙값을 먼저 구하므로 서로 다른 라운드에 흩어진 단발
+    지연이 합계 비율로 번지지 않는다. 라운드별 쌍 비율(roundRatios)은 기록만 하고 판정에 쓰지 않는다.
+    """
+    reference_medians = {name: statistics.median(values) for name, values in reference.items()}
+    candidate_medians = {name: statistics.median(candidate[name]) for name in reference}
+    if any(not math.isfinite(value) or value <= 0 for value in reference_medians.values()):
+        raise GateAbort(2, "reference-failed", "reference produced a non-positive median duration",
+                        arm="reference", phase="comparison")
+    command_limit = 1 + command_tolerance
+    total_limit = 1 + total_tolerance
+    failures = []
+    commands = {}
+    for name, reference_median in reference_medians.items():
+        ratio = candidate_medians[name] / reference_median
+        commands[name] = {"referenceSeconds": round(reference_median, 3),
+                          "candidateSeconds": round(candidate_medians[name], 3),
+                          "ratio": round(ratio, 4), "limit": round(command_limit, 4),
+                          "exceeded": ratio > command_limit}
+        if ratio > command_limit:
+            failures.append(
+                f"'{name}' median {candidate_medians[name]:.3f}s is {ratio:.4f}x the reference median "
+                f"{reference_median:.3f}s, exceeding {command_limit:.4f}x"
+            )
+    reference_total = sum(reference_medians.values())
+    candidate_total = sum(candidate_medians.values())
+    total_ratio = candidate_total / reference_total
+    if total_ratio > total_limit:
+        failures.append(
+            f"total {candidate_total:.3f}s (sum of per-command medians) is {total_ratio:.4f}x the reference "
+            f"{reference_total:.3f}s, exceeding {total_limit:.4f}x"
+        )
+    rounds = min(len(values) for values in reference.values())
+    round_ratios = [
+        round(sum(candidate[name][index] for name in reference) / sum(reference[name][index] for name in reference), 4)
+        for index in range(rounds)
+    ]
+    return failures, {
+        "statistic": "ratio-of-per-command-medians; total-is-ratio-of-sums-of-medians",
+        "totalTolerance": total_tolerance,
+        "commandTolerance": command_tolerance,
+        "referenceTotalSeconds": round(reference_total, 3),
+        "candidateTotalSeconds": round(candidate_total, 3),
+        "totalRatio": round(total_ratio, 4),
+        "totalLimit": round(total_limit, 4),
+        "totalExceeded": total_ratio > total_limit,
+        "commands": commands,
+        "roundRatios": round_ratios,
+        "roundRatiosScope": "per-round candidate/reference six-command sum; observation-only",
+    }
+
+
+def verify_against_reference(
+    binary: Path,
+    reference_binary: Path,
+    repo_root: Path,
+    per_command_budget: float,
+    total_budget: float,
+    total_tolerance: float = DEFAULT_TOTAL_TOLERANCE,
+    command_tolerance: float = DEFAULT_COMMAND_TOLERANCE,
+    warmup: bool = True,
+    as_json: bool = False,
+    runs: int = REFERENCE_RUNS,
+):
+    """후보와 기준 실행 파일을 같은 입력으로 같은 machine에서 교차 측정해 상대 회귀와 절대 상한을 판정한다.
+
+    후보에는 단독 모드와 같은 계약 검사를 매 실행 적용한다. 기준은 모든 명령이 0으로 끝나야 하며, 아니면
+    통과로 바꾸지 않고 종료 코드 2와 `reference-failed`로 닫는다. `--json`이면 오류도 JSON 문서 하나로 남긴다.
+    """
+    settings = {"perCommandBudget": per_command_budget, "totalBudget": total_budget, "runs": runs,
+                "totalTolerance": total_tolerance, "commandTolerance": command_tolerance}
+    state = {"env": None, "init": None, "diagnostics": None, "finished": None}
+    try:
+        return compare_with_reference(binary, reference_binary, repo_root, settings, warmup, as_json, state)
+    except GateAbort as abort:
+        if abort.message:
+            print(f"error: {abort.message}", file=sys.stderr)
+        if as_json:
+            document = {"status": "ERROR", "mode": "reference", **settings,
+                        "error": {"kind": abort.kind, **abort.details}}
+            diagnostics = diagnostics_block(state)
+            if diagnostics is not None:
+                document["diagnostics"] = diagnostics
+            print(json.dumps(document, indent=2))
+        return abort.code
+
+
+def diagnostics_block(state):
+    if state["finished"] is None and state["diagnostics"] is not None:
+        state["finished"] = observe(state["diagnostics"].finish, state["env"])
+    result = state["finished"] if state["finished"] is not None else state["init"]
+    if result is None:
+        return None
+    return {"version": 1, "scope": "observation-only; never-used-for-gate-acceptance", **result}
+
+
+def compare_with_reference(binary, reference_binary, repo_root, settings, warmup, as_json, state):
+    if not reference_binary.is_file() or not os.access(reference_binary, os.X_OK):
+        raise GateAbort(2, "reference-unavailable", f"reference kartograph binary not executable at {reference_binary}",
+                        arm="reference")
+    problem = input_problem(binary, repo_root)
+    if problem:
+        raise GateAbort(2, "input-unavailable", problem)
+    env = check_java_environment()
+    if not has_working_java(env):
+        raise GateAbort(2, "input-unavailable",
+                        "no working Java runtime found; set JAVA_HOME to a valid JDK installation")
+    state["env"] = env
+    if as_json:
+        state["init"] = observe(SmokeDiagnostics, env)
+        if state["init"]["status"] == "observed":
+            state["diagnostics"] = state["init"]["value"]
+    runs = settings["runs"]
+
+    with tempfile.TemporaryDirectory(prefix="kartograph-smoke-gate-") as tmpdir:
+        project_dir = Path(tmpdir)
+        manifest_path, res_dir = self_analysis_project(project_dir)
+        # 두 arm 모두 후보 저장소의 class root·keep rules·layer 설정을 쓴다. 입력 크기 변화가 아니라 분석기 비용만 비교한다.
+        arm_commands = {
+            arm: {name: (cmd, kind) for name, cmd, kind in
+                  analysis_commands(executable, repo_root, project_dir, manifest_path, res_dir)}
+            for arm, executable in (("reference", reference_binary), ("candidate", binary))
+        }
+        names = list(arm_commands["candidate"])
+        if warmup:
+            warm_up_arms(arm_commands, env)
+
+        samples = {arm: {name: [] for name in names} for arm in arm_commands}
+        counters = {}
+        contract_failures = []
+        labelled = {arm: ArmDiagnostics(state["diagnostics"], arm) if state["diagnostics"] is not None else None
+                    for arm in arm_commands}
+        schedule = relative_schedule(runs, names)
+        for index, name, order in schedule:
+            for arm in order:
+                cmd, kind = arm_commands[arm][name]
+                if arm == "reference":
+                    measure_reference(name, cmd, env, samples["reference"], labelled["reference"], index)
+                    continue
+                # 후보는 단독 모드와 같은 함수로 재고 같은 계약을 매 실행 검사한다.
+                exit_code = run_measurement_pass([(name, cmd, kind)], env, samples["candidate"], counters,
+                                                 contract_failures, labelled["candidate"])
+                if exit_code is not None:
+                    raise GateAbort(exit_code, "candidate-failed", None, arm="candidate", phase="measurement",
+                                    round=index, command=name)
+
+        diagnostics = diagnostics_block(state)
+        measurements = summarize_measurements(samples["candidate"], counters, contract_failures)
+        raw_medians = {arm: {name: statistics.median(values) for name, values in arm_samples.items()}
+                       for arm, arm_samples in samples.items()}
+        cap_failures = budget_failures(raw_medians["candidate"], settings["perCommandBudget"],
+                                       settings["totalBudget"], runs)
+        relative_failures, comparison = compare_to_reference(samples["reference"], samples["candidate"],
+                                                             settings["totalTolerance"], settings["commandTolerance"])
+        run_totals = {arm: [round(sum(arm_samples[name][index] for name in names), 3) for index in range(runs)]
+                      for arm, arm_samples in samples.items()}
+        passed = not contract_failures and not cap_failures and not relative_failures
+        recorded = recorded_budget(raw_medians, runs)
+        reference_measurements = {}
+        for name, values in samples["reference"].items():
+            rounded = [round(value, 3) for value in values]
+            reference_measurements[name] = {"seconds": round(statistics.median(rounded), 3), "samples": rounded,
+                                            "returncode": 0}
+
+        if as_json:
+            result_doc = {
+                "status": "PASS" if passed else "FAIL",
+                "mode": "reference",
+                **settings,
+                "totalSeconds": round(sum(raw_medians["candidate"].values()), 3),
+                "runTotals": run_totals["candidate"],
+                "measurements": measurements,
+                "contractFailures": contract_failures,
+                "budgetFailures": cap_failures,
+                "relativeFailures": relative_failures,
+                "reference": {
+                    "totalSeconds": round(sum(raw_medians["reference"].values()), 3),
+                    "runTotals": run_totals["reference"],
+                    "measurements": reference_measurements,
+                },
+                "comparison": comparison,
+                "schedule": {
+                    "scope": "same-machine; per-command adjacent pairs; first arm alternates by command and round (ABBA)",
+                    "warmupSuitesPerArm": 1 if warmup else 0,
+                    "firstArm": [[order[0] for round_index, _, order in schedule if round_index == index]
+                                 for index in range(runs)],
+                },
+                "recordedBudget": recorded,
+            }
+            if diagnostics is not None:
+                result_doc["diagnostics"] = diagnostics
+            print(json.dumps(result_doc, indent=2))
+        else:
+            headline = "[SMOKE GATE PASS]" if passed else "[SMOKE GATE FAIL]"
+            print(f"{headline} Candidate compared with the reference build on this machine "
+                  f"(medians of {runs} interleaved rounds):")
+            for name, row in comparison["commands"].items():
+                print(f"  - {name:15}: {row['candidateSeconds']:.3f}s vs reference {row['referenceSeconds']:.3f}s "
+                      f"(ratio {row['ratio']:.4f}; limit {row['limit']:.4f})")
+            print(f"  Total: {comparison['candidateTotalSeconds']:.3f}s vs reference "
+                  f"{comparison['referenceTotalSeconds']:.3f}s (ratio {comparison['totalRatio']:.4f}; "
+                  f"limit {comparison['totalLimit']:.4f}); safety cap {settings['perCommandBudget']:.3f}s per command, "
+                  f"{settings['totalBudget']:.3f}s total")
+            print(f"  Recorded {RECORDED_COMMAND_BUDGET:.3f}s/{RECORDED_TOTAL_BUDGET:.3f}s budget (not gating): "
+                  f"{len(recorded['candidate']['exceeded'])} candidate and "
+                  f"{len(recorded['reference']['exceeded'])} reference exceedance(s)")
+            if not passed:
+                print_failures(contract_failures, cap_failures, relative_failures)
 
         return 0 if passed else 1
 
@@ -808,35 +1120,58 @@ def main(argv=None):
     parser.add_argument(
         "--binary",
         default=None,
-        help="path to kartograph executable",
+        help="path to the candidate kartograph executable",
     )
     parser.add_argument(
         "--repo-root",
         default=None,
-        help="repository root path (defaults to auto-detected root)",
+        help="candidate repository root whose class roots and configuration are analyzed (defaults to auto-detected root)",
+    )
+    parser.add_argument(
+        "--reference-binary",
+        default=None,
+        help="compare against this kartograph executable (normally the base commit's build) on the same inputs, "
+             "interleaved on this machine; CI acceptance uses this mode",
     )
     parser.add_argument(
         "--per-command-budget",
         type=float,
-        default=5.0,
-        help="maximum allowed median time in seconds for each analysis command (default: 5.0)",
+        default=DEFAULT_COMMAND_CAP,
+        help="absolute safety cap: maximum candidate median seconds for each analysis command in both modes "
+             f"(default: {DEFAULT_COMMAND_CAP}, twice the recorded {RECORDED_COMMAND_BUDGET}s budget)",
     )
     parser.add_argument(
         "--total-budget",
         type=float,
-        default=20.0,
-        help="maximum allowed sum of per-command median times in seconds (default: 20.0)",
+        default=DEFAULT_TOTAL_CAP,
+        help="absolute safety cap: maximum candidate sum of per-command medians in both modes "
+             f"(default: {DEFAULT_TOTAL_CAP}, twice the recorded {RECORDED_TOTAL_BUDGET}s budget)",
+    )
+    parser.add_argument(
+        "--total-tolerance",
+        type=float,
+        default=None,
+        help="with --reference-binary: maximum fractional increase of the candidate total over the reference "
+             f"(default: {DEFAULT_TOTAL_TOLERANCE})",
+    )
+    parser.add_argument(
+        "--command-tolerance",
+        type=float,
+        default=None,
+        help="with --reference-binary: maximum fractional increase of any single command over the reference "
+             f"(default: {DEFAULT_COMMAND_TOLERANCE})",
     )
     parser.add_argument(
         "--runs",
         type=int,
-        default=3,
-        help="number of measured repetitions; budgets are judged by per-command medians (default: 3)",
+        default=None,
+        help="number of measured repetitions; budgets and ratios use per-command medians "
+             f"(default: {STANDALONE_RUNS}, or {REFERENCE_RUNS} interleaved rounds with --reference-binary)",
     )
     parser.add_argument(
         "--no-warmup",
         action="store_true",
-        help="disable the initial warmup run (excluded from measurements)",
+        help="disable the initial warmup (excluded from measurements; one suite per arm with --reference-binary)",
     )
     parser.add_argument(
         "--json",
@@ -850,12 +1185,21 @@ def main(argv=None):
         print(f"error: {err}", file=sys.stderr)
         return 64
 
-    if options.per_command_budget <= 0 or options.total_budget <= 0:
+    # nan/inf 예산은 비교를 항상 통과시키므로 유한한 양수만 받는다.
+    if any(not math.isfinite(value) or value <= 0 for value in (options.per_command_budget, options.total_budget)):
         print("error: time budgets must be positive numbers", file=sys.stderr)
         return 64
 
-    if options.runs < 1:
+    if options.runs is not None and options.runs < 1:
         print("error: --runs must be at least 1", file=sys.stderr)
+        return 64
+
+    tolerances = (options.total_tolerance, options.command_tolerance)
+    if options.reference_binary is None and any(value is not None for value in tolerances):
+        print("error: --total-tolerance and --command-tolerance require --reference-binary", file=sys.stderr)
+        return 64
+    if any(value is not None and (not math.isfinite(value) or value < 0) for value in tolerances):
+        print("error: tolerances must be finite non-negative numbers", file=sys.stderr)
         return 64
 
     repo_root = (
@@ -875,14 +1219,27 @@ def main(argv=None):
         if observe(dedicated_entry).get("value") is True:
             _CPU_OWNER_PID = os.getpid()
 
-    return verify_self_analysis(
+    if options.reference_binary is None:
+        return verify_self_analysis(
+            binary=binary,
+            repo_root=repo_root,
+            per_command_budget=options.per_command_budget,
+            total_budget=options.total_budget,
+            warmup=not options.no_warmup,
+            as_json=options.json,
+            runs=STANDALONE_RUNS if options.runs is None else options.runs,
+        )
+    return verify_against_reference(
         binary=binary,
+        reference_binary=Path(options.reference_binary).resolve(),
         repo_root=repo_root,
         per_command_budget=options.per_command_budget,
         total_budget=options.total_budget,
+        total_tolerance=DEFAULT_TOTAL_TOLERANCE if options.total_tolerance is None else options.total_tolerance,
+        command_tolerance=DEFAULT_COMMAND_TOLERANCE if options.command_tolerance is None else options.command_tolerance,
         warmup=not options.no_warmup,
         as_json=options.json,
-        runs=options.runs,
+        runs=REFERENCE_RUNS if options.runs is None else options.runs,
     )
 
 

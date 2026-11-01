@@ -18,6 +18,14 @@
   commands were not measured on runners. Output was byte-identical. `JAVA_OPTS`/`KARTOGRAPH_OPTS` override these flags;
   `JAVA_TOOL_OPTIONS`/`JDK_JAVA_OPTIONS` do not. Users who disable tiered compilation must also pass that mode's
   thresholds (see README "Installation and compatibility").
+- CI now accepts self-analysis time by a same-runner comparison with the base commit's build instead of the absolute
+  5 s per command / 20 s total budget, which the same tree passed at about 15–17 s on AMD EPYC 9V45 and Intel Xeon
+  6975P-C runners and failed at 21–25 s on AMD EPYC 7763 runners. The new `performance` job builds both commits and runs
+  `Scripts/verify-analysis-smoke-gate.py --reference-binary` on the candidate's inputs, interleaving the two builds in
+  ABBA order over five rounds after one warm-up per build. It fails when the sum of per-command medians is more than 5%
+  above the base build or any command is more than 15% above it, and fails closed (exit 2) instead of passing when the
+  base build fails any command. A 10 s / 40 s absolute safety cap still applies in both modes, and the 5 s / 20 s
+  comparison is recorded in the JSON without gating. Verification only; product behaviour is unchanged.
 
 ### Added
 

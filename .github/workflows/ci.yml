@@ -109,8 +109,9 @@ jobs:
           path: build/reports/gradle-impact-ci/result.json
           if-no-files-found: error
           retention-days: 14
+      # 계약과 절대 안전 상한(10초/40초)만 판정한다. 시간 수용 기준은 performance job의 같은 runner 기준 비교다.
       - name: Verify analysis smoke gate and self-analysis contracts
-        run: python3 Scripts/verify-analysis-smoke-gate.py --json
+        run: python3 Scripts/verify-analysis-smoke-gate.py --json --per-command-budget 10 --total-budget 40
       - name: Diagnose fixed-input index cost without changing the smoke gate
         if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
         timeout-minutes: 15
@@ -300,4 +301,73 @@ jobs:
           name: agp-8-resource-impact
           path: build/reports/agp-8-resource-impact/result.json
           if-no-files-found: warn
+          retention-days: 14
+
+  # 절대 시간 예산은 runner CPU 종류가 결과를 좌우했다. 같은 runner에서 기준 commit 빌드와 교차 측정해
+  # 상대 회귀를 판정하고, 절대 안전 상한(10초/40초)도 함께 적용한다.
+  performance:
+    runs-on: ubuntu-latest
+    # 기준·후보 빌드 2회와 warm-up 포함 교차 측정 6라운드(느린 runner에서 약 5분)를 담는다.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Select the base commit for the reference build
+        id: base
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request) base="$PULL_REQUEST_BASE_SHA" ;;
+            push) base="$PUSH_BEFORE_SHA" ;;
+            *) echo "unsupported event for the reference comparison: $EVENT_NAME" >&2; exit 2 ;;
+          esac
+          # 새 branch push 등의 all-zero/누락/형식 오류 기준을 다른 commit으로 대체하지 않는다.
+          if [[ ! "$base" =~ ^[0-9a-f]{40}$ || "$base" =~ ^0{40}$ ]]; then
+            echo "base commit is missing, malformed or all-zero; refusing to choose another reference" >&2
+            exit 2
+          fi
+          printf 'sha=%s\n' "$base" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.base.outputs.sha }}
+          path: reference
+          persist-credentials: false
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      # 두 tree를 같은 명령으로 따로 빌드한다. 측정 입력은 후보 class root라 기준의 class root는 쓰지 않는다.
+      - name: Build reference CLI
+        working-directory: reference
+        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g :cli:installDist :gradle-plugin:classes
+      - name: Build candidate CLI and class roots
+        working-directory: candidate
+        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g :cli:installDist :gradle-plugin:classes
+      - name: Compare analysis time with the reference build on this runner
+        id: compare
+        shell: bash
+        run: |
+          mkdir -p candidate/build/reports/analysis-performance
+          python3 candidate/Scripts/verify-analysis-smoke-gate.py --json \
+            --repo-root candidate \
+            --binary candidate/cli/build/install/kartograph/bin/kartograph \
+            --reference-binary reference/cli/build/install/kartograph/bin/kartograph \
+            | tee candidate/build/reports/analysis-performance/result.json
+      - name: Preserve relative performance evidence
+        if: ${{ !cancelled() && (steps.compare.outcome == 'success' || steps.compare.outcome == 'failure') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: analysis-performance
+          path: candidate/build/reports/analysis-performance/result.json
+          if-no-files-found: error
           retention-days: 14

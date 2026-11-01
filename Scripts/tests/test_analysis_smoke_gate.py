@@ -14,6 +14,24 @@ SCRIPT = ROOT / "Scripts/verify-analysis-smoke-gate.py"
 BINARY = ROOT / "cli/build/install/kartograph/bin/kartograph"
 
 
+def run_gate_process(*args):
+    """게이트 스크립트를 실제 하위 프로세스로 실행한다. JAVA_HOME이 없으면 알려진 JDK 경로를 찾는다."""
+    env = dict(os.environ)
+    if "JAVA_HOME" not in env or not (Path(env["JAVA_HOME"]) / "bin/java").is_file():
+        for c in [
+            Path("/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"),
+            Path("/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"),
+            Path("/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"),
+        ]:
+            if (c / "bin/java").is_file():
+                env["JAVA_HOME"] = str(c)
+                env["PATH"] = f"{c}/bin:{env.get('PATH', '')}"
+                break
+
+    cmd = [sys.executable, str(SCRIPT), *args]
+    return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=120)
+
+
 class AnalysisSmokeGateTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -26,20 +44,7 @@ class AnalysisSmokeGateTest(unittest.TestCase):
             )
 
     def run_gate(self, *args):
-        env = dict(os.environ)
-        if "JAVA_HOME" not in env or not (Path(env["JAVA_HOME"]) / "bin/java").is_file():
-            for c in [
-                Path("/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"),
-                Path("/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"),
-                Path("/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"),
-            ]:
-                if (c / "bin/java").is_file():
-                    env["JAVA_HOME"] = str(c)
-                    env["PATH"] = f"{c}/bin:{env.get('PATH', '')}"
-                    break
-
-        cmd = [sys.executable, str(SCRIPT), *args]
-        return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=120)
+        return run_gate_process(*args)
 
     def test_smoke_gate_passes_on_production_classes(self):
         # 출력 형식·계약 확인용이다. 기본 예산 판정(중앙값 3회)은 JSON 테스트와 CI 게이트 단계가 맡으므로
@@ -55,10 +60,13 @@ class AnalysisSmokeGateTest(unittest.TestCase):
         self.assertIn("Total analysis time:", res.stdout)
 
     def test_smoke_gate_json_output(self):
+        # 단독 모드의 기본 예산은 절대 안전 상한(10초/40초)이다. 예전 5초/20초 판정은 같은 tree도 runner CPU
+        # 종류에 따라 갈렸으므로 이 단계에서 다시 판정하지 않고, 판정 없는 recordedBudget 기록으로만 확인한다.
         res = self.run_gate("--json")
         self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}\nstderr: {res.stderr}")
         data = json.loads(res.stdout)
         self.assertEqual(data["status"], "PASS")
+        self.assertEqual(data["mode"], "standalone")
         # 저장소가 커져도 DOT 간선을 정점으로 잘못 세지 않는지 독립 JSON 출력과 비교한다.
         self.assertGreaterEqual(data["measurements"]["graph"]["nodes"], 2000)
         command = [str(BINARY), "graph", "--format", "json"]
@@ -72,8 +80,14 @@ class AnalysisSmokeGateTest(unittest.TestCase):
         self.assertLessEqual(data["totalSeconds"], data["totalBudget"])
         # 기본은 3회 반복이며 seconds는 명령별 중앙값, 총합은 중앙값의 합이다.
         self.assertEqual(data["runs"], 3)
-        self.assertEqual(data["totalBudget"], 20.0)
-        self.assertEqual(data["perCommandBudget"], 5.0)
+        self.assertEqual(data["totalBudget"], 40.0)
+        self.assertEqual(data["perCommandBudget"], 10.0)
+        self.assertEqual(data["budgetFailures"], [])
+        recorded = data["recordedBudget"]
+        self.assertEqual(recorded["scope"], "observation-only; never-used-for-gate-acceptance")
+        self.assertEqual((recorded["perCommandBudget"], recorded["totalBudget"]), (5.0, 20.0))
+        self.assertEqual(recorded["candidate"]["totalSeconds"], data["totalSeconds"])
+        self.assertIsInstance(recorded["candidate"]["exceeded"], list)
         self.assertEqual(len(data["runTotals"]), 3)
         for name, measurement in data["measurements"].items():
             self.assertEqual(len(measurement["samples"]), 3, name)
@@ -277,7 +291,10 @@ class AnalysisSmokeGateTest(unittest.TestCase):
 
 
 class AnalysisSmokeFailureJsonTest(unittest.TestCase):
-    def test_default_budget_failure_retains_all_samples_and_exit_one(self):
+    NAMES = ["graph", "dead", "dead_private", "cycles", "rules", "metrics"]
+
+    def run_default_gate(self, durations):
+        """기본 옵션의 단독 모드를 반복별 고정 시간으로 실행한다. 실제 분석기와 시계는 쓰지 않는다."""
         import contextlib
         import importlib.util
         import io
@@ -289,7 +306,7 @@ class AnalysisSmokeFailureJsonTest(unittest.TestCase):
         observed_passes = []
 
         def measure(commands, env, samples, counters, failures, diagnostics=None):
-            duration = (3.0, 3.5, 4.0)[len(observed_passes)]
+            duration = durations[len(observed_passes)]
             observed_passes.append([name for name, _, _ in commands])
             for name, _, _ in commands:
                 samples[name].append(duration)
@@ -313,25 +330,410 @@ class AnalysisSmokeFailureJsonTest(unittest.TestCase):
                     contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 status = mod.main(["--json", "--no-warmup", "--repo-root", str(root),
                                    "--binary", str(binary)])
+        self.assertEqual(observed_passes, [self.NAMES] * 3)
+        self.assertEqual(stderr.getvalue(), "")
+        return status, json.loads(stdout.getvalue())
+
+    def test_default_cap_failure_retains_all_samples_and_exit_one(self):
+        status, result = self.run_default_gate((7.0, 7.5, 8.0))
         self.assertEqual(status, 1)
-        result = json.loads(stdout.getvalue())
         self.assertEqual(result["status"], "FAIL")
         self.assertEqual(result["runs"], 3)
-        self.assertEqual(result["perCommandBudget"], 5.0)
-        self.assertEqual(result["totalBudget"], 20.0)
-        self.assertEqual(result["totalSeconds"], 21.0)
-        self.assertEqual(result["runTotals"], [18.0, 21.0, 24.0])
-        names = ["graph", "dead", "dead_private", "cycles", "rules", "metrics"]
-        self.assertEqual(observed_passes, [names] * 3)
-        self.assertEqual(list(result["measurements"]), names)
+        self.assertEqual(result["perCommandBudget"], 10.0)
+        self.assertEqual(result["totalBudget"], 40.0)
+        self.assertEqual(result["totalSeconds"], 45.0)
+        self.assertEqual(result["runTotals"], [42.0, 45.0, 48.0])
+        self.assertEqual(list(result["measurements"]), self.NAMES)
         for measurement in result["measurements"].values():
-            self.assertEqual(measurement, {"seconds": 3.5, "samples": [3.0, 3.5, 4.0],
+            self.assertEqual(measurement, {"seconds": 7.5, "samples": [7.0, 7.5, 8.0],
                                            "returncode": 0})
         self.assertEqual(result["contractFailures"], [])
         self.assertEqual(result["budgetFailures"], [
-            "total analysis time was 21.000s (sum of per-command medians over 3 runs), exceeding total budget of 20.000s"
+            "total analysis time was 45.000s (sum of per-command medians over 3 runs), exceeding total budget of 40.000s"
         ])
-        self.assertEqual(stderr.getvalue(), "")
+        # 기록 예산은 같은 측정을 5초/20초와 비교해 남기며 판정 결과를 바꾸지 않는다.
+        recorded = result["recordedBudget"]["candidate"]
+        self.assertEqual(recorded["totalSeconds"], 45.0)
+        self.assertEqual(len(recorded["exceeded"]), 7)
+
+    def test_recorded_budget_exceedance_does_not_gate_default_run(self):
+        # 예전 20초 예산을 넘는 21초도 안전 상한 안이면 통과하고, 초과 사실은 recordedBudget에만 남는다.
+        status, result = self.run_default_gate((3.0, 3.5, 4.0))
+        self.assertEqual(status, 0)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["totalSeconds"], 21.0)
+        self.assertEqual(result["budgetFailures"], [])
+        self.assertEqual(result["recordedBudget"], {
+            "scope": "observation-only; never-used-for-gate-acceptance",
+            "perCommandBudget": 5.0,
+            "totalBudget": 20.0,
+            "candidate": {"totalSeconds": 21.0, "exceeded": [
+                "total analysis time was 21.000s (sum of per-command medians over 3 runs), exceeding total budget of 20.000s"
+            ]},
+        })
+
+
+class FakeAnalyzer:
+    """subprocess.run 대역이다. 실행 파일 경로로 arm을 구분하고 지정한 시간만큼 가짜 시계를 진행한다.
+
+    시간은 2진 분수만 써서 시계 차이가 정확히 표현되게 한다. 호출 번호는 warm-up을 포함해 (arm, 명령)별로 센다.
+    """
+
+    OUTPUTS = {
+        "graph": "x [shape=box];\n" * 2000,
+        "dead": "",
+        "dead_private": "",
+        "cycles": "0 findings\n",
+        "rules": "0 findings, 0 unassigned\n",
+        "metrics": "module\tCa\n" + "row\n" * 6,
+    }
+
+    def __init__(self, arms, durations, events=None, outputs=None):
+        self.arms = arms
+        self.durations = durations
+        self.events = events or {}
+        self.outputs = outputs or {}
+        self.now = 0.0
+        self.calls = []
+
+    def perf_counter(self):
+        return self.now
+
+    def run(self, cmd, **kwargs):
+        arm = self.arms[cmd[0]]
+        name = "dead_private" if cmd[1] == "dead" and "--include-private-members" in cmd else cmd[1]
+        index = sum(1 for call in self.calls if call["arm"] == arm and call["name"] == name)
+        self.calls.append({"arm": arm, "name": name, "index": index, "text": kwargs.get("text", False)})
+        event = self.events.get((arm, name, index), {})
+        if isinstance(event, BaseException):
+            raise event
+        self.now += event.get("seconds", self.durations[arm][name])
+        stdout = event.get("stdout", self.outputs.get((arm, name), self.OUTPUTS[name]))
+        return subprocess.CompletedProcess(cmd, event.get("returncode", 0), stdout, "secret-stderr-text")
+
+
+class ReferenceModeTest(unittest.TestCase):
+    """기준 비교 모드의 판정·실행 순서·JSON 계약을 가짜 시계로 결정적으로 검사한다."""
+
+    NAMES = ["graph", "dead", "dead_private", "cycles", "rules", "metrics"]
+    BASE = {"graph": 4.0, "dead": 4.0, "dead_private": 4.0, "cycles": 3.0, "rules": 3.0, "metrics": 3.0}
+
+    def setUp(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("smoke_gate_reference", SCRIPT)
+        self.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.mod)
+        temporary = tempfile.TemporaryDirectory(prefix="kartograph-smoke-reference-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+        for module in self.mod.MODULES:
+            classes = self.root / module / "build/classes/kotlin/main"
+            classes.mkdir(parents=True)
+            (classes / "Fixture.class").write_bytes(b"fixture")
+        (self.root / ".kartograph-self.pro").write_text("")
+        (self.root / ".kartograph.yml").write_text("")
+        self.binaries = {}
+        for arm in ("reference", "candidate"):
+            binary = self.root / arm / "kartograph"
+            binary.parent.mkdir()
+            binary.write_text("#!/bin/sh\nexit 99\n")
+            binary.chmod(0o755)
+            self.binaries[arm] = binary
+
+    def scaled(self, factor, **overrides):
+        return {name: overrides.get(name, seconds * factor) for name, seconds in self.BASE.items()}
+
+    def gate(self, candidate=None, *args, reference=None, events=None, outputs=None, as_json=True):
+        import contextlib
+        import io
+        from unittest.mock import patch
+
+        fake = FakeAnalyzer({str(path): arm for arm, path in self.binaries.items()},
+                            {"reference": reference or dict(self.BASE), "candidate": candidate or dict(self.BASE)},
+                            events, outputs)
+        argv = ["--repo-root", str(self.root), "--binary", str(self.binaries["candidate"]),
+                "--reference-binary", str(self.binaries["reference"]), *args]
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(self.mod, "check_java_environment", return_value={}), \
+                patch.object(self.mod, "has_working_java", return_value=True), \
+                patch.object(self.mod.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.mod.time, "perf_counter", side_effect=fake.perf_counter), \
+                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            status = self.mod.main((["--json"] if as_json else []) + argv)
+        document = json.loads(stdout.getvalue()) if as_json and stdout.getvalue() else stdout.getvalue()
+        return status, document, stderr.getvalue(), fake
+
+    def test_equal_arms_pass_and_record_comparison_document(self):
+        status, data, stderr, _ = self.gate()
+        self.assertEqual(status, 0, stderr)
+        self.assertEqual(data["status"], "PASS")
+        self.assertEqual(data["mode"], "reference")
+        self.assertEqual((data["runs"], data["perCommandBudget"], data["totalBudget"]), (5, 10.0, 40.0))
+        self.assertEqual((data["totalTolerance"], data["commandTolerance"]), (0.05, 0.15))
+        self.assertEqual((data["contractFailures"], data["budgetFailures"], data["relativeFailures"]), ([], [], []))
+        self.assertEqual(list(data["measurements"]), self.NAMES)
+        self.assertEqual(list(data["reference"]["measurements"]), self.NAMES)
+        for name, seconds in self.BASE.items():
+            self.assertEqual(data["measurements"][name]["samples"], [seconds] * 5, name)
+            self.assertEqual(data["reference"]["measurements"][name],
+                             {"seconds": seconds, "samples": [seconds] * 5, "returncode": 0})
+            self.assertEqual(data["comparison"]["commands"][name],
+                             {"referenceSeconds": seconds, "candidateSeconds": seconds, "ratio": 1.0,
+                              "limit": 1.15, "exceeded": False})
+        self.assertEqual(data["measurements"]["graph"]["nodes"], 2000)
+        self.assertEqual(data["measurements"]["dead"]["findings"], 0)
+        self.assertEqual((data["totalSeconds"], data["reference"]["totalSeconds"]), (21.0, 21.0))
+        self.assertEqual((data["runTotals"], data["reference"]["runTotals"]), ([21.0] * 5, [21.0] * 5))
+        comparison = data["comparison"]
+        self.assertEqual((comparison["totalRatio"], comparison["totalLimit"], comparison["totalExceeded"]),
+                         (1.0, 1.05, False))
+        self.assertEqual(comparison["roundRatios"], [1.0] * 5)
+        self.assertEqual(data["schedule"]["warmupSuitesPerArm"], 1)
+        # 기존 20초 예산 초과(21초)는 두 arm 모두 기록되지만 판정은 통과다.
+        total_message = ("total analysis time was 21.000s (sum of per-command medians over 5 runs), "
+                         "exceeding total budget of 20.000s")
+        self.assertEqual(data["recordedBudget"], {
+            "scope": "observation-only; never-used-for-gate-acceptance", "perCommandBudget": 5.0, "totalBudget": 20.0,
+            "reference": {"totalSeconds": 21.0, "exceeded": [total_message]},
+            "candidate": {"totalSeconds": 21.0, "exceeded": [total_message]},
+        })
+        self.assertEqual(data["diagnostics"]["scope"], "observation-only; never-used-for-gate-acceptance")
+        self.assertNotIn("secret-stderr-text", json.dumps(data) + stderr)
+
+    def test_total_ratio_beyond_tolerance_fails_without_single_command_failure(self):
+        # 모든 명령이 6.25% 느리면 명령별 허용치(15%) 안이어도 합계 허용치(5%)를 넘는다.
+        status, data, stderr, _ = self.gate(self.scaled(1.0625))
+        self.assertEqual(status, 1)
+        self.assertEqual(data["status"], "FAIL")
+        self.assertEqual(data["relativeFailures"], [
+            "total 22.312s (sum of per-command medians) is 1.0625x the reference 21.000s, exceeding 1.0500x"])
+        self.assertTrue(data["comparison"]["totalExceeded"])
+        self.assertEqual(data["comparison"]["totalRatio"], 1.0625)
+        self.assertFalse(any(row["exceeded"] for row in data["comparison"]["commands"].values()))
+        self.assertEqual((data["contractFailures"], data["budgetFailures"]), ([], []))
+        # JSON 모드는 단독 모드처럼 실패 목록을 문서에만 남긴다.
+        self.assertEqual(stderr, "")
+
+    def test_single_command_ratio_beyond_tolerance_fails(self):
+        # rules만 3.5/3.0(약 16.7%) 느리면 합계는 2.4%라 통과해도 명령별 판정이 잡는다.
+        status, data, _, _ = self.gate(self.scaled(1.0, rules=3.5))
+        self.assertEqual(status, 1)
+        self.assertEqual(data["relativeFailures"], [
+            "'rules' median 3.500s is 1.1667x the reference median 3.000s, exceeding 1.1500x"])
+        self.assertFalse(data["comparison"]["totalExceeded"])
+        self.assertEqual(data["comparison"]["totalRatio"], 1.0238)
+        self.assertEqual([name for name, row in data["comparison"]["commands"].items() if row["exceeded"]], ["rules"])
+
+    def test_tolerance_limits_are_inclusive(self):
+        at_limit = self.scaled(1.125)
+        status, data, _, _ = self.gate(at_limit, "--total-tolerance", "0.125", "--command-tolerance", "0.125")
+        self.assertEqual((status, data["relativeFailures"]), (0, []))
+        self.assertEqual(data["comparison"]["totalRatio"], 1.125)
+        above = dict(at_limit, rules=at_limit["rules"] + 1 / 64)
+        status, data, _, _ = self.gate(above, "--total-tolerance", "0.125", "--command-tolerance", "0.125")
+        self.assertEqual(status, 1)
+        self.assertEqual(len(data["relativeFailures"]), 2)
+
+    def test_safety_cap_applies_even_when_arms_match(self):
+        slow = {name: 7.0 for name in self.NAMES}
+        status, data, _, _ = self.gate(dict(slow), reference=dict(slow))
+        self.assertEqual(status, 1)
+        self.assertEqual(data["relativeFailures"], [])
+        self.assertEqual(data["comparison"]["totalRatio"], 1.0)
+        self.assertEqual(data["budgetFailures"], [
+            "total analysis time was 42.000s (sum of per-command medians over 5 runs), exceeding total budget of 40.000s"])
+        spike = self.scaled(1.0, graph=10.5)
+        status, data, _, _ = self.gate(dict(spike), reference=dict(spike))
+        self.assertEqual(status, 1)
+        self.assertEqual(data["budgetFailures"], [
+            "'graph' took 10.500s (median of 5 runs), exceeding budget of 10.000s"])
+        status, data, _, _ = self.gate(dict(spike), "--per-command-budget", "11", reference=dict(spike))
+        self.assertEqual((status, data["perCommandBudget"], data["budgetFailures"]), (0, 11.0, []))
+
+    def test_reference_failure_fails_closed_with_distinct_reason(self):
+        cases = [
+            # 측정 라운드 2의 rules(warm-up 포함 호출 번호 3)에서 기준이 strict 진단으로 끝난 경우
+            ({("reference", "rules", 3): {"returncode": 1}},
+             {"phase": "measurement", "round": 2, "command": "rules", "returncode": 1}),
+            ({("reference", "dead", 0): {"returncode": 2}},
+             {"phase": "warmup", "round": None, "command": "dead", "returncode": 2}),
+            ({("reference", "cycles", 0): {"returncode": 64}},
+             {"phase": "warmup", "round": None, "command": "cycles", "returncode": 64}),
+            ({("reference", "metrics", 1): subprocess.TimeoutExpired("secret-command", 120)},
+             {"phase": "measurement", "round": 0, "command": "metrics", "timedOut": True}),
+            ({("reference", "graph", 0): PermissionError(13, "secret-launch-path")},
+             {"phase": "warmup", "round": None, "command": "graph", "launchError": "PermissionError"}),
+        ]
+        for events, details in cases:
+            with self.subTest(details=details):
+                status, data, stderr, fake = self.gate(events=events)
+                self.assertEqual(status, 2)
+                self.assertEqual(data["status"], "ERROR")
+                self.assertEqual(data["error"], {"kind": "reference-failed", "arm": "reference", **details})
+                self.assertNotIn("relativeFailures", data)
+                self.assertIn(f"reference command '{details['command']}'", stderr)
+                self.assertNotIn("secret-", stderr + json.dumps(data))
+                # 실패한 기준 실행 뒤에는 더 측정하지 않는다.
+                failed = fake.calls[-1]
+                self.assertEqual((failed["arm"], failed["name"]), ("reference", details["command"]))
+                if "returncode" in details:
+                    receipt = json.loads(stderr.splitlines()[0])
+                    self.assertEqual((receipt["arm"], receipt["command"], receipt["returncode"]),
+                                     ("reference", details["command"], details["returncode"]))
+        self.binaries["reference"].unlink()
+        status, data, stderr, fake = self.gate()
+        self.assertEqual((status, data["status"], data["error"]["kind"]), (2, "ERROR", "reference-unavailable"))
+        self.assertIn("reference kartograph binary not executable", stderr)
+        self.assertEqual(fake.calls, [])
+
+    def test_candidate_contracts_still_apply_on_every_candidate_run(self):
+        finding = "unreachable\tclass:dev/kartograph/Unused\tUnused.kt:1\n"
+        cases = [
+            ({}, {("candidate", "dead"): finding},
+             "'dead' reported unreachable findings: ['unreachable\\tclass:dev/kartograph/Unused\\tUnused.kt:1']"),
+            ({("candidate", "graph", 4): {"stdout": "x [shape=box];\n" * 2001}}, {},
+             "'graph' nodes varied across runs: [2000, 2000, 2000, 2001, 2000]"),
+            ({("candidate", "cycles", 2): {"returncode": 1}}, {}, "'cycles' exited with code 1, expected 0"),
+            ({}, {("candidate", "metrics"): "module\tCa\nrow\n"}, "'metrics' produced 1 metric rows, expected >= 6"),
+        ]
+        for events, outputs, failure in cases:
+            with self.subTest(failure=failure):
+                status, data, _, _ = self.gate(events=events, outputs=outputs)
+                self.assertEqual(status, 1)
+                self.assertEqual(data["status"], "FAIL")
+                self.assertEqual(data["contractFailures"], [failure])
+                self.assertEqual(data["relativeFailures"], [])
+        # 기준이 같은 출력을 내도 기준 출력은 계약 대상이 아니며 후보만 판정한다.
+        status, data, _, _ = self.gate(outputs={("reference", "dead"): finding})
+        self.assertEqual((status, data["contractFailures"]), (0, []))
+        for code, expected in ((2, 2), (64, 64)):
+            with self.subTest(code=code):
+                status, data, stderr, _ = self.gate(events={("candidate", "rules", 1): {"returncode": code}})
+                self.assertEqual(status, expected)
+                self.assertEqual(data["status"], "ERROR")
+                self.assertEqual(data["error"], {"kind": "candidate-failed", "arm": "candidate",
+                                                 "phase": "measurement", "round": 0, "command": "rules"})
+                self.assertIn(f"(exit {code})", stderr)
+        status, data, stderr, _ = self.gate(events={("candidate", "graph", 0): subprocess.TimeoutExpired("x", 120)})
+        self.assertEqual((status, data["error"]["kind"], data["error"]["phase"]), (2, "candidate-failed", "warmup"))
+
+    def test_schedule_interleaves_adjacent_pairs_and_alternates_first_arm(self):
+        _, data, _, fake = self.gate()
+        expected = []
+        for index in range(-1, 5):  # -1은 측정에서 빼는 warm-up 라운드다.
+            for position, name in enumerate(self.NAMES):
+                first, second = ("reference", "candidate") if (max(index, 0) + position) % 2 == 0 \
+                    else ("candidate", "reference")
+                expected.extend([(first, name), (second, name)])
+        self.assertEqual([(call["arm"], call["name"]) for call in fake.calls], expected)
+        # warm-up 후보 호출만 기존 단독 warm-up처럼 출력을 해석하지 않는다.
+        self.assertEqual([call["text"] for call in fake.calls[:12]],
+                         [call["arm"] == "reference" for call in fake.calls[:12]])
+        self.assertTrue(all(call["text"] for call in fake.calls[12:]))
+        self.assertEqual(data["schedule"]["firstArm"][:2], [
+            ["reference", "candidate", "reference", "candidate", "reference", "candidate"],
+            ["candidate", "reference", "candidate", "reference", "candidate", "reference"]])
+        _, data, _, fake = self.gate(None, "--no-warmup", "--runs", "2")
+        self.assertEqual(len(fake.calls), 2 * 2 * 6)
+        self.assertEqual((data["runs"], data["schedule"]["warmupSuitesPerArm"]), (2, 0))
+        self.assertEqual(len(data["measurements"]["graph"]["samples"]), 2)
+
+    def test_single_slow_launch_does_not_fail_and_stays_visible(self):
+        status, data, _, _ = self.gate(None, "--no-warmup",
+                                       events={("candidate", "graph", 1): {"seconds": 6.0}})
+        self.assertEqual(status, 0)
+        self.assertEqual(data["measurements"]["graph"]["samples"], [4.0, 6.0, 4.0, 4.0, 4.0])
+        self.assertEqual(data["comparison"]["commands"]["graph"]["ratio"], 1.0)
+        self.assertEqual(data["comparison"]["roundRatios"][1], round(23.0 / 21.0, 4))
+
+    def test_text_output_reports_ratios_and_failures(self):
+        status, output, stderr, _ = self.gate(self.scaled(1.0, rules=3.5), "--runs", "1", "--no-warmup",
+                                              as_json=False)
+        self.assertEqual(status, 1)
+        self.assertIn("[SMOKE GATE FAIL] Candidate compared with the reference build on this machine "
+                      "(medians of 1 interleaved rounds):", output)
+        self.assertIn("  - rules          : 3.500s vs reference 3.000s (ratio 1.1667; limit 1.1500)", output)
+        self.assertIn("Recorded 5.000s/20.000s budget (not gating): 1 candidate and 1 reference exceedance(s)", output)
+        self.assertIn("relative failures:\n  - 'rules' median 3.500s", stderr)
+
+    def test_reference_mode_options_are_validated(self):
+        import contextlib
+        import io
+
+        for args in (["--total-tolerance", "-0.01"], ["--command-tolerance", "nan"], ["--total-tolerance", "inf"],
+                     ["--runs", "0"], ["--per-command-budget", "inf"], ["--total-budget", "nan"]):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()) as stderr:
+                status = self.mod.main(["--reference-binary", str(self.binaries["reference"]), *args])
+                self.assertEqual(status, 64)
+                self.assertTrue(stderr.getvalue().startswith("error: "))
+        for args in (["--total-tolerance", "0.1"], ["--command-tolerance", "0.1"]):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()) as stderr:
+                self.assertEqual(self.mod.main(args), 64)
+                self.assertIn("require --reference-binary", stderr.getvalue())
+
+
+class ReferenceModeProcessTest(unittest.TestCase):
+    """작은 가짜 실행 파일을 실제 하위 프로세스로 실행해 CLI 종료 코드와 JSON 문서를 확인한다.
+
+    시간 판정을 검사하지 않으므로 허용치를 크게 주어 프로세스 시작 시간의 흔들림과 무관하게 한다.
+    """
+
+    SCRIPT_TEMPLATE = """#!/bin/sh
+case "$1" in
+  graph) yes 'n [shape=box];' | head -n 2000 ;;
+  dead) : ;;
+  cycles) echo '0 findings' ;;
+  rules) echo '0 findings, 0 unassigned' ;;
+  metrics) printf 'module\\tCa\\nr1\\nr2\\nr3\\nr4\\nr5\\nr6\\n' ;;
+esac
+{failure}
+exit 0
+"""
+
+    def fixture(self, root, failure=""):
+        for module in ("core", "index", "analysis", "export", "cli", "gradle-plugin"):
+            classes = root / module / "build/classes/kotlin/main"
+            classes.mkdir(parents=True, exist_ok=True)
+            (classes / "Fixture.class").write_bytes(b"fixture")
+        (root / ".kartograph-self.pro").write_text("")
+        (root / ".kartograph.yml").write_text("")
+        binaries = {}
+        for arm in ("reference", "candidate"):
+            binary = root / arm / "kartograph"
+            binary.parent.mkdir(exist_ok=True)
+            binary.write_text(self.SCRIPT_TEMPLATE.format(failure=failure if arm == "reference" else ""))
+            binary.chmod(0o755)
+            binaries[arm] = binary
+        return binaries
+
+    def run_gate(self, root, binaries):
+        return run_gate_process("--json", "--repo-root", str(root), "--binary", str(binaries["candidate"]),
+                                "--reference-binary", str(binaries["reference"]), "--runs", "2",
+                                "--total-tolerance", "1000", "--command-tolerance", "1000")
+
+    def test_real_processes_pass_with_candidate_contracts(self):
+        with tempfile.TemporaryDirectory(prefix="kartograph-reference-process-") as tmp:
+            root = Path(tmp)
+            res = self.run_gate(root, self.fixture(root))
+        self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}\nstderr: {res.stderr}")
+        data = json.loads(res.stdout)
+        self.assertEqual((data["status"], data["mode"], data["runs"]), ("PASS", "reference", 2))
+        self.assertEqual(data["measurements"]["graph"]["nodes"], 2000)
+        self.assertEqual(data["measurements"]["metrics"]["rows"], 6)
+        self.assertEqual(len(data["reference"]["measurements"]["rules"]["samples"]), 2)
+
+    def test_real_reference_failure_exits_two_with_reason(self):
+        failure = 'if [ "$1" = "rules" ]; then echo "error: /private/secret" >&2; exit 1; fi'
+        with tempfile.TemporaryDirectory(prefix="kartograph-reference-process-") as tmp:
+            root = Path(tmp)
+            res = self.run_gate(root, self.fixture(root, failure))
+        self.assertEqual(res.returncode, 2, f"stdout: {res.stdout}\nstderr: {res.stderr}")
+        data = json.loads(res.stdout)
+        self.assertEqual(data["status"], "ERROR")
+        self.assertEqual(data["error"], {"kind": "reference-failed", "arm": "reference", "phase": "warmup",
+                                         "round": None, "command": "rules", "returncode": 1})
+        self.assertNotIn("/private/secret", res.stdout + res.stderr)
 
 
 if __name__ == "__main__":
