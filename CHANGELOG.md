@@ -11,6 +11,9 @@
 - Record the JFR print-frame depth explicitly; legacy observations without that provenance remain unknown.
 - Exclude bytecode override structure from architecture dependencies while preserving reachability.
 - Read application backup-agent, component-factory and zygote-preload classes from Android manifests.
+- Retain JUnit 4/5 lifecycle, rule, parameter and test-template methods, Dagger assisted-injection and
+  component types, Hilt entry points and workers, Gson `@Expose` fields and Room type converters as
+  framework roots, so a base test class without `@Test` keeps its setup callees reachable.
 
 ### Added
 

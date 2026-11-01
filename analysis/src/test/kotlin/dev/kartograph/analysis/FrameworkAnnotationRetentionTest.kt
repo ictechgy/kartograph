@@ -136,7 +136,7 @@ class FrameworkAnnotationRetentionTest {
             "retrofit2/http/PATCH" to RetentionReason.RUNTIME_ENTRY_POINT,
             "retrofit2/http/POST" to RetentionReason.RUNTIME_ENTRY_POINT,
             "retrofit2/http/PUT" to RetentionReason.RUNTIME_ENTRY_POINT,
-        )
+        ) + ADDED_FRAMEWORK_REASONS
         val graph = CodeGraph(
             nodes = expectedReasons.keys.map { annotation ->
                 node(
@@ -153,6 +153,99 @@ class FrameworkAnnotationRetentionTest {
         }
 
         assertEquals(expectedReasons, actualReasons)
+    }
+
+    @Test
+    fun `runner lifecycle methods of a base test class keep the helpers they call reachable`() {
+        // 추상 base test class에는 @Test가 없어 owner 확장이 닿지 않는다. 생명주기 annotation이 runner 진입점이다.
+        for (lifecycle in listOf("org/junit/Before", "org/junit/jupiter/api/BeforeEach")) {
+            val base = node("class:app/BaseTest", NodeKind.CLASS)
+            val setUp = node("method:app/BaseTest#setUp()V", NodeKind.METHOD, setOf(lifecycle), SourceLocation("BaseTest.kt", 5))
+            val screenTest = node("class:app/ScreenTest", NodeKind.CLASS)
+            val test = node("method:app/ScreenTest#opens()V", NodeKind.METHOD, setOf("org/junit/Test"))
+            val fixtures = node("class:app/Fixtures", NodeKind.CLASS)
+            val create = node("method:app/Fixtures#create()V", NodeKind.METHOD)
+            val graph = CodeGraph(listOf(base, setUp, screenTest, test, fixtures, create), listOf(
+                GraphEdge(base.id, setUp.id, EdgeKind.MEMBER),
+                GraphEdge(screenTest.id, test.id, EdgeKind.MEMBER),
+                GraphEdge(screenTest.id, base.id, EdgeKind.INHERITANCE),
+                GraphEdge(fixtures.id, create.id, EdgeKind.MEMBER),
+                GraphEdge(setUp.id, create.id, EdgeKind.CALL),
+                GraphEdge(create.id, fixtures.id, EdgeKind.REFERENCE),
+            ))
+
+            val evidence = DefaultRetention.find(graph, emptyList(), emptyList())
+            val reachable = ReachabilityAnalyzer.analyze(graph, evidence).reachableNodeIds
+
+            assertEquals(RetentionReason.RUNTIME_ENTRY_POINT, evidence.first { it.nodeId == setUp.id }.reason, lifecycle)
+            assertEquals(SourceLocation("BaseTest.kt", 5), evidence.first { it.nodeId == setUp.id }.location, lifecycle)
+            assertEquals(true, fixtures.id in reachable, lifecycle)
+        }
+    }
+
+    @Test
+    fun `assisted injection and Room converters retain their owners and callees`() {
+        val worker = node("class:app/SyncWorker", NodeKind.CLASS)
+        val constructor = node("method:app/SyncWorker#<init>()V", NodeKind.CONSTRUCTOR, setOf("dagger/assisted/AssistedInject"))
+        val work = node("method:app/SyncWorker#doWork()V", NodeKind.METHOD)
+        val converters = node("class:app/Converters", NodeKind.CLASS)
+        val fromTimestamp = node("method:app/Converters#fromTimestamp(J)V", NodeKind.METHOD, setOf("androidx/room/TypeConverter"))
+        val codec = node("class:app/DateCodec", NodeKind.CLASS)
+        val graph = CodeGraph(listOf(worker, constructor, work, converters, fromTimestamp, codec), listOf(
+            GraphEdge(worker.id, constructor.id, EdgeKind.MEMBER),
+            GraphEdge(worker.id, work.id, EdgeKind.MEMBER),
+            GraphEdge(converters.id, fromTimestamp.id, EdgeKind.MEMBER),
+            GraphEdge(fromTimestamp.id, codec.id, EdgeKind.REFERENCE),
+        ))
+
+        val evidence = DefaultRetention.find(graph, emptyList(), emptyList())
+        val reachable = ReachabilityAnalyzer.analyze(graph, evidence).reachableNodeIds
+
+        assertEquals(setOf(RetentionReason.DEPENDENCY_INJECTION), evidence.filter { it.nodeId == worker.id }.map { it.reason }.toSet())
+        assertEquals(setOf(RetentionReason.SERIALIZATION), evidence.filter { it.nodeId == converters.id }.map { it.reason }.toSet())
+        assertEquals(true, work.id in reachable)
+        assertEquals(true, codec.id in reachable)
+    }
+
+    private companion object {
+        // 0.26.0 이후 보강한 테스트 runner·DI·직렬화 annotation이다. 기존 표와 같은 owner 정책을 따른다.
+        val ADDED_FRAMEWORK_REASONS = buildMap {
+            listOf(
+                "dagger/assisted/AssistedInject",
+                "dagger/assisted/AssistedFactory",
+                "dagger/Component",
+                "dagger/Component\$Builder",
+                "dagger/Component\$Factory",
+                "dagger/Subcomponent",
+                "dagger/Subcomponent\$Builder",
+                "dagger/Subcomponent\$Factory",
+                "dagger/hilt/EntryPoint",
+                "androidx/hilt/work/HiltWorker",
+            ).forEach { put(it, RetentionReason.DEPENDENCY_INJECTION) }
+            listOf(
+                "com/google/gson/annotations/Expose",
+                "androidx/room/TypeConverter",
+            ).forEach { put(it, RetentionReason.SERIALIZATION) }
+            listOf(
+                "org/junit/Before",
+                "org/junit/After",
+                "org/junit/BeforeClass",
+                "org/junit/AfterClass",
+                "org/junit/Rule",
+                "org/junit/ClassRule",
+                "org/junit/runners/Parameterized\$Parameters",
+                "org/junit/runners/Parameterized\$Parameter",
+                "org/junit/jupiter/api/BeforeEach",
+                "org/junit/jupiter/api/AfterEach",
+                "org/junit/jupiter/api/BeforeAll",
+                "org/junit/jupiter/api/AfterAll",
+                "org/junit/jupiter/api/RepeatedTest",
+                "org/junit/jupiter/api/TestFactory",
+                "org/junit/jupiter/api/TestTemplate",
+                "org/junit/jupiter/api/extension/RegisterExtension",
+                "org/junit/jupiter/params/ParameterizedTest",
+            ).forEach { put(it, RetentionReason.RUNTIME_ENTRY_POINT) }
+        }
     }
 
     private fun node(

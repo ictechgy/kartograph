@@ -7,7 +7,7 @@ import dev.kartograph.core.NodeKind
 import dev.kartograph.core.ClassHierarchy
 import dev.kartograph.core.NodeId
 
-/** Android DI와 직렬화 생태계가 runtime 또는 generated code로 소비하는 선언을 보존한다. */
+/** Android DI·직렬화·테스트 runner 생태계가 runtime 또는 generated code로 소비하는 선언을 보존한다. */
 public object FrameworkAnnotationRetention {
     /** 알려진 framework annotation이 붙은 선언과 소유 선언을 근거와 함께 반환한다. */
     public fun find(graph: CodeGraph): List<RetentionEvidence> = find(graph, ClassHierarchy.EMPTY)
@@ -51,6 +51,17 @@ public object FrameworkAnnotationRetention {
             "dagger/hilt/android/AndroidEntryPoint",
             "dagger/hilt/android/HiltAndroidApp",
             "dagger/hilt/android/lifecycle/HiltViewModel",
+            // assisted 생성자·factory와 component 계열은 Dagger가 생성한 구현이 호출한다.
+            "dagger/assisted/AssistedInject",
+            "dagger/assisted/AssistedFactory",
+            "dagger/Component",
+            "dagger/Component\$Builder",
+            "dagger/Component\$Factory",
+            "dagger/Subcomponent",
+            "dagger/Subcomponent\$Builder",
+            "dagger/Subcomponent\$Factory",
+            "dagger/hilt/EntryPoint",
+            "androidx/hilt/work/HiltWorker",
         ).forEach { annotation -> put(annotation, RetentionReason.DEPENDENCY_INJECTION) }
         listOf(
             "kotlinx/serialization/Serializable",
@@ -62,12 +73,34 @@ public object FrameworkAnnotationRetention {
             "androidx/room/Entity",
             "androidx/room/Dao",
             "androidx/room/Database",
+            // Gson의 노출 field와 Room 생성 코드가 부르는 converter method다.
+            "com/google/gson/annotations/Expose",
+            "androidx/room/TypeConverter",
         ).forEach { annotation -> put(annotation, RetentionReason.SERIALIZATION) }
         listOf(
             "android/webkit/JavascriptInterface",
             "androidx/compose/ui/tooling/preview/Preview",
             "org/junit/Test",
             "org/junit/jupiter/api/Test",
+            // JUnit runner가 reflection으로 부르는 생명주기·rule·parameter·변형 test 진입점이다.
+            // @Test가 없는 base test class의 member도 이 annotation으로 root가 된다.
+            "org/junit/Before",
+            "org/junit/After",
+            "org/junit/BeforeClass",
+            "org/junit/AfterClass",
+            "org/junit/Rule",
+            "org/junit/ClassRule",
+            "org/junit/runners/Parameterized\$Parameters",
+            "org/junit/runners/Parameterized\$Parameter",
+            "org/junit/jupiter/api/BeforeEach",
+            "org/junit/jupiter/api/AfterEach",
+            "org/junit/jupiter/api/BeforeAll",
+            "org/junit/jupiter/api/AfterAll",
+            "org/junit/jupiter/api/RepeatedTest",
+            "org/junit/jupiter/api/TestFactory",
+            "org/junit/jupiter/api/TestTemplate",
+            "org/junit/jupiter/api/extension/RegisterExtension",
+            "org/junit/jupiter/params/ParameterizedTest",
             "org/robolectric/annotation/Config",
             "retrofit2/http/DELETE",
             "retrofit2/http/GET",
