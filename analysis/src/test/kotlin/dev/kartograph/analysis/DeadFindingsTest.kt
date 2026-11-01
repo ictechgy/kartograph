@@ -47,6 +47,56 @@ class DeadFindingsTest {
     }
 
     @Test
+    fun `unused framework and constant owners stay conservative roots and disclose why`() {
+        // SOUND-1·리뷰: 미사용이어도 보고하지 않는 보수적 보존 경로(DI·직렬화·runtime 진입·상수 owner)를 고정하고,
+        // 그 누락을 dead의 정적 한계로 알리는지 확인한다.
+        fun type(name: String, kind: NodeKind = NodeKind.CLASS, annotations: Set<String> = emptySet()) =
+            GraphNode(NodeId("class:app/$name"), name, kind, annotations = annotations)
+        fun member(owner: String, name: String, kind: NodeKind, annotation: String? = null) =
+            GraphNode(NodeId("method:app/$owner#$name()V"), name, kind, annotations = setOfNotNull(annotation))
+        val injectable = type("Repository")
+        val constructor = member("Repository", "<init>", NodeKind.CONSTRUCTOR, "javax/inject/Inject")
+        val dto = type("UserDto")
+        val exposed = GraphNode(NodeId("field:app/UserDto#name:Ljava/lang/String;"), "name", NodeKind.FIELD,
+            annotations = setOf("com/google/gson/annotations/Expose"))
+        val converters = type("Converters")
+        val convert = member("Converters", "fromTimestamp", NodeKind.METHOD, "androidx/room/TypeConverter")
+        val codec = type("DateCodec")
+        val component = type("AppComponent", NodeKind.INTERFACE, setOf("dagger/Component"))
+        val constants = type("Keys", NodeKind.OBJECT)
+        val tag = GraphNode(NodeId("field:app/Keys#TAG:Ljava/lang/String;"), "TAG", NodeKind.FIELD,
+            attributes = setOf(NodeAttribute.COMPILE_TIME_CONSTANT))
+        val unused = type("Unused")
+        val graph = CodeGraph(listOf(injectable, constructor, dto, exposed, converters, convert, codec, component, constants, tag, unused),
+            listOf(
+                GraphEdge(injectable.id, constructor.id, EdgeKind.MEMBER),
+                GraphEdge(dto.id, exposed.id, EdgeKind.MEMBER),
+                GraphEdge(converters.id, convert.id, EdgeKind.MEMBER),
+                GraphEdge(convert.id, codec.id, EdgeKind.REFERENCE),
+                GraphEdge(constants.id, tag.id, EdgeKind.MEMBER),
+            ))
+
+        val evidence = DefaultRetention.find(graph, emptyList(), emptyList())
+        val result = ReachabilityAnalyzer.analyze(graph, evidence)
+
+        assertEquals(listOf(unused.id), DeadFindings.collect(graph, result).map { it.nodeId })
+        assertEquals(listOf(RetentionReason.DEPENDENCY_INJECTION), result.retentionEvidenceFor(injectable.id).map { it.reason })
+        assertEquals(listOf(RetentionReason.DEPENDENCY_INJECTION), result.retentionEvidenceFor(component.id).map { it.reason })
+        assertEquals(listOf(RetentionReason.SERIALIZATION), result.retentionEvidenceFor(dto.id).map { it.reason })
+        assertEquals(listOf(RetentionReason.SERIALIZATION), result.retentionEvidenceFor(converters.id).map { it.reason })
+        assertEquals(true, codec.id in result.reachableNodeIds)
+        assertEquals(listOf(RetentionReason.INLINE_CONSTANT), result.retentionEvidenceFor(constants.id).map { it.reason })
+        assertEquals(true, AnalysisLimitation.INLINE_CONSTANT_REFERENCES in AnalysisLimitation.entries)
+        assertEquals(
+            "owners retained by supported dependency-injection, serialization or runtime-entry annotations " +
+                "(such as @Inject constructors, @Expose fields, @TypeConverter methods or @Component types) and all " +
+                "their members are roots without proof that generated code or a framework uses them",
+            AnalysisLimitation.FRAMEWORK_ANNOTATION_OWNERS.description,
+        )
+        assertEquals(AnalysisLimitation.entries.last(), AnalysisLimitation.FRAMEWORK_ANNOTATION_OWNERS)
+    }
+
+    @Test
     fun `file facade top-level declarations are reported conservatively`() {
         val facade = GraphNode(NodeId("class:FacadeKt"), "FacadeKt", NodeKind.CLASS,
             synthesized = true, attributes = setOf(NodeAttribute.FILE_FACADE))
