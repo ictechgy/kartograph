@@ -19,6 +19,9 @@
   `abstractnessDefined` and `distanceDefined`; `metrics` keeps its TSV columns and `0.000`
   placeholders but lists units without cross-unit dependencies or declared types in a stderr
   `undefined-distance` limitation, because their `D=1.000` is not the zone of pain.
+- `dead` reports in every format add the `DEPENDENCY_INJECTION_OWNERS` limitation: owners of supported
+  DI annotations, such as classes with only an `@Inject` constructor, stay conservative roots and are
+  not reported even when no generated component requests them. Retention and findings are unchanged.
 
 ### Added
 

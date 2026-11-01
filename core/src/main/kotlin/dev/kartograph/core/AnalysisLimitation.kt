@@ -8,4 +8,9 @@ public enum class AnalysisLimitation(public val description: String) {
     GENERATED_CODE_COVERAGE("only supported generation markers and sibling relationships identify generated code"),
     ANNOTATION_VALUE_REFERENCES("class references in SOURCE-retention annotations are not available in compiled inputs"),
     TOP_LEVEL_DECLARATIONS("file-facade top-level properties and their accessors are conservatively not reported"),
+    /** 생성 component가 실제로 요청하는지 증명하지 않고 DI annotation owner를 보존하므로 미사용 주입 타입은 보고되지 않는다. */
+    DEPENDENCY_INJECTION_OWNERS(
+        "owners of supported dependency-injection annotations, including @Inject constructors, " +
+            "are retained without proof that a generated component requests them",
+    ),
 }

@@ -261,7 +261,11 @@ provider는 `SERVICE_PROVIDER` 근거로 보존하고 알려진 `ServiceLoader` 
 JPMS `module-info`의 `provides`와 동적 provider 등록은 지원하지 않는다.
 
 DI 어노테이션 보존은 지원되는 어노테이션을 진입점으로 삼는 보수적 모델이다. Dagger/Hilt binding 선택이나
-실제 객체 수명·주입 경로를 증명하지 않는다.
+실제 객체 수명·주입 경로를 증명하지 않는다. 그래서 `@Inject` 생성자만 있고 어떤 component도 요청하지 않는
+class처럼 실제로 쓰이지 않는 주입 타입도 보고하지 않으며, `dead`의 모든 형식은 이를
+`DEPENDENCY_INJECTION_OWNERS` 한계로 알린다. 같은 이유로 `const val` 등 compile-time constant의 owner도
+사용처가 bytecode에서 사라지므로 보존하고 `INLINE_CONSTANT_REFERENCES`로 알린다. 두 경로의 개별 판정은
+`dead --explain`의 `DEPENDENCY_INJECTION`·`INLINE_CONSTANT` 근거로 확인한다.
 
 외부 dispatch 후보 간선은 도달성에 사용하지만 호출자의 선언 의존성을 뜻하지 않으므로 패키지 순환·레이어 규칙·
 결합도에서는 제외한다. bytecode·metadata·값 기반 runtime 참조는 해당 구조 질의에 유지한다.

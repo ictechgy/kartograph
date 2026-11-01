@@ -47,6 +47,35 @@ class DeadFindingsTest {
     }
 
     @Test
+    fun `unused injectable and constant owners stay conservative roots and disclose why`() {
+        // SOUND-1: 미사용이어도 보고하지 않는 두 보수적 보존 경로를 고정하고, 그 누락을 한계로 알리는지 확인한다.
+        val injectable = GraphNode(NodeId("class:app/Repository"), "Repository", NodeKind.CLASS)
+        val constructor = GraphNode(NodeId("method:app/Repository#<init>()V"), "<init>", NodeKind.CONSTRUCTOR,
+            annotations = setOf("javax/inject/Inject"))
+        val constants = GraphNode(NodeId("class:app/Keys"), "Keys", NodeKind.OBJECT)
+        val tag = GraphNode(NodeId("field:app/Keys#TAG:Ljava/lang/String;"), "TAG", NodeKind.FIELD,
+            attributes = setOf(NodeAttribute.COMPILE_TIME_CONSTANT))
+        val unused = GraphNode(NodeId("class:app/Unused"), "Unused", NodeKind.CLASS)
+        val graph = CodeGraph(listOf(injectable, constructor, constants, tag, unused), listOf(
+            GraphEdge(injectable.id, constructor.id, EdgeKind.MEMBER),
+            GraphEdge(constants.id, tag.id, EdgeKind.MEMBER),
+        ))
+
+        val evidence = DefaultRetention.find(graph, emptyList(), emptyList())
+        val result = ReachabilityAnalyzer.analyze(graph, evidence)
+
+        assertEquals(listOf(unused.id), DeadFindings.collect(graph, result).map { it.nodeId })
+        assertEquals(listOf(RetentionReason.DEPENDENCY_INJECTION), result.retentionEvidenceFor(injectable.id).map { it.reason })
+        assertEquals(listOf(RetentionReason.INLINE_CONSTANT), result.retentionEvidenceFor(constants.id).map { it.reason })
+        assertEquals(true, AnalysisLimitation.INLINE_CONSTANT_REFERENCES in AnalysisLimitation.entries)
+        assertEquals(
+            "owners of supported dependency-injection annotations, including @Inject constructors, " +
+                "are retained without proof that a generated component requests them",
+            AnalysisLimitation.DEPENDENCY_INJECTION_OWNERS.description,
+        )
+    }
+
+    @Test
     fun `file facade top-level declarations are reported conservatively`() {
         val facade = GraphNode(NodeId("class:FacadeKt"), "FacadeKt", NodeKind.CLASS,
             synthesized = true, attributes = setOf(NodeAttribute.FILE_FACADE))
