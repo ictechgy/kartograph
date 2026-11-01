@@ -154,10 +154,12 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
-      # 독립 checkout에서도 test job의 primary build와 같은 compiler heap으로 아래 단계가 쓰는 CLI와 plugin JAR을 만든다.
-      - name: Prepare compiler evidence CLI and plugin
+      # 독립 checkout에서도 test job의 primary build와 같은 compiler heap으로 아래 단계가 쓰는 CLI·plugin JAR과
+      # test class를 만든다. call position 단계는 root module test를 실행하므로, test class가 없으면 그 단계가 기본
+      # heap으로 컴파일하다 OOM이 난다(test job에서는 primary build가 미리 컴파일해 UP-TO-DATE였다).
+      - name: Prepare compiler evidence CLI, plugin and test classes
         id: candidate-build
-        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g :cli:installDist :gradle-plugin:jar
+        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g :cli:installDist :gradle-plugin:jar testClasses
       # 옮긴 단계의 조건이 test job에서와 같은 뜻이 되도록 이 job의 설치본에도 같은 CLI 계약 검증을 둔다.
       - name: Verify CLI contract
         id: cli_contract
