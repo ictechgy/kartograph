@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""고정 입력의 두 CLI를 8쌍 비교한다. 필수 smoke 판정을 대체하지 않는다."""
+"""Linux에서 고정 입력의 두 CLI를 8쌍 비교한다. 필수 smoke 판정은 별도다."""
 
 import argparse
 import ast
@@ -20,6 +20,8 @@ import subprocess
 import sys
 import threading
 import time
+from typing import TypedDict
+import zlib
 
 
 MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
@@ -29,6 +31,66 @@ PAIRS, RESAMPLES, SEED = 8, 10_000, 20261101
 STREAM_LIMIT, TOTAL_LIMIT = 32 * 1024**2, 512 * 1024**2
 DISK_STOP = int(5.5 * 1024**3)
 SMOKE_SHA256 = "d8d4764592e758c87916bd522f489117fae9956453b72f5b15a49e7a9d7728a9"
+
+
+class SuiteInput(TypedDict):
+    pair: int | None
+    arm: str
+    warmup: bool
+
+
+class Suite(SuiteInput):
+    suite: int
+
+
+class ErrorRecord(TypedDict):
+    type: str
+    reason: str
+
+
+class SecondaryError(ErrorRecord):
+    stage: str
+
+
+class StreamReceipt(TypedDict, total=False):
+    path: str
+    bytes: int
+    sha256: str
+    gzip_path: str
+    gzip_sha256: str
+    partial_gzip_path: str
+
+
+class Observation(Suite, total=False):
+    command: str
+    argv: list[str]
+    exit: int
+    seconds: float
+    contract_failures: list[str]
+    contract: dict[str, object]
+    streams: dict[str, StreamReceipt]
+    capture_error: str
+    cleanup_error: str
+    primary_error: ErrorRecord
+    secondary_errors: list[SecondaryError]
+
+
+class UnsupportedPlatform(ValueError):
+    """자원 관측 계약이 없는 호스트를 측정 전에 구분한다."""
+
+
+def error_record(error: BaseException) -> ErrorRecord:
+    reason = str(error) if isinstance(error, (TimeoutError, ValueError, RuntimeError)) else \
+        "errno-" + str(error.errno) if isinstance(error, OSError) else "interrupted-or-unclassified"
+    return {"type": type(error).__name__, "reason": reason}
+
+
+def primary_record(row: Observation, error: BaseException):
+    row.setdefault("primary_error", error_record(error))
+
+
+def secondary_record(row: Observation, stage: str, error: BaseException):
+    row.setdefault("secondary_errors", []).append({"stage": stage, **error_record(error)})
 
 
 def load_module(name, path):
@@ -54,12 +116,13 @@ def validate_sha(value):
     return value
 
 
-def schedule():
-    result = [{"pair": None, "arm": arm, "warmup": True} for arm in ("baseline", "candidate")]
+def schedule() -> list[Suite]:
+    result: list[SuiteInput] = [{"pair": None, "arm": arm, "warmup": True} for arm in ("baseline", "candidate")]
     for pair in range(PAIRS):
         arms = ("baseline", "candidate") if pair % 2 == 0 else ("candidate", "baseline")
         result.extend({"pair": pair, "arm": arm, "warmup": False} for arm in arms)
-    return [dict(row, suite=i) for i, row in enumerate(result)]
+    return [Suite(pair=row["pair"], arm=row["arm"], warmup=row["warmup"], suite=i)
+            for i, row in enumerate(result)]
 
 
 def command_expression(node, values):
@@ -82,7 +145,7 @@ def command_expression(node, values):
     raise ValueError("unrecognized smoke command expression")
 
 
-def commands(smoke_path, corpus, fixture, binary):
+def commands(smoke_path, corpus, fixture, binary) -> list[tuple[str, list[str], str]]:
     if digest(smoke_path) != SMOKE_SHA256:
         raise ValueError("smoke evaluator identity changed")
     source = ast.parse(smoke_path.read_text())
@@ -100,7 +163,13 @@ def commands(smoke_path, corpus, fixture, binary):
     result = command_expression(assignments[0], values)
     if tuple(r[0] for r in result) != NAMES or tuple(r[2] for r in result) != CONTRACTS:
         raise ValueError("unrecognized command set or contracts")
-    return result
+    normalized = []
+    for name, argv, contract in result:
+        if not isinstance(name, str) or not isinstance(contract, str) or not isinstance(argv, list) \
+                or not all(isinstance(value, str) for value in argv):
+            raise ValueError("invalid command value types")
+        normalized.append((name, [str(value) for value in argv], contract))
+    return normalized
 
 
 def statistics_for(rows):
@@ -181,10 +250,11 @@ class Capture:
         self.stream_limit, self.total_limit, self.used = stream_limit, total_limit, 0
         self.lock = threading.Lock()
 
-    def run(self, argv, stem, row, timeout=120):
+    def run(self, argv, stem, row: Observation, timeout=120):
         if self.used + 2 * self.stream_limit > self.total_limit:
             raise ValueError("total output reservation limit")
-        if shutil.disk_usage(self.output).free < DISK_STOP:
+        # 두 stream의 최대 쓰기를 미리 예약하여 마지막 child도 중단 여유를 보존한다.
+        if shutil.disk_usage(self.output).free < DISK_STOP + 2 * self.stream_limit:
             raise ValueError("5.5GiB disk stop")
         allowed = min(timeout, self.deadline - time.monotonic())
         if allowed <= 0:
@@ -236,42 +306,119 @@ class Capture:
                 raise TimeoutError("completed child exceeded deadline")
         except BaseException as error:
             primary = error
+            row["capture_error"] = type(error).__name__
+            primary_record(row, error)
         finally:
+            def finalization_error(stage, error):
+                nonlocal primary
+                if primary is None:
+                    primary = error
+                    row["capture_error"] = type(error).__name__
+                    primary_record(row, error)
+                else:
+                    secondary_record(row, stage, error)
             if owned is not None:
                 try:
                     owned.close_signals()
                     if owned.lost:
                         raise RuntimeError("owned child lease lost")
-                    process.wait(timeout=10)
-                    row["exit"] = process.returncode
+                    if process is None:
+                        raise RuntimeError("owned process reference missing")
+                    row["exit"] = process.wait(timeout=10)
                 except BaseException as error:
                     row["cleanup_error"] = type(error).__name__
-                    primary = primary or error
+                    finalization_error("owned-cleanup", error)
             for reader in readers:
                 reader.join(timeout=10)
                 if reader.is_alive():
-                    primary = primary or RuntimeError("owned stream did not close")
+                    finalization_error("reader-close", RuntimeError("owned stream did not close"))
             for stream in streams:
-                stream.close()
-            row["streams"] = {name: {"bytes": p.stat().st_size, "sha256": digest(p), "path": p.name}
-                              for name, p in zip(("stdout", "stderr"), paths)}
+                try:
+                    stream.close()
+                except BaseException as error:
+                    finalization_error("sink-close", error)
+            receipts: dict[str, StreamReceipt] = {}
+            row["streams"] = receipts
+            for name, path in zip(("stdout", "stderr"), paths):
+                receipt: StreamReceipt = {"path": path.name}
+                receipts[name] = receipt
+                try:
+                    receipt["bytes"] = path.stat().st_size
+                    receipt["sha256"] = digest(path)
+                except BaseException as error:
+                    finalization_error("stream-receipt-" + name, error)
         if errors:
-            primary = primary or errors[0]
+            for error in errors:
+                finalization_error("stream-reader", error)
         if primary is not None:
             row["capture_error"] = type(primary).__name__
             raise primary
         return paths
 
 
-def preserve(paths, row, output):
+class DiskCheckedArchive:
+    """gzip 헤더·압축 청크·종료 꼬리까지 같은 디스크 중단 기준을 적용한다."""
+    def __init__(self, destination, parent):
+        self.destination, self.parent = destination, parent
+
+    def write(self, data):
+        if shutil.disk_usage(self.parent).free < DISK_STOP + len(data):
+            raise ValueError("archive disk stop")
+        written = self.destination.write(data)
+        if written != len(data):
+            raise OSError("short archive write")
+        return written
+
+    def flush(self):
+        return self.destination.flush()
+
+
+def preserve(paths, row: Observation, output):
+    receipts = row.get("streams")
+    if receipts is None:
+        raise ValueError("missing stream receipts")
     for name, path in zip(("stdout", "stderr"), paths):
         target = output / (path.name + ".gz")
-        with path.open("rb") as source, target.open("xb") as destination:
-            with gzip.GzipFile(filename="", mode="wb", fileobj=destination, mtime=0) as zipped:
-                shutil.copyfileobj(source, zipped, length=65536)
-        row["streams"][name]["gzip_path"] = target.name
-        row["streams"][name]["gzip_sha256"] = digest(target)
-        path.unlink()
+        # 비압축 자료보다 큰 결과와 gzip 오버헤드까지 보수적으로 예약한다.
+        reservation = path.stat().st_size * 2 + 1024
+        if shutil.disk_usage(output).free < DISK_STOP + reservation:
+            raise ValueError("archive disk reservation stop")
+        try:
+            source, destination, archive_primary = None, None, None
+            try:
+                source = path.open("rb")
+                destination = target.open("xb", buffering=0)
+                sink, compressor = DiskCheckedArchive(destination, output), zlib.compressobj(level=6, wbits=31)
+                for chunk in iter(lambda: source.read(65536), b""):
+                    sink.write(compressor.compress(chunk))
+                sink.write(compressor.flush())
+            except BaseException as error:
+                archive_primary = error
+                primary_record(row, error)
+            finally:
+                for stream in (source, destination):
+                    if stream is not None:
+                        try:
+                            stream.close()
+                        except BaseException as error:
+                            if archive_primary is None:
+                                archive_primary = error
+                                primary_record(row, error)
+                            else:
+                                secondary_record(row, "archive-close", error)
+            if archive_primary is not None:
+                raise archive_primary
+            receipts[name]["gzip_sha256"] = digest(target)
+            receipts[name]["gzip_path"] = target.name
+            path.unlink()
+        except BaseException as error:
+            primary_record(row, error)
+            try:
+                if target.exists() and "gzip_path" not in receipts[name]:
+                    receipts[name]["partial_gzip_path"] = target.name
+            except BaseException as secondary:
+                secondary_record(row, "archive-partial-receipt", secondary)
+            raise
 
 
 def equal_raw(reference, current):
@@ -328,7 +475,7 @@ def qualify(args):
     output.mkdir(parents=True, exist_ok=False)
     (output / "tmp").mkdir()
     env = repeatability.cli_environment(os.environ, output / "tmp")
-    result = {"status": "incomplete", "scope": "fixed-input paired comparison; not mandatory smoke acceptance",
+    result = {"status": "incomplete", "scope": "Linux fixed-input paired comparison; not mandatory smoke acceptance",
               "protocol": {"pairs": PAIRS, "bootstrap_resamples": RESAMPLES, "seed": SEED,
                            "stream_limit_bytes": STREAM_LIMIT, "total_raw_limit_bytes": TOTAL_LIMIT},
               "rows": [], "sources": {}, "helper_sha256": digest(Path(__file__)),
@@ -346,6 +493,10 @@ def qualify(args):
     roots, sealed, primary = None, None, None
     old_handler = signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt("terminated")))
     try:
+        result["platform_preflight"] = {"required": "linux", "observed": sys.platform,
+                                        "supported": sys.platform == "linux"}
+        if sys.platform != "linux":
+            raise UnsupportedPlatform("Linux qualification host required")
         java = Path(env["JAVA_HOME"]).resolve(strict=True)
         for arm, repo, sha in (("baseline", baseline, args.baseline_sha), ("candidate", candidate, args.target_sha),
                               ("harness", harness, args.harness_sha)):
@@ -375,7 +526,7 @@ def qualify(args):
                  "harness_workflow": harness / ".github/workflows/cli-repeatability.yml",
                  "baseline_evaluator": baseline / "Scripts/verify-analysis-smoke-gate.py",
                  "candidate_evaluator": candidate / "Scripts/verify-analysis-smoke-gate.py"}
-        vm = java / ("lib/server/libjvm.dylib" if sys.platform == "darwin" else "lib/server/libjvm.so")
+        vm = java / "lib/server/libjvm.so"
         roots["jdk_vm"] = vm
         sealed = seal(roots)
         result["sealed_inputs"] = sealed
@@ -384,38 +535,67 @@ def qualify(args):
                     repo / "cli/build/install/kartograph/bin/kartograph")
                     for arm, repo in (("baseline", baseline), ("candidate", candidate))}
         capture = Capture(output, baseline, env, owner, time.monotonic() + 900)
-        references = {}
+        references: dict[str, dict[str, str]] = {}
         result["resource_policy"] = repeatability.resources()["policy"]
         for suite in schedule():
             for name, argv, contract in declared[suite["arm"]]:
                 verify_seal(roots, sealed)
                 if repeatability.resources()["policy"] != result["resource_policy"]:
                     raise ValueError("resource policy changed")
-                row = dict(suite, command=name, contract_failures=[])
+                row: Observation = {**suite, "command": name, "contract_failures": []}
                 result["rows"].append(row)
                 stem = f"suite-{suite['suite']:02d}-{suite['arm']}-{name}"
                 paths = [output / (stem + suffix) for suffix in (".stdout", ".stderr")]
+                row_primary = None
                 try:
                     capture.run(argv, stem, row)
                     if name in references and any(not equal_raw(output / references[name][stream], path)
                             for stream, path in zip(("stdout", "stderr"), paths)):
                         raise ValueError("raw output parity mismatch")
-                    observation = {}
-                    smoke.check_contract(name, contract, subprocess.CompletedProcess(argv, row["exit"],
-                        paths[0].read_text(), paths[1].read_text()), observation, row["contract_failures"])
+                    exit_code = row.get("exit")
+                    if type(exit_code) is not int:
+                        raise ValueError("missing integer child exit")
+                    observation: dict[str, object] = {}
+                    contract_failures: list[str] = []
+                    smoke.check_contract(name, contract, subprocess.CompletedProcess(argv, exit_code,
+                        paths[0].read_text(), paths[1].read_text()), observation, contract_failures)
+                    row["contract_failures"] = contract_failures
                     row["contract"] = observation
-                    if row["exit"] != 0 or row["contract_failures"]:
+                    if exit_code != 0 or contract_failures:
                         raise ValueError("failed child or semantic contract")
+                except BaseException as error:
+                    row_primary = error
+                    primary_record(row, error)
                 finally:
-                    if all(p.exists() for p in paths) and "streams" in row:
-                        preserve(paths, row, output)
-                    save()
-                references.setdefault(name, {s: row["streams"][s]["gzip_path"] for s in ("stdout", "stderr")})
+                    try:
+                        if all(p.exists() for p in paths) and "streams" in row:
+                            preserve(paths, row, output)
+                    except BaseException as error:
+                        if row_primary is None:
+                            row_primary = error
+                            primary_record(row, error)
+                        else:
+                            secondary_record(row, "archive", error)
+                    finally:
+                        save(row_primary)
+                if row_primary is not None:
+                    raise row_primary
+                streams = row.get("streams")
+                if streams is None:
+                    raise ValueError("missing stream receipts after capture")
+                archive_paths = {}
+                for stream in ("stdout", "stderr"):
+                    gzip_path = streams[stream].get("gzip_path")
+                    if not isinstance(gzip_path, str):
+                        raise ValueError("missing complete archive")
+                    archive_paths[stream] = gzip_path
+                references.setdefault(name, archive_paths)
         result["statistics"] = statistics_for(result["rows"])
         result["status"] = "speedup-demonstrated" if result["statistics"]["speedup_demonstrated"] else "no-proven-speedup"
     except BaseException as error:
         primary = error
-        result.update(status="failed-or-incomplete", error=type(error).__name__)
+        result.update(status="unsupported-os" if isinstance(error, UnsupportedPlatform) else "failed-or-incomplete",
+                      error=error_record(error))
     finally:
         try:
             if sealed is not None:
@@ -434,6 +614,9 @@ def qualify(args):
             save(primary)
         finally:
             signal.signal(signal.SIGTERM, old_handler)
+    if isinstance(primary, UnsupportedPlatform):
+        print(json.dumps({"status": "unsupported-os", "result_sha256": digest(output / "result.json")}))
+        return 2
     if primary is not None:
         raise primary
     print(json.dumps({"status": result["status"], "result_sha256": digest(output / "result.json")}))

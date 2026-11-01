@@ -77,7 +77,7 @@ class PairProtocolTests(unittest.TestCase):
             expected = repeated.commands(root, root / "project")
             for row in expected:
                 row[1][0] = str(root / "binary")
-            self.assertEqual([list(r) for r in expected], actual)
+            self.assertEqual(expected, actual)
             mutated = root / "smoke.py"
             mutated.write_bytes((ROOT / "Scripts/verify-analysis-smoke-gate.py").read_bytes() + b"\n")
             with self.assertRaisesRegex(ValueError, "evaluator identity"):
@@ -131,11 +131,41 @@ class PairSafetyTests(unittest.TestCase):
         self.assertLess(row["exit"], 0)
         self.assertNotIn("cleanup_error", row)
 
+    def test_timeout_remains_primary_when_receipt_digest_fails(self):
+        row = {}
+        with patch.object(P, "digest", side_effect=OSError("fixture digest failure")), \
+             self.assertRaises(TimeoutError):
+            self.capture().run([sys.executable, "-c", "import time; print('started',flush=True); time.sleep(60)"],
+                               "timeout-digest", row, timeout=.1)
+        self.assertEqual("TimeoutError", row["capture_error"])
+        self.assertEqual("TimeoutError", row["primary_error"]["type"])
+        self.assertTrue(any(e["type"] == "OSError" for e in row["secondary_errors"]))
+        self.assertEqual(b"started\n", (self.root / row["streams"]["stdout"]["path"]).read_bytes())
+        self.assertEqual(8, row["streams"]["stdout"]["bytes"])
+
+    def test_archival_reservation_and_each_gzip_write_check_disk_stop(self):
+        left, right = self.root / "left", self.root / "right"
+        left.write_bytes(b"retain original stdout")
+        right.write_bytes(b"retain original stderr")
+        row = {"streams": {"stdout": {}, "stderr": {}}}
+        with patch.object(P.shutil, "disk_usage", return_value=SimpleNamespace(free=P.DISK_STOP + 1)), \
+             self.assertRaisesRegex(ValueError, "archive disk reservation"):
+            P.preserve([left, right], row, self.root)
+        self.assertTrue(left.is_file() and right.is_file())
+        with (self.root / "sink").open("wb", buffering=0) as destination:
+            sink = P.DiskCheckedArchive(destination, self.root)
+            with patch.object(P.shutil, "disk_usage", return_value=SimpleNamespace(free=P.DISK_STOP + 1)), \
+                 self.assertRaisesRegex(ValueError, "archive disk stop"):
+                sink.write(b"must not cross stop")
+        self.assertEqual(0, (self.root / "sink").stat().st_size)
+
     def test_disk_stop_prevents_launch_and_mutated_seal_refuses(self):
-        with patch.object(P.shutil, "disk_usage", return_value=SimpleNamespace(free=P.DISK_STOP - 1)), \
-             patch.object(P.subprocess, "Popen") as launch, self.assertRaisesRegex(ValueError, "disk stop"):
-            self.capture().run([sys.executable, "-c", "pass"], "disk", {})
-        launch.assert_not_called()
+        for free in (P.DISK_STOP - 1, P.DISK_STOP + 1):
+            with self.subTest(free=free), \
+                 patch.object(P.shutil, "disk_usage", return_value=SimpleNamespace(free=free)), \
+                 patch.object(P.subprocess, "Popen") as launch, self.assertRaisesRegex(ValueError, "disk stop"):
+                self.capture().run([sys.executable, "-c", "pass"], "disk", {})
+            launch.assert_not_called()
         source = self.root / "source"
         source.write_bytes(b"original")
         sealed = P.seal({"input": source})
@@ -195,7 +225,7 @@ class PairFixtureFlowTests(unittest.TestCase):
                     self.output = output
                 def run(self, argv, stem, row):
                     launched.append(stem)
-                    row.update(argv=list(map(str, argv)), exit=2 if failure == "child" and row["arm"] == "candidate" else 0,
+                    row.update(argv=list(map(str, argv)), exit=2 if failure in ("child", "semantic-archive") and row["arm"] == "candidate" else 0,
                                seconds=3.0 if row["arm"] == "baseline" else 2.0)
                     text = commands[row["command"]]
                     if failure == "output" and row["arm"] == "candidate":
@@ -214,9 +244,19 @@ class PairFixtureFlowTests(unittest.TestCase):
                     return SimpleNamespace(cli_environment=environment.cli_environment,
                                            resources=lambda: {"policy": {"fixture": True}})
                 return original_load(name, path)
+            original_compressor = P.zlib.compressobj
+            def compressor(*args, **kwargs):
+                if failure == "semantic-archive" and launched and "candidate" in launched[-1]:
+                    raise OSError("fixture gzip failure")
+                return original_compressor(*args, **kwargs)
+            def disk_usage(path):
+                return SimpleNamespace(free=P.DISK_STOP - 1 if failure == "last-row-disk" and len(launched) == 108
+                                       else 100 * 1024**3)
             with patch.dict(os.environ, {"JAVA_HOME": str(java)}), patch.object(P, "Capture", FixtureCapture), \
                  patch.object(P, "load_module", side_effect=load), \
                  patch.object(P, "source_identity", side_effect=lambda owner, repo, sha, env: {"head": sha, "tree": "c" * 40}), \
+                 patch.object(P.sys, "platform", "linux"), patch.object(P.shutil, "disk_usage", side_effect=disk_usage), \
+                 patch.object(P.zlib, "compressobj", side_effect=compressor), \
                  redirect_stdout(io.StringIO()):
                 if failure:
                     with self.assertRaises(ValueError):
@@ -226,7 +266,7 @@ class PairFixtureFlowTests(unittest.TestCase):
             result = json.loads((args.output / "result.json").read_text())
             self.assertEqual("failed-or-incomplete" if failure else "speedup-demonstrated", result["status"])
             if failure:
-                self.assertLess(len(launched), 108)
+                self.assertEqual(108, len(launched)) if failure == "last-row-disk" else self.assertLess(len(launched), 108)
                 self.assertNotIn("statistics", result)
             else:
                 self.assertEqual(108, len(launched))
@@ -235,6 +275,15 @@ class PairFixtureFlowTests(unittest.TestCase):
                 self.assertEqual([-6.0] * 8, result["statistics"]["paired_candidate_minus_baseline_seconds"])
             if failure == "mutation":
                 self.assertIn("final_integrity_error", result)
+            if failure == "semantic-archive":
+                row = result["rows"][-1]
+                self.assertEqual("failed child or semantic contract", row["primary_error"]["reason"])
+                self.assertTrue(any(e["stage"] == "archive" and e["type"] == "OSError" for e in row["secondary_errors"]))
+                self.assertTrue((args.output / row["streams"]["stdout"]["path"]).is_file())
+            if failure == "last-row-disk":
+                row = result["rows"][-1]
+                self.assertIn("archive disk reservation", row["primary_error"]["reason"])
+                self.assertTrue((args.output / row["streams"]["stdout"]["path"]).is_file())
 
     def test_complete_synthetic_protocol_preserves_all_rows_and_raw_outputs(self):
         self.exercise()
@@ -243,6 +292,27 @@ class PairFixtureFlowTests(unittest.TestCase):
         for failure in ("output", "child", "mutation"):
             with self.subTest(failure=failure):
                 self.exercise(failure)
+
+    def test_semantic_failure_survives_gzip_failure_and_last_row_disk_stop_cannot_pass(self):
+        for failure in ("semantic-archive", "last-row-disk"):
+            with self.subTest(failure=failure):
+                self.exercise(failure)
+
+    def test_unsupported_host_is_recorded_before_copy_seal_or_measurement(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "capture"
+            args = argparse.Namespace(baseline_root=Path("/not-read-baseline"), baseline_sha="a" * 40,
+                repo_root=Path("/not-read-candidate"), target_sha="b" * 40, harness_sha="c" * 40, output=output)
+            with patch.object(P.sys, "platform", "darwin"), patch.object(P, "copy_input") as copy, \
+                 patch.object(P, "seal") as seal, patch.object(P, "Capture") as capture, \
+                 patch.object(P, "source_identity") as source, redirect_stdout(io.StringIO()):
+                self.assertEqual(2, P.qualify(args))
+            for operation in (copy, seal, capture, source):
+                operation.assert_not_called()
+            result = json.loads((output / "result.json").read_text())
+            self.assertEqual("unsupported-os", result["status"])
+            self.assertEqual({"required": "linux", "observed": "darwin", "supported": False}, result["platform_preflight"])
+            self.assertEqual([], result["rows"])
 
 
 if __name__ == "__main__":
