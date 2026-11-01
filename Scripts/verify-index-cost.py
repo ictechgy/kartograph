@@ -424,18 +424,22 @@ class OwnedProcessGroup:
         self.lock = threading.Lock()
         self.signal_open, self.lost = True, False
 
-    def ready(self):
+    def ready(self, observer=None):
         with self.lock:
             if not self.signal_open or self.process.returncode is not None:
                 self.signal_open, self.lost = False, True
                 raise ChildProcessError(errno.ECHILD, "child-ownership-lost")
             try:
-                return self.observe(self.process.pid)
+                terminal = self.observe(self.process.pid)
             except InterruptedError:
                 return False
             except OSError:
                 self.signal_open, self.lost = False, True
                 raise
+            # 관측은 unreaped child를 확보한 같은 lock 안에서만 한다. 관측 오류는 소유권 상실이 아니다.
+            if observer is not None:
+                observer.sample(self.process.pid, terminal)
+            return terminal
 
     def signal_group(self):
         with self.lock:
@@ -520,7 +524,7 @@ def output_equal(left, right):
 
 
 def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
-        stdout_path=None, stdout_limit=RAW_LIMIT):
+        stdout_path=None, stdout_limit=RAW_LIMIT, observer=None):
     """각 child의 두 stream을 제한하고 timeout에는 소유한 process group을 끝낸다."""
     if not re.fullmatch(r"[a-z-]{1,64}", phase):
         raise DiagnosticError("invalid-process-phase")
@@ -570,12 +574,14 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
         reader.start()
     timed_out = False
     wait_failed = False
+    observer_failure = None
+    observer_reap_failure = None
     reader_unclosed = False
     rss = {"status": "unavailable", "reason": "owned-wait4-rusage-not-observed"}
     def wait_owned():
         deadline = time.monotonic() + timeout
         while True:
-            if owned.ready():
+            if (owned.ready() if observer is None else owned.ready(observer)):
                 return
             if time.monotonic() >= deadline:
                 raise subprocess.TimeoutExpired(arguments, timeout)
@@ -586,6 +592,8 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
         timed_out = True
     except OSError:
         wait_failed = True
+    except DiagnosticError as error:
+        observer_failure = error
     finally:
         try:
             owned.close_signals()
@@ -604,6 +612,14 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
                         continue
                     if pid == process.pid:
                         process.returncode = os.waitstatus_to_exitcode(status)
+                        if observer is not None:
+                            try:
+                                observer.reaped(usage)
+                            except DiagnosticError as error:
+                                if observer_failure is None:
+                                    observer_failure = error
+                                else:
+                                    observer_reap_failure = error
                         if sys.platform in ("linux", "darwin") and 0 < usage.ru_maxrss < 2**63:
                             rss = {"status": "observed", "peakBytes": int(usage.ru_maxrss) *
                                    (1024 if sys.platform == "linux" else 1),
@@ -631,11 +647,21 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
               "stdout": SpooledOutput(stdout_path) if destination is not None else bytes(streams[0]),
               "stderr": bytes(streams[1]),
               "wallNanos": time.monotonic_ns() - started, "rss": rss, "phase": phase}
-    reason = ("child-stream-not-closed" if reader_unclosed else
+    reason = (str(observer_failure) if observer_failure is not None else
+              "child-stream-not-closed" if reader_unclosed else
               "child-timeout" if timed_out else "child-output-limit" if overflow.is_set() else
               "child-stream-failed" if failures else "child-wait-failed" if wait_failed else None)
     if reason:
-        raise DiagnosticError(reason, summary(result))
+        receipt = summary(result)
+        if observer_failure is not None:
+            if observer_failure.receipt is not None:
+                receipt["observerFailure"] = observer_failure.receipt
+            if observer_reap_failure is not None:
+                receipt["observerReapFailure"] = {"reason": str(observer_reap_failure),
+                                                  "receipt": observer_reap_failure.receipt}
+            if wait_failed or reader_unclosed:
+                receipt["observerCleanupIncomplete"] = True
+        raise DiagnosticError(reason, receipt)
     return result
 
 

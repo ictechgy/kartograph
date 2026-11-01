@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 이 설정은 한 CLI 자식의 진단 전용이다. 원시 recording은 공개하지 않는다. -->
+<configuration version="2.0" label="Kartograph JIT attribution" description="Not performance acceptance" provider="Kartograph">
+  <event name="jdk.Compilation"><setting name="enabled">true</setting><setting name="threshold">0 ms</setting></event>
+  <event name="jdk.CompilationFailure"><setting name="enabled">true</setting></event>
+  <event name="jdk.Deoptimization"><setting name="enabled">true</setting><setting name="stackTrace">false</setting></event>
+  <event name="jdk.ExecutionSample"><setting name="enabled">true</setting><setting name="period">10 ms</setting></event>
+  <event name="jdk.NativeMethodSample"><setting name="enabled">true</setting><setting name="period">20 ms</setting></event>
+  <event name="jdk.ThreadCPULoad"><setting name="enabled">true</setting><setting name="period">100 ms</setting></event>
+  <event name="jdk.CPULoad"><setting name="enabled">true</setting><setting name="period">100 ms</setting></event>
+  <event name="jdk.GCPhasePause"><setting name="enabled">true</setting><setting name="threshold">0 ms</setting></event>
+  <event name="jdk.GCCPUTime"><setting name="enabled">true</setting></event>
+  <event name="jdk.ActiveSetting"><setting name="enabled">true</setting><setting name="threshold">0 ms</setting><setting name="stackTrace">false</setting></event>
+  <event name="jdk.ActiveRecording"><setting name="enabled">true</setting><setting name="threshold">0 ms</setting><setting name="stackTrace">false</setting></event>
+  <event name="jdk.DataLoss"><setting name="enabled">true</setting></event>
+</configuration>

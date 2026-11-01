@@ -136,3 +136,45 @@ and small owned-child timeout/nonzero/overflow/cleanup behavior. Official
 actionlint checks workflow contexts. Exact source/test review, ordinary CI and
 all workflow-validation results must be accepted before a separately authorized
 manual dispatch. A local test pass is not evidence of runner repeatability.
+
+## Preserved PR204 diagnostics
+
+`Scripts/verify-linux-runtime-cost.py` and `Scripts/verify-jit-attribution.py`
+retain the original PR204 Linux investigation as explicit command-line tools.
+They accept only the exact checkout and content seals in
+`Scripts/LinuxRuntimeReference.json`. They are not workflow modes or acceptance
+benchmarks, and they cannot clear the recorded 20-second smoke failure.
+The ordinary repeatability workflow is unchanged by this diagnostic port.
+
+These tools require Linux x86_64 with four affinity CPUs, `resource.prlimit`,
+the original sealed JDK, a clean separately prepared original target checkout,
+`RUNNER_TEMP`, and `GITHUB_SHA` equal to the clean harness commit. They reject a
+different source, root/library/launcher/configuration/JDK digest, injected JVM
+options, or an incomplete command/accounting record before reporting success.
+Do not rewrite the reference seal to profile a new candidate; a new investigation
+requires its own reviewed source and prospective input contract.
+
+For an authorized reproduction, prepare the exact target and environment first,
+then invoke one tool with an unused public-output directory:
+
+```sh
+GITHUB_SHA="$(git rev-parse HEAD)" python3 Scripts/verify-linux-runtime-cost.py \
+  --repo-root /path/to/original-target \
+  --target-sha c8d9ab3e3492afc5dc645dcfa50d7401c58796c2 \
+  --output "$RUNNER_TEMP/runtime-public"
+```
+
+The JIT tool has the same arguments. Private recordings, stdout/stderr and thread
+names remain in an owned temporary directory that is cleaned on completion.
+Only the bounded reconstructed ledger and `result.json` are intended as public
+derivatives; do not upload the private workspace or arbitrary extra files.
+Compiler durations, sampled Java stacks, scheduler counters and owned-process
+CPU remain distinct observations, with incomplete coverage stated explicitly.
+
+The current index-cost helper supplies its existing `SpooledOutput` and child
+ownership protections. Optional `/proc` observations run within its unreaped-child
+lease. Graph stdout retains the original 64MiB limit; two graph streams and two
+ordinary 32MiB stderr streams fit below the existing 256MiB aggregate upper bound.
+The private workspace remains independently bounded. The port does not adopt
+PR204's unproved owner cache or accumulator candidates, or replace newer main
+runtime-value analysis.

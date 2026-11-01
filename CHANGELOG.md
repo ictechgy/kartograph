@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 - Reuse immutable indexing values after revalidation and reduce repeated SMAP pattern allocations.
+- Retain sealed Linux/JFR attribution diagnostics with bounded owned-child observations and full spooled-output comparisons.
 - Exclude bytecode override structure from architecture dependencies while preserving reachability.
 - Read application backup-agent, component-factory and zygote-preload classes from Android manifests.
 
