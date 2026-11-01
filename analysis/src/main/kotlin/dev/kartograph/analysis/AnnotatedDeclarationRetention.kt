@@ -12,12 +12,16 @@ internal fun annotationRetentionEvidence(
     ownerReason: (RetentionReason) -> RetentionReason = { reason -> reason },
     memberReason: ((RetentionReason) -> RetentionReason)? = null,
     includeOwners: Boolean = true,
+    // 같은 순회 안에서 owner를 보존하지 않을 annotation이다. 해당 member만 root가 되고 형제 member로 넓히지 않는다.
+    memberOnlyAnnotations: Set<String> = emptySet(),
 ): List<RetentionEvidence> = graph.nodeIds.flatMap { nodeId ->
     val annotatedNode = graph.nodes.getValue(nodeId)
-    annotatedNode.annotations.mapNotNull(reasonByAnnotation::get).flatMap { reason ->
+    annotatedNode.annotations.mapNotNull { annotation ->
+        reasonByAnnotation[annotation]?.let { reason -> reason to (includeOwners && annotation !in memberOnlyAnnotations) }
+    }.flatMap { (reason, retainOwners) ->
         buildList {
             add(RetentionEvidence(annotatedNode.id, reason, annotatedNode.location))
-            (if (includeOwners) owningDeclarations(nodeId, graph) else emptyList()).forEach { ownerId ->
+            (if (retainOwners) owningDeclarations(nodeId, graph) else emptyList()).forEach { ownerId ->
                 add(RetentionEvidence(ownerId, ownerReason(reason), annotatedNode.location))
             }
             memberReason?.let { retainedMemberReason ->

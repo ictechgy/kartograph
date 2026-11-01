@@ -6,6 +6,7 @@ import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.JvmModifier
+import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.SourceLocation
@@ -173,6 +174,61 @@ class ArchitectureAnalysisTest {
         assertEquals(1.0, metrics.getValue("api").abstractness)
         assertEquals(1.0, metrics.getValue("client").instability)
         assertEquals(0, metrics.getValue("impl").efferentCoupling - 1)
+    }
+
+    @Test
+    fun `martin abstractness counts declared types and flags undefined ratios`() {
+        val facade = node("UtilKt", "util").copy(synthesized = true, attributes = setOf(NodeAttribute.FILE_FACADE))
+        val lambda = node("Port\$open\$1", "port").copy(synthesized = true)
+        val graph = CodeGraph(
+            listOf(
+                facade,
+                node("helper", "util", NodeKind.FUNCTION),
+                node("Port", "port", NodeKind.INTERFACE),
+                lambda,
+                node("Adapter", "adapter"),
+                node("Lonely", "island"),
+            ),
+            listOf(
+                edge("Adapter", "Port", EdgeKind.INHERITANCE),
+                edge("Adapter", "helper"),
+                edge("UtilKt", "helper", EdgeKind.MEMBER),
+            ),
+        )
+
+        val metrics = MartinMetrics.calculate(graph).associateBy { it.module }
+
+        // file facade와 합성 class는 작성된 타입이 아니므로 A의 분모·분자에서 빠진다.
+        assertEquals(MartinMetric("util", 1, 0, 0, 0), metrics.getValue("util"))
+        assertEquals(MartinMetric("port", 1, 0, 1, 1), metrics.getValue("port"))
+        assertEquals(1.0, metrics.getValue("port").abstractness)
+        assertEquals(0.0, metrics.getValue("port").distance)
+        // 타입이 없는 단위는 A, 결합이 없는 단위는 I가 정의되지 않는다. 기존 Double 값은 호환성을 위해 유지한다.
+        assertEquals(false, metrics.getValue("util").abstractnessDefined)
+        assertEquals(true, metrics.getValue("util").instabilityDefined)
+        assertEquals(false, metrics.getValue("util").distanceDefined)
+        assertEquals(1.0, metrics.getValue("util").distance)
+        assertEquals(true, metrics.getValue("island").abstractnessDefined)
+        assertEquals(false, metrics.getValue("island").instabilityDefined)
+        assertEquals(false, metrics.getValue("island").distanceDefined)
+        assertEquals(1.0, metrics.getValue("island").distance)
+        assertEquals(true, metrics.getValue("adapter").distanceDefined)
+        assertEquals(true, metrics.getValue("port").distanceDefined)
+    }
+
+    @Test
+    fun `martin abstractness can fall when a synthesized abstract base is excluded`() {
+        // Hilt가 생성한 abstract base(Hilt_MainActivity)는 합성 선언이라 A에서 빠진다. 이전 집계의 0.500이 0.000이 된다.
+        val generatedBase = node("Hilt_MainActivity", "ui").copy(synthesized = true, jvmModifiers = setOf(JvmModifier.ABSTRACT))
+        val graph = CodeGraph(listOf(node("MainActivity", "ui"), generatedBase, node("App", "app")), listOf(
+            edge("MainActivity", "Hilt_MainActivity", EdgeKind.INHERITANCE),
+            edge("App", "MainActivity", EdgeKind.REFERENCE),
+        ))
+
+        val ui = MartinMetrics.calculate(graph).single { it.module == "ui" }
+
+        assertEquals(MartinMetric("ui", 1, 0, 0, 1), ui)
+        assertEquals(0.0, ui.abstractness)
     }
 
     @Test

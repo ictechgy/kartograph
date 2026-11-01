@@ -36,9 +36,11 @@ internal object FullIndexArchitectureCommandOracle {
     fun metrics(arguments: List<String>, output: PrintStream, error: PrintStream): Int =
         commandHelp(arguments, output, METRICS_HELP) ?: withGraph(arguments, error, allowStrict = false) { graph, _ ->
         output.println("module\tCa\tCe\tI\tA\tD")
-        MartinMetrics.calculate(graph).forEach { metric ->
+        val metrics = MartinMetrics.calculate(graph)
+        metrics.forEach { metric ->
             output.println("${metric.module}\t${metric.afferentCoupling}\t${metric.efferentCoupling}\t${format(metric.instability)}\t${format(metric.abstractness)}\t${format(metric.distance)}")
         }
+        ArchitectureCommand.undefinedDistanceLimitation(metrics)?.let(error::println)
         ExitStatus.SUCCESS.code
     }
 
@@ -115,6 +117,10 @@ internal object FullIndexArchitectureCommandOracle {
 
         Usage:
           kartograph metrics --classes <directory-or-jar> [--classes <directory-or-jar>]...
+
+        A counts declared types; file facades and synthesized classes are excluded.
+        Units without cross-unit dependencies or declared types keep 0.000 placeholders for I or A,
+        and a stderr limitation lists up to 20 of them because their D is not a main-sequence distance.
     """.trimIndent() + "\n"
 
     private inline fun withGraph(        arguments: List<String>,

@@ -1,6 +1,7 @@
 package dev.kartograph.cli
 
 import dev.kartograph.analysis.ArchitectureGraph
+import dev.kartograph.analysis.MartinMetric
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.cli.fixture.defaultbridge.BridgeFixture
 import dev.kartograph.core.CodeGraph
@@ -101,6 +102,37 @@ class ArchitectureDispatchSelectionTest {
         assertEquals("rules: 0 findings, 0 unassigned\n", parity("rules", listOf(classes), config, listOf("--strict"), 0).stdout)
         assertEquals("module\tCa\tCe\tI\tA\tD\napi\t1\t0\t0.000\t0.333\t0.667\nclient\t0\t1\t1.000\t0.000\t0.000\n",
             parity("metrics", listOf(classes), status = 0).stdout)
+    }
+
+    @Test
+    fun `metrics keeps placeholder rows and lists units with undefined distance on stderr`(@TempDir root: Path) {
+        val classes = compile(root, linkedMapOf(
+            "api/Port.java" to "package api; public interface Port { void open(); }",
+            "app/Adapter.java" to "package app; public class Adapter implements api.Port { public void open() {} }",
+            "lonely/Alone.java" to "package lonely; public class Alone {}",
+        ))
+        val metrics = parity("metrics", listOf(classes), status = 0)
+        assertEquals("module\tCa\tCe\tI\tA\tD\n" +
+            "api\t1\t0\t0.000\t1.000\t0.000\n" +
+            "app\t0\t1\t1.000\t0.000\t0.000\n" +
+            "lonely\t0\t0\t0.000\t0.000\t1.000\n", metrics.stdout)
+        assertEquals("limitation: undefined-distance: 1 unit(s) have no cross-unit dependency or no declared type, " +
+            "so I or A is undefined and D is not a main-sequence distance: lonely\n", metrics.stderr)
+    }
+
+    @Test
+    fun `undefined distance limitation lists a bounded number of units`() {
+        val defined = MartinMetric("defined", 1, 1, 0, 1)
+        val isolated = (1..25).map { index -> MartinMetric("unit%02d".format(index), 0, 0, 0, 1) }
+        assertEquals(null, ArchitectureCommand.undefinedDistanceLimitation(listOf(defined)))
+        val few = ArchitectureCommand.undefinedDistanceLimitation(listOf(defined) + isolated.take(20))
+        assertEquals("limitation: undefined-distance: 20 unit(s) have no cross-unit dependency or no declared type, " +
+            "so I or A is undefined and D is not a main-sequence distance: " +
+            isolated.take(20).joinToString(", ") { it.module }, few)
+        val many = ArchitectureCommand.undefinedDistanceLimitation(listOf(defined) + isolated)
+        assertEquals("limitation: undefined-distance: 25 unit(s) have no cross-unit dependency or no declared type, " +
+            "so I or A is undefined and D is not a main-sequence distance: " +
+            isolated.take(20).joinToString(", ") { it.module } + ", and 5 more", many)
     }
 
     @Test

@@ -18,3 +18,7 @@ its kind and weight, and the source location when bytecode preserved one.
 Cycle analysis first collapses declarations to their explicit module or JVM package. This avoids
 presenting class/member implementation mechanics as architecture cycles. Martin coupling uses the
 same `EdgeKind.impliesUsage` predicate as reachability and query, deduplicated by source/target unit.
+Abstractness counts declared types only: file facades and other synthesized classes are excluded.
+A unit without cross-unit dependencies has an undefined I, and a unit without declared types has an
+undefined A. The table keeps `0.000` placeholders for compatibility, so `MartinMetric.distanceDefined`
+and the `undefined-distance` stderr limitation identify rows whose D is not a main-sequence distance.

@@ -18,6 +18,28 @@
   commands were not measured on runners. Output was byte-identical. `JAVA_OPTS`/`KARTOGRAPH_OPTS` override these flags;
   `JAVA_TOOL_OPTIONS`/`JDK_JAVA_OPTIONS` do not. Users who disable tiered compilation must also pass that mode's
   thresholds (see README "Installation and compatibility").
+- Retain JUnit 4/5 lifecycle, rule, parameter and test-template methods, Dagger assisted-injection and
+  component types, Hilt entry points and workers, Gson `@Expose` fields and Room type converters as
+  framework roots, so a base test class without `@Test` keeps its setup callees reachable. JUnit
+  lifecycle, rule and parameter annotations root only the annotated member, so unused sibling private
+  helpers stay reportable; test-selecting annotations keep the owner policy.
+- Martin abstractness counts only declared types: file facades, Kotlin synthetic classes and other
+  synthesized or generated classes are excluded from `A`. `A` can therefore rise (facades no longer
+  dilute it) or fall (synthesized abstract bases such as `Hilt_<Activity>` no longer count).
+  `MartinMetric` adds `instabilityDefined`, `abstractnessDefined` and `distanceDefined`; `metrics`
+  keeps its TSV columns and `0.000` placeholders but lists up to 20 units without cross-unit
+  dependencies or declared types, plus a count of the rest, in a stderr `undefined-distance`
+  limitation, because their `D=1.000` is not the zone of pain. Compatibility: a successful `metrics`
+  run can now write that line to stderr.
+- `dead` reports in every format add the `FRAMEWORK_ANNOTATION_OWNERS` limitation: owners retained by
+  supported dependency-injection, serialization or runtime-entry annotations (for example a class with
+  only an `@Inject` constructor, an unused `@Expose` DTO, an unregistered `@TypeConverter` class or an
+  unused `@Component`) and all their members stay conservative roots and are not reported, even when no
+  generated code or framework uses them. Retention and findings are unchanged.
+- README documents the fixed `dead` report scope: types, file-facade top-level functions and opt-in
+  private members, never unused public/protected/internal members of reachable classes, and never
+  members of classes retained by manifest, XML, service, generated-code, DI, serialization or
+  runtime-entry evidence.
 
 ### Added
 
