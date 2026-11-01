@@ -15,7 +15,8 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # collector 설치·compiler 증거·Android fixture를 순차 검증하면 기존 30분 예산을 넘을 수 있다.
+    # 전체 테스트·index-cost·runtime 검증만으로 느린 runner에서 약 34~35분이라 기존 30분 예산을 넘는다.
+    # collector·compiler 증거와 Android fixture는 별도 job이다.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -135,6 +136,32 @@ jobs:
         run: python3 Scripts/verify-runtime-contracts.py
       - name: Compare compiler references before constant inlining
         run: python3 experiments/compiler-references/run.py
+
+  # smoke 단계가 느린 runner에서도 통과하자 전체 test job이 Xeon 8370C·EPYC 7763에서 약 52~53분으로 45분 제한을
+  # 넘었다. 뒤쪽 collector·compiler 증거 단계를 같은 명령·순서·조건으로 독립된 45분 job에 둔다(97bd6e8과 같은 방식).
+  compiler-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      # 독립 checkout에서도 test job의 primary build와 같은 compiler heap으로 아래 단계가 쓰는 CLI와 plugin JAR을 만든다.
+      - name: Prepare compiler evidence CLI and plugin
+        id: candidate-build
+        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g :cli:installDist :gradle-plugin:jar
+      # 옮긴 단계의 조건이 test job에서와 같은 뜻이 되도록 이 job의 설치본에도 같은 CLI 계약 검증을 둔다.
+      - name: Verify CLI contract
+        id: cli_contract
+        run: Scripts/verify-cli-contract.sh
       # 시간 게이트 실패 뒤에도 성공한 설치물을 쓰는 독립 정확성 검증은 남긴다.
       - name: Verify Dagger selected binding evidence
         id: dagger_evidence
