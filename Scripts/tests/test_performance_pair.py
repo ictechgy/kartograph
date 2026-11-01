@@ -2,6 +2,7 @@
 
 import argparse
 from contextlib import redirect_stdout
+import errno
 import importlib.util
 import io
 import json
@@ -11,6 +12,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from types import SimpleNamespace
 import unittest
@@ -142,6 +144,76 @@ class PairSafetyTests(unittest.TestCase):
         self.assertTrue(any(e["type"] == "OSError" for e in row["secondary_errors"]))
         self.assertEqual(b"started\n", (self.root / row["streams"]["stdout"]["path"]).read_bytes())
         self.assertEqual(8, row["streams"]["stdout"]["bytes"])
+
+    def test_reader_overflow_is_primary_before_secondary_digest_failure(self):
+        row = {}
+        with patch.object(P, "digest", side_effect=OSError(errno.EIO, "fixture digest failure")), \
+             self.assertRaisesRegex(ValueError, "bounded output limit"):
+            self.capture(stream_limit=1024, total_limit=2048).run(
+                [sys.executable, "-c", "import sys; print('marker',file=sys.stderr,flush=True); sys.stdout.write('x'*8192)"],
+                "overflow-digest", row)
+        self.assertEqual("ValueError", row["primary_error"]["type"])
+        self.assertEqual("bounded output limit", row["primary_error"]["reason"])
+        self.assertTrue(any(e["type"] == "OSError" and e["stage"].startswith("stream-receipt")
+                            for e in row["secondary_errors"]))
+        self.assertTrue((self.root / row["streams"]["stdout"]["path"]).is_file())
+        self.assertEqual(b"marker\n", (self.root / row["streams"]["stderr"]["path"]).read_bytes())
+
+    def test_reader_sink_failure_survives_cleanup_failure_and_child_is_reaped(self):
+        row, observed = {}, threading.Event()
+        primary = OSError(errno.EIO, "fixture reader sink failure")
+        original_owner, original_open = self.owner.OwnedProcessGroup, Path.open
+        class FaultyCleanup(original_owner):
+            def signal_group(self):
+                observed.set()
+                return super().signal_group()
+            def close_signals(self):
+                if not observed.wait(timeout=2):
+                    raise RuntimeError("reader event did not arrive")
+                super().close_signals()
+                raise RuntimeError("fixture secondary cleanup failure")
+        class FaultySink:
+            def __init__(self, stream):
+                self.stream = stream
+            def write(self, data):
+                self.stream.write(data[:1])
+                raise primary
+            def close(self):
+                self.stream.close()
+        def open_stream(path, *args, **kwargs):
+            stream = original_open(path, *args, **kwargs)
+            return FaultySink(stream) if path.name == "reader-cleanup.stdout" and args == ("xb",) else stream
+        with patch.object(self.owner, "OwnedProcessGroup", FaultyCleanup), patch.object(Path, "open", new=open_stream), \
+             self.assertRaises(OSError) as caught:
+            self.capture().run([sys.executable, "-c", "print('reader output')"], "reader-cleanup", row)
+        self.assertIs(primary, caught.exception)
+        self.assertEqual("OSError", row["capture_error"])
+        self.assertEqual("errno-5", row["primary_error"]["reason"])
+        self.assertTrue(any(e["stage"] == "owned-signal-close" and e["type"] == "RuntimeError"
+                            for e in row["secondary_errors"]))
+        self.assertIsInstance(row["exit"], int)
+        self.assertEqual(b"r", (self.root / row["streams"]["stdout"]["path"]).read_bytes())
+
+    def test_earlier_main_timeout_survives_later_reader_failure(self):
+        row, original_open = {}, Path.open
+        class LateFaultySink:
+            def __init__(self, stream):
+                self.stream = stream
+            def write(self, data):
+                self.stream.write(data)
+                raise OSError(errno.EIO, "reader after child termination")
+            def close(self):
+                self.stream.close()
+        def open_stream(path, *args, **kwargs):
+            stream = original_open(path, *args, **kwargs)
+            return LateFaultySink(stream) if path.name == "timeout-reader.stdout" and args == ("xb",) else stream
+        with patch.object(Path, "open", new=open_stream), self.assertRaises(TimeoutError):
+            self.capture().run([sys.executable, "-c", "import time; print('partial',flush=True); time.sleep(60)"],
+                               "timeout-reader", row, timeout=.1)
+        self.assertEqual("TimeoutError", row["primary_error"]["type"])
+        self.assertTrue(any(e["stage"] == "stream-reader" and e["type"] == "OSError"
+                            for e in row["secondary_errors"]))
+        self.assertEqual(b"partial\n", (self.root / row["streams"]["stdout"]["path"]).read_bytes())
 
     def test_archival_reservation_and_each_gzip_write_check_disk_stop(self):
         left, right = self.root / "left", self.root / "right"

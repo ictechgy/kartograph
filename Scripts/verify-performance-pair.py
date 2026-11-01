@@ -261,19 +261,26 @@ class Capture:
             raise TimeoutError("overall deadline")
         paths = [self.output / (stem + suffix) for suffix in (".stdout", ".stderr")]
         row["argv"] = list(map(str, argv))
-        counts, errors = [0, 0], []
+        counts = [0, 0]
         observe, census = self.owner.nonreaping_waiter(), self.owner.group_census()
         streams = []
+        process, owned, readers = None, None, []
+        primary: BaseException | None = None
+        failure_lock = threading.Lock()
+        def record_error(stage: str, error: BaseException):
+            # reader와 main의 최초 관측을 같은 순서로 기록한 뒤에만 종료 신호를 보낸다.
+            nonlocal primary
+            with failure_lock:
+                if primary is None:
+                    primary = error
+                    row["capture_error"] = type(error).__name__
+                    primary_record(row, error)
+                else:
+                    secondary_record(row, stage, error)
+        started = time.monotonic()
         try:
             for path in paths:
                 streams.append(path.open("xb"))
-        except BaseException:
-            for stream in streams:
-                stream.close()
-            raise
-        process, owned, readers, primary = None, None, [], None
-        started = time.monotonic()
-        try:
             process = subprocess.Popen(argv, cwd=self.cwd, env=self.env, stdout=subprocess.PIPE,
                                        stderr=subprocess.PIPE, start_new_session=True)
             owned = self.owner.OwnedProcessGroup(process, observe, census)
@@ -287,10 +294,16 @@ class Capture:
                             counts[index] += len(chunk)
                             self.used += len(chunk)
                 except BaseException as error:
-                    errors.append(error)
-                    owned.signal_group()
+                    record_error("stream-reader", error)
+                    try:
+                        owned.signal_group()
+                    except BaseException as secondary:
+                        record_error("reader-signal", secondary)
                 finally:
-                    source.close()
+                    try:
+                        source.close()
+                    except BaseException as error:
+                        record_error("reader-source-close", error)
             readers = [threading.Thread(target=drain, args=(i, source), daemon=True)
                        for i, source in enumerate((process.stdout, process.stderr))]
             for reader in readers:
@@ -305,38 +318,35 @@ class Capture:
             if row["seconds"] > allowed:
                 raise TimeoutError("completed child exceeded deadline")
         except BaseException as error:
-            primary = error
-            row["capture_error"] = type(error).__name__
-            primary_record(row, error)
+            record_error("child-control", error)
         finally:
-            def finalization_error(stage, error):
-                nonlocal primary
-                if primary is None:
-                    primary = error
-                    row["capture_error"] = type(error).__name__
-                    primary_record(row, error)
-                else:
-                    secondary_record(row, stage, error)
             if owned is not None:
                 try:
                     owned.close_signals()
-                    if owned.lost:
-                        raise RuntimeError("owned child lease lost")
+                except BaseException as error:
+                    row["cleanup_error"] = type(error).__name__
+                    record_error("owned-signal-close", error)
+                try:
                     if process is None:
                         raise RuntimeError("owned process reference missing")
+                    if owned.lost:
+                        raise RuntimeError("owned child lease lost")
                     row["exit"] = process.wait(timeout=10)
                 except BaseException as error:
                     row["cleanup_error"] = type(error).__name__
-                    finalization_error("owned-cleanup", error)
+                    record_error("owned-reap", error)
             for reader in readers:
-                reader.join(timeout=10)
-                if reader.is_alive():
-                    finalization_error("reader-close", RuntimeError("owned stream did not close"))
+                try:
+                    reader.join(timeout=10)
+                    if reader.is_alive():
+                        raise RuntimeError("owned stream did not close")
+                except BaseException as error:
+                    record_error("reader-close", error)
             for stream in streams:
                 try:
                     stream.close()
                 except BaseException as error:
-                    finalization_error("sink-close", error)
+                    record_error("sink-close", error)
             receipts: dict[str, StreamReceipt] = {}
             row["streams"] = receipts
             for name, path in zip(("stdout", "stderr"), paths):
@@ -346,10 +356,7 @@ class Capture:
                     receipt["bytes"] = path.stat().st_size
                     receipt["sha256"] = digest(path)
                 except BaseException as error:
-                    finalization_error("stream-receipt-" + name, error)
-        if errors:
-            for error in errors:
-                finalization_error("stream-reader", error)
+                    record_error("stream-receipt-" + name, error)
         if primary is not None:
             row["capture_error"] = type(primary).__name__
             raise primary
@@ -389,7 +396,8 @@ def preserve(paths, row: Observation, output):
                 source = path.open("rb")
                 destination = target.open("xb", buffering=0)
                 sink, compressor = DiskCheckedArchive(destination, output), zlib.compressobj(level=6, wbits=31)
-                for chunk in iter(lambda: source.read(65536), b""):
+                read = source.read
+                for chunk in iter(lambda: read(65536), b""):
                     sink.write(compressor.compress(chunk))
                 sink.write(compressor.flush())
             except BaseException as error:
