@@ -180,6 +180,27 @@ jobs:
             build/reports/callgraph-precision/timings.json
           if-no-files-found: error
           retention-days: 14
+  android-fixtures:
+    name: Android fixtures and release metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Accept Android SDK licenses
+        run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null'
+      - name: Install fixture Android platform
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
+      # 독립 checkout에서도 원래 primary build와 같은 compiler heap으로 CLI/plugin을 먼저 만든다.
+      - name: Prepare fixture CLI and plugin
+        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g :cli:installDist :gradle-plugin:jar
       - name: Verify Android fixture corpus
         run: Scripts/verify-fixture-corpus.sh
       - name: Verify Gradle plugin against Android fixture

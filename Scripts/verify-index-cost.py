@@ -33,6 +33,7 @@ PROFILES = ("graph", "dead", "architecture")
 LIMIT = 32 * 1024 * 1024
 RAW_LIMIT = 256 * 1024 * 1024
 JFR_LIMIT = 16 * 1024 * 1024
+JFR_PRINT_STACK_DEPTH = 5
 JFR_EVENTS = ("jdk.ExecutionSample", "jdk.ObjectAllocationSample")
 
 
@@ -424,18 +425,27 @@ class OwnedProcessGroup:
         self.lock = threading.Lock()
         self.signal_open, self.lost = True, False
 
-    def ready(self):
+    def ready(self, observer=None):
         with self.lock:
             if not self.signal_open or self.process.returncode is not None:
                 self.signal_open, self.lost = False, True
                 raise ChildProcessError(errno.ECHILD, "child-ownership-lost")
             try:
-                return self.observe(self.process.pid)
+                terminal = self.observe(self.process.pid)
             except InterruptedError:
                 return False
             except OSError:
                 self.signal_open, self.lost = False, True
                 raise
+            # 관측은 unreaped child를 확보한 같은 lock 안에서만 한다. 관측 오류는 소유권 상실이 아니다.
+            if observer is not None:
+                try:
+                    observer.sample(self.process.pid, terminal)
+                except DiagnosticError:
+                    raise
+                except Exception as error:
+                    raise DiagnosticError("observer-sample-failed", {"exceptionType": type(error).__name__}) from error
+            return terminal
 
     def signal_group(self):
         with self.lock:
@@ -520,7 +530,7 @@ def output_equal(left, right):
 
 
 def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
-        stdout_path=None, stdout_limit=RAW_LIMIT):
+        stdout_path=None, stdout_limit=RAW_LIMIT, observer=None):
     """각 child의 두 stream을 제한하고 timeout에는 소유한 process group을 끝낸다."""
     if not re.fullmatch(r"[a-z-]{1,64}", phase):
         raise DiagnosticError("invalid-process-phase")
@@ -528,114 +538,262 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
     has_other_members = group_census()
     if type(stdout_limit) is not int or not 0 < stdout_limit <= RAW_LIMIT:
         raise DiagnosticError("invalid-spooled-output-limit")
-    destination = Path(stdout_path).open("xb") if stdout_path is not None else None
-    started = time.monotonic_ns()
-    try:
-        process = subprocess.Popen(list(map(str, arguments)), cwd=cwd, env=env,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   start_new_session=True)
-    except BaseException:
-        if destination is not None:
-            destination.close()
-        raise
-    owned = OwnedProcessGroup(process, observe, has_other_members)
+    process, owned, destination = None, None, None
+    readers, started_readers, started_pipes = [], [], set()
+    handoff_lock = threading.Lock()
+    primary, cleanup_errors = None, []
+    handlers, restored, pending = {}, set(), []
     streams = [bytearray(), bytearray()]
     counts = [0, 0]
     overflow = threading.Event()
     failures = []
-    def drain(index, stream):
-        try:
-            while True:
-                chunk = stream.read(65536)
-                if not chunk:
-                    break
-                stream_limit = stdout_limit if index == 0 and destination is not None else limit
-                if counts[index] + len(chunk) > stream_limit:
-                    overflow.set()
-                    owned.signal_group()
-                    break
-                if index == 0 and destination is not None:
-                    destination.write(chunk)
-                else:
-                    streams[index].extend(chunk)
-                counts[index] += len(chunk)
-        except OSError:
-            failures.append("stream-read-failed")
-            owned.signal_group()
-        finally:
-            stream.close()
-    readers = [threading.Thread(target=drain, args=(i, stream), daemon=True)
-               for i, stream in enumerate((process.stdout, process.stderr))]
-    for reader in readers:
-        reader.start()
     timed_out = False
     wait_failed = False
+    observer_failure = None
+    observer_initiated_failure = False
+    observer_reap_failure = None
     reader_unclosed = False
     rss = {"status": "unavailable", "reason": "owned-wait4-rusage-not-observed"}
-    def wait_owned():
-        deadline = time.monotonic() + timeout
-        while True:
-            if owned.ready():
-                return
-            if time.monotonic() >= deadline:
-                raise subprocess.TimeoutExpired(arguments, timeout)
-            time.sleep(0.005)
+    started = 0
+
+    def remember_failure(stage, error):
+        nonlocal primary
+        if primary is None:
+            primary = error
+        else:
+            cleanup_errors.append((stage, error))
+
+    def defer(number, frame):
+        pending.append((handlers[number], number, frame))
+
+    def restore_handlers():
+        for number, handler in handlers.items():
+            if number not in restored:
+                try:
+                    signal.signal(number, handler)
+                except BaseException as error:
+                    remember_failure("signal-handler-restore", error)
+                else:
+                    restored.add(number)
+
+    def replay_pending():
+        while pending:
+            handler, number, frame = pending.pop(0)
+            handler(number, frame)
+
     try:
-        wait_owned()
-    except subprocess.TimeoutExpired:
-        timed_out = True
-    except OSError:
-        wait_failed = True
-    finally:
-        try:
-            owned.close_signals()
-        except OSError:
-            wait_failed = True
-        if not owned.lost:
-            # close_signals 이후에는 main·reader 어느 쪽도 numeric PGID를 사용하지 않는다.
-            deadline = time.monotonic() + 10
+        destination = Path(stdout_path).open("xb") if stdout_path is not None else None
+        started = time.monotonic_ns()
+        # Python handler는 main thread에서만 실행된다. worker 호출에는 신호 API가
+        # 필요 없다. SIG_IGN/SIG_DFL은 바꾸지 않아 child의 disposition도 보존한다.
+        with handoff_lock:
+            if threading.current_thread() is threading.main_thread():
+                for number in (signal.SIGINT, signal.SIGTERM):
+                    handler = signal.getsignal(number)
+                    if callable(handler):
+                        handlers[number] = handler
+                        signal.signal(number, defer)
+            process = subprocess.Popen(list(map(str, arguments)), cwd=cwd, env=env,
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       start_new_session=True)
+            owned = OwnedProcessGroup(process, observe, has_other_members)
+        def drain(index, stream):
             try:
                 while True:
-                    try:
-                        pid, status, usage = os.wait4(process.pid, os.WNOHANG)
-                    except InterruptedError:
-                        if time.monotonic() >= deadline:
-                            raise ChildProcessError(errno.ECHILD, "final-child-wait-failed")
-                        continue
-                    if pid == process.pid:
-                        process.returncode = os.waitstatus_to_exitcode(status)
-                        if sys.platform in ("linux", "darwin") and 0 < usage.ru_maxrss < 2**63:
-                            rss = {"status": "observed", "peakBytes": int(usage.ru_maxrss) *
-                                   (1024 if sys.platform == "linux" else 1),
-                                   "scope": "owned-wait4-child-peak-rss; kernel-accounting-not-live-heap"}
-                        else:
-                            rss = {"status": "unavailable", "reason": "unknown-rusage-units"}
+                    chunk = stream.read(65536)
+                    if not chunk:
                         break
-                    if pid != 0 or time.monotonic() >= deadline:
-                        raise ChildProcessError(errno.ECHILD, "final-child-wait-failed")
-                    time.sleep(0.005)
+                    stream_limit = stdout_limit if index == 0 and destination is not None else limit
+                    if counts[index] + len(chunk) > stream_limit:
+                        overflow.set()
+                        owned.signal_group()
+                        break
+                    if index == 0 and destination is not None:
+                        destination.write(chunk)
+                    else:
+                        streams[index].extend(chunk)
+                    counts[index] += len(chunk)
+            except OSError:
+                failures.append("stream-read-failed")
+                owned.signal_group()
+            finally:
+                stream.close()
+        readers = [threading.Thread(target=drain, args=(i, stream), daemon=True)
+                   for i, stream in enumerate((process.stdout, process.stderr))]
+        for index, reader in enumerate(readers):
+            try:
+                reader.start()
+            except BaseException:
+                if getattr(reader, "ident", None) is not None:
+                    started_readers.append(reader)
+                    started_pipes.add(index)
+                raise
+            else:
+                started_readers.append(reader)
+                started_pipes.add(index)
+        # Thread.start의 native 시작과 ident 결합 사이에도 callable 예외를 미룬다.
+        restore_handlers()
+        if primary is not None:
+            raise primary
+        # 원래 callable을 그대로 호출한다. flag-only handler를 예외로 바꾸지 않는다.
+        replay_pending()
+        def wait_owned():
+            deadline = time.monotonic() + timeout
+            while True:
+                if (owned.ready() if observer is None else owned.ready(observer)):
+                    return
+                if time.monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(arguments, timeout)
+                time.sleep(0.005)
+        try:
+            wait_owned()
+        except subprocess.TimeoutExpired:
+            timed_out = True
+        except OSError:
+            wait_failed = True
+        except DiagnosticError as error:
+            observer_failure = error
+            # reader가 이미 종료를 유발했으면 뒤늦은 sample 오류가 원래 원인을 덮지 않는다.
+            observer_initiated_failure = not (overflow.is_set() or failures)
+    except BaseException as error:
+        if primary is None:
+            primary = error
+        elif error is not primary:
+            cleanup_errors.append(("setup", error))
+    finally:
+        if owned is not None and process is not None:
+            try:
+                owned.close_signals()
             except OSError as error:
                 wait_failed = True
-                if error.errno != errno.ECHILD:
+                if primary is not None:
+                    remember_failure("signal-close", error)
+            except BaseException as error:
+                remember_failure("signal-close", error)
+            if not owned.lost:
+                # close_signals 이후에는 main·reader 어느 쪽도 numeric PGID를 사용하지 않는다.
+                deadline = time.monotonic() + 10
+                try:
+                    while True:
+                        try:
+                            pid, status, usage = os.wait4(process.pid, os.WNOHANG)
+                        except InterruptedError:
+                            if time.monotonic() >= deadline:
+                                raise ChildProcessError(errno.ECHILD, "final-child-wait-failed")
+                            continue
+                        if pid == process.pid:
+                            process.returncode = os.waitstatus_to_exitcode(status)
+                            if observer is not None:
+                                try:
+                                    observer.reaped(usage)
+                                except Exception as error:
+                                    # reap은 이미 끝났다. 콜백 오류를 wait4 오류로 오인하거나
+                                    # reader join·출력 close를 건너뛰지 않고 별도 보존한다.
+                                    observer_reap_failure = (error if isinstance(error, DiagnosticError) else
+                                        DiagnosticError("observer-reap-failed", {"exceptionType": type(error).__name__}))
+                            if sys.platform in ("linux", "darwin") and 0 < usage.ru_maxrss < 2**63:
+                                rss = {"status": "observed", "peakBytes": int(usage.ru_maxrss) *
+                                       (1024 if sys.platform == "linux" else 1),
+                                       "scope": "owned-wait4-child-peak-rss; kernel-accounting-not-live-heap"}
+                            else:
+                                rss = {"status": "unavailable", "reason": "unknown-rusage-units"}
+                            break
+                        if pid != 0 or time.monotonic() >= deadline:
+                            raise ChildProcessError(errno.ECHILD, "final-child-wait-failed")
+                        time.sleep(0.005)
+                except OSError as error:
+                    wait_failed = True
+                    if primary is not None:
+                        remember_failure("owned-reap", error)
+                    if error.errno != errno.ECHILD:
+                        try:
+                            process.wait(timeout=10)
+                        except (OSError, subprocess.TimeoutExpired) as error:
+                            if primary is not None:
+                                remember_failure("owned-reap", error)
+                            wait_failed = True  # 실패 receipt를 보존하며 신호 경로를 다시 열지 않는다.
+                except BaseException as error:
+                    remember_failure("owned-reap", error)
+        elif process is not None:
+            # constructor가 실패했을 때만 쓰는 첫 binding 경로다. reader는 아직 없다.
+            # 원래 WNOWAIT와 census로 증명하지 못하면 숫자 신호·reap 모두 거부한다.
+            leased = False
+            with handoff_lock:
+                try:
+                    if process.returncode is not None:
+                        raise ChildProcessError(errno.ECHILD, "child-ownership-lost")
+                    terminal = observe(process.pid)
+                    leased = True
+                    if not terminal or has_other_members(process.pid):
+                        kill_group(process)
+                except BaseException as error:
+                    remember_failure("unbound-signal-close", error)
+                # 이 지점 뒤에는 unbound numeric PGID 경로를 다시 열지 않는다.
+                if leased:
                     try:
                         process.wait(timeout=10)
-                    except (OSError, subprocess.TimeoutExpired):
-                        wait_failed = True  # 실패 receipt를 보존하며 신호 경로를 다시 열지 않는다.
-        for reader in readers:
-            reader.join(timeout=10)
-            if reader.is_alive():
-                reader_unclosed = True  # 이후 늦게 종료해도 부분 snapshot을 성공으로 바꾸지 않는다.
-    if destination is not None:
-        destination.close()
+                    except BaseException as error:
+                        remember_failure("unbound-reap", error)
+        for reader in started_readers:
+            try:
+                reader.join(timeout=10)
+                if reader.is_alive():
+                    reader_unclosed = True  # 이후 늦게 종료해도 부분 snapshot을 성공으로 바꾸지 않는다.
+            except BaseException as error:
+                remember_failure("reader-join", error)
+        if process is not None:
+            for index, source in enumerate((process.stdout, process.stderr)):
+                if index not in started_pipes and source is not None:
+                    try:
+                        source.close()
+                    except BaseException as error:
+                        remember_failure("unstarted-source-close", error)
+        restore_handlers()
+        while pending:
+            try:
+                replay_pending()
+            except BaseException as error:
+                remember_failure("signal-replay", error)
+        if destination is not None:
+            try:
+                destination.close()
+            except BaseException as error:
+                remember_failure("destination-close", error)
+    if primary is not None:
+        if observer_reap_failure is not None:
+            cleanup_errors.append(("observer-reaped", observer_reap_failure))
+        if cleanup_errors:
+            setattr(primary, "launch_cleanup_errors", cleanup_errors)
+        raise primary
+    assert process is not None
     result = {"exit": process.returncode,
               "stdout": SpooledOutput(stdout_path) if destination is not None else bytes(streams[0]),
               "stderr": bytes(streams[1]),
               "wallNanos": time.monotonic_ns() - started, "rss": rss, "phase": phase}
-    reason = ("child-stream-not-closed" if reader_unclosed else
-              "child-timeout" if timed_out else "child-output-limit" if overflow.is_set() else
-              "child-stream-failed" if failures else "child-wait-failed" if wait_failed else None)
+    child_reason = ("child-stream-not-closed" if reader_unclosed else
+                    "child-timeout" if timed_out else "child-output-limit" if overflow.is_set() else
+                    "child-stream-failed" if failures else "child-wait-failed" if wait_failed else None)
+    reason = child_reason
+    if observer_failure is not None and (observer_initiated_failure or reason is None):
+        reason = str(observer_failure)
+    if reason is None and observer_reap_failure is not None:
+        reason = str(observer_reap_failure)
     if reason:
-        raise DiagnosticError(reason, summary(result))
+        receipt = summary(result)
+        if observer_failure is not None:
+            receipt["observerSampleFailure"] = {"reason": str(observer_failure), "receipt": observer_failure.receipt}
+            if observer_failure.receipt is not None:
+                receipt["observerFailure"] = observer_failure.receipt
+        if observer_reap_failure is not None:
+            receipt["observerReapFailure"] = {"reason": str(observer_reap_failure), "receipt": observer_reap_failure.receipt}
+            if child_reason is None and observer_failure is None and observer_reap_failure.receipt is not None:
+                receipt["observerFailure"] = observer_reap_failure.receipt
+        if observer_failure is not None or observer_reap_failure is not None:
+            if child_reason is not None:
+                receipt["childFailure"] = {"reason": child_reason}
+            if wait_failed or reader_unclosed:
+                receipt["observerCleanupIncomplete"] = True
+        raise DiagnosticError(reason, receipt)
     return result
 
 
@@ -737,6 +895,20 @@ def public_summary(report):
     return encoded
 
 
+def _public_jfr_stack_trace_view(original):
+    """표시 frame 한도와 녹화·rank의 잘림을 분리하며 옛 관측의 깊이는 추정하지 않는다."""
+    if "stackTraceView" not in original:
+        return {"status": "unavailable", "requestedDepth": None, "completeStacksGuaranteed": False,
+                "scope": "source-observation-did-not-record-print-depth"}
+    value = original["stackTraceView"]
+    if (not isinstance(value, dict) or set(value) != {"requestedDepth", "completeStacksGuaranteed"}
+            or type(value["requestedDepth"]) is not int or not 1 <= value["requestedDepth"] <= 256
+            or value["completeStacksGuaranteed"] is not False):
+        raise DiagnosticError("invalid-public-observation")
+    return {"status": "observed", "requestedDepth": value["requestedDepth"], "completeStacksGuaranteed": False,
+            "scope": "jfr-print-frame-view; recording-truncation-and-ranking-omissions-are-separate"}
+
+
 def public_observation_summary(report):
     """이미 수집한 관측만 별도 제한 로그로 공개한다. 경로·환경·원시 stack은 복사하지 않는다."""
     def integer(value, maximum=2**63 - 1):
@@ -808,6 +980,7 @@ def public_observation_summary(report):
                 "scope": "single-profiled-candidate; all-thread-samples; not-wall-time-or-total-heap",
                 "launcher": "direct-java-same-main-class-and-arguments; startup-not-equivalent",
                 "rankingScope": "top-10-of-stored-top-30-product-methods; full-tail-count-not-recorded; inclusive-rows-overlap",
+                "stackTraceView": _public_jfr_stack_trace_view(original),
                 "gcJitAttribution": "not-recorded", "outputMatchesUnprofiledCandidate": True,
                 "configurationSha256": checksum(original["configurationSha256"]),
                 "recording": {"size": size, "sha256": checksum(recording["sha256"])}}
@@ -1101,7 +1274,8 @@ def capture_jfr(java_home, arguments, env, work, output, config, expected):
             counts[match[1]] = int(match[2])
     if not counts or set(counts) - {*JFR_EVENTS, "jdk.CheckPoint", "jdk.Metadata"}:
         raise DiagnosticError("unexpected-jfr-event-type")
-    events = successful([tool, "print", "--json", "--events", ",".join(JFR_EVENTS), recording],
+    events = successful([tool, "print", "--json", "--stack-depth", str(JFR_PRINT_STACK_DEPTH),
+                         "--events", ",".join(JFR_EVENTS), recording],
                         work, env, phase="jfr-events")
     samples = summarize_jfr(events["stdout"])
     for name in JFR_EVENTS:
@@ -1116,6 +1290,7 @@ def capture_jfr(java_home, arguments, env, work, output, config, expected):
         destination.write(recording.read_bytes())
     return {"scope": "single-profiled-candidate; sampled-stacks-and-weighted-allocations; not-timing-acceptance",
             "command": "dead", "launcher": "direct-java-same-main-class-and-arguments; startup-not-equivalent",
+            "stackTraceView": {"requestedDepth": JFR_PRINT_STACK_DEPTH, "completeStacksGuaranteed": False},
             "configurationSha256": digest(configuration), "tool": tool_before,
             "recording": file_record(output / "candidate.jfr", "jfr/candidate.jfr"),
             "eventCounts": counts, "samples": samples, "process": summary(result),
