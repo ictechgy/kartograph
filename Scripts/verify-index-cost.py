@@ -597,11 +597,6 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                        start_new_session=True)
             owned = OwnedProcessGroup(process, observe, has_other_members)
-            restore_handlers()
-        if primary is not None:
-            raise primary
-        # 원래 callable을 그대로 호출한다. flag-only handler를 예외로 바꾸지 않는다.
-        replay_pending()
         def drain(index, stream):
             try:
                 while True:
@@ -636,6 +631,12 @@ def run(arguments, cwd, env, timeout=120, limit=LIMIT, phase="child",
             else:
                 started_readers.append(reader)
                 started_pipes.add(index)
+        # Thread.start의 native 시작과 ident 결합 사이에도 callable 예외를 미룬다.
+        restore_handlers()
+        if primary is not None:
+            raise primary
+        # 원래 callable을 그대로 호출한다. flag-only handler를 예외로 바꾸지 않는다.
+        replay_pending()
         def wait_owned():
             deadline = time.monotonic() + timeout
             while True:
