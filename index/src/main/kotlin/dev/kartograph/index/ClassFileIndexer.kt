@@ -480,8 +480,9 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     }
 
     override fun visitAnnotation(descriptor: String, visible: Boolean): AnnotationVisitor? {
-        classAnnotations += annotationInternalName(descriptor)
-        edges += annotationEdge(JvmNodeId.classId(internalName), descriptor)
+        val annotationName = annotationInternalName(descriptor)
+        classAnnotations += annotationName
+        edges += annotationEdge(JvmNodeId.classId(internalName), annotationName)
         if (descriptor == "Lkotlin/Metadata;") {
             return MetadataAnnotationValues().also { metadataValues = it }
         }
@@ -510,13 +511,18 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         val annotations = mutableSetOf<String>()
         edges += GraphEdge(JvmNodeId.classId(internalName), fieldId, EdgeKind.MEMBER)
         edges += GraphEdge(fieldId, JvmNodeId.classId(internalName), EdgeKind.REFERENCE)
-        (descriptorClassNames(descriptor) + signatureClassNames(signature, typeOnly = true) - internalName).forEach { target ->
+        val references = linkedSetOf<String>()
+        addDescriptorClassNames(descriptor, references)
+        references.addAll(signatureClassNames(signature, typeOnly = true))
+        references.remove(internalName)
+        references.forEach { target ->
             edges += GraphEdge(fieldId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
         }
         return object : FieldVisitor(Opcodes.ASM9) {
             override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor? {
-                annotations += annotationInternalName(annotationDescriptor)
-                edges += annotationEdge(fieldId, annotationDescriptor)
+                val annotationName = annotationInternalName(annotationDescriptor)
+                annotations += annotationName
+                edges += annotationEdge(fieldId, annotationName)
                 return AnnotationValueVisitor(fieldId)
             }
 
@@ -556,7 +562,12 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         if (name == "<clinit>") {
             edges += GraphEdge(JvmNodeId.classId(internalName), methodId, EdgeKind.REFERENCE)
         }
-        (descriptorClassNames(descriptor) + signatureClassNames(signature) + exceptions.orEmpty() - internalName).forEach { target ->
+        val references = linkedSetOf<String>()
+        addDescriptorClassNames(descriptor, references)
+        references.addAll(signatureClassNames(signature))
+        references.addAll(exceptions.orEmpty())
+        references.remove(internalName)
+        references.forEach { target ->
             edges += GraphEdge(methodId, JvmNodeId.classId(target), EdgeKind.REFERENCE)
         }
         return object : MethodVisitor(Opcodes.ASM9) {
@@ -567,8 +578,9 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             override fun visitAnnotationDefault(): AnnotationVisitor = AnnotationValueVisitor(methodId, JvmNodeId.classId(internalName))
 
             override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor? {
-                annotations += annotationInternalName(annotationDescriptor)
-                edges += annotationEdge(methodId, annotationDescriptor)
+                val annotationName = annotationInternalName(annotationDescriptor)
+                annotations += annotationName
+                edges += annotationEdge(methodId, annotationName)
                 return AnnotationValueVisitor(methodId)
             }
 
@@ -578,7 +590,7 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 visible: Boolean,
             ): AnnotationVisitor {
                 // parameter annotation 타입 자체도 연결해 값 없는 어노테이션이 referenced class를 잃지 않게 한다.
-                edges += annotationEdge(methodId, annotationDescriptor)
+                edges += annotationEdge(methodId, annotationInternalName(annotationDescriptor))
                 return AnnotationValueVisitor(methodId)
             }
 
@@ -749,9 +761,9 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         return KotlinMetadataEnricher.enrich(facts, metadata)
     }
 
-    private fun annotationEdge(source: NodeId, descriptor: String): GraphEdge = GraphEdge(
+    private fun annotationEdge(source: NodeId, annotationName: String): GraphEdge = GraphEdge(
         source,
-        JvmNodeId.classId(Type.getType(descriptor).internalName),
+        JvmNodeId.classId(annotationName),
         EdgeKind.ANNOTATION,
     )
 
@@ -1145,11 +1157,15 @@ private val RUNTIME_CALLBACK_MEMBER_KINDS = setOf(NodeKind.CONSTRUCTOR, NodeKind
 private fun Int.isSynthetic(): Boolean = this and Opcodes.ACC_SYNTHETIC != 0
 
 internal fun descriptorClassNames(descriptor: String): Set<String> = buildSet {
+    addDescriptorClassNames(descriptor, this)
+}
+
+private fun addDescriptorClassNames(descriptor: String, destination: MutableSet<String>) {
     if (descriptor.startsWith('(')) {
-        Type.getArgumentTypes(descriptor).forEach { type -> addDescriptorType(type) }
-        addDescriptorType(Type.getReturnType(descriptor))
+        Type.getArgumentTypes(descriptor).forEach { type -> destination.addDescriptorType(type) }
+        destination.addDescriptorType(Type.getReturnType(descriptor))
     } else {
-        addDescriptorType(Type.getType(descriptor))
+        destination.addDescriptorType(Type.getType(descriptor))
     }
 }
 
