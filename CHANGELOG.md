@@ -54,11 +54,11 @@
   product behaviour is unchanged.
 - The fixed-input index-cost diagnostic now uses the current analyzer (78153c3) as its baseline instead of 33f8ce1, so
   CLI outputs are byte-compared again and the pinned `dead`/`metrics` deltas and their stale-table classification are
-  retired. Its semantic check decides a same-engine control from engine jar bytes (every distribution jar except
-  `analysis`, `export` and `cli`, keyed by version-free artifact name; unknown jars count as engine): equal engine
-  fingerprints pass only with byte-identical engine jars, while equal fingerprints with differing or unknown engine
-  jars (including a missing `core` or `index` jar) and identical engine jars with differing fingerprints both fail
-  closed. Verification only; product behaviour is unchanged.
+  retired. Its semantic check decides a same-engine control from engine jar bytes: every distribution lib entry except
+  the `analysis`, `export` and `cli` jars is compared, jars by version-free artifact name and other entries by path,
+  and unknown jars count as engine. Equal engine fingerprints pass only with byte-identical engine jars, while equal
+  fingerprints with differing or unknown engine jars (including a missing `core` or `index` jar) and identical engine
+  jars with differing fingerprints both fail closed. Verification only; product behaviour is unchanged.
 
 ### Added
 
