@@ -46,11 +46,15 @@ def without_kotlin_comments(text):
     끝까지 주석으로 본다. 짝을 확신할 수 없는 입력(닫히지 않은 문자열·template·문자 literal·backtick 식별자,
     multi-dollar 문자열)은 추측하지 않고 ValueError로 실패해, 짝이 뒤집혀 주석 판정이 어긋나는 일을 막는다.
     파일 맨 앞(UTF-8 BOM 뒤)의 shebang 줄은 따옴표가 있어도 문자열이 아니므로 줄을 비우고 줄바꿈만 남긴다.
+    줄은 Kotlin lexer처럼 나눈다. `//` 주석과 shebang은 LF에서만 끝나 lone CR을 안에 남기고, 한 줄 안에서 닫혀야
+    하는 일반 문자열·문자 literal·backtick 식별자는 LF나 lone CR을 만나면 실패한다. 그러므로 입력은 universal
+    newline 변환 없이 읽은 원문이어야 한다.
     """
     if text.startswith("\ufeff"):
         text = text[1:]
     if text.startswith("#!"):
         # Kotlin은 `#!`를 파일 맨 앞에서만 허용한다. 그 밖의 `#!`는 일반 code로 읽어 짝이 맞지 않으면 실패한다.
+        # shebang은 `//` 주석처럼 LF까지가 한 줄이고 lone CR에서는 끝나지 않는다.
         end = text.find("\n")
         text = "" if end < 0 else text[end:]
     result, index, length = [], 0, len(text)
@@ -77,16 +81,17 @@ def without_kotlin_comments(text):
             if char == "`":
                 # backtick 식별자(`a"b`)는 따옴표를 담을 수 있으므로 같은 줄의 닫는 backtick까지 그대로 둔다.
                 end = text.find("`", index + 1)
-                if end < 0 or "\n" in text[index:end]:
+                if end < 0 or "\n" in text[index:end] or "\r" in text[index:end]:
                     raise ValueError("unterminated backtick identifier")
                 result.append(text[index:end + 1])
                 index = end + 1
                 continue
             if char == "'":
-                # 문자 literal('"', '\'' 등)은 같은 줄에서 닫는 따옴표까지 그대로 둔다.
+                # 문자 literal('"', '\'' 등)은 같은 줄에서 닫는 따옴표까지 그대로 둔다. Kotlin처럼 LF·lone CR에서
+                # 끊고, escape도 줄바꿈을 건너뛰지 못한다.
                 end = index + 1
-                while end < length and text[end] not in "'\n":
-                    end += 2 if text[end] == "\\" else 1
+                while end < length and text[end] not in "'\r\n":
+                    end += 2 if text[end] == "\\" and text[end + 1:end + 2] not in ("\r", "\n") else 1
                 if end >= length or text[end] != "'":
                     raise ValueError("unterminated character literal")
                 result.append(text[index:end + 1])
@@ -113,8 +118,9 @@ def without_kotlin_comments(text):
             result.append(char)
             index += 1
             continue
-        # 일반 문자열은 한 줄 안에서 닫혀야 한다. 줄바꿈이나 줄 끝·파일 끝의 escape를 만나면 짝을 추측하지 않는다.
-        if mode[0] == "string" and (char == "\n" or (char == "\\" and text[index + 1:index + 2] in ("", "\n"))):
+        # 일반 문자열은 한 줄 안에서 닫혀야 한다. 줄바꿈(LF·lone CR)이나 줄 끝·파일 끝의 escape를 만나면 짝을 추측하지
+        # 않는다.
+        if mode[0] == "string" and (char in "\r\n" or (char == "\\" and text[index + 1:index + 2] in ("", "\n", "\r"))):
             raise ValueError("unterminated string literal")
         if mode[0] == "string" and char == "\\":
             result.append(text[index:index + 2])
@@ -152,7 +158,8 @@ def collector_kotlin_version(root=ROOT, here=HERE):
     def single(pattern, path, label):
         relative = path.relative_to(root).as_posix()
         try:
-            text = path.read_text(encoding="utf-8")
+            # Kotlin은 lone CR에서 `//` 주석과 shebang을 끝내지 않으므로 universal newline 변환 없이 원문대로 읽는다.
+            text = path.read_bytes().decode("utf-8")
         except (OSError, UnicodeError):
             # 원래 오류는 개인 절대경로를 담으므로 연결하지 않고 저장소 상대 경로만 남긴다.
             raise RuntimeError(f"cannot read {relative}; it must declare the {label}") from None

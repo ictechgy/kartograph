@@ -168,10 +168,14 @@ class CompilerReferenceVersionTest(unittest.TestCase):
         unparseable = {
             "unterminated-string": ('val s = "never closed\n' + real, "unterminated string literal"),
             "escaped-newline-in-string": ('val s = "never closed' + backslash + '\n"\n' + real, "unterminated string literal"),
+            # Kotlin은 `'\`에서 literal을 끊고 다음 줄의 `'`로 새 literal을 연다. 줄을 건너 짝을 맞추지 않는다.
+            "escaped-newline-in-character-literal": ("val c = '" + backslash + "\n'\n" + real, "unterminated character literal"),
             "unterminated-template": (real + 'val t = "${listOf(1, 2).sum(', "unterminated string or template"),
             "unterminated-raw-string": (real + 'val r = """never closed\n', "unterminated string or template"),
             "unterminated-backtick-identifier": ('val `broken = 1\n' + real, "unterminated backtick identifier"),
+            "backtick-identifier-across-lines": ('val `a\nb` = 1\n' + real, "unterminated backtick identifier"),
             "unterminated-character-literal": ("val c = 'x\n" + real, "unterminated character literal"),
+            "character-literal-across-lines": ("val c = 'x\n'\n" + real, "unterminated character literal"),
             # Kotlin 2.2+ multi-dollar 문자열은 template 시작 규칙이 달라 이 lexer가 추적하지 않는다.
             "multi-dollar-string": ('val m = $$"price: $${amount}"\n' + real, "multi-dollar string literals are not supported"),
             "multi-dollar-raw-string": ('val m = $$"""{"key": "$${value}"}"""\n' + real,
@@ -215,7 +219,8 @@ class CompilerReferenceVersionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             here = write_builds(root, "2.4.21", "2.4.21", "2.4.21")
-            (here / "collector/build.gradle.kts").write_text(collector, encoding="utf-8")
+            # lone CR·CRLF 사례가 바이트 그대로 남도록 줄바꿈 변환 없이 쓴다.
+            (here / "collector/build.gradle.kts").write_bytes(collector.encode("utf-8"))
             try:
                 return "ACCEPTED", MODULE.collector_kotlin_version(root, here)
             except RuntimeError as problem:
@@ -281,6 +286,52 @@ class CompilerReferenceVersionTest(unittest.TestCase):
         refused = {
             "multi-dollar-opener": (head + 'val md = $$"x ${y}"\n' + good, "multi-dollar string literals are not supported"),
             "shebang-not-at-start": (head + '#!/usr/bin/env kotlin """\n' + good, "unterminated string or template"),
+        }
+        for label, (collector, reason) in refused.items():
+            with self.subTest(label=label):
+                self.assertEqual(("REJECTED", "cannot parse experiments/compiler-references/collector/build.gradle.kts: "
+                                  + reason), self.guard_result(collector))
+
+    def test_lone_carriage_return_ends_neither_a_line_comment_nor_the_shebang(self):
+        # Kotlin은 `//` 주석과 shebang을 LF에서만 끝낸다. universal newline으로 읽어 lone CR을 LF로 바꾸면 주석 속
+        # `"""`가 raw string을 열어, 실제 2.4.20 의존성은 URL 뒤 주석으로 지워지고 미끼 2.4.21만 남아 통과했다.
+        cr, backslash = chr(13), chr(92)
+        head, good = self.HARNESS_HEAD, self.HARNESS_GOOD
+        decoy = '"""' + cr + '"org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.21"\n'
+        real = ('val t = """see https://h"""; dependencies { compileOnly('
+                '"org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20") }\n')
+        attacks = {
+            "lone-cr-in-line-comment": head + "// note" + cr + decoy + real,
+            "lone-cr-in-shebang": "#!/usr/bin/env kotlin" + cr + decoy + head + real,
+        }
+        for label, collector in attacks.items():
+            with self.subTest(label=label):
+                self.assertEqual(("REJECTED", "collector Kotlin plugin 2.4.21 and compiler 2.4.20 must equal the root "
+                                  "Kotlin JVM plugin 2.4.21; update experiments/compiler-references/collector/build.gradle.kts"),
+                                 self.guard_result(collector))
+        accepted = {
+            # CRLF의 CR은 LF 바로 앞이라 주석·shebang 줄 안에 남고 선언의 짝을 바꾸지 않는다.
+            "crlf-line-endings": (head + good).replace("\n", cr + "\n"),
+            "crlf-shebang-and-stale-comment": ('#!/usr/bin/env kotlin """\n// kotlin("jvm") version "2.4.20"\n'
+                                               + head + good).replace("\n", cr + "\n"),
+            # 3f909a2는 CR 뒤의 주석 속 선언을 code로 세어 "found 2"로 거부했다.
+            "lone-cr-inside-line-comment": head + "// note" + cr + 'kotlin("jvm") version "2.4.20" still comment\n' + good,
+            "nel-and-form-feed-inside-line-comment": (head + '// a\u0085kotlin("jvm") version "2.4.20" b\u000c'
+                                                      'kotlin("jvm") version "2.4.19"\n' + good),
+            "lone-cr-inside-raw-string": head + 'val r = """a' + cr + 'b"""\n' + good,
+        }
+        for label, collector in accepted.items():
+            with self.subTest(label=label):
+                self.assertEqual(("ACCEPTED", "2.4.21"), self.guard_result(collector))
+        # 일반 문자열·문자 literal·backtick 식별자는 Kotlin도 lone CR에서 끝내 컴파일 오류가 나므로 짝을 추측하지 않고
+        # 거부한다.
+        refused = {
+            "lone-cr-inside-string": (head + 'val s = "a' + cr + 'b"\n' + good, "unterminated string literal"),
+            "escape-before-lone-cr": (head + 'val s = "a' + backslash + cr + 'b"\n' + good, "unterminated string literal"),
+            "lone-cr-inside-character-literal": (head + "val c = '" + cr + "'\n" + good, "unterminated character literal"),
+            "escape-before-lone-cr-in-character-literal": (head + "val c = '" + backslash + cr + "'\n" + good,
+                                                           "unterminated character literal"),
+            "lone-cr-inside-backtick-identifier": (head + "val `a" + cr + "b` = 1\n" + good, "unterminated backtick identifier"),
         }
         for label, (collector, reason) in refused.items():
             with self.subTest(label=label):
