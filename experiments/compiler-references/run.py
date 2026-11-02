@@ -38,6 +38,78 @@ KOTLIN_PLUGIN = re.compile(r'kotlin\("jvm"\) version "([^"]+)"')
 COMPILER_EMBEDDABLE = re.compile(r'"org\.jetbrains\.kotlin:kotlin-compiler-embeddable:([^"]+)"')
 
 
+def without_kotlin_comments(text):
+    """Kotlin build script에서 `//` 줄 주석과 중첩 가능한 `/* */` 주석만 지우고 문자열은 그대로 둔다.
+
+    문자열(일반·raw)·문자 literal과 문자열 안의 `${...}` template을 따라가므로 URL의 `//`나 glob의 `/*`를 주석으로
+    보지 않는다.
+    닫히지 않은 주석은 끝까지 주석으로 본다. 주석 속 선언은 세지도, 실제 선언을 가리지도 않는다.
+    """
+    result, index, length = [], 0, len(text)
+    modes = [["code", 0]]  # 맨 위 상태와, code 상태에서 template을 닫을 `}`를 가리기 위한 중괄호 깊이
+    while index < length:
+        mode = modes[-1]
+        char = text[index]
+        if mode[0] == "code":
+            if text.startswith("//", index):
+                end = text.find("\n", index)
+                index = length if end < 0 else end
+                continue
+            if text.startswith("/*", index):
+                depth, index = 1, index + 2
+                while index < length and depth:
+                    if text.startswith("/*", index):
+                        depth, index = depth + 1, index + 2
+                    elif text.startswith("*/", index):
+                        depth, index = depth - 1, index + 2
+                    else:
+                        index += 1
+                result.append(" ")
+                continue
+            if char == "'":
+                # 문자 literal('"', '\'' 등)은 같은 줄에서 닫는 따옴표까지 그대로 둔다.
+                end = index + 1
+                while end < length and text[end] not in "'\n":
+                    end += 2 if text[end] == "\\" else 1
+                result.append(text[index:end + 1])
+                index = end + 1
+                continue
+            quote = '"""' if text.startswith('"""', index) else '"' if char == '"' else None
+            if quote:
+                modes.append(["raw" if len(quote) == 3 else "string", 0])
+                result.append(quote)
+                index += len(quote)
+                continue
+            if char == "{":
+                mode[1] += 1
+            elif char == "}":
+                if len(modes) > 1 and mode[1] == 0:
+                    modes.pop()
+                    result.append(char)
+                    index += 1
+                    continue
+                mode[1] -= 1
+            result.append(char)
+            index += 1
+            continue
+        closing = '"""' if mode[0] == "raw" else '"'
+        if mode[0] == "string" and char == "\\":
+            result.append(text[index:index + 2])
+            index += 2
+        elif text.startswith(closing, index):
+            modes.pop()
+            result.append(closing)
+            index += len(closing)
+        elif text.startswith("${", index):
+            modes.append(["code", 0])
+            result.append("${")
+            index += 2
+        else:
+            result.append(char)
+            index += 1
+    return "".join(result)
+
+
 def collector_kotlin_version(root=ROOT, here=HERE):
     """collector의 Kotlin plugin·compiler 버전이 루트 plugin과 같은지 확인하고 그 버전을 돌려준다.
 
@@ -51,7 +123,7 @@ def collector_kotlin_version(root=ROOT, here=HERE):
         except (OSError, UnicodeError):
             # 원래 오류는 개인 절대경로를 담으므로 연결하지 않고 저장소 상대 경로만 남긴다.
             raise RuntimeError(f"cannot read {relative}; it must declare the {label}") from None
-        found = pattern.findall(text)
+        found = pattern.findall(without_kotlin_comments(text))
         if len(found) != 1:
             raise RuntimeError(f"expected one {label} in {relative}, found {len(found)}")
         return found[0]

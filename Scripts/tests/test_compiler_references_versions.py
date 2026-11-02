@@ -74,6 +74,68 @@ class CompilerReferenceVersionTest(unittest.TestCase):
                 self.assertNotIn(temporary, rendered)
                 self.assertNotIn(str(root.resolve()), rendered)
 
+    def test_comments_neither_count_nor_mask_version_declarations(self):
+        real_plugin = 'plugins { kotlin("jvm") version "2.4.21" }\n'
+        real_compiler = 'dependencies { compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.21") }\n'
+        stale = ('// plugins { kotlin("jvm") version "2.4.20" }\n'
+                 '/* compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20") */\n')
+        accepted = {
+            "commented-stale-lines": stale + real_plugin + real_compiler,
+            "nested-block-comment": ('/* outer /* inner */ kotlin("jvm") version "2.4.20"\n'
+                                     '"org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20" */\n') + real_plugin + real_compiler,
+            # 문자열 안의 `//`·`/*`는 주석이 아니다. 같은 줄의 실제 선언을 지우지 않고, 뒤의 진짜 주석만 뺀다.
+            "comment-markers-inside-strings": (
+                'tasks.withType<Delete>().configureEach { delete(fileTree("build") { include("**/*.tmp") }) }\n' + real_plugin +
+                'repositories { maven { url = uri("https://example.invalid/maven") } }; ' + real_compiler.rstrip("\n") +
+                ' // kotlin("jvm") version "2.4.20"\n'),
+        }
+        for label, collector in accepted.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                here = write_builds(root, "2.4.21", "2.4.21", "2.4.21")
+                (here / "collector/build.gradle.kts").write_text(collector)
+                self.assertEqual("2.4.21", MODULE.collector_kotlin_version(root, here))
+        # 실제 선언이 변수 형식이면 주석 속 따옴표 형식이 대신 통과하지 않고 "found 0"으로 실패한다.
+        variable = ('val kotlinVersion = "2.4.21"\nplugins { kotlin("jvm") version kotlinVersion }\n'
+                    'dependencies { compileOnly(kotlin("compiler-embeddable", kotlinVersion)) }\n')
+        matching = stale.replace("2.4.20", "2.4.21")
+        rejected = {
+            "variable-form-behind-stale-comments": (stale + variable, "Kotlin JVM plugin version"),
+            # 주석 속 따옴표 선언이 루트와 같은 버전이면 c10be0e는 그 주석으로 통과했다.
+            "variable-form-behind-matching-comments": (matching + variable, "Kotlin JVM plugin version"),
+            "unterminated-block-comment": (real_plugin + "/* " + real_compiler, "kotlin-compiler-embeddable version"),
+        }
+        for label, (collector, missing) in rejected.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                here = write_builds(root, "2.4.21", "2.4.21", "2.4.21")
+                (here / "collector/build.gradle.kts").write_text(collector)
+                with self.assertRaisesRegex(RuntimeError, f"expected one {missing} in "
+                                                          "experiments/compiler-references/collector/build.gradle.kts, found 0"):
+                    MODULE.collector_kotlin_version(root, here)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            here = write_builds(root, "2.4.21", "2.4.21", "2.4.21")
+            (root / "build.gradle.kts").write_text('// kotlin("jvm") version "2.4.21"\nplugins { kotlin("jvm") version libs.versions.kotlin }\n')
+            with self.assertRaisesRegex(RuntimeError, "expected one Kotlin JVM plugin version in build.gradle.kts, found 0"):
+                MODULE.collector_kotlin_version(root, here)
+
+    def test_comment_stripping_follows_strings_templates_and_raw_strings(self):
+        backslash = chr(92)
+        source = ('val a = "${providers.gradleProperty("x").get()} // kept" // dropped\n'
+                  'val b = """raw // kept /* kept */""" /* dropped /* nested */ dropped */\n'
+                  'val c = "escaped ' + backslash + '" // kept" // dropped\n'
+                  'val e = "${"' + backslash + '""} // kept" // dropped\n'
+                  "val f = '\"' // dropped\n"
+                  'val d = 1 /* unterminated')
+        expected = ('val a = "${providers.gradleProperty("x").get()} // kept" \n'
+                    'val b = """raw // kept /* kept */"""  \n'
+                    'val c = "escaped ' + backslash + '" // kept" \n'
+                    'val e = "${"' + backslash + '""} // kept" \n'
+                    "val f = '\"' \n"
+                    'val d = 1  ')
+        self.assertEqual(expected, MODULE.without_kotlin_comments(source))
+
 
 if __name__ == "__main__":
     unittest.main()
