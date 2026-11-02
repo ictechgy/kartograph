@@ -15,7 +15,8 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # collector 설치·compiler 증거·Android fixture를 순차 검증하면 기존 30분 예산을 넘을 수 있다.
+    # 전체 테스트·index-cost·runtime 검증만으로 느린 runner에서 약 34~35분이라 기존 30분 예산을 넘는다.
+    # collector·compiler 증거와 Android fixture는 별도 job이다.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -109,8 +110,9 @@ jobs:
           path: build/reports/gradle-impact-ci/result.json
           if-no-files-found: error
           retention-days: 14
+      # 계약과 절대 안전 상한(10초/40초)만 판정한다. 시간 수용 기준은 performance job의 같은 runner 기준 비교다.
       - name: Verify analysis smoke gate and self-analysis contracts
-        run: python3 Scripts/verify-analysis-smoke-gate.py --json
+        run: python3 Scripts/verify-analysis-smoke-gate.py --json --per-command-budget 10 --total-budget 40
       - name: Diagnose fixed-input index cost without changing the smoke gate
         if: ${{ always() && !cancelled() && steps.candidate-build.outcome == 'success' }}
         timeout-minutes: 15
@@ -134,6 +136,34 @@ jobs:
         run: python3 Scripts/verify-runtime-contracts.py
       - name: Compare compiler references before constant inlining
         run: python3 experiments/compiler-references/run.py
+
+  # smoke 단계가 느린 runner에서도 통과하자 전체 test job이 Xeon 8370C·EPYC 7763에서 약 52~53분으로 45분 제한을
+  # 넘었다. 뒤쪽 collector·compiler 증거 단계를 같은 명령·순서·조건으로 독립된 45분 job에 둔다(97bd6e8과 같은 방식).
+  compiler-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      # 독립 checkout에서도 test job의 primary build와 같은 compiler heap으로 아래 단계가 쓰는 CLI·plugin JAR과
+      # test class를 만든다. call position 단계는 root module test를 실행하므로, test class가 없으면 그 단계가 기본
+      # heap으로 컴파일하다 OOM이 난다(test job에서는 primary build가 미리 컴파일해 UP-TO-DATE였다).
+      - name: Prepare compiler evidence CLI, plugin and test classes
+        id: candidate-build
+        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g :cli:installDist :gradle-plugin:jar testClasses
+      # 옮긴 단계의 조건이 test job에서와 같은 뜻이 되도록 이 job의 설치본에도 같은 CLI 계약 검증을 둔다.
+      - name: Verify CLI contract
+        id: cli_contract
+        run: Scripts/verify-cli-contract.sh
       # 시간 게이트 실패 뒤에도 성공한 설치물을 쓰는 독립 정확성 검증은 남긴다.
       - name: Verify Dagger selected binding evidence
         id: dagger_evidence
@@ -300,4 +330,90 @@ jobs:
           name: agp-8-resource-impact
           path: build/reports/agp-8-resource-impact/result.json
           if-no-files-found: warn
+          retention-days: 14
+
+  # 절대 시간 예산은 runner CPU 종류가 결과를 좌우했다. 같은 runner에서 기준 commit 빌드와 교차 측정해
+  # 상대 회귀를 판정하고, 절대 안전 상한(10초/40초)도 함께 적용한다.
+  performance:
+    runs-on: ubuntu-latest
+    # 기준·후보 빌드 2회와 arm별 warm-up 1회·교차 측정 6라운드(느린 runner에서 약 5분)를 담는다.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Select the base commit for the reference build
+        id: base
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request) base="$PULL_REQUEST_BASE_SHA" ;;
+            push) base="$PUSH_BEFORE_SHA" ;;
+            *) echo "unsupported event for the reference comparison: $EVENT_NAME" >&2; exit 2 ;;
+          esac
+          # 새 branch push 등의 all-zero/누락/형식 오류 기준을 다른 commit으로 대체하지 않는다.
+          if [[ ! "$base" =~ ^[0-9a-f]{40}$ || "$base" =~ ^0{40}$ ]]; then
+            echo "base commit is missing, malformed or all-zero; refusing to choose another reference" >&2
+            exit 2
+          fi
+          printf 'sha=%s\n' "$base" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.base.outputs.sha }}
+          path: reference
+          persist-credentials: false
+      # 증거가 가리키는 기준·후보가 실제로 빌드할 checkout과 같은지 먼저 확인한다.
+      - name: Verify the checked-out reference and candidate revisions
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          reference_head="$(git -C reference rev-parse HEAD)"
+          candidate_head="$(git -C candidate rev-parse HEAD)"
+          if [[ "$reference_head" != "$BASE_SHA" || "$candidate_head" != "$GITHUB_SHA" ]]; then
+            echo "checked-out revisions do not match the selected base and the event commit" >&2
+            exit 2
+          fi
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      # 두 tree를 같은 명령으로 따로 빌드한다. 측정 입력은 후보 class root라 기준의 class root는 쓰지 않는다.
+      - name: Build reference CLI
+        working-directory: reference
+        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g :cli:installDist :gradle-plugin:classes
+      - name: Build candidate CLI and class roots
+        working-directory: candidate
+        run: ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g :cli:installDist :gradle-plugin:classes
+      # 절대 합계·비율을 job summary에도 남겨 허용치 아래 회귀가 main push마다 쌓이는지 볼 수 있게 한다.
+      - name: Compare analysis time with the reference build on this runner
+        id: compare
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          mkdir -p candidate/build/reports/analysis-performance
+          python3 candidate/Scripts/verify-analysis-smoke-gate.py --json \
+            --repo-root candidate \
+            --binary candidate/cli/build/install/kartograph/bin/kartograph \
+            --reference-binary reference/cli/build/install/kartograph/bin/kartograph \
+            --reference-revision "$BASE_SHA" --candidate-revision "$GITHUB_SHA" \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            | tee candidate/build/reports/analysis-performance/result.json
+      - name: Preserve relative performance evidence
+        if: ${{ !cancelled() && (steps.compare.outcome == 'success' || steps.compare.outcome == 'failure') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: analysis-performance
+          path: candidate/build/reports/analysis-performance/result.json
+          if-no-files-found: error
           retention-days: 14
