@@ -191,14 +191,31 @@ class IndexCostTest(unittest.TestCase):
             with self.assertRaisesRegex(probe.DiagnosticError, "semantic-engine-did-not-change"):
                 probe.compare_semantic_outputs(outputs, {}, distribution_libraries=cases["fat-cli-jar"])
 
-    def test_non_engine_artifacts_follow_the_measured_modules(self):
-        # 측정 입력 module 중 엔진(core·index)이 아닌 것만 비엔진이다. module이 늘어도 분류가 조용히 갈라지지 않는다.
-        self.assertTrue({"core", "index"} <= set(probe.MODULES))
-        self.assertEqual(frozenset(probe.MODULES) - {"core", "index"}, probe.NON_ENGINE_ARTIFACTS)
-        rows = self.libraries()["baseline"] + [{"path": "gradle-plugin-0.26.0.jar", "size": 10, "mtimeNs": 1,
-                                                 "sha256": "f" * 64}]
-        self.assertNotIn("gradle-plugin", probe.engine_artifacts(rows))
-        self.assertEqual(set(probe.engine_artifacts(self.libraries()["baseline"])), set(probe.engine_artifacts(rows)))
+    def test_non_engine_artifacts_stay_in_sync_with_the_measured_modules(self):
+        # 비엔진 집합은 CLI lib에 실제로 있는 엔진 밖 module만 명시한다. 둘 다 측정 입력 module이어야 하고 겹치지 않는다.
+        self.assertEqual(frozenset({"analysis", "export", "cli"}), probe.NON_ENGINE_ARTIFACTS)
+        self.assertEqual(frozenset({"core", "index"}), probe.ENGINE_MODULES)
+        self.assertTrue(probe.NON_ENGINE_ARTIFACTS | probe.ENGINE_MODULES <= set(probe.MODULES))
+        self.assertTrue(probe.NON_ENGINE_ARTIFACTS.isdisjoint(probe.ENGINE_MODULES))
+
+    def test_gradle_plugin_jars_count_as_engine_bearing(self):
+        # gradle-plugin은 ClassFileIndexer·CodeGraph·ASM·KotlinClassMetadata·kotlin/Unit을 모두 담은 fat jar이고,
+        # 모르는 module은 일부러 엔진으로 센다. 배포에 섞이면 바이트로 비교해 다르면 같은 지문을 실패로 둔다.
+        for name in ("gradle-plugin-0.26.0.jar", "kartograph-gradle-plugin-0.26.0.jar"):
+            with self.subTest(name=name):
+                artifact = name[:-len("-0.26.0.jar")]
+                libraries = self.libraries()
+                for rows in libraries.values():
+                    rows.append({"path": name, "size": 10, "mtimeNs": 1, "sha256": "a" * 64})
+                self.assertIn(artifact, probe.engine_artifacts(libraries["baseline"]))
+                self.assertTrue(probe.engine_jars_identical(libraries))
+                changed = {arm: [dict(row) for row in rows] for arm, rows in libraries.items()}
+                next(row for row in changed["candidate"] if row["path"] == name)["sha256"] = "b" * 64
+                self.assertFalse(probe.engine_jars_identical(changed))
+                with tempfile.TemporaryDirectory() as temporary:
+                    outputs = self.semantic_outputs(Path(temporary), "a" * 64, "a" * 64)
+                    with self.assertRaisesRegex(probe.DiagnosticError, "semantic-engine-did-not-change"):
+                        probe.compare_semantic_outputs(outputs, {}, distribution_libraries=changed)
 
     def test_unrecognized_library_entries_stay_in_the_engine_comparison(self):
         # 의도적으로 보수적이다. jar가 아닌 파일, 하위 디렉터리 항목, 대문자 .JAR는 module 판정 없이 경로 그대로

@@ -856,10 +856,11 @@ def source_identity(repo, ref, env):
 
 
 # cache 엔진 지문(index의 CacheIdentity)은 index·core·ASM·kotlin-metadata·stdlib 등 엔진 쪽 jar 바이트에서 나온다.
-# 배포 lib에서 엔진 밖의 kartograph module만 빼고 나머지를 버전과 무관한 artifact 이름으로 비교한다. 비엔진 module은
-# 측정 입력 module(MODULES)에서 엔진 module을 뺀 것이라 module이 늘어도 분류가 따로 갈라지지 않는다.
+# 배포 lib에서 엔진 밖의 kartograph module만 빼고 나머지를 버전과 무관한 artifact 이름으로 비교한다.
 ENGINE_MODULES = frozenset(("core", "index"))
-NON_ENGINE_ARTIFACTS = frozenset(MODULES) - ENGINE_MODULES
+# CLI lib에 실제로 있는 엔진 밖 module만 명시한다. 여기에 없는 module(새 module, 엔진 역할을 모두 담은 gradle-plugin
+# fat jar 등)은 일부러 엔진으로 세어 바이트가 다르면 같은 지문을 시끄럽게 실패시킨다.
+NON_ENGINE_ARTIFACTS = frozenset(("analysis", "export", "cli"))
 
 
 def engine_artifacts(rows):
