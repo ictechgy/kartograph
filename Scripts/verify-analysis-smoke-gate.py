@@ -35,7 +35,10 @@ DEFAULT_TOTAL_CAP = 40.0
 STANDALONE_RUNS = 3
 REFERENCE_RUNS = 6
 # 기준 분석기의 strict·임계값 진단(1)은 분석을 끝낸 결과라 시간을 비교한다. 그 밖의 종료는 판정 불가다.
-REFERENCE_MEASURABLE_EXITS = (0, 1)
+REFERENCE_DIAGNOSTIC_EXIT = 1
+# gate 인자에서 cycles·rules가 FINDINGS(1)로 끝날 때 stdout 마지막 줄에 쓰는 요약이다(ArchitectureCommand).
+CYCLES_FINDINGS_SUMMARY = re.compile(r"cycles: ([0-9]+) findings")
+RULES_FINDINGS_SUMMARY = re.compile(r"rules: ([0-9]+) findings, ([0-9]+) unassigned")
 REVISION = re.compile(r"[0-9a-f]{40}")
 # 같은 runner A/A 측정의 잡음에서 정한 상대 허용치다(근거: docs/AGENT-WORKFLOW.md).
 DEFAULT_TOTAL_TOLERANCE = 0.05
@@ -863,15 +866,52 @@ def reference_child(name, cmd, env, phase, round_index):
                         launchError=type(error).__name__) from None
 
 
+def reference_findings_output(name, stdout):
+    """기준 명령의 종료 1이 그 명령의 FINDINGS 출력인지, gate 인자에서 실제 CLI가 쓰는 모양 그대로 확인한다.
+
+    JVM 안에서 1은 FINDINGS뿐이지만(Main.kt는 모든 Throwable을 2로 바꾼다) HotSpot은 VM 초기화 실패
+    (예: -Xss1k, -XX:MaxHeapSize=1k)를 stdout에 쓰고 1로 끝나므로 stdout 유무로는 가릴 수 없다. gate 인자에서
+    1로 끝나는 경로마다 CLI가 쓰는 출력은 이렇다.
+    - dead·dead_private: finding이 있을 때만 1이고(DeadCommand) finding마다 `unreachable\\t` 행을 쓴다(AdoptionReporter).
+    - cycles: 마지막 줄 `cycles: N findings`, 1이면 N ≥ 1이다.
+    - rules: 마지막 줄 `rules: N findings, M unassigned`, 1이면 N + M ≥ 1이다.
+    - graph·metrics: 1로 끝나는 FINDINGS 경로가 없다.
+    이 판별은 기준 빌드의 텍스트 출력에 묶여 있다. 요약 줄이나 행 접두사를 바꾸는 변경은 기준 빌드가 옛 형식을
+    쓰는 동안 옛 형식도 받아들여야 하며, 그러지 않으면 performance job이 reference-failed로 닫혀 사람이 판단한다.
+    """
+    lines = (stdout or "").splitlines()
+    if name in ("dead", "dead_private"):
+        return any(line.startswith("unreachable\t") for line in lines)
+    summary = lines[-1] if lines else ""
+    if name == "cycles":
+        match = CYCLES_FINDINGS_SUMMARY.fullmatch(summary)
+        return match is not None and int(match.group(1)) >= 1
+    if name == "rules":
+        match = RULES_FINDINGS_SUMMARY.fullmatch(summary)
+        return match is not None and int(match.group(1)) + int(match.group(2)) >= 1
+    return False
+
+
 def reference_completion(name, result, phase, round_index):
     """기준이 분석을 끝냈는지 판단해 종료 코드를 돌려준다. 끝내지 못했으면 통과나 단독 판정 대신 닫는다.
 
     0과 strict·임계값 진단(1)은 분석을 끝낸 결과라 시간을 비교한다. 후보가 새 규칙으로만 보존되는 코드나
-    기준이 모르는 진단을 더하면 기준은 1로 끝날 수 있다. 2·64·그 밖의 값은 도구가 끝내지 못한 것이다.
+    기준이 모르는 진단을 더하면 기준은 1로 끝날 수 있다. 1은 그 명령의 FINDINGS 출력이 있을 때만 진단으로
+    재고(reference_findings_output), 그 밖의 1(VM 초기화 실패·시작 script 오류 등)과 2·64·그 밖의 값은 도구가
+    분석을 끝내지 못한 것이다. 즉시 끝난 기준을 진단으로 재면 후보가 몇 배 느린 회귀로 보이기 때문이다.
     """
-    if result.returncode in REFERENCE_MEASURABLE_EXITS:
+    if result.returncode == 0:
+        return 0
+    if result.returncode == REFERENCE_DIAGNOSTIC_EXIT and reference_findings_output(name, result.stdout):
         return result.returncode
     print(json.dumps({"arm": "reference", **analysis_failure_receipt(name, result)}, sort_keys=True), file=sys.stderr)
+    if result.returncode == REFERENCE_DIAGNOSTIC_EXIT:
+        raise GateAbort(2, "reference-failed",
+                        f"reference command '{name}' exited with code 1 without findings output for that command "
+                        f"during {phase}; the base build did not complete the analysis (for example a JVM "
+                        "initialization or launcher failure), so the comparison cannot be judged",
+                        arm="reference", phase=phase, round=round_index, command=name, returncode=result.returncode,
+                        reason="exit-1-without-findings-output")
     raise GateAbort(2, "reference-failed",
                     f"reference command '{name}' exited with code {result.returncode} during {phase}; "
                     "the base build cannot complete these inputs, so the comparison cannot be judged",
