@@ -168,6 +168,56 @@ class IndexCostTest(unittest.TestCase):
         self.assertIsNone(probe.engine_jars_identical(None))
         self.assertIsNone(probe.engine_jars_identical({"baseline": []}))
 
+    def test_engine_identity_requires_index_and_core_on_both_sides(self):
+        # 엔진으로 분류된 jar가 없거나 index·core가 한쪽이라도 빠지면 비교 근거가 없다. 판정하지 않고(None)
+        # 같은 지문을 실패로 남긴다. 미래의 fat jar(`cli-*-all.jar`)처럼 모든 것이 비엔진으로 분류되는 경우다.
+        def without(libraries, *prefixes):
+            return {arm: [row for row in rows if not row["path"].startswith(prefixes)] for arm, rows in libraries.items()}
+        fat = [{"path": "cli-0.26.0-all.jar", "size": 10, "mtimeNs": 1, "sha256": "f" * 64}]
+        cases = {
+            "only-kartograph-modules": without(self.libraries(), "annotations-", "asm", "core-", "index-", "kotlin-"),
+            "fat-cli-jar": {"baseline": fat, "candidate": fat},
+            "index-missing-on-both": without(self.libraries(), "index-"),
+            "core-missing-on-both": without(self.libraries(), "core-"),
+            "core-missing-on-candidate": self.libraries(**{"core-0.26.0": None}),
+            "index-missing-on-baseline": {"baseline": without(self.libraries(), "index-")["baseline"],
+                                          "candidate": self.libraries()["candidate"]},
+        }
+        for label, libraries in cases.items():
+            with self.subTest(label=label):
+                self.assertIsNone(probe.engine_jars_identical(libraries))
+        with tempfile.TemporaryDirectory() as temporary:
+            outputs = self.semantic_outputs(Path(temporary), "a" * 64, "a" * 64)
+            with self.assertRaisesRegex(probe.DiagnosticError, "semantic-engine-did-not-change"):
+                probe.compare_semantic_outputs(outputs, {}, distribution_libraries=cases["fat-cli-jar"])
+
+    def test_non_engine_artifacts_follow_the_measured_modules(self):
+        # 측정 입력 module 중 엔진(core·index)이 아닌 것만 비엔진이다. module이 늘어도 분류가 조용히 갈라지지 않는다.
+        self.assertTrue({"core", "index"} <= set(probe.MODULES))
+        self.assertEqual(frozenset(probe.MODULES) - {"core", "index"}, probe.NON_ENGINE_ARTIFACTS)
+        rows = self.libraries()["baseline"] + [{"path": "gradle-plugin-0.26.0.jar", "size": 10, "mtimeNs": 1,
+                                                 "sha256": "f" * 64}]
+        self.assertNotIn("gradle-plugin", probe.engine_artifacts(rows))
+        self.assertEqual(set(probe.engine_artifacts(self.libraries()["baseline"])), set(probe.engine_artifacts(rows)))
+
+    def test_unrecognized_library_entries_stay_in_the_engine_comparison(self):
+        # 의도적으로 보수적이다. jar가 아닌 파일, 하위 디렉터리 항목, 대문자 .JAR는 module 판정 없이 경로 그대로
+        # 엔진 비교에 든다. 거짓 실패는 시끄럽고 안전하므로, 이 범위를 좁히려면 이 테스트를 의도적으로 바꿔야 한다.
+        extra = ("NOTICE.txt", "nested/cli-0.26.0.jar", "CLI-0.26.0.JAR", "index-0.26.0.jar.sha256")
+        libraries = self.libraries()
+        for rows in libraries.values():
+            rows.extend({"path": path, "size": 1, "mtimeNs": 1, "sha256": format(index, "064x")}
+                        for index, path in enumerate(extra, start=100))
+        artifacts = probe.engine_artifacts(libraries["baseline"])
+        for path in extra:
+            self.assertIn(path, artifacts)
+        self.assertTrue(probe.engine_jars_identical(libraries))
+        for path in extra:
+            with self.subTest(path=path):
+                changed = {arm: [dict(row) for row in rows] for arm, rows in libraries.items()}
+                next(row for row in changed["candidate"] if row["path"] == path)["sha256"] = "f" * 64
+                self.assertFalse(probe.engine_jars_identical(changed))
+
     def test_equal_fingerprints_pass_as_a_control_only_with_byte_identical_engine_jars(self):
         with tempfile.TemporaryDirectory() as temporary:
             # (a) index/build.gradle.kts 문구만 바뀐 경우처럼 엔진 jar 바이트가 같으면 Git 경로와 무관하게 통과한다.

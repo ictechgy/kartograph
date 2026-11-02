@@ -856,8 +856,10 @@ def source_identity(repo, ref, env):
 
 
 # cache 엔진 지문(index의 CacheIdentity)은 index·core·ASM·kotlin-metadata·stdlib 등 엔진 쪽 jar 바이트에서 나온다.
-# 배포 lib에서 엔진 밖의 kartograph module만 빼고 나머지를 버전과 무관한 artifact 이름으로 비교한다.
-NON_ENGINE_ARTIFACTS = frozenset(("analysis", "export", "cli"))
+# 배포 lib에서 엔진 밖의 kartograph module만 빼고 나머지를 버전과 무관한 artifact 이름으로 비교한다. 비엔진 module은
+# 측정 입력 module(MODULES)에서 엔진 module을 뺀 것이라 module이 늘어도 분류가 따로 갈라지지 않는다.
+ENGINE_MODULES = frozenset(("core", "index"))
+NON_ENGINE_ARTIFACTS = frozenset(MODULES) - ENGINE_MODULES
 
 
 def engine_artifacts(rows):
@@ -874,10 +876,17 @@ def engine_artifacts(rows):
 
 
 def engine_jars_identical(libraries):
-    """두 배포의 엔진 쪽 jar가 바이트 동일한지 본다. 두 inventory가 모두 없으면 판정하지 않는다(None)."""
+    """두 배포의 엔진 쪽 jar가 바이트 동일한지 본다.
+
+    두 inventory가 없거나, 어느 한쪽이라도 엔진 module(index·core) jar를 엔진으로 분류하지 못했으면 비교 근거가
+    없으므로 판정하지 않는다(None). 그러면 같은 지문은 실패한다. 빈 엔진 집합끼리 같다고 보지 않기 위한 조건이다.
+    """
     if not isinstance(libraries, dict) or set(libraries) != {"baseline", "candidate"}:
         return None
-    return engine_artifacts(libraries["baseline"]) == engine_artifacts(libraries["candidate"])
+    baseline, candidate = engine_artifacts(libraries["baseline"]), engine_artifacts(libraries["candidate"])
+    if not all(ENGINE_MODULES <= set(artifacts) for artifacts in (baseline, candidate)):
+        return None
+    return baseline == candidate
 
 
 def require_baseline_source(repo, source, baseline, env):
