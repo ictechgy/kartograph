@@ -52,6 +52,13 @@
   cap bounds them. The cap applies to the candidate in both modes and replaces the 5 s / 20 s standalone default; the
   5 s / 20 s comparison and the ratios are recorded in the JSON and the job summary without gating. Verification only;
   product behaviour is unchanged.
+- The fixed-input index-cost diagnostic now uses the current analyzer (78153c3) as its baseline instead of 33f8ce1, so
+  CLI outputs are byte-compared again and the pinned `dead`/`metrics` deltas and their stale-table classification are
+  retired. Its semantic check decides a same-engine control from engine jar bytes (every distribution jar except
+  `analysis`, `export` and `cli`, keyed by version-free artifact name; unknown jars count as engine): equal engine
+  fingerprints pass only with byte-identical engine jars, while equal fingerprints with differing or unknown engine
+  jars (including a missing `core` or `index` jar) and identical engine jars with differing fingerprints both fail
+  closed. Verification only; product behaviour is unchanged.
 
 ### Added
 
