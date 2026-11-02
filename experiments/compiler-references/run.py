@@ -34,6 +34,31 @@ def snapshot(sources, class_roots, variant):
     }
 
 
+KOTLIN_PLUGIN = re.compile(r'kotlin\("jvm"\) version "([^"]+)"')
+COMPILER_EMBEDDABLE = re.compile(r'"org\.jetbrains\.kotlin:kotlin-compiler-embeddable:([^"]+)"')
+
+
+def collector_kotlin_version(root=ROOT, here=HERE):
+    """collector의 Kotlin plugin·compiler 버전이 루트 plugin과 같은지 확인하고 그 버전을 돌려준다.
+
+    collector와 fixture는 offline으로 빌드되어 루트 빌드가 데운 Gradle 캐시만 쓴다. 버전이 어긋나면 Gradle이
+    plugin을 찾지 못한다는 숨은 오류로 늦게 실패하므로, 빌드 전에 저장소 상대 경로와 두 버전으로 실패한다.
+    """
+    def single(pattern, path, label):
+        found = pattern.findall(path.read_text())
+        if len(found) != 1:
+            raise RuntimeError(f"expected one {label} in {path.relative_to(root).as_posix()}, found {len(found)}")
+        return found[0]
+    expected = single(KOTLIN_PLUGIN, root / "build.gradle.kts", "Kotlin JVM plugin version")
+    build = here / "collector/build.gradle.kts"
+    plugin = single(KOTLIN_PLUGIN, build, "Kotlin JVM plugin version")
+    compiler = single(COMPILER_EMBEDDABLE, build, "kotlin-compiler-embeddable version")
+    if plugin != expected or compiler != expected:
+        raise RuntimeError(f"collector Kotlin plugin {plugin} and compiler {compiler} must equal the root Kotlin JVM "
+                           f"plugin {expected}; update {build.relative_to(root).as_posix()}")
+    return expected
+
+
 def command(args, cwd=ROOT):
     result = subprocess.run([str(x) for x in args], cwd=cwd, capture_output=True, text=True, timeout=600)
     if result.returncode:
@@ -88,10 +113,10 @@ def main():
     java_version = command([jdk / "bin/javac", "-version"]).strip()
     if not java_version.startswith("javac 17."):
         raise RuntimeError("this comparison requires JDK 17")
+    kotlin_version = collector_kotlin_version()
     command([ROOT / "gradlew", "--offline", "--no-daemon", ":cli:installDist"])
     command([ROOT / "gradlew", "--offline", "--no-daemon", "-p", HERE / "collector", "jar"])
     collector = HERE / "collector/build/libs/reference-collector.jar"
-    kotlin_version = re.search(r'kotlin\("jvm"\) version "([^\"]+)"', (HERE / "collector/build.gradle.kts").read_text()).group(1)
     sources = sorted((HERE / "fixtures").iterdir())
     before = {p.name: digest(p) for p in sources}
     with tempfile.TemporaryDirectory(prefix="kartograph-reference-experiment-") as temporary:
