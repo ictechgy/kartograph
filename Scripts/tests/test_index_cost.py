@@ -22,9 +22,12 @@ SPEC.loader.exec_module(probe)
 
 
 class IndexCostTest(unittest.TestCase):
-    def test_baseline_is_the_exact_preoptimization_product(self):
-        self.assertEqual("33f8ce1b15af5be6dc01573e1209017cb1999f1d", probe.SOURCE_BASELINE)
+    def test_baseline_is_the_current_analyzer_after_the_framework_contract_change(self):
+        # #207(78153c3)의 의도된 출력 변경(FRAMEWORK_ANNOTATION_OWNERS 한계, Martin A의 합성 타입 제외)을 포함한
+        # 분석기로 옮겨 CLI 출력을 다시 바이트 동일 비교만으로 판정한다. 고정 delta는 더 이상 필요하지 않다.
+        self.assertEqual("78153c338e20db7193be4a93ac5de90fc594e026", probe.SOURCE_BASELINE)
         self.assertEqual(probe.SOURCE_BASELINE, probe.BASELINE)
+        self.assertFalse(hasattr(probe, "expected_contract_delta"))
 
     def test_baseline_metadata_update_cannot_change_executable_sources(self):
         env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
@@ -114,6 +117,184 @@ class IndexCostTest(unittest.TestCase):
                 (candidate / "raw-facts.json").write_text(json.dumps(document))
                 with self.assertRaisesRegex(probe.DiagnosticError, reason):
                     probe.compare_semantic_outputs(outputs, {})
+
+    def semantic_outputs(self, root, baseline_engine, candidate_engine, candidate_payload="d" * 64):
+        """같은 graph를 가진 두 arm의 semantic 출력 디렉터리를 만든다."""
+        outputs = {arm: root / arm for arm in ("baseline", "candidate")}
+        graphs = {name: {"bytes": 100, "sha256": "e" * 64} for name in ("json", "ndjson")}
+        for arm, directory in outputs.items():
+            directory.mkdir(parents=True)
+            facts = {"format": "class-facts-v10-payload-sha256",
+                     "engine": baseline_engine if arm == "baseline" else candidate_engine,
+                     "payloads": {"c" * 64: "d" * 64 if arm == "baseline" else candidate_payload}}
+            (directory / "raw-facts.json").write_text(json.dumps(facts))
+            (directory / "graphs.json").write_text(json.dumps(graphs))
+        return outputs
+
+    @staticmethod
+    def libraries(**changes):
+        """CLI 배포 lib inventory 두 벌이다. changes는 후보 쪽 파일 이름→sha256(None이면 삭제)이다."""
+        names = ("analysis-0.26.0.jar", "annotations-13.0.jar", "asm-9.10.1.jar", "asm-analysis-9.10.1.jar",
+                 "asm-tree-9.10.1.jar", "cli-0.26.0.jar", "core-0.26.0.jar", "export-0.26.0.jar",
+                 "index-0.26.0.jar", "kotlin-metadata-jvm-2.4.21.jar", "kotlin-stdlib-2.4.21.jar")
+        baseline = [{"path": name, "size": 10, "mtimeNs": 1, "sha256": format(index, "064x")}
+                    for index, name in enumerate(names)]
+        candidate = {row["path"]: {**row, "mtimeNs": 2} for row in baseline}
+        for name, sha in changes.items():
+            name = name.replace("_", "-") + ".jar"
+            if sha is None:
+                candidate.pop(name)
+            else:
+                candidate[name] = {"path": name, "size": 10, "mtimeNs": 2, "sha256": sha}
+        return {"baseline": baseline, "candidate": sorted(candidate.values(), key=lambda row: row["path"])}
+
+    def test_engine_artifacts_ignore_versions_build_times_and_non_engine_modules(self):
+        libraries = self.libraries()
+        artifacts = probe.engine_artifacts(libraries["baseline"])
+        self.assertEqual({"annotations", "asm", "asm-analysis", "asm-tree", "core", "index", "kotlin-metadata-jvm",
+                          "kotlin-stdlib"}, set(artifacts))
+        self.assertTrue(probe.engine_jars_identical(libraries))
+        # 엔진 밖 kartograph module(analysis·export·cli)만 바뀌면 엔진 jar는 같다.
+        changed = self.libraries(**{"cli-0.26.0": "f" * 64, "analysis-0.26.0": "e" * 64, "export-0.26.0": "d" * 64})
+        self.assertTrue(probe.engine_jars_identical(changed))
+        for label, mutated in (
+                ("core-bytes", self.libraries(**{"core-0.26.0": "f" * 64})),
+                ("stdlib-version", self.libraries(**{"kotlin-stdlib-2.4.21": None, "kotlin-stdlib-2.4.22": "f" * 64})),
+                ("extra-engine-jar", self.libraries(**{"asm-util-9.10.1": "f" * 64})),
+                ("missing-engine-jar", self.libraries(**{"asm-tree-9.10.1": None})),
+        ):
+            with self.subTest(label=label):
+                self.assertFalse(probe.engine_jars_identical(mutated))
+        self.assertIsNone(probe.engine_jars_identical(None))
+        self.assertIsNone(probe.engine_jars_identical({"baseline": []}))
+
+    def test_engine_identity_requires_index_and_core_on_both_sides(self):
+        # 엔진으로 분류된 jar가 없거나 index·core가 한쪽이라도 빠지면 비교 근거가 없다. 판정하지 않고(None)
+        # 같은 지문을 실패로 남긴다. 미래의 fat jar(`cli-*-all.jar`)처럼 모든 것이 비엔진으로 분류되는 경우다.
+        def without(libraries, *prefixes):
+            return {arm: [row for row in rows if not row["path"].startswith(prefixes)] for arm, rows in libraries.items()}
+        fat = [{"path": "cli-0.26.0-all.jar", "size": 10, "mtimeNs": 1, "sha256": "f" * 64}]
+        cases = {
+            "only-kartograph-modules": without(self.libraries(), "annotations-", "asm", "core-", "index-", "kotlin-"),
+            "fat-cli-jar": {"baseline": fat, "candidate": fat},
+            "index-missing-on-both": without(self.libraries(), "index-"),
+            "core-missing-on-both": without(self.libraries(), "core-"),
+            "core-missing-on-candidate": self.libraries(**{"core-0.26.0": None}),
+            "index-missing-on-baseline": {"baseline": without(self.libraries(), "index-")["baseline"],
+                                          "candidate": self.libraries()["candidate"]},
+        }
+        for label, libraries in cases.items():
+            with self.subTest(label=label):
+                self.assertIsNone(probe.engine_jars_identical(libraries))
+        with tempfile.TemporaryDirectory() as temporary:
+            outputs = self.semantic_outputs(Path(temporary), "a" * 64, "a" * 64)
+            with self.assertRaisesRegex(probe.DiagnosticError, "semantic-engine-did-not-change"):
+                probe.compare_semantic_outputs(outputs, {}, distribution_libraries=cases["fat-cli-jar"])
+
+    def test_non_engine_artifacts_stay_in_sync_with_the_measured_modules(self):
+        # 비엔진 집합은 CLI lib에 실제로 있는 엔진 밖 module만 명시한다. 둘 다 측정 입력 module이어야 하고 겹치지 않는다.
+        self.assertEqual(frozenset({"analysis", "export", "cli"}), probe.NON_ENGINE_ARTIFACTS)
+        self.assertEqual(frozenset({"core", "index"}), probe.ENGINE_MODULES)
+        self.assertTrue(probe.NON_ENGINE_ARTIFACTS | probe.ENGINE_MODULES <= set(probe.MODULES))
+        self.assertTrue(probe.NON_ENGINE_ARTIFACTS.isdisjoint(probe.ENGINE_MODULES))
+
+    def test_gradle_plugin_jars_count_as_engine_bearing(self):
+        # gradle-plugin은 ClassFileIndexer·CodeGraph·ASM·KotlinClassMetadata·kotlin/Unit을 모두 담은 fat jar이고,
+        # 모르는 module은 일부러 엔진으로 센다. 배포에 섞이면 바이트로 비교해 다르면 같은 지문을 실패로 둔다.
+        for name in ("gradle-plugin-0.26.0.jar", "kartograph-gradle-plugin-0.26.0.jar"):
+            with self.subTest(name=name):
+                artifact = name[:-len("-0.26.0.jar")]
+                libraries = self.libraries()
+                for rows in libraries.values():
+                    rows.append({"path": name, "size": 10, "mtimeNs": 1, "sha256": "a" * 64})
+                self.assertIn(artifact, probe.engine_artifacts(libraries["baseline"]))
+                self.assertTrue(probe.engine_jars_identical(libraries))
+                changed = {arm: [dict(row) for row in rows] for arm, rows in libraries.items()}
+                next(row for row in changed["candidate"] if row["path"] == name)["sha256"] = "b" * 64
+                self.assertFalse(probe.engine_jars_identical(changed))
+                with tempfile.TemporaryDirectory() as temporary:
+                    outputs = self.semantic_outputs(Path(temporary), "a" * 64, "a" * 64)
+                    with self.assertRaisesRegex(probe.DiagnosticError, "semantic-engine-did-not-change"):
+                        probe.compare_semantic_outputs(outputs, {}, distribution_libraries=changed)
+
+    def test_unrecognized_library_entries_stay_in_the_engine_comparison(self):
+        # 의도적으로 보수적이다. jar가 아닌 파일, 하위 디렉터리 항목, 대문자 .JAR는 module 판정 없이 경로 그대로
+        # 엔진 비교에 든다. 거짓 실패는 시끄럽고 안전하므로, 이 범위를 좁히려면 이 테스트를 의도적으로 바꿔야 한다.
+        extra = ("NOTICE.txt", "nested/cli-0.26.0.jar", "CLI-0.26.0.JAR", "index-0.26.0.jar.sha256")
+        libraries = self.libraries()
+        for rows in libraries.values():
+            rows.extend({"path": path, "size": 1, "mtimeNs": 1, "sha256": format(index, "064x")}
+                        for index, path in enumerate(extra, start=100))
+        artifacts = probe.engine_artifacts(libraries["baseline"])
+        for path in extra:
+            self.assertIn(path, artifacts)
+        self.assertTrue(probe.engine_jars_identical(libraries))
+        for path in extra:
+            with self.subTest(path=path):
+                changed = {arm: [dict(row) for row in rows] for arm, rows in libraries.items()}
+                next(row for row in changed["candidate"] if row["path"] == path)["sha256"] = "f" * 64
+                self.assertFalse(probe.engine_jars_identical(changed))
+
+    def test_equal_fingerprints_pass_as_a_control_only_with_byte_identical_engine_jars(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            # (a) index/build.gradle.kts 문구만 바뀐 경우처럼 엔진 jar 바이트가 같으면 Git 경로와 무관하게 통과한다.
+            outputs = self.semantic_outputs(Path(temporary) / "a", "a" * 64, "a" * 64)
+            report = {}
+            with mock.patch.object(probe, "successful", side_effect=AssertionError("git must not be consulted")):
+                probe.compare_semantic_outputs(outputs, report, distribution_libraries=self.libraries(
+                    **{"cli-0.26.0": "f" * 64}))
+            self.assertFalse(report["semantic"]["enginesDiffer"])
+            self.assertTrue(report["semantic"]["engineJarsIdentical"])
+            self.assertIn("same-engine control", report["semantic"]["engineScope"])
+            # 같은 엔진도 payload·graph는 계속 바이트 동일해야 한다.
+            mismatch = self.semantic_outputs(Path(temporary) / "m", "a" * 64, "a" * 64, candidate_payload="f" * 64)
+            with self.assertRaisesRegex(probe.DiagnosticError, "semantic-graph-or-raw-payload-mismatch"):
+                probe.compare_semantic_outputs(mismatch, {}, distribution_libraries=self.libraries())
+            # (b) 지문은 같은데 엔진 jar가 다르면 각 arm이 자기 엔진을 읽었다는 근거가 없다. inventory가 없어도 같다.
+            for label, libraries in (("core", self.libraries(**{"core-0.26.0": "f" * 64})),
+                                     ("index", self.libraries(**{"index-0.26.0": "f" * 64})), ("unknown", None)):
+                with self.subTest(label=label), self.assertRaisesRegex(probe.DiagnosticError, "semantic-engine-did-not-change"):
+                    probe.compare_semantic_outputs(outputs, {}, distribution_libraries=libraries)
+            with self.assertRaisesRegex(probe.DiagnosticError, "semantic-engine-did-not-change"):
+                probe.compare_semantic_outputs(outputs, {})
+            # (c) 엔진 jar가 같은데 지문이 다르면 지문이 비결정적이거나 다른 코드를 읽은 것이다.
+            unstable = self.semantic_outputs(Path(temporary) / "c", "a" * 64, "b" * 64)
+            with self.assertRaisesRegex(probe.DiagnosticError, "semantic-engine-fingerprint-unstable"):
+                probe.compare_semantic_outputs(unstable, {}, distribution_libraries=self.libraries(
+                    **{"export-0.26.0": "f" * 64}))
+            # 엔진 jar와 지문이 함께 다르면 기존 교차 엔진 비교다.
+            report = {}
+            probe.compare_semantic_outputs(unstable, report, distribution_libraries=self.libraries(**{"core-0.26.0": "f" * 64}))
+            self.assertTrue(report["semantic"]["enginesDiffer"])
+            self.assertFalse(report["semantic"]["engineJarsIdentical"])
+            self.assertNotIn("same-engine control", report["semantic"]["engineScope"])
+
+    def test_semantic_oracle_passes_the_recorded_distribution_libraries(self):
+        facts = {"format": "class-facts-v10-payload-sha256", "engine": "a" * 64, "payloads": {"c" * 64: "d" * 64}}
+        graphs = {name: {"bytes": 100, "sha256": "e" * 64} for name in ("json", "ndjson")}
+        def execute(arguments, cwd, env, **kwargs):
+            if kwargs.get("phase") == "semantic-oracle":
+                output = Path(arguments[4])
+                output.mkdir()
+                (output / "raw-facts.json").write_text(json.dumps(facts))
+                (output / "graphs.json").write_text(json.dumps(graphs))
+            return {"phase": kwargs.get("phase", "child"), "exit": 0, "stdout": b"{}", "stderr": b"", "wallNanos": 1, "rss": {}}
+        for label, libraries, failure in (("identical", self.libraries(), None),
+                                          ("core-changed", self.libraries(**{"core-0.26.0": "f" * 64}),
+                                           "semantic-engine-did-not-change")):
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary:
+                work = Path(temporary)
+                distributions = {arm: work / arm for arm in ("baseline", "candidate")}
+                report = {"libsBefore": libraries}
+                with mock.patch.object(probe, "successful", side_effect=execute):
+                    if failure:
+                        with self.assertRaisesRegex(probe.DiagnosticError, failure):
+                            probe.semantic_oracle(ROOT, distributions, [work / "classes"], work, {}, work, report,
+                                                  probe.RawStreams(work / "raw"))
+                    else:
+                        probe.semantic_oracle(ROOT, distributions, [work / "classes"], work, {}, work, report,
+                                              probe.RawStreams(work / "raw"))
+                        self.assertTrue(report["semantic"]["engineJarsIdentical"])
 
     def test_exact_dead_pair_rejects_an_added_diagnostic(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -648,224 +829,6 @@ class IndexCostTest(unittest.TestCase):
                 documents.append(facts)
             self.assertEqual(documents[0]["engine"], documents[1]["engine"])
             self.assertNotEqual(list(documents[0]["payloads"].values()), list(documents[1]["payloads"].values()))
-
-
-# 고정 baseline 33f8ce1에 대한 의도된 계약 확장(FRAMEWORK_ANNOTATION_OWNERS 한계, Martin A의 합성 타입 제외)이다.
-# CI 자기 분석 원시 출력과 같은 형태의 바이트로 정확한 허용 범위와 거부 경계를 고정한다.
-DEAD_BASELINE = (
-    b"input-hint\tmissing-classpath\tno dependency classpath inputs were supplied\n"
-    b"limitation\tANNOTATION_VALUE_REFERENCES\tclass references in SOURCE-retention annotations are not available in compiled inputs\n"
-    b"limitation\tDYNAMIC_REGISTRATION\tmanifest-absent runtime component registration is not resolved\n"
-    b"limitation\tGENERATED_CODE_COVERAGE\tonly supported generation markers and sibling relationships identify generated code\n"
-    b"limitation\tTOP_LEVEL_DECLARATIONS\tfile-facade top-level properties and their accessors are conservatively not reported\n"
-)
-DI_LINE = (b"limitation\tFRAMEWORK_ANNOTATION_OWNERS\towners retained by supported dependency-injection, serialization or "
-           b"runtime-entry annotations (such as @Inject constructors, @Expose fields, @TypeConverter methods or @Component "
-           b"types) and all their members are roots without proof that generated code or a framework uses them\n")
-DEAD_CANDIDATE = DEAD_BASELINE.replace(b"limitation\tGENERATED_CODE_COVERAGE", DI_LINE + b"limitation\tGENERATED_CODE_COVERAGE", 1)
-# CI 세 번(run 41295549264·41299413844·41304840868)의 9쌍이 모두 같은 바이트로 관측한 자기 분석 metrics 출력이다.
-METRICS_BASELINE = (
-    b"module\tCa\tCe\tI\tA\tD\n"
-    b"dev.kartograph.analysis\t3\t1\t0.250\t0.005\t0.745\n"
-    b"dev.kartograph.cli\t0\t4\t1.000\t0.013\t0.013\n"
-    b"dev.kartograph.core\t5\t0\t0.000\t0.000\t1.000\n"
-    b"dev.kartograph.export\t2\t2\t0.500\t0.006\t0.494\n"
-    b"dev.kartograph.gradle\t0\t4\t1.000\t0.053\t0.053\n"
-    b"dev.kartograph.index\t2\t1\t0.333\t0.027\t0.639\n"
-)
-METRICS_CANDIDATE = (
-    b"module\tCa\tCe\tI\tA\tD\n"
-    b"dev.kartograph.analysis\t3\t1\t0.250\t0.006\t0.744\n"
-    b"dev.kartograph.cli\t0\t4\t1.000\t0.016\t0.016\n"
-    b"dev.kartograph.core\t5\t0\t0.000\t0.000\t1.000\n"
-    b"dev.kartograph.export\t2\t2\t0.500\t0.012\t0.488\n"
-    b"dev.kartograph.gradle\t0\t4\t1.000\t0.139\t0.139\n"
-    b"dev.kartograph.index\t2\t1\t0.333\t0.034\t0.632\n"
-)
-CI_METRICS_SHA256 = {
-    "baseline": "be9ed1309686fc576db701c805fbd161e402fa4e5a2c79fecd826dd948b31f10",
-    "candidate": "fd0f89c5b8479cc7736294f7a4a5597c07e5db53ebe933c95c04b835e1092202",
-}
-
-def cli_result(stdout, stderr=b"", exit_code=0):
-    return {"exit": exit_code, "stdout": stdout, "stderr": stderr}
-
-
-class ContractDeltaTest(unittest.TestCase):
-    def test_dead_delta_is_exactly_one_sorted_limitation_line(self):
-        self.assertTrue(probe.contract_delta_active())
-        for command in ("dead", "dead_private"):
-            self.assertTrue(probe.expected_contract_delta(command, cli_result(DEAD_BASELINE), cli_result(DEAD_CANDIDATE)))
-        rejected = {
-            "identical": DEAD_BASELINE,
-            "appended": DEAD_BASELINE + DI_LINE,
-            "duplicated": DEAD_CANDIDATE.replace(DI_LINE, DI_LINE + DI_LINE),
-            "wrong-position": DEAD_BASELINE.replace(b"limitation\tDYNAMIC_REGISTRATION", DI_LINE + b"limitation\tDYNAMIC_REGISTRATION", 1),
-            "reworded": DEAD_CANDIDATE.replace(b"generated code or a framework", b"a framework"),
-            "extra-line": DEAD_CANDIDATE + b"limitation\tEXTERNAL_RETENTIONS\textra\n",
-            "finding": b"unreachable\tclass:app/Unused\t-\n" + DEAD_CANDIDATE,
-            "crlf": DEAD_CANDIDATE.replace(DI_LINE, DI_LINE[:-1] + b"\r\n"),
-        }
-        for label, candidate in rejected.items():
-            with self.subTest(label=label):
-                self.assertFalse(probe.expected_contract_delta("dead", cli_result(DEAD_BASELINE), cli_result(candidate)))
-        self.assertFalse(probe.expected_contract_delta("dead", cli_result(DEAD_CANDIDATE), cli_result(DEAD_CANDIDATE + DI_LINE)))
-        self.assertFalse(probe.expected_contract_delta("dead", cli_result(b"same\n"), cli_result(b"same\n" + DI_LINE)))
-        self.assertFalse(probe.expected_contract_delta(
-            "dead", cli_result(DEAD_BASELINE), cli_result(DEAD_CANDIDATE, stderr=b"warning\n")))
-        self.assertFalse(probe.expected_contract_delta(
-            "dead", cli_result(DEAD_BASELINE, exit_code=1), cli_result(DEAD_CANDIDATE, exit_code=1)))
-        for command in ("graph", "cycles", "rules", "metrics"):
-            self.assertFalse(probe.expected_contract_delta(command, cli_result(DEAD_BASELINE), cli_result(DEAD_CANDIDATE)))
-
-    def test_metrics_delta_is_the_exact_pinned_output_pair(self):
-        self.assertEqual(CI_METRICS_SHA256["baseline"], probe.digest(METRICS_BASELINE))
-        self.assertEqual(CI_METRICS_SHA256["candidate"], probe.digest(METRICS_CANDIDATE))
-        self.assertTrue(probe.expected_contract_delta("metrics", cli_result(METRICS_BASELINE), cli_result(METRICS_CANDIDATE)))
-        # 다시 계산한 D와 일관된 임의의 A 상승(예: 모든 행 A=1.000)도 고정된 후보 바이트가 아니면 거부한다.
-        all_abstract = METRICS_BASELINE.split(b"\n", 1)[0] + b"\n" + b"".join(
-            b"\t".join(row.split(b"\t")[:4] + [b"1.000", b"%.3f" % abs(1.0 + float(row.split(b"\t")[3]) - 1.0)]) + b"\n"
-            for row in METRICS_BASELINE.split(b"\n")[1:-1])
-        rejected = {
-            "all-abstract": all_abstract,
-            "identical": METRICS_BASELINE,
-            "rounded-distance": METRICS_CANDIDATE.replace(b"0.006\t0.744", b"0.006\t0.745"),
-            "other-abstractness": METRICS_CANDIDATE.replace(b"0.139\t0.139", b"0.140\t0.140"),
-            "module": METRICS_CANDIDATE.replace(b"dev.kartograph.core", b"dev.kartograph.core2"),
-            "ca": METRICS_CANDIDATE.replace(b"core\t5\t0", b"core\t4\t0"),
-            "instability": METRICS_CANDIDATE.replace(b"\t0.250\t", b"\t0.251\t"),
-            "header": METRICS_CANDIDATE.replace(b"\tD\n", b"\tDistance\n", 1),
-            "missing-row": METRICS_CANDIDATE.replace(b"dev.kartograph.core\t5\t0\t0.000\t0.000\t1.000\n", b""),
-            "extra-row": METRICS_CANDIDATE + b"dev.kartograph.zzz\t0\t1\t1.000\t0.000\t0.000\n",
-            "crlf": METRICS_CANDIDATE.replace(b"\n", b"\r\n"),
-            "no-final-newline": METRICS_CANDIDATE[:-1],
-        }
-        for label, candidate in rejected.items():
-            with self.subTest(label=label):
-                self.assertNotEqual(METRICS_CANDIDATE, candidate)
-                self.assertFalse(probe.expected_contract_delta("metrics", cli_result(METRICS_BASELINE), cli_result(candidate)))
-        # baseline 쪽도 고정 바이트여야 한다. 입력이 바뀌어 baseline 행이 달라지면 delta가 아니다.
-        moved = METRICS_BASELINE.replace(b"0.027\t0.639", b"0.028\t0.638")
-        self.assertFalse(probe.expected_contract_delta("metrics", cli_result(moved), cli_result(METRICS_CANDIDATE)))
-        self.assertFalse(probe.expected_contract_delta(
-            "metrics", cli_result(METRICS_BASELINE), cli_result(METRICS_CANDIDATE, stderr=b"limitation: x\n")))
-
-    def test_pinned_metrics_rows_are_internally_consistent(self):
-        # 고정 표 자체가 module·Ca·Ce·I를 공유하고, 두 쪽 D가 출력된 A·I에서 반올림 한 단위 안에 있는지 확인한다.
-        rows = probe.EXPECTED_METRICS_ROWS
-        self.assertEqual(sorted(rows), list(rows))
-        for module, ca, ce, instability, *values in rows:
-            for abstractness, distance in (values[:2], values[2:]):
-                self.assertLessEqual(abs(float(distance) - abs(float(abstractness) + float(instability) - 1.0)), 0.0015, module)
-
-    def test_contract_delta_turns_off_when_the_baseline_moves(self):
-        for name in ("BASELINE", "SOURCE_BASELINE"):
-            with self.subTest(name=name), mock.patch.object(probe, name, "0" * 40):
-                self.assertFalse(probe.contract_delta_active())
-                self.assertFalse(probe.expected_contract_delta("dead", cli_result(DEAD_BASELINE), cli_result(DEAD_CANDIDATE)))
-                self.assertFalse(probe.expected_contract_delta(
-                    "metrics", cli_result(METRICS_BASELINE), cli_result(METRICS_CANDIDATE)))
-
-    def test_paired_cli_accepts_the_pinned_delta_and_still_rejects_other_changes(self):
-        outputs = {"dead": (DEAD_BASELINE, DEAD_CANDIDATE), "metrics": (METRICS_BASELINE, METRICS_CANDIDATE)}
-        for changed in (None, "graph", "cycles", "rules"):
-            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
-                commands = {arm: probe.cli_commands(arm, [root / "classes"], root) for arm in ("baseline", "candidate")}
-                def execute(arguments, cwd, env, **kwargs):
-                    arm, command = arguments[:2]
-                    pair = outputs.get(command, (b"same\n", b"other\n" if command == changed else b"same\n"))
-                    stdout = pair[0] if arm == "baseline" else pair[1]
-                    return {"phase": kwargs["phase"], "exit": 0, "stdout": stdout, "stderr": b"", "wallNanos": 1, "rss": {}}
-                report = {}
-                with mock.patch.object(probe, "run", side_effect=execute), mock.patch.object(
-                        probe, "host_load_snapshot", return_value={}):
-                    if changed is None:
-                        probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(root / "raw"))
-                    else:
-                        with self.assertRaisesRegex(probe.DiagnosticError, "cli-byte-mismatch-or-unsuccessful-exit"):
-                            probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(root / "raw"))
-                rows = {(row["command"], row["sample"]): row for row in report["cli"]}
-                for (command, _), row in rows.items():
-                    delta = command in ("dead", "dead_private", "metrics")
-                    self.assertEqual(delta, row["expectedContractDelta"], command)
-                    self.assertEqual(not delta and command != changed, row["exactEqual"], command)
-                    self.assertEqual("same-input-intentionally-changed-output" if delta else "exact-byte-comparison",
-                                     row["comparisonScope"], command)
-                    self.assertEqual(command != changed, row["contractAccepted"], command)
-
-    def run_pairs(self, outputs, stderr=None, exits=None):
-        """명령별 (baseline, 후보) stdout으로 paired_cli를 돌려 report와 진단 오류를 돌려준다."""
-        stderr, exits = stderr or {}, exits or {}
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            commands = {arm: probe.cli_commands(arm, [root / "classes"], root) for arm in ("baseline", "candidate")}
-            def execute(arguments, cwd, env, **kwargs):
-                arm, command = arguments[:2]
-                index = 0 if arm == "baseline" else 1
-                pair = outputs.get(command, (b"same\n", b"same\n"))
-                return {"phase": kwargs["phase"], "exit": exits.get(command, (0, 0))[index], "stdout": pair[index],
-                        "stderr": stderr.get(command, (b"", b""))[index], "wallNanos": 1, "rss": {}}
-            report, error = {}, None
-            with mock.patch.object(probe, "run", side_effect=execute), mock.patch.object(
-                    probe, "host_load_snapshot", return_value={}):
-                try:
-                    probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(root / "raw"))
-                except probe.DiagnosticError as caught:
-                    error = caught
-            return report, error
-
-    def test_stale_metrics_pin_has_its_own_diagnostic_code(self):
-        # 입력 class가 바뀌어 고정 표만 낡은 경우: 두 쪽이 A·D만 다르지만 고정 바이트와 다르다.
-        stale = {
-            "shifted-row": (METRICS_BASELINE.replace(b"0.027\t0.639", b"0.030\t0.636"),
-                            METRICS_CANDIDATE.replace(b"0.034\t0.632", b"0.037\t0.629")),
-            "new-package": (METRICS_BASELINE + b"dev.kartograph.zzz\t1\t0\t0.000\t0.000\t1.000\n",
-                            METRICS_CANDIDATE + b"dev.kartograph.zzz\t1\t0\t0.000\t0.500\t0.500\n"),
-        }
-        for label, metrics in stale.items():
-            with self.subTest(label=label):
-                report, error = self.run_pairs({"dead": (DEAD_BASELINE, DEAD_CANDIDATE), "metrics": metrics})
-                self.assertIsNotNone(error)
-                self.assertEqual("metrics-contract-delta-stale", str(error))
-                self.assertEqual("cli-metrics", error.receipt["phase"])
-                for name in ("EXPECTED_METRICS_ROWS", "BASELINE", "Scripts/verify-index-cost.py"):
-                    self.assertIn(name, error.receipt["hint"])
-                self.assertEqual({arm: probe.digest(probe.expected_metrics_output(arm)) for arm in ("baseline", "candidate")},
-                                 error.receipt["pinnedSha256"])
-                self.assertEqual({"baseline": probe.digest(metrics[0]), "candidate": probe.digest(metrics[1])},
-                                 error.receipt["observedSha256"])
-                for row in report["cli"]:
-                    stale_row = row["command"] == "metrics"
-                    self.assertEqual(stale_row, row["staleContractDelta"], row["command"])
-                    self.assertEqual(not stale_row, row["contractAccepted"], row["command"])
-
-    def test_other_metrics_and_cli_failures_keep_the_generic_code(self):
-        stale = (METRICS_BASELINE.replace(b"0.027\t0.639", b"0.030\t0.636"),
-                 METRICS_CANDIDATE.replace(b"0.034\t0.632", b"0.037\t0.629"))
-        dead = (DEAD_BASELINE, DEAD_CANDIDATE)
-        cases = {
-            # 후보 binary가 같은 입력에서 module·Ca·Ce·I를 바꾸면 표가 낡은 것이 아니라 동작 변화다.
-            "coupling-changed": ({"dead": dead, "metrics": (METRICS_BASELINE, METRICS_CANDIDATE.replace(
-                b"core\t5\t0", b"core\t4\t0"))}, {}, {}),
-            "row-only-in-candidate": ({"dead": dead, "metrics": (METRICS_BASELINE,
-                METRICS_CANDIDATE + b"dev.kartograph.zzz\t1\t0\t0.000\t0.000\t1.000\n")}, {}, {}),
-            "stderr-differs": ({"dead": dead, "metrics": stale}, {"metrics": (b"", b"limitation: x\n")}, {}),
-            "exit-differs": ({"dead": dead, "metrics": stale}, {}, {"metrics": (0, 2)}),
-            "stale-and-graph-changed": ({"dead": dead, "metrics": stale, "graph": (b"same\n", b"other\n")}, {}, {}),
-            "dead-changed": ({"dead": (DEAD_BASELINE, DEAD_BASELINE + b"extra\n"), "metrics": stale}, {}, {}),
-        }
-        for label, (outputs, stderr, exits) in cases.items():
-            with self.subTest(label=label):
-                _, error = self.run_pairs(outputs, stderr, exits)
-                self.assertIsNotNone(error)
-                self.assertEqual("cli-byte-mismatch-or-unsuccessful-exit", str(error))
-        with mock.patch.object(probe, "BASELINE", "0" * 40):
-            _, error = self.run_pairs({"metrics": stale})
-            self.assertEqual("cli-byte-mismatch-or-unsuccessful-exit", str(error))
-        report, error = self.run_pairs({"dead": dead, "metrics": (METRICS_BASELINE, METRICS_CANDIDATE)})
-        self.assertIsNone(error)
-        self.assertFalse(any(row["staleContractDelta"] for row in report["cli"]))
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@
 
 JDK 17과 저장소의 Kotlin 빌드 의존성이 준비된 환경에서 루트 기준으로 실행한다. collector는
 offline 실행이라 루트 빌드가 데운 캐시를 쓰므로 `collector/build.gradle.kts`의 버전은 루트 plugin과 같아야 한다.
+`run.py`는 Gradle을 부르기 전에 이 일치를 확인하고, `Scripts/tests`의 단위 테스트도 같은 검사로 먼저 실패한다.
 
 ```sh
 python3 experiments/compiler-references/run.py
@@ -21,7 +22,8 @@ JDK의 `JavacTask`/`Trees` API로 의미 해석 후, bytecode 생성 전에 참�
 ## 결과와 결정
 
 2026-09-08, JDK 17 / Kotlin 2.4.10, 단일 JVM fixture 전체 컴파일에서 검증했다. 2026-09-18에
-Kotlin 2.4.20으로 동일 결과(참조 4·거부 5·대조 통과)를 재검증했다.
+Kotlin 2.4.20으로 동일 결과(참조 4·거부 5·대조 통과)를 재검증했다. 2026-11-02에 Kotlin 2.4.21로 동일
+결과(참조 4·거부 5·대조 통과)를 재검증했다.
 
 | 입력 / 관측 단계 | 실제 상수 사용처 4개 중 연결한 간선 |
 | --- | ---: |

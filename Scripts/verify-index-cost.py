@@ -25,9 +25,10 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 
-# 이번 간선 묶기의 추가 효과를 같은 runner에서 비교한다. 이전 bb13/5a 실험의 기록은 별도 보존한다.
-SOURCE_BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
-BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
+# #207(78153c3)의 의도된 dead·metrics 출력 변경 뒤의 분석기를 고정 기준으로 쓴다. 이전 33f8ce1 기준의 정확한
+# 출력 delta는 이 이동으로 필요 없어져 제거했다. 이전 bb13/5a/33f8ce1 실험의 기록은 별도 보존한다.
+SOURCE_BASELINE = "78153c338e20db7193be4a93ac5de90fc594e026"
+BASELINE = "78153c338e20db7193be4a93ac5de90fc594e026"
 MODULES = ("core", "index", "analysis", "export", "cli", "gradle-plugin")
 PROFILES = ("graph", "dead", "architecture")
 LIMIT = 32 * 1024 * 1024
@@ -844,113 +845,6 @@ def successful_pair(left, right):
     return left["exit"] == 0 and right["exit"] == 0 and equivalent(left, right)
 
 
-# 고정 baseline에 없는 의도된 계약 확장 두 가지만 정확히 허용한다(f5f5418의 고정 delta와 같은 방식).
-# - dead·dead_private: 이름순 정적 한계 목록에 FRAMEWORK_ANNOTATION_OWNERS 한 줄이 DYNAMIC_REGISTRATION 바로 뒤,
-#   GENERATED_CODE_COVERAGE 바로 앞에 들어간다.
-# - metrics: file facade·합성 class를 A에서 빼므로 A·D 열만 바뀐다. 입력은 이 브랜치 head의 6개 production class
-#   root라 결정적이므로, CI 세 번의 9쌍에서 모두 같게 관측한 baseline·후보 출력 바이트를 표로 고정한다.
-#   입력 class가 바뀌어 어느 쪽이든 이 표와 다르면 delta로 인정하지 않는다. 두 쪽이 A·D 열만 다르면 표가 낡은
-#   것이므로 `metrics-contract-delta-stale`로 따로 실패한다. 그때는 BASELINE을 이 변경 이후 commit으로 옮기거나,
-#   그 실행의 index-cost artifact(`raw/metrics-*-{baseline,candidate}-stdout.gz`)에서 EXPECTED_METRICS_ROWS를 다시
-#   관측해 갱신한다. module·Ca·Ce·I가 두 쪽에서 다르거나 다른 명령도 실패하면 일반 불일치 오류다.
-# BASELINE을 이 변경 이후 commit으로 옮기면 비활성화되고 모든 명령이 다시 바이트 동일 비교만 쓴다.
-CONTRACT_DELTA_BASELINE = "33f8ce1b15af5be6dc01573e1209017cb1999f1d"
-CONTRACT_DELTA_COMMANDS = ("dead", "dead_private", "metrics")
-CONTRACT_DELTA_OUTPUT_LIMIT = 1024 * 1024
-DYNAMIC_REGISTRATION_LIMITATION = (b"limitation\tDYNAMIC_REGISTRATION\tmanifest-absent runtime component registration "
-                                   b"is not resolved\n")
-GENERATED_CODE_PREFIX = b"limitation\tGENERATED_CODE_COVERAGE\t"
-FRAMEWORK_OWNERS_LIMITATION = (b"limitation\tFRAMEWORK_ANNOTATION_OWNERS\towners retained by supported dependency-injection, "
-                               b"serialization or runtime-entry annotations (such as @Inject constructors, @Expose fields, "
-                               b"@TypeConverter methods or @Component types) and all their members are roots without proof "
-                               b"that generated code or a framework uses them\n")
-METRICS_HEADER = b"module\tCa\tCe\tI\tA\tD\n"
-# (module, Ca, Ce, I, baseline A, baseline D, 후보 A, 후보 D). 출력 sha256: baseline be9ed130…, 후보 fd0f89c5….
-EXPECTED_METRICS_ROWS = (
-    ("dev.kartograph.analysis", "3", "1", "0.250", "0.005", "0.745", "0.006", "0.744"),
-    ("dev.kartograph.cli", "0", "4", "1.000", "0.013", "0.013", "0.016", "0.016"),
-    ("dev.kartograph.core", "5", "0", "0.000", "0.000", "1.000", "0.000", "1.000"),
-    ("dev.kartograph.export", "2", "2", "0.500", "0.006", "0.494", "0.012", "0.488"),
-    ("dev.kartograph.gradle", "0", "4", "1.000", "0.053", "0.053", "0.139", "0.139"),
-    ("dev.kartograph.index", "2", "1", "0.333", "0.027", "0.639", "0.034", "0.632"),
-)
-
-
-def contract_delta_active():
-    return SOURCE_BASELINE == CONTRACT_DELTA_BASELINE and BASELINE == SOURCE_BASELINE
-
-
-def bounded_output(data):
-    # 비교 대상은 작은 자기 분석 표다. 한도를 넘거나 읽는 중 길이가 바뀌면 delta로 인정하지 않는다.
-    if len(data) > CONTRACT_DELTA_OUTPUT_LIMIT:
-        return None
-    value = b"".join(output_chunks(data))
-    return value if len(value) == len(data) else None
-
-
-def expected_contract_delta(command, left, right):
-    """고정 baseline 대비 의도된 출력 차이만 참으로 판정한다. 종료 코드·stderr·다른 명령은 그대로 엄격하다."""
-    if command not in CONTRACT_DELTA_COMMANDS or not contract_delta_active():
-        return False
-    if left["exit"] != 0 or right["exit"] != 0 or not output_equal(left["stderr"], right["stderr"]):
-        return False
-    baseline, candidate = bounded_output(left["stdout"]), bounded_output(right["stdout"])
-    if baseline is None or candidate is None:
-        return False
-    return (expected_metrics_delta(baseline, candidate) if command == "metrics"
-            else expected_dead_delta(baseline, candidate))
-
-
-def expected_dead_delta(baseline, candidate):
-    if baseline.count(DYNAMIC_REGISTRATION_LIMITATION) != 1 or FRAMEWORK_OWNERS_LIMITATION in baseline:
-        return False
-    start = baseline.index(DYNAMIC_REGISTRATION_LIMITATION)
-    end = start + len(DYNAMIC_REGISTRATION_LIMITATION)
-    if (start > 0 and baseline[start - 1:start] != b"\n") or not baseline.startswith(GENERATED_CODE_PREFIX, end):
-        return False
-    return candidate == baseline[:end] + FRAMEWORK_OWNERS_LIMITATION + baseline[end:]
-
-
-def expected_metrics_output(arm):
-    columns = slice(4, 6) if arm == "baseline" else slice(6, 8)
-    return METRICS_HEADER + b"".join(
-        "\t".join(row[:4] + row[columns]).encode("ascii") + b"\n" for row in EXPECTED_METRICS_ROWS)
-
-
-def expected_metrics_delta(baseline, candidate):
-    return baseline == expected_metrics_output("baseline") and candidate == expected_metrics_output("candidate")
-
-
-STALE_METRICS_REASON = "metrics-contract-delta-stale"
-STALE_METRICS_HINT = (
-    "self-analysis metrics differ between baseline and candidate only in the A/D columns, but no longer match the "
-    "pinned EXPECTED_METRICS_ROWS because the class input changed; move BASELINE past this contract change or "
-    "re-observe EXPECTED_METRICS_ROWS from this run's index-cost artifact (see the CONTRACT_DELTA_BASELINE comment in "
-    "Scripts/verify-index-cost.py)")
-
-
-def metrics_columns_match(baseline, candidate):
-    """헤더·행 수·행 순서·module·Ca·Ce·I가 같고 A·D 열만 다른지 본다. 허용이 아니라 실패 분류에만 쓴다."""
-    if not all(value.startswith(METRICS_HEADER) and value.endswith(b"\n") for value in (baseline, candidate)):
-        return False
-    left = baseline[len(METRICS_HEADER):-1].split(b"\n")
-    right = candidate[len(METRICS_HEADER):-1].split(b"\n")
-    return len(left) == len(right) and all(
-        len(old) == 6 and len(new) == 6 and old[:4] == new[:4]
-        for old, new in ((before.split(b"\t"), after.split(b"\t")) for before, after in zip(left, right)))
-
-
-def stale_metrics_pin(command, left, right):
-    """고정 metrics 표가 입력 class 변화로 낡았는지 분류한다. 판정(허용 여부)은 바꾸지 않는다."""
-    if command != "metrics" or not contract_delta_active():
-        return False
-    if left["exit"] != 0 or right["exit"] != 0 or not output_equal(left["stderr"], right["stderr"]):
-        return False
-    baseline, candidate = bounded_output(left["stdout"]), bounded_output(right["stdout"])
-    return (baseline is not None and candidate is not None and baseline != candidate
-            and not expected_metrics_delta(baseline, candidate) and metrics_columns_match(baseline, candidate))
-
-
 def source_identity(repo, ref, env):
     result = successful(["git", "rev-parse", "--verify", ref + "^{commit}"], repo, env)
     commit = result["stdout"].decode("ascii").strip()
@@ -959,6 +853,41 @@ def source_identity(repo, ref, env):
     if not all(re.fullmatch(r"[0-9a-f]{40}", value) for value in (commit, tree)):
         raise DiagnosticError("invalid-source-identity")
     return {"commit": commit, "tree": tree}
+
+
+# cache 엔진 지문(index의 CacheIdentity)은 index·core·ASM·kotlin-metadata·stdlib 등 엔진 쪽 jar 바이트에서 나온다.
+# 배포 lib에서 엔진 밖의 kartograph module만 빼고 나머지를 버전과 무관한 artifact 이름으로 비교한다.
+ENGINE_MODULES = frozenset(("core", "index"))
+# CLI lib에 실제로 있는 엔진 밖 module만 명시한다. 여기에 없는 module(새 module, 엔진 역할을 모두 담은 gradle-plugin
+# fat jar 등)은 일부러 엔진으로 세어 바이트가 다르면 같은 지문을 시끄럽게 실패시킨다.
+NON_ENGINE_ARTIFACTS = frozenset(("analysis", "export", "cli"))
+
+
+def engine_artifacts(rows):
+    """배포 lib inventory의 엔진 쪽 파일을 artifact 이름→정렬된 sha256 목록으로 만든다. 빌드 시각은 보지 않는다."""
+    result = {}
+    for row in rows:
+        path = row["path"]
+        name = path[:-len(".jar")] if path.endswith(".jar") and "/" not in path else None
+        artifact = re.sub(r"-[0-9][0-9A-Za-z.+_-]*$", "", name) if name is not None else path
+        if name is not None and artifact in NON_ENGINE_ARTIFACTS:
+            continue
+        result.setdefault(artifact, []).append(row["sha256"])
+    return {artifact: sorted(values) for artifact, values in result.items()}
+
+
+def engine_jars_identical(libraries):
+    """두 배포의 엔진 쪽 jar가 바이트 동일한지 본다.
+
+    두 inventory가 없거나, 어느 한쪽이라도 엔진 module(index·core) jar를 엔진으로 분류하지 못했으면 비교 근거가
+    없으므로 판정하지 않는다(None). 그러면 같은 지문은 실패한다. 빈 엔진 집합끼리 같다고 보지 않기 위한 조건이다.
+    """
+    if not isinstance(libraries, dict) or set(libraries) != {"baseline", "candidate"}:
+        return None
+    baseline, candidate = engine_artifacts(libraries["baseline"]), engine_artifacts(libraries["candidate"])
+    if not all(ENGINE_MODULES <= set(artifacts) for artifacts in (baseline, candidate)):
+        return None
+    return baseline == candidate
 
 
 def require_baseline_source(repo, source, baseline, env):
@@ -1203,17 +1132,12 @@ def paired_cli(commands, project, env, located_nodes, report, raw):
                 report["cliLoad"].append({"command": name, "sample": sample, "arm": arm,
                                           "before": before, "after": after})
             left, right = results["baseline"], results["candidate"]
-            expected_delta = expected_contract_delta(name, left, right)
-            accepted = successful_pair(left, right) or expected_delta
+            accepted = successful_pair(left, right)
             all_accepted = all_accepted and accepted
-            # 임시 stream은 이 표본 안에서만 읽을 수 있으므로 실패 분류도 여기서 기록한다.
-            stale = not accepted and stale_metrics_pin(name, left, right)
             report["cli"].append({"command": name, "sample": sample, "order": list(order),
                                   "exactEqual": equivalent(left, right),
-                                  "expectedContractDelta": expected_delta, "contractAccepted": accepted,
-                                  "staleContractDelta": stale,
-                                  "comparisonScope": ("same-input-intentionally-changed-output" if expected_delta
-                                                      else "exact-byte-comparison"),
+                                  "expectedContractDelta": False, "contractAccepted": accepted,
+                                  "comparisonScope": "exact-byte-comparison",
                                   "raw": retained, **{arm: summary(result) for arm, result in results.items()}})
     report["cliTiming"] = {
         "scope": "three-paired-fresh-processes-per-command; no-performance-pass-or-budget-change",
@@ -1230,14 +1154,6 @@ def paired_cli(commands, project, env, located_nodes, report, raw):
     for values in report["cliTiming"]["arms"].values():
         values["sumMedianSeconds"] = sum(values["medianSeconds"].values())
     if not all_accepted:
-        failed = [row for row in report["cli"] if not row["contractAccepted"]]
-        if all(row["staleContractDelta"] for row in failed):
-            first = failed[0]
-            raise DiagnosticError(STALE_METRICS_REASON, receipt={
-                "phase": "cli-metrics", "hint": STALE_METRICS_HINT,
-                "pinnedSha256": {arm: digest(expected_metrics_output(arm)) for arm in ("baseline", "candidate")},
-                "observedSha256": {arm: first[arm]["stdout"]["sha256"] for arm in ("baseline", "candidate")},
-            })
         raise DiagnosticError("cli-byte-mismatch-or-unsuccessful-exit")
 
 
@@ -1263,8 +1179,14 @@ def compile_probe(repo, distribution, destination, java_home, env):
     return str(destination) + os.pathsep + str(distribution / "lib/*")
 
 
-def compare_semantic_outputs(outputs, report):
-    """engine 지문은 보존하고 v10 raw payload와 두 전체 graph 형식의 바이트를 비교한다."""
+def compare_semantic_outputs(outputs, report, distribution_libraries=None):
+    """engine 지문은 보존하고 v10 raw payload와 두 전체 graph 형식의 바이트를 비교한다.
+
+    지문 판정은 두 배포의 엔진 쪽 jar 바이트로 한다(`distribution_libraries`는 arm별 lib inventory). 지문과 엔진 jar가
+    함께 같으면 교차 엔진 동등성을 관측하지 못한 same-engine control로 통과한다. 지문만 같으면 각 arm이 자기 엔진을
+    읽었다는 근거가 없고, 엔진 jar만 같으면 지문이 비결정적이거나 다른 코드를 읽은 것이므로 둘 다 실패한다.
+    inventory가 없으면 엔진 jar 동일성을 모르므로 같은 지문은 실패한다.
+    """
     records, payloads, graphs = {}, {}, {}
     for arm, directory in outputs.items():
         files = {}
@@ -1300,15 +1222,21 @@ def compare_semantic_outputs(outputs, report):
         records[arm] = {"engine": document["engine"], "entries": len(payloads[arm]), "files": files, "graphs": graph}
     left, right = records["baseline"], records["candidate"]
     equal_graphs = graphs["baseline"] == graphs["candidate"]
+    same_engine = left["engine"] == right["engine"]
+    jars_identical = engine_jars_identical(distribution_libraries)
     report["semantic"] = {"scope": "non-timed-full-graph-JSON-NDJSON-and-v10-raw-payload; graph-bytes-not-retained",
                           "arms": records, "graphsEqual": equal_graphs,
                           "rawPayloadsEqual": payloads["baseline"] == payloads["candidate"],
-                          "enginesDiffer": left["engine"] != right["engine"],
-                          "engineScope": "recorded separately; implementation JAR identities change; each cache consumed by its own reader"}
+                          "enginesDiffer": not same_engine, "engineJarsIdentical": jars_identical,
+                          "engineScope": ("same-engine control: engine jars are byte-identical; "
+                                          "cross-engine equivalence not exercised") if same_engine and jars_identical is True
+                          else "recorded separately; implementation JAR identities change; each cache consumed by its own reader"}
     if not equal_graphs or payloads["baseline"] != payloads["candidate"]:
         raise DiagnosticError("semantic-graph-or-raw-payload-mismatch")
-    if left["engine"] == right["engine"]:
+    if same_engine and jars_identical is not True:
         raise DiagnosticError("semantic-engine-did-not-change")
+    if not same_engine and jars_identical is True:
+        raise DiagnosticError("semantic-engine-fingerprint-unstable")
 
 
 def semantic_oracle(repo, distributions, roots, java_home, env, work, report, raw):
@@ -1327,7 +1255,7 @@ def semantic_oracle(repo, distributions, roots, java_home, env, work, report, ra
             raise DiagnosticError("semantic-facts-bound")
         raw.retain("semantic-facts", 1, arm,
                    {"stdout": (outputs[arm] / "raw-facts.json").read_bytes(), "stderr": result["stdout"]})
-    compare_semantic_outputs(outputs, report)
+    compare_semantic_outputs(outputs, report, distribution_libraries=report.get("libsBefore"))
 
 
 def summarize_jfr(data):
