@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import traceback
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -58,6 +59,20 @@ class CompilerReferenceVersionTest(unittest.TestCase):
             (root / "build.gradle.kts").write_text("plugins {}\n")
             with self.assertRaisesRegex(RuntimeError, "expected one Kotlin JVM plugin version in build.gradle.kts"):
                 MODULE.collector_kotlin_version(root, here)
+
+    def test_missing_build_files_name_repository_relative_paths_only(self):
+        # 읽기 실패가 개인 절대경로를 담은 OSError로 새어 나가지 않고, 저장소 상대 경로만 남긴다.
+        for missing in ("build.gradle.kts", "experiments/compiler-references/collector/build.gradle.kts"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                here = write_builds(root, "2.4.21", "2.4.21", "2.4.21")
+                (root / missing).unlink()
+                with self.assertRaises(RuntimeError) as raised:
+                    MODULE.collector_kotlin_version(root, here)
+                self.assertIn(f"cannot read {missing}", str(raised.exception))
+                rendered = "".join(traceback.format_exception(raised.exception))
+                self.assertNotIn(temporary, rendered)
+                self.assertNotIn(str(root.resolve()), rendered)
 
 
 if __name__ == "__main__":

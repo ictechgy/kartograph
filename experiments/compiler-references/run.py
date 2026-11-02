@@ -45,9 +45,15 @@ def collector_kotlin_version(root=ROOT, here=HERE):
     plugin을 찾지 못한다는 숨은 오류로 늦게 실패하므로, 빌드 전에 저장소 상대 경로와 두 버전으로 실패한다.
     """
     def single(pattern, path, label):
-        found = pattern.findall(path.read_text())
+        relative = path.relative_to(root).as_posix()
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            # 원래 오류는 개인 절대경로를 담으므로 연결하지 않고 저장소 상대 경로만 남긴다.
+            raise RuntimeError(f"cannot read {relative}; it must declare the {label}") from None
+        found = pattern.findall(text)
         if len(found) != 1:
-            raise RuntimeError(f"expected one {label} in {path.relative_to(root).as_posix()}, found {len(found)}")
+            raise RuntimeError(f"expected one {label} in {relative}, found {len(found)}")
         return found[0]
     expected = single(KOTLIN_PLUGIN, root / "build.gradle.kts", "Kotlin JVM plugin version")
     build = here / "collector/build.gradle.kts"
