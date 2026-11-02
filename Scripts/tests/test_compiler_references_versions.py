@@ -203,6 +203,90 @@ class CompilerReferenceVersionTest(unittest.TestCase):
                                                       "experiments/compiler-references/collector/build.gradle.kts, found 2"):
                 MODULE.collector_kotlin_version(root, here)
 
+    # 리뷰 harness(kartograph #218)의 사례다. HEAD 뒤 실제 compiler 의존성은 2.4.20이고, lexer의 짝이 어긋날 때만
+    # 보이는 2.4.21 미끼가 뒤따른다. mismatch는 모두 거부되어야 하고, 정당한 형식은 같은 버전으로 받아들여야 한다.
+    HARNESS_HEAD = 'plugins { kotlin("jvm") version "2.4.21" }\nrepositories { mavenCentral() }\n'
+    HARNESS_REAL_BAD = ('val u = "https://h"; dependencies { compileOnly('
+                        '"org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20") }\n')
+    HARNESS_DECOY = 'val note = """"org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.21""""\n'
+    HARNESS_GOOD = 'dependencies { compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.21") }\n'
+
+    def guard_result(self, collector):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            here = write_builds(root, "2.4.21", "2.4.21", "2.4.21")
+            (here / "collector/build.gradle.kts").write_text(collector, encoding="utf-8")
+            try:
+                return "ACCEPTED", MODULE.collector_kotlin_version(root, here)
+            except RuntimeError as problem:
+                return "REJECTED", str(problem)
+
+    def test_mismatched_dependency_behind_lexer_traps_is_rejected(self):
+        head, bad, decoy = self.HARNESS_HEAD, self.HARNESS_REAL_BAD, self.HARNESS_DECOY
+        crafted = (head + '// "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.21"\n'
+                   'val t = """see https://h"""; dependencies { compileOnly('
+                   '"org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20") }\n')
+        cases = {
+            # raw string을 닫는 따옴표 run
+            "raw-close-4-quotes": head + 'val q = """x""""\n' + bad + decoy,
+            "raw-close-5-quotes": head + 'val q = """x"""""\n' + bad + decoy,
+            "raw-close-resync-two-runs": head + 'val q = """x""""\n' + bad + decoy + 'val r = """y""""\n',
+            # 따옴표를 담은 backtick 식별자
+            "backtick-quote": head + 'val `a"b` = 1\n' + bad + decoy,
+            "backtick-resync-two-quotes": head + 'val `a"b` = 1\n' + bad + decoy + 'val `c"d` = 2\n',
+            "annotation-string-then-backtick": '@file:Suppress("UNUSED")\n' + head + 'val `a"b` = 1\n' + bad + decoy,
+            # 파일 맨 앞(BOM 뒤)의 shebang 줄 속 따옴표
+            "shebang-triple-quote": '#!/usr/bin/env kotlin """\n' + head + bad + 'val z = """\n' + decoy,
+            "shebang-single-quote": '#!/usr/bin/env kotlin "\n' + head + bad + decoy,
+            "shebang-triple-quote-crafted": '#!/usr/bin/env kotlin """\n' + crafted,
+            "bom-shebang-triple-quote-crafted": '﻿#!/usr/bin/env kotlin """\n' + crafted,
+            # template 시작 규칙이 다른 multi-dollar 문자열
+            "multi-dollar-template-then-quote": head + 'val md = $$"${"\n' + bad + decoy,
+            "multi-dollar-raw-template": head + 'val md = $$"""${"""\n' + bad + decoy,
+            # template 속 raw string과 문자 literal 뒤의 4개 따옴표
+            "nested-raw-in-template-then-4-quotes": head + 'val n = "${ """in""" }"\nval q = """x""""\n' + bad + decoy,
+            "char-literal-quote-then-4-quotes": head + "val c = '\"'\n" + 'val q = """x""""\n' + bad + decoy,
+        }
+        for label, collector in cases.items():
+            with self.subTest(label=label):
+                status, detail = self.guard_result(collector)
+                self.assertEqual("REJECTED", status, detail)
+
+    def test_legitimate_kotlin_forms_are_accepted(self):
+        head, good = self.HARNESS_HEAD, self.HARNESS_GOOD
+        cases = {
+            "plain": head + good,
+            "raw-close-4-quotes": head + 'val q = """x""""\n' + good,
+            "raw-close-7-quotes": head + 'val q = """x"""""""\n' + good,
+            "raw-opener-followed-by-quote": head + 'val q = """"x"""\n' + good,
+            "empty-raw-string": head + 'val q = """"""\n' + good,
+            "backtick-quote-and-apostrophe": head + "val `a\"b` = 1 // c\nval `it's` = 2 // d\n" + good,
+            "char-literals": head + "val c = '\"'; val d = '\\''; val e = '`'\n" + good,
+            # 닫는 따옴표 앞의 `$`는 multi-dollar가 아니다("cost 5$", `"""a$"""` 모두 Kotlin에서 컴파일된다).
+            "closer-after-dollar": head + 'val s = "cost 5$"; val r = """a$"""\n' + good,
+            "template-with-dollar-char": head + 'val p = """${\'$\'}{x} // keep"""\n' + good,
+            "nested-raw-string-in-template": head + 'val n = "${ """a // b""" + "}" }" // c\n' + good,
+            "annotation-with-string-args": '@file:Suppress("UNUSED", "a//b")\n' + head + good,
+            "shebang-plain": "#!/usr/bin/env kotlin\n" + head + good,
+            "shebang-triple-quote": '#!/usr/bin/env kotlin """\n' + head + good,
+            "bom-shebang-triple-quote": '﻿#!/usr/bin/env kotlin """\n' + head + good,
+            "bom-without-shebang": '﻿' + head + good,
+            "stale-commented-declarations": ('// kotlin("jvm") version "2.4.20"\n'
+                                             '/* "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20" */\n' + head + good),
+        }
+        for label, collector in cases.items():
+            with self.subTest(label=label):
+                self.assertEqual(("ACCEPTED", "2.4.21"), self.guard_result(collector))
+        # 여는 따옴표 앞의 `$`(multi-dollar)는 의도적으로 거부하고, `#!`는 파일 맨 앞에서만 shebang이다.
+        refused = {
+            "multi-dollar-opener": (head + 'val md = $$"x ${y}"\n' + good, "multi-dollar string literals are not supported"),
+            "shebang-not-at-start": (head + '#!/usr/bin/env kotlin """\n' + good, "unterminated string or template"),
+        }
+        for label, (collector, reason) in refused.items():
+            with self.subTest(label=label):
+                self.assertEqual(("REJECTED", "cannot parse experiments/compiler-references/collector/build.gradle.kts: "
+                                  + reason), self.guard_result(collector))
+
 
 if __name__ == "__main__":
     unittest.main()

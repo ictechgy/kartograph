@@ -45,7 +45,14 @@ def without_kotlin_comments(text):
     `/*`를 주석으로 보지 않는다. raw string은 Kotlin처럼 3개 이상 따옴표 run 전체로 닫는다. 닫히지 않은 주석은
     끝까지 주석으로 본다. 짝을 확신할 수 없는 입력(닫히지 않은 문자열·template·문자 literal·backtick 식별자,
     multi-dollar 문자열)은 추측하지 않고 ValueError로 실패해, 짝이 뒤집혀 주석 판정이 어긋나는 일을 막는다.
+    파일 맨 앞(UTF-8 BOM 뒤)의 shebang 줄은 따옴표가 있어도 문자열이 아니므로 줄을 비우고 줄바꿈만 남긴다.
     """
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    if text.startswith("#!"):
+        # Kotlin은 `#!`를 파일 맨 앞에서만 허용한다. 그 밖의 `#!`는 일반 code로 읽어 짝이 맞지 않으면 실패한다.
+        end = text.find("\n")
+        text = "" if end < 0 else text[end:]
     result, index, length = [], 0, len(text)
     modes = [["code", 0]]  # 맨 위 상태와, code 상태에서 template을 닫을 `}`를 가리기 위한 중괄호 깊이
     while index < length:
