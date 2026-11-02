@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -98,6 +99,52 @@ class AnalysisSmokeGateTest(unittest.TestCase):
             sum(m["seconds"] for m in data["measurements"].values()),
             delta=0.005,
         )
+
+    def test_findings_recognizer_accepts_real_cli_findings_with_gate_arguments(self):
+        # 기준 종료 1 판별은 기준 빌드의 텍스트 출력에 묶여 있다. gate 인자 그대로 실제 CLI가 FINDINGS(1)로 끝나는
+        # 입력을 만들어, 판별이 각 명령의 실제 출력을 계속 받아들이고 graph·metrics는 1로 끝나지 않는지 확인한다.
+        mod = self.load_module()
+        javac = str(Path(os.environ["JAVA_HOME"]) / "bin/javac") if "JAVA_HOME" in os.environ else shutil.which("javac")
+        sources = {
+            "core": ("probe/a/A.java", "package probe.a; public class A { probe.b.B b() { return new probe.b.B(); } }"),
+            "index": ("probe/b/B.java", "package probe.b; public class B { probe.a.A a() { return new probe.a.A(); } }"),
+            "analysis": ("probe/c/C.java", "package probe.c; public class C { private void helper() {} }"),
+            "export": ("probe/d/D.java", "package probe.d; public class D {}"),
+            "cli": ("probe/e/E.java", "package probe.e; public class E {}"),
+            "gradle-plugin": ("probe/f/F.java", "package probe.f; public class F {}"),
+        }
+        with tempfile.TemporaryDirectory(prefix="kartograph-findings-shape-") as tmp:
+            root = Path(tmp)
+            source_paths = []
+            for module, (relative, code) in sources.items():
+                source = root / "sources" / module / relative
+                source.parent.mkdir(parents=True)
+                source.write_text(code + "\n")
+                source_paths.append(str(source))
+            staging = root / "staging"
+            subprocess.run([javac, "-d", str(staging), *source_paths], check=True, capture_output=True, timeout=120)
+            for module, (relative, _) in sources.items():
+                compiled = Path(relative).with_suffix(".class")
+                target = root / module / "build/classes/kotlin/main" / compiled
+                target.parent.mkdir(parents=True)
+                target.write_bytes((staging / compiled).read_bytes())
+            # 보존 규칙이 없어 모든 class가 unreachable이고, A·B의 package cycle과 B를 쓰는 A가 규칙 위반·미배정을 만든다.
+            (root / ".kartograph-self.pro").write_text("")
+            (root / ".kartograph.yml").write_text(
+                "layers:\n  - name: A\n    match: [probe.a]\n  - name: B\n    match: [probe.b]\n"
+                "rules:\n  - name: a must not use b\n    from: A\n    allow: []\n")
+            project = root / "project"
+            project.mkdir()
+            manifest, resources = mod.self_analysis_project(project)
+            for name, cmd, _ in mod.analysis_commands(BINARY, root, project, manifest, resources):
+                with self.subTest(command=name):
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                    if name in ("graph", "metrics"):
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertFalse(mod.reference_findings_output(name, result.stdout))
+                    else:
+                        self.assertEqual(result.returncode, 1, result.stderr)
+                        self.assertTrue(mod.reference_findings_output(name, result.stdout), result.stdout[-300:])
 
     def test_smoke_gate_fails_when_budget_exceeded(self):
         res = self.run_gate("--runs", "1", "--per-command-budget", "0.001")
@@ -384,8 +431,8 @@ class FakeAnalyzer:
         "graph": "x [shape=box];\n" * 2000,
         "dead": "",
         "dead_private": "",
-        "cycles": "0 findings\n",
-        "rules": "0 findings, 0 unassigned\n",
+        "cycles": "cycles: 0 findings\n",
+        "rules": "rules: 0 findings, 0 unassigned\n",
         "metrics": "module\tCa\n" + "row\n" * 6,
     }
 
@@ -655,12 +702,71 @@ class ReferenceModeTest(unittest.TestCase):
                 self.assertNotIn("secret-", stderr + json.dumps(data))
                 self.assertEqual((fake.calls[-1]["arm"], fake.calls[-1]["name"]), ("reference", details["command"]))
 
+    VM_BANNER = "Error occurred during initialization of VM\nToo small maximum heap\n"
+    FINDINGS_OUTPUT = {
+        "dead": "unreachable\tclass:dev/kartograph/Old\tOld.kt:1\nlimitation\tEXTERNAL_RETENTIONS\tcaveat\n",
+        "dead_private": "unreachable\tmethod:dev/kartograph/Old#helper()V\tOld.kt:2\ttest-only\n",
+        "cycles": ("dev.kartograph.a -> dev.kartograph.b -> dev.kartograph.a\n"
+                   "  weakest edge: dev.kartograph.b -> dev.kartograph.a (call, weight 1)\ncycles: 1 findings\n"),
+        "rules": "info: 2 declarations are not assigned to a layer\nrules: 0 findings, 2 unassigned\n",
+    }
+
+    def test_reference_exit_1_is_measured_only_with_that_commands_findings_output(self):
+        # HotSpot은 VM 초기화 실패도 stdout에 쓰고 1로 끝나므로 stdout 유무가 아니라 명령별 FINDINGS 모양으로 가린다.
+        measured = [*self.FINDINGS_OUTPUT.items(),
+                    ("rules", "A.java:1: a (A) -> b (B) [no b]\n  evidence: call, weight 1\nrules: 1 findings, 0 unassigned\n")]
+        for name, stdout in measured:
+            with self.subTest(measured=name, stdout=stdout[:40]):
+                status, data, stderr, _ = self.gate(events={("reference", name, 3): {"returncode": 1, "stdout": stdout}})
+                self.assertEqual(status, 0, stderr)
+                self.assertEqual(data["referenceDiagnosticExits"], 1)
+                self.assertEqual(stderr, "")
+        rejected = [
+            ("graph", "digraph kartograph {\n}\n"),
+            ("metrics", "module\tCa\tCe\tI\tA\tD\nprobe\t0\t0\t0.000\t0.000\t1.000\n"),
+            ("dead", self.VM_BANNER),
+            ("dead", "limitation\tEXTERNAL_RETENTIONS\tcaveat\n"),
+            ("dead_private", "\nThe Java thread stack size specified is too small. Specify at least 208k\n"),
+            ("cycles", self.VM_BANNER),
+            ("cycles", "cycles: 0 findings\n"),
+            ("cycles", "a -> b -> a\n  weakest edge: b -> a (call, weight 1)\n"),
+            ("cycles", "cycles: 1 findings\ntrailing text\n"),
+            ("rules", "rules: 0 findings, 0 unassigned\n"),
+            ("rules", "A.java:1: a (A) -> b (B) [no b]\n"),
+            ("rules", self.VM_BANNER),
+        ]
+        for name, stdout in rejected:
+            with self.subTest(rejected=name, stdout=stdout[:40]):
+                status, data, stderr, fake = self.gate(events={("reference", name, 3): {"returncode": 1, "stdout": stdout}})
+                self.assertEqual(status, 2)
+                self.assertEqual(data["error"], {"kind": "reference-failed", "arm": "reference", "phase": "measurement",
+                                                 "round": 2, "command": name, "returncode": 1,
+                                                 "reason": "exit-1-without-findings-output"})
+                self.assertIn(f"reference command '{name}' exited with code 1 without findings output", stderr)
+                self.assertEqual((fake.calls[-1]["arm"], fake.calls[-1]["name"]), ("reference", name))
+
+    def test_findings_recognizer_matches_the_cli_shapes_exactly(self):
+        recognize = self.mod.reference_findings_output
+        for name, stdout in [*self.FINDINGS_OUTPUT.items(), ("cycles", "cycles: 12 findings\n"),
+                             ("rules", "rules: 2 findings, 0 unassigned\n"), ("rules", "rules: 0 findings, 1 unassigned")]:
+            with self.subTest(accept=name, stdout=stdout[:40]):
+                self.assertTrue(recognize(name, stdout))
+        for name, stdout in [("dead", "unreachable class:dev/kartograph/Old\n"), ("dead", " unreachable\tclass:x\n"),
+                             ("dead", ""), ("dead_private", None), ("cycles", " cycles: 1 findings\n"),
+                             ("cycles", "cycles: 1 finding\n"), ("cycles", "cycles: -1 findings\n"),
+                             ("cycles", "cycles: 1 findings (partial)\n"), ("rules", "rules: 1 findings, 0 unassigned extra\n"),
+                             ("rules", "rules: 1 findings\n"), ("rules", "rules: 1 findings, 0 unassigned\n\n"),
+                             ("graph", "cycles: 1 findings\n"), ("metrics", "unreachable\tclass:x\n"),
+                             ("unknown", "unreachable\tclass:x\n")]:
+            with self.subTest(reject=name, stdout=str(stdout)[:40]):
+                self.assertFalse(recognize(name, stdout))
+
     def test_reference_diagnostic_exit_is_measured_and_counted(self):
         # 기준 분석기가 후보 입력에서 strict 진단(1)을 내도 분석은 끝났으므로 시간은 비교한다. 실제 CLI는 그때
         # 항상 finding 행이나 요약을 stdout에 쓴다(dead 행·limitation, cycles/rules 요약).
         finding = "unreachable\tclass:dev/kartograph/NewlyRetained\tNew.kt:1\n"
         events = {("reference", "rules", 0): {"returncode": 1, "stdout": "rules: 1 findings, 0 unassigned\n"},
-                  ("reference", "rules", 2): {"returncode": 1, "stdout": finding},
+                  ("reference", "rules", 2): {"returncode": 1, "stdout": "rules: 0 findings, 1 unassigned\n"},
                   ("reference", "dead", 4): {"returncode": 1, "stdout": finding}}
         status, data, stderr, fake = self.gate(events=events)
         self.assertEqual(status, 0, stderr)
@@ -919,8 +1025,8 @@ class ReferenceModeProcessTest(unittest.TestCase):
 case "$1" in
   graph) yes 'n [shape=box];' | head -n 2000 ;;
   dead) : ;;
-  cycles) echo '0 findings' ;;
-  rules) echo '0 findings, 0 unassigned' ;;
+  cycles) echo 'cycles: 0 findings' ;;
+  rules) echo 'rules: 0 findings, 0 unassigned' ;;
   metrics) printf 'module\\tCa\\nr1\\nr2\\nr3\\nr4\\nr5\\nr6\\n' ;;
 esac
 {failure}
@@ -965,7 +1071,9 @@ exit 0
     def test_real_reference_diagnostic_exit_is_measured(self):
         with tempfile.TemporaryDirectory(prefix="kartograph-reference-process-") as tmp:
             root = Path(tmp)
-            res = self.run_gate(root, self.fixture(root, 'if [ "$1" = "rules" ]; then exit 1; fi'))
+            res = self.run_gate(root, self.fixture(root, prelude=(
+                'if [ "$1" = "rules" ]; then echo "info: 1 declarations are not assigned to a layer"; '
+                'echo "rules: 0 findings, 1 unassigned"; exit 1; fi')))
         self.assertEqual(res.returncode, 0, f"stdout: {res.stdout}\nstderr: {res.stderr}")
         data = json.loads(res.stdout)
         self.assertEqual((data["status"], data["referenceDiagnosticExits"]), ("PASS", 2))
@@ -985,6 +1093,18 @@ exit 0
                                          "round": None, "command": "graph", "returncode": 1,
                                          "reason": "exit-1-without-findings-output"})
         self.assertNotIn("Could not create the Java Virtual Machine", res.stdout + res.stderr)
+
+    def test_real_reference_vm_initialization_banner_on_stdout_fails_closed(self):
+        # HotSpot은 VM 초기화 실패를 stdout에 쓰고 1로 끝낸다. stdout이 있어도 그 명령의 FINDINGS 모양이 아니면 닫는다.
+        prelude = 'echo "Error occurred during initialization of VM"\necho "Too small maximum heap"\nexit 1'
+        with tempfile.TemporaryDirectory(prefix="kartograph-reference-process-") as tmp:
+            root = Path(tmp)
+            res = self.run_gate(root, self.fixture(root, prelude=prelude))
+        self.assertEqual(res.returncode, 2, f"stdout: {res.stdout}\nstderr: {res.stderr}")
+        data = json.loads(res.stdout)
+        self.assertEqual(data["error"], {"kind": "reference-failed", "arm": "reference", "phase": "warmup",
+                                         "round": None, "command": "graph", "returncode": 1,
+                                         "reason": "exit-1-without-findings-output"})
 
     def test_real_reference_failure_exits_two_with_reason(self):
         failure = 'if [ "$1" = "rules" ]; then echo "error: /private/secret" >&2; exit 2; fi'

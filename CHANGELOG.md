@@ -52,12 +52,15 @@
   cap bounds them. The cap applies to the candidate in both modes and replaces the 5 s / 20 s standalone default; the
   5 s / 20 s comparison and the ratios are recorded in the JSON and the job summary without gating. Verification only;
   product behaviour is unchanged.
-- The relative performance gate now fails closed (`reference-failed`, exit 2, reason
-  `exit-1-without-findings-output`) when the base build exits 1 without writing anything to stdout, as a JVM startup or
-  launcher failure does, instead of measuring the instant exit as a strict-diagnostic run and reporting a large
-  candidate regression. The gate commands that can exit 1 (`dead`, `cycles`, `rules`) always print finding rows or a
-  summary first, so the base build's strict-diagnostic exits stay measured. Verification only; product behaviour is
-  unchanged.
+- The relative performance gate measures a base build's exit 1 as a strict-diagnostic run only when stdout has that
+  command's findings output: an `unreachable` row for `dead`, a final `cycles: N findings` line with N ≥ 1 for
+  `cycles`, and a final `rules: N findings, M unassigned` line with N + M ≥ 1 for `rules`; `graph` and `metrics` have no
+  findings exit. Any other exit 1, including HotSpot VM-initialization failures (which print to stdout) and launcher
+  errors, now fails closed (`reference-failed`, exit 2, reason `exit-1-without-findings-output`) instead of being
+  measured as an instant run and reported as a large candidate regression. The check keys on the base build's text
+  output, so a change to these summary lines or row prefixes must keep accepting the old format while base builds
+  still print it; otherwise the `performance` job fails closed and needs a human decision. Verification only;
+  product behaviour is unchanged.
 
 ### Added
 
