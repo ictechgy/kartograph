@@ -41,9 +41,10 @@ COMPILER_EMBEDDABLE = re.compile(r'"org\.jetbrains\.kotlin:kotlin-compiler-embed
 def without_kotlin_comments(text):
     """Kotlin build script에서 `//` 줄 주석과 중첩 가능한 `/* */` 주석만 지우고 문자열은 그대로 둔다.
 
-    문자열(일반·raw)·문자 literal과 문자열 안의 `${...}` template을 따라가므로 URL의 `//`나 glob의 `/*`를 주석으로
-    보지 않는다.
-    닫히지 않은 주석은 끝까지 주석으로 본다. 주석 속 선언은 세지도, 실제 선언을 가리지도 않는다.
+    문자열(일반·raw)·문자 literal·backtick 식별자와 문자열 안의 `${...}` template을 따라가므로 URL의 `//`나 glob의
+    `/*`를 주석으로 보지 않는다. raw string은 Kotlin처럼 3개 이상 따옴표 run 전체로 닫는다. 닫히지 않은 주석은
+    끝까지 주석으로 본다. 짝을 확신할 수 없는 입력(닫히지 않은 문자열·template·문자 literal·backtick 식별자,
+    multi-dollar 문자열)은 추측하지 않고 ValueError로 실패해, 짝이 뒤집혀 주석 판정이 어긋나는 일을 막는다.
     """
     result, index, length = [], 0, len(text)
     modes = [["code", 0]]  # 맨 위 상태와, code 상태에서 template을 닫을 `}`를 가리기 위한 중괄호 깊이
@@ -66,16 +67,29 @@ def without_kotlin_comments(text):
                         index += 1
                 result.append(" ")
                 continue
+            if char == "`":
+                # backtick 식별자(`a"b`)는 따옴표를 담을 수 있으므로 같은 줄의 닫는 backtick까지 그대로 둔다.
+                end = text.find("`", index + 1)
+                if end < 0 or "\n" in text[index:end]:
+                    raise ValueError("unterminated backtick identifier")
+                result.append(text[index:end + 1])
+                index = end + 1
+                continue
             if char == "'":
                 # 문자 literal('"', '\'' 등)은 같은 줄에서 닫는 따옴표까지 그대로 둔다.
                 end = index + 1
                 while end < length and text[end] not in "'\n":
                     end += 2 if text[end] == "\\" else 1
+                if end >= length or text[end] != "'":
+                    raise ValueError("unterminated character literal")
                 result.append(text[index:end + 1])
                 index = end + 1
                 continue
             quote = '"""' if text.startswith('"""', index) else '"' if char == '"' else None
             if quote:
+                if index and text[index - 1] == "$":
+                    # Kotlin 2.2+ multi-dollar 문자열은 template 시작 규칙이 달라 추적하지 않는다.
+                    raise ValueError("multi-dollar string literals are not supported")
                 modes.append(["raw" if len(quote) == 3 else "string", 0])
                 result.append(quote)
                 index += len(quote)
@@ -92,14 +106,24 @@ def without_kotlin_comments(text):
             result.append(char)
             index += 1
             continue
-        closing = '"""' if mode[0] == "raw" else '"'
+        # 일반 문자열은 한 줄 안에서 닫혀야 한다. 줄바꿈이나 줄 끝·파일 끝의 escape를 만나면 짝을 추측하지 않는다.
+        if mode[0] == "string" and (char == "\n" or (char == "\\" and text[index + 1:index + 2] in ("", "\n"))):
+            raise ValueError("unterminated string literal")
         if mode[0] == "string" and char == "\\":
             result.append(text[index:index + 2])
             index += 2
-        elif text.startswith(closing, index):
+        elif mode[0] == "raw" and text.startswith('"""', index):
+            # 4개 이상이면 마지막 3개가 닫는 따옴표이고 나머지는 값이다. run 전체를 소비해 짝을 유지한다.
+            run = 3
+            while index + run < length and text[index + run] == '"':
+                run += 1
             modes.pop()
-            result.append(closing)
-            index += len(closing)
+            result.append(text[index:index + run])
+            index += run
+        elif mode[0] == "string" and char == '"':
+            modes.pop()
+            result.append(char)
+            index += 1
         elif text.startswith("${", index):
             modes.append(["code", 0])
             result.append("${")
@@ -107,6 +131,8 @@ def without_kotlin_comments(text):
         else:
             result.append(char)
             index += 1
+    if len(modes) != 1:
+        raise ValueError("unterminated string or template")
     return "".join(result)
 
 
@@ -123,7 +149,11 @@ def collector_kotlin_version(root=ROOT, here=HERE):
         except (OSError, UnicodeError):
             # 원래 오류는 개인 절대경로를 담으므로 연결하지 않고 저장소 상대 경로만 남긴다.
             raise RuntimeError(f"cannot read {relative}; it must declare the {label}") from None
-        found = pattern.findall(without_kotlin_comments(text))
+        try:
+            stripped = without_kotlin_comments(text)
+        except ValueError as problem:
+            raise RuntimeError(f"cannot parse {relative}: {problem}") from None
+        found = pattern.findall(stripped)
         if len(found) != 1:
             raise RuntimeError(f"expected one {label} in {relative}, found {len(found)}")
         return found[0]
