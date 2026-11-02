@@ -630,10 +630,36 @@ class ReferenceModeTest(unittest.TestCase):
         self.assertIn("reference kartograph binary not executable", stderr)
         self.assertEqual(fake.calls, [])
 
+    def test_reference_exit_1_without_findings_output_fails_closed(self):
+        # JVM 시작 실패·시작 script의 die()는 분석 전에 stdout 없이 1로 끝난다. 즉시 끝난 기준을 strict 진단으로
+        # 재면 후보가 몇 배 느린 회귀로 보이므로 판정 불가로 닫는다.
+        cases = [
+            ({("reference", "graph", 0): {"returncode": 1, "stdout": "", "seconds": 0.0625}},
+             {"phase": "warmup", "round": None, "command": "graph"}),
+            ({("reference", "cycles", 3): {"returncode": 1, "stdout": "\n  \n", "seconds": 0.0625}},
+             {"phase": "measurement", "round": 2, "command": "cycles"}),
+        ]
+        for events, details in cases:
+            with self.subTest(details=details):
+                status, data, stderr, fake = self.gate(events=events)
+                self.assertEqual(status, 2)
+                self.assertEqual(data["status"], "ERROR")
+                self.assertEqual(data["error"], {"kind": "reference-failed", "arm": "reference", **details,
+                                                 "returncode": 1, "reason": "exit-1-without-findings-output"})
+                self.assertNotIn("relativeFailures", data)
+                receipt = json.loads(stderr.splitlines()[0])
+                self.assertEqual((receipt["arm"], receipt["command"], receipt["returncode"]),
+                                 ("reference", details["command"], 1))
+                self.assertIn(f"reference command '{details['command']}' exited with code 1 without findings output",
+                              stderr)
+                self.assertNotIn("secret-", stderr + json.dumps(data))
+                self.assertEqual((fake.calls[-1]["arm"], fake.calls[-1]["name"]), ("reference", details["command"]))
+
     def test_reference_diagnostic_exit_is_measured_and_counted(self):
-        # 기준 분석기가 후보 입력에서 strict 진단(1)을 내도 분석은 끝났으므로 시간은 비교한다.
+        # 기준 분석기가 후보 입력에서 strict 진단(1)을 내도 분석은 끝났으므로 시간은 비교한다. 실제 CLI는 그때
+        # 항상 finding 행이나 요약을 stdout에 쓴다(dead 행·limitation, cycles/rules 요약).
         finding = "unreachable\tclass:dev/kartograph/NewlyRetained\tNew.kt:1\n"
-        events = {("reference", "rules", 0): {"returncode": 1},
+        events = {("reference", "rules", 0): {"returncode": 1, "stdout": "rules: 1 findings, 0 unassigned\n"},
                   ("reference", "rules", 2): {"returncode": 1, "stdout": finding},
                   ("reference", "dead", 4): {"returncode": 1, "stdout": finding}}
         status, data, stderr, fake = self.gate(events=events)
@@ -706,7 +732,8 @@ class ReferenceModeTest(unittest.TestCase):
                     else ("candidate", "reference")
                 expected.extend([(first, name), (second, name)])
         self.assertEqual([(call["arm"], call["name"]) for call in fake.calls], expected)
-        # 쌍마다 실행 파일만 다르고 나머지 인자는 같다.
+        # 쌍마다 실행 파일만 다르고 나머지 인자는 같다. zip이 남는 호출을 버리지 않도록 길이부터 확인한다.
+        self.assertEqual(len(fake.calls[0::2]), len(fake.calls[1::2]))
         for first, second in zip(fake.calls[0::2], fake.calls[1::2]):
             self.assertEqual(first["name"], second["name"])
             self.assertEqual(first["cmd"][1:], second["cmd"][1:])
@@ -787,7 +814,8 @@ class ReferenceModeTest(unittest.TestCase):
 
     def test_text_output_reports_ratios_and_failures(self):
         status, output, stderr, _ = self.gate(self.scaled(1.0, rules=3.5), "--runs", "1", "--no-warmup",
-                                              as_json=False, events={("reference", "dead", 0): {"returncode": 1}})
+                                              as_json=False, events={("reference", "dead", 0): {
+                                                  "returncode": 1, "stdout": "unreachable\tclass:dev/kartograph/Old\tOld.kt:1\n"}})
         self.assertEqual(status, 1)
         self.assertIn("[SMOKE GATE FAIL] Candidate compared with the reference build on this machine "
                       "(medians of 1 interleaved rounds):", output)
@@ -832,6 +860,27 @@ class ReferenceModeTest(unittest.TestCase):
         self.assertIn("command rules, phase measurement, round 2, returncode 2", summary.read_text())
         self.assertEqual(summary.read_text().count("### Relative analysis performance:"), 3)
 
+    def test_step_summary_write_failure_keeps_the_result_and_warns(self):
+        # summary는 관측 기록이다. 쓰지 못해도(여기서는 디렉터리 경로) 판정 문서와 종료 코드는 그대로다.
+        directory = self.root / "summary-directory"
+        directory.mkdir()
+        warning = "warning: could not append the job summary (IsADirectoryError); the gate result is unchanged"
+        status, data, stderr, _ = self.gate(None, "--summary", str(directory))
+        self.assertEqual((status, data["status"]), (0, "PASS"))
+        self.assertIn(warning, stderr)
+        status, data, stderr, _ = self.gate(None, "--summary", str(directory),
+                                            events={("reference", "rules", 3): {"returncode": 2}})
+        self.assertEqual((status, data["status"], data["error"]["kind"]), (2, "ERROR", "reference-failed"))
+        self.assertIn(warning, stderr)
+        self.assertEqual(list(directory.iterdir()), [])
+
+    def test_non_positive_reference_median_fails_closed(self):
+        # 실제 시계로는 생기지 않지만 0으로 나눠 통과·실패를 잘못 정하지 않도록 판정 불가로 닫는다.
+        with self.assertRaises(self.mod.GateAbort) as raised:
+            self.mod.compare_to_reference({"graph": [0.0, 0.0]}, {"graph": [1.0, 1.0]}, 0.05, 0.15)
+        self.assertEqual((raised.exception.code, raised.exception.kind), (2, "reference-failed"))
+        self.assertEqual(raised.exception.details, {"arm": "reference", "phase": "comparison"})
+
     def test_reference_binary_must_differ_from_candidate(self):
         candidate = self.binaries["candidate"]
         symbolic = self.root / "symbolic-kartograph"
@@ -866,6 +915,7 @@ class ReferenceModeProcessTest(unittest.TestCase):
     """
 
     SCRIPT_TEMPLATE = """#!/bin/sh
+{prelude}
 case "$1" in
   graph) yes 'n [shape=box];' | head -n 2000 ;;
   dead) : ;;
@@ -877,7 +927,7 @@ esac
 exit 0
 """
 
-    def fixture(self, root, failure=""):
+    def fixture(self, root, failure="", prelude=""):
         for module in ("core", "index", "analysis", "export", "cli", "gradle-plugin"):
             classes = root / module / "build/classes/kotlin/main"
             classes.mkdir(parents=True, exist_ok=True)
@@ -888,7 +938,9 @@ exit 0
         for arm in ("reference", "candidate"):
             binary = root / arm / "kartograph"
             binary.parent.mkdir(exist_ok=True)
-            binary.write_text(self.SCRIPT_TEMPLATE.format(failure=failure if arm == "reference" else ""))
+            reference = arm == "reference"
+            binary.write_text(self.SCRIPT_TEMPLATE.format(failure=failure if reference else "",
+                                                          prelude=prelude if reference else ""))
             binary.chmod(0o755)
             binaries[arm] = binary
         return binaries
@@ -918,6 +970,21 @@ exit 0
         data = json.loads(res.stdout)
         self.assertEqual((data["status"], data["referenceDiagnosticExits"]), ("PASS", 2))
         self.assertEqual(data["reference"]["measurements"]["rules"]["returncodes"], [1, 1])
+
+    def test_real_reference_jvm_startup_failure_fails_closed(self):
+        # 실제 JVM 시작 실패처럼 stdout 없이 stderr만 쓰고 바로 1로 끝나는 기준은 판정 불가다.
+        prelude = ('echo "Error: Could not create the Java Virtual Machine." >&2\n'
+                   'echo "Error: A fatal exception has occurred. Program will exit." >&2\nexit 1')
+        with tempfile.TemporaryDirectory(prefix="kartograph-reference-process-") as tmp:
+            root = Path(tmp)
+            res = self.run_gate(root, self.fixture(root, prelude=prelude))
+        self.assertEqual(res.returncode, 2, f"stdout: {res.stdout}\nstderr: {res.stderr}")
+        data = json.loads(res.stdout)
+        self.assertEqual(data["status"], "ERROR")
+        self.assertEqual(data["error"], {"kind": "reference-failed", "arm": "reference", "phase": "warmup",
+                                         "round": None, "command": "graph", "returncode": 1,
+                                         "reason": "exit-1-without-findings-output"})
+        self.assertNotIn("Could not create the Java Virtual Machine", res.stdout + res.stderr)
 
     def test_real_reference_failure_exits_two_with_reason(self):
         failure = 'if [ "$1" = "rules" ]; then echo "error: /private/secret" >&2; exit 2; fi'

@@ -52,6 +52,12 @@
   cap bounds them. The cap applies to the candidate in both modes and replaces the 5 s / 20 s standalone default; the
   5 s / 20 s comparison and the ratios are recorded in the JSON and the job summary without gating. Verification only;
   product behaviour is unchanged.
+- The relative performance gate now fails closed (`reference-failed`, exit 2, reason
+  `exit-1-without-findings-output`) when the base build exits 1 without writing anything to stdout, as a JVM startup or
+  launcher failure does, instead of measuring the instant exit as a strict-diagnostic run and reporting a large
+  candidate regression. The gate commands that can exit 1 (`dead`, `cycles`, `rules`) always print finding rows or a
+  summary first, so the base build's strict-diagnostic exits stay measured. Verification only; product behaviour is
+  unchanged.
 
 ### Added
 

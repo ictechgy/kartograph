@@ -35,7 +35,7 @@ DEFAULT_TOTAL_CAP = 40.0
 STANDALONE_RUNS = 3
 REFERENCE_RUNS = 6
 # 기준 분석기의 strict·임계값 진단(1)은 분석을 끝낸 결과라 시간을 비교한다. 그 밖의 종료는 판정 불가다.
-REFERENCE_MEASURABLE_EXITS = (0, 1)
+REFERENCE_DIAGNOSTIC_EXIT = 1
 REVISION = re.compile(r"[0-9a-f]{40}")
 # 같은 runner A/A 측정의 잡음에서 정한 상대 허용치다(근거: docs/AGENT-WORKFLOW.md).
 DEFAULT_TOTAL_TOLERANCE = 0.05
@@ -868,10 +868,26 @@ def reference_completion(name, result, phase, round_index):
 
     0과 strict·임계값 진단(1)은 분석을 끝낸 결과라 시간을 비교한다. 후보가 새 규칙으로만 보존되는 코드나
     기준이 모르는 진단을 더하면 기준은 1로 끝날 수 있다. 2·64·그 밖의 값은 도구가 끝내지 못한 것이다.
+
+    1이 진단인지는 stdout으로 가린다. JVM 안에서 1은 FINDINGS뿐이고(Main.kt는 모든 Throwable을 2로 바꾼다)
+    여섯 gate 명령 중 1로 끝날 수 있는 dead·cycles·rules는 그 전에 항상 finding 행·limitation이나 요약
+    (`cycles: N findings`, `rules: N findings, M unassigned`)을 stdout에 쓴다. graph·metrics는 1로 끝나지 않는다.
+    JVM 시작 실패나 시작 script의 die()도 1로 끝나지만 분석 전이라 stdout이 비어 있다. 이를 진단으로 재면
+    즉시 끝난 기준 때문에 후보가 몇 배 느린 회귀로 보이므로 stdout 없는 1은 판정 불가로 닫는다.
     """
-    if result.returncode in REFERENCE_MEASURABLE_EXITS:
+    if result.returncode == 0:
+        return 0
+    findings_output = result.returncode == REFERENCE_DIAGNOSTIC_EXIT and bool((result.stdout or "").strip())
+    if findings_output:
         return result.returncode
     print(json.dumps({"arm": "reference", **analysis_failure_receipt(name, result)}, sort_keys=True), file=sys.stderr)
+    if result.returncode == REFERENCE_DIAGNOSTIC_EXIT:
+        raise GateAbort(2, "reference-failed",
+                        f"reference command '{name}' exited with code 1 without findings output during {phase}; "
+                        "the base build did not run the analysis (for example a JVM startup or launcher failure), "
+                        "so the comparison cannot be judged",
+                        arm="reference", phase=phase, round=round_index, command=name, returncode=result.returncode,
+                        reason="exit-1-without-findings-output")
     raise GateAbort(2, "reference-failed",
                     f"reference command '{name}' exited with code {result.returncode} during {phase}; "
                     "the base build cannot complete these inputs, so the comparison cannot be judged",
