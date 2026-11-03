@@ -148,6 +148,7 @@ public abstract class KartographDeadTask : DefaultTask() {
         val indexed = ClassFileIndexer().indexWithObservations(classRoots, classpath,
             serviceResourceDirectories.files.filter(java.io.File::isDirectory).sorted().map(java.io.File::toPath),
             generatedClassRoots.files.sorted().map(java.io.File::toPath))
+        val channelsBySource = dev.kartograph.index.RuntimeLimitationScanner.sourceChannelCounts(indexed)
         val generation = generationInput?.attribute(indexed, indexed.graph, classRoots)
         val classified = generation?.graph ?: indexed.graph
         val sourcePaths = dev.kartograph.index.SourcePathIndex.resolve(classified, projectRoot)
@@ -175,7 +176,8 @@ public abstract class KartographDeadTask : DefaultTask() {
             finding.copy(location = path?.let { dev.kartograph.core.SourceLocation(it, declaration?.line ?: finding.location?.line,
                 declaration?.column ?: finding.location?.column) } ?: finding.location)
         }, suppressed, retention.unmatchedKeepRules, inputHints, diagnostics,
-            findings.filter { bindingReview.requiresReview(it.nodeId) }.associate { it.nodeId to dev.kartograph.export.FindingConfidence.REVIEW },
+            // CLI dead와 같은 규칙이다: 소스 파일별 미해결 runtime 채널로 static/review를 매기고 binding 후보는 review로 둔다.
+            dev.kartograph.export.FindingConfidences.forFindings(findings, graph, channelsBySource) { bindingReview.requiresReview(it) },
             generation?.verifyBeforeWrite)
         if (baselineWriteFile.isPresent) {
             if (unknown) throw GradleException("cannot write a baseline from unknown keep rules")
