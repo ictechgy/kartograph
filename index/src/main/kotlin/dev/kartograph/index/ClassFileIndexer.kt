@@ -422,6 +422,8 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private var sourceDebugMapper: SourceDebugMapper? = null
     private var sourceDebugPresent = false
     private var metadataValues: MetadataAnnotationValues? = null
+    /** class에 Java·Kotlin `@Retention(SOURCE)`가 붙었는지다. 어노테이션 class일 때만 의미가 있다. */
+    private var sourceRetention = false
     private val nodes = mutableListOf<GraphNode>()
     private val edges = mutableListOf<GraphEdge>()
     private val calls = mutableListOf<ExternalCall>()
@@ -486,7 +488,14 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         if (descriptor == "Lkotlin/Metadata;") {
             return MetadataAnnotationValues().also { metadataValues = it }
         }
-        return AnnotationValueVisitor(JvmNodeId.classId(internalName))
+        val values = AnnotationValueVisitor(JvmNodeId.classId(internalName))
+        if (descriptor !in RETENTION_ANNOTATIONS) return values
+        return object : AnnotationVisitor(Opcodes.ASM9, values) {
+            override fun visitEnum(name: String?, enumDescriptor: String?, value: String?) {
+                if (name == "value" && value == "SOURCE" && enumDescriptor == RETENTION_ANNOTATIONS[descriptor]) sourceRetention = true
+                super.visitEnum(name, enumDescriptor, value)
+            }
+        }
     }
 
     override fun visitField(
@@ -747,6 +756,9 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             },
             annotations = classAnnotations,
             supertypes = supertypes,
+            attributes = if (sourceRetention && classAccess and Opcodes.ACC_ANNOTATION != 0) {
+                setOf(NodeAttribute.SOURCE_RETENTION_ANNOTATION)
+            } else emptySet(),
             synthesized = effectiveClassAccess.isSynthetic() || internalName.isAndroidGeneratedClass(),
             enumConstants = if (capturesEnumInventory) enumConstants.sorted() else null,
         )
@@ -1153,6 +1165,12 @@ private val RUNTIME_CALLBACK_TYPES = setOf(
 )
 
 private val RUNTIME_CALLBACK_MEMBER_KINDS = setOf(NodeKind.CONSTRUCTOR, NodeKind.METHOD)
+
+/** retention meta-annotation descriptor와 그 `value` enum descriptor다(Java·Kotlin). */
+private val RETENTION_ANNOTATIONS = mapOf(
+    "Ljava/lang/annotation/Retention;" to "Ljava/lang/annotation/RetentionPolicy;",
+    "Lkotlin/annotation/Retention;" to "Lkotlin/annotation/AnnotationRetention;",
+)
 
 private fun Int.isSynthetic(): Boolean = this and Opcodes.ACC_SYNTHETIC != 0
 

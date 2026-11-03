@@ -43,6 +43,11 @@ public enum class NodeAttribute {
     ENUM_CONSTANT,
     /** 성공한 생성 receipt·source mapping·compiler class 바이트로 연결한 신원이다. 보존 root가 아니다. */
     GENERATED_SOURCE_EVIDENCE,
+    /**
+     * `@Retention(SOURCE)`(Java `RetentionPolicy.SOURCE`, Kotlin `AnnotationRetention.SOURCE`)를 단 어노테이션 class다.
+     * 사용처가 class 파일에 남지 않아 도달 불가가 사용 부재를 뜻하지 않는다. 기존 ordinal을 바꾸지 않도록 끝에 둔다.
+     */
+    SOURCE_RETENTION_ANNOTATION,
 }
 
 /** ProGuard/R8 class specification과 직접 비교하는 JVM access flag다. */

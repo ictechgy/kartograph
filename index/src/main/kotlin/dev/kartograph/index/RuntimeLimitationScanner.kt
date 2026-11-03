@@ -178,6 +178,13 @@ public object RuntimeLimitationScanner {
                     "compiled callback and adapter paths are candidates; layout IDs, XML requireAll/attribute selection and variant overlays are not resolved",
             )
             if (constants > 0) add("inlined-constant-references: $constants compile-time constant declaration(s) may have erased use sites")
+            val sourceAnnotations = indexed.graph.nodes.values.count {
+                NodeAttribute.SOURCE_RETENTION_ANNOTATION in it.attributes && !it.synthesized
+            }
+            if (sourceAnnotations > 0) add(
+                "source-retention-annotations: $sourceAnnotations SOURCE-retention annotation class(es) are not reported " +
+                    "because class files do not record their uses",
+            )
             if (dynamicRegistrations > 0) add(
                 "dynamic-registration: $dynamicRegistrations runtime component registration call(s) are absent from the manifest graph",
             )
