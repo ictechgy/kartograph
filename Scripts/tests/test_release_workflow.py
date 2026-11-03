@@ -853,8 +853,9 @@ class ReleaseWorkflowTest(unittest.TestCase):
         writes = self.release.writes()
         self.assertEqual(["gh", "api", "--method", "POST", "repos/example/project/git/refs",
                           "-f", "ref=refs/tags/" + TAG, "-f", "sha=" + SOURCE], writes[0])
-        self.assertEqual(["gh", "release", "create", TAG, "--verify-tag", "--generate-notes",
-                          "--title", "kartograph " + TAG], writes[1])
+        self.assertEqual(["gh", "release", "create", TAG, "--verify-tag", "--title", "kartograph " + TAG,
+                          "--notes", f"See [CHANGELOG.md](https://github.com/ictechgy/kartograph/blob/{TAG}/CHANGELOG.md)."],
+                         writes[1])
         self.assertEqual(["gh", "release", "upload", TAG, *UPLOADS], writes[2])
         self.assertEqual(["gradlew", "--no-daemon", ":gradle-plugin:publishPlugins"], writes[3])
         self.assertEqual(4, len(writes))

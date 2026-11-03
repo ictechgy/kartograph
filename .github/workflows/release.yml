@@ -302,7 +302,8 @@ jobs:
           fi
           RELEASE_VERSION="$(tr -d '[:space:]' < VERSION)"
           gh release create "$RELEASE_TAG" \
-            --verify-tag --generate-notes --title "kartograph $RELEASE_TAG"
+            --verify-tag --title "kartograph $RELEASE_TAG" \
+            --notes "See [CHANGELOG.md](https://github.com/ictechgy/kartograph/blob/$RELEASE_TAG/CHANGELOG.md)."
           gh release upload "$RELEASE_TAG" \
             "cli/build/distributions/kartograph-$RELEASE_VERSION.zip" \
             "cli/build/distributions/kartograph-$RELEASE_VERSION.tar" \
