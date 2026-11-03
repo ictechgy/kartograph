@@ -58,11 +58,11 @@ CLI archive는 GitHub Releases에서 받는다. Gradle plugin `io.github.ictechg
 - 자동 snapshot: JVM Java/Kotlin은 Gradle 9.6.1과 JDK 17/21에서, Android는 [검증된 조합](docs/IMPACT.md#android-variant-자동-캡처)에서 확인했다. Kotlin compiler adapter는 KGP 2.4.10에서 검증했고 다른 버전은 보장하지 않는다. 최소 Android 조합은 Gradle 8.10.2에서 검증했지만, KGP 자체는 8.14.4 이상을 권고한다.
 - CLI 시작 스크립트는 HotSpot Tier4(C2) 임계값 네 개를 계층 컴파일 기본값의 4배로 올린다(`-XX:Tier4InvocationThreshold=20000 -XX:Tier4MinInvocationThreshold=2400 -XX:Tier4CompileThreshold=60000 -XX:Tier4BackEdgeThreshold=160000`). `JAVA_OPTS`/`KARTOGRAPH_OPTS`는 명령줄에서 뒤에 붙어 이 값을 덮어쓰지만, 먼저 읽히는 `JAVA_TOOL_OPTIONS`/`JDK_JAVA_OPTIONS`는 덮어쓰지 못한다. 계층 컴파일을 끄면(`-XX:-TieredCompilation` 또는 `-XX:CompilationMode=high-only`) 그 모드의 HotSpot 값도 함께 넘긴다: `-XX:Tier4InvocationThreshold=5000 -XX:Tier4MinInvocationThreshold=600 -XX:Tier4CompileThreshold=10000 -XX:Tier4BackEdgeThreshold=15000`.
 
-설치 예제는 2026-11-01 [Plugin Portal에서 확인한 0.25.0](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.25.0)을 고정한다. 소스 0.26.0은 릴리스 후보이다. 현재 checkout의 빌드 설정은 Gradle 9.8.1·KGP 2.4.21이며 소비자 검증 버전과 구분한다.
+설치 예제는 [Plugin Portal 0.26.0](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.26.0)을 대상으로 한다. Portal 설치 가능 여부와 GitHub CLI 릴리스는 따로 확인한다. 현재 checkout은 Gradle 9.8.1과 KGP 2.4.21로 빌드한다. 위 소비자 검증 표는 별도로 시험한 버전을 기록한다.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.25.0"
+    id("io.github.ictechgy.kartograph") version "0.26.0"
 }
 ```
 
