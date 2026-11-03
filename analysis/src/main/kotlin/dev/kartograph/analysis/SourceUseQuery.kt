@@ -63,6 +63,8 @@ public class SourceUsePage<T> internal constructor(
 }
 
 /** 존재하는 정확한 선언의 양방향 원본 선택이다. unavailable 채널만 page가 null이다. */
+// 공개 copy()는 기존 라이브러리 API다. Kotlin 2.5에서 경고가 오류가 되기 전에 지금 노출을 명시적으로 유지한다(KT-11914).
+@ExposedCopyVisibility
 public data class SourceUseInspection internal constructor(
     val subject: NodeId,
     val coverage: SourceUseCoverage,
