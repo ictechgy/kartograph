@@ -1,8 +1,8 @@
 """실제 release workflow shell을 job별로 실행해 외부 쓰기 전 실패 경계를, job·step 구조로 권한·비밀·캐시 경계를 확인한다.
 
-verify job은 검증 메타데이터 밖의 fixture 빌드와 전체 테스트를 비밀·쓰기 토큰·environment 없이 돌리고 배포물 해시 목록만
-넘긴다. publish job은 그 목록을 믿지 않는다. source를 스스로 다시 확인하고, 다시 빌드한 배포물의 목록이 넘겨받은 목록과
-문자 그대로 같을 때만 tag·release·Portal에 쓴다. 두 job은 checkout과 GITHUB_ENV를 공유하지 않으므로 테스트도 job마다 새로 둔다.
+coverage·verify job은 같은 source의 전체 테스트와 fixture·산출물을 비밀·쓰기 토큰·environment 없이 각각 검증한다.
+publish는 둘의 성공을 요구하고 verify의 해시 목록을 자기 재빌드와 다시 대조한 뒤에만 tag·release·Portal에 쓴다.
+각 job은 checkout과 GITHUB_ENV를 공유하지 않으므로 테스트도 job마다 새로 둔다.
 release-readiness의 증거 step도 실제 shell로 실행해, 공용 배포물 스크립트가 없는 이전 target에서도 gate 전에 멈추지 않는지 본다.
 """
 
@@ -38,6 +38,7 @@ PUBLISH = "Publish Gradle plugin"
 # 공통 ReleaseRun harness가 실행하는 verify step이다. collector 인자 경계는 별도 shell 검사로 확인하며,
 # 나머지 verify step은 실제 Gradle·Android SDK가 필요해 구조로만 확인한다.
 VERIFY_BLOCKS = (ADMIT, RESOLVE, READINESS, RECORD)
+COVERAGE_BLOCKS = (ADMIT, RESOLVE, "Test and verify coverage")
 # publish job의 run step 전체다. 테스트는 publish job의 run step을 빠짐없이 실행한다.
 PUBLISH_BLOCKS = (ADMIT, RESOLVE, REBUILD, MATCH, ENSURE, CREATE, PUBLISH)
 WRITE_BOUNDARIES = (ENSURE, CREATE, PUBLISH)
@@ -161,7 +162,9 @@ elif command == "gh":
         fail()
 elif command == "gradlew":
     version = (workspace / "VERSION").read_text().strip()
-    if args == ["--no-daemon", "clean", ":cli:distZip", ":cli:distTar", ":gradle-plugin:jar",
+    if args == ["--no-daemon", "clean", "test", ":koverVerify"]:
+        sys.exit(state.get("coverage_exit", 0))
+    elif args == ["--no-daemon", "clean", ":cli:distZip", ":cli:distTar", ":gradle-plugin:jar",
                 ":gradle-plugin:generatePomFileForPluginMavenPublication", ":gradle-plugin:validatePlugins",
                 ":cli:runtimeSbom", ":gradle-plugin:runtimeSbom"]:
         produce(f"cli/build/distributions/kartograph-{version}.zip", f"cli/build/distributions/kartograph-{version}.tar",
@@ -216,6 +219,17 @@ def scalar(value):
         end = text.find(text[0], 1)
         return text[1:end] if end > 0 else text
     return text.split(" #", 1)[0].rstrip()
+
+
+def job_dependencies(job):
+    """harness가 허용하는 job 의존성 이름만 읽고 모르는 식이나 중복은 거부한다."""
+    value = job.get("needs", "")
+    if not value:
+        return []
+    names = [name.strip() for name in value[1:-1].split(",")] if value.startswith("[") and value.endswith("]") else [value]
+    require(len(names) == len(set(names)) and all(re.fullmatch(r"[a-z][a-z0-9_-]*", name) for name in names),
+            "unsupported job dependencies: " + value)
+    return names
 
 
 def block_body(lines):
@@ -354,7 +368,7 @@ class WorkflowCacheBoundaryTest(unittest.TestCase):
 
     dispatch 검증은 기본 브랜치 캐시 범위에서 검토 전 코드를 실행할 수 있다. 그 job이 저장한 Gradle·JDK 캐시를
     release job이 복원하면, 다시 검증되지 않는 wrapper 배포본의 init 스크립트가 게이트와 게시 단계에 적용된다.
-    verify job이 넘기는 해시 목록도 publish job의 비교 기준이므로 두 release job 모두 캐시를 쓰지 않는다.
+    verify의 해시와 coverage의 통과 결과가 게시 근거이므로 release의 세 job 모두 캐시를 쓰지 않는다.
     """
 
     def steps_using(self, workflow, action_name):
@@ -368,7 +382,7 @@ class WorkflowCacheBoundaryTest(unittest.TestCase):
 
     def test_release_jobs_neither_restore_nor_save_build_caches(self):
         jobs = workflow_jobs(WORKFLOW)
-        self.assertEqual(["verify", "publish"], list(jobs))
+        self.assertEqual(["coverage", "verify", "publish"], list(jobs))
         for name, job in jobs.items():
             with self.subTest(job=name):
                 setups = [step["with"] for step in job["steps"] if action(step) == "actions/setup-java"]
@@ -477,14 +491,24 @@ class ReleaseJobBoundaryTest(unittest.TestCase):
 
     def setUp(self):
         self.jobs = workflow_jobs(WORKFLOW)
-        self.assertEqual(["verify", "publish"], list(self.jobs))
-        self.verify, self.publish = self.jobs["verify"], self.jobs["publish"]
+        self.assertEqual(["coverage", "verify", "publish"], list(self.jobs))
+        self.coverage, self.verify, self.publish = (self.jobs[name] for name in ("coverage", "verify", "publish"))
 
-    def test_verify_job_runs_the_whole_gate_without_write_token_or_environment(self):
-        self.assertEqual({"contents": "read"}, self.verify.get("permissions"))
-        self.assertNotIn("environment", self.verify)
+    def test_parallel_verification_keeps_every_gate_without_write_token_or_environment(self):
+        for job in (self.coverage, self.verify):
+            self.assertEqual({"contents": "read"}, job.get("permissions"))
+            self.assertNotIn("environment", job)
+            self.assertEqual([], job_dependencies(job))
+            self.assertEqual("45", job.get("timeout-minutes"))
+        self.assertNotIn("outputs", self.coverage)
+        self.assertEqual(list(COVERAGE_BLOCKS),
+                         [step.get("name") for step in self.coverage["steps"] if "run" in step
+                          and step.get("name") not in ("Accept Android SDK licenses", "Install fixture Android platform")])
+        for name in ("Accept Android SDK licenses", "Install fixture Android platform"):
+            self.assertEqual(step_named(self.verify, name), step_named(self.coverage, name))
         self.assertEqual({"artifact-hashes": "${{ steps.verified.outputs.artifact-hashes }}"}, self.verify.get("outputs"))
-        gate = ["Accept Android SDK licenses", "Install fixture Android platform", "Test and verify coverage",
+        self.assertNotIn("Test and verify coverage", [step.get("name") for step in self.verify["steps"]])
+        gate = ["Accept Android SDK licenses", "Install fixture Android platform",
                 "Verify fixtures", "Verify optional compiler collectors",
                 "Verify exact compiler call positions without skipped checks",
                 "Verify minimum supported AGP and Gradle", READINESS, RECORD, "Preserve release readiness evidence"]
@@ -493,7 +517,8 @@ class ReleaseJobBoundaryTest(unittest.TestCase):
         self.assertEqual("always()", step_named(self.verify, "Preserve release readiness evidence").get("if"))
 
     def test_publish_job_holds_write_token_and_environment_and_runs_only_release_steps(self):
-        self.assertEqual("verify", self.publish.get("needs"))
+        self.assertEqual(["coverage", "verify"], job_dependencies(self.publish))
+        self.assertEqual("30", self.publish.get("timeout-minutes"))
         self.assertEqual("release", self.publish.get("environment"))
         self.assertEqual({"contents": "write"}, self.publish.get("permissions"))
         self.assertEqual(["actions/checkout", "gradle/actions/wrapper-validation", "actions/setup-java",
@@ -540,13 +565,14 @@ sys.exit(int(os.environ["COLLECTOR_EXIT"]))
                     self.assertEqual([str(distribution)], consumer)
                     self.assertEqual(str(distribution / "bin/kartograph"), observed["cli"])
 
-    def test_both_jobs_check_out_admit_and_resolve_the_same_source(self):
-        for job in (self.verify, self.publish):
+    def test_all_jobs_check_out_admit_and_resolve_the_same_source(self):
+        for job in (self.coverage, self.verify, self.publish):
             checkouts = [step["with"] for step in job["steps"] if action(step) == "actions/checkout"]
             self.assertEqual([{"ref": "${{ inputs.source_sha || github.sha }}", "persist-credentials": "false"}], checkouts)
         for name in (ADMIT, RESOLVE):
             with self.subTest(name=name):
-                self.assertEqual(step_named(self.verify, name), step_named(self.publish, name))
+                for job in (self.coverage, self.publish):
+                    self.assertEqual(step_named(self.verify, name), step_named(job, name))
 
     def test_both_jobs_keep_the_compared_artifact_bytes(self):
         # 재빌드 해시가 다르면 어느 파일이 다른지는 로그로 알 수 있다. 원인(러너의 JDK 패치, 권한 비트, 환경 의존 바이트,
@@ -586,10 +612,13 @@ sys.exit(int(os.environ["COLLECTOR_EXIT"]))
         # tag 생성은 verify job의 readiness가 성공해야 시작되는 publish job에만 있다.
         self.assertTrue(step_named(self.verify, READINESS))
         self.assertTrue(step_named(self.publish, ENSURE))
+        self.assertEqual([], [step for step in self.coverage["steps"] if step.get("name") in WRITE_BOUNDARIES])
         self.assertEqual([], [step for step in self.verify["steps"] if step.get("name") in WRITE_BOUNDARIES])
         # 실패 뒤에도 도는 조건은 두 job의 증거 upload뿐이다. publish job의 upload는 실패했을 때만 돈다.
         self.assertEqual({ADMIT: DISPATCH_ONLY, "Preserve release readiness evidence": "always()"},
                          {step.get("name"): step["if"] for step in self.verify["steps"] if "if" in step})
+        self.assertEqual({ADMIT: DISPATCH_ONLY},
+                         {step.get("name"): step["if"] for step in self.coverage["steps"] if "if" in step})
         self.assertEqual({ADMIT: DISPATCH_ONLY, REBUILT_EVIDENCE: "failure()"},
                          {step.get("name"): step["if"] for step in self.publish["steps"] if "if" in step})
         for name, job in self.jobs.items():
@@ -604,7 +633,7 @@ sys.exit(int(os.environ["COLLECTOR_EXIT"]))
 
 
 class ReleaseRun:
-    """release.yml의 두 job을 runner처럼 실행하는 임시 작업 공간이다.
+    """release.yml의 세 job을 runner처럼 실행하는 임시 작업 공간이다.
 
     job마다 자기 checkout(작업 디렉터리)과 새 GITHUB_ENV·GITHUB_OUTPUT을 갖고, 원격 상태(state.json)와 호출 기록만 공유한다.
     외부 명령은 모르는 인자를 실패시키는 mock이고, 이 harness가 흉내 내지 않는 workflow 식·조건·키를 만나면 멈춘다.
@@ -622,10 +651,10 @@ class ReleaseRun:
         self.reset()
 
     def reset(self, event="workflow_dispatch", inputs=None, **changes):
-        """원격 상태, 호출 기록, 두 job의 새 checkout, workflow 입력과 runner 환경을 처음 상태로 되돌린다."""
+        """원격 상태, 호출 기록, 각 job의 새 checkout, workflow 입력과 runner 환경을 처음 상태로 되돌린다."""
         self.state_path.write_text(json.dumps({"head": SOURCE, "main": SOURCE, "tag": None}))
         self.log_path.write_text("")
-        for job in ("verify", "publish"):
+        for job in ("coverage", "verify", "publish"):
             workspace = self.root / job
             if workspace.exists():
                 shutil.rmtree(workspace)
@@ -653,7 +682,7 @@ class ReleaseRun:
         }
         self.env.update(changes)
 
-    def set_version(self, version, jobs=("verify", "publish")):
+    def set_version(self, version, jobs=("coverage", "verify", "publish")):
         for job in jobs:
             (self.root / job / "VERSION").write_text(version + "\n")
 
@@ -679,7 +708,7 @@ class ReleaseRun:
         if scope == "steps" and separator:
             return step_outputs.get(source, {}).get(output, "")
         if scope == "needs" and separator:
-            require(source == self.jobs[job].get("needs"), f"{job} reads outputs of {source} without needing it")
+            require(source in job_dependencies(self.jobs[job]), f"{job} reads outputs of {source} without needing it")
             return self.outputs.get(source, {}).get(output, "")
         raise AssertionError("unsupported workflow expression: " + value)
 
@@ -730,10 +759,11 @@ class ReleaseRun:
 
     def run_alone(self, job):
         """job 하나만 실행한다. publish job도 verify job의 output 없이 source를 스스로 먼저 확인해야 한다."""
-        return self.run_job(job, VERIFY_BLOCKS if job == "verify" else None)
+        blocks = COVERAGE_BLOCKS if job == "coverage" else VERIFY_BLOCKS if job == "verify" else None
+        return self.run_job(job, blocks)
 
     def pipeline(self, handover=None, before=None, verified=None):
-        """verify job이 성공했을 때만 publish job을 새 환경으로 이어 실행한다(needs: verify).
+        """두 검증이 모두 성공해야 publish를 별도 환경에서 실행한다. 여기서는 verify가 먼저 끝나는 순서를 검사한다.
 
         verified를 주면 같은 기본 dispatch 입력으로 이미 성공한 verify job의 output을 다시 쓴다. handover는 job 사이에서
         verify output을 바꿔 오염된 verify job이 넘길 수 있는 목록을 흉내 내고, before는 publish job 안에서 적용한다.
@@ -744,6 +774,11 @@ class ReleaseRun:
                 return result
         else:
             self.outputs["verify"] = dict(verified)
+        require(job_dependencies(self.jobs["publish"]) == ["coverage", "verify"],
+                "publication requires both independent verification jobs")
+        result = self.run_job("coverage", COVERAGE_BLOCKS)
+        if result.returncode:
+            return result
         if handover is not None:
             self.outputs["verify"]["artifact-hashes"] = handover(self.outputs["verify"]["artifact-hashes"])
         return self.run_job("publish", before=before)
@@ -762,7 +797,7 @@ class ReleaseRun:
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
-    """두 release job을 실제 shell로 실행해 입력 검증·source 재확인·해시 대조·쓰기 경계가 외부 쓰기를 막는지 확인한다."""
+    """release job의 실제 shell로 입력·검증 quorum·source 재확인·해시·쓰기 경계를 확인한다."""
 
     @classmethod
     def setUpClass(cls):
@@ -786,6 +821,23 @@ class ReleaseWorkflowTest(unittest.TestCase):
     def assert_no_mutation(self):
         self.assertEqual([], self.release.writes())
 
+    def test_coverage_failure_blocks_publication_even_when_artifacts_already_passed(self):
+        # 실제 coverage shell을 실행한다. 산출물 해시가 준비돼도 테스트 실패를 넘어 게시하면 안 된다.
+        release = self.release
+        for status in (0, 73):
+            with self.subTest(coverage_exit=status):
+                release.reset()
+                release.configure(coverage_exit=status)
+                result = release.pipeline(verified=self.verified)
+                self.assertEqual(status, result.returncode, result.stderr)
+                self.assertIn(["gradlew", "--no-daemon", "clean", "test", ":koverVerify"],
+                              release.calls("coverage"))
+                if status:
+                    self.assert_no_mutation()
+                    self.assertEqual([], release.builds("publish"))
+                else:
+                    self.assertEqual(4, len(release.writes()))
+
     def test_release_readiness_reexports_gradle_home_in_its_own_step(self):
         # 앞선 Actions step의 export는 다음 step으로 전달되지 않는다. 기본 환경에는 GRADLE_8_HOME이 없다.
         self.assertNotIn("GRADLE_8_HOME", self.release.env)
@@ -800,7 +852,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
             ({"source_sha": SOURCE + "\nINJECTED=yes"}, {}),
             ({}, {"GITHUB_REF": "refs/heads/feature"}), ({}, {"GITHUB_REF": "refs/tags/" + TAG}),
         ):
-            for job in ("verify", "publish"):
+            for job in ("coverage", "verify", "publish"):
                 with self.subTest(inputs=inputs, changes=changes, job=job):
                     release.reset(inputs=inputs, **changes)
                     self.assertNotEqual(0, release.run_alone(job).returncode)
@@ -814,7 +866,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
             ({}, {}, "1.2.4"), ({}, {"head": OTHER}, "1.2.3"),
             ({}, {"main": OTHER}, "1.2.3"),
         ):
-            for job in ("verify", "publish"):
+            for job in ("coverage", "verify", "publish"):
                 with self.subTest(inputs=inputs, state=state, version=version, job=job):
                     release.reset(inputs=inputs)
                     release.configure(**state)
@@ -826,7 +878,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
     def test_wrong_push_ref_or_event_fails_closed(self):
         release = self.release
         for event, ref in (("push", "refs/heads/main"), ("schedule", "refs/tags/" + TAG)):
-            for job in ("verify", "publish"):
+            for job in ("coverage", "verify", "publish"):
                 with self.subTest(event=event, ref=ref, job=job):
                     release.reset(event=event, GITHUB_REF=ref)
                     self.assertNotEqual(0, release.run_alone(job).returncode)
