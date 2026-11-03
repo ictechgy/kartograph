@@ -101,12 +101,17 @@ internal object AndroidFrameworkCallbacks {
                 .mapTo(mutableSetOf()) { it.name + it.descriptor }
         }
         return types.entries.sortedBy { it.key }.flatMap { (name, type) ->
-            val signatures = ancestorsOf(type).filter { it !in types }.flatMapTo(mutableSetOf(), ::contractsOf)
+            // 타입마다 상위 계약 전체를 합치지 않는다. Android 상위 타입은 수백 개 메서드를 선언하므로, 후보 메서드 몇 개만
+            // owner별로 캐시한 계약 집합에 대조한다.
+            val candidates = methods[name].orEmpty().filter { it.canImplement() && it.kind == NodeKind.METHOD }
+            if (candidates.isEmpty()) return@flatMap emptyList()
+            val external = ancestorsOf(type).filter { it !in types }
             // 그래프의 supertypes는 java/lang/Object를 생략한다. collection·문자열 연결·logging이 부르는 Object 계약은 JVM 고정 사실이다.
-            if (type.kind != NodeKind.INTERFACE && type.kind != NodeKind.ANNOTATION_CLASS) signatures += OBJECT_CONTRACTS
-            if (signatures.isEmpty()) return@flatMap emptyList()
-            methods[name].orEmpty().filter { it.canImplement() && it.kind == NodeKind.METHOD && it.jvmSignature?.substringAfter('#') in signatures }
-                .map { method -> GraphEdge(type.id, method.id, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL) }
+            val objectContracts = type.kind != NodeKind.INTERFACE && type.kind != NodeKind.ANNOTATION_CLASS
+            candidates.filter { method ->
+                val signature = method.jvmSignature?.substringAfter('#') ?: return@filter false
+                (objectContracts && signature in OBJECT_CONTRACTS) || external.any { owner -> signature in contractsOf(owner) }
+            }.map { method -> GraphEdge(type.id, method.id, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL) }
         }
     }
 
