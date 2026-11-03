@@ -57,11 +57,11 @@ Download the CLI archive from GitHub Releases. The Gradle plugin `io.github.icte
 - Automatic snapshots: JVM Java/Kotlin on Gradle 9.6.1 and JDK 17/21, plus the [tested Android combinations](docs/IMPACT.md#android-variant-자동-캡처). The Kotlin compiler adapter is verified with KGP 2.4.10; other KGP versions are not guaranteed. The minimum Android combination was tested on Gradle 8.10.2, although KGP itself recommends 8.14.4 or later.
 - The CLI launcher raises HotSpot's four Tier4 (C2) thresholds to 4x their tiered defaults (`-XX:Tier4InvocationThreshold=20000 -XX:Tier4MinInvocationThreshold=2400 -XX:Tier4CompileThreshold=60000 -XX:Tier4BackEdgeThreshold=160000`). `JAVA_OPTS`/`KARTOGRAPH_OPTS` come later on the command line and override them; `JAVA_TOOL_OPTIONS`/`JDK_JAVA_OPTIONS` are read earlier and do not. If you disable tiered compilation (`-XX:-TieredCompilation` or `-XX:CompilationMode=high-only`), also pass HotSpot's values for that mode: `-XX:Tier4InvocationThreshold=5000 -XX:Tier4MinInvocationThreshold=600 -XX:Tier4CompileThreshold=10000 -XX:Tier4BackEdgeThreshold=15000`.
 
-The install example pins [0.25.0 on the Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.25.0), verified on 2026-11-01. Source 0.26.0 remains a release candidate. The checkout currently builds with Gradle 9.8.1 and KGP 2.4.21; the consumer verification matrix above records separate tested versions.
+The install example targets [0.26.0 on the Plugin Portal](https://plugins.gradle.org/plugin/io.github.ictechgy.kartograph/0.26.0). Confirm Portal availability separately from the GitHub CLI release. The checkout currently builds with Gradle 9.8.1 and KGP 2.4.21; the consumer verification matrix above records separate tested versions.
 
 ```kotlin
 plugins {
-    id("io.github.ictechgy.kartograph") version "0.25.0"
+    id("io.github.ictechgy.kartograph") version "0.26.0"
 }
 ```
 

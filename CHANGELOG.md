@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-03
+
 - Reuse immutable indexing values after revalidation and reduce repeated SMAP pattern allocations.
 - Retain sealed Linux/JFR attribution diagnostics with bounded owned-child observations and full spooled-output comparisons.
 - Record the JFR print-frame depth explicitly; legacy observations without that provenance remain unknown.
@@ -81,8 +83,6 @@
   findings without changing graph reachability. Android compiler snapshots include
   declared processor metadata inputs; inaccessible provider inputs reject the witness
   while preserving ordinary compilation.
-
-## [0.26.0] - 2026-10-22
 
 이 항목은 릴리스 준비 기록이다. GitHub asset 및 Gradle Portal publication/설치 검증은 별도 절차이며,
 태그나 문서만으로 배포 완료를 의미하지 않는다. CLI/plugin/collector/library를 같은 버전으로 맞추고
