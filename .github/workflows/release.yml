@@ -156,7 +156,10 @@ jobs:
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "platforms;android-35" "build-tools;35.0.0"'
       - name: Verify fixtures
         run: |
-          ./gradlew --no-daemon :cli:installDist
+          # 독립 runner에는 coverage job의 test class와 test runtime 캐시가 없다.
+          # 기존 compiler CI와 같은 heap으로 입력을 만들고, offline corpus 전에 검증 메타데이터로 의존성을 해석한다.
+          ./gradlew --no-daemon -Pkotlin.daemon.jvmargs=-Xmx1g \
+            :cli:installDist :gradle-plugin:jar testClasses :cli:runtimeCorpusDependencies
           Scripts/verify-agent-surface.sh
           python3 Scripts/verify-runtime-corpus.py
           python3 Scripts/verify-runtime-contracts.py

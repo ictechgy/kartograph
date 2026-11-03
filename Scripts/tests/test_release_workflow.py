@@ -565,6 +565,72 @@ sys.exit(int(os.environ["COLLECTOR_EXIT"]))
                     self.assertEqual([str(distribution)], consumer)
                     self.assertEqual(str(distribution / "bin/kartograph"), observed["cli"])
 
+    def test_cold_fixture_bootstrap_prepares_offline_inputs_and_preserves_failure(self):
+        # 실제 workflow shell을 빈 작업 공간에서 실행한다. offline 소비자 전에 입력이 생기고 준비 실패는 전파돼야 한다.
+        script = step_named(self.verify, "Verify fixtures")["run"]
+        with tempfile.TemporaryDirectory(prefix="release cold inputs ") as temporary:
+            for status in (0, 73):
+                with self.subTest(bootstrap_exit=status):
+                    workspace = Path(temporary).resolve() / str(status) / "checkout with spaces"
+                    (workspace / "state").mkdir(parents=True)
+                    install(workspace / "gradlew", "#!" + sys.executable + "\n" + '''
+import json
+import os
+from pathlib import Path
+import sys
+root = Path(os.environ["BOOTSTRAP_STATE"])
+args = sys.argv[1:]
+(root / "arguments.json").write_text(json.dumps(args))
+status = int(os.environ["BOOTSTRAP_EXIT"])
+if status:
+    sys.exit(status)
+for target, marker in [(":cli:installDist", "cli"), (":gradle-plugin:jar", "plugin"),
+                       ("testClasses", "test-classes"), (":cli:runtimeCorpusDependencies", "test-runtime")]:
+    if target in args:
+        (root / marker).write_text("prepared")
+''')
+                    verifier = "#!" + sys.executable + "\n" + '''
+import json
+import os
+from pathlib import Path
+import sys
+root = Path(os.environ["BOOTSTRAP_STATE"])
+call = [Path(sys.argv[0]).name, *sys.argv[1:]]
+if not (root / "cli").is_file():
+    sys.exit(68)
+if sys.argv[1:] == ["Scripts/verify-runtime-corpus.py"] and not (root / "test-runtime").is_file():
+    print("offline test runtime was not prepared", file=sys.stderr)
+    sys.exit(69)
+with (root / "verifiers.jsonl").open("a") as out:
+    out.write(json.dumps(call) + "\\n")
+'''
+                    for name in ("verify-agent-surface.sh", "verify-fixture-corpus.sh", "verify-gradle-plugin-fixture.sh"):
+                        install(workspace / "Scripts" / name, verifier)
+                    install(workspace / "bin/python3", verifier)
+                    result = subprocess.run(
+                        ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", script],
+                        cwd=workspace,
+                        env={"PATH": str(workspace / "bin") + os.pathsep + os.defpath,
+                             "BOOTSTRAP_STATE": str(workspace / "state"), "BOOTSTRAP_EXIT": str(status)},
+                        text=True, capture_output=True, timeout=20,
+                    )
+                    self.assertEqual(status, result.returncode, result.stderr)
+                    state = workspace / "state"
+                    calls = [json.loads(line) for line in (state / "verifiers.jsonl").read_text().splitlines()] \
+                        if (state / "verifiers.jsonl").is_file() else []
+                    if status:
+                        self.assertEqual([], calls)
+                    else:
+                        self.assertEqual(["--no-daemon", "-Pkotlin.daemon.jvmargs=-Xmx1g", ":cli:installDist",
+                                          ":gradle-plugin:jar", "testClasses", ":cli:runtimeCorpusDependencies"],
+                                         json.loads((state / "arguments.json").read_text()))
+                        self.assertTrue(all((state / marker).is_file() for marker in
+                                            ("cli", "plugin", "test-classes", "test-runtime")))
+                        self.assertEqual(["verify-agent-surface.sh", "Scripts/verify-runtime-corpus.py",
+                                          "Scripts/verify-runtime-contracts.py", "verify-fixture-corpus.sh",
+                                          "verify-gradle-plugin-fixture.sh", "-m"],
+                                         [call[1] if call[0] == "python3" else call[0] for call in calls])
+
     def test_all_jobs_check_out_admit_and_resolve_the_same_source(self):
         for job in (self.coverage, self.verify, self.publish):
             checkouts = [step["with"] for step in job["steps"] if action(step) == "actions/checkout"]
