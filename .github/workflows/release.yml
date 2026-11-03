@@ -100,7 +100,10 @@ jobs:
           Scripts/verify-gradle-plugin-fixture.sh
           python3 -m unittest discover -s Scripts/tests -v
       - name: Verify optional compiler collectors
-        run: KARTOGRAPH_SNAPSHOT_CLI="$PWD/cli/build/install/kartograph/bin/kartograph" ./gradlew --no-daemon -p compiler-collectors integrationTest
+        # 공개 API verifier도 앞 단계에서 만든 같은 설치물을 받아야 한다. 소스/class 경로로 대체하지 않는다.
+        run: |
+          KARTOGRAPH_SNAPSHOT_CLI="$PWD/cli/build/install/kartograph/bin/kartograph" ./gradlew --no-daemon -p compiler-collectors \
+            -Pkartograph.consumerDistribution="$PWD/cli/build/install/kartograph" integrationTest
       - name: Verify exact compiler call positions without skipped checks
         run: python3 Scripts/verify-compiler-call-positions.py
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
