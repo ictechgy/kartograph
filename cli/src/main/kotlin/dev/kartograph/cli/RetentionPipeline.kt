@@ -72,7 +72,7 @@ internal object RetentionPipeline {
         val manifestEvidence = AndroidManifestScanner(inputs.projectRoot).scan(inputs.manifest, inputs.namespace)
         val inputEvidence = buildList {
             addAll(manifestEvidence)
-            inputs.resourceRoots.distinct().sorted().forEach { addAll(AndroidXmlScanner(inputs.projectRoot).scan(it)) }
+            inputs.resourceRoots.distinct().sorted().forEach { addAll(AndroidXmlScanner(inputs.projectRoot, null, inputs.namespace).scan(it)) }
             addAll(inputs.externalRetentions)
         }
         val scanner = KeepRuleScanner(inputs.projectRoot, inputs.includePrivateMembers, inputs.lenientKeepRules)

@@ -209,7 +209,7 @@ public abstract class KartographDeadTask : DefaultTask() {
         val inputEvidence = buildList {
             addAll(manifestEvidence)
             resourceDirectories.files.filter(java.io.File::isDirectory).sorted().forEach { resourceRoot ->
-                addAll(AndroidXmlScanner(projectRoot, buildRoot).scan(resourceRoot.toPath()))
+                addAll(AndroidXmlScanner(projectRoot, buildRoot, namespace.get()).scan(resourceRoot.toPath()))
             }
         }
         require(keepRuleMode.get() in setOf("strict", "lenient")) { "keepRuleMode must be strict or lenient" }
