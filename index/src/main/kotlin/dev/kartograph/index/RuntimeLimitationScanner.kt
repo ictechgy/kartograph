@@ -159,6 +159,11 @@ public object RuntimeLimitationScanner {
             if (constructions > 0) add("reflective-construction: $constructions reflective constructor call(s) require runtime target modeling")
             if (serviceLoading > 0) add("service-loading: $serviceLoading ServiceLoader call(s) require provider registration inputs")
             if (externalDispatch > 0) add("external-dispatch: $externalDispatch external virtual call(s) have no project implementation target")
+            val missingHeaders = AndroidFrameworkCallbacks.missingLibraryHeaderTypes(indexed.graph, indexed.hierarchy)
+            if (missingHeaders > 0) add(
+                "library-callback-headers: $missingHeaders project type(s) extend library types without supplied class headers; " +
+                    "overrides that the library calls are not connected (supply the dependency classpath)",
+            )
             if (modeledDispatch > 0) add("dispatch-candidates: $modeledDispatch external virtual call(s) use conservative hierarchy candidates rather than proven receivers")
             val bindingEntries = indexed.graph.externalCalls.filter { it.owner == "androidx/databinding/DataBindingUtil" &&
                 it.name in setOf("setContentView", "inflate", "bind") }

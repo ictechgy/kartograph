@@ -13,8 +13,12 @@ import dev.kartograph.core.Visibility
 import dev.kartograph.core.InvocationKind
 import dev.kartograph.core.CallResolution
 import dev.kartograph.core.ExternalCall
+import dev.kartograph.core.HierarchyMethod
 
-/** 실제 framework header의 callback을 재정의한 프로젝트 구현만 소유 타입에서 연결한다. */
+/**
+ * 실제 framework header의 callback을 재정의한 프로젝트 구현만 소유 타입에서 연결한다.
+ * Android 명시 목록 외에도, 정확한 header가 있는 외부(라이브러리) 상위 타입 메서드의 재정의는 모두 소유 타입에서 잇는다.
+ */
 internal object AndroidFrameworkCallbacks {
     fun enrich(graph: CodeGraph, hierarchy: ClassHierarchy): AndroidFrameworkEnrichment {
         val types = graph.nodes.values.filter { it.jvmSignature?.contains('#') == false && NodeAttribute.EXTERNAL_STUB !in it.attributes }
@@ -51,6 +55,10 @@ internal object AndroidFrameworkCallbacks {
             methods[name].orEmpty().filter { it.canImplement() && it.jvmSignature?.substringAfter('#') in signatures }
                 .forEach { method -> derived += GraphEdge(type.id, method.id, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL) }
         }
+        val connected = derived.toHashSet()
+        libraryOverrideEdges(types, methods, hierarchy, ::ancestorsOf).forEach { edge ->
+            if (connected.add(edge)) derived += edge
+        }
         // DataBindingUtil의 정적 API는 앱의 정확한 root mapper 이름을 통해 생성된 mapper 체인에 진입한다.
         // layout ID의 분기를 선택하지 않으므로 해당 체인에 기록된 모든 binding은 보수적 후보로 남는다.
         val rootMapper = types[ROOT_MAPPER]?.takeIf {
@@ -72,6 +80,67 @@ internal object AndroidFrameworkCallbacks {
         return AndroidFrameworkEnrichment(graph.enrichedWith(derived, calls),
             AndroidFrameworkDerivation(derived.groupingBy { it }.eachCount(), originalCalls))
     }
+
+    /**
+     * 외부(라이브러리) 상위 타입이 선언한 재정의 가능 메서드를 같은 JVM 시그니처로 재정의한 프로젝트 메서드를 소유 타입에서 잇는다.
+     *
+     * `Thread`가 부르는 `Runnable.run`, `sortedWith`가 부르는 `Comparator.compare`처럼 호출이 라이브러리 body 안에 있어
+     * bytecode에 보이지 않는 진입점이다. 소유 타입이 도달할 때만 메서드가 도달하므로 쓰이지 않는 구현은 그대로 보고된다.
+     * 정확한 header가 있는 외부 선언만 쓰고(header가 없으면 [missingLibraryHeaderTypes]가 센다), static·final·private·
+     * package-private 선언과 생성자는 재정의 계약이 아니라 제외한다.
+     */
+    private fun libraryOverrideEdges(
+        types: Map<String, GraphNode>,
+        methods: Map<String?, List<GraphNode>>,
+        hierarchy: ClassHierarchy,
+        ancestorsOf: (GraphNode) -> Set<String>,
+    ): List<GraphEdge> {
+        val contractsByOwner = mutableMapOf<String, Set<String>>()
+        fun contractsOf(owner: String): Set<String> = contractsByOwner.getOrPut(owner) {
+            hierarchy.declaredMethodsOf(owner).orEmpty().filter { it.isOverridableContract() }
+                .mapTo(mutableSetOf()) { it.name + it.descriptor }
+        }
+        return types.entries.sortedBy { it.key }.flatMap { (name, type) ->
+            val signatures = ancestorsOf(type).filter { it !in types }.flatMapTo(mutableSetOf(), ::contractsOf)
+            // 그래프의 supertypes는 java/lang/Object를 생략한다. collection·문자열 연결·logging이 부르는 Object 계약은 JVM 고정 사실이다.
+            if (type.kind != NodeKind.INTERFACE && type.kind != NodeKind.ANNOTATION_CLASS) signatures += OBJECT_CONTRACTS
+            if (signatures.isEmpty()) return@flatMap emptyList()
+            methods[name].orEmpty().filter { it.canImplement() && it.kind == NodeKind.METHOD && it.jvmSignature?.substringAfter('#') in signatures }
+                .map { method -> GraphEdge(type.id, method.id, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL) }
+        }
+    }
+
+    /**
+     * header가 없는 외부 상위 타입을 가진 프로젝트 타입 수다. 그 타입들의 라이브러리 callback 재정의는 잇지 못하므로
+     * dead 한계로 센다. 합성 타입(람다·생성물)은 metadata 경로로 따로 이어지므로 세지 않는다.
+     */
+    fun missingLibraryHeaderTypes(graph: CodeGraph, hierarchy: ClassHierarchy): Int {
+        val types = graph.nodes.values.filter { it.jvmSignature?.contains('#') == false && NodeAttribute.EXTERNAL_STUB !in it.attributes }
+            .associateBy { requireNotNull(it.jvmSignature) }
+        val missing = mutableMapOf<String, Boolean>()
+        fun hasMissingAncestor(start: GraphNode): Boolean {
+            val pending = ArrayDeque(start.supertypes)
+            val seen = mutableSetOf<String>()
+            while (pending.isNotEmpty() && seen.size < 256) {
+                val name = pending.removeFirst()
+                if (!seen.add(name)) continue
+                val project = types[name]
+                if (project != null) { pending.addAll(project.supertypes); continue }
+                if (missing.getOrPut(name) { hierarchy.directSupertypesOf(name) == null || hierarchy.declaredMethodsOf(name) == null }) return true
+                pending.addAll(hierarchy.directSupertypesOf(name).orEmpty())
+            }
+            return false
+        }
+        return types.values.count { type -> !type.synthesized && hasMissingAncestor(type) }
+    }
+
+    /** 모든 class가 재정의할 수 있는 `java/lang/Object`의 비final 인스턴스 메서드다. */
+    private val OBJECT_CONTRACTS = setOf(
+        "equals(Ljava/lang/Object;)Z", "hashCode()I", "toString()Ljava/lang/String;", "finalize()V", "clone()Ljava/lang/Object;",
+    )
+
+    private fun HierarchyMethod.isOverridableContract(): Boolean =
+        !isStatic && !isFinal && visibility in setOf(Visibility.PUBLIC, Visibility.PROTECTED) && name != "<init>" && name != "<clinit>"
 
     private fun GraphNode.canImplement(): Boolean = jvmVisibility in setOf(Visibility.PUBLIC, Visibility.PROTECTED) &&
         JvmModifier.STATIC !in jvmModifiers && JvmModifier.ABSTRACT !in jvmModifiers
