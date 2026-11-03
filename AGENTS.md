@@ -14,6 +14,8 @@
 
 **컴파일된 그래프가 산출물이며 분석·보고는 그 위의 질의다.** Kotlin/JVM + ASM + 공식 Kotlin metadata가 주 원천이고 Java도 동등하게 검증한다. cartograph의 설계·교환 계약을 공유하되 Swift 코드를 복사하거나 자매 저장소 설치를 가정하지 않는다.
 
+자매 저장소는 [cartograph](https://github.com/ictechgy/cartograph)(Swift)·[dartograph](https://github.com/ictechgy/dartograph)(Dart/Flutter)·[gartograph](https://github.com/ictechgy/gartograph)(Go)·[rustograph](https://github.com/ictechgy/rustograph)(Rust)·[pythograph](https://github.com/ictechgy/pythograph)(Python)·[tsograph](https://github.com/ictechgy/tsograph)(TypeScript/JavaScript)·[schemagraph](https://github.com/ictechgy/schemagraph)(DB)와 조인 소비자 [isthmus](https://github.com/ictechgy/isthmus)다. 교환 형식 정본은 isthmus `docs/GRAPH-EXCHANGE.md`, 공유 적합성 벡터는 isthmus `conformance/`다. `query` 출력·스킬 문장·교환 사실을 바꾸면 자매 저장소에도 알린다.
+
 | 경로 | 책임 / 의존 | 경계 |
 |---|---|---|
 | `core/` | 그래프·설정·진단 값·파일 시스템 추상화 | 외부 라이브러리와 파일/프로세스 접근 금지 |
