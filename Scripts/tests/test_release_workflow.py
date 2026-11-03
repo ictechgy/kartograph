@@ -35,7 +35,8 @@ MATCH = "Match rebuilt artifacts to the verified hashes"
 ENSURE = "Ensure the exact release tag after verification"
 CREATE = "Create GitHub release"
 PUBLISH = "Publish Gradle plugin"
-# 테스트가 실행하는 verify job step이다. 나머지 verify step은 실제 Gradle·Android SDK가 필요해 구조로만 확인한다.
+# 공통 ReleaseRun harness가 실행하는 verify step이다. collector 인자 경계는 별도 shell 검사로 확인하며,
+# 나머지 verify step은 실제 Gradle·Android SDK가 필요해 구조로만 확인한다.
 VERIFY_BLOCKS = (ADMIT, RESOLVE, READINESS, RECORD)
 # publish job의 run step 전체다. 테스트는 publish job의 run step을 빠짐없이 실행한다.
 PUBLISH_BLOCKS = (ADMIT, RESOLVE, REBUILD, MATCH, ENSURE, CREATE, PUBLISH)
@@ -502,6 +503,43 @@ class ReleaseJobBoundaryTest(unittest.TestCase):
         self.assertEqual({"VERIFIED_HASHES": "${{ needs.verify.outputs.artifact-hashes }}"},
                          step_named(self.publish, MATCH)["env"])
 
+    def test_collector_gate_receives_installed_consumer_and_preserves_failure(self):
+        # 실제 workflow shell의 인자 확장을 확인한다. compiler 자체는 기존 integrationTest가 검증한다.
+        # 공백 경로에서도 배포물과 CLI가 같은 설치물을 가리키고, 수집기 실패가 step 밖으로 전달돼야 한다.
+        script = step_named(self.verify, "Verify optional compiler collectors")["run"]
+        with tempfile.TemporaryDirectory(prefix="release collector ") as temporary:
+            workspace = Path(temporary).resolve() / "checkout with spaces"
+            distribution = workspace / "cli/build/install/kartograph"
+            (distribution / "bin").mkdir(parents=True)
+            captured = workspace / "collector-inputs.json"
+            install(workspace / "gradlew", "#!" + sys.executable + "\n" + '''
+import json
+import os
+from pathlib import Path
+import sys
+Path(os.environ["COLLECTOR_INPUTS"]).write_text(json.dumps({
+    "argv": sys.argv[1:], "cli": os.environ.get("KARTOGRAPH_SNAPSHOT_CLI")
+}))
+sys.exit(int(os.environ["COLLECTOR_EXIT"]))
+''')
+            for status in (0, 73):
+                with self.subTest(collector_exit=status):
+                    result = subprocess.run(
+                        ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", script],
+                        cwd=workspace,
+                        env={"PATH": os.defpath, "COLLECTOR_INPUTS": str(captured),
+                             "COLLECTOR_EXIT": str(status)},
+                        text=True, capture_output=True, timeout=20,
+                    )
+                    self.assertEqual(status, result.returncode, result.stderr)
+                    observed = json.loads(captured.read_text())
+                    self.assertEqual(["--no-daemon", "-p", "compiler-collectors"], observed["argv"][:3])
+                    self.assertIn("integrationTest", observed["argv"])
+                    consumer = [argument.split("=", 1)[1] for argument in observed["argv"]
+                                if argument.startswith("-Pkartograph.consumerDistribution=")]
+                    self.assertEqual([str(distribution)], consumer)
+                    self.assertEqual(str(distribution / "bin/kartograph"), observed["cli"])
+
     def test_both_jobs_check_out_admit_and_resolve_the_same_source(self):
         for job in (self.verify, self.publish):
             checkouts = [step["with"] for step in job["steps"] if action(step) == "actions/checkout"]
@@ -815,8 +853,9 @@ class ReleaseWorkflowTest(unittest.TestCase):
         writes = self.release.writes()
         self.assertEqual(["gh", "api", "--method", "POST", "repos/example/project/git/refs",
                           "-f", "ref=refs/tags/" + TAG, "-f", "sha=" + SOURCE], writes[0])
-        self.assertEqual(["gh", "release", "create", TAG, "--verify-tag", "--generate-notes",
-                          "--title", "kartograph " + TAG], writes[1])
+        self.assertEqual(["gh", "release", "create", TAG, "--verify-tag", "--title", "kartograph " + TAG,
+                          "--notes", f"See [CHANGELOG.md](https://github.com/ictechgy/kartograph/blob/{TAG}/CHANGELOG.md)."],
+                         writes[1])
         self.assertEqual(["gh", "release", "upload", TAG, *UPLOADS], writes[2])
         self.assertEqual(["gradlew", "--no-daemon", ":gradle-plugin:publishPlugins"], writes[3])
         self.assertEqual(4, len(writes))
