@@ -94,9 +94,16 @@ gradle.projectsEvaluated {
     def project = gradle.rootProject
     project.tasks.register('releaseEnumRuntime') {
         doLast {
-            def runtime = project.configurations.getByName('kotlinCompilerRuntime').files
+            def configuration = project.configurations.getByName('kotlinCompilerRuntime')
+            def compilers = configuration.allDependencies.findAll {
+                it.group == 'org.jetbrains.kotlin' && it.name == 'kotlin-compiler-embeddable'
+            }
+            if (compilers.size() != 1 || !compilers[0].version) {
+                throw new GradleException('packaged enum verification requires one configured Kotlin compiler version')
+            }
             new File(System.getenv('KARTOGRAPH_ENUM_RUNTIME_FILE')).text =
-                JsonOutput.toJson(runtime.collect { it.canonicalPath }.sort())
+                JsonOutput.toJson([kotlinVersion: compilers[0].version,
+                                   files: configuration.files.collect { it.canonicalPath }.sort()])
         }
     }
 }
@@ -118,17 +125,19 @@ if not __debug__:
     raise SystemExit("packaged enum verification requires Python assertions")
 sys.path.insert(0, str(Path.cwd() / "compiler-collectors/tests"))
 from enum_decisions import _content_hash, _snapshot_comparison
-from run import content_fingerprint, encoded, java_home, run, sha256
+from run import content_fingerprint, encoded, java_home, kotlin_artifact, run, sha256
 
 version = sys.argv[1]
 collector, zip_cli, tar_cli, runtime_file = (Path(value).resolve(strict=True) for value in sys.argv[2:6])
 reports = Path(sys.argv[6]).resolve()
-runtime = [Path(value).resolve(strict=True) for value in json.loads(runtime_file.read_text(encoding="utf-8"))]
+runtime_manifest = json.loads(runtime_file.read_text(encoding="utf-8"))
+kotlin_version = runtime_manifest["kotlinVersion"]
+runtime = [Path(value).resolve(strict=True) for value in runtime_manifest["files"]]
 if not runtime or any(not path.is_file() for path in (collector, zip_cli, tar_cli, *runtime)):
     raise SystemExit("packaged enum verification requires the extracted artifacts and compiler runtime")
-stdlib = next((path for path in runtime if path.name == "kotlin-stdlib-2.4.10.jar"), None)
-if stdlib is None:
-    raise SystemExit("packaged enum verification requires the configured Kotlin stdlib")
+classpath = os.pathsep.join(map(str, runtime))
+kotlin_artifact(classpath, "kotlin-compiler-embeddable", kotlin_version)
+stdlib = kotlin_artifact(classpath, "kotlin-stdlib", kotlin_version)
 home = java_home()
 collector_archive = Path(f"compiler-collectors/build/distributions/kartograph-compiler-collectors-{version}.zip")
 
@@ -148,14 +157,14 @@ for label, cli in (("zip", zip_cli), ("tar", tar_cli)):
     archive = Path(f"cli/build/distributions/kartograph-{version}.{label}")
     identities = artifact_hashes(cli, archive)
     result = {
-        "status": "failed", "version": version, "cliFormat": label,
+        "status": "failed", "version": version, "cliFormat": label, "kotlinVersion": kotlin_version,
         "languages": ["javac", "kotlin"], "artifacts": identities,
         "log": "../packaged-enum.log",
     }
     try:
         os.environ["KARTOGRAPH_SNAPSHOT_CLI"] = str(cli)
         _snapshot_comparison(home / "bin/javac", home / "bin/java", collector,
-                             os.pathsep.join(map(str, runtime)), stdlib, evidence,
+                             classpath, stdlib, evidence,
                              run, encoded, sha256, content_fingerprint)
         if artifact_hashes(cli, archive) != identities:
             raise AssertionError("packaged enum verification changed consumed artifacts")
