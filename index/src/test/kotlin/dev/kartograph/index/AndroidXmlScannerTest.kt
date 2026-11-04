@@ -79,6 +79,57 @@ class AndroidXmlScannerTest {
     }
 
     @Test
+    fun `reads class-valued attributes and resolves relative names only with a namespace`(@TempDir projectRoot: Path) {
+        val resourceRoot = projectRoot.resolve("app/src/main/res")
+        val layout = resourceRoot.resolve("layout/screen.xml")
+        layout.parent.createDirectories()
+        layout.writeText(
+            """
+                <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+                    xmlns:app="http://schemas.android.com/apk/res-auto">
+                  <androidx.core.widget.NestedScrollView app:layout_behavior="dev.fixture.ScrollBehavior" />
+                  <View app:layout_behavior=".RelativeBehavior" />
+                  <View app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+                  <fragment class="dev.fixture.ClassAttrFragment" />
+                  <androidx.fragment.app.FragmentContainerView class="dev.fixture.ContainerFragment" />
+                </androidx.coordinatorlayout.widget.CoordinatorLayout>
+            """.trimIndent(),
+        )
+        val menu = resourceRoot.resolve("menu/main.xml")
+        menu.parent.createDirectories()
+        menu.writeText(
+            """
+                <menu xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+                  <item app:actionViewClass="dev.fixture.SearchView" />
+                  <item android:actionProviderClass="dev.fixture.ShareProvider" />
+                </menu>
+            """.trimIndent(),
+        )
+        val preferences = resourceRoot.resolve("xml/settings.xml")
+        preferences.parent.createDirectories()
+        preferences.writeText(
+            """
+                <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+                  <Preference app:fragment="dev.fixture.AboutFragment" />
+                  <Preference android:fragment="dev.fixture.LegacyFragment" />
+                </PreferenceScreen>
+            """.trimIndent(),
+        )
+        val absolute = listOf(
+            // 점이 든 element 이름은 기존처럼 그대로 근거가 된다.
+            "androidx/coordinatorlayout/widget/CoordinatorLayout", "androidx/core/widget/NestedScrollView",
+            "dev/fixture/AboutFragment", "dev/fixture/LegacyFragment", "dev/fixture/ScrollBehavior", "dev/fixture/ClassAttrFragment",
+            "dev/fixture/ContainerFragment", "dev/fixture/SearchView", "dev/fixture/ShareProvider",
+        )
+        val withoutNamespace = AndroidXmlScanner(projectRoot).scan(resourceRoot)
+        assertEquals(absolute.sorted(), withoutNamespace.map { it.nodeId.value.removePrefix("class:") }.sorted())
+        val withNamespace = AndroidXmlScanner(projectRoot, null, "dev.fixture").scan(resourceRoot)
+        assertEquals((absolute + "dev/fixture/RelativeBehavior").sorted(), withNamespace.map { it.nodeId.value.removePrefix("class:") }.sorted())
+        val relative = withNamespace.single { it.nodeId.value == "class:dev/fixture/RelativeBehavior" }
+        assertEquals(4, assertNotNull(relative.location).line)
+    }
+
+    @Test
     fun `finds custom views and named fragments while ignoring comments`(@TempDir projectRoot: Path) {
         val resourceRoot = projectRoot.resolve("app/src/main/res")
         val layout = resourceRoot.resolve("layout/screen.xml")

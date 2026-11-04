@@ -6,12 +6,10 @@ import dev.kartograph.analysis.KeepRuleRetention
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.analysis.ReachabilityResult
 import dev.kartograph.core.CodeGraph
-import dev.kartograph.core.EdgeKind
 import dev.kartograph.core.Finding
 import dev.kartograph.core.InputHint
 import dev.kartograph.core.KeepRule
 import dev.kartograph.core.NodeId
-import dev.kartograph.core.NodeKind
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.RetentionReason
 import dev.kartograph.export.FindingConfidence
@@ -72,7 +70,7 @@ internal object RetentionPipeline {
         val manifestEvidence = AndroidManifestScanner(inputs.projectRoot).scan(inputs.manifest, inputs.namespace)
         val inputEvidence = buildList {
             addAll(manifestEvidence)
-            inputs.resourceRoots.distinct().sorted().forEach { addAll(AndroidXmlScanner(inputs.projectRoot).scan(it)) }
+            inputs.resourceRoots.distinct().sorted().forEach { addAll(AndroidXmlScanner(inputs.projectRoot, null, inputs.namespace).scan(it)) }
             addAll(inputs.externalRetentions)
         }
         val scanner = KeepRuleScanner(inputs.projectRoot, inputs.includePrivateMembers, inputs.lenientKeepRules)
@@ -123,56 +121,23 @@ internal object RetentionPipeline {
         inputs.testClassRoots.isNotEmpty() &&
             nodeId in testReachableNodeIds(graph, inputs.classRoots, inputs.testClassRoots)
 
-    /** 위치가 있는 finding을 같은 소스 파일의 측정된 runtime 채널 관측으로 등급화한다. */
-    fun confidenceOf(location: dev.kartograph.core.SourceLocation?, channelsBySource: Map<String, Int>): FindingConfidence {
-        val sourceFile = location?.path?.substringAfterLast('/') ?: return FindingConfidence.UNMEASURED
-        val channels = channelsBySource[sourceFile] ?: return FindingConfidence.UNMEASURED
-        return if (channels > 0) FindingConfidence.REVIEW else FindingConfidence.STATIC
-    }
+    /** [FindingConfidences.of]에 위임한다. CLI 명령과 Gradle plugin이 같은 규칙을 쓴다. */
+    fun confidenceOf(location: dev.kartograph.core.SourceLocation?, channelsBySource: Map<String, Int>): FindingConfidence =
+        dev.kartograph.export.FindingConfidences.of(location, channelsBySource)
 
-    /**
-     * 제공된 런타임 근거에서 소유 class가 관측되면 위치·runtime 채널과 무관하게 runtime-observed로 승격한다.
-     * finding 자체나 strict 판정은 바꾸지 않는다.
-     */
+    /** [FindingConfidences.of]에 위임한다. 런타임 관측 class면 runtime-observed로 승격한다. */
     fun confidenceOf(
         finding: Finding,
         graph: CodeGraph,
         channelsBySource: Map<String, Int>,
         observedClasses: Set<String>,
-    ): FindingConfidence {
-        if (ownerClassOf(finding.nodeId, graph) in observedClasses) return FindingConfidence.RUNTIME_OBSERVED
-        return confidenceOf(finding.location, channelsBySource)
-    }
-
-    // JVMS class 이름에는 '#'이 올 수 있으므로 문자열 분해 대신 type 여부와 MEMBER 간선으로 소유 class를 찾는다.
-    private fun ownerClassOf(nodeId: NodeId, graph: CodeGraph): String? {
-        val node = graph.node(nodeId) ?: return null
-        val ownerId = if (node.kind in TYPE_KINDS) {
-            node.id
-        } else {
-            graph.incomingEdgesTo(nodeId).firstOrNull { edge -> edge.kind == EdgeKind.MEMBER }?.source
-        }
-        return ownerId?.value?.removePrefix("class:")
-    }
-
-    private val TYPE_KINDS = setOf(
-        NodeKind.CLASS,
-        NodeKind.INTERFACE,
-        NodeKind.OBJECT,
-        NodeKind.ENUM,
-        NodeKind.ANNOTATION_CLASS,
-    )
+    ): FindingConfidence = dev.kartograph.export.FindingConfidences.of(finding, graph, channelsBySource, observedClasses)
 
     // test→production cross edge를 보존하려면 production과 test root를 함께 index해야 한다.
     // 따로 index하면 combined 조립 시 dangling 제거로 test→production 간선이 유실된다.
     private fun testReachableNodeIds(graph: CodeGraph, classRoots: List<Path>, testClassRoots: List<Path>): Set<NodeId> {
+        // production root를 먼저 index해야 production 노드가 test 전용 seed에서 빠진다. 판정 정책은 analysis가 소유한다.
         val combined = ClassFileIndexer(callbackFacts = false).index(classRoots + testClassRoots)
-        // seed는 combined에만 있고 production graph에는 없는 노드, 즉 test 전용 노드다.
-        // classRoots가 먼저 index되므로 production 노드는 항상 graph.nodes에 있어 seed에서 빠진다.
-        // 같은 FQN이 production·test 양쪽에 있으면 첫 root(production) 사실이 우선해 test 사본 간선이 가려질 수 있고,
-        // 같은 root를 --classes와 --test-classes 양쪽에 넘기면 seed가 비어 표시 없이 성공한다(문서화된 경계).
-        val testSideRoots = combined.nodeIds.filter { it !in graph.nodes }
-            .map { RetentionEvidence(it, RetentionReason.RUNTIME_ENTRY_POINT, null) }
-        return ReachabilityAnalyzer.analyze(combined, testSideRoots).reachableNodeIds
+        return dev.kartograph.analysis.TestOnlyReachability.reachableFromTestSide(graph, combined)
     }
 }

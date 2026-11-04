@@ -36,6 +36,8 @@ public class EnumDecisionCandidate internal constructor(
 }
 
 /** 원래 미귀속 이유 또는 현재 view에서 사라진 사실을 source 위치와 함께 표시한다. */
+// 공개 copy()는 기존 라이브러리 API다. Kotlin 2.5에서 경고가 오류가 되기 전에 지금 노출을 명시적으로 유지한다(KT-11914).
+@ExposedCopyVisibility
 public data class EnumDecisionUnresolvedSite internal constructor(
     val site: CompilerEnumDecisionSite,
     val reason: String,

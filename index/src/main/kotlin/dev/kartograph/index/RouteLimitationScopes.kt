@@ -9,10 +9,59 @@ import dev.kartograph.core.RouteLimitationScope
  *   오류로 거부하기 때문이다. 해석한 설정값으로 만든 원소가 정규 문법을 어기면 호출자는 그 스코프를 생략한다(문서 전체 효과).
  * - [applies]: 스코프가 호출·선언 하나에 적용되는지(두 경로 집합이 겹칠 수 있는지)를 isthmus와 같은 보수적 근사로 계산한다.
  *   생산자 테스트가 방출한 스코프의 효과를 확인하는 데 쓴다.
+ * - [dynamicScopeProblem]·[dynamicApplies]: dynamic 선언의 `dynamicScope`(GRAPH-EXCHANGE "dynamic 선언의 스코프") 규칙이다.
+ *   kartograph는 아직 `dynamicScope`를 내지 않지만, 낼 때 isthmus가 문서를 거부하지 않도록 같은 규칙을 공유 벡터로 고정한다.
  */
 public object RouteLimitationScopes {
     private val PATH_FIELDS = listOf("templates", "templatePrefixes", "templateSuffixes")
     private val ALLOWED_KEYS = setOf("limitationIndex") + PATH_FIELDS + "methods"
+    private val DYNAMIC_SCOPE_KEYS = PATH_FIELDS.toSet() + "methods"
+
+    /** `dynamicScope` 하나가 실을 수 있는 경로 원소 수의 상한이다(isthmus와 같다). */
+    public const val MAX_DYNAMIC_SCOPE_ELEMENTS: Int = 1_000
+
+    /**
+     * 사실 하나(계약 JSON 모양: `kind`·`method`·`pathAnchor`·`dynamic`·`dynamicScope`)의 `dynamicScope`를 검증한다.
+     * 스코프가 틀리면 소비자가 그 선언을 좁게 읽어 거짓 error가 되므로 isthmus는 문서 전체를 거부한다.
+     *
+     * @return 위반 사유 문구(입력 원문을 담지 않는다). 스코프가 없거나 통과하면 null이다
+     */
+    public fun dynamicScopeProblem(declaration: Map<String, Any?>): String? {
+        if ("dynamicScope" !in declaration) return null
+        val kind = declaration["kind"]
+        if (kind != "route-decl" && kind != "route-contract") return "dynamicScope is only valid on route-decl and route-contract facts"
+        if (declaration["dynamic"] != true) return "dynamicScope is only valid on a dynamic declaration"
+        val entry = (declaration["dynamicScope"] as? Map<*, *>) ?: return "dynamicScope must be a JSON object"
+        if (entry.keys.any { it !in DYNAMIC_SCOPE_KEYS }) return "dynamicScope accepts only templates, templatePrefixes, templateSuffixes and methods"
+        if (PATH_FIELDS.none { it in entry }) return "dynamicScope requires templates, templatePrefixes or templateSuffixes"
+        PATH_FIELDS.forEach { field -> pathFieldProblem(field, entry[field])?.let { return it } }
+        methodsProblem(entry["methods"])?.let { return it }
+        if ("methods" in entry && (kind != "route-decl" || declaration["method"] != "ANY")) {
+            return "dynamicScope methods are only valid on an ANY route-decl"
+        }
+        val prefixes = (entry["templatePrefixes"] as? List<*>).orEmpty()
+        if (declaration["pathAnchor"] == "base" && ("templates" in entry || prefixes.any { it != "/" })) {
+            return "a base-anchored dynamicScope may use only templateSuffixes and templatePrefixes [\"/\"]"
+        }
+        val elements = PATH_FIELDS.sumOf { (entry[it] as? List<*>)?.size ?: 0 }
+        return if (elements > MAX_DYNAMIC_SCOPE_ELEMENTS) "dynamicScope carries more than $MAX_DYNAMIC_SCOPE_ELEMENTS path templates" else null
+    }
+
+    /**
+     * dynamic 선언 하나가 호출 하나에 적용되는지다. 스코프가 없는 선언은 이전처럼 scope 전체의 공백이라 항상 적용된다.
+     * 스코프가 있으면 method 상한은 `ANY` 선언이면 스코프의 `methods`(없으면 모든 method), 그 밖에는 선언 자신의 method다.
+     *
+     * @param declarationMethod 선언의 method(`ANY` 가능)
+     * @param scope 선언의 `dynamicScope`. 없으면 null이다
+     * @param template 호출의 정규 템플릿
+     * @param method 호출 동사(동적이면 null)
+     * @param anchor 호출의 `root` 또는 `base`
+     */
+    public fun dynamicApplies(declarationMethod: String, scope: RouteLimitationScope?, template: String, method: String?, anchor: String): Boolean {
+        if (scope == null) return true
+        val bound = if (declarationMethod == "ANY") scope.methods else listOf(declarationMethod)
+        return applies(scope.copy(methods = bound), template, method, anchor, declaration = false)
+    }
 
     /** 타입이 있는 스코프를 계약 JSON 모양으로 바꿔 검증한다. 빈 목록은 생략한 필드로 본다. */
     public fun problem(scope: RouteLimitationScope): String? = problem(buildMap {

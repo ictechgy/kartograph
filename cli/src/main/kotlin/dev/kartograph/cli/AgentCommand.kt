@@ -257,7 +257,7 @@ internal object AgentCommand {
                         addAll(AndroidManifestScanner(project).scan(resolveProjectPath(project, manifest), namespace))
                     }
                     options.values("--resources").forEach { resources ->
-                        addAll(AndroidXmlScanner(project).scan(resolveProjectPath(project, resources)))
+                        addAll(AndroidXmlScanner(project, null, options.single("--namespace")).scan(resolveProjectPath(project, resources)))
                     }
                 }
                 val evidence = DefaultRetention.find(graph, inputEvidence, keepRules, hierarchy,

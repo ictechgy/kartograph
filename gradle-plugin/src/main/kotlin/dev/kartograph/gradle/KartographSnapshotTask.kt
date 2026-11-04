@@ -320,7 +320,7 @@ public abstract class KartographSnapshotTask : DefaultTask() {
                     addAll(AndroidManifestScanner(project, buildDirectory.get().asFile.toPath()).scan(manifest, namespace.get()))
                 }
                 androidResourceDirectories.files.filter { it.isDirectory }.forEach { directory ->
-                    addAll(AndroidXmlScanner(project, buildDirectory.get().asFile.toPath()).scan(directory.toPath()))
+                    addAll(AndroidXmlScanner(project, buildDirectory.get().asFile.toPath(), namespace.orNull).scan(directory.toPath()))
                 }
             }
             val retention = DefaultRetention.find(graph, entryPoints, rules, indexed.hierarchy,

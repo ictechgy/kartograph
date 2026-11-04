@@ -60,11 +60,30 @@ internal object KotlinMetadataEnricher {
             else -> emptyList()
         }
         enrichDefaultBridges(facts, functions, nodes)
+        markJvmOverloads(functions, nodes)
         return facts.copy(
             nodes = facts.nodes.map { node -> nodes.getValue(node.id) },
             edges = facts.edges + runtimeEdges,
         )
     }
+
+    /**
+     * `@JvmOverloads`가 만든 overload를 compiler 생성물로 표시한다. 원본과 생성 overload 모두 `kotlin/jvm/JvmOverloads`를
+     * class 파일에 남기지만 Kotlin metadata에는 원본 시그니처만 있다. 두 근거가 모두 있을 때만 표시하고 이름만으로 추측하지 않는다.
+     * 생성 overload는 원본으로 위임하므로 Java 호출자의 도달성은 그대로 이어진다.
+     */
+    private fun markJvmOverloads(functions: List<KmFunction>, nodes: MutableMap<NodeId, GraphNode>) {
+        val declared = functions.mapNotNullTo(mutableSetOf()) { function -> function.signature?.let { it.name + it.descriptor } }
+        if (declared.isEmpty()) return
+        nodes.replaceAll { _, node ->
+            val signature = node.jvmSignature?.substringAfter('#', missingDelimiterValue = "")
+            val generated = node.kind == NodeKind.METHOD && JVM_OVERLOADS in node.annotations && !signature.isNullOrEmpty() &&
+                signature !in declared && declared.any { it.substringBefore('(') == signature.substringBefore('(') }
+            if (generated) node.copy(synthesized = true) else node
+        }
+    }
+
+    private const val JVM_OVERLOADS = "kotlin/jvm/JvmOverloads"
 
     // 이름이나 int 꼬리만으로 추측하면 default expression이 호출한 overload를 원본으로 오인한다.
     // 같은 owner의 metadata JVM signature와 value parameter 수, 실제 CALL을 모두 요구한다.
