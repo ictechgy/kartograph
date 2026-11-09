@@ -22,6 +22,13 @@ SPEC.loader.exec_module(probe)
 
 
 class IndexCostTest(unittest.TestCase):
+    """baseline 이동 뒤에도 남는 엄격한 판정을 검사한다. #223 고정 delta는 꺼 두고 StructuralDeltaTest에서 따로 본다."""
+
+    def setUp(self):
+        patcher = mock.patch.object(probe, "STRUCTURAL_DELTA_BASELINE", "0" * 40)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_baseline_is_the_current_analyzer_after_the_framework_contract_change(self):
         # #207(78153c3)의 의도된 출력 변경(FRAMEWORK_ANNOTATION_OWNERS 한계, Martin A의 합성 타입 제외)을 포함한
         # 분석기로 옮겨 CLI 출력을 다시 바이트 동일 비교만으로 판정한다. 고정 delta는 더 이상 필요하지 않다.
@@ -664,13 +671,11 @@ class IndexCostTest(unittest.TestCase):
         self.assertFalse(readers[0].alive)
 
     def test_structural_count_change_is_rejected(self):
-        rows = [dict(profile=profile, nodes=1, locatedNodes=1, edges=2, externalCalls=3, classFiles=4,
-                     parsedClasses=4, cacheHits=0, cacheMisses=0)
-                for profile, _, _ in probe.schedule()]
-        probe.check_profile_counts(rows)
+        rows = profile_rows()
+        probe.check_profile_counts(rows, {})
         rows[1]["externalCalls"] += 1
         with self.assertRaisesRegex(probe.DiagnosticError, "profile-structural-counts-changed"):
-            probe.check_profile_counts(rows)
+            probe.check_profile_counts(rows, {})
 
     def test_summary_whitelists_and_bounds_log_fields(self):
         report = {"format": "kartograph-index-cost-v1", "status": "FAIL", "scope": "diagnostic",
@@ -829,6 +834,177 @@ class IndexCostTest(unittest.TestCase):
                 documents.append(facts)
             self.assertEqual(documents[0]["engine"], documents[1]["engine"])
             self.assertNotEqual(list(documents[0]["payloads"].values()), list(documents[1]["payloads"].values()))
+
+
+def profile_rows(**candidate_changes):
+    """세 profile·세 표본·두 arm의 구조 계수 행이다. candidate_changes는 후보 arm의 모든 표본에 적용한다."""
+    rows = []
+    for profile, sample, arm in probe.schedule():
+        row = dict(profile=profile, sample=sample, arm=arm, nodes=1, locatedNodes=1, edges=2, externalCalls=3,
+                   classFiles=4, parsedClasses=4, cacheHits=0, cacheMisses=0)
+        if arm == "candidate":
+            row.update(candidate_changes)
+        rows.append(row)
+    return rows
+
+
+def counts(**changes):
+    values = {**dict(nodes=1, locatedNodes=1, edges=2, externalCalls=3, classFiles=4, parsedClasses=4, cacheHits=0,
+                     cacheMisses=0), **changes}
+    return [values[key] for key in probe.PROFILE_COUNT_KEYS]
+
+
+def stream(data):
+    return {"bytes": len(data), "sha256": probe.digest(data)}
+
+
+class StructuralDeltaTest(unittest.TestCase):
+    """#223의 고정 delta: 두 arm의 정확한 관측값만 허용하고, 나머지 판정은 그대로 엄격하다."""
+
+    def test_delta_is_bound_to_the_current_baseline(self):
+        self.assertEqual(probe.BASELINE, probe.STRUCTURAL_DELTA_BASELINE)
+        self.assertTrue(probe.structural_delta_active())
+        with mock.patch.object(probe, "BASELINE", "1" * 40):
+            self.assertFalse(probe.structural_delta_active())
+        with mock.patch.object(probe, "SOURCE_BASELINE", "1" * 40):
+            self.assertFalse(probe.structural_delta_active())
+
+    def test_profile_delta_needs_exact_pins_for_both_arms(self):
+        rows = profile_rows(edges=5)
+        report = {}
+        probe.check_profile_counts(rows, report)
+        self.assertEqual({"baseline": counts(), "candidate": counts(edges=5)},
+                         report["contractDelta"]["unmatched"][0]["observed"])
+        self.assertEqual(3, len(report["contractDelta"]["unmatched"]))
+        self.assertFalse(report["contractDelta"]["unmatched"][0]["pinned"])
+        with self.assertRaisesRegex(probe.DiagnosticError, "structural-delta-unpinned"):
+            probe.raise_pending_structural_delta(report)
+        pins = {profile: {"baseline": counts(), "candidate": counts(edges=5)} for profile in probe.PROFILES}
+        with mock.patch.dict(probe.EXPECTED_PROFILE_COUNTS, pins):
+            report = {}
+            probe.check_profile_counts(rows, report)
+            probe.raise_pending_structural_delta(report)
+            self.assertEqual(3, len(report["contractDelta"]["accepted"]))
+            # 같은 후보라도 baseline 쪽 입력이 달라지면 고정값이 낡은 것이다.
+            report = {}
+            probe.check_profile_counts([{**row, "nodes": 9} if row["arm"] == "baseline" else row for row in rows], report)
+            with self.assertRaisesRegex(probe.DiagnosticError, "structural-delta-stale"):
+                probe.raise_pending_structural_delta(report)
+
+    def test_profile_delta_keeps_per_arm_consistency_and_the_inactive_rule(self):
+        rows = profile_rows(edges=5)
+        pins = {profile: {"baseline": counts(), "candidate": counts(edges=5)} for profile in probe.PROFILES}
+        with mock.patch.dict(probe.EXPECTED_PROFILE_COUNTS, pins):
+            rows[1]["edges"] += 1
+            with self.assertRaisesRegex(probe.DiagnosticError, "profile-structural-counts-changed"):
+                probe.check_profile_counts(rows, {})
+            with mock.patch.object(probe, "BASELINE", "1" * 40), self.assertRaisesRegex(
+                    probe.DiagnosticError, "profile-structural-counts-changed"):
+                probe.check_profile_counts(profile_rows(edges=5), {})
+        report = {}
+        probe.check_profile_counts(profile_rows(), report)
+        self.assertNotIn("contractDelta", report)
+
+    def run_cli(self, root, body, exit_code=lambda arm, name, sample: 0):
+        """dead만 arm별 본문이 다른 CLI 여섯 명령을 실행한 보고서를 돌려준다. 실패는 그대로 올린다."""
+        commands = {arm: probe.cli_commands(arm, [root / "classes"], root) for arm in probe.ARMS}
+        samples = {}
+        def execute(arguments, cwd, env, **kwargs):
+            arm = arguments[0]
+            name = "dead_private" if "--include-private-members" in arguments else arguments[1]
+            samples[(arm, name)] = samples.get((arm, name), 0) + 1
+            stdout = body(arm, name, samples[(arm, name)])
+            return {"phase": kwargs["phase"], "exit": exit_code(arm, name, samples[(arm, name)]), "stdout": stdout,
+                    "stderr": b"", "wallNanos": 1, "rss": {}}
+        report = {}
+        raw = root / ("raw-" + str(len(list(root.iterdir()))))
+        with mock.patch.object(probe, "run", side_effect=execute), mock.patch.object(probe, "host_load_snapshot", return_value={}):
+            probe.paired_cli(commands, root, {}, 10, report, probe.RawStreams(raw))
+        return report
+
+    @staticmethod
+    def dead_body(arm, name, sample):
+        return b"same\n" + (b"limitation\tSOURCE_RETENTION_ANNOTATIONS\tx\n" if arm == "candidate" and name == "dead" else b"")
+
+    def dead_pin(self, exit_code=0):
+        return {"dead": {arm: {"exit": exit_code, "stdout": stream(self.dead_body(arm, "dead", 1)), "stderr": stream(b"")}
+                         for arm in probe.ARMS}}
+
+    def test_cli_delta_is_deferred_until_pinned_and_then_accepted_exactly(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            report = self.run_cli(root, self.dead_body)
+            self.assertEqual(["dead"], [row["key"] for row in report["contractDelta"]["unmatched"]])
+            with self.assertRaisesRegex(probe.DiagnosticError, "structural-delta-unpinned"):
+                probe.raise_pending_structural_delta(report)
+            self.assertTrue(all(not row["contractAccepted"] for row in report["cli"] if row["command"] == "dead"))
+            with mock.patch.dict(probe.EXPECTED_CLI, self.dead_pin()):
+                report = self.run_cli(root, self.dead_body)
+                probe.raise_pending_structural_delta(report)
+                dead = [row for row in report["cli"] if row["command"] == "dead"]
+                self.assertTrue(all(row["contractAccepted"] and row["expectedContractDelta"]
+                                    and row["comparisonScope"] == "pinned-structural-delta" for row in dead))
+                self.assertIn("contractDelta", json.loads(probe.public_summary(
+                    {**report, "format": "f", "status": "PASS", "scope": "s", "residualScope": "r"})))
+                # 다른 명령은 고정값이 없으므로 다르면 계속 미룬 뒤 실패한다.
+                report = self.run_cli(root, lambda arm, name, sample: self.dead_body(arm, "dead", sample)
+                                      if name in ("dead", "metrics") else b"same\n")
+                with self.assertRaisesRegex(probe.DiagnosticError, "structural-delta-unpinned"):
+                    probe.raise_pending_structural_delta(report)
+
+    def test_cli_delta_still_requires_success_and_stable_samples(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with mock.patch.dict(probe.EXPECTED_CLI, self.dead_pin(exit_code=1)), self.assertRaisesRegex(
+                    probe.DiagnosticError, "cli-byte-mismatch-or-unsuccessful-exit"):
+                self.run_cli(root, self.dead_body, exit_code=lambda arm, name, sample: 1 if name == "dead" else 0)
+            unstable = lambda arm, name, sample: self.dead_body(arm, name, sample) + (
+                b"late\n" if arm == "candidate" and name == "dead" and sample == 3 else b"")
+            with mock.patch.dict(probe.EXPECTED_CLI, self.dead_pin()), self.assertRaisesRegex(
+                    probe.DiagnosticError, "cli-byte-mismatch-or-unsuccessful-exit"):
+                self.run_cli(root, unstable)
+            with mock.patch.dict(probe.EXPECTED_CLI, self.dead_pin()), mock.patch.object(
+                    probe, "BASELINE", "1" * 40), self.assertRaisesRegex(
+                    probe.DiagnosticError, "cli-byte-mismatch-or-unsuccessful-exit"):
+                self.run_cli(root, self.dead_body)
+
+    def test_semantic_delta_pins_graphs_and_payloads_and_keeps_engine_rules(self):
+        helper = IndexCostTest()
+        with tempfile.TemporaryDirectory() as temporary:
+            outputs = helper.semantic_outputs(Path(temporary) / "a", "a" * 64, "b" * 64, candidate_payload="f" * 64)
+            report = {}
+            probe.compare_semantic_outputs(outputs, report)
+            observed = report["contractDelta"]["unmatched"][0]["observed"]
+            self.assertEqual(probe.identity_digest({"c" * 64: "f" * 64}), observed["candidate"]["payloadsSha256"])
+            with self.assertRaisesRegex(probe.DiagnosticError, "structural-delta-unpinned"):
+                probe.raise_pending_structural_delta(report)
+            with mock.patch.dict(probe.EXPECTED_SEMANTIC, {"semantic": observed}):
+                report = {}
+                probe.compare_semantic_outputs(outputs, report)
+                probe.raise_pending_structural_delta(report)
+                self.assertEqual("pinned-structural-delta", report["semantic"]["comparisonScope"])
+                same = helper.semantic_outputs(Path(temporary) / "s", "a" * 64, "a" * 64, candidate_payload="f" * 64)
+                with self.assertRaisesRegex(probe.DiagnosticError, "semantic-engine-did-not-change"):
+                    probe.compare_semantic_outputs(same, {})
+                with mock.patch.object(probe, "BASELINE", "1" * 40), self.assertRaisesRegex(
+                        probe.DiagnosticError, "semantic-graph-or-raw-payload-mismatch"):
+                    probe.compare_semantic_outputs(outputs, {})
+
+    def test_main_fails_when_a_stage_deferred_an_unmatched_delta(self):
+        def experiment(repo, work, env, report, raw_directory=None):
+            probe.accept_pinned_delta("cli", "dead", {"baseline": 1, "candidate": 2}, report)
+        written = {}
+        def write_report(report, output):
+            written.update(report)
+            return 0 if report["status"] == "PASS" else 1
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = {"JAVA_HOME": temporary, "RUNNER_TEMP": temporary, "PATH": os.environ.get("PATH", "")}
+            with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(probe.sys, "platform", "linux"), \
+                    mock.patch.object(probe, "experiment", side_effect=experiment), \
+                    mock.patch.object(probe, "write_report", side_effect=write_report):
+                self.assertEqual(1, probe.main())
+        self.assertEqual(("FAIL", "structural-delta-unpinned"), (written["status"], written["reason"]))
+        self.assertEqual("dead", written["contractDelta"]["unmatched"][0]["key"])
 
 
 if __name__ == "__main__":

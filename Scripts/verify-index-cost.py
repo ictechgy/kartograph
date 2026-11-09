@@ -832,13 +832,69 @@ def validate_probe(result, profile):
     return data
 
 
-def check_profile_counts(records):
+ARMS = ("baseline", "candidate")
+PROFILE_COUNT_KEYS = ("nodes", "locatedNodes", "edges", "externalCalls", "classFiles", "parsedClasses", "cacheHits",
+                      "cacheMisses")
+
+# PR #223(라이브러리 재정의 callback 간선, SOURCE retention 어노테이션 표시, @JvmOverloads·@JvmStatic 분류)은 그래프
+# 구조와 dead 출력을 의도적으로 바꾼다. 고정 baseline 78153c3 대비 그 변경만 정확히 허용한다(f5f5418·33f8ce1의 고정
+# delta와 같은 방식). 입력은 이 브랜치 head의 production class라 결정적이므로 CI에서 관측한 arm별 값을 그대로 고정한다.
+# - 각 arm 안의 표본은 계속 모두 같아야 하고, CLI는 두 arm 모두 종료 코드 0이어야 하며, 엔진 지문 규칙은 그대로다.
+# - 두 arm이 같으면 고정값과 무관하게 기존 바이트 동일 판정으로 통과한다.
+# - 두 arm이 다르면 baseline·후보 값이 함께 고정값과 같을 때만 허용한다. 아니면 관측값을 `contractDelta`에 남기고
+#   단계 끝까지 관측을 모은 뒤 `structural-delta-unpinned`(고정값 없음) 또는 `structural-delta-stale`로 실패한다.
+#   class 입력이 바뀌어 낡았으면 그 실행 로그의 `contractDelta.unmatched[].observed`를 다시 고정하거나 BASELINE을 옮긴다.
+# BASELINE을 #223 병합 commit으로 옮기면 비활성화되며, 그때 이 상수·고정값·관련 테스트를 함께 지운다.
+STRUCTURAL_DELTA_BASELINE = "78153c338e20db7193be4a93ac5de90fc594e026"
+# profile -> arm -> PROFILE_COUNT_KEYS 순서의 정수 목록.
+EXPECTED_PROFILE_COUNTS = {}
+# CLI 명령 -> arm -> {"exit", "stdout": {"bytes", "sha256"}, "stderr": {"bytes", "sha256"}}.
+EXPECTED_CLI = {}
+# "semantic" -> arm -> {"graphs": graphs.json 내용, "payloadsSha256": raw payload 사전의 identity digest}.
+EXPECTED_SEMANTIC = {}
+STRUCTURAL_DELTA_PINS = {"profiles": EXPECTED_PROFILE_COUNTS, "cli": EXPECTED_CLI, "semantic": EXPECTED_SEMANTIC}
+
+
+def structural_delta_active():
+    return SOURCE_BASELINE == BASELINE == STRUCTURAL_DELTA_BASELINE
+
+
+def structural_delta_record(report):
+    return report.setdefault("contractDelta", {
+        "baseline": STRUCTURAL_DELTA_BASELINE, "scope": "pinned-per-arm-structural-delta; exact-values-only",
+        "accepted": [], "unmatched": []})
+
+
+def accept_pinned_delta(stage, key, observed, report):
+    """두 arm의 관측이 함께 고정값과 같을 때만 참이다. 다르면 관측을 남기고 거짓을 돌려준다(판정은 호출자가 미룬다)."""
+    expected = STRUCTURAL_DELTA_PINS[stage].get(key)
+    record = structural_delta_record(report)
+    if expected == observed:
+        record["accepted"].append({"stage": stage, "key": key})
+        return True
+    record["unmatched"].append({"stage": stage, "key": key, "pinned": expected is not None, "observed": observed})
+    return False
+
+
+def raise_pending_structural_delta(report):
+    """앞 단계가 미룬 고정 delta 불일치를 모든 관측이 끝난 뒤 실패로 닫는다."""
+    unmatched = report.get("contractDelta", {}).get("unmatched", [])
+    if unmatched:
+        unpinned = any(not row["pinned"] for row in unmatched)
+        raise DiagnosticError("structural-delta-unpinned" if unpinned else "structural-delta-stale")
+
+
+def check_profile_counts(records, report=None):
     for profile in PROFILES:
-        values = [tuple(row[key] for key in ("nodes", "locatedNodes", "edges", "externalCalls", "classFiles",
-                                            "parsedClasses", "cacheHits", "cacheMisses"))
-                  for row in records if row["profile"] == profile]
-        if len(values) != 6 or any(value != values[0] for value in values):
+        by_arm = {arm: [[row[key] for key in PROFILE_COUNT_KEYS] for row in records
+                        if row["profile"] == profile and row["arm"] == arm] for arm in ARMS}
+        if any(len(values) != 3 or any(value != values[0] for value in values) for values in by_arm.values()):
             raise DiagnosticError("profile-structural-counts-changed")
+        if by_arm["baseline"][0] == by_arm["candidate"][0]:
+            continue
+        if not structural_delta_active() or report is None:
+            raise DiagnosticError("profile-structural-counts-changed")
+        accept_pinned_delta("profiles", profile, {arm: by_arm[arm][0] for arm in ARMS}, report)
 
 
 def successful_pair(left, right):
@@ -925,6 +981,8 @@ def public_summary(report):
         result["cliTiming"] = report["cliTiming"]
     if "semantic" in report:
         result["semantic"] = report["semantic"]
+    if "contractDelta" in report:
+        result["contractDelta"] = report["contractDelta"]
     encoded = json.dumps(result, sort_keys=True)
     if len(encoded.encode("utf-8")) > 65536:
         raise DiagnosticError("public-summary-too-large")
@@ -1115,7 +1173,6 @@ class RawStreams:
 
 
 def paired_cli(commands, project, env, located_nodes, report, raw):
-    all_accepted = True
     report["cli"] = []
     report["cliLoad"] = []
     for index, sample, order in cli_schedule():
@@ -1133,7 +1190,6 @@ def paired_cli(commands, project, env, located_nodes, report, raw):
                                           "before": before, "after": after})
             left, right = results["baseline"], results["candidate"]
             accepted = successful_pair(left, right)
-            all_accepted = all_accepted and accepted
             report["cli"].append({"command": name, "sample": sample, "order": list(order),
                                   "exactEqual": equivalent(left, right),
                                   "expectedContractDelta": False, "contractAccepted": accepted,
@@ -1153,8 +1209,34 @@ def paired_cli(commands, project, env, located_nodes, report, raw):
     }
     for values in report["cliTiming"]["arms"].values():
         values["sumMedianSeconds"] = sum(values["medianSeconds"].values())
-    if not all_accepted:
+    pending = accept_pinned_cli_deltas(report)
+    if not all(row["contractAccepted"] or row["command"] in pending for row in report["cli"]):
         raise DiagnosticError("cli-byte-mismatch-or-unsuccessful-exit")
+
+
+def accept_pinned_cli_deltas(report):
+    """바이트가 다른 명령에 고정 delta를 적용하고, 판정을 미룬 명령 이름 집합을 돌려준다.
+
+    각 arm의 세 표본이 종료 코드·stdout·stderr 모두 같고 두 arm이 종료 코드 0일 때만 고정값과 비교한다.
+    그렇지 않으면 아무것도 허용하지 않아 기존 `cli-byte-mismatch-or-unsuccessful-exit`가 그대로 난다.
+    """
+    pending = set()
+    if not structural_delta_active():
+        return pending
+    for name in dict.fromkeys(row["command"] for row in report["cli"]):
+        rows = [row for row in report["cli"] if row["command"] == name]
+        if all(row["contractAccepted"] for row in rows):
+            continue
+        observed = {arm: [{key: row[arm][key] for key in ("exit", "stdout", "stderr")} for row in rows] for arm in ARMS}
+        if any(len(rows) != 3 or any(value != values[0] for value in values) or values[0]["exit"] != 0
+               for values in observed.values()):
+            continue
+        if accept_pinned_delta("cli", name, {arm: observed[arm][0] for arm in ARMS}, report):
+            for row in rows:
+                row.update(expectedContractDelta=True, contractAccepted=True, comparisonScope="pinned-structural-delta")
+        else:
+            pending.add(name)
+    return pending
 
 
 def cli_commands(binary, roots, project):
@@ -1232,7 +1314,11 @@ def compare_semantic_outputs(outputs, report, distribution_libraries=None):
                                           "cross-engine equivalence not exercised") if same_engine and jars_identical is True
                           else "recorded separately; implementation JAR identities change; each cache consumed by its own reader"}
     if not equal_graphs or payloads["baseline"] != payloads["candidate"]:
-        raise DiagnosticError("semantic-graph-or-raw-payload-mismatch")
+        observed = {arm: {"graphs": graphs[arm], "payloadsSha256": identity_digest(payloads[arm])} for arm in ARMS}
+        if not structural_delta_active():
+            raise DiagnosticError("semantic-graph-or-raw-payload-mismatch")
+        report["semantic"]["comparisonScope"] = "pinned-structural-delta"
+        accept_pinned_delta("semantic", "semantic", observed, report)
     if same_engine and jars_identical is not True:
         raise DiagnosticError("semantic-engine-did-not-change")
     if not same_engine and jars_identical is True:
@@ -1446,7 +1532,7 @@ def experiment(repo, work, env, report, raw_directory=None):
                                      profile, *roots], project, env, phase="index-probe")
                 data = validate_probe(result, profile)
                 report["profiles"].append({"arm": arm, "sample": sample, **data, "process": summary(result)})
-            check_profile_counts(report["profiles"])
+            check_profile_counts(report["profiles"], report)
             commands = {arm: cli_commands(dist / "bin/kartograph", roots, project)
                         for arm, dist in distributions.items()}
             located_nodes = next(row["locatedNodes"] for row in report["profiles"] if row["profile"] == "dead")
@@ -1483,6 +1569,8 @@ def main():
             raise DiagnosticError("injected-java-options")
         with tempfile.TemporaryDirectory(prefix="kartograph-index-cost-", dir=env["RUNNER_TEMP"]) as name:
             experiment(repo, Path(name), env, report, output.parent / "raw")
+        # 단계들이 관측을 모으려고 미룬 고정 delta 불일치는 PASS 직전에 반드시 실패로 닫는다.
+        raise_pending_structural_delta(report)
         report["status"] = "PASS"
     except DiagnosticError as error:
         report["reason"] = str(error)

@@ -43,6 +43,10 @@
 
 ### Changed
 
+- index-cost 진단이 고정 baseline 78153c3 대비 이번 변경의 의도된 구조 차이(profile 구조 계수, CLI 출력, semantic graph·raw
+  payload)를 arm별 정확한 고정값(`EXPECTED_PROFILE_COUNTS`·`EXPECTED_CLI`·`EXPECTED_SEMANTIC`)과 같을 때만 허용한다. 각 arm 안의
+  표본 일치, CLI 종료 코드 0, 엔진 지문 규칙은 그대로이고, 고정값이 없거나 낡으면 관측을 `contractDelta`로 남긴 뒤
+  `structural-delta-unpinned`·`structural-delta-stale`로 실패한다. BASELINE이 이 변경 뒤로 옮겨지면 꺼진다.
 - 0.26.0 CHANGELOG 절의 하위 제목을 Keep a Changelog 형식으로 정리했다(중복 `### Added` 병합, 제목 없던 항목을 `### Changed`로).
   README의 MCP 도구 목록에 `change_impact`를 더했다.
 - test 전용 도달 판정 정책을 analysis의 `TestOnlyReachability`로 옮겼다(cli는 입력 조립만, 동작 동일).
