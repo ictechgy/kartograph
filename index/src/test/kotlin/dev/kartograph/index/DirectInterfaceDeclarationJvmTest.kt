@@ -185,7 +185,7 @@ class DirectInterfaceDeclarationJvmTest {
         assertEquals(call(warm), after.copy(declaration = null))
         // v2의 외부 Switch는 metric을 직접 선언하므로 라이브러리가 부를 수 있는 재정의로 이어진다. 그 밖의 간선은 같다.
         val libraryOverride = GraphEdge(NodeId("class:p/Implementation"), NodeId("method:p/Implementation#metric()I"),
-            EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL)
+            EdgeKind.REFERENCE, origin = EdgeOrigin.LIBRARY_CALLBACK_MODEL)
         assertEquals(warm.graph.edges.toSet() + libraryOverride, replaced.graph.edges.toSet())
         assertEquals(after, call(warm.withHierarchy(replaced.hierarchy)))
         assertEquals(after, call(index()))
