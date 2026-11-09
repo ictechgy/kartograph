@@ -24,9 +24,9 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   어노테이션 class 자체(`@IntDef`류)는 쓰여도 도달 불가로 보이므로 `dead`가 사용 여부와 무관하게 보고하지 않는다. `dead`의 모든
   형식(CLI·Gradle plugin)은 `SOURCE_RETENTION_ANNOTATIONS` 한계로, query·snapshot은 `source-retention-annotations:`로 그 수를
   알린다. `dead --explain`은 그런 class에 `unreachable` 줄과 함께 `not-reported\t<id>\tSOURCE_RETENTION_ANNOTATIONS` 줄을 낸다. `@JvmOverloads`가 만든 overload는
-  원본·생성물 모두 `kotlin/jvm/JvmOverloads`를 남기고 Kotlin metadata에는 원본만 있으므로, 같은 owner의 metadata가 같은 이름·
-  반환 타입으로 더 긴 매개변수 목록을 선언하고 생성물의 매개변수가 그 순서를 지키는 부분 목록일 때만 `synthesized`로 표시한다.
-  같은 이름의 직접 작성 overload와, companion `@JvmStatic` 함수가 바깥 class에 남긴 정적 bridge는 그대로다.
+  원본·생성물 모두 `kotlin/jvm/JvmOverloads`를 남기고 Kotlin metadata에는 원본만 있으므로, 같은 owner metadata가 선언하고 class
+  파일에 `@JvmOverloads`를 남긴 원본에서 default 매개변수를 끝부터 하나씩 뺀 정확한 시그니처일 때만 `synthesized`로 표시한다.
+  같은 이름의 직접 작성 overload(더 긴 것 포함)와, companion `@JvmStatic` 함수가 바깥 class에 남긴 정적 bridge는 그대로다.
   `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
 
 - Kotlin Multiplatform 프로젝트에서 검증·문서화한 입력은 `jvm()` target의 class 출력이다. `commonMain` 코드의 영향은 JVM target에
@@ -65,7 +65,7 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   순회(impact·reach·language-traversal)의 근거 등급은 `candidate`이고 `--class-hops member-only`의 owner callback에도 들지 않는다. 대상은 header가 전달된 외부 상위 타입이 선언한
   재정의 가능(public/protected·비static·비final) 메서드와 `java/lang/Object`의 `equals`·`hashCode`·`toString`·`finalize`·`clone`을
   같은 JVM 이름·descriptor로 재정의한 메서드다. 기본(class-only)과 `--include-private-members` 모드에 같이 적용된다. 외부 상위
-  타입의 header가 없으면 잇지 않고 그런 project 타입 수를 `library-callback-headers:`로 센다(CLI는 `android.jar`·AndroidX 등
+  타입의 header가 없으면 잇지 않고 그런 project 타입 수를 query·snapshot 한계 `library-callback-headers:`로 센다(`dead` 출력에는 없다. CLI는 `android.jar`·AndroidX 등
   dependency를 `--classpath`로 전달한다). 라이브러리가 실제로 부른다는 증명이 아니며, 등록되지 않은 구현도 owner가 도달하면 남는다.
 - resource XML은 element 이름·`<view class>`·`fragment`/`FragmentContainerView`의 `android:name`·`class`와 class 이름을 값으로
   받는 속성(`layout_behavior`, menu `actionViewClass`·`actionProviderClass`, preference `fragment`, 각 `android:`·`app:` namespace)을

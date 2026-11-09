@@ -19,8 +19,8 @@ library callback stays reachable while its owner is. Because a library call is p
 proven, traversal (`impact`, `reach`, language-traversal) grades these edges `candidate`, not
 `bound`, and they are not owner callbacks for `--class-hops member-only`. An override that is also
 a listed framework callback keeps only the `runtimeModel` edge. Project types whose external
-supertypes have no supplied header are counted by the `library-callback-headers:` dead
-limitation instead of being connected.
+supertypes have no supplied header are counted by the `library-callback-headers:` limitation
+(listed by `query` and snapshots, not by `dead`) instead of being connected.
 
 The follow-up [DataBinding evidence report](DATA-BINDING-EVIDENCE.md) adds bounded
 same-element attribute/requireAll observations and unresolved adapter diagnostics.

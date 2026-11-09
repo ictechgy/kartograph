@@ -12,24 +12,27 @@
   callback, `java.lang.Object`의 `equals`·`hashCode`·`toString`·`finalize`·`clone`)를 소유 project 타입이 도달할 때만
   새 `libraryCallbackModel` origin 간선으로 잇는다(`EdgeOrigin.LIBRARY_CALLBACK_MODEL`, enum 끝에 추가해 기존 ordinal 유지).
   같은 쌍에 Android framework `runtimeModel` 간선이 있으면 그것을 우선한다. language-traversal은 이 간선을 `bound`/owner-callback이
-  아니라 `candidate` 계층으로 분류한다(라이브러리가 실제로 부르는지는 모델링하지 않으므로). 그 본문에서만 쓰는 class가 기본(class-only) 모드에서 보고되고 `--include-private-members`에서는
+  아니라 `candidate` 계층으로 분류한다(라이브러리가 실제로 부르는지는 모델링하지 않으므로). 계층 분류는 language-traversal에만
+  적용되며, 기본 `impact`(`kartograph-impact`)는 계층을 쓰지 않아 이 간선도 다른 간선처럼 따라간다(origin은 graph·snapshot·query
+  출력에서 보인다). 그 본문에서만 쓰는 class가 기본(class-only) 모드에서 보고되고 `--include-private-members`에서는
   사라지던 불일치를 고친다. header가 전달된 외부 상위 타입이 선언한 재정의 가능(public/protected·비static·비final) 메서드만
-  대상이며, header가 없는 외부 상위 타입을 가진 타입 수는 새 `library-callback-headers:` dead 한계로 센다. 쓰이지 않는 구현과
+  대상이며, header가 없는 외부 상위 타입을 가진 타입 수는 새 `library-callback-headers:` 한계로 센다(query·snapshot 한계 목록에 나오며 `dead` 출력에는 없다). 쓰이지 않는 구현과
   재정의가 아닌 overload는 계속 보고된다. 보존이 넓어지는 방향이라 일부 기존 class finding이 사라질 수 있다.
 - resource XML의 `app:layout_behavior`, `<fragment class>`·`FragmentContainerView class`, menu `actionViewClass`·
   `actionProviderClass`, preference `fragment`(각 `android:`·`app:` namespace)를 XML 보존 근거로 읽는다. CoordinatorLayout
   Behavior처럼 XML에서만 쓰는 class가 보고되던 문제다. `.Name` 상대 이름은 Android namespace(`--namespace`, Gradle variant
   namespace) 아래로 풀고, namespace가 없거나 `@string/…` 간접 참조·점 없는 이름은 추측하지 않는다. `AndroidXmlScanner`에
   선택적 `namespace` 생성자 인자를 더했다(기존 생성자 유지).
-- `@Retention(SOURCE)`(Java·Kotlin) 어노테이션 class를 `dead`가 보고하지 않고 새 `source-retention-annotations:` 한계로 센다.
+- `@Retention(SOURCE)`(Java·Kotlin) 어노테이션 class를 `dead`가 보고하지 않고, 그 수를 query·snapshot 한계 목록의 새 `source-retention-annotations:` 줄로 센다.
   `dead` text·JSON·Gradle 보고는 새 정적 한계 `SOURCE_RETENTION_ANNOTATIONS`를 함께 내고, `dead --explain`은 숨긴 노드에
   `not-reported\t<node>\tSOURCE_RETENTION_ANNOTATIONS` 줄을 더한다.
   `@IntDef`류는 사용처가 class 파일에 남지 않아 쓰여도 도달 불가로 보였다. 그래프는 새 node attribute
   `sourceRetentionAnnotation`으로 표시한다(기존 attribute ordinal과 cache 포맷은 그대로다).
 - `@JvmOverloads`가 만든 overload를 `synthesized`로 표시한다. Kotlin 호출은 `$default`를 거쳐 원본에 닿으므로 생성 overload가
   사용자가 쓰는 함수처럼 보고되던 문제다. 원본과 생성물 모두 `kotlin/jvm/JvmOverloads`를 남기고 metadata에는 원본만 있다는 두
-  근거가 함께 있을 때만 표시한다. 생성물은 같은 owner의 metadata 선언과 이름·반환 타입이 같고 매개변수가 그 선언의 순서 보존
-  진부분열이어야 하므로, 같은 이름의 직접 작성 overload, 쓰이지 않는 원본, `@JvmStatic` 바깥 class bridge는 그대로 남는다.
+  근거가 함께 있을 때만 표시한다. 같은 owner metadata가 선언하고 class 파일에 `@JvmOverloads`를 남긴 함수에서 default 매개변수를
+  끝에서부터 하나씩 뺀 정확한 시그니처만 생성물로 보므로, 같은 이름의 직접 작성 overload(더 긴 것 포함), 쓰이지 않는 원본,
+  `@JvmStatic` 바깥 class bridge는 그대로 남는다.
 - Gradle `kartographDead<Variant>` 보고의 finding confidence를 CLI `dead`와 같은 규칙(같은 소스 파일의 미해결 runtime
   채널 수로 `static`·`needs-runtime-review`, DataBinding 후보는 review)으로 매긴다. 전에는 binding 후보 외 finding이 등급 없이
   (markdown에서는 `unmeasured`) 나왔다. 규칙은 export의 `FindingConfidences`가 소유한다.

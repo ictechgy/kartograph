@@ -128,8 +128,8 @@ kartograph {
 }
 ```
 
-`excludeOrigins` accepts `bytecode`, `kotlinMetadata`, `dispatchModel`, `runtimeModel` and
-`compilerReference`, exactly as repeated CLI `--exclude-origin` values do. Each explicit exclusion
+`excludeOrigins` accepts `bytecode`, `kotlinMetadata`, `dispatchModel`, `runtimeModel`,
+`compilerReference` and `libraryCallbackModel`, exactly as repeated CLI `--exclude-origin` values do. Each explicit exclusion
 and each measured candidate-limit omission remains in the exported limitations. A dispatch group
 above the limit is omitted as a whole; the tool does not choose an arbitrary subset. JSON and NDJSON
 use the same graph selection and observed facts. The default output filename remains

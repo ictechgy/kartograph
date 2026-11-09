@@ -11,12 +11,15 @@
 - `[Unreleased]`는 PR #223(계열 9개 도구 보완, 브랜치 `ccr-37904670-hxdjsx`)이다. 머지 여부는 PR에서 확인한다.
   - 라이브러리가 부르는 재정의(`Runnable.run`·`Comparator.compare`·외부 abstract callback·`Object` 계약)를 도달한 owner에서
     새 origin `libraryCallbackModel`로 잇는다. language-traversal은 이 간선을 `candidate`로 분류한다(owner-callback 아님).
-    header 없는 외부 상위 타입 수는 `library-callback-headers:`로 센다.
+    header 없는 외부 상위 타입 수는 query·snapshot 한계 `library-callback-headers:`로 센다(`dead` 출력에는 없다). 기본 `impact`는
+    계층을 쓰지 않아 이 간선을 다른 간선처럼 따라간다.
   - resource XML의 class 이름 속성(`layout_behavior`·`<fragment class>`·menu action·preference `fragment`)과 namespace 기준
-    상대 이름(CoordinatorLayout·Navigation 범위만).
-  - SOURCE retention 어노테이션 class 보고 제외: count는 `source-retention-annotations:`, 정적 한계
+    상대 이름(`.Name`은 읽는 모든 속성에서 namespace 아래로 푼다. 런타임이 실제로 푸는 것은 CoordinatorLayout·Navigation뿐이라
+    다른 속성은 넓게 보존될 수 있다).
+  - SOURCE retention 어노테이션 class 보고 제외: count는 query·snapshot의 `source-retention-annotations:`, 정적 한계
     `SOURCE_RETENTION_ANNOTATIONS`는 dead text·JSON·plugin에 나오고, `--explain`은 숨긴 노드에 `not-reported` 줄을 더한다.
-  - `@JvmOverloads` 생성 overload의 `synthesized` 표시는 같은 owner 선언의 매개변수 순서 부분열만(`@JvmStatic` bridge 제외).
+  - `@JvmOverloads` 생성 overload의 `synthesized` 표시는 같은 owner의 `@JvmOverloads` 원본에서 default 매개변수를 끝부터 뺀
+    정확한 시그니처만(`@JvmStatic` bridge·직접 작성한 더 긴 같은 이름 함수 제외).
   - CLI와 Gradle plugin의 dead `confidence` 규칙 공유(`FindingConfidences`), test 전용 도달 정책을 analysis로 이동.
   - `dynamicScope` 생산자 규칙과 isthmus 벡터 재벤더링(`c76e105`, `sql-relations` 추가).
 - 리뷰: 이 환경에 GLM `packet-ask`가 없어 독립 Claude 리뷰로 대신했다(PR 본문 Verification에 명시). 지적 should-fix 3건과
