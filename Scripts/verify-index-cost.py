@@ -851,38 +851,39 @@ PROFILE_COUNT_KEYS = ("nodes", "locatedNodes", "edges", "externalCalls", "classF
 #   class 입력이 바뀌어 낡았으면 그 실행 로그의 `contractDelta.unmatched[].observed`를 다시 고정하거나 BASELINE을 옮긴다.
 # BASELINE을 #223 병합 commit으로 옮기면 비활성화되며, 그때 이 상수·고정값·관련 테스트를 함께 지운다.
 STRUCTURAL_DELTA_BASELINE = "78153c338e20db7193be4a93ac5de90fc594e026"
-# 아래 값은 88bdf9e CI(run 42626332813, test job)의 관측이다. 노드·외부 호출·class 수는 같고 간선만 늘며(graph·architecture
-# +1413, dead +1577), dead·dead_private stdout은 SOURCE_RETENTION_ANNOTATIONS 한계 한 줄(150바이트)만큼 길다.
+# 아래 값은 a6f0c04 CI(run 42648422732, test job)의 관측이다. 노드·외부 호출·class 수는 두 arm이 같고 간선만 늘며
+# (graph·architecture +1413, dead +1577), dead·dead_private stdout은 SOURCE_RETENTION_ANNOTATIONS 한계 한 줄(150바이트)만큼
+# 길다. 같은 입력의 graph NDJSON을 78153c3과 비교하면 사라진 간선은 없고 더해진 간선은 모두 libraryCallbackModel이다.
 # profile -> arm -> PROFILE_COUNT_KEYS 순서의 정수 목록.
 EXPECTED_PROFILE_COUNTS = {
-    "graph": {"baseline": [22239, 22239, 127956, 70701, 1557, 1557, 0, 0], "candidate": [22239, 22239, 129369, 70701, 1557, 1557, 0, 0]},
-    "dead": {"baseline": [22239, 22239, 551346, 70701, 1557, 1557, 0, 0], "candidate": [22239, 22239, 552923, 70701, 1557, 1557, 0, 0]},
-    "architecture": {"baseline": [22239, 22239, 104462, 70701, 1557, 1557, 0, 0], "candidate": [22239, 22239, 105875, 70701, 1557, 1557, 0, 0]},
+    "graph": {"baseline": [22250, 22250, 128015, 70746, 1558, 1558, 0, 0], "candidate": [22250, 22250, 129428, 70746, 1558, 1558, 0, 0]},
+    "dead": {"baseline": [22250, 22250, 551405, 70746, 1558, 1558, 0, 0], "candidate": [22250, 22250, 552982, 70746, 1558, 1558, 0, 0]},
+    "architecture": {"baseline": [22250, 22250, 104521, 70746, 1558, 1558, 0, 0], "candidate": [22250, 22250, 105934, 70746, 1558, 1558, 0, 0]},
 }
 # CLI 명령 -> arm -> {"exit", "stdout": {"bytes", "sha256"}, "stderr": {"bytes", "sha256"}}.
 EXPECTED_CLI = {
     "graph": {
         "baseline": {"exit": 0,
-                     "stdout": {"bytes": 34290939, "sha256": "ccec0adb2241cc6964a7fe4e0701d0e5fe8f9f00b7c83d0d8fbe3990cc7e20c1"},
+                     "stdout": {"bytes": 34306826, "sha256": "3bf11f4133b9c428f786fb300fb7bca831695f4e1e68dc981e05d71dcd697365"},
                      "stderr": {"bytes": 137, "sha256": "b525606c58fc4a6c97135198cc35a921abf61be3d7ae18496da4f2eec36f3d5b"}},
         "candidate": {"exit": 0,
-                     "stdout": {"bytes": 34561926, "sha256": "959ea990e5280c56a43a22c9b5ea40e1e065290c2e109717c9da22ad3b4bedfe"},
+                     "stdout": {"bytes": 34577813, "sha256": "b42070730e28e6b8be686403a17ad128ba91cd5b398cc2e9009a2bfa387490d7"},
                      "stderr": {"bytes": 137, "sha256": "b525606c58fc4a6c97135198cc35a921abf61be3d7ae18496da4f2eec36f3d5b"}},
     },
     "dead": {
         "baseline": {"exit": 0,
-                     "stdout": {"bytes": 1679, "sha256": "f7f783f5ee08d674c1cacfd3de0ac95aad4a8f434fc80990200e4f2edfc7e0aa"},
+                     "stdout": {"bytes": 1679, "sha256": "9dcb7d461d89384813173d89168d21f087e675e4787eb5ccb61a2662bc17e34c"},
                      "stderr": {"bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},
         "candidate": {"exit": 0,
-                     "stdout": {"bytes": 1829, "sha256": "be77eea46f0155c894e29778468774f074c4433f94698984f77b362174c97f43"},
+                     "stdout": {"bytes": 1829, "sha256": "1973de76d1f18675d47314664d2e80710469270fe72628fafd5327e4b5649d39"},
                      "stderr": {"bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},
     },
     "dead_private": {
         "baseline": {"exit": 0,
-                     "stdout": {"bytes": 1679, "sha256": "f7f783f5ee08d674c1cacfd3de0ac95aad4a8f434fc80990200e4f2edfc7e0aa"},
+                     "stdout": {"bytes": 1679, "sha256": "9dcb7d461d89384813173d89168d21f087e675e4787eb5ccb61a2662bc17e34c"},
                      "stderr": {"bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},
         "candidate": {"exit": 0,
-                     "stdout": {"bytes": 1829, "sha256": "be77eea46f0155c894e29778468774f074c4433f94698984f77b362174c97f43"},
+                     "stdout": {"bytes": 1829, "sha256": "1973de76d1f18675d47314664d2e80710469270fe72628fafd5327e4b5649d39"},
                      "stderr": {"bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},
     },
 }
@@ -890,12 +891,19 @@ EXPECTED_CLI = {
 # 다른 payload key 집합}. payload 값 자체는 class 파일 mtime을 담아 실행마다 달라지므로(87726f5 CI에서 두 arm 모두 바뀜)
 # 고정하지 않는다. 같은 실행의 두 arm은 mtime이 같으므로 "값이 다른 key 집합"은 결정적이며 그것을 정확히 고정한다.
 EXPECTED_SEMANTIC = {"semantic": {
-    "baseline": {"graphs": {"json": {"bytes": 283579005, "sha256": "fd5e931f4da92fe5384e788ba8030c1bfc0994e330a66b5d1aeb5c26dd6142d1"},
-                          "ndjson": {"bytes": 343174848, "sha256": "786fc8af6b0b193e090bb3e479a8a19dc717b95b91d47933e021d36b37e0285e"}},
-                 "payloadEntries": 1557},
-    "candidate": {"graphs": {"json": {"bytes": 283942818, "sha256": "767b4bd549bdd833ab75200ad903ec4d7d6455f50a1271c81ec70ca1f89685ee"},
-                          "ndjson": {"bytes": 343651588, "sha256": "add790da10905b5da8d1ee98d02d3baa8b6a301eb9f4e733126f521fb67002ce"}},
-                 "payloadEntries": 1557},
+    "baseline": {"graphs": {"json": {"bytes": 283630156, "sha256": "bca608a5523d27017c1a9337f801c444bcf1aad1b29f202fc0eac382ec407012"},
+                          "ndjson": {"bytes": 343234730, "sha256": "371406f82d6912ba4e31b080022fc7488b474dd9199a0e27da286ec0879c483e"}},
+                 "payloadEntries": 1558},
+    "candidate": {"graphs": {"json": {"bytes": 283993969, "sha256": "a72e586bf4ec2feb686d1132a17a4511a742df23c99973e26b7a2484ff527c81"},
+                          "ndjson": {"bytes": 343711470, "sha256": "73a04284567ee4e5447eb9a7b2edb5df9b4e1fa90980d9d8fa40e547b1ccfe13"}},
+                 "payloadEntries": 1558},
+    # 두 arm 사이에 값이 다른 payload: @JvmOverloads class 셋(index SourceDeclarationLocations, gradle CompilerWitnesses·
+    # KotlinCompilerWitnesses). key는 class 파일 sha256이다.
+    "differingPayloads": {"count": 3, "keys": [
+        "1ff3f4bdf67330d1de8376b99e7ffb39743b9e6388fe3eaf0259a8fe2d54b118",
+        "5eeba2862e14581e4bf232b7a93b86dc9f8e7afcd9b80320525cb4c2a3ebd469",
+        "caac516af4b66849bf7c2c12887c023cfbe95481ce96bb56d5b298655c8fd94e",
+    ], "sha256": "54d56bdbba2678f488f6a34cdfd711c9329ea36748384e9682be5c3056551c98"},
 }}
 STRUCTURAL_DELTA_PINS = {"profiles": EXPECTED_PROFILE_COUNTS, "cli": EXPECTED_CLI, "semantic": EXPECTED_SEMANTIC}
 

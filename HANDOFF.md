@@ -20,13 +20,17 @@
     `SOURCE_RETENTION_ANNOTATIONS`는 dead text·JSON·plugin에 나오고, `--explain`은 숨긴 노드에 `not-reported` 줄을 더한다.
   - `@JvmOverloads` 생성 overload의 `synthesized` 표시는 같은 owner의 `@JvmOverloads` 원본에서 default 매개변수를 끝부터 뺀
     정확한 시그니처만(`@JvmStatic` bridge·직접 작성한 더 긴 같은 이름 함수 제외).
+  - 인덱싱은 Android framework·라이브러리 callback 파생 간선을 dispatch 보강의 재구성에 함께 넣는다(출력 바이트 동일, 그래프
+    재구성 1회 절약). performance 게이트가 1.0524배로 넘던 원인이었고 수정 뒤 1.0219배다.
   - CLI와 Gradle plugin의 dead `confidence` 규칙 공유(`FindingConfidences`), test 전용 도달 정책을 analysis로 이동.
   - `dynamicScope` 생산자 규칙과 isthmus 벡터 재벤더링(`c76e105`, `sql-relations` 추가).
 - 리뷰: 이 환경에 GLM `packet-ask`가 없어 독립 Claude 리뷰로 대신했다(PR 본문 Verification에 명시). 지적 should-fix 3건과
   nit 5건을 반영했다.
 - **index-cost 진단의 임시 고정 delta**: #223은 고정 baseline 78153c3 대비 구조 계수·CLI 출력·semantic graph를 의도적으로
   바꾸므로 `Scripts/verify-index-cost.py`가 그 차이를 arm별 정확한 고정값(`EXPECTED_PROFILE_COUNTS`·`EXPECTED_CLI`·
-  `EXPECTED_SEMANTIC`)으로만 허용한다. 고정값은 #223 head의 production class에서 CI가 관측한 값이라, **머지 뒤 main의
+  `EXPECTED_SEMANTIC`)으로만 허용한다. raw payload 값은 class 파일 mtime 때문에 실행마다 바뀌므로, 같은 실행의 두 arm 사이에
+  값이 다른 payload key 집합(현재 `@JvmOverloads` class 셋)을 정확히 고정한다. 고정값은 a6f0c04 CI 관측이며, 같은 입력의
+  graph NDJSON을 78153c3과 비교해 사라진 간선이 없고 더해진 간선이 모두 `libraryCallbackModel`임을 확인했다. 고정값은 #223 head의 production class에서 CI가 관측한 값이라, **머지 뒤 main의
   production class가 바뀌는 첫 PR부터 `structural-delta-stale`로 실패한다.** 머지 직후 `SOURCE_BASELINE`·`BASELINE`을 #223
   병합 commit으로 옮기고 `STRUCTURAL_DELTA_BASELINE`·고정값·`StructuralDeltaTest`를 지운다(c10be0e와 같은 절차).
 

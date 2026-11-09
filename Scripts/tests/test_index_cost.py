@@ -889,6 +889,10 @@ class StructuralDeltaTest(unittest.TestCase):
         self.assertEqual({"semantic"}, set(pins["semantic"]))
         for arm in probe.ARMS:
             self.assertEqual({"graphs", "payloadEntries"}, set(pins["semantic"]["semantic"][arm]))
+        # 고정한 payload 차이 집합은 개수·key 목록·digest가 서로 맞아야 한다(집합 자체를 고정한다).
+        differing = pins["semantic"]["semantic"]["differingPayloads"]
+        self.assertEqual(differing["count"], len(differing["keys"]))
+        self.assertEqual(probe.identity_digest(sorted(differing["keys"])), differing["sha256"])
 
     def recorded_pins(self):
         """setUp이 비우기 전의 모듈 고정값을 소스에서 다시 읽는다."""
