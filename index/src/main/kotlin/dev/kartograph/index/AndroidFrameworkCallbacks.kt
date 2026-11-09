@@ -20,7 +20,14 @@ import dev.kartograph.core.HierarchyMethod
  * Android 명시 목록 외에도, 정확한 header가 있는 외부(라이브러리) 상위 타입 메서드의 재정의는 모두 소유 타입에서 잇는다.
  */
 internal object AndroidFrameworkCallbacks {
-    fun enrich(graph: CodeGraph, hierarchy: ClassHierarchy): AndroidFrameworkEnrichment {
+    /** 파생 간선과 call 재해석을 계산해 [graph]에 바로 적용한다. */
+    fun enrich(graph: CodeGraph, hierarchy: ClassHierarchy): AndroidFrameworkEnrichment = derive(graph, hierarchy).applyTo(graph)
+
+    /**
+     * 파생 간선과 call 재해석을 계산만 한다. 인덱싱 경로는 간선을 dispatch 보강과 한 번의 그래프 재구성으로 더해
+     * 큰 그래프를 두 번 다시 만들지 않는다([AndroidFrameworkDerived] 참고).
+     */
+    fun derive(graph: CodeGraph, hierarchy: ClassHierarchy): AndroidFrameworkDerived {
         val types = graph.nodes.values.filter { it.jvmSignature?.contains('#') == false && NodeAttribute.EXTERNAL_STUB !in it.attributes }
             .associateBy { requireNotNull(it.jvmSignature) }
         val methods by lazy(LazyThreadSafetyMode.NONE) {
@@ -77,9 +84,7 @@ internal object AndroidFrameworkCallbacks {
             call.copy(resolvedTargets = listOf(rootMapper.id, rootConstructor.id).sorted(),
                 resolution = CallResolution.RUNTIME_MODEL, model = "android-data-binding-mapper")
         }
-        if (derived.isEmpty()) return AndroidFrameworkEnrichment(graph)
-        return AndroidFrameworkEnrichment(graph.enrichedWith(derived, calls),
-            AndroidFrameworkDerivation(derived.groupingBy { it }.eachCount(), originalCalls))
+        return AndroidFrameworkDerived(derived, calls, originalCalls)
     }
 
     /**
@@ -179,6 +184,30 @@ internal object AndroidFrameworkCallbacks {
         "android/databinding/DataBinderMapper" to MAPPER_CALLBACKS,
         "androidx/databinding/DataBinderMapper" to MAPPER_CALLBACKS,
     )
+}
+
+/**
+ * 계산만 하고 아직 적용하지 않은 Android framework 파생 결과다.
+ *
+ * call 재해석([calls])은 dispatch가 읽으므로 [withCalls]로 먼저 반영하고, 간선([edges])은 간선을 읽지 않는 dispatch
+ * 보강의 재구성에 함께 넣는다. 두 단계를 나눠 적용해도 [applyTo]와 같은 그래프가 된다. 간선 origin이 dispatch가 교체하는
+ * `dispatchModel`과 다르고, 노드·call은 간선 추가로 바뀌지 않기 때문이다.
+ */
+internal class AndroidFrameworkDerived(
+    val edges: List<GraphEdge>,
+    private val calls: List<ExternalCall>,
+    private val originalCalls: List<ExternalCall>,
+) {
+    /** 적용 뒤 되돌릴 때 쓰는 가중치·원래 call 기록이다. */
+    val derivation: AndroidFrameworkDerivation =
+        if (edges.isEmpty()) AndroidFrameworkDerivation() else AndroidFrameworkDerivation(edges.groupingBy { it }.eachCount(), originalCalls)
+
+    /** 간선과 call 재해석을 함께 적용한다. */
+    fun applyTo(graph: CodeGraph): AndroidFrameworkEnrichment =
+        if (edges.isEmpty()) AndroidFrameworkEnrichment(graph) else AndroidFrameworkEnrichment(graph.enrichedWith(edges, calls), derivation)
+
+    /** call 재해석만 적용한다. 바뀐 call이 없으면 그래프를 그대로 돌려준다. */
+    fun withCalls(graph: CodeGraph): CodeGraph = if (originalCalls.isEmpty()) graph else graph.enrichedWith(emptyList(), calls)
 }
 
 internal data class AndroidFrameworkEnrichment(

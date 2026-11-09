@@ -251,15 +251,17 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         hierarchyNanos = System.nanoTime() - hierarchyStart
         val runtimeStart = System.nanoTime()
         val (runtimeModeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
-        val android = AndroidFrameworkCallbacks.enrich(runtimeModeled, hierarchy)
-        val modeled = android.graph
+        val android = AndroidFrameworkCallbacks.derive(runtimeModeled, hierarchy)
+        // 파생 간선은 dispatch 보강의 재구성에 함께 넣는다(dispatch는 간선을 읽지 않는다). call 재해석은 dispatch가 읽으므로 먼저 반영한다.
+        val modeled = android.withCalls(runtimeModeled)
         runtimeNanos = System.nanoTime() - runtimeStart
         val selectedRootByNode = classFacts.flatMap { facts -> facts.nodes.map { it.id to rootByClass.getValue(facts.internalName) } }.toMap()
         val dispatchStart = System.nanoTime()
         val dispatchResult = when {
-            exportOptions == null -> ExternalDispatchIndexer.enrichBounded(modeled, hierarchy, null, inheritedMembers.calls)
-            EdgeOrigin.DISPATCH_MODEL in exportOptions.excludedOrigins -> DispatchEnrichment(modeled, 0)
-            else -> ExternalDispatchIndexer.enrichBounded(modeled, hierarchy, exportOptions.maximumDispatchCandidates, inheritedMembers.calls)
+            exportOptions == null -> ExternalDispatchIndexer.enrichBounded(modeled, hierarchy, null, inheritedMembers.calls, android.edges)
+            EdgeOrigin.DISPATCH_MODEL in exportOptions.excludedOrigins -> DispatchEnrichment(android.applyTo(modeled).graph, 0)
+            else -> ExternalDispatchIndexer.enrichBounded(modeled, hierarchy, exportOptions.maximumDispatchCandidates,
+                inheritedMembers.calls, android.edges)
         }
         if (dispatchResult.overLimitCalls > 0) exportLimitations +=
             "dispatch-candidates-over-limit: ${dispatchResult.overLimitCalls} call site(s) exceeded " +

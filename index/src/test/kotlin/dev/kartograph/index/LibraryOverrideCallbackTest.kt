@@ -23,6 +23,25 @@ import org.junit.jupiter.api.io.TempDir
  * 계속 보고된다.
  */
 class LibraryOverrideCallbackTest {
+    @Test fun `indexing defers library callback edges into the dispatch rebuild without changing the graph`(@TempDir root: Path) {
+        val dependency = compile(root, "dependency", mapOf(
+            "lib/Callback" to "public abstract class Callback { public abstract void onEvent(); }",
+        ))
+        val classes = compile(root, "app", mapOf(
+            "fixture/Listener" to "public class Listener extends lib.Callback { public void onEvent() { new Handled(); } " +
+                "public String toString() { return \"listener\"; } }",
+            "fixture/Job" to "public class Job implements Runnable { public void run() { lib.Callback c = new Listener(); c.onEvent(); } }",
+            "fixture/Handled" to "public class Handled {}",
+        ), dependency)
+        // 인덱싱 경로는 라이브러리 callback 간선을 dispatch 재구성에 함께 넣고, withHierarchy 경로는 먼저 적용한 뒤 dispatch를 돈다.
+        val deferred = ClassFileIndexer().indexWithObservations(listOf(classes), listOf(dependency))
+        val applied = ClassFileIndexer().indexWithObservations(listOf(classes), emptyList()).withHierarchy(deferred.hierarchy)
+        assertTrue(deferred.graph.edges.any { it.origin == EdgeOrigin.LIBRARY_CALLBACK_MODEL })
+        assertTrue(deferred.graph.edges.any { it.origin == EdgeOrigin.DISPATCH_MODEL })
+        assertEquals(applied.graph.edges, deferred.graph.edges)
+        assertEquals(applied.graph.externalCalls, deferred.graph.externalCalls)
+    }
+
     @Test fun `overrides of library methods are reached only through reached owners in both modes`(@TempDir root: Path) {
         val dependency = compile(root, "dependency", mapOf(
             "lib/Callback" to "public abstract class Callback { public abstract void onEvent(); protected void onDone(String value) {} " +

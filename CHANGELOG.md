@@ -46,6 +46,9 @@
 
 ### Changed
 
+- 인덱싱이 Android framework·라이브러리 callback 파생 간선을 따로 적용하지 않고 dispatch 보강의 그래프 재구성에 함께 넣는다.
+  수십만 간선 그래프를 한 번 덜 다시 만들어, 라이브러리 callback 간선 추가로 생긴 runtime 단계 비용(자기 분석 기준 약 100ms)을
+  되돌린다. 전체 graph JSON·NDJSON 출력은 바이트 동일하다(`withHierarchy` 경로는 기존대로 먼저 적용한다).
 - index-cost 진단이 고정 baseline 78153c3 대비 이번 변경의 의도된 구조 차이(profile 구조 계수, CLI 출력, semantic 전체 graph
   바이트와 raw payload 항목 수)를 arm별 정확한 고정값(`EXPECTED_PROFILE_COUNTS`·`EXPECTED_CLI`·`EXPECTED_SEMANTIC`)과 같을 때만
   허용한다. raw payload 값은 class 파일 mtime을 담아 실행마다 달라지므로 고정하지 않고 두 arm의 payload key(class 내용) 집합
