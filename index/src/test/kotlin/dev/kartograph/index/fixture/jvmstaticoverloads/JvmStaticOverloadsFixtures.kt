@@ -11,6 +11,12 @@ class JvmStaticOverloads {
     /** 다른 이름, 같은 반환 타입, 더 긴 매개변수 목록이다. 이름 조건이 없으면 bridge `h(I)I`의 거짓 근거가 된다. */
     fun other(left: Int, right: Int): Int = left + right
 
+    /**
+     * 같은 이름·반환 타입에 매개변수가 더 많은 직접 작성 함수(`@JvmOverloads` 없음)다. bridge `h(II)I`·`h(I)I`는 이 함수의
+     * 순서 보존 부분열이지만 이 함수가 만든 overload가 아니다.
+     */
+    fun h(first: Int, second: Int, third: Int): Int = first + second + third
+
     /** companion의 원본과 생성 overload다. */
     companion object {
         /** 원본 `h(II)I`와 생성 overload `h(I)I`가 companion과 바깥 class(정적 bridge) 양쪽에 생긴다. */

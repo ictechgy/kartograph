@@ -69,6 +69,8 @@ class CompilerErasedUseTest {
         assertTrue(!synthesized(owner, "h", "(II)I"), "static bridge of the original")
         assertTrue(!synthesized(owner, "h", "(I)I"), "static bridge of the generated overload")
         assertTrue(!synthesized(owner, "h", "(Ljava/lang/String;)I"), "authored same-name function")
+        // 바깥 class가 직접 선언한 h(III)I는 @JvmOverloads가 없으므로 bridge h(II)I·h(I)I의 원본 근거가 아니다.
+        assertTrue(!synthesized(owner, "h", "(III)I"), "authored longer same-name function")
     }
 
     private fun reportedTypes(graph: CodeGraph, roots: List<RetentionEvidence>): List<String> =
