@@ -887,6 +887,8 @@ class StructuralDeltaTest(unittest.TestCase):
             self.assertEqual([0, 0], [arms[arm]["exit"] for arm in probe.ARMS])
             self.assertEqual(arms["baseline"]["stderr"], arms["candidate"]["stderr"])
         self.assertEqual({"semantic"}, set(pins["semantic"]))
+        for arm in probe.ARMS:
+            self.assertEqual({"graphs", "payloadEntries"}, set(pins["semantic"]["semantic"][arm]))
 
     def recorded_pins(self):
         """setUp이 비우기 전의 모듈 고정값을 소스에서 다시 읽는다."""
@@ -1008,7 +1010,8 @@ class StructuralDeltaTest(unittest.TestCase):
             report = {}
             probe.compare_semantic_outputs(outputs, report)
             observed = report["contractDelta"]["unmatched"][0]["observed"]
-            self.assertEqual(probe.identity_digest({"c" * 64: "f" * 64}), observed["candidate"]["payloadsSha256"])
+            self.assertEqual({"graphs", "payloadEntries"}, set(observed["candidate"]))
+            self.assertEqual(1, observed["candidate"]["payloadEntries"])
             with self.assertRaisesRegex(probe.DiagnosticError, "structural-delta-unpinned"):
                 probe.raise_pending_structural_delta(report)
             with mock.patch.dict(probe.EXPECTED_SEMANTIC, {"semantic": observed}):
@@ -1021,6 +1024,12 @@ class StructuralDeltaTest(unittest.TestCase):
                     probe.compare_semantic_outputs(same, {})
                 with mock.patch.object(probe, "BASELINE", "1" * 40), self.assertRaisesRegex(
                         probe.DiagnosticError, "semantic-graph-or-raw-payload-mismatch"):
+                    probe.compare_semantic_outputs(outputs, {})
+                # payload 값은 mtime 때문에 고정하지 않지만, 두 arm이 다른 class 내용 집합을 덮으면 고정값과 무관하게 실패한다.
+                candidate = outputs["candidate"] / "raw-facts.json"
+                document = json.loads(candidate.read_text())
+                candidate.write_text(json.dumps({**document, "payloads": {"9" * 64: "f" * 64}}))
+                with self.assertRaisesRegex(probe.DiagnosticError, "semantic-graph-or-raw-payload-mismatch"):
                     probe.compare_semantic_outputs(outputs, {})
 
     def test_main_fails_when_a_stage_deferred_an_unmatched_delta(self):

@@ -881,14 +881,15 @@ EXPECTED_CLI = {
                      "stderr": {"bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},
     },
 }
-# "semantic" -> arm -> {"graphs": graphs.json 내용, "payloadsSha256": raw payload 사전의 identity digest}.
+# "semantic" -> arm -> {"graphs": graphs.json 내용, "payloadEntries": raw payload 항목 수}. payload 값은 class 파일 mtime을
+# 담아 실행마다 달라지므로(87726f5 CI에서 두 arm 모두 바뀜) 고정하지 않고, 두 arm의 payload key 집합 일치를 요구한다.
 EXPECTED_SEMANTIC = {"semantic": {
     "baseline": {"graphs": {"json": {"bytes": 283579005, "sha256": "fd5e931f4da92fe5384e788ba8030c1bfc0994e330a66b5d1aeb5c26dd6142d1"},
                           "ndjson": {"bytes": 343174848, "sha256": "786fc8af6b0b193e090bb3e479a8a19dc717b95b91d47933e021d36b37e0285e"}},
-                 "payloadsSha256": "865fc35402f4f6306b6cbd280202348355e08d1c39f81679c133889e020222d4"},
+                 "payloadEntries": 1557},
     "candidate": {"graphs": {"json": {"bytes": 283942818, "sha256": "767b4bd549bdd833ab75200ad903ec4d7d6455f50a1271c81ec70ca1f89685ee"},
                           "ndjson": {"bytes": 343651588, "sha256": "add790da10905b5da8d1ee98d02d3baa8b6a301eb9f4e733126f521fb67002ce"}},
-                 "payloadsSha256": "a9189bec1e9d38ac694f1dd52dc67044ea9f7823e963563783df2c1cdc574641"},
+                 "payloadEntries": 1557},
 }}
 STRUCTURAL_DELTA_PINS = {"profiles": EXPECTED_PROFILE_COUNTS, "cli": EXPECTED_CLI, "semantic": EXPECTED_SEMANTIC}
 
@@ -1352,8 +1353,10 @@ def compare_semantic_outputs(outputs, report, distribution_libraries=None):
                                           "cross-engine equivalence not exercised") if same_engine and jars_identical is True
                           else "recorded separately; implementation JAR identities change; each cache consumed by its own reader"}
     if not equal_graphs or payloads["baseline"] != payloads["candidate"]:
-        observed = {arm: {"graphs": graphs[arm], "payloadsSha256": identity_digest(payloads[arm])} for arm in ARMS}
-        if not structural_delta_active():
+        # cache payload는 class 파일 mtime을 담아 CI 빌드마다 바뀌므로 값은 고정하지 않는다. 대신 두 arm이 같은 class
+        # 내용 집합(payload key)을 덮어야 하고, 전체 graph 바이트와 항목 수를 arm별로 고정한다.
+        observed = {arm: {"graphs": graphs[arm], "payloadEntries": len(payloads[arm])} for arm in ARMS}
+        if not structural_delta_active() or set(payloads["baseline"]) != set(payloads["candidate"]):
             raise DiagnosticError("semantic-graph-or-raw-payload-mismatch")
         report["semantic"]["comparisonScope"] = "pinned-structural-delta"
         accept_pinned_delta("semantic", "semantic", observed, report)
