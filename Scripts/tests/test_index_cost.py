@@ -1032,6 +1032,51 @@ class StructuralDeltaTest(unittest.TestCase):
                 with self.assertRaisesRegex(probe.DiagnosticError, "semantic-graph-or-raw-payload-mismatch"):
                     probe.compare_semantic_outputs(outputs, {})
 
+    @staticmethod
+    def write_semantic(root, payloads):
+        """arm별 payload 사전으로 graph가 같은 semantic 출력 두 벌을 만든다(엔진 지문은 서로 다르다)."""
+        outputs = {arm: root / arm for arm in probe.ARMS}
+        graphs = {name: {"bytes": 100, "sha256": "e" * 64} for name in ("json", "ndjson")}
+        for arm, directory in outputs.items():
+            directory.mkdir(parents=True)
+            facts = {"format": "class-facts-v10-payload-sha256", "engine": ("a" if arm == "baseline" else "b") * 64,
+                     "payloads": payloads[arm]}
+            (directory / "raw-facts.json").write_text(json.dumps(facts))
+            (directory / "graphs.json").write_text(json.dumps(graphs))
+        return outputs
+
+    def test_semantic_delta_pins_the_exact_set_of_payloads_that_differ_between_arms(self):
+        keys = [format(index, "064x") for index in range(1, 4)]
+        changed = {"baseline": {key: "1" * 64 for key in keys},
+                   "candidate": {keys[0]: "2" * 64, keys[1]: "1" * 64, keys[2]: "1" * 64}}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            report = {}
+            probe.compare_semantic_outputs(self.write_semantic(root / "observe", changed), report)
+            observed = report["contractDelta"]["unmatched"][0]["observed"]
+            self.assertEqual({"count": 1, "sha256": probe.identity_digest([keys[0]]), "keys": [keys[0]]},
+                             observed["differingPayloads"])
+            with mock.patch.dict(probe.EXPECTED_SEMANTIC, {"semantic": observed}):
+                # 같은 실행 안의 두 arm은 mtime이 같으므로, 값이 실행마다 바뀌어도 서로 다른 key 집합은 그대로다.
+                rerun = {arm: {key: value.replace("1", "7").replace("2", "8") for key, value in rows.items()}
+                         for arm, rows in changed.items()}
+                report = {}
+                probe.compare_semantic_outputs(self.write_semantic(root / "rerun", rerun), report)
+                probe.raise_pending_structural_delta(report)
+                # 고정 집합 밖의 payload 하나가 더 다르면 graph가 같아도 실패한다.
+                extra = {"baseline": changed["baseline"], "candidate": {**changed["candidate"], keys[2]: "3" * 64}}
+                report = {}
+                probe.compare_semantic_outputs(self.write_semantic(root / "extra", extra), report)
+                with self.assertRaisesRegex(probe.DiagnosticError, "structural-delta-stale"):
+                    probe.raise_pending_structural_delta(report)
+                # 차이 수가 같아도 다른 class가 다르면(고정 key는 같아지고 다른 key가 달라지면) 낡은 고정값이다.
+                moved = {"baseline": changed["baseline"],
+                         "candidate": {keys[0]: "1" * 64, keys[1]: "2" * 64, keys[2]: "1" * 64}}
+                report = {}
+                probe.compare_semantic_outputs(self.write_semantic(root / "moved", moved), report)
+                with self.assertRaisesRegex(probe.DiagnosticError, "structural-delta-stale"):
+                    probe.raise_pending_structural_delta(report)
+
     def test_main_fails_when_a_stage_deferred_an_unmatched_delta(self):
         def experiment(repo, work, env, report, raw_directory=None):
             probe.accept_pinned_delta("cli", "dead", {"baseline": 1, "candidate": 2}, report)

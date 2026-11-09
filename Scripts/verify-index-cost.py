@@ -837,8 +837,13 @@ PROFILE_COUNT_KEYS = ("nodes", "locatedNodes", "edges", "externalCalls", "classF
                       "cacheMisses")
 
 # PR #223(라이브러리 재정의 callback 간선, SOURCE retention 어노테이션 표시, @JvmOverloads·@JvmStatic 분류)은 그래프
-# 구조와 dead 출력을 의도적으로 바꾼다. 고정 baseline 78153c3 대비 그 변경만 정확히 허용한다(f5f5418·33f8ce1의 고정
-# delta와 같은 방식). 입력은 이 브랜치 head의 production class라 결정적이므로 CI에서 관측한 arm별 값을 그대로 고정한다.
+# 구조와 dead 출력을 의도적으로 바꾼다. 고정 baseline 78153c3 대비 그 변경만 정확히 허용한다. 입력은 이 브랜치 head의
+# production class라 결정적이므로 CI에서 관측한 arm별 값을 그대로 고정한다.
+# f5f5418·33f8ce1의 고정 delta는 CLI 출력만 고정값으로 허용하고 profile 계수·semantic graph·raw payload는 그대로 바이트
+# 동일을 요구했다. 이번 변경은 엔진(index)이 만드는 구조 자체를 바꾸므로 그 셋에도 고정값을 둔다는 점이 다르다. 특히
+# raw payload는 값이 실행마다 바뀌어(class 파일 mtime) arm별 값을 고정할 수 없으므로, 같은 실행의 두 arm 사이에 값이
+# 다른 key 집합을 정확히 고정한다. 그 집합 밖의 payload가 하나라도 달라지면 graph export에 드러나지 않는 사실 변화라도
+# 실패한다.
 # - 각 arm 안의 표본은 계속 모두 같아야 하고, CLI는 두 arm 모두 종료 코드 0이어야 하며, 엔진 지문 규칙은 그대로다.
 # - 두 arm이 같으면 고정값과 무관하게 기존 바이트 동일 판정으로 통과한다.
 # - 두 arm이 다르면 baseline·후보 값이 함께 고정값과 같을 때만 허용한다. 아니면 관측값을 `contractDelta`에 남기고
@@ -881,8 +886,9 @@ EXPECTED_CLI = {
                      "stderr": {"bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},
     },
 }
-# "semantic" -> arm -> {"graphs": graphs.json 내용, "payloadEntries": raw payload 항목 수}. payload 값은 class 파일 mtime을
-# 담아 실행마다 달라지므로(87726f5 CI에서 두 arm 모두 바뀜) 고정하지 않고, 두 arm의 payload key 집합 일치를 요구한다.
+# "semantic" -> {arm -> {"graphs": graphs.json 내용, "payloadEntries": 항목 수}, "differingPayloads": 두 arm 사이에 값이
+# 다른 payload key 집합}. payload 값 자체는 class 파일 mtime을 담아 실행마다 달라지므로(87726f5 CI에서 두 arm 모두 바뀜)
+# 고정하지 않는다. 같은 실행의 두 arm은 mtime이 같으므로 "값이 다른 key 집합"은 결정적이며 그것을 정확히 고정한다.
 EXPECTED_SEMANTIC = {"semantic": {
     "baseline": {"graphs": {"json": {"bytes": 283579005, "sha256": "fd5e931f4da92fe5384e788ba8030c1bfc0994e330a66b5d1aeb5c26dd6142d1"},
                           "ndjson": {"bytes": 343174848, "sha256": "786fc8af6b0b193e090bb3e479a8a19dc717b95b91d47933e021d36b37e0285e"}},
@@ -1353,17 +1359,33 @@ def compare_semantic_outputs(outputs, report, distribution_libraries=None):
                                           "cross-engine equivalence not exercised") if same_engine and jars_identical is True
                           else "recorded separately; implementation JAR identities change; each cache consumed by its own reader"}
     if not equal_graphs or payloads["baseline"] != payloads["candidate"]:
-        # cache payload는 class 파일 mtime을 담아 CI 빌드마다 바뀌므로 값은 고정하지 않는다. 대신 두 arm이 같은 class
-        # 내용 집합(payload key)을 덮어야 하고, 전체 graph 바이트와 항목 수를 arm별로 고정한다.
-        observed = {arm: {"graphs": graphs[arm], "payloadEntries": len(payloads[arm])} for arm in ARMS}
         if not structural_delta_active() or set(payloads["baseline"]) != set(payloads["candidate"]):
             raise DiagnosticError("semantic-graph-or-raw-payload-mismatch")
+        observed = {**{arm: {"graphs": graphs[arm], "payloadEntries": len(payloads[arm])} for arm in ARMS},
+                    "differingPayloads": differing_payloads(payloads)}
         report["semantic"]["comparisonScope"] = "pinned-structural-delta"
         accept_pinned_delta("semantic", "semantic", observed, report)
     if same_engine and jars_identical is not True:
         raise DiagnosticError("semantic-engine-did-not-change")
     if not same_engine and jars_identical is True:
         raise DiagnosticError("semantic-engine-fingerprint-unstable")
+
+
+DIFFERING_PAYLOAD_KEYS_LIMIT = 64
+
+
+def differing_payloads(payloads):
+    """두 arm에서 값이 다른 payload key(class 내용 해시) 집합을 실행과 무관하게 비교할 형태로 만든다.
+
+    payload 값은 class 파일 mtime을 담아 실행마다 바뀌지만, 같은 실행의 두 arm은 같은 frozen 복사본을 읽어 mtime이
+    같다. 그래서 "어느 class의 payload가 엔진 사이에 달라졌는가"는 실행과 무관하게 결정적이다. 집합 자체를 digest로
+    고정하고, 공개 요약이 넘치지 않도록 작을 때만 key 목록도 남긴다.
+    """
+    keys = sorted(key for key in payloads["baseline"] if payloads["baseline"][key] != payloads["candidate"][key])
+    result = {"count": len(keys), "sha256": identity_digest(keys)}
+    if len(keys) <= DIFFERING_PAYLOAD_KEYS_LIMIT:
+        result["keys"] = keys
+    return result
 
 
 def semantic_oracle(repo, distributions, roots, java_home, env, work, report, raw):
