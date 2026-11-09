@@ -846,12 +846,50 @@ PROFILE_COUNT_KEYS = ("nodes", "locatedNodes", "edges", "externalCalls", "classF
 #   class 입력이 바뀌어 낡았으면 그 실행 로그의 `contractDelta.unmatched[].observed`를 다시 고정하거나 BASELINE을 옮긴다.
 # BASELINE을 #223 병합 commit으로 옮기면 비활성화되며, 그때 이 상수·고정값·관련 테스트를 함께 지운다.
 STRUCTURAL_DELTA_BASELINE = "78153c338e20db7193be4a93ac5de90fc594e026"
+# 아래 값은 88bdf9e CI(run 42626332813, test job)의 관측이다. 노드·외부 호출·class 수는 같고 간선만 늘며(graph·architecture
+# +1413, dead +1577), dead·dead_private stdout은 SOURCE_RETENTION_ANNOTATIONS 한계 한 줄(150바이트)만큼 길다.
 # profile -> arm -> PROFILE_COUNT_KEYS 순서의 정수 목록.
-EXPECTED_PROFILE_COUNTS = {}
+EXPECTED_PROFILE_COUNTS = {
+    "graph": {"baseline": [22239, 22239, 127956, 70701, 1557, 1557, 0, 0], "candidate": [22239, 22239, 129369, 70701, 1557, 1557, 0, 0]},
+    "dead": {"baseline": [22239, 22239, 551346, 70701, 1557, 1557, 0, 0], "candidate": [22239, 22239, 552923, 70701, 1557, 1557, 0, 0]},
+    "architecture": {"baseline": [22239, 22239, 104462, 70701, 1557, 1557, 0, 0], "candidate": [22239, 22239, 105875, 70701, 1557, 1557, 0, 0]},
+}
 # CLI 명령 -> arm -> {"exit", "stdout": {"bytes", "sha256"}, "stderr": {"bytes", "sha256"}}.
-EXPECTED_CLI = {}
+EXPECTED_CLI = {
+    "graph": {
+        "baseline": {"exit": 0,
+                     "stdout": {"bytes": 34290939, "sha256": "ccec0adb2241cc6964a7fe4e0701d0e5fe8f9f00b7c83d0d8fbe3990cc7e20c1"},
+                     "stderr": {"bytes": 137, "sha256": "b525606c58fc4a6c97135198cc35a921abf61be3d7ae18496da4f2eec36f3d5b"}},
+        "candidate": {"exit": 0,
+                     "stdout": {"bytes": 34561926, "sha256": "959ea990e5280c56a43a22c9b5ea40e1e065290c2e109717c9da22ad3b4bedfe"},
+                     "stderr": {"bytes": 137, "sha256": "b525606c58fc4a6c97135198cc35a921abf61be3d7ae18496da4f2eec36f3d5b"}},
+    },
+    "dead": {
+        "baseline": {"exit": 0,
+                     "stdout": {"bytes": 1679, "sha256": "f7f783f5ee08d674c1cacfd3de0ac95aad4a8f434fc80990200e4f2edfc7e0aa"},
+                     "stderr": {"bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},
+        "candidate": {"exit": 0,
+                     "stdout": {"bytes": 1829, "sha256": "be77eea46f0155c894e29778468774f074c4433f94698984f77b362174c97f43"},
+                     "stderr": {"bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},
+    },
+    "dead_private": {
+        "baseline": {"exit": 0,
+                     "stdout": {"bytes": 1679, "sha256": "f7f783f5ee08d674c1cacfd3de0ac95aad4a8f434fc80990200e4f2edfc7e0aa"},
+                     "stderr": {"bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},
+        "candidate": {"exit": 0,
+                     "stdout": {"bytes": 1829, "sha256": "be77eea46f0155c894e29778468774f074c4433f94698984f77b362174c97f43"},
+                     "stderr": {"bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},
+    },
+}
 # "semantic" -> arm -> {"graphs": graphs.json 내용, "payloadsSha256": raw payload 사전의 identity digest}.
-EXPECTED_SEMANTIC = {}
+EXPECTED_SEMANTIC = {"semantic": {
+    "baseline": {"graphs": {"json": {"bytes": 283579005, "sha256": "fd5e931f4da92fe5384e788ba8030c1bfc0994e330a66b5d1aeb5c26dd6142d1"},
+                          "ndjson": {"bytes": 343174848, "sha256": "786fc8af6b0b193e090bb3e479a8a19dc717b95b91d47933e021d36b37e0285e"}},
+                 "payloadsSha256": "865fc35402f4f6306b6cbd280202348355e08d1c39f81679c133889e020222d4"},
+    "candidate": {"graphs": {"json": {"bytes": 283942818, "sha256": "767b4bd549bdd833ab75200ad903ec4d7d6455f50a1271c81ec70ca1f89685ee"},
+                          "ndjson": {"bytes": 343651588, "sha256": "add790da10905b5da8d1ee98d02d3baa8b6a301eb9f4e733126f521fb67002ce"}},
+                 "payloadsSha256": "a9189bec1e9d38ac694f1dd52dc67044ea9f7823e963563783df2c1cdc574641"},
+}}
 STRUCTURAL_DELTA_PINS = {"profiles": EXPECTED_PROFILE_COUNTS, "cli": EXPECTED_CLI, "semantic": EXPECTED_SEMANTIC}
 
 

@@ -861,6 +861,39 @@ def stream(data):
 class StructuralDeltaTest(unittest.TestCase):
     """#223의 고정 delta: 두 arm의 정확한 관측값만 허용하고, 나머지 판정은 그대로 엄격하다."""
 
+    def setUp(self):
+        # 실제 고정값과 무관하게 판정 규칙만 보도록 각 테스트는 빈 고정값에서 시작한다.
+        for pins in probe.STRUCTURAL_DELTA_PINS.values():
+            patcher = mock.patch.dict(pins, clear=True)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_recorded_pins_describe_only_the_intended_delta(self):
+        pins = {stage: dict(values) for stage, values in self.recorded_pins().items()}
+        self.assertEqual(set(probe.PROFILES), set(pins["profiles"]))
+        for profile, arms in pins["profiles"].items():
+            baseline, candidate = (dict(zip(probe.PROFILE_COUNT_KEYS, arms[arm])) for arm in probe.ARMS)
+            self.assertEqual({key: value for key, value in baseline.items() if key != "edges"},
+                             {key: value for key, value in candidate.items() if key != "edges"}, profile)
+            self.assertGreater(candidate["edges"], baseline["edges"], profile)
+        self.assertEqual({"graph", "dead", "dead_private"}, set(pins["cli"]))
+        limitation = ("limitation\tSOURCE_RETENTION_ANNOTATIONS\t"
+                      "SOURCE-retention annotation classes are never reported as unused because class files do not "
+                      "record their uses\n").encode()
+        for name in ("dead", "dead_private"):
+            arms = pins["cli"][name]
+            self.assertEqual(arms["baseline"]["stdout"]["bytes"] + len(limitation), arms["candidate"]["stdout"]["bytes"])
+        for arms in pins["cli"].values():
+            self.assertEqual([0, 0], [arms[arm]["exit"] for arm in probe.ARMS])
+            self.assertEqual(arms["baseline"]["stderr"], arms["candidate"]["stderr"])
+        self.assertEqual({"semantic"}, set(pins["semantic"]))
+
+    def recorded_pins(self):
+        """setUp이 비우기 전의 모듈 고정값을 소스에서 다시 읽는다."""
+        fresh = importlib.util.module_from_spec(SPEC)
+        SPEC.loader.exec_module(fresh)
+        return fresh.STRUCTURAL_DELTA_PINS
+
     def test_delta_is_bound_to_the_current_baseline(self):
         self.assertEqual(probe.BASELINE, probe.STRUCTURAL_DELTA_BASELINE)
         self.assertTrue(probe.structural_delta_active())
