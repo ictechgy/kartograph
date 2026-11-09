@@ -55,9 +55,10 @@ internal object AndroidFrameworkCallbacks {
             methods[name].orEmpty().filter { it.canImplement() && it.jvmSignature?.substringAfter('#') in signatures }
                 .forEach { method -> derived += GraphEdge(type.id, method.id, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL) }
         }
-        val connected = derived.toHashSet()
+        // 명시 framework 콜백으로 이미 이은 재정의는 라이브러리 후보 간선으로 한 번 더 잇지 않는다(출처만 다른 중복 간선 방지).
+        val connected = derived.mapTo(HashSet()) { it.source to it.target }
         libraryOverrideEdges(types, methods, hierarchy, ::ancestorsOf).forEach { edge ->
-            if (connected.add(edge)) derived += edge
+            if (connected.add(edge.source to edge.target)) derived += edge
         }
         // DataBindingUtil의 정적 API는 앱의 정확한 root mapper 이름을 통해 생성된 mapper 체인에 진입한다.
         // layout ID의 분기를 선택하지 않으므로 해당 체인에 기록된 모든 binding은 보수적 후보로 남는다.
@@ -111,7 +112,7 @@ internal object AndroidFrameworkCallbacks {
             candidates.filter { method ->
                 val signature = method.jvmSignature?.substringAfter('#') ?: return@filter false
                 (objectContracts && signature in OBJECT_CONTRACTS) || external.any { owner -> signature in contractsOf(owner) }
-            }.map { method -> GraphEdge(type.id, method.id, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL) }
+            }.map { method -> GraphEdge(type.id, method.id, EdgeKind.REFERENCE, origin = EdgeOrigin.LIBRARY_CALLBACK_MODEL) }
         }
     }
 
@@ -192,7 +193,14 @@ internal data class AndroidFrameworkDerivation(
 ) {
     fun removeFrom(graph: CodeGraph): CodeGraph {
         if (edgeWeights.isEmpty() && originalCalls.isEmpty()) return graph
-        val remaining = graph.edges.asSequence().filter { it.origin == EdgeOrigin.RUNTIME_MODEL }.mapNotNull { edge ->
+        // 라이브러리 콜백 간선은 이 단계만 만든다. 같은 방식으로 이 단계가 더한 가중치만 되돌린다.
+        val withoutLibrary = remainingAfter(graph, EdgeOrigin.LIBRARY_CALLBACK_MODEL)
+            .let { graph.enrichedWith(it, graph.externalCalls, replacingOrigin = EdgeOrigin.LIBRARY_CALLBACK_MODEL) }
+        return removeRuntimeModel(withoutLibrary)
+    }
+
+    private fun remainingAfter(graph: CodeGraph, origin: EdgeOrigin): List<GraphEdge> =
+        graph.edges.asSequence().filter { it.origin == origin }.mapNotNull { edge ->
             val removed = edgeWeights[if (edge.weight == 1) edge else edge.copy(weight = 1)] ?: 0
             when {
                 removed == 0 -> edge
@@ -200,6 +208,9 @@ internal data class AndroidFrameworkDerivation(
                 else -> null
             }
         }.toList()
+
+    private fun removeRuntimeModel(graph: CodeGraph): CodeGraph {
+        val remaining = remainingAfter(graph, EdgeOrigin.RUNTIME_MODEL)
         // compareTo의 키는 원래 호출 위치·operand이며 재계산된 resolution/declaration은 포함하지 않는다.
         val originals = java.util.TreeMap<ExternalCall, ExternalCall>()
         originalCalls.forEach { originals[it] = it }

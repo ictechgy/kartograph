@@ -71,6 +71,10 @@ internal object KotlinMetadataEnricher {
      * `@JvmOverloads`가 만든 overload를 compiler 생성물로 표시한다. 원본과 생성 overload 모두 `kotlin/jvm/JvmOverloads`를
      * class 파일에 남기지만 Kotlin metadata에는 원본 시그니처만 있다. 두 근거가 모두 있을 때만 표시하고 이름만으로 추측하지 않는다.
      * 생성 overload는 원본으로 위임하므로 Java 호출자의 도달성은 그대로 이어진다.
+     *
+     * 생성 overload는 원본에서 default 매개변수를 끝에서부터 뺀 것이므로, 같은 owner metadata가 같은 이름·반환 타입으로
+     * 선언한 원본의 매개변수 목록에서 순서를 지킨 진부분 목록이어야 한다. companion `@JvmStatic` 함수가 바깥 class에 남긴 정적
+     * bridge는 바깥 class metadata에 원본이 없으므로 표시하지 않는다(같은 이름의 다른 함수만으로 추측하지 않는다).
      */
     private fun markJvmOverloads(functions: List<KmFunction>, nodes: MutableMap<NodeId, GraphNode>) {
         val declared = functions.mapNotNullTo(mutableSetOf()) { function -> function.signature?.let { it.name + it.descriptor } }
@@ -78,9 +82,28 @@ internal object KotlinMetadataEnricher {
         nodes.replaceAll { _, node ->
             val signature = node.jvmSignature?.substringAfter('#', missingDelimiterValue = "")
             val generated = node.kind == NodeKind.METHOD && JVM_OVERLOADS in node.annotations && !signature.isNullOrEmpty() &&
-                signature !in declared && declared.any { it.substringBefore('(') == signature.substringBefore('(') }
+                signature !in declared && declared.any { original -> dropsDefaultParameters(signature, original) }
             if (generated) node.copy(synthesized = true) else node
         }
+    }
+
+    /** [candidate]가 [original]의 매개변수 일부를 순서대로 남기고 이름·반환 타입이 같은지 본다(`name(descriptor)` 형식). */
+    private fun dropsDefaultParameters(candidate: String, original: String): Boolean {
+        val name = candidate.substringBefore('(')
+        if (original.substringBefore('(') != name) return false
+        val candidateDescriptor = candidate.substring(name.length)
+        val originalDescriptor = original.substring(name.length)
+        if (Type.getReturnType(candidateDescriptor) != Type.getReturnType(originalDescriptor)) return false
+        val kept = Type.getArgumentTypes(candidateDescriptor)
+        val all = Type.getArgumentTypes(originalDescriptor)
+        return kept.size < all.size && isOrderedSubset(kept, all)
+    }
+
+    /** [kept]의 원소가 [all] 안에 같은 순서로 모두 나타나는지 본다. */
+    private fun isOrderedSubset(kept: Array<Type>, all: Array<Type>): Boolean {
+        var index = 0
+        for (type in all) if (index < kept.size && kept[index] == type) index++
+        return index == kept.size
     }
 
     private const val JVM_OVERLOADS = "kotlin/jvm/JvmOverloads"

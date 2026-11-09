@@ -21,9 +21,12 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   BINARY/RUNTIME 보존 어노테이션의 명시적 값·parameter annotation의 class 참조와 사용되는 중첩 class의 바깥
   container와 인코딩된 어노테이션 기본값의 class 참조는 도달성에 포함한다. bytecode에 남지 않는 SOURCE 보존
   어노테이션은 복원하지 못한다. 그래서 `@Retention(SOURCE)`(Java `RetentionPolicy.SOURCE`, Kotlin `AnnotationRetention.SOURCE`)
-  어노테이션 class 자체(`@IntDef`류)는 쓰여도 도달 불가로 보이므로 `dead`가 보고하지 않고 `source-retention-annotations:`로
-  그 수를 센다. `@JvmOverloads`가 만든 overload는 원본·생성물 모두 `kotlin/jvm/JvmOverloads`를 남기고 Kotlin metadata에는
-  원본만 있으므로, 두 근거가 함께 있는 생성 overload만 `synthesized`로 표시한다(같은 이름의 직접 작성 overload는 그대로다).
+  어노테이션 class 자체(`@IntDef`류)는 쓰여도 도달 불가로 보이므로 `dead`가 사용 여부와 무관하게 보고하지 않는다. `dead`의 모든
+  형식(CLI·Gradle plugin)은 `SOURCE_RETENTION_ANNOTATIONS` 한계로, query·snapshot은 `source-retention-annotations:`로 그 수를
+  알린다. `dead --explain`은 그런 class에 `unreachable` 줄과 함께 `not-reported\t<id>\tSOURCE_RETENTION_ANNOTATIONS` 줄을 낸다. `@JvmOverloads`가 만든 overload는
+  원본·생성물 모두 `kotlin/jvm/JvmOverloads`를 남기고 Kotlin metadata에는 원본만 있으므로, 같은 owner의 metadata가 같은 이름·
+  반환 타입으로 더 긴 매개변수 목록을 선언하고 생성물의 매개변수가 그 순서를 지키는 부분 목록일 때만 `synthesized`로 표시한다.
+  같은 이름의 직접 작성 overload와, companion `@JvmStatic` 함수가 바깥 class에 남긴 정적 bridge는 그대로다.
   `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
 
 - Kotlin Multiplatform 프로젝트에서 검증·문서화한 입력은 `jvm()` target의 class 출력이다. `commonMain` 코드의 영향은 JVM target에
@@ -58,15 +61,19 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   reflection 접근은 연결한다. static field의 String/Class 후보는 아래의 may-write 범위로 복원하며, 일반 객체 상태나 reflection 호출 반환값은 추적하지 않는다.
 - JNI, native lookup, framework callback과 serialization/DI codegen은 bytecode만으로 완전하게 증명할 수 없다.
 - 라이브러리 body가 부르는 재정의(`Thread`가 부르는 `Runnable.run`, `sortedWith`가 부르는 `Comparator.compare`, 외부 abstract
-  callback)는 소유 project 타입이 도달할 때만 `runtimeModel` 간선으로 잇는다. 대상은 header가 전달된 외부 상위 타입이 선언한
+  callback)는 소유 project 타입이 도달할 때만 `libraryCallbackModel` 간선으로 잇는다. 라이브러리가 실제로 부른다는 증명이 아니므로
+  순회(impact·reach·language-traversal)의 근거 등급은 `candidate`이고 `--class-hops member-only`의 owner callback에도 들지 않는다. 대상은 header가 전달된 외부 상위 타입이 선언한
   재정의 가능(public/protected·비static·비final) 메서드와 `java/lang/Object`의 `equals`·`hashCode`·`toString`·`finalize`·`clone`을
   같은 JVM 이름·descriptor로 재정의한 메서드다. 기본(class-only)과 `--include-private-members` 모드에 같이 적용된다. 외부 상위
   타입의 header가 없으면 잇지 않고 그런 project 타입 수를 `library-callback-headers:`로 센다(CLI는 `android.jar`·AndroidX 등
   dependency를 `--classpath`로 전달한다). 라이브러리가 실제로 부른다는 증명이 아니며, 등록되지 않은 구현도 owner가 도달하면 남는다.
 - resource XML은 element 이름·`<view class>`·`fragment`/`FragmentContainerView`의 `android:name`·`class`와 class 이름을 값으로
   받는 속성(`layout_behavior`, menu `actionViewClass`·`actionProviderClass`, preference `fragment`, 각 `android:`·`app:` namespace)을
-  보존 근거로 읽는다. `.Name` 상대 이름은 Android namespace 아래로 풀며(런타임은 applicationId로 풀기 때문에 다르면 근거가
-  맞지 않을 수 있다), namespace가 없거나 `@string/…` 같은 리소스 간접 참조, 점 없는 이름은 추측하지 않는다.
+  보존 근거로 읽는다. `.Name` 상대 이름은 모든 속성에서 Android namespace 아래로 풀어 보존 근거로 쓴다. 런타임에서 이런
+  상대 이름을 실제로 해석하는 것은 CoordinatorLayout(`layout_behavior`)과 Navigation(`android:name`)뿐이고, 해석 기준도
+  namespace가 아니라 applicationId·package이므로 다른 속성의 상대 이름과 applicationId가 다른 경우는 실제보다 넓게 보존된다
+  (보존을 넓히는 쪽이라 미사용 보고는 줄 뿐 거짓 보고는 만들지 않는다). namespace가 없거나 `@string/…` 같은 리소스 간접 참조,
+  점 없는 이름은 추측하지 않는다.
 - Compose multipreview는 프로젝트 또는 전달된 dependency classpath의 어노테이션 선언에서 `@Preview`와 반복
   컨테이너로 이어지는 경로를 따라간다. 어노테이션 이름만으로 보존하지 않는다. 새 multipreview 경로는 해당
   method를 보존하며, 같은 owner의 무관한 method를 새 root로 만들지 않는다. dependency header가 없거나

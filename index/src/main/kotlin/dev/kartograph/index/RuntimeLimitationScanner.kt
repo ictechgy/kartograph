@@ -182,8 +182,9 @@ public object RuntimeLimitationScanner {
                 NodeAttribute.SOURCE_RETENTION_ANNOTATION in it.attributes && !it.synthesized
             }
             if (sourceAnnotations > 0) add(
-                "source-retention-annotations: $sourceAnnotations SOURCE-retention annotation class(es) are not reported " +
-                    "because class files do not record their uses",
+                // 사용 중인 어노테이션도 포함한 수다. 사용 여부와 무관하게 미사용 보고에서 빠지는 class 수를 뜻한다.
+                "source-retention-annotations: $sourceAnnotations SOURCE-retention annotation class(es) are never reported " +
+                    "as unused because class files do not record their uses",
             )
             if (dynamicRegistrations > 0) add(
                 "dynamic-registration: $dynamicRegistrations runtime component registration call(s) are absent from the manifest graph",

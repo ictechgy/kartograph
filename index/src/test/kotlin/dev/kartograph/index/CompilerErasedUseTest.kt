@@ -56,6 +56,21 @@ class CompilerErasedUseTest {
         )
     }
 
+    @Test fun `JvmOverloads marks only parameter-dropping overloads of the same owner's declaration`(@TempDir root: Path) {
+        val owner = "dev/kartograph/index/fixture/jvmstaticoverloads/JvmStaticOverloads"
+        val classes = copyFixturePackage(root, "dev/kartograph/index/fixture/jvmstaticoverloads", "JvmStaticOverloads")
+        val graph = ClassFileIndexer().indexWithObservations(listOf(classes), emptyList()).graph
+        fun synthesized(type: String, name: String, descriptor: String) =
+            requireNotNull(graph.node(JvmNodeId.methodId(type, name, descriptor))) { "$type#$name$descriptor" }.synthesized
+        // companion metadata가 h(II)I를 선언하므로 매개변수를 뺀 h(I)I만 생성 overload다.
+        assertTrue(synthesized("$owner\$Companion", "h", "(I)I"), "companion generated overload")
+        assertTrue(!synthesized("$owner\$Companion", "h", "(II)I"), "companion original")
+        // 바깥 class metadata에는 companion 함수가 없다. 같은 이름 h(String)이나 다른 이름 other(II)I를 근거로 bridge를 숨기지 않는다.
+        assertTrue(!synthesized(owner, "h", "(II)I"), "static bridge of the original")
+        assertTrue(!synthesized(owner, "h", "(I)I"), "static bridge of the generated overload")
+        assertTrue(!synthesized(owner, "h", "(Ljava/lang/String;)I"), "authored same-name function")
+    }
+
     private fun reportedTypes(graph: CodeGraph, roots: List<RetentionEvidence>): List<String> =
         DeadFindings.collect(graph, ReachabilityAnalyzer.analyze(graph, roots)).map { it.nodeId.value }.filter { it.startsWith("class:") }
 

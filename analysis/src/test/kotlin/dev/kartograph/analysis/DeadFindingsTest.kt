@@ -93,7 +93,15 @@ class DeadFindingsTest {
                 "their members are roots without proof that generated code or a framework uses them",
             AnalysisLimitation.FRAMEWORK_ANNOTATION_OWNERS.description,
         )
-        assertEquals(AnalysisLimitation.entries.last(), AnalysisLimitation.FRAMEWORK_ANNOTATION_OWNERS)
+        // 새 한계는 기존 순서를 바꾸지 않고 끝에 더한다.
+        assertEquals(
+            listOf(AnalysisLimitation.FRAMEWORK_ANNOTATION_OWNERS, AnalysisLimitation.SOURCE_RETENTION_ANNOTATIONS),
+            AnalysisLimitation.entries.takeLast(2),
+        )
+        assertEquals(
+            "SOURCE-retention annotation classes are never reported as unused because class files do not record their uses",
+            AnalysisLimitation.SOURCE_RETENTION_ANNOTATIONS.description,
+        )
     }
 
     @Test

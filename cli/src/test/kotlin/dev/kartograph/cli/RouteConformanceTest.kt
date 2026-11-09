@@ -83,7 +83,8 @@ class RouteConformanceTest {
                 else -> fail("unknown producer rule ${case["ruleId"]} in ${case["id"]}; implement it before vendoring")
             }
         }
-        assertTrue(cases.size >= 30, "expected the grammar and normalize producer cases, got ${cases.size}")
+        // 벡터를 다시 벤더링해 케이스 수가 바뀌면 여기서 드러난다. 개수는 하한이 아니라 정확값으로 고정한다.
+        assertEquals(48, cases.size, "expected every http-template producer case")
         assertEquals(15, cases.count { it["ruleId"] == "framework.spring.path-pattern" }, "every Spring PathPattern case runs")
     }
 
@@ -182,7 +183,8 @@ class RouteConformanceTest {
         // 벡터가 늘어도 규칙별로 빠짐없이 돌았는지 본다. 새 규칙은 위 when에서 실패한다.
         val counts = cases.groupingBy { it["ruleId"] as String }.eachCount()
         assertEquals(setOf("scope.validate", "scope.applies", "scope.dynamic-validate", "scope.dynamic-applies"), counts.keys)
-        assertTrue(counts.getValue("scope.dynamic-validate") >= 17 && counts.getValue("scope.dynamic-applies") >= 14, "dynamicScope cases run: $counts")
+        assertEquals(mapOf("scope.validate" to 9, "scope.applies" to 18, "scope.dynamic-validate" to 17, "scope.dynamic-applies" to 14),
+            counts, "expected every http-limitation-scope producer case")
     }
 
     /**
@@ -238,7 +240,7 @@ class RouteConformanceTest {
                 else -> fail("unknown producer rule ${case["ruleId"]} in $id; implement it before vendoring")
             }
         }
-        assertTrue(cases.size >= 40, "expected every url-compose producer case, got ${cases.size}")
+        assertEquals(54, cases.size, "expected every url-compose producer case")
         assertEquals(13, cases.count { (it["input"] as Map<*, *>)["join"].toString().startsWith("spring-") }, "every Spring base-join case runs")
     }
 

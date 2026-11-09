@@ -14,8 +14,11 @@ these edges conservatively preserve possible invocation for review. Beyond this 
 any override of an overridable (public or protected, non-static, non-final) method that an
 external supertype with a supplied header declares, and of `java.lang.Object`'s `equals`,
 `hashCode`, `toString`, `finalize` and `clone`, is connected from its reached owner with
-the same `runtimeModel` origin, so `Runnable.run`, `Comparator.compare` or an abstract
-library callback stays reachable while its owner is. Project types whose external
+a separate `libraryCallbackModel` origin, so `Runnable.run`, `Comparator.compare` or an abstract
+library callback stays reachable while its owner is. Because a library call is possible but not
+proven, traversal (`impact`, `reach`, language-traversal) grades these edges `candidate`, not
+`bound`, and they are not owner callbacks for `--class-hops member-only`. An override that is also
+a listed framework callback keeps only the `runtimeModel` edge. Project types whose external
 supertypes have no supplied header are counted by the `library-callback-headers:` dead
 limitation instead of being connected.
 

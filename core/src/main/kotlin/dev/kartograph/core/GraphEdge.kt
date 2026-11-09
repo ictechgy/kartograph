@@ -22,8 +22,13 @@ public enum class EdgeKind {
  * `DISPATCH_MODEL`의 OVERRIDE 간선은 항상 **호출자 → 구현 후보** 방향이다(`ExternalDispatchIndexer`).
  * 상위 선언 → 구현 방향의 실제 override는 BYTECODE·KOTLIN_METADATA 출처만 만든다. 변경 영향의 계약 확장은
  * 이 불변식에 의존하므로, 선언 → 구현 간선을 새 출처로 추가할 때는 이 출처를 재사용하지 않는다.
+ *
+ * `RUNTIME_MODEL`은 framework가 실제로 부른다고 모델링한 간선이다(명시 콜백 목록·reflection 값 등). `LIBRARY_CALLBACK_MODEL`은
+ * 외부 라이브러리 상위 타입의 재정의 가능 계약(`Runnable.run`, `Comparator.compare`, `Object.equals` 등)을 같은 시그니처로
+ * 재정의한 메서드를 소유 class에서 잇는 간선이다. 라이브러리가 그 메서드를 부를 수 있다는 가능성일 뿐 호출 증명이 아니므로
+ * 도달성(보존)에는 쓰지만 순회 근거는 candidate다. 기존 ordinal을 바꾸지 않도록 끝에 둔다.
  */
-public enum class EdgeOrigin { BYTECODE, KOTLIN_METADATA, DISPATCH_MODEL, RUNTIME_MODEL, COMPILER_REFERENCE }
+public enum class EdgeOrigin { BYTECODE, KOTLIN_METADATA, DISPATCH_MODEL, RUNTIME_MODEL, COMPILER_REFERENCE, LIBRARY_CALLBACK_MODEL }
 
 /** 동일 signature의 발생 횟수를 weight로 합치는 그래프 간선이다. */
 public data class GraphEdge(

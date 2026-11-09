@@ -32,7 +32,7 @@ CSV는 닫힌 staging 디렉터리를 게시한다. 기존 목적지는 거부�
 
 ## 후보와 출처
 
-`--exclude-origin bytecode|kotlinMetadata|dispatchModel|runtimeModel|compilerReference`는 반복할 수 있다.
+`--exclude-origin bytecode|kotlinMetadata|dispatchModel|runtimeModel|compilerReference|libraryCallbackModel`는 반복할 수 있다.
 `dispatchModel`을 제외하면 후보 간선 생성도 건너뛴다. 제외는 간선에 적용되며 외부 호출
 같은 원시 관찰 레코드는 남는다. 제외한 출처는 limitations에 기록한다.
 

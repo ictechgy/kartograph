@@ -236,7 +236,7 @@ internal object KartographCli {
                 "--exclude-origin" -> {
                     val value = valueAfter(arguments, index, argument, error) ?: return null
                     val origin = GRAPH_ORIGINS[value]
-                    if (origin == null) { usageError(error, "unknown edge origin; use bytecode, kotlinMetadata, dispatchModel, runtimeModel or compilerReference"); return null }
+                    if (origin == null) { usageError(error, "unknown edge origin; use bytecode, kotlinMetadata, dispatchModel, runtimeModel, compilerReference or libraryCallbackModel"); return null }
                     excludedOrigins += origin
                     index += 2
                 }
@@ -347,7 +347,7 @@ internal object KartographCli {
     private val GRAPH_ORIGINS = mapOf(
         "bytecode" to EdgeOrigin.BYTECODE, "kotlinMetadata" to EdgeOrigin.KOTLIN_METADATA,
         "dispatchModel" to EdgeOrigin.DISPATCH_MODEL, "runtimeModel" to EdgeOrigin.RUNTIME_MODEL,
-        "compilerReference" to EdgeOrigin.COMPILER_REFERENCE,
+        "compilerReference" to EdgeOrigin.COMPILER_REFERENCE, "libraryCallbackModel" to EdgeOrigin.LIBRARY_CALLBACK_MODEL,
     )
 
     private val HELP = """

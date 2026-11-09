@@ -18,7 +18,8 @@ import dev.kartograph.core.Visibility
  *
  * - [DIRECT]: 컴파일러가 확정한 호출·참조·필드 접근과 classfile `EnclosingMethod`의 어휘적 소속이다.
  * - [BOUND]: 닫힌 세계 가정에서 대상이 하나로 정해지는 dispatch와 런타임 모델 간선이다.
- * - [CANDIDATE]: 클래스 계층(CHA)으로 가능성만 있는 override 대상이다.
+ * - [CANDIDATE]: 클래스 계층(CHA)으로 가능성만 있는 override 대상과, 라이브러리 계약 재정의를 소유 class에서 잇는
+ *   `LIBRARY_CALLBACK_MODEL` 간선이다.
  * - [LAMBDA]: `FunctionN`/SAM `invoke`처럼 콜백 호출 지점에서 모든 람다·익명 class 본문으로 퍼지는 후보다.
  *   등급으로는 candidate지만 어휘적 소속이 같은 본문을 정확히 잇기 때문에 기본 순회에서 따로 뺀다.
  */
@@ -204,6 +205,8 @@ internal class DispatchClassifier(private val graph: CodeGraph, private val encl
     // dispatch 모델 간선은 종류와 무관하게 dispatch로 판정한다. 모델 간선이 direct로 부풀지 않게 한다.
     fun tierOf(edge: GraphEdge): TraversalEdgeTier = when {
         edge.origin == EdgeOrigin.DISPATCH_MODEL -> modeledDispatchTier(edge)
+        // 라이브러리가 그 재정의를 부른다는 증명이 없다. 소유 class에서 잇는 보존 간선이지만 순회 근거는 후보다.
+        edge.origin == EdgeOrigin.LIBRARY_CALLBACK_MODEL -> TraversalEdgeTier.CANDIDATE
         edge.kind != EdgeKind.OVERRIDE -> if (edge.origin == EdgeOrigin.RUNTIME_MODEL) TraversalEdgeTier.BOUND else TraversalEdgeTier.DIRECT
         else -> declaredDispatchTier(edge)
     }

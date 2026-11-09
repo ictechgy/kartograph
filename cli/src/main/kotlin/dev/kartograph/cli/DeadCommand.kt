@@ -194,6 +194,11 @@ internal object DeadCommand {
         }
         if (nodeId in result.unreachableNodeIds) {
             output.println("unreachable\t$nodeId")
+            // 도달 불가지만 보고에서 빠지는 노드다. 뒤에 붙는 정적 한계 목록과 별개로 이 노드에 적용된 한계를 밝혀
+            // `dead` 보고(미포함)와 설명이 어긋나 보이지 않게 한다.
+            if (dev.kartograph.core.NodeAttribute.SOURCE_RETENTION_ANNOTATION in graph.node(nodeId)?.attributes.orEmpty()) {
+                output.println("not-reported\t$nodeId\t${AnalysisLimitation.SOURCE_RETENTION_ANNOTATIONS.name}")
+            }
             return ExitStatus.SUCCESS.code
         }
         val directEvidence = result.retentionEvidenceFor(nodeId)

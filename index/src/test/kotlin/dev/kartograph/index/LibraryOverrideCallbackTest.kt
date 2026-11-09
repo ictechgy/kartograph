@@ -5,6 +5,7 @@ import dev.kartograph.analysis.DefaultRetention
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.core.ClassHierarchy
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.RetentionReason
 import java.nio.file.Files
@@ -63,6 +64,53 @@ class LibraryOverrideCallbackTest {
         assertTrue(AndroidFrameworkCallbacks.missingLibraryHeaderTypes(missing.graph, ClassHierarchy.EMPTY) > 0)
         assertEquals(0, AndroidFrameworkCallbacks.missingLibraryHeaderTypes(indexed.graph, indexed.hierarchy))
         assertEquals(indexed.graph.edges, missing.withHierarchy(indexed.hierarchy).graph.edges)
+    }
+
+    @Test fun `object contract overrides are reached through their reached owner`(@TempDir root: Path) {
+        // 그래프의 supertypes는 java/lang/Object를 생략하므로 Object 계약은 외부 상위 타입 대조로는 잇지 못한다.
+        val classes = compile(root, "app", mapOf(
+            "fixture/Starter" to "public class Starter { public void start() { new Money(); } }",
+            "fixture/Money" to "public class Money { public boolean equals(Object other) { new EqualsHelper(); return false; } " +
+                "public int hashCode() { new HashHelper(); return 0; } public String toString() { new TextHelper(); return \"\"; } " +
+                "public boolean equals(Money other) { new Wrong(); return false; } }",
+            "fixture/EqualsHelper" to "public class EqualsHelper {}",
+            "fixture/HashHelper" to "public class HashHelper {}",
+            "fixture/TextHelper" to "public class TextHelper {}",
+            "fixture/Wrong" to "public class Wrong {}",
+        ))
+        val indexed = ClassFileIndexer().indexWithObservations(listOf(classes), emptyList())
+        val roots = listOf(
+            RetentionEvidence(JvmNodeId.classId("fixture/Starter"), RetentionReason.KEEP_RULE, null),
+            RetentionEvidence(JvmNodeId.methodId("fixture/Starter", "start", "()V"), RetentionReason.KEEP_RULE, null),
+        )
+        // Object 계약이 아닌 overload(equals(Money))는 진입점이 아니다.
+        assertEquals(listOf("fixture/Wrong"), reportedClasses(indexed.graph, indexed.hierarchy, roots, privateMembers = false))
+        val money = JvmNodeId.classId("fixture/Money")
+        val library = indexed.graph.edges.filter { it.source == money && it.origin == EdgeOrigin.LIBRARY_CALLBACK_MODEL }
+            .map { it.target.value.substringAfter('#') }.sorted()
+        assertEquals(listOf("equals(Ljava/lang/Object;)Z", "hashCode()I", "toString()Ljava/lang/String;"), library)
+        assertTrue(indexed.graph.edges.none { it.source == money && it.origin == EdgeOrigin.RUNTIME_MODEL })
+    }
+
+    @Test fun `library overrides that are also framework callbacks keep only the framework edge`(@TempDir root: Path) {
+        // 명시 framework 콜백(Activity.onCreate)은 framework가 부른다는 모델이다. 같은 재정의를 라이브러리 후보로 한 번 더 잇지 않는다.
+        val dependency = compile(root, "dependency", mapOf(
+            "android/app/Activity" to "public class Activity { protected void onCreate(android.os.Bundle state) {} public void onEvent() {} }",
+            "android/os/Bundle" to "public class Bundle {}",
+        ))
+        val classes = compile(root, "app", mapOf(
+            "fixture/Screen" to "public class Screen extends android.app.Activity { protected void onCreate(android.os.Bundle state) {} " +
+                "public void onEvent() {} }",
+        ), dependency)
+        val indexed = ClassFileIndexer().indexWithObservations(listOf(classes), listOf(dependency))
+        val screen = JvmNodeId.classId("fixture/Screen")
+        val onCreate = JvmNodeId.methodId("fixture/Screen", "onCreate", "(Landroid/os/Bundle;)V")
+        val onEvent = JvmNodeId.methodId("fixture/Screen", "onEvent", "()V")
+        // class → 자기 member bytecode 간선은 별개다. 모델 간선의 출처만 본다.
+        val models = setOf(EdgeOrigin.RUNTIME_MODEL, EdgeOrigin.LIBRARY_CALLBACK_MODEL)
+        val origins = indexed.graph.edges.filter { it.source == screen && it.target in setOf(onCreate, onEvent) && it.origin in models }
+            .map { it.target to it.origin }.toSet()
+        assertEquals(setOf(onCreate to EdgeOrigin.RUNTIME_MODEL, onEvent to EdgeOrigin.LIBRARY_CALLBACK_MODEL), origins)
     }
 
     @Test fun `library header limitation names the uncovered types`(@TempDir root: Path) {

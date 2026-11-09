@@ -509,7 +509,7 @@ Kotlin 람다 class·익명 객체·suspend 람다·SAM 변환 class는 `Functio
 |---|---|---|
 | `direct` | bytecode·Kotlin metadata·compiler reference의 호출·필드 접근·참조·상속·어노테이션, `contains` | 컴파일러가 대상을 확정했다 |
 | `bound` | override(dispatch) 중 수신 정적 타입이 프로젝트 타입이고, 그 타입과 모든 프로젝트 하위 타입의 구체 class가 메서드를 같은 프로젝트 구현 하나로 해석하는 것. `runtimeModel` 간선 | 닫힌 세계 가정에서 대상이 하나다 |
-| `candidate` | 그 밖의 override: 구현이 둘 이상인 인터페이스, `java/lang/Object#toString`처럼 외부 소유 가상 호출의 계층 후보 | 가능성만 있다 |
+| `candidate` | 그 밖의 override: 구현이 둘 이상인 인터페이스, `java/lang/Object#toString`처럼 외부 소유 가상 호출의 계층 후보. 라이브러리 계약 재정의를 소유 class에서 잇는 `libraryCallbackModel` 간선 | 가능성만 있다 |
 | lambda(따로 제외) | 대상이 지역·익명 class의 멤버이거나 호출 지점이 Kotlin 함수 타입·`java/util/function`·`Runnable`·`Callable` 호출뿐인 dispatch | candidate와 같은 등급이지만 `contains`가 같은 본문을 정확히 잇는다 |
 | `bound`/`candidate`(`callback`) | 받은 람다를 실행하거나 그대로 넘기는 함수 → 람다 본문. 아래 [콜백 흐름](#콜백-흐름-callback) | 호출 문맥 안에서만 참이라 닿은 함수를 더 퍼뜨리지 않는다 |
 
@@ -611,7 +611,8 @@ class 정점은 다시 그 class를 가리키는 모든 `reference` 간선의 so
 - **이름만 적은 참조(type reference)**: class 정점을 가리키는 `reference` 간선 중 `runtimeModel` 출처가 아니고, 같은
   source가 그 class의 생성자(`C.<init>`)를 부르지 않는 것이다.
 - **콜백 모델(owner callback)**: `runtimeModel` 출처의 class → 자기 멤버 `reference` 간선이다. 다른 class 멤버로 가는
-  런타임 모델 간선(reflection으로 해석한 메서드 등)은 아니다.
+  런타임 모델 간선(reflection으로 해석한 메서드 등)은 아니다. 라이브러리 계약 재정의를 잇는 `libraryCallbackModel` 간선도
+  owner callback이 아니며 근거 등급은 `candidate`다(라이브러리 호출 가능성일 뿐 증명이 아니다).
 - **역방향**(`impact --format language-traversal`): 멤버 → 소유 class hop으로 닿은 class는 목록에 싣되, 그 class에서
   이름만 적은 참조의 source로는 가지 않는다. 그 class에서 계속 따르는 것은 인스턴스 생성(생성자를 부르는 선언의
   참조), 상속(하위 class, 같은 좁힌 상태로), 어휘적 소속(`contains`), 콜백, 런타임 모델 참조다. 멤버 자체의 호출자,
