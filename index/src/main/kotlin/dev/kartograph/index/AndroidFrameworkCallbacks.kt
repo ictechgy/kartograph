@@ -13,10 +13,21 @@ import dev.kartograph.core.Visibility
 import dev.kartograph.core.InvocationKind
 import dev.kartograph.core.CallResolution
 import dev.kartograph.core.ExternalCall
+import dev.kartograph.core.HierarchyMethod
 
-/** 실제 framework header의 callback을 재정의한 프로젝트 구현만 소유 타입에서 연결한다. */
+/**
+ * 실제 framework header의 callback을 재정의한 프로젝트 구현만 소유 타입에서 연결한다.
+ * Android 명시 목록 외에도, 정확한 header가 있는 외부(라이브러리) 상위 타입 메서드의 재정의는 모두 소유 타입에서 잇는다.
+ */
 internal object AndroidFrameworkCallbacks {
-    fun enrich(graph: CodeGraph, hierarchy: ClassHierarchy): AndroidFrameworkEnrichment {
+    /** 파생 간선과 call 재해석을 계산해 [graph]에 바로 적용한다. */
+    fun enrich(graph: CodeGraph, hierarchy: ClassHierarchy): AndroidFrameworkEnrichment = derive(graph, hierarchy).applyTo(graph)
+
+    /**
+     * 파생 간선과 call 재해석을 계산만 한다. 인덱싱 경로는 간선을 dispatch 보강과 한 번의 그래프 재구성으로 더해
+     * 큰 그래프를 두 번 다시 만들지 않는다([AndroidFrameworkDerived] 참고).
+     */
+    fun derive(graph: CodeGraph, hierarchy: ClassHierarchy): AndroidFrameworkDerived {
         val types = graph.nodes.values.filter { it.jvmSignature?.contains('#') == false && NodeAttribute.EXTERNAL_STUB !in it.attributes }
             .associateBy { requireNotNull(it.jvmSignature) }
         val methods by lazy(LazyThreadSafetyMode.NONE) {
@@ -51,6 +62,11 @@ internal object AndroidFrameworkCallbacks {
             methods[name].orEmpty().filter { it.canImplement() && it.jvmSignature?.substringAfter('#') in signatures }
                 .forEach { method -> derived += GraphEdge(type.id, method.id, EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL) }
         }
+        // 명시 framework 콜백으로 이미 이은 재정의는 라이브러리 후보 간선으로 한 번 더 잇지 않는다(출처만 다른 중복 간선 방지).
+        val connected = derived.mapTo(HashSet()) { it.source to it.target }
+        libraryOverrideEdges(types, methods, hierarchy, ::ancestorsOf).forEach { edge ->
+            if (connected.add(edge.source to edge.target)) derived += edge
+        }
         // DataBindingUtil의 정적 API는 앱의 정확한 root mapper 이름을 통해 생성된 mapper 체인에 진입한다.
         // layout ID의 분기를 선택하지 않으므로 해당 체인에 기록된 모든 binding은 보수적 후보로 남는다.
         val rootMapper = types[ROOT_MAPPER]?.takeIf {
@@ -68,10 +84,74 @@ internal object AndroidFrameworkCallbacks {
             call.copy(resolvedTargets = listOf(rootMapper.id, rootConstructor.id).sorted(),
                 resolution = CallResolution.RUNTIME_MODEL, model = "android-data-binding-mapper")
         }
-        if (derived.isEmpty()) return AndroidFrameworkEnrichment(graph)
-        return AndroidFrameworkEnrichment(graph.enrichedWith(derived, calls),
-            AndroidFrameworkDerivation(derived.groupingBy { it }.eachCount(), originalCalls))
+        return AndroidFrameworkDerived(derived, calls, originalCalls)
     }
+
+    /**
+     * 외부(라이브러리) 상위 타입이 선언한 재정의 가능 메서드를 같은 JVM 시그니처로 재정의한 프로젝트 메서드를 소유 타입에서 잇는다.
+     *
+     * `Thread`가 부르는 `Runnable.run`, `sortedWith`가 부르는 `Comparator.compare`처럼 호출이 라이브러리 body 안에 있어
+     * bytecode에 보이지 않는 진입점이다. 소유 타입이 도달할 때만 메서드가 도달하므로 쓰이지 않는 구현은 그대로 보고된다.
+     * 정확한 header가 있는 외부 선언만 쓰고(header가 없으면 [missingLibraryHeaderTypes]가 센다), static·final·private·
+     * package-private 선언과 생성자는 재정의 계약이 아니라 제외한다.
+     */
+    private fun libraryOverrideEdges(
+        types: Map<String, GraphNode>,
+        methods: Map<String?, List<GraphNode>>,
+        hierarchy: ClassHierarchy,
+        ancestorsOf: (GraphNode) -> Set<String>,
+    ): List<GraphEdge> {
+        val contractsByOwner = mutableMapOf<String, Set<String>>()
+        fun contractsOf(owner: String): Set<String> = contractsByOwner.getOrPut(owner) {
+            hierarchy.declaredMethodsOf(owner).orEmpty().filter { it.isOverridableContract() }
+                .mapTo(mutableSetOf()) { it.name + it.descriptor }
+        }
+        return types.entries.sortedBy { it.key }.flatMap { (name, type) ->
+            // 타입마다 상위 계약 전체를 합치지 않는다. Android 상위 타입은 수백 개 메서드를 선언하므로, 후보 메서드 몇 개만
+            // owner별로 캐시한 계약 집합에 대조한다.
+            val candidates = methods[name].orEmpty().filter { it.canImplement() && it.kind == NodeKind.METHOD }
+            if (candidates.isEmpty()) return@flatMap emptyList()
+            val external = ancestorsOf(type).filter { it !in types }
+            // 그래프의 supertypes는 java/lang/Object를 생략한다. collection·문자열 연결·logging이 부르는 Object 계약은 JVM 고정 사실이다.
+            val objectContracts = type.kind != NodeKind.INTERFACE && type.kind != NodeKind.ANNOTATION_CLASS
+            candidates.filter { method ->
+                val signature = method.jvmSignature?.substringAfter('#') ?: return@filter false
+                (objectContracts && signature in OBJECT_CONTRACTS) || external.any { owner -> signature in contractsOf(owner) }
+            }.map { method -> GraphEdge(type.id, method.id, EdgeKind.REFERENCE, origin = EdgeOrigin.LIBRARY_CALLBACK_MODEL) }
+        }
+    }
+
+    /**
+     * header가 없는 외부 상위 타입을 가진 프로젝트 타입 수다. 그 타입들의 라이브러리 callback 재정의는 잇지 못하므로
+     * dead 한계로 센다. 합성 타입(람다·생성물)은 metadata 경로로 따로 이어지므로 세지 않는다.
+     */
+    fun missingLibraryHeaderTypes(graph: CodeGraph, hierarchy: ClassHierarchy): Int {
+        val types = graph.nodes.values.filter { it.jvmSignature?.contains('#') == false && NodeAttribute.EXTERNAL_STUB !in it.attributes }
+            .associateBy { requireNotNull(it.jvmSignature) }
+        val missing = mutableMapOf<String, Boolean>()
+        fun hasMissingAncestor(start: GraphNode): Boolean {
+            val pending = ArrayDeque(start.supertypes)
+            val seen = mutableSetOf<String>()
+            while (pending.isNotEmpty() && seen.size < 256) {
+                val name = pending.removeFirst()
+                if (!seen.add(name)) continue
+                val project = types[name]
+                if (project != null) { pending.addAll(project.supertypes); continue }
+                if (missing.getOrPut(name) { hierarchy.directSupertypesOf(name) == null || hierarchy.declaredMethodsOf(name) == null }) return true
+                pending.addAll(hierarchy.directSupertypesOf(name).orEmpty())
+            }
+            return false
+        }
+        return types.values.count { type -> !type.synthesized && hasMissingAncestor(type) }
+    }
+
+    /** 모든 class가 재정의할 수 있는 `java/lang/Object`의 비final 인스턴스 메서드다. */
+    private val OBJECT_CONTRACTS = setOf(
+        "equals(Ljava/lang/Object;)Z", "hashCode()I", "toString()Ljava/lang/String;", "finalize()V", "clone()Ljava/lang/Object;",
+    )
+
+    private fun HierarchyMethod.isOverridableContract(): Boolean =
+        !isStatic && !isFinal && visibility in setOf(Visibility.PUBLIC, Visibility.PROTECTED) && name != "<init>" && name != "<clinit>"
 
     private fun GraphNode.canImplement(): Boolean = jvmVisibility in setOf(Visibility.PUBLIC, Visibility.PROTECTED) &&
         JvmModifier.STATIC !in jvmModifiers && JvmModifier.ABSTRACT !in jvmModifiers
@@ -106,6 +186,30 @@ internal object AndroidFrameworkCallbacks {
     )
 }
 
+/**
+ * 계산만 하고 아직 적용하지 않은 Android framework 파생 결과다.
+ *
+ * call 재해석([calls])은 dispatch가 읽으므로 [withCalls]로 먼저 반영하고, 간선([edges])은 간선을 읽지 않는 dispatch
+ * 보강의 재구성에 함께 넣는다. 두 단계를 나눠 적용해도 [applyTo]와 같은 그래프가 된다. 간선 origin이 dispatch가 교체하는
+ * `dispatchModel`과 다르고, 노드·call은 간선 추가로 바뀌지 않기 때문이다.
+ */
+internal class AndroidFrameworkDerived(
+    val edges: List<GraphEdge>,
+    private val calls: List<ExternalCall>,
+    private val originalCalls: List<ExternalCall>,
+) {
+    /** 적용 뒤 되돌릴 때 쓰는 가중치·원래 call 기록이다. */
+    val derivation: AndroidFrameworkDerivation =
+        if (edges.isEmpty()) AndroidFrameworkDerivation() else AndroidFrameworkDerivation(edges.groupingBy { it }.eachCount(), originalCalls)
+
+    /** 간선과 call 재해석을 함께 적용한다. */
+    fun applyTo(graph: CodeGraph): AndroidFrameworkEnrichment =
+        if (edges.isEmpty()) AndroidFrameworkEnrichment(graph) else AndroidFrameworkEnrichment(graph.enrichedWith(edges, calls), derivation)
+
+    /** call 재해석만 적용한다. 바뀐 call이 없으면 그래프를 그대로 돌려준다. */
+    fun withCalls(graph: CodeGraph): CodeGraph = if (originalCalls.isEmpty()) graph else graph.enrichedWith(emptyList(), calls)
+}
+
 internal data class AndroidFrameworkEnrichment(
     val graph: CodeGraph,
     val derivation: AndroidFrameworkDerivation = AndroidFrameworkDerivation(),
@@ -118,7 +222,14 @@ internal data class AndroidFrameworkDerivation(
 ) {
     fun removeFrom(graph: CodeGraph): CodeGraph {
         if (edgeWeights.isEmpty() && originalCalls.isEmpty()) return graph
-        val remaining = graph.edges.asSequence().filter { it.origin == EdgeOrigin.RUNTIME_MODEL }.mapNotNull { edge ->
+        // 라이브러리 콜백 간선은 이 단계만 만든다. 같은 방식으로 이 단계가 더한 가중치만 되돌린다.
+        val withoutLibrary = remainingAfter(graph, EdgeOrigin.LIBRARY_CALLBACK_MODEL)
+            .let { graph.enrichedWith(it, graph.externalCalls, replacingOrigin = EdgeOrigin.LIBRARY_CALLBACK_MODEL) }
+        return removeRuntimeModel(withoutLibrary)
+    }
+
+    private fun remainingAfter(graph: CodeGraph, origin: EdgeOrigin): List<GraphEdge> =
+        graph.edges.asSequence().filter { it.origin == origin }.mapNotNull { edge ->
             val removed = edgeWeights[if (edge.weight == 1) edge else edge.copy(weight = 1)] ?: 0
             when {
                 removed == 0 -> edge
@@ -126,6 +237,9 @@ internal data class AndroidFrameworkDerivation(
                 else -> null
             }
         }.toList()
+
+    private fun removeRuntimeModel(graph: CodeGraph): CodeGraph {
+        val remaining = remainingAfter(graph, EdgeOrigin.RUNTIME_MODEL)
         // compareTo의 키는 원래 호출 위치·operand이며 재계산된 resolution/declaration은 포함하지 않는다.
         val originals = java.util.TreeMap<ExternalCall, ExternalCall>()
         originalCalls.forEach { originals[it] = it }

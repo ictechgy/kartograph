@@ -377,6 +377,26 @@ class LanguageTraversalTest {
     }
 
     @Test
+    fun `library callback edges are candidates without an owner callback role`() {
+        // 라이브러리가 그 재정의를 실제로 부른다는 증명은 없다. framework 콜백 모델(RUNTIME_MODEL)만 bound·owner callback이다.
+        fun method(id: String) = GraphNode(NodeId(id), id.substringAfter('#').substringBefore('('), NodeKind.METHOD)
+        val graph = CodeGraph(
+            listOf(GraphNode(NodeId("class:app/Money"), "Money", NodeKind.CLASS), method("method:app/Money#equals(Ljava/lang/Object;)Z"),
+                GraphNode(NodeId("class:app/Vm"), "Vm", NodeKind.CLASS), method("method:app/Vm#load()V")),
+            listOf(GraphEdge(NodeId("class:app/Money"), NodeId("method:app/Money#equals(Ljava/lang/Object;)Z"), EdgeKind.REFERENCE,
+                origin = EdgeOrigin.LIBRARY_CALLBACK_MODEL),
+                GraphEdge(NodeId("class:app/Vm"), NodeId("method:app/Vm#load()V"), EdgeKind.REFERENCE, origin = EdgeOrigin.RUNTIME_MODEL)),
+        )
+        val edges = TraversalEdges.build(graph).associateBy { it.source.value to it.target.value }
+        val library = edges.getValue("class:app/Money" to "method:app/Money#equals(Ljava/lang/Object;)Z")
+        assertEquals(TraversalEdgeTier.CANDIDATE, library.tier)
+        assertEquals(null, library.classRole)
+        val framework = edges.getValue("class:app/Vm" to "method:app/Vm#load()V")
+        assertEquals(TraversalEdgeTier.BOUND, framework.tier)
+        assertEquals(TraversalClassRole.OWNER_CALLBACK, framework.classRole)
+    }
+
+    @Test
     fun `class roles separate instantiation runtime lookups and owner callbacks from type references`() {
         val roles = TraversalEdges.build(viewModelGraph()).filter { it.classRole != null }
             .associate { (it.source.value to it.target.value) to it.classRole }

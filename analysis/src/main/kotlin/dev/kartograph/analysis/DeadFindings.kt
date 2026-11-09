@@ -22,6 +22,8 @@ public object DeadFindings {
         includePrivateMembers: Boolean = false,
     ): List<Finding> = reachability.unreachableNodeIds.mapNotNull(graph::node).filter { node ->
         if (node.synthesized) return@filter false
+        // SOURCE retention 어노테이션의 사용처는 class 파일에 없다. 도달 불가가 미사용을 뜻하지 않아 보고하지 않고 한계로 센다.
+        if (NodeAttribute.SOURCE_RETENTION_ANNOTATION in node.attributes) return@filter false
         if (node.kind in TYPE_KINDS) return@filter true
         if (isFacadeMember(graph, node)) {
             return@filter isReportableTopLevelDeclaration(node, includePrivateMembers)

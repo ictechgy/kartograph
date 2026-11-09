@@ -6,7 +6,131 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 라이브러리 body가 부르는 재정의(`Thread`가 부르는 `Runnable.run`, `sortedWith`가 부르는 `Comparator.compare`, 외부 abstract
+  callback, `java.lang.Object`의 `equals`·`hashCode`·`toString`·`finalize`·`clone`)를 소유 project 타입이 도달할 때만
+  새 `libraryCallbackModel` origin 간선으로 잇는다(`EdgeOrigin.LIBRARY_CALLBACK_MODEL`, enum 끝에 추가해 기존 ordinal 유지).
+  같은 쌍에 Android framework `runtimeModel` 간선이 있으면 그것을 우선한다. language-traversal은 이 간선을 `bound`/owner-callback이
+  아니라 `candidate` 계층으로 분류한다(라이브러리가 실제로 부르는지는 모델링하지 않으므로). 계층 분류는 language-traversal에만
+  적용되며, 기본 `impact`(`kartograph-impact`)는 계층을 쓰지 않아 이 간선도 다른 간선처럼 따라간다(origin은 graph·snapshot·query
+  출력에서 보인다). 그 본문에서만 쓰는 class가 기본(class-only) 모드에서 보고되고 `--include-private-members`에서는
+  사라지던 불일치를 고친다. header가 전달된 외부 상위 타입이 선언한 재정의 가능(public/protected·비static·비final) 메서드만
+  대상이며, header가 없는 외부 상위 타입을 가진 타입 수는 새 `library-callback-headers:` 한계로 센다(query·snapshot 한계 목록에 나오며 `dead` 출력에는 없다). 쓰이지 않는 구현과
+  재정의가 아닌 overload는 계속 보고된다. 보존이 넓어지는 방향이라 일부 기존 class finding이 사라질 수 있다.
+- resource XML의 `app:layout_behavior`, `<fragment class>`·`FragmentContainerView class`, menu `actionViewClass`·
+  `actionProviderClass`, preference `fragment`(각 `android:`·`app:` namespace)를 XML 보존 근거로 읽는다. CoordinatorLayout
+  Behavior처럼 XML에서만 쓰는 class가 보고되던 문제다. `.Name` 상대 이름은 Android namespace(`--namespace`, Gradle variant
+  namespace) 아래로 풀고, namespace가 없거나 `@string/…` 간접 참조·점 없는 이름은 추측하지 않는다. `AndroidXmlScanner`에
+  선택적 `namespace` 생성자 인자를 더했다(기존 생성자 유지).
+- `@Retention(SOURCE)`(Java·Kotlin) 어노테이션 class를 `dead`가 보고하지 않고, 그 수를 query·snapshot 한계 목록의 새 `source-retention-annotations:` 줄로 센다.
+  `dead` text·JSON·Gradle 보고는 새 정적 한계 `SOURCE_RETENTION_ANNOTATIONS`를 함께 내고, `dead --explain`은 숨긴 노드에
+  `not-reported\t<node>\tSOURCE_RETENTION_ANNOTATIONS` 줄을 더한다.
+  `@IntDef`류는 사용처가 class 파일에 남지 않아 쓰여도 도달 불가로 보였다. 그래프는 새 node attribute
+  `sourceRetentionAnnotation`으로 표시한다(기존 attribute ordinal과 cache 포맷은 그대로다).
+- `@JvmOverloads`가 만든 overload를 `synthesized`로 표시한다. Kotlin 호출은 `$default`를 거쳐 원본에 닿으므로 생성 overload가
+  사용자가 쓰는 함수처럼 보고되던 문제다. 원본과 생성물 모두 `kotlin/jvm/JvmOverloads`를 남기고 metadata에는 원본만 있다는 두
+  근거가 함께 있을 때만 표시한다. 같은 owner metadata가 선언하고 class 파일에 `@JvmOverloads`를 남긴 함수에서 default 매개변수를
+  끝에서부터 하나씩 뺀 정확한 시그니처만 생성물로 보므로, 같은 이름의 직접 작성 overload(더 긴 것 포함), 쓰이지 않는 원본,
+  `@JvmStatic` 바깥 class bridge는 그대로 남는다.
+- Gradle `kartographDead<Variant>` 보고의 finding confidence를 CLI `dead`와 같은 규칙(같은 소스 파일의 미해결 runtime
+  채널 수로 `static`·`needs-runtime-review`, DataBinding 후보는 review)으로 매긴다. 전에는 binding 후보 외 finding이 등급 없이
+  (markdown에서는 `unmeasured`) 나왔다. 규칙은 export의 `FindingConfidences`가 소유한다.
+
+### Added
+
+- isthmus `http-limitation-scope`의 `dynamicScope` 생산자 규칙(`scope.dynamic-validate`·`scope.dynamic-applies`)을
+  `RouteLimitationScopes.dynamicScopeProblem`·`dynamicApplies`로 구현하고, 공유 적합성 벡터를 isthmus `c76e105`로 다시
+  벤더링했다(`sql-relations` 추가). kartograph는 아직 `dynamicScope`를 내지 않는다. `sql-relations` 케이스는 실제
+  `SchemaFactScanner`(SQLDelight `.sq` 경로)로 실행한다.
+
+### Changed
+
+- 인덱싱이 Android framework·라이브러리 callback 파생 간선을 따로 적용하지 않고 dispatch 보강의 그래프 재구성에 함께 넣는다.
+  수십만 간선 그래프를 한 번 덜 다시 만들어, 라이브러리 callback 간선 추가로 생긴 runtime 단계 비용(자기 분석 기준 약 100ms)을
+  되돌린다. 전체 graph JSON·NDJSON 출력은 바이트 동일하다(`withHierarchy` 경로는 기존대로 먼저 적용한다).
+- index-cost 진단이 고정 baseline 78153c3 대비 이번 변경의 의도된 구조 차이(profile 구조 계수, CLI 출력, semantic 전체 graph
+  바이트와 raw payload 항목 수)를 arm별 정확한 고정값(`EXPECTED_PROFILE_COUNTS`·`EXPECTED_CLI`·`EXPECTED_SEMANTIC`)과 같을 때만
+  허용한다. raw payload 값은 class 파일 mtime을 담아 실행마다 달라지므로 고정하지 않고 두 arm의 payload key(class 내용) 집합
+  일치를 요구한다. 각 arm 안의 표본 일치, CLI 종료 코드 0, 엔진 지문 규칙은 그대로이고, 고정값이 없거나 낡으면 관측을 `contractDelta`로 남긴 뒤
+  `structural-delta-unpinned`·`structural-delta-stale`로 실패한다. BASELINE이 이 변경 뒤로 옮겨지면 꺼진다.
+- 0.26.0 CHANGELOG 절의 하위 제목을 Keep a Changelog 형식으로 정리했다(중복 `### Added` 병합, 제목 없던 항목을 `### Changed`로).
+  README의 MCP 도구 목록에 `change_impact`를 더했다.
+- test 전용 도달 판정 정책을 analysis의 `TestOnlyReachability`로 옮겼다(cli는 입력 조립만, 동작 동일).
+- internal 생성자를 가진 공개 data class 세 곳(`EnumDecisionUnresolvedSite`·`SourceEditObservation`·`SourceUseInspection`)에
+  `@ExposedCopyVisibility`를 붙여 기존 공개 `copy()`를 유지한 채 Kotlin 2.5의 KT-11914 오류를 막는다(API 변화 없음).
+- CI `agp-minimum` job도 Gradle wrapper를 검증한다.
+
 ## [0.26.0] - 2026-11-03
+
+### Added
+
+- Bounded DataBinding annotation/XML candidate evidence for same-element `requireAll`,
+  multiple attributes, overload ambiguity and explicit resource-priority assertions.
+  `dead`/`why` preserve exact unresolved adapter diagnostics, snapshot/MCP preserve the
+  limitations, and `bindings` exposes independent compiled caller paths without adding
+  retention roots. See [scope and migration](docs/DATA-BINDING-EVIDENCE.md).
+- Unresolved adapter evidence follows bounded observed bytecode calls to helper
+  findings without changing graph reachability. Android compiler snapshots include
+  declared processor metadata inputs; inaccessible provider inputs reject the witness
+  while preserving ordinary compilation.
+
+- 0.25.0 feedback: aggregate strict/lenient keep diagnostics, shrinking-disabled and unknown
+  retention evidence; repeated resource roots; bounded framework callback/mapper evidence;
+  Hilt input hints and verified generation markers. See [migration and limits](docs/FEEDBACK-026.md).
+- Gradle graph export options now match CLI JSON/NDJSON, origin filtering, dispatch candidate
+  limits and external stubs. Snapshot limits remain 64 MiB by default and accept explicit
+  values up to 1024 MiB, with matching compact write/read expansion budgets.
+- Partial source traversal preserves readable siblings; declaration locations and recoverable
+  fields avoid fabricated coordinates. Module metadata no longer prefixes language qualified
+  names. Closed output consumers and storage failures have distinct diagnostics.
+
+- opt-in `impact --git-base`와 MCP `change_impact`가 실제 Git base/head 또는 작업 트리 변경의
+  삭제·rename 양쪽 경로를 기존 before/current 영향 탐색에 연결한다. 새 `kartograph-change-impact` v1은
+  원래 graphImpact, exact snapshot SHA-256, 전체 파일 seed 정밀도, 별도 current/base freshness를 보존한다.
+  commit 라벨을 source/build freshness로 대신하지 않으며 기존 기본 impact 출력·탐색 API는 유지한다.
+
+- language-traversal 간선을 한 번 조립해 순회와 `graphRevision`에 함께 쓰는 라이브러리 API
+  `TraversalEdges.prepare`, `LanguageTraversal.traverse(prepared, ...)`,
+  `LanguageTraversalCodec.graphRevision(graph, traversalEdges, ...)`와 이름·한정 이름 root를 한 번 만든
+  색인으로 해석하는 `TraversalRootResolver`를 추가한다. 기존 공개 시그니처와 data class 형태는 그대로다.
+
+### Fixed
+
+- 호출 선언 보강에서 모든 호출을 재검증하되 값이 바뀐 행만 복사하고, 변경이 없으면 기존 불변 그래프를
+  재사용한다. 누락된 header의 오래된 선언은 계속 제거하며 분석 범위와 성능 게이트 예산은 바꾸지 않는다.
+
+- bridges·`routes --role client`·schema의 snapshot USR 부착과 React Native 이벤트의 주석 판정이
+  `'"'` 같은 문자 리터럴 뒤에서 어긋나던 문제를 고친다. 주석 속 emit을 사실로 내거나, 함수 머리를 놓쳐
+  USR을 빠뜨리거나, 다른 함수의 USR을 한계 표시 없이 붙이던 경우다.
+- Kotlin 백틱 이름(`` `isn't ready` ``) 속 `'`·`"`를 인용 시작으로 읽던 문제를 고친다. 그 뒤의 함수에서
+  bridges의 snapshot USR이 빠지고, routes·schema·`bridges --messages`·`--events`가 사실을 놓치던 경우다.
+- Windows에서 `bridges --rn-events` 문서의 `project`만 `\` 구분자로 남아 다른 교환 문서와 조인되지 않던
+  문제를 고친다. POSIX 출력은 그대로다.
+- 서로를 가리키는 `@AliasFor` 사슬에서 `routes --role server`가 StackOverflowError(exit 2)로 끝나던 문제를
+  고친다. source·class root 모두, Spring이 시작할 때 거부하는 이런 별칭을 쓴 핸들러는 메타 어노테이션의
+  경로를 확정 사실로 내지 않는다. dynamic 사실과 `route-coverage:` 한계로 남긴다.
+- 서로를 여러 번 참조하는 설정 플레이스홀더·어노테이션 상수·경로 식 때문에 `routes`가 끝나지 않거나
+  OutOfMemoryError로 끝나던 문제를 고친다. 최상위 해석마다 펼침 1만 번·새로 만든 문자 64KiB를 넘으면
+  기존 placeholder·dynamic·unresolved 한계로 남긴다. 경로 식은 펼치며 읽은 식 문자 1MiB도 센다. 큰 식을
+  거듭 따라가는 입력이 펼침 횟수 상한 안에서 오래 걸리지 않게 한다. 상한 안의 입력은 출력이 그대로다.
+- `routes --role client`가 exit 2("unable to scan route calls")로 끝나던 두 경우를 고친다. 자기 이름을
+  가리거나 서로를 가리키는 지역 `val`의 query 꼬리 증명이 스택을 다 쓰던 경우와, Retrofit
+  `@Path(value = 상수, encoded = true)`처럼 함수 머리 안에서 이름을 풀던 경우다.
+- `reach`·`impact --format language-traversal`의 revision 확인과 `dead --since`가 현재 디렉터리나 상대 PATH
+  항목의 git을 실행하지 않도록 PATH의 절대경로 항목에서 찾은 git만 실행하고, 분석 대상 저장소 config의
+  `core.fsmonitor` 명령을 끈다. filter·서명 확인·서브모듈 등 나머지 git 설정의 경계는 아래 Security 절과
+  [SECURITY.md](SECURITY.md)를 본다.
+- `verify-snapshot`의 사용 오류가 stderr 없이 64로 끝나던 것을 원인별 `error: ...` 문구로 알린다.
+  거부 조건과 종료 코드는 그대로이며 경로·값은 싣지 않는다.
+- source 경로 해석 중 프로젝트 순회가 밖을 가리키는 `.kt`/`.java` 링크·끊긴 링크·읽을 수 없는 디렉터리로
+  실패하면 `unresolved-source-paths`·`unavailable-source-paths` 한계가 생성·외부 source 부재 대신 순회
+  실패를 원인으로 적는다. 접두사는 그대로다.
+- [SECURITY.md](SECURITY.md)가 bridge-facts의 `project`를 `.`로 설명하던 것을 고친다. bridges·routes·schema와
+  `reach`·`impact --format language-traversal` 문서의 `project`는 사용자 홈이나 계정 이름을 드러낼 수 있는
+  canonical POSIX 절대 realpath이므로 공개 전에 치환하거나 지운다.
+
+### Changed
 
 - Reuse immutable indexing values after revalidation and reduce repeated SMAP pattern allocations.
 - Retain sealed Linux/JFR attribution diagnostics with bounded owned-child observations and full spooled-output comparisons.
@@ -72,81 +196,6 @@
   jars (including a missing `core` or `index` jar) and identical engine jars with differing fingerprints both fail
   closed. Verification only; product behaviour is unchanged.
 
-### Added
-
-- Bounded DataBinding annotation/XML candidate evidence for same-element `requireAll`,
-  multiple attributes, overload ambiguity and explicit resource-priority assertions.
-  `dead`/`why` preserve exact unresolved adapter diagnostics, snapshot/MCP preserve the
-  limitations, and `bindings` exposes independent compiled caller paths without adding
-  retention roots. See [scope and migration](docs/DATA-BINDING-EVIDENCE.md).
-- Unresolved adapter evidence follows bounded observed bytecode calls to helper
-  findings without changing graph reachability. Android compiler snapshots include
-  declared processor metadata inputs; inaccessible provider inputs reject the witness
-  while preserving ordinary compilation.
-
-이 항목은 릴리스 준비 기록이다. GitHub asset 및 Gradle Portal publication/설치 검증은 별도 절차이며,
-태그나 문서만으로 배포 완료를 의미하지 않는다. CLI/plugin/collector/library를 같은 버전으로 맞추고
-before/current snapshot을 다시 캡처한다. 기존 impact JSON/API는 유지되며 Git 문맥은 opt-in wrapper로 추가된다.
-
-### Added
-
-- 0.25.0 feedback: aggregate strict/lenient keep diagnostics, shrinking-disabled and unknown
-  retention evidence; repeated resource roots; bounded framework callback/mapper evidence;
-  Hilt input hints and verified generation markers. See [migration and limits](docs/FEEDBACK-026.md).
-- Gradle graph export options now match CLI JSON/NDJSON, origin filtering, dispatch candidate
-  limits and external stubs. Snapshot limits remain 64 MiB by default and accept explicit
-  values up to 1024 MiB, with matching compact write/read expansion budgets.
-- Partial source traversal preserves readable siblings; declaration locations and recoverable
-  fields avoid fabricated coordinates. Module metadata no longer prefixes language qualified
-  names. Closed output consumers and storage failures have distinct diagnostics.
-
-- opt-in `impact --git-base`와 MCP `change_impact`가 실제 Git base/head 또는 작업 트리 변경의
-  삭제·rename 양쪽 경로를 기존 before/current 영향 탐색에 연결한다. 새 `kartograph-change-impact` v1은
-  원래 graphImpact, exact snapshot SHA-256, 전체 파일 seed 정밀도, 별도 current/base freshness를 보존한다.
-  commit 라벨을 source/build freshness로 대신하지 않으며 기존 기본 impact 출력·탐색 API는 유지한다.
-
-- language-traversal 간선을 한 번 조립해 순회와 `graphRevision`에 함께 쓰는 라이브러리 API
-  `TraversalEdges.prepare`, `LanguageTraversal.traverse(prepared, ...)`,
-  `LanguageTraversalCodec.graphRevision(graph, traversalEdges, ...)`와 이름·한정 이름 root를 한 번 만든
-  색인으로 해석하는 `TraversalRootResolver`를 추가한다. 기존 공개 시그니처와 data class 형태는 그대로다.
-
-### Fixed
-
-- 호출 선언 보강에서 모든 호출을 재검증하되 값이 바뀐 행만 복사하고, 변경이 없으면 기존 불변 그래프를
-  재사용한다. 누락된 header의 오래된 선언은 계속 제거하며 분석 범위와 성능 게이트 예산은 바꾸지 않는다.
-
-- bridges·`routes --role client`·schema의 snapshot USR 부착과 React Native 이벤트의 주석 판정이
-  `'"'` 같은 문자 리터럴 뒤에서 어긋나던 문제를 고친다. 주석 속 emit을 사실로 내거나, 함수 머리를 놓쳐
-  USR을 빠뜨리거나, 다른 함수의 USR을 한계 표시 없이 붙이던 경우다.
-- Kotlin 백틱 이름(`` `isn't ready` ``) 속 `'`·`"`를 인용 시작으로 읽던 문제를 고친다. 그 뒤의 함수에서
-  bridges의 snapshot USR이 빠지고, routes·schema·`bridges --messages`·`--events`가 사실을 놓치던 경우다.
-- Windows에서 `bridges --rn-events` 문서의 `project`만 `\` 구분자로 남아 다른 교환 문서와 조인되지 않던
-  문제를 고친다. POSIX 출력은 그대로다.
-- 서로를 가리키는 `@AliasFor` 사슬에서 `routes --role server`가 StackOverflowError(exit 2)로 끝나던 문제를
-  고친다. source·class root 모두, Spring이 시작할 때 거부하는 이런 별칭을 쓴 핸들러는 메타 어노테이션의
-  경로를 확정 사실로 내지 않는다. dynamic 사실과 `route-coverage:` 한계로 남긴다.
-- 서로를 여러 번 참조하는 설정 플레이스홀더·어노테이션 상수·경로 식 때문에 `routes`가 끝나지 않거나
-  OutOfMemoryError로 끝나던 문제를 고친다. 최상위 해석마다 펼침 1만 번·새로 만든 문자 64KiB를 넘으면
-  기존 placeholder·dynamic·unresolved 한계로 남긴다. 경로 식은 펼치며 읽은 식 문자 1MiB도 센다. 큰 식을
-  거듭 따라가는 입력이 펼침 횟수 상한 안에서 오래 걸리지 않게 한다. 상한 안의 입력은 출력이 그대로다.
-- `routes --role client`가 exit 2("unable to scan route calls")로 끝나던 두 경우를 고친다. 자기 이름을
-  가리거나 서로를 가리키는 지역 `val`의 query 꼬리 증명이 스택을 다 쓰던 경우와, Retrofit
-  `@Path(value = 상수, encoded = true)`처럼 함수 머리 안에서 이름을 풀던 경우다.
-- `reach`·`impact --format language-traversal`의 revision 확인과 `dead --since`가 현재 디렉터리나 상대 PATH
-  항목의 git을 실행하지 않도록 PATH의 절대경로 항목에서 찾은 git만 실행하고, 분석 대상 저장소 config의
-  `core.fsmonitor` 명령을 끈다. filter·서명 확인·서브모듈 등 나머지 git 설정의 경계는 아래 Security 절과
-  [SECURITY.md](SECURITY.md)를 본다.
-- `verify-snapshot`의 사용 오류가 stderr 없이 64로 끝나던 것을 원인별 `error: ...` 문구로 알린다.
-  거부 조건과 종료 코드는 그대로이며 경로·값은 싣지 않는다.
-- source 경로 해석 중 프로젝트 순회가 밖을 가리키는 `.kt`/`.java` 링크·끊긴 링크·읽을 수 없는 디렉터리로
-  실패하면 `unresolved-source-paths`·`unavailable-source-paths` 한계가 생성·외부 source 부재 대신 순회
-  실패를 원인으로 적는다. 접두사는 그대로다.
-- [SECURITY.md](SECURITY.md)가 bridge-facts의 `project`를 `.`로 설명하던 것을 고친다. bridges·routes·schema와
-  `reach`·`impact --format language-traversal` 문서의 `project`는 사용자 홈이나 계정 이름을 드러낼 수 있는
-  canonical POSIX 절대 realpath이므로 공개 전에 치환하거나 지운다.
-
-### Changed
-
 - 아래 Security 절의 git 경계 때문에 filter를 실행하지 않으므로, git-lfs처럼 filter로 정규화되는 파일은 stat
   정보가 index와 다르면 커밋과 내용이 달라 보인다. 그때 `reach`·`impact --format language-traversal`은
   `--revision`·snapshot 라벨이 없을 때 싣던 `HEAD` revision을 생략하고, `dead --since`는 그런 파일과 시각만 바뀐
@@ -211,6 +260,10 @@ before/current snapshot을 다시 캡처한다. 기존 impact JSON/API는 유지
   바꾸지 않는다. 실측한 대형 capture(AGP 9.2.0 jar의 93 MiB v2: 약 3.7억 자·549만 개)는 영향이 없다. 상한 안의
   적대 문서도 읽는 데 JDK 21에서 약 50초, JDK 17에서 약 80초와 5 GB 가까운 RSS를 쓸 수 있다
   ([SECURITY.md](SECURITY.md)).
+
+이 0.26.0 항목은 릴리스 준비 기록이다. GitHub asset 및 Gradle Portal publication/설치 검증은 별도 절차이며,
+태그나 문서만으로 배포 완료를 의미하지 않는다. CLI/plugin/collector/library를 같은 버전으로 맞추고
+before/current snapshot을 다시 캡처한다. 기존 impact JSON/API는 유지되며 Git 문맥은 opt-in wrapper로 추가된다.
 
 ## [0.25.0] - 2026-10-19
 

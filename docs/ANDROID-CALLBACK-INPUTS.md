@@ -10,8 +10,17 @@ unrelated overloads and unreached owners receive no new root. These edges have
 `runtimeModel` origin: they describe possible framework invocation, not an observed
 execution or a guarantee that a callback executes.
 Reaching an adapter or listener owner does not prove it was registered with a view;
-these edges conservatively preserve possible invocation for review. Other callback
-families remain unresolved unless separate compiled or retention evidence exists.
+these edges conservatively preserve possible invocation for review. Beyond this list,
+any override of an overridable (public or protected, non-static, non-final) method that an
+external supertype with a supplied header declares, and of `java.lang.Object`'s `equals`,
+`hashCode`, `toString`, `finalize` and `clone`, is connected from its reached owner with
+a separate `libraryCallbackModel` origin, so `Runnable.run`, `Comparator.compare` or an abstract
+library callback stays reachable while its owner is. Because a library call is possible but not
+proven, traversal (`impact`, `reach`, language-traversal) grades these edges `candidate`, not
+`bound`, and they are not owner callbacks for `--class-hops member-only`. An override that is also
+a listed framework callback keeps only the `runtimeModel` edge. Project types whose external
+supertypes have no supplied header are counted by the `library-callback-headers:` limitation
+(listed by `query` and snapshots, not by `dead`) instead of being connected.
 
 The follow-up [DataBinding evidence report](DATA-BINDING-EVIDENCE.md) adds bounded
 same-element attribute/requireAll observations and unresolved adapter diagnostics.

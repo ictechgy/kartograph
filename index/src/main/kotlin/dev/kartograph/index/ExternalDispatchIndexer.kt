@@ -18,8 +18,13 @@ internal object ExternalDispatchIndexer {
     fun enrich(graph: CodeGraph, hierarchy: ClassHierarchy): CodeGraph = enrichBounded(graph, hierarchy, null).graph
 
     /** 후보를 한도 넘게 모으지 않으며 초과한 선언은 일부 후보로 완전성을 가장하지 않는다. */
+    /**
+     * [additionalEdges]는 앞 단계가 계산만 하고 적용을 미룬 간선이다. dispatch 파생은 간선을 읽지 않으므로 같은 재구성에
+     * 함께 넣어 큰 그래프를 한 번만 다시 만든다.
+     */
     fun enrichBounded(graph: CodeGraph, hierarchy: ClassHierarchy, maximumCandidates: Int?,
-        projectCalls: List<dev.kartograph.core.ExternalCall> = emptyList()): DispatchEnrichment {
+        projectCalls: List<dev.kartograph.core.ExternalCall> = emptyList(),
+        additionalEdges: List<GraphEdge> = emptyList()): DispatchEnrichment {
         val types = graph.nodes.values.filter { it.kind in TYPE_KINDS && it.jvmSignature != null }
             .associateBy { requireNotNull(it.jvmSignature) }
         val ancestors = mutableMapOf<String, Set<String>>()
@@ -145,7 +150,7 @@ internal object ExternalDispatchIndexer {
             }
             call.copy(resolvedTargets = resolved.targets, resolution = resolved.resolution)
         }
-        val derived = mutableListOf<GraphEdge>()
+        val derived = additionalEdges.toMutableList()
         dispatchCounts.forEach { (key, count) ->
             targetCache.getValue(key.second).targets.forEach { target ->
                 if (target != key.second) {

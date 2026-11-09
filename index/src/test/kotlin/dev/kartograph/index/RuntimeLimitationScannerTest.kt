@@ -65,8 +65,12 @@ class RuntimeLimitationScannerTest {
         val graph = dev.kartograph.core.CodeGraph(listOf(owner, caller), emptyList(), listOf(call))
         val indexed = IndexedClasses(graph, emptyList()).withHierarchy(
             dev.kartograph.core.ClassHierarchy(mapOf("lib/Child" to setOf("lib/Parent"))))
-        assertEquals(listOf("external-dispatch: 1 external virtual call(s) have no project implementation target"),
-            RuntimeLimitationScanner.scan(indexed, root))
+        // lib/Parent header가 없으므로 외부 dispatch와 함께 라이브러리 callback 재정의를 잇지 못한 타입 수도 센다.
+        assertEquals(listOf(
+            "external-dispatch: 1 external virtual call(s) have no project implementation target",
+            "library-callback-headers: 1 project type(s) extend library types without supplied class headers; " +
+                "overrides that the library calls are not connected (supply the dependency classpath)",
+        ), RuntimeLimitationScanner.scan(indexed, root))
     }
 
     @Test

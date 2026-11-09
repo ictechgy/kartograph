@@ -5,6 +5,8 @@ import dev.kartograph.core.CompilerSourceUse
 import dev.kartograph.core.NodeId
 
 /** 변경한 선언을 직접 선택한 원본 행이다. 영향 경로나 실행 여부를 주장하지 않는다. */
+// 공개 copy()는 기존 라이브러리 API다. Kotlin 2.5에서 경고가 오류가 되기 전에 지금 노출을 명시적으로 유지한다(KT-11914).
+@ExposedCopyVisibility
 public data class SourceEditObservation internal constructor(
     val use: CompilerSourceUse,
     val caller: SourceUseNodeFact,

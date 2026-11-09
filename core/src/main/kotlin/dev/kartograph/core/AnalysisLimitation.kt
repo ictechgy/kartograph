@@ -18,4 +18,11 @@ public enum class AnalysisLimitation(public val description: String) {
             "(such as @Inject constructors, @Expose fields, @TypeConverter methods or @Component types) and all " +
             "their members are roots without proof that generated code or a framework uses them",
     ),
+    /**
+     * `@Retention(SOURCE)` 어노테이션 class는 사용처가 class 파일에 남지 않아 도달 불가가 미사용을 뜻하지 않는다.
+     * `dead`는 그런 class를 보고하지 않으며(사용 여부와 무관), 모든 형식이 이 한계로 그 사실을 알린다.
+     */
+    SOURCE_RETENTION_ANNOTATIONS(
+        "SOURCE-retention annotation classes are never reported as unused because class files do not record their uses",
+    ),
 }

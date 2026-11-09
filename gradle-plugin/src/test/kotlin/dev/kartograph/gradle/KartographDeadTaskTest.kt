@@ -87,6 +87,18 @@ class KartographDeadTaskTest {
     }
 
     @Test
+    fun `grades every finding with the same confidence rule as the CLI`(@TempDir projectRoot: Path) {
+        // binding 후보만 review로 넘기던 예전 map은 일반 finding에 등급을 주지 않았다. CLI처럼 소스 파일별 runtime 채널로 매긴다.
+        val task = configuredTask(projectRoot, strict = false).apply { reportFormat.set("json") }
+
+        task.analyze()
+
+        val report = projectRoot.resolve("build/reports/kartograph/debug.txt").readText()
+        val finding = report.substringAfter("class:dev/kartograph/gradle/PluginUnreachableFixture", "").substringBefore('}')
+        kotlin.test.assertTrue(Regex("\"confidence\": \"(static|needs-runtime-review)\"").containsMatchIn(finding), report)
+    }
+
+    @Test
     fun `uses runtime entry point retention for variant reports`(@TempDir projectRoot: Path) {
         val task = configuredTask(projectRoot, strict = false)
 
@@ -98,6 +110,7 @@ class KartographDeadTaskTest {
         assertContains(report, "limitation\tREFLECTION_STRINGS\t")
         assertContains(report, "limitation\tDYNAMIC_REGISTRATION\t")
         assertContains(report, "limitation\tFRAMEWORK_ANNOTATION_OWNERS\t")
+        assertContains(report, "limitation\tSOURCE_RETENTION_ANNOTATIONS\t")
     }
 
     @Test

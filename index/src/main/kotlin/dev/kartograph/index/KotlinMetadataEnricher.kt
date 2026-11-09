@@ -60,11 +60,57 @@ internal object KotlinMetadataEnricher {
             else -> emptyList()
         }
         enrichDefaultBridges(facts, functions, nodes)
+        markJvmOverloads(functions, nodes)
         return facts.copy(
             nodes = facts.nodes.map { node -> nodes.getValue(node.id) },
             edges = facts.edges + runtimeEdges,
         )
     }
+
+    /**
+     * `@JvmOverloads`가 만든 overload를 compiler 생성물로 표시한다. 원본과 생성 overload 모두 `kotlin/jvm/JvmOverloads`를
+     * class 파일에 남기지만 Kotlin metadata에는 원본 시그니처만 있다. 이름만으로 추측하지 않는다.
+     * 생성 overload는 원본으로 위임하므로 Java 호출자의 도달성은 그대로 이어진다.
+     *
+     * compiler는 같은 owner metadata가 선언하고 class 파일에 `@JvmOverloads`를 남긴 함수에서 default 매개변수를 끝에서부터
+     * 하나씩 뺀 시그니처만 만든다. 그 정확한 시그니처와 같은 method만 표시한다. companion `@JvmStatic` 함수가 바깥 class에
+     * 남긴 정적 bridge는 바깥 class metadata에 원본이 없고, 바깥 class가 같은 이름의 더 긴 함수를 직접 선언해도 그 함수가
+     * `@JvmOverloads`·default 매개변수로 그 시그니처를 만들지 않으면 표시하지 않는다.
+     */
+    private fun markJvmOverloads(functions: List<KmFunction>, nodes: MutableMap<NodeId, GraphNode>) {
+        val annotated = nodes.values.mapNotNullTo(mutableSetOf()) { node -> node.overloadsSignature() }
+        val generated = functions.flatMapTo(mutableSetOf()) { function -> generatedOverloads(function, annotated) }
+        if (generated.isEmpty()) return
+        nodes.replaceAll { _, node -> if (node.overloadsSignature() in generated) node.copy(synthesized = true) else node }
+    }
+
+    /** `@JvmOverloads`가 붙은 method의 `name(descriptor)`이다. 그 밖의 node는 null이다. */
+    private fun GraphNode.overloadsSignature(): String? =
+        if (kind == NodeKind.METHOD && JVM_OVERLOADS in annotations) {
+            jvmSignature?.substringAfter('#', missingDelimiterValue = "")?.takeIf { it.isNotEmpty() }
+        } else {
+            null
+        }
+
+    /**
+     * [function]이 `@JvmOverloads` 원본일 때 compiler가 만드는 overload 시그니처 목록이다. default 매개변수를 마지막 것부터
+     * 1개, 2개, … 뺀다. JVM 인자 앞쪽의 receiver 등 value parameter가 아닌 인자는 그대로 둔다.
+     */
+    private fun generatedOverloads(function: KmFunction, annotated: Set<String>): List<String> {
+        val signature = function.signature ?: return emptyList()
+        if (signature.name + signature.descriptor !in annotated) return emptyList()
+        val arguments = Type.getArgumentTypes(signature.descriptor)
+        val leading = arguments.size - function.valueParameters.size
+        if (leading < 0) return emptyList()
+        val defaulted = function.valueParameters.indices.filter { function.valueParameters[it].declaresDefaultValue }
+        return (1..defaulted.size).map { droppedCount ->
+            val dropped = defaulted.takeLast(droppedCount).mapTo(mutableSetOf()) { it + leading }
+            val kept = arguments.filterIndexed { index, _ -> index !in dropped }
+            signature.name + Type.getMethodDescriptor(Type.getReturnType(signature.descriptor), *kept.toTypedArray())
+        }
+    }
+
+    private const val JVM_OVERLOADS = "kotlin/jvm/JvmOverloads"
 
     // 이름이나 int 꼬리만으로 추측하면 default expression이 호출한 overload를 원본으로 오인한다.
     // 같은 owner의 metadata JVM signature와 value parameter 수, 실제 CALL을 모두 요구한다.

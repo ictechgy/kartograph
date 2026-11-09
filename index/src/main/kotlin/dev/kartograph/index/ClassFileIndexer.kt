@@ -251,15 +251,17 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         hierarchyNanos = System.nanoTime() - hierarchyStart
         val runtimeStart = System.nanoTime()
         val (runtimeModeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
-        val android = AndroidFrameworkCallbacks.enrich(runtimeModeled, hierarchy)
-        val modeled = android.graph
+        val android = AndroidFrameworkCallbacks.derive(runtimeModeled, hierarchy)
+        // 파생 간선은 dispatch 보강의 재구성에 함께 넣는다(dispatch는 간선을 읽지 않는다). call 재해석은 dispatch가 읽으므로 먼저 반영한다.
+        val modeled = android.withCalls(runtimeModeled)
         runtimeNanos = System.nanoTime() - runtimeStart
         val selectedRootByNode = classFacts.flatMap { facts -> facts.nodes.map { it.id to rootByClass.getValue(facts.internalName) } }.toMap()
         val dispatchStart = System.nanoTime()
         val dispatchResult = when {
-            exportOptions == null -> ExternalDispatchIndexer.enrichBounded(modeled, hierarchy, null, inheritedMembers.calls)
-            EdgeOrigin.DISPATCH_MODEL in exportOptions.excludedOrigins -> DispatchEnrichment(modeled, 0)
-            else -> ExternalDispatchIndexer.enrichBounded(modeled, hierarchy, exportOptions.maximumDispatchCandidates, inheritedMembers.calls)
+            exportOptions == null -> ExternalDispatchIndexer.enrichBounded(modeled, hierarchy, null, inheritedMembers.calls, android.edges)
+            EdgeOrigin.DISPATCH_MODEL in exportOptions.excludedOrigins -> DispatchEnrichment(android.applyTo(modeled).graph, 0)
+            else -> ExternalDispatchIndexer.enrichBounded(modeled, hierarchy, exportOptions.maximumDispatchCandidates,
+                inheritedMembers.calls, android.edges)
         }
         if (dispatchResult.overLimitCalls > 0) exportLimitations +=
             "dispatch-candidates-over-limit: ${dispatchResult.overLimitCalls} call site(s) exceeded " +
@@ -422,6 +424,8 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     private var sourceDebugMapper: SourceDebugMapper? = null
     private var sourceDebugPresent = false
     private var metadataValues: MetadataAnnotationValues? = null
+    /** class에 Java·Kotlin `@Retention(SOURCE)`가 붙었는지다. 어노테이션 class일 때만 의미가 있다. */
+    private var sourceRetention = false
     private val nodes = mutableListOf<GraphNode>()
     private val edges = mutableListOf<GraphEdge>()
     private val calls = mutableListOf<ExternalCall>()
@@ -486,7 +490,14 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         if (descriptor == "Lkotlin/Metadata;") {
             return MetadataAnnotationValues().also { metadataValues = it }
         }
-        return AnnotationValueVisitor(JvmNodeId.classId(internalName))
+        val values = AnnotationValueVisitor(JvmNodeId.classId(internalName))
+        if (descriptor !in RETENTION_ANNOTATIONS) return values
+        return object : AnnotationVisitor(Opcodes.ASM9, values) {
+            override fun visitEnum(name: String?, enumDescriptor: String?, value: String?) {
+                if (name == "value" && value == "SOURCE" && enumDescriptor == RETENTION_ANNOTATIONS[descriptor]) sourceRetention = true
+                super.visitEnum(name, enumDescriptor, value)
+            }
+        }
     }
 
     override fun visitField(
@@ -747,6 +758,9 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
             },
             annotations = classAnnotations,
             supertypes = supertypes,
+            attributes = if (sourceRetention && classAccess and Opcodes.ACC_ANNOTATION != 0) {
+                setOf(NodeAttribute.SOURCE_RETENTION_ANNOTATION)
+            } else emptySet(),
             synthesized = effectiveClassAccess.isSynthetic() || internalName.isAndroidGeneratedClass(),
             enumConstants = if (capturesEnumInventory) enumConstants.sorted() else null,
         )
@@ -1153,6 +1167,12 @@ private val RUNTIME_CALLBACK_TYPES = setOf(
 )
 
 private val RUNTIME_CALLBACK_MEMBER_KINDS = setOf(NodeKind.CONSTRUCTOR, NodeKind.METHOD)
+
+/** retention meta-annotation descriptor와 그 `value` enum descriptor다(Java·Kotlin). */
+private val RETENTION_ANNOTATIONS = mapOf(
+    "Ljava/lang/annotation/Retention;" to "Ljava/lang/annotation/RetentionPolicy;",
+    "Lkotlin/annotation/Retention;" to "Lkotlin/annotation/AnnotationRetention;",
+)
 
 private fun Int.isSynthetic(): Boolean = this and Opcodes.ACC_SYNTHETIC != 0
 

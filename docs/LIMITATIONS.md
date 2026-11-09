@@ -20,7 +20,14 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   [공개 검증 기록](PUBLIC-VALIDATION.md)에 명시한다. 보고는 삭제 승인이 아니다.
   BINARY/RUNTIME 보존 어노테이션의 명시적 값·parameter annotation의 class 참조와 사용되는 중첩 class의 바깥
   container와 인코딩된 어노테이션 기본값의 class 참조는 도달성에 포함한다. bytecode에 남지 않는 SOURCE 보존
-  어노테이션은 복원하지 못한다. `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
+  어노테이션은 복원하지 못한다. 그래서 `@Retention(SOURCE)`(Java `RetentionPolicy.SOURCE`, Kotlin `AnnotationRetention.SOURCE`)
+  어노테이션 class 자체(`@IntDef`류)는 쓰여도 도달 불가로 보이므로 `dead`가 사용 여부와 무관하게 보고하지 않는다. `dead`의 모든
+  형식(CLI·Gradle plugin)은 `SOURCE_RETENTION_ANNOTATIONS` 한계로, query·snapshot은 `source-retention-annotations:`로 그 수를
+  알린다. `dead --explain`은 그런 class에 `unreachable` 줄과 함께 `not-reported\t<id>\tSOURCE_RETENTION_ANNOTATIONS` 줄을 낸다. `@JvmOverloads`가 만든 overload는
+  원본·생성물 모두 `kotlin/jvm/JvmOverloads`를 남기고 Kotlin metadata에는 원본만 있으므로, 같은 owner metadata가 선언하고 class
+  파일에 `@JvmOverloads`를 남긴 원본에서 default 매개변수를 끝부터 하나씩 뺀 정확한 시그니처일 때만 `synthesized`로 표시한다.
+  같은 이름의 직접 작성 overload(더 긴 것 포함)와, companion `@JvmStatic` 함수가 바깥 class에 남긴 정적 bridge는 그대로다.
+  `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
 
 - Kotlin Multiplatform 프로젝트에서 검증·문서화한 입력은 `jvm()` target의 class 출력이다. `commonMain` 코드의 영향은 JVM target에
   대해서만 답하며 iOS·JS·Wasm target은 다루지 않는다. 측정한 표본(Kotlin 2.4.10, JDK 17)의 JVM 산출물에는 `expect`/`actual` 짝 중
@@ -53,6 +60,20 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   `runtime-analysis-limits`와 미해결 호출 개수로 남긴다. 알려진 method 이름·인자 개수와 field 이름의
   reflection 접근은 연결한다. static field의 String/Class 후보는 아래의 may-write 범위로 복원하며, 일반 객체 상태나 reflection 호출 반환값은 추적하지 않는다.
 - JNI, native lookup, framework callback과 serialization/DI codegen은 bytecode만으로 완전하게 증명할 수 없다.
+- 라이브러리 body가 부르는 재정의(`Thread`가 부르는 `Runnable.run`, `sortedWith`가 부르는 `Comparator.compare`, 외부 abstract
+  callback)는 소유 project 타입이 도달할 때만 `libraryCallbackModel` 간선으로 잇는다. 라이브러리가 실제로 부른다는 증명이 아니므로
+  순회(impact·reach·language-traversal)의 근거 등급은 `candidate`이고 `--class-hops member-only`의 owner callback에도 들지 않는다. 대상은 header가 전달된 외부 상위 타입이 선언한
+  재정의 가능(public/protected·비static·비final) 메서드와 `java/lang/Object`의 `equals`·`hashCode`·`toString`·`finalize`·`clone`을
+  같은 JVM 이름·descriptor로 재정의한 메서드다. 기본(class-only)과 `--include-private-members` 모드에 같이 적용된다. 외부 상위
+  타입의 header가 없으면 잇지 않고 그런 project 타입 수를 query·snapshot 한계 `library-callback-headers:`로 센다(`dead` 출력에는 없다. CLI는 `android.jar`·AndroidX 등
+  dependency를 `--classpath`로 전달한다). 라이브러리가 실제로 부른다는 증명이 아니며, 등록되지 않은 구현도 owner가 도달하면 남는다.
+- resource XML은 element 이름·`<view class>`·`fragment`/`FragmentContainerView`의 `android:name`·`class`와 class 이름을 값으로
+  받는 속성(`layout_behavior`, menu `actionViewClass`·`actionProviderClass`, preference `fragment`, 각 `android:`·`app:` namespace)을
+  보존 근거로 읽는다. `.Name` 상대 이름은 모든 속성에서 Android namespace 아래로 풀어 보존 근거로 쓴다. 런타임에서 이런
+  상대 이름을 실제로 해석하는 것은 CoordinatorLayout(`layout_behavior`)과 Navigation(`android:name`)뿐이고, 해석 기준도
+  namespace가 아니라 applicationId·package이므로 다른 속성의 상대 이름과 applicationId가 다른 경우는 실제보다 넓게 보존된다
+  (보존을 넓히는 쪽이라 미사용 보고는 줄 뿐 거짓 보고는 만들지 않는다). namespace가 없거나 `@string/…` 같은 리소스 간접 참조,
+  점 없는 이름은 추측하지 않는다.
 - Compose multipreview는 프로젝트 또는 전달된 dependency classpath의 어노테이션 선언에서 `@Preview`와 반복
   컨테이너로 이어지는 경로를 따라간다. 어노테이션 이름만으로 보존하지 않는다. 새 multipreview 경로는 해당
   method를 보존하며, 같은 owner의 무관한 method를 새 root로 만들지 않는다. dependency header가 없거나
@@ -189,7 +210,9 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
 - Spring HTTP 클라이언트(`RestTemplate`·`RestClient`·`WebClient`·`@HttpExchange`) 사실도 소스 어휘 해석이다. 수신 식을 import한 타입의
   선언·생성 식·`@Bean`(타입·`@Qualifier`·`@Named`·`@Primary`·이름)으로 증명한 호출만 내고, 일반 메서드 매개변수로 받은 클라이언트·프로젝트
   한정자 어노테이션·`@ConfigurationProperties` 객체·환경 변수·다른 프로필 값·SpEL은 base를 모르는 쪽으로 둔다. `with(client) { … }`처럼
-  수신 식이 없는 호출과 여러 문장으로 나눈 요청 spec은 보지 않거나 `route-call-coverage:`로 센다. `RestTemplate` 기본 인코딩은 경로
+  수신 식이 없는 호출과 여러 문장으로 나눈 요청 spec은 보지 않거나 `route-call-coverage:`로 센다. OkHttp·Ktor·Volley·`java.net.http`·
+  Feign을 직접 호출하는 요청은 사실로 내지 않고 import로 감지해 `route-call-coverage:`로만 센다. Kotlin `@file:JvmName`으로 이름을
+  바꾼 파일의 최상위 HTTP 래퍼는 facade 이름(`ApiKt`)을 파일 이름에서만 만들기 때문에 연결하지 못하고 `http-wrapper-unresolved`로 남는다. `RestTemplate` 기본 인코딩은 경로
   변수의 `/`를 인코딩하지 않지만 `{}`(한 세그먼트)로 낸다. `@HttpExchange`의 `${…}`는 dynamic이고, Spring Boot 4의
   `@ImportHttpServices`·HTTP 서비스 그룹 base는 모델링하지 않는다. 규칙과 출처는 [Spring HTTP 클라이언트](SPRING-CLIENTS.md)다.
 - `routes --role server`는 어노테이션 controller만 읽는다. 함수형 라우터·view controller·서블릿 등록·JAX-RS는 사실 없이

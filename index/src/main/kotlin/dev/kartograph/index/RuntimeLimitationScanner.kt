@@ -159,6 +159,11 @@ public object RuntimeLimitationScanner {
             if (constructions > 0) add("reflective-construction: $constructions reflective constructor call(s) require runtime target modeling")
             if (serviceLoading > 0) add("service-loading: $serviceLoading ServiceLoader call(s) require provider registration inputs")
             if (externalDispatch > 0) add("external-dispatch: $externalDispatch external virtual call(s) have no project implementation target")
+            val missingHeaders = AndroidFrameworkCallbacks.missingLibraryHeaderTypes(indexed.graph, indexed.hierarchy)
+            if (missingHeaders > 0) add(
+                "library-callback-headers: $missingHeaders project type(s) extend library types without supplied class headers; " +
+                    "overrides that the library calls are not connected (supply the dependency classpath)",
+            )
             if (modeledDispatch > 0) add("dispatch-candidates: $modeledDispatch external virtual call(s) use conservative hierarchy candidates rather than proven receivers")
             val bindingEntries = indexed.graph.externalCalls.filter { it.owner == "androidx/databinding/DataBindingUtil" &&
                 it.name in setOf("setContentView", "inflate", "bind") }
@@ -173,6 +178,14 @@ public object RuntimeLimitationScanner {
                     "compiled callback and adapter paths are candidates; layout IDs, XML requireAll/attribute selection and variant overlays are not resolved",
             )
             if (constants > 0) add("inlined-constant-references: $constants compile-time constant declaration(s) may have erased use sites")
+            val sourceAnnotations = indexed.graph.nodes.values.count {
+                NodeAttribute.SOURCE_RETENTION_ANNOTATION in it.attributes && !it.synthesized
+            }
+            if (sourceAnnotations > 0) add(
+                // 사용 중인 어노테이션도 포함한 수다. 사용 여부와 무관하게 미사용 보고에서 빠지는 class 수를 뜻한다.
+                "source-retention-annotations: $sourceAnnotations SOURCE-retention annotation class(es) are never reported " +
+                    "as unused because class files do not record their uses",
+            )
             if (dynamicRegistrations > 0) add(
                 "dynamic-registration: $dynamicRegistrations runtime component registration call(s) are absent from the manifest graph",
             )

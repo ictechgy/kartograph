@@ -28,7 +28,7 @@ import kotlin.test.fail
 import org.junit.jupiter.api.io.TempDir
 
 /**
- * isthmus 공유 적합성 벡터(`http-template`·`url-compose`·`http-limitation-scope`·`http-dispatch`)의 생산자 케이스를 kartograph 규칙으로
+ * isthmus 공유 적합성 벡터(`http-template`·`url-compose`·`http-limitation-scope`·`http-dispatch`·`sql-relations`)의 생산자 케이스를 kartograph 규칙으로
  * 실행한다. `producer`와 `producer:kartograph` 케이스를 모두 돌린다 — Spring PathPattern 케이스는 실제 서버 생산자(`RouteDeclScanner`)로,
  * Spring 클라이언트 base 결합(`spring-*` join) 케이스는 실제 클라이언트 생산자(`RouteCallScanner`)로 낸다.
  *
@@ -57,7 +57,7 @@ class RouteConformanceTest {
         val lock = document("conformance.lock")
         assertEquals<Any?>("isthmus-conformance-lock", lock["format"])
         val files = lock["files"] as Map<*, *>
-        assertEquals<Any?>(setOf("http-dispatch.json", "http-limitation-scope.json", "http-template.json", "url-compose.json"), files.keys)
+        assertEquals<Any?>(setOf("http-dispatch.json", "http-limitation-scope.json", "http-template.json", "sql-relations.json", "url-compose.json"), files.keys)
         files.forEach { (name, expected) ->
             val digest = MessageDigest.getInstance("SHA-256").digest(resource(name as String)).joinToString("") { "%02x".format(it) }
             assertEquals<Any?>(expected, digest, "vendored $name differs from conformance.lock; re-vendor from isthmus")
@@ -83,7 +83,8 @@ class RouteConformanceTest {
                 else -> fail("unknown producer rule ${case["ruleId"]} in ${case["id"]}; implement it before vendoring")
             }
         }
-        assertTrue(cases.size >= 30, "expected the grammar and normalize producer cases, got ${cases.size}")
+        // 벡터를 다시 벤더링해 케이스 수가 바뀌면 여기서 드러난다. 개수는 하한이 아니라 정확값으로 고정한다.
+        assertEquals(48, cases.size, "expected every http-template producer case")
         assertEquals(15, cases.count { it["ruleId"] == "framework.spring.path-pattern" }, "every Spring PathPattern case runs")
     }
 
@@ -154,20 +155,55 @@ class RouteConformanceTest {
             val input = case["input"] as Map<*, *>
             val expect = case["expect"] as Map<*, *>
             @Suppress("UNCHECKED_CAST")
-            val entry = input["scope"] as Map<String, Any?>
+            val entry = input["scope"] as Map<String, Any?>?
+            @Suppress("UNCHECKED_CAST")
+            val declaration = input["declaration"] as Map<String, Any?>?
             when (case["ruleId"]) {
-                "scope.validate" -> assertEquals<Any?>(expect["valid"], RouteLimitationScopes.problem(entry) == null, id)
+                "scope.validate" -> assertEquals<Any?>(expect["valid"], RouteLimitationScopes.problem(entry!!) == null, id)
                 "scope.applies" -> {
-                    assertEquals<Any?>(null, RouteLimitationScopes.problem(entry), "$id scope is valid")
+                    assertEquals<Any?>(null, RouteLimitationScopes.problem(entry!!), "$id scope is valid")
                     val probe = input["probe"] as Map<*, *>
                     val applies = RouteLimitationScopes.applies(scopeOf(entry), probe["template"] as String, probe["method"] as String?,
                         probe["pathAnchor"] as String, declaration = probe["side"] == "declaration")
                     assertEquals<Any?>(expect["applies"], applies, id)
                 }
+                "scope.dynamic-validate" ->
+                    assertEquals<Any?>(expect["valid"], RouteLimitationScopes.dynamicScopeProblem(declaration!!) == null, id)
+                "scope.dynamic-applies" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val scope = declaration!!["dynamicScope"] as Map<String, Any?>?
+                    val probe = input["probe"] as Map<*, *>
+                    val applies = RouteLimitationScopes.dynamicApplies(declaration["method"] as String, scope?.let(::scopeOf),
+                        probe["template"] as String, probe["method"] as String?, probe["pathAnchor"] as String)
+                    assertEquals<Any?>(expect["applies"], applies, id)
+                }
                 else -> fail("unknown producer rule ${case["ruleId"]} in $id; implement it before vendoring")
             }
         }
-        assertEquals(27, cases.size, "expected every http-limitation-scope producer case")
+        // 벡터가 늘어도 규칙별로 빠짐없이 돌았는지 본다. 새 규칙은 위 when에서 실패한다.
+        val counts = cases.groupingBy { it["ruleId"] as String }.eachCount()
+        assertEquals(setOf("scope.validate", "scope.applies", "scope.dynamic-validate", "scope.dynamic-applies"), counts.keys)
+        assertEquals(mapOf("scope.validate" to 9, "scope.applies" to 18, "scope.dynamic-validate" to 17, "scope.dynamic-applies" to 14),
+            counts, "expected every http-limitation-scope producer case")
+    }
+
+    /**
+     * `sql-relations`의 생산자 케이스를 실제 persistence 생산자로 낸다. SQL 하나를 SQLDelight `.sq` 파일로 두고
+     * `SchemaFactScanner`가 낸 정적 `relation-use` 채널 집합을 기대 집합과 순서·중복 없이 비교한다.
+     */
+    @Test
+    fun `sql-relations producer cases pass through the schema producer`() {
+        val cases = producerCases("sql-relations.json")
+        cases.forEach { case ->
+            val id = case["id"].toString()
+            if ((case["ruleId"] as String).startsWith("relations.").not()) fail("unknown producer rule ${case["ruleId"]} in $id; implement it before vendoring")
+            val root = project.resolve("sql-" + id.replace('/', '-')).createDirectories()
+            root.resolve("src/main/sqldelight/demo").createDirectories().resolve("Case.sq").writeText((case["input"] as Map<*, *>)["sql"] as String)
+            val document = dev.kartograph.index.SchemaFactScanner(root).scan(generatedAt = "2026-01-01T00:00:00Z")
+            val relations = document.facts.filter { it.kind == "relation-use" && !it.dynamic }.mapTo(mutableSetOf()) { it.channel }
+            assertEquals<Any?>(((case["expect"] as Map<*, *>)["relations"] as List<*>).toSet(), relations, id)
+        }
+        assertEquals(14, cases.size, "expected every sql-relations producer case")
     }
 
     private fun scopeOf(entry: Map<String, Any?>): RouteLimitationScope {
@@ -204,7 +240,7 @@ class RouteConformanceTest {
                 else -> fail("unknown producer rule ${case["ruleId"]} in $id; implement it before vendoring")
             }
         }
-        assertTrue(cases.size >= 40, "expected every url-compose producer case, got ${cases.size}")
+        assertEquals(54, cases.size, "expected every url-compose producer case")
         assertEquals(13, cases.count { (it["input"] as Map<*, *>)["join"].toString().startsWith("spring-") }, "every Spring base-join case runs")
     }
 

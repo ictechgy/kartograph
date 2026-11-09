@@ -921,6 +921,7 @@ class KartographCliTest {
         assertContains(execution.output, "limitation\tREFLECTION_STRINGS")
         assertContains(execution.output, "limitation\tDYNAMIC_REGISTRATION")
         assertContains(execution.output, "limitation\tFRAMEWORK_ANNOTATION_OWNERS\t")
+        assertContains(execution.output, "limitation\tSOURCE_RETENTION_ANNOTATIONS\t")
         kotlin.test.assertFalse(execution.output.contains("deletable"))
     }
 
