@@ -49,11 +49,11 @@
 - 인덱싱이 Android framework·라이브러리 callback 파생 간선을 따로 적용하지 않고 dispatch 보강의 그래프 재구성에 함께 넣는다.
   수십만 간선 그래프를 한 번 덜 다시 만들어, 라이브러리 callback 간선 추가로 생긴 runtime 단계 비용(자기 분석 기준 약 100ms)을
   되돌린다. 전체 graph JSON·NDJSON 출력은 바이트 동일하다(`withHierarchy` 경로는 기존대로 먼저 적용한다).
-- index-cost 진단이 고정 baseline 78153c3 대비 이번 변경의 의도된 구조 차이(profile 구조 계수, CLI 출력, semantic 전체 graph
-  바이트와 raw payload 항목 수)를 arm별 정확한 고정값(`EXPECTED_PROFILE_COUNTS`·`EXPECTED_CLI`·`EXPECTED_SEMANTIC`)과 같을 때만
-  허용한다. raw payload 값은 class 파일 mtime을 담아 실행마다 달라지므로 고정하지 않고 두 arm의 payload key(class 내용) 집합
-  일치를 요구한다. 각 arm 안의 표본 일치, CLI 종료 코드 0, 엔진 지문 규칙은 그대로이고, 고정값이 없거나 낡으면 관측을 `contractDelta`로 남긴 뒤
-  `structural-delta-unpinned`·`structural-delta-stale`로 실패한다. BASELINE이 이 변경 뒤로 옮겨지면 꺼진다.
+- 고정 입력 index-cost 진단의 baseline을 78153c3에서 #223 병합 commit c7c1049로 옮겼다. 이 commit이 의도된 구조 변경
+  (`libraryCallbackModel` 간선, `SOURCE_RETENTION_ANNOTATIONS` 한계, `@JvmOverloads` 표시)을 이미 포함하므로 profile 구조 계수,
+  CLI 출력, semantic 전체 graph 바이트와 raw payload는 다시 두 arm의 완전 동일 비교만으로 판정한다. #223 검토 중 78153c3 대비 차이를
+  arm별 고정값으로만 허용하던 임시 구조 delta(`contractDelta`, `structural-delta-unpinned`·`structural-delta-stale`)와 그 테스트는
+  33f8ce1·78153c3 이동 때와 같이 제거했다. 검증 전용이며 제품 동작은 바뀌지 않는다.
 - 0.26.0 CHANGELOG 절의 하위 제목을 Keep a Changelog 형식으로 정리했다(중복 `### Added` 병합, 제목 없던 항목을 `### Changed`로).
   README의 MCP 도구 목록에 `change_impact`를 더했다.
 - test 전용 도달 판정 정책을 analysis의 `TestOnlyReachability`로 옮겼다(cli는 입력 조립만, 동작 동일).
