@@ -63,6 +63,34 @@ class IndexCostWrapperTest(unittest.TestCase):
         self.assertEqual("class OriginalEngine\n", (self.baseline / "Source.kt").read_text())
         MODULE.verify_aligned_wrappers(self.repo, self.baseline, value)
 
+    def test_reviewed_patch_transition_from_the_current_wrapper_uses_one_wrapper(self):
+        reviewed = {"9.7.1": self.identities((b"launcher\n", b"oldest wrapper", b"oldest properties\n")),
+                    "9.8.1": self.identities(self.old), "9.8.2": self.identities(self.new)}
+        report = {}
+        with patch.object(MODULE, "REVIEWED_WRAPPERS", reviewed):
+            MODULE.align_build_wrappers(self.repo, self.baseline, report)
+        value = report["buildWrapperAlignment"]
+        self.assertEqual(("9.8.1", "9.8.2"), (value["baselineOriginalVersion"], value["sharedVersion"]))
+        for name, raw in zip(PATHS, self.new):
+            self.assertEqual(raw, (self.baseline / name).read_bytes())
+        # 검토한 한 단계 전환만 허용한다. 건너뛴 전환은 쓰기 전에 거부한다.
+        for name, raw in zip(PATHS, (b"launcher\n", b"oldest wrapper", b"oldest properties\n")):
+            (self.baseline / name).write_bytes(raw)
+        with patch.object(MODULE, "REVIEWED_WRAPPERS", reviewed), \
+                self.assertRaisesRegex(MODULE.DiagnosticError, "build-tool-identity-mismatch"):
+            MODULE.align_build_wrappers(self.repo, self.baseline, {})
+        self.assertEqual(b"oldest wrapper", (self.baseline / PATHS[1]).read_bytes())
+
+    def test_committed_wrapper_matches_the_reviewed_identity_of_its_declared_version(self):
+        repository = Path(__file__).resolve().parents[2]
+        records, _ = MODULE.wrapper_inputs(repository)
+        properties = dict(line.split("=", 1) for line in
+                          (repository / PATHS[2]).read_text(encoding="utf-8").splitlines() if "=" in line)
+        version = properties["distributionUrl"].rsplit("/gradle-", 1)[1].removesuffix("-bin.zip")
+        self.assertEqual(MODULE.REVIEWED_WRAPPERS[version],
+                         tuple((row["bytes"], row["sha256"], row["mode"]) for row in records))
+        self.assertEqual(MODULE.WRAPPER_DISTRIBUTIONS[version], properties["distributionSha256Sum"])
+
     def test_identical_wrappers_are_not_rewritten(self):
         for name, raw in zip(PATHS, self.new):
             (self.baseline / name).write_bytes(raw)
