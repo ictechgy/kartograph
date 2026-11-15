@@ -60,6 +60,15 @@
 - internal 생성자를 가진 공개 data class 세 곳(`EnumDecisionUnresolvedSite`·`SourceEditObservation`·`SourceUseInspection`)에
   `@ExposedCopyVisibility`를 붙여 기존 공개 `copy()`를 유지한 채 Kotlin 2.5의 KT-11914 오류를 막는다(API 변화 없음).
 - CI `agp-minimum` job도 Gradle wrapper를 검증한다.
+- 배포본에 내장되는 ASM을 9.11.1로 올렸다(`asm`·`asm-tree`·`asm-analysis`, Dependabot #210·#211·#214 대체). 의존성 검증
+  metadata에는 Maven Central이 공개한 SHA-1·SHA-256·SHA-512와 대조한 SHA256 핀을 추가하고 9.10.1 핀은 index-cost baseline
+  빌드를 위해 남겼다. ASM 9.11의 `Analyzer`는 기본 한도(할당 400MiB, 연산 5×10¹⁰)를 넘으면 `LimitExceededException`을 던진다.
+  RuntimeValueAnalyzer·RuntimeFieldDemand는 자체 frame 한도(250,000 slot)가 먼저 막고, 한도 없는 callback 사실 스캔은 9.10.1에서도
+  heap을 소진했을 크기에서만 닿는다.
+- Gradle wrapper를 9.8.2로 올렸다(#213 대체). gradle.org 공개 checksum으로 배포 ZIP SHA256을 확인했고 wrapper JAR checksum은
+  9.8.1과 같아 `gradle-wrapper.properties`만 바뀐다. index-cost 진단은 검토한 9.8.1→9.8.2 전환을 허용한다.
+- CI의 `actions/setup-java`를 6.2.0, `gradle/actions/wrapper-validation`·`setup-gradle`을 6.4.1의 공식 tag commit SHA로
+  고정했다(#224·#215·#212 대체). 두 action이 workflow에서 쓰는 입력은 바뀌지 않았다.
 
 ## [0.26.0] - 2026-11-03
 
