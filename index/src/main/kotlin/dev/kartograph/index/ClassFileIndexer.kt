@@ -51,6 +51,12 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
     private val collectCallbacks: Boolean = callbackFacts || cache != null
     private var targetJdkHome: Path? = null
 
+    /** 콜백 값 흐름 분석의 ASM 계산 한도다. 테스트가 한도 초과의 실패 원인을 재현할 때만 낮춘다. */
+    internal var callbackLimits: AnalysisLimits = AnalysisLimits.UNBOUNDED
+
+    /** runtime 값 분석의 ASM 계산 한도다. 테스트가 한도 초과의 계량 경로를 재현할 때만 낮춘다. */
+    internal var runtimeLimits: AnalysisLimits = AnalysisLimits.UNBOUNDED
+
     /** 분석 SDK를 실행 JVM과 분리한다. 미지정 생성자는 기존 host-runtime 동작을 유지한다. */
     public constructor(targetJdkHome: Path, cache: ClassIndexCache? = null, callbackFacts: Boolean = true) :
         this(cache, callbackFacts) {
@@ -132,6 +138,9 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         var cacheWriteNanos = 0L
         fun parse(bytes: ByteArray): ClassFacts = try {
             readFacts(ClassReader(bytes))
+        } catch (error: ClassIndexingException) {
+            // 메서드 값 흐름 분석의 한도 초과처럼 원인을 이미 밝힌 실패는 "invalid class file"로 덮지 않는다.
+            throw error
         } catch (error: RuntimeException) {
             throw ClassIndexingException("invalid class file", error)
         }
@@ -250,7 +259,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         } else ClassHierarchy.EMPTY
         hierarchyNanos = System.nanoTime() - hierarchyStart
         val runtimeStart = System.nanoTime()
-        val (runtimeModeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
+        val (runtimeModeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy, runtimeLimits)
         val android = AndroidFrameworkCallbacks.derive(runtimeModeled, hierarchy)
         // 파생 간선은 dispatch 보강의 재구성에 함께 넣는다(dispatch는 간선을 읽지 않는다). call 재해석은 dispatch가 읽으므로 먼저 반영한다.
         val modeled = android.withCalls(runtimeModeled)
@@ -397,7 +406,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
                 return MethodNode(Opcodes.ASM9, access, name, descriptor, signature, exceptions).also { bodies[id] = it }
             }
         }, ClassReader.SKIP_FRAMES)
-        val withCallbacks = if (!collectCallbacks) facts else CallbackFactScanner.scan(facts.internalName, bodies.values.toList()).let { callbacks ->
+        val withCallbacks = if (!collectCallbacks) facts else CallbackFactScanner.scan(facts.internalName, bodies.values.toList(), callbackLimits).let { callbacks ->
             facts.copy(callbackArguments = callbacks.arguments, parameterUses = callbacks.uses, lambdaEscapes = callbacks.escapes)
         }
         if (methods.isEmpty() && returns.isEmpty() && writes.isEmpty()) return withCallbacks

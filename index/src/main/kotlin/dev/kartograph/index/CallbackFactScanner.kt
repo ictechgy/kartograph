@@ -42,12 +42,19 @@ internal object CallbackFactScanner {
     /** 합류 지점의 출처 집합 상한이다. 넘으면 그 메서드의 사실을 버린다(쓰임을 빠뜨린 채 완전하다고 표시하지 않는다). */
     private const val MAX_ORIGINS = 64
 
-    fun scan(owner: String, methods: List<MethodNode>): Facts {
+    /**
+     * 한 class의 메서드를 훑는다. [limits]는 테스트가 한도 초과 경로를 재현할 때만 바꾼다.
+     *
+     * @throws ClassIndexingException 메서드 하나의 값 흐름 분석이 ASM 계산 한도를 넘었거나 예기치 않게 실패했을 때다. 그
+     *   메서드의 사실만 버리면 콜백 출처가 조용히 사라져 보존이 좁아질 수 있고, 이 사실에는 계량 한계 항목이 없어 원인을
+     *   밝혀 실패한다. class 파일 자체가 깨졌다는 뜻이 아니다.
+     */
+    fun scan(owner: String, methods: List<MethodNode>, limits: AnalysisLimits = AnalysisLimits.UNBOUNDED): Facts {
         val arguments = mutableListOf<CallbackArgument>()
         val uses = mutableListOf<ParameterUse>()
         val escapes = mutableListOf<LambdaEscape>()
         methods.forEach { method ->
-            val facts = scanMethod(owner, method) ?: return@forEach
+            val facts = scanReporting(owner, method, limits) ?: return@forEach
             arguments += facts.arguments
             uses += facts.uses
             escapes += facts.escapes
@@ -82,12 +89,26 @@ internal object CallbackFactScanner {
         }
     }
 
-    private fun scanMethod(owner: String, method: MethodNode): Facts? {
+    /** 메서드 하나의 분석 실패를 "invalid class file"이 아닌 실제 원인과 메서드로 알린다. */
+    private fun scanReporting(owner: String, method: MethodNode, limits: AnalysisLimits): Facts? = try {
+        scanMethod(owner, method, limits)
+    } catch (error: ClassIndexingException) {
+        throw error
+    } catch (error: RuntimeException) {
+        // 한도 초과는 9.11 이전 ASM에 없는 class라 이름으로 구분한다(AnalysisLimits.isComputeLimit).
+        val reason = if (AnalysisLimits.isComputeLimit(error)) "exceeded the ASM compute limit (${error.message})"
+            else "failed (${error.javaClass.simpleName})"
+        // 메서드 ID는 `;`로 끝날 수 있으므로 문장 끝에 둔다.
+        throw ClassIndexingException("callback value-flow analysis $reason; the class file was read but this method was not " +
+            "analyzed: ${JvmNodeId.methodId(owner, method.name, method.desc).value}", error)
+    }
+
+    private fun scanMethod(owner: String, method: MethodNode, limits: AnalysisLimits): Facts? {
         if (!isCandidate(owner, method)) return null
         val methodId = JvmNodeId.methodId(owner, method.name, method.desc)
         val interpreter = OriginInterpreter(method)
         val frames = try {
-            Analyzer(interpreter).analyze(owner, method)
+            limits.analyzer(interpreter).analyze(owner, method)
         } catch (_: AnalyzerException) {
             return null
         }

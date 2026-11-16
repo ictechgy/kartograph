@@ -21,7 +21,6 @@ import org.objectweb.asm.tree.LdcInsnNode
 import org.objectweb.asm.tree.MethodInsnNode
 import org.objectweb.asm.tree.MethodNode
 import org.objectweb.asm.tree.TypeInsnNode
-import org.objectweb.asm.tree.analysis.Analyzer
 import org.objectweb.asm.tree.analysis.AnalyzerException
 import org.objectweb.asm.tree.analysis.BasicInterpreter
 import org.objectweb.asm.tree.analysis.BasicValue
@@ -35,7 +34,10 @@ internal object RuntimeValueAnalyzer {
         RuntimeLibraryModels.find(call.owner, call.name, call.descriptor,
             call.kind == dev.kartograph.core.InvocationKind.STATIC) { true }?.sensitive == true
 
-    fun enrich(graph: CodeGraph, facts: List<ClassFacts>, hierarchy: ClassHierarchy): Pair<CodeGraph, List<ClassRuntimeObservation>> {
+    /** [limits]는 테스트가 ASM 계산 한도 초과의 계량 경로를 재현할 때만 바꾼다. */
+    fun enrich(
+        graph: CodeGraph, facts: List<ClassFacts>, hierarchy: ClassHierarchy, limits: AnalysisLimits = AnalysisLimits.UNBOUNDED,
+    ): Pair<CodeGraph, List<ClassRuntimeObservation>> {
         val typeSupers = graph.nodes.values.filter { it.jvmSignature != null && it.kind in TYPE_KINDS }
             .associate { requireNotNull(it.jvmSignature) to it.supertypes }
         fun loader(owner: String): Boolean {
@@ -56,7 +58,7 @@ internal object RuntimeValueAnalyzer {
         } }.toMap()
         val fieldLookup = FieldLookup(facts, hierarchy)
         val fieldWriters = FieldWriteIndex(facts, fieldLookup, ::loader)
-        val fieldDemand = RuntimeFieldDemand()
+        val fieldDemand = RuntimeFieldDemand(limits)
         val derived = mutableListOf<GraphEdge>()
         val models = mutableMapOf<Pair<NodeId, Int>, List<NodeId>>()
         val observations = facts.map { fact ->
@@ -71,8 +73,8 @@ internal object RuntimeValueAnalyzer {
             var boundedMethods = 0
             for (method in fact.runtimeMethods) {
                 val caller = JvmNodeId.methodId(fact.internalName, method.name, method.desc)
-                val fields = FieldValues(fieldWriters, fieldLookup, ::loader, returns, fieldDemand)
-                val summaries = ReturnValues(returns, ::loader, fieldDemand, fields::read) { fields.cycleEpoch }
+                val fields = FieldValues(fieldWriters, fieldLookup, ::loader, returns, fieldDemand, limits)
+                val summaries = ReturnValues(returns, ::loader, fieldDemand, limits, fields::read) { fields.cycleEpoch }
                 val consumers = method.instructions.toArray().filterIsInstance<MethodInsnNode>().filter {
                     RuntimeLibraryModels.find(it.owner, it.name, it.desc, it.opcode == Opcodes.INVOKESTATIC, ::loader)?.sensitive == true
                 }
@@ -87,9 +89,14 @@ internal object RuntimeValueAnalyzer {
                     boundedMethods++
                     null
                 } else try {
-                    Analyzer(interpreter).analyze(fact.internalName, method)
+                    limits.analyzer(interpreter).analyze(fact.internalName, method)
                 } catch (_: AnalyzerException) {
                     // 기본 명령 사실은 유지하되 해석하지 못한 흐름은 계량 한계로 남긴다.
+                    boundedMethods++
+                    null
+                } catch (error: RuntimeException) {
+                    // ASM 9.11 계산 한도(AnalysisLimits)에 닿은 흐름도 같은 계량 한계로 센다. 그 밖의 오류는 그대로 둔다.
+                    if (!AnalysisLimits.isComputeLimit(error)) throw error
                     boundedMethods++
                     null
                 }
@@ -209,6 +216,7 @@ private class ReturnValues(
     private val methods: Map<NodeId, Pair<String, MethodNode>>,
     private val loader: (String) -> Boolean,
     private val fieldDemand: RuntimeFieldDemand,
+    private val limits: AnalysisLimits,
     private val fieldValue: (FieldInsnNode?, Set<MemberValue>?, () -> Unit) -> FlowValue? = { _, _, _ -> null },
     private val fieldEpoch: () -> Long = { 0L },
 ) {
@@ -264,7 +272,9 @@ private class ReturnValues(
         }
         val interpreter = FlowInterpreter(loader, parameters, ::evaluate, fieldValue,
             demandedFields = demandedFields, demandedCalls = demandedCalls)
-        val frames = try { Analyzer(interpreter).analyze(owner, method) } catch (_: AnalyzerException) { return Summary(null, true) }
+        val frames = try { limits.analyzer(interpreter).analyze(owner, method) }
+            catch (_: AnalyzerException) { return Summary(null, true) }
+            catch (error: RuntimeException) { if (AnalysisLimits.isComputeLimit(error)) return Summary(null, true) else throw error }
         var result: FlowValue? = null
         for ((index, instruction) in method.instructions.toArray().withIndex()) {
             if (instruction.opcode != Opcodes.ARETURN) continue
@@ -366,6 +376,7 @@ private class FieldValues(
     private val loader: (String) -> Boolean,
     private val returns: Map<NodeId, Pair<String, MethodNode>>,
     private val fieldDemand: RuntimeFieldDemand,
+    private val limits: AnalysisLimits,
 ) {
     private val cache = mutableMapOf<NodeId, FlowValue?>()
     private val active = mutableSetOf<NodeId>()
@@ -373,7 +384,7 @@ private class FieldValues(
     private var analyses = 0
     var cycleEpoch = 0L
         private set
-    private val summaries = ReturnValues(returns, loader, fieldDemand, ::read) { cycleEpoch }
+    private val summaries = ReturnValues(returns, loader, fieldDemand, limits, ::read) { cycleEpoch }
 
     fun read(instruction: FieldInsnNode?, members: Set<MemberValue>?, limited: () -> Unit): FlowValue? {
         val fields = if (instruction != null) lookup.direct(instruction.owner, instruction.name, instruction.desc)
@@ -418,7 +429,9 @@ private class FieldValues(
                 }
                 val interpreter = FlowInterpreter(loader, returnedValue = summaries::evaluate, fieldValue = ::read, retainFieldCandidates = true,
                     demandedFields = demandedFields, demandedCalls = demandedCalls)
-                val frames = try { Analyzer(interpreter).analyze(writer.owner, method) } catch (_: AnalyzerException) { limit(); continue }
+                val frames = try { limits.analyzer(interpreter).analyze(writer.owner, method) }
+                    catch (_: AnalyzerException) { limit(); continue }
+                    catch (error: RuntimeException) { if (AnalysisLimits.isComputeLimit(error)) { limit(); continue } else throw error }
                 for (index in writer.instructions.indices) {
                     val frame = frames[index] ?: continue
                     val value = when {

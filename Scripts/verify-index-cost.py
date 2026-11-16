@@ -218,11 +218,20 @@ REVIEWED_WRAPPERS = {
     "9.8.1": ((8656, "a5a5c199ba02189ae8c46a334223371a20599d9c298ef65e7540ede4a3f72d59", 0o755),
               (48749, "3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98", 0o644),
               (368, "b9c24447093e4fab2b1f37bfb461d2a1eb14157a4808dff50e0f954801a8f8f1", 0o644)),
+    # gradle.org/release-checksums의 9.8.2 wrapper JAR checksum은 9.8.1과 같다. properties만 바뀐다.
+    "9.8.2": ((8656, "a5a5c199ba02189ae8c46a334223371a20599d9c298ef65e7540ede4a3f72d59", 0o755),
+              (48749, "3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98", 0o644),
+              (368, "62779c1edca4389b50577428c5cab724a2ddd3ea4cac0685ce48bab709cce6c6", 0o644)),
 }
 
 
 WRAPPER_DISTRIBUTIONS = {"9.7.1": "acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a",
-                         "9.8.1": "dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f"}
+                         "9.8.1": "dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f",
+                         "9.8.2": "21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607"}
+
+
+# baseline→후보 방향으로 검토한 한 단계 전환만 허용한다. 역방향·건너뛴 전환은 다른 도구 비교로 본다.
+REVIEWED_WRAPPER_TRANSITIONS = frozenset({("9.7.1", "9.8.1"), ("9.8.1", "9.8.2")})
 
 
 @contextmanager
@@ -285,7 +294,7 @@ def replace_wrapper(root, relative, raw, mode):
 
 
 def align_build_wrappers(repo, baseline, report):
-    """검토한 9.7.1→9.8.1에 한해 양쪽 엔진을 같은 도구로 빌드한다."""
+    """검토한 wrapper 전환(REVIEWED_WRAPPER_TRANSITIONS)에 한해 양쪽 엔진을 같은 도구로 빌드한다."""
     original, _ = wrapper_inputs(baseline)
     shared, contents = wrapper_inputs(repo)
     def version(rows):
@@ -293,7 +302,7 @@ def align_build_wrappers(repo, baseline, report):
         return next((name for name, value in REVIEWED_WRAPPERS.items() if identity == value), None)
     old_version, shared_version = version(original), version(shared)
     changed = original != shared
-    if changed and (old_version, shared_version) != ("9.7.1", "9.8.1"):
+    if changed and (old_version, shared_version) not in REVIEWED_WRAPPER_TRANSITIONS:
         raise DiagnosticError("build-tool-identity-mismatch")
     value = {"scope": "derived baseline: original engine and build scripts under the common candidate wrapper; not the original build recipe",
              "baselineOriginalVersion": old_version, "sharedVersion": shared_version, "changed": changed,
