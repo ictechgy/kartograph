@@ -1,5 +1,6 @@
 package dev.kartograph.gradle
 
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -17,6 +18,8 @@ internal class OwnedTestKitHome(private val root: Path, val home: Path, private 
     // 이 JVM이 직접 잡은 소유 daemon handle이다. 생존 확인·종료 대기·강제 종료는 이 handle로만 한다.
     private val daemons = linkedMapOf<Long, ProcessHandle>()
     private var used = false
+    // 첫 빌드 직전의 테스트 JVM 자식이다. 다른 fixture의 daemon이나 테스트가 띄운 프로세스는 이 fixture의 daemon이 아니다.
+    private var preexistingChildren: Set<ProcessHandle>? = null
     private var closed = false
     private var unobservedAttempt = false
 
@@ -29,6 +32,7 @@ internal class OwnedTestKitHome(private val root: Path, val home: Path, private 
 
     fun build(runner: GradleRunner, expectedFailure: Boolean = false): BuildResult {
         check(!closed)
+        if (preexistingChildren == null) preexistingChildren = ProcessHandle.current().children().toList().toSet()
         // 이전 실행의 신원을 다음 실행 실패의 증거로 재사용하지 않는다.
         Files.deleteIfExists(identityFile())
         used = true
@@ -59,9 +63,11 @@ internal class OwnedTestKitHome(private val root: Path, val home: Path, private 
         require(previous == null || previous == start) { "Fixture daemon PID was reused" }
         // Linux JDK는 startInstant를 JVM마다 한 번 읽은 /proc/stat btime으로 계산한다. 그 사이 시계가 보정되면 같은
         // 프로세스도 JVM마다 초 단위로 다르게 보이므로 JVM 사이 시각은 비교하지 않는다. TestKit은 이 JVM에서 daemon을
-        // 직접 띄우므로 이 JVM의 살아 있는 자식만 소유 daemon으로 인정하고, 이후 비교는 이 JVM의 handle로만 한다.
-        val daemon = ProcessHandle.current().children().filter { it.pid() == pid }.findFirst().orElse(null)
-        checkNotNull(daemon) { "Fixture daemon $pid is not a live child of the test JVM" }
+        // 직접 띄우므로 이 fixture의 첫 빌드 뒤에 생긴 이 JVM의 살아 있는 자식만 소유 daemon으로 인정하고, 이후 비교는
+        // 이 JVM의 handle로만 한다.
+        val before = checkNotNull(preexistingChildren)
+        val daemon = ProcessHandle.current().children().filter { it.pid() == pid && it !in before }.findFirst().orElse(null)
+        checkNotNull(daemon) { "Fixture daemon $pid is not a live test JVM child started after this fixture's first build" }
         val known = daemons[pid]
         check(known == null || known == daemon) { "Fixture daemon PID was reused" }
         daemons[pid] = daemon
@@ -111,7 +117,7 @@ internal class OwnedTestKitHome(private val root: Path, val home: Path, private 
             } catch (graceful: Exception) {
                 // --stop은 아무 daemon도 멈추지 못해도 0으로 끝날 수 있고 기한은 runner 정지에도 지난다. 어느 경우든 소유가
                 // 확인된 daemon을 남긴 채 돌아가지 않는다.
-                throw terminate(live, wait, graceful)
+                throw terminate(live, wait, graceful, stopLogExcerpt())
             }
             check(!unobservedAttempt && identities.isNotEmpty()) {
                 "Stopped the owned registry but cannot prove every unobserved fixture daemon exited"
@@ -125,22 +131,35 @@ internal class OwnedTestKitHome(private val root: Path, val home: Path, private 
         }
     }
 
-    /** 정상 stop이 실패하면 소유가 확인된 daemon만 강제 종료하고 종료를 기다린 뒤, 원래 실패를 숨기지 않고 돌려준다. */
-    private fun terminate(live: List<ProcessHandle>, wait: CleanupWait, graceful: Exception): Exception {
+    /**
+     * 정상 stop이 실패하면 소유가 확인된 daemon만 강제 종료하고 종료를 기다린 뒤, 원래 실패를 cause로 담아 돌려준다.
+     * stop client 로그는 JUnit 임시 폴더와 함께 지워지므로 앞부분을 메시지에 남긴다.
+     */
+    private fun terminate(live: List<ProcessHandle>, wait: CleanupWait, graceful: Exception, stopLog: String): Exception {
         val remaining = live.filter(ProcessHandle::isAlive)
-        if (remaining.isEmpty()) return graceful
         // ProcessHandle.destroyForcibly는 기록된 시작 시각이 같을 때만 신호를 보낸다.
         remaining.forEach(ProcessHandle::destroyForcibly)
-        val reported = IllegalStateException(
-            "Fixture daemon ${remaining.map(ProcessHandle::pid)} did not exit after the owned stop; terminated it forcibly",
-            graceful,
-        )
+        val action = if (remaining.isEmpty()) "The owned fixture stop failed; no verified fixture daemon was left running"
+            else "Fixture daemon ${remaining.map(ProcessHandle::pid)} did not exit after the owned stop; terminated it forcibly"
+        val reported = IllegalStateException("$action\n$stopLog", graceful)
+        if (remaining.isEmpty()) return reported
         try {
             wait.forExits(remaining)
         } catch (forced: Exception) {
             reported.addSuppressed(forced)
         }
         return reported
+    }
+
+    /** stop client 로그의 앞부분이다. 읽지 못하면 그 이유만 남긴다. */
+    private fun stopLogExcerpt(): String = try {
+        val log = home.parent.resolve("testkit-stop.log")
+        Files.newInputStream(log, LinkOption.NOFOLLOW_LINKS).use { input ->
+            val head = input.readNBytes(STOP_LOG_EXCERPT_BYTES)
+            "Fixture stop client log (${head.size} of ${Files.size(log)} bytes):\n" + String(head, Charsets.UTF_8)
+        }
+    } catch (error: IOException) {
+        "Fixture stop client log unavailable: ${error.javaClass.simpleName}"
     }
 
     /** 취소를 잊지 않되, 소유 프로세스 정리는 interrupt마다 늘어나지 않는 기한 안에서 끝낸다. */
@@ -190,6 +209,7 @@ internal class OwnedTestKitHome(private val root: Path, val home: Path, private 
     companion object {
         const val IDENTITY_TASK = "recordTestKitProcess"
         private const val DAEMON_EXIT_SECONDS = 10L
+        private const val STOP_LOG_EXCERPT_BYTES = 4096
 
         /** configuration cache에 저장 가능한 File 값만 action이 캡처한다. 분석 task의 입력은 바꾸지 않는다. */
         val identityTask = """

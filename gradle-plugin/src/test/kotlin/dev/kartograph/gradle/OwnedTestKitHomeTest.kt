@@ -63,6 +63,9 @@ class OwnedTestKitHomeTest {
             assertIs<IllegalStateException>(failure)
             assertContains(failure.message.orEmpty(), "terminated it forcibly")
             assertIs<TimeoutException>(failure.cause)
+            // TempDir와 함께 지워질 stop client 로그의 앞부분을 예외에 남긴다.
+            assertContains(failure.message.orEmpty(), "Fixture stop client log (")
+            assertContains(failure.message.orEmpty(), "Stopping Daemon")
         } finally {
             // 수정 전 음성 대조 실행에서도 종료 hook에 묶인 daemon을 남기지 않는다.
             daemon?.takeIf(ProcessHandle::isAlive)?.destroyForcibly()
@@ -91,7 +94,7 @@ class OwnedTestKitHomeTest {
             val failure = assertFailsWith<IllegalStateException> {
                 home.build(runner(root, "foreign", "reportParentIdentity"))
             }
-            assertContains(failure.message.orEmpty(), "not a live child of the test JVM")
+            assertContains(failure.message.orEmpty(), "is not a live test JVM child started after this fixture's first build")
             daemon = process(root, "foreign", "testkit-real-process.txt")
             val cleanup = assertFailsWith<IllegalStateException> { home.close() }
             assertContains(cleanup.message.orEmpty(), "unobserved fixture daemon")
@@ -100,6 +103,28 @@ class OwnedTestKitHomeTest {
             checkNotNull(daemon).onExit().get(30, TimeUnit.SECONDS)
         } finally {
             daemon?.takeIf(ProcessHandle::isAlive)?.destroyForcibly()
+        }
+    }
+
+    @Test
+    fun `a test JVM child that existed before the first build is never claimed or killed`(@TempDir root: Path) {
+        val sibling = startSibling(root)
+        val home = fixture(root, "sibling")
+        var daemon: ProcessHandle? = null
+        try {
+            val failure = runCatching { home.build(runner(root, "sibling", "reportSiblingIdentity", "-PforeignPid=${sibling.pid()}")) }
+                .exceptionOrNull()
+            daemon = process(root, "sibling", "testkit-real-process.txt")
+            assertIs<IllegalStateException>(failure, "a pre-existing test JVM child must not be accepted as the owned daemon")
+            assertContains(failure.message.orEmpty(), "is not a live test JVM child started after this fixture's first build")
+            val cleanup = assertFailsWith<IllegalStateException> { home.close() }
+            assertContains(cleanup.message.orEmpty(), "unobserved fixture daemon")
+            assertTrue(sibling.isAlive, "cleanup must not stop or kill a process the fixture does not own")
+            checkNotNull(daemon).onExit().get(30, TimeUnit.SECONDS)
+        } finally {
+            daemon?.takeIf(ProcessHandle::isAlive)?.destroyForcibly()
+            sibling.destroyForcibly()
+            sibling.waitFor(30, TimeUnit.SECONDS)
         }
     }
 
@@ -176,6 +201,16 @@ class OwnedTestKitHomeTest {
                     identityFile.text = lines[0] + '\n' + java.time.Instant.parse(lines[1]).plusSeconds(1).toString() + '\n'
                 }
             }
+            // 테스트가 첫 빌드 전에 띄운 테스트 JVM의 다른 자식을 신원으로 보고한다.
+            def foreignPid = providers.gradleProperty('foreignPid')
+            tasks.register('reportSiblingIdentity') {
+                dependsOn '${OwnedTestKitHome.IDENTITY_TASK}'
+                doLast {
+                    realIdentityFile.text = identityFile.text
+                    def sibling = ProcessHandle.of(foreignPid.get().toLong()).orElseThrow()
+                    identityFile.text = sibling.pid().toString() + '\n' + sibling.info().startInstant().orElseThrow().toString() + '\n'
+                }
+            }
             // 소유 daemon이 아닌 프로세스(테스트 JVM)를 신원으로 보고한다. 실제 신원은 정리 확인용으로 따로 둔다.
             tasks.register('reportParentIdentity') {
                 dependsOn '${OwnedTestKitHome.IDENTITY_TASK}'
@@ -192,6 +227,15 @@ class OwnedTestKitHomeTest {
     private fun runner(root: Path, name: String, vararg tasks: String): GradleRunner = GradleRunner.create()
         .withProjectDir(root.resolve("$name/repository").toFile())
         .withArguments(listOf(OwnedTestKitHome.IDENTITY_TASK) + tasks + listOf("--offline", "--configuration-cache"))
+
+    /** 테스트 JVM이 직접 띄운, fixture와 무관한 오래 사는 자식 프로세스다(JDK 단일 파일 실행). */
+    private fun startSibling(root: Path): Process {
+        val source = Files.createDirectories(root.resolve("sibling-source")).resolve("Sibling.java")
+        source.writeText("public class Sibling { public static void main(String[] a) throws Exception { Thread.sleep(300_000); } }\n")
+        val java = Path.of(System.getProperty("java.home"), "bin", if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java")
+        return ProcessBuilder(java.toString(), source.toString()).redirectErrorStream(true)
+            .redirectOutput(root.resolve("sibling.log").toFile()).start()
+    }
 
     private fun process(root: Path, name: String, file: String = "testkit-process.txt"): ProcessHandle {
         val identity = Files.readAllLines(root.resolve("$name/repository/build/$file"))
