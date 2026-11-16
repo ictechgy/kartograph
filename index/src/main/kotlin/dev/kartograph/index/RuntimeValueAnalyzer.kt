@@ -11,6 +11,7 @@ import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
 import dev.kartograph.core.Visibility
+import org.objectweb.asm.LimitExceededException
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 import org.objectweb.asm.tree.AbstractInsnNode
@@ -21,7 +22,6 @@ import org.objectweb.asm.tree.LdcInsnNode
 import org.objectweb.asm.tree.MethodInsnNode
 import org.objectweb.asm.tree.MethodNode
 import org.objectweb.asm.tree.TypeInsnNode
-import org.objectweb.asm.tree.analysis.Analyzer
 import org.objectweb.asm.tree.analysis.AnalyzerException
 import org.objectweb.asm.tree.analysis.BasicInterpreter
 import org.objectweb.asm.tree.analysis.BasicValue
@@ -87,9 +87,13 @@ internal object RuntimeValueAnalyzer {
                     boundedMethods++
                     null
                 } else try {
-                    Analyzer(interpreter).analyze(fact.internalName, method)
+                    AnalysisLimits.UNBOUNDED.analyzer(interpreter).analyze(fact.internalName, method)
                 } catch (_: AnalyzerException) {
                     // 기본 명령 사실은 유지하되 해석하지 못한 흐름은 계량 한계로 남긴다.
+                    boundedMethods++
+                    null
+                } catch (_: LimitExceededException) {
+                    // ASM 9.11 계산 한도(AnalysisLimits)에 닿은 흐름도 같은 계량 한계로 센다.
                     boundedMethods++
                     null
                 }
@@ -264,7 +268,9 @@ private class ReturnValues(
         }
         val interpreter = FlowInterpreter(loader, parameters, ::evaluate, fieldValue,
             demandedFields = demandedFields, demandedCalls = demandedCalls)
-        val frames = try { Analyzer(interpreter).analyze(owner, method) } catch (_: AnalyzerException) { return Summary(null, true) }
+        val frames = try { AnalysisLimits.UNBOUNDED.analyzer(interpreter).analyze(owner, method) }
+            catch (_: AnalyzerException) { return Summary(null, true) }
+            catch (_: LimitExceededException) { return Summary(null, true) }
         var result: FlowValue? = null
         for ((index, instruction) in method.instructions.toArray().withIndex()) {
             if (instruction.opcode != Opcodes.ARETURN) continue
@@ -418,7 +424,9 @@ private class FieldValues(
                 }
                 val interpreter = FlowInterpreter(loader, returnedValue = summaries::evaluate, fieldValue = ::read, retainFieldCandidates = true,
                     demandedFields = demandedFields, demandedCalls = demandedCalls)
-                val frames = try { Analyzer(interpreter).analyze(writer.owner, method) } catch (_: AnalyzerException) { limit(); continue }
+                val frames = try { AnalysisLimits.UNBOUNDED.analyzer(interpreter).analyze(writer.owner, method) }
+                    catch (_: AnalyzerException) { limit(); continue }
+                    catch (_: LimitExceededException) { limit(); continue }
                 for (index in writer.instructions.indices) {
                     val frame = frames[index] ?: continue
                     val value = when {

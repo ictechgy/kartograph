@@ -1,12 +1,12 @@
 package dev.kartograph.index
 
+import org.objectweb.asm.LimitExceededException
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.tree.AbstractInsnNode
 import org.objectweb.asm.tree.FieldInsnNode
 import org.objectweb.asm.tree.InsnNode
 import org.objectweb.asm.tree.MethodInsnNode
 import org.objectweb.asm.tree.MethodNode
-import org.objectweb.asm.tree.analysis.Analyzer
 import org.objectweb.asm.tree.analysis.AnalyzerException
 import org.objectweb.asm.tree.analysis.SourceInterpreter
 import org.objectweb.asm.tree.analysis.SourceValue
@@ -107,8 +107,11 @@ internal class RuntimeFieldDemand {
             }
         }
         try {
-            Analyzer(interpreter).analyze(owner, method)
+            AnalysisLimits.UNBOUNDED.analyzer(interpreter).analyze(owner, method)
         } catch (_: AnalyzerException) {
+            return null
+        } catch (_: LimitExceededException) {
+            // AnalyzerException과 같이 "수요 모름"(전체 수요)으로 돌아가 보존을 좁히지 않는다.
             return null
         }
         return parents.takeUnless { bounded }
