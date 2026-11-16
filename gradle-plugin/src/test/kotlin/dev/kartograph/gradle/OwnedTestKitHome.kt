@@ -18,8 +18,8 @@ internal class OwnedTestKitHome(private val root: Path, val home: Path, private 
     // 이 JVM이 직접 잡은 소유 daemon handle이다. 생존 확인·종료 대기·강제 종료는 이 handle로만 한다.
     private val daemons = linkedMapOf<Long, ProcessHandle>()
     private var used = false
-    // 첫 빌드 직전의 테스트 JVM 자식이다. 다른 fixture의 daemon이나 테스트가 띄운 프로세스는 이 fixture의 daemon이 아니다.
-    private var preexistingChildren: Set<ProcessHandle>? = null
+    // 이번 빌드 직전의 테스트 JVM 자식이다. 다른 fixture의 daemon이나 테스트가 띄운 프로세스는 이 fixture의 daemon이 아니다.
+    private var childrenBeforeBuild: Set<ProcessHandle> = emptySet()
     private var closed = false
     private var unobservedAttempt = false
 
@@ -32,7 +32,7 @@ internal class OwnedTestKitHome(private val root: Path, val home: Path, private 
 
     fun build(runner: GradleRunner, expectedFailure: Boolean = false): BuildResult {
         check(!closed)
-        if (preexistingChildren == null) preexistingChildren = ProcessHandle.current().children().toList().toSet()
+        childrenBeforeBuild = ProcessHandle.current().children().toList().toSet()
         // 이전 실행의 신원을 다음 실행 실패의 증거로 재사용하지 않는다.
         Files.deleteIfExists(identityFile())
         used = true
@@ -63,12 +63,12 @@ internal class OwnedTestKitHome(private val root: Path, val home: Path, private 
         require(previous == null || previous == start) { "Fixture daemon PID was reused" }
         // Linux JDK는 startInstant를 JVM마다 한 번 읽은 /proc/stat btime으로 계산한다. 그 사이 시계가 보정되면 같은
         // 프로세스도 JVM마다 초 단위로 다르게 보이므로 JVM 사이 시각은 비교하지 않는다. TestKit은 이 JVM에서 daemon을
-        // 직접 띄우므로 이 fixture의 첫 빌드 뒤에 생긴 이 JVM의 살아 있는 자식만 소유 daemon으로 인정하고, 이후 비교는
-        // 이 JVM의 handle로만 한다.
-        val before = checkNotNull(preexistingChildren)
-        val daemon = ProcessHandle.current().children().filter { it.pid() == pid && it !in before }.findFirst().orElse(null)
-        checkNotNull(daemon) { "Fixture daemon $pid is not a live test JVM child started after this fixture's first build" }
+        // 직접 띄운다. 이미 소유로 확인한 daemon(같은 home을 다시 쓰는 빌드)이거나 이번 빌드 중에 생긴 이 JVM의 살아 있는 자식만
+        // 소유 daemon으로 인정하고, 이후 비교는 이 JVM의 handle로만 한다. 빌드 사이에 다른 fixture가 띄운 daemon은 받지 않는다.
         val known = daemons[pid]
+        val daemon = ProcessHandle.current().children()
+            .filter { it.pid() == pid && (it == known || it !in childrenBeforeBuild) }.findFirst().orElse(null)
+        checkNotNull(daemon) { "Fixture daemon $pid is neither this fixture's known daemon nor a live test JVM child started during this build" }
         check(known == null || known == daemon) { "Fixture daemon PID was reused" }
         daemons[pid] = daemon
         identities[pid] = start
@@ -139,8 +139,11 @@ internal class OwnedTestKitHome(private val root: Path, val home: Path, private 
         val remaining = live.filter(ProcessHandle::isAlive)
         // ProcessHandle.destroyForcibly는 기록된 시작 시각이 같을 때만 신호를 보낸다.
         remaining.forEach(ProcessHandle::destroyForcibly)
-        val action = if (remaining.isEmpty()) "The owned fixture stop failed; no verified fixture daemon was left running"
-            else "Fixture daemon ${remaining.map(ProcessHandle::pid)} did not exit after the owned stop; terminated it forcibly"
+        val action = when {
+            remaining.isNotEmpty() -> "Fixture daemon ${remaining.map(ProcessHandle::pid)} did not exit after the owned stop; terminated it forcibly"
+            unobservedAttempt -> "The owned fixture stop failed; verified daemons had exited, but a build without a recorded identity may have left one"
+            else -> "The owned fixture stop failed; every verified fixture daemon had already exited"
+        }
         val reported = IllegalStateException("$action\n$stopLog", graceful)
         if (remaining.isEmpty()) return reported
         try {

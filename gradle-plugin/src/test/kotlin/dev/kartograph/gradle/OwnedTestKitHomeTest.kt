@@ -94,7 +94,7 @@ class OwnedTestKitHomeTest {
             val failure = assertFailsWith<IllegalStateException> {
                 home.build(runner(root, "foreign", "reportParentIdentity"))
             }
-            assertContains(failure.message.orEmpty(), "is not a live test JVM child started after this fixture's first build")
+            assertContains(failure.message.orEmpty(), "is neither this fixture's known daemon nor a live test JVM child started during this build")
             daemon = process(root, "foreign", "testkit-real-process.txt")
             val cleanup = assertFailsWith<IllegalStateException> { home.close() }
             assertContains(cleanup.message.orEmpty(), "unobserved fixture daemon")
@@ -116,7 +116,7 @@ class OwnedTestKitHomeTest {
                 .exceptionOrNull()
             daemon = process(root, "sibling", "testkit-real-process.txt")
             assertIs<IllegalStateException>(failure, "a pre-existing test JVM child must not be accepted as the owned daemon")
-            assertContains(failure.message.orEmpty(), "is not a live test JVM child started after this fixture's first build")
+            assertContains(failure.message.orEmpty(), "is neither this fixture's known daemon nor a live test JVM child started during this build")
             val cleanup = assertFailsWith<IllegalStateException> { home.close() }
             assertContains(cleanup.message.orEmpty(), "unobserved fixture daemon")
             assertTrue(sibling.isAlive, "cleanup must not stop or kill a process the fixture does not own")
@@ -125,6 +125,33 @@ class OwnedTestKitHomeTest {
             daemon?.takeIf(ProcessHandle::isAlive)?.destroyForcibly()
             sibling.destroyForcibly()
             sibling.waitFor(30, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test
+    fun `another fixture daemon started between builds is never claimed or killed`(@TempDir root: Path) {
+        val first = fixture(root, "first-owner")
+        val second = fixture(root, "second-owner")
+        var firstDaemon: ProcessHandle? = null
+        second.use {
+            try {
+                first.build(runner(root, "first-owner"))
+                firstDaemon = process(root, "first-owner")
+                second.build(runner(root, "second-owner"))
+                val secondDaemon = process(root, "second-owner")
+                // 두 번째 fixture의 daemon은 첫 fixture의 첫 빌드 뒤에 생겼지만 이번 빌드 전부터 있었다.
+                val failure = runCatching {
+                    first.build(runner(root, "first-owner", "reportSiblingIdentity", "-PforeignPid=${secondDaemon.pid()}"))
+                }.exceptionOrNull()
+                assertIs<IllegalStateException>(failure, "another fixture's daemon must not be accepted as owned")
+                assertContains(failure.message.orEmpty(), "is neither this fixture's known daemon nor a live test JVM child started during this build")
+                val cleanup = assertFailsWith<IllegalStateException> { first.close() }
+                assertContains(cleanup.message.orEmpty(), "unobserved fixture daemon")
+                assertFalse(checkNotNull(firstDaemon).isAlive, "the verified owned daemon is still stopped and awaited")
+                assertTrue(secondDaemon.isAlive, "cleanup must not stop or kill another fixture's daemon")
+            } finally {
+                firstDaemon?.takeIf(ProcessHandle::isAlive)?.destroyForcibly()
+            }
         }
     }
 
