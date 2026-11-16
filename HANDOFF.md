@@ -36,7 +36,8 @@
 
 ### 2026-11-15~16 브랜치 `ccr-37904670-hxdjsx`(d133c52 기준, PR #226)
 
-PR #226은 649399a로 push됐다. 독립 리뷰(B1·S1·S2)를 반영한 commit은 그 위에 있고 아직 push하지 않았다.
+PR #226의 원격 head와 이 브랜치의 차이는 `git log origin/ccr-37904670-hxdjsx..HEAD`로 확인한다. 41ac472(1차 리뷰 반영)의 CI는
+`Android fixtures and release metadata`만 실패했다(아래 host ASM 문제). 그 수정과 2차 리뷰(N1·S1'·nit) 반영이 그 위에 있다.
 
 - **TestKit daemon 정리 flake 원인과 수정**: main CI `compatibility (17)`(d133c52, job 129974581927)에서
   `OwnedTestKitHomeTest > failed build ... awaits its owned daemon`이 45행 `Expected value to be false`로 실패했다.
@@ -51,8 +52,9 @@ PR #226은 649399a로 push됐다. 독립 리뷰(B1·S1·S2)를 반영한 commit�
   - CI가 어느 분기를 탔는지는 증거가 없어 확정하지 못했다. 로컬에서는 stop 응답 후 daemon 종료가 34~372ms(부하 15~20, 4 vCPU)라
     10초 기한을 넘기려면 runner 정지 수준의 지연이 필요하다. 같은 JVM에서 뒤이은 3개 daemon 테스트가 통과했으므로 지속적인
     btime 어긋남은 아니다.
-  - 수정(`OwnedTestKitHome`): 소유 확인은 **이 fixture의 첫 빌드 직전 `children()` 스냅샷에 없던** 테스트 JVM의 살아 있는 자식
-    handle로 하고(리뷰 S1: 다른 fixture의 daemon이나 테스트가 띄운 프로세스는 소유가 아니다), 이후 비교는 같은 JVM handle로만 한다
+  - 수정(`OwnedTestKitHome`): 소유 확인은 이미 소유로 확인한 daemon이거나 **이번 빌드 직전 `children()` 스냅샷에 없던** 테스트
+    JVM의 살아 있는 자식 handle로 하고(리뷰 S1: 테스트가 띄운 프로세스나, 빌드 사이에 다른 fixture가 띄운 daemon은 소유가
+    아니다), 이후 비교는 같은 JVM handle로만 한다
     (JVM 사이 시각 비교 제거, stop 전 실패 분기 제거). 정상 stop이 어떤 이유로든 실패하면 소유가 확인된 daemon만
     `destroyForcibly`로 끝내고 종료를 기다린 뒤, 원래 실패를 cause로 담은 예외를 던진다. 그 메시지에는 JUnit 임시 폴더와 함께
     지워지는 `testkit-stop.log`의 앞 4KB를 붙인다(리뷰 S2). 실패 경로 테스트는 단언 메시지에 suppressed를 함께 보여 준다.
@@ -75,11 +77,36 @@ PR #226은 649399a로 push됐다. 독립 리뷰(B1·S1·S2)를 반영한 commit�
     분기 40개가 람다를 고르는 2만 명령 javac 메서드도 넘는다. 한도 없는 `CallbackFactScanner`가 이를 "invalid class file"로
     바꿔 snapshot·query·Gradle `kartographDead`가 종료 코드 2로 실패했다(9.10.1은 성공). 처음의 "heap을 소진할 크기에서만"이라는
     판단은 틀렸다. 수정: 다섯 `Analyzer` 생성 지점을 `AnalysisLimits.UNBOUNDED`(`setComputeLimits(Int.MAX_VALUE, Long.MAX_VALUE)`,
-    API가 받는 최대치)로 통일했다. 연산은 사실상 무제한이고 추적 할당만 메서드당 약 2GiB로 남는다. 그 한도에 닿으면
-    RuntimeValueAnalyzer는 기존 `valueAnalysisLimits`로 세고, RuntimeFieldDemand는 기존처럼 "수요 모름"으로 돌아가며, 계량 한계가
-    없는 콜백 값 흐름은 사실을 조용히 버리지 않고 메서드와 원인을 밝힌 `ClassIndexingException`으로 실패한다(`parse`가 이를
-    "invalid class file"로 덮지 않는다). 회귀 테스트(index 3개, cli 1개)는 javac로 만든 cascade 메서드에서 수정 전 실패했고,
-    수정 후 콜백 사실이 9.10.1 결과(파라미터 쓰임 3개, 람다 빠져나감 80개, 콜백 인자 0개)와 같다.
+    API가 받는 최대치)로 통일했다. 연산 한도는 사실상 없어졌지만 **9.10.1과 완전히 같아지지는 않는다**: 추적 할당 한도는 `int`라
+    끌 수 없어 메서드 분석 하나당 약 2GiB가 남고, GC와 무관하게 누적되며 예외 처리 범위 안 명령은 처리마다 frame 두 개 분량을 더
+    센다. 리뷰 재현(2차, S1'): 지역 변수 800개·try/catch 하나·람다 40개 cascade(76KB)와 지역 변수 400개·중첩 try 3개 메서드는
+    9.10.1 snapshot이 약 22초에 성공하지만 이 브랜치는 원인을 밝힌 메시지로 종료 코드 2다(지역 변수 400개·try 하나는 1.5~2GiB에서
+    통과). 로컬 재현: 지역 변수 800개·try/catch 하나·람다 40개×문장 90개(82KB) javac 메서드는 이 브랜치 CLI가 8초에 종료 코드 2
+    (`callback value-flow analysis exceeded the ASM compute limit (Too many allocated bytes); … not analyzed: method:TryLocals800#run…`),
+    같은 빌드에 ASM 9.10.1 jar를 넣으면(host ASM 경로, 한도 설정 생략) 15초에 성공한다(46KB 판은 둘 다 성공). 실제
+    kotlin-compiler-embeddable·KGP 2.4.21 class 41,312개는 실패 0, 사실 digest가 9.10.1과 같다(리뷰 측정, 기본 400MiB에서도).
+    한도에 닿으면 RuntimeValueAnalyzer는 기존 `valueAnalysisLimits`로 세고, RuntimeFieldDemand는 기존처럼 "수요 모름"으로 돌아가며,
+    계량 한계가 없는 콜백 값 흐름은 그 사실을 조용히 버리지 않고 메서드와 원인을 밝힌 `ClassIndexingException`으로 실패한다
+    (`parse`가 이를 "invalid class file"로 덮지 않는다). 기존 `AnalyzerException`·`MAX_ORIGINS` 경로는 이전처럼 그 메서드 사실을
+    세지 않고 버린다. 회귀 테스트(`AnalyzerComputeLimitTest` 5개, cli 1개): javac cascade 메서드는 수정 전 실패했고 수정 후 콜백
+    사실이 9.10.1 결과(파라미터 쓰임 3개, 람다 빠져나감 80개, 콜백 인자 0개)와 같다. reflective class(본문·정적 helper 반환값·
+    `<clinit>` 정적 필드에서 온 `Class.forName` 이름)는 한도 없이 세 호출 모두 `class:Target`으로 풀리고, 내부 seam
+    (`ClassFileIndexer.runtimeLimits`)으로 낮춘 연산 한도에서는 실패 없이 계량 한계 3개로 센다(RuntimeValueAnalyzer·RuntimeFieldDemand의
+    한도 catch 경로). 낮춘 할당 한도에서 콜백 분석 메시지가 메서드와 `Too many allocated bytes`를 밝히는 것도 확인한다.
+  - **plugin은 host build의 ASM에서 돈다(41ac472 CI 실패)**: `Scripts/verify-gradle-plugin-fixture.sh`의
+    `:app:kartographDeadDebug`가 `NoSuchMethodError: Analyzer.setComputeLimits(int, long)`로 실패했다. false-positive-corpus는
+    AGP 9.3.2를 root `plugins { … apply false }`(부모 classloader)에, kartograph plugin(ASM 9.11.1을 내장한 JAR)를 `:app`(자식)에
+    올린다. Gradle classloader는 부모를 먼저 보므로 `Analyzer`는 AGP의 9.11 이전 ASM에서, 9.11에만 있는 `LimitExceededException`은
+    plugin JAR에서 와 ASM 판이 섞였다(AGP 9.3.2의 정확한 ASM 판은 Google Maven이 이 환경에서 막혀 확인하지 못했다. 메서드 부재가
+    9.11 이전임을 보인다). AGP와 plugin을 한 buildscript classloader에 두는 agp-8-smoke·TestKit Android 테스트는 통과했다(그쪽에서는
+    plugin JAR의 ASM이 이긴 것으로 보인다). 수정: `AnalysisLimits`가 실행 중인 `Analyzer`에서 `setComputeLimits`를 한 번 reflection으로
+    찾아 있을 때만 부르고(9.11 이전 ASM에는 한도 자체가 없어 이미 무제한이다), 한도 초과는 `LimitExceededException`을 직접 참조하지
+    않고 class 이름으로 구분한다. index·analysis·export·cli·core bytecode에 9.11 전용 class·메서드 참조가 없음을 constant pool로
+    확인했다(남은 것은 reflection·이름 비교용 문자열뿐). 회귀 테스트 `LegacyAsmRuntimeTest`(테스트 전용 `legacyAsmTestRuntime`
+    구성으로 ASM 9.10.1 jar를 받음): 격리 classloader(9.10.1만)와 부모(9.10.1)·자식(kartograph+9.11.1) 구성 둘 다 수정 전
+    `NoClassDefFoundError: LimitExceededException`·CI와 같은 `NoSuchMethodError`로 실패했고, 수정 후 cascade·reflective 입력의 외부 호출
+    (풀린 대상 포함)·콜백 사실·간선·runtime 관측이 테스트 classpath(9.11.1)의 결과와 문자열로 같다. 즉 Android build에서 plugin
+    결과는 내장 ASM이 아니라 AGP가 올린 ASM이 정한다(그 ASM에는 한도가 없어 위의 할당 한도 실패도 없다).
   - Gradle wrapper 9.8.2: #213은 index-cost가 검토한 wrapper 전환을 9.7.1→9.8.1 하나로 고정해 `build-tool-identity-mismatch`로
     실패했다. `REVIEWED_WRAPPER_TRANSITIONS`에 9.8.1→9.8.2를 더하고 9.8.2 신원·배포 SHA256을 등록했다. 배포 ZIP SHA256과 wrapper JAR
     checksum은 gradle.org/release-checksums에서 확인했다(JAR은 9.8.1과 동일). wrapper가 이 환경에서 9.8.2 배포 ZIP을 받아
@@ -111,9 +138,13 @@ PR #226은 649399a로 push됐다. 독립 리뷰(B1·S1·S2)를 반영한 commit�
    `http-wrapper-unresolved`로만 남는다).
 3. 함수형 라우터 등에서 `dynamicScope`를 실제로 내기(GRAPH-EXCHANGE 생산자 의무 예시). 규칙과 벡터는 이미 통과한다.
 4. Gradle plugin의 test 전용 표시(`TestOnlyReachability`를 plugin에도 연결).
-5. 콜백 값 흐름 분석의 계량 한계: 지금은 ASM 추적 할당 한도(메서드당 약 2GiB)에 닿으면 원인을 밝혀 실패하고, 기존
-   `AnalyzerException`·출처 집합 상한(`MAX_ORIGINS`)은 그 메서드 사실을 세지 않고 버린다("unanalyzed"로 이어진다). 버린 메서드를
-   snapshot·query 한계로 세려면 출력 계약이 바뀌므로 자매 저장소 공지와 함께 다룬다.
+5. 콜백 값 흐름 분석의 계량 한계: 지금은 ASM 추적 할당 한도(메서드당 약 2GiB, 끌 수 없음)에 닿으면 원인을 밝혀 실패한다. 즉
+   9.10.1이 끝내던 큰 try 범위·많은 지역 변수 메서드가 CLI에서 종료 코드 2가 될 수 있다(위 S1' 재현). 기존 `AnalyzerException`·
+   출처 집합 상한(`MAX_ORIGINS`)은 그 메서드 사실을 세지 않고 버린다("unanalyzed"로 이어진다). 버린 메서드를 snapshot·query 한계로
+   세는 방식으로 바꾸려면 출력 계약이 바뀌므로 자매 저장소 공지와 함께 다룬다. 할당 한도를 피하려면 콜백 스캔에도 frame 예산을
+   두는 방법이 있다(보존 영향 검토 필요).
+7. Gradle plugin JAR는 ASM을 relocation 없이 내장해, Android build에서는 AGP가 부모 classloader에 올린 ASM이 쓰인다(판이 섞일 수
+   있다). 결과가 host ASM에 좌우되지 않게 하려면 plugin JAR의 ASM relocation(shading)을 검토한다(배포물·라이선스 고지·SBOM 영향).
 6. 리뷰 nit: CI의 `actions/upload-artifact` 고정 11곳에 버전 주석이 없다. `actions/setup-java` v6.3.0(d1374f8)이 이미 나왔다
    (이 PR은 Dependabot #224와 같은 6.2.0). 역방향 9.8.2→9.8.1 wrapper 전환을 직접 거부하는 테스트는 없다(집합 소속으로 거부된다).
 

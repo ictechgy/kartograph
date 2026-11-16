@@ -60,15 +60,23 @@
 - internal 생성자를 가진 공개 data class 세 곳(`EnumDecisionUnresolvedSite`·`SourceEditObservation`·`SourceUseInspection`)에
   `@ExposedCopyVisibility`를 붙여 기존 공개 `copy()`를 유지한 채 Kotlin 2.5의 KT-11914 오류를 막는다(API 변화 없음).
 - CI `agp-minimum` job도 Gradle wrapper를 검증한다.
-- 배포본에 내장되는 ASM을 9.11.1로 올렸다(`asm`·`asm-tree`·`asm-analysis`, Dependabot #210·#211·#214 대체). 의존성 검증
+- CLI 배포본에 내장되는 ASM을 9.11.1로 올렸다(`asm`·`asm-tree`·`asm-analysis`, Dependabot #210·#211·#214 대체). 의존성 검증
   metadata에는 Maven Central이 공개한 SHA-1·SHA-256·SHA-512와 대조한 SHA256 핀을 추가하고 9.10.1 핀은 index-cost baseline
   빌드를 위해 남겼다. ASM 9.11의 `Analyzer`는 메서드마다 기본 계산 한도(추적 할당 400MiB, 연산 5×10¹⁰)를 두고 넘으면
   `LimitExceededException`(RuntimeException)을 던진다. 연산은 처리한 명령마다 그 위치의 10배씩 세므로 분기마다 람다를 고르는
   2만 명령 규모의 평범한 javac 메서드도 넘는다. 그대로 올리면 콜백 사실을 모으는 `snapshot`·`query`·Gradle `kartographDead`가
-  그 class를 "invalid class file"(종료 코드 2)로 실패한다(PR 리뷰에서 재현, ASM 9.10.1은 1초 남짓에 성공). kartograph가 만드는 모든 `Analyzer`에
-  `setComputeLimits(Int.MAX_VALUE, Long.MAX_VALUE)`를 적용해 9.10.1과 같은 사실을 낸다(연산은 사실상 무제한, 추적 할당만 메서드당
-  약 2GiB). 그래도 한도에 닿으면 runtime 값 분석은 기존 계량 한계(`valueAnalysisLimits`)로 세고, 계량 한계가 없는 콜백 값 흐름
-  분석은 사실을 조용히 버리지 않고 메서드와 원인을 밝혀 실패한다("invalid class file"로 덮지 않는다).
+  그 class를 "invalid class file"(종료 코드 2)로 실패한다(PR 리뷰에서 재현, ASM 9.10.1은 1초 남짓에 성공). kartograph가 만드는
+  모든 `Analyzer`에 API 최대치 `setComputeLimits(Int.MAX_VALUE, Long.MAX_VALUE)`를 적용해 연산 한도는 사실상 없앴다. 추적 할당
+  한도는 `int`라 끌 수 없어 메서드 분석 하나당 약 2GiB가 남는다. 이 값은 GC와 무관하게 누적되고, 예외 처리 범위 안의 명령은
+  처리할 때마다 frame 두 개 분량을 더 세므로, 지역 변수가 수백 개인 큰 try 범위와 재처리가 겹치면 9.10.1이 끝내던 입력도 이
+  한도에 닿는다(리뷰 재현: 지역 변수 800개·try/catch 하나·람다 40개 cascade 메서드는 9.10.1 snapshot 성공, 9.11.1은 종료 코드 2).
+  그때 runtime 값 분석은 기존 계량 한계(`valueAnalysisLimits`)로 세고, 계량 한계가 없는 콜백 값 흐름 분석은 그 사실을 조용히
+  버리지 않고 메서드와 원인을 밝혀 실패한다("invalid class file"로 덮지 않는다). 실제 kotlin-compiler-embeddable·KGP 2.4.21
+  class 41,312개는 한도와 무관하게 9.10.1과 같은 사실을 냈다(리뷰 측정).
+  Gradle plugin JAR도 ASM 9.11.1을 relocation 없이 내장하지만, Android build에서는 AGP가 부모 classloader(예: root project의
+  `plugins { … apply false }`)에 올린 ASM이 먼저 쓰인다. 그 ASM이 9.11 이전이면 `setComputeLimits`·`LimitExceededException`이
+  없고 한도도 없다(9.10.1과 같은 동작). 그래서 한도 설정은 실행 중인 `Analyzer`에 그 메서드가 있을 때만 하고, 한도 초과는
+  class를 직접 참조하지 않고 이름으로 알아본다. 이 경우 plugin의 분석 결과는 내장 ASM이 아니라 host build의 ASM이 정한다.
 - Gradle wrapper를 9.8.2로 올렸다(#213 대체). gradle.org 공개 checksum으로 배포 ZIP SHA256을 확인했고 wrapper JAR checksum은
   9.8.1과 같아 `gradle-wrapper.properties`만 바뀐다. index-cost 진단은 검토한 9.8.1→9.8.2 전환을 허용한다.
 - CI의 `actions/setup-java`를 6.2.0, `gradle/actions/wrapper-validation`·`setup-gradle`을 6.4.1의 공식 tag commit SHA로
