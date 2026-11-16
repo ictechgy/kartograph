@@ -25,7 +25,7 @@ val legacyAsm = configurations.create("legacyAsmTestRuntime") {
 dependencies {
     legacyAsm("org.ow2.asm:asm:9.10.1")
     legacyAsm("org.ow2.asm:asm-tree:9.10.1")
-    legacyAsm("org.ow2.asm:asm-analysis:9.10.1")
+    legacyAsm("org.ow2.asm:asm-analysis:9.11.1")
 }
 tasks.test {
     inputs.files(legacyAsm).withPropertyName("legacyAsm").withNormalizer(ClasspathNormalizer::class.java)
