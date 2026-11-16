@@ -54,6 +54,9 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
     /** 콜백 값 흐름 분석의 ASM 계산 한도다. 테스트가 한도 초과의 실패 원인을 재현할 때만 낮춘다. */
     internal var callbackLimits: AnalysisLimits = AnalysisLimits.UNBOUNDED
 
+    /** runtime 값 분석의 ASM 계산 한도다. 테스트가 한도 초과의 계량 경로를 재현할 때만 낮춘다. */
+    internal var runtimeLimits: AnalysisLimits = AnalysisLimits.UNBOUNDED
+
     /** 분석 SDK를 실행 JVM과 분리한다. 미지정 생성자는 기존 host-runtime 동작을 유지한다. */
     public constructor(targetJdkHome: Path, cache: ClassIndexCache? = null, callbackFacts: Boolean = true) :
         this(cache, callbackFacts) {
@@ -256,7 +259,7 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
         } else ClassHierarchy.EMPTY
         hierarchyNanos = System.nanoTime() - hierarchyStart
         val runtimeStart = System.nanoTime()
-        val (runtimeModeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy)
+        val (runtimeModeled, observations) = RuntimeValueAnalyzer.enrich(graph, classFacts, hierarchy, runtimeLimits)
         val android = AndroidFrameworkCallbacks.derive(runtimeModeled, hierarchy)
         // 파생 간선은 dispatch 보강의 재구성에 함께 넣는다(dispatch는 간선을 읽지 않는다). call 재해석은 dispatch가 읽으므로 먼저 반영한다.
         val modeled = android.withCalls(runtimeModeled)

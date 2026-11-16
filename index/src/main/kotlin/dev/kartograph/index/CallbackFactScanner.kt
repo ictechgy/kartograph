@@ -7,7 +7,6 @@ import dev.kartograph.core.NodeId
 import dev.kartograph.core.ParameterUse
 import dev.kartograph.core.ParameterUseKind
 import org.objectweb.asm.Handle
-import org.objectweb.asm.LimitExceededException
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 import org.objectweb.asm.tree.AbstractInsnNode
@@ -93,14 +92,15 @@ internal object CallbackFactScanner {
     /** 메서드 하나의 분석 실패를 "invalid class file"이 아닌 실제 원인과 메서드로 알린다. */
     private fun scanReporting(owner: String, method: MethodNode, limits: AnalysisLimits): Facts? = try {
         scanMethod(owner, method, limits)
-    } catch (error: LimitExceededException) {
-        throw ClassIndexingException("callback value-flow analysis exceeded the ASM compute limit (${error.message}) in " +
-            "${JvmNodeId.methodId(owner, method.name, method.desc).value}; the class file was read but this method was not analyzed", error)
     } catch (error: ClassIndexingException) {
         throw error
     } catch (error: RuntimeException) {
-        throw ClassIndexingException("callback value-flow analysis failed (${error.javaClass.simpleName}) in " +
-            "${JvmNodeId.methodId(owner, method.name, method.desc).value}; the class file was read but this method was not analyzed", error)
+        // 한도 초과는 9.11 이전 ASM에 없는 class라 이름으로 구분한다(AnalysisLimits.isComputeLimit).
+        val reason = if (AnalysisLimits.isComputeLimit(error)) "exceeded the ASM compute limit (${error.message})"
+            else "failed (${error.javaClass.simpleName})"
+        // 메서드 ID는 `;`로 끝날 수 있으므로 문장 끝에 둔다.
+        throw ClassIndexingException("callback value-flow analysis $reason; the class file was read but this method was not " +
+            "analyzed: ${JvmNodeId.methodId(owner, method.name, method.desc).value}", error)
     }
 
     private fun scanMethod(owner: String, method: MethodNode, limits: AnalysisLimits): Facts? {

@@ -29,6 +29,8 @@ class AnalyzerComputeLimitTest {
 
     @Test
     fun `cascade method keeps the callback facts ASM 9_10_1 produced`(@TempDir root: Path) {
+        // 이 테스트는 계산 한도 API가 있는 ASM(9.11 이상)에서 한도를 푸는 경로를 본다. 이전 ASM 경로는 LegacyAsmRuntimeTest가 본다.
+        assertTrue(AnalysisLimits.computeLimitsSupported, "the test classpath must carry ASM 9.11 or later")
         val graph = ClassFileIndexer().index(listOf(compileCascade(root)))
         assertEquals(emptyList(), graph.callbackArguments.filter { it.caller == run })
         // ASM 9.10.1 빌드가 같은 class에서 남긴 사실이다: 파라미터 0의 표식·인터페이스 수신·반환과 람다 40개의 수신·반환.
@@ -50,10 +52,19 @@ class AnalyzerComputeLimitTest {
     }
 
     @Test
-    fun `cascade method also passes runtime value analysis without a counted limit`(@TempDir root: Path) {
-        val indexed = ClassFileIndexer().indexWithObservations(listOf(compileCascade(root)))
-        assertTrue(indexed.graph.nodes.containsKey(run))
+    fun `runtime value analysis resolves reflective targets without a counted limit`(@TempDir root: Path) {
+        val indexed = ClassFileIndexer().indexWithObservations(listOf(compileReflective(root)))
+        assertEquals(setOf("direct", "viaHelper", "viaField"), resolvedForName(indexed.graph))
         assertEquals(0, indexed.observations.sumOf { it.valueAnalysisLimits })
+    }
+
+    @Test
+    fun `an exceeded runtime value analysis limit is counted instead of failing the run`(@TempDir root: Path) {
+        // 본문·반환값 요약(helper)·정적 필드 쓰기(<clinit>) 세 분석이 각각 낮은 연산 한도에 닿는다. field 수요 분석도 같은 한도다.
+        val indexer = ClassFileIndexer().apply { runtimeLimits = AnalysisLimits(Int.MAX_VALUE, 20_000L) }
+        val indexed = indexer.indexWithObservations(listOf(compileReflective(root)))
+        assertEquals(emptySet(), resolvedForName(indexed.graph))
+        assertEquals(3, indexed.observations.sumOf { it.valueAnalysisLimits })
     }
 
     @Test
@@ -66,6 +77,15 @@ class AnalyzerComputeLimitTest {
         assertContains(message, "ASM compute limit (Too many operations)")
         assertContains(message, run.value)
         assertIs<LimitExceededException>(failure.cause)
+    }
+
+    @Test
+    fun `the remaining tracked allocation limit also names the method`(@TempDir root: Path) {
+        // maxBytes는 int라 끌 수 없다(UNBOUNDED도 약 2GiB 누적). 그 한도에 닿는 경우를 낮은 할당 한도로 재현한다.
+        val indexer = ClassFileIndexer().apply { callbackLimits = AnalysisLimits(100_000, Long.MAX_VALUE) }
+        val message = assertFailsWith<ClassIndexingException> { indexer.index(listOf(compileCascade(root))) }.message.orEmpty()
+        assertContains(message, "ASM compute limit (Too many allocated bytes)")
+        assertContains(message, run.value)
     }
 
     companion object {
@@ -91,9 +111,32 @@ class AnalyzerComputeLimitTest {
             appendLine("}")
         }
 
-        fun compileCascade(root: Path): Path {
-            val source = Files.writeString(root.resolve("$CASCADE.java"), cascadeSource())
-            val classes = Files.createDirectories(root.resolve("classes"))
+        /** 본문, 정적 helper 반환값, `<clinit>`이 쓴 정적 필드에서 온 이름으로 `Class.forName`을 부르는 class다. */
+        fun reflectiveSource(): String = buildString {
+            fun statements() = (0 until 30).joinToString("\n") { "    a += a * $it;" }
+            appendLine("public class Reflective {")
+            appendLine("  private static String field;")
+            appendLine("  static {\n    int a = 1;\n${statements()}\n    field = \"Target\";\n  }")
+            appendLine("  private static String name() {\n    int a = 1;\n${statements()}\n    return \"Target\";\n  }")
+            appendLine("  public static Object direct() throws Exception {\n    int a = 1;\n${statements()}\n    return Class.forName(\"Target\");\n  }")
+            appendLine("  public static Object viaHelper() throws Exception { return Class.forName(name()); }")
+            appendLine("  public static Object viaField() throws Exception { return Class.forName(field); }")
+            appendLine("}")
+            appendLine("class Target {}")
+        }
+
+        fun compileReflective(root: Path): Path = compile(root, "Reflective", reflectiveSource())
+
+        /** `Class.forName`이 `Target`으로 풀린 호출 메서드 이름이다. */
+        fun resolvedForName(graph: dev.kartograph.core.CodeGraph): Set<String> = graph.externalCalls
+            .filter { it.name == "forName" && NodeId("class:Target") in it.resolvedTargets }
+            .map { it.caller.value.substringAfter('#').substringBefore('(') }.toSet()
+
+        fun compileCascade(root: Path): Path = compile(root, CASCADE, cascadeSource())
+
+        private fun compile(root: Path, name: String, text: String): Path {
+            val source = Files.writeString(Files.createDirectories(root.resolve("src-$name")).resolve("$name.java"), text)
+            val classes = Files.createDirectories(root.resolve("classes-$name"))
             val errors = ByteArrayOutputStream()
             assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, errors, "--release", "17", "-g", "-d",
                 classes.toString(), source.toString()), errors.toString())

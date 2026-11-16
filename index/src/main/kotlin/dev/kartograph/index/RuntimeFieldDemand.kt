@@ -1,6 +1,5 @@
 package dev.kartograph.index
 
-import org.objectweb.asm.LimitExceededException
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.tree.AbstractInsnNode
 import org.objectweb.asm.tree.FieldInsnNode
@@ -12,7 +11,7 @@ import org.objectweb.asm.tree.analysis.SourceInterpreter
 import org.objectweb.asm.tree.analysis.SourceValue
 
 /** 소비되는 값의 역방향 의존에서만 field를 해석한다. 불완전한 의존 수집은 기존 전체 값 분석으로 되돌린다. */
-internal class RuntimeFieldDemand {
+internal class RuntimeFieldDemand(private val limits: AnalysisLimits = AnalysisLimits.UNBOUNDED) {
     private val graphs = mutableMapOf<MethodNode, Map<AbstractInsnNode, Set<AbstractInsnNode>>?>()
 
     /** consumer 자체의 반환값이 아니라 그 입력에 필요한 field read 명령을 찾는다. */
@@ -107,11 +106,12 @@ internal class RuntimeFieldDemand {
             }
         }
         try {
-            AnalysisLimits.UNBOUNDED.analyzer(interpreter).analyze(owner, method)
+            limits.analyzer(interpreter).analyze(owner, method)
         } catch (_: AnalyzerException) {
             return null
-        } catch (_: LimitExceededException) {
-            // AnalyzerException과 같이 "수요 모름"(전체 수요)으로 돌아가 보존을 좁히지 않는다.
+        } catch (error: RuntimeException) {
+            // ASM 9.11 계산 한도는 AnalyzerException과 같이 "수요 모름"(전체 수요)으로 돌아가 보존을 좁히지 않는다.
+            if (!AnalysisLimits.isComputeLimit(error)) throw error
             return null
         }
         return parents.takeUnless { bounded }
