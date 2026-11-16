@@ -1,6 +1,6 @@
 # HANDOFF
 
-마지막 갱신: 2026-11-15. 작업 규칙은 [AGENTS.md](AGENTS.md), 분석 한계는 [LIMITATIONS](docs/LIMITATIONS.md)다.
+마지막 갱신: 2026-11-16. 작업 규칙은 [AGENTS.md](AGENTS.md), 분석 한계는 [LIMITATIONS](docs/LIMITATIONS.md)다.
 2026-09-30 이전 원문은 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)로 옮겼다. 그 안의 "진행 중"·재개 프롬프트는 현재 지시가 아니다.
 
 ## 현재 상태
@@ -34,7 +34,9 @@
   바이트가 같아 same-engine control로 통과한다. 다음에 의도적으로 구조를 바꾸는 PR은 같은 방식으로 임시 delta를 두거나 머지 뒤
   baseline을 다시 옮긴다(장치는 `git show c7c1049:Scripts/verify-index-cost.py`로 복원할 수 있다).
 
-### 2026-11-15 브랜치 `ccr-37904670-hxdjsx`(d133c52 기준, 미push·PR 미생성)
+### 2026-11-15~16 브랜치 `ccr-37904670-hxdjsx`(d133c52 기준, PR #226)
+
+PR #226은 649399a로 push됐다. 독립 리뷰(B1·S1·S2)를 반영한 commit은 그 위에 있고 아직 push하지 않았다.
 
 - **TestKit daemon 정리 flake 원인과 수정**: main CI `compatibility (17)`(d133c52, job 129974581927)에서
   `OwnedTestKitHomeTest > failed build ... awaits its owned daemon`이 45행 `Expected value to be false`로 실패했다.
@@ -49,18 +51,35 @@
   - CI가 어느 분기를 탔는지는 증거가 없어 확정하지 못했다. 로컬에서는 stop 응답 후 daemon 종료가 34~372ms(부하 15~20, 4 vCPU)라
     10초 기한을 넘기려면 runner 정지 수준의 지연이 필요하다. 같은 JVM에서 뒤이은 3개 daemon 테스트가 통과했으므로 지속적인
     btime 어긋남은 아니다.
-  - 수정(`OwnedTestKitHome`): 소유 확인은 테스트 JVM의 살아 있는 자식 handle로 하고 이후 비교는 같은 JVM handle로만 한다(JVM 사이
-    시각 비교 제거, stop 전 실패 분기 제거). 정상 stop이 어떤 이유로든 실패하면 소유가 확인된 daemon만 `destroyForcibly`로 끝내고
-    종료를 기다린 뒤, 원래 실패를 cause로 담은 `terminated it forcibly` 예외를 던진다. 실패 경로 테스트는 단언 메시지에 suppressed를
-    함께 보여 준다.
-  - 회귀 테스트 3개(수정 전 모두 실패 확인): 종료 hook에 묶여 stop 후 끝나지 않는 daemon, 1초 다른 시계로 보고한 신원,
-    테스트 JVM 자신을 신원으로 보고하는 fixture. `:gradle-plugin`은 로컬에서 해석되지 않아 같은 두 소스 파일을 독립 Gradle 9.8.1
-    harness(JDK 17)에서 돌렸다: 수정 전 3개 실패, 수정 후 8/8 통과, 실패 경로 반복 10회 문제 0. 원격 CI가 최종 근거다.
+  - 수정(`OwnedTestKitHome`): 소유 확인은 **이 fixture의 첫 빌드 직전 `children()` 스냅샷에 없던** 테스트 JVM의 살아 있는 자식
+    handle로 하고(리뷰 S1: 다른 fixture의 daemon이나 테스트가 띄운 프로세스는 소유가 아니다), 이후 비교는 같은 JVM handle로만 한다
+    (JVM 사이 시각 비교 제거, stop 전 실패 분기 제거). 정상 stop이 어떤 이유로든 실패하면 소유가 확인된 daemon만
+    `destroyForcibly`로 끝내고 종료를 기다린 뒤, 원래 실패를 cause로 담은 예외를 던진다. 그 메시지에는 JUnit 임시 폴더와 함께
+    지워지는 `testkit-stop.log`의 앞 4KB를 붙인다(리뷰 S2). 실패 경로 테스트는 단언 메시지에 suppressed를 함께 보여 준다.
+  - **flake를 없앤 것이 아니라 완화한 것이다.** 정상 stop이 기한을 넘기면 실패 경로 테스트는 강제 종료 덕분에 통과하고(정리 예외는
+    suppressed에만 남는다), 성공 경로 테스트는 같은 상황에서 정리 예외로 실패한다. 10초를 넘는 runner 정지는 여전히 테스트를
+    실패시킬 수 있다. 바뀐 것은 daemon이 테스트 뒤에 남지 않는다는 점과 실패 원인(stop log 포함)이 보인다는 점이다.
+  - 회귀 테스트 4개(수정 전 모두 실패 확인): 종료 hook에 묶여 stop 후 끝나지 않는 daemon(stop log 포함 여부까지), 1초 다른
+    시계로 보고한 신원, 테스트 JVM 자신을 신원으로 보고하는 fixture, 첫 빌드 전에 테스트 JVM이 띄운 형제 프로세스를 신원으로
+    보고하는 fixture. `:gradle-plugin`은 로컬에서 해석되지 않아 같은 두 소스 파일을 독립 Gradle 9.8.1 harness(JDK 17)에서
+    돌렸다: 수정 전 각각 실패, 수정 후 9/9 통과. 원격 CI가 최종 근거다.
+  - 리뷰 nit(남은 일): 강제 종료는 daemon의 자손 프로세스를 남길 수 있다(정상 `--stop`도 같다, 회귀 아님). 필요하면
+    `descendants()`도 함께 끝낸다.
 - **의존성 갱신(Dependabot #210·#211·#214·#213·#224·#215·#212 대체)**:
   - ASM 9.11.1: ASM PR들은 `gradle/verification-metadata.xml`에 9.11.1 핀이 없어 5개 검사가 의존성 검증에서 실패했다. Maven Central
     원본 6개 파일을 받아 공개 SHA-1·SHA-256·SHA-512와 모두 일치함을 확인하고 핀을 추가했다. index-cost가 baseline 핀의 유지를
-    요구하므로 9.10.1 핀은 남겼다(`verification-metadata-existing-pin-changed`). 공개 API는 추가만 있다. `Analyzer` 기본 한도는
-    CHANGELOG에 적었다. THIRD_PARTY_NOTICES의 ASM 행도 9.11.1로 고쳤다(Kotlin 행 2.4.10은 이전부터 낡았고 그대로 두었다).
+    요구하므로 9.10.1 핀은 남겼다(`verification-metadata-existing-pin-changed`). THIRD_PARTY_NOTICES의 ASM 행도 9.11.1로 고쳤다
+    (Kotlin 행 2.4.10은 이전부터 낡았고 그대로 두었다).
+  - **ASM 9.11 계산 한도(리뷰 B1)**: 9.11의 `Analyzer`는 메서드마다 기본 한도(추적 할당 400MiB, 연산 5×10¹⁰)를 두고 넘으면
+    `LimitExceededException`(RuntimeException, `analyze`가 그대로 다시 던짐)을 낸다. 연산은 처리한 명령마다 그 위치의 10배씩 세므로
+    분기 40개가 람다를 고르는 2만 명령 javac 메서드도 넘는다. 한도 없는 `CallbackFactScanner`가 이를 "invalid class file"로
+    바꿔 snapshot·query·Gradle `kartographDead`가 종료 코드 2로 실패했다(9.10.1은 성공). 처음의 "heap을 소진할 크기에서만"이라는
+    판단은 틀렸다. 수정: 다섯 `Analyzer` 생성 지점을 `AnalysisLimits.UNBOUNDED`(`setComputeLimits(Int.MAX_VALUE, Long.MAX_VALUE)`,
+    API가 받는 최대치)로 통일했다. 연산은 사실상 무제한이고 추적 할당만 메서드당 약 2GiB로 남는다. 그 한도에 닿으면
+    RuntimeValueAnalyzer는 기존 `valueAnalysisLimits`로 세고, RuntimeFieldDemand는 기존처럼 "수요 모름"으로 돌아가며, 계량 한계가
+    없는 콜백 값 흐름은 사실을 조용히 버리지 않고 메서드와 원인을 밝힌 `ClassIndexingException`으로 실패한다(`parse`가 이를
+    "invalid class file"로 덮지 않는다). 회귀 테스트(index 3개, cli 1개)는 javac로 만든 cascade 메서드에서 수정 전 실패했고,
+    수정 후 콜백 사실이 9.10.1 결과(파라미터 쓰임 3개, 람다 빠져나감 80개, 콜백 인자 0개)와 같다.
   - Gradle wrapper 9.8.2: #213은 index-cost가 검토한 wrapper 전환을 9.7.1→9.8.1 하나로 고정해 `build-tool-identity-mismatch`로
     실패했다. `REVIEWED_WRAPPER_TRANSITIONS`에 9.8.1→9.8.2를 더하고 9.8.2 신원·배포 SHA256을 등록했다. 배포 ZIP SHA256과 wrapper JAR
     checksum은 gradle.org/release-checksums에서 확인했다(JAR은 9.8.1과 동일). wrapper가 이 환경에서 9.8.2 배포 ZIP을 받아
@@ -71,8 +90,10 @@
     확인했다. #224의 실패는 GitHub 다운로드 500(AndroidApplicationSnapshotIntegrationTest의 kotlin-compiler 다운로드)이라 action과
     무관하다. kartograph workflow에는 파일 바이트·해시 고정 검사가 없다(실행 중 harness 해시 비교만 있다).
 - **로컬 검증(JDK 17, Gradle 9.8.2)**: `:core`·`:index`·`:analysis`·`:export`·`:cli` test와 `:cli:installDist` 통과(실패 0,
-  의존성 검증이 새 ASM 핀으로 해석됨). 같은 production class root 5개에 대한 `graph --format json`·`ndjson` 출력은 ASM 9.10.1(main
-  clone)과 9.11.1에서 바이트 동일했다. `Scripts/verify-cli-contract.sh`(`LC_ALL=C.UTF-8`)·`verify-agent-surface.sh` 통과.
+  의존성 검증이 새 ASM 핀으로 해석됨). ASM 동등성: 같은 production class root 5개에 대한 `graph --format json`·`ndjson`(콜백 사실을
+  모으지 않는 경로)과, 같은 root에 cascade class를 더한 `snapshot`(v1 265MB·`--compact` 46MB)·live `query` 3개 심볼×depth 1/2·
+  `--graph-file` query가 ASM 9.10.1(d133c52 빌드)과 이 브랜치에서 모두 바이트 동일했다. 같은 입력의 index parse 시간은 부하
+  6~19에서 두 묶음의 중앙값 비율이 1.26·0.88로 잡음이 커 차이를 판정하지 못했다(시간 판정은 CI performance가 근거). `Scripts/verify-cli-contract.sh`(`LC_ALL=C.UTF-8`)·`verify-agent-surface.sh` 통과.
   `python3 -m unittest discover -s Scripts/tests`의 실패 5·오류 2는 main clone과 같은 환경 요인이다(smoke gate의 gradle-plugin
   class root 부재, `JAVA_TOOL_OPTIONS`). 실제 index-cost 진단 전체·smoke gate·`:gradle-plugin`·release readiness는 AGP가 필요해
   CI가 근거다. 실제 baseline(c7c1049) wrapper·metadata에 대한 `aligned_build_inputs`는 9.8.1→9.8.2·핀 6개 추가로 통과했다.
@@ -90,9 +111,11 @@
    `http-wrapper-unresolved`로만 남는다).
 3. 함수형 라우터 등에서 `dynamicScope`를 실제로 내기(GRAPH-EXCHANGE 생산자 의무 예시). 규칙과 벡터는 이미 통과한다.
 4. Gradle plugin의 test 전용 표시(`TestOnlyReachability`를 plugin에도 연결).
-5. ASM 9.11 `LimitExceededException`(RuntimeException) 처리: `CallbackFactScanner`는 frame 한도 없이 `Analyzer`를 돌리고
-   `AnalyzerException`만 잡는다. 지금은 9.10.1도 heap을 소진했을 크기에서만 닿는다. 잡아서 한계로 셀지는 보존이 좁아지는
-   방향(callback 사실 누락)이라 반대 방향 코퍼스가 먼저다.
+5. 콜백 값 흐름 분석의 계량 한계: 지금은 ASM 추적 할당 한도(메서드당 약 2GiB)에 닿으면 원인을 밝혀 실패하고, 기존
+   `AnalyzerException`·출처 집합 상한(`MAX_ORIGINS`)은 그 메서드 사실을 세지 않고 버린다("unanalyzed"로 이어진다). 버린 메서드를
+   snapshot·query 한계로 세려면 출력 계약이 바뀌므로 자매 저장소 공지와 함께 다룬다.
+6. 리뷰 nit: CI의 `actions/upload-artifact` 고정 11곳에 버전 주석이 없다. `actions/setup-java` v6.3.0(d1374f8)이 이미 나왔다
+   (이 PR은 Dependabot #224와 같은 6.2.0). 역방향 9.8.2→9.8.1 wrapper 전환을 직접 거부하는 테스트는 없다(집합 소속으로 거부된다).
 
 ## 로컬 검증 메모
 

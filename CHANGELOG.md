@@ -62,9 +62,13 @@
 - CI `agp-minimum` job도 Gradle wrapper를 검증한다.
 - 배포본에 내장되는 ASM을 9.11.1로 올렸다(`asm`·`asm-tree`·`asm-analysis`, Dependabot #210·#211·#214 대체). 의존성 검증
   metadata에는 Maven Central이 공개한 SHA-1·SHA-256·SHA-512와 대조한 SHA256 핀을 추가하고 9.10.1 핀은 index-cost baseline
-  빌드를 위해 남겼다. ASM 9.11의 `Analyzer`는 기본 한도(할당 400MiB, 연산 5×10¹⁰)를 넘으면 `LimitExceededException`을 던진다.
-  RuntimeValueAnalyzer·RuntimeFieldDemand는 자체 frame 한도(250,000 slot)가 먼저 막고, 한도 없는 callback 사실 스캔은 9.10.1에서도
-  heap을 소진했을 크기에서만 닿는다.
+  빌드를 위해 남겼다. ASM 9.11의 `Analyzer`는 메서드마다 기본 계산 한도(추적 할당 400MiB, 연산 5×10¹⁰)를 두고 넘으면
+  `LimitExceededException`(RuntimeException)을 던진다. 연산은 처리한 명령마다 그 위치의 10배씩 세므로 분기마다 람다를 고르는
+  2만 명령 규모의 평범한 javac 메서드도 넘는다. 그대로 올리면 콜백 사실을 모으는 `snapshot`·`query`·Gradle `kartographDead`가
+  그 class를 "invalid class file"(종료 코드 2)로 실패한다(PR 리뷰에서 재현, ASM 9.10.1은 1초 남짓에 성공). kartograph가 만드는 모든 `Analyzer`에
+  `setComputeLimits(Int.MAX_VALUE, Long.MAX_VALUE)`를 적용해 9.10.1과 같은 사실을 낸다(연산은 사실상 무제한, 추적 할당만 메서드당
+  약 2GiB). 그래도 한도에 닿으면 runtime 값 분석은 기존 계량 한계(`valueAnalysisLimits`)로 세고, 계량 한계가 없는 콜백 값 흐름
+  분석은 사실을 조용히 버리지 않고 메서드와 원인을 밝혀 실패한다("invalid class file"로 덮지 않는다).
 - Gradle wrapper를 9.8.2로 올렸다(#213 대체). gradle.org 공개 checksum으로 배포 ZIP SHA256을 확인했고 wrapper JAR checksum은
   9.8.1과 같아 `gradle-wrapper.properties`만 바뀐다. index-cost 진단은 검토한 9.8.1→9.8.2 전환을 허용한다.
 - CI의 `actions/setup-java`를 6.2.0, `gradle/actions/wrapper-validation`·`setup-gradle`을 6.4.1의 공식 tag commit SHA로
