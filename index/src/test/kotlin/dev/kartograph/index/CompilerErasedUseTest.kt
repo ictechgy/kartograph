@@ -1,6 +1,7 @@
 package dev.kartograph.index
 
 import dev.kartograph.analysis.DeadFindings
+import dev.kartograph.analysis.PrivateMemberRetention
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.core.CodeGraph
 import dev.kartograph.core.NodeAttribute
@@ -15,8 +16,9 @@ import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
 /**
- * 사용 흔적이 compiler 산출물에서 지워지는 두 형태다. SOURCE retention 어노테이션은 사용처가 class 파일에 없고,
- * `@JvmOverloads` 생성 overload는 Kotlin 호출이 `$default`로 가서 직접 호출이 없다. 둘 다 실제 compiler 산출물로 확인한다.
+ * 사용 흔적이 compiler 산출물에서 지워지는 형태다. SOURCE retention 어노테이션은 사용처가 class 파일에
+ * 없고, `@JvmOverloads` 생성 overload는 Kotlin 호출이 `$default`로 가서 직접 호출이 없다. suspend inline 함수의 inliner용
+ * 사본은 호출되지 않는다. 모두 실제 compiler 산출물로 확인한다.
  */
 class CompilerErasedUseTest {
     @Test fun `SOURCE retention annotation classes are counted instead of reported`(@TempDir root: Path) {
@@ -123,6 +125,38 @@ class CompilerErasedUseTest {
         assertTrue(!synthesized(owner, "h", "(Ljava/lang/String;)I"), "authored same-name function")
         // 바깥 class가 직접 선언한 h(III)I는 @JvmOverloads가 없으므로 bridge h(II)I·h(I)I의 원본 근거가 아니다.
         assertTrue(!synthesized(owner, "h", "(III)I"), "authored longer same-name function")
+    }
+
+    @Test fun `suspend inline copies for the inliner are compiler output while authored lookalikes stay reportable`(@TempDir root: Path) {
+        val owner = "dev/kartograph/index/fixture/suspendinlinecopy/SuspendInlineCopyFixturesKt"
+        val classes = copyFixturePackage(root, "dev/kartograph/index/fixture/suspendinlinecopy", "SuspendInlineCopyFixturesKt")
+        // metadata가 없는 Java class의 같은 꼴 이름은 근거가 없어 그대로 둔다.
+        compileJava(root, classes, mapOf(
+            "fixture/JavaCopyLookalike" to "public class JavaCopyLookalike { public static Object doubled(int value, Object continuation) " +
+                "{ return value; } private static Object doubled\$\$forInline(int value, Object continuation) { return value; } }",
+        ))
+        val graph = ClassFileIndexer().indexWithObservations(listOf(classes), emptyList()).graph
+        fun synthesized(type: String, signature: String) =
+            requireNotNull(graph.node(JvmNodeId.methodId(type, signature.substringBefore('('), "(" + signature.substringAfter('(')))) { signature }.synthesized
+        val continuation = "Lkotlin/coroutines/Continuation;"
+        assertTrue(synthesized(owner, "doubled\$\$forInline(I$continuation)Ljava/lang/Object;"), "top-level copy")
+        assertTrue(synthesized(owner, "renamedTriple\$\$forInline(I$continuation)Ljava/lang/Object;"), "copy of a @JvmName function")
+        val doubler = "dev/kartograph/index/fixture/suspendinlinecopy/Doubler"
+        assertTrue(synthesized(doubler, "twice\$\$forInline(I$continuation)Ljava/lang/Object;"), "member copy")
+        assertTrue(!synthesized(owner, "doubled(I$continuation)Ljava/lang/Object;"), "suspend inline original")
+        assertTrue(!synthesized(owner, "quadrupled\$\$forInline(I)I"), "authored lookalike of a non-suspend inline function")
+        assertTrue(!synthesized(owner, "plainSuspend\$\$forInline(I$continuation)Ljava/lang/Object;"), "authored lookalike of a non-inline suspend function")
+        assertTrue(!synthesized("fixture/JavaCopyLookalike", "doubled\$\$forInline(ILjava/lang/Object;)Ljava/lang/Object;"), "Java lookalike")
+
+        // CLI `--include-private-members`와 같이 reachable owner의 비-private member를 root로 넓힌다. private suspend lookalike는
+        // compiler가 만든 public `access$plainSuspend$$forInline`으로 도달하므로 보고되지 않는다.
+        val roots = PrivateMemberRetention.expand(graph,
+            listOf(RetentionEvidence(JvmNodeId.methodId(owner, "callAll", "($continuation)Ljava/lang/Object;"), RetentionReason.KEEP_RULE, null)))
+        assertEquals(
+            listOf("method:$owner#quadrupled\$\$forInline(I)I"),
+            DeadFindings.collect(graph, ReachabilityAnalyzer.analyze(graph, roots), includePrivateMembers = true)
+                .map { it.nodeId.value }.filter { it.startsWith("method:dev/") }.sorted(),
+        )
     }
 
     private fun reportedTypes(graph: CodeGraph, roots: List<RetentionEvidence>): List<String> =

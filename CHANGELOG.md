@@ -41,6 +41,12 @@
 - Gradle `kartographDead<Variant>` 보고의 finding confidence를 CLI `dead`와 같은 규칙(같은 소스 파일의 미해결 runtime
   채널 수로 `static`·`needs-runtime-review`, DataBinding 후보는 review)으로 매긴다. 전에는 binding 후보 외 finding이 등급 없이
   (markdown에서는 `unmeasured`) 나왔다. 규칙은 export의 `FindingConfidences`가 소유한다.
+- `--include-private-members`가 `suspend inline` 함수마다 compiler가 inliner용으로 남기는 private 사본 `<JVM 이름>$$forInline`을
+  원본이 쓰여도 늘 `unreachable`로 보고하던 문제를 고친다. 같은 owner metadata가 suspend inline으로 선언한 함수의 JVM 이름에
+  접미사를 붙이고 descriptor까지 같은 method만 `synthesized`로 표시한다(top-level·member·companion·`@JvmName`·mangled·`-impl`·
+  internal `$module` 이름 모두 같은 규칙). 원본이 suspend나 inline이 아닌 함수의 같은 꼴 이름, descriptor가 다른 같은 이름,
+  metadata가 없는 Java class는 표시하지 않는다. kotlinx-coroutines-core 1.8.0을 public API keep으로 분석하면 private 보고가 24건에서
+  5건으로 준다(사라진 19건은 모두 이 사본).
 
 ### Added
 

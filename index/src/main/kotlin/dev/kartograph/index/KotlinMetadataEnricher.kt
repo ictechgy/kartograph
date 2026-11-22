@@ -62,6 +62,7 @@ internal object KotlinMetadataEnricher {
         }
         enrichDefaultBridges(facts, functions, nodes)
         markJvmOverloads(functions, nodes)
+        markSuspendInlineCopies(facts.internalName, functions, nodes)
         return facts.copy(
             nodes = facts.nodes.map { node -> nodes.getValue(node.id) },
             edges = facts.edges + runtimeEdges,
@@ -125,6 +126,24 @@ internal object KotlinMetadataEnricher {
         jvmName != kotlinName && jvmName != "$kotlinName-impl" && jvmName.startsWith("$kotlinName-")
 
     private const val JVM_OVERLOADS = "kotlin/jvm/JvmOverloads"
+
+    /**
+     * public·protected·internal `suspend inline` 함수마다 compiler가 inliner용으로 남기는 사본 `<JVM 이름>$$forInline`을
+     * 생성물로 표시한다. 사본은 상태 기계가 없는 본문이라 호출되지 않고, 다른 class의 inline 호출 지점으로 복사될 뿐이다.
+     * 같은 owner metadata가 suspend inline으로 선언한 함수의 JVM 이름에 접미사를 붙이고 descriptor까지 같은 method만 본다.
+     * metadata가 함수로 선언한 method(`@JvmName`으로 같은 이름을 쓴 직접 작성 함수)는 표시하지 않는다.
+     */
+    private fun markSuspendInlineCopies(owner: String, functions: List<KmFunction>, nodes: MutableMap<NodeId, GraphNode>) {
+        val declared = functions.mapNotNullTo(mutableSetOf()) { function -> function.signature?.let { it.name + it.descriptor } }
+        functions.filter { function -> function.isSuspend && function.isInline }.forEach { function ->
+            val signature = function.signature ?: return@forEach
+            val copyName = signature.name + FOR_INLINE_SUFFIX
+            if (copyName + signature.descriptor in declared) return@forEach
+            nodes.patch(JvmNodeId.methodId(owner, copyName, signature.descriptor)) { node -> node.copy(synthesized = true) }
+        }
+    }
+
+    private const val FOR_INLINE_SUFFIX = "\$\$forInline"
 
     // 이름이나 int 꼬리만으로 추측하면 default expression이 호출한 overload를 원본으로 오인한다.
     // 같은 owner의 metadata JVM signature와 value parameter 수, 실제 CALL을 모두 요구한다.

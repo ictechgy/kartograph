@@ -32,6 +32,12 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   (같은 이름을 `@JvmName`으로 쓴 직접 작성 함수를 숨기지 않는 보수적 방향). value class 멤버의 `-impl`, `@JvmName`으로 정한 이름,
   internal의 `$module` 접미사, `-`가 든 backtick 이름의 생성 overload는 원본과 같은 이름이라 그대로 알아본다.
   같은 이름의 직접 작성 overload(더 긴 것 포함)와, companion `@JvmStatic` 함수가 바깥 class에 남긴 정적 bridge는 그대로다.
+  `suspend inline` 함수마다 compiler가 inliner용으로 남기는 사본 `<JVM 이름>$$forInline`(private, 같은 descriptor)도 같은 owner
+  metadata가 그 함수를 suspend inline으로 선언했고 사본 이름·descriptor가 정확히 맞을 때만 `synthesized`로 표시한다. 사본은 호출되지
+  않아 원본이 쓰여도 `--include-private-members`가 늘 보고하던 노드다. 원본이 suspend가 아니거나 inline이 아닌 함수의 같은 꼴 이름,
+  descriptor가 다른 같은 이름, metadata가 없는 Java class의 같은 이름은 표시하지 않는다(kotlinc는 사본과 JVM 시그니처가 같은 직접
+  작성 함수를 platform declaration clash로 거부한다). inline 함수 안 익명 object가 crossinline suspend lambda 때문에 남기는 public
+  `run$$forInline`류는 이 규칙의 대상이 아니다(public이라 private 보고에 나오지 않는다).
   `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
 
 - Kotlin Multiplatform 프로젝트에서 검증·문서화한 입력은 `jvm()` target의 class 출력이다. `commonMain` 코드의 영향은 JVM target에
