@@ -32,7 +32,12 @@
   사용자가 쓰는 함수처럼 보고되던 문제다. 원본과 생성물 모두 `kotlin/jvm/JvmOverloads`를 남기고 metadata에는 원본만 있다는 두
   근거가 함께 있을 때만 표시한다. 같은 owner metadata가 선언하고 class 파일에 `@JvmOverloads`를 남긴 함수에서 default 매개변수를
   끝에서부터 하나씩 뺀 정확한 시그니처만 생성물로 보므로, 같은 이름의 직접 작성 overload(더 긴 것 포함), 쓰이지 않는 원본,
-  `@JvmStatic` 바깥 class bridge는 그대로 남는다.
+  `@JvmStatic` 바깥 class bridge는 그대로 남는다. suspend 함수는 compiler가 JVM 인자 끝에 붙이는 `Continuation`을 유지한
+  시그니처로 계산한다. 처음 구현은 이를 receiver처럼 앞쪽 인자로 세어 suspend 함수의 생성 overload를 계속 보고했고, 그렇게
+  잘못 계산한 시그니처와 같은 직접 작성 `@JvmOverloads` 원본(예: 같은 이름의 `Int` 확장 함수)을 생성물로 숨겼다.
+  value class 매개변수로 JVM 이름이 `name-hash`로 바뀐 원본은 생성 overload마다 다른 hash 이름을 받으므로 계산하지 않는다.
+  원본 이름으로 계산하면 그 이름을 `@JvmName`으로 쓴 쓰이지 않는 직접 작성 함수를 생성물로 숨겼다(suspend·비-suspend 모두).
+  그런 원본의 생성 overload는 표시하지 않아 쓰이지 않으면 계속 보고된다([LIMITATIONS](docs/LIMITATIONS.md)).
 - Gradle `kartographDead<Variant>` 보고의 finding confidence를 CLI `dead`와 같은 규칙(같은 소스 파일의 미해결 runtime
   채널 수로 `static`·`needs-runtime-review`, DataBinding 후보는 review)으로 매긴다. 전에는 binding 후보 외 finding이 등급 없이
   (markdown에서는 `unmeasured`) 나왔다. 규칙은 export의 `FindingConfidences`가 소유한다.
@@ -79,8 +84,11 @@
   class를 직접 참조하지 않고 이름으로 알아본다. 이 경우 plugin의 분석 결과는 내장 ASM이 아니라 host build의 ASM이 정한다.
 - Gradle wrapper를 9.8.2로 올렸다(#213 대체). gradle.org 공개 checksum으로 배포 ZIP SHA256을 확인했고 wrapper JAR checksum은
   9.8.1과 같아 `gradle-wrapper.properties`만 바뀐다. index-cost 진단은 검토한 9.8.1→9.8.2 전환을 허용한다.
-- CI의 `actions/setup-java`를 6.2.0, `gradle/actions/wrapper-validation`·`setup-gradle`을 6.4.1의 공식 tag commit SHA로
-  고정했다(#224·#215·#212 대체). 두 action이 workflow에서 쓰는 입력은 바뀌지 않았다.
+- CI의 `actions/setup-java`를 6.3.0(`d1374f8…`), `gradle/actions/wrapper-validation`·`setup-gradle`을 6.4.1의 공식 tag
+  commit SHA로 고정했다(#224·#215·#212 대체). 두 action이 workflow에서 쓰는 입력은 바뀌지 않았다. setup-java 6.3.0은 Java
+  problem matcher(javac 오류·uncaught exception 로그를 GitHub annotation으로 바꾸는 기능)를 기본으로 등록하지 않는다. 어느 job도
+  annotation을 판정에 쓰지 않으며 로그와 실패 여부는 그대로다. `actions/upload-artifact` 고정 11곳에 빠져 있던 `# v7.0.2` 주석을
+  더해 모든 action 고정에 tag 주석이 있다.
 
 ## [0.26.0] - 2026-11-03
 

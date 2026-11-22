@@ -1,6 +1,6 @@
 # HANDOFF
 
-마지막 갱신: 2026-11-16. 작업 규칙은 [AGENTS.md](AGENTS.md), 분석 한계는 [LIMITATIONS](docs/LIMITATIONS.md)다.
+마지막 갱신: 2026-11-22. 작업 규칙은 [AGENTS.md](AGENTS.md), 분석 한계는 [LIMITATIONS](docs/LIMITATIONS.md)다.
 2026-09-30 이전 원문은 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)로 옮겼다. 그 안의 "진행 중"·재개 프롬프트는 현재 지시가 아니다.
 
 ## 현재 상태
@@ -34,7 +34,69 @@
   바이트가 같아 same-engine control로 통과한다. 다음에 의도적으로 구조를 바꾸는 PR은 같은 방식으로 임시 delta를 두거나 머지 뒤
   baseline을 다시 옮긴다(장치는 `git show c7c1049:Scripts/verify-index-cost.py`로 복원할 수 있다).
 
-### 2026-11-15~16 브랜치 `ccr-37904670-hxdjsx`(d133c52 기준, PR #226)
+### 2026-11-22 브랜치 `ccr-37904670-hxdjsx`(5c52008 기준, round 3)
+
+PR #226은 2026-11-16 `main`에 squash 머지됐다(5c52008). 이 브랜치는 그 위에서 다시 시작했고 PR #227로 올라갔다(0be712d까지).
+그 뒤 독립 리뷰 F1 수정이 더해졌다.
+
+- **suspend `@JvmOverloads` 생성 overload 계산 오류(#223 회귀 범위, 미release)**: `KotlinMetadataEnricher.generatedOverloads`가 JVM
+  인자 수에서 value parameter 수를 뺀 나머지를 모두 앞쪽(receiver) 인자로 셌다. suspend 함수는 compiler가 JVM 인자 끝에
+  `Continuation`을 붙이므로 위치가 한 칸 밀려 생성 overload `fetch(I, Continuation)` 대신 `fetch(II)`를 계산했다.
+  - 재현(수정 전 CLI, kotlinc 2.4.21로 컴파일한 `@JvmOverloads suspend fun fetch(id: Int, retries: Int = 3)`, 같은 파일의 쓰이지
+    않는 `@JvmOverloads fun Int.fetch(scale: Int = 1): Any`, 비교용 비-suspend `plain`, `fetch`·`plain`을 부르는 `Entry`를 keep): `dead`가
+    `unreachable method:p/S2Kt#fetch(ILkotlin/coroutines/Continuation;)Ljava/lang/Object;`(생성물)를 보고하고, 쓰이지 않는 직접 작성
+    확장 함수 `fetch(II)Ljava/lang/Object;`는 생성물로 잘못 표시돼 보고하지 않았다. 같은 형태의 비-suspend `plain(I)`은 #223 이후
+    보고되지 않는다.
+  - 수정 후 같은 입력: `unreachable method:p/S2Kt#fetch(II)Ljava/lang/Object; S2.kt:7` 한 줄만 남는다(생성 suspend overload 1건
+    감소, 숨던 직접 작성 함수 1건 증가). 생성 overload는 #223과 같은 근거(원본·생성물의 `kotlin/jvm/JvmOverloads` + metadata에
+    원본만 있음)로 `synthesized`이며 새 한계는 없다. context parameter·extension receiver·suspend를 함께 쓴 함수도 수정 후 보고가 없음을
+    같은 방식으로 확인했다.
+  - 회귀 테스트 `CompilerErasedUseTest`의 `JvmOverloads keeps the trailing continuation of suspend functions`(test source set을
+    compiler가 만든 실제 class, fixture `fixture/jvmoverloadssuspend`): 수정 전 첫 단언에서 실패, 수정 후 통과.
+  - 자기 분석 입력(5개 root)의 `graph --format json`은 수정 전후 SHA-256이 같다(`761037a5…`). kartograph 소스에는 suspend
+    `@JvmOverloads`가 없어 index-cost 고정 입력의 출력도 바뀌지 않을 것으로 본다(엔진 jar는 달라 same-engine control은 아니다. CI가 근거).
+- **독립 리뷰 F1(같은 함수의 mangled 이름, 미release #223 범위)**: `generatedOverloads`는 생성 overload 이름을 원본 JVM 이름에서
+  가져왔다. value class 매개변수로 이름이 `name-hash`로 바뀐 원본은 생성 overload마다 다른 hash 이름을 받는다(kotlinc 2.4.21:
+  `vc-zyo9C5M(IIILContinuation;)`의 생성물은 `vc-qPW8dFk(IILContinuation;)`·`vc-6pm1oMU(ILContinuation;)`).
+  - 재현(리뷰 fixture fx5·fx6을 다시 컴파일, `Entry` keep): 원본 이름으로 계산한 `vc-zyo9C5M(IILContinuation;)`이
+    `@JvmName("vc-zyo9C5M") @JvmOverloads suspend fun other(a: Int, b: Int = 0)`(쓰이지 않음)의 원본과 같아 `dead`에서 숨었다.
+    비-suspend fx6(`vc-qPW8dFk(II)I`)도 같다(이번 round 이전부터의 동작). fx3에서는 mangled 원본의 생성 overload가 계속 보고된다.
+  - 수정: Kotlin 이름 뒤에 `-hash`가 붙은 원본(`jvmName != kotlinName`, `jvmName != "$kotlinName-impl"`, `"$kotlinName-"` 접두)은 생성
+    overload를 계산하지 않는다. value class 멤버 `-impl`, `@JvmName` 이름, internal `$module`, `-`가 든 backtick 이름은 생성
+    overload가 같은 이름이라(kotlinc로 확인) 계속 알아본다.
+  - 수정 후: fx5에 `unreachable method:vcd/XKt#vc-zyo9C5M(IILkotlin/coroutines/Continuation;)Ljava/lang/Object; X.kt:5`, fx6에
+    `unreachable method:vcd/YKt#vc-qPW8dFk(II)I Y.kt:4`가 더해진다(숨던 직접 작성 함수 각 1건). mangled 원본의 생성 overload는 전후
+    모두 보고된다(fx3 2건, fx5·fx6 각 2건). 보고가 늘어나는 보수적 방향이며 LIMITATIONS에 그 경계를 적었다. `@JvmName`·internal·
+    backtick 표본은 `dead` 출력과 `synthesized` 표시가 그대로다.
+  - 회귀 테스트 `JvmOverloads does not derive overload names from a mangled original`(fixture `fixture/jvmoverloadsmangled`):
+    guard를 빼면 `authored suspend original named like the mangled original`에서, `-impl` 예외를 빼면 `generated value class member
+    overload`에서 실패한다. 수정 후 suite 5/5 통과.
+  - kartograph 자신의 `@JvmOverloads` 함수 3개(`enrich`·`javaCompile`·`kotlinCompile`)는 suspend도 mangled도 아니어서 이 guard가
+    걸리지 않는다. 따라서 index-cost 고정 입력의 출력은 같을 것으로 본다(CI가 근거).
+- **CI 고정 정리(다음 후보 6)**: `actions/setup-java`를 v6.3.0(`d1374f8`, `git ls-remote`로 확인)으로 14곳 모두 올렸다. v6.2.0과의
+  `action.yml` 차이는 `problem-matcher` 기본값 true→false뿐이다(Java 컴파일 오류·uncaught exception 로그의 GitHub annotation이 기본으로
+  꺼진다. 로그와 step 실패는 그대로이고 어느 job도 annotation을 판정에 쓰지 않는다). `actions/upload-artifact` 고정 11곳(ci.yml 10,
+  release.yml 1)에 `# v7.0.2` 주석을 달아 모든 `uses:` 줄에 tag 주석이 있다(`cf430e0` = v7.0.2 = v7 확인).
+- **역방향 wrapper 전환 테스트(다음 후보 6)**: `test_each_committed_transition_is_accepted_forward_and_rejected_in_reverse`가 실제
+  `REVIEWED_WRAPPER_TRANSITIONS`의 쌍마다 정방향 정렬과 역방향(9.8.2→9.8.1 등) `build-tool-identity-mismatch` 거부를 확인한다. 집합에
+  `("9.8.2", "9.8.1")`을 더한 사본에서 실패함을 확인했다.
+- **로컬 검증(JDK 17, Gradle 9.8.2, `--max-workers=2`)**: `:core`·`:index`·`:analysis`·`:export`·`:cli` test 실패 0(core 118·index 1051·
+  analysis 263·export 270·cli 380, skip 19는 collector·AGP 등 외부 입력이 없을 때의 assumption), `:cli:installDist`, `Scripts/verify-cli-contract.sh`(`LC_ALL=C.UTF-8`)·
+  `verify-agent-surface.sh` 통과, `test_release_workflow`(31)·`test_index_cost_wrapper`(13) 통과, workflow YAML 7개 파싱.
+  `python3 -m unittest discover -s Scripts/tests`는 641개 중 실패 5·오류 2로 main과 같은 환경 요인이다(smoke gate 5개는 gradle-plugin
+  class root 부재, index-cost 2개는 `JAVA_TOOL_OPTIONS` — 이 변수를 빼고 JDK 17로 두 테스트를 다시 돌리면 통과).
+  자기 분석은 gradle-plugin을 뺀 5개 root로만 돌렸다: cycles·rules `--strict` 0, private dead 0, class-only dead는 plugin만 쓰는
+  index class 11개(수정 전과 같은 목록)와 plugin keep 규칙 미일치다. 6개 root smoke gate·`:gradle-plugin`·Android fixture·koverVerify
+  (root 집계가 gradle-plugin을 포함)는 AGP가 필요해 CI가 근거다.
+- **보고만 하고 손대지 않은 것**:
+  - Dependabot #210·#211·#214는 테스트 전용 `legacyAsm(...:9.10.1)` 핀을 9.11.1로 올린다(이 핀은 9.11 이전 ASM 회귀 테스트 입력이라
+    올리면 테스트 의미가 사라진다). Dependabot `ignore`는 의존성 이름·버전으로만 걸러 같은 좌표의 실제 ASM 갱신까지 막고, 파일 단위
+    `exclude-paths`를 쓰려면 핀을 별도 script로 옮겨야 하며 Gradle `apply(from=…)` script에 대한 동작을 여기서 검증할 수 없다.
+    설정은 바꾸지 않았다. PR을 닫을 때 이유를 남기는 쪽을 권한다. #213 wrapper 갱신은 이미 main에 있다.
+  - `suspend fun main()`·`fun main()`은 보고에서만 빠지고 root는 아니다. 그래서 keep 규칙 없이 돌리면 `main`만 부르는 함수가
+    보고된다(kotlinc 표본으로 확인). root로 삼으면 보존이 넓어지는 정책 변경이라 사용자 결정으로 남긴다.
+
+### 2026-11-15~16 브랜치 `ccr-37904670-hxdjsx`(d133c52 기준, PR #226, 2026-11-16 머지 5c52008)
 
 PR #226의 원격 head와 이 브랜치의 차이는 `git log origin/ccr-37904670-hxdjsx..HEAD`로 확인한다. 41ac472(1차 리뷰 반영)의 CI는
 `Android fixtures and release metadata`만 실패했다(아래 host ASM 문제). 그 수정과 2차 리뷰(N1·S1'·nit) 반영이 그 위에 있다.
@@ -145,8 +207,14 @@ PR #226의 원격 head와 이 브랜치의 차이는 `git log origin/ccr-3790467
    두는 방법이 있다(보존 영향 검토 필요).
 7. Gradle plugin JAR는 ASM을 relocation 없이 내장해, Android build에서는 AGP가 부모 classloader에 올린 ASM이 쓰인다(판이 섞일 수
    있다). 결과가 host ASM에 좌우되지 않게 하려면 plugin JAR의 ASM relocation(shading)을 검토한다(배포물·라이선스 고지·SBOM 영향).
-6. 리뷰 nit: CI의 `actions/upload-artifact` 고정 11곳에 버전 주석이 없다. `actions/setup-java` v6.3.0(d1374f8)이 이미 나왔다
-   (이 PR은 Dependabot #224와 같은 6.2.0). 역방향 9.8.2→9.8.1 wrapper 전환을 직접 거부하는 테스트는 없다(집합 소속으로 거부된다).
+6. ~~리뷰 nit: upload-artifact 버전 주석, setup-java v6.3.0, 역방향 wrapper 전환 테스트~~ 완료(2026-11-22 브랜치). 남은 nit는
+   OwnedTestKitHome 강제 종료가 daemon의 자손 프로세스를 남길 수 있다는 점이다(정상 `--stop`과 같다, 회귀 아님).
+8. `main`을 launcher root로 볼지(지금은 보고에서만 제외). 보존을 넓히는 정책 변경이라 반대 방향 표본과 함께 결정한다.
+9. 리뷰 F2(이전부터): `@JvmOverloads` 생성 overload로 숨긴 node에 `dead --explain`이 `not-reported` 이유 없이 `unreachable`만
+   낸다(`SOURCE_RETENTION_ANNOTATIONS`처럼 이유 줄을 더할지 결정 필요, 출력 계약 변경). 확인: fx3의 `plain(ILContinuation;)` explain.
+10. 리뷰 F3(이전부터): `--include-private-members`에서 쓰인 public top-level `suspend inline fun`의 compiler 사본
+   `name$$forInline`(private static)이 `unreachable`로 보고된다(kotlinc 2.4.21 표본 `twice$$forInline(ILContinuation;)`). 이를
+   flag는 `ACC_PRIVATE, ACC_STATIC, ACC_FINAL`로 synthetic이 아니다. 이름 규칙만으로 생성물로 볼지와 반대 방향 표본이 먼저다.
 
 ## 로컬 검증 메모
 
@@ -154,7 +222,12 @@ PR #226의 원격 head와 이 브랜치의 차이는 `git log origin/ccr-3790467
 - `dl.google.com`이 막힌 환경에서는 AGP가 필요한 `:gradle-plugin`이 해석되지 않는다. 그 모듈의 컴파일·TestKit은 CI가 근거다.
 - 비 BMP 파일 이름을 쓰는 `AndroidResourceCaptureTest`는 POSIX locale에서 `InvalidPathException`으로 실패한다. `LC_ALL=C.UTF-8`로 돌린다.
 - `JAVA_TOOL_OPTIONS`가 설정된 환경(프록시 주입 등)에서는 JVM이 stderr에 `Picked up ...`을 써서 `Scripts/tests/test_index_cost.py`의
-  실제 java probe 테스트가 `invalid-probe-output`으로 실패한다. CI에는 없는 환경 요인이다.
+  실제 java probe 테스트가 `invalid-probe-output`으로 실패한다. CI에는 없는 환경 요인이다. 그 두 테스트만 `env -u JAVA_TOOL_OPTIONS`와
+  JDK 17(`JAVA_HOME`·`PATH`)로 다시 돌리면 통과한다(JDK 21이면 JFR 테스트가 `unexpected-jfr-event-type`). 반대로 Gradle은 그 변수의
+  프록시 설정이 있어야 plugin을 해석하므로 `./gradlew`를 돌릴 때는 지우지 않는다.
+- AGP 없이 suspend·`@JvmOverloads` 같은 Kotlin compiler 산출물을 재현하려면 Gradle 캐시의 `kotlin-compiler-embeddable` 2.4.21과
+  stdlib·script-runtime·reflect·daemon-embeddable·coroutines-core·annotations jar로 `org.jetbrains.kotlin.cli.jvm.K2JVMCompiler`를
+  JDK 17에서 직접 실행한다(`-no-stdlib -no-reflect -classpath <stdlib>`).
 - 이 환경에서 curl의 `downloads.gradle.org`(`.sha256` 파일)와 Actions artifact blob 저장소 접근은 프록시가 막는다(wrapper JVM의
   배포 ZIP 다운로드는 됐다). Gradle checksum은 gradle.org/release-checksums, action tag는 `git ls-remote`로 확인한다. `OwnedTestKitHome`은 AGP가 필요 없어 두 소스 파일을
   `gradleTestKit()`·`kotlin("test")`만 쓰는 독립 Gradle 프로젝트로 옮겨(`kartograph.test.gradleHome` system property 필요) 돌릴 수 있다.

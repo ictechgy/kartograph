@@ -81,6 +81,30 @@ class IndexCostWrapperTest(unittest.TestCase):
             MODULE.align_build_wrappers(self.repo, self.baseline, {})
         self.assertEqual(b"oldest wrapper", (self.baseline / PATHS[1]).read_bytes())
 
+    def test_each_committed_transition_is_accepted_forward_and_rejected_in_reverse(self):
+        # 실제 REVIEWED_WRAPPER_TRANSITIONS의 각 쌍(예: 9.8.1→9.8.2)을 그대로 쓴다. 신원만 합성 바이트로 바꾼다.
+        def write(baseline_values, candidate_values):
+            for directory, values in [(self.baseline, baseline_values), (self.repo, candidate_values)]:
+                for name, raw in zip(PATHS, values):
+                    (directory / name).write_bytes(raw)
+
+        for old_version, new_version in sorted(MODULE.REVIEWED_WRAPPER_TRANSITIONS):
+            reviewed = {old_version: self.identities(self.old), new_version: self.identities(self.new)}
+            with self.subTest(direction=f"{old_version}->{new_version}"), \
+                    patch.object(MODULE, "REVIEWED_WRAPPERS", reviewed):
+                write(self.old, self.new)
+                report = {}
+                MODULE.align_build_wrappers(self.repo, self.baseline, report)
+                self.assertEqual((old_version, new_version), (report["buildWrapperAlignment"]["baselineOriginalVersion"],
+                                                              report["buildWrapperAlignment"]["sharedVersion"]))
+            with self.subTest(direction=f"{new_version}->{old_version}"), \
+                    patch.object(MODULE, "REVIEWED_WRAPPERS", reviewed):
+                # baseline이 더 새 wrapper이고 후보가 되돌린 경우다. 쓰기 전에 다른 도구 비교로 거부한다.
+                write(self.new, self.old)
+                with self.assertRaisesRegex(MODULE.DiagnosticError, "build-tool-identity-mismatch"):
+                    MODULE.align_build_wrappers(self.repo, self.baseline, {})
+                self.assertEqual(list(self.new), [(self.baseline / name).read_bytes() for name in PATHS])
+
     def test_committed_wrapper_matches_the_reviewed_identity_of_its_declared_version(self):
         repository = Path(__file__).resolve().parents[2]
         records, _ = MODULE.wrapper_inputs(repository)

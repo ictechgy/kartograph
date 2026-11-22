@@ -56,6 +56,58 @@ class CompilerErasedUseTest {
         )
     }
 
+    @Test fun `JvmOverloads keeps the trailing continuation of suspend functions`(@TempDir root: Path) {
+        val owner = "dev/kartograph/index/fixture/jvmoverloadssuspend/SuspendJvmOverloadsFixturesKt"
+        val classes = copyFixturePackage(root, "dev/kartograph/index/fixture/jvmoverloadssuspend", "SuspendJvmOverloadsFixturesKt")
+        val graph = ClassFileIndexer().indexWithObservations(listOf(classes), emptyList()).graph
+        fun node(signature: String) = requireNotNull(graph.node(JvmNodeId.methodId(owner, signature.substringBefore('('), "(" + signature.substringAfter('(')))) { signature }
+        val continuation = "Lkotlin/coroutines/Continuation;"
+        assertTrue(node("fetch(I$continuation)Ljava/lang/Object;").synthesized, "generated suspend overload keeps the continuation")
+        assertTrue(!node("fetch(II$continuation)Ljava/lang/Object;").synthesized, "suspend original")
+        // continuation을 앞쪽 인자로 보면 이 직접 작성 확장 함수의 원본이 생성물로 잘못 표시된다.
+        assertTrue(!node("fetch(II)Ljava/lang/Object;").synthesized, "authored extension original")
+        assertTrue(node("fetch(I)Ljava/lang/Object;").synthesized, "generated extension overload")
+
+        val roots = listOf(RetentionEvidence(JvmNodeId.methodId(owner, "callFetch", "($continuation)Ljava/lang/Object;"), RetentionReason.KEEP_RULE, null))
+        assertEquals(
+            listOf("method:$owner#fetch(II)Ljava/lang/Object;"),
+            DeadFindings.collect(graph, ReachabilityAnalyzer.analyze(graph, roots)).map { it.nodeId.value }.sorted(),
+        )
+    }
+
+    @Test fun `JvmOverloads does not derive overload names from a mangled original`(@TempDir root: Path) {
+        val owner = "dev/kartograph/index/fixture/jvmoverloadsmangled/MangledJvmOverloadsFixturesKt"
+        val classes = copyFixturePackage(root, "dev/kartograph/index/fixture/jvmoverloadsmangled", "MangledJvmOverloadsFixturesKt")
+        val graph = ClassFileIndexer().indexWithObservations(listOf(classes), emptyList()).graph
+        fun node(signature: String) = requireNotNull(graph.node(JvmNodeId.methodId(owner, signature.substringBefore('('), "(" + signature.substringAfter('(')))) { signature }
+        val continuation = "Lkotlin/coroutines/Continuation;"
+        // 전제: value class 매개변수 때문에 원본 이름이 hash로 바뀌었고, 직접 작성 함수가 @JvmName으로 그 이름을 쓴다.
+        assertTrue(!node("load-DBCjkj4(III$continuation)Ljava/lang/Object;").synthesized, "mangled suspend original")
+        assertTrue(!node("read-rdVXx4g(III)I").synthesized, "mangled original")
+        // 원본 이름으로 계산한 생성 overload와 시그니처가 같은 직접 작성 원본은 생성물로 숨기지 않는다.
+        assertTrue(!node("load-DBCjkj4(II$continuation)Ljava/lang/Object;").synthesized, "authored suspend original named like the mangled original")
+        assertTrue(!node("read-rdVXx4g(II)I").synthesized, "authored original named like the mangled original")
+        // @JvmName 함수의 생성 overload는 같은 이름을 쓰므로 그대로 생성물이다.
+        assertTrue(node("load-DBCjkj4(I$continuation)Ljava/lang/Object;").synthesized, "generated overload of the authored suspend function")
+        assertTrue(node("read-rdVXx4g(I)I").synthesized, "generated overload of the authored function")
+        // mangled 원본의 생성 overload는 각자 다른 hash 이름이라 알아보지 못한다(LIMITATIONS에 적은 보수적 경계).
+        val mangledGenerated = listOf(
+            "load-rdVXx4g(II$continuation)Ljava/lang/Object;", "load-NUMGiXg(I$continuation)Ljava/lang/Object;",
+            "read-NUMGiXg(II)I", "read-hMQyODE(I)I",
+        )
+        mangledGenerated.forEach { signature -> assertTrue(!node(signature).synthesized, "unrecognised generated overload $signature") }
+        // value class 멤버의 `-impl`은 생성 overload도 같은 이름이라 그대로 알아본다.
+        val token = "dev/kartograph/index/fixture/jvmoverloadsmangled/Token"
+        assertTrue(requireNotNull(graph.node(JvmNodeId.methodId(token, "scaled-impl", "(II)I"))).synthesized, "generated value class member overload")
+        assertTrue(!requireNotNull(graph.node(JvmNodeId.methodId(token, "scaled-impl", "(III)I"))).synthesized, "value class member original")
+
+        val roots = listOf(RetentionEvidence(JvmNodeId.methodId(owner, "callLoadAndRead", "($continuation)Ljava/lang/Object;"), RetentionReason.KEEP_RULE, null))
+        assertEquals(
+            (listOf("load-DBCjkj4(II$continuation)Ljava/lang/Object;", "read-rdVXx4g(II)I") + mangledGenerated).map { "method:$owner#$it" }.sorted(),
+            DeadFindings.collect(graph, ReachabilityAnalyzer.analyze(graph, roots)).map { it.nodeId.value }.sorted(),
+        )
+    }
+
     @Test fun `JvmOverloads marks only parameter-dropping overloads of the same owner's declaration`(@TempDir root: Path) {
         val owner = "dev/kartograph/index/fixture/jvmstaticoverloads/JvmStaticOverloads"
         val classes = copyFixturePackage(root, "dev/kartograph/index/fixture/jvmstaticoverloads", "JvmStaticOverloads")
