@@ -93,6 +93,19 @@ interface Plain {
 /** [Plain]의 구현이다. */
 class PlainImpl : Plain
 
+/** 어노테이션 class의 `@property:` 매개변수에 붙는다. 합성 method는 `-jvm-default`와 무관하게 `Tagged$DefaultImpls`에 생긴다. */
+annotation class OnAnnotationParameter
+
+/** `@property:` 대상 어노테이션을 단 매개변수를 가진 어노테이션 class다. */
+annotation class Tagged(@property:OnAnnotationParameter val level: Int)
+
+/** top-level `const val`에 붙는다. field는 file facade에 있다. */
+annotation class OnTopLevelConst
+
+/** 어노테이션을 단 top-level 상수다. */
+@OnTopLevelConst
+const val TOP_LEVEL_CONST: Int = 6
+
 /** 어노테이션을 단 top-level property다. */
 @OnTopLevel
 val topLevel: Int get() = 1
@@ -141,8 +154,9 @@ class Unreachable {
 }
 
 /** `unread`·sibling property·default 본문을 뺀 property를 쓰는 호출자다. */
-fun useProperties(holder: Holder, gauge: Gauge, plain: Plain): Int {
+fun useProperties(holder: Holder, gauge: Gauge, plain: Plain, tagged: Tagged): Int {
     holder.sink = 1
     val sized: Sized = holder
-    return topLevel + holder.twice + sized.size + holder.computed + holder.reveal() + gauge.used + plain.plainUsed
+    return topLevel + holder.twice + sized.size + holder.computed + holder.reveal() + gauge.used + plain.plainUsed + tagged.level +
+        TOP_LEVEL_CONST + MULTIFILE_CONST
 }

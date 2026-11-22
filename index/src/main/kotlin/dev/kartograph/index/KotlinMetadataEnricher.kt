@@ -19,6 +19,7 @@ import kotlin.metadata.KmPackage
 import kotlin.metadata.KmProperty
 import kotlin.metadata.KmType
 import kotlin.metadata.Visibility as KotlinVisibility
+import kotlin.metadata.isConst
 import kotlin.metadata.isData
 import kotlin.metadata.isInline
 import kotlin.metadata.isSuspend
@@ -74,9 +75,11 @@ internal object KotlinMetadataEnricher {
         markJvmOverloads(functions, nodes)
         markSuspendInlineCopies(facts.internalName, functions, nodes)
         val holderOwner = annotationHolderOwner(facts.internalName, (metadata as? KotlinClassMetadata.Class)?.kmClass)
+        val constFieldOwner = (metadata as? KotlinClassMetadata.MultiFileClassPart)?.facadeClassName ?: facts.internalName
         return facts.copy(
             nodes = facts.nodes.map { node -> nodes.getValue(node.id) },
-            edges = facts.edges + runtimeEdges + propertyAnnotationHolders(facts.internalName, holderOwner, properties, nodes.keys),
+            edges = facts.edges + runtimeEdges +
+                propertyAnnotationHolders(facts.internalName, holderOwner, constFieldOwner, properties, nodes.keys),
         )
     }
 
@@ -162,30 +165,36 @@ internal object KotlinMetadataEnricher {
      * (`get<Name>$annotations`)에 기록된다. 그 method는 호출되지 않아, property를 써도 어노테이션 class가 도달 불가로 보였다.
      * 이 class에 있는 같은 property의 getter·setter·backing field와 그 method의 짝을 class 사실의 내부 짝 간선으로 남긴다. 짝 간선은
      * 그래프에 들어가지 않고, 모든 class를 모은 뒤 [PropertyAnnotationHolders]가 method의 어노테이션 간선으로 바꾸고 지운다.
+     * multi-file part의 `const val` field는 part가 아니라 facade([constFieldOwner])에 있어(kotlinc로 확인) 그 field와 잇는다. 다른 class의
+     * 정점이므로 존재 확인은 조립 단계가 한다.
      */
     private fun propertyAnnotationHolders(
-        owner: String, holderOwner: String, properties: List<KmProperty>, declared: Set<NodeId>,
+        owner: String, holderOwner: String, constFieldOwner: String, properties: List<KmProperty>, declared: Set<NodeId>,
     ): List<GraphEdge> =
         properties.flatMap { property ->
             val holder = property.syntheticMethodForAnnotations ?: return@flatMap emptyList()
             val holderId = JvmNodeId.methodId(holderOwner, holder.name, holder.descriptor)
-            listOfNotNull(
+            val fieldOwner = if (property.isConst) constFieldOwner else owner
+            val accessors = listOfNotNull(
                 property.getterSignature?.let { JvmNodeId.methodId(owner, it.name, it.descriptor) },
                 property.setterSignature?.let { JvmNodeId.methodId(owner, it.name, it.descriptor) },
-                property.fieldSignature?.let { JvmNodeId.fieldId(owner, it.name, it.descriptor) },
-            ).filter { member -> member in declared }.map { member -> PropertyAnnotationHolders.link(member, holderId) }
+            ).filter { member -> member in declared }
+            val field = property.fieldSignature?.let { JvmNodeId.fieldId(fieldOwner, it.name, it.descriptor) }
+                ?.takeIf { member -> fieldOwner != owner || member in declared }
+            (accessors + listOfNotNull(field)).map { member -> PropertyAnnotationHolders.link(member, holderId) }
         }
 
     /**
      * property 어노테이션 합성 method가 있는 class다. interface는 method 본문을 interface에 두지 않거나(`-jvm-default=disable`) 호환
-     * mode로 컴파일됐으면(`enable`) `DefaultImpls`에, 아니면(`no-compatibility`) interface 자신에 둔다(세 mode 모두 kotlinc로 확인).
+     * mode로 컴파일됐으면(`enable`) `DefaultImpls`에, 아니면(`no-compatibility`) interface 자신에 둔다. 어노테이션 class의 `@property:`
+     * 매개변수는 세 mode 모두 `DefaultImpls`에 둔다(모두 kotlinc·javap로 확인).
      */
-    private fun annotationHolderOwner(owner: String, kmClass: KmClass?): String =
-        if (kmClass?.kind == ClassKind.INTERFACE && (!kmClass.hasMethodBodiesInInterface || kmClass.isCompiledInCompatibilityMode)) {
+    private fun annotationHolderOwner(owner: String, kmClass: KmClass?): String = when {
+        kmClass?.kind == ClassKind.ANNOTATION_CLASS -> owner + DEFAULT_IMPLS_SUFFIX
+        kmClass?.kind == ClassKind.INTERFACE && (!kmClass.hasMethodBodiesInInterface || kmClass.isCompiledInCompatibilityMode) ->
             owner + DEFAULT_IMPLS_SUFFIX
-        } else {
-            owner
-        }
+        else -> owner
+    }
 
     private const val DEFAULT_IMPLS_SUFFIX = "\$DefaultImpls"
 

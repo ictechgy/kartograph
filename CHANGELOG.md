@@ -53,15 +53,21 @@
   그 method가 class 파일에 남긴 어노테이션 간선과 어노테이션 값의 class 참조를 같은 property의 getter·setter·backing field로 옮긴
   `kotlinMetadata` 간선(ANNOTATION·REFERENCE)을 더한다. 합성 method 자체와 그 owner로는 간선을 두지 않는다. interface의 합성
   method가 있는 `DefaultImpls`는 모든 method를 잇는 Kotlin 합성 class라, 그 길로 이으면 읽은 property 하나 때문에 쓰이지 않는
-  default 본문과 다른 property의 어노테이션까지 도달했다(PR 리뷰 B1, 첫 구현의 거짓 음성). interface의 합성 method 위치는 metadata
-  `hasMethodBodiesInInterface`·`isCompiledInCompatibilityMode`로 정한다(`-jvm-default=disable`·`enable`은 `DefaultImpls`,
-  `no-compatibility`와 `@JvmDefaultWithoutCompatibility` interface는 interface 자신). property와 합성 method의 짝은 class별 사실로
-  남기고(index cache 형식 10→11) 모든 class를 모은 뒤 간선으로 바꾸므로, 없는 합성 method를 가리키는 간선이나
-  `--include-external-stubs` stub은 생기지 않는다. 보존이 넓어지는 방향이라 일부 기존 class finding이 사라진다. field 쓰기와 상수
-  owner 보존을 도달로 보는 기존 규칙 때문에 생성자가 초기화만 하는 property와 `const val`의 어노테이션도 도달한다(`@field:` 대상과
-  같다). backing field가 바깥 class에 있고 accessor가 없는 companion property와 typealias 어노테이션은 계속 보고될 수 있고, `dead`
-  출력에 이를 세는 한계 줄은 없다([LIMITATIONS](docs/LIMITATIONS.md)). graph·snapshot·query에는 property 정점에서 어노테이션 class와
-  어노테이션 값 class로 가는 간선이 새로 나온다(새 enum·attribute는 없다).
+  default 본문과 다른 property의 어노테이션까지 도달했다(PR 리뷰 B1, 첫 구현의 거짓 음성). 합성 method 위치는 metadata로 정한다:
+  interface는 `hasMethodBodiesInInterface`·`isCompiledInCompatibilityMode`에 따라(`-jvm-default=disable`·`enable`은 `DefaultImpls`,
+  `no-compatibility`와 `@JvmDefaultWithoutCompatibility` interface는 interface 자신), 어노테이션 class의 `@property:` 매개변수는 늘
+  `DefaultImpls`다. multi-file `const val`의 field는 part가 아니라 facade에 있어 그 field와 잇는다. property와 합성 method의 짝은
+  class 사실의 내부 간선으로 남기고(cache 형식은 그대로다) 모든 class를 모은 뒤 바꾸므로, 없는 합성 method를 가리키는 간선이나
+  `--include-external-stubs` stub은 생기지 않는다. 짝의 property 정점이나 합성 method가 입력에 없으면 그 짝은 조용히 버려진다(따로
+  세지 않는다). 보존이 넓어지는 방향이라 일부 기존 class finding이 사라진다. 넓어지는 경계: backing field에 도달 가능한 접근이 하나라도
+  있으면(생성자·정적 초기화의 쓰기, data class가 생성한 `equals`·`hashCode`·`toString`·`copy`·`componentN`의 읽기, 상수 owner 보존 등)
+  읽지 않는 property의 어노테이션과 그 값 class도 도달한다(`@field:` 대상과 같다). 옮긴 ANNOTATION 간선은 정점의 `annotations` 목록에
+  더하지 않는다. 그 목록은 class 파일이 JVM member에 남긴 어노테이션이고 keep 규칙의 `@Annotation` member 조건과 framework
+  어노테이션 보존이 그 목록을 읽는다(R8도 property 대상 어노테이션을 member에서 보지 못한다). 그래서 교환 소비자에게는 간선과 목록이
+  다를 수 있다(라이브러리 어노테이션, 예: `@JvmStatic val`의 `kotlin/jvm/JvmStatic`도 간선으로만 나온다). backing field가 바깥 class에
+  있고 accessor가 없는 companion property와 typealias 어노테이션은 계속 보고될 수 있고, `dead` 출력에 이를 세는 한계 줄은 없다
+  ([LIMITATIONS](docs/LIMITATIONS.md)). graph·snapshot·query에는 property 정점에서 어노테이션 class와 어노테이션 값 class로 가는
+  간선이 새로 나온다(새 enum·attribute는 없다).
 
 ### Added
 

@@ -1,6 +1,7 @@
 package dev.kartograph.index
 
 import dev.kartograph.analysis.DeadFindings
+import dev.kartograph.analysis.DefaultRetention
 import dev.kartograph.analysis.PrivateMemberRetention
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.core.CodeGraph
@@ -185,6 +186,10 @@ class CompilerErasedUseTest {
         // interface는 interface 자신에 있다.
         assertTrue(carried(JvmNodeId.methodId("$pkg/Sized", "getSize", "()I"), "OnInterface"), "interface through DefaultImpls")
         assertTrue(carried(JvmNodeId.methodId("$pkg/Plain", "getPlainUsed", "()I"), "OnPlainUsed"), "interface without DefaultImpls")
+        // 어노테이션 class의 `@property:` 매개변수 합성 method는 늘 DefaultImpls에, multi-file `const val` field는 facade에 있다.
+        assertTrue(carried(JvmNodeId.methodId("$pkg/Tagged", "level", "()I"), "OnAnnotationParameter"), "annotation class parameter")
+        assertTrue(carried(JvmNodeId.fieldId("$pkg/PropertyAnnotationConstants", "MULTIFILE_CONST", "I"), "OnMultifileConst"),
+            "multi-file const field in the facade")
         // 합성 method와 그 owner로 가는 간선, 합성 method descriptor의 receiver 형식은 옮기지 않는다.
         val twice = JvmNodeId.methodId(facade, "getTwice", "(L$holder;)I")
         assertTrue(carried(twice, "OnExtension"), "extension getter")
@@ -196,15 +201,17 @@ class CompilerErasedUseTest {
                 edge.target.value.substringBefore('(').endsWith("\$annotations")
         }, "no property edge reaches a synthetic holder")
 
-        val roots = listOf(RetentionEvidence(JvmNodeId.methodId(facade, "useProperties", "(L$holder;L$pkg/Gauge;L$pkg/Plain;)I"),
+        val roots = listOf(RetentionEvidence(JvmNodeId.methodId(facade, "useProperties", "(L$holder;L$pkg/Gauge;L$pkg/Plain;L$pkg/Tagged;)I"),
             RetentionReason.KEEP_RULE, null))
         val result = ReachabilityAnalyzer.analyze(graph, roots)
         // 읽은 property 하나 때문에 DefaultImpls class와 그 안의 다른 합성 method·default 본문 사본까지 도달하면 안 된다.
         assertTrue(JvmNodeId.classId("$pkg/Gauge\$DefaultImpls") !in result.reachableNodeIds, "DefaultImpls stays unreached")
+        // CLI처럼 상수 owner 보존 등 기본 보존 정책을 더한다(상수 field가 root가 된다).
+        val retained = DefaultRetention.find(graph, roots, emptyList())
         assertEquals(
             listOf("OnGaugeUnusedSibling", "OnPlainUnusedSibling", "OnUnreachableOwner", "OnUnreadGetter", "OnlyInUnusedGaugeDefault",
                 "OnlyInUnusedPlainDefault", "Unreachable").map { "class:$pkg/$it" },
-            reportedTypes(graph, roots).sorted(),
+            reportedTypes(graph, retained).sorted(),
         )
         // 짝은 class 사실에 저장되고 조립 단계에서 풀리므로 cache miss와 hit가 같은 그래프를 만든다.
         val cache = ClassIndexCache(root.resolve("cache"), "property-annotation-holders")
@@ -232,11 +239,15 @@ class CompilerErasedUseTest {
             }
             class Impl : I { override val used = 1 }
             fun use(i: I) = i.used
+            annotation class AParam
+            annotation class Tagged(@property:AParam val v: Int)
+            fun useTag(t: Tagged) = t.v
         """.trimIndent())
         val compilerLib = Path.of(requireNotNull(System.getenv("KARTOGRAPH_KOTLIN_COMPILER_LIB")))
         val javaHome = System.getenv("KARTOGRAPH_JAVA_HOME") ?: System.getProperty("java.home")
         val stdlib = Files.list(compilerLib).use { files -> files.filter { it.fileName.toString().matches(Regex("kotlin-stdlib(-[0-9.]+)?\\.jar")) }.findFirst().orElseThrow() }
-        // 세 mode가 합성 method를 DefaultImpls(disable·enable) 또는 interface 자신(no-compatibility)에 둔다.
+        // 세 mode가 interface 합성 method를 DefaultImpls(disable·enable) 또는 interface 자신(no-compatibility)에 두고, 어노테이션 class
+        // 매개변수의 합성 method는 늘 DefaultImpls에 둔다.
         listOf("disable", "enable", "no-compatibility").forEach { mode ->
             val classes = Files.createDirectories(root.resolve("classes-$mode"))
             val process = ProcessBuilder("$javaHome/bin/java", "-cp", "$compilerLib/*", "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
@@ -245,7 +256,9 @@ class CompilerErasedUseTest {
             val output = process.inputStream.readAllBytes().toString(Charsets.UTF_8)
             assertEquals(0, process.waitFor(), output)
             val graph = ClassFileIndexer().indexWithObservations(listOf(classes), emptyList()).graph
-            val roots = listOf(RetentionEvidence(JvmNodeId.methodId("p6/AKt", "use", "(Lp6/I;)I"), RetentionReason.KEEP_RULE, null))
+            val roots = listOf("use" to "(Lp6/I;)I", "useTag" to "(Lp6/Tagged;)I").map { (name, descriptor) ->
+                RetentionEvidence(JvmNodeId.methodId("p6/AKt", name, descriptor), RetentionReason.KEEP_RULE, null)
+            }
             assertEquals(listOf("class:p6/AUnusedSibling", "class:p6/OnlyInUnusedDefault"), reportedTypes(graph, roots).sorted(), mode)
         }
     }

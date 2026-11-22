@@ -19,7 +19,9 @@ import org.objectweb.asm.Type
  * 합성 method는 다른 class(`DefaultImpls`)에 있을 수 있어 class 하나를 읽는 metadata 보강 단계에서는 풀 수 없다. 보강 단계는
  * property 정점과 합성 method의 짝을 [link] 간선(`kotlinMetadata` 출처, 대상이 method인 ANNOTATION 간선. 다른 생산자는 ANNOTATION
  * 간선을 class로만 낸다)으로 class 사실에 남기고, 모든 class를 모은 조립 단계의 [attach]가 그 간선을 옮긴 간선으로 바꾼다.
- * 짝 간선은 그래프·cache 밖으로 나가지 않는다(cache에는 class 사실의 일반 간선으로 저장된다).
+ * 짝 간선은 그래프 밖으로 나가지 않는다(cache에는 class 사실의 일반 간선으로 저장된다). 짝의 property 정점(multi-file facade의
+ * `const` field처럼 다른 class일 수 있다)이나 합성 method가 입력에 없으면 그 짝은 아무 간선도 남기지 않고 버려진다. 따로 세지 않으며,
+ * 그 어노테이션 class는 이 보강이 없던 때처럼 다른 근거가 없으면 보고된다.
  */
 internal object PropertyAnnotationHolders {
     /** property 정점 [member]와 그 어노테이션을 담은 합성 method [holder]의 짝을 class 사실에 남기는 간선이다. */
@@ -33,13 +35,14 @@ internal object PropertyAnnotationHolders {
     fun attach(classFacts: List<ClassFacts>): List<ClassFacts> {
         val holders = classFacts.flatMapTo(mutableSetOf()) { facts -> facts.edges.filter(::isLink).map(GraphEdge::target) }
         if (holders.isEmpty()) return classFacts
+        val declared = classFacts.flatMapTo(HashSet()) { facts -> facts.nodes.map { node -> node.id } }
         val holderEdges = classFacts.asSequence().flatMap { facts -> facts.edges.asSequence() }
             .filter { edge -> edge.source in holders && isCarried(edge) }
             .groupBy(GraphEdge::source)
         return classFacts.map { facts ->
             val links = facts.edges.filter(::isLink)
             if (links.isEmpty()) return@map facts
-            val carried = links.flatMap { link ->
+            val carried = links.filter { link -> link.source in declared }.flatMap { link ->
                 holderEdges[link.target].orEmpty().map { edge -> GraphEdge(link.source, edge.target, edge.kind, origin = EdgeOrigin.KOTLIN_METADATA) }
             }
             facts.copy(edges = facts.edges.filterNot(::isLink) + carried)

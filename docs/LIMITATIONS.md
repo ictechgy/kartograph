@@ -42,15 +42,24 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   Kotlin property 대상 어노테이션은 property가 아니라 호출되지 않는 합성 method `get<Name>$annotations`에 기록된다. metadata
   `syntheticMethodForAnnotations`가 가리키는 그 method의 어노테이션 간선과 어노테이션 값의 class 참조를 같은 property의 getter·
   setter·backing field로 옮긴 `kotlinMetadata` 간선을 더해, property가 도달하면 어노테이션 class도 도달한다(전에는 쓰이는
-  property에만 붙은 어노테이션 class가 기본 class-only 모드에서 보고됐다). 합성 method와 그 owner로는 간선을 두지 않으므로 interface
-  `DefaultImpls`의 다른 method(쓰이지 않는 default 본문 사본, 다른 property의 합성 method)는 이 길로 도달하지 않는다. interface의 합성
-  method 위치는 metadata로 정한다(`-jvm-default=disable`·`enable`은 `DefaultImpls`, `no-compatibility`·`@JvmDefaultWithoutCompatibility`는
-  interface 자신). 넓어지는 경계: field 쓰기와 상수 owner 보존을 도달로 보는 기존 규칙 때문에 생성자가 초기화만 하고 읽지 않는
-  property와 `const val`의 어노테이션도 도달한다(`@field:` 대상 어노테이션과 같다). private 모드는 reachable owner의 비-private
-  accessor를 진입점으로 보존하므로 읽지 않는 public property의 어노테이션도 도달한다(함수 어노테이션과 같다). 남는 거짓 양성:
-  companion object의 private·`@JvmField`·`const` property처럼 backing field가 바깥 class에 있고 companion에 accessor가 없으면 짝을
-  잇지 못해 그 어노테이션 class는 계속 보고될 수 있고, typealias 어노테이션(`<Alias>$annotations`)은 typealias 사용이 bytecode에서
-  지워져 잇지 않는다. 이 두 형태는 `dead` 출력에 따로 세는 한계 줄이 없다.
+  property에만 붙은 어노테이션 class가 기본 class-only 모드에서 보고됐다). 합성 method와 그 owner로는 간선을 두지 않으므로 이 보강이
+  interface `DefaultImpls`의 다른 method(쓰이지 않는 default 본문 사본, 다른 property의 합성 method)를 도달시키지는 않는다. 다만
+  `-jvm-default=disable`에서 쓰이는 구현 class의 호환 bridge가 일반 bytecode 호출로 `DefaultImpls`에 닿으면, 기존 Kotlin 합성 class
+  처리(합성 class → 모든 method)가 그 안의 다른 property 합성 method까지 이어 sibling property의 어노테이션이 숨을 수 있다(이 보강
+  이전부터 같다). 합성 method 위치는 metadata로 정한다(interface는 `-jvm-default=disable`·`enable`이면 `DefaultImpls`,
+  `no-compatibility`·`@JvmDefaultWithoutCompatibility`면 interface 자신, 어노테이션 class의 `@property:` 매개변수는 늘
+  `DefaultImpls`). multi-file `const val`의 field는 facade에 있어 그 field와 잇는다. 짝의 property 정점이나 합성 method가 입력에 없으면
+  짝은 따로 세지 않고 버려지며 그 어노테이션 class는 이 보강이 없던 때처럼 판정된다.
+  넓어지는 경계: backing field에 도달 가능한 접근이 하나라도 있으면 property를 읽지 않아도 그 어노테이션과 어노테이션 값 class가
+  도달한다. 생성자나 정적 초기화의 쓰기, data class가 생성한 `equals`·`hashCode`·`toString`·`copy`·`componentN`의 읽기, 상수 owner
+  보존(`const val`)이 모두 그렇다(`@field:` 대상 어노테이션과 같다). private 모드는 reachable owner의 비-private accessor를 진입점으로
+  보존하므로 읽지 않는 public property의 어노테이션도 도달한다(함수 어노테이션과 같다). 옮긴 ANNOTATION 간선은 정점의 `annotations`
+  목록(class 파일이 JVM member에 남긴 어노테이션, keep 규칙의 `@Annotation` member 조건과 framework 어노테이션 보존이 읽는다)에 더하지
+  않아 교환 소비자에게는 간선과 목록이 다를 수 있다. 남는 거짓 양성: companion object의 private·`@JvmField`·`const` property처럼
+  backing field가 바깥 class에 있고 companion에 accessor가 없으면 짝을 잇지 못해 그 어노테이션 class는 계속 보고될 수 있고(바깥
+  class field로 이으면 바깥 class의 정적 초기화 쓰기 때문에 읽지 않는 companion property 어노테이션까지 도달해 위 경계가 더 넓어진다),
+  typealias 어노테이션(`<Alias>$annotations`)은 typealias 사용이 bytecode에서 지워져 잇지 않는다. 이 두 형태는 `dead` 출력에 따로 세는
+  한계 줄이 없다.
   `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
 
 - Kotlin Multiplatform 프로젝트에서 검증·문서화한 입력은 `jvm()` target의 class 출력이다. `commonMain` 코드의 영향은 JVM target에
