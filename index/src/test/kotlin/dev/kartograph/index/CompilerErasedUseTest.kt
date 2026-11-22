@@ -16,6 +16,7 @@ import javax.tools.ToolProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
 
 /**
@@ -150,6 +151,11 @@ class CompilerErasedUseTest {
         assertTrue(!synthesized(owner, "quadrupled\$\$forInline(I)I"), "authored lookalike of a non-suspend inline function")
         assertTrue(!synthesized(owner, "plainSuspend\$\$forInline(I$continuation)Ljava/lang/Object;"), "authored lookalike of a non-inline suspend function")
         assertTrue(!synthesized("fixture/JavaCopyLookalike", "doubled\$\$forInline(ILjava/lang/Object;)Ljava/lang/Object;"), "Java lookalike")
+        // private suspend inline 함수에는 사본이 없어, 같은 descriptor의 직접 작성 함수가 compile된다. metadata 선언만이 그 근거다.
+        assertTrue(!synthesized(owner, "quintupled\$\$forInline(I$continuation)Ljava/lang/Object;"),
+            "authored function named like the copy of a private suspend inline function")
+        // inline 함수 안 익명 object의 public `run$$forInline`은 원본 `run`이 inline이 아니어서 규칙 밖이다(public이라 보고되지도 않는다).
+        assertTrue(!synthesized("$owner\$task\$1", "run\$\$forInline($continuation)Ljava/lang/Object;"), "anonymous object copy outside the rule")
 
         // CLI `--include-private-members`와 같이 reachable owner의 비-private member를 root로 넓힌다. private suspend lookalike는
         // compiler가 만든 public `access$plainSuspend$$forInline`으로 도달하므로 보고되지 않는다.
@@ -162,26 +168,86 @@ class CompilerErasedUseTest {
         )
     }
 
-    @Test fun `annotations of a used Kotlin property are reachable through its synthetic annotations method`(@TempDir root: Path) {
+    @Test fun `annotations of a used Kotlin property are reachable from the property, not through its synthetic holder`(@TempDir root: Path) {
         val pkg = "dev/kartograph/index/fixture/propertyannotations"
         val facade = "$pkg/PropertyAnnotationFixturesKt"
+        val holder = "$pkg/Holder"
         val classes = copyFixturePackage(root, pkg, "PropertyAnnotationFixturesKt")
         val graph = ClassFileIndexer().indexWithObservations(listOf(classes), emptyList()).graph
-        fun metadataEdge(source: NodeId, target: NodeId) = graph.outgoingEdgesFrom(source).any {
-            it.target == target && it.kind == EdgeKind.REFERENCE && it.origin == EdgeOrigin.KOTLIN_METADATA
+        fun carried(source: NodeId, annotation: String, kind: EdgeKind = EdgeKind.ANNOTATION) = graph.outgoingEdgesFrom(source).any {
+            it.target == JvmNodeId.classId("$pkg/$annotation") && it.kind == kind && it.origin == EdgeOrigin.KOTLIN_METADATA
         }
-        val holder = "$pkg/Holder"
-        assertTrue(metadataEdge(JvmNodeId.methodId(holder, "getComputed", "()I"), JvmNodeId.methodId(holder, "getComputed\$annotations", "()V")), "getter")
-        assertTrue(metadataEdge(JvmNodeId.methodId(holder, "setSink", "(I)V"), JvmNodeId.methodId(holder, "getSink\$annotations", "()V")), "setter")
-        assertTrue(metadataEdge(JvmNodeId.fieldId(holder, "secret", "I"), JvmNodeId.methodId(holder, "getSecret\$annotations", "()V")), "backing field")
-        // 기본 `-jvm-default` 설정의 interface property 합성 method는 DefaultImpls에 있다.
-        assertTrue(metadataEdge(JvmNodeId.methodId("$pkg/Sized", "getSize", "()I"), JvmNodeId.methodId("$pkg/Sized\$DefaultImpls", "getSize\$annotations", "()V")), "interface")
+        assertTrue(carried(JvmNodeId.methodId(holder, "getComputed", "()I"), "OnGetterOnly"), "getter")
+        assertTrue(carried(JvmNodeId.methodId(holder, "getComputed", "()I"), "OnlyInPropertyValue", EdgeKind.REFERENCE), "annotation value")
+        assertTrue(carried(JvmNodeId.methodId(holder, "setSink", "(I)V"), "OnWriteOnly"), "setter")
+        assertTrue(carried(JvmNodeId.fieldId(holder, "secret", "I"), "OnPrivateField"), "backing field")
+        // 이 build의 기본 `-jvm-default` 설정에서 interface property 합성 method는 DefaultImpls에, `@JvmDefaultWithoutCompatibility`
+        // interface는 interface 자신에 있다.
+        assertTrue(carried(JvmNodeId.methodId("$pkg/Sized", "getSize", "()I"), "OnInterface"), "interface through DefaultImpls")
+        assertTrue(carried(JvmNodeId.methodId("$pkg/Plain", "getPlainUsed", "()I"), "OnPlainUsed"), "interface without DefaultImpls")
+        // 합성 method와 그 owner로 가는 간선, 합성 method descriptor의 receiver 형식은 옮기지 않는다.
+        val twice = JvmNodeId.methodId(facade, "getTwice", "(L$holder;)I")
+        assertTrue(carried(twice, "OnExtension"), "extension getter")
+        assertTrue(graph.outgoingEdgesFrom(twice).none { it.origin == EdgeOrigin.KOTLIN_METADATA && it.target == JvmNodeId.classId(holder) },
+            "receiver type of the holder descriptor is not carried")
+        // DefaultImpls 같은 Kotlin 합성 class가 자기 method를 잇는 기존 간선(class → method)만 남고 property 쪽 간선은 없다.
+        assertTrue(graph.edges.none { edge ->
+            edge.origin == EdgeOrigin.KOTLIN_METADATA && !edge.source.value.startsWith("class:") &&
+                edge.target.value.substringBefore('(').endsWith("\$annotations")
+        }, "no property edge reaches a synthetic holder")
 
-        val roots = listOf(RetentionEvidence(JvmNodeId.methodId(facade, "useProperties", "(L$holder;)I"), RetentionReason.KEEP_RULE, null))
+        val roots = listOf(RetentionEvidence(JvmNodeId.methodId(facade, "useProperties", "(L$holder;L$pkg/Gauge;L$pkg/Plain;)I"),
+            RetentionReason.KEEP_RULE, null))
+        val result = ReachabilityAnalyzer.analyze(graph, roots)
+        // 읽은 property 하나 때문에 DefaultImpls class와 그 안의 다른 합성 method·default 본문 사본까지 도달하면 안 된다.
+        assertTrue(JvmNodeId.classId("$pkg/Gauge\$DefaultImpls") !in result.reachableNodeIds, "DefaultImpls stays unreached")
         assertEquals(
-            listOf("class:$pkg/OnUnreachableOwner", "class:$pkg/OnUnreadGetter", "class:$pkg/Unreachable"),
+            listOf("OnGaugeUnusedSibling", "OnPlainUnusedSibling", "OnUnreachableOwner", "OnUnreadGetter", "OnlyInUnusedGaugeDefault",
+                "OnlyInUnusedPlainDefault", "Unreachable").map { "class:$pkg/$it" },
             reportedTypes(graph, roots).sorted(),
         )
+        // 짝은 class 사실에 저장되고 조립 단계에서 풀리므로 cache miss와 hit가 같은 그래프를 만든다.
+        val cache = ClassIndexCache(root.resolve("cache"), "property-annotation-holders")
+        val missed = ClassFileIndexer(cache).indexWithObservations(listOf(classes), emptyList())
+        val hit = ClassFileIndexer(cache).indexWithObservations(listOf(classes), emptyList())
+        assertTrue(missed.statistics.cacheMisses > 0 && hit.statistics.cacheMisses == 0 && hit.statistics.cacheHits > 0, hit.statistics.toString())
+        assertEquals(graph.edges, missed.graph.edges, "cache miss")
+        assertEquals(graph.edges, hit.graph.edges, "cache hit")
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "KARTOGRAPH_KOTLIN_COMPILER_LIB", matches = ".+")
+    fun `property annotations follow the holder owner of every jvm-default mode`(@TempDir root: Path) {
+        val source = root.resolve("src/A.kt")
+        Files.createDirectories(source.parent)
+        Files.writeString(source, """
+            package p6
+            annotation class AUsed
+            annotation class AUnusedSibling
+            class OnlyInUnusedDefault { fun go() = 7 }
+            interface I {
+                @AUsed val used: Int
+                @AUnusedSibling val unusedSibling: Int get() = 3
+                fun unusedDefault(): Int = OnlyInUnusedDefault().go()
+            }
+            class Impl : I { override val used = 1 }
+            fun use(i: I) = i.used
+        """.trimIndent())
+        val compilerLib = Path.of(requireNotNull(System.getenv("KARTOGRAPH_KOTLIN_COMPILER_LIB")))
+        val javaHome = System.getenv("KARTOGRAPH_JAVA_HOME") ?: System.getProperty("java.home")
+        val stdlib = Files.list(compilerLib).use { files -> files.filter { it.fileName.toString().matches(Regex("kotlin-stdlib(-[0-9.]+)?\\.jar")) }.findFirst().orElseThrow() }
+        // 세 mode가 합성 method를 DefaultImpls(disable·enable) 또는 interface 자신(no-compatibility)에 둔다.
+        listOf("disable", "enable", "no-compatibility").forEach { mode ->
+            val classes = Files.createDirectories(root.resolve("classes-$mode"))
+            val process = ProcessBuilder("$javaHome/bin/java", "-cp", "$compilerLib/*", "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+                "-no-stdlib", "-no-reflect", "-classpath", stdlib.toString(), "-jvm-default=$mode", "-d", classes.toString(), source.toString())
+                .redirectErrorStream(true).start()
+            val output = process.inputStream.readAllBytes().toString(Charsets.UTF_8)
+            assertEquals(0, process.waitFor(), output)
+            val graph = ClassFileIndexer().indexWithObservations(listOf(classes), emptyList()).graph
+            val roots = listOf(RetentionEvidence(JvmNodeId.methodId("p6/AKt", "use", "(Lp6/I;)I"), RetentionReason.KEEP_RULE, null))
+            assertEquals(listOf("class:p6/AUnusedSibling", "class:p6/OnlyInUnusedDefault"), reportedTypes(graph, roots).sorted(), mode)
+        }
     }
 
     private fun reportedTypes(graph: CodeGraph, roots: List<RetentionEvidence>): List<String> =

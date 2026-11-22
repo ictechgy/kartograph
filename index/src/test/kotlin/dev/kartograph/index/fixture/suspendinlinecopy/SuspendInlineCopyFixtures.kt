@@ -32,6 +32,30 @@ suspend fun plainSuspend(value: Int): Int = value + 1
 @JvmName("plainSuspend\$\$forInline")
 private suspend fun authoredSuspendLookalike(value: Int): Int = value
 
+/** private suspend inline 함수다. compiler는 private 함수에는 사본을 남기지 않는다. */
+private suspend inline fun quintupled(value: Int): Int = value * 5
+
+/**
+ * 직접 작성한 private suspend 함수다. JVM 이름과 descriptor가 위 private suspend inline 함수의 사본 꼴과 같지만, private 함수에는
+ * compiler 사본이 없어 clash 없이 컴파일된다. 원본이 suspend inline이므로 metadata가 이 함수를 선언한다는 근거로만 생성물에서 빠진다.
+ */
+@JvmName("quintupled\$\$forInline")
+private suspend fun authoredPrivateCopyLookalike(value: Int): Int = value + 100
+
+/** inline 함수 안 익명 object가 재정의하는 suspend 계약이다. */
+interface SuspendTask {
+    /** 익명 object가 재정의한다. */
+    suspend fun run(): Int
+}
+
+/**
+ * crossinline suspend lambda를 잡는 익명 object를 만든다. compiler는 그 object(`SuspendInlineCopyFixturesKt$task$1`)에 public
+ * `run$$forInline`을 남기지만, 원본 `run`은 inline이 아니어서 이 규칙의 대상이 아니다.
+ */
+inline fun task(crossinline block: suspend () -> Int): SuspendTask = object : SuspendTask {
+    override suspend fun run(): Int = block()
+}
+
 /** member suspend inline 함수의 사본도 같은 owner에 private으로 남는다. */
 class Doubler {
     /** 사본 `twice$$forInline`을 남기는 member 함수다. */
@@ -39,4 +63,5 @@ class Doubler {
 }
 
 /** 위 함수들의 Kotlin 호출자다. inline 함수 본문은 이 안에 펼쳐지므로 원본·사본 어느 쪽도 호출하지 않는다. */
-suspend fun callAll(): Int = doubled(1) + tripled(2) + quadrupled(3) + plainSuspend(4) + Doubler().twice(5)
+suspend fun callAll(): Int =
+    doubled(1) + tripled(2) + quadrupled(3) + plainSuspend(4) + Doubler().twice(5) + quintupled(6) + task { 7 }.run()

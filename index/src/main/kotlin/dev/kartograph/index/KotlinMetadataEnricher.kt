@@ -3,6 +3,7 @@ package dev.kartograph.index
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.EdgeKind
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
@@ -27,6 +28,8 @@ import kotlin.metadata.visibility
 import kotlin.metadata.jvm.KotlinClassMetadata
 import kotlin.metadata.jvm.fieldSignature
 import kotlin.metadata.jvm.getterSignature
+import kotlin.metadata.jvm.hasMethodBodiesInInterface
+import kotlin.metadata.jvm.isCompiledInCompatibilityMode
 import kotlin.metadata.jvm.setterSignature
 import kotlin.metadata.jvm.signature
 import kotlin.metadata.jvm.syntheticMethodForAnnotations
@@ -50,7 +53,7 @@ internal object KotlinMetadataEnricher {
                 nodes.replaceAll { _, node -> node.copy(synthesized = true) }
                 val classId = JvmNodeId.classId(facts.internalName)
                 facts.nodes.filter { node -> node.kind == NodeKind.METHOD }.forEach { method ->
-                    runtimeEdges += GraphEdge(classId, method.id, EdgeKind.REFERENCE, origin = dev.kartograph.core.EdgeOrigin.KOTLIN_METADATA)
+                    runtimeEdges += GraphEdge(classId, method.id, EdgeKind.REFERENCE, origin = EdgeOrigin.KOTLIN_METADATA)
                 }
             }
             else -> Unit
@@ -70,11 +73,10 @@ internal object KotlinMetadataEnricher {
         enrichDefaultBridges(facts, functions, nodes)
         markJvmOverloads(functions, nodes)
         markSuspendInlineCopies(facts.internalName, functions, nodes)
-        val isInterface = metadata is KotlinClassMetadata.Class && metadata.kmClass.kind == ClassKind.INTERFACE
-        runtimeEdges += propertyAnnotationHolderEdges(facts.internalName, properties, isInterface)
+        val holderOwner = annotationHolderOwner(facts.internalName, (metadata as? KotlinClassMetadata.Class)?.kmClass)
         return facts.copy(
             nodes = facts.nodes.map { node -> nodes.getValue(node.id) },
-            edges = facts.edges + runtimeEdges,
+            edges = facts.edges + runtimeEdges + propertyAnnotationHolders(facts.internalName, holderOwner, properties, nodes.keys),
         )
     }
 
@@ -140,7 +142,8 @@ internal object KotlinMetadataEnricher {
      * public·protected·internal `suspend inline` 함수마다 compiler가 inliner용으로 남기는 사본 `<JVM 이름>$$forInline`을
      * 생성물로 표시한다. 사본은 상태 기계가 없는 본문이라 호출되지 않고, 다른 class의 inline 호출 지점으로 복사될 뿐이다.
      * 같은 owner metadata가 suspend inline으로 선언한 함수의 JVM 이름에 접미사를 붙이고 descriptor까지 같은 method만 본다.
-     * metadata가 함수로 선언한 method(`@JvmName`으로 같은 이름을 쓴 직접 작성 함수)는 표시하지 않는다.
+     * metadata가 함수로 선언한 method는 표시하지 않는다. private suspend inline 함수에는 사본이 없어 같은 이름·descriptor의 직접
+     * 작성 `@JvmName` 함수가 compile될 수 있고, 그 함수를 가르는 근거는 이 선언 여부뿐이다.
      */
     private fun markSuspendInlineCopies(owner: String, functions: List<KmFunction>, nodes: MutableMap<NodeId, GraphNode>) {
         val declared = functions.mapNotNullTo(mutableSetOf()) { function -> function.signature?.let { it.name + it.descriptor } }
@@ -157,27 +160,32 @@ internal object KotlinMetadataEnricher {
     /**
      * property 대상 어노테이션은 property가 아니라 metadata `syntheticMethodForAnnotations`가 가리키는 합성 method
      * (`get<Name>$annotations`)에 기록된다. 그 method는 호출되지 않아, property를 써도 어노테이션 class가 도달 불가로 보였다.
-     * 같은 property의 getter·setter·backing field에서 그 method로 metadata 간선을 이어 property가 도달하면 어노테이션도 도달하게
-     * 한다. interface property의 합성 method는 `-jvm-default` 호환 mode에서 `DefaultImpls`에, 아니면 interface 자신에 있으므로 두
-     * 위치를 모두 후보로 둔다. 양 끝 정점이 그래프에 없는 간선은 그래프를 만들 때 버려진다.
+     * 이 class에 있는 같은 property의 getter·setter·backing field와 그 method의 짝을 class 사실의 내부 짝 간선으로 남긴다. 짝 간선은
+     * 그래프에 들어가지 않고, 모든 class를 모은 뒤 [PropertyAnnotationHolders]가 method의 어노테이션 간선으로 바꾸고 지운다.
      */
-    private fun propertyAnnotationHolderEdges(owner: String, properties: List<KmProperty>, isInterface: Boolean): List<GraphEdge> {
-        val holderOwners = if (isInterface) listOf(owner, owner + DEFAULT_IMPLS_SUFFIX) else listOf(owner)
-        return properties.flatMap { property ->
+    private fun propertyAnnotationHolders(
+        owner: String, holderOwner: String, properties: List<KmProperty>, declared: Set<NodeId>,
+    ): List<GraphEdge> =
+        properties.flatMap { property ->
             val holder = property.syntheticMethodForAnnotations ?: return@flatMap emptyList()
-            val members = listOfNotNull(
+            val holderId = JvmNodeId.methodId(holderOwner, holder.name, holder.descriptor)
+            listOfNotNull(
                 property.getterSignature?.let { JvmNodeId.methodId(owner, it.name, it.descriptor) },
                 property.setterSignature?.let { JvmNodeId.methodId(owner, it.name, it.descriptor) },
                 property.fieldSignature?.let { JvmNodeId.fieldId(owner, it.name, it.descriptor) },
-            )
-            members.flatMap { member ->
-                holderOwners.map { holderOwner ->
-                    GraphEdge(member, JvmNodeId.methodId(holderOwner, holder.name, holder.descriptor), EdgeKind.REFERENCE,
-                        origin = dev.kartograph.core.EdgeOrigin.KOTLIN_METADATA)
-                }
-            }
+            ).filter { member -> member in declared }.map { member -> PropertyAnnotationHolders.link(member, holderId) }
         }
-    }
+
+    /**
+     * property 어노테이션 합성 method가 있는 class다. interface는 method 본문을 interface에 두지 않거나(`-jvm-default=disable`) 호환
+     * mode로 컴파일됐으면(`enable`) `DefaultImpls`에, 아니면(`no-compatibility`) interface 자신에 둔다(세 mode 모두 kotlinc로 확인).
+     */
+    private fun annotationHolderOwner(owner: String, kmClass: KmClass?): String =
+        if (kmClass?.kind == ClassKind.INTERFACE && (!kmClass.hasMethodBodiesInInterface || kmClass.isCompiledInCompatibilityMode)) {
+            owner + DEFAULT_IMPLS_SUFFIX
+        } else {
+            owner
+        }
 
     private const val DEFAULT_IMPLS_SUFFIX = "\$DefaultImpls"
 

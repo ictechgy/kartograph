@@ -45,15 +45,23 @@
   원본이 쓰여도 늘 `unreachable`로 보고하던 문제를 고친다. 같은 owner metadata가 suspend inline으로 선언한 함수의 JVM 이름에
   접미사를 붙이고 descriptor까지 같은 method만 `synthesized`로 표시한다(top-level·member·companion·`@JvmName`·mangled·`-impl`·
   internal `$module` 이름 모두 같은 규칙). 원본이 suspend나 inline이 아닌 함수의 같은 꼴 이름, descriptor가 다른 같은 이름,
-  metadata가 없는 Java class는 표시하지 않는다. kotlinx-coroutines-core 1.8.0을 public API keep으로 분석하면 private 보고가 24건에서
+  metadata가 없는 Java class, 사본이 없는 private suspend inline 함수와 같은 이름·descriptor로 직접 작성한 `@JvmName` 함수(metadata가
+  선언한다)는 표시하지 않는다. kotlinx-coroutines-core 1.8.0을 public API keep으로 분석하면 private 보고가 24건에서
   5건으로 준다(사라진 19건은 모두 이 사본).
 - Kotlin property에만 붙은 어노테이션 class를 기본(class-only) `dead`가 쓰여도 `unreachable`로 보고하던 문제를 고친다. compiler는
-  property 대상 어노테이션을 호출되지 않는 합성 method `get<Name>$annotations`에 기록한다. metadata `syntheticMethodForAnnotations`가
-  가리키는 그 method로 같은 property의 getter·setter·backing field에서 `kotlinMetadata` REFERENCE 간선을 잇는다(interface property는
-  `DefaultImpls`와 interface 자신 중 실제로 있는 쪽). 보존이 넓어지는 방향이라 일부 기존 class finding이 사라진다. 생성자가
-  초기화만 하는 property의 어노테이션도 field 쓰기를 도달로 보는 기존 규칙에 따라 도달한다(`@field:` 대상과 같다). backing field가
-  바깥 class에 있고 accessor가 없는 companion property, typealias 어노테이션은 그대로다([LIMITATIONS](docs/LIMITATIONS.md)).
-  graph·snapshot·query에는 이 간선이 새로 나온다(새 enum·attribute는 없다).
+  property 대상 어노테이션을 호출되지 않는 합성 method `get<Name>$annotations`(metadata `syntheticMethodForAnnotations`)에 기록한다.
+  그 method가 class 파일에 남긴 어노테이션 간선과 어노테이션 값의 class 참조를 같은 property의 getter·setter·backing field로 옮긴
+  `kotlinMetadata` 간선(ANNOTATION·REFERENCE)을 더한다. 합성 method 자체와 그 owner로는 간선을 두지 않는다. interface의 합성
+  method가 있는 `DefaultImpls`는 모든 method를 잇는 Kotlin 합성 class라, 그 길로 이으면 읽은 property 하나 때문에 쓰이지 않는
+  default 본문과 다른 property의 어노테이션까지 도달했다(PR 리뷰 B1, 첫 구현의 거짓 음성). interface의 합성 method 위치는 metadata
+  `hasMethodBodiesInInterface`·`isCompiledInCompatibilityMode`로 정한다(`-jvm-default=disable`·`enable`은 `DefaultImpls`,
+  `no-compatibility`와 `@JvmDefaultWithoutCompatibility` interface는 interface 자신). property와 합성 method의 짝은 class별 사실로
+  남기고(index cache 형식 10→11) 모든 class를 모은 뒤 간선으로 바꾸므로, 없는 합성 method를 가리키는 간선이나
+  `--include-external-stubs` stub은 생기지 않는다. 보존이 넓어지는 방향이라 일부 기존 class finding이 사라진다. field 쓰기와 상수
+  owner 보존을 도달로 보는 기존 규칙 때문에 생성자가 초기화만 하는 property와 `const val`의 어노테이션도 도달한다(`@field:` 대상과
+  같다). backing field가 바깥 class에 있고 accessor가 없는 companion property와 typealias 어노테이션은 계속 보고될 수 있고, `dead`
+  출력에 이를 세는 한계 줄은 없다([LIMITATIONS](docs/LIMITATIONS.md)). graph·snapshot·query에는 property 정점에서 어노테이션 class와
+  어노테이션 값 class로 가는 간선이 새로 나온다(새 enum·attribute는 없다).
 
 ### Added
 

@@ -222,9 +222,9 @@ public class ClassFileIndexer(public val cache: ClassIndexCache? = null, callbac
                 if (generatedSiblingNames.add(enclosed.internalName)) pendingGenerated.addLast(enclosed.internalName)
             }
         }
-        val classFacts = factsByClass.values.map { facts ->
+        val classFacts = PropertyAnnotationHolders.attach(factsByClass.values.map { facts ->
             if (facts.internalName in generatedSiblingNames) facts.asSynthesized() else facts
-        }
+        })
         val assemblyStart = System.nanoTime()
         val enclosures = lexicalEnclosures(classFacts)
         val inheritedMembers = InheritedMemberReferences(classFacts)
