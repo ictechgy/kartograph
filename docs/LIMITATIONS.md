@@ -38,6 +38,14 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   descriptor가 다른 같은 이름, metadata가 없는 Java class의 같은 이름은 표시하지 않는다(kotlinc는 사본과 JVM 시그니처가 같은 직접
   작성 함수를 platform declaration clash로 거부한다). inline 함수 안 익명 object가 crossinline suspend lambda 때문에 남기는 public
   `run$$forInline`류는 이 규칙의 대상이 아니다(public이라 private 보고에 나오지 않는다).
+  Kotlin property 대상 어노테이션은 property가 아니라 호출되지 않는 합성 method `get<Name>$annotations`에 기록된다. metadata
+  `syntheticMethodForAnnotations`가 가리키는 그 method로 같은 property의 getter·setter·backing field에서 `kotlinMetadata` REFERENCE
+  간선을 이어, property가 도달하면 어노테이션 class도 도달한다(전에는 쓰이는 property에만 붙은 어노테이션 class가 기본 class-only
+  모드에서 보고됐다). field 쓰기도 도달로 보는 기존 규칙 때문에 생성자가 초기화만 하고 읽지 않는 property의 어노테이션도 도달한다
+  (`@field:` 대상 어노테이션과 같다). interface property의 합성 method는 `-jvm-default` 호환 mode에서 `DefaultImpls`, 아니면
+  interface 자신에 있어 두 위치를 본다. companion object의 private·`@JvmField`·`const` property처럼 backing field가 바깥 class에
+  있고 companion에 accessor가 없으면 간선을 잇지 못해 그 어노테이션 class는 계속 보고될 수 있다. typealias 어노테이션
+  (`<Alias>$annotations`)은 typealias 사용이 bytecode에서 지워져 잇지 않는다.
   `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
 
 - Kotlin Multiplatform 프로젝트에서 검증·문서화한 입력은 `jvm()` target의 class 출력이다. `commonMain` 코드의 영향은 JVM target에

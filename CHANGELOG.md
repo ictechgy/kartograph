@@ -47,6 +47,13 @@
   internal `$module` 이름 모두 같은 규칙). 원본이 suspend나 inline이 아닌 함수의 같은 꼴 이름, descriptor가 다른 같은 이름,
   metadata가 없는 Java class는 표시하지 않는다. kotlinx-coroutines-core 1.8.0을 public API keep으로 분석하면 private 보고가 24건에서
   5건으로 준다(사라진 19건은 모두 이 사본).
+- Kotlin property에만 붙은 어노테이션 class를 기본(class-only) `dead`가 쓰여도 `unreachable`로 보고하던 문제를 고친다. compiler는
+  property 대상 어노테이션을 호출되지 않는 합성 method `get<Name>$annotations`에 기록한다. metadata `syntheticMethodForAnnotations`가
+  가리키는 그 method로 같은 property의 getter·setter·backing field에서 `kotlinMetadata` REFERENCE 간선을 잇는다(interface property는
+  `DefaultImpls`와 interface 자신 중 실제로 있는 쪽). 보존이 넓어지는 방향이라 일부 기존 class finding이 사라진다. 생성자가
+  초기화만 하는 property의 어노테이션도 field 쓰기를 도달로 보는 기존 규칙에 따라 도달한다(`@field:` 대상과 같다). backing field가
+  바깥 class에 있고 accessor가 없는 companion property, typealias 어노테이션은 그대로다([LIMITATIONS](docs/LIMITATIONS.md)).
+  graph·snapshot·query에는 이 간선이 새로 나온다(새 enum·attribute는 없다).
 
 ### Added
 

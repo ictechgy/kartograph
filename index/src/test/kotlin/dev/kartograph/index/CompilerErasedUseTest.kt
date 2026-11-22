@@ -4,7 +4,10 @@ import dev.kartograph.analysis.DeadFindings
 import dev.kartograph.analysis.PrivateMemberRetention
 import dev.kartograph.analysis.ReachabilityAnalyzer
 import dev.kartograph.core.CodeGraph
+import dev.kartograph.core.EdgeKind
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.NodeAttribute
+import dev.kartograph.core.NodeId
 import dev.kartograph.core.RetentionEvidence
 import dev.kartograph.core.RetentionReason
 import java.nio.file.Files
@@ -16,9 +19,9 @@ import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
 /**
- * 사용 흔적이 compiler 산출물에서 지워지는 형태다. SOURCE retention 어노테이션은 사용처가 class 파일에
+ * 사용 흔적이 compiler 산출물에서 지워지거나 다른 곳으로 옮겨지는 형태다. SOURCE retention 어노테이션은 사용처가 class 파일에
  * 없고, `@JvmOverloads` 생성 overload는 Kotlin 호출이 `$default`로 가서 직접 호출이 없다. suspend inline 함수의 inliner용
- * 사본은 호출되지 않는다. 모두 실제 compiler 산출물로 확인한다.
+ * 사본은 호출되지 않고, property 대상 어노테이션은 호출되지 않는 합성 method에 기록된다. 모두 실제 compiler 산출물로 확인한다.
  */
 class CompilerErasedUseTest {
     @Test fun `SOURCE retention annotation classes are counted instead of reported`(@TempDir root: Path) {
@@ -156,6 +159,28 @@ class CompilerErasedUseTest {
             listOf("method:$owner#quadrupled\$\$forInline(I)I"),
             DeadFindings.collect(graph, ReachabilityAnalyzer.analyze(graph, roots), includePrivateMembers = true)
                 .map { it.nodeId.value }.filter { it.startsWith("method:dev/") }.sorted(),
+        )
+    }
+
+    @Test fun `annotations of a used Kotlin property are reachable through its synthetic annotations method`(@TempDir root: Path) {
+        val pkg = "dev/kartograph/index/fixture/propertyannotations"
+        val facade = "$pkg/PropertyAnnotationFixturesKt"
+        val classes = copyFixturePackage(root, pkg, "PropertyAnnotationFixturesKt")
+        val graph = ClassFileIndexer().indexWithObservations(listOf(classes), emptyList()).graph
+        fun metadataEdge(source: NodeId, target: NodeId) = graph.outgoingEdgesFrom(source).any {
+            it.target == target && it.kind == EdgeKind.REFERENCE && it.origin == EdgeOrigin.KOTLIN_METADATA
+        }
+        val holder = "$pkg/Holder"
+        assertTrue(metadataEdge(JvmNodeId.methodId(holder, "getComputed", "()I"), JvmNodeId.methodId(holder, "getComputed\$annotations", "()V")), "getter")
+        assertTrue(metadataEdge(JvmNodeId.methodId(holder, "setSink", "(I)V"), JvmNodeId.methodId(holder, "getSink\$annotations", "()V")), "setter")
+        assertTrue(metadataEdge(JvmNodeId.fieldId(holder, "secret", "I"), JvmNodeId.methodId(holder, "getSecret\$annotations", "()V")), "backing field")
+        // 기본 `-jvm-default` 설정의 interface property 합성 method는 DefaultImpls에 있다.
+        assertTrue(metadataEdge(JvmNodeId.methodId("$pkg/Sized", "getSize", "()I"), JvmNodeId.methodId("$pkg/Sized\$DefaultImpls", "getSize\$annotations", "()V")), "interface")
+
+        val roots = listOf(RetentionEvidence(JvmNodeId.methodId(facade, "useProperties", "(L$holder;)I"), RetentionReason.KEEP_RULE, null))
+        assertEquals(
+            listOf("class:$pkg/OnUnreachableOwner", "class:$pkg/OnUnreadGetter", "class:$pkg/Unreachable"),
+            reportedTypes(graph, roots).sorted(),
         )
     }
 

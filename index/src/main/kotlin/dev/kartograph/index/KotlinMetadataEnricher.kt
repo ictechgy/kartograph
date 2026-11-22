@@ -29,6 +29,7 @@ import kotlin.metadata.jvm.fieldSignature
 import kotlin.metadata.jvm.getterSignature
 import kotlin.metadata.jvm.setterSignature
 import kotlin.metadata.jvm.signature
+import kotlin.metadata.jvm.syntheticMethodForAnnotations
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
@@ -60,9 +61,17 @@ internal object KotlinMetadataEnricher {
             is KotlinClassMetadata.MultiFileClassPart -> metadata.kmPackage.functions
             else -> emptyList()
         }
+        val properties = when (metadata) {
+            is KotlinClassMetadata.Class -> metadata.kmClass.properties
+            is KotlinClassMetadata.FileFacade -> metadata.kmPackage.properties
+            is KotlinClassMetadata.MultiFileClassPart -> metadata.kmPackage.properties
+            else -> emptyList()
+        }
         enrichDefaultBridges(facts, functions, nodes)
         markJvmOverloads(functions, nodes)
         markSuspendInlineCopies(facts.internalName, functions, nodes)
+        val isInterface = metadata is KotlinClassMetadata.Class && metadata.kmClass.kind == ClassKind.INTERFACE
+        runtimeEdges += propertyAnnotationHolderEdges(facts.internalName, properties, isInterface)
         return facts.copy(
             nodes = facts.nodes.map { node -> nodes.getValue(node.id) },
             edges = facts.edges + runtimeEdges,
@@ -144,6 +153,33 @@ internal object KotlinMetadataEnricher {
     }
 
     private const val FOR_INLINE_SUFFIX = "\$\$forInline"
+
+    /**
+     * property 대상 어노테이션은 property가 아니라 metadata `syntheticMethodForAnnotations`가 가리키는 합성 method
+     * (`get<Name>$annotations`)에 기록된다. 그 method는 호출되지 않아, property를 써도 어노테이션 class가 도달 불가로 보였다.
+     * 같은 property의 getter·setter·backing field에서 그 method로 metadata 간선을 이어 property가 도달하면 어노테이션도 도달하게
+     * 한다. interface property의 합성 method는 `-jvm-default` 호환 mode에서 `DefaultImpls`에, 아니면 interface 자신에 있으므로 두
+     * 위치를 모두 후보로 둔다. 양 끝 정점이 그래프에 없는 간선은 그래프를 만들 때 버려진다.
+     */
+    private fun propertyAnnotationHolderEdges(owner: String, properties: List<KmProperty>, isInterface: Boolean): List<GraphEdge> {
+        val holderOwners = if (isInterface) listOf(owner, owner + DEFAULT_IMPLS_SUFFIX) else listOf(owner)
+        return properties.flatMap { property ->
+            val holder = property.syntheticMethodForAnnotations ?: return@flatMap emptyList()
+            val members = listOfNotNull(
+                property.getterSignature?.let { JvmNodeId.methodId(owner, it.name, it.descriptor) },
+                property.setterSignature?.let { JvmNodeId.methodId(owner, it.name, it.descriptor) },
+                property.fieldSignature?.let { JvmNodeId.fieldId(owner, it.name, it.descriptor) },
+            )
+            members.flatMap { member ->
+                holderOwners.map { holderOwner ->
+                    GraphEdge(member, JvmNodeId.methodId(holderOwner, holder.name, holder.descriptor), EdgeKind.REFERENCE,
+                        origin = dev.kartograph.core.EdgeOrigin.KOTLIN_METADATA)
+                }
+            }
+        }
+    }
+
+    private const val DEFAULT_IMPLS_SUFFIX = "\$DefaultImpls"
 
     // 이름이나 int 꼬리만으로 추측하면 default expression이 호출한 overload를 원본으로 오인한다.
     // 같은 owner의 metadata JVM signature와 value parameter 수, 실제 CALL을 모두 요구한다.
