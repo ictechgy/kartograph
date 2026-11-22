@@ -27,6 +27,10 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   원본·생성물 모두 `kotlin/jvm/JvmOverloads`를 남기고 Kotlin metadata에는 원본만 있으므로, 같은 owner metadata가 선언하고 class
   파일에 `@JvmOverloads`를 남긴 원본에서 default 매개변수를 끝부터 하나씩 뺀 정확한 시그니처일 때만 `synthesized`로 표시한다.
   suspend 함수의 생성 overload는 JVM 인자 끝의 `Continuation`을 그대로 가진 시그니처로 계산한다.
+  value class 매개변수 때문에 compiler가 JVM 이름을 `name-hash`로 바꾼 원본의 생성 overload는 원본 이름을 물려받지 않고 각자
+  다른 hash 이름을 받으므로 알아보지 못한다. 그런 생성 overload는 `synthesized`로 표시하지 않아 쓰이지 않으면 그대로 보고된다
+  (같은 이름을 `@JvmName`으로 쓴 직접 작성 함수를 숨기지 않는 보수적 방향). value class 멤버의 `-impl`, `@JvmName`으로 정한 이름,
+  internal의 `$module` 접미사, `-`가 든 backtick 이름의 생성 overload는 원본과 같은 이름이라 그대로 알아본다.
   같은 이름의 직접 작성 overload(더 긴 것 포함)와, companion `@JvmStatic` 함수가 바깥 class에 남긴 정적 bridge는 그대로다.
   `dead`의 모든 보고 형식에는 generation marker 한계를 포함한다.
 

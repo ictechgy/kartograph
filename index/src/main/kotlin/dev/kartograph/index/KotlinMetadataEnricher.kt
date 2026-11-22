@@ -101,6 +101,9 @@ internal object KotlinMetadataEnricher {
     private fun generatedOverloads(function: KmFunction, annotated: Set<String>): List<String> {
         val signature = function.signature ?: return emptyList()
         if (signature.name + signature.descriptor !in annotated) return emptyList()
+        // value class 매개변수 등으로 이름이 바뀐 원본의 생성 overload는 원본 이름을 물려받지 않고 각자 다른 hash 이름을 받는다.
+        // 원본 이름으로 계산하면 그 이름을 `@JvmName`으로 쓴 다른 직접 작성 함수를 생성물로 숨길 수 있어 아예 계산하지 않는다.
+        if (isMangled(function.name, signature.name)) return emptyList()
         val arguments = Type.getArgumentTypes(signature.descriptor)
         // suspend 함수는 compiler가 JVM 인자 끝에 Continuation 하나를 더한다. 앞쪽 인자로 세면 value parameter 위치가 한 칸씩 밀린다.
         val trailing = if (function.isSuspend) 1 else 0
@@ -113,6 +116,13 @@ internal object KotlinMetadataEnricher {
             signature.name + Type.getMethodDescriptor(Type.getReturnType(signature.descriptor), *kept.toTypedArray())
         }
     }
+
+    /**
+     * compiler가 Kotlin 이름 뒤에 `-hash`(value class 매개변수)를 붙인 JVM 이름인지 본다. value class 멤버의 `-impl`,
+     * `@JvmName`으로 정한 이름, internal의 `$module` 접미사, `-`가 든 backtick 이름은 생성 overload도 같은 이름을 써서 해당하지 않는다.
+     */
+    private fun isMangled(kotlinName: String, jvmName: String): Boolean =
+        jvmName != kotlinName && jvmName != "$kotlinName-impl" && jvmName.startsWith("$kotlinName-")
 
     private const val JVM_OVERLOADS = "kotlin/jvm/JvmOverloads"
 

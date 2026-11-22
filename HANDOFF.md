@@ -36,7 +36,8 @@
 
 ### 2026-11-22 브랜치 `ccr-37904670-hxdjsx`(5c52008 기준, round 3)
 
-PR #226은 2026-11-16 `main`에 squash 머지됐다(5c52008). 이 브랜치는 그 위에서 다시 시작했다. 아직 push·PR 전이다.
+PR #226은 2026-11-16 `main`에 squash 머지됐다(5c52008). 이 브랜치는 그 위에서 다시 시작했고 PR #227로 올라갔다(0be712d까지).
+그 뒤 독립 리뷰 F1 수정이 더해졌다.
 
 - **suspend `@JvmOverloads` 생성 overload 계산 오류(#223 회귀 범위, 미release)**: `KotlinMetadataEnricher.generatedOverloads`가 JVM
   인자 수에서 value parameter 수를 뺀 나머지를 모두 앞쪽(receiver) 인자로 셌다. suspend 함수는 compiler가 JVM 인자 끝에
@@ -54,6 +55,24 @@ PR #226은 2026-11-16 `main`에 squash 머지됐다(5c52008). 이 브랜치는 �
     compiler가 만든 실제 class, fixture `fixture/jvmoverloadssuspend`): 수정 전 첫 단언에서 실패, 수정 후 통과.
   - 자기 분석 입력(5개 root)의 `graph --format json`은 수정 전후 SHA-256이 같다(`761037a5…`). kartograph 소스에는 suspend
     `@JvmOverloads`가 없어 index-cost 고정 입력의 출력도 바뀌지 않을 것으로 본다(엔진 jar는 달라 same-engine control은 아니다. CI가 근거).
+- **독립 리뷰 F1(같은 함수의 mangled 이름, 미release #223 범위)**: `generatedOverloads`는 생성 overload 이름을 원본 JVM 이름에서
+  가져왔다. value class 매개변수로 이름이 `name-hash`로 바뀐 원본은 생성 overload마다 다른 hash 이름을 받는다(kotlinc 2.4.21:
+  `vc-zyo9C5M(IIILContinuation;)`의 생성물은 `vc-qPW8dFk(IILContinuation;)`·`vc-6pm1oMU(ILContinuation;)`).
+  - 재현(리뷰 fixture fx5·fx6을 다시 컴파일, `Entry` keep): 원본 이름으로 계산한 `vc-zyo9C5M(IILContinuation;)`이
+    `@JvmName("vc-zyo9C5M") @JvmOverloads suspend fun other(a: Int, b: Int = 0)`(쓰이지 않음)의 원본과 같아 `dead`에서 숨었다.
+    비-suspend fx6(`vc-qPW8dFk(II)I`)도 같다(이번 round 이전부터의 동작). fx3에서는 mangled 원본의 생성 overload가 계속 보고된다.
+  - 수정: Kotlin 이름 뒤에 `-hash`가 붙은 원본(`jvmName != kotlinName`, `jvmName != "$kotlinName-impl"`, `"$kotlinName-"` 접두)은 생성
+    overload를 계산하지 않는다. value class 멤버 `-impl`, `@JvmName` 이름, internal `$module`, `-`가 든 backtick 이름은 생성
+    overload가 같은 이름이라(kotlinc로 확인) 계속 알아본다.
+  - 수정 후: fx5에 `unreachable method:vcd/XKt#vc-zyo9C5M(IILkotlin/coroutines/Continuation;)Ljava/lang/Object; X.kt:5`, fx6에
+    `unreachable method:vcd/YKt#vc-qPW8dFk(II)I Y.kt:4`가 더해진다(숨던 직접 작성 함수 각 1건). mangled 원본의 생성 overload는 전후
+    모두 보고된다(fx3 2건, fx5·fx6 각 2건). 보고가 늘어나는 보수적 방향이며 LIMITATIONS에 그 경계를 적었다. `@JvmName`·internal·
+    backtick 표본은 `dead` 출력과 `synthesized` 표시가 그대로다.
+  - 회귀 테스트 `JvmOverloads does not derive overload names from a mangled original`(fixture `fixture/jvmoverloadsmangled`):
+    guard를 빼면 `authored suspend original named like the mangled original`에서, `-impl` 예외를 빼면 `generated value class member
+    overload`에서 실패한다. 수정 후 suite 5/5 통과.
+  - kartograph 자신의 `@JvmOverloads` 함수 3개(`enrich`·`javaCompile`·`kotlinCompile`)는 suspend도 mangled도 아니어서 이 guard가
+    걸리지 않는다. 따라서 index-cost 고정 입력의 출력은 같을 것으로 본다(CI가 근거).
 - **CI 고정 정리(다음 후보 6)**: `actions/setup-java`를 v6.3.0(`d1374f8`, `git ls-remote`로 확인)으로 14곳 모두 올렸다. v6.2.0과의
   `action.yml` 차이는 `problem-matcher` 기본값 true→false뿐이다(Java 컴파일 오류·uncaught exception 로그의 GitHub annotation이 기본으로
   꺼진다. 로그와 step 실패는 그대로이고 어느 job도 annotation을 판정에 쓰지 않는다). `actions/upload-artifact` 고정 11곳(ci.yml 10,
@@ -191,6 +210,11 @@ PR #226의 원격 head와 이 브랜치의 차이는 `git log origin/ccr-3790467
 6. ~~리뷰 nit: upload-artifact 버전 주석, setup-java v6.3.0, 역방향 wrapper 전환 테스트~~ 완료(2026-11-22 브랜치). 남은 nit는
    OwnedTestKitHome 강제 종료가 daemon의 자손 프로세스를 남길 수 있다는 점이다(정상 `--stop`과 같다, 회귀 아님).
 8. `main`을 launcher root로 볼지(지금은 보고에서만 제외). 보존을 넓히는 정책 변경이라 반대 방향 표본과 함께 결정한다.
+9. 리뷰 F2(이전부터): `@JvmOverloads` 생성 overload로 숨긴 node에 `dead --explain`이 `not-reported` 이유 없이 `unreachable`만
+   낸다(`SOURCE_RETENTION_ANNOTATIONS`처럼 이유 줄을 더할지 결정 필요, 출력 계약 변경). 확인: fx3의 `plain(ILContinuation;)` explain.
+10. 리뷰 F3(이전부터): `--include-private-members`에서 쓰인 public top-level `suspend inline fun`의 compiler 사본
+   `name$$forInline`(private static)이 `unreachable`로 보고된다(kotlinc 2.4.21 표본 `twice$$forInline(ILContinuation;)`). 이를
+   flag는 `ACC_PRIVATE, ACC_STATIC, ACC_FINAL`로 synthetic이 아니다. 이름 규칙만으로 생성물로 볼지와 반대 방향 표본이 먼저다.
 
 ## 로컬 검증 메모
 
