@@ -81,8 +81,11 @@
   class를 직접 참조하지 않고 이름으로 알아본다. 이 경우 plugin의 분석 결과는 내장 ASM이 아니라 host build의 ASM이 정한다.
 - Gradle wrapper를 9.8.2로 올렸다(#213 대체). gradle.org 공개 checksum으로 배포 ZIP SHA256을 확인했고 wrapper JAR checksum은
   9.8.1과 같아 `gradle-wrapper.properties`만 바뀐다. index-cost 진단은 검토한 9.8.1→9.8.2 전환을 허용한다.
-- CI의 `actions/setup-java`를 6.2.0, `gradle/actions/wrapper-validation`·`setup-gradle`을 6.4.1의 공식 tag commit SHA로
-  고정했다(#224·#215·#212 대체). 두 action이 workflow에서 쓰는 입력은 바뀌지 않았다.
+- CI의 `actions/setup-java`를 6.3.0(`d1374f8…`), `gradle/actions/wrapper-validation`·`setup-gradle`을 6.4.1의 공식 tag
+  commit SHA로 고정했다(#224·#215·#212 대체). 두 action이 workflow에서 쓰는 입력은 바뀌지 않았다. setup-java 6.3.0은 Java
+  problem matcher(javac 오류·uncaught exception 로그를 GitHub annotation으로 바꾸는 기능)를 기본으로 등록하지 않는다. 어느 job도
+  annotation을 판정에 쓰지 않으며 로그와 실패 여부는 그대로다. `actions/upload-artifact` 고정 11곳에 빠져 있던 `# v7.0.2` 주석을
+  더해 모든 action 고정에 tag 주석이 있다.
 
 ## [0.26.0] - 2026-11-03
 
