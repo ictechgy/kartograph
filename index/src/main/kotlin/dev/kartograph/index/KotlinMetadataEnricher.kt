@@ -20,6 +20,7 @@ import kotlin.metadata.KmType
 import kotlin.metadata.Visibility as KotlinVisibility
 import kotlin.metadata.isData
 import kotlin.metadata.isInline
+import kotlin.metadata.isSuspend
 import kotlin.metadata.declaresDefaultValue
 import kotlin.metadata.kind
 import kotlin.metadata.visibility
@@ -94,13 +95,16 @@ internal object KotlinMetadataEnricher {
 
     /**
      * [function]이 `@JvmOverloads` 원본일 때 compiler가 만드는 overload 시그니처 목록이다. default 매개변수를 마지막 것부터
-     * 1개, 2개, … 뺀다. JVM 인자 앞쪽의 receiver 등 value parameter가 아닌 인자는 그대로 둔다.
+     * 1개, 2개, … 뺀다. JVM 인자 앞쪽의 context·extension receiver와 suspend 함수 끝의 `Continuation`처럼 value parameter가
+     * 아닌 인자는 그대로 둔다.
      */
     private fun generatedOverloads(function: KmFunction, annotated: Set<String>): List<String> {
         val signature = function.signature ?: return emptyList()
         if (signature.name + signature.descriptor !in annotated) return emptyList()
         val arguments = Type.getArgumentTypes(signature.descriptor)
-        val leading = arguments.size - function.valueParameters.size
+        // suspend 함수는 compiler가 JVM 인자 끝에 Continuation 하나를 더한다. 앞쪽 인자로 세면 value parameter 위치가 한 칸씩 밀린다.
+        val trailing = if (function.isSuspend) 1 else 0
+        val leading = arguments.size - function.valueParameters.size - trailing
         if (leading < 0) return emptyList()
         val defaulted = function.valueParameters.indices.filter { function.valueParameters[it].declaresDefaultValue }
         return (1..defaulted.size).map { droppedCount ->

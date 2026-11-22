@@ -32,7 +32,9 @@
   사용자가 쓰는 함수처럼 보고되던 문제다. 원본과 생성물 모두 `kotlin/jvm/JvmOverloads`를 남기고 metadata에는 원본만 있다는 두
   근거가 함께 있을 때만 표시한다. 같은 owner metadata가 선언하고 class 파일에 `@JvmOverloads`를 남긴 함수에서 default 매개변수를
   끝에서부터 하나씩 뺀 정확한 시그니처만 생성물로 보므로, 같은 이름의 직접 작성 overload(더 긴 것 포함), 쓰이지 않는 원본,
-  `@JvmStatic` 바깥 class bridge는 그대로 남는다.
+  `@JvmStatic` 바깥 class bridge는 그대로 남는다. suspend 함수는 compiler가 JVM 인자 끝에 붙이는 `Continuation`을 유지한
+  시그니처로 계산한다. 처음 구현은 이를 receiver처럼 앞쪽 인자로 세어 suspend 함수의 생성 overload를 계속 보고했고, 그렇게
+  잘못 계산한 시그니처와 같은 직접 작성 `@JvmOverloads` 원본(예: 같은 이름의 `Int` 확장 함수)을 생성물로 숨겼다.
 - Gradle `kartographDead<Variant>` 보고의 finding confidence를 CLI `dead`와 같은 규칙(같은 소스 파일의 미해결 runtime
   채널 수로 `static`·`needs-runtime-review`, DataBinding 후보는 review)으로 매긴다. 전에는 binding 후보 외 finding이 등급 없이
   (markdown에서는 `unmeasured`) 나왔다. 규칙은 export의 `FindingConfidences`가 소유한다.

@@ -56,6 +56,25 @@ class CompilerErasedUseTest {
         )
     }
 
+    @Test fun `JvmOverloads keeps the trailing continuation of suspend functions`(@TempDir root: Path) {
+        val owner = "dev/kartograph/index/fixture/jvmoverloadssuspend/SuspendJvmOverloadsFixturesKt"
+        val classes = copyFixturePackage(root, "dev/kartograph/index/fixture/jvmoverloadssuspend", "SuspendJvmOverloadsFixturesKt")
+        val graph = ClassFileIndexer().indexWithObservations(listOf(classes), emptyList()).graph
+        fun node(signature: String) = requireNotNull(graph.node(JvmNodeId.methodId(owner, signature.substringBefore('('), "(" + signature.substringAfter('(')))) { signature }
+        val continuation = "Lkotlin/coroutines/Continuation;"
+        assertTrue(node("fetch(I$continuation)Ljava/lang/Object;").synthesized, "generated suspend overload keeps the continuation")
+        assertTrue(!node("fetch(II$continuation)Ljava/lang/Object;").synthesized, "suspend original")
+        // continuation을 앞쪽 인자로 보면 이 직접 작성 확장 함수의 원본이 생성물로 잘못 표시된다.
+        assertTrue(!node("fetch(II)Ljava/lang/Object;").synthesized, "authored extension original")
+        assertTrue(node("fetch(I)Ljava/lang/Object;").synthesized, "generated extension overload")
+
+        val roots = listOf(RetentionEvidence(JvmNodeId.methodId(owner, "callFetch", "($continuation)Ljava/lang/Object;"), RetentionReason.KEEP_RULE, null))
+        assertEquals(
+            listOf("method:$owner#fetch(II)Ljava/lang/Object;"),
+            DeadFindings.collect(graph, ReachabilityAnalyzer.analyze(graph, roots)).map { it.nodeId.value }.sorted(),
+        )
+    }
+
     @Test fun `JvmOverloads marks only parameter-dropping overloads of the same owner's declaration`(@TempDir root: Path) {
         val owner = "dev/kartograph/index/fixture/jvmstaticoverloads/JvmStaticOverloads"
         val classes = copyFixturePackage(root, "dev/kartograph/index/fixture/jvmstaticoverloads", "JvmStaticOverloads")
