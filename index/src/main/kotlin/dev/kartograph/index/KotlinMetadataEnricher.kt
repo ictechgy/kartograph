@@ -3,6 +3,7 @@ package dev.kartograph.index
 import dev.kartograph.core.GraphNode
 import dev.kartograph.core.GraphEdge
 import dev.kartograph.core.EdgeKind
+import dev.kartograph.core.EdgeOrigin
 import dev.kartograph.core.NodeAttribute
 import dev.kartograph.core.NodeId
 import dev.kartograph.core.NodeKind
@@ -18,6 +19,7 @@ import kotlin.metadata.KmPackage
 import kotlin.metadata.KmProperty
 import kotlin.metadata.KmType
 import kotlin.metadata.Visibility as KotlinVisibility
+import kotlin.metadata.isConst
 import kotlin.metadata.isData
 import kotlin.metadata.isInline
 import kotlin.metadata.isSuspend
@@ -27,8 +29,11 @@ import kotlin.metadata.visibility
 import kotlin.metadata.jvm.KotlinClassMetadata
 import kotlin.metadata.jvm.fieldSignature
 import kotlin.metadata.jvm.getterSignature
+import kotlin.metadata.jvm.hasMethodBodiesInInterface
+import kotlin.metadata.jvm.isCompiledInCompatibilityMode
 import kotlin.metadata.jvm.setterSignature
 import kotlin.metadata.jvm.signature
+import kotlin.metadata.jvm.syntheticMethodForAnnotations
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
@@ -49,7 +54,7 @@ internal object KotlinMetadataEnricher {
                 nodes.replaceAll { _, node -> node.copy(synthesized = true) }
                 val classId = JvmNodeId.classId(facts.internalName)
                 facts.nodes.filter { node -> node.kind == NodeKind.METHOD }.forEach { method ->
-                    runtimeEdges += GraphEdge(classId, method.id, EdgeKind.REFERENCE, origin = dev.kartograph.core.EdgeOrigin.KOTLIN_METADATA)
+                    runtimeEdges += GraphEdge(classId, method.id, EdgeKind.REFERENCE, origin = EdgeOrigin.KOTLIN_METADATA)
                 }
             }
             else -> Unit
@@ -60,11 +65,21 @@ internal object KotlinMetadataEnricher {
             is KotlinClassMetadata.MultiFileClassPart -> metadata.kmPackage.functions
             else -> emptyList()
         }
+        val properties = when (metadata) {
+            is KotlinClassMetadata.Class -> metadata.kmClass.properties
+            is KotlinClassMetadata.FileFacade -> metadata.kmPackage.properties
+            is KotlinClassMetadata.MultiFileClassPart -> metadata.kmPackage.properties
+            else -> emptyList()
+        }
         enrichDefaultBridges(facts, functions, nodes)
         markJvmOverloads(functions, nodes)
+        markSuspendInlineCopies(facts.internalName, functions, nodes)
+        val holderOwner = annotationHolderOwner(facts.internalName, (metadata as? KotlinClassMetadata.Class)?.kmClass)
+        val constFieldOwner = (metadata as? KotlinClassMetadata.MultiFileClassPart)?.facadeClassName ?: facts.internalName
         return facts.copy(
             nodes = facts.nodes.map { node -> nodes.getValue(node.id) },
-            edges = facts.edges + runtimeEdges,
+            edges = facts.edges + runtimeEdges +
+                propertyAnnotationHolders(facts.internalName, holderOwner, constFieldOwner, properties, nodes.keys),
         )
     }
 
@@ -125,6 +140,63 @@ internal object KotlinMetadataEnricher {
         jvmName != kotlinName && jvmName != "$kotlinName-impl" && jvmName.startsWith("$kotlinName-")
 
     private const val JVM_OVERLOADS = "kotlin/jvm/JvmOverloads"
+
+    /**
+     * public·protected·internal `suspend inline` 함수마다 compiler가 inliner용으로 남기는 사본 `<JVM 이름>$$forInline`을
+     * 생성물로 표시한다. 사본은 상태 기계가 없는 본문이라 호출되지 않고, 다른 class의 inline 호출 지점으로 복사될 뿐이다.
+     * 같은 owner metadata가 suspend inline으로 선언한 함수의 JVM 이름에 접미사를 붙이고 descriptor까지 같은 method만 본다.
+     * metadata가 함수로 선언한 method는 표시하지 않는다. private suspend inline 함수에는 사본이 없어 같은 이름·descriptor의 직접
+     * 작성 `@JvmName` 함수가 compile될 수 있고, 그 함수를 가르는 근거는 이 선언 여부뿐이다.
+     */
+    private fun markSuspendInlineCopies(owner: String, functions: List<KmFunction>, nodes: MutableMap<NodeId, GraphNode>) {
+        val declared = functions.mapNotNullTo(mutableSetOf()) { function -> function.signature?.let { it.name + it.descriptor } }
+        functions.filter { function -> function.isSuspend && function.isInline }.forEach { function ->
+            val signature = function.signature ?: return@forEach
+            val copyName = signature.name + FOR_INLINE_SUFFIX
+            if (copyName + signature.descriptor in declared) return@forEach
+            nodes.patch(JvmNodeId.methodId(owner, copyName, signature.descriptor)) { node -> node.copy(synthesized = true) }
+        }
+    }
+
+    private const val FOR_INLINE_SUFFIX = "\$\$forInline"
+
+    /**
+     * property 대상 어노테이션은 property가 아니라 metadata `syntheticMethodForAnnotations`가 가리키는 합성 method
+     * (`get<Name>$annotations`)에 기록된다. 그 method는 호출되지 않아, property를 써도 어노테이션 class가 도달 불가로 보였다.
+     * 이 class에 있는 같은 property의 getter·setter·backing field와 그 method의 짝을 class 사실의 내부 짝 간선으로 남긴다. 짝 간선은
+     * 그래프에 들어가지 않고, 모든 class를 모은 뒤 [PropertyAnnotationHolders]가 method의 어노테이션 간선으로 바꾸고 지운다.
+     * multi-file part의 `const val` field는 part가 아니라 facade([constFieldOwner])에 있어(kotlinc로 확인) 그 field와 잇는다. 다른 class의
+     * 정점이므로 존재 확인은 조립 단계가 한다.
+     */
+    private fun propertyAnnotationHolders(
+        owner: String, holderOwner: String, constFieldOwner: String, properties: List<KmProperty>, declared: Set<NodeId>,
+    ): List<GraphEdge> =
+        properties.flatMap { property ->
+            val holder = property.syntheticMethodForAnnotations ?: return@flatMap emptyList()
+            val holderId = JvmNodeId.methodId(holderOwner, holder.name, holder.descriptor)
+            val fieldOwner = if (property.isConst) constFieldOwner else owner
+            val accessors = listOfNotNull(
+                property.getterSignature?.let { JvmNodeId.methodId(owner, it.name, it.descriptor) },
+                property.setterSignature?.let { JvmNodeId.methodId(owner, it.name, it.descriptor) },
+            ).filter { member -> member in declared }
+            val field = property.fieldSignature?.let { JvmNodeId.fieldId(fieldOwner, it.name, it.descriptor) }
+                ?.takeIf { member -> fieldOwner != owner || member in declared }
+            (accessors + listOfNotNull(field)).map { member -> PropertyAnnotationHolders.link(member, holderId) }
+        }
+
+    /**
+     * property 어노테이션 합성 method가 있는 class다. interface는 method 본문을 interface에 두지 않거나(`-jvm-default=disable`) 호환
+     * mode로 컴파일됐으면(`enable`) `DefaultImpls`에, 아니면(`no-compatibility`) interface 자신에 둔다. 어노테이션 class의 `@property:`
+     * 매개변수는 세 mode 모두 `DefaultImpls`에 둔다(모두 kotlinc·javap로 확인).
+     */
+    private fun annotationHolderOwner(owner: String, kmClass: KmClass?): String = when {
+        kmClass?.kind == ClassKind.ANNOTATION_CLASS -> owner + DEFAULT_IMPLS_SUFFIX
+        kmClass?.kind == ClassKind.INTERFACE && (!kmClass.hasMethodBodiesInInterface || kmClass.isCompiledInCompatibilityMode) ->
+            owner + DEFAULT_IMPLS_SUFFIX
+        else -> owner
+    }
+
+    private const val DEFAULT_IMPLS_SUFFIX = "\$DefaultImpls"
 
     // 이름이나 int 꼬리만으로 추측하면 default expression이 호출한 overload를 원본으로 오인한다.
     // 같은 owner의 metadata JVM signature와 value parameter 수, 실제 CALL을 모두 요구한다.

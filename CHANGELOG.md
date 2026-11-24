@@ -41,6 +41,33 @@
 - Gradle `kartographDead<Variant>` 보고의 finding confidence를 CLI `dead`와 같은 규칙(같은 소스 파일의 미해결 runtime
   채널 수로 `static`·`needs-runtime-review`, DataBinding 후보는 review)으로 매긴다. 전에는 binding 후보 외 finding이 등급 없이
   (markdown에서는 `unmeasured`) 나왔다. 규칙은 export의 `FindingConfidences`가 소유한다.
+- `--include-private-members`가 `suspend inline` 함수마다 compiler가 inliner용으로 남기는 private 사본 `<JVM 이름>$$forInline`을
+  원본이 쓰여도 늘 `unreachable`로 보고하던 문제를 고친다. 같은 owner metadata가 suspend inline으로 선언한 함수의 JVM 이름에
+  접미사를 붙이고 descriptor까지 같은 method만 `synthesized`로 표시한다(top-level·member·companion·`@JvmName`·mangled·`-impl`·
+  internal `$module` 이름 모두 같은 규칙). 원본이 suspend나 inline이 아닌 함수의 같은 꼴 이름, descriptor가 다른 같은 이름,
+  metadata가 없는 Java class, 사본이 없는 private suspend inline 함수와 같은 이름·descriptor로 직접 작성한 `@JvmName` 함수(metadata가
+  선언한다)는 표시하지 않는다. kotlinx-coroutines-core 1.8.0을 public API keep으로 분석하면 private 보고가 24건에서
+  5건으로 준다(사라진 19건은 모두 이 사본).
+- Kotlin property에만 붙은 어노테이션 class를 기본(class-only) `dead`가 쓰여도 `unreachable`로 보고하던 문제를 고친다. compiler는
+  property 대상 어노테이션을 호출되지 않는 합성 method `get<Name>$annotations`(metadata `syntheticMethodForAnnotations`)에 기록한다.
+  그 method가 class 파일에 남긴 어노테이션 간선과 어노테이션 값의 class 참조를 같은 property의 getter·setter·backing field로 옮긴
+  `kotlinMetadata` 간선(ANNOTATION·REFERENCE)을 더한다. 합성 method 자체와 그 owner로는 간선을 두지 않는다. interface의 합성
+  method가 있는 `DefaultImpls`는 모든 method를 잇는 Kotlin 합성 class라, 그 길로 이으면 읽은 property 하나 때문에 쓰이지 않는
+  default 본문과 다른 property의 어노테이션까지 도달했다(PR 리뷰 B1, 첫 구현의 거짓 음성). 합성 method 위치는 metadata로 정한다:
+  interface는 `hasMethodBodiesInInterface`·`isCompiledInCompatibilityMode`에 따라(`-jvm-default=disable`·`enable`은 `DefaultImpls`,
+  `no-compatibility`와 `@JvmDefaultWithoutCompatibility` interface는 interface 자신), 어노테이션 class의 `@property:` 매개변수는 늘
+  `DefaultImpls`다. multi-file `const val`의 field는 part가 아니라 facade에 있어 그 field와 잇는다. property와 합성 method의 짝은
+  class 사실의 내부 간선으로 남기고(cache 형식은 그대로다) 모든 class를 모은 뒤 바꾸므로, 없는 합성 method를 가리키는 간선이나
+  `--include-external-stubs` stub은 생기지 않는다. 짝의 property 정점이나 합성 method가 입력에 없으면 그 짝은 조용히 버려진다(따로
+  세지 않는다). 보존이 넓어지는 방향이라 일부 기존 class finding이 사라진다. 넓어지는 경계: backing field에 도달 가능한 접근이 하나라도
+  있으면(생성자·정적 초기화의 쓰기, data class가 생성한 `equals`·`hashCode`·`toString`·`copy`·`componentN`의 읽기, 상수 owner 보존 등)
+  읽지 않는 property의 어노테이션과 그 값 class도 도달한다(`@field:` 대상과 같다). 옮긴 ANNOTATION 간선은 정점의 `annotations` 목록에
+  더하지 않는다. 그 목록은 class 파일이 JVM member에 남긴 어노테이션이고 keep 규칙의 `@Annotation` member 조건과 framework
+  어노테이션 보존이 그 목록을 읽는다(R8도 property 대상 어노테이션을 member에서 보지 못한다). 그래서 교환 소비자에게는 간선과 목록이
+  다를 수 있다(라이브러리 어노테이션, 예: `@JvmStatic val`의 `kotlin/jvm/JvmStatic`도 간선으로만 나온다). backing field가 바깥 class에
+  있고 accessor가 없는 companion property와 typealias 어노테이션은 계속 보고될 수 있고, `dead` 출력에 이를 세는 한계 줄은 없다
+  ([LIMITATIONS](docs/LIMITATIONS.md)). graph·snapshot·query에는 property 정점에서 어노테이션 class와 어노테이션 값 class로 가는
+  간선이 새로 나온다(새 enum·attribute는 없다).
 
 ### Added
 

@@ -24,6 +24,8 @@
     재구성 1회 절약). performance 게이트가 1.0524배로 넘던 원인이었고 수정 뒤 1.0219배다.
   - CLI와 Gradle plugin의 dead `confidence` 규칙 공유(`FindingConfidences`), test 전용 도달 정책을 analysis로 이동.
   - `dynamicScope` 생산자 규칙과 isthmus 벡터 재벤더링(`c76e105`, `sql-relations` 추가).
+  - 그 뒤 #226·#227(round 3)과 이 브랜치(round 4: suspend inline 사본 `$$forInline` 표시, property 어노테이션 도달성)도
+    `[Unreleased]`에 더해졌다(아래 브랜치 절).
 - 리뷰: 이 환경에 GLM `packet-ask`가 없어 독립 Claude 리뷰로 대신했다(PR 본문 Verification에 명시). 지적 should-fix 3건과
   nit 5건을 반영했다.
 - **index-cost baseline 이동(완료)**: #223 검토 중에는 고정 baseline 78153c3 대비 구조 계수·CLI 출력·semantic graph 차이를
@@ -33,6 +35,118 @@
   profile 계수·CLI 출력·semantic graph·raw payload는 다시 두 arm의 완전 동일 비교다. 엔진(index·core)을 바꾸지 않는 PR은 엔진 jar
   바이트가 같아 same-engine control로 통과한다. 다음에 의도적으로 구조를 바꾸는 PR은 같은 방식으로 임시 delta를 두거나 머지 뒤
   baseline을 다시 옮긴다(장치는 `git show c7c1049:Scripts/verify-index-cost.py`로 복원할 수 있다).
+
+### 2026-11-22 브랜치 `ccr-37904670-hxdjsx`(3bdb99d 기준, round 4, PR #228)
+
+PR #227(round 3)은 `main`에 squash 머지됐다(3bdb99d). 이 브랜치는 그 위에서 다시 시작했고 PR #228로 올라갔다(d1125a8, 리뷰 반영
+5996768, delta 리뷰 반영은 그 뒤 commit). Dependabot의 ASM·wrapper PR 4건은 사용자 결정으로 닫혔고 다시 들이지 않았다. 두 수정 모두
+Kotlin metadata 근거만 쓴다. d1125a8의 첫 property 어노테이션 구현은 독립 리뷰에서 거짓 음성(B1)이 확인돼 아래처럼 다시 만들었다.
+지금 출력은 base(3bdb99d)보다 줄어들기만 한다. 사라지는 finding은 compiler 산출물로 거짓임을 확인한 것(`$$forInline` 사본, 쓰이는
+property의 어노테이션과 그 값 class)이거나, LIMITATIONS에 적은 backing field·상수 경계에 드는 것이다. 경계의 예: 생성자만 초기화하고
+읽지 않는 property, data class의 생성 `equals` 등이 읽는 field(리뷰 delta S4의 a1·a8 표본에서 base가 보고하던 `OnInitOnly`·
+`OnlyFromInitOnly`·`DataPropUnused`는 "읽지 않는 property" 기준으로는 맞는 보고였고 이제 숨는다).
+
+- **suspend inline 사본 `name$$forInline`(리뷰 F3, 다음 후보 10)**: kotlinc는 public·protected·internal `suspend inline` 함수마다
+  상태 기계 없는 private 사본 `<JVM 이름>$$forInline`을 같은 descriptor로 남긴다. inliner가 다른 class로 복사해 갈 본문일 뿐 호출되지
+  않아, `--include-private-members`는 원본이 쓰여도 사본을 늘 `unreachable`로 보고했다(원본은 inline이라 원래 보고 대상이 아니다).
+  - 재현(kotlinc 2.4.21, top-level·member·companion·object·`@JvmName`·value class mangled·`-impl`·internal `$main`·multi-file part·
+    enum·sealed·inner·nested·interface companion 표본을 모두 쓰는 `Entry` keep): base CLI private 보고 5+12+17건이 모두 사본이었다.
+  - 수정: 같은 owner metadata가 suspend inline으로 선언한 함수의 JVM 이름에 `$$forInline`을 붙이고 descriptor까지 같은 method만
+    `synthesized`로 표시한다. metadata가 함수로 선언한 method는 제외한다. kotlinc는 사본과 JVM 시그니처가 같은 직접 작성 함수
+    (`@JvmName("twice\$\$forInline")`·backtick 이름)를 platform declaration clash로 거부한다. 그러나 private suspend inline 함수에는
+    사본이 없어 같은 이름·descriptor의 `@JvmName` 함수가 compile된다(리뷰 S2, javap로 직접 작성 본문 확인). 이 경우는 metadata 선언
+    여부만이 가른다.
+  - 수정 후 같은 표본의 private 보고는 사본 0건이다. descriptor가 다른 직접 작성 함수, Java class의 같은 이름, 위 private 경우는
+    `synthesized`가 아니다. graph JSON에서 바뀐 노드는 사본의 `synthesized`뿐이다.
+  - 회귀 테스트 `suspend inline copies for the inliner are compiler output while authored lookalikes stay reportable`(fixture
+    `fixture/suspendinlinecopy`, Java lookalike는 테스트 안 javac). 두 guard는 kotlinc 입력으로 각각 가를 수 있다(round 4 첫 기록의
+    "가를 수 없다"는 틀렸다): metadata 선언 검사를 빼면 private suspend inline 옆의 `@JvmName` 함수에서, suspend inline 원본 검사를 빼면
+    inline 함수 안 익명 object의 public `run$$forInline`(원본 `run`은 inline이 아니다)에서 실패한다. 호출을 빼면 `top-level copy`에서
+    실패한다.
+- **property 어노테이션의 도달성(새 발견, 리뷰 B1·S1 반영)**: compiler는 property 대상 어노테이션을 property가 아니라 호출되지 않는
+  합성 method `get<Name>$annotations`(metadata `syntheticMethodForAnnotations`)에 기록한다. 그래서 쓰이는 property에만 붙은 프로젝트
+  어노테이션 class가 기본(class-only) `dead`에서 `unreachable`로 보고됐다(private 모드는 public `$annotations`를 외부 진입점으로 보존해
+  대부분 숨겼다. 두 모드가 어긋났다).
+  - d1125a8의 첫 구현은 getter·setter·field에서 합성 method로 REFERENCE 간선을 이었다. 리뷰 B1: 모든 method에 있는 method→owner
+    간선 때문에 합성 method가 `I$DefaultImpls` class를 도달시키고, 기존 SyntheticClass 처리(합성 class → 모든 method)가 쓰이지 않는
+    default 본문 사본(`I.access$…$jd`를 거쳐 임의 코드)과 다른 property의 합성 method까지 도달시켰다. 리뷰 fixture(읽는 abstract
+    property `used`, 읽지 않는 sibling, `OnlyInUnusedDefault`만 만드는 default 본문)에서 class-only 보고는 base `AUnusedSibling·AUsed·
+    OnlyInUnusedDefault`, d1125a8은 `-jvm-default=enable`·`disable`에서 없음(거짓 음성 2건), `no-compatibility`에서 `AUnusedSibling·
+    OnlyInUnusedDefault`였다. 리뷰 S1: 두 위치를 모두 후보로 둔 간선이 `graph --include-external-stubs`에서 없는 method
+    (`I#getUsed$annotations`, `I$DefaultImpls#…`)의 가짜 stub을 만들었다. 둘 다 재현했다.
+  - 다시 만든 수정: 합성 method로는 간선을 두지 않는다. metadata 보강은 property 정점(getter·setter·이 class의 backing field)과 합성
+    method의 짝을 class 사실의 내부 짝 간선(`kotlinMetadata` 출처, 대상이 method인 ANNOTATION. 다른 생산자는 ANNOTATION을 class로만
+    낸다)으로 남긴다. 모든 class를 모은 조립 단계(`PropertyAnnotationHolders.attach`)가 짝을 지우고, 합성 method가 class 파일에 남긴
+    어노테이션 간선과 어노테이션 값의 class 참조를 `kotlinMetadata` 출처로 property 정점에 옮긴다(합성 method owner와 descriptor
+    형식 참조는 옮기지 않는다). 짝은 기존 간선 직렬화로 cache에 저장되므로 cache 형식(v10, 고정 fixture 테스트)은 그대로다. interface
+    합성 method 위치는 metadata `hasMethodBodiesInInterface`·`isCompiledInCompatibilityMode`로 정한다(`!본문 || 호환`이면 `DefaultImpls`,
+    javap로 세 mode와 `@JvmDefaultWithoutCompatibility` 확인).
+  - 수정 후 리뷰 fixture class-only 보고는 세 mode 모두 `AUnusedSibling·OnlyInUnusedDefault`(`AUsed` 사라짐), private은 세 mode 모두
+    없음(읽지 않는 public property와 public default 본문은 private 모드의 외부 진입점이다. base도 `disable`·`no-compatibility`에서
+    없음). stub 모드 graph는 base와 노드가 같고 간선만 getter→어노테이션 2개가 더해진다. 그 밖의 표본(getter 전용·backing field·
+    top-level·extension·`lateinit`·`by lazy`·`@JvmField`·setter로만 쓰는 property·companion getter·object·multi-file·interface·nested
+    interface·override·`@get:JvmName`·`@property:`·BINARY·어노테이션 값 `KClass`·중첩 어노테이션·enum 값)은 d1125a8과 같은 결과이고,
+    어노테이션 값으로만 쓰는 class(`OnlyInPropertyValue` 등)도 이제 도달한다.
+  - 남는 보고: 도달하지 않는 owner·interface의 property, 읽지 않는 property(함수 어노테이션과 같은 규칙), companion object의
+    private·`@JvmField`·`const` property처럼 backing field가 바깥 class에 있고 companion에 accessor가 없는 경우, typealias 어노테이션.
+    앞의 둘은 맞는 보고이고 뒤의 둘은 LIMITATIONS에 적은 남은 거짓 양성이다(`dead` 출력에 세는 한계 줄은 없다. 리뷰 N2, 기존 동작).
+  - 넓어지는 경계(LIMITATIONS): backing field에 도달 가능한 접근이 하나라도 있으면(생성자·정적 초기화의 쓰기, data class가 생성한
+    `equals`·`hashCode`·`toString`·`copy`·`componentN`의 읽기, `const val`의 상수 owner 보존) 읽지 않는 property의 어노테이션과 그 값
+    class도 도달한다(`@field:` 대상과 같다).
+  - 회귀 테스트 `annotations of a used Kotlin property are reachable from the property, not through its synthetic holder`(fixture
+    `fixture/propertyannotations`: 위 형태와 B1의 `Gauge`(DefaultImpls), `@JvmDefaultWithoutCompatibility` `Plain`(interface 자신),
+    extension, 어노테이션 값, cache miss·hit 비교)와 env-gated `property annotations follow the holder owner of every jvm-default mode`
+    (`KARTOGRAPH_KOTLIN_COMPILER_LIB`가 있을 때 리뷰 fixture를 세 mode로 `K2JVMCompiler` 컴파일. CI에는 변수가 없어 skip, 로컬에서 실행).
+    변이 11개를 모두 잡는다(`mutants`는 focused suite, env-gated 테스트 포함): 짝 해석을 빼면(B1과 같은 결과) 두 테스트 모두,
+    interface를 늘 `DefaultImpls`로 보면 `no-compatibility`·`interface without DefaultImpls`, 늘 interface 자신으로 보면 `disable`·
+    `interface through DefaultImpls`, d1125a8처럼 합성 method로 간선을 이으면 `disable`(보고 없음)·`getter`, 합성 method owner 참조를
+    옮기면 `DefaultImpls stays unreached`, descriptor 형식을 옮기면 `receiver type…`, REFERENCE를 옮기지 않으면 `annotation value`, 짝
+    간선을 지우지 않으면 `no property edge reaches a synthetic holder`에서 실패한다. `$$forInline` 쪽 변이 3개는 위 항목과 같다. 수정 후
+    `CompilerErasedUseTest` 8/8(env-gated 1개 실행), `ClassFactsAttributeCompatibilityTest` 3/3(cache v10 고정 바이트 그대로).
+- **delta 리뷰(5996768) 반영**: should-fix 4건·nit 3건을 리뷰어 입력 a1–a13(a3·a9는 세 `-jvm-default` mode)으로 직접 재현한 뒤
+  고쳤다.
+  - S1: 어노테이션 class의 `@property:` 매개변수 합성 method는 세 mode 모두 `Tagged$DefaultImpls`에 있다(javap). 5996768은 `Tagged#…`로
+    짝을 만들어 조용히 버렸다. 수정 후 a3의 `A8AnnoParam`이 base·5996768에서는 class-only·private 모두 보고되고 이 head에서는 사라진다
+    (`Entry#run -> Tagged#v()I -> A8AnnoParam`).
+  - S2: multi-file `const val`의 field는 facade(`Util.MF_CONST`)에만 있고 part에는 합성 method만 있다(javap). part의 `const` property는
+    facade field와 잇고, 다른 class 정점이라 존재 확인은 조립 단계가 한다. a5 `MfConst`·a11 `MfConst2`가 사라진다(`field:a5/Util#MF_CONST:I
+    -> MfConst`, 일반 top-level `const val`과 같아진다). companion의 바깥 class field는 정적 초기화 쓰기 때문에 경계가 더 넓어져 다음 후보
+    11로 남겼다.
+  - S3: CHANGELOG의 "index cache 형식 10→11"은 사실이 아니어서 지웠다(`VERSION = 10` 그대로).
+  - S4: 경계를 "backing field에 도달 가능한 접근이 하나라도 있으면(생성 data class member 포함) 그 property의 어노테이션이 도달한다"로
+    고쳐 적었다(a1 init-only, a8 data class `DataPropUnused`는 base가 보고하던 맞는 보고를 이 경계로 숨긴다. 위 첫 문단).
+  - N1: 짝의 property 정점·합성 method가 없으면 세지 않고 버린다(LIMITATIONS 한 줄). N2: `-jvm-default=disable`에서 쓰이는 호환
+    bridge가 bytecode로 `DefaultImpls`에 닿아 sibling 어노테이션이 숨는 기존 경로를 LIMITATIONS에 적었다(base와 같다). N3: 옮긴
+    ANNOTATION 간선은 정점 `annotations` 목록에 더하지 않는다(그 목록은 class 파일 member 어노테이션이고 keep 규칙 `@Annotation`
+    member 조건·framework 어노테이션 보존이 읽는다). CHANGELOG·LIMITATIONS에 적었다.
+  - 리뷰어 입력 전체에서 이 head는 5996768보다 `A8AnnoParam`(a3 세 mode, class·private)·`MfConst`(a5)·`MfConst2`(a11)만 덜 보고하고,
+    base에 없는 보고는 없다. stub 모드 graph(a1·a2·a3 세 mode·a5·a8·a11)는 base와 노드가 같고 더해진 간선은 모두 class로 가는
+    `kotlinMetadata` 간선이다.
+  - 테스트: 기존 fixture에 `Tagged`(`@property:OnAnnotationParameter`), top-level·multi-file `const val`(`PropertyAnnotationConstants`
+    facade)을 더하고 dead 단언을 `DefaultRetention`(상수 owner 보존 포함)으로 바꿨다. env-gated 세 mode 테스트에 어노테이션 class 경우를
+    더했다. 5996768 production code로 돌리면 `annotation class parameter`와 env-gated `disable`(`AParam` 보고)에서, S1 수정만 되돌리면
+    같은 두 곳에서, S2 수정만 되돌리면 `multi-file const field in the facade`에서 실패한다.
+- **실제 라이브러리 비교(base 3bdb99d / 5996768 / 이 head, public API keep)**: base→이 head의 `dead`는 coroutines 1.8.0
+  class 0→0·private 24→5(사라진 19건 모두 `$$forInline`), stdlib 2.4.21 1744→1744·30→30, kover 0.9.11 0→0·0→0, KGP 2.4.21(15,296 class)
+  49→49·132→132이고 base에 없는 보고는 없다. 5996768과 이 head의 `dead` 출력은 네 라이브러리 모두 같다. graph JSON은 `forInline`·
+  `kotlinMetadata`가 든 줄을 뺀 나머지가 세 arm에서 SHA-256이 같고, base 대비 바뀐 것은 coroutines 사본 19개의 `synthesized`와 property
+  정점→class 간선뿐이다(coroutines +12, stdlib +231(ANNOTATION 216·REFERENCE 15), kover +0, KGP +61). 5996768 대비 더해진 간선은
+  coroutines 1·stdlib 7·KGP 1개로, 모두 multi-file `const` field(`FlowKt`·`MathKt`)나 어노테이션 class 매개변수(`kotlin/Metadata#bv` 등)에서
+  나간다. 합성 `$annotations` method로 가는 간선은 없다(d1125a8은 +65·+174·+4·+635였다).
+- **로컬 검증(JDK 17, Gradle 9.8.2, `--max-workers=2`, `LC_ALL=C.UTF-8`)**: `:core`·`:index`·`:analysis`·`:export`·`:cli` test 실패 0
+  (core 118·index 1055·analysis 263·export 270·cli 380. index는 `KARTOGRAPH_KOTLIN_COMPILER_LIB`를 주어 env-gated 세 mode 테스트도
+  실행했다. skip은 외부 입력 assumption이고 core·analysis·export는 입력이 같아 Gradle up-to-date), `:cli:installDist`,
+  `Scripts/verify-cli-contract.sh`(통과)·`verify-agent-surface.sh`(`Agent surface verified`). `python3 -m unittest discover -s
+  Scripts/tests`는 641개 중 실패 5·오류 2로 round 3과 같은 환경 요인이다(smoke gate 5개는 gradle-plugin class root 부재, index-cost 2개는
+  `JAVA_TOOL_OPTIONS` 때문이며 빼고 JDK 17로 다시 돌리면 통과). 앞서 부하 20 이상에서 한 번 실패한 0.3초 timeout의 process-group
+  회수 테스트(`test_timeout_reaps_a_child_after_its_leader_has_already_exited`, 이 변경과 무관)는 이번 전체 실행에서 통과했다. 자기
+  분석(gradle-plugin을 뺀 5개 root): cycles·rules `--strict` 0, private dead `--strict` 0, class-only dead는 plugin만 쓰는 index class
+  11개(round 3과 같은 목록)다. base 빌드와 이 head의 `graph --format json`(SHA-256 앞 16자리 `87f1eee3c15da934`, delta 리뷰 반영 뒤
+  입력 class 기준)·class-only dead·metrics 출력이 바이트 동일하다(kartograph class에는 `$annotations`·`$$forInline` method가 없다). 그래서 index-cost 고정 입력의 출력도 같을
+  것으로 본다(엔진 jar가 달라 same-engine control은 아니다. CI가 근거).
+- **보고만 하고 손대지 않은 것**: F2(`@JvmOverloads` 등 생성물로 숨긴 노드의 `dead --explain`에 `not-reported` 이유 줄)는 출력 계약
+  결정이 필요해 그대로다. `$$forInline` 사본도 같은 모양(`unreachable`만)으로 설명된다. companion 바깥 class field·typealias 어노테이션과
+  그 한계를 `dead` 출력에 세는 일(N2)은 아래 다음 후보 11에 남겼다.
 
 ### 2026-11-22 브랜치 `ccr-37904670-hxdjsx`(5c52008 기준, round 3)
 
@@ -212,9 +326,16 @@ PR #226의 원격 head와 이 브랜치의 차이는 `git log origin/ccr-3790467
 8. `main`을 launcher root로 볼지(지금은 보고에서만 제외). 보존을 넓히는 정책 변경이라 반대 방향 표본과 함께 결정한다.
 9. 리뷰 F2(이전부터): `@JvmOverloads` 생성 overload로 숨긴 node에 `dead --explain`이 `not-reported` 이유 없이 `unreachable`만
    낸다(`SOURCE_RETENTION_ANNOTATIONS`처럼 이유 줄을 더할지 결정 필요, 출력 계약 변경). 확인: fx3의 `plain(ILContinuation;)` explain.
-10. 리뷰 F3(이전부터): `--include-private-members`에서 쓰인 public top-level `suspend inline fun`의 compiler 사본
-   `name$$forInline`(private static)이 `unreachable`로 보고된다(kotlinc 2.4.21 표본 `twice$$forInline(ILContinuation;)`). 이를
-   flag는 `ACC_PRIVATE, ACC_STATIC, ACC_FINAL`로 synthetic이 아니다. 이름 규칙만으로 생성물로 볼지와 반대 방향 표본이 먼저다.
+   round 4 뒤로 `$$forInline` 사본도 같은 모양이다. 생성물 전반(`synthesized`)에 이유 줄을 줄지 함께 결정한다.
+10. ~~리뷰 F3: `--include-private-members`의 `name$$forInline` 사본 보고~~ 완료(round 4). 이름만이 아니라 같은 owner metadata의
+   suspend inline 원본·같은 descriptor·metadata 미선언을 함께 요구한다.
+11. property 어노테이션 도달성의 남은 형태(round 4에서 LIMITATIONS에 기록): companion object의 private·`@JvmField`·`const`
+   property는 backing field가 바깥 class에 있고 companion에 accessor가 없어 간선을 잇지 못한다(바깥 class는 metadata의 class 이름에서
+   정확히 얻을 수 있지만 interface companion(`isMovedFromInterfaceCompanion`)·`access$…$cp` 경로 확인이 필요하고, 바깥 class의 정적 초기화가
+   field를 쓰므로 그 class가 도달하면 읽지 않는 companion property 어노테이션까지 도달해 field 경계가 더 넓어진다. delta 리뷰 S2에서
+   multi-file `const val`만 facade field로 고치고 이 형태는 남겼다). typealias 어노테이션(`<Alias>$annotations`)은
+   typealias 사용이 bytecode에서 지워진다(metadata `abbreviatedType`으로 일부 복원할 수 있는지 검토가 먼저다).
+   두 형태는 `dead` 출력에 한계 줄이 없다(리뷰 N2). 세려면 새 정적 한계 또는 계량 한계가 필요해 출력 계약과 함께 결정한다.
 
 ## 로컬 검증 메모
 
