@@ -19,7 +19,15 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   출처를 주지 않으면 기존 marker 정책을 따르므로 일부 생성물이 보고될 수 있다. 공개 표본의 범위와 남은 진단은
   [공개 검증 기록](PUBLIC-VALIDATION.md)에 명시한다. 보고는 삭제 승인이 아니다.
   BINARY/RUNTIME 보존 어노테이션의 명시적 값·parameter annotation의 class 참조와 사용되는 중첩 class의 바깥
-  container와 인코딩된 어노테이션 기본값의 class 참조는 도달성에 포함한다. bytecode에 남지 않는 SOURCE 보존
+  container와 인코딩된 어노테이션 기본값의 class 참조는 도달성에 포함한다. class 파일의 타입 어노테이션(`TYPE_USE`·
+  `TYPE_PARAMETER`)과 record component 어노테이션도 같다. class 타입 매개변수·bound·상위 타입은 그 class에서, field 타입은 그
+  field에서, method 반환·매개변수·`throws`·receiver·타입 매개변수와 본문의 지역 변수·try-with-resources 변수·cast·`new`·
+  `instanceof`·`catch` 타입은 그 method에서, `@Target(RECORD_COMPONENT)` 같은 record component 어노테이션은 record class에서
+  어노테이션 class와 그 값이 가리키는 class로 잇는다. 이 간선은 정점의 `annotations` 목록(JVM 선언 어노테이션)에는 더하지 않는다.
+  Kotlin의 타입 사용 위치 어노테이션(`@Target(AnnotationTarget.TYPE)`)은 kotlinc 2.4.21이 `-Xemit-jvm-type-annotations` 없이는
+  class 파일에 남기지 않고 Kotlin metadata에만 기록해 잇지 못한다. 그런 어노테이션 class는 쓰여도 계속 보고될 수 있고 `dead` 출력에
+  따로 세는 한계 줄은 없다. 타입 매개변수 어노테이션(`AnnotationTarget.TYPE_PARAMETER`)은 kotlinc가 JVM 타입 어노테이션으로 남겨
+  도달한다(kotlinc 2.4.21·javap로 확인). bytecode에 남지 않는 SOURCE 보존
   어노테이션은 복원하지 못한다. 그래서 `@Retention(SOURCE)`(Java `RetentionPolicy.SOURCE`, Kotlin `AnnotationRetention.SOURCE`)
   어노테이션 class 자체(`@IntDef`류)는 쓰여도 도달 불가로 보이므로 `dead`가 사용 여부와 무관하게 보고하지 않는다. `dead`의 모든
   형식(CLI·Gradle plugin)은 `SOURCE_RETENTION_ANNOTATIONS` 한계로, query·snapshot은 `source-retention-annotations:`로 그 수를
