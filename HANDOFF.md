@@ -53,16 +53,18 @@ PR #228(round 4)은 `main`에 squash 머지됐다(eaeffec). 이 브랜치는 그
   - 수정: class·field·method의 `visitTypeAnnotation`, method 본문의 `visitInsnAnnotation`·`visitTryCatchAnnotation`·
     `visitLocalVariableAnnotation`, `visitRecordComponent`의 선언·타입 어노테이션에서 선언을 소유한 정점 → 어노테이션 class ANNOTATION 간선과
     값 class REFERENCE 간선을 낸다(기존 `annotationEdge`·`AnnotationValueVisitor`를 재사용해 잘못된 descriptor도 선언 어노테이션과 같이
-    실패한다). 본문 위치는 그 method가, record component는 record class가 소유한다(`@Target(RECORD_COMPONENT)`만 허용한 어노테이션은
-    javac가 `Record` attribute에만 남긴다. javap 확인). 정점 `annotations` 목록에는 더하지 않는다. cache는 기존 간선 직렬화를 쓰고(형식 v10
-    그대로) engine identity가 바뀌므로 옛 항목을 재사용하지 않는다.
-  - Kotlin: kotlinc 2.4.21은 기본 설정에서 타입 매개변수 어노테이션만 JVM 타입 어노테이션(method·class 타입 매개변수)으로 남기고,
-    `@Target(AnnotationTarget.TYPE)` 어노테이션은 metadata `d2` 문자열에만 남긴다(javap). 그래서 타입 매개변수 어노테이션은 이번에 도달하고
-    타입 사용 위치 어노테이션은 `-Xemit-jvm-type-annotations`로 compile했을 때만 도달한다(아래 다음 후보 12).
+    실패한다). 본문 위치는 그 method가, record component는 그 component의 field(같은 이름·descriptor의 private field)가 소유한다
+    (`@Target(RECORD_COMPONENT)`만 허용한 어노테이션은 javac가 `Record` attribute에만 남긴다. javap 확인. 처음 구현은 record class에서
+    이었다가 리뷰 nit 1로 고쳤다, 아래). 정점 `annotations` 목록에는 더하지 않는다. cache는 기존 간선 직렬화를 쓰고(형식 v10 그대로)
+    engine identity가 바뀌므로 옛 항목을 재사용하지 않는다.
+  - Kotlin: kotlinc 2.4.21은 기본 설정에서 타입 매개변수 어노테이션만 JVM 타입 어노테이션(method·class 타입 매개변수)으로 남긴다.
+    `@Target(AnnotationTarget.TYPE)` 어노테이션은 함수 매개변수·반환·receiver·property·상위 타입 인자에서는 metadata `d2` 문자열에만
+    남고(javap) `-Xemit-jvm-type-annotations`로 compile했을 때만 도달한다. 지역 변수 타입·cast(`as @A T`) 같은 본문 위치의 것은 그 옵션을
+    써도 자기 class 파일 밖 어디에도(metadata 포함) 남지 않아 복원할 수 없다(리뷰 should-fix 1, 아래). 다음 후보 12.
   - 회귀 테스트 `TypeAnnotationReferenceTest`(javac 표본은 테스트 안에서 compile, Kotlin은 fixture `fixture/typeannotations`): 간선 16쌍,
     값 class REFERENCE, `annotations` 목록 불변, cache miss·hit 간선 동일, class-only·private 보고 집합, Kotlin 타입 매개변수 간선과
     metadata 전용 `OnKotlinType`이 남는 경계. 변이 10개를 모두 잡는다: 수정 전체를 되돌리면 두 테스트, class `visitTypeAnnotation`을 빼면
-    `class:probe/Holder -> OnClassTypeParameter`, record component를 빼면 `class:probe/Point -> OnComponentOnly`, field는 `names -> OnField`,
+    `class:probe/Holder -> OnClassTypeParameter`, record component를 빼면 `Point -> OnComponentOnly`(그때는 class 소유), field는 `names -> OnField`,
     method는 `first -> OnReturn`과 Kotlin 테스트, 본문 명령·`catch`·지역 변수 visitor를 각각 빼면 `body` 단언, 값 visitor를 빼면
     `class value of a type annotation`, 타입 어노테이션을 `annotations` 목록에 넣으면 `names` 목록 단언에서 실패한다.
   - 적대 입력(base 설치본과 비교, 위치는 javap로 확인): Java 표본(lambda 본문·익명 class 본문의 지역 변수, `Map<String, List<@Deep String>>`,
@@ -75,13 +77,15 @@ PR #228(round 4)은 `main`에 squash 머지됐다(eaeffec). 이 브랜치는 그
   - 실제 라이브러리(base eaeffec 설치본 대비): graph JSON은 KGP 2.4.21(15,295 class)·log4j-api·log4j-core 2.25.2·jdependency 2.13·
     coroutines 1.8.0이 바이트 동일, postgresql 42.7.8 +3 REFERENCE(receiver `@UnderInitialization(WrappedFactory.class)`의 값),
     checker-qual 3.49.5 +7 ANNOTATION(자기 `Nullable`), stdlib 2.4.21 +22 ANNOTATION(`kotlin/internal/OnlyInputTypes`)이다(노드 불변).
-    `--include-external-stubs` postgresql은 외부 Checker Framework·JetBrains 어노테이션 stub 12개와 ANNOTATION 간선 1,498개가 더해지고
-    기존 간선 126개의 weight가 는다. `dead`는 `-keep public class * { *; }`로 일곱 라이브러리 class-only·private 모두 동일하다.
+    `--include-external-stubs` postgresql은 외부 Checker Framework·JetBrains 어노테이션 stub 12개, 새 ANNOTATION 간선 1,372개·REFERENCE
+    간선 3개가 더해지고 기존 ANNOTATION 간선 126개(JetBrains `@NotNull` 102·`@Nullable` 24)의 weight가 합 +208 는다(처음 기록한
+    "ANNOTATION 간선 1,498개"는 weight만 바뀐 126개를 새 간선으로 센 값이었다, 리뷰 nit 3). 같은 stub 모드에서 log4j-api는 stub 1개·간선
+    31개, log4j-core는 stub 1개·간선 76개, checker-qual은 간선 7개가 더해진다. `dead`는 `-keep public class * { *; }`로 일곱 라이브러리 class-only·private 모두 동일하다.
     stdlib을 `-keep public class kotlin.collections.** { *; }`로 좁히면 class-only 2074→2073·private 215→214이고 사라진 것은
     `kotlin/internal/OnlyInputTypes` 하나다(javap: 보존된 `CollectionsJDK8Kt#getOrDefault`의 `RuntimeInvisibleTypeAnnotations`
     `METHOD_TYPE_PARAMETER`). base에 없던 보고는 없다.
-- **로컬 검증(JDK 17, Gradle 9.8.2, `--max-workers=2`, `LC_ALL=C.UTF-8`)**: `:core`·`:index`·`:analysis`·`:export`·`:cli` test 실패 0
-  (core 118·index 1057·analysis 263·export 270·cli 380. index는 `KARTOGRAPH_KOTLIN_COMPILER_LIB`를 주어 env-gated 세 mode 테스트도 실행했다.
+- **로컬 검증(7d7ec5e, JDK 17, Gradle 9.8.2, `--max-workers=2`, `LC_ALL=C.UTF-8`)**: `:core`·`:index`·`:analysis`·`:export`·`:cli` test
+  실패 0(core 118·index 1057·analysis 263·export 270·cli 380. index는 `KARTOGRAPH_KOTLIN_COMPILER_LIB`를 주어 env-gated 세 mode 테스트도 실행했다.
   core·analysis·export는 입력이 같아 Gradle up-to-date), `:cli:installDist`, `Scripts/verify-cli-contract.sh`(`통과`)·
   `verify-agent-surface.sh`(`Agent surface verified`). `python3 -m unittest discover -s Scripts/tests`는 641개 중 실패 6·오류 2다. 5개는 smoke gate의 gradle-plugin class root 부재,
   오류 2개는 `JAVA_TOOL_OPTIONS`(빼고 JDK 17로 다시 돌리면 통과), 나머지 1개는 부하 42에서 실패한 0.3초 timeout 회수 테스트
@@ -90,7 +94,38 @@ PR #228(round 4)은 `main`에 squash 머지됐다(eaeffec). 이 브랜치는 그
   dead·private dead·cycles·rules·metrics 출력과 `graph --format json`(SHA-256 앞 16자리 `4a591084ff7dc05d`)이 바이트 동일하다(kartograph
   class에는 타입 어노테이션이 없다). 엔진 jar가 달라 index-cost는 same-engine control이 아니며 CI가 근거다. `:gradle-plugin`·6개 root smoke
   gate·Android fixture·koverVerify는 AGP가 필요해 CI가 근거다.
-- **보고만 하고 손대지 않은 것**: Kotlin metadata 전용 타입 어노테이션(다음 후보 12), 외부 보존과 무관한 진단에 붙는
+- **독립 리뷰(PR #230, head 7d7ec5e) 반영**: blocker 없음(새 간선의 소유 정점, `annotations` 목록 불변, base에 없던 보고 없음,
+  engine identity로 나뉜 cache, 결정적 출력, keep 규칙 동작 확인). should-fix 1건·nit 3건을 리뷰어 입력(j01–j09 javac 17, k07·k09
+  kotlinc 2.4.21, k08 = k07 + `-Xemit-jvm-type-annotations`)으로 재현한 뒤 고쳤다.
+  - should-fix 1(문서): k07·k08의 `val s: @OnLocal String = o as @OnCast String`에서 `OnLocal`·`OnCast` 이름은 두 compile 모두 자기 class
+    파일에만 있고 metadata에도 없다(직접 확인). 두 build 모두 class-only·private에서 보고된다. "옵션 없이만 잃는다"·"metadata에만 있다"는
+    이 위치에 거짓이어서 LIMITATIONS·CHANGELOG·다음 후보 12를 "함수 본문 위치는 옵션을 써도 어디에도 남지 않아 SOURCE retention처럼
+    복원할 수 없다"로 고쳤다. 셀지는 11번·N2와 함께 결정으로 남겼다(새 `dead` 한계 줄은 더하지 않았다).
+  - nit 1(record component 소유): 7d7ec5e는 record component 어노테이션을 record class에서 이었다. j08(`record Custom(@NoTargetCustomObj
+    @RcCustomObj int a, @TuCustomObj String b)`, equals·hashCode·toString 직접 작성, 정적 `helper()`만 호출)에서 base class-only는 세
+    어노테이션 class를 보고하고 7d7ec5e는 `Entry#run -> class:Custom -> NoTargetCustomObj`로 모두 숨겼다(`Custom#a`·accessor·생성자는 도달
+    불가). 수정 후 소유 정점은 component의 field(`JvmNodeId.fieldId(owner, name, descriptor)`, field가 없으면 그래프 조립이 간선을 버린다)이고
+    j08 class-only는 base와 같은 3개다. private은 base 2개(`RcCustomObj`·`TuCustomObj`) → 0개다: 비-private accessor가 private 모드 진입점이고
+    `a()`가 field를 읽어 `RcCustomObj`가, `b()`의 반환 타입 어노테이션으로 `TuCustomObj`가 도달한다(같은 자리 선언 어노테이션과 같은 규칙).
+    다른 리뷰어 입력의 보고는 7d7ec5e와 같고(j01–j07·j09·k07–k09 class-only·private), graph에서 바뀐 것은 j02·j07·j08 record의 class →
+    어노테이션 간선이 component field 간선으로 옮겨진 것뿐이다(노드 불변). 회귀 테스트 `record component annotations follow the component
+    field, not the record class`(j08 모양 + 생성하는 일반 record `Built`)는 7d7ec5e의 `ClassFileIndexer.kt`로 돌리면 `component field` 단언에서
+    실패하고(첫 테스트도 `field:probe/Point#a:I -> OnComponentOnly`에서 실패), 수정 후 3/3 통과한다.
+  - nit 2(weight): weight는 그대로 class 파일에 기록된 발생 횟수로 둔다(호출 명령 수를 세는 CALL 간선, 선언·parameter 어노테이션과 같은 규칙.
+    타입 사용만 따로 빼면 같은 attribute 계열 안에서 규칙이 갈린다). 그래서 선언과 `TYPE_USE`를 함께 허용하는 어노테이션이 같은 선언에 두 번
+    기록되거나 record component와 그 field에 함께 기록되면 기존 ANNOTATION 간선 weight가 는다(j05 `field:FieldDecl#g -> KeepField` 1→2,
+    j08 `field:Custom#a -> NoTargetCustomObj` 2). weight는 `cycles`의 가장 약한 간선 선택과 DOT·CSV 출력에 쓰여 CHANGELOG·LIMITATIONS에 적었다.
+  - nit 3: 위 실제 라이브러리 항목의 postgresql stub 수치를 고쳤다(1,372·3·126/+208, 직접 다시 셈).
+  - 다시 잰 실제 라이브러리(eaeffec / 7d7ec5e / 이 head): graph JSON·stub graph JSON·`-keep public class * { *; }` dead(class-only·private)는
+    7d7ec5e와 이 head가 일곱 라이브러리 모두 바이트 동일하고(이 라이브러리들에는 record가 없다), KGP graph JSON은 세 arm 모두 같다.
+    stdlib `kotlin.collections.**` keep은 2074/215 → 2073/214 → 2073/214다.
+  - 로컬 검증(이 head): `:core`·`:index`·`:analysis`·`:export`·`:cli` test 실패 0(core 118·index 1058·analysis 263·export 270·cli 380,
+    env-gated 세 mode 테스트 실행, core·analysis·export는 up-to-date), `:cli:installDist`, `verify-cli-contract.sh`(`통과`)·`verify-agent-surface.sh`
+    (`Agent surface verified`). 자기 분석은 현재 class root(이 head의 index class 포함)에서 eaeffec·7d7ec5e·이 head 세 설치본의 dead·private
+    dead·cycles·rules·metrics 출력과 graph JSON(SHA-256 앞 16자리 `70242be234308339`)이 바이트 동일하다(class-only 11개·나머지 0).
+    `python3 -m unittest discover -s Scripts/tests`는 641개 중 실패 5·오류 2로 알려진 환경 요인뿐이다(smoke gate의 gradle-plugin class root
+    부재 5개, `JAVA_TOOL_OPTIONS` 오류 2개는 변수를 빼고 JDK 17로 다시 돌리면 통과. 이번에는 timeout 회수 테스트도 통과했다).
+- **보고만 하고 손대지 않은 것**: Kotlin metadata 전용·본문 위치 타입 어노테이션(다음 후보 12), 외부 보존과 무관한 진단에 붙는
   `EXTERNAL_RETENTIONS` 표시(다음 후보 13, 출력 표기 결정 필요). 사용자 결정 항목(F2·N2·보존을 좁히는 후보·`main` root)은 그대로다.
 
 ### 2026-11-22 브랜치 `ccr-37904670-hxdjsx`(3bdb99d 기준, round 4, PR #228)
@@ -399,7 +434,10 @@ PR #226의 원격 head와 이 브랜치의 차이는 `git log origin/ccr-3790467
    class(예: 함수 타입 receiver에만 붙인 `@DslMarker` 어노테이션)는 계속 보고된다(재현: 위 round 5 Kotlin 적대 표본의 `OnPropertyType`·
    `OnReceiverType`·`OnSupertypeArg`). metadata의 KmType을 모든 위치(`abbreviatedType`·인자·bound·context 매개변수 포함)에서 걸어
    함수·생성자·property 정점과 class에서 `kotlinMetadata` 간선을 내는 방법이 있다. property는 round 4와 같은 backing field 경계가 생긴다.
-   지역 변수·식 위치의 Kotlin 타입 어노테이션이 어디에 남는지는 확인하지 않았다. 11번과 함께 `dead` 한계 줄을 둘지도 결정한다.
+   지역 변수 타입·cast(`val s: @A String = o as @B String`) 같은 함수 본문 위치의 Kotlin 타입 어노테이션은 `-Xemit-jvm-type-annotations`를
+   써도 class 파일과 metadata 어디에도 남지 않는다(리뷰 k07·k08, kotlinc 2.4.21: 그 어노테이션 이름은 자기 class 파일에만 있다). 그래서
+   SOURCE retention처럼 복원할 수 없고 그런 어노테이션 class는 쓰여도 보고된다. 이것을 셀지(SOURCE_RETENTION_ANNOTATIONS 같은 정적 한계
+   또는 계량 한계)는 11번·N2와 함께 출력 계약 결정으로 남긴다.
 13. `dead`의 text·gradle·github-actions·markdown 보고는 `--external-retentions` 없이도 source 경로 해석 진단
    (`unresolved-source-paths:`·`unavailable-source-paths:`)과 `unknown-keep-rule:` 진단을 `limitation\tEXTERNAL_RETENTIONS\t…`(github은
    `kartograph external retentions`)로 표시한다(`AdoptionReporter.render`가 `diagnostics`를 외부 보존 caveat와 합친다. `--explain`·
