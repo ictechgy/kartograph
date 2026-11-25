@@ -36,7 +36,9 @@ import org.objectweb.asm.Handle
 import org.objectweb.asm.Label
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
+import org.objectweb.asm.RecordComponentVisitor
 import org.objectweb.asm.Type
+import org.objectweb.asm.TypePath
 import org.objectweb.asm.tree.MethodNode
 
 /**
@@ -509,6 +511,28 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         }
     }
 
+    // class 타입 매개변수·bound·`extends`/`implements` 타입에 붙은 어노테이션이다.
+    override fun visitTypeAnnotation(typeRef: Int, typePath: TypePath?, descriptor: String, visible: Boolean): AnnotationVisitor =
+        usedAnnotation(JvmNodeId.classId(internalName), descriptor)
+
+    // record component 어노테이션은 `@Target(RECORD_COMPONENT)`만 허용하면 class의 Record attribute에만 남는다(javac 확인).
+    // compiler가 component마다 만드는 같은 이름·descriptor의 private field에서 잇는다. class에서 이으면 record class만 도달해도
+    // 생성되지도 읽히지도 않는 component의 어노테이션까지 도달한다. field가 입력에 없으면 그래프 조립이 이 간선을 버린다.
+    override fun visitRecordComponent(name: String, descriptor: String, signature: String?): RecordComponentVisitor {
+        val componentField = JvmNodeId.fieldId(internalName, name, descriptor)
+        return object : RecordComponentVisitor(Opcodes.ASM9) {
+            override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor =
+                usedAnnotation(componentField, annotationDescriptor)
+
+            override fun visitTypeAnnotation(
+                typeRef: Int,
+                typePath: TypePath?,
+                annotationDescriptor: String,
+                visible: Boolean,
+            ): AnnotationVisitor = usedAnnotation(componentField, annotationDescriptor)
+        }
+    }
+
     override fun visitField(
         access: Int,
         name: String,
@@ -545,6 +569,14 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 edges += annotationEdge(fieldId, annotationName)
                 return AnnotationValueVisitor(fieldId)
             }
+
+            // field 타입(타입 인자·배열 원소·중첩 타입 포함)에 붙은 어노테이션이다.
+            override fun visitTypeAnnotation(
+                typeRef: Int,
+                typePath: TypePath?,
+                annotationDescriptor: String,
+                visible: Boolean,
+            ): AnnotationVisitor = usedAnnotation(fieldId, annotationDescriptor)
 
             override fun visitEnd() {
                 nodes += GraphNode(
@@ -613,6 +645,41 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
                 edges += annotationEdge(methodId, annotationInternalName(annotationDescriptor))
                 return AnnotationValueVisitor(methodId)
             }
+
+            // 반환·매개변수·throws·receiver·method 타입 매개변수와 bound의 타입에 붙은 어노테이션이다.
+            override fun visitTypeAnnotation(
+                typeRef: Int,
+                typePath: TypePath?,
+                annotationDescriptor: String,
+                visible: Boolean,
+            ): AnnotationVisitor = usedAnnotation(methodId, annotationDescriptor)
+
+            // 본문의 `new`·cast·`instanceof`·method reference 등 명령 위치의 타입 어노테이션이다.
+            override fun visitInsnAnnotation(
+                typeRef: Int,
+                typePath: TypePath?,
+                annotationDescriptor: String,
+                visible: Boolean,
+            ): AnnotationVisitor = usedAnnotation(methodId, annotationDescriptor)
+
+            // `catch` 매개변수 타입의 어노테이션이다.
+            override fun visitTryCatchAnnotation(
+                typeRef: Int,
+                typePath: TypePath?,
+                annotationDescriptor: String,
+                visible: Boolean,
+            ): AnnotationVisitor = usedAnnotation(methodId, annotationDescriptor)
+
+            // 지역 변수·try-with-resources 변수 타입의 어노테이션이다.
+            override fun visitLocalVariableAnnotation(
+                typeRef: Int,
+                typePath: TypePath?,
+                start: Array<out Label>,
+                end: Array<out Label>,
+                index: IntArray,
+                annotationDescriptor: String,
+                visible: Boolean,
+            ): AnnotationVisitor = usedAnnotation(methodId, annotationDescriptor)
 
             override fun visitLineNumber(line: Int, start: Label) {
                 if (firstLine == null) firstLine = line
@@ -791,6 +858,17 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
     )
 
     private fun annotationInternalName(descriptor: String): String = Type.getType(descriptor).internalName
+
+    /**
+     * 선언 어노테이션 목록 밖에서 class 파일이 기록한 어노테이션 사용(타입 어노테이션·record component)을 [source]에서
+     * 어노테이션 class와 그 값이 가리키는 class로 잇는다. `TYPE_USE`·`TYPE_PARAMETER` 어노테이션 class는 이 attribute에만
+     * 나타나므로, 잇지 않으면 쓰여도 도달 불가로 보인다. 노드의 `annotations` 목록에는 더하지 않는다. 그 목록은 JVM 선언
+     * 어노테이션이고 keep 규칙의 `@Annotation` 조건과 framework 어노테이션 보존이 읽는다.
+     */
+    private fun usedAnnotation(source: NodeId, descriptor: String): AnnotationVisitor {
+        edges += annotationEdge(source, annotationInternalName(descriptor))
+        return AnnotationValueVisitor(source)
+    }
 
     /**
      * 어노테이션 member 값으로 참조되는 class를 선언과 REFERENCE 간선으로 연결한다.

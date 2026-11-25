@@ -68,6 +68,26 @@
   있고 accessor가 없는 companion property와 typealias 어노테이션은 계속 보고될 수 있고, `dead` 출력에 이를 세는 한계 줄은 없다
   ([LIMITATIONS](docs/LIMITATIONS.md)). graph·snapshot·query에는 property 정점에서 어노테이션 class와 어노테이션 값 class로 가는
   간선이 새로 나온다(새 enum·attribute는 없다).
+- 타입 어노테이션(`@Target(TYPE_USE)`·`@Target(TYPE_PARAMETER)`)과 record component 어노테이션으로만 쓰는 어노테이션 class를 기본
+  (class-only)·`--include-private-members` `dead`가 쓰여도 `unreachable`로 보고하던 문제를 고친다. class 파일은 이 사용을 선언
+  어노테이션과 다른 attribute(`RuntimeVisibleTypeAnnotations`·`RuntimeInvisibleTypeAnnotations`, `Record`)에 남기는데, 그래프 인덱서는
+  선언·parameter 어노테이션만 읽었다(의존성 사용 검사 `ExternalReferenceScanner`는 이미 읽고 있었다). 이제 class 타입 매개변수·bound·
+  상위 타입은 그 class에서, field 타입은 그 field에서, method 반환·매개변수·`throws`·receiver·타입 매개변수와 본문의 지역 변수·
+  try-with-resources 변수·cast·`new`·`instanceof`·`catch` 타입은 그 method에서, record component 어노테이션은 그 component의 field
+  (compiler가 component마다 만드는 같은 이름·descriptor의 private field)에서 어노테이션 class로 ANNOTATION 간선을, 어노테이션 값이
+  가리키는 class로 REFERENCE 간선을 잇는다(선언 어노테이션과 같은 규칙). 도달하지 않는 member의 타입 어노테이션은 선언
+  어노테이션처럼 계속 보고되고, record class만 도달하고 그 component의 생성자·accessor·field가 도달하지 않으면 component 어노테이션도
+  보고된다. 정점의 `annotations` 목록(JVM 선언 어노테이션, keep 규칙의 `@Annotation` 조건과 framework 어노테이션 보존이 읽는다)에는
+  더하지 않는다. 보존이 넓어지는 방향이라 일부 기존 class finding이 사라질 수 있다. graph·snapshot·query와 package·module 단위
+  `cycles`·`rules`·`metrics`가 읽는 의존 간선에 이 간선이 새로 나오고, `graph --include-external-stubs`에는 외부 타입 어노테이션
+  class(예: Checker Framework qualifier)의 stub이 더해질 수 있다(새 enum·attribute·cache 형식 변경은 없다). 간선 weight는 지금처럼
+  class 파일에 기록된 발생 횟수다. 그래서 `@Target`에 선언과 `TYPE_USE`가 함께 있는 어노테이션(예: JetBrains `@NotNull`)이 같은 선언에
+  두 번 기록되거나, record component와 javac가 옮겨 적은 그 field에 함께 기록되면 기존 ANNOTATION 간선의 weight가 1에서 2로 는다
+  (postgresql 42.7.8 `--include-external-stubs`에서 기존 간선 126개, weight 합 +208). weight는 `cycles`의 가장 약한 간선 선택과
+  DOT·CSV 출력에 쓰인다. Kotlin의 타입 사용 위치 어노테이션(`@Target(AnnotationTarget.TYPE)`)은 여전히 잇지 못한다. 함수 매개변수·
+  반환·receiver·property·상위 타입 인자의 것은 kotlinc가 `-Xemit-jvm-type-annotations` 없이는 metadata에만 기록하고(그 옵션이면 이번에
+  도달한다), 지역 변수·cast 같은 함수 본문 위치의 것은 그 옵션을 써도 class 파일과 metadata 어디에도 남지 않아 SOURCE retention처럼
+  복원할 수 없다. 타입 매개변수 어노테이션은 kotlinc가 JVM 타입 어노테이션으로 남겨 이번에 도달한다([LIMITATIONS](docs/LIMITATIONS.md)).
 
 ### Added
 
