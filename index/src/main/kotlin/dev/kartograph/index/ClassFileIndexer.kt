@@ -516,19 +516,20 @@ internal class FactsVisitor : ClassVisitor(Opcodes.ASM9) {
         usedAnnotation(JvmNodeId.classId(internalName), descriptor)
 
     // record component 어노테이션은 `@Target(RECORD_COMPONENT)`만 허용하면 class의 Record attribute에만 남는다(javac 확인).
-    // 그 component의 field·accessor가 아니라 attribute를 가진 class에서 잇는다.
+    // compiler가 component마다 만드는 같은 이름·descriptor의 private field에서 잇는다. class에서 이으면 record class만 도달해도
+    // 생성되지도 읽히지도 않는 component의 어노테이션까지 도달한다. field가 입력에 없으면 그래프 조립이 이 간선을 버린다.
     override fun visitRecordComponent(name: String, descriptor: String, signature: String?): RecordComponentVisitor {
-        val classId = JvmNodeId.classId(internalName)
+        val componentField = JvmNodeId.fieldId(internalName, name, descriptor)
         return object : RecordComponentVisitor(Opcodes.ASM9) {
             override fun visitAnnotation(annotationDescriptor: String, visible: Boolean): AnnotationVisitor =
-                usedAnnotation(classId, annotationDescriptor)
+                usedAnnotation(componentField, annotationDescriptor)
 
             override fun visitTypeAnnotation(
                 typeRef: Int,
                 typePath: TypePath?,
                 annotationDescriptor: String,
                 visible: Boolean,
-            ): AnnotationVisitor = usedAnnotation(classId, annotationDescriptor)
+            ): AnnotationVisitor = usedAnnotation(componentField, annotationDescriptor)
         }
     }
 

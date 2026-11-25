@@ -22,12 +22,18 @@ kartograph는 컴파일러 산출물에서 관찰한 dependency graph를 질의�
   container와 인코딩된 어노테이션 기본값의 class 참조는 도달성에 포함한다. class 파일의 타입 어노테이션(`TYPE_USE`·
   `TYPE_PARAMETER`)과 record component 어노테이션도 같다. class 타입 매개변수·bound·상위 타입은 그 class에서, field 타입은 그
   field에서, method 반환·매개변수·`throws`·receiver·타입 매개변수와 본문의 지역 변수·try-with-resources 변수·cast·`new`·
-  `instanceof`·`catch` 타입은 그 method에서, `@Target(RECORD_COMPONENT)` 같은 record component 어노테이션은 record class에서
-  어노테이션 class와 그 값이 가리키는 class로 잇는다. 이 간선은 정점의 `annotations` 목록(JVM 선언 어노테이션)에는 더하지 않는다.
-  Kotlin의 타입 사용 위치 어노테이션(`@Target(AnnotationTarget.TYPE)`)은 kotlinc 2.4.21이 `-Xemit-jvm-type-annotations` 없이는
-  class 파일에 남기지 않고 Kotlin metadata에만 기록해 잇지 못한다. 그런 어노테이션 class는 쓰여도 계속 보고될 수 있고 `dead` 출력에
-  따로 세는 한계 줄은 없다. 타입 매개변수 어노테이션(`AnnotationTarget.TYPE_PARAMETER`)은 kotlinc가 JVM 타입 어노테이션으로 남겨
-  도달한다(kotlinc 2.4.21·javap로 확인). bytecode에 남지 않는 SOURCE 보존
+  `instanceof`·`catch` 타입은 그 method에서, `@Target(RECORD_COMPONENT)` 같은 record component 어노테이션은 그 component의
+  field(compiler가 component마다 만드는 같은 이름·descriptor의 private field)에서 어노테이션 class와 그 값이 가리키는 class로 잇는다.
+  그래서 record class만 도달하고 생성자·accessor·field가 도달하지 않으면 component 어노테이션은 같은 자리의 선언 어노테이션처럼
+  보고된다. 이 간선은 정점의 `annotations` 목록(JVM 선언 어노테이션)에는 더하지 않는다. 간선 weight는 class 파일에 기록된 발생
+  횟수라서, 같은 어노테이션이 같은 선언에 선언 어노테이션과 타입 어노테이션으로 함께 기록되거나(`@Target`에 둘 다 있는 경우) record
+  component와 그 field에 함께 기록되면 기존 ANNOTATION 간선의 weight가 그 횟수만큼 는다(`cycles`의 가장 약한 간선 선택에 쓰인다).
+  Kotlin의 타입 사용 위치 어노테이션(`@Target(AnnotationTarget.TYPE)`)은 위치에 따라 다르다(kotlinc 2.4.21·javap로 확인). 함수
+  매개변수·반환·receiver·property·상위 타입 인자의 것은 `-Xemit-jvm-type-annotations` 없이는 class 파일 타입 어노테이션이 아니라
+  Kotlin metadata에만 남아 잇지 못하고, 그 옵션으로 compile하면 도달한다. 지역 변수 타입·cast(`as @A T`) 같은 함수 본문 위치의
+  것은 그 옵션을 써도 class 파일과 metadata 어디에도 남지 않아 SOURCE 보존처럼 복원할 수 없다. 두 경우 모두 그런 어노테이션 class는
+  쓰여도 계속 보고될 수 있고 `dead` 출력에 따로 세는 한계 줄은 없다. 타입 매개변수 어노테이션(`AnnotationTarget.TYPE_PARAMETER`)은
+  kotlinc가 JVM 타입 어노테이션으로 남겨 도달한다. bytecode에 남지 않는 SOURCE 보존
   어노테이션은 복원하지 못한다. 그래서 `@Retention(SOURCE)`(Java `RetentionPolicy.SOURCE`, Kotlin `AnnotationRetention.SOURCE`)
   어노테이션 class 자체(`@IntDef`류)는 쓰여도 도달 불가로 보이므로 `dead`가 사용 여부와 무관하게 보고하지 않는다. `dead`의 모든
   형식(CLI·Gradle plugin)은 `SOURCE_RETENTION_ANNOTATIONS` 한계로, query·snapshot은 `source-retention-annotations:`로 그 수를
